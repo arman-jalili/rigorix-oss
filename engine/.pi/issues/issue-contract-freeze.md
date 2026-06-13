@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: ""cancellation""
+  epic: ""enforcement""
   component: "Contract Freeze"
-  module: "cancellation"
+  module: "enforcement"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/cancellation.md"
+    - module: ".pi/architecture/modules/enforcement.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -47,23 +47,23 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/cancellation/contracts/"
-    - "create: src/cancellation/contracts/dtos/"
-    - "create: src/cancellation/contracts/events/"
+    - "create: src/enforcement/contracts/"
+    - "create: src/enforcement/contracts/dtos/"
+    - "create: src/enforcement/contracts/events/"
 ---
 
-# Contract Freeze: cancellation
+# Contract Freeze: enforcement
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the cancellation
+Define and freeze all public interfaces, contracts, and schemas for the enforcement
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- CancellationManager
-- ShutdownSignal
+- EnforcementConfig
+- ExecutionEnforcer
 
 ## What Must Be Frozen
 
