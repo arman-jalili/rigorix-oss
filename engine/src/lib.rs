@@ -11,6 +11,8 @@
 //!
 //! ## Phase 0: Foundation
 //! - `configuration` — Config loading, multi-source merging, Secret wrapper
+//! - `cancellation` — Graceful and immediate cancellation management
+//! - `audit` — Execution audit trails, typed envelopes, circuit breaker
 //!
 //! ## Architecture
 //! - `domain/` — Core domain entities and interfaces
@@ -19,4 +21,5 @@
 //! - `interfaces/` — API contracts (HTTP, events)
 
 pub mod audit;
+pub mod cancellation;
 pub mod configuration;
