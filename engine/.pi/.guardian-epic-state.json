@@ -1,31 +1,23 @@
 {
-  "name": "\"failure-classification\"",
-  "trackingIssueId": "32",
+  "name": "\"cancellation\"",
+  "trackingIssueId": "21",
   "epicId": null,
   "slices": [
     {
-      "module": "failure-classification",
+      "module": "cancellation",
       "components": [
         {
-          "name": "FailureType",
+          "name": "CancellationManager",
           "status": "planned",
-          "description": "Classify execution failures into typed categories",
+          "description": "Central manager for execution cancellation with dual shutdown levels",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "RetryStrategy",
+          "name": "ShutdownSignal",
           "status": "planned",
-          "description": "Define what to do on failure",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "classify_failure()",
-          "status": "planned",
-          "description": "pub fn classify_failure(error_message: &str) -> FailureType;",
+          "description": "pub enum ShutdownSignal {",
           "dependencies": [
             "none"
           ]
@@ -33,25 +25,17 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "FailureType",
+          "name": "CancellationManager",
           "status": "planned",
-          "description": "Classify execution failures into typed categories",
+          "description": "Central manager for execution cancellation with dual shutdown levels",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "RetryStrategy",
+          "name": "ShutdownSignal",
           "status": "planned",
-          "description": "Define what to do on failure",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "classify_failure()",
-          "status": "planned",
-          "description": "pub fn classify_failure(error_message: &str) -> FailureType;",
+          "description": "pub enum ShutdownSignal {",
           "dependencies": [
             "none"
           ]
@@ -64,40 +48,34 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "33"
+      "remoteIssueId": "22"
     },
     {
-      "id": "issue-failuretype",
-      "title": "FailureType: Classify execution failures into typed categories",
+      "id": "issue-cancellationmanager",
+      "title": "CancellationManager: Central manager for execution cancellation with dual shutdown levels",
       "status": "planned",
-      "remoteIssueId": "34"
+      "remoteIssueId": "23"
     },
     {
-      "id": "issue-retrystrategy",
-      "title": "RetryStrategy: Define what to do on failure",
+      "id": "issue-shutdownsignal",
+      "title": "ShutdownSignal: pub enum ShutdownSignal {",
       "status": "planned",
-      "remoteIssueId": "35"
-    },
-    {
-      "id": "issue-classify-failure-",
-      "title": "classify_failure(): pub fn classify_failure(error_message: &str) -> FailureType;",
-      "status": "planned",
-      "remoteIssueId": "36"
+      "remoteIssueId": "24"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "37"
+      "remoteIssueId": "25"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "38"
+      "remoteIssueId": "26"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-06-13T10:15:12.335Z"
+  "createdAt": "2026-06-13T09:41:05.086Z"
 }
