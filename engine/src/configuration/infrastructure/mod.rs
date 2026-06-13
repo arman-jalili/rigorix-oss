@@ -11,3 +11,4 @@
 pub mod config_factory_impl;
 pub mod filesystem_config_repository;
 pub mod repository;
+pub mod secret_factory_impl;
