@@ -20,5 +20,5 @@ pub mod event;
 pub mod secret;
 
 pub use config::*;
-pub use error::ConfigurationError;
+pub use error::{ConfigSource, ConfigurationError};
 pub use secret::Secret;
