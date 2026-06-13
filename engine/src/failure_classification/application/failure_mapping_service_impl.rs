@@ -2,7 +2,7 @@
 //!
 //! @canonical .pi/architecture/modules/failure-classification.md#strategies
 //! Implements: FailureMappingService — FailureType → RetryStrategy mapping
-//! Issue: #34, #35
+//! Issue: #34, #35 (RetryStrategy)
 //!
 //! Maps each `FailureType` to its recommended `RetryStrategy` per the
 //! canonical mapping defined in the architecture module.
