@@ -1,23 +1,23 @@
 {
-  "name": "\"cancellation\"",
-  "trackingIssueId": "21",
+  "name": "\"enforcement\"",
+  "trackingIssueId": "56",
   "epicId": null,
   "slices": [
     {
-      "module": "cancellation",
+      "module": "enforcement",
       "components": [
         {
-          "name": "CancellationManager",
+          "name": "EnforcementConfig",
           "status": "planned",
-          "description": "Central manager for execution cancellation with dual shutdown levels",
+          "description": "Hard cap configuration with validated safety limits",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ShutdownSignal",
+          "name": "ExecutionEnforcer",
           "status": "planned",
-          "description": "pub enum ShutdownSignal {",
+          "description": "Atomic runtime enforcer that gates every action against limits",
           "dependencies": [
             "none"
           ]
@@ -25,17 +25,17 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "CancellationManager",
+          "name": "EnforcementConfig",
           "status": "planned",
-          "description": "Central manager for execution cancellation with dual shutdown levels",
+          "description": "Hard cap configuration with validated safety limits",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ShutdownSignal",
+          "name": "ExecutionEnforcer",
           "status": "planned",
-          "description": "pub enum ShutdownSignal {",
+          "description": "Atomic runtime enforcer that gates every action against limits",
           "dependencies": [
             "none"
           ]
@@ -48,34 +48,34 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "22"
+      "remoteIssueId": "57"
     },
     {
-      "id": "issue-cancellationmanager",
-      "title": "CancellationManager: Central manager for execution cancellation with dual shutdown levels",
+      "id": "issue-enforcementconfig",
+      "title": "EnforcementConfig: Hard cap configuration with validated safety limits",
       "status": "planned",
-      "remoteIssueId": "23"
+      "remoteIssueId": "58"
     },
     {
-      "id": "issue-shutdownsignal",
-      "title": "ShutdownSignal: pub enum ShutdownSignal {",
+      "id": "issue-executionenforcer",
+      "title": "ExecutionEnforcer: Atomic runtime enforcer that gates every action against limits",
       "status": "planned",
-      "remoteIssueId": "24"
+      "remoteIssueId": "59"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "25"
+      "remoteIssueId": "60"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "26"
+      "remoteIssueId": "61"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-06-13T09:41:05.086Z"
+  "createdAt": "2026-06-13T11:24:54.368Z"
 }
