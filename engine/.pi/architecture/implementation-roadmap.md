@@ -10,6 +10,10 @@
 
 Rigorix consists of **17 modules** across **5 implementation phases**. Each phase builds on the previous, with clear milestone checkpoints to validate progress.
 
+> **📂 Phase Manifest:** See `.pi/architecture/PHASE_MANIFEST.toml` for a machine-parseable module-to-phase mapping.\
+> **Usage:** `phase module <name>` — shows the phase a module belongs to.\
+> **Usage:** `phase list <phase>` — lists all modules in a phase.
+
 ---
 
 ## Phase 0: Foundation

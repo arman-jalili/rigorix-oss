@@ -1,0 +1,265 @@
+# Phase Manifest
+#
+# Canonical Reference: .pi/architecture/PHASE_MANIFEST.toml
+# Source: .pi/architecture/implementation-roadmap.md
+# Last Updated: 2026-06-13
+#
+# Maps each of the 17 modules to its implementation phase.
+# Use this manifest to:
+#   - Discover which phase a module belongs to
+#   - Check implementation status across milestones
+#   - Validate phase boundaries in CI (phase N should not import phase N+1)
+
+[metadata]
+version = "1.0.0"
+total_modules = 17
+total_phases = 5
+
+# ────────────────────────────────────────────────────────────────────────────
+# Phase 0: Foundation
+# ────────────────────────────────────────────────────────────────────────────
+
+[phase0]
+name = "Foundation"
+description = "No internal dependencies — build these first."
+gate = "cargo test passes with all error types, cancellation tokens, and failure classification"
+
+[[phase0.modules]]
+id = 1
+name = "Configuration"
+module = "configuration"
+path = "src/configuration/"
+status = "implemented"
+description = "Multi-source config loading (rigorix.toml + env + CLI), Secret wrapper, EnforcementPreset"
+depends_on = []
+
+[[phase0.modules]]
+id = 2
+name = "Error Handling"
+module = "error_handling"
+path = "src/error.rs (planned)"
+status = "planned"
+description = "CoreOrchestratorError root enum with #[from] for all domain errors"
+depends_on = []
+
+[[phase0.modules]]
+id = 3
+name = "Cancellation"
+module = "cancellation"
+path = "src/cancellation/"
+status = "implemented"
+description = "CancellationToken, CancellationManager, ShutdownSignal (Graceful/Immediate)"
+depends_on = []
+
+[[phase0.modules]]
+id = 4
+name = "Failure Classification"
+module = "failure_classification"
+path = "src/failure_classification/"
+status = "implemented"
+description = "FailureType enum, classify_failure(), RetryStrategy, FailureType→RetryStrategy mapping"
+depends_on = []
+
+# ────────────────────────────────────────────────────────────────────────────
+# Phase 1: Infrastructure
+# ────────────────────────────────────────────────────────────────────────────
+
+[phase1]
+name = "Infrastructure"
+description = "Depends on Phase 0."
+gate = "Event bus emits/receives events; enforcement rejects over-limit actions; budget reserves/commits/rolls back; state persists atomically"
+
+[[phase1.modules]]
+id = 5
+name = "Event System"
+module = "event_system"
+path = "src/event/ (planned)"
+status = "planned"
+description = "EventBus with tokio broadcast, Mutex persistence, 11 ExecutionEvent variants"
+depends_on = ["Error Handling"]
+
+[[phase1.modules]]
+id = 6
+name = "Enforcement"
+module = "enforcement"
+path = "src/enforcement/ (planned)"
+status = "planned"
+description = "EnforcementConfig with 3 presets, ExecutionEnforcer with atomic counters, safety hard-caps"
+depends_on = ["Error Handling", "Configuration"]
+
+[[phase1.modules]]
+id = 7
+name = "Budget Tracking"
+module = "budget_tracking"
+path = "src/budget/ (planned)"
+status = "planned"
+description = "LlmBudget with RAII reserve()/commit(), auto-rollback on Drop, CancellationToken integration"
+depends_on = ["Cancellation", "Error Handling", "Configuration"]
+
+[[phase1.modules]]
+id = 8
+name = "State Persistence"
+module = "state_persistence"
+path = "src/state/ (planned)"
+status = "planned"
+description = "ExecutionState, NodeState, StateManager with atomic write-rename, cross-process locking"
+depends_on = ["Error Handling", "Configuration"]
+
+[[phase1.modules]]
+id = 9
+name = "Risk Gating"
+module = "risk_gating"
+path = "src/risk/ (planned)"
+status = "planned"
+description = "RiskLevel enum, RiskClassifier (tool name → level), RiskConfig with per-tool overrides"
+depends_on = ["Configuration"]
+
+# ────────────────────────────────────────────────────────────────────────────
+# Phase 2: Domain Logic
+# ────────────────────────────────────────────────────────────────────────────
+
+[phase2]
+name = "Domain Logic"
+description = "Depends on Phase 0–1."
+gate = "Templates parse and generate TaskGraphs; DAG sorts topologically; tools execute with risk gating; symbol graph indexes code"
+
+[[phase2.modules]]
+id = 10
+name = "Template System"
+module = "template_system"
+path = "src/template/ (planned)"
+status = "planned"
+description = "TemplateParser (TOML), TemplateEngine, Template/TemplateNode, 13 built-in templates"
+depends_on = ["Error Handling", "Configuration"]
+
+[[phase2.modules]]
+id = 11
+name = "DAG Engine"
+module = "dag_engine"
+path = "src/dag/ (planned)"
+status = "planned"
+description = "TaskGraph with two-phase construction, Kahn's sort, CycleDetector, ExecutionPolicy"
+depends_on = ["Failure Classification", "Error Handling"]
+
+[[phase2.modules]]
+id = 12
+name = "Tool System"
+module = "tool_system"
+path = "src/tool/ (planned)"
+status = "planned"
+description = "Tool trait, ToolRegistry, 9 tool implementations, execute_with_risk_gate()"
+depends_on = ["Risk Gating", "Configuration", "Error Handling"]
+
+[[phase2.modules]]
+id = 13
+name = "Repo Engine"
+module = "repo_engine"
+path = "src/repo/ (planned)"
+status = "planned"
+description = "SymbolGraph with O(1) lookup, Rust/Python/TypeScript indexers (tree-sitter)"
+depends_on = ["Error Handling"]
+
+# ────────────────────────────────────────────────────────────────────────────
+# Phase 3: Orchestration
+# ────────────────────────────────────────────────────────────────────────────
+
+[phase3]
+name = "Orchestration"
+description = "Depends on Phase 2."
+gate = "Full planning → execution pipeline: 'rigorix plan' and 'rigorix run' end-to-end"
+
+[[phase3.modules]]
+id = 14
+name = "Planning Pipeline"
+module = "planning_pipeline"
+path = "src/planning/ (planned)"
+status = "planned"
+description = "6-phase flow (budget→classify→extract→generate→validate→hash), Classifier trait, ParameterExtractor"
+depends_on = ["Template System", "Budget Tracking", "Repo Engine", "Error Handling", "Event System"]
+
+[[phase3.modules]]
+id = 15
+name = "Template Generation"
+module = "template_generation"
+path = "src/generation/ (planned)"
+status = "planned"
+description = "TemplateGenerator trait with Claude/Openai/Mock implementations, LLM retry loop (≤3)"
+depends_on = ["Planning Pipeline", "Template System", "Repo Engine", "Budget Tracking", "Error Handling"]
+
+[[phase3.modules]]
+id = 16
+name = "Execution Engine"
+module = "execution_engine"
+path = "src/execution/ (planned)"
+status = "planned"
+description = "ParallelExecutor with JoinSet, per-node retry with backoff, CancellationToken propagation"
+depends_on = ["DAG Engine", "Cancellation", "Enforcement", "Risk Gating", "Tool System",
+              "Failure Classification", "Event System", "State Persistence"]
+
+# ────────────────────────────────────────────────────────────────────────────
+# Phase 4: Observability
+# ────────────────────────────────────────────────────────────────────────────
+
+[phase4]
+name = "Observability"
+description = "Depends on Phase 3."
+gate = "Full execution produces an audit envelope; failed deliveries queue and retry; circuit breaker protects"
+
+[[phase4.modules]]
+id = 17
+name = "Audit"
+module = "audit"
+path = "src/audit/"
+status = "implemented"
+description = "AuditEnvelope with HMAC signature, AuditSender with retry, AuditQueue, CircuitBreaker"
+depends_on = ["Event System", "Configuration", "Error Handling"]
+
+# ────────────────────────────────────────────────────────────────────────────
+# Milestone Checkpoints
+# ────────────────────────────────────────────────────────────────────────────
+
+[milestones]
+
+[milestones.m0]
+name = "M0: Foundation"
+modules = [1, 2, 3, 4]
+test_command = "cargo test"
+description = "Config loads, errors propagate, cancellation signals work, failures classify"
+
+[milestones.m1]
+name = "M1: Infrastructure"
+modules = [5, 6, 7, 8, 9]
+test_command = "cargo test --test integration"
+description = "Events flow, enforcement gates actions, budget tracks LLM, state persists, risk classifies tools"
+
+[milestones.m2]
+name = "M2: Domain Logic"
+modules = [10, 11, 12, 13]
+test_command = "rigorix template list"
+description = "Templates parse + generate, DAGs compile + sort, tools execute safely, code indexes"
+
+[milestones.m3]
+name = "M3: Orchestration"
+modules = [14, 15, 16]
+test_command = "rigorix run \"read src/lib.rs\""
+description = "Full planning → execution pipeline"
+
+[milestones.m4]
+name = "M4: Observability"
+modules = [17]
+test_command = "rigorix history"
+description = "Complete audit trail"
+
+# ────────────────────────────────────────────────────────────────────────────
+# Status Summary (auto-generated for quick reference)
+# ────────────────────────────────────────────────────────────────────────────
+
+[status]
+implemented = ["configuration", "cancellation", "failure_classification", "audit"]
+planned = [
+    "error_handling", "event_system", "enforcement", "budget_tracking",
+    "state_persistence", "risk_gating", "template_system", "dag_engine",
+    "tool_system", "repo_engine", "planning_pipeline", "template_generation",
+    "execution_engine",
+]
+coverage = "4/17 implemented (23.5%)"
