@@ -230,6 +230,11 @@ run_stage "12" "audit_proofing" \
     "${SCRIPTS_DIR}/stage_audit_proofing.sh" \
     "always"
 
+# Stage 13: Cancellation Proofing
+run_stage "13" "cancellation_proofing" \
+    "${SCRIPTS_DIR}/stage_cancellation_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""
