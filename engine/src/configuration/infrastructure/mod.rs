@@ -8,4 +8,6 @@
 //! behind traits. Implementations are provided by the concrete
 //! infrastructure module.
 
+pub mod config_factory_impl;
+pub mod filesystem_config_repository;
 pub mod repository;
