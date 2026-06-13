@@ -217,6 +217,11 @@ run_stage "10" "release_readiness" \
     "${SCRIPTS_DIR}/stage_release_readiness.sh" \
     "always"
 
+# Stage 11: Configuration Proofing
+run_stage "11" "configuration_proofing" \
+    "${SCRIPTS_DIR}/stage_configuration_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""
