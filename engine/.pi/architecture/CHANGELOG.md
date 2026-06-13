@@ -104,6 +104,49 @@ This document tracks all architecture changes requiring implementation updates.
 
 ---
 
+## [2026-06-13] - Configuration Module Implementation (Phase 0)
+
+### Added
+- Module: configuration
+  - Implemented: `ConfigService` with multi-source loading (CLI > ENV > file > defaults)
+  - Implemented: `FilesystemConfigRepository` for reading TOML files and path resolution
+  - Implemented: `ConfigFactoryImpl` for building `ConfigDto` from TOML, env overrides, CLI flags
+  - Implemented: `SecretService` for loading API keys from environment variables
+  - Implemented: `SecretFactoryImpl` for wrapping secret values with redacted output
+  - Implemented: Full validation against `SafetyCaps` (parallelism, retries, tokens, temperature)
+  - 27 unit tests across all layers
+- Module: configuration (contract freeze)
+  - Defined: All domain entities (Config, Secret, ConfigurationError)
+  - Defined: Service, factory, and repository traits
+  - Defined: DTOs with validation, event payloads, HTTP API contracts
+  - Defined: Canonical references for all 15 source files (100% coverage)
+- CI: configuration_proofing stage (stage 11) in hardening pipeline
+  - `check_configuration_contracts.sh` — validates all interfaces have implementations
+  - `check_configuration_coverage.sh` — enforces 80% coverage threshold
+- Docs: `docs/runbook-configuration.md`, `docs/dr-plan-configuration.md`
+
+### Changed
+- `.pi/architecture/modules/configuration.md` — reference implementation matches spec
+- All extension validator paths updated to `engine/.pi/scripts/...` prefix
+- Security, CI, and canonical validators fixed for workspace layout
+
+### Impact Analysis
+- Files affected:
+  - `engine/src/configuration/` (22 source files total)
+  - `engine/.pi/scripts/ci/check_configuration_*.sh` (3 new scripts)
+  - `engine/.pi/scripts/ci/run_hardening_stages.sh` (stage 11 added)
+  - `docs/runbook-configuration.md`, `docs/dr-plan-configuration.md`
+- Validators required: ci, tests, security, architecture, canonical, operations
+
+### Status
+- [x] Architecture doc updated
+- [x] CHANGELOG entry added
+- [x] Implementation updated
+- [x] Canonical refs updated
+- [x] Validators run
+
+---
+
 ## [2026-06-13] - Domain Exploration (Session 63c25384)
 
 ### Added

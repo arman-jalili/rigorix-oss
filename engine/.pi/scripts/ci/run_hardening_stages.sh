@@ -22,6 +22,9 @@
 set -euo pipefail
 
 PI_DIR=".pi"
+if [ ! -d "$PI_DIR" ] && [ -d "engine/.pi" ]; then
+    PI_DIR="engine/.pi"
+fi
 SCRIPTS_DIR="${PI_DIR}/scripts/ci"
 CI_DIR="${PI_DIR}/ci"
 
