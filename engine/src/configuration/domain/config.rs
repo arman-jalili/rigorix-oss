@@ -43,7 +43,7 @@ pub struct Config {
 }
 
 /// Orchestrator execution parameters.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OrchestratorConfig {
     /// Maximum number of parallel tasks to run simultaneously.
     pub max_parallel_tasks: u32,
@@ -66,7 +66,7 @@ impl Default for OrchestratorConfig {
 }
 
 /// Logging configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LoggingConfig {
     /// Log level (trace, debug, info, warn, error).
     pub level: LogLevel,
@@ -89,7 +89,7 @@ impl Default for LoggingConfig {
 }
 
 /// Supported log levels.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LogLevel {
     Trace,
     Debug,
@@ -99,14 +99,14 @@ pub enum LogLevel {
 }
 
 /// Supported log output formats.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LogFormat {
     Text,
     Json,
 }
 
 /// Log output destination.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LogDestination {
     Stderr,
     Stdout,
@@ -114,14 +114,14 @@ pub enum LogDestination {
 }
 
 /// Tool settings including risk configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ToolsConfig {
     /// Risk configuration for tool execution.
     pub risk: RiskConfig,
 }
 
 /// Per-tool risk overrides.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RiskConfig {
     /// Map of tool name to risk level override.
     pub tool_overrides: std::collections::HashMap<String, RiskLevel>,
@@ -148,7 +148,7 @@ impl Default for RiskConfig {
 }
 
 /// Risk level classification.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RiskLevel {
     Low,
     Medium,
@@ -158,7 +158,7 @@ pub enum RiskLevel {
 /// Enforcement preset selection.
 ///
 /// Controls how aggressively the execution enforcer applies safety limits.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub enum EnforcementPreset {
     /// Standard safety limits — suitable for normal operation.
     #[default]
@@ -170,7 +170,7 @@ pub enum EnforcementPreset {
 }
 
 /// Audit backend configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AuditConfig {
     /// Enable audit logging.
     pub enabled: bool,
@@ -197,7 +197,7 @@ impl Default for AuditConfig {
 }
 
 /// LLM provider configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LlmConfig {
     /// Provider name (e.g. "anthropic", "openai", "deepseek").
     pub provider: LlmProvider,
@@ -228,7 +228,7 @@ impl Default for LlmConfig {
 }
 
 /// Supported LLM providers.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LlmProvider {
     Anthropic,
     OpenAI,

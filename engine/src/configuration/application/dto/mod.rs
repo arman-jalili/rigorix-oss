@@ -43,7 +43,7 @@ pub struct LoadConfigInput {
 }
 
 /// Output from loading configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LoadConfigOutput {
     /// The fully resolved configuration.
     pub config: ConfigDto,
@@ -59,7 +59,7 @@ pub struct LoadConfigOutput {
 /// Flattened DTO representation of the full `Config` aggregate.
 ///
 /// Used for API responses and serialization round-trips.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConfigDto {
     pub orchestrator: OrchestratorConfig,
     pub logging: LoggingConfig,
@@ -70,7 +70,7 @@ pub struct ConfigDto {
 }
 
 /// Tools sub-configuration DTO.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolsConfigDto {
     /// Per-tool risk overrides.
     pub tool_overrides: HashMap<String, RiskLevel>,
@@ -80,7 +80,7 @@ pub struct ToolsConfigDto {
 }
 
 /// LLM sub-configuration DTO (redacts the API key).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LlmConfigDto {
     pub provider: String,
     pub model: String,
@@ -96,7 +96,7 @@ pub struct LlmConfigDto {
 // ---------------------------------------------------------------------------
 
 /// Input for validating configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ValidateConfigInput {
     /// The configuration to validate.
     pub config: ConfigDto,
@@ -107,7 +107,7 @@ pub struct ValidateConfigInput {
 }
 
 /// Safety hard-caps for enforcement validation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SafetyCaps {
     /// Maximum allowed parallel tasks.
     pub max_parallel_tasks_cap: u32,
@@ -134,7 +134,7 @@ impl Default for SafetyCaps {
 }
 
 /// Output from validating configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ValidateConfigOutput {
     /// Whether all validation checks passed.
     pub valid: bool,
@@ -147,7 +147,7 @@ pub struct ValidateConfigOutput {
 }
 
 /// A single validation error with structured context.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ValidationError {
     /// The field that failed validation.
     pub field: String,
