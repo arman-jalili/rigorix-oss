@@ -15,10 +15,14 @@
 //! - DTOs include validation annotations/documentation
 //! - No implementation logic — only trait definitions
 
+pub mod cancellation_manager_factory_impl;
+pub mod cancellation_service_impl;
 pub mod dto;
 pub mod factory;
 pub mod service;
 
+pub use cancellation_manager_factory_impl::*;
+pub use cancellation_service_impl::*;
 pub use dto::*;
 pub use factory::*;
 pub use service::*;
