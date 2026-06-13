@@ -1,0 +1,81 @@
+{
+  "name": "\"configuration\"",
+  "trackingIssueId": "1",
+  "epicId": null,
+  "slices": [
+    {
+      "module": "configuration",
+      "components": [
+        {
+          "name": "Config",
+          "status": "planned",
+          "description": "Top-level configuration with multi-source loading",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "Secret",
+          "status": "planned",
+          "description": "API key wrapper that redacts in all output",
+          "dependencies": [
+            "none"
+          ]
+        }
+      ],
+      "nextLogicalSlice": [
+        {
+          "name": "Config",
+          "status": "planned",
+          "description": "Top-level configuration with multi-source loading",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "Secret",
+          "status": "planned",
+          "description": "API key wrapper that redacts in all output",
+          "dependencies": [
+            "none"
+          ]
+        }
+      ]
+    }
+  ],
+  "issues": [
+    {
+      "id": "issue-contract-freeze",
+      "title": "Contract Freeze: Define interfaces and contracts",
+      "status": "planned",
+      "remoteIssueId": "2"
+    },
+    {
+      "id": "issue-config",
+      "title": "Config: Top-level configuration with multi-source loading",
+      "status": "planned",
+      "remoteIssueId": "3"
+    },
+    {
+      "id": "issue-secret",
+      "title": "Secret: API key wrapper that redacts in all output",
+      "status": "planned",
+      "remoteIssueId": "4"
+    },
+    {
+      "id": "issue-proofing",
+      "title": "Proofing: Validation scripts + CI integration",
+      "status": "planned",
+      "remoteIssueId": "5"
+    },
+    {
+      "id": "issue-architecture-readiness",
+      "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
+      "status": "planned",
+      "remoteIssueId": "6"
+    }
+  ],
+  "status": "planning",
+  "currentIssueIndex": 0,
+  "createdAt": "2026-06-13T05:28:54.545Z"
+}
