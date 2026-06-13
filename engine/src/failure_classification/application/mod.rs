@@ -19,6 +19,7 @@ pub mod dto;
 pub mod factory;
 pub mod failure_classifier_service_impl;
 pub mod failure_mapping_service_impl;
+pub mod retry_strategy_integration_tests;
 pub mod service;
 pub mod strategy_factory_impl;
 
