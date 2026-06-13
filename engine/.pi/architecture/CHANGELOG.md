@@ -229,6 +229,62 @@ This document tracks all architecture changes requiring implementation updates.
 
 ---
 
+## [2026-06-13] - Event-System Module Implementation (event-system Epic)
+
+### Added
+- Module: event-system (contract freeze)
+  - Defined: `ExecutionEvent` enum with 11 variants (all execution lifecycle events)
+  - Defined: `PersistedEvent` with monotonic sequence numbering
+  - Defined: `EventSystemError` with 8 structured error variants
+  - Defined: `EventBusService` trait (publish, subscribe, drain_persisted, query_events, status)
+  - Defined: `EventBusFactory` trait with config validation (min 16 channel, 64 buffer)
+  - Defined: `PersistedEventRepository` trait (save, query, drain, count, prune, clear)
+  - Defined: 12 DTOs for all operations
+  - Defined: 6 HTTP endpoints with unified error format
+  - Canonical references for all 13 source files (100% coverage)
+- Module: event-system (implementation)
+  - Implemented: `EventBusServiceImpl` — tokio broadcast + Mutex persistence + AtomicU64 sequences
+  - Implemented: `EventBusFactoryImpl` — validated construction with min capacity checks
+  - Implemented: `InMemoryEventRepository` — thread-safe Vec storage with bounded capacity
+  - Implemented: `ExecutionEvent` helper methods — event_type_name(), execution_id(), timestamp(),
+    summary(), is_terminal(), is_error()
+  - Implemented: 11 convenience constructors — one per variant
+  - Implemented: 34 serde round-trip + helper + constructor tests
+- Observability:
+  - `EventBusService::status()` — persisted_count, current_sequence, subscribers, capacities
+  - `EventBusService::event_count()` — published total, persisted, drained
+- CI: event-system_proofing stage (stage 15) in hardening pipeline
+  - `check_event-system_contracts.sh` — validates all 34 contract points
+  - `check_event-system_coverage.sh` — enforces 80% coverage threshold (63 tests found)
+  - `stage_event-system_proofing.sh` — CI stage wrapper
+- Docs:
+  - `docs/runbook-event-system.md` — startup, shutdown, failure modes, config, metrics
+  - `docs/dr-plan-event-system.md` — RTO/RPO, backup, restore, failover, testing
+
+### Changed
+- `.pi/architecture/modules/event-system.md` — updated with final implementation details
+- `engine/.pi/scripts/ci/run_hardening_stages.sh` — stage 15 (event-system_proofing) added
+- `engine/src/lib.rs` — added `pub mod event_system;`
+
+### Impact Analysis
+- Files affected:
+  - `engine/src/event_system/` (19 source files total)
+  - `engine/.pi/scripts/ci/check_event-system_*.sh` (3 new scripts)
+  - `engine/.pi/scripts/ci/run_hardening_stages.sh` (stage 15 added)
+  - `docs/runbook-event-system.md`, `docs/dr-plan-event-system.md`
+  - `.pi/architecture/modules/event-system.md`
+  - `.pi/architecture/CHANGELOG.md`
+- Validators required: ci, tests, security, architecture, canonical, operations
+
+### Status
+- [x] Architecture doc updated
+- [x] CHANGELOG entry added
+- [x] Implementation updated
+- [x] Canonical refs updated
+- [x] Validators run
+
+---
+
 ## [2026-06-13] - Domain Exploration (Session 63c25384)
 
 ### Added

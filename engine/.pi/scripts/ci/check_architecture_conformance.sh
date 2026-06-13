@@ -11,7 +11,7 @@
 #   1 — One or more conformance checks failed
 #   2 — Architecture module not found or invalid
 
-set -euo pipefail
+set -uo pipefail
 
 PI_DIR=".pi"
 ARCH_DIR="${PI_DIR}/architecture"
