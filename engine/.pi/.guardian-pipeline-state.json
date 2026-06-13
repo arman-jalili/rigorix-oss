@@ -49,7 +49,7 @@
       }
     }
   ],
-  "currentItemIndex": 1,
+  "currentItemIndex": 2,
   "currentStepIndex": 0,
   "status": "running",
   "retryCount": 0,
@@ -84,9 +84,35 @@
           "reason": ""
         }
       ]
+    },
+    {
+      "item": "issue-enforcementconfig",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
     }
   ],
   "mergeOnValid": true,
   "createdAt": "2026-06-13T11:24:54.408Z",
-  "updatedAt": "2026-06-13T11:28:54.093Z"
+  "updatedAt": "2026-06-13T11:35:01.503Z"
 }

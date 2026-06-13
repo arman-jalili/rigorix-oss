@@ -17,10 +17,14 @@
 
 pub mod config_service_impl;
 pub mod dto;
+pub mod enforcer_factory_impl;
+pub mod enforcer_impl;
 pub mod factory;
 pub mod service;
 
 pub use config_service_impl::*;
 pub use dto::*;
+pub use enforcer_factory_impl::*;
+pub use enforcer_impl::*;
 pub use factory::*;
 pub use service::*;
