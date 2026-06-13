@@ -1,8 +1,8 @@
 //! RetryStrategy — defines what action to take when a failure occurs.
 //!
 //! @canonical .pi/architecture/modules/failure-classification.md#strategies
-//! Implements: Contract Freeze — RetryStrategy enum
-//! Issue: #33
+//! Implements: Contract Freeze — RetryStrategy enum, RetryStrategy integration
+//! Issue: #33, #35
 //!
 //! # Contract (Frozen)
 //! - Five strategy variants with clear semantics

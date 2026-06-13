@@ -2,7 +2,7 @@
 //!
 //! @canonical .pi/architecture/modules/failure-classification.md#strategies
 //! Implements: StrategyFactory — RetryStrategy construction with validation
-//! Issue: #34, #35
+//! Issue: #34, #35 (RetryStrategy)
 //!
 //! Builds `RetryStrategy` instances with proper validation (e.g., ensuring
 //! `ExpandContext` levels are within range, `PatchWithFeedback` has content).
