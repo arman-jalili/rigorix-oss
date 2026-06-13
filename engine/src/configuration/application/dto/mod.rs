@@ -1,5 +1,9 @@
 //! Data Transfer Objects for the Configuration module.
 //!
+//! @canonical .pi/architecture/modules/configuration.md#config
+//! Implements: Contract Freeze — DTO schemas for Config, Secret, validation
+//! Issue: #2
+//!
 //! DTOs define the input/output contracts for service operations.
 //! They carry validation metadata and documentation but no behavior.
 //!

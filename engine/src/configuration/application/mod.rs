@@ -1,5 +1,9 @@
 //! Application layer interfaces for the Configuration bounded context.
 //!
+//! @canonical .pi/architecture/modules/configuration.md
+//! Implements: Contract Freeze — service traits, DTOs, factory interfaces
+//! Issue: #2
+//!
 //! This module defines:
 //! - Service traits (use cases / application services)
 //! - Input/Output DTOs with validation

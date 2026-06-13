@@ -1,5 +1,9 @@
 //! Configuration bounded context.
 //!
+//! @canonical .pi/architecture/modules/configuration.md
+//! Implements: Contract Freeze — configuration
+//! Issue: #2
+//!
 //! This module handles loading and validating configuration from
 //! `rigorix.toml`, environment variables, and programmatic defaults
 //! with layered merging. It also provides the `Secret` type for

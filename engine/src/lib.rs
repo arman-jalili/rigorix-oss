@@ -1,5 +1,9 @@
 //! Rigorix — Template-driven DAG execution engine with bounded autonomy.
 //!
+//! @canonical .pi/architecture/modules/configuration.md
+//! Implements: Contract Freeze — configuration crate root
+//! Issue: #2
+//!
 //! # Library Structure
 //!
 //! This library follows Clean Architecture with bounded contexts (DDD).

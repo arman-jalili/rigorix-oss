@@ -1,5 +1,9 @@
 //! Event payload schemas for the Configuration bounded context.
 //!
+//! @canonical .pi/architecture/decisions/ADR-005-event-bus-persistence.md
+//! Implements: Contract Freeze — ConfigurationEvent payload schemas
+//! Issue: #2
+//!
 //! These events are emitted on the `EventBus` whenever configuration is
 //! loaded, changed, or validated. Consumers (audit, console printer, TUI)
 //! subscribe to these event types.

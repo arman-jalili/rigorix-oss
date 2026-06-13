@@ -1,5 +1,9 @@
 //! Service interfaces (use cases) for the Configuration bounded context.
 //!
+//! @canonical .pi/architecture/modules/configuration.md
+//! Implements: Contract Freeze — ConfigService and SecretService traits
+//! Issue: #2
+//!
 //! These traits define the application-level operations that can be performed
 //! on configuration and secrets. All methods are async and return domain
 //! error types.
