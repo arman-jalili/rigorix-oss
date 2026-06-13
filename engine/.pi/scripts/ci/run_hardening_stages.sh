@@ -240,6 +240,11 @@ run_stage "14" "failure-classification_proofing" \
     "${SCRIPTS_DIR}/stage_failure-classification_proofing.sh" \
     "always"
 
+# Stage 15: Event-System Proofing
+run_stage "15" "event-system_proofing" \
+    "${SCRIPTS_DIR}/stage_event-system_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""
