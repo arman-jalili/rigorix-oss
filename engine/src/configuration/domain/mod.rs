@@ -1,5 +1,9 @@
 //! Domain entities and interfaces for the Configuration bounded context.
 //!
+//! @canonical .pi/architecture/modules/configuration.md#domain
+//! Implements: Contract Freeze — domain entities Config, Secret, ConfigurationError, ConfigurationEvent
+//! Issue: #2
+//!
 //! This module defines the core domain types — `Config`, `Secret`, and all
 //! sub-configuration structs. These are pure domain objects with no framework
 //! dependencies. They serve as the frozen contract that all implementation

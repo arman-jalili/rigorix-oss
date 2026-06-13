@@ -1,5 +1,9 @@
 //! HTTP API contracts for Configuration endpoints.
 //!
+//! @canonical .pi/architecture/modules/configuration.md
+//! Implements: Contract Freeze — HTTP endpoint contracts and error formats
+//! Issue: #2
+//!
 //! Defines endpoint paths, methods, request/response schemas, and error
 //! response formats. These contracts are framework-agnostic — they describe
 //! the API surface that any HTTP server implementation must satisfy.

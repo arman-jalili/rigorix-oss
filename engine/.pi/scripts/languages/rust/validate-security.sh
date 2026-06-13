@@ -22,7 +22,7 @@ echo "  Security Validation (Rust)"
 echo "============================================"
 echo ""
 
-if [ ! -f "Cargo.toml" ]; then
+if [ ! -f "Cargo.toml" ] && [ ! -f "engine/Cargo.toml" ]; then
     warn "No Cargo.toml found (skipping Rust security validation)"
     echo ""
     echo "============================================"
@@ -35,12 +35,18 @@ if [ ! -f "Cargo.toml" ]; then
     exit 0
 fi
 
+# Determine source directory
+SRC_DIR="src"
+if [ ! -d "$SRC_DIR" ] && [ -d "engine/src" ]; then
+    SRC_DIR="engine/src"
+fi
+
 # ---------------------------------------------------------------------------
 # Hardcoded secrets
 # ---------------------------------------------------------------------------
 echo "--- Hardcoded Secrets ---"
 # Search for long literal strings assigned to variables in non-test files
-SECRETS_FOUND=$(grep -rnE '=\s*"[A-Za-z0-9+/=_\-]{20,}"' --include="*.rs" src/ 2>/dev/null \
+SECRETS_FOUND=$(grep -rnE '=\s*"[A-Za-z0-9+/=_\-]{20,}"' --include="*.rs" "$SRC_DIR/" 2>/dev/null \
     | grep -v '_test\.rs' \
     | grep -v '#\[cfg(test)\]' \
     | grep -v 'mod tests' \
@@ -60,7 +66,7 @@ echo "--- SQL Injection ---"
 SQL_INJECT=0
 if grep -qE 'sqlx' Cargo.toml 2>/dev/null; then
     # Check for unsafe query patterns: format! inside query! or query()
-    SQL_INJECT=$(grep -rE 'query\s*\(\s*(format!|format_args!)' src/ --include="*.rs" 2>/dev/null | wc -l | tr -d ' ' || true)
+    SQL_INJECT=$(grep -rE 'query\s*\(\s*(format!|format_args!)' "$SRC_DIR/" --include="*.rs" 2>/dev/null | wc -l | tr -d ' ' || true)
 fi
 if [ "$SQL_INJECT" -gt 0 ]; then
     fail "Potential SQL injection patterns found ($SQL_INJECT occurrences — avoid format! inside query)"
@@ -95,7 +101,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Unsafe Code ---"
-UNSAFE_BLOCKS=$(grep -rE 'unsafe\s*\{' --include="*.rs" src/ 2>/dev/null | wc -l | tr -d ' ' || true)
+UNSAFE_BLOCKS=$(grep -rE 'unsafe\s*\{' --include="*.rs" "$SRC_DIR/" 2>/dev/null | wc -l | tr -d ' ' || true)
 if [ "$UNSAFE_BLOCKS" -gt 0 ]; then
     warn "Unsafe code blocks found ($UNSAFE_BLOCKS occurrences — recommend manual audit)"
 else
@@ -107,7 +113,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Panic-Prone Patterns ---"
-PANIC_CALLS=$(grep -rE '\.unwrap\(\)|\.expect\(' --include="*.rs" src/ 2>/dev/null \
+PANIC_CALLS=$(grep -rE '\.unwrap\(\)|\.expect\(' --include="*.rs" "$SRC_DIR/" 2>/dev/null \
     | grep -v '#\[cfg(test)\]' \
     | grep -v 'mod tests' \
     | grep -v '_test\.rs' \
@@ -123,9 +129,13 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Cryptographic Practices ---"
-if grep -qE '^(ring|rustls)\s*=' Cargo.toml 2>/dev/null; then
+CRATE_TOML="Cargo.toml"
+if [ ! -f "$CRATE_TOML" ] && [ -f "engine/Cargo.toml" ]; then
+    CRATE_TOML="engine/Cargo.toml"
+fi
+if grep -qE '^(ring|rustls)\s*=' "$CRATE_TOML" 2>/dev/null; then
     pass "Modern crypto libraries detected (ring/rustls)"
-elif grep -qE '^openssl\s*=' Cargo.toml 2>/dev/null; then
+elif grep -qE '^openssl\s*=' "$CRATE_TOML" 2>/dev/null; then
     warn "OpenSSL detected (prefer ring or rustls for new projects)"
 else
     pass "No cryptographic library dependencies found"

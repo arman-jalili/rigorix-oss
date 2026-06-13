@@ -1,5 +1,9 @@
 //! Config domain entity.
 //!
+//! @canonical .pi/architecture/modules/configuration.md#config
+//! Implements: Contract Freeze — Config aggregate with all sub-configuration types
+//! Issue: #2
+//!
 //! Top-level configuration with multi-source loading from `rigorix.toml`,
 //! environment variables (`RIGORIX__*`), and programmatic defaults with
 //! layered merging.

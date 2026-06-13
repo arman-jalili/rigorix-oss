@@ -1,5 +1,9 @@
 //! Repository interfaces for the Configuration bounded context.
 //!
+//! @canonical .pi/architecture/modules/configuration.md
+//! Implements: Contract Freeze — ConfigRepository and ConfigWriteRepository traits
+//! Issue: #2
+//!
 //! Repositories abstract data access behind interfaces, allowing
 //! implementations to use filesystem, environment, or mock storage
 //! without coupling domain logic to infrastructure.

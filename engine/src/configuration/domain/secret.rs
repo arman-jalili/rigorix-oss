@@ -1,5 +1,9 @@
 //! Secret value object.
 //!
+//! @canonical .pi/architecture/modules/configuration.md#secret
+//! Implements: Contract Freeze — Secret value object with redacted Debug/Display
+//! Issue: #2
+//!
 //! API key wrapper that redacts its contents in all output channels
 //! (Debug, Display) while allowing controlled access via `expose()`.
 //!

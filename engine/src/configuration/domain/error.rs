@@ -1,5 +1,9 @@
 //! Configuration error types.
 //!
+//! @canonical .pi/architecture/modules/error-handling.md#config
+//! Implements: Contract Freeze — ConfigurationError enum
+//! Issue: #2
+//!
 //! All errors use `thiserror` derive macros. No `anyhow` in library code.
 //!
 //! # Contract (Frozen)

@@ -1,5 +1,9 @@
 //! Factory interfaces for constructing Configuration domain objects.
 //!
+//! @canonical .pi/architecture/modules/configuration.md
+//! Implements: Contract Freeze — ConfigFactory and SecretFactory traits
+//! Issue: #2
+//!
 //! Factories encapsulate the construction of complex domain objects,
 //! allowing implementations to inject dependencies and apply defaults
 //! without exposing construction logic to callers.
