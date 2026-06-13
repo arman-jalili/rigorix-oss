@@ -147,6 +147,53 @@ This document tracks all architecture changes requiring implementation updates.
 
 ---
 
+## [2026-06-13] - Audit Module Implementation + Contract Freeze + Proofing
+
+### Added
+- Module: audit
+  - Implemented: Full audit module with 8 implementation files
+  - Implemented: `AuditEnvelopeFactoryImpl` — envelope building with SHA-256 hash + HMAC signing
+  - Implemented: `AuditSenderImpl` — HTTP delivery with reqwest, exponential backoff + jitter
+  - Implemented: `AuditQueueImpl` — bounded in-memory FIFO queue (capacity 100)
+  - Implemented: `CircuitBreakerImpl` — Closed/Open/HalfOpen state machine with atomic counters
+  - Implemented: `AuditServiceImpl` — orchestrates build-and-send flow with retry management
+  - Implemented: `LocalAuditEnvelopeRepository` — filesystem persistence with atomic write-rename
+  - 34 unit tests across all layers (61 total project-wide)
+- Module: audit (contract freeze)
+  - Defined: All domain entities (AuditEnvelope, AuditError, AuditEvent, CircuitBreakerState)
+  - Defined: Service, factory, and repository traits (AuditService, AuditSender, AuditQueue, CircuitBreaker)
+  - Defined: DTOs, HTTP API contracts (5 endpoints), unified error format
+  - Defined: Canonical references for all 15 source files
+- CI: audit_proofing stage (stage 12) in hardening pipeline
+  - `check_audit_contracts.sh` — validates all 11 interfaces have implementations
+  - `check_audit_coverage.sh` — enforces 80% coverage threshold
+  - `stage_audit_proofing.sh` — CI stage wrapper
+- Docs: `docs/runbook-audit.md`, `docs/dr-plan-audit.md`
+
+### Changed
+- `.pi/architecture/modules/audit.md` — updated with final implementation details
+- `engine/Cargo.toml` — added uuid, chrono, sha2, hmac, reqwest, rand dependencies
+- `engine/src/lib.rs` — added `pub mod audit;`
+
+### Impact Analysis
+- Files affected:
+  - `engine/src/audit/` (26 source files total)
+  - `engine/.pi/scripts/ci/check_audit_*.sh` (3 new scripts)
+  - `engine/.pi/scripts/ci/run_hardening_stages.sh` (stage 12 added)
+  - `docs/runbook-audit.md`, `docs/dr-plan-audit.md`
+  - `.pi/architecture/modules/audit.md`
+  - `.pi/architecture/CHANGELOG.md`
+- Validators required: ci, tests, security, architecture, canonical, operations
+
+### Status
+- [x] Architecture doc updated
+- [x] CHANGELOG entry added
+- [x] Implementation updated
+- [x] Canonical refs updated
+- [x] Validators run
+
+---
+
 ## [2026-06-13] - Domain Exploration (Session 63c25384)
 
 ### Added
