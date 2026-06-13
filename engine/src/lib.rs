@@ -18,4 +18,5 @@
 //! - `infrastructure/` — Repository interfaces
 //! - `interfaces/` — API contracts (HTTP, events)
 
+pub mod audit;
 pub mod configuration;
