@@ -83,7 +83,7 @@ pub enum EventStatus {
 /// Circuit breaker state machine for resilient HTTP delivery.
 ///
 /// Follows the standard closed → open → half-open → closed pattern.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CircuitBreakerState {
     /// Normal operation — requests pass through.
     Closed,
