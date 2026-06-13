@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-PROOFING"
-  epic: ""cancellation""
+  epic: ""failure-classification""
   component: "Proofing & CI Enforcement"
-  module: "cancellation"
+  module: "failure-classification"
   status: planned
   priority: critical
   dependencies: []
@@ -26,7 +26,7 @@ guardian_issue:
       - Updated CI stage configuration
 
   canonical_references:
-    - module: ".pi/architecture/modules/cancellation.md"
+    - module: ".pi/architecture/modules/failure-classification.md"
 
   acceptance_criteria:
     - "All proofing scripts created and executable"
@@ -47,12 +47,12 @@ guardian_issue:
     every build for zero token cost.
 
   file_changes:
-    - "create: .pi/scripts/ci/check_cancellation_contracts.sh"
-    - "create: .pi/scripts/ci/check_cancellation_coverage.sh"
+    - "create: .pi/scripts/ci/check_failure-classification_contracts.sh"
+    - "create: .pi/scripts/ci/check_failure-classification_coverage.sh"
     - "modify: .pi/scripts/ci/run_hardening_stages.sh"
 ---
 
-# Proofing & CI Enforcement: cancellation
+# Proofing & CI Enforcement: failure-classification
 
 ## Intent
 
@@ -81,17 +81,17 @@ on every PR. No LLM cost. No human review. Just pass or fail.
 
 | Script | Purpose | Location |
 |--------|---------|----------|
-| check_cancellation_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
-| check_cancellation_coverage.sh | Enforce coverage thresholds | .pi/scripts/ci/ |
-| stage_cancellation_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
+| check_failure-classification_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
+| check_failure-classification_coverage.sh | Enforce coverage thresholds | .pi/scripts/ci/ |
+| stage_failure-classification_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
 
 ## CI Pipeline Update
 
 Add the new stage to `run_hardening_stages.sh`:
 
 ```bash
-run_stage "11" "cancellation_proofing" \
-    "${SCRIPTS_DIR}/stage_cancellation_proofing.sh" \
+run_stage "11" "failure-classification_proofing" \
+    "${SCRIPTS_DIR}/stage_failure-classification_proofing.sh" \
     "always"
 ```
 

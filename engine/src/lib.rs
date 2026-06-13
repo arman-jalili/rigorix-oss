@@ -13,6 +13,7 @@
 //! - `configuration` — Config loading, multi-source merging, Secret wrapper
 //! - `cancellation` — Graceful and immediate cancellation management
 //! - `audit` — Execution audit trails, typed envelopes, circuit breaker
+//! - `failure_classification` — Failure type classification and retry strategy selection
 //!
 //! ## Architecture
 //! - `domain/` — Core domain entities and interfaces
@@ -23,3 +24,4 @@
 pub mod audit;
 pub mod cancellation;
 pub mod configuration;
+pub mod failure_classification;
