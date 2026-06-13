@@ -107,6 +107,18 @@ pub fn classify_failure(error_message: &str) -> FailureType;
 
 ---
 
+## Implementation Status
+
+All components are implemented and tested. See:
+- `engine/src/failure_classification/` — complete module with 15+ source files
+- `engine/src/failure_classification/classify.rs` — standalone `classify_failure()` free function
+- `engine/src/failure_classification/application/failure_classifier_service_impl.rs` — service implementation
+- `engine/src/failure_classification/application/failure_mapping_service_impl.rs` — strategy mapping
+- `engine/src/failure_classification/application/strategy_factory_impl.rs` — strategy factory
+- `engine/src/failure_classification/application/retry_strategy_integration_tests.rs` — 22 integration tests
+- `engine/docs/runbook-failure-classification.md` — operations runbook
+- `engine/docs/dr-plan-failure-classification.md` — disaster recovery plan
+
 ## Data Flow
 
 ```mermaid
@@ -151,7 +163,8 @@ ExpandContext"]
 
 | Test Type | Coverage Target | Files |
 |-----------|-----------------|-------|
-| Unit | 100% | `rigorix/src/failure.rs` (inline tests) |
+| Unit | ≥90% | `engine/src/failure_classification/` (125 tests inline) |
+| Integration | Full pipeline | `retry_strategy_integration_tests.rs` (22 tests) |
 
 **Key Test Scenarios:**
 - classify_failure("tests failed with 3 errors") → TestFailure
@@ -160,6 +173,16 @@ ExpandContext"]
 - classify_failure("invalid api key") → NonRetryable
 - Each FailureType maps to correct RetryStrategy
 - is_retryable() correct for each type
+- Strategy override flows work correctly
+- ExpandContext level validation (0–5)
+- Empty message classification returns NonRetryable
+- Full pipeline: classify → map strategy → check eligibility
+
+## Proofing & CI
+
+- `check_failure-classification_contracts.sh` — validates 19 contract points (stage 14)
+- `check_failure-classification_coverage.sh` — enforces coverage threshold
+- Part of `run_hardening_stages.sh` — runs automatically on every PR
 
 ---
 

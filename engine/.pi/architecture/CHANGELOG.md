@@ -194,6 +194,41 @@ This document tracks all architecture changes requiring implementation updates.
 
 ---
 
+## [2026-06-13] - Failure Classification Module Implementation (Phase 0)
+
+### Added
+- Module: failure-classification
+  - Implemented: `FailureClassifierServiceImpl` — pattern-matching classification for 7 failure types
+  - Implemented: `FailureMappingServiceImpl` — default FailureType→RetryStrategy mapping with override support
+  - Implemented: `StrategyFactoryImpl` — validated RetryStrategy construction (ExpandContext 0–5, PatchWithFeedback non-empty)
+  - Implemented: `classify_failure()` free function for quick classification
+  - Implemented: Comprehensive integration tests covering all 7 FailureType→Strategy pipelines
+  - 125 unit/integration tests across all layers (215 total project-wide)
+- Module: failure-classification (contract freeze)
+  - Defined: All domain entities (FailureType, RetryStrategy, FailureClassificationError)
+  - Defined: Service, factory, and repository traits
+  - Defined: DTOs with validation, event payloads, HTTP API contracts (4 endpoints)
+  - Defined: Canonical references for all 15 source files
+- CI: failure-classification_proofing stage (stage 14) in hardening pipeline
+  - `check_failure-classification_contracts.sh` — validates all 19 contract points
+  - `check_failure-classification_coverage.sh` — enforces 80% coverage threshold (125 tests found)
+  - `stage_failure-classification_proofing.sh` — CI stage wrapper
+- Docs: `docs/runbook-failure-classification.md`, `docs/dr-plan-failure-classification.md`
+
+### Changed
+- `.pi/architecture/modules/failure-classification.md` — updated with final implementation details
+- `engine/src/lib.rs` — added `pub mod failure_classification;`
+- `engine/.pi/scripts/ci/run_hardening_stages.sh` — stage 14 added
+
+### Status
+- [x] Architecture doc updated
+- [x] CHANGELOG entry added
+- [x] Implementation updated
+- [x] Canonical refs updated
+- [x] Validators run
+
+---
+
 ## [2026-06-13] - Domain Exploration (Session 63c25384)
 
 ### Added
