@@ -1,0 +1,209 @@
+# GuardianCLI Default TOML Validators
+#
+# Declarative validation rules with inline tests.
+# Pipeline stages: strip_ansi → replace → match_output → strip/keep_lines → truncate → head/tail → max_lines → on_empty
+#
+# Usage: guardian validate --filter <name>
+# Verify:  guardian validate --verify
+
+schema_version = 1
+
+# ── CI Validator ────────────────────────────────────────────────────────────
+
+[filters.ci-build]
+command = "build"
+description = "Filter build output to show errors and warnings only"
+strip_ansi = true
+keep_lines_matching = ["error", "warning", "Error", "Warning", "FAILED", "failed", "^Build failed"]
+max_lines = 50
+on_empty = "✅ Build passed with no errors or warnings"
+
+[[tests.ci-build]]
+name = "strips successful build noise"
+input = """
+Compiling my-project v0.1.0
+   Compiling serde v1.0.197
+   Compiling tokio v1.36.0
+    Finished dev [unoptimized + debuginfo] target(s) in 12.34s
+"""
+expected = "✅ Build passed with no errors or warnings"
+
+[[tests.ci-build]]
+name = "keeps errors"
+input = """
+Compiling my-project v0.1.0
+error[E0425]: cannot find function `foo` in this scope
+  --> src/main.rs:10:5
+   |
+10 |     foo();
+   |     ^^^ not found in this scope
+    Finished dev [unoptimized + debuginfo] target(s) in 0.50s
+"""
+expected = """
+error[E0425]: cannot find function `foo` in this scope
+  --> src/main.rs:10:5
+   |
+10 |     foo();
+   |     ^^^ not found in this scope
+"""
+
+# ── Test Validator ──────────────────────────────────────────────────────────
+
+[filters.test-results]
+command = "test"
+description = "Show only test failures, hide passing tests"
+strip_ansi = true
+keep_lines_matching = ["FAILED", "failed", "error", "panic", "Error", "AssertionError", "test.*FAILED", "✗", "×", "Summary:.*failed", "^Running.*test"]
+replace = [
+  { pattern = "^test (.+) \\.\\.\\. ok$", replacement = "" },
+  { pattern = "^\\s+$", replacement = "" }
+]
+max_lines = 100
+on_empty = "✅ All tests passed"
+
+[[tests.test-results]]
+name = "hides passing tests, shows failures"
+input = """
+running 15 tests
+test utils::test_parse ... ok
+test utils::test_format ... ok
+test auth::test_login ... FAILED
+test auth::test_logout ... ok
+test auth::test_refresh ... FAILED
+test db::test_connect ... ok
+
+failures:
+
+---- auth::test_login stdout ----
+thread 'auth::test_login' panicked at 'assertion failed'
+
+---- auth::test_refresh stdout ----
+thread 'auth::test_refresh' panicked at 'timeout'
+
+failures:
+    auth::test_login
+    auth::test_refresh
+
+test result: FAILED. 13 passed; 2 failed; 0 ignored
+"""
+expected = """
+test auth::test_login ... FAILED
+test auth::test_refresh ... FAILED
+
+failures:
+
+---- auth::test_login stdout ----
+thread 'auth::test_login' panicked at 'assertion failed'
+
+---- auth::test_refresh stdout ----
+thread 'auth::test_refresh' panicked at 'timeout'
+
+failures:
+    auth::test_login
+    auth::test_refresh
+
+test result: FAILED. 13 passed; 2 failed; 0 ignored
+"""
+
+# ── Security Validator ──────────────────────────────────────────────────────
+
+[filters.security-scan]
+command = "security"
+description = "Filter security scan output to show only findings"
+strip_ansi = true
+keep_lines_matching = ["CRITICAL", "HIGH", "MEDIUM", "vulnerability", "CVE-", "finding", "⚠", "failed", "FAILED"]
+max_lines = 80
+on_empty = "✅ No security issues found"
+
+[[tests.security-scan]]
+name = "shows only findings"
+input = """
+Scanning dependencies...
+Found 234 packages
+Checking for known vulnerabilities...
+
+CVE-2024-1234 [CRITICAL] lodash < 4.17.21
+  Prototype pollution in lodash
+  Fixed in: 4.17.21
+
+CVE-2024-5678 [HIGH] express < 4.18.2
+  Open redirect vulnerability
+  Fixed in: 4.18.2
+
+All other packages are up to date.
+Scan complete: 2 vulnerabilities found
+"""
+expected = """
+CVE-2024-1234 [CRITICAL] lodash < 4.17.21
+  Prototype pollution in lodash
+  Fixed in: 4.17.21
+
+CVE-2024-5678 [HIGH] express < 4.18.2
+  Open redirect vulnerability
+  Fixed in: 4.18.2
+
+Scan complete: 2 vulnerabilities found
+"""
+
+# ── Lint Validator ──────────────────────────────────────────────────────────
+
+[filters.lint-output]
+command = "lint"
+description = "Group lint issues by file and rule"
+strip_ansi = true
+replace = [
+  { pattern = "^\\s+$", replacement = "" }
+]
+keep_lines_matching = ["error", "warning", "Error", "Warning", "✗", ":", "found", "issue", "unused", "unused-import"]
+max_lines = 60
+on_empty = "✅ No lint issues found"
+
+# ── Architecture Validator ──────────────────────────────────────────────────
+
+[filters.architecture-check]
+command = "architecture"
+description = "Filter architecture validation output"
+strip_ansi = true
+keep_lines_matching = ["FAIL", "WARN", "VIOLATION", "missing", "error", "Error", "❌", "⚠"]
+max_lines = 40
+on_empty = "✅ Architecture validation passed"
+
+# ── Integration Validator ───────────────────────────────────────────────────
+
+[filters.integration-check]
+command = "integration"
+description = "Filter integration test output"
+strip_ansi = true
+keep_lines_matching = ["FAILED", "error", "timeout", "connection refused", "assertion", "panic", "Error", "failed"]
+max_lines = 80
+on_empty = "✅ All integration tests passed"
+
+# ── Git Status Validator ────────────────────────────────────────────────────
+
+[filters.git-status]
+command = "git-status"
+description = "Compact git status output"
+strip_ansi = true
+replace = [
+  { pattern = "^On branch (.+)$", replacement = "branch: $1" },
+  { pattern = "^nothing to commit, working tree clean$", replacement = "✅ clean" }
+]
+max_lines = 20
+
+# ── Docker Validator ────────────────────────────────────────────────────────
+
+[filters.docker-ps]
+command = "docker-ps"
+description = "Compact docker ps output"
+strip_ansi = true
+head_lines = 1
+truncate_lines_at = 120
+max_lines = 30
+
+# ── Ubiquitous Language Validator ────────────────────────────────────────────
+
+[filters.ubiquitous-language]
+command = "validate-ubiquitous-language"
+description = "Detect code drift from .pi/domain/ubiquitous-language.md glossary"
+strip_ansi = false
+keep_lines_matching = ["FAIL", "WARN", "Drift:", "alias", "canonical"]

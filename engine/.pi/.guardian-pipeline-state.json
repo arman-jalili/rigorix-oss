@@ -1,0 +1,107 @@
+{
+  "id": "PL-6286",
+  "name": "\"configuration\"",
+  "items": [
+    "issue-contract-freeze",
+    "issue-config",
+    "issue-secret",
+    "issue-proofing",
+    "issue-architecture-readiness"
+  ],
+  "steps": [
+    {
+      "name": "implement",
+      "prompt": ".pi/prompts/issue-implementation-series.md",
+      "acceptance": {
+        "type": "validator",
+        "validators": [
+          "ci"
+        ]
+      }
+    },
+    {
+      "name": "validate",
+      "acceptance": {
+        "type": "validator",
+        "validators": [
+          "ci",
+          "tests",
+          "security"
+        ]
+      }
+    },
+    {
+      "name": "create-mr",
+      "prompt": ".pi/prompts/issue-closeout.md",
+      "acceptance": {
+        "type": "none"
+      }
+    },
+    {
+      "name": "merge",
+      "prompt": ".pi/prompts/issue-merge.md",
+      "acceptance": {
+        "type": "validator",
+        "validators": [
+          "ci",
+          "canonical"
+        ]
+      }
+    }
+  ],
+  "currentItemIndex": 1,
+  "currentStepIndex": 0,
+  "status": "running",
+  "retryCount": 0,
+  "results": [
+    {
+      "item": "issue-contract-freeze",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    }
+  ],
+  "mergeOnValid": true,
+  "createdAt": "2026-06-13T05:28:54.582Z",
+  "updatedAt": "2026-06-13T07:13:25.577Z"
+}

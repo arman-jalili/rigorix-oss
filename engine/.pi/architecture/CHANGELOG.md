@@ -1,0 +1,161 @@
+# Architecture Change Log
+
+<!--
+Canonical Reference: .pi/architecture/CHANGELOG.md
+Blueprint Source: Guardian Framework v1.2
+DO NOT EDIT GENERATED FILES - Modify this source only
+-->
+
+This document tracks all architecture changes requiring implementation updates.
+
+---
+
+## [2026-06-13] - Initial Architecture Scaffold from Domain Exploration
+
+### Added
+- Decision Records: 8 ADRs covering key architecture decisions
+  - ADR-001: Domain-Driven Design with 17 Bounded Contexts (Modular Monolith)
+  - ADR-002: TOML Template Format for Workflow Definitions
+  - ADR-003: LLM Provider Abstraction via Traits (Classifier/Extractor/Generator)
+  - ADR-004: Three Autonomy Presets with Hard Enforcement Caps (Default/Advanced/Aggressive)
+  - ADR-005: Event Bus with Synchronous In-Memory Persistence (tokio broadcast + Mutex)
+  - ADR-006: Atomic Write-Rename for State Persistence (crash-safe)
+  - ADR-007: Risk Gating Model — Low / Medium / High with RiskClassifier
+  - ADR-008: RAII Budget Reservation for LLM Cost Control
+
+### Changed
+- Module: template-system
+  - Created: Full module document with TOML parsing, TemplateEngine, built-in template loading
+  - Diagram: TOML file → Parser → Engine → TaskGraph generation flow
+- Module: planning-pipeline
+  - Created: 6-phase pipeline (budget → classify → extract → generate → validate → hash)
+  - Diagram: Phase flow with generator fallback on low confidence
+- Module: template-generation
+  - Created: TemplateGenerator trait, ClaudeTemplateGenerator, OpenaiTemplateGenerator, RepoContext
+  - Diagram: Generation subprocess with 3-attempt LLM retry loop and Phase 3 symbol validation
+- Module: dag-engine
+  - Created: Two-phase TaskGraph construction, Kahn's algorithm topological sort, cycle detection
+  - Diagram: Node addition → seal → sort → validate → execute
+- Module: execution-engine
+  - Created: ParallelExecutor with tokio JoinSet, per-node retry loop, backoff/jitter
+  - Diagram: Node lifecycle decision tree (start → tool → retry/fallback)
+- Module: risk-gating
+  - Created: RiskClassifier mapping tool names to Low/Medium/High with configurable RiskConfig
+  - Diagram: Classification → gating decision tree
+- Module: tool-system
+  - Created: Tool trait, ToolRegistry, 9 tool implementations, execute_with_risk_gate
+  - Diagram: Registry lookup → risk gate → execute flow
+- Module: repo-engine
+  - Created: Multi-language symbol indexing (Rust/Python/TypeScript), SymbolGraph with O(1) lookup
+  - Diagram: Language-specific indexers → SymbolGraph → consumers
+- Module: event-system
+  - Created: EventBus with tokio broadcast + synchronous Mutex persistence, 11 event variants
+  - Diagram: Publishers → broadcast + persistence → subscribers
+- Module: enforcement
+  - Created: EnforcementConfig with 3 presets, ExecutionEnforcer with atomic counters
+  - Diagram: Per-limit checking flow with config validation
+- Module: budget-tracking
+  - Created: LlmBudget with RAII reservation pattern, auto-rollback on Drop
+  - Diagram: Reserve → commit/rollback → exhaustion handling
+- Module: state-persistence
+  - Created: ExecutionState, NodeState, StateManager with atomic write-rename
+  - Diagram: Sequence diagram of Orchestrator → StateManager lifecycle
+- Module: cancellation
+  - Created: CancellationManager with Graceful/Immediate shutdown signals
+  - Diagram: Sequence diagram of signal propagation
+- Module: failure-classification
+  - Created: FailureType enum (7 variants), classify_failure(), RetryStrategy mapping
+  - Diagram: Error message → FailureType → RetryStrategy mapping
+- Module: audit
+  - Created: AuditEnvelope, AuditSender with circuit breaker, AuditQueue
+  - Diagram: Envelope build → send → circuit breaker retry
+- Module: configuration
+  - Created: Multi-source Config loading (env/file/CLI), Secret wrapper for API keys
+  - Diagram: Layered loading → sub-config distribution
+- Module: error-handling
+  - Created: CoreOrchestratorError root type with #[from] for all 11 domain errors
+  - Diagram: Error hierarchy tree with all domain errors
+
+- Diagrams: system-context
+  - Created: Mermaid interaction graph showing phased architecture (Planning → Execution → Observability → Cross-cutting)
+  - Created: Sequence diagram of full execution lifecycle
+- Diagrams: system-overview
+  - Created: CLI-specific ASCII art layer architecture (replaced generic web app template)
+  - Created: Module dependency graph, data flow overview, event flow, security boundaries
+
+### Impact Analysis
+- Files affected:
+  - All `.pi/architecture/modules/*.md` (17 module documents)
+  - All `.pi/architecture/decisions/ADR-*.md` (8 ADRs)
+  - `.pi/architecture/diagrams/system-context.md`
+  - `.pi/architecture/diagrams/system-overview.md`
+- Canonical refs to update:
+  - `.pi/domain/exploration.md` (source — already synced)
+  - `.pi/domain/ubiquitous-language.md` (source — already synced)
+- Validators required:
+  - architecture-validator
+
+### Status
+- [x] Architecture doc updated
+- [x] CHANGELOG entry added
+- [ ] Implementation updated
+- [x] Canonical refs updated
+- [ ] Validators run
+
+---
+
+## [2026-06-13] - Domain Exploration (Session 63c25384)
+
+### Added
+- Domain exploration document with 17 bounded contexts based on the rigorous core crate analysis
+- 42-term ubiquitous language glossary with prohibited alias tracking
+- Actor/role identification: Developer, LLM Provider, PlanValidator, RiskClassifier, ExecutionEnforcer, TemplateGenerator, Audit System
+- 35 functional requirements and 17 non-functional requirements with priority/category mapping
+- 48 entities with type classification (Aggregate Root / Entity / Value Object)
+- 28 domain events tracking all state transitions across contexts
+- 8 design assumptions with impact analysis and mitigations
+- 9 open questions for future resolution
+
+### Changed
+- Module: N/A (domain artifacts only)
+- RiskLevel: Kept superior RiskClassifier design with Low/Medium/High values (matching actual codebase)
+- Enforcement: Updated to 3-preset model (Default/Advanced/Aggressive) matching actual enforcement.rs
+- Persistence: Replaced generic StateSnapshot with ExecutionState/NodeState/StateManager matching actual state/persistence.rs
+
+### Impact Analysis
+- Canonical refs to update:
+  - `.pi/domain/exploration.md`
+  - `.pi/domain/ubiquitous-language.md`
+
+### Status
+- [x] Architecture doc updated
+- [x] CHANGELOG entry added
+- [ ] Implementation updated
+- [x] Canonical refs updated
+- [ ] Validators run
+
+---
+
+## Template Usage
+
+When making architecture changes:
+
+1. **Before change**: Review existing architecture docs
+2. **During change**: Update `.pi/architecture/modules/[module].md`
+3. **After change**: Add entry to this CHANGELOG
+4. **Implementation**: Follow migration steps, update canonical refs
+5. **Validation**: Run `validate-canonical.sh` to verify sync
+
+---
+
+## Architecture Sync Status
+
+| Date | Change | Module | Sync Status | Validator Status |
+|------|--------|--------|-------------|-----------------|
+| 2026-06-13 | Initial Architecture Scaffold | All 17 modules | complete | pending |
+| 2026-06-13 | Domain Exploration (Session 63c25384) | domain/exploration.md, domain/ubiquitous-language.md | complete | pending |
+
+---
+
+*Last updated: 2026-06-13*
+*Architecture version: 1.0.0*

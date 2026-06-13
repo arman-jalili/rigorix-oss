@@ -1,0 +1,77 @@
+# ============================================================
+# Guardian-managed .gitignore — extend as needed
+# ============================================================
+
+# --- Dependencies ---
+node_modules/
+
+# --- Build output ---
+dist/
+build/
+target/
+out/
+*.class
+*.jar
+*.war
+
+# --- Environment & secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets.yaml
+
+# --- Logs ---
+*.log
+logs/
+
+# --- IDE ---
+.idea/
+.vscode/
+.settings/
+*.iml
+*.iws
+*.ipr
+.project
+.classpath
+*.swp
+*.swo
+*~
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- Test & Coverage ---
+coverage/
+.nyc_output/
+jacoco.exec
+
+# --- Temporary ---
+*.tmp
+*.temp
+*.bak
+.cache/
+
+# --- Guardian runtime ---
+.guardian/
+.pi/.guardian-kanban.json
+guardian-sessions.json
+
+# --- Graphify ---
+graphify-out/
+
+# --- Optional: Python ---
+# __pycache__/
+# *.pyc
+# .venv/
+# venv/
+
+# --- Optional: Rust ---
+# target/ (already covered above)
+
+# --- Optional: Go ---
+# vendor/

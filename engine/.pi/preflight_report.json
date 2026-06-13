@@ -1,0 +1,99 @@
+{
+  "timestamp": "2026-06-12T15:22:24Z",
+  "mode": "all",
+  "stages_run": [],
+  "summary": {
+    "total": 14,
+    "passed": 1,
+    "failed": 1,
+    "skipped": 12
+  },
+  "duration_seconds": 0,
+  "results": [
+  {
+    "name": "check_mr_traceability.sh",
+    "status": "skip",
+    "message": "script not found",
+    "duration": 0
+  },
+  {
+    "name": "check_docs_sync.sh",
+    "status": "skip",
+    "message": "script not found",
+    "duration": 0
+  },
+  {
+    "name": "check_architecture_conformance.sh",
+    "status": "skip",
+    "message": "script not found",
+    "duration": 0
+  },
+  {
+    "name": "lint",
+    "status": "skip",
+    "message": "no project configuration found",
+    "duration": 0
+  },
+  {
+    "name": "type_check",
+    "status": "skip",
+    "message": "no type checker available",
+    "duration": 0
+  },
+  {
+    "name": "check_arch_sanity.sh",
+    "status": "skip",
+    "message": "script not found",
+    "duration": 0
+  },
+  {
+    "name": "check_import_boundaries.sh",
+    "status": "skip",
+    "message": "script not found",
+    "duration": 0
+  },
+  {
+    "name": "cargo test --lib",
+    "status": "fail",
+    "message": "unit test failures",
+    "duration": 0
+  },
+  {
+    "name": "integration",
+    "status": "skip",
+    "message": "PostgreSQL or Redis not available",
+    "duration": 0
+  },
+  {
+    "name": "secret_scan",
+    "status": "pass",
+    "message": "",
+    "duration": 0
+  },
+  {
+    "name": "dependency_audit",
+    "status": "skip",
+    "message": "no package manager audit tool found",
+    "duration": 0
+  },
+  {
+    "name": "migration_verify",
+    "status": "skip",
+    "message": "PostgreSQL not available",
+    "duration": 0
+  },
+  {
+    "name": "package_build",
+    "status": "skip",
+    "message": "no Dockerfile found",
+    "duration": 0
+  },
+  {
+    "name": "validate-architecture-readiness.sh",
+    "status": "skip",
+    "message": "script not found",
+    "duration": 0
+  }
+],
+  "status": "fail"
+}
