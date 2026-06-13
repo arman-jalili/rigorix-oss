@@ -235,6 +235,11 @@ run_stage "13" "cancellation_proofing" \
     "${SCRIPTS_DIR}/stage_cancellation_proofing.sh" \
     "always"
 
+# Stage 14: Failure Classification Proofing
+run_stage "14" "failure-classification_proofing" \
+    "${SCRIPTS_DIR}/stage_failure-classification_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""
