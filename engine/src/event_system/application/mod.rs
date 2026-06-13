@@ -16,9 +16,13 @@
 //! - No implementation logic — only trait definitions
 
 pub mod dto;
+pub mod event_bus_factory_impl;
+pub mod event_bus_service_impl;
 pub mod factory;
 pub mod service;
 
 pub use dto::*;
+pub use event_bus_factory_impl::*;
+pub use event_bus_service_impl::*;
 pub use factory::*;
 pub use service::*;
