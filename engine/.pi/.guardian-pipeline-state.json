@@ -49,7 +49,7 @@
       }
     }
   ],
-  "currentItemIndex": 3,
+  "currentItemIndex": 4,
   "currentStepIndex": 3,
   "status": "running",
   "retryCount": 0,
@@ -154,6 +154,47 @@
     },
     {
       "item": "issue-proofing",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "issue-architecture-readiness",
       "status": "in-progress",
       "stepResults": [
         {
@@ -191,5 +232,5 @@
   ],
   "mergeOnValid": true,
   "createdAt": "2026-06-13T11:24:54.408Z",
-  "updatedAt": "2026-06-13T11:40:00.141Z"
+  "updatedAt": "2026-06-13T11:42:08.544Z"
 }
