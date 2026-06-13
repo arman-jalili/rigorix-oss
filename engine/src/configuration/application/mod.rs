@@ -18,9 +18,11 @@
 pub mod config_service_impl;
 pub mod dto;
 pub mod factory;
+pub mod secret_service_impl;
 pub mod service;
 
 pub use config_service_impl::*;
 pub use dto::*;
 pub use factory::*;
+pub use secret_service_impl::*;
 pub use service::*;
