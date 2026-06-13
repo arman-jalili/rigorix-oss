@@ -225,6 +225,11 @@ run_stage "11" "configuration_proofing" \
     "${SCRIPTS_DIR}/stage_configuration_proofing.sh" \
     "always"
 
+# Stage 12: Audit Proofing
+run_stage "12" "audit_proofing" \
+    "${SCRIPTS_DIR}/stage_audit_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""
