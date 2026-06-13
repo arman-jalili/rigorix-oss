@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: ""configuration""
+  epic: ""cancellation""
   component: "Contract Freeze"
-  module: "configuration"
+  module: "cancellation"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/configuration.md"
+    - module: ".pi/architecture/modules/cancellation.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -47,23 +47,23 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/configuration/contracts/"
-    - "create: src/configuration/contracts/dtos/"
-    - "create: src/configuration/contracts/events/"
+    - "create: src/cancellation/contracts/"
+    - "create: src/cancellation/contracts/dtos/"
+    - "create: src/cancellation/contracts/events/"
 ---
 
-# Contract Freeze: configuration
+# Contract Freeze: cancellation
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the configuration
+Define and freeze all public interfaces, contracts, and schemas for the cancellation
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- Config
-- Secret
+- CancellationManager
+- ShutdownSignal
 
 ## What Must Be Frozen
 

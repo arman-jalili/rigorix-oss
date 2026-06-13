@@ -1,23 +1,23 @@
 {
-  "name": "\"configuration\"",
-  "trackingIssueId": "1",
+  "name": "\"cancellation\"",
+  "trackingIssueId": "21",
   "epicId": null,
   "slices": [
     {
-      "module": "configuration",
+      "module": "cancellation",
       "components": [
         {
-          "name": "Config",
+          "name": "CancellationManager",
           "status": "planned",
-          "description": "Top-level configuration with multi-source loading",
+          "description": "Central manager for execution cancellation with dual shutdown levels",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "Secret",
+          "name": "ShutdownSignal",
           "status": "planned",
-          "description": "API key wrapper that redacts in all output",
+          "description": "pub enum ShutdownSignal {",
           "dependencies": [
             "none"
           ]
@@ -25,17 +25,17 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "Config",
+          "name": "CancellationManager",
           "status": "planned",
-          "description": "Top-level configuration with multi-source loading",
+          "description": "Central manager for execution cancellation with dual shutdown levels",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "Secret",
+          "name": "ShutdownSignal",
           "status": "planned",
-          "description": "API key wrapper that redacts in all output",
+          "description": "pub enum ShutdownSignal {",
           "dependencies": [
             "none"
           ]
@@ -48,34 +48,34 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "2"
+      "remoteIssueId": "22"
     },
     {
-      "id": "issue-config",
-      "title": "Config: Top-level configuration with multi-source loading",
+      "id": "issue-cancellationmanager",
+      "title": "CancellationManager: Central manager for execution cancellation with dual shutdown levels",
       "status": "planned",
-      "remoteIssueId": "3"
+      "remoteIssueId": "23"
     },
     {
-      "id": "issue-secret",
-      "title": "Secret: API key wrapper that redacts in all output",
+      "id": "issue-shutdownsignal",
+      "title": "ShutdownSignal: pub enum ShutdownSignal {",
       "status": "planned",
-      "remoteIssueId": "4"
+      "remoteIssueId": "24"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "5"
+      "remoteIssueId": "25"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "6"
+      "remoteIssueId": "26"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-06-13T05:28:54.545Z"
+  "createdAt": "2026-06-13T09:41:05.086Z"
 }

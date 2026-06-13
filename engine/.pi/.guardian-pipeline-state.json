@@ -1,10 +1,10 @@
 {
-  "id": "PL-6286",
-  "name": "\"configuration\"",
+  "id": "PL-5109",
+  "name": "\"cancellation\"",
   "items": [
     "issue-contract-freeze",
-    "issue-config",
-    "issue-secret",
+    "issue-cancellationmanager",
+    "issue-shutdownsignal",
     "issue-proofing",
     "issue-architecture-readiness"
   ],
@@ -49,9 +49,9 @@
       }
     }
   ],
-  "currentItemIndex": 4,
-  "currentStepIndex": 1,
-  "status": "running",
+  "currentItemIndex": 5,
+  "currentStepIndex": 0,
+  "status": "done",
   "retryCount": 0,
   "results": [
     {
@@ -84,16 +84,6 @@
           "reason": ""
         },
         {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        },
-        {
           "step": "merge",
           "status": "passed",
           "reason": ""
@@ -101,7 +91,7 @@
       ]
     },
     {
-      "item": "issue-config",
+      "item": "issue-cancellationmanager",
       "status": "done",
       "stepResults": [
         {
@@ -130,16 +120,6 @@
           "reason": ""
         },
         {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        },
-        {
           "step": "merge",
           "status": "passed",
           "reason": ""
@@ -147,7 +127,7 @@
       ]
     },
     {
-      "item": "issue-secret",
+      "item": "issue-shutdownsignal",
       "status": "done",
       "stepResults": [
         {
@@ -172,16 +152,6 @@
         },
         {
           "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
           "status": "passed",
           "reason": ""
         },
@@ -222,16 +192,6 @@
           "reason": ""
         },
         {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        },
-        {
           "step": "merge",
           "status": "passed",
           "reason": ""
@@ -240,7 +200,7 @@
     },
     {
       "item": "issue-architecture-readiness",
-      "status": "in-progress",
+      "status": "done",
       "stepResults": [
         {
           "step": "implement",
@@ -251,11 +211,31 @@
           "step": "implement",
           "status": "passed",
           "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
         }
       ]
     }
   ],
   "mergeOnValid": true,
-  "createdAt": "2026-06-13T05:28:54.582Z",
-  "updatedAt": "2026-06-13T08:01:58.286Z"
+  "createdAt": "2026-06-13T09:41:05.105Z",
+  "updatedAt": "2026-06-13T09:56:29.767Z"
 }
