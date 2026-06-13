@@ -69,5 +69,5 @@ pub trait SecretFactory: Send + Sync {
     /// Create a secret from a string value.
     ///
     /// Used for secrets that come from configuration files or CLI args.
-    fn create_from_value(&self, value: impl Into<String>) -> Secret;
+    fn create_from_value(&self, value: &str) -> Secret;
 }
