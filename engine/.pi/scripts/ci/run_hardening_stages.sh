@@ -245,6 +245,11 @@ run_stage "15" "event-system_proofing" \
     "${SCRIPTS_DIR}/stage_event-system_proofing.sh" \
     "always"
 
+# Stage 16: Enforcement Proofing
+run_stage "16" "enforcement_proofing" \
+    "${SCRIPTS_DIR}/stage_enforcement_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""
