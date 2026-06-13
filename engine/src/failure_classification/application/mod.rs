@@ -17,8 +17,14 @@
 
 pub mod dto;
 pub mod factory;
+pub mod failure_classifier_service_impl;
+pub mod failure_mapping_service_impl;
 pub mod service;
+pub mod strategy_factory_impl;
 
 pub use dto::*;
 pub use factory::*;
+pub use failure_classifier_service_impl::*;
+pub use failure_mapping_service_impl::*;
 pub use service::*;
+pub use strategy_factory_impl::*;
