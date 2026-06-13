@@ -18,5 +18,5 @@ pub mod config;
 pub mod error;
 pub mod event;
 
-pub use config::{EnforcementConfig, EnforcementPresetProfile, ExecutionLimits, ResourceBudget, ToolPolicy, ToolRiskLevel};
+pub use config::{ConfigValidationError, EnforcementConfig, EnforcementPresetProfile, ExecutionLimits, ResourceBudget, SafetyCaps, ToolPolicy, ToolRiskLevel};
 pub use error::EnforcementError;

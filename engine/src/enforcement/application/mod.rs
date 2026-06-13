@@ -15,10 +15,12 @@
 //! - DTOs include validation annotations/documentation
 //! - No implementation logic — only trait definitions
 
+pub mod config_service_impl;
 pub mod dto;
 pub mod factory;
 pub mod service;
 
+pub use config_service_impl::*;
 pub use dto::*;
 pub use factory::*;
 pub use service::*;

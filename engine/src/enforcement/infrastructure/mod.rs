@@ -12,4 +12,8 @@
 //! and persisting enforcement policies and budgets. The default
 //! implementation loads from the global `Config` object.
 
+pub mod default_policy_repository;
 pub mod repository;
+
+pub use default_policy_repository::*;
+pub use repository::*;
