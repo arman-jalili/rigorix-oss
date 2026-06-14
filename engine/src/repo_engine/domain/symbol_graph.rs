@@ -255,7 +255,7 @@ pub struct SymbolGraph {
     total_indexed: usize,
 
     /// Optional maximum symbol count (0 = unlimited).
-    max_capacity: usize,
+    pub max_capacity: usize,
 }
 
 impl SymbolGraph {
@@ -455,6 +455,11 @@ impl SymbolGraph {
     /// Get all symbol names in the graph.
     pub fn keys(&self) -> impl Iterator<Item = &String> {
         self.definitions.keys()
+    }
+
+    /// Check if a symbol with the given name exists in the graph.
+    pub fn contains_key(&self, name: &str) -> bool {
+        self.definitions.contains_key(name)
     }
 }
 
