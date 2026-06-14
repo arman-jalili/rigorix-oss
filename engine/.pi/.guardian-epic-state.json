@@ -1,39 +1,15 @@
 {
   "name": "\"error-handling\"",
-  "trackingIssueId": "173",
+  "trackingIssueId": "186",
   "epicId": null,
   "slices": [
     {
-      "module": "audit",
+      "module": "error-handling",
       "components": [
         {
-          "name": "AuditEnvelope",
+          "name": "CoreOrchestratorError",
           "status": "planned",
-          "description": "Typed envelope containing execution audit data",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "AuditSender",
-          "status": "planned",
-          "description": "Deliver envelopes via HTTP with retry logic",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "AuditQueue",
-          "status": "planned",
-          "description": "Queue for failed deliveries",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "CircuitBreaker",
-          "status": "planned",
-          "description": "Circuit breaker for HTTP resilience",
+          "description": "Root error type with `#[from]` for all sub-errors",
           "dependencies": [
             "none"
           ]
@@ -41,33 +17,9 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "AuditEnvelope",
+          "name": "CoreOrchestratorError",
           "status": "planned",
-          "description": "Typed envelope containing execution audit data",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "AuditSender",
-          "status": "planned",
-          "description": "Deliver envelopes via HTTP with retry logic",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "AuditQueue",
-          "status": "planned",
-          "description": "Queue for failed deliveries",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "CircuitBreaker",
-          "status": "planned",
-          "description": "Circuit breaker for HTTP resilience",
+          "description": "Root error type with `#[from]` for all sub-errors",
           "dependencies": [
             "none"
           ]
@@ -80,46 +32,28 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "174"
+      "remoteIssueId": "187"
     },
     {
-      "id": "issue-auditenvelope",
-      "title": "AuditEnvelope: Typed envelope containing execution audit data",
+      "id": "issue-coreorchestratorerror",
+      "title": "CoreOrchestratorError: Root error type with `#[from]` for all sub-errors",
       "status": "planned",
-      "remoteIssueId": "175"
-    },
-    {
-      "id": "issue-auditsender",
-      "title": "AuditSender: Deliver envelopes via HTTP with retry logic",
-      "status": "planned",
-      "remoteIssueId": "176"
-    },
-    {
-      "id": "issue-auditqueue",
-      "title": "AuditQueue: Queue for failed deliveries",
-      "status": "planned",
-      "remoteIssueId": "177"
-    },
-    {
-      "id": "issue-circuitbreaker",
-      "title": "CircuitBreaker: Circuit breaker for HTTP resilience",
-      "status": "planned",
-      "remoteIssueId": "178"
+      "remoteIssueId": "188"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "179"
+      "remoteIssueId": "189"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "180"
+      "remoteIssueId": "190"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-06-14T18:08:53.120Z"
+  "createdAt": "2026-06-14T18:24:30.711Z"
 }
