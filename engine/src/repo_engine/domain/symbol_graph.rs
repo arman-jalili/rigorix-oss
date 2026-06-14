@@ -543,3 +543,216 @@ impl From<SymbolGraph> for SharedSymbolGraph {
         Self(Arc::new(RwLock::new(graph)))
     }
 }
+
+// ---------------------------------------------------------------------------
+// SymbolDefinition Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod symbol_definition_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn sample_location() -> Location {
+        Location::new(PathBuf::from("src/lib.rs"), 42, 4)
+    }
+
+    fn sample_definition(name: &str) -> SymbolDefinition {
+        SymbolDefinition::new(
+            name.to_string(),
+            SymbolKind::Function,
+            sample_location(),
+            format!("fn {}() -> Result<()>", name),
+            format!("fn {}() -> Result<()> {{ Ok(()) }}", name),
+            SourceLanguage::Rust,
+        )
+    }
+
+    #[test]
+    fn test_symbol_definition_new() {
+        let def = sample_definition("my_function");
+
+        assert_eq!(def.name, "my_function");
+        assert_eq!(def.kind, SymbolKind::Function);
+        assert_eq!(def.location.file, PathBuf::from("src/lib.rs"));
+        assert_eq!(def.location.line, 42);
+        assert_eq!(def.location.column, 4);
+        assert_eq!(def.signature, "fn my_function() -> Result<()>");
+        assert!(def.documentation.is_none());
+        assert_eq!(def.source_files.len(), 1);
+        assert!(def.source_files.contains(&PathBuf::from("src/lib.rs")));
+        assert_eq!(def.language, SourceLanguage::Rust);
+        assert_eq!(def.visibility, SymbolVisibility::Public);
+        assert!(def.tags.is_empty());
+    }
+
+    #[test]
+    fn test_symbol_definition_id_is_unique() {
+        let def1 = sample_definition("func_a");
+        let def2 = sample_definition("func_b");
+        assert_ne!(def1.id, def2.id);
+    }
+
+    #[test]
+    fn test_symbol_definition_with_documentation() {
+        let mut def = sample_definition("documented_fn");
+        def.documentation = Some("This is a documented function.".to_string());
+
+        assert_eq!(
+            def.documentation,
+            Some("This is a documented function.".to_string())
+        );
+    }
+
+    #[test]
+    fn test_symbol_definition_is_at() {
+        let def = sample_definition("my_fn");
+
+        assert!(def.is_at(&PathBuf::from("src/lib.rs"), 42));
+        assert!(!def.is_at(&PathBuf::from("src/lib.rs"), 43));
+        assert!(!def.is_at(&PathBuf::from("src/other.rs"), 42));
+    }
+
+    #[test]
+    fn test_symbol_definition_spans_line() {
+        let def = SymbolDefinition::new(
+            "multi_line".to_string(),
+            SymbolKind::Function,
+            sample_location(),
+            "fn multi_line()".to_string(),
+            "fn multi_line() {\n    let x = 1;\n    let y = 2;\n}".to_string(),
+            SourceLanguage::Rust,
+        );
+
+        // Starts at line 42
+        assert!(def.spans_line(&PathBuf::from("src/lib.rs"), 42));
+        assert!(def.spans_line(&PathBuf::from("src/lib.rs"), 43));
+        assert!(def.spans_line(&PathBuf::from("src/lib.rs"), 45));
+        // Before start
+        assert!(!def.spans_line(&PathBuf::from("src/lib.rs"), 41));
+        // Different file
+        assert!(!def.spans_line(&PathBuf::from("src/other.rs"), 42));
+    }
+
+    #[test]
+    fn test_symbol_definition_add_source_file() {
+        let mut def = sample_definition("multi_file");
+
+        assert_eq!(def.source_files.len(), 1);
+
+        def.add_source_file(PathBuf::from("src/impl.rs"));
+        assert_eq!(def.source_files.len(), 2);
+        assert!(def.source_files.contains(&PathBuf::from("src/impl.rs")));
+
+        // Adding the same file again doesn't duplicate
+        def.add_source_file(PathBuf::from("src/impl.rs"));
+        assert_eq!(def.source_files.len(), 2);
+    }
+
+    #[test]
+    fn test_symbol_definition_visibility() {
+        let def = sample_definition("pub_fn");
+        assert_eq!(def.visibility, SymbolVisibility::Public);
+
+        let mut def = SymbolDefinition::new(
+            "priv_fn".to_string(),
+            SymbolKind::Function,
+            sample_location(),
+            "fn priv_fn()".to_string(),
+            "fn priv_fn() {}".to_string(),
+            SourceLanguage::Rust,
+        );
+        def.visibility = SymbolVisibility::Private;
+        assert_eq!(def.visibility, SymbolVisibility::Private);
+    }
+
+    #[test]
+    fn test_symbol_definition_language() {
+        let rust_def = sample_definition("rust_fn");
+        assert_eq!(rust_def.language, SourceLanguage::Rust);
+
+        let py_def = SymbolDefinition::new(
+            "py_fn".to_string(),
+            SymbolKind::Function,
+            Location::new(PathBuf::from("src/main.py"), 1, 0),
+            "def py_fn():".to_string(),
+            "def py_fn():\n    pass".to_string(),
+            SourceLanguage::Python,
+        );
+        assert_eq!(py_def.language, SourceLanguage::Python);
+
+        let ts_def = SymbolDefinition::new(
+            "ts_fn".to_string(),
+            SymbolKind::Function,
+            Location::new(PathBuf::from("src/main.ts"), 1, 0),
+            "function tsFn()".to_string(),
+            "function tsFn() {}".to_string(),
+            SourceLanguage::TypeScript,
+        );
+        assert_eq!(ts_def.language, SourceLanguage::TypeScript);
+    }
+
+    #[test]
+    fn test_symbol_definition_kinds() {
+        let cases = vec![
+            (SymbolKind::Function, "my_func"),
+            (SymbolKind::Struct, "MyStruct"),
+            (SymbolKind::Enum, "MyEnum"),
+            (SymbolKind::Trait, "MyTrait"),
+            (SymbolKind::Constant, "MY_CONST"),
+            (SymbolKind::Type, "MyType"),
+            (SymbolKind::Module, "my_module"),
+            (SymbolKind::Impl, "MyImpl"),
+            (SymbolKind::Class, "MyClass"),
+            (SymbolKind::Interface, "MyInterface"),
+            (SymbolKind::Decorator, "my_decorator"),
+            (SymbolKind::Macro, "my_macro!"),
+        ];
+
+        for (kind, name) in cases {
+            let def = SymbolDefinition::new(
+                name.to_string(),
+                kind.clone(),
+                sample_location(),
+                format!("{:?} {}", kind, name),
+                format!("{} {{}}", name),
+                SourceLanguage::Rust,
+            );
+            assert_eq!(def.kind, kind, "Failed for kind {:?}", kind);
+            drop(def);
+        }
+    }
+
+    #[test]
+    fn test_symbol_definition_tags() {
+        let mut def = sample_definition("tagged_fn");
+        def.tags = vec!["deprecated".to_string(), "unsafe".to_string()];
+
+        assert_eq!(def.tags.len(), 2);
+        assert!(def.tags.contains(&"deprecated".to_string()));
+        assert!(def.tags.contains(&"unsafe".to_string()));
+    }
+
+    #[test]
+    fn test_symbol_definition_default_visibility() {
+        assert_eq!(SymbolVisibility::default(), SymbolVisibility::Public);
+    }
+
+    #[test]
+    fn test_symbol_definition_location_new() {
+        let loc = Location::new(PathBuf::from("src/main.rs"), 100, 8);
+        assert_eq!(loc.file, PathBuf::from("src/main.rs"));
+        assert_eq!(loc.line, 100);
+        assert_eq!(loc.column, 8);
+    }
+
+    #[test]
+    fn test_symbol_definition_equality() {
+        let def1 = sample_definition("same");
+        let mut def2 = sample_definition("same");
+        // Different IDs from same input
+        def2.id = def1.id; // Force same ID
+
+        assert_eq!(def1, def2);
+    }
+}
