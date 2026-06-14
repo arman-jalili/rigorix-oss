@@ -274,6 +274,11 @@ run_stage "20" "template-system_proofing" \
 run_stage "21" "dag-engine_proofing" \
     "${SCRIPTS_DIR}/stage_dag-engine_proofing.sh" \
     "always"
+
+# Stage 22: Repo-Engine Proofing
+run_stage "22" "repo-engine_proofing" \
+    "${SCRIPTS_DIR}/stage_repo-engine_proofing.sh" \
+    "always"
 # ── Summary ──
 
 echo ""
