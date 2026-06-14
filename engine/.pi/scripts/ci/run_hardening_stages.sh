@@ -250,6 +250,11 @@ run_stage "16" "enforcement_proofing" \
     "${SCRIPTS_DIR}/stage_enforcement_proofing.sh" \
     "always"
 
+# Stage 17: Budget-Tracking Proofing
+run_stage "17" "budget-tracking_proofing" \
+    "${SCRIPTS_DIR}/stage_budget-tracking_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""
