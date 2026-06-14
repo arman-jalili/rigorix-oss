@@ -32,3 +32,4 @@ pub mod failure_classification;
 pub mod risk_gating;
 pub mod state_persistence;
 pub mod templates;
+pub mod tools;
