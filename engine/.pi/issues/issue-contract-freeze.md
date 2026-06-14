@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: ""risk-gating""
+  epic: ""state-persistence""
   component: "Contract Freeze"
-  module: "risk-gating"
+  module: "state-persistence"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/risk-gating.md"
+    - module: ".pi/architecture/modules/state-persistence.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -47,26 +47,23 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/risk_gating/mod.rs"
-    - "create: src/risk_gating/domain/"
-    - "create: src/risk_gating/application/"
-    - "create: src/risk_gating/infrastructure/"
-    - "create: src/risk_gating/interfaces/"
+    - "create: src/state-persistence/contracts/"
+    - "create: src/state-persistence/contracts/dtos/"
+    - "create: src/state-persistence/contracts/events/"
 ---
 
-# Contract Freeze: risk-gating
+# Contract Freeze: state-persistence
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the risk-gating
+Define and freeze all public interfaces, contracts, and schemas for the state-persistence
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- RiskClassifier
-- RiskLevel
-- RiskConfig
+- ExecutionState
+- StateManager
 
 ## What Must Be Frozen
 
