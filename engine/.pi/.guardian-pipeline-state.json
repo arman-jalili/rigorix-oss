@@ -50,7 +50,7 @@
       }
     }
   ],
-  "currentItemIndex": 3,
+  "currentItemIndex": 4,
   "currentStepIndex": 0,
   "status": "running",
   "retryCount": 0,
@@ -167,9 +167,40 @@
           "reason": ""
         }
       ]
+    },
+    {
+      "item": "issue-phase-3-symbol-validation",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
     }
   ],
   "mergeOnValid": true,
   "createdAt": "2026-06-14T17:26:40.544Z",
-  "updatedAt": "2026-06-14T17:49:58.272Z"
+  "updatedAt": "2026-06-14T17:58:41.694Z"
 }
