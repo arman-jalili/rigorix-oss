@@ -49,7 +49,7 @@ use std::collections::HashMap;
 /// The root aggregate that holds metadata, parameter definitions, and
 /// node definitions. Registered in the TemplateEngine for runtime
 /// instantiation into executable TaskGraphs.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Template {
     /// Unique kebab-case identifier (e.g. "read-file", "git-commit").
     pub id: String,
