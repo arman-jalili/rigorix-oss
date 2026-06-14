@@ -1,4 +1,5 @@
-//! Application layer interfaces for the State Persistence bounded context.
+//! Application layer interfaces and implementations for the State Persistence
+//! bounded context.
 //!
 //! @canonical .pi/architecture/modules/state-persistence.md
 //! Implements: Contract Freeze — service traits, DTOs, factory interfaces
@@ -8,6 +9,7 @@
 //! - Service traits (use cases / application services)
 //! - Input/Output DTOs with validation
 //! - Factory interfaces for constructing StateManager instances
+//! - Concrete implementations of all service and factory traits
 //!
 //! # Contract (Frozen)
 //! - All service methods are async (return `impl Future`)
@@ -18,7 +20,11 @@
 pub mod dto;
 pub mod factory;
 pub mod service;
+pub mod state_manager_factory_impl;
+pub mod state_manager_service_impl;
 
 pub use dto::*;
 pub use factory::*;
 pub use service::*;
+pub use state_manager_factory_impl::*;
+pub use state_manager_service_impl::*;
