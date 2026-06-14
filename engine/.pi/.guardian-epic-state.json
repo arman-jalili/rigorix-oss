@@ -1,23 +1,23 @@
 {
-  "name": "\"enforcement\"",
-  "trackingIssueId": "56",
+  "name": "\"state-persistence\"",
+  "trackingIssueId": "77",
   "epicId": null,
   "slices": [
     {
-      "module": "enforcement",
+      "module": "state-persistence",
       "components": [
         {
-          "name": "EnforcementConfig",
+          "name": "ExecutionState",
           "status": "planned",
-          "description": "Hard cap configuration with validated safety limits",
+          "description": "Serializable snapshot of an entire execution",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ExecutionEnforcer",
+          "name": "StateManager",
           "status": "planned",
-          "description": "Atomic runtime enforcer that gates every action against limits",
+          "description": "Atomic persistence with cross-process locking",
           "dependencies": [
             "none"
           ]
@@ -25,17 +25,17 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "EnforcementConfig",
+          "name": "ExecutionState",
           "status": "planned",
-          "description": "Hard cap configuration with validated safety limits",
+          "description": "Serializable snapshot of an entire execution",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ExecutionEnforcer",
+          "name": "StateManager",
           "status": "planned",
-          "description": "Atomic runtime enforcer that gates every action against limits",
+          "description": "Atomic persistence with cross-process locking",
           "dependencies": [
             "none"
           ]
@@ -48,34 +48,34 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "57"
+      "remoteIssueId": "78"
     },
     {
-      "id": "issue-enforcementconfig",
-      "title": "EnforcementConfig: Hard cap configuration with validated safety limits",
+      "id": "issue-executionstate",
+      "title": "ExecutionState: Serializable snapshot of an entire execution",
       "status": "planned",
-      "remoteIssueId": "58"
+      "remoteIssueId": "79"
     },
     {
-      "id": "issue-executionenforcer",
-      "title": "ExecutionEnforcer: Atomic runtime enforcer that gates every action against limits",
+      "id": "issue-statemanager",
+      "title": "StateManager: Atomic persistence with cross-process locking",
       "status": "planned",
-      "remoteIssueId": "59"
+      "remoteIssueId": "80"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "60"
+      "remoteIssueId": "81"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "61"
+      "remoteIssueId": "82"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-06-13T11:24:54.368Z"
+  "createdAt": "2026-06-14T09:35:09.596Z"
 }
