@@ -23,9 +23,19 @@ Structured error types using thiserror across all modules. Root `CoreOrchestrato
 
 **Purpose:** Root error type with `#[from]` for all sub-errors
 
-**Implementation File:** `src/error.rs` (planned)
+**Implementation File:** `src/error.rs` (frozen)
 
-status: planned
+status: frozen
+
+depends: none
+
+### ExecutionError
+
+**Purpose:** Execution task failures, timeouts, fallback handling
+
+**Implementation File:** `src/execution/domain/error.rs` (frozen)
+
+status: frozen
 
 depends: none
 
@@ -36,14 +46,24 @@ depends: none
 ```
 CoreOrchestratorError (root)
 ├── DagError { CycleDetected, TaskNotFound, DependencyNotFound, DuplicateTaskId, InvalidGraph }
-├── PlanningError { TemplateParse, Classification, ParameterExtraction, Validation, LowConfidence }
-├── EnforcementError { MaxRetriesExceeded, TotalRetriesExceeded, TimeLimitExceeded,
-│                     ToolCallLimitExceeded, DynamicNodeLimitExceeded, InvalidConfig, LockPoisoned }
-├── LlmBudgetError { MaxCallsExceeded, MaxTokensExceeded, ReservationFailed }
-├── ExecutionError { TaskFailed, Timeout, NotInitialized, AlreadyRunning, RequiresReplan, FallbackRequired }
-├── ToolError { NotFound, ExecutionFailed, ValidationFailed, RequiresConfirmation }
-├── SymbolGraphError { SymbolNotFound, IndexingFailed, LockPoisoned, InvalidationFailed }
-├── ConfigurationError { NotFound, ParseError, InvalidConfig }
+├── PlanningError { BudgetExhausted, NoMatchingTemplate, MissingParameter, ValidationFailed,
+│                    ClassificationError, ExtractionError, InvalidState, RepositoryError,
+│                    TemplateEngineError, DownstreamError, Cancelled }
+├── EnforcementError { ToolBlocked, BudgetExceeded, ExecutionLimitReached, PolicyNotFound,
+│                      BudgetNotFound, InvalidConfiguration, InvalidState }
+├── LlmBudgetError { MaxCallsExceeded, MaxTokensExceeded, ReservationFailed,
+│                    NotInitialized, Internal }
+├── ExecutionError { TaskFailed, Timeout, NotInitialized, AlreadyRunning, RequiresReplan,
+│                    FallbackRequired }
+├── ToolError { InvalidInput, ExecutionFailed, NotFound, PathDenied, RequiresConfirmation }
+├── RepoEngineError { DuplicateSymbol, SymbolNotFound, ParseError, ... }
+├── ConfigurationError { NotFound, ParseError, InvalidConfig, EnvVarError, Io }
+├── CancellationError { TaskNotFound, AlreadyCancelled, AlreadyCancelling, NoSubscribers, ... }
+├── EventSystemError { SubscriberLagged, NoSubscribers, SerializationFailed, ... }
+├── AuditError { SendFailed, CircuitBreakerOpen, SerializationFailed, SignatureMismatch, ... }
+├── StateError { StateNotFound, NodeNotFound, InvalidTransition, ... }
+├── TemplateError { Parse, MissingParameter, NotFound, InvalidParameter, ... }
+├── FailureClassificationError { ClassificationFailed, MissingStrategy, ... }
 ├── Cancelled(String)
 ├── Io(std::io::Error)
 ├── Json(serde_json::Error)
@@ -58,14 +78,15 @@ CoreOrchestratorError (root)
 // All library code uses thiserror, NEVER anyhow
 use thiserror::Error;
 
-// Each domain has its own error enum
+// Each domain has its own error enum (in domain/{module}/error.rs)
 #[derive(Debug, Error)]
 pub enum DagError {
     #[error("Cycle detected: processed {found} of {total} nodes")]
     CycleDetected { found: usize, total: usize },
+    // ...
 }
 
-// Root error aggregates via #[from]
+// Root error aggregates via #[from] — see src/error.rs for the full enum
 #[derive(Debug, Error)]
 pub enum CoreOrchestratorError {
     #[error("DAG error: {0}")]
@@ -76,6 +97,7 @@ pub enum CoreOrchestratorError {
     Io(#[from] std::io::Error),
     #[error("Operation cancelled: {0}")]
     Cancelled(String),
+    // ... 15+ more variants covering all modules
 }
 ```
 
@@ -101,23 +123,43 @@ CycleDetected, TaskNotFound
 DependencyNotFound"] --> ROOT["CoreOrchestratorError
 (root, via #[from])"]
     PLAN["PlanningError
-TemplateParse, Classification
-Validation, LowConfidence"] --> ROOT
+BudgetExhausted, Classification
+Validation, DownstreamError"] --> ROOT
     ENF["EnforcementError
-MaxRetries, TimeLimit
-ToolCallLimit, InvalidConfig"] --> ROOT
+ToolBlocked, BudgetExceeded
+ExecutionLimitReached"] --> ROOT
     BUD["LlmBudgetError
 MaxCalls, MaxTokens"] --> ROOT
     EXEC["ExecutionError
 TaskFailed, Timeout
 RequiresReplan, Fallback"] --> ROOT
     TOOL["ToolError
-NotFound, ExecutionFailed
-PathDenied"] --> ROOT
-    SYM["SymbolGraphError
-SymbolNotFound, IndexingFailed"] --> ROOT
+InvalidInput, ExecutionFailed
+PathDenied, NotFound"] --> ROOT
+    REPO["RepoEngineError
+SymbolNotFound, ParseError
+DuplicateSymbol, Io"] --> ROOT
     CFG["ConfigurationError
-NotFound, ParseError"] --> ROOT
+NotFound, ParseError
+InvalidConfig, EnvVarError"] --> ROOT
+    CANC["CancellationError
+TaskNotFound, AlreadyCancelled
+ShutdownTimeout, NoSubscribers"] --> ROOT
+    EVT["EventSystemError
+SubscriberLagged, NoSubscribers
+SerializationFailed, CapacityTooLow"] --> ROOT
+    AUDIT["AuditError
+SendFailed, CircuitBreakerOpen
+SignatureMismatch, QueueFull"] --> ROOT
+    STATE["StateError
+StateNotFound, InvalidTransition
+RetryLimitExceeded, CorruptedState"] --> ROOT
+    TEMPL["TemplateError
+Parse, MissingParameter
+NotFound, GenerationFailed"] --> ROOT
+    FC["FailureClassificationError
+ClassificationFailed, MissingStrategy
+InvalidExpansionLevel, InvalidInput"] --> ROOT
     IO["std::io::Error
 (via #[from])"] --> ROOT
     JSON["serde_json::Error
@@ -131,6 +173,13 @@ NotFound, ParseError"] --> ROOT
     style PLAN fill:#e8f5e9,stroke:#1b5e20
     style ENF fill:#fce4ec,stroke:#b71c1c
     style TOOL fill:#f3e5f5,stroke:#4a148c
+    style REPO fill:#ffe0b2,stroke:#e65100
+    style CANC fill:#f1f8e9,stroke:#33691e
+    style EVT fill:#e0f2f1,stroke:#004d40
+    style AUDIT fill:#fce4ec,stroke:#880e4f
+    style STATE fill:#e8eaf6,stroke:#1a237e
+    style TEMPL fill:#fff8e1,stroke:#f57f17
+    style FC fill:#f3e5f5,stroke:#4a148c
 ```
 
 **Error propagation pattern:**
@@ -171,5 +220,5 @@ let data = tokio::fs::read_to_string("file").await;
 
 ---
 
-*Last updated: 2026-06-13*
-*Module version: 1.0.0*
+*Last updated: 2026-06-14*
+*Module version: 1.1.0*
