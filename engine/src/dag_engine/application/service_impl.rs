@@ -27,7 +27,11 @@ use super::dto::{
     ConstructGraphOutput, GetGraphInput, GetGraphOutput, GetNodeInput, GetNodeOutput,
     ListNodesInput, ListNodesOutput, SealGraphInput, SealGraphOutput,
 };
-use super::service::{DagGraphService, DagPlanningService, ImpactLevelResult};
+use super::service::{
+    ComputeBackoffInput, ComputeBackoffOutput, DagGraphService, DagPlanningService,
+    ExecutionPolicyService, ImpactLevelResult, RetryDecision, ShouldRetryInput,
+    ValidatePolicyInput, ValidatePolicyOutput,
+};
 
 /// In-memory implementation of DagGraphService.
 ///
@@ -300,6 +304,145 @@ impl DagPlanningService for DagPlanningServiceImpl {
         Ok(ImpactLevelResult {
             impact_level: diff.impact_level,
             summary,
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ExecutionPolicyServiceImpl
+// ---------------------------------------------------------------------------
+
+/// Implementation of ExecutionPolicyService.
+///
+/// Provides retry decision logic, backoff computation, and policy
+/// validation. All decisions are stateless (pure functions on
+/// ExecutionPolicy + failure context).
+pub struct ExecutionPolicyServiceImpl;
+
+impl ExecutionPolicyServiceImpl {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait]
+impl ExecutionPolicyService for ExecutionPolicyServiceImpl {
+    async fn should_retry(
+        &self,
+        input: ShouldRetryInput,
+    ) -> Result<RetryDecision, DagError> {
+        let policy = input.policy;
+
+        // Check if the failure type is in the retry_on list
+        let is_retriable = policy
+            .retry_on
+            .iter()
+            .any(|ft| *ft == input.failure_type);
+
+        if !is_retriable {
+            return Ok(RetryDecision::NoRetry {
+                reason: format!(
+                    "Failure type {:?} is not configured for retry in this policy",
+                    input.failure_type
+                ),
+                use_fallback: policy.fallback_node.is_some(),
+            });
+        }
+
+        // Check if retries are exhausted
+        if input.retries_attempted >= policy.max_retries {
+            return Ok(RetryDecision::NoRetry {
+                reason: format!(
+                    "Max retries ({}) exhausted after {} attempt(s)",
+                    policy.max_retries, input.retries_attempted
+                ),
+                use_fallback: policy.fallback_node.is_some(),
+            });
+        }
+
+        // Retry with the configured strategy
+        let next_attempt = input.retries_attempted + 1;
+        let reason = format!(
+            "Retrying (attempt {}/{}) with {:?} strategy after {:?}",
+            next_attempt, policy.max_retries, policy.retry_strategy, input.failure_type
+        );
+
+        Ok(RetryDecision::Retry {
+            strategy: policy.retry_strategy,
+            attempt: next_attempt,
+            reason,
+        })
+    }
+
+    async fn compute_backoff(
+        &self,
+        input: ComputeBackoffInput,
+    ) -> Result<ComputeBackoffOutput, DagError> {
+        let base = input.policy.backoff_ms as f64;
+        let multiplier = input.policy.backoff_multiplier;
+        let max_ms = input.policy.max_backoff_ms;
+
+        // Exponential backoff: base * multiplier^(attempt-1)
+        let exponent = (input.attempt as f64) - 1.0;
+        let raw_delay = base * multiplier.powf(exponent);
+        let delay_ms = (raw_delay.round() as u64).min(max_ms);
+
+        let explanation = format!(
+            "Backoff: {}ms * {}^{} = {}ms (capped at {}ms)",
+            base as u64, multiplier, input.attempt, delay_ms, max_ms
+        );
+
+        Ok(ComputeBackoffOutput {
+            delay_ms,
+            multiplier,
+            explanation,
+        })
+    }
+
+    async fn validate_policy(
+        &self,
+        input: ValidatePolicyInput,
+    ) -> Result<ValidatePolicyOutput, DagError> {
+        let mut errors = Vec::new();
+        let mut warnings = Vec::new();
+
+        // backoff_ms must be > 0
+        if input.policy.backoff_ms == 0 {
+            errors.push("backoff_ms must be greater than 0".to_string());
+        }
+
+        // backoff_multiplier must be >= 1.0
+        if input.policy.backoff_multiplier < 1.0 {
+            errors.push(
+                "backoff_multiplier must be >= 1.0 (would cause decreasing backoff)".to_string(),
+            );
+        }
+
+        // max_backoff_ms must be >= backoff_ms
+        if input.policy.max_backoff_ms < input.policy.backoff_ms {
+            errors.push(
+                "max_backoff_ms must be >= backoff_ms".to_string(),
+            );
+        }
+
+        // Warn if max_retries is 0 (no retries at all)
+        if input.policy.max_retries == 0 {
+            warnings.push(
+                "max_retries is 0: node will not be retried on failure".to_string(),
+            );
+        }
+
+        // Warn if retry_on is empty (nothing will trigger a retry)
+        if input.policy.retry_on.is_empty() {
+            warnings.push(
+                "retry_on is empty: no failure type will trigger a retry".to_string(),
+            );
+        }
+
+        Ok(ValidatePolicyOutput {
+            is_valid: errors.is_empty(),
+            errors,
+            warnings,
         })
     }
 }

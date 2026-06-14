@@ -22,8 +22,13 @@ use crate::dag_engine::domain::{
     TaskGraph, TaskNode, ValidationRule,
 };
 use crate::dag_engine::application::dto::*;
-use crate::dag_engine::application::service::*;
-use crate::dag_engine::application::service_impl::*;
+use crate::dag_engine::application::service::{
+    ComputeBackoffInput, DagGraphService, DagPlanningService, ExecutionPolicyService,
+    RetryDecision, ShouldRetryInput, ValidatePolicyInput,
+};
+use crate::dag_engine::application::service_impl::{
+    DagGraphServiceImpl, DagPlanningServiceImpl, ExecutionPolicyServiceImpl,
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -738,6 +743,304 @@ fn test_taskgraph_serde_roundtrip() {
     assert_eq!(deserialized.node_count(), 2);
     // ExecutionState is skipped during serialization, so it will be default
     assert!(deserialized.execution_state.in_degree.is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// ExecutionPolicyService — Should Retry
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_should_retry_retriable_failure() {
+    let service = ExecutionPolicyServiceImpl::new();
+    let policy = ExecutionPolicy::default();
+
+    let decision = service.should_retry(ShouldRetryInput {
+        policy,
+        failure_type: FailureType::Transient,
+        retries_attempted: 0,
+    }).await.unwrap();
+
+    match decision {
+        RetryDecision::Retry { strategy, attempt, .. } => {
+            assert_eq!(strategy, RetryStrategy::SameOperation);
+            assert_eq!(attempt, 1);
+        }
+        _ => panic!("Expected Retry, got NoRetry"),
+    }
+}
+
+#[tokio::test]
+async fn test_should_retry_non_retriable_failure() {
+    let service = ExecutionPolicyServiceImpl::new();
+    let policy = ExecutionPolicy::default();
+
+    let decision = service.should_retry(ShouldRetryInput {
+        policy,
+        failure_type: FailureType::Permanent,
+        retries_attempted: 0,
+    }).await.unwrap();
+
+    match decision {
+        RetryDecision::NoRetry { use_fallback, .. } => {
+            assert!(!use_fallback, "No fallback configured");
+        }
+        _ => panic!("Expected NoRetry, got Retry"),
+    }
+}
+
+#[tokio::test]
+async fn test_should_retry_exhausted_retries() {
+    let service = ExecutionPolicyServiceImpl::new();
+    // max_retries = 3 by default
+    let policy = ExecutionPolicy::default();
+
+    // After 3 attempts, no more retries
+    let decision = service.should_retry(ShouldRetryInput {
+        policy: policy.clone(),
+        failure_type: FailureType::Transient,
+        retries_attempted: 3,
+    }).await.unwrap();
+
+    match decision {
+        RetryDecision::NoRetry { reason, .. } => {
+            assert!(reason.contains("exhausted"));
+        }
+        _ => panic!("Expected NoRetry after exhausting retries"),
+    }
+}
+
+#[tokio::test]
+async fn test_should_retry_with_custom_policy() {
+    let service = ExecutionPolicyServiceImpl::new();
+    let policy = ExecutionPolicy {
+        max_retries: 5,
+        retry_on: vec![FailureType::Transient, FailureType::MissingDependency],
+        ..ExecutionPolicy::default()
+    };
+
+    // MissingDependency is retriable
+    let decision = service.should_retry(ShouldRetryInput {
+        policy,
+        failure_type: FailureType::MissingDependency,
+        retries_attempted: 0,
+    }).await.unwrap();
+
+    match decision {
+        RetryDecision::Retry { attempt, .. } => {
+            assert_eq!(attempt, 1);
+        }
+        _ => panic!("Expected Retry"),
+    }
+}
+
+#[tokio::test]
+async fn test_should_retry_max_retries_zero() {
+    let service = ExecutionPolicyServiceImpl::new();
+    let policy = ExecutionPolicy {
+        max_retries: 0,
+        ..ExecutionPolicy::default()
+    };
+
+    let decision = service.should_retry(ShouldRetryInput {
+        policy,
+        failure_type: FailureType::Transient,
+        retries_attempted: 0,
+    }).await.unwrap();
+
+    match decision {
+        RetryDecision::NoRetry { reason, .. } => {
+            assert!(reason.contains("exhausted") || reason.contains("0"));
+        }
+        _ => panic!("Expected NoRetry with max_retries=0"),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ExecutionPolicyService — Backoff Computation
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_compute_backoff_first_attempt() {
+    let service = ExecutionPolicyServiceImpl::new();
+    let policy = ExecutionPolicy::default();
+
+    let output = service.compute_backoff(ComputeBackoffInput {
+        policy,
+        attempt: 1,
+    }).await.unwrap();
+
+    // First attempt: 100ms * 2.0^0 = 100ms
+    assert_eq!(output.delay_ms, 100);
+    assert!(output.explanation.contains("100ms"));
+}
+
+#[tokio::test]
+async fn test_compute_backoff_second_attempt() {
+    let service = ExecutionPolicyServiceImpl::new();
+    let policy = ExecutionPolicy::default();
+
+    let output = service.compute_backoff(ComputeBackoffInput {
+        policy,
+        attempt: 2,
+    }).await.unwrap();
+
+    // Second attempt: 100ms * 2.0^1 = 200ms
+    assert_eq!(output.delay_ms, 200);
+}
+
+#[tokio::test]
+async fn test_compute_backoff_third_attempt() {
+    let service = ExecutionPolicyServiceImpl::new();
+    let policy = ExecutionPolicy::default();
+
+    let output = service.compute_backoff(ComputeBackoffInput {
+        policy,
+        attempt: 3,
+    }).await.unwrap();
+
+    // Third attempt: 100ms * 2.0^2 = 400ms
+    assert_eq!(output.delay_ms, 400);
+}
+
+#[tokio::test]
+async fn test_compute_backoff_capped_at_max() {
+    let service = ExecutionPolicyServiceImpl::new();
+    let policy = ExecutionPolicy {
+        backoff_ms: 100,
+        backoff_multiplier: 10.0,
+        max_backoff_ms: 5000,
+        ..ExecutionPolicy::default()
+    };
+
+    let output = service.compute_backoff(ComputeBackoffInput {
+        policy,
+        attempt: 5, // 100 * 10^4 = 1,000,000 → capped at 5,000
+    }).await.unwrap();
+
+    assert_eq!(output.delay_ms, 5000);
+}
+
+#[tokio::test]
+async fn test_compute_backoff_custom_policy() {
+    let service = ExecutionPolicyServiceImpl::new();
+    let policy = ExecutionPolicy {
+        backoff_ms: 1000,
+        backoff_multiplier: 3.0,
+        max_backoff_ms: 60_000,
+        ..ExecutionPolicy::default()
+    };
+
+    let output = service.compute_backoff(ComputeBackoffInput {
+        policy,
+        attempt: 3, // 1000 * 3.0^2 = 9000ms
+    }).await.unwrap();
+
+    assert_eq!(output.delay_ms, 9000);
+}
+
+// ---------------------------------------------------------------------------
+// ExecutionPolicyService — Policy Validation
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_validate_policy_default_valid() {
+    let service = ExecutionPolicyServiceImpl::new();
+    let policy = ExecutionPolicy::default();
+
+    let output = service.validate_policy(ValidatePolicyInput {
+        policy,
+    }).await.unwrap();
+
+    assert!(output.is_valid);
+    assert!(output.errors.is_empty());
+}
+
+#[tokio::test]
+async fn test_validate_policy_zero_backoff() {
+    let service = ExecutionPolicyServiceImpl::new();
+    let policy = ExecutionPolicy {
+        backoff_ms: 0,
+        ..ExecutionPolicy::default()
+    };
+
+    let output = service.validate_policy(ValidatePolicyInput {
+        policy,
+    }).await.unwrap();
+
+    assert!(!output.is_valid);
+    assert!(output.errors.iter().any(|e| e.contains("backoff_ms")));
+}
+
+#[tokio::test]
+async fn test_validate_policy_multiplier_less_than_one() {
+    let service = ExecutionPolicyServiceImpl::new();
+    let policy = ExecutionPolicy {
+        backoff_multiplier: 0.5,
+        ..ExecutionPolicy::default()
+    };
+
+    let output = service.validate_policy(ValidatePolicyInput {
+        policy,
+    }).await.unwrap();
+
+    assert!(!output.is_valid);
+    assert!(output.errors.iter().any(|e| e.contains("multiplier")));
+}
+
+#[tokio::test]
+async fn test_validate_policy_max_less_than_base() {
+    let service = ExecutionPolicyServiceImpl::new();
+    let policy = ExecutionPolicy {
+        backoff_ms: 1000,
+        max_backoff_ms: 500,
+        ..ExecutionPolicy::default()
+    };
+
+    let output = service.validate_policy(ValidatePolicyInput {
+        policy,
+    }).await.unwrap();
+
+    assert!(!output.is_valid);
+    assert!(output.errors.iter().any(|e| e.contains("max_backoff")));
+}
+
+#[tokio::test]
+async fn test_validate_policy_multiple_errors() {
+    let service = ExecutionPolicyServiceImpl::new();
+    let policy = ExecutionPolicy {
+        backoff_ms: 0,
+        backoff_multiplier: 0.5,
+        max_backoff_ms: 0,
+        ..ExecutionPolicy::default()
+    };
+
+    let output = service.validate_policy(ValidatePolicyInput {
+        policy,
+    }).await.unwrap();
+
+    assert!(!output.is_valid);
+    assert!(output.errors.len() >= 2);
+}
+
+#[tokio::test]
+async fn test_validate_policy_warnings() {
+    let service = ExecutionPolicyServiceImpl::new();
+
+    // max_retries = 0 should warn
+    let policy = ExecutionPolicy {
+        max_retries: 0,
+        ..ExecutionPolicy::default()
+    };
+    let output = service.validate_policy(ValidatePolicyInput { policy }).await.unwrap();
+    assert!(output.warnings.iter().any(|w| w.contains("max_retries")));
+
+    // empty retry_on should warn
+    let policy = ExecutionPolicy {
+        retry_on: vec![],
+        ..ExecutionPolicy::default()
+    };
+    let output = service.validate_policy(ValidatePolicyInput { policy }).await.unwrap();
+    assert!(output.warnings.iter().any(|w| w.contains("retry_on")));
 }
 
 // ---------------------------------------------------------------------------
