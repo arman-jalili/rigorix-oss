@@ -23,6 +23,8 @@ pub mod event;
 pub mod extractor;
 pub mod generator;
 pub mod intent;
+pub mod mock_classifier;
+pub mod mock_extractor;
 pub mod result;
 
 pub use classification::*;
@@ -30,4 +32,6 @@ pub use error::*;
 pub use extractor::*;
 pub use generator::*;
 pub use intent::*;
+pub use mock_classifier::MockClassifier;
+pub use mock_extractor::MockParameterExtractor;
 pub use result::*;
