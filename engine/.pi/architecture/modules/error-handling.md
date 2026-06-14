@@ -220,5 +220,67 @@ let data = tokio::fs::read_to_string("file").await;
 
 ---
 
+## Testing & Validation
+
+### Unit Tests
+
+CoreOrchestratorError has 6 unit tests covering:
+- `error_code()` mapping for all variants
+- `http_status()` mapping for all variants
+- `is_retriable()` for I/O and HTTP errors
+- Comprehensive sanity check: every variant has a non-empty error_code
+
+Run tests:
+```bash
+cargo test --lib error
+```
+
+### Contract Validation (CI Stage)
+
+A dedicated CI stage (`24 - error-handling_proofing`) validates:
+- `check_error-handling_contracts.sh` (48 checks)
+  - CoreOrchestratorError enum exists with all 15 domain sub-errors via #[from]
+  - ExecutionError enum exists with all 6 variants
+  - All 13 domain error enums exist across modules
+  - Helper methods: is_retriable(), error_code(), http_status()
+  - Module registration in lib.rs
+  - Architecture docs compliance (referenced in 14+ files)
+- `check_error-handling_coverage.sh` (≥ 80% coverage, ≥ 6 test functions)
+
+Run manually:
+```bash
+bash engine/.pi/scripts/ci/stage_error-handling_proofing.sh
+```
+
+## Observability
+
+The error-handling module supports observability through:
+- **Structured error messages:** All variants use `#[error("...")]` with field interpolation for machine-parseable log messages
+- **Error codes:** `error_code()` returns machine-readable codes (e.g., `"DAG_ERROR"`, `"CANCELLED"`)
+- **HTTP mapping:** `http_status()` maps each error to an appropriate HTTP status code
+- **Retriability:** `is_retriable()` signals whether an operation can be retried
+- **Debug output:** `#[derive(Debug)]` on all enums for detailed diagnostic logging
+
+## Monitoring
+
+| Metric | Source | Description |
+|--------|--------|-------------|
+| `error_code()` | Per-domain | Identifies which module/error caused the failure |
+| `http_status()` | Per-variant | Maps to HTTP response status codes |
+| `is_retriable()` | Per-variant | Guides retry logic at the caller level |
+
+## Related Documentation
+
+| Document | Path |
+|----------|------|
+| Runbook | `docs/runbook-error-handling.md` |
+| DR Plan | `docs/dr-plan-error-handling.md` |
+| Source | `src/error.rs` |
+| Source | `src/execution/domain/error.rs` |
+| CI Script | `.pi/scripts/ci/check_error-handling_contracts.sh` |
+| CI Script | `.pi/scripts/ci/stage_error-handling_proofing.sh` |
+
+---
+
 *Last updated: 2026-06-14*
-*Module version: 1.1.0*
+*Module version: 1.2.0*
