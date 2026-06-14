@@ -51,8 +51,8 @@
       }
     }
   ],
-  "currentItemIndex": 3,
-  "currentStepIndex": 3,
+  "currentItemIndex": 4,
+  "currentStepIndex": 0,
   "status": "running",
   "retryCount": 0,
   "results": [
@@ -176,7 +176,7 @@
     },
     {
       "item": "issue-auditqueue",
-      "status": "in-progress",
+      "status": "done",
       "stepResults": [
         {
           "step": "implement",
@@ -207,11 +207,16 @@
           "step": "merge",
           "status": "passed",
           "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
         }
       ]
     }
   ],
   "mergeOnValid": true,
   "createdAt": "2026-06-14T18:08:53.160Z",
-  "updatedAt": "2026-06-14T18:16:05.181Z"
+  "updatedAt": "2026-06-14T18:16:27.743Z"
 }
