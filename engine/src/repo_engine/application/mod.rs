@@ -19,8 +19,10 @@ pub mod dto;
 pub mod factory;
 pub mod service;
 pub mod symbol_graph_service_impl;
+pub mod workspace_validation_service_impl;
 
 pub use dto::*;
 pub use factory::*;
 pub use service::*;
 pub use symbol_graph_service_impl::SymbolGraphServiceImpl;
+pub use workspace_validation_service_impl::WorkspaceValidationServiceImpl;
