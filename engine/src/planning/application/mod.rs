@@ -16,7 +16,11 @@
 
 pub mod dto;
 pub mod factory;
+pub mod pipeline_factory_impl;
+pub mod pipeline_impl;
 pub mod service;
 
 pub use factory::*;
+pub use pipeline_factory_impl::*;
+pub use pipeline_impl::*;
 pub use service::*;

@@ -33,6 +33,5 @@ pub mod planning;
 pub mod repo_engine;
 pub mod risk_gating;
 pub mod state_persistence;
-pub mod repo_engine;
 pub mod templates;
 pub mod tools;
