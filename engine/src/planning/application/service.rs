@@ -25,14 +25,17 @@ use uuid::Uuid;
 
 use crate::planning::domain::classification::ClassificationResult;
 use crate::planning::domain::error::PlanningError;
+use crate::planning::domain::generator::RepoContext;
 use crate::planning::domain::intent::UserIntent;
 
 
 use super::dto::{
-    AvailableTemplatesOutput, CheckBudgetInput, CheckBudgetOutput, ExtractParametersInput,
-    ExtractParametersOutput, GenerateGraphInput, GenerateGraphOutput, PlanInput, PlanOutput,
+    AvailableTemplatesOutput, BuildRepoContextInput, BuildRepoContextOutput, CheckBudgetInput,
+    CheckBudgetOutput, ExtractParametersInput, ExtractParametersOutput, GenerateGraphInput,
+    GenerateGraphOutput, GenerateTemplateInput, GenerateTemplateOutput, PlanInput, PlanOutput,
     PlanWithGraphInput, PlanWithGraphOutput, RequestClarificationInput,
-    RequestClarificationOutput, ValidatePlanInput, ValidatePlanOutput,
+    RequestClarificationOutput, SymbolValidationInput, SymbolValidationOutput, ValidatePlanInput,
+    ValidatePlanOutput,
 };
 
 /// Central planning pipeline service that orchestrates the 6-phase flow.
@@ -156,4 +159,124 @@ pub trait PlanningPipelineService: Send + Sync {
 
     /// Get the execution ID for the current planning session.
     fn execution_id(&self) -> Uuid;
+}
+
+// ---------------------------------------------------------------------------
+// TemplateGenerationService
+// ---------------------------------------------------------------------------
+
+/// Application service for generating templates from user intent.
+///
+/// Orchestrates the full template generation flow:
+/// 1. Build RepoContext from the working directory
+/// 2. Generate template via LLM with retry (up to 3 attempts)
+/// 3. Validate generated TOML against schema
+/// 4. Run Phase 3 symbol validation against indexed symbol graph
+/// 5. Return validated template ready for registration
+///
+/// This service wraps the domain-level `TemplateGenerator` trait with
+/// application concerns like retry logic, symbol validation integration,
+/// and event emission.
+///
+/// # Contract (Frozen)
+/// - All methods are async
+/// - All public methods return `Result<_, PlanningError>`
+/// - Input/output types are DTOs defined in `dto/`
+/// - No implementation — only contract signatures
+#[async_trait]
+pub trait TemplateGenerationService: Send + Sync {
+    /// Generate a template from user intent.
+    ///
+    /// Full flow: builds RepoContext, calls LLM generator with retry,
+    /// validates parsed TOML, runs Phase 3 symbol validation.
+    ///
+    /// # Errors
+    ///
+    /// Returns `PlanningError::BudgetExhausted` if insufficient budget.
+    /// Returns `PlanningError::TemplateEngineError` wrapping `GeneratorError`
+    /// if generation fails after all retries.
+    async fn generate_template(
+        &self,
+        input: GenerateTemplateInput,
+    ) -> Result<GenerateTemplateOutput, PlanningError>;
+
+    /// Build a RepoContext from a working directory.
+    ///
+    /// Scans the directory tree, detects project type, reads dependencies,
+    /// and optionally indexes the symbol graph.
+    async fn build_repo_context(
+        &self,
+        input: BuildRepoContextInput,
+    ) -> Result<BuildRepoContextOutput, PlanningError>;
+
+    /// Estimate the generation cost for a given intent.
+    ///
+    /// Returns the estimated number of LLM calls and tokens for
+    /// budget pre-checking.
+    async fn estimate_generation_cost(
+        &self,
+        intent: &UserIntent,
+        repo_context: &RepoContext,
+    ) -> Result<crate::planning::domain::generator::GeneratedTemplateCost, PlanningError>;
+
+    /// Generate a template and immediately register it in the TemplateEngine.
+    ///
+    /// Combines `generate_template()` + `TemplateEngineService::register()`
+    /// for convenience. Returns the registered template metadata.
+    async fn generate_and_register(
+        &self,
+        input: GenerateTemplateInput,
+    ) -> Result<GenerateTemplateOutput, PlanningError>;
+}
+
+// ---------------------------------------------------------------------------
+// SymbolValidationService
+// ---------------------------------------------------------------------------
+
+/// Application service for Phase 3 symbol validation.
+///
+/// Validates a generated template against the indexed symbol graph to
+/// catch hallucinated type references, field accesses on non-existent
+/// types, and `any` type usage (LLM escape hatch).
+///
+/// # Contract (Frozen)
+/// - All methods are async
+/// - Returns structured validation results with specific invalid references
+/// - `flag_any_type` controls whether `any` type usage is treated as invalid
+/// - No implementation — only contract signatures
+#[async_trait]
+pub trait SymbolValidationService: Send + Sync {
+    /// Validate a template against the indexed symbol graph.
+    ///
+    /// Checks:
+    /// - Type references in node actions exist in the symbol graph
+    /// - Field access patterns (`var.field`) match actual type definitions
+    /// - No hallucinated function/method calls
+    /// - Optional `any` type detection
+    async fn validate_template(
+        &self,
+        input: SymbolValidationInput,
+    ) -> Result<SymbolValidationOutput, PlanningError>;
+
+    /// Extract all symbol references from a template's nodes.
+    ///
+    /// Parses action fields for type names, field accesses, and
+    /// function/method references. Returns the list of symbol names
+    /// found for batch lookup against the symbol graph.
+    async fn extract_symbol_references(
+        &self,
+        template: &crate::templates::domain::Template,
+    ) -> Result<Vec<String>, PlanningError>;
+
+    /// Get the current symbol graph snapshot for validation.
+    ///
+    /// Returns a JSON-serialized subset of the indexed symbol graph
+    /// containing type definitions, field signatures, and function
+    /// signatures relevant to the current workspace.
+    async fn get_symbol_graph_snapshot(&self) -> Result<serde_json::Value, PlanningError>;
+
+    /// Check if a symbol name exists in the indexed graph.
+    ///
+    /// Performs a case-sensitive exact match lookup.
+    async fn symbol_exists(&self, name: &str) -> Result<bool, PlanningError>;
 }

@@ -1,23 +1,31 @@
 {
-  "name": "\"planning-pipeline\"",
-  "trackingIssueId": "150",
+  "name": "\"template-generation\"",
+  "trackingIssueId": "160",
   "epicId": null,
   "slices": [
     {
-      "module": "planning-pipeline",
+      "module": "template-generation",
       "components": [
         {
-          "name": "PlanningPipeline",
+          "name": "TemplateGenerator Trait",
           "status": "planned",
-          "description": "Orchestrate the 6-phase planning flow",
+          "description": "Abstract interface for LLM-based template generation",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "Classifier Trait",
+          "name": "ClaudeTemplateGenerator",
           "status": "planned",
-          "description": "Abstract LLM-based intent classification",
+          "description": "Production generator using Anthropic Messages API with structured prompt engineering",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "Phase 3: Symbol Validation",
+          "status": "planned",
+          "description": "Validates generated template against indexed symbol graph before registration:",
           "dependencies": [
             "none"
           ]
@@ -25,17 +33,25 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "PlanningPipeline",
+          "name": "TemplateGenerator Trait",
           "status": "planned",
-          "description": "Orchestrate the 6-phase planning flow",
+          "description": "Abstract interface for LLM-based template generation",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "Classifier Trait",
+          "name": "ClaudeTemplateGenerator",
           "status": "planned",
-          "description": "Abstract LLM-based intent classification",
+          "description": "Production generator using Anthropic Messages API with structured prompt engineering",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "Phase 3: Symbol Validation",
+          "status": "planned",
+          "description": "Validates generated template against indexed symbol graph before registration:",
           "dependencies": [
             "none"
           ]
@@ -48,34 +64,40 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "151"
+      "remoteIssueId": "161"
     },
     {
-      "id": "issue-planningpipeline",
-      "title": "PlanningPipeline: Orchestrate the 6-phase planning flow",
+      "id": "issue-templategenerator-trait",
+      "title": "TemplateGenerator Trait: Abstract interface for LLM-based template generation",
       "status": "planned",
-      "remoteIssueId": "152"
+      "remoteIssueId": "162"
     },
     {
-      "id": "issue-classifier-trait",
-      "title": "Classifier Trait: Abstract LLM-based intent classification",
+      "id": "issue-claudetemplategenerator",
+      "title": "ClaudeTemplateGenerator: Production generator using Anthropic Messages API with structured prompt enginee",
       "status": "planned",
-      "remoteIssueId": "153"
+      "remoteIssueId": "163"
+    },
+    {
+      "id": "issue-phase-3-symbol-validation",
+      "title": "Phase 3: Symbol Validation: Validates generated template against indexed symbol graph before registration:",
+      "status": "planned",
+      "remoteIssueId": "164"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "154"
+      "remoteIssueId": "165"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "155"
+      "remoteIssueId": "166"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-06-14T15:30:26.694Z"
+  "createdAt": "2026-06-14T17:26:40.504Z"
 }

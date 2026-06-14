@@ -331,3 +331,143 @@ pub const ERROR_STATUS_CODES: &[(u16, &str)] = &[
     (500, "INTERNAL_ERROR"),
     (499, "CANCELLED"),
 ];
+
+// ---------------------------------------------------------------------------
+// Endpoint: POST /api/v1/planning/generate-template
+// ---------------------------------------------------------------------------
+
+/// POST /api/v1/planning/generate-template
+///
+/// Generate a new template from user intent using the LLM fallback.
+/// Builds RepoContext, calls LLM with retry, validates against schema
+/// and symbol graph.
+///
+/// **Request:** `GenerateTemplateRequest`
+/// **Response:** `200 OK` with `GenerateTemplateResponse`
+/// **Error:** `422 Unprocessable Entity` if generation fails
+/// **Error:** `429 Too Many Requests` if budget exhausted
+pub const GENERATE_TEMPLATE_PATH: &str = "/api/v1/planning/generate-template";
+pub const GENERATE_TEMPLATE_METHOD: &str = "POST";
+
+/// Request body for POST /api/v1/planning/generate-template.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenerateTemplateRequest {
+    /// The user's intent text.
+    pub intent: String,
+
+    /// Optional execution ID for correlation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_id: Option<Uuid>,
+
+    /// Root directory to build RepoContext from.
+    pub root_dir: String,
+
+    /// Whether to auto-register the generated template.
+    #[serde(default)]
+    pub auto_register: bool,
+
+    /// Whether to run Phase 3 symbol validation.
+    #[serde(default = "default_true")]
+    pub validate_symbols: bool,
+
+    /// Maximum LLM retry attempts.
+    #[serde(default = "default_max_retries_api")]
+    pub max_retries: u8,
+}
+
+fn default_max_retries_api() -> u8 {
+    3
+}
+
+/// Response body for POST /api/v1/planning/generate-template.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenerateTemplateResponse {
+    pub success: bool,
+    pub execution_id: Uuid,
+    pub template_id: String,
+    pub template_name: String,
+    pub llm_calls_used: u32,
+    pub llm_tokens_used: u32,
+    pub attempts: u8,
+    pub validated: bool,
+    pub symbol_validation_passed: bool,
+    pub errors: Vec<String>,
+    pub toml_content: String,
+}
+
+// ---------------------------------------------------------------------------
+// Endpoint: POST /api/v1/planning/validate-symbols
+// ---------------------------------------------------------------------------
+
+/// POST /api/v1/planning/validate-symbols
+///
+/// Run Phase 3 symbol validation against a provided TOML template.
+/// Checks for hallucinated type references and field accesses.
+///
+/// **Request:** `ValidateSymbolsRequest`
+/// **Response:** `200 OK` with `ValidateSymbolsResponse`
+pub const VALIDATE_SYMBOLS_PATH: &str = "/api/v1/planning/validate-symbols";
+pub const VALIDATE_SYMBOLS_METHOD: &str = "POST";
+
+/// Request body for POST /api/v1/planning/validate-symbols.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidateSymbolsRequest {
+    /// The TOML template content to validate.
+    pub toml_content: String,
+
+    /// Whether to flag `any` type usage.
+    #[serde(default = "default_true")]
+    pub flag_any_type: bool,
+}
+
+/// Response body for POST /api/v1/planning/validate-symbols.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidateSymbolsResponse {
+    pub valid: bool,
+    pub references_checked: u32,
+    pub invalid_references: Vec<InvalidSymbolRefResponse>,
+    pub any_type_detected: bool,
+}
+
+/// An invalid symbol reference in API responses.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InvalidSymbolRefResponse {
+    pub symbol: String,
+    pub usage: String,
+    pub reason: String,
+    pub is_any_type: bool,
+}
+
+// ---------------------------------------------------------------------------
+// Endpoint: POST /api/v1/planning/build-context
+// ---------------------------------------------------------------------------
+
+/// POST /api/v1/planning/build-context
+///
+/// Build a RepoContext from a working directory (for preview/debugging).
+///
+/// **Request:** `BuildContextRequest`
+/// **Response:** `200 OK` with `BuildContextResponse`
+pub const BUILD_CONTEXT_PATH: &str = "/api/v1/planning/build-context";
+pub const BUILD_CONTEXT_METHOD: &str = "POST";
+
+/// Request body for POST /api/v1/planning/build-context.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildContextRequest {
+    /// Root directory to scan.
+    pub root_dir: String,
+    /// Whether to include the symbol graph snapshot.
+    #[serde(default)]
+    pub include_symbol_graph: bool,
+}
+
+/// Response body for POST /api/v1/planning/build-context.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildContextResponse {
+    pub success: bool,
+    pub project_type: String,
+    pub files_scanned: u32,
+    pub api_entries_found: u32,
+    pub dependencies: Vec<String>,
+    pub directory_tree: Vec<String>,
+}

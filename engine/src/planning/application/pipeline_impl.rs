@@ -415,8 +415,18 @@ impl PlanningPipelineService for PlanningPipelineImpl {
                                 label: "planning".to_string(),
                             };
 
+                            // Build a minimal RepoContext for the generator.
+                            // Full RepoContext building is handled by TemplateGenerationService.
+                            let repo_context = crate::planning::domain::generator::RepoContext {
+                                root_dir: std::path::PathBuf::from("."),
+                                project_type: "unknown".to_string(),
+                                directory_tree: Vec::new(),
+                                dependencies: Vec::new(),
+                                public_api: Vec::new(),
+                                symbol_graph_snapshot: None,
+                            };
                             let generated = generator
-                                .generate(&intent, &budget)
+                                .generate(&intent, &repo_context, &budget)
                                 .await?;
                             total_llm_calls += generated.llm_calls_used;
                             total_llm_tokens += generated.llm_tokens_used;

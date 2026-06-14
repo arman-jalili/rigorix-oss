@@ -388,3 +388,201 @@ pub struct ClarificationRound {
     /// ISO 8601 timestamp.
     pub timestamp: DateTime<Utc>,
 }
+
+// ---------------------------------------------------------------------------
+// Template Generation DTOs
+// ---------------------------------------------------------------------------
+
+/// Input for generating a template from user intent (fallback path).
+///
+/// Encapsulates everything the generator needs: user intent with
+/// clarifications, repository context for symbol awareness, and
+/// budget tracking.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenerateTemplateInput {
+    /// The execution ID for correlation.
+    pub execution_id: Uuid,
+
+    /// User intent with optional clarification history.
+    pub intent: UserIntent,
+
+    /// Repository context snapshot (file tree, public API, dependencies).
+    pub repo_context: crate::planning::domain::generator::RepoContext,
+
+    /// Maximum number of LLM retry attempts on parse/validation failure.
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u8,
+
+    /// Whether to run Phase 3 symbol validation.
+    #[serde(default = "default_true")]
+    pub enable_symbol_validation: bool,
+}
+
+fn default_max_retries() -> u8 {
+    3
+}
+
+/// Output from generating a template.
+///
+/// Contains the parsed Template (ready for registration), metadata
+/// about the generation process, and any symbol validation results.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenerateTemplateOutput {
+    /// The execution ID for correlation.
+    pub execution_id: Uuid,
+
+    /// The generated and validated template.
+    pub template: crate::templates::domain::Template,
+
+    /// The suggested template ID.
+    pub template_id: String,
+
+    /// Number of LLM calls used.
+    pub llm_calls_used: u32,
+
+    /// Number of LLM tokens consumed.
+    pub llm_tokens_used: u32,
+
+    /// Number of retry attempts made (0 = first attempt succeeded).
+    pub attempts: u8,
+
+    /// Whether the generated template passed structural validation.
+    pub validated: bool,
+
+    /// Whether the generated template passed Phase 3 symbol validation.
+    pub symbol_validation_passed: bool,
+
+    /// Symbol validation details if run.
+    pub symbol_validation: Option<SymbolValidationResult>,
+
+    /// The generated TOML content (for debugging/review).
+    pub toml_content: String,
+}
+
+// ---------------------------------------------------------------------------
+// Symbol Validation DTOs
+// ---------------------------------------------------------------------------
+
+/// Input for Phase 3 symbol validation.
+///
+/// Validates that a generated template's references to code symbols
+/// (types, fields, functions) actually exist in the indexed symbol graph.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SymbolValidationInput {
+    /// The execution ID for correlation.
+    pub execution_id: Uuid,
+
+    /// The template to validate against the symbol graph.
+    pub template: crate::templates::domain::Template,
+
+    /// Maximum number of invalid references to report (stops early).
+    #[serde(default = "default_max_invalid")]
+    pub max_invalid_references: u32,
+
+    /// Whether to flag `any` type usage as a validation issue.
+    #[serde(default = "default_true")]
+    pub flag_any_type: bool,
+}
+
+fn default_max_invalid() -> u32 {
+    10
+}
+
+/// Output from Phase 3 symbol validation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SymbolValidationOutput {
+    /// The execution ID for correlation.
+    pub execution_id: Uuid,
+
+    /// Whether the template passed all symbol validation checks.
+    pub valid: bool,
+
+    /// Number of symbol references that were checked.
+    pub references_checked: u32,
+
+    /// Invalid symbol references found (empty if valid).
+    pub invalid_references: Vec<InvalidSymbolRef>,
+
+    /// Whether `any` type usage was detected.
+    pub any_type_detected: bool,
+
+    /// Number of `any` type usages found.
+    pub any_type_count: u32,
+}
+
+/// A single invalid symbol reference from Phase 3 validation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InvalidSymbolRef {
+    /// The symbol name that was referenced.
+    pub symbol: String,
+
+    /// How the symbol was used ("type", "field_access", "method_call").
+    pub usage: String,
+
+    /// The specific reason this reference is invalid.
+    pub reason: String,
+
+    /// Whether this is an `any` type usage.
+    pub is_any_type: bool,
+}
+
+// ---------------------------------------------------------------------------
+// RepoContext Builder DTOs
+// ---------------------------------------------------------------------------
+
+/// Input for building a RepoContext from a working directory.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildRepoContextInput {
+    /// The execution ID for correlation.
+    pub execution_id: Uuid,
+
+    /// Root directory to scan.
+    pub root_dir: std::path::PathBuf,
+
+    /// Whether to include the symbol graph snapshot.
+    #[serde(default)]
+    pub include_symbol_graph: bool,
+
+    /// Maximum files to include in the directory tree (0 = unlimited).
+    #[serde(default)]
+    pub max_files: u32,
+}
+
+/// Output from building a RepoContext.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildRepoContextOutput {
+    /// The execution ID for correlation.
+    pub execution_id: Uuid,
+
+    /// The built repository context.
+    pub repo_context: crate::planning::domain::generator::RepoContext,
+
+    /// Number of files scanned.
+    pub files_scanned: u32,
+
+    /// Number of public API entries found.
+    pub api_entries_found: u32,
+
+    /// ISO 8601 timestamp.
+    pub completed_at: DateTime<Utc>,
+}
+
+// ---------------------------------------------------------------------------
+// Symbol Validation Result (used by GenerateTemplateOutput)
+// ---------------------------------------------------------------------------
+
+/// Result of Phase 3 symbol validation (embedded in generation output).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SymbolValidationResult {
+    /// Whether validation passed.
+    pub passed: bool,
+
+    /// Number of references checked.
+    pub references_checked: u32,
+
+    /// Invalid references found.
+    pub invalid_references: Vec<InvalidSymbolRef>,
+
+    /// Whether `any` type was detected.
+    pub any_type_detected: bool,
+}
