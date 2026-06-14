@@ -264,7 +264,6 @@ run_stage "18" "state-persistence_proofing" \
 run_stage "19" "risk-gating_proofing" \
     "${SCRIPTS_DIR}/stage_risk-gating_proofing.sh" \
     "always"
-
 # ── Summary ──
 
 echo ""
