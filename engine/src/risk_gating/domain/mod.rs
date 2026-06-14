@@ -14,13 +14,17 @@
 //! - All validation must happen in the application layer (service traits)
 //! - All persistence must happen behind repository interfaces
 
+pub mod default_classifier;
 pub mod error;
 pub mod event;
+pub mod gate_state;
 pub mod risk_classifier;
 pub mod risk_config;
 pub mod risk_level;
 
+pub use default_classifier::DefaultClassifier;
 pub use error::RiskGatingError;
-pub use risk_classifier::RiskClassifier;
+pub use gate_state::GateStateRegistry;
+pub use risk_classifier::{ClassificationResult, RiskClassifier};
 pub use risk_config::RiskConfig;
-pub use risk_level::RiskLevel;
+pub use risk_level::{GatingAction, RiskLevel};
