@@ -34,8 +34,8 @@ pub use claude_classifier::*;
 pub use error::*;
 pub use extractor::*;
 pub use generator::{
-    GeneratedTemplate, GeneratedTemplateCost, GeneratorError, InvalidSymbolReference,
-    RepoContext, TemplateGenerator,
+    ClaudeGeneratorConfig, ClaudeTemplateGenerator, GeneratedTemplate, GeneratedTemplateCost,
+    GeneratorError, InvalidSymbolReference, RepoContext, TemplateGenerator,
 };
 pub use intent::*;
 pub use mock_classifier::MockClassifier;
