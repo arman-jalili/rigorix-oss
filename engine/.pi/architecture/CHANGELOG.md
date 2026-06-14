@@ -10,6 +10,30 @@ This document tracks all architecture changes requiring implementation updates.
 
 ---
 
+## [2026-06-14] - Template System Epic Implementation Complete
+
+### Added
+- Module: template-system (Phase 2, Module #10)
+  - Contract freeze: Template, TemplateNode, TemplateAction (9 variants), ParameterDef,
+    TemplateError (10 variants), TemplateEvent (7 payload schemas)
+  - Implemented: TemplateParserImpl — TOML deserialization, structural validation,
+    cycle detection via Kahn's algorithm, directory loading
+  - Implemented: TemplateEngineImpl — in-memory registry, `{{ param }}` substitution,
+    topological sort, graph generation
+  - Implemented: InMemoryTemplateRepository — test double for TemplateRepository
+  - 31 unit tests across all layers (TemplateParser: 21, TemplateEngine: 10)
+  - All tests passing (cargo test --lib templates)
+  - Documentation: runbook-template-system.md, dr-plan-template-system.md
+  - CI: Proofing stage (stage 20) added to hardening pipeline with 13 contract checks
+    + coverage threshold (21 tests detected)
+  - Architecture: Module doc updated to v2.0.0 with actual implementation details
+  - Verified: All proofing checks pass, build clean, fmt compliant
+
+### Changed
+- Architecture: template-system module doc updated from blueprint to implementation-reflect
+
+---
+
 ## [2026-06-14] - Risk-Gating Epics Implementation Complete
 
 ### Added
