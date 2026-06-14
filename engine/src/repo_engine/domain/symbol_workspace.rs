@@ -112,3 +112,89 @@ impl SymbolWorkspaceIntent {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// SymbolWorkspaceIntent Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_readonly_allows_read_not_write() {
+        let intent = SymbolWorkspaceIntent::ReadOnly;
+        assert!(intent.allows_read());
+        assert!(!intent.allows_write());
+        assert!(!intent.requires_existing_symbols());
+        assert!(!intent.may_add_symbols());
+    }
+
+    #[test]
+    fn test_readwrite_allows_read_and_write() {
+        let intent = SymbolWorkspaceIntent::ReadWrite;
+        assert!(intent.allows_read());
+        assert!(intent.allows_write());
+        assert!(!intent.requires_existing_symbols());
+        assert!(intent.may_add_symbols());
+    }
+
+    #[test]
+    fn test_modification_allows_read_write_and_requires_existing() {
+        let intent = SymbolWorkspaceIntent::Modification;
+        assert!(intent.allows_read());
+        assert!(intent.allows_write());
+        assert!(intent.requires_existing_symbols());
+        assert!(!intent.may_add_symbols());
+    }
+
+    #[test]
+    fn test_deletion_allows_write_requires_existing() {
+        let intent = SymbolWorkspaceIntent::Deletion;
+        assert!(!intent.allows_read());
+        assert!(intent.allows_write());
+        assert!(intent.requires_existing_symbols());
+        assert!(!intent.may_add_symbols());
+    }
+
+    #[test]
+    fn test_descriptions_are_not_empty() {
+        let cases = vec![
+            SymbolWorkspaceIntent::ReadOnly,
+            SymbolWorkspaceIntent::ReadWrite,
+            SymbolWorkspaceIntent::Modification,
+            SymbolWorkspaceIntent::Deletion,
+        ];
+        for intent in cases {
+            assert!(!intent.description().is_empty(), "Description for {:?} should not be empty", intent);
+        }
+    }
+
+    #[test]
+    fn test_equality_and_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(SymbolWorkspaceIntent::ReadOnly);
+        set.insert(SymbolWorkspaceIntent::ReadWrite);
+        set.insert(SymbolWorkspaceIntent::Modification);
+        set.insert(SymbolWorkspaceIntent::Deletion);
+        set.insert(SymbolWorkspaceIntent::ReadOnly); // duplicate
+
+        assert_eq!(set.len(), 4);
+    }
+
+    #[test]
+    fn test_serialization_roundtrip() {
+        let cases = vec![
+            SymbolWorkspaceIntent::ReadOnly,
+            SymbolWorkspaceIntent::ReadWrite,
+            SymbolWorkspaceIntent::Modification,
+            SymbolWorkspaceIntent::Deletion,
+        ];
+        for intent in &cases {
+            let json = serde_json::to_string(intent).unwrap();
+            let deserialized: SymbolWorkspaceIntent = serde_json::from_str(&json).unwrap();
+            assert_eq!(*intent, deserialized);
+        }
+    }
+}
