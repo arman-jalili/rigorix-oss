@@ -19,7 +19,7 @@ use crate::planning::application::pipeline_impl::PlanningPipelineImpl;
 use crate::planning::application::service::PlanningPipelineService;
 use crate::planning::domain::classification::Classifier;
 use crate::planning::domain::extractor::ParameterExtractor;
-use crate::planning::domain::generator::{GeneratedTemplate, GeneratedTemplateCost, TemplateGenerator};
+use crate::planning::domain::generator::{GeneratedTemplate, GeneratedTemplateCost, GeneratorError, RepoContext, TemplateGenerator};
 use crate::planning::domain::intent::UserIntent;
 use crate::planning::domain::mock_classifier::MockClassifier;
 use crate::planning::domain::mock_extractor::MockParameterExtractor;
@@ -870,8 +870,9 @@ impl TemplateGenerator for MockGenerator {
     async fn generate(
         &self,
         _intent: &UserIntent,
+        _repo_context: &RepoContext,
         _budget: &crate::budget_tracking::domain::LlmBudget,
-    ) -> Result<GeneratedTemplate, PlanningError> {
+    ) -> Result<GeneratedTemplate, GeneratorError> {
         Ok(GeneratedTemplate {
             toml_content: "id = \"generated\"".to_string(),
             suggested_id: "generated".to_string(),

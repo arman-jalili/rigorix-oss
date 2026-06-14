@@ -33,7 +33,10 @@ pub use classification::*;
 pub use claude_classifier::*;
 pub use error::*;
 pub use extractor::*;
-pub use generator::*;
+pub use generator::{
+    GeneratedTemplate, GeneratedTemplateCost, GeneratorError, InvalidSymbolReference,
+    RepoContext, TemplateGenerator,
+};
 pub use intent::*;
 pub use mock_classifier::MockClassifier;
 pub use mock_extractor::MockParameterExtractor;

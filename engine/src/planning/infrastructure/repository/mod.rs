@@ -76,3 +76,63 @@ pub trait PlanningResultRepository: Send + Sync {
     /// Check if a result exists for the given execution ID.
     async fn exists(&self, execution_id: Uuid) -> Result<bool, PlanningError>;
 }
+
+// ---------------------------------------------------------------------------
+// GeneratedTemplateRepository
+// ---------------------------------------------------------------------------
+
+/// Repository for caching and retrieving generated template definitions.
+///
+/// Stores generated template TOML content and metadata so that
+/// previously generated templates can be reused without calling the
+/// LLM again. Supports cache invalidation and intent-based lookup.
+///
+/// # Contract (Frozen)
+/// - Templates are indexed by their intent hash for deterministic lookup
+/// - Cache entries have a configurable TTL
+/// - Lookup by intent returns the most recently generated template
+/// - All methods are async and return domain error types
+#[async_trait]
+pub trait GeneratedTemplateRepository: Send + Sync {
+    /// Save a generated template for future reuse.
+    ///
+    /// If a template with the same intent_hash already exists, it is
+    /// overwritten with the new result.
+    async fn save(
+        &self,
+        intent_hash: &str,
+        generated: &crate::planning::domain::generator::GeneratedTemplate,
+    ) -> Result<(), PlanningError>;
+
+    /// Load a generated template by its intent hash.
+    ///
+    /// Returns `None` if no cached template exists for this hash.
+    /// Returns `None` if the cache entry has expired (TTL exceeded).
+    async fn load_by_intent_hash(
+        &self,
+        intent_hash: &str,
+    ) -> Result<Option<crate::planning::domain::generator::GeneratedTemplate>, PlanningError>;
+
+    /// Load a generated template by its suggested ID.
+    ///
+    /// Returns the most recently generated version of this template.
+    async fn load_by_template_id(
+        &self,
+        template_id: &str,
+    ) -> Result<Option<crate::planning::domain::generator::GeneratedTemplate>, PlanningError>;
+
+    /// Delete a cached template entry.
+    ///
+    /// Returns `Ok(true)` if an entry was deleted, `Ok(false)` if no
+    /// entry existed for the given intent hash.
+    async fn delete(&self, intent_hash: &str) -> Result<bool, PlanningError>;
+
+    /// Clear all cached generated templates.
+    async fn clear_cache(&self) -> Result<(), PlanningError>;
+
+    /// Get the number of cached generated templates.
+    async fn cache_size(&self) -> Result<u64, PlanningError>;
+
+    /// Check if a cached template exists for the given intent hash.
+    async fn exists(&self, intent_hash: &str) -> Result<bool, PlanningError>;
+}

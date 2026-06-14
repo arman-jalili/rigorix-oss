@@ -22,7 +22,7 @@ use crate::planning::domain::extractor::ParameterExtractor;
 use crate::planning::domain::generator::TemplateGenerator;
 
 use super::dto::{ValidationError, ValidationWarning};
-use super::service::PlanningPipelineService;
+use super::service::{PlanningPipelineService, SymbolValidationService, TemplateGenerationService};
 
 /// Factory for constructing `PlanningPipelineService` instances.
 ///
@@ -147,4 +147,86 @@ pub trait CompositeValidator: Send + Sync {
 
     /// Get the number of registered validation rules.
     fn rule_count(&self) -> u32;
+}
+
+// ---------------------------------------------------------------------------
+// TemplateGenerationFactory
+// ---------------------------------------------------------------------------
+
+/// Factory for constructing `TemplateGenerationService` instances.
+///
+/// Handles creation of the template generation service with appropriate
+/// LLM client, repository context builder, symbol validator, and
+/// template engine dependencies.
+///
+/// # Contract (Frozen)
+/// - `create_default` — Builds with default LLM generator + symbol validation
+/// - `create_with_custom_generator` — Builds with a custom TemplateGenerator
+/// - `create_without_symbol_validation` — Skips Phase 3 validation (dev mode)
+#[async_trait]
+pub trait TemplateGenerationFactory: Send + Sync {
+    /// Create a default template generation service.
+    ///
+    /// Builds with the default Claude-based template generator and
+    /// full Phase 3 symbol validation.
+    async fn create_default(
+        &self,
+        symbol_validation: Box<dyn SymbolValidationService>,
+        template_engine: Box<
+            dyn crate::templates::application::service::TemplateEngineService,
+        >,
+    ) -> Result<Box<dyn TemplateGenerationService>, PlanningError>;
+
+    /// Create a template generation service with a custom generator.
+    ///
+    /// Useful for testing with `MockGenerator` or using a different
+    /// LLM provider (OpenAI, etc.).
+    async fn create_with_generator(
+        &self,
+        generator: Box<dyn TemplateGenerator>,
+        symbol_validation: Box<dyn SymbolValidationService>,
+        template_engine: Box<
+            dyn crate::templates::application::service::TemplateEngineService,
+        >,
+    ) -> Result<Box<dyn TemplateGenerationService>, PlanningError>;
+
+    /// Create a template generation service without Phase 3 validation.
+    ///
+    /// Development/debugging mode only. Generated templates will not
+    /// be validated against the symbol graph.
+    async fn create_without_validation(
+        &self,
+        generator: Box<dyn TemplateGenerator>,
+    ) -> Result<Box<dyn TemplateGenerationService>, PlanningError>;
+}
+
+// ---------------------------------------------------------------------------
+// SymbolValidationFactory
+// ---------------------------------------------------------------------------
+
+/// Factory for constructing `SymbolValidationService` instances.
+///
+/// Handles creation of the symbol validation service with the
+/// appropriate symbol graph client and validation configuration.
+///
+/// # Contract (Frozen)
+/// - `create_default` — Builds with repo engine symbol graph
+/// - `create_disabled` — Returns a pass-through validator (no-op)
+#[async_trait]
+pub trait SymbolValidationFactory: Send + Sync {
+    /// Create a default symbol validation service.
+    ///
+    /// Validates against the indexed symbol graph from the Repo Engine.
+    async fn create_default(
+        &self,
+        symbol_graph: Box<
+            dyn crate::repo_engine::application::service::SymbolGraphService,
+        >,
+    ) -> Result<Box<dyn SymbolValidationService>, PlanningError>;
+
+    /// Create a disabled symbol validation service (pass-through).
+    ///
+    /// All templates pass validation. Useful for development or when
+    /// the symbol graph is not available.
+    async fn create_disabled(&self) -> Result<Box<dyn SymbolValidationService>, PlanningError>;
 }
