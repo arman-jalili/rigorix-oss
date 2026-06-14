@@ -19,7 +19,10 @@ use crate::planning::application::pipeline_impl::PlanningPipelineImpl;
 use crate::planning::application::service::PlanningPipelineService;
 use crate::planning::domain::classification::Classifier;
 use crate::planning::domain::extractor::ParameterExtractor;
-use crate::planning::domain::generator::{GeneratedTemplate, GeneratedTemplateCost, GeneratorError, RepoContext, TemplateGenerator};
+use crate::planning::domain::generator::{
+    GeneratedTemplate, GeneratedTemplateCost, GeneratorError, InvalidSymbolReference,
+    RepoContext, TemplateGenerator,
+};
 use crate::planning::domain::intent::UserIntent;
 use crate::planning::domain::mock_classifier::MockClassifier;
 use crate::planning::domain::mock_extractor::MockParameterExtractor;
@@ -886,6 +889,314 @@ impl TemplateGenerator for MockGenerator {
     fn estimate_cost(&self, _intent: &UserIntent) -> GeneratedTemplateCost {
         GeneratedTemplateCost { estimated_calls: 1, estimated_tokens: 200 }
     }
+}
+
+// ---------------------------------------------------------------------------
+// TemplateGenerator Trait Tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_generator_error_display_invalid_toml() {
+    let err = GeneratorError::InvalidToml {
+        raw_response: "not toml at all".to_string(),
+        parse_error: "expected '=', found 'n'".to_string(),
+        attempt: 0,
+    };
+    let msg = err.to_string();
+    assert!(msg.contains("Invalid TOML"));
+    assert!(msg.contains("attempt 0"));
+    assert!(msg.contains("expected '=', found 'n'"));
+}
+
+#[test]
+fn test_generator_error_display_validation_failed() {
+    let err = GeneratorError::ValidationFailed {
+        template_id: "my-template".to_string(),
+        errors: vec!["missing required field 'nodes'".to_string()],
+        attempt: 2,
+    };
+    let msg = err.to_string();
+    assert!(msg.contains("Validation failed"));
+    assert!(msg.contains("my-template"));
+    assert!(msg.contains("attempt 2"));
+    assert!(msg.contains("missing required field"));
+}
+
+#[test]
+fn test_generator_error_display_symbol_validation() {
+    let err = GeneratorError::SymbolValidation {
+        template_id: "my-template".to_string(),
+        invalid_references: vec![
+            InvalidSymbolReference {
+                symbol: "NonExistentType".to_string(),
+                usage: "type".to_string(),
+                reason: "Type not found in symbol graph".to_string(),
+                is_any_type: false,
+            },
+        ],
+        attempt: 1,
+    };
+    let msg = err.to_string();
+    assert!(msg.contains("Symbol validation failed"));
+    assert!(msg.contains("my-template"));
+    assert!(msg.contains("1 invalid references"));
+}
+
+#[test]
+fn test_generator_error_display_budget_exhausted() {
+    let err = GeneratorError::BudgetExhausted {
+        calls_used: 5,
+        max_calls: 10,
+    };
+    let msg = err.to_string();
+    assert!(msg.contains("Budget exhausted"));
+    assert!(msg.contains("5/10"));
+}
+
+#[test]
+fn test_generator_error_display_api_error() {
+    let err = GeneratorError::ApiError {
+        detail: "Rate limited".to_string(),
+        status_code: Some(429),
+        retry_after: Some(30),
+    };
+    let msg = err.to_string();
+    assert!(msg.contains("API error"));
+    assert!(msg.contains("429"));
+    assert!(msg.contains("Rate limited"));
+}
+
+#[test]
+fn test_generator_error_display_max_retries_exhausted() {
+    let err = GeneratorError::MaxRetriesExhausted {
+        attempts: 3,
+        errors: vec!["Invalid TOML".to_string(), "Validation failed".to_string()],
+    };
+    let msg = err.to_string();
+    assert!(msg.contains("Max retries exhausted"));
+    assert!(msg.contains("3 attempts"));
+    assert!(msg.contains("Invalid TOML"));
+}
+
+#[test]
+fn test_generator_error_display_context_build_failed() {
+    let err = GeneratorError::ContextBuildFailed {
+        detail: "Directory not found".to_string(),
+    };
+    let msg = err.to_string();
+    assert!(msg.contains("Context build failed"));
+    assert!(msg.contains("Directory not found"));
+}
+
+#[test]
+fn test_generator_error_from_budget_exhausted_to_planning_error() {
+    let gen_err = GeneratorError::BudgetExhausted {
+        calls_used: 3,
+        max_calls: 10,
+    };
+    let plan_err: PlanningError = gen_err.into();
+    match plan_err {
+        PlanningError::BudgetExhausted {
+            used_calls,
+            max_calls,
+            ..
+        } => {
+            assert_eq!(used_calls, 3);
+            assert_eq!(max_calls, 10);
+        }
+        other => panic!("Expected BudgetExhausted, got: {:?}", other),
+    }
+}
+
+#[test]
+fn test_generator_error_from_other_to_template_engine_error() {
+    let gen_err = GeneratorError::InvalidToml {
+        raw_response: "bad".to_string(),
+        parse_error: "parse error".to_string(),
+        attempt: 0,
+    };
+    let plan_err: PlanningError = gen_err.into();
+    match plan_err {
+        PlanningError::TemplateEngineError { .. } => {} // Expected
+        other => panic!("Expected TemplateEngineError, got: {:?}", other),
+    }
+}
+
+#[test]
+fn test_generator_error_serialization_roundtrip() {
+    let err = GeneratorError::InvalidToml {
+        raw_response: "not toml".to_string(),
+        parse_error: "expected value".to_string(),
+        attempt: 0,
+    };
+    let json = serde_json::to_string(&err).unwrap();
+    let deserialized: GeneratorError = serde_json::from_str(&json).unwrap();
+    assert_eq!(err, deserialized);
+}
+
+#[test]
+fn test_generator_error_serialization_symbol_validation() {
+    let err = GeneratorError::SymbolValidation {
+        template_id: "t1".to_string(),
+        invalid_references: vec![InvalidSymbolReference {
+            symbol: "BadType".to_string(),
+            usage: "type".to_string(),
+            reason: "not found".to_string(),
+            is_any_type: false,
+        }],
+        attempt: 1,
+    };
+    let json = serde_json::to_string(&err).unwrap();
+    let deserialized: GeneratorError = serde_json::from_str(&json).unwrap();
+    assert_eq!(err, deserialized);
+}
+
+#[test]
+fn test_repo_context_creation() {
+    let ctx = RepoContext::new(
+        std::path::PathBuf::from("/project"),
+        "rust".to_string(),
+    );
+    assert_eq!(ctx.root_dir.to_str().unwrap(), "/project");
+    assert_eq!(ctx.project_type, "rust");
+    assert!(ctx.directory_tree.is_empty());
+    assert!(ctx.dependencies.is_empty());
+    assert!(ctx.public_api.is_empty());
+    assert!(ctx.symbol_graph_snapshot.is_none());
+}
+
+#[test]
+fn test_repo_context_has_files() {
+    let mut ctx = RepoContext::new(
+        std::path::PathBuf::from("."),
+        "python".to_string(),
+    );
+    assert!(!ctx.has_files());
+    ctx.directory_tree.push("src/main.py".to_string());
+    assert!(ctx.has_files());
+}
+
+#[test]
+fn test_repo_context_has_public_api() {
+    let mut ctx = RepoContext::new(
+        std::path::PathBuf::from("."),
+        "typescript".to_string(),
+    );
+    assert!(!ctx.has_public_api());
+    ctx.public_api.push("fetchUser".to_string());
+    assert!(ctx.has_public_api());
+}
+
+#[test]
+fn test_repo_context_serialization_roundtrip() {
+    let mut ctx = RepoContext::new(
+        std::path::PathBuf::from("/repo"),
+        "rust".to_string(),
+    );
+    ctx.directory_tree.push("src/lib.rs".to_string());
+    ctx.dependencies.push("serde".to_string());
+    ctx.public_api.push("MyStruct".to_string());
+    ctx.symbol_graph_snapshot = Some(serde_json::json!({"types": ["MyStruct"]}));
+
+    let json = serde_json::to_string(&ctx).unwrap();
+    let deserialized: RepoContext = serde_json::from_str(&json).unwrap();
+    assert_eq!(ctx.root_dir, deserialized.root_dir);
+    assert_eq!(ctx.project_type, deserialized.project_type);
+    assert_eq!(ctx.directory_tree, deserialized.directory_tree);
+    assert_eq!(ctx.dependencies, deserialized.dependencies);
+    assert_eq!(ctx.symbol_graph_snapshot, deserialized.symbol_graph_snapshot);
+}
+
+#[test]
+fn test_generated_template_creation() {
+    let template = GeneratedTemplate {
+        toml_content: "id = \"test\"\nname = \"Test\"\n".to_string(),
+        suggested_id: "test".to_string(),
+        suggested_name: "Test Template".to_string(),
+        description: "A test template".to_string(),
+        llm_calls_used: 2,
+        llm_tokens_used: 500,
+    };
+    assert_eq!(template.suggested_id, "test");
+    assert!(template.toml_content.contains("id = \"test\""));
+    assert_eq!(template.llm_calls_used, 2);
+    assert_eq!(template.llm_tokens_used, 500);
+}
+
+#[test]
+fn test_generated_template_cost_creation() {
+    let cost = GeneratedTemplateCost {
+        estimated_calls: 1,
+        estimated_tokens: 200,
+    };
+    assert_eq!(cost.estimated_calls, 1);
+    assert_eq!(cost.estimated_tokens, 200);
+}
+
+#[tokio::test]
+async fn test_mock_generator_returns_template() {
+    let generator = MockGenerator;
+    let intent = UserIntent::new("test".to_string(), None);
+    let ctx = RepoContext::new(
+        std::path::PathBuf::from("."),
+        "rust".to_string(),
+    );
+    let budget = crate::budget_tracking::domain::LlmBudget {
+        max_calls: 10,
+        max_tokens: 10000,
+        used_calls: 0,
+        used_tokens: 0,
+        label: "test".to_string(),
+    };
+
+    let result = generator.generate(&intent, &ctx, &budget).await;
+    assert!(result.is_ok());
+    let template = result.unwrap();
+    assert_eq!(template.suggested_id, "generated");
+    assert_eq!(template.llm_calls_used, 1);
+    assert_eq!(template.llm_tokens_used, 200);
+}
+
+#[tokio::test]
+async fn test_mock_generator_estimate_cost() {
+    let generator = MockGenerator;
+    let intent = UserIntent::new("test".to_string(), None);
+    let cost = generator.estimate_cost(&intent);
+    assert_eq!(cost.estimated_calls, 1);
+    assert_eq!(cost.estimated_tokens, 200);
+}
+
+#[test]
+fn test_invalid_symbol_reference_creation() {
+    let refr = InvalidSymbolReference {
+        symbol: "MyStruct".to_string(),
+        usage: "field_access".to_string(),
+        reason: "field 'missing' not found on MyStruct".to_string(),
+        is_any_type: false,
+    };
+    assert_eq!(refr.symbol, "MyStruct");
+    assert_eq!(refr.usage, "field_access");
+    assert!(refr.reason.contains("missing"));
+    assert!(!refr.is_any_type);
+}
+
+#[test]
+fn test_invalid_symbol_reference_any_type() {
+    let refr = InvalidSymbolReference {
+        symbol: "any".to_string(),
+        usage: "type".to_string(),
+        reason: "LLM used 'any' type as escape hatch".to_string(),
+        is_any_type: true,
+    };
+    assert!(refr.is_any_type);
+}
+
+#[test]
+fn test_template_generator_trait_is_object_safe() {
+    // Verify the trait can be used as a trait object
+    fn takes_generator(_gen: &dyn TemplateGenerator) {}
+    let gen = MockGenerator;
+    takes_generator(&gen);
 }
 
 // ---------------------------------------------------------------------------
