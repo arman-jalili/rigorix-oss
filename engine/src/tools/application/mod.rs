@@ -25,11 +25,13 @@ pub mod git_read_tool;
 pub mod git_stage_tool;
 pub mod lsp_query_tool;
 pub mod run_command_tool;
+pub mod registry_impl;
 pub mod service;
 
 pub use dto::*;
 pub use factory::*;
 pub use file_patch_tool::FilePatchTool;
+pub use registry_impl::ToolRegistryImpl;
 pub use file_read_tool::FileReadTool;
 pub use file_write_tool::{FileAppendTool, FileWriteTool};
 pub use git_commit_tool::GitCommitTool;
