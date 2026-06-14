@@ -49,14 +49,14 @@
       }
     }
   ],
-  "currentItemIndex": 0,
-  "currentStepIndex": 2,
+  "currentItemIndex": 1,
+  "currentStepIndex": 0,
   "status": "running",
   "retryCount": 0,
   "results": [
     {
       "item": "issue-contract-freeze",
-      "status": "in-progress",
+      "status": "done",
       "stepResults": [
         {
           "step": "implement",
@@ -77,11 +77,21 @@
           "step": "validate",
           "status": "passed",
           "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
         }
       ]
     }
   ],
   "mergeOnValid": true,
   "createdAt": "2026-06-14T10:18:26.979Z",
-  "updatedAt": "2026-06-14T10:23:43.617Z"
+  "updatedAt": "2026-06-14T13:10:35.043Z"
 }
