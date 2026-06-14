@@ -19,9 +19,8 @@ use async_trait::async_trait;
 use crate::risk_gating::domain::{RiskClassifier, RiskConfig, RiskGatingError};
 
 use super::dto::{
-    ClassifyToolInput, ClassifyToolOutput, EvaluateGateInput, EvaluateGateOutput,
-    GetConfigOutput, OverrideToolInput, OverrideToolOutput, ReloadConfigOutput,
-    ResolveGateInput, ResolveGateOutput,
+    ClassifyToolInput, ClassifyToolOutput, EvaluateGateInput, EvaluateGateOutput, GetConfigOutput,
+    OverrideToolInput, OverrideToolOutput, ReloadConfigOutput, ResolveGateInput, ResolveGateOutput,
 };
 
 /// Central risk gate service that classifies tools and evaluates gating policies.

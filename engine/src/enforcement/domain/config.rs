@@ -373,8 +373,7 @@ impl EnforcementConfig {
                 field: "execution_limits.max_tool_calls".to_string(),
                 message: format!(
                     "max_tool_calls {} exceeds safety cap {}",
-                    self.execution_limits.max_tool_calls,
-                    safety_caps.max_tool_calls_cap
+                    self.execution_limits.max_tool_calls, safety_caps.max_tool_calls_cap
                 ),
                 value: Some(self.execution_limits.max_tool_calls.to_string()),
             });
@@ -385,8 +384,7 @@ impl EnforcementConfig {
                 field: "execution_limits.max_execution_time_secs".to_string(),
                 message: format!(
                     "max_execution_time_secs {} exceeds safety cap {}",
-                    self.execution_limits.max_execution_time_secs,
-                    safety_caps.max_timeout_secs_cap
+                    self.execution_limits.max_execution_time_secs, safety_caps.max_timeout_secs_cap
                 ),
                 value: Some(self.execution_limits.max_execution_time_secs.to_string()),
             });
@@ -397,14 +395,15 @@ impl EnforcementConfig {
                 field: "execution_limits.max_retries_per_node".to_string(),
                 message: format!(
                     "max_retries_per_node {} exceeds safety cap {}",
-                    self.execution_limits.max_retries_per_node,
-                    safety_caps.max_retries_cap
+                    self.execution_limits.max_retries_per_node, safety_caps.max_retries_cap
                 ),
                 value: Some(self.execution_limits.max_retries_per_node.to_string()),
             });
         }
 
-        if (self.execution_limits.max_concurrent_tools as u64) > safety_caps.max_concurrent_tools_cap {
+        if (self.execution_limits.max_concurrent_tools as u64)
+            > safety_caps.max_concurrent_tools_cap
+        {
             errors.push(ConfigValidationError {
                 field: "execution_limits.max_concurrent_tools".to_string(),
                 message: format!(

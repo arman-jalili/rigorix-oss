@@ -14,14 +14,12 @@ use std::sync::Arc;
 use crate::audit::domain::AuditError;
 
 use super::audit_queue_impl::AuditQueueImpl;
-use super::dto::{
-    BuildEnvelopeInput, BuildEnvelopeOutput, DeliverEnvelopeInput, EnqueueInput,
-};
-use super::service::RetryPendingOutput;
+use super::audit_sender_impl::AuditSenderImpl;
+use super::dto::{BuildEnvelopeInput, BuildEnvelopeOutput, DeliverEnvelopeInput, EnqueueInput};
 use super::envelope_factory_impl::AuditEnvelopeFactoryImpl;
 use super::factory::AuditEnvelopeFactory;
-use super::service::{AuditService, AuditQueue, AuditSender, AuditStatusOutput};
-use super::audit_sender_impl::AuditSenderImpl;
+use super::service::RetryPendingOutput;
+use super::service::{AuditQueue, AuditSender, AuditService, AuditStatusOutput};
 
 /// Implementation of `AuditService`.
 ///

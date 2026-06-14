@@ -9,8 +9,8 @@
 //! signing for envelope integrity.
 
 use async_trait::async_trait;
-use sha2::{Digest, Sha256};
 use hmac::{Hmac, KeyInit};
+use sha2::{Digest, Sha256};
 
 use crate::audit::domain::{AuditEnvelope, AuditError};
 
@@ -43,13 +43,10 @@ impl AuditEnvelopeFactoryImpl {
     }
 
     /// Compute HMAC-SHA256 signature over the envelope content.
-    fn compute_signature(
-        envelope: &AuditEnvelope,
-        key: &str,
-    ) -> Result<String, AuditError> {
+    fn compute_signature(envelope: &AuditEnvelope, key: &str) -> Result<String, AuditError> {
         use hmac::Mac;
-        let mut mac = Hmac::<Sha256>::new_from_slice(key.as_bytes())
-            .map_err(|e| AuditError::Internal {
+        let mut mac =
+            Hmac::<Sha256>::new_from_slice(key.as_bytes()).map_err(|e| AuditError::Internal {
                 detail: format!("HMAC key error: {e}"),
             })?;
 

@@ -89,10 +89,7 @@ impl FailureClassifierService for FailureClassifierServiceImpl {
         if !inherently_retryable {
             return Ok(CheckRetryEligibilityOutput {
                 eligible: false,
-                reason: format!(
-                    "{:?} is not inherently retryable",
-                    input.failure_type
-                ),
+                reason: format!("{:?} is not inherently retryable", input.failure_type),
                 remaining_attempts: None,
             });
         }
@@ -111,7 +108,10 @@ impl FailureClassifierService for FailureClassifierServiceImpl {
         let remaining = max_retries.saturating_sub(current_count);
         Ok(CheckRetryEligibilityOutput {
             eligible: true,
-            reason: format!("Eligible for retry ({} of {} remaining)", remaining, max_retries),
+            reason: format!(
+                "Eligible for retry ({} of {} remaining)",
+                remaining, max_retries
+            ),
             remaining_attempts: Some(remaining),
         })
     }
@@ -127,8 +127,10 @@ impl FailureClassifierService for FailureClassifierServiceImpl {
 /// 5. Default to NonRetryable
 fn classify_internal(error_lower: &str, context_lower: &str) -> (FailureType, String) {
     // Check for resource exhaustion
-    if contains_any(error_lower, &["out of memory", "oom", "disk full", "no space"])
-        || contains_any(context_lower, &["out of memory", "oom", "disk full"])
+    if contains_any(
+        error_lower,
+        &["out of memory", "oom", "disk full", "no space"],
+    ) || contains_any(context_lower, &["out of memory", "oom", "disk full"])
     {
         return (
             FailureType::ResourceExhausted,

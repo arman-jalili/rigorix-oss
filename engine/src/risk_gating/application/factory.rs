@@ -58,7 +58,10 @@ pub trait RiskGateFactory: Send + Sync {
         &self,
         execution_id: &str,
         config: RiskConfig,
-        additional_overrides: std::collections::HashMap<String, crate::risk_gating::domain::RiskLevel>,
+        additional_overrides: std::collections::HashMap<
+            String,
+            crate::risk_gating::domain::RiskLevel,
+        >,
     ) -> Result<Box<dyn RiskGateService>, RiskGatingError>;
 
     /// Create a `RiskGateService` with explicit gating policy flags.

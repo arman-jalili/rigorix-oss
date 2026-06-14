@@ -17,7 +17,9 @@
 use async_trait::async_trait;
 use uuid::Uuid;
 
-use crate::state_persistence::domain::{ExecutionState, ExecutionGraph, ExecutionRecord, StateError};
+use crate::state_persistence::domain::{
+    ExecutionGraph, ExecutionRecord, ExecutionState, StateError,
+};
 
 /// Repository for CRUD operations on execution state.
 ///
@@ -97,7 +99,8 @@ pub trait ExecutionRecordRepository: Send + Sync {
     async fn load_record(&self, record_id: Uuid) -> Result<ExecutionRecord, StateError>;
 
     /// Load an execution record by the associated execution ID.
-    async fn load_by_execution_id(&self, execution_id: Uuid) -> Result<ExecutionRecord, StateError>;
+    async fn load_by_execution_id(&self, execution_id: Uuid)
+        -> Result<ExecutionRecord, StateError>;
 
     /// Delete an execution record from storage.
     async fn delete_record(&self, record_id: Uuid) -> Result<(), StateError>;

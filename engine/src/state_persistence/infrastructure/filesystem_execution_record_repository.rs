@@ -49,7 +49,8 @@ impl FileSystemExecutionRecordRepository {
     }
 
     fn execution_index_path(&self, execution_id: Uuid) -> PathBuf {
-        self.record_dir.join(format!("idx_{}.record.json", execution_id))
+        self.record_dir
+            .join(format!("idx_{}.record.json", execution_id))
     }
 }
 
@@ -57,11 +58,14 @@ impl FileSystemExecutionRecordRepository {
 impl ExecutionRecordRepository for FileSystemExecutionRecordRepository {
     async fn save_record(&self, record: &ExecutionRecord) -> Result<(), StateError> {
         let path = self.record_path(record.record_id);
-        let temp = self.record_dir.join(format!("{}.record.json.tmp", record.record_id));
+        let temp = self
+            .record_dir
+            .join(format!("{}.record.json.tmp", record.record_id));
 
-        let json = serde_json::to_string_pretty(record).map_err(|e| StateError::SerialisationError {
-            detail: format!("Failed to serialise execution record: {}", e),
-        })?;
+        let json =
+            serde_json::to_string_pretty(record).map_err(|e| StateError::SerialisationError {
+                detail: format!("Failed to serialise execution record: {}", e),
+            })?;
 
         fs::write(&temp, &json)
             .await
@@ -78,9 +82,11 @@ impl ExecutionRecordRepository for FileSystemExecutionRecordRepository {
         // Create execution_id index
         let idx_path = self.execution_index_path(record.execution_id);
         if !idx_path.exists() {
-            fs::copy(&path, &idx_path).await.map_err(|e| StateError::IoError {
-                detail: format!("Failed to create record execution index: {}", e),
-            })?;
+            fs::copy(&path, &idx_path)
+                .await
+                .map_err(|e| StateError::IoError {
+                    detail: format!("Failed to create record execution index: {}", e),
+                })?;
         }
 
         Ok(())
@@ -94,9 +100,11 @@ impl ExecutionRecordRepository for FileSystemExecutionRecordRepository {
             });
         }
 
-        let data = fs::read_to_string(&path).await.map_err(|e| StateError::IoError {
-            detail: format!("Failed to read record file: {}", e),
-        })?;
+        let data = fs::read_to_string(&path)
+            .await
+            .map_err(|e| StateError::IoError {
+                detail: format!("Failed to read record file: {}", e),
+            })?;
 
         serde_json::from_str(&data).map_err(|e| StateError::CorruptedState {
             path: path.to_string_lossy().to_string(),
@@ -104,7 +112,10 @@ impl ExecutionRecordRepository for FileSystemExecutionRecordRepository {
         })
     }
 
-    async fn load_by_execution_id(&self, execution_id: Uuid) -> Result<ExecutionRecord, StateError> {
+    async fn load_by_execution_id(
+        &self,
+        execution_id: Uuid,
+    ) -> Result<ExecutionRecord, StateError> {
         let idx_path = self.execution_index_path(execution_id);
         if !idx_path.exists() {
             return Err(StateError::StateNotFound {
@@ -112,9 +123,11 @@ impl ExecutionRecordRepository for FileSystemExecutionRecordRepository {
             });
         }
 
-        let data = fs::read_to_string(&idx_path).await.map_err(|e| StateError::IoError {
-            detail: format!("Failed to read record index file: {}", e),
-        })?;
+        let data = fs::read_to_string(&idx_path)
+            .await
+            .map_err(|e| StateError::IoError {
+                detail: format!("Failed to read record index file: {}", e),
+            })?;
 
         serde_json::from_str(&data).map_err(|e| StateError::CorruptedState {
             path: idx_path.to_string_lossy().to_string(),
@@ -124,7 +137,9 @@ impl ExecutionRecordRepository for FileSystemExecutionRecordRepository {
 
     async fn delete_record(&self, record_id: Uuid) -> Result<(), StateError> {
         let path = self.record_path(record_id);
-        let temp = self.record_dir.join(format!("{}.record.json.tmp", record_id));
+        let temp = self
+            .record_dir
+            .join(format!("{}.record.json.tmp", record_id));
 
         if path.exists() {
             if let Ok(record) = self.load_record(record_id).await {
@@ -133,9 +148,11 @@ impl ExecutionRecordRepository for FileSystemExecutionRecordRepository {
                     let _ = fs::remove_file(&idx_path).await;
                 }
             }
-            fs::remove_file(&path).await.map_err(|e| StateError::IoError {
-                detail: format!("Failed to delete record file: {}", e),
-            })?;
+            fs::remove_file(&path)
+                .await
+                .map_err(|e| StateError::IoError {
+                    detail: format!("Failed to delete record file: {}", e),
+                })?;
         }
 
         if temp.exists() {
@@ -146,14 +163,21 @@ impl ExecutionRecordRepository for FileSystemExecutionRecordRepository {
     }
 
     async fn list_records(&self, limit: u32, offset: u32) -> Result<Vec<Uuid>, StateError> {
-        let mut entries = fs::read_dir(&self.record_dir).await.map_err(|e| StateError::IoError {
-            detail: format!("Failed to read record directory: {}", e),
-        })?;
+        let mut entries =
+            fs::read_dir(&self.record_dir)
+                .await
+                .map_err(|e| StateError::IoError {
+                    detail: format!("Failed to read record directory: {}", e),
+                })?;
 
         let mut ids = Vec::new();
-        while let Some(entry) = entries.next_entry().await.map_err(|e| StateError::IoError {
-            detail: format!("Failed to read directory entry: {}", e),
-        })? {
+        while let Some(entry) = entries
+            .next_entry()
+            .await
+            .map_err(|e| StateError::IoError {
+                detail: format!("Failed to read directory entry: {}", e),
+            })?
+        {
             let file_name = entry.file_name().to_string_lossy().to_string();
             if !file_name.ends_with(".record.json") || file_name.starts_with("idx_") {
                 continue;
@@ -185,9 +209,7 @@ mod tests {
     use chrono::Utc;
     use tempfile::TempDir;
 
-    use crate::state_persistence::domain::{
-        ExecutionGraph, ExecutionGraphNode, ExecutionStatus,
-    };
+    use crate::state_persistence::domain::{ExecutionGraph, ExecutionGraphNode, ExecutionStatus};
 
     fn create_test_record() -> ExecutionRecord {
         let execution_id = Uuid::new_v4();
@@ -251,7 +273,10 @@ mod tests {
         let record = create_test_record();
 
         repo.save_record(&record).await.unwrap();
-        let loaded = repo.load_by_execution_id(record.execution_id).await.unwrap();
+        let loaded = repo
+            .load_by_execution_id(record.execution_id)
+            .await
+            .unwrap();
         assert_eq!(loaded.execution_id, record.execution_id);
     }
 

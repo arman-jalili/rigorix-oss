@@ -51,8 +51,8 @@ impl CircuitBreakerFactory for CircuitBreakerFactoryImpl {
     ) -> Result<Box<dyn CircuitBreakerTrait>, AuditError> {
         Ok(Box::new(CircuitBreakerImpl::new(
             backend_url,
-            5,   // default threshold
-            60,  // default half-open timeout (seconds)
+            5,  // default threshold
+            60, // default half-open timeout (seconds)
         )))
     }
 }

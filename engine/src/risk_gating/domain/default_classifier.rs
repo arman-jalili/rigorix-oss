@@ -130,12 +130,20 @@ impl DefaultClassifier {
 }
 
 impl RiskClassifier for DefaultClassifier {
-    fn classify(&self, tool_name: &str, _parameters: Option<&serde_json::Value>) -> ClassificationResult {
+    fn classify(
+        &self,
+        tool_name: &str,
+        _parameters: Option<&serde_json::Value>,
+    ) -> ClassificationResult {
         // 1. Check for configured override first (highest priority)
         if let Some(override_level) = self.config.get_override(tool_name) {
             return ClassificationResult {
                 risk_level: *override_level,
-                reason: format!("Override from config: {} → {}", tool_name, serde_json::to_string(override_level).unwrap_or_default()),
+                reason: format!(
+                    "Override from config: {} → {}",
+                    tool_name,
+                    serde_json::to_string(override_level).unwrap_or_default()
+                ),
                 from_override: true,
             };
         }
@@ -145,7 +153,11 @@ impl RiskClassifier for DefaultClassifier {
         if let Some(override_level) = self.config.get_override(&lower) {
             return ClassificationResult {
                 risk_level: *override_level,
-                reason: format!("Override from config: {} → {}", tool_name, serde_json::to_string(override_level).unwrap_or_default()),
+                reason: format!(
+                    "Override from config: {} → {}",
+                    tool_name,
+                    serde_json::to_string(override_level).unwrap_or_default()
+                ),
                 from_override: true,
             };
         }
@@ -162,7 +174,10 @@ impl RiskClassifier for DefaultClassifier {
         // 4. Unknown tool: default to Medium (safe default: require confirmation)
         ClassificationResult {
             risk_level: RiskLevel::Medium,
-            reason: format!("Unknown tool '{}', defaulting to Medium (safe default)", tool_name),
+            reason: format!(
+                "Unknown tool '{}', defaulting to Medium (safe default)",
+                tool_name
+            ),
             from_override: false,
         }
     }

@@ -291,7 +291,10 @@ impl TemplateAction {
             TemplateAction::FileWrite { path, content } => format!("{} {}", path, content),
             TemplateAction::FileAppend { path, content } => format!("{} {}", path, content),
             TemplateAction::FilePatch {
-                path, search, insert, ..
+                path,
+                search,
+                insert,
+                ..
             } => format!("{} {} {}", path, search, insert),
             TemplateAction::RunCommand { command, .. } => command.clone(),
             TemplateAction::LspQuery { file, .. } => file.clone(),

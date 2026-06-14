@@ -81,10 +81,7 @@ mod tests {
     async fn test_create_default() {
         let factory = EventBusFactoryImpl;
         let bus = factory.create_default().await.unwrap();
-        let status = bus
-            .event_count()
-            .await
-            .unwrap();
+        let status = bus.event_count().await.unwrap();
         assert_eq!(status.total, 0);
     }
 

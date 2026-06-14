@@ -16,9 +16,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::templates::domain::{
-    RetryConfig, Template, TemplateAction, ValidationRule,
-};
+use crate::templates::domain::{RetryConfig, Template, TemplateAction, ValidationRule};
 
 // ---------------------------------------------------------------------------
 // Parse Template DTOs
@@ -354,10 +352,7 @@ pub struct TemplateSystemConfig {
 impl Default for TemplateSystemConfig {
     fn default() -> Self {
         Self {
-            template_dirs: vec![
-                "templates".to_string(),
-                ".rigorix/templates".to_string(),
-            ],
+            template_dirs: vec!["templates".to_string(), ".rigorix/templates".to_string()],
             file_extension: "toml".to_string(),
             load_builtins: true,
             max_file_size: 1_048_576, // 1 MB

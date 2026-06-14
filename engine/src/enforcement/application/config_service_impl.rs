@@ -152,7 +152,9 @@ impl ConfigBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::enforcement::domain::{EnforcementPresetProfile, SafetyCaps, ToolPolicy, ToolRiskLevel};
+    use crate::enforcement::domain::{
+        EnforcementPresetProfile, SafetyCaps, ToolPolicy, ToolRiskLevel,
+    };
 
     // -----------------------------------------------------------------------
     // Preset Building Tests
@@ -181,8 +183,20 @@ mod tests {
         assert_eq!(config.execution_limits.max_tool_calls, 200);
         assert_eq!(config.execution_limits.max_concurrent_tools, 5);
         // Strict requires confirmation for writes
-        assert!(config.tool_policies.get("write").unwrap().requires_confirmation);
-        assert!(config.tool_policies.get("bash").unwrap().requires_confirmation);
+        assert!(
+            config
+                .tool_policies
+                .get("write")
+                .unwrap()
+                .requires_confirmation
+        );
+        assert!(
+            config
+                .tool_policies
+                .get("bash")
+                .unwrap()
+                .requires_confirmation
+        );
     }
 
     #[test]
@@ -336,7 +350,9 @@ mod tests {
             ..SafetyCaps::default()
         };
         let errors = config.validate(&caps);
-        assert!(errors.iter().any(|e| e.field.contains("max_execution_time_secs")));
+        assert!(errors
+            .iter()
+            .any(|e| e.field.contains("max_execution_time_secs")));
     }
 
     #[test]
@@ -354,10 +370,16 @@ mod tests {
     #[test]
     fn test_validation_detects_invalid_warning_threshold() {
         let mut config = EnforcementConfig::standard();
-        config.budgets.get_mut("tokens").unwrap().soft_warning_threshold = 1.5;
+        config
+            .budgets
+            .get_mut("tokens")
+            .unwrap()
+            .soft_warning_threshold = 1.5;
         let caps = SafetyCaps::default();
         let errors = config.validate(&caps);
-        assert!(errors.iter().any(|e| e.field.contains("soft_warning_threshold")));
+        assert!(errors
+            .iter()
+            .any(|e| e.field.contains("soft_warning_threshold")));
     }
 
     #[test]
@@ -444,7 +466,8 @@ mod tests {
             ..EnforcementConfig::default()
         };
 
-        let merged = ConfigBuilder::merge_with_preset(&EnforcementPresetProfile::Standard, user_config);
+        let merged =
+            ConfigBuilder::merge_with_preset(&EnforcementPresetProfile::Standard, user_config);
         assert!(merged.budgets.contains_key("custom_resource"));
         // Original preset budgets should still exist
         assert!(merged.budgets.contains_key("tokens"));
@@ -462,7 +485,8 @@ mod tests {
             },
         );
 
-        let merged = ConfigBuilder::merge_with_preset(&EnforcementPresetProfile::Standard, user_config);
+        let merged =
+            ConfigBuilder::merge_with_preset(&EnforcementPresetProfile::Standard, user_config);
         // User's block policy should win
         assert!(!merged.tool_policies.get("bash").unwrap().allowed);
     }

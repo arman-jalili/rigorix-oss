@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: ""state-persistence""
+  epic: ""template-system""
   component: "Contract Freeze"
-  module: "state-persistence"
+  module: "template-system"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/state-persistence.md"
+    - module: ".pi/architecture/modules/template-system.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -47,23 +47,23 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/state-persistence/contracts/"
-    - "create: src/state-persistence/contracts/dtos/"
-    - "create: src/state-persistence/contracts/events/"
+    - "create: src/template-system/contracts/"
+    - "create: src/template-system/contracts/dtos/"
+    - "create: src/template-system/contracts/events/"
 ---
 
-# Contract Freeze: state-persistence
+# Contract Freeze: template-system
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the state-persistence
+Define and freeze all public interfaces, contracts, and schemas for the template-system
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- ExecutionState
-- StateManager
+- TemplateParser
+- TemplateEngine
 
 ## What Must Be Frozen
 

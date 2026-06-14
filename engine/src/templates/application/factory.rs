@@ -17,7 +17,7 @@ use async_trait::async_trait;
 
 use crate::templates::domain::{Template, TemplateError};
 
-use super::dto::{GenerateOutput, TemplateSystemConfig, TemplateSummary};
+use super::dto::{GenerateOutput, TemplateSummary, TemplateSystemConfig};
 
 // ---------------------------------------------------------------------------
 // TemplateFactory

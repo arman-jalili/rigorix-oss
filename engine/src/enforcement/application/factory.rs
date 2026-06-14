@@ -51,7 +51,10 @@ pub trait ExecutionEnforcerFactory: Send + Sync {
         &self,
         execution_id: &str,
         config: EnforcementConfig,
-        budget_overrides: std::collections::HashMap<String, crate::enforcement::domain::ResourceBudget>,
+        budget_overrides: std::collections::HashMap<
+            String,
+            crate::enforcement::domain::ResourceBudget,
+        >,
     ) -> Result<Box<dyn ExecutionEnforcer>, EnforcementError>;
 
     /// Create an `ExecutionEnforcer` with custom tool policy overrides.

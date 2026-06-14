@@ -136,8 +136,7 @@ pub struct ValidateConfigInput {
     pub custom_patterns: Option<std::collections::HashMap<String, FailureType>>,
 
     /// Custom FailureType-to-RetryStrategy mappings to validate.
-    pub custom_strategy_mappings:
-        Option<std::collections::HashMap<FailureType, RetryStrategy>>,
+    pub custom_strategy_mappings: Option<std::collections::HashMap<FailureType, RetryStrategy>>,
 }
 
 /// Output from validating classification configuration.

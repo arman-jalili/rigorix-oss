@@ -47,7 +47,10 @@ pub trait PersistedEventRepository: Send + Sync {
     /// Supports filtering by execution ID, event type, sequence range,
     /// and timestamp range. Results are returned in sequence order.
     /// `limit` caps the number of results.
-    async fn query(&self, input: &QueryEventsInput) -> Result<Vec<PersistedEvent>, EventSystemError>;
+    async fn query(
+        &self,
+        input: &QueryEventsInput,
+    ) -> Result<Vec<PersistedEvent>, EventSystemError>;
 
     /// Drain all persisted events, clearing the buffer.
     ///
@@ -65,7 +68,10 @@ pub trait PersistedEventRepository: Send + Sync {
     /// Prune events older than the given timestamp.
     ///
     /// Returns the number of events removed.
-    async fn prune(&self, older_than: chrono::DateTime<chrono::Utc>) -> Result<u64, EventSystemError>;
+    async fn prune(
+        &self,
+        older_than: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64, EventSystemError>;
 
     /// Clear all persisted events.
     ///

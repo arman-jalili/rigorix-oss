@@ -44,7 +44,9 @@ impl CancellationManagerFactory for CancellationManagerFactoryImpl {
         &self,
         graceful_timeout_secs: u64,
     ) -> Result<Box<dyn CancellationService>, CancellationError> {
-        Ok(Box::new(CancellationManagerImpl::new(graceful_timeout_secs)))
+        Ok(Box::new(CancellationManagerImpl::new(
+            graceful_timeout_secs,
+        )))
     }
 
     async fn create_child(
@@ -58,11 +60,7 @@ impl CancellationManagerFactory for CancellationManagerFactoryImpl {
         )))
     }
 
-    async fn register_cleanup_handler(
-        &self,
-        task_type: &str,
-        handler: Box<dyn CleanupHandler>,
-    ) {
+    async fn register_cleanup_handler(&self, task_type: &str, handler: Box<dyn CleanupHandler>) {
         // This is a no-op at the factory level — cleanup handlers are
         // registered on the specific CancellationManagerImpl instance
         // after it is created.
@@ -91,10 +89,7 @@ mod tests {
     async fn test_create_child() {
         let factory = CancellationManagerFactoryImpl::new();
         let parent = tokio_util::sync::CancellationToken::new();
-        let service = factory
-            .create_child(parent.clone(), 30)
-            .await
-            .unwrap();
+        let service = factory.create_child(parent.clone(), 30).await.unwrap();
 
         assert!(!service.is_cancelled());
 

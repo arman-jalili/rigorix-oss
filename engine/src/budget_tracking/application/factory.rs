@@ -28,17 +28,23 @@ pub trait LlmBudgetFactory: Send + Sync {
     /// Create a budget service with default mode settings.
     ///
     /// Default mode: 5 calls, 10K tokens.
-    async fn create_default(&self) -> Result<Box<dyn super::service::LlmBudgetService>, LlmBudgetError>;
+    async fn create_default(
+        &self,
+    ) -> Result<Box<dyn super::service::LlmBudgetService>, LlmBudgetError>;
 
     /// Create a budget service with advanced mode settings.
     ///
     /// Advanced mode: 20 calls, 100K tokens.
-    async fn create_advanced(&self) -> Result<Box<dyn super::service::LlmBudgetService>, LlmBudgetError>;
+    async fn create_advanced(
+        &self,
+    ) -> Result<Box<dyn super::service::LlmBudgetService>, LlmBudgetError>;
 
     /// Create a budget service with aggressive mode settings.
     ///
     /// Aggressive mode: 50 calls, 500K tokens.
-    async fn create_aggressive(&self) -> Result<Box<dyn super::service::LlmBudgetService>, LlmBudgetError>;
+    async fn create_aggressive(
+        &self,
+    ) -> Result<Box<dyn super::service::LlmBudgetService>, LlmBudgetError>;
 
     /// Create a budget service with custom limits.
     ///

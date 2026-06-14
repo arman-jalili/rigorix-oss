@@ -23,14 +23,12 @@ use chrono::Utc;
 
 use crate::enforcement::application::dto::{
     ActiveWarning, BudgetSnapshot, CheckExecutionLimitsInput, CheckExecutionLimitsOutput,
-    ConfigSummary, EvaluateToolCallInput, EvaluateToolCallOutput, GetBudgetStatusInput,
-    GetBudgetStatusOutput, LimitStatus, ReloadConfigOutput, ResourceBudgetStatus,
-    TrackResourceUsageInput, TrackResourceUsageOutput, ExecutionLimitsSummary,
+    ConfigSummary, EvaluateToolCallInput, EvaluateToolCallOutput, ExecutionLimitsSummary,
+    GetBudgetStatusInput, GetBudgetStatusOutput, LimitStatus, ReloadConfigOutput,
+    ResourceBudgetStatus, TrackResourceUsageInput, TrackResourceUsageOutput,
 };
 use crate::enforcement::application::service::ExecutionEnforcer;
-use crate::enforcement::domain::{
-    EnforcementConfig, EnforcementError, ResourceBudget, ToolPolicy,
-};
+use crate::enforcement::domain::{EnforcementConfig, EnforcementError, ResourceBudget, ToolPolicy};
 
 /// Internal mutable state for the execution enforcer.
 struct EnforcerState {
@@ -106,8 +104,8 @@ impl ExecutionEnforcerImpl {
     /// Create a budget snapshot from a resource budget.
     fn build_budget_snapshot(budget: &ResourceBudget) -> BudgetSnapshot {
         let usage_ratio = Self::usage_ratio(budget.current_usage, budget.hard_limit);
-        let warning_active = budget.current_usage as f64 / budget.hard_limit as f64
-            >= budget.soft_warning_threshold;
+        let warning_active =
+            budget.current_usage as f64 / budget.hard_limit as f64 >= budget.soft_warning_threshold;
         BudgetSnapshot {
             resource: budget.resource.clone(),
             used: budget.current_usage,
@@ -118,10 +116,7 @@ impl ExecutionEnforcerImpl {
     }
 
     /// Build a ResourceBudgetStatus from a budget entry.
-    fn build_resource_budget_status(
-        name: &str,
-        budget: &ResourceBudget,
-    ) -> ResourceBudgetStatus {
+    fn build_resource_budget_status(name: &str, budget: &ResourceBudget) -> ResourceBudgetStatus {
         let usage_ratio = Self::usage_ratio(budget.current_usage, budget.hard_limit);
         let warning_active = usage_ratio >= budget.soft_warning_threshold;
         let limit_reached = budget.current_usage >= budget.hard_limit;
@@ -143,9 +138,12 @@ impl ExecutionEnforcer for ExecutionEnforcerImpl {
         &self,
         input: EvaluateToolCallInput,
     ) -> Result<EvaluateToolCallOutput, EnforcementError> {
-        let state = self.state.read().map_err(|e| EnforcementError::InvalidState {
-            detail: format!("Failed to read enforcer state: {}", e),
-        })?;
+        let state = self
+            .state
+            .read()
+            .map_err(|e| EnforcementError::InvalidState {
+                detail: format!("Failed to read enforcer state: {}", e),
+            })?;
 
         // 1. Get the tool policy
         let policy = self.get_tool_policy(&state, &input.tool);
@@ -154,7 +152,10 @@ impl ExecutionEnforcer for ExecutionEnforcerImpl {
         if !policy.allowed {
             return Ok(EvaluateToolCallOutput {
                 allowed: false,
-                reason: Some(format!("Tool '{}' is not allowed by enforcement policy", input.tool)),
+                reason: Some(format!(
+                    "Tool '{}' is not allowed by enforcement policy",
+                    input.tool
+                )),
                 risk_level: policy.risk_level,
                 requires_confirmation: policy.requires_confirmation,
                 dry_run: policy.dry_run,
@@ -170,7 +171,11 @@ impl ExecutionEnforcer for ExecutionEnforcerImpl {
 
         // 4. Check budget for the tool's associated resource
         let budget_status = if let Some(budget_key) = &policy.budget_key {
-            state.config.budgets.get(budget_key).map(Self::build_budget_snapshot)
+            state
+                .config
+                .budgets
+                .get(budget_key)
+                .map(Self::build_budget_snapshot)
         } else {
             None
         };
@@ -225,17 +230,22 @@ impl ExecutionEnforcer for ExecutionEnforcerImpl {
         &self,
         input: TrackResourceUsageInput,
     ) -> Result<TrackResourceUsageOutput, EnforcementError> {
-        let mut state = self.state.write().map_err(|e| EnforcementError::InvalidState {
-            detail: format!("Failed to write enforcer state: {}", e),
-        })?;
+        let mut state = self
+            .state
+            .write()
+            .map_err(|e| EnforcementError::InvalidState {
+                detail: format!("Failed to write enforcer state: {}", e),
+            })?;
 
         // Extract budget data before mutating to avoid borrow conflicts
         let budget_data = {
-            let budget = state.config.budgets.get_mut(&input.resource).ok_or_else(|| {
-                EnforcementError::BudgetNotFound {
+            let budget = state
+                .config
+                .budgets
+                .get_mut(&input.resource)
+                .ok_or_else(|| EnforcementError::BudgetNotFound {
                     resource: input.resource.clone(),
-                }
-            })?;
+                })?;
 
             let previous_usage = budget.current_usage;
             budget.current_usage = budget.current_usage.saturating_add(input.amount);
@@ -243,16 +253,29 @@ impl ExecutionEnforcer for ExecutionEnforcerImpl {
             let threshold = budget.soft_warning_threshold;
             let current_usage = budget.current_usage;
 
-            let warning_threshold_crossed =
-                previous_usage < (limit as f64 * threshold) as u64
-                    && current_usage >= (limit as f64 * threshold) as u64;
+            let warning_threshold_crossed = previous_usage < (limit as f64 * threshold) as u64
+                && current_usage >= (limit as f64 * threshold) as u64;
 
             let limit_exceeded = current_usage >= limit;
 
-            (previous_usage, current_usage, limit, threshold, warning_threshold_crossed, limit_exceeded)
+            (
+                previous_usage,
+                current_usage,
+                limit,
+                threshold,
+                warning_threshold_crossed,
+                limit_exceeded,
+            )
         };
 
-        let (previous_usage, current_usage, limit, threshold, warning_threshold_crossed, limit_exceeded) = budget_data;
+        let (
+            previous_usage,
+            current_usage,
+            limit,
+            threshold,
+            warning_threshold_crossed,
+            limit_exceeded,
+        ) = budget_data;
 
         // Track warning if threshold was crossed
         if warning_threshold_crossed {
@@ -269,9 +292,12 @@ impl ExecutionEnforcer for ExecutionEnforcerImpl {
 
         // Update aggregate counters based on resource type
         match input.resource.as_str() {
-            "tool_calls" => state.tool_call_count = state.tool_call_count.saturating_add(input.amount),
+            "tool_calls" => {
+                state.tool_call_count = state.tool_call_count.saturating_add(input.amount)
+            }
             "execution_time_ms" => {
-                state.total_execution_time_ms = state.total_execution_time_ms.saturating_add(input.amount);
+                state.total_execution_time_ms =
+                    state.total_execution_time_ms.saturating_add(input.amount);
             }
             "tokens" => state.total_tokens = state.total_tokens.saturating_add(input.amount),
             _ => {}
@@ -290,9 +316,12 @@ impl ExecutionEnforcer for ExecutionEnforcerImpl {
         &self,
         input: GetBudgetStatusInput,
     ) -> Result<GetBudgetStatusOutput, EnforcementError> {
-        let state = self.state.read().map_err(|e| EnforcementError::InvalidState {
-            detail: format!("Failed to read enforcer state: {}", e),
-        })?;
+        let state = self
+            .state
+            .read()
+            .map_err(|e| EnforcementError::InvalidState {
+                detail: format!("Failed to read enforcer state: {}", e),
+            })?;
 
         let budgets: Vec<ResourceBudgetStatus> = state
             .config
@@ -321,9 +350,12 @@ impl ExecutionEnforcer for ExecutionEnforcerImpl {
         &self,
         input: CheckExecutionLimitsInput,
     ) -> Result<CheckExecutionLimitsOutput, EnforcementError> {
-        let state = self.state.read().map_err(|e| EnforcementError::InvalidState {
-            detail: format!("Failed to read enforcer state: {}", e),
-        })?;
+        let state = self
+            .state
+            .read()
+            .map_err(|e| EnforcementError::InvalidState {
+                detail: format!("Failed to read enforcer state: {}", e),
+            })?;
 
         let mut limits_reached = Vec::new();
 
@@ -372,9 +404,12 @@ impl ExecutionEnforcer for ExecutionEnforcerImpl {
     }
 
     async fn reload_config(&self) -> Result<ReloadConfigOutput, EnforcementError> {
-        let mut state = self.state.write().map_err(|e| EnforcementError::InvalidState {
-            detail: format!("Failed to write enforcer state: {}", e),
-        })?;
+        let mut state = self
+            .state
+            .write()
+            .map_err(|e| EnforcementError::InvalidState {
+                detail: format!("Failed to write enforcer state: {}", e),
+            })?;
 
         // In a full implementation, this would reload from the repository.
         // For now, we rebuild from the existing preset.
@@ -695,10 +730,18 @@ mod tests {
             .unwrap();
 
         assert_eq!(status.budgets.len(), 3);
-        let tool_calls = status.budgets.iter().find(|b| b.resource == "tool_calls").unwrap();
+        let tool_calls = status
+            .budgets
+            .iter()
+            .find(|b| b.resource == "tool_calls")
+            .unwrap();
         assert_eq!(tool_calls.used, 10);
 
-        let tokens = status.budgets.iter().find(|b| b.resource == "tokens").unwrap();
+        let tokens = status
+            .budgets
+            .iter()
+            .find(|b| b.resource == "tokens")
+            .unwrap();
         assert_eq!(tokens.used, 5000);
     }
 
@@ -820,7 +863,10 @@ mod tests {
 
         assert!(result.has_reached_limit);
         assert!(result.should_terminate);
-        assert!(result.limits_reached.iter().any(|l| l.limit_type == "max_tool_calls"));
+        assert!(result
+            .limits_reached
+            .iter()
+            .any(|l| l.limit_type == "max_tool_calls"));
     }
 
     #[tokio::test]
@@ -845,7 +891,10 @@ mod tests {
             .unwrap();
 
         assert!(result.has_reached_limit);
-        assert!(result.limits_reached.iter().any(|l| l.limit_type == "max_tokens"));
+        assert!(result
+            .limits_reached
+            .iter()
+            .any(|l| l.limit_type == "max_tokens"));
     }
 
     // -----------------------------------------------------------------------
@@ -1035,7 +1084,10 @@ mod tests {
 
         let factory = ExecutionEnforcerFactoryImpl;
         let config = EnforcementConfig::strict();
-        let enforcer = factory.create_from_config("test-exec", config).await.unwrap();
+        let enforcer = factory
+            .create_from_config("test-exec", config)
+            .await
+            .unwrap();
 
         let bash = enforcer
             .evaluate_tool_call(EvaluateToolCallInput {

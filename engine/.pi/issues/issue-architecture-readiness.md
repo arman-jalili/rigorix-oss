@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-READINESS"
-  epic: ""state-persistence""
+  epic: ""template-system""
   component: "Architecture Readiness"
-  module: "state-persistence"
+  module: "template-system"
   status: planned
   priority: critical
   dependencies: []
@@ -32,7 +32,7 @@ guardian_issue:
       - Verify proofing scripts + validators in CI
 
   canonical_references:
-    - module: ".pi/architecture/modules/state-persistence.md"
+    - module: ".pi/architecture/modules/template-system.md"
 
   acceptance_criteria:
     - "Runbook created and reviewed"
@@ -58,30 +58,30 @@ guardian_issue:
     and CI will catch regressions (proofing scripts + validators).
 
   file_changes:
-    - "create: docs/runbook-state-persistence.md"
-    - "create: docs/dr-plan-state-persistence.md"
+    - "create: docs/runbook-template-system.md"
+    - "create: docs/dr-plan-template-system.md"
     - "modify: .pi/architecture/CHANGELOG.md"
-    - "modify: .pi/architecture/modules/state-persistence.md"
+    - "modify: .pi/architecture/modules/template-system.md"
 ---
 
-# Architecture Readiness: state-persistence
+# Architecture Readiness: template-system
 
 ## Intent
 
-Make the state-persistence module production-ready. This is the final issue in every epic
+Make the template-system module production-ready. This is the final issue in every epic
 — it closes the loop between implementation and operability.
 
 ## Deliverables
 
 ### Runbook
-`docs/runbook-state-persistence.md` covering:
+`docs/runbook-template-system.md` covering:
 - Startup sequence and dependencies
 - Graceful shutdown procedure
 - Common failure modes and recovery
 - Configuration reference
 
 ### DR Plan
-`docs/dr-plan-state-persistence.md` covering:
+`docs/dr-plan-template-system.md` covering:
 - Backup strategy and schedule
 - Restore procedure
 - Failover plan

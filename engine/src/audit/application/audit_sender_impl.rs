@@ -13,7 +13,9 @@ use std::sync::Arc;
 
 use crate::audit::domain::AuditError;
 
-use super::dto::{DeliverEnvelopeInput, DeliverEnvelopeOutput, SendEnvelopeInput, SendEnvelopeOutput};
+use super::dto::{
+    DeliverEnvelopeInput, DeliverEnvelopeOutput, SendEnvelopeInput, SendEnvelopeOutput,
+};
 use super::service::{AuditSender, CircuitBreaker};
 
 /// Implementation of `AuditSender` with HTTP delivery and circuit breaker.
@@ -80,10 +82,7 @@ impl AuditSenderImpl {
 
 #[async_trait]
 impl AuditSender for AuditSenderImpl {
-    async fn send(
-        &self,
-        input: SendEnvelopeInput,
-    ) -> Result<SendEnvelopeOutput, AuditError> {
+    async fn send(&self, input: SendEnvelopeInput) -> Result<SendEnvelopeOutput, AuditError> {
         let backend_url = input
             .backend_url
             .as_deref()
@@ -229,8 +228,8 @@ impl AuditSender for AuditSenderImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::audit::domain::{EventStatus, ExecutionEventRef};
     use crate::audit::application::circuit_breaker_impl::CircuitBreakerImpl;
+    use crate::audit::domain::{EventStatus, ExecutionEventRef};
 
     fn sample_envelope() -> crate::audit::domain::AuditEnvelope {
         crate::audit::domain::AuditEnvelope {
@@ -269,10 +268,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_backend_url_from_default() {
-        let sender = AuditSenderImpl::new(
-            None,
-            Some("https://audit.example.com".to_string()),
-        );
+        let sender = AuditSenderImpl::new(None, Some("https://audit.example.com".to_string()));
         let input = SendEnvelopeInput {
             envelope: sample_envelope(),
             backend_url: None,
@@ -282,7 +278,10 @@ mod tests {
         let result = sender.send(input).await;
         assert!(result.is_err());
         // Should NOT be NotConfigured — we provided a default
-        assert!(!matches!(result.unwrap_err(), AuditError::NotConfigured { .. }));
+        assert!(!matches!(
+            result.unwrap_err(),
+            AuditError::NotConfigured { .. }
+        ));
     }
 
     #[tokio::test]
@@ -295,10 +294,7 @@ mod tests {
         // Open the breaker
         cb.record_failure().await.unwrap();
 
-        let sender = AuditSenderImpl::new(
-            Some(cb),
-            Some("https://audit.example.com".to_string()),
-        );
+        let sender = AuditSenderImpl::new(Some(cb), Some("https://audit.example.com".to_string()));
         let input = SendEnvelopeInput {
             envelope: sample_envelope(),
             backend_url: None,

@@ -89,7 +89,10 @@ impl PersistedEventRepository for InMemoryEventRepository {
         Ok(buffer.clone())
     }
 
-    async fn query(&self, input: &QueryEventsInput) -> Result<Vec<PersistedEvent>, EventSystemError> {
+    async fn query(
+        &self,
+        input: &QueryEventsInput,
+    ) -> Result<Vec<PersistedEvent>, EventSystemError> {
         let buffer = self.buffer.lock().await;
 
         let filtered: Vec<PersistedEvent> = buffer
@@ -205,7 +208,10 @@ impl PersistedEventRepository for InMemoryEventRepository {
         Ok(self.sequence.load(Ordering::SeqCst))
     }
 
-    async fn prune(&self, older_than: chrono::DateTime<chrono::Utc>) -> Result<u64, EventSystemError> {
+    async fn prune(
+        &self,
+        older_than: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64, EventSystemError> {
         let mut buffer = self.buffer.lock().await;
         let before = buffer.len();
         buffer.retain(|pe| {
@@ -242,7 +248,8 @@ impl PersistedEventRepository for InMemoryEventRepository {
     }
 
     async fn configure(&self, config: &EventBusConfig) -> Result<(), EventSystemError> {
-        self.max_capacity.store(config.buffer_capacity, Ordering::SeqCst);
+        self.max_capacity
+            .store(config.buffer_capacity, Ordering::SeqCst);
         Ok(())
     }
 }

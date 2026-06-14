@@ -21,10 +21,8 @@ use uuid::Uuid;
 use crate::state_persistence::domain::StateError;
 
 use super::dto::{
-    SaveStateInput, SaveStateOutput, LoadStateInput, LoadStateOutput,
-    NodeStateChangedInput, NodeStateChangedOutput,
-    ListExecutionsInput, ListExecutionsOutput,
-    ExecutionSummary,
+    ExecutionSummary, ListExecutionsInput, ListExecutionsOutput, LoadStateInput, LoadStateOutput,
+    NodeStateChangedInput, NodeStateChangedOutput, SaveStateInput, SaveStateOutput,
 };
 
 /// Central state persistence service that manages execution state on disk.
@@ -93,7 +91,10 @@ pub trait StateManagerService: Send + Sync {
     ///
     /// If the directory does not exist, returns an empty list (not an error).
     /// Corrupted state files are skipped and logged via events.
-    async fn list_executions(&self, input: ListExecutionsInput) -> Result<ListExecutionsOutput, StateError>;
+    async fn list_executions(
+        &self,
+        input: ListExecutionsInput,
+    ) -> Result<ListExecutionsOutput, StateError>;
 
     /// Delete an execution state from persistent storage.
     ///

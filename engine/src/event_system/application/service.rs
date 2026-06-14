@@ -46,7 +46,10 @@ pub trait EventBusService: Send + Sync {
     /// Slow subscribers that cannot keep up will receive a `RecvError::Lagged`.
     ///
     /// Returns the assigned sequence number and delivery statistics.
-    async fn publish(&self, input: PublishEventInput) -> Result<PublishEventOutput, EventSystemError>;
+    async fn publish(
+        &self,
+        input: PublishEventInput,
+    ) -> Result<PublishEventOutput, EventSystemError>;
 
     /// Subscribe to receive future execution events.
     ///

@@ -15,7 +15,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::risk_gating::application::dto::{ClassifyToolOutput, EvaluateGateOutput, OverrideToolOutput};
+use crate::risk_gating::application::dto::{
+    ClassifyToolOutput, EvaluateGateOutput, OverrideToolOutput,
+};
 use crate::risk_gating::domain::risk_level::RiskLevel;
 
 // ---------------------------------------------------------------------------

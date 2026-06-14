@@ -16,8 +16,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::cancellation::application::dto::{
-    CancelExecutionOutput, ShutdownOutput,
-    ShutdownStatusOutput,
+    CancelExecutionOutput, ShutdownOutput, ShutdownStatusOutput,
 };
 
 use crate::cancellation::domain::ShutdownSignal;

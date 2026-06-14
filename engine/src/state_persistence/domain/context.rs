@@ -18,8 +18,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::state::ExecutionStatus;
 use super::graph::ExecutionGraph;
+use super::state::ExecutionStatus;
 
 /// Complete record of an execution, including final state, all events, and graph.
 ///

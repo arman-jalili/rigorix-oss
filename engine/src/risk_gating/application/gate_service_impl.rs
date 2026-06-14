@@ -18,9 +18,9 @@ use std::sync::Arc;
 use std::sync::RwLock;
 
 use crate::risk_gating::application::dto::{
-    ClassifyToolInput, ClassifyToolOutput, EvaluateGateInput, EvaluateGateOutput,
-    GetConfigOutput, OverrideToolInput, OverrideToolOutput, ReloadConfigOutput,
-    ResolveGateInput, ResolveGateOutput, RiskConfigSummary,
+    ClassifyToolInput, ClassifyToolOutput, EvaluateGateInput, EvaluateGateOutput, GetConfigOutput,
+    OverrideToolInput, OverrideToolOutput, ReloadConfigOutput, ResolveGateInput, ResolveGateOutput,
+    RiskConfigSummary,
 };
 use crate::risk_gating::application::service::RiskGateService;
 use crate::risk_gating::domain::{
@@ -77,23 +77,47 @@ impl RiskGateServiceImpl {
         match risk_level {
             RiskLevel::Low => {
                 if config.auto_confirm_low {
-                    (GatingAction::AutoExecute, true, "Low risk: auto-execute".to_string())
+                    (
+                        GatingAction::AutoExecute,
+                        true,
+                        "Low risk: auto-execute".to_string(),
+                    )
                 } else {
-                    (GatingAction::AutoExecute, true, "Low risk: auto-execute (policy override disabled)".to_string())
+                    (
+                        GatingAction::AutoExecute,
+                        true,
+                        "Low risk: auto-execute (policy override disabled)".to_string(),
+                    )
                 }
             }
             RiskLevel::Medium => {
                 if config.require_review_medium {
-                    (GatingAction::RequireConfirmation, true, "Medium risk: requires confirmation".to_string())
+                    (
+                        GatingAction::RequireConfirmation,
+                        true,
+                        "Medium risk: requires confirmation".to_string(),
+                    )
                 } else {
-                    (GatingAction::AutoExecute, true, "Medium risk: auto-execute (review disabled)".to_string())
+                    (
+                        GatingAction::AutoExecute,
+                        true,
+                        "Medium risk: auto-execute (review disabled)".to_string(),
+                    )
                 }
             }
             RiskLevel::High => {
                 if config.dry_run_high {
-                    (GatingAction::DryRun, true, "High risk: dry-run by default".to_string())
+                    (
+                        GatingAction::DryRun,
+                        true,
+                        "High risk: dry-run by default".to_string(),
+                    )
                 } else {
-                    (GatingAction::AutoExecute, true, "High risk: auto-execute (dry-run disabled)".to_string())
+                    (
+                        GatingAction::AutoExecute,
+                        true,
+                        "High risk: auto-execute (dry-run disabled)".to_string(),
+                    )
                 }
             }
         }
@@ -109,7 +133,9 @@ impl RiskGateService for RiskGateServiceImpl {
         let classifier = self.classifier.read().expect("Classifier lock poisoned");
         let config = self.config.read().expect("Config lock poisoned");
 
-        let classification = classifier.classifier.classify(&input.tool, input.parameters.as_ref());
+        let classification = classifier
+            .classifier
+            .classify(&input.tool, input.parameters.as_ref());
 
         let (gating_action, allowed, policy_reason) =
             Self::evaluate_gating_policy(classification.risk_level, &config);
@@ -151,7 +177,9 @@ impl RiskGateService for RiskGateServiceImpl {
         input: ClassifyToolInput,
     ) -> Result<ClassifyToolOutput, RiskGatingError> {
         let classifier = self.classifier.read().expect("Classifier lock poisoned");
-        let classification = classifier.classifier.classify(&input.tool, input.parameters.as_ref());
+        let classification = classifier
+            .classifier
+            .classify(&input.tool, input.parameters.as_ref());
 
         Ok(ClassifyToolOutput {
             risk_level: classification.risk_level,
@@ -165,7 +193,10 @@ impl RiskGateService for RiskGateServiceImpl {
         input: ResolveGateInput,
     ) -> Result<ResolveGateOutput, RiskGatingError> {
         // Check if the gate exists and is pending
-        if !self.gate_registry.is_gate_pending(&input.execution_id, &input.gate_id) {
+        if !self
+            .gate_registry
+            .is_gate_pending(&input.execution_id, &input.gate_id)
+        {
             // Check if it was already resolved
             if let Some(gate) = self.gate_registry.get_gate(&input.gate_id) {
                 if gate.resolved {
@@ -179,7 +210,9 @@ impl RiskGateService for RiskGateServiceImpl {
             });
         }
 
-        let resolved = self.gate_registry.resolve_gate(&input.execution_id, &input.gate_id);
+        let resolved = self
+            .gate_registry
+            .resolve_gate(&input.execution_id, &input.gate_id);
         match resolved {
             Some(_gate) => Ok(ResolveGateOutput {
                 gate_id: input.gate_id,

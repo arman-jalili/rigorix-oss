@@ -65,7 +65,10 @@ pub trait CancellationService: Send + Sync {
     /// Blocks until either all tasks complete or the timeout is reached.
     /// If the timeout is exceeded, remaining tasks are force-aborted
     /// and `CancellationError::ShutdownTimeout` is returned.
-    async fn await_shutdown(&self, input: ShutdownInput) -> Result<ShutdownOutput, CancellationError>;
+    async fn await_shutdown(
+        &self,
+        input: ShutdownInput,
+    ) -> Result<ShutdownOutput, CancellationError>;
 
     /// Check whether cancellation has been requested.
     fn is_cancelled(&self) -> bool;

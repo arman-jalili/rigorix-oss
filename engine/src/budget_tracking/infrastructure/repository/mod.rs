@@ -18,9 +18,7 @@ use async_trait::async_trait;
 
 use crate::budget_tracking::domain::{LlmBudget, LlmBudgetError};
 
-use crate::budget_tracking::application::dto::{
-    CommitReservationInput, ReserveBudgetInput,
-};
+use crate::budget_tracking::application::dto::{CommitReservationInput, ReserveBudgetInput};
 
 /// Repository for persisting and retrieving LLM budget state.
 ///

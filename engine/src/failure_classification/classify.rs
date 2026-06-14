@@ -177,7 +177,10 @@ mod tests {
 
     #[test]
     fn test_classify_rate_limit() {
-        assert_eq!(classify_failure("rate limit exceeded"), FailureType::Transient);
+        assert_eq!(
+            classify_failure("rate limit exceeded"),
+            FailureType::Transient
+        );
     }
 
     #[test]
@@ -190,7 +193,10 @@ mod tests {
 
     #[test]
     fn test_classify_http_503() {
-        assert_eq!(classify_failure("503 Service Unavailable"), FailureType::Transient);
+        assert_eq!(
+            classify_failure("503 Service Unavailable"),
+            FailureType::Transient
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -227,10 +233,7 @@ mod tests {
 
     #[test]
     fn test_classify_build_fail() {
-        assert_eq!(
-            classify_failure("build failed"),
-            FailureType::BuildFailure
-        );
+        assert_eq!(classify_failure("build failed"), FailureType::BuildFailure);
     }
 
     #[test]
@@ -392,10 +395,7 @@ mod tests {
 
     #[test]
     fn test_case_insensitive_build() {
-        assert_eq!(
-            classify_failure("BUILD FAILED"),
-            FailureType::BuildFailure
-        );
+        assert_eq!(classify_failure("BUILD FAILED"), FailureType::BuildFailure);
     }
 
     #[test]
@@ -405,10 +405,7 @@ mod tests {
 
     #[test]
     fn test_case_insensitive_timeout() {
-        assert_eq!(
-            classify_failure("TIMEOUT"),
-            FailureType::Transient
-        );
+        assert_eq!(classify_failure("TIMEOUT"), FailureType::Transient);
     }
 
     // -----------------------------------------------------------------------

@@ -155,10 +155,7 @@ impl FailureMappingService for FailureMappingServiceImpl {
                     if *level > 5 {
                         errors.push(ValidationError {
                             field: "custom_strategy_mappings".to_string(),
-                            message: format!(
-                                "ExpandContext level {} exceeds maximum of 5",
-                                level
-                            ),
+                            message: format!("ExpandContext level {} exceeds maximum of 5", level),
                             value: Some(level.to_string()),
                         });
                     }
@@ -277,7 +274,10 @@ mod tests {
             override_strategy: None,
         };
         let output = service.get_strategy(input).await.unwrap();
-        assert!(matches!(output.strategy, RetryStrategy::PatchWithFeedback { .. }));
+        assert!(matches!(
+            output.strategy,
+            RetryStrategy::PatchWithFeedback { .. }
+        ));
         assert_eq!(output.source, StrategySource::DefaultMapping);
     }
 
@@ -289,7 +289,10 @@ mod tests {
             override_strategy: None,
         };
         let output = service.get_strategy(input).await.unwrap();
-        assert!(matches!(output.strategy, RetryStrategy::PatchWithFeedback { .. }));
+        assert!(matches!(
+            output.strategy,
+            RetryStrategy::PatchWithFeedback { .. }
+        ));
     }
 
     #[tokio::test]
@@ -386,10 +389,7 @@ mod tests {
     async fn test_validate_non_retryable_mapping_warns() {
         let service = FailureMappingServiceImpl::new();
         let mut mappings = HashMap::new();
-        mappings.insert(
-            FailureType::NonRetryable,
-            RetryStrategy::SameOperation,
-        );
+        mappings.insert(FailureType::NonRetryable, RetryStrategy::SameOperation);
         let input = ValidateConfigInput {
             custom_patterns: None,
             custom_strategy_mappings: Some(mappings),

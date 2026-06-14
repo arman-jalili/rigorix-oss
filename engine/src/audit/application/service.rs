@@ -61,10 +61,7 @@ pub trait AuditSender: Send + Sync {
     /// Returns success only on HTTP 2xx. All other status codes
     /// are returned as `AuditError::SendFailed` for retry handling.
     /// If the circuit breaker is open, returns `CircuitBreakerOpen` immediately.
-    async fn send(
-        &self,
-        input: SendEnvelopeInput,
-    ) -> Result<SendEnvelopeOutput, AuditError>;
+    async fn send(&self, input: SendEnvelopeInput) -> Result<SendEnvelopeOutput, AuditError>;
 
     /// Deliver an envelope with retry logic.
     ///

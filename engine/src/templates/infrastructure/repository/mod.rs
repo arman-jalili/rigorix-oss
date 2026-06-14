@@ -43,7 +43,11 @@ pub trait TemplateRepository: Send + Sync {
     ///
     /// Returns file paths matching the configured extension.
     /// Returns an empty vec if the directory doesn't exist (not an error).
-    async fn list_template_files(&self, dir: &str, extension: &str) -> Result<Vec<String>, TemplateError>;
+    async fn list_template_files(
+        &self,
+        dir: &str,
+        extension: &str,
+    ) -> Result<Vec<String>, TemplateError>;
 
     /// Check if a template file exists at the given path.
     async fn template_file_exists(&self, path: &str) -> bool;

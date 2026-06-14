@@ -86,11 +86,7 @@ impl StateManagerService for FileSystemStateManager {
                 state.node_started(node_id)?;
             }
             crate::state_persistence::domain::NodeStatus::Completed => {
-                state.node_completed(
-                    node_id,
-                    input.output,
-                    input.duration_ms.unwrap_or(0),
-                )?;
+                state.node_completed(node_id, input.output, input.duration_ms.unwrap_or(0))?;
             }
             crate::state_persistence::domain::NodeStatus::Failed => {
                 state.node_failed(node_id, input.error.unwrap_or_default())?;
@@ -125,7 +121,10 @@ impl StateManagerService for FileSystemStateManager {
         })
     }
 
-    async fn list_executions(&self, input: ListExecutionsInput) -> Result<ListExecutionsOutput, StateError> {
+    async fn list_executions(
+        &self,
+        input: ListExecutionsInput,
+    ) -> Result<ListExecutionsOutput, StateError> {
         let all_ids = self.repository.list_ids().await?;
         let total_count = all_ids.len() as u32;
 
@@ -212,9 +211,7 @@ mod tests {
         let (manager, _dir) = create_manager().await;
         let execution_id = Uuid::new_v4();
 
-        let result = manager
-            .load_state(LoadStateInput { execution_id })
-            .await;
+        let result = manager.load_state(LoadStateInput { execution_id }).await;
         assert!(matches!(result, Err(StateError::StateNotFound { .. })));
     }
 
@@ -228,10 +225,7 @@ mod tests {
         let mut state = ExecutionState::new(execution_id, "hash".to_string());
         state.status = ExecutionStatus::Running;
         state.init_node_states(&[node_id]);
-        manager
-            .save_state(SaveStateInput { state })
-            .await
-            .unwrap();
+        manager.save_state(SaveStateInput { state }).await.unwrap();
 
         // Update node to in progress
         let output = manager
@@ -260,10 +254,7 @@ mod tests {
         state.init_node_states(&[node_id]);
         // Transition to in progress first
         state.node_started(node_id).unwrap();
-        manager
-            .save_state(SaveStateInput { state })
-            .await
-            .unwrap();
+        manager.save_state(SaveStateInput { state }).await.unwrap();
 
         let output = manager
             .update_node_state(NodeStateChangedInput {
@@ -292,10 +283,7 @@ mod tests {
         state.status = ExecutionStatus::Running;
         state.init_node_states(&[node_id]);
         state.node_started(node_id).unwrap();
-        manager
-            .save_state(SaveStateInput { state })
-            .await
-            .unwrap();
+        manager.save_state(SaveStateInput { state }).await.unwrap();
 
         let output = manager
             .update_node_state(NodeStateChangedInput {
@@ -330,9 +318,7 @@ mod tests {
 
         manager.delete_state(execution_id).await.unwrap();
 
-        let result = manager
-            .load_state(LoadStateInput { execution_id })
-            .await;
+        let result = manager.load_state(LoadStateInput { execution_id }).await;
         assert!(matches!(result, Err(StateError::StateNotFound { .. })));
     }
 
