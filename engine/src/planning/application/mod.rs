@@ -19,8 +19,10 @@ pub mod factory;
 pub mod pipeline_factory_impl;
 pub mod pipeline_impl;
 pub mod service;
+pub mod symbol_validation_impl;
 
 pub use factory::*;
 pub use pipeline_factory_impl::*;
 pub use pipeline_impl::*;
 pub use service::*;
+pub use symbol_validation_impl::*;
