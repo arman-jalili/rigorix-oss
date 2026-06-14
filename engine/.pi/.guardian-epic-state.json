@@ -1,23 +1,23 @@
 {
-  "name": "\"template-system\"",
-  "trackingIssueId": "101",
+  "name": "\"planning-pipeline\"",
+  "trackingIssueId": "150",
   "epicId": null,
   "slices": [
     {
-      "module": "template-system",
+      "module": "planning-pipeline",
       "components": [
         {
-          "name": "TemplateParser",
+          "name": "PlanningPipeline",
           "status": "planned",
-          "description": "Parse TOML template files into validated Template structs",
+          "description": "Orchestrate the 6-phase planning flow",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "TemplateEngine",
+          "name": "Classifier Trait",
           "status": "planned",
-          "description": "Runtime registry that holds registered templates and instantiates them into executable TaskGraphs",
+          "description": "Abstract LLM-based intent classification",
           "dependencies": [
             "none"
           ]
@@ -25,17 +25,17 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "TemplateParser",
+          "name": "PlanningPipeline",
           "status": "planned",
-          "description": "Parse TOML template files into validated Template structs",
+          "description": "Orchestrate the 6-phase planning flow",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "TemplateEngine",
+          "name": "Classifier Trait",
           "status": "planned",
-          "description": "Runtime registry that holds registered templates and instantiates them into executable TaskGraphs",
+          "description": "Abstract LLM-based intent classification",
           "dependencies": [
             "none"
           ]
@@ -48,34 +48,34 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "102"
+      "remoteIssueId": "151"
     },
     {
-      "id": "issue-templateparser",
-      "title": "TemplateParser: Parse TOML template files into validated Template structs",
+      "id": "issue-planningpipeline",
+      "title": "PlanningPipeline: Orchestrate the 6-phase planning flow",
       "status": "planned",
-      "remoteIssueId": "103"
+      "remoteIssueId": "152"
     },
     {
-      "id": "issue-templateengine",
-      "title": "TemplateEngine: Runtime registry that holds registered templates and instantiates them into exec",
+      "id": "issue-classifier-trait",
+      "title": "Classifier Trait: Abstract LLM-based intent classification",
       "status": "planned",
-      "remoteIssueId": "104"
+      "remoteIssueId": "153"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "105"
+      "remoteIssueId": "154"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "106"
+      "remoteIssueId": "155"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-06-14T10:18:26.960Z"
+  "createdAt": "2026-06-14T15:30:26.694Z"
 }
