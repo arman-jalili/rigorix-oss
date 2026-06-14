@@ -142,3 +142,127 @@ pub struct ImpactLevelResult {
     /// Human-readable summary of why this impact level was assigned.
     pub summary: String,
 }
+
+/// Policy evaluation service for retry, backoff, and fallback decisions.
+///
+/// The ExecutionPolicyService evaluates ExecutionPolicy configurations
+/// during node execution. It answers questions like:
+/// - Should this node be retried given the failure type?
+/// - How long should we wait before retrying?
+/// - Is there a fallback node to execute?
+/// - Is the policy configuration valid?
+///
+/// # Contract (Frozen)
+/// - Retry decisions are purely based on policy + failure type
+/// - Backoff uses exponential: backoff_ms * multiplier^attempt
+/// - Fallback is only considered after max_retries exhausted
+/// - All policy validation must pass for execution to proceed
+#[async_trait]
+pub trait ExecutionPolicyService: Send + Sync {
+    /// Determine if a node should be retried after a failure.
+    ///
+    /// Checks:
+    /// 1. Is the failure type in the policy's `retry_on` list?
+    /// 2. Have we exhausted `max_retries`?
+    ///
+    /// Returns a RetryDecision with the outcome and reason.
+    async fn should_retry(
+        &self,
+        input: ShouldRetryInput,
+    ) -> Result<RetryDecision, DagError>;
+
+    /// Compute the backoff delay before retrying.
+    ///
+    /// Uses exponential backoff:
+    /// `delay = min(backoff_ms * multiplier^attempt, max_backoff_ms)`
+    async fn compute_backoff(
+        &self,
+        input: ComputeBackoffInput,
+    ) -> Result<ComputeBackoffOutput, DagError>;
+
+    /// Validate an ExecutionPolicy configuration.
+    ///
+    /// Checks:
+    /// - max_retries <= 255 (always true for u8, checked for semantics)
+    /// - backoff_ms > 0
+    /// - backoff_multiplier >= 1.0
+    /// - max_backoff_ms >= backoff_ms
+    async fn validate_policy(
+        &self,
+        input: ValidatePolicyInput,
+    ) -> Result<ValidatePolicyOutput, DagError>;
+}
+
+// ---------------------------------------------------------------------------
+// ExecutionPolicyService DTOs
+// ---------------------------------------------------------------------------
+
+/// Input for a retry decision.
+#[derive(Debug, Clone)]
+pub struct ShouldRetryInput {
+    /// The execution policy governing this node.
+    pub policy: crate::dag_engine::domain::ExecutionPolicy,
+    /// The type of failure that occurred.
+    pub failure_type: crate::dag_engine::domain::FailureType,
+    /// The number of retries already attempted.
+    pub retries_attempted: u8,
+}
+
+/// Decision about whether to retry a failed node.
+#[derive(Debug, Clone)]
+pub enum RetryDecision {
+    /// Retry the node with the specified strategy.
+    Retry {
+        /// The retry strategy to apply.
+        strategy: crate::dag_engine::domain::RetryStrategy,
+        /// Next attempt number (1-indexed).
+        attempt: u8,
+        /// Reason for the retry decision.
+        reason: String,
+    },
+    /// Do not retry; consider fallback or permanent failure.
+    NoRetry {
+        /// Reason the node will not be retried.
+        reason: String,
+        /// If true, attempt to execute the fallback node (if configured).
+        use_fallback: bool,
+    },
+}
+
+/// Input for computing backoff delay.
+#[derive(Debug, Clone)]
+pub struct ComputeBackoffInput {
+    /// The execution policy containing backoff configuration.
+    pub policy: crate::dag_engine::domain::ExecutionPolicy,
+    /// The current retry attempt number (1-indexed).
+    pub attempt: u8,
+}
+
+/// Output from computing backoff delay.
+#[derive(Debug, Clone)]
+pub struct ComputeBackoffOutput {
+    /// The backoff delay in milliseconds.
+    pub delay_ms: u64,
+    /// The effective multiplier used.
+    pub multiplier: f64,
+    /// Human-readable explanation of the computation.
+    pub explanation: String,
+}
+
+/// Input for validating an ExecutionPolicy.
+#[derive(Debug, Clone)]
+pub struct ValidatePolicyInput {
+    /// The execution policy to validate.
+    pub policy: crate::dag_engine::domain::ExecutionPolicy,
+}
+
+/// Output from validating an ExecutionPolicy.
+#[derive(Debug, Clone)]
+pub struct ValidatePolicyOutput {
+    /// Whether the policy is valid.
+    pub is_valid: bool,
+    /// List of validation errors (empty if valid).
+    pub errors: Vec<String>,
+    /// List of validation warnings.
+    pub warnings: Vec<String>,
+}
