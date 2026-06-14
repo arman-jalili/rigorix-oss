@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: ""enforcement""
+  epic: ""state-persistence""
   component: "Contract Freeze"
-  module: "enforcement"
+  module: "state-persistence"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/enforcement.md"
+    - module: ".pi/architecture/modules/state-persistence.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -47,23 +47,23 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/enforcement/contracts/"
-    - "create: src/enforcement/contracts/dtos/"
-    - "create: src/enforcement/contracts/events/"
+    - "create: src/state-persistence/contracts/"
+    - "create: src/state-persistence/contracts/dtos/"
+    - "create: src/state-persistence/contracts/events/"
 ---
 
-# Contract Freeze: enforcement
+# Contract Freeze: state-persistence
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the enforcement
+Define and freeze all public interfaces, contracts, and schemas for the state-persistence
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- EnforcementConfig
-- ExecutionEnforcer
+- ExecutionState
+- StateManager
 
 ## What Must Be Frozen
 

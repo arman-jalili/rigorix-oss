@@ -28,3 +28,4 @@ pub mod configuration;
 pub mod enforcement;
 pub mod event_system;
 pub mod failure_classification;
+pub mod state_persistence;
