@@ -17,8 +17,12 @@
 //! - `FileSystemStateRepository` — filesystem-backed state storage
 //!   with atomic write-rename crash safety
 
+pub mod filesystem_execution_record_repository;
+pub mod filesystem_graph_repository;
 pub mod filesystem_state_repository;
 pub mod repository;
 
+pub use filesystem_execution_record_repository::*;
+pub use filesystem_graph_repository::*;
 pub use filesystem_state_repository::*;
 pub use repository::*;

@@ -19,12 +19,16 @@
 
 pub mod dto;
 pub mod factory;
+pub mod graph_manager_factory_impl;
+pub mod graph_manager_service_impl;
 pub mod service;
 pub mod state_manager_factory_impl;
 pub mod state_manager_service_impl;
 
 pub use dto::*;
 pub use factory::*;
+pub use graph_manager_factory_impl::*;
+pub use graph_manager_service_impl::*;
 pub use service::*;
 pub use state_manager_factory_impl::*;
 pub use state_manager_service_impl::*;
