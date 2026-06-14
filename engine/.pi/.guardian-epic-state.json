@@ -1,23 +1,39 @@
 {
-  "name": "\"planning-pipeline\"",
-  "trackingIssueId": "150",
+  "name": "\"error-handling\"",
+  "trackingIssueId": "173",
   "epicId": null,
   "slices": [
     {
-      "module": "planning-pipeline",
+      "module": "audit",
       "components": [
         {
-          "name": "PlanningPipeline",
+          "name": "AuditEnvelope",
           "status": "planned",
-          "description": "Orchestrate the 6-phase planning flow",
+          "description": "Typed envelope containing execution audit data",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "Classifier Trait",
+          "name": "AuditSender",
           "status": "planned",
-          "description": "Abstract LLM-based intent classification",
+          "description": "Deliver envelopes via HTTP with retry logic",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "AuditQueue",
+          "status": "planned",
+          "description": "Queue for failed deliveries",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "CircuitBreaker",
+          "status": "planned",
+          "description": "Circuit breaker for HTTP resilience",
           "dependencies": [
             "none"
           ]
@@ -25,17 +41,33 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "PlanningPipeline",
+          "name": "AuditEnvelope",
           "status": "planned",
-          "description": "Orchestrate the 6-phase planning flow",
+          "description": "Typed envelope containing execution audit data",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "Classifier Trait",
+          "name": "AuditSender",
           "status": "planned",
-          "description": "Abstract LLM-based intent classification",
+          "description": "Deliver envelopes via HTTP with retry logic",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "AuditQueue",
+          "status": "planned",
+          "description": "Queue for failed deliveries",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "CircuitBreaker",
+          "status": "planned",
+          "description": "Circuit breaker for HTTP resilience",
           "dependencies": [
             "none"
           ]
@@ -48,34 +80,46 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "151"
+      "remoteIssueId": "174"
     },
     {
-      "id": "issue-planningpipeline",
-      "title": "PlanningPipeline: Orchestrate the 6-phase planning flow",
+      "id": "issue-auditenvelope",
+      "title": "AuditEnvelope: Typed envelope containing execution audit data",
       "status": "planned",
-      "remoteIssueId": "152"
+      "remoteIssueId": "175"
     },
     {
-      "id": "issue-classifier-trait",
-      "title": "Classifier Trait: Abstract LLM-based intent classification",
+      "id": "issue-auditsender",
+      "title": "AuditSender: Deliver envelopes via HTTP with retry logic",
       "status": "planned",
-      "remoteIssueId": "153"
+      "remoteIssueId": "176"
+    },
+    {
+      "id": "issue-auditqueue",
+      "title": "AuditQueue: Queue for failed deliveries",
+      "status": "planned",
+      "remoteIssueId": "177"
+    },
+    {
+      "id": "issue-circuitbreaker",
+      "title": "CircuitBreaker: Circuit breaker for HTTP resilience",
+      "status": "planned",
+      "remoteIssueId": "178"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "154"
+      "remoteIssueId": "179"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "155"
+      "remoteIssueId": "180"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-06-14T15:30:26.694Z"
+  "createdAt": "2026-06-14T18:08:53.120Z"
 }
