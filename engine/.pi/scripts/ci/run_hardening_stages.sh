@@ -255,6 +255,11 @@ run_stage "17" "budget-tracking_proofing" \
     "${SCRIPTS_DIR}/stage_budget-tracking_proofing.sh" \
     "always"
 
+# Stage 18: State-Persistence Proofing
+run_stage "18" "state-persistence_proofing" \
+    "${SCRIPTS_DIR}/stage_state-persistence_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""
