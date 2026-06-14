@@ -1,4 +1,5 @@
-//! Infrastructure layer interfaces for the State Persistence bounded context.
+//! Infrastructure layer interfaces and implementations for the State
+//! Persistence bounded context.
 //!
 //! @canonical .pi/architecture/modules/state-persistence.md
 //! Implements: Contract Freeze — repository interfaces
@@ -11,7 +12,13 @@
 //! The primary repositories are:
 //! - `StateRepository` — for CRUD on execution state files
 //! - `GraphRepository` — for CRUD on execution graph records
+//!
+//! Implementations:
+//! - `FileSystemStateRepository` — filesystem-backed state storage
+//!   with atomic write-rename crash safety
 
+pub mod filesystem_state_repository;
 pub mod repository;
 
+pub use filesystem_state_repository::*;
 pub use repository::*;
