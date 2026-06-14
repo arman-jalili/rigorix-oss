@@ -10,6 +10,24 @@ This document tracks all architecture changes requiring implementation updates.
 
 ---
 
+## [2026-06-14] - Risk-Gating Epics Implementation Complete
+
+### Added
+- Module: risk-gating
+  - Contract freeze: RiskLevel, RiskClassifier trait, RiskConfig entity, RiskGatingError (5 variants),
+    RiskGateEvent (5 event types), RiskGateService trait (7 methods), RiskGateFactory trait (4 methods),
+    RiskConfigRepository trait, HTTP API contracts (6 endpoints), 12 DTO types
+  - Implemented: DefaultClassifier — 20+ built-in tool→risk mapping rules with override precedence
+  - Implemented: RiskGateServiceImpl — evaluate_gate, classify_tool, resolve_gate, override_tool, reload_config
+  - Implemented: RiskGateFactoryImpl — create_default, create_from_config, create_with_overrides, create_with_policy
+  - Implemented: GateStateRegistry — thread-safe pending gate tracking with register/resolve/cleanup
+  - Implemented: InMemoryConfigRepository — per-execution RiskConfig storage
+  - 89 unit tests across all layers (RiskLevel: 21, RiskConfig: 26, DefaultClassifier: 15,
+    GateStateRegistry: 5, RiskGateServiceImpl: 13, RiskGateFactoryImpl: 4, InMemoryConfigRepository: 7)
+  - Documentation: runbook-risk-gating.md, dr-plan-risk-gating.md
+  - CI: Proofing stage (stage 19) added to hardening pipeline with 21 contract checks + coverage threshold
+  - Verified: All proofing checks pass
+
 ## [2026-06-14] - State Persistence Implementation Complete
 
 ### Added
