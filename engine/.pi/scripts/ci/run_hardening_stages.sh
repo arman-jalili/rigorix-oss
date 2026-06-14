@@ -269,6 +269,11 @@ run_stage "19" "risk-gating_proofing" \
 run_stage "20" "template-system_proofing" \
     "${SCRIPTS_DIR}/stage_template-system_proofing.sh" \
     "always"
+
+# Stage 21: DAG-Engine Proofing
+run_stage "21" "dag-engine_proofing" \
+    "${SCRIPTS_DIR}/stage_dag-engine_proofing.sh" \
+    "always"
 # ── Summary ──
 
 echo ""
