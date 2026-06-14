@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: ""template-system""
+  epic: ""planning-pipeline""
   component: "Contract Freeze"
-  module: "template-system"
+  module: "planning-pipeline"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/template-system.md"
+    - module: ".pi/architecture/modules/planning-pipeline.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -47,23 +47,23 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/template-system/contracts/"
-    - "create: src/template-system/contracts/dtos/"
-    - "create: src/template-system/contracts/events/"
+    - "create: src/planning-pipeline/contracts/"
+    - "create: src/planning-pipeline/contracts/dtos/"
+    - "create: src/planning-pipeline/contracts/events/"
 ---
 
-# Contract Freeze: template-system
+# Contract Freeze: planning-pipeline
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the template-system
+Define and freeze all public interfaces, contracts, and schemas for the planning-pipeline
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- TemplateParser
-- TemplateEngine
+- PlanningPipeline
+- Classifier Trait
 
 ## What Must Be Frozen
 

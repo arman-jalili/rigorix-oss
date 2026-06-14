@@ -1,0 +1,33 @@
+//! Domain entities and interfaces for the Planning Pipeline bounded context.
+//!
+//! @canonical .pi/architecture/modules/planning-pipeline.md#domain
+//! Implements: Contract Freeze — domain entities UserIntent, PlanningResult, PlanningHash,
+//! PlanOutput, ClassificationResult, Classifier trait, ParameterExtractor trait, PlanningError
+//! Issue: issue-contract-freeze
+//!
+//! This module defines the core domain types — `UserIntent`, `PlanningResult`,
+//! `PlanningHash`, `PlanOutput`, `ClassificationResult`, `Classifier` trait,
+//! `ParameterExtractor` trait, and `PlanningError`. These are pure domain objects
+//! with no framework dependencies. They serve as the frozen contract that all
+//! implementation must satisfy.
+//!
+//! # Contract (Frozen)
+//! - No implementation logic beyond constructors and field accessors
+//! - All validation must happen in the application layer (service traits)
+//! - All persistence must happen behind repository interfaces
+//! - All domain types are serializable (Serialize + Deserialize)
+
+pub mod classification;
+pub mod error;
+pub mod event;
+pub mod extractor;
+pub mod generator;
+pub mod intent;
+pub mod result;
+
+pub use classification::*;
+pub use error::*;
+pub use extractor::*;
+pub use generator::*;
+pub use intent::*;
+pub use result::*;

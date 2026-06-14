@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-READINESS"
-  epic: ""template-system""
+  epic: ""planning-pipeline""
   component: "Architecture Readiness"
-  module: "template-system"
+  module: "planning-pipeline"
   status: planned
   priority: critical
   dependencies: []
@@ -32,7 +32,7 @@ guardian_issue:
       - Verify proofing scripts + validators in CI
 
   canonical_references:
-    - module: ".pi/architecture/modules/template-system.md"
+    - module: ".pi/architecture/modules/planning-pipeline.md"
 
   acceptance_criteria:
     - "Runbook created and reviewed"
@@ -58,30 +58,30 @@ guardian_issue:
     and CI will catch regressions (proofing scripts + validators).
 
   file_changes:
-    - "create: docs/runbook-template-system.md"
-    - "create: docs/dr-plan-template-system.md"
+    - "create: docs/runbook-planning-pipeline.md"
+    - "create: docs/dr-plan-planning-pipeline.md"
     - "modify: .pi/architecture/CHANGELOG.md"
-    - "modify: .pi/architecture/modules/template-system.md"
+    - "modify: .pi/architecture/modules/planning-pipeline.md"
 ---
 
-# Architecture Readiness: template-system
+# Architecture Readiness: planning-pipeline
 
 ## Intent
 
-Make the template-system module production-ready. This is the final issue in every epic
+Make the planning-pipeline module production-ready. This is the final issue in every epic
 — it closes the loop between implementation and operability.
 
 ## Deliverables
 
 ### Runbook
-`docs/runbook-template-system.md` covering:
+`docs/runbook-planning-pipeline.md` covering:
 - Startup sequence and dependencies
 - Graceful shutdown procedure
 - Common failure modes and recovery
 - Configuration reference
 
 ### DR Plan
-`docs/dr-plan-template-system.md` covering:
+`docs/dr-plan-planning-pipeline.md` covering:
 - Backup strategy and schedule
 - Restore procedure
 - Failover plan
