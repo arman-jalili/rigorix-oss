@@ -28,4 +28,5 @@ pub mod configuration;
 pub mod enforcement;
 pub mod event_system;
 pub mod failure_classification;
+pub mod risk_gating;
 pub mod state_persistence;
