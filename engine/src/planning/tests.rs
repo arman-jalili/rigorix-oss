@@ -20,8 +20,8 @@ use crate::planning::application::service::PlanningPipelineService;
 use crate::planning::domain::classification::Classifier;
 use crate::planning::domain::extractor::ParameterExtractor;
 use crate::planning::domain::generator::{
-    GeneratedTemplate, GeneratedTemplateCost, GeneratorError, InvalidSymbolReference,
-    RepoContext, TemplateGenerator,
+    ClaudeGeneratorConfig, ClaudeTemplateGenerator, GeneratedTemplate, GeneratedTemplateCost,
+    GeneratorError, InvalidSymbolReference, RepoContext, TemplateGenerator,
 };
 use crate::planning::domain::intent::UserIntent;
 use crate::planning::domain::mock_classifier::MockClassifier;
@@ -1197,6 +1197,91 @@ fn test_template_generator_trait_is_object_safe() {
     fn takes_generator(_gen: &dyn TemplateGenerator) {}
     let gen = MockGenerator;
     takes_generator(&gen);
+}
+
+// ---------------------------------------------------------------------------
+// ClaudeTemplateGenerator Tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_claude_generator_config_defaults() {
+    let config = ClaudeGeneratorConfig::default();
+    assert_eq!(config.api_url, "https://api.anthropic.com/v1/messages");
+    assert_eq!(config.model, "claude-sonnet-4-20250514");
+    assert_eq!(config.max_tokens, 4096);
+    assert_eq!(config.timeout_secs, 120);
+    assert!((config.temperature - 0.3).abs() < 0.01);
+    assert_eq!(config.max_retries, 3);
+}
+
+#[test]
+fn test_claude_generator_strip_code_fences_no_fences() {
+    let input = "id = \"test\"\nname = \"Test\"\n";
+    let result = ClaudeTemplateGenerator::strip_code_fences(input);
+    assert_eq!(result, "id = \"test\"\nname = \"Test\"");
+}
+
+#[test]
+fn test_claude_generator_strip_code_fences_with_toml() {
+    let input = "```toml\nid = \"test\"\nname = \"Test\"\n```";
+    let result = ClaudeTemplateGenerator::strip_code_fences(input);
+    assert_eq!(result, "id = \"test\"\nname = \"Test\"");
+}
+
+#[test]
+fn test_claude_generator_strip_code_fences_with_triple_backtick() {
+    let input = "```\nid = \"test\"\n```";
+    let result = ClaudeTemplateGenerator::strip_code_fences(input);
+    assert_eq!(result, "id = \"test\"");
+}
+
+#[test]
+fn test_claude_generator_strip_code_fences_no_open_fence() {
+    let input = "id = \"test\"\n```";
+    let result = ClaudeTemplateGenerator::strip_code_fences(input);
+    assert_eq!(result, "id = \"test\"");
+}
+
+#[test]
+fn test_claude_generator_strip_code_fences_only_closing() {
+    let input = "id = \"test\"";
+    let result = ClaudeTemplateGenerator::strip_code_fences(input);
+    assert_eq!(result, "id = \"test\"");
+}
+
+#[test]
+fn test_claude_generator_strip_code_fences_whitespace() {
+    let input = "  ```toml\nid = \"test\"\n  ```  ";
+    let result = ClaudeTemplateGenerator::strip_code_fences(input);
+    assert_eq!(result, "id = \"test\"");
+}
+
+#[test]
+fn test_claude_generator_estimate_cost() {
+    let api_key = "test-key".to_string();
+    let gen = ClaudeTemplateGenerator::new(api_key, None);
+    let intent = crate::planning::domain::intent::UserIntent::new("test".to_string(), None);
+    let cost = gen.estimate_cost(&intent);
+    assert_eq!(cost.estimated_calls, 3);
+    assert_eq!(cost.estimated_tokens, 4096);
+}
+
+#[test]
+fn test_claude_generator_custom_config() {
+    let config = ClaudeGeneratorConfig {
+        api_url: "https://custom.api.com/v1/messages".to_string(),
+        model: "claude-3-opus".to_string(),
+        max_tokens: 2048,
+        timeout_secs: 60,
+        temperature: 0.5,
+        max_retries: 2,
+    };
+    let api_key = "test-key".to_string();
+    let gen = ClaudeTemplateGenerator::new(api_key, Some(config));
+    let intent = crate::planning::domain::intent::UserIntent::new("test".to_string(), None);
+    let cost = gen.estimate_cost(&intent);
+    assert_eq!(cost.estimated_calls, 2);
+    assert_eq!(cost.estimated_tokens, 2048);
 }
 
 // ---------------------------------------------------------------------------
