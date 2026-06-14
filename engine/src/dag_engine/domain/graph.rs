@@ -1,9 +1,8 @@
 //! Core DAG data structures: TaskGraph, TaskNode, ExecutionPolicy, ValidationRule.
 //!
 //! @canonical .pi/architecture/modules/dag-engine.md#graph
-//! Implements: Contract Freeze — TaskGraph, TaskNode, ExecutionPolicy,
-//! ValidationRule domain entities
-//! Issue: issue-contract-freeze
+//! Implements: TaskGraph — TaskGraph, TaskNode, ExecutionPolicy, ValidationRule
+//! Issue: issue-taskgraph
 //!
 //! Defines the core DAG data structures used throughout the engine:
 //! - `TaskGraph`: Two-phase DAG construction with add_unchecked → seal lifecycle
@@ -19,6 +18,7 @@
 //! - ValidationRule defines what checks run after node execution
 
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet, VecDeque};
 use uuid::Uuid;
 
 use super::error::DagError;
@@ -46,17 +46,45 @@ use super::error::DagError;
 /// - Serializable for persistence and API responses
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskGraph {
-    /// The nodes in this DAG, keyed by UUID.
+    /// The nodes in this DAG.
     pub nodes: Vec<TaskNode>,
-
-    /// Adjacency list: for each node, the list of node IDs it depends on.
-    pub dependencies: Vec<Vec<Uuid>>,
 
     /// Topological ordering of node IDs (populated by `seal()`).
     pub topological_order: Option<Vec<Uuid>>,
 
     /// Whether the graph has been sealed (frozen for execution).
     pub sealed: bool,
+
+    /// Internal execution tracking.
+    ///
+    /// These fields are populated after `seal()` and used during execution.
+    /// They are not serialized for persistence (rebuilt on load).
+    #[serde(skip)]
+    pub execution_state: ExecutionState,
+}
+
+/// Execution tracking state for a TaskGraph.
+///
+/// Maintained in-memory during graph execution. Rebuilt from scratch
+/// when a graph is loaded from storage.
+#[derive(Debug, Clone, Default)]
+pub struct ExecutionState {
+    /// In-degree for each node: number of unresolved dependencies.
+    /// A node is ready when its in-degree reaches 0.
+    pub in_degree: HashMap<Uuid, usize>,
+
+    /// Forward adjacency: for each node, the set of nodes that depend on it.
+    /// Built from the reverse of each TaskNode's `dependencies`.
+    pub dependents: HashMap<Uuid, Vec<Uuid>>,
+
+    /// Set of node IDs that have been marked as completed.
+    pub completed: HashSet<Uuid>,
+
+    /// Queue of node IDs whose in-degree is 0 (ready to execute).
+    pub ready_queue: VecDeque<Uuid>,
+
+    /// Whether the topological sort has been computed.
+    pub sorted: bool,
 }
 
 impl TaskGraph {
@@ -64,9 +92,9 @@ impl TaskGraph {
     pub fn new() -> Self {
         Self {
             nodes: Vec::new(),
-            dependencies: Vec::new(),
             topological_order: None,
             sealed: false,
+            execution_state: ExecutionState::default(),
         }
     }
 
@@ -75,6 +103,10 @@ impl TaskGraph {
     /// This is Phase 1 of construction. The node's dependencies are
     /// stored but not checked for cycles until `seal()` is called.
     /// Duplicate node IDs are rejected with `DagError::DuplicateTaskId`.
+    ///
+    /// # Errors
+    /// - `DagError::InvalidGraph` if the graph is already sealed
+    /// - `DagError::DuplicateTaskId` if a node with the same ID exists
     pub fn add_unchecked(&mut self, node: TaskNode) -> Result<(), DagError> {
         if self.sealed {
             return Err(DagError::InvalidGraph {
@@ -94,9 +126,13 @@ impl TaskGraph {
     /// topological ordering and detects cycles. After sealing:
     /// - `sealed` is set to true
     /// - `topological_order` contains the sorted node IDs
+    /// - `execution_state` is initialised with in-degrees and dependents
     ///
-    /// Returns `DagError::CycleDetected` if a cycle is found, with
-    /// the count of processed vs total nodes.
+    /// # Errors
+    /// - `DagError::InvalidGraph` if already sealed, empty, or has
+    ///   invalid dependency references
+    /// - `DagError::CycleDetected` if a cycle is found, with
+    ///   the count of processed vs total nodes
     pub fn seal(&mut self) -> Result<(), DagError> {
         if self.sealed {
             return Err(DagError::InvalidGraph {
@@ -108,8 +144,185 @@ impl TaskGraph {
                 reason: "Cannot seal an empty graph".to_string(),
             });
         }
+
+        // Validate all dependency references
+        self.validate_dependencies()?;
+
+        // Build initial in-degree from node dependencies (before Kahn's reduction)
+        let mut initial_in_degree: HashMap<Uuid, usize> = HashMap::new();
+        let mut dependents: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
+        for node in &self.nodes {
+            initial_in_degree.insert(node.id, node.dependencies.len());
+            for dep_id in &node.dependencies {
+                dependents.entry(*dep_id).or_default().push(node.id);
+            }
+        }
+
+        // Run Kahn's algorithm
+        let topo_order = self.kahns_algorithm(&initial_in_degree, &dependents)?;
+
+        // Build the ready queue from nodes with initial in_degree == 0
+        let mut ready_queue = VecDeque::new();
+        for node in &self.nodes {
+            if *initial_in_degree.get(&node.id).unwrap_or(&0) == 0 {
+                ready_queue.push_back(node.id);
+            }
+        }
+
+        self.topological_order = Some(topo_order);
+        self.execution_state = ExecutionState {
+            in_degree: initial_in_degree,
+            dependents,
+            completed: HashSet::new(),
+            ready_queue,
+            sorted: true,
+        };
         self.sealed = true;
         Ok(())
+    }
+
+    /// Validate that all dependency references point to existing nodes.
+    fn validate_dependencies(&self) -> Result<(), DagError> {
+        let node_ids: HashSet<Uuid> = self.nodes.iter().map(|n| n.id).collect();
+        let mut missing = Vec::new();
+
+        for node in &self.nodes {
+            for dep_id in &node.dependencies {
+                if !node_ids.contains(dep_id) {
+                    missing.push(*dep_id);
+                }
+            }
+        }
+
+        if !missing.is_empty() {
+            return Err(DagError::DependencyNotFound { missing });
+        }
+        Ok(())
+    }
+
+    /// Run Kahn's algorithm for topological sorting with cycle detection.
+    ///
+    /// Takes pre-computed in_degree and dependents maps and processes
+    /// them through Kahn's algorithm. Returns the topological ordering.
+    ///
+    /// # Algorithm
+    /// 1. Start with nodes that have in-degree 0
+    /// 2. Process each node: decrease in-degree of its dependents
+    /// 3. If a dependent's in-degree reaches 0, add to process queue
+    /// 4. If not all nodes are processed, a cycle exists
+    fn kahns_algorithm(
+        &self,
+        initial_in_degree: &HashMap<Uuid, usize>,
+        dependents: &HashMap<Uuid, Vec<Uuid>>,
+    ) -> Result<Vec<Uuid>, DagError> {
+        // Clone in_degree since Kahn's algorithm mutates it
+        let mut in_degree = initial_in_degree.clone();
+
+        let mut queue: VecDeque<Uuid> = VecDeque::new();
+        let mut topo_order: Vec<Uuid> = Vec::with_capacity(self.nodes.len());
+
+        // Start with nodes that have no dependencies (in_degree == 0)
+        for node in &self.nodes {
+            if *in_degree.get(&node.id).unwrap_or(&0) == 0 {
+                queue.push_back(node.id);
+            }
+        }
+
+        while let Some(node_id) = queue.pop_front() {
+            topo_order.push(node_id);
+
+            if let Some(deps) = dependents.get(&node_id) {
+                let deps_clone = deps.clone();
+                for dep_id in &deps_clone {
+                    if let Some(degree) = in_degree.get_mut(dep_id) {
+                        *degree = degree.saturating_sub(1);
+                        if *degree == 0 {
+                            queue.push_back(*dep_id);
+                        }
+                    }
+                }
+            }
+        }
+
+        let processed = topo_order.len();
+        let total = self.nodes.len();
+
+        if processed < total {
+            return Err(DagError::CycleDetected { found: processed, total });
+        }
+
+        Ok(topo_order)
+    }
+
+    /// Mark a node as completed and update the ready queue.
+    ///
+    /// When a node completes, its dependents may have their in-degree
+    /// reduced to 0, making them ready for execution.
+    ///
+    /// # Errors
+    /// - `DagError::TaskNotFound` if the node ID does not exist
+    /// - `DagError::InvalidGraph` if the graph has not been sealed
+    pub fn mark_completed(&mut self, node_id: Uuid) -> Result<(), DagError> {
+        if !self.sealed {
+            return Err(DagError::InvalidGraph {
+                reason: "Cannot mark nodes as completed before sealing".to_string(),
+            });
+        }
+
+        if !self.nodes.iter().any(|n| n.id == node_id) {
+            return Err(DagError::TaskNotFound { id: node_id });
+        }
+
+        if self.execution_state.completed.contains(&node_id) {
+            return Ok(()); // Idempotent
+        }
+
+        self.execution_state.completed.insert(node_id);
+
+        // Update dependents' in-degree and add to ready queue if 0
+        if let Some(deps) = self.execution_state.dependents.get(&node_id).cloned() {
+            for dep_id in deps {
+                if let Some(degree) = self.execution_state.in_degree.get_mut(&dep_id) {
+                    *degree = degree.saturating_sub(1);
+                    if *degree == 0 {
+                        self.execution_state.ready_queue.push_back(dep_id);
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Return the IDs of nodes whose dependencies are all satisfied.
+    ///
+    /// Returns an empty Vec if the graph has not been sealed.
+    /// Provides O(1) amortized access via the internal ready queue.
+    pub fn ready_nodes(&self) -> Vec<Uuid> {
+        if !self.sealed {
+            return Vec::new();
+        }
+        self.execution_state.ready_queue.iter().copied().collect()
+    }
+
+    /// Pop the next ready node (removes it from the ready queue).
+    pub fn pop_ready_node(&mut self) -> Option<Uuid> {
+        self.execution_state.ready_queue.pop_front()
+    }
+
+    /// Check if all nodes have been completed.
+    pub fn is_execution_complete(&self) -> bool {
+        self.sealed && self.execution_state.completed.len() == self.nodes.len()
+    }
+
+    /// Get a node by its ID.
+    pub fn get_node(&self, node_id: Uuid) -> Option<&TaskNode> {
+        self.nodes.iter().find(|n| n.id == node_id)
+    }
+
+    /// Get a mutable reference to a node by its ID.
+    pub fn get_node_mut(&mut self, node_id: Uuid) -> Option<&mut TaskNode> {
+        self.nodes.iter_mut().find(|n| n.id == node_id)
     }
 
     /// Return an iterator over all nodes in the graph.
@@ -125,6 +338,21 @@ impl TaskGraph {
     /// Return true if the graph contains no nodes.
     pub fn is_empty(&self) -> bool {
         self.nodes.is_empty()
+    }
+
+    /// Return the topological ordering (if sealed).
+    pub fn topological_order(&self) -> Option<&[Uuid]> {
+        self.topological_order.as_deref()
+    }
+
+    /// Return the set of completed node IDs.
+    pub fn completed_nodes(&self) -> &HashSet<Uuid> {
+        &self.execution_state.completed
+    }
+
+    /// Return the in-degree map.
+    pub fn in_degree(&self) -> &HashMap<Uuid, usize> {
+        &self.execution_state.in_degree
     }
 }
 

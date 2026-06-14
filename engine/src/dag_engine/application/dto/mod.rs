@@ -33,6 +33,8 @@ pub struct ConstructGraphInput {
 /// Output from constructing a new TaskGraph.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConstructGraphOutput {
+    /// The ID assigned to this graph.
+    pub dag_id: Uuid,
     /// The constructed (unsealed) TaskGraph.
     pub graph: TaskGraph,
     /// Number of nodes in the graph.
@@ -107,6 +109,8 @@ pub struct GetGraphInput {
 /// Output from retrieving a TaskGraph.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetGraphOutput {
+    /// The ID of the graph.
+    pub dag_id: Uuid,
     /// The retrieved TaskGraph.
     pub graph: TaskGraph,
     /// ISO 8601 timestamp of retrieval.

@@ -1,25 +1,27 @@
 //! DAG Engine — Template-driven DAG construction, validation, and planning.
 //!
 //! @canonical .pi/architecture/modules/dag-engine.md
-//! Implements: Contract Freeze — dag-engine public interface contracts
-//! Issue: issue-contract-freeze
+//! Implements: TaskGraph — TaskGraph, DagGraphService, DagPlanningService
+//! Issue: issue-taskgraph
 //!
 //! The DAG Engine compiles templates into executable Directed Acyclic Graphs.
 //! It handles two-phase graph construction (add nodes → seal), topological
 //! sorting (Kahn's algorithm), cycle detection, O(1) ready queue, and per-node
 //! execution policies with retry configuration.
 //!
-//! # Contract (Frozen)
-//! - All public interfaces are defined in domain/ and application/
-//! - DTOs in application/dto/ define input/output contracts
-//! - HTTP contracts in interfaces/http/ define API surface
-//! - Event payloads in domain/event/ define emitted events
-//! - Repository interfaces in infrastructure/repository/
+//! # Design
+//! - `domain/`: Core entities (TaskGraph, TaskNode, ExecutionPolicy, PlanDiff)
+//! - `application/`: Service interfaces, implementations, DTOs, and factories
+//! - `infrastructure/`: Repository interfaces for persistence
+//! - `interfaces/`: HTTP API contracts
 //!
-//! No implementation code is permitted in this module — only contracts.
-//! Implementation issues must satisfy these contracts.
+//! Contracts defined in issue-contract-freeze are frozen.
+//! Implementation satisfies those contracts.
 
 pub mod application;
 pub mod domain;
 pub mod infrastructure;
 pub mod interfaces;
+
+#[cfg(test)]
+pub(crate) mod tests;
