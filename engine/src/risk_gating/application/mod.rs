@@ -17,8 +17,12 @@
 
 pub mod dto;
 pub mod factory;
+pub mod gate_factory_impl;
+pub mod gate_service_impl;
 pub mod service;
 
 pub use dto::*;
 pub use factory::*;
+pub use gate_factory_impl::*;
+pub use gate_service_impl::*;
 pub use service::*;
