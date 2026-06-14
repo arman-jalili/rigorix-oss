@@ -11,6 +11,8 @@
 //! The primary repository is `RiskConfigRepository` for loading and
 //! persisting risk configuration and tool overrides.
 
+pub mod default_config_repository;
 pub mod repository;
 
+pub use default_config_repository::*;
 pub use repository::*;
