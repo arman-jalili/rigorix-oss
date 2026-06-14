@@ -52,7 +52,7 @@
     }
   ],
   "currentItemIndex": 2,
-  "currentStepIndex": 0,
+  "currentStepIndex": 3,
   "status": "running",
   "retryCount": 0,
   "results": [
@@ -137,9 +137,45 @@
           "reason": ""
         }
       ]
+    },
+    {
+      "item": "issue-auditsender",
+      "status": "in-progress",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
     }
   ],
   "mergeOnValid": true,
   "createdAt": "2026-06-14T18:08:53.160Z",
-  "updatedAt": "2026-06-14T18:13:47.044Z"
+  "updatedAt": "2026-06-14T18:14:35.372Z"
 }
