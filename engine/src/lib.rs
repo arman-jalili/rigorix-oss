@@ -22,6 +22,7 @@
 //! - `interfaces/` — API contracts (HTTP, events)
 
 pub mod audit;
+pub mod budget_tracking;
 pub mod cancellation;
 pub mod configuration;
 pub mod enforcement;
