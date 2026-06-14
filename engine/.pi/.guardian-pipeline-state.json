@@ -1,11 +1,12 @@
 {
-  "id": "PL-8353",
-  "name": "\"template-generation\"",
+  "id": "PL-4537",
+  "name": "\"error-handling\"",
   "items": [
     "issue-contract-freeze",
-    "issue-templategenerator-trait",
-    "issue-claudetemplategenerator",
-    "issue-phase-3-symbol-validation",
+    "issue-auditenvelope",
+    "issue-auditsender",
+    "issue-auditqueue",
+    "issue-circuitbreaker",
     "issue-proofing",
     "issue-architecture-readiness"
   ],
@@ -50,7 +51,7 @@
       }
     }
   ],
-  "currentItemIndex": 5,
+  "currentItemIndex": 2,
   "currentStepIndex": 0,
   "status": "running",
   "retryCount": 0,
@@ -85,47 +86,6 @@
           "reason": ""
         },
         {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-templategenerator-trait",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
           "step": "merge",
           "status": "passed",
           "reason": ""
@@ -138,11 +98,16 @@
       ]
     },
     {
-      "item": "issue-claudetemplategenerator",
+      "item": "issue-auditenvelope",
       "status": "done",
       "stepResults": [
         {
-          "step": "merge",
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "implement",
           "status": "passed",
           "reason": ""
         },
@@ -163,63 +128,6 @@
         },
         {
           "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-phase-3-symbol-validation",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-proofing",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
           "status": "passed",
           "reason": ""
         },
@@ -232,6 +140,6 @@
     }
   ],
   "mergeOnValid": true,
-  "createdAt": "2026-06-14T17:26:40.544Z",
-  "updatedAt": "2026-06-14T18:01:04.101Z"
+  "createdAt": "2026-06-14T18:08:53.160Z",
+  "updatedAt": "2026-06-14T18:13:47.044Z"
 }

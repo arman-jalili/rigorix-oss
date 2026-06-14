@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: ""planning-pipeline""
+  epic: ""error-handling""
   component: "Contract Freeze"
-  module: "planning-pipeline"
+  module: "audit"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/planning-pipeline.md"
+    - module: ".pi/architecture/modules/audit.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -47,23 +47,25 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/planning-pipeline/contracts/"
-    - "create: src/planning-pipeline/contracts/dtos/"
-    - "create: src/planning-pipeline/contracts/events/"
+    - "create: src/audit/contracts/"
+    - "create: src/audit/contracts/dtos/"
+    - "create: src/audit/contracts/events/"
 ---
 
-# Contract Freeze: planning-pipeline
+# Contract Freeze: audit
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the planning-pipeline
+Define and freeze all public interfaces, contracts, and schemas for the audit
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- PlanningPipeline
-- Classifier Trait
+- AuditEnvelope
+- AuditSender
+- AuditQueue
+- CircuitBreaker
 
 ## What Must Be Frozen
 
