@@ -279,6 +279,11 @@ run_stage "21" "dag-engine_proofing" \
 run_stage "22" "repo-engine_proofing" \
     "${SCRIPTS_DIR}/stage_repo-engine_proofing.sh" \
     "always"
+
+# Stage 23: Planning-Pipeline Proofing
+run_stage "23" "planning-pipeline_proofing" \
+    "${SCRIPTS_DIR}/stage_planning-pipeline_proofing.sh" \
+    "always"
 # ── Summary ──
 
 echo ""
