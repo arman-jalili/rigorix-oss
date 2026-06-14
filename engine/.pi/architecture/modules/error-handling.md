@@ -19,17 +19,15 @@ Structured error types using thiserror across all modules. Root `CoreOrchestrato
 
 ## Components
 
-| Component | File Path | Purpose | Canonical Section |
-|-----------|-----------|---------|-------------------|
-| CoreOrchestratorError | `rigorix/src/error.rs` | Root error type with `#[from]` for all sub-errors | #root |
-| DagError | `rigorix/src/error.rs` | Cycle, missing task, invalid graph | #dag |
-| EnforcementError | `rigorix/src/error.rs` | Limit exceeded, invalid config, lock poisoned | #enforcement |
-| LlmBudgetError | `rigorix/src/error.rs` | Max calls/tokens exceeded | #budget |
-| ExecutionError | `rigorix/src/error.rs` | Task failed, timeout, replan required | #execution |
-| ToolError | `rigorix/src/error.rs` | Tool not found, execution failed, path denied | #tool |
-| PlanningError | `rigorix/src/error.rs` | Template parse, classification, validation | #planning |
-| SymbolGraphError | `rigorix/src/error.rs` | Symbol not found, indexing failed | #symbol |
-| ConfigurationError | `rigorix/src/error.rs` | Config not found, parse error, invalid config | #config |
+### CoreOrchestratorError
+
+**Purpose:** Root error type with `#[from]` for all sub-errors
+
+**Implementation File:** `src/error.rs` (planned)
+
+status: planned
+
+depends: none
 
 ---
 
