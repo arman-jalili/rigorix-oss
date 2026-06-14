@@ -1436,3 +1436,545 @@ fn test_openai_config_defaults() {
     assert_eq!(config.model, "gpt-4o");
     assert_eq!(config.max_tokens, 1024);
 }
+
+// ---------------------------------------------------------------------------
+// Symbol Validation Tests
+// ---------------------------------------------------------------------------
+
+use crate::planning::application::service::SymbolValidationService;
+use crate::planning::application::symbol_validation_impl::SymbolValidationServiceImpl;
+
+/// Mock symbol graph that returns found=true for symbols we've registered
+struct MockSymbolGraph {
+    symbols: std::collections::HashSet<String>,
+}
+
+#[async_trait::async_trait]
+impl crate::repo_engine::application::service::SymbolGraphService for MockSymbolGraph {
+    async fn add_symbol(
+        &self,
+        _input: crate::repo_engine::application::dto::AddSymbolInput,
+    ) -> Result<crate::repo_engine::application::dto::AddSymbolOutput, crate::repo_engine::domain::RepoEngineError> {
+        unimplemented!()
+    }
+
+    async fn lookup_symbol(
+        &self,
+        input: crate::repo_engine::application::dto::LookupSymbolInput,
+    ) -> Result<crate::repo_engine::application::dto::LookupSymbolOutput, crate::repo_engine::domain::RepoEngineError> {
+        let found = self.symbols.contains(&input.name);
+        Ok(crate::repo_engine::application::dto::LookupSymbolOutput {
+            symbol: None,
+            references_from: vec![],
+            references_to: vec![],
+            found,
+        })
+    }
+
+    async fn search_symbols(
+        &self,
+        _input: crate::repo_engine::application::dto::SearchSymbolsInput,
+    ) -> Result<crate::repo_engine::application::dto::SearchSymbolsOutput, crate::repo_engine::domain::RepoEngineError> {
+        unimplemented!()
+    }
+
+    async fn symbols_by_file(
+        &self,
+        _input: crate::repo_engine::application::dto::SymbolsByFileInput,
+    ) -> Result<crate::repo_engine::application::dto::SymbolsByFileOutput, crate::repo_engine::domain::RepoEngineError> {
+        unimplemented!()
+    }
+
+    async fn remove_symbol(&self, _name: &str) -> Result<bool, crate::repo_engine::domain::RepoEngineError> {
+        unimplemented!()
+    }
+
+    async fn clear_graph(&self) -> Result<(), crate::repo_engine::domain::RepoEngineError> {
+        unimplemented!()
+    }
+
+    async fn graph_stats(
+        &self,
+        _input: crate::repo_engine::application::dto::GraphStatsInput,
+    ) -> Result<crate::repo_engine::application::dto::GraphStatsOutput, crate::repo_engine::domain::RepoEngineError> {
+        Ok(crate::repo_engine::application::dto::GraphStatsOutput {
+            total_symbols: self.symbols.len(),
+            total_indexed: self.symbols.len(),
+            by_kind: std::collections::HashMap::new(),
+            by_language: std::collections::HashMap::new(),
+            max_capacity: 0,
+            reference_count: 0,
+        })
+    }
+
+    async fn add_reference(&self, _from: &str, _to: &str) -> Result<bool, crate::repo_engine::domain::RepoEngineError> {
+        unimplemented!()
+    }
+
+    fn graph(&self) -> &crate::repo_engine::domain::SymbolGraph {
+        unimplemented!()
+    }
+}
+
+#[tokio::test]
+async fn test_symbol_validation_passes_known_symbols() {
+    let mut symbols = std::collections::HashSet::new();
+    symbols.insert("MyStruct".to_string());
+    symbols.insert("some_function".to_string());
+
+    let mock_graph = MockSymbolGraph { symbols };
+    let validator = SymbolValidationServiceImpl::new(Box::new(mock_graph));
+
+    let template = crate::templates::domain::Template {
+        id: "test".to_string(),
+        name: "Test".to_string(),
+        description: "".to_string(),
+        version: "1.0.0".to_string(),
+        parameters: vec![],
+        nodes: vec![crate::templates::domain::TemplateNode {
+            id: "step-1".to_string(),
+            name: "Step 1".to_string(),
+            depends_on: vec![],
+            action: crate::templates::domain::TemplateAction::RunCommand {
+                command: "MyStruct".to_string(),
+                cwd: None,
+                timeout_secs: 30,
+                env: std::collections::HashMap::new(),
+            },
+            description: None,
+            retry: crate::templates::domain::RetryConfig::default(),
+            validate: vec![],
+            intent: None,
+        }],
+        tags: vec![],
+        category: None,
+        author: None,
+    };
+
+    let input = crate::planning::application::dto::SymbolValidationInput {
+        execution_id: uuid::Uuid::new_v4(),
+        template,
+        max_invalid_references: 10,
+        flag_any_type: true,
+    };
+
+    let result = validator.validate_template(input).await.unwrap();
+    assert!(result.valid);
+    assert!(result.invalid_references.is_empty());
+    assert!(result.references_checked > 0);
+}
+
+#[tokio::test]
+async fn test_symbol_validation_catches_hallucinated_types() {
+    let symbols = std::collections::HashSet::new(); // empty - no known symbols
+    let mock_graph = MockSymbolGraph { symbols };
+    let validator = SymbolValidationServiceImpl::new(Box::new(mock_graph));
+
+    let template = crate::templates::domain::Template {
+        id: "test".to_string(),
+        name: "Test".to_string(),
+        description: "".to_string(),
+        version: "1.0.0".to_string(),
+        parameters: vec![],
+        nodes: vec![crate::templates::domain::TemplateNode {
+            id: "step-1".to_string(),
+            name: "Step 1".to_string(),
+            depends_on: vec![],
+            action: crate::templates::domain::TemplateAction::RunCommand {
+                command: "NonExistentType".to_string(),
+                cwd: None,
+                timeout_secs: 30,
+                env: std::collections::HashMap::new(),
+            },
+            description: None,
+            retry: crate::templates::domain::RetryConfig::default(),
+            validate: vec![],
+            intent: None,
+        }],
+        tags: vec![],
+        category: None,
+        author: None,
+    };
+
+    let input = crate::planning::application::dto::SymbolValidationInput {
+        execution_id: uuid::Uuid::new_v4(),
+        template,
+        max_invalid_references: 10,
+        flag_any_type: true,
+    };
+
+    let result = validator.validate_template(input).await.unwrap();
+    assert!(!result.valid);
+    assert_eq!(result.invalid_references.len(), 1);
+    assert_eq!(result.invalid_references[0].symbol, "NonExistentType");
+}
+
+#[tokio::test]
+async fn test_symbol_validation_detects_any_type() {
+    let mut symbols = std::collections::HashSet::new();
+    symbols.insert("MyStruct".to_string());
+    let mock_graph = MockSymbolGraph { symbols };
+    let validator = SymbolValidationServiceImpl::new(Box::new(mock_graph));
+
+    let template = crate::templates::domain::Template {
+        id: "test".to_string(),
+        name: "Test".to_string(),
+        description: "".to_string(),
+        version: "1.0.0".to_string(),
+        parameters: vec![],
+        nodes: vec![crate::templates::domain::TemplateNode {
+            id: "step-1".to_string(),
+            name: "Step 1".to_string(),
+            depends_on: vec![],
+            action: crate::templates::domain::TemplateAction::RunCommand {
+                command: "any".to_string(),
+                cwd: None,
+                timeout_secs: 30,
+                env: std::collections::HashMap::new(),
+            },
+            description: None,
+            retry: crate::templates::domain::RetryConfig::default(),
+            validate: vec![],
+            intent: None,
+        }],
+        tags: vec![],
+        category: None,
+        author: None,
+    };
+
+    let input = crate::planning::application::dto::SymbolValidationInput {
+        execution_id: uuid::Uuid::new_v4(),
+        template,
+        max_invalid_references: 10,
+        flag_any_type: true,
+    };
+
+    let result = validator.validate_template(input).await.unwrap();
+    assert!(!result.valid);
+    assert!(result.any_type_detected);
+    assert!(result.invalid_references[0].is_any_type);
+}
+
+#[tokio::test]
+async fn test_symbol_validation_respects_max_invalid() {
+    let symbols = std::collections::HashSet::new(); // empty
+    let mock_graph = MockSymbolGraph { symbols };
+    let validator = SymbolValidationServiceImpl::new(Box::new(mock_graph));
+
+    // Template with multiple nodes each referencing a different non-existent type
+    let node1 = crate::templates::domain::TemplateNode {
+        id: "step-1".to_string(),
+        name: "Step 1".to_string(),
+        depends_on: vec![],
+        action: crate::templates::domain::TemplateAction::RunCommand {
+            command: "TypeA".to_string(),
+            cwd: None,
+            timeout_secs: 30,
+            env: std::collections::HashMap::new(),
+        },
+        description: None,
+        retry: crate::templates::domain::RetryConfig::default(),
+        validate: vec![],
+        intent: None,
+    };
+    let node2 = crate::templates::domain::TemplateNode {
+        id: "step-2".to_string(),
+        name: "Step 2".to_string(),
+        depends_on: vec!["step-1".to_string()],
+        action: crate::templates::domain::TemplateAction::RunCommand {
+            command: "TypeB".to_string(),
+            cwd: None,
+            timeout_secs: 30,
+            env: std::collections::HashMap::new(),
+        },
+        description: None,
+        retry: crate::templates::domain::RetryConfig::default(),
+        validate: vec![],
+        intent: None,
+    };
+
+    let template = crate::templates::domain::Template {
+        id: "test".to_string(),
+        name: "Test".to_string(),
+        description: "".to_string(),
+        version: "1.0.0".to_string(),
+        parameters: vec![],
+        nodes: vec![node1, node2],
+        tags: vec![],
+        category: None,
+        author: None,
+    };
+
+    let input = crate::planning::application::dto::SymbolValidationInput {
+        execution_id: uuid::Uuid::new_v4(),
+        template,
+        max_invalid_references: 1,
+        flag_any_type: true,
+    };
+
+    let result = validator.validate_template(input).await.unwrap();
+    assert!(!result.valid);
+    assert_eq!(result.invalid_references.len(), 1); // Only 1 reported due to max
+}
+
+#[tokio::test]
+async fn test_symbol_validation_skips_reserved_names() {
+    let symbols = std::collections::HashSet::new(); // empty
+    let mock_graph = MockSymbolGraph { symbols };
+    let validator = SymbolValidationServiceImpl::new(Box::new(mock_graph));
+
+    let template = crate::templates::domain::Template {
+        id: "test".to_string(),
+        name: "Test".to_string(),
+        description: "".to_string(),
+        version: "1.0.0".to_string(),
+        parameters: vec![],
+        nodes: vec![crate::templates::domain::TemplateNode {
+            id: "step-1".to_string(),
+            name: "Step 1".to_string(),
+            depends_on: vec![],
+            action: crate::templates::domain::TemplateAction::RunCommand {
+                command: "cargo build".to_string(),
+                cwd: None,
+                timeout_secs: 30,
+                env: std::collections::HashMap::new(),
+            },
+            description: None,
+            retry: crate::templates::domain::RetryConfig::default(),
+            validate: vec![],
+            intent: None,
+        }],
+        tags: vec![],
+        category: None,
+        author: None,
+    };
+
+    let input = crate::planning::application::dto::SymbolValidationInput {
+        execution_id: uuid::Uuid::new_v4(),
+        template,
+        max_invalid_references: 10,
+        flag_any_type: true,
+    };
+
+    let result = validator.validate_template(input).await.unwrap();
+    // "cargo" is in the reserved list, so it should be skipped
+    assert!(result.valid);
+    assert!(result.invalid_references.is_empty());
+}
+
+#[tokio::test]
+async fn test_symbol_validation_extracts_references() {
+    let symbols = std::collections::HashSet::new(); // empty - catches all
+    let mock_graph = MockSymbolGraph { symbols };
+    let validator = SymbolValidationServiceImpl::new(Box::new(mock_graph));
+
+    let template = crate::templates::domain::Template {
+        id: "test".to_string(),
+        name: "Test".to_string(),
+        description: "".to_string(),
+        version: "1.0.0".to_string(),
+        parameters: vec![],
+        nodes: vec![
+            crate::templates::domain::TemplateNode {
+                id: "step-1".to_string(),
+                name: "Step 1".to_string(),
+                depends_on: vec![],
+                action: crate::templates::domain::TemplateAction::LspQuery {
+                    query_type: "goto-definition".to_string(),
+                    file: "src/SomeStruct".to_string(),
+                    line: 10,
+                    column: 5,
+                },
+                description: None,
+                retry: crate::templates::domain::RetryConfig::default(),
+                validate: vec![],
+                intent: None,
+            },
+        ],
+        tags: vec![],
+        category: None,
+        author: None,
+    };
+
+    let refs = validator.extract_symbol_references(&template).await.unwrap();
+    // Should extract "SomeStruct" from the file path "src/SomeStruct"
+    assert!(refs.contains(&"SomeStruct".to_string()));
+}
+
+#[tokio::test]
+async fn test_symbol_validation_flags_any_without_flagging() {
+    let mut symbols = std::collections::HashSet::new();
+    symbols.insert("any".to_string());
+    let mock_graph = MockSymbolGraph { symbols };
+    let validator = SymbolValidationServiceImpl::new(Box::new(mock_graph));
+
+    let template = crate::templates::domain::Template {
+        id: "test".to_string(),
+        name: "Test".to_string(),
+        description: "".to_string(),
+        version: "1.0.0".to_string(),
+        parameters: vec![],
+        nodes: vec![crate::templates::domain::TemplateNode {
+            id: "step-1".to_string(),
+            name: "Step 1".to_string(),
+            depends_on: vec![],
+            action: crate::templates::domain::TemplateAction::RunCommand {
+                command: "any".to_string(),
+                cwd: None,
+                timeout_secs: 30,
+                env: std::collections::HashMap::new(),
+            },
+            description: None,
+            retry: crate::templates::domain::RetryConfig::default(),
+            validate: vec![],
+            intent: None,
+        }],
+        tags: vec![],
+        category: None,
+        author: None,
+    };
+
+    let input = crate::planning::application::dto::SymbolValidationInput {
+        execution_id: uuid::Uuid::new_v4(),
+        template,
+        max_invalid_references: 10,
+        flag_any_type: false, // not flagging any type
+    };
+
+    let result = validator.validate_template(input).await.unwrap();
+    assert!(result.valid); // Should pass because we're not flagging any type
+    assert!(result.any_type_detected); // But still detects it
+}
+
+#[tokio::test]
+async fn test_symbol_validation_extracts_from_parameters() {
+    let symbols = std::collections::HashSet::new(); // empty
+    let mock_graph = MockSymbolGraph { symbols };
+    let validator = SymbolValidationServiceImpl::new(Box::new(mock_graph));
+
+    let template = crate::templates::domain::Template {
+        id: "test".to_string(),
+        name: "Test".to_string(),
+        description: "".to_string(),
+        version: "1.0.0".to_string(),
+        parameters: vec![],
+        nodes: vec![crate::templates::domain::TemplateNode {
+            id: "step-1".to_string(),
+            name: "Step 1".to_string(),
+            depends_on: vec![],
+            action: crate::templates::domain::TemplateAction::RunCommand {
+                command: "echo MyStruct".to_string(),
+                cwd: None,
+                timeout_secs: 30,
+                env: std::collections::HashMap::new(),
+            },
+            description: None,
+            retry: crate::templates::domain::RetryConfig::default(),
+            validate: vec![],
+            intent: None,
+        }],
+        tags: vec![],
+        category: None,
+        author: None,
+    };
+
+    let refs = validator.extract_symbol_references(&template).await.unwrap();
+    // "MyStruct" is PascalCase and should be extracted
+    assert!(refs.contains(&"MyStruct".to_string()));
+    // "echo" is lowercase and should not be extracted
+    assert!(!refs.contains(&"echo".to_string()));
+}
+
+#[tokio::test]
+async fn test_symbol_validation_empty_template_passes() {
+    let symbols = std::collections::HashSet::new();
+    let mock_graph = MockSymbolGraph { symbols };
+    let validator = SymbolValidationServiceImpl::new(Box::new(mock_graph));
+
+    let template = crate::templates::domain::Template::default();
+
+    let input = crate::planning::application::dto::SymbolValidationInput {
+        execution_id: uuid::Uuid::new_v4(),
+        template,
+        max_invalid_references: 10,
+        flag_any_type: true,
+    };
+
+    let result = validator.validate_template(input).await.unwrap();
+    assert!(result.valid);
+    assert_eq!(result.references_checked, 0);
+}
+
+#[tokio::test]
+async fn test_symbol_validation_multiple_hallucinated_types() {
+    let symbols = std::collections::HashSet::new(); // empty
+    let mock_graph = MockSymbolGraph { symbols };
+    let validator = SymbolValidationServiceImpl::new(Box::new(mock_graph));
+
+    let template = crate::templates::domain::Template {
+        id: "test".to_string(),
+        name: "Test".to_string(),
+        description: "".to_string(),
+        version: "1.0.0".to_string(),
+        parameters: vec![],
+        nodes: vec![crate::templates::domain::TemplateNode {
+            id: "step-1".to_string(),
+            name: "Step 1".to_string(),
+            depends_on: vec![],
+            action: crate::templates::domain::TemplateAction::RunCommand {
+                command: "FakeStruct".to_string(),
+                cwd: None,
+                timeout_secs: 30,
+                env: std::collections::HashMap::new(),
+            },
+            description: None,
+            retry: crate::templates::domain::RetryConfig::default(),
+            validate: vec![],
+            intent: None,
+        }],
+        tags: vec![],
+        category: None,
+        author: None,
+    };
+
+    let refs = validator.extract_symbol_references(&template).await.unwrap();
+    assert!(refs.contains(&"FakeStruct".to_string()));
+}
+
+#[tokio::test]
+async fn test_symbol_validation_does_not_flag_lowercase_names() {
+    let symbols = std::collections::HashSet::new();
+    let mock_graph = MockSymbolGraph { symbols };
+    let validator = SymbolValidationServiceImpl::new(Box::new(mock_graph));
+
+    let template = crate::templates::domain::Template {
+        id: "test".to_string(),
+        name: "Test".to_string(),
+        description: "".to_string(),
+        version: "1.0.0".to_string(),
+        parameters: vec![],
+        nodes: vec![crate::templates::domain::TemplateNode {
+            id: "step-1".to_string(),
+            name: "Step 1".to_string(),
+            depends_on: vec![],
+            action: crate::templates::domain::TemplateAction::RunCommand {
+                command: "echo 'hello'".to_string(),
+                cwd: None,
+                timeout_secs: 30,
+                env: std::collections::HashMap::new(),
+            },
+            description: None,
+            retry: crate::templates::domain::RetryConfig::default(),
+            validate: vec![],
+            intent: None,
+        }],
+        tags: vec![],
+        category: None,
+        author: None,
+    };
+
+    let refs = validator.extract_symbol_references(&template).await.unwrap();
+    // "echo" and "hello" are lowercase and should not be extracted as symbol references
+    assert!(!refs.contains(&"echo".to_string()));
+    assert!(!refs.contains(&"hello".to_string()));
+}
