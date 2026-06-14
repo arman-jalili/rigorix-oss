@@ -51,7 +51,7 @@
       }
     }
   ],
-  "currentItemIndex": 1,
+  "currentItemIndex": 2,
   "currentStepIndex": 0,
   "status": "running",
   "retryCount": 0,
@@ -96,9 +96,50 @@
           "reason": ""
         }
       ]
+    },
+    {
+      "item": "issue-auditenvelope",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
     }
   ],
   "mergeOnValid": true,
   "createdAt": "2026-06-14T18:08:53.160Z",
-  "updatedAt": "2026-06-14T18:11:50.629Z"
+  "updatedAt": "2026-06-14T18:13:47.044Z"
 }
