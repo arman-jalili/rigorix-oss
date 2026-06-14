@@ -2,8 +2,11 @@
 
 <!--
 Canonical Reference: .pi/architecture/modules/repo-engine.md
-Blueprint Source: Domain Exploration Session 63c25384
+Implementation: Complete (Epic: #137)
 -->
+
+> **Status:** ✅ Implemented — all contracts frozen, services implemented, 46 tests passing.
+> See `docs/runbook-repo-engine.md` for operations, `docs/dr-plan-repo-engine.md` for DR.
 
 ## Overview
 
@@ -22,9 +25,14 @@ Multi-language code indexing and symbol graph management. Indexes Rust (tree-sit
 
 | Component | File Path | Purpose | Canonical Section |
 |-----------|-----------|---------|-------------------|
-| SymbolGraph | `rigorix/src/repo_engine/symbol_graph.rs` | In-memory symbol graph with O(1) lookups | #graph |
-| SymbolDefinition | `rigorix/src/repo_engine/symbol_graph.rs` | Symbol with name, kind, location, signature | #definition |
-| SharedSymbolGraph | `rigorix/src/repo_engine/symbol_graph.rs` | Arc<RwLock<SymbolGraph>> wrapper | #shared |
+| SymbolGraph | `engine/src/repo_engine/domain/symbol_graph.rs` | In-memory symbol graph with O(1) lookups | #graph |
+| SymbolDefinition | `engine/src/repo_engine/domain/symbol_graph.rs` | Symbol with name, kind, location, signature | #definition |
+| SharedSymbolGraph | `engine/src/repo_engine/domain/symbol_graph.rs` | Arc<RwLock<SymbolGraph>> wrapper | #shared |
+| SymbolWorkspaceIntent | `engine/src/repo_engine/domain/symbol_workspace.rs` | Task graph interaction intent (4 variants) | #workspace-intent |
+| RepoEngineError | `engine/src/repo_engine/domain/error.rs` | 11 structured error variants | #errors |
+| RepoEngineEvent | `engine/src/repo_engine/domain/event/mod.rs` | 11 event payload schemas | #events |
+| SymbolGraphServiceImpl | `engine/src/repo_engine/application/symbol_graph_service_impl.rs` | RwLock-backed graph service (46 tests) | #graph-impl |
+| WorkspaceValidationServiceImpl | `engine/src/repo_engine/application/workspace_validation_service_impl.rs` | Phase 3 pre-execution validation | #validation |
 | RustIndexer | `rigorix/src/repo_engine/indexer.rs` | Index Rust files via tree-sitter-rust | #rust |
 | PythonIndexer | `rigorix/src/repo_engine/python_indexer.rs` | Index Python files via tree-sitter-python | #python |
 | TypeScriptIndexer | `rigorix/src/repo_engine/typescript_indexer.rs` | Index TypeScript files via tree-sitter-typescript | #typescript |
@@ -168,5 +176,7 @@ by name"]
 
 ---
 
-*Last updated: 2026-06-13*
-*Module version: 1.0.0*
+*Last updated: 2026-06-14*
+*Module version: 2.0.0 — Implementation Complete*
+*Tests: 46 unit tests across all layers*
+*CI: Stage 22 (repo-engine_proofing) in hardening pipeline with 28 contract checks*

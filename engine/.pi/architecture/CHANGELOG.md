@@ -10,6 +10,30 @@ This document tracks all architecture changes requiring implementation updates.
 
 ---
 
+## [2026-06-14] - Repo Engine Epic Implementation Complete
+
+### Added
+- Module: repo-engine (Final Epic Issue)
+  - Contract freeze: SymbolGraph, SymbolDefinition (12 SymbolKind variants, SourceLanguage,
+    SymbolVisibility), SharedSymbolGraph, SymbolWorkspaceIntent (4 variants),
+    RepoEngineError (11 variants), RepoEngineEvent (11 event payloads)
+  - Implemented: SymbolGraphServiceImpl — RwLock-backed thread-safe graph with
+    add, lookup (with adjacency), search (with kind/language filters), remove, clear,
+    stats, reference tracking
+  - Implemented: WorkspaceValidationServiceImpl — Phase 3 pre-execution validation
+    for ReadOnly, ReadWrite, Modification, Deletion intents with conflict detection
+    and orphaned reference checking
+  - 46 unit tests across all layers (SymbolGraphService: 19, SymbolDefinition: 13,
+    SymbolWorkspaceIntent: 7, WorkspaceValidationService: 7)
+  - All tests passing (cargo test -p rigorix -- repo_engine)
+  - Documentation: runbook-repo-engine.md, dr-plan-repo-engine.md
+  - CI: Proofing stage (stage 22) added to hardening pipeline with 28 contract checks
+    + coverage threshold
+  - Architecture: Module doc updated with final implementation details
+  - Verified: All proofing checks pass, build clean
+
+---
+
 ## [2026-06-14] - Template System Epic Implementation Complete
 
 ### Added
