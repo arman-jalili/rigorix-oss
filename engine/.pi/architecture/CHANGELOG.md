@@ -10,6 +10,38 @@ This document tracks all architecture changes requiring implementation updates.
 
 ---
 
+## [2026-06-14] - Planning Pipeline Epic Implementation Complete
+
+### Added
+- Module: planning-pipeline
+  - Contract freeze: UserIntent, PlanningResult, PlanningHash, PlanOutput,
+    ClassificationResult, Classifier trait, ParameterExtractor trait,
+    TemplateGenerator trait, PlanningError (12 variants), PlanningEvent (12 payloads),
+    PlanningPipelineService trait (10 methods), PlanningPipelineFactory trait (3 methods),
+    CompositeValidator trait, PlanningResultRepository trait, HTTP API contracts (5 endpoints),
+    10+ DTO types
+  - Implemented: PlanningPipelineImpl — 6-phase orchestrator with budget pre-check,
+    intent classification, parameter extraction, graph generation, plan validation,
+    deterministic SHA-256 hash computation
+  - Implemented: PlanningPipelineFactoryImpl — three factory methods
+    (create_default, create_with_generator, create_custom)
+  - Implemented: MockClassifier — deterministic test double with configurable
+    confidence thresholds for auto-select/clarification/generator paths
+  - Implemented: MockParameterExtractor — test double with defaults, overrides, errors
+  - Implemented: ClaudeClassifier — Anthropic Messages API via reqwest
+    (claude-sonnet-4-20250514, configurable endpoint, timeout, temperature)
+  - Implemented: OpenaiClassifier — OpenAI Chat Completions API via reqwest
+    (gpt-4o, Bearer auth, token usage tracking)
+  - Implemented: compute_planning_hash — public SHA-256 based deterministic hash
+  - 57 unit tests across all layers
+  - Documentation: runbook-planning-pipeline.md, dr-plan-planning-pipeline.md
+  - CI: Proofing stage (stage 23) added to hardening pipeline with 30 contract checks
+    + coverage threshold (57 tests found)
+  - Architecture: Module doc updated with final implementation details
+  - Verified: All proofing checks pass, build clean, cargo test passes
+
+---
+
 ## [2026-06-14] - Repo Engine Epic Implementation Complete
 
 ### Added
