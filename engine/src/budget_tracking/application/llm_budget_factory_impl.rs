@@ -9,8 +9,8 @@
 
 use async_trait::async_trait;
 
-use crate::budget_tracking::application::llm_budget_impl::LlmBudgetImpl;
 use crate::budget_tracking::application::factory::LlmBudgetFactory;
+use crate::budget_tracking::application::llm_budget_impl::LlmBudgetImpl;
 use crate::budget_tracking::application::service::LlmBudgetService;
 use crate::budget_tracking::domain::LlmBudgetError;
 
@@ -105,9 +105,11 @@ mod tests {
         let factory = LlmBudgetFactoryImpl;
         let budget = factory.create_default().await.unwrap();
         let status = budget
-            .get_status(crate::budget_tracking::application::dto::GetBudgetStatusInput {
-                execution_id: uuid::Uuid::new_v4(),
-            })
+            .get_status(
+                crate::budget_tracking::application::dto::GetBudgetStatusInput {
+                    execution_id: uuid::Uuid::new_v4(),
+                },
+            )
             .await
             .unwrap();
         assert_eq!(status.max_calls, 5);
@@ -120,9 +122,11 @@ mod tests {
         let factory = LlmBudgetFactoryImpl;
         let budget = factory.create_advanced().await.unwrap();
         let status = budget
-            .get_status(crate::budget_tracking::application::dto::GetBudgetStatusInput {
-                execution_id: uuid::Uuid::new_v4(),
-            })
+            .get_status(
+                crate::budget_tracking::application::dto::GetBudgetStatusInput {
+                    execution_id: uuid::Uuid::new_v4(),
+                },
+            )
             .await
             .unwrap();
         assert_eq!(status.max_calls, 20);
@@ -135,9 +139,11 @@ mod tests {
         let factory = LlmBudgetFactoryImpl;
         let budget = factory.create_aggressive().await.unwrap();
         let status = budget
-            .get_status(crate::budget_tracking::application::dto::GetBudgetStatusInput {
-                execution_id: uuid::Uuid::new_v4(),
-            })
+            .get_status(
+                crate::budget_tracking::application::dto::GetBudgetStatusInput {
+                    execution_id: uuid::Uuid::new_v4(),
+                },
+            )
             .await
             .unwrap();
         assert_eq!(status.max_calls, 50);
@@ -148,11 +154,16 @@ mod tests {
     #[tokio::test]
     async fn test_factory_custom() {
         let factory = LlmBudgetFactoryImpl;
-        let budget = factory.create_custom(100, 1_000_000, "custom".to_string()).await.unwrap();
+        let budget = factory
+            .create_custom(100, 1_000_000, "custom".to_string())
+            .await
+            .unwrap();
         let status = budget
-            .get_status(crate::budget_tracking::application::dto::GetBudgetStatusInput {
-                execution_id: uuid::Uuid::new_v4(),
-            })
+            .get_status(
+                crate::budget_tracking::application::dto::GetBudgetStatusInput {
+                    execution_id: uuid::Uuid::new_v4(),
+                },
+            )
             .await
             .unwrap();
         assert_eq!(status.max_calls, 100);
@@ -175,9 +186,11 @@ mod tests {
             .await
             .unwrap();
         let status = budget
-            .get_status(crate::budget_tracking::application::dto::GetBudgetStatusInput {
-                execution_id: uuid::Uuid::new_v4(),
-            })
+            .get_status(
+                crate::budget_tracking::application::dto::GetBudgetStatusInput {
+                    execution_id: uuid::Uuid::new_v4(),
+                },
+            )
             .await
             .unwrap();
         assert_eq!(status.max_calls, 500);

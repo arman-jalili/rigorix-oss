@@ -211,8 +211,7 @@ pub struct ValidateConfigRequest {
     /// Custom pattern-to-FailureType mappings to validate.
     pub custom_patterns: Option<std::collections::HashMap<String, FailureType>>,
     /// Custom FailureType-to-RetryStrategy mappings to validate.
-    pub custom_strategy_mappings:
-        Option<std::collections::HashMap<FailureType, RetryStrategy>>,
+    pub custom_strategy_mappings: Option<std::collections::HashMap<FailureType, RetryStrategy>>,
 }
 
 impl From<ValidateConfigRequest> for ValidateConfigInput {

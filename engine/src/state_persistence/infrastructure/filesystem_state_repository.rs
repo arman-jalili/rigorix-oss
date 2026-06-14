@@ -78,9 +78,10 @@ impl StateRepository for FileSystemStateRepository {
 
         // Serialise to a JSON string first to catch serialisation errors
         // before writing to disk.
-        let json = serde_json::to_string_pretty(state).map_err(|e| StateError::SerialisationError {
-            detail: format!("Failed to serialise execution state: {}", e),
-        })?;
+        let json =
+            serde_json::to_string_pretty(state).map_err(|e| StateError::SerialisationError {
+                detail: format!("Failed to serialise execution state: {}", e),
+            })?;
 
         // Write to temp file (atomic if we fail here, original is intact)
         fs::write(&temp, &json)
@@ -93,7 +94,10 @@ impl StateRepository for FileSystemStateRepository {
         fs::rename(&temp, &path)
             .await
             .map_err(|e| StateError::IoError {
-                detail: format!("Failed to rename temp state file {:?} to {:?}: {}", temp, path, e),
+                detail: format!(
+                    "Failed to rename temp state file {:?} to {:?}: {}",
+                    temp, path, e
+                ),
             })?;
 
         Ok(())

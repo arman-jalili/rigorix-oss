@@ -15,9 +15,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::enforcement::application::dto::{
-    GetBudgetStatusOutput, ResourceBudgetStatus,
-};
+use crate::enforcement::application::dto::{GetBudgetStatusOutput, ResourceBudgetStatus};
 
 use crate::enforcement::domain::ToolRiskLevel;
 

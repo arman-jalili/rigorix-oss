@@ -95,7 +95,10 @@ mod tests {
     #[tokio::test]
     async fn test_create_same_operation() {
         let factory = StrategyFactoryImpl;
-        assert_eq!(factory.create_same_operation(), RetryStrategy::SameOperation);
+        assert_eq!(
+            factory.create_same_operation(),
+            RetryStrategy::SameOperation
+        );
     }
 
     #[tokio::test]
@@ -134,21 +137,30 @@ mod tests {
     async fn test_create_expand_context_valid() {
         let factory = StrategyFactoryImpl;
         let strategy = factory.create_expand_context(3).await.unwrap();
-        assert!(matches!(strategy, RetryStrategy::ExpandContext { level: 3 }));
+        assert!(matches!(
+            strategy,
+            RetryStrategy::ExpandContext { level: 3 }
+        ));
     }
 
     #[tokio::test]
     async fn test_create_expand_context_zero() {
         let factory = StrategyFactoryImpl;
         let strategy = factory.create_expand_context(0).await.unwrap();
-        assert!(matches!(strategy, RetryStrategy::ExpandContext { level: 0 }));
+        assert!(matches!(
+            strategy,
+            RetryStrategy::ExpandContext { level: 0 }
+        ));
     }
 
     #[tokio::test]
     async fn test_create_expand_context_max() {
         let factory = StrategyFactoryImpl;
         let strategy = factory.create_expand_context(5).await.unwrap();
-        assert!(matches!(strategy, RetryStrategy::ExpandContext { level: 5 }));
+        assert!(matches!(
+            strategy,
+            RetryStrategy::ExpandContext { level: 5 }
+        ));
     }
 
     #[tokio::test]

@@ -62,7 +62,11 @@ pub trait RiskClassifier: Send + Sync {
     ///
     /// A `ClassificationResult` containing the risk level and the
     /// reasoning/rule that produced it.
-    fn classify(&self, tool_name: &str, parameters: Option<&serde_json::Value>) -> ClassificationResult;
+    fn classify(
+        &self,
+        tool_name: &str,
+        parameters: Option<&serde_json::Value>,
+    ) -> ClassificationResult;
 
     /// Get the risk level for a tool without detailed reasoning.
     ///

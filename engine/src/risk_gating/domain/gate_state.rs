@@ -65,7 +65,10 @@ impl GateStateRegistry {
             resolved: false,
         };
 
-        let mut pending = self.pending.write().expect("GateStateRegistry lock poisoned");
+        let mut pending = self
+            .pending
+            .write()
+            .expect("GateStateRegistry lock poisoned");
         pending
             .entry(execution_id.to_string())
             .or_default()
@@ -75,12 +78,11 @@ impl GateStateRegistry {
     }
 
     /// Resolve a pending gate. Returns the gate details if found.
-    pub fn resolve_gate(
-        &self,
-        execution_id: &str,
-        gate_id: &str,
-    ) -> Option<PendingGate> {
-        let mut pending = self.pending.write().expect("GateStateRegistry lock poisoned");
+    pub fn resolve_gate(&self, execution_id: &str, gate_id: &str) -> Option<PendingGate> {
+        let mut pending = self
+            .pending
+            .write()
+            .expect("GateStateRegistry lock poisoned");
 
         if let Some(exec_gates) = pending.get_mut(execution_id) {
             if let Some(gate) = exec_gates.get_mut(gate_id) {
@@ -93,7 +95,10 @@ impl GateStateRegistry {
 
     /// Get all pending (unresolved) gates for an execution.
     pub fn pending_gates(&self, execution_id: &str) -> Vec<PendingGate> {
-        let pending = self.pending.read().expect("GateStateRegistry lock poisoned");
+        let pending = self
+            .pending
+            .read()
+            .expect("GateStateRegistry lock poisoned");
 
         if let Some(exec_gates) = pending.get(execution_id) {
             exec_gates
@@ -108,7 +113,10 @@ impl GateStateRegistry {
 
     /// Check if a gate exists and is still pending.
     pub fn is_gate_pending(&self, execution_id: &str, gate_id: &str) -> bool {
-        let pending = self.pending.read().expect("GateStateRegistry lock poisoned");
+        let pending = self
+            .pending
+            .read()
+            .expect("GateStateRegistry lock poisoned");
 
         pending
             .get(execution_id)
@@ -118,13 +126,19 @@ impl GateStateRegistry {
 
     /// Clean up all gates for a completed execution.
     pub fn cleanup_execution(&self, execution_id: &str) {
-        let mut pending = self.pending.write().expect("GateStateRegistry lock poisoned");
+        let mut pending = self
+            .pending
+            .write()
+            .expect("GateStateRegistry lock poisoned");
         pending.remove(execution_id);
     }
 
     /// Get a gate by its ID across all executions.
     pub fn get_gate(&self, gate_id: &str) -> Option<PendingGate> {
-        let pending = self.pending.read().expect("GateStateRegistry lock poisoned");
+        let pending = self
+            .pending
+            .read()
+            .expect("GateStateRegistry lock poisoned");
 
         for exec_gates in pending.values() {
             if let Some(gate) = exec_gates.get(gate_id) {

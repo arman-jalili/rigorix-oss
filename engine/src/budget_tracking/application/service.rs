@@ -19,8 +19,8 @@ use async_trait::async_trait;
 use crate::budget_tracking::domain::LlmBudgetError;
 
 use super::dto::{
-    CommitReservationInput, CommitReservationOutput, GetBudgetStatusInput,
-    GetBudgetStatusOutput, ReserveBudgetInput, ReserveBudgetOutput,
+    CommitReservationInput, CommitReservationOutput, GetBudgetStatusInput, GetBudgetStatusOutput,
+    ReserveBudgetInput, ReserveBudgetOutput,
 };
 
 /// Central budget service for LLM call budget tracking.
@@ -53,7 +53,10 @@ pub trait LlmBudgetService: Send + Sync {
     /// Returns `MaxCallsExceeded` if all calls have been used.
     /// Returns `MaxTokensExceeded` if reserving `estimated_tokens` would
     /// exceed the token limit.
-    async fn reserve(&self, input: ReserveBudgetInput) -> Result<ReserveBudgetOutput, LlmBudgetError>;
+    async fn reserve(
+        &self,
+        input: ReserveBudgetInput,
+    ) -> Result<ReserveBudgetOutput, LlmBudgetError>;
 
     /// Commit a reservation with actual token consumption.
     ///

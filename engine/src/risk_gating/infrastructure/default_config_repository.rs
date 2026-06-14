@@ -63,10 +63,7 @@ impl Default for InMemoryConfigRepository {
 impl RiskConfigRepository for InMemoryConfigRepository {
     async fn load_config(&self, execution_id: &str) -> Result<RiskConfig, RiskGatingError> {
         let configs = self.configs.read().expect("ConfigRepository lock poisoned");
-        Ok(configs
-            .get(execution_id)
-            .cloned()
-            .unwrap_or_default())
+        Ok(configs.get(execution_id).cloned().unwrap_or_default())
     }
 
     async fn save_config(
@@ -74,16 +71,19 @@ impl RiskConfigRepository for InMemoryConfigRepository {
         execution_id: &str,
         config: &RiskConfig,
     ) -> Result<(), RiskGatingError> {
-        let mut configs = self.configs.write().expect("ConfigRepository lock poisoned");
+        let mut configs = self
+            .configs
+            .write()
+            .expect("ConfigRepository lock poisoned");
         configs.insert(execution_id.to_string(), config.clone());
         Ok(())
     }
 
-    async fn load_tool_override(
-        &self,
-        tool: &str,
-    ) -> Result<Option<RiskLevel>, RiskGatingError> {
-        let overrides = self.overrides.read().expect("ConfigRepository lock poisoned");
+    async fn load_tool_override(&self, tool: &str) -> Result<Option<RiskLevel>, RiskGatingError> {
+        let overrides = self
+            .overrides
+            .read()
+            .expect("ConfigRepository lock poisoned");
         Ok(overrides.get(tool).copied())
     }
 
@@ -92,13 +92,19 @@ impl RiskConfigRepository for InMemoryConfigRepository {
         tool: &str,
         risk_level: &RiskLevel,
     ) -> Result<(), RiskGatingError> {
-        let mut overrides = self.overrides.write().expect("ConfigRepository lock poisoned");
+        let mut overrides = self
+            .overrides
+            .write()
+            .expect("ConfigRepository lock poisoned");
         overrides.insert(tool.to_string(), *risk_level);
         Ok(())
     }
 
     async fn remove_tool_override(&self, tool: &str) -> Result<bool, RiskGatingError> {
-        let mut overrides = self.overrides.write().expect("ConfigRepository lock poisoned");
+        let mut overrides = self
+            .overrides
+            .write()
+            .expect("ConfigRepository lock poisoned");
         Ok(overrides.remove(tool).is_some())
     }
 }
@@ -132,7 +138,9 @@ mod tests {
     #[tokio::test]
     async fn test_save_and_load_tool_override() {
         let repo = InMemoryConfigRepository::new();
-        repo.save_tool_override("bash", &RiskLevel::Low).await.unwrap();
+        repo.save_tool_override("bash", &RiskLevel::Low)
+            .await
+            .unwrap();
 
         let loaded = repo.load_tool_override("bash").await.unwrap();
         assert_eq!(loaded, Some(RiskLevel::Low));
@@ -148,7 +156,9 @@ mod tests {
     #[tokio::test]
     async fn test_remove_tool_override() {
         let repo = InMemoryConfigRepository::new();
-        repo.save_tool_override("bash", &RiskLevel::Low).await.unwrap();
+        repo.save_tool_override("bash", &RiskLevel::Low)
+            .await
+            .unwrap();
 
         let removed = repo.remove_tool_override("bash").await.unwrap();
         assert!(removed);

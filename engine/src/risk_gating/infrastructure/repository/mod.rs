@@ -45,10 +45,7 @@ pub trait RiskConfigRepository: Send + Sync {
     /// Load a specific tool risk level override.
     ///
     /// Returns `None` if no override exists for this tool.
-    async fn load_tool_override(
-        &self,
-        tool: &str,
-    ) -> Result<Option<RiskLevel>, RiskGatingError>;
+    async fn load_tool_override(&self, tool: &str) -> Result<Option<RiskLevel>, RiskGatingError>;
 
     /// Save a tool risk level override.
     ///

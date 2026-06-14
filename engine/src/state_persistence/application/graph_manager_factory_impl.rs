@@ -10,7 +10,9 @@
 use async_trait::async_trait;
 use std::path::PathBuf;
 
-use crate::state_persistence::application::factory::{CreateGraphManagerConfig, GraphManagerFactory};
+use crate::state_persistence::application::factory::{
+    CreateGraphManagerConfig, GraphManagerFactory,
+};
 use crate::state_persistence::application::graph_manager_service_impl::FileSystemGraphManager;
 use crate::state_persistence::application::service::GraphManagerService;
 use crate::state_persistence::domain::StateError;
@@ -48,7 +50,10 @@ mod tests {
         let factory = FileSystemGraphManagerFactory;
 
         let manager = factory
-            .create(dir.path().to_path_buf(), CreateGraphManagerConfig::default())
+            .create(
+                dir.path().to_path_buf(),
+                CreateGraphManagerConfig::default(),
+            )
             .await
             .unwrap();
 

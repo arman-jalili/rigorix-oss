@@ -76,17 +76,16 @@ impl AuditEnvelopeRepository for LocalAuditEnvelopeRepository {
             return Ok(None);
         }
 
-        let content = tokio::fs::read_to_string(&path).await.map_err(|e| {
-            AuditError::Internal {
+        let content = tokio::fs::read_to_string(&path)
+            .await
+            .map_err(|e| AuditError::Internal {
                 detail: format!("Failed to read envelope: {e}"),
-            }
-        })?;
+            })?;
 
-        let envelope: AuditEnvelope = serde_json::from_str(&content).map_err(|e| {
-            AuditError::SerializationFailed {
+        let envelope: AuditEnvelope =
+            serde_json::from_str(&content).map_err(|e| AuditError::SerializationFailed {
                 detail: format!("Failed to deserialize envelope: {e}"),
-            }
-        })?;
+            })?;
 
         Ok(Some(envelope))
     }
@@ -100,17 +99,16 @@ impl AuditEnvelopeRepository for LocalAuditEnvelopeRepository {
         let mut envelopes = Vec::new();
         let max = limit.unwrap_or(100) as usize;
 
-        let mut dir = tokio::fs::read_dir(&self.base_path)
-            .await
-            .map_err(|e| AuditError::Internal {
-                detail: format!("Failed to read directory: {e}"),
-            })?;
+        let mut dir =
+            tokio::fs::read_dir(&self.base_path)
+                .await
+                .map_err(|e| AuditError::Internal {
+                    detail: format!("Failed to read directory: {e}"),
+                })?;
 
         let mut sorted_entries: Vec<std::path::PathBuf> = Vec::new();
-        while let Some(entry) = dir.next_entry().await.map_err(|e| {
-            AuditError::Internal {
-                detail: format!("Failed to read directory entry: {e}"),
-            }
+        while let Some(entry) = dir.next_entry().await.map_err(|e| AuditError::Internal {
+            detail: format!("Failed to read directory entry: {e}"),
         })? {
             let path = entry.path();
             if path.extension().is_some_and(|ext| ext == "json") {
@@ -130,11 +128,12 @@ impl AuditEnvelopeRepository for LocalAuditEnvelopeRepository {
                 break;
             }
 
-            let content = tokio::fs::read_to_string(&path).await.map_err(|e| {
-                AuditError::Internal {
-                    detail: format!("Failed to read envelope: {e}"),
-                }
-            })?;
+            let content =
+                tokio::fs::read_to_string(&path)
+                    .await
+                    .map_err(|e| AuditError::Internal {
+                        detail: format!("Failed to read envelope: {e}"),
+                    })?;
 
             if let Ok(envelope) = serde_json::from_str::<AuditEnvelope>(&content) {
                 // Apply date filters
@@ -158,11 +157,11 @@ impl AuditEnvelopeRepository for LocalAuditEnvelopeRepository {
     async fn delete(&self, execution_id: &uuid::Uuid) -> Result<(), AuditError> {
         let path = self.envelope_path(execution_id);
         if path.exists() {
-            tokio::fs::remove_file(&path).await.map_err(|e| {
-                AuditError::Internal {
+            tokio::fs::remove_file(&path)
+                .await
+                .map_err(|e| AuditError::Internal {
                     detail: format!("Failed to delete envelope: {e}"),
-                }
-            })?;
+                })?;
         }
         Ok(())
     }
@@ -185,16 +184,15 @@ impl AuditEnvelopeRepository for LocalAuditEnvelopeRepository {
     async fn prune(&self, older_than: chrono::DateTime<chrono::Utc>) -> Result<u64, AuditError> {
         let mut deleted = 0u64;
 
-        let mut dir = tokio::fs::read_dir(&self.base_path)
-            .await
-            .map_err(|e| AuditError::Internal {
-                detail: format!("Failed to read directory: {e}"),
-            })?;
+        let mut dir =
+            tokio::fs::read_dir(&self.base_path)
+                .await
+                .map_err(|e| AuditError::Internal {
+                    detail: format!("Failed to read directory: {e}"),
+                })?;
 
-        while let Some(entry) = dir.next_entry().await.map_err(|e| {
-            AuditError::Internal {
-                detail: format!("Failed to read directory entry: {e}"),
-            }
+        while let Some(entry) = dir.next_entry().await.map_err(|e| AuditError::Internal {
+            detail: format!("Failed to read directory entry: {e}"),
         })? {
             let path = entry.path();
             if path.extension().is_some_and(|ext| ext == "json") {

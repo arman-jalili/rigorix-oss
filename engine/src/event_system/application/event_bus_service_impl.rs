@@ -91,7 +91,10 @@ impl EventBusServiceImpl {
 
 #[async_trait]
 impl EventBusService for EventBusServiceImpl {
-    async fn publish(&self, input: PublishEventInput) -> Result<PublishEventOutput, EventSystemError> {
+    async fn publish(
+        &self,
+        input: PublishEventInput,
+    ) -> Result<PublishEventOutput, EventSystemError> {
         let sequence = self.next_sequence();
 
         // Build the persisted event wrapper
@@ -123,9 +126,9 @@ impl EventBusService for EventBusServiceImpl {
     }
 
     async fn subscribe(&self, input: SubscribeInput) -> Result<SubscribeOutput, EventSystemError> {
-        let subscriber_name = input.subscriber_name.unwrap_or_else(|| {
-            format!("subscriber-{}", uuid::Uuid::new_v4())
-        });
+        let subscriber_name = input
+            .subscriber_name
+            .unwrap_or_else(|| format!("subscriber-{}", uuid::Uuid::new_v4()));
 
         let (_rx, active_count) = self.raw_subscribe();
 
@@ -288,7 +291,10 @@ impl EventBusService for EventBusServiceImpl {
         })
     }
 
-    async fn status(&self, _input: EventBusStatusInput) -> Result<EventBusStatus, EventSystemError> {
+    async fn status(
+        &self,
+        _input: EventBusStatusInput,
+    ) -> Result<EventBusStatus, EventSystemError> {
         let buffer = self.persisted.lock().await;
         Ok(EventBusStatus {
             persisted_count: buffer.len() as u64,
@@ -448,7 +454,10 @@ mod tests {
             .drain_persisted(DrainPersistedInput { clear: true })
             .await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), EventSystemError::AlreadyDrained { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            EventSystemError::AlreadyDrained { .. }
+        ));
     }
 
     #[tokio::test]

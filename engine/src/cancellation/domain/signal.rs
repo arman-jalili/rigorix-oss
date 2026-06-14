@@ -64,9 +64,7 @@ impl ShutdownSignal {
     /// Human-readable description of this shutdown signal level.
     pub fn description(&self) -> &'static str {
         match self {
-            ShutdownSignal::Graceful => {
-                "Let running tasks finish naturally. No new tasks started."
-            }
+            ShutdownSignal::Graceful => "Let running tasks finish naturally. No new tasks started.",
             ShutdownSignal::Immediate => {
                 "Abort all in-flight work immediately. Cleanup handlers must run."
             }

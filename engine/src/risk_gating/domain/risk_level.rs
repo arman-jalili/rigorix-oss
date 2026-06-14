@@ -138,7 +138,10 @@ mod tests {
 
     #[test]
     fn test_medium_gating_action() {
-        assert_eq!(RiskLevel::Medium.gating_action(), GatingAction::RequireConfirmation);
+        assert_eq!(
+            RiskLevel::Medium.gating_action(),
+            GatingAction::RequireConfirmation
+        );
     }
 
     #[test]
@@ -193,15 +196,27 @@ mod tests {
     #[test]
     fn test_risk_level_serialization_lowercase() {
         assert_eq!(serde_json::to_string(&RiskLevel::Low).unwrap(), "\"low\"");
-        assert_eq!(serde_json::to_string(&RiskLevel::Medium).unwrap(), "\"medium\"");
+        assert_eq!(
+            serde_json::to_string(&RiskLevel::Medium).unwrap(),
+            "\"medium\""
+        );
         assert_eq!(serde_json::to_string(&RiskLevel::High).unwrap(), "\"high\"");
     }
 
     #[test]
     fn test_risk_level_deserialization_case_insensitive() {
-        assert_eq!(serde_json::from_str::<RiskLevel>("\"low\"").unwrap(), RiskLevel::Low);
-        assert_eq!(serde_json::from_str::<RiskLevel>("\"medium\"").unwrap(), RiskLevel::Medium);
-        assert_eq!(serde_json::from_str::<RiskLevel>("\"high\"").unwrap(), RiskLevel::High);
+        assert_eq!(
+            serde_json::from_str::<RiskLevel>("\"low\"").unwrap(),
+            RiskLevel::Low
+        );
+        assert_eq!(
+            serde_json::from_str::<RiskLevel>("\"medium\"").unwrap(),
+            RiskLevel::Medium
+        );
+        assert_eq!(
+            serde_json::from_str::<RiskLevel>("\"high\"").unwrap(),
+            RiskLevel::High
+        );
     }
 
     #[test]
@@ -280,7 +295,10 @@ mod tests {
     #[test]
     fn test_gating_action_debug() {
         assert_eq!(format!("{:?}", GatingAction::AutoExecute), "AutoExecute");
-        assert_eq!(format!("{:?}", GatingAction::RequireConfirmation), "RequireConfirmation");
+        assert_eq!(
+            format!("{:?}", GatingAction::RequireConfirmation),
+            "RequireConfirmation"
+        );
         assert_eq!(format!("{:?}", GatingAction::DryRun), "DryRun");
     }
 

@@ -81,10 +81,7 @@ impl CancellationManagerImpl {
     }
 
     /// Create a new cancellation manager with a parent token (child scope).
-    pub fn child_of(
-        parent_token: CancellationToken,
-        graceful_timeout_secs: u64,
-    ) -> Self {
+    pub fn child_of(parent_token: CancellationToken, graceful_timeout_secs: u64) -> Self {
         let (signal_tx, signal_rx) = watch::channel(None);
         // Create a child token that propagates from the parent
         let token = parent_token.child_token();
@@ -258,9 +255,7 @@ impl CancellationService for CancellationManagerImpl {
             cancelled_tasks: self.cancelled_tasks.load(Ordering::SeqCst),
             shutdown_complete: self.running_tasks.load(Ordering::SeqCst) == 0
                 && self.is_cancelled(),
-            elapsed_since_request_ms: elapsed
-                .as_ref()
-                .map(|i| i.elapsed().as_millis() as u64),
+            elapsed_since_request_ms: elapsed.as_ref().map(|i| i.elapsed().as_millis() as u64),
         }
     }
 
@@ -383,13 +378,17 @@ mod tests {
         };
         mgr.request_graceful_shutdown(input).await.unwrap();
 
-        let result = mgr.request_graceful_shutdown(CancelExecutionInput {
-            execution_id: "exec-1".to_string(),
-            reason: None,
-            source: "test".to_string(),
-        })
-        .await;
-        assert!(matches!(result, Err(CancellationError::AlreadyCancelling { .. })));
+        let result = mgr
+            .request_graceful_shutdown(CancelExecutionInput {
+                execution_id: "exec-1".to_string(),
+                reason: None,
+                source: "test".to_string(),
+            })
+            .await;
+        assert!(matches!(
+            result,
+            Err(CancellationError::AlreadyCancelling { .. })
+        ));
     }
 
     #[tokio::test]

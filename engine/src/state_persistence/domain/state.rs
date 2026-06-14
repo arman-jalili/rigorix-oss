@@ -16,8 +16,8 @@
 //! - Construction happens via constructors or StateManager initialisation
 
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
 use indexmap::IndexMap;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::error::StateError;
@@ -51,7 +51,10 @@ pub enum ExecutionStatus {
 impl ExecutionStatus {
     /// Returns true if this status represents a terminal state.
     pub fn is_terminal(&self) -> bool {
-        matches!(self, ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Cancelled)
+        matches!(
+            self,
+            ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Cancelled
+        )
     }
 
     /// Returns true if this status represents an error/failure condition.
@@ -106,7 +109,10 @@ pub enum NodeStatus {
 impl NodeStatus {
     /// Returns true if this status represents a terminal node state.
     pub fn is_terminal(&self) -> bool {
-        matches!(self, NodeStatus::Completed | NodeStatus::Failed | NodeStatus::Skipped)
+        matches!(
+            self,
+            NodeStatus::Completed | NodeStatus::Failed | NodeStatus::Skipped
+        )
     }
 
     /// Returns true if this status represents a running/in-progress node.
@@ -193,7 +199,9 @@ impl ExecutionState {
     /// If a node already exists in the map, it is not overwritten.
     pub fn init_node_states(&mut self, node_ids: &[Uuid]) {
         for &node_id in node_ids {
-            self.node_states.entry(node_id).or_insert_with(|| NodeState::new(node_id));
+            self.node_states
+                .entry(node_id)
+                .or_insert_with(|| NodeState::new(node_id));
         }
     }
 
@@ -257,7 +265,8 @@ impl ExecutionState {
             return Err(StateError::InvalidTransition {
                 from: self.status.as_str().to_string(),
                 to: "cancelled".to_string(),
-                detail: "Cannot cancel an execution that is already in a terminal state".to_string(),
+                detail: "Cannot cancel an execution that is already in a terminal state"
+                    .to_string(),
             });
         }
         self.status = ExecutionStatus::Cancelled;
@@ -267,10 +276,13 @@ impl ExecutionState {
 
     /// Mark a node as started (transition to InProgress).
     pub fn node_started(&mut self, node_id: Uuid) -> Result<(), StateError> {
-        let node = self.node_states.get_mut(&node_id).ok_or_else(|| StateError::NodeNotFound {
-            node_id: node_id.to_string(),
-            execution_id: self.execution_id.to_string(),
-        })?;
+        let node = self
+            .node_states
+            .get_mut(&node_id)
+            .ok_or_else(|| StateError::NodeNotFound {
+                node_id: node_id.to_string(),
+                execution_id: self.execution_id.to_string(),
+            })?;
 
         if node.status != NodeStatus::Pending {
             return Err(StateError::InvalidNodeTransition {
@@ -293,10 +305,13 @@ impl ExecutionState {
         output: Option<String>,
         duration_ms: u64,
     ) -> Result<(), StateError> {
-        let node = self.node_states.get_mut(&node_id).ok_or_else(|| StateError::NodeNotFound {
-            node_id: node_id.to_string(),
-            execution_id: self.execution_id.to_string(),
-        })?;
+        let node = self
+            .node_states
+            .get_mut(&node_id)
+            .ok_or_else(|| StateError::NodeNotFound {
+                node_id: node_id.to_string(),
+                execution_id: self.execution_id.to_string(),
+            })?;
 
         if node.status != NodeStatus::InProgress {
             return Err(StateError::InvalidNodeTransition {
@@ -314,15 +329,14 @@ impl ExecutionState {
     }
 
     /// Mark a node as failed with its error.
-    pub fn node_failed(
-        &mut self,
-        node_id: Uuid,
-        error: String,
-    ) -> Result<(), StateError> {
-        let node = self.node_states.get_mut(&node_id).ok_or_else(|| StateError::NodeNotFound {
-            node_id: node_id.to_string(),
-            execution_id: self.execution_id.to_string(),
-        })?;
+    pub fn node_failed(&mut self, node_id: Uuid, error: String) -> Result<(), StateError> {
+        let node = self
+            .node_states
+            .get_mut(&node_id)
+            .ok_or_else(|| StateError::NodeNotFound {
+                node_id: node_id.to_string(),
+                execution_id: self.execution_id.to_string(),
+            })?;
 
         if node.status != NodeStatus::InProgress && node.status != NodeStatus::Pending {
             return Err(StateError::InvalidNodeTransition {
@@ -339,11 +353,18 @@ impl ExecutionState {
     }
 
     /// Mark a node as skipped.
-    pub fn node_skipped(&mut self, node_id: Uuid, reason: Option<String>) -> Result<(), StateError> {
-        let node = self.node_states.get_mut(&node_id).ok_or_else(|| StateError::NodeNotFound {
-            node_id: node_id.to_string(),
-            execution_id: self.execution_id.to_string(),
-        })?;
+    pub fn node_skipped(
+        &mut self,
+        node_id: Uuid,
+        reason: Option<String>,
+    ) -> Result<(), StateError> {
+        let node = self
+            .node_states
+            .get_mut(&node_id)
+            .ok_or_else(|| StateError::NodeNotFound {
+                node_id: node_id.to_string(),
+                execution_id: self.execution_id.to_string(),
+            })?;
 
         if node.status != NodeStatus::Pending {
             return Err(StateError::InvalidNodeTransition {
@@ -364,10 +385,13 @@ impl ExecutionState {
     /// Resets the node status back to Pending so it can be re-started.
     /// Returns an error if the node is not currently Failed.
     pub fn increment_retry(&mut self, node_id: Uuid) -> Result<(), StateError> {
-        let node = self.node_states.get_mut(&node_id).ok_or_else(|| StateError::NodeNotFound {
-            node_id: node_id.to_string(),
-            execution_id: self.execution_id.to_string(),
-        })?;
+        let node = self
+            .node_states
+            .get_mut(&node_id)
+            .ok_or_else(|| StateError::NodeNotFound {
+                node_id: node_id.to_string(),
+                execution_id: self.execution_id.to_string(),
+            })?;
 
         if node.status != NodeStatus::Failed {
             return Err(StateError::InvalidNodeTransition {

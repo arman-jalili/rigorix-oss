@@ -141,10 +141,7 @@ mod tests {
             source: None,
         };
         let classify_output = classifier.classify(classify_input).await.unwrap();
-        assert_eq!(
-            classify_output.failure_type,
-            FailureType::ResourceExhausted
-        );
+        assert_eq!(classify_output.failure_type, FailureType::ResourceExhausted);
 
         let strategy_input = dto::GetRetryStrategyInput {
             failure_type: classify_output.failure_type.clone(),
@@ -194,10 +191,7 @@ mod tests {
         };
         let strategy_output = mapper.get_strategy(strategy_input).await.unwrap();
         assert_eq!(strategy_output.strategy, RetryStrategy::Fallback);
-        assert_eq!(
-            strategy_output.source,
-            dto::StrategySource::Override
-        );
+        assert_eq!(strategy_output.source, dto::StrategySource::Override);
     }
 
     // -----------------------------------------------------------------------
@@ -248,11 +242,11 @@ mod tests {
         let classifier = FailureClassifierServiceImpl;
 
         let test_cases = vec![
-            (0u32, true, 3u32),  // fresh → eligible
-            (1, true, 2),         // one retry → eligible
-            (2, true, 1),         // two retries → eligible
-            (3, false, 0),        // max reached → not eligible
-            (5, false, 0),        // over limit → not eligible
+            (0u32, true, 3u32), // fresh → eligible
+            (1, true, 2),       // one retry → eligible
+            (2, true, 1),       // two retries → eligible
+            (3, false, 0),      // max reached → not eligible
+            (5, false, 0),      // over limit → not eligible
         ];
 
         for (current, expect_eligible, expect_remaining) in test_cases {
@@ -271,7 +265,8 @@ mod tests {
                 output.remaining_attempts,
                 Some(expect_remaining),
                 "Expected {} remaining for retry_count={}",
-                expect_remaining, current
+                expect_remaining,
+                current
             );
         }
     }

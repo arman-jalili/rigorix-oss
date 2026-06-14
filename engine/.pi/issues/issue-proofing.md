@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-PROOFING"
-  epic: ""state-persistence""
+  epic: ""template-system""
   component: "Proofing & CI Enforcement"
-  module: "state-persistence"
+  module: "template-system"
   status: planned
   priority: critical
   dependencies: []
@@ -26,7 +26,7 @@ guardian_issue:
       - Updated CI stage configuration
 
   canonical_references:
-    - module: ".pi/architecture/modules/state-persistence.md"
+    - module: ".pi/architecture/modules/template-system.md"
 
   acceptance_criteria:
     - "All proofing scripts created and executable"
@@ -47,12 +47,12 @@ guardian_issue:
     every build for zero token cost.
 
   file_changes:
-    - "create: .pi/scripts/ci/check_state-persistence_contracts.sh"
-    - "create: .pi/scripts/ci/check_state-persistence_coverage.sh"
+    - "create: .pi/scripts/ci/check_template-system_contracts.sh"
+    - "create: .pi/scripts/ci/check_template-system_coverage.sh"
     - "modify: .pi/scripts/ci/run_hardening_stages.sh"
 ---
 
-# Proofing & CI Enforcement: state-persistence
+# Proofing & CI Enforcement: template-system
 
 ## Intent
 
@@ -81,17 +81,17 @@ on every PR. No LLM cost. No human review. Just pass or fail.
 
 | Script | Purpose | Location |
 |--------|---------|----------|
-| check_state-persistence_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
-| check_state-persistence_coverage.sh | Enforce coverage thresholds | .pi/scripts/ci/ |
-| stage_state-persistence_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
+| check_template-system_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
+| check_template-system_coverage.sh | Enforce coverage thresholds | .pi/scripts/ci/ |
+| stage_template-system_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
 
 ## CI Pipeline Update
 
 Add the new stage to `run_hardening_stages.sh`:
 
 ```bash
-run_stage "11" "state-persistence_proofing" \
-    "${SCRIPTS_DIR}/stage_state-persistence_proofing.sh" \
+run_stage "11" "template-system_proofing" \
+    "${SCRIPTS_DIR}/stage_template-system_proofing.sh" \
     "always"
 ```
 

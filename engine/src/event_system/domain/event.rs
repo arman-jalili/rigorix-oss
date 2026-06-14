@@ -290,24 +290,59 @@ impl ExecutionEvent {
     pub fn summary(&self) -> String {
         match self {
             ExecutionEvent::PlanningStarted { intent, .. } => {
-                format!("Planning started: {}", intent.chars().take(80).collect::<String>())
+                format!(
+                    "Planning started: {}",
+                    intent.chars().take(80).collect::<String>()
+                )
             }
-            ExecutionEvent::PlanningCompleted { template_id, confidence, .. } => {
-                format!("Planning completed: template={}, confidence={:.2}", template_id, confidence)
+            ExecutionEvent::PlanningCompleted {
+                template_id,
+                confidence,
+                ..
+            } => {
+                format!(
+                    "Planning completed: template={}, confidence={:.2}",
+                    template_id, confidence
+                )
             }
             ExecutionEvent::NodeStarted { node_name, .. } => {
                 format!("Node started: {}", node_name)
             }
-            ExecutionEvent::NodeCompleted { node_id, duration_ms, .. } => {
+            ExecutionEvent::NodeCompleted {
+                node_id,
+                duration_ms,
+                ..
+            } => {
                 format!("Node completed: {} ({}ms)", node_id, duration_ms)
             }
-            ExecutionEvent::NodeFailed { node_id, error, attempt, .. } => {
-                format!("Node failed: {} (attempt {}, error: {})", node_id, attempt, error)
+            ExecutionEvent::NodeFailed {
+                node_id,
+                error,
+                attempt,
+                ..
+            } => {
+                format!(
+                    "Node failed: {} (attempt {}, error: {})",
+                    node_id, attempt, error
+                )
             }
-            ExecutionEvent::NodeRetrying { node_id, attempt, delay_ms, .. } => {
-                format!("Node retrying: {} (attempt {}, delay: {}ms)", node_id, attempt, delay_ms)
+            ExecutionEvent::NodeRetrying {
+                node_id,
+                attempt,
+                delay_ms,
+                ..
+            } => {
+                format!(
+                    "Node retrying: {} (attempt {}, delay: {}ms)",
+                    node_id, attempt, delay_ms
+                )
             }
-            ExecutionEvent::ToolExecuted { tool, risk_level, skipped, .. } => {
+            ExecutionEvent::ToolExecuted {
+                tool,
+                risk_level,
+                skipped,
+                ..
+            } => {
                 if *skipped {
                     format!("Tool skipped: {} (risk: {})", tool, risk_level)
                 } else {
@@ -321,8 +356,16 @@ impl ExecutionEvent {
                 format!("Execution failed: {}", error)
             }
             ExecutionEvent::ExecutionCancelled { .. } => "Execution cancelled".to_string(),
-            ExecutionEvent::BudgetWarning { resource, used, limit, .. } => {
-                format!("Budget warning: {} used {}/{} (resource: {})", resource, used, limit, resource)
+            ExecutionEvent::BudgetWarning {
+                resource,
+                used,
+                limit,
+                ..
+            } => {
+                format!(
+                    "Budget warning: {} used {}/{} (resource: {})",
+                    resource, used, limit, resource
+                )
             }
         }
     }
@@ -518,17 +561,53 @@ mod tests {
     #[test]
     fn test_event_type_names() {
         let eid = sample_eid();
-        assert_eq!(ExecutionEvent::new_planning_started(eid, "test".into()).event_type_name(), "planning_started");
-        assert_eq!(ExecutionEvent::new_planning_completed(eid, "t1".into(), 0.95, HashMap::new()).event_type_name(), "planning_completed");
-        assert_eq!(ExecutionEvent::new_node_started(eid, "n1".into(), "Node".into()).event_type_name(), "node_started");
-        assert_eq!(ExecutionEvent::new_node_completed(eid, "n1".into(), 100, serde_json::Value::Null).event_type_name(), "node_completed");
-        assert_eq!(ExecutionEvent::new_node_failed(eid, "n1".into(), "err".into(), 1).event_type_name(), "node_failed");
-        assert_eq!(ExecutionEvent::new_node_retrying(eid, "n1".into(), 1, 100).event_type_name(), "node_retrying");
-        assert_eq!(ExecutionEvent::new_tool_executed(eid, "n1".into(), "bash".into(), "low".into(), false).event_type_name(), "tool_executed");
-        assert_eq!(ExecutionEvent::new_execution_completed(eid, 1000, 5).event_type_name(), "execution_completed");
-        assert_eq!(ExecutionEvent::new_execution_failed(eid, "err".into()).event_type_name(), "execution_failed");
-        assert_eq!(ExecutionEvent::new_execution_cancelled(eid).event_type_name(), "execution_cancelled");
-        assert_eq!(ExecutionEvent::new_budget_warning(eid, "tokens".into(), 80, 100).event_type_name(), "budget_warning");
+        assert_eq!(
+            ExecutionEvent::new_planning_started(eid, "test".into()).event_type_name(),
+            "planning_started"
+        );
+        assert_eq!(
+            ExecutionEvent::new_planning_completed(eid, "t1".into(), 0.95, HashMap::new())
+                .event_type_name(),
+            "planning_completed"
+        );
+        assert_eq!(
+            ExecutionEvent::new_node_started(eid, "n1".into(), "Node".into()).event_type_name(),
+            "node_started"
+        );
+        assert_eq!(
+            ExecutionEvent::new_node_completed(eid, "n1".into(), 100, serde_json::Value::Null)
+                .event_type_name(),
+            "node_completed"
+        );
+        assert_eq!(
+            ExecutionEvent::new_node_failed(eid, "n1".into(), "err".into(), 1).event_type_name(),
+            "node_failed"
+        );
+        assert_eq!(
+            ExecutionEvent::new_node_retrying(eid, "n1".into(), 1, 100).event_type_name(),
+            "node_retrying"
+        );
+        assert_eq!(
+            ExecutionEvent::new_tool_executed(eid, "n1".into(), "bash".into(), "low".into(), false)
+                .event_type_name(),
+            "tool_executed"
+        );
+        assert_eq!(
+            ExecutionEvent::new_execution_completed(eid, 1000, 5).event_type_name(),
+            "execution_completed"
+        );
+        assert_eq!(
+            ExecutionEvent::new_execution_failed(eid, "err".into()).event_type_name(),
+            "execution_failed"
+        );
+        assert_eq!(
+            ExecutionEvent::new_execution_cancelled(eid).event_type_name(),
+            "execution_cancelled"
+        );
+        assert_eq!(
+            ExecutionEvent::new_budget_warning(eid, "tokens".into(), 80, 100).event_type_name(),
+            "budget_warning"
+        );
     }
 
     #[test]
@@ -557,7 +636,8 @@ mod tests {
         let event = ExecutionEvent::new_planning_started(eid, "Build the project".into());
         assert!(event.summary().contains("Planning started"));
 
-        let event = ExecutionEvent::new_node_completed(eid, "compile".into(), 500, serde_json::Value::Null);
+        let event =
+            ExecutionEvent::new_node_completed(eid, "compile".into(), 500, serde_json::Value::Null);
         assert!(event.summary().contains("compile"));
         assert!(event.summary().contains("500ms"));
 
@@ -581,7 +661,13 @@ mod tests {
         assert!(ExecutionEvent::new_node_failed(eid, "n1".into(), "err".into(), 1).is_error());
         assert!(ExecutionEvent::new_execution_failed(eid, "err".into()).is_error());
         assert!(ExecutionEvent::new_budget_warning(eid, "tokens".into(), 80, 100).is_error());
-        assert!(!ExecutionEvent::new_node_completed(eid, "n1".into(), 100, serde_json::Value::Null).is_error());
+        assert!(!ExecutionEvent::new_node_completed(
+            eid,
+            "n1".into(),
+            100,
+            serde_json::Value::Null
+        )
+        .is_error());
         assert!(!ExecutionEvent::new_planning_started(eid, "test".into()).is_error());
     }
 
@@ -594,7 +680,11 @@ mod tests {
         let eid = sample_eid();
         let event = ExecutionEvent::new_planning_started(eid, "Generate plan".into());
         match &event {
-            ExecutionEvent::PlanningStarted { execution_id, intent, .. } => {
+            ExecutionEvent::PlanningStarted {
+                execution_id,
+                intent,
+                ..
+            } => {
                 assert_eq!(*execution_id, eid);
                 assert_eq!(intent, "Generate plan");
             }
@@ -609,7 +699,13 @@ mod tests {
         params.insert("language".into(), "rust".into());
         let event = ExecutionEvent::new_planning_completed(eid, "build".into(), 0.95, params);
         match &event {
-            ExecutionEvent::PlanningCompleted { execution_id, template_id, confidence, parameters, .. } => {
+            ExecutionEvent::PlanningCompleted {
+                execution_id,
+                template_id,
+                confidence,
+                parameters,
+                ..
+            } => {
                 assert_eq!(*execution_id, eid);
                 assert_eq!(template_id, "build");
                 assert!((*confidence - 0.95).abs() < 1e-6);
@@ -624,7 +720,12 @@ mod tests {
         let eid = sample_eid();
         let event = ExecutionEvent::new_node_started(eid, "node-1".into(), "Compile".into());
         match &event {
-            ExecutionEvent::NodeStarted { execution_id, node_id, node_name, .. } => {
+            ExecutionEvent::NodeStarted {
+                execution_id,
+                node_id,
+                node_name,
+                ..
+            } => {
                 assert_eq!(*execution_id, eid);
                 assert_eq!(node_id, "node-1");
                 assert_eq!(node_name, "Compile");
@@ -639,7 +740,13 @@ mod tests {
         let output = serde_json::json!({"status": "ok"});
         let event = ExecutionEvent::new_node_completed(eid, "node-1".into(), 250, output.clone());
         match &event {
-            ExecutionEvent::NodeCompleted { execution_id, node_id, duration_ms, output: o, .. } => {
+            ExecutionEvent::NodeCompleted {
+                execution_id,
+                node_id,
+                duration_ms,
+                output: o,
+                ..
+            } => {
                 assert_eq!(*execution_id, eid);
                 assert_eq!(node_id, "node-1");
                 assert_eq!(*duration_ms, 250);
@@ -652,9 +759,16 @@ mod tests {
     #[test]
     fn test_new_node_failed() {
         let eid = sample_eid();
-        let event = ExecutionEvent::new_node_failed(eid, "node-1".into(), "compilation error".into(), 2);
+        let event =
+            ExecutionEvent::new_node_failed(eid, "node-1".into(), "compilation error".into(), 2);
         match &event {
-            ExecutionEvent::NodeFailed { execution_id, node_id, error, attempt, .. } => {
+            ExecutionEvent::NodeFailed {
+                execution_id,
+                node_id,
+                error,
+                attempt,
+                ..
+            } => {
                 assert_eq!(*execution_id, eid);
                 assert_eq!(node_id, "node-1");
                 assert_eq!(error, "compilation error");
@@ -669,7 +783,13 @@ mod tests {
         let eid = sample_eid();
         let event = ExecutionEvent::new_node_retrying(eid, "node-1".into(), 2, 5000);
         match &event {
-            ExecutionEvent::NodeRetrying { execution_id, node_id, attempt, delay_ms, .. } => {
+            ExecutionEvent::NodeRetrying {
+                execution_id,
+                node_id,
+                attempt,
+                delay_ms,
+                ..
+            } => {
                 assert_eq!(*execution_id, eid);
                 assert_eq!(node_id, "node-1");
                 assert_eq!(*attempt, 2);
@@ -682,9 +802,22 @@ mod tests {
     #[test]
     fn test_new_tool_executed() {
         let eid = sample_eid();
-        let event = ExecutionEvent::new_tool_executed(eid, "node-1".into(), "bash".into(), "high".into(), false);
+        let event = ExecutionEvent::new_tool_executed(
+            eid,
+            "node-1".into(),
+            "bash".into(),
+            "high".into(),
+            false,
+        );
         match &event {
-            ExecutionEvent::ToolExecuted { execution_id, node_id, tool, risk_level, skipped, .. } => {
+            ExecutionEvent::ToolExecuted {
+                execution_id,
+                node_id,
+                tool,
+                risk_level,
+                skipped,
+                ..
+            } => {
                 assert_eq!(*execution_id, eid);
                 assert_eq!(node_id, "node-1");
                 assert_eq!(tool, "bash");
@@ -695,7 +828,13 @@ mod tests {
         }
 
         // Test skipped tool
-        let event = ExecutionEvent::new_tool_executed(eid, "node-2".into(), "rm".into(), "critical".into(), true);
+        let event = ExecutionEvent::new_tool_executed(
+            eid,
+            "node-2".into(),
+            "rm".into(),
+            "critical".into(),
+            true,
+        );
         match &event {
             ExecutionEvent::ToolExecuted { skipped, .. } => assert!(*skipped),
             _ => panic!("Wrong variant"),
@@ -707,7 +846,12 @@ mod tests {
         let eid = sample_eid();
         let event = ExecutionEvent::new_execution_completed(eid, 5000, 10);
         match &event {
-            ExecutionEvent::ExecutionCompleted { execution_id, duration_ms, nodes_executed, .. } => {
+            ExecutionEvent::ExecutionCompleted {
+                execution_id,
+                duration_ms,
+                nodes_executed,
+                ..
+            } => {
                 assert_eq!(*execution_id, eid);
                 assert_eq!(*duration_ms, 5000);
                 assert_eq!(*nodes_executed, 10);
@@ -721,7 +865,11 @@ mod tests {
         let eid = sample_eid();
         let event = ExecutionEvent::new_execution_failed(eid, "out of memory".into());
         match &event {
-            ExecutionEvent::ExecutionFailed { execution_id, error, .. } => {
+            ExecutionEvent::ExecutionFailed {
+                execution_id,
+                error,
+                ..
+            } => {
                 assert_eq!(*execution_id, eid);
                 assert_eq!(error, "out of memory");
             }
@@ -746,7 +894,13 @@ mod tests {
         let eid = sample_eid();
         let event = ExecutionEvent::new_budget_warning(eid, "tokens".into(), 800, 1000);
         match &event {
-            ExecutionEvent::BudgetWarning { execution_id, resource, used, limit, .. } => {
+            ExecutionEvent::BudgetWarning {
+                execution_id,
+                resource,
+                used,
+                limit,
+                ..
+            } => {
                 assert_eq!(*execution_id, eid);
                 assert_eq!(resource, "tokens");
                 assert_eq!(*used, 800);
@@ -791,7 +945,8 @@ mod tests {
     #[test]
     fn test_serde_roundtrip_node_completed() {
         let eid = sample_eid();
-        let event = ExecutionEvent::new_node_completed(eid, "n1".into(), 250, serde_json::json!("done"));
+        let event =
+            ExecutionEvent::new_node_completed(eid, "n1".into(), 250, serde_json::json!("done"));
         let json = serde_json::to_string(&event).unwrap();
         let deserialized: ExecutionEvent = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.event_type_name(), "node_completed");
@@ -818,13 +973,20 @@ mod tests {
     #[test]
     fn test_serde_roundtrip_tool_executed() {
         let eid = sample_eid();
-        let event = ExecutionEvent::new_tool_executed(eid, "n1".into(), "bash".into(), "low".into(), false);
+        let event =
+            ExecutionEvent::new_tool_executed(eid, "n1".into(), "bash".into(), "low".into(), false);
         let json = serde_json::to_string(&event).unwrap();
         let deserialized: ExecutionEvent = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.event_type_name(), "tool_executed");
 
         // Also test skipped=true round-trip
-        let event_skipped = ExecutionEvent::new_tool_executed(eid, "n1".into(), "rm".into(), "critical".into(), true);
+        let event_skipped = ExecutionEvent::new_tool_executed(
+            eid,
+            "n1".into(),
+            "rm".into(),
+            "critical".into(),
+            true,
+        );
         let json = serde_json::to_string(&event_skipped).unwrap();
         let deserialized: ExecutionEvent = serde_json::from_str(&json).unwrap();
         match &deserialized {
@@ -875,11 +1037,17 @@ mod tests {
         let eid = sample_eid();
         let event = ExecutionEvent::new_node_started(eid, "n1".into(), "Build".into());
         let json = serde_json::to_value(&event).unwrap();
-        assert_eq!(json.get("type").and_then(|v| v.as_str()), Some("node_started"));
+        assert_eq!(
+            json.get("type").and_then(|v| v.as_str()),
+            Some("node_started")
+        );
 
         let event = ExecutionEvent::new_execution_cancelled(eid);
         let json = serde_json::to_value(&event).unwrap();
-        assert_eq!(json.get("type").and_then(|v| v.as_str()), Some("execution_cancelled"));
+        assert_eq!(
+            json.get("type").and_then(|v| v.as_str()),
+            Some("execution_cancelled")
+        );
     }
 
     #[test]
@@ -926,10 +1094,17 @@ mod tests {
     #[test]
     fn test_summary_skipped_tool() {
         let eid = sample_eid();
-        let event = ExecutionEvent::new_tool_executed(eid, "n1".into(), "rm".into(), "critical".into(), true);
+        let event = ExecutionEvent::new_tool_executed(
+            eid,
+            "n1".into(),
+            "rm".into(),
+            "critical".into(),
+            true,
+        );
         assert!(event.summary().contains("skipped"));
 
-        let event = ExecutionEvent::new_tool_executed(eid, "n1".into(), "ls".into(), "low".into(), false);
+        let event =
+            ExecutionEvent::new_tool_executed(eid, "n1".into(), "ls".into(), "low".into(), false);
         assert!(!event.summary().contains("skipped"));
     }
 

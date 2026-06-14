@@ -48,9 +48,9 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    use crate::state_persistence::domain::ExecutionStatus;
     use crate::state_persistence::application::dto::SaveStateInput;
     use crate::state_persistence::domain::ExecutionState;
+    use crate::state_persistence::domain::ExecutionStatus;
     use uuid::Uuid;
 
     #[tokio::test]
@@ -59,17 +59,17 @@ mod tests {
         let factory = FileSystemStateManagerFactory;
 
         let manager = factory
-            .create(dir.path().to_path_buf(), CreateStateManagerConfig::default())
+            .create(
+                dir.path().to_path_buf(),
+                CreateStateManagerConfig::default(),
+            )
             .await
             .unwrap();
 
         // Verify we can use the manager
         let execution_id = Uuid::new_v4();
         let state = ExecutionState::new(execution_id, "hash".to_string());
-        let output = manager
-            .save_state(SaveStateInput { state })
-            .await
-            .unwrap();
+        let output = manager.save_state(SaveStateInput { state }).await.unwrap();
         assert_eq!(output.status, ExecutionStatus::Pending);
     }
 

@@ -47,12 +47,16 @@ impl DefaultPolicyRepository {
 
 #[async_trait]
 impl EnforcementPolicyRepository for DefaultPolicyRepository {
-    async fn load_config(&self, _execution_id: &str) -> Result<EnforcementConfig, EnforcementError> {
-        let config = self.config.read().map_err(|e| {
-            EnforcementError::InvalidState {
+    async fn load_config(
+        &self,
+        _execution_id: &str,
+    ) -> Result<EnforcementConfig, EnforcementError> {
+        let config = self
+            .config
+            .read()
+            .map_err(|e| EnforcementError::InvalidState {
                 detail: format!("Failed to read config: {}", e),
-            }
-        })?;
+            })?;
         Ok(config.clone())
     }
 
@@ -61,37 +65,37 @@ impl EnforcementPolicyRepository for DefaultPolicyRepository {
         _execution_id: &str,
         config: &EnforcementConfig,
     ) -> Result<(), EnforcementError> {
-        let mut current = self.config.write().map_err(|e| {
-            EnforcementError::InvalidState {
+        let mut current = self
+            .config
+            .write()
+            .map_err(|e| EnforcementError::InvalidState {
                 detail: format!("Failed to write config: {}", e),
-            }
-        })?;
+            })?;
         *current = config.clone();
         Ok(())
     }
 
-    async fn load_tool_policy(
-        &self,
-        tool: &str,
-    ) -> Result<Option<ToolPolicy>, EnforcementError> {
+    async fn load_tool_policy(&self, tool: &str) -> Result<Option<ToolPolicy>, EnforcementError> {
         // Check runtime overrides first
         {
-            let overrides = self.tool_overrides.read().map_err(|e| {
-                EnforcementError::InvalidState {
-                    detail: format!("Failed to read overrides: {}", e),
-                }
-            })?;
+            let overrides =
+                self.tool_overrides
+                    .read()
+                    .map_err(|e| EnforcementError::InvalidState {
+                        detail: format!("Failed to read overrides: {}", e),
+                    })?;
             if let Some(policy) = overrides.get(tool) {
                 return Ok(Some(policy.clone()));
             }
         }
 
         // Fall back to base config tool policies
-        let config = self.config.read().map_err(|e| {
-            EnforcementError::InvalidState {
+        let config = self
+            .config
+            .read()
+            .map_err(|e| EnforcementError::InvalidState {
                 detail: format!("Failed to read config: {}", e),
-            }
-        })?;
+            })?;
         Ok(config.tool_policies.get(tool).cloned())
     }
 
@@ -100,11 +104,12 @@ impl EnforcementPolicyRepository for DefaultPolicyRepository {
         tool: &str,
         policy: &ToolPolicy,
     ) -> Result<(), EnforcementError> {
-        let mut overrides = self.tool_overrides.write().map_err(|e| {
-            EnforcementError::InvalidState {
-                detail: format!("Failed to write overrides: {}", e),
-            }
-        })?;
+        let mut overrides =
+            self.tool_overrides
+                .write()
+                .map_err(|e| EnforcementError::InvalidState {
+                    detail: format!("Failed to write overrides: {}", e),
+                })?;
         overrides.insert(tool.to_string(), policy.clone());
         Ok(())
     }
@@ -113,7 +118,7 @@ impl EnforcementPolicyRepository for DefaultPolicyRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::enforcement::domain::{ToolRiskLevel, ResourceBudget};
+    use crate::enforcement::domain::{ResourceBudget, ToolRiskLevel};
     use std::collections::HashMap;
 
     fn create_test_config() -> EnforcementConfig {
@@ -162,7 +167,10 @@ mod tests {
         let strict_config = EnforcementConfig::strict();
         repo.save_config("test", &strict_config).await.unwrap();
         let loaded = repo.load_config("test").await.unwrap();
-        assert_eq!(loaded.preset, crate::enforcement::domain::EnforcementPresetProfile::Strict);
+        assert_eq!(
+            loaded.preset,
+            crate::enforcement::domain::EnforcementPresetProfile::Strict
+        );
     }
 
     #[tokio::test]
@@ -234,14 +242,30 @@ mod tests {
         repo.save_tool_policy("bash", &bash_policy).await.unwrap();
         repo.save_tool_policy("write", &write_policy).await.unwrap();
 
-        assert!(!repo.load_tool_policy("bash").await.unwrap().unwrap().allowed);
-        assert!(repo.load_tool_policy("write").await.unwrap().unwrap().dry_run);
+        assert!(
+            !repo
+                .load_tool_policy("bash")
+                .await
+                .unwrap()
+                .unwrap()
+                .allowed
+        );
+        assert!(
+            repo.load_tool_policy("write")
+                .await
+                .unwrap()
+                .unwrap()
+                .dry_run
+        );
     }
 
     #[tokio::test]
     async fn test_default_repository() {
         let repo = DefaultPolicyRepository::default();
         let config = repo.load_config("test").await.unwrap();
-        assert_eq!(config.preset, crate::enforcement::domain::EnforcementPresetProfile::Standard);
+        assert_eq!(
+            config.preset,
+            crate::enforcement::domain::EnforcementPresetProfile::Standard
+        );
     }
 }

@@ -46,11 +46,7 @@ pub struct CircuitBreakerImpl {
 
 impl CircuitBreakerImpl {
     /// Create a new circuit breaker.
-    pub fn new(
-        backend_url: String,
-        threshold: u32,
-        half_open_timeout_secs: u64,
-    ) -> Self {
+    pub fn new(backend_url: String, threshold: u32, half_open_timeout_secs: u64) -> Self {
         Self {
             backend_url,
             threshold,
@@ -187,34 +183,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_initial_state() {
-        let cb = CircuitBreakerImpl::new(
-            "https://audit.example.com".to_string(),
-            3,
-            30,
-        );
-        assert_eq!(
-            cb.state().await.unwrap(),
-            CircuitBreakerState::Closed
-        );
+        let cb = CircuitBreakerImpl::new("https://audit.example.com".to_string(), 3, 30);
+        assert_eq!(cb.state().await.unwrap(), CircuitBreakerState::Closed);
     }
 
     #[tokio::test]
     async fn test_allows_requests_when_closed() {
-        let cb = CircuitBreakerImpl::new(
-            "https://audit.example.com".to_string(),
-            3,
-            30,
-        );
+        let cb = CircuitBreakerImpl::new("https://audit.example.com".to_string(), 3, 30);
         assert!(cb.allow_request().await.is_ok());
     }
 
     #[tokio::test]
     async fn test_opens_after_threshold() {
-        let cb = CircuitBreakerImpl::new(
-            "https://audit.example.com".to_string(),
-            3,
-            30,
-        );
+        let cb = CircuitBreakerImpl::new("https://audit.example.com".to_string(), 3, 30);
 
         // Record failures below threshold
         cb.record_failure().await.unwrap();
@@ -228,11 +209,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_rejects_when_open() {
-        let cb = CircuitBreakerImpl::new(
-            "https://audit.example.com".to_string(),
-            1,
-            30,
-        );
+        let cb = CircuitBreakerImpl::new("https://audit.example.com".to_string(), 1, 30);
 
         cb.record_failure().await.unwrap();
         let result = cb.allow_request().await;
@@ -245,11 +222,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_reset() {
-        let cb = CircuitBreakerImpl::new(
-            "https://audit.example.com".to_string(),
-            1,
-            30,
-        );
+        let cb = CircuitBreakerImpl::new("https://audit.example.com".to_string(), 1, 30);
 
         cb.record_failure().await.unwrap();
         assert_eq!(cb.state().await.unwrap(), CircuitBreakerState::Open);
@@ -260,11 +233,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_record_success_resets_failures() {
-        let cb = CircuitBreakerImpl::new(
-            "https://audit.example.com".to_string(),
-            3,
-            30,
-        );
+        let cb = CircuitBreakerImpl::new("https://audit.example.com".to_string(), 3, 30);
 
         cb.record_failure().await.unwrap();
         cb.record_failure().await.unwrap();
@@ -275,11 +244,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_stats() {
-        let cb = CircuitBreakerImpl::new(
-            "https://audit.example.com".to_string(),
-            3,
-            30,
-        );
+        let cb = CircuitBreakerImpl::new("https://audit.example.com".to_string(), 3, 30);
 
         cb.record_failure().await.unwrap();
         cb.record_failure().await.unwrap();

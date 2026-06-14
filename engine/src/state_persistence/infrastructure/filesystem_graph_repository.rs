@@ -58,7 +58,8 @@ impl FileSystemGraphRepository {
     }
 
     fn execution_index_path(&self, execution_id: Uuid) -> PathBuf {
-        self.graph_dir.join(format!("idx_{}.graph.json", execution_id))
+        self.graph_dir
+            .join(format!("idx_{}.graph.json", execution_id))
     }
 }
 
@@ -66,12 +67,15 @@ impl FileSystemGraphRepository {
 impl GraphRepository for FileSystemGraphRepository {
     async fn save_graph(&self, graph: &ExecutionGraph) -> Result<(), StateError> {
         let path = self.graph_path(graph.graph_id);
-        let temp = self.graph_dir.join(format!("{}.graph.json.tmp", graph.graph_id));
+        let temp = self
+            .graph_dir
+            .join(format!("{}.graph.json.tmp", graph.graph_id));
 
         // Serialise
-        let json = serde_json::to_string_pretty(graph).map_err(|e| StateError::SerialisationError {
-            detail: format!("Failed to serialise execution graph: {}", e),
-        })?;
+        let json =
+            serde_json::to_string_pretty(graph).map_err(|e| StateError::SerialisationError {
+                detail: format!("Failed to serialise execution graph: {}", e),
+            })?;
 
         // Write to temp
         fs::write(&temp, &json)
@@ -84,7 +88,10 @@ impl GraphRepository for FileSystemGraphRepository {
         fs::rename(&temp, &path)
             .await
             .map_err(|e| StateError::IoError {
-                detail: format!("Failed to rename graph file {:?} to {:?}: {}", temp, path, e),
+                detail: format!(
+                    "Failed to rename graph file {:?} to {:?}: {}",
+                    temp, path, e
+                ),
             })?;
 
         // Also save an execution-id-indexed copy for lookup by execution ID
@@ -92,9 +99,11 @@ impl GraphRepository for FileSystemGraphRepository {
         // Create a symlink or copy for the index
         // Using copy for simplicity (symlinks may not work on all platforms)
         if !idx_path.exists() {
-            fs::copy(&path, &idx_path).await.map_err(|e| StateError::IoError {
-                detail: format!("Failed to create execution index for graph: {}", e),
-            })?;
+            fs::copy(&path, &idx_path)
+                .await
+                .map_err(|e| StateError::IoError {
+                    detail: format!("Failed to create execution index for graph: {}", e),
+                })?;
         }
 
         Ok(())
@@ -189,7 +198,9 @@ impl GraphRepository for FileSystemGraphRepository {
             let path = entry.path();
 
             // Only match graph files: {uuid}.graph.json
-            let file_name = path.file_name().map_or(String::new(), |n| n.to_string_lossy().to_string());
+            let file_name = path
+                .file_name()
+                .map_or(String::new(), |n| n.to_string_lossy().to_string());
             if !file_name.ends_with(".graph.json") || file_name.starts_with("idx_") {
                 continue;
             }
@@ -225,7 +236,7 @@ mod tests {
     use chrono::Utc;
     use tempfile::TempDir;
 
-    use crate::state_persistence::domain::{ExecutionStatus, ExecutionGraphNode, NodeStatus};
+    use crate::state_persistence::domain::{ExecutionGraphNode, ExecutionStatus, NodeStatus};
 
     fn create_test_graph(execution_id: Uuid) -> ExecutionGraph {
         let nodes = vec![

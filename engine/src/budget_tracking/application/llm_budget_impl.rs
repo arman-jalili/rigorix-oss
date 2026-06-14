@@ -14,9 +14,9 @@
 //! - All async methods are safe to call from multiple tasks
 //! - Snapshot methods provide point-in-time values
 
-use std::sync::atomic::{AtomicU32, AtomicBool, Ordering};
-use std::sync::Arc;
 use async_trait::async_trait;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
 use crate::budget_tracking::domain::LlmBudgetError;
@@ -120,7 +120,9 @@ impl LlmBudgetImpl {
         }
         let threshold = (self.state.max_calls as f64 * 0.8) as u32;
         if used >= threshold && self.state.max_calls > 0 {
-            self.state.calls_warning_emitted.store(true, Ordering::Release);
+            self.state
+                .calls_warning_emitted
+                .store(true, Ordering::Release);
             return Some(BudgetWarningInfo {
                 resource: "calls".to_string(),
                 used,
@@ -141,7 +143,9 @@ impl LlmBudgetImpl {
         }
         let threshold = (self.state.max_tokens as f64 * 0.8) as u32;
         if used >= threshold && self.state.max_tokens > 0 {
-            self.state.tokens_warning_emitted.store(true, Ordering::Release);
+            self.state
+                .tokens_warning_emitted
+                .store(true, Ordering::Release);
             return Some(BudgetWarningInfo {
                 resource: "tokens".to_string(),
                 used,
@@ -157,7 +161,10 @@ impl LlmBudgetImpl {
 
 #[async_trait]
 impl LlmBudgetService for LlmBudgetImpl {
-    async fn reserve(&self, input: ReserveBudgetInput) -> Result<ReserveBudgetOutput, LlmBudgetError> {
+    async fn reserve(
+        &self,
+        input: ReserveBudgetInput,
+    ) -> Result<ReserveBudgetOutput, LlmBudgetError> {
         let estimated_tokens = input.estimated_tokens;
         if estimated_tokens == 0 {
             return Err(LlmBudgetError::ReservationFailed {
@@ -190,7 +197,9 @@ impl LlmBudgetService for LlmBudgetImpl {
         self.state.used_calls.fetch_add(1, Ordering::AcqRel);
 
         // Pre-reserve tokens on the assumption they'll be used
-        self.state.used_tokens.fetch_add(estimated_tokens, Ordering::AcqRel);
+        self.state
+            .used_tokens
+            .fetch_add(estimated_tokens, Ordering::AcqRel);
 
         let calls_used = self.state.used_calls.load(Ordering::Acquire);
         let tokens_used = self.state.used_tokens.load(Ordering::Acquire);
@@ -519,7 +528,11 @@ mod tests {
             .await;
         assert!(r2.is_err());
         match r2.unwrap_err() {
-            LlmBudgetError::MaxTokensExceeded { used, max, requested } => {
+            LlmBudgetError::MaxTokensExceeded {
+                used,
+                max,
+                requested,
+            } => {
                 assert_eq!(used, 300);
                 assert_eq!(max, 500);
                 assert_eq!(requested, 300);
@@ -697,12 +710,13 @@ mod tests {
 
         // Reserve to increment counters
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let output = rt.block_on(budget.reserve(ReserveBudgetInput {
-            execution_id: sample_execution_id(),
-            estimated_tokens: 500,
-            call_label: None,
-        }))
-        .unwrap();
+        let output = rt
+            .block_on(budget.reserve(ReserveBudgetInput {
+                execution_id: sample_execution_id(),
+                estimated_tokens: 500,
+                call_label: None,
+            }))
+            .unwrap();
 
         assert_eq!(budget.calls_used(), 1);
         assert_eq!(budget.tokens_used(), 500);
@@ -720,7 +734,11 @@ mod tests {
 
         // After rollback, counters should be decremented
         assert_eq!(budget.calls_used(), 0, "calls should rollback from 1 to 0");
-        assert_eq!(budget.tokens_used(), 0, "tokens should rollback from 500 to 0");
+        assert_eq!(
+            budget.tokens_used(),
+            0,
+            "tokens should rollback from 500 to 0"
+        );
     }
 
     #[test]
@@ -728,12 +746,13 @@ mod tests {
         let budget = LlmBudgetImpl::new(5, 10_000, "test".to_string());
 
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let output = rt.block_on(budget.reserve(ReserveBudgetInput {
-            execution_id: sample_execution_id(),
-            estimated_tokens: 500,
-            call_label: None,
-        }))
-        .unwrap();
+        let output = rt
+            .block_on(budget.reserve(ReserveBudgetInput {
+                execution_id: sample_execution_id(),
+                estimated_tokens: 500,
+                call_label: None,
+            }))
+            .unwrap();
 
         assert_eq!(budget.calls_used(), 1);
         assert_eq!(budget.tokens_used(), 500);

@@ -75,9 +75,18 @@ impl ExecutionGraph {
         total_duration_ms: u64,
     ) -> Self {
         let total_node_count = nodes.len() as u32;
-        let completed_node_count = nodes.iter().filter(|n| n.status == NodeStatus::Completed).count() as u32;
-        let failed_node_count = nodes.iter().filter(|n| n.status == NodeStatus::Failed).count() as u32;
-        let skipped_node_count = nodes.iter().filter(|n| n.status == NodeStatus::Skipped).count() as u32;
+        let completed_node_count = nodes
+            .iter()
+            .filter(|n| n.status == NodeStatus::Completed)
+            .count() as u32;
+        let failed_node_count = nodes
+            .iter()
+            .filter(|n| n.status == NodeStatus::Failed)
+            .count() as u32;
+        let skipped_node_count = nodes
+            .iter()
+            .filter(|n| n.status == NodeStatus::Skipped)
+            .count() as u32;
 
         Self {
             graph_id: Uuid::new_v4(),
@@ -137,12 +146,7 @@ pub struct ExecutionGraphNode {
 
 impl ExecutionGraphNode {
     /// Create a new ExecutionGraphNode.
-    pub fn new(
-        node_id: Uuid,
-        name: String,
-        action_type: String,
-        dependencies: Vec<Uuid>,
-    ) -> Self {
+    pub fn new(node_id: Uuid, name: String, action_type: String, dependencies: Vec<Uuid>) -> Self {
         Self {
             node_id,
             name,
