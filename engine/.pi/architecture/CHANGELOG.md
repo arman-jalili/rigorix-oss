@@ -10,6 +10,23 @@ This document tracks all architecture changes requiring implementation updates.
 
 ---
 
+## [2026-06-14] - State Persistence Implementation Complete
+
+### Added
+- Module: state-persistence
+  - Implemented: FileSystemStateRepository — filesystem state storage with atomic write-rename
+  - Implemented: FileSystemStateManager — StateManagerService with save/load/node-transitions/list
+  - Implemented: FileSystemGraphRepository — graph storage for TUI history with execution_id index
+  - Implemented: FileSystemGraphManager — GraphManagerService with CRUD for execution graphs
+  - Implemented: FileSystemExecutionRecordRepository — complete execution record storage
+  - Implemented: FileSystemStateManagerFactory + FileSystemGraphManagerFactory — constructors
+  - Documentation: runbook-state-persistence.md, dr-plan-state-persistence.md
+  - CI: Proofing stage (stage 18) added to hardening pipeline
+  - Coverage: 41 unit tests for state_persistence module
+  - Verified: 409 total tests passing across entire project
+
+---
+
 ## [2026-06-13] - Initial Architecture Scaffold from Domain Exploration
 
 ### Added
