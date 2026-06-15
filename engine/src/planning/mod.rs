@@ -42,3 +42,6 @@ pub mod interfaces;
 
 #[cfg(test)]
 pub(crate) mod tests;
+
+#[cfg(feature = "live-tests")]
+pub(crate) mod live_classifier_tests;
