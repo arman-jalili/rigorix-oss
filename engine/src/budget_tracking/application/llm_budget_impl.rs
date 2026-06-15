@@ -331,6 +331,13 @@ impl LlmBudgetService for LlmBudgetImpl {
 /// Concrete implementation of the `LlmBudgetReservation` RAII guard.
 ///
 /// Holds a reference to the budget and auto-rollbacks on Drop if not committed.
+///
+/// # Dead code note
+/// This is the RAII guard implementation for future integration with `reserve()`.
+/// Currently tested in isolation — the live `reserve()` path uses
+/// `LlmBudgetReservationState` instead. Keeping this ready for the
+/// next optimization pass.
+#[allow(dead_code)]
 pub(crate) struct LlmBudgetReservationImpl {
     /// Shared reference to the budget state.
     budget: Arc<BudgetState>,
@@ -349,6 +356,10 @@ impl LlmBudgetReservationImpl {
     ///
     /// This is called by `LlmBudgetImpl` during `reserve()`.
     /// The counters have already been incremented by the budget.
+    ///
+    /// # Dead code note
+    /// Used in tests. Reserved for future integration with the live `reserve()` path.
+    #[allow(dead_code)]
     pub(crate) fn new(budget: Arc<BudgetState>, call_id: u32, reserved_tokens: u32) -> Self {
         Self {
             budget,

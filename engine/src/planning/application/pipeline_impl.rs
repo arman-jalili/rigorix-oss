@@ -266,11 +266,11 @@ impl PlanningPipelineService for PlanningPipelineImpl {
             });
         }
 
-        let mut intent = input.intent;
+        let intent = input.intent;
         let mut total_llm_calls = 0u32;
         let mut total_llm_tokens = 0u32;
-        let mut from_generator = false;
-        let mut clarification_used = false;
+        let mut _from_generator = false;
+        let clarification_used = false;
         let mut generator_attempts = 0u32;
         const MAX_GENERATOR_ATTEMPTS: u32 = 3;
 
@@ -307,10 +307,10 @@ impl PlanningPipelineService for PlanningPipelineImpl {
                     let gen_output = self
                         .phase_generate_graph(&template.template_id, &extracted.parameters)
                         .await?;
-                    from_generator = gen_output.from_generator;
+                    _from_generator = gen_output.from_generator;
 
                     // Phase 5: Validate
-                    let (errors, warnings) = self
+                    let (errors, _warnings) = self
                         .phase_validate(&gen_output.graph, &template.template_id)
                         .await?;
 
@@ -346,7 +346,7 @@ impl PlanningPipelineService for PlanningPipelineImpl {
 
                     return Ok(PlanOutput {
                         planning_result,
-                        from_generator,
+                        from_generator: _from_generator,
                         clarification_used,
                         total_llm_calls,
                         total_llm_tokens,
@@ -363,7 +363,7 @@ impl PlanningPipelineService for PlanningPipelineImpl {
                         total_llm_calls += extracted.llm_calls_used;
                         total_llm_tokens += extracted.llm_tokens_used;
 
-                        let gen_output = self
+                        let _gen_output = self
                             .phase_generate_graph(&template.template_id, &extracted.parameters)
                             .await?;
 
@@ -455,7 +455,7 @@ impl PlanningPipelineService for PlanningPipelineImpl {
                                     detail: format!("Failed to register generated template: {}", e),
                                 })?;
 
-                            from_generator = true;
+                            _from_generator = true;
                             // Re-classify with the new template available
                             continue;
                         }

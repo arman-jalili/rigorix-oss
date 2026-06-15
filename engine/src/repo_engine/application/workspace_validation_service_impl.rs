@@ -10,7 +10,6 @@
 
 use async_trait::async_trait;
 use std::collections::HashSet;
-use std::path::PathBuf;
 use std::sync::RwLock;
 
 use crate::repo_engine::domain::{RepoEngineError, SymbolGraph, SymbolWorkspaceIntent};

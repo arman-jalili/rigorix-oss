@@ -33,6 +33,7 @@ struct RegisteredTool {
     tool: Arc<dyn Tool>,
     display_name: Option<String>,
     description: Option<String>,
+    #[allow(dead_code)]
     usage_hint: Option<String>,
 }
 

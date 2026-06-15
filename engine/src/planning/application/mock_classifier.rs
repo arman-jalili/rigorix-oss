@@ -10,7 +10,6 @@
 //! clarification requests and generator fallback triggers.
 
 use async_trait::async_trait;
-use std::collections::HashMap;
 
 use crate::budget_tracking::domain::LlmBudget;
 use crate::planning::domain::classification::{
@@ -120,7 +119,7 @@ impl Classifier for MockClassifier {
         _budget: &LlmBudget,
         _available_templates: &[String],
     ) -> Result<ClassificationResult, PlanningError> {
-        let mut alternatives = self.find_best_match(intent);
+        let alternatives = self.find_best_match(intent);
 
         if alternatives.is_empty() {
             return Ok(ClassificationResult {

@@ -416,7 +416,7 @@ impl ExecutionResult {
     }
 
     /// Record a skipped node.
-    pub fn record_skipped(&mut self, node_id: Uuid) {
+    pub fn record_skipped(&mut self, _node_id: Uuid) {
         self.skipped_count += 1;
     }
 

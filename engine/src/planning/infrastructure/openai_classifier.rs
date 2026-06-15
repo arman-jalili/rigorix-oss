@@ -275,6 +275,7 @@ impl Classifier for OpenaiClassifier {
         }
 
         #[derive(Deserialize)]
+        #[allow(dead_code)]
         struct OpenAiUsage {
             prompt_tokens: u32,
             completion_tokens: u32,

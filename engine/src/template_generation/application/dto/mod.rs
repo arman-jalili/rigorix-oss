@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::template_generation::domain::{GeneratedTemplate, GeneratorError, RepoContext};
+use crate::template_generation::domain::{GeneratedTemplate, RepoContext};
 
 /// Input for generating a new template.
 #[derive(Debug, Clone, Serialize, Deserialize)]

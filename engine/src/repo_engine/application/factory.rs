@@ -18,7 +18,6 @@ use std::path::PathBuf;
 
 use crate::repo_engine::domain::{
     Location, RepoEngineError, SourceLanguage, SymbolDefinition, SymbolGraph, SymbolKind,
-    SymbolVisibility,
 };
 
 use super::dto::{AddSymbolInput, RepoEngineConfig};

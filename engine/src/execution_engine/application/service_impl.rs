@@ -59,6 +59,8 @@ struct ExecutionSession {
     /// Whether execution has been aborted.
     aborted: bool,
     /// Total retries across all nodes in this session.
+    /// Reserved for metrics/observability reporting.
+    #[allow(dead_code)]
     total_retries: u32,
     /// ISO 8601 timestamp when execution started.
     started_at: chrono::DateTime<chrono::Utc>,
@@ -98,6 +100,8 @@ impl ParallelExecutionServiceImpl {
     }
 
     /// Notify progress callbacks about a state change.
+    /// Reserved for TUI progress reporting integration.
+    #[allow(dead_code)]
     fn notify_progress(&self, dag_id: Uuid, node_id: Uuid, state: &NodeExecutionState, total_nodes: u32) {
         let callbacks = self.progress_callbacks.lock().unwrap();
         if callbacks.is_empty() {
@@ -140,7 +144,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         input: ExecuteGraphInput,
     ) -> Result<ExecuteGraphOutput, ExecutionError> {
         // Resolve config
-        let config = input.config_override.clone().unwrap_or_else(|| self.config.clone());
+        let _config = input.config_override.clone().unwrap_or_else(|| self.config.clone());
 
         // Initialise session
         {

@@ -15,7 +15,6 @@
 //! - No implementation — only contract signatures
 
 use async_trait::async_trait;
-use std::path::PathBuf;
 
 use crate::repo_engine::domain::{RepoEngineError, SymbolGraph};
 

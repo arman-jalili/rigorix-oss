@@ -12,6 +12,7 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::RwLock;
 
+#[cfg_attr(not(test), allow(unused_imports))]
 use crate::repo_engine::domain::{
     RepoEngineError, SourceLanguage, SymbolDefinition, SymbolGraph, SymbolKind,
 };
@@ -319,6 +320,7 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
 // Helper to create test symbols
 // ---------------------------------------------------------------------------
 
+#[cfg(test)]
 fn create_test_symbol(
     name: &str,
     kind: SymbolKind,
