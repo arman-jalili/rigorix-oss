@@ -23,13 +23,13 @@ Generates new TOML workflow templates from natural language user intent when no 
 
 | Component | File Path | Purpose | Canonical Section |
 |-----------|-----------|---------|-------------------|
-| TemplateGenerator (trait) | `engine/src/planning/domain/generator.rs` | Async trait for template generation | #trait |
-| ClaudeTemplateGenerator | `engine/src/planning/domain/generator.rs` | Anthropic Messages API implementation | #claude |
+| TemplateGenerator (trait) | `engine/src/template_generation/domain/generator.rs` | Async trait for template generation | #trait |
+| ClaudeTemplateGenerator | `engine/src/template_generation/domain/generator.rs` | Anthropic Messages API implementation | #claude |
 | MockGenerator | `engine/src/planning/tests.rs` | Test double returning fixed template | #mock |
-| RepoContext | `engine/src/planning/domain/generator.rs` | Repository snapshot for generation context | #context |
-| GeneratedTemplate | `engine/src/planning/domain/generator.rs` | Output DTO for generated template | #generated-template |
-| GeneratorError | `engine/src/planning/domain/generator.rs` | Typed error enum for generation failures | #errors |
-| InvalidSymbolReference | `engine/src/planning/domain/generator.rs` | Phase 3 validation failure detail | #symbol-ref |
+| RepoContext | `engine/src/template_generation/domain/generator.rs` | Repository snapshot for generation context | #context |
+| GeneratedTemplate | `engine/src/template_generation/domain/generator.rs` | Output DTO for generated template | #generated-template |
+| GeneratorError | `engine/src/template_generation/domain/generator.rs` | Typed error enum for generation failures | #errors |
+| InvalidSymbolReference | `engine/src/template_generation/domain/generator.rs` | Phase 3 validation failure detail | #symbol-ref |
 | SymbolValidationServiceImpl | `engine/src/planning/application/symbol_validation_impl.rs` | Phase 3 service: validates generated template against indexed symbols | #symbol-validation |
 
 ---
@@ -40,7 +40,7 @@ Generates new TOML workflow templates from natural language user intent when no 
 
 **Purpose:** Abstract interface for LLM-based template generation
 
-**Implementation File:** `engine/src/planning/domain/generator.rs`
+**Implementation File:** `engine/src/template_generation/domain/generator.rs`
 
 **Interface:**
 
@@ -60,7 +60,7 @@ pub trait TemplateGenerator: Send + Sync {
 
 **Purpose:** Production generator using Anthropic Messages API with structured prompt engineering
 
-**Implementation File:** `engine/src/planning/domain/generator.rs`
+**Implementation File:** `engine/src/template_generation/domain/generator.rs`
 
 **Key behaviors:**
 - Builds prompt with template schema, valid action types, retry strategies, existing templates, repo context
@@ -74,7 +74,7 @@ pub trait TemplateGenerator: Send + Sync {
 
 **Purpose:** Deterministic test double for unit and integration tests
 
-**Implementation File:** `engine/src/planning/tests.rs`
+**Implementation File:** `engine/src/template_generation/tests.rs`
 
 **Behaviors:**
 - Returns a fixed, pre-defined template for any intent
@@ -200,8 +200,8 @@ pub struct RepoContext {
 
 | Test Type | Coverage Target | Files |
 |-----------|-----------------|-------|
-| Unit | 90% | `engine/src/planning/domain/generator.rs` (inline tests in tests.rs) |
-| Integration | 85% | `engine/src/planning/tests.rs` |
+| Unit | 90% | `engine/src/template_generation/domain/generator.rs` (inline tests in tests.rs) |
+| Integration | 85% | `engine/src/template_generation/tests.rs` |
 
 **Key Test Scenarios:**
 - MockGenerator returns fixed template → registration succeeds

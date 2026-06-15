@@ -19,7 +19,7 @@ use crate::dag_engine::domain::TaskGraph;
 use crate::planning::domain::classification::Classifier;
 use crate::planning::domain::error::PlanningError;
 use crate::planning::domain::extractor::ParameterExtractor;
-use crate::planning::domain::generator::TemplateGenerator;
+use crate::template_generation::domain::TemplateGenerator;
 
 use super::dto::{ValidationError, ValidationWarning};
 use super::service::{PlanningPipelineService, SymbolValidationService, TemplateGenerationService};

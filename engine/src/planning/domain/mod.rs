@@ -22,7 +22,6 @@ pub mod claude_classifier;
 pub mod error;
 pub mod event;
 pub mod extractor;
-pub mod generator;
 pub mod intent;
 pub mod mock_classifier;
 pub mod mock_extractor;
@@ -33,10 +32,6 @@ pub use classification::*;
 pub use claude_classifier::*;
 pub use error::*;
 pub use extractor::*;
-pub use generator::{
-    ClaudeGeneratorConfig, ClaudeTemplateGenerator, GeneratedTemplate, GeneratedTemplateCost,
-    GeneratorError, InvalidSymbolReference, RepoContext, TemplateGenerator,
-};
 pub use intent::*;
 pub use mock_classifier::MockClassifier;
 pub use mock_extractor::MockParameterExtractor;

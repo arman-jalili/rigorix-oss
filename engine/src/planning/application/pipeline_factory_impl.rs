@@ -16,7 +16,7 @@ use crate::planning::application::service::PlanningPipelineService;
 use crate::planning::domain::classification::Classifier;
 use crate::planning::domain::error::PlanningError;
 use crate::planning::domain::extractor::ParameterExtractor;
-use crate::planning::domain::generator::TemplateGenerator;
+use crate::template_generation::domain::TemplateGenerator;
 
 /// Factory for constructing PlanningPipelineService instances.
 ///

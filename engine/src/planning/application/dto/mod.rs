@@ -407,7 +407,7 @@ pub struct GenerateTemplateInput {
     pub intent: UserIntent,
 
     /// Repository context snapshot (file tree, public API, dependencies).
-    pub repo_context: crate::planning::domain::generator::RepoContext,
+    pub repo_context: crate::template_generation::domain::RepoContext,
 
     /// Maximum number of LLM retry attempts on parse/validation failure.
     #[serde(default = "default_max_retries")]
@@ -555,7 +555,7 @@ pub struct BuildRepoContextOutput {
     pub execution_id: Uuid,
 
     /// The built repository context.
-    pub repo_context: crate::planning::domain::generator::RepoContext,
+    pub repo_context: crate::template_generation::domain::RepoContext,
 
     /// Number of files scanned.
     pub files_scanned: u32,
