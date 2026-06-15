@@ -1,8 +1,21 @@
 {
+<<<<<<< HEAD
+  "id": "PL-4537",
+  "name": "\"error-handling\"",
+  "items": [
+    "issue-contract-freeze",
+    "issue-auditenvelope",
+    "issue-auditsender",
+    "issue-auditqueue",
+    "issue-circuitbreaker",
+    "issue-proofing",
+    "issue-architecture-readiness"
+=======
   "id": "PL-1517",
   "name": "\"error-handling\"",
   "items": [
     "issue-contract-freeze"
+>>>>>>> origin/main
   ],
   "steps": [
     {
@@ -43,12 +56,16 @@
     }
   ],
   "currentItemIndex": 0,
+<<<<<<< HEAD
+  "currentStepIndex": 2,
+=======
   "currentStepIndex": 3,
+>>>>>>> origin/main
   "status": "running",
   "results": [
     {
       "item": "issue-contract-freeze",
-      "status": "done",
+      "status": "in-progress",
       "stepResults": [
         {
           "step": "implement",
@@ -59,16 +76,24 @@
           "step": "validate",
           "status": "passed",
           "reason": ""
+<<<<<<< HEAD
+=======
         },
         {
           "step": "create-mr",
           "status": "passed",
           "reason": ""
+>>>>>>> origin/main
         }
       ]
     }
   ],
   "mergeOnValid": true,
   "createdAt": "2026-06-14T18:08:53.160Z",
+<<<<<<< HEAD
+  "updatedAt": "2026-06-14T18:11:10.810Z"
+}
+=======
   "updatedAt": "2026-06-14T18:16:27.743Z"
 }
+>>>>>>> origin/main

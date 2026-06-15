@@ -28,6 +28,7 @@ pub mod budget_tracking;
 pub mod cancellation;
 pub mod configuration;
 pub mod dag_engine;
+pub mod execution_engine;
 pub mod enforcement;
 pub mod error;
 pub mod event_system;

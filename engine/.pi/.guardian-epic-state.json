@@ -1,5 +1,17 @@
 {
   "name": "\"error-handling\"",
+<<<<<<< HEAD
+  "trackingIssueId": "173",
+  "epicId": null,
+  "slices": [
+    {
+      "module": "audit",
+      "components": [
+        {
+          "name": "AuditEnvelope",
+          "status": "planned",
+          "description": "Typed envelope containing execution audit data",
+=======
   "trackingIssueId": "186",
   "epicId": null,
   "slices": [
@@ -10,26 +22,114 @@
           "name": "CoreOrchestratorError",
           "status": "done",
           "description": "Root error type with `#[from]` for all sub-errors",
+>>>>>>> origin/main
           "dependencies": [
             "none"
           ]
         },
         {
+<<<<<<< HEAD
+          "name": "AuditSender",
+          "status": "planned",
+          "description": "Deliver envelopes via HTTP with retry logic",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "AuditQueue",
+          "status": "planned",
+          "description": "Queue for failed deliveries",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "CircuitBreaker",
+          "status": "planned",
+          "description": "Circuit breaker for HTTP resilience",
+=======
           "name": "ExecutionError",
           "status": "done",
           "description": "Execution task failures, timeouts, fallback handling",
+>>>>>>> origin/main
           "dependencies": [
             "none"
           ]
         }
       ],
+<<<<<<< HEAD
+      "nextLogicalSlice": [
+        {
+          "name": "AuditEnvelope",
+          "status": "planned",
+          "description": "Typed envelope containing execution audit data",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "AuditSender",
+          "status": "planned",
+          "description": "Deliver envelopes via HTTP with retry logic",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "AuditQueue",
+          "status": "planned",
+          "description": "Queue for failed deliveries",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "CircuitBreaker",
+          "status": "planned",
+          "description": "Circuit breaker for HTTP resilience",
+          "dependencies": [
+            "none"
+          ]
+        }
+      ]
+=======
       "nextLogicalSlice": []
+>>>>>>> origin/main
     }
   ],
   "issues": [
     {
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
+<<<<<<< HEAD
+      "status": "planned",
+      "remoteIssueId": "174"
+    },
+    {
+      "id": "issue-auditenvelope",
+      "title": "AuditEnvelope: Typed envelope containing execution audit data",
+      "status": "planned",
+      "remoteIssueId": "175"
+    },
+    {
+      "id": "issue-auditsender",
+      "title": "AuditSender: Deliver envelopes via HTTP with retry logic",
+      "status": "planned",
+      "remoteIssueId": "176"
+    },
+    {
+      "id": "issue-auditqueue",
+      "title": "AuditQueue: Queue for failed deliveries",
+      "status": "planned",
+      "remoteIssueId": "177"
+    },
+    {
+      "id": "issue-circuitbreaker",
+      "title": "CircuitBreaker: Circuit breaker for HTTP resilience",
+      "status": "planned",
+      "remoteIssueId": "178"
+=======
       "status": "done",
       "remoteIssueId": "187"
     },
@@ -38,16 +138,32 @@
       "title": "CoreOrchestratorError: Root error type with `#[from]` for all sub-errors",
       "status": "done",
       "remoteIssueId": "188"
+>>>>>>> origin/main
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
+<<<<<<< HEAD
+      "status": "planned",
+      "remoteIssueId": "179"
+=======
       "status": "done",
       "remoteIssueId": "189"
+>>>>>>> origin/main
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
+<<<<<<< HEAD
+      "status": "planned",
+      "remoteIssueId": "180"
+    }
+  ],
+  "status": "planning",
+  "currentIssueIndex": 0,
+  "createdAt": "2026-06-14T18:08:53.120Z"
+}
+=======
       "status": "done",
       "remoteIssueId": "190"
     }
@@ -56,3 +172,4 @@
   "currentIssueIndex": 3,
   "createdAt": "2026-06-14T18:24:30.711Z"
 }
+>>>>>>> origin/main
