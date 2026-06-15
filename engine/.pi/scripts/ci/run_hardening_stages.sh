@@ -289,6 +289,11 @@ run_stage "23" "planning-pipeline_proofing" \
 run_stage "24" "error-handling_proofing" \
     "${SCRIPTS_DIR}/stage_error-handling_proofing.sh" \
     "always"
+
+# Stage 25: Execution-Engine Proofing
+run_stage "25" "execution-engine_proofing" \
+    "${SCRIPTS_DIR}/stage_execution-engine_proofing.sh" \
+    "always"
 # ── Summary ──
 
 echo ""
