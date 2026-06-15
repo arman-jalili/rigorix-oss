@@ -80,3 +80,11 @@ pub enum AuditError {
         detail: String,
     },
 }
+impl AuditError {
+    pub fn is_retriable(&self) -> bool {
+        matches!(
+            self,
+            AuditError::SendFailed { .. } | AuditError::CircuitBreakerOpen { .. }
+        )
+    }
+}

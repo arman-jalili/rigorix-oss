@@ -30,7 +30,7 @@ use crate::configuration::domain::ConfigurationError;
 use crate::dag_engine::domain::DagError;
 use crate::enforcement::domain::EnforcementError;
 use crate::event_system::domain::EventSystemError;
-use crate::execution::domain::ExecutionError;
+use crate::execution_engine::domain::ExecutionError;
 use crate::failure_classification::domain::FailureClassificationError;
 use crate::planning::domain::PlanningError;
 use crate::repo_engine::domain::RepoEngineError;
@@ -49,7 +49,6 @@ pub enum CoreOrchestratorError {
     // ------------------------------------------------------------------ /
     // Module-level sub-errors (via #[from])
     // ------------------------------------------------------------------ /
-
     /// DAG engine error — graph construction, validation, lifecycle.
     #[error("DAG error: {0}")]
     Dag(#[from] DagError),
@@ -116,7 +115,6 @@ pub enum CoreOrchestratorError {
     // ------------------------------------------------------------------ /
     // Standard library wrappers (via #[from])
     // ------------------------------------------------------------------ /
-
     /// I/O error wrapper.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
@@ -128,7 +126,6 @@ pub enum CoreOrchestratorError {
     // ------------------------------------------------------------------ /
     // Signals and structured errors (manual conversion)
     // ------------------------------------------------------------------ /
-
     /// Operation was cancelled.
     ///
     /// Carries a human-readable description of why the operation was
@@ -162,12 +159,28 @@ impl CoreOrchestratorError {
         match self {
             // I/O errors are often transient (e.g., file lock contention)
             CoreOrchestratorError::Io(_) => true,
-            // HTTP 5xx errors are typically transient
+            // HTTP 5xx errors are typically transient; 4xx errors are not
             CoreOrchestratorError::Http { status, .. } if *status >= 500 => true,
-            // Enforcement budget errors may be transient on refresh
-            CoreOrchestratorError::Enforcement(_) => false,
-            // By default, domain errors are not retriable at this level
-            _ => false,
+            CoreOrchestratorError::Http { .. } => false,
+            // Delegate to domain-specific retriable logic
+            CoreOrchestratorError::Dag(e) => e.is_retriable(),
+            CoreOrchestratorError::Planning(e) => e.is_retriable(),
+            CoreOrchestratorError::Enforcement(e) => e.is_retriable(),
+            CoreOrchestratorError::Budget(e) => e.is_retriable(),
+            CoreOrchestratorError::Execution(e) => e.is_retriable(),
+            CoreOrchestratorError::Tool(e) => e.is_retriable(),
+            CoreOrchestratorError::SymbolGraph(e) => e.is_retriable(),
+            CoreOrchestratorError::Configuration(e) => e.is_retriable(),
+            CoreOrchestratorError::Cancellation(e) => e.is_retriable(),
+            CoreOrchestratorError::EventSystem(e) => e.is_retriable(),
+            CoreOrchestratorError::Audit(e) => e.is_retriable(),
+            CoreOrchestratorError::State(e) => e.is_retriable(),
+            CoreOrchestratorError::Template(e) => e.is_retriable(),
+            CoreOrchestratorError::FailureClassification(e) => e.is_retriable(),
+            // JSON deserialization errors are not retriable — the input is malformed
+            CoreOrchestratorError::Json(_) => false,
+            // Cancellation is intentional, not transient
+            CoreOrchestratorError::Cancelled(_) => false,
         }
     }
 
@@ -227,8 +240,7 @@ mod tests {
     #[test]
     fn test_error_code_mapping() {
         assert_eq!(
-            CoreOrchestratorError::Dag(DagError::CycleDetected { found: 0, total: 0 })
-                .error_code(),
+            CoreOrchestratorError::Dag(DagError::CycleDetected { found: 0, total: 0 }).error_code(),
             "DAG_ERROR"
         );
         assert_eq!(
@@ -308,12 +320,9 @@ mod tests {
                 current: 0,
                 max: 10,
             }),
-            CoreOrchestratorError::Budget(LlmBudgetError::MaxCallsExceeded {
-                used: 0,
-                max: 10,
-            }),
-            CoreOrchestratorError::Execution(ExecutionError::NotInitialized {
-                detail: "test".to_string(),
+            CoreOrchestratorError::Budget(LlmBudgetError::MaxCallsExceeded { used: 0, max: 10 }),
+            CoreOrchestratorError::Execution(ExecutionError::InvalidState {
+                reason: "test".to_string(),
             }),
             CoreOrchestratorError::Tool(ToolError::NotFound("test".to_string())),
             CoreOrchestratorError::SymbolGraph(RepoEngineError::SymbolNotFound {
@@ -342,11 +351,10 @@ mod tests {
                     reason: "test".to_string(),
                 },
             ),
-            CoreOrchestratorError::Io(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "test",
-            )),
-            CoreOrchestratorError::Json(serde_json::from_str::<serde_json::Value>("invalid").unwrap_err()),
+            CoreOrchestratorError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "test")),
+            CoreOrchestratorError::Json(
+                serde_json::from_str::<serde_json::Value>("invalid").unwrap_err(),
+            ),
             CoreOrchestratorError::Cancelled("test".to_string()),
             CoreOrchestratorError::Http {
                 message: "test".to_string(),
@@ -362,10 +370,7 @@ mod tests {
                 variant
             );
             assert!(
-                std::matches!(
-                    variant.http_status(),
-                    400 | 429 | 499 | 500 | 404
-                ),
+                std::matches!(variant.http_status(), 400 | 429 | 499 | 500 | 404),
                 "Unexpected status for {:?}: {}",
                 variant,
                 variant.http_status()

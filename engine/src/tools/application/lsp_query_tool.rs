@@ -129,17 +129,32 @@ mod tests {
 
     fn make_input(query_type: &str, file: &str, line: u64, column: u64) -> ToolInput {
         let mut params = HashMap::new();
-        params.insert("query_type".to_string(), serde_json::Value::String(query_type.to_string()));
-        params.insert("file".to_string(), serde_json::Value::String(file.to_string()));
-        params.insert("line".to_string(), serde_json::Value::Number(serde_json::Number::from(line)));
-        params.insert("column".to_string(), serde_json::Value::Number(serde_json::Number::from(column)));
+        params.insert(
+            "query_type".to_string(),
+            serde_json::Value::String(query_type.to_string()),
+        );
+        params.insert(
+            "file".to_string(),
+            serde_json::Value::String(file.to_string()),
+        );
+        params.insert(
+            "line".to_string(),
+            serde_json::Value::Number(serde_json::Number::from(line)),
+        );
+        params.insert(
+            "column".to_string(),
+            serde_json::Value::Number(serde_json::Number::from(column)),
+        );
         ToolInput::new(params)
     }
 
     #[tokio::test]
     async fn test_goto_definition() {
         let tool = LspQueryTool::new();
-        let result = tool.execute(&make_input("goto-definition", "src/main.rs", 10, 5)).await.unwrap();
+        let result = tool
+            .execute(&make_input("goto-definition", "src/main.rs", 10, 5))
+            .await
+            .unwrap();
 
         assert!(result.is_success());
         assert!(result.output.contains("textDocument/definition"));
@@ -149,7 +164,10 @@ mod tests {
     #[tokio::test]
     async fn test_find_references() {
         let tool = LspQueryTool::new();
-        let result = tool.execute(&make_input("references", "src/lib.rs", 42, 0)).await.unwrap();
+        let result = tool
+            .execute(&make_input("references", "src/lib.rs", 42, 0))
+            .await
+            .unwrap();
 
         assert!(result.is_success());
         assert!(result.output.contains("textDocument/references"));
@@ -160,10 +178,22 @@ mod tests {
         let tool = LspQueryTool::new();
 
         let mut params = HashMap::new();
-        params.insert("query_type".to_string(), serde_json::Value::String("hover".to_string()));
-        params.insert("file".to_string(), serde_json::Value::String("src/main.rs".to_string()));
-        params.insert("line".to_string(), serde_json::Value::Number(serde_json::Number::from(0)));
-        params.insert("column".to_string(), serde_json::Value::Number(serde_json::Number::from(0)));
+        params.insert(
+            "query_type".to_string(),
+            serde_json::Value::String("hover".to_string()),
+        );
+        params.insert(
+            "file".to_string(),
+            serde_json::Value::String("src/main.rs".to_string()),
+        );
+        params.insert(
+            "line".to_string(),
+            serde_json::Value::Number(serde_json::Number::from(0)),
+        );
+        params.insert(
+            "column".to_string(),
+            serde_json::Value::Number(serde_json::Number::from(0)),
+        );
         let input = ToolInput::new(params);
 
         let result = tool.execute(&input).await.unwrap();
@@ -173,7 +203,9 @@ mod tests {
     #[tokio::test]
     async fn test_unknown_query_type() {
         let tool = LspQueryTool::new();
-        let result = tool.execute(&make_input("invalid_type", "file.rs", 0, 0)).await;
+        let result = tool
+            .execute(&make_input("invalid_type", "file.rs", 0, 0))
+            .await;
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), ToolError::InvalidInput(_)));
@@ -196,29 +228,62 @@ mod tests {
 
     #[test]
     fn test_lsp_query_type_parsing() {
-        assert_eq!(LspQueryType::from_str("goto-definition"), Some(LspQueryType::GotoDefinition));
-        assert_eq!(LspQueryType::from_str("goto_definition"), Some(LspQueryType::GotoDefinition));
-        assert_eq!(LspQueryType::from_str("references"), Some(LspQueryType::FindReferences));
-        assert_eq!(LspQueryType::from_str("find-references"), Some(LspQueryType::FindReferences));
+        assert_eq!(
+            LspQueryType::from_str("goto-definition"),
+            Some(LspQueryType::GotoDefinition)
+        );
+        assert_eq!(
+            LspQueryType::from_str("goto_definition"),
+            Some(LspQueryType::GotoDefinition)
+        );
+        assert_eq!(
+            LspQueryType::from_str("references"),
+            Some(LspQueryType::FindReferences)
+        );
+        assert_eq!(
+            LspQueryType::from_str("find-references"),
+            Some(LspQueryType::FindReferences)
+        );
         assert_eq!(LspQueryType::from_str("hover"), Some(LspQueryType::Hover));
-        assert_eq!(LspQueryType::from_str("completion"), Some(LspQueryType::Completion));
-        assert_eq!(LspQueryType::from_str("symbols"), Some(LspQueryType::DocumentSymbols));
+        assert_eq!(
+            LspQueryType::from_str("completion"),
+            Some(LspQueryType::Completion)
+        );
+        assert_eq!(
+            LspQueryType::from_str("symbols"),
+            Some(LspQueryType::DocumentSymbols)
+        );
         assert_eq!(LspQueryType::from_str("unknown"), None);
     }
 
     #[test]
     fn test_lsp_method_names() {
-        assert_eq!(LspQueryType::GotoDefinition.lsp_method(), "textDocument/definition");
-        assert_eq!(LspQueryType::FindReferences.lsp_method(), "textDocument/references");
+        assert_eq!(
+            LspQueryType::GotoDefinition.lsp_method(),
+            "textDocument/definition"
+        );
+        assert_eq!(
+            LspQueryType::FindReferences.lsp_method(),
+            "textDocument/references"
+        );
         assert_eq!(LspQueryType::Hover.lsp_method(), "textDocument/hover");
-        assert_eq!(LspQueryType::Completion.lsp_method(), "textDocument/completion");
-        assert_eq!(LspQueryType::DocumentSymbols.lsp_method(), "textDocument/documentSymbol");
+        assert_eq!(
+            LspQueryType::Completion.lsp_method(),
+            "textDocument/completion"
+        );
+        assert_eq!(
+            LspQueryType::DocumentSymbols.lsp_method(),
+            "textDocument/documentSymbol"
+        );
     }
 
     #[tokio::test]
     async fn test_no_side_effects() {
         let tool = LspQueryTool::new();
-        let result = tool.execute(&make_input("hover", "file.rs", 1, 1)).await.unwrap();
+        let result = tool
+            .execute(&make_input("hover", "file.rs", 1, 1))
+            .await
+            .unwrap();
 
         assert!(!result.has_side_effects());
     }

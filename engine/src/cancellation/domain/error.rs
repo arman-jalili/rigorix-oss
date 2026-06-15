@@ -67,3 +67,8 @@ pub enum CancellationError {
         detail: String,
     },
 }
+impl CancellationError {
+    pub fn is_retriable(&self) -> bool {
+        false
+    }
+}

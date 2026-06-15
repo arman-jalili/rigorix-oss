@@ -68,10 +68,7 @@ pub trait ToolRegistryService: Send + Sync {
     /// - `ToolError::NotFound` if the tool is not registered
     /// - `ToolError::InvalidInput` if input parameters are invalid
     /// - `ToolError::ExecutionFailed` if execution encounters a runtime error
-    async fn execute_tool(
-        &self,
-        input: ExecuteToolInput,
-    ) -> Result<ExecuteToolOutput, ToolError>;
+    async fn execute_tool(&self, input: ExecuteToolInput) -> Result<ExecuteToolOutput, ToolError>;
 
     /// Look up a registered tool by name.
     ///

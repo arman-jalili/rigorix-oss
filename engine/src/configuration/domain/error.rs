@@ -78,3 +78,8 @@ pub enum ConfigSource {
     /// Compiled-in default.
     Default,
 }
+impl ConfigurationError {
+    pub fn is_retriable(&self) -> bool {
+        false
+    }
+}

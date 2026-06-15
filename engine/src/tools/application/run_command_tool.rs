@@ -41,10 +41,7 @@ pub struct RunCommandTool {
 
 impl RunCommandTool {
     /// Create a new RunCommandTool with the given workspace root and allowlist.
-    pub fn new(
-        workspace_root: impl Into<String>,
-        allowlist: Vec<impl Into<String>>,
-    ) -> Self {
+    pub fn new(workspace_root: impl Into<String>, allowlist: Vec<impl Into<String>>) -> Self {
         Self {
             workspace_root: workspace_root.into(),
             allowlist: allowlist.into_iter().map(|s| s.into()).collect(),
@@ -94,7 +91,9 @@ impl Tool for RunCommandTool {
         let cwd = input
             .get_string("cwd")
             .unwrap_or_else(|| self.workspace_root.clone());
-        let timeout_secs = input.get_u64("timeout_secs").unwrap_or(self.default_timeout);
+        let timeout_secs = input
+            .get_u64("timeout_secs")
+            .unwrap_or(self.default_timeout);
         let timeout_duration = Duration::from_secs(timeout_secs);
         let env_overrides: Vec<(String, String)> = input
             .params
@@ -124,9 +123,7 @@ impl Tool for RunCommandTool {
 
         // Execute the command
         let mut cmd = tokio::process::Command::new("/bin/sh");
-        cmd.arg("-c")
-            .arg(&command)
-            .current_dir(&cwd);
+        cmd.arg("-c").arg(&command).current_dir(&cwd);
 
         // Set environment overrides
         for (key, value) in &env_overrides {
@@ -185,13 +182,19 @@ mod tests {
 
     fn make_input(command: &str) -> ToolInput {
         let mut params = HashMap::new();
-        params.insert("command".to_string(), serde_json::Value::String(command.to_string()));
+        params.insert(
+            "command".to_string(),
+            serde_json::Value::String(command.to_string()),
+        );
         ToolInput::new(params)
     }
 
     fn allowlist_tool() -> (RunCommandTool, TempDir) {
         let dir = TempDir::new().unwrap();
-        let tool = RunCommandTool::new(dir.path().to_str().unwrap(), vec!["echo", "cat", "ls", "cargo", "git"]);
+        let tool = RunCommandTool::new(
+            dir.path().to_str().unwrap(),
+            vec!["echo", "cat", "ls", "cargo", "git"],
+        );
         (tool, dir)
     }
 
@@ -222,7 +225,10 @@ mod tests {
     #[tokio::test]
     async fn test_run_failing_command() {
         let (tool, _dir) = allowlist_tool();
-        let result = tool.execute(&make_input("cat /nonexistent_file_xyz")).await.unwrap();
+        let result = tool
+            .execute(&make_input("cat /nonexistent_file_xyz"))
+            .await
+            .unwrap();
 
         assert!(!result.is_success());
         assert!(result.exit_code != 0);
@@ -268,8 +274,14 @@ mod tests {
         let tool = RunCommandTool::new(dir.path().to_str().unwrap(), vec!["echo", "pwd"]);
 
         let mut params = HashMap::new();
-        params.insert("command".to_string(), serde_json::Value::String("pwd".to_string()));
-        params.insert("cwd".to_string(), serde_json::Value::String(dir.path().to_str().unwrap().to_string()));
+        params.insert(
+            "command".to_string(),
+            serde_json::Value::String("pwd".to_string()),
+        );
+        params.insert(
+            "cwd".to_string(),
+            serde_json::Value::String(dir.path().to_str().unwrap().to_string()),
+        );
         let input = ToolInput::new(params);
 
         let result = tool.execute(&input).await.unwrap();

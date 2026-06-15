@@ -114,3 +114,8 @@ pub enum RepoEngineError {
         detail: String,
     },
 }
+impl RepoEngineError {
+    pub fn is_retriable(&self) -> bool {
+        matches!(self, RepoEngineError::Io { .. })
+    }
+}

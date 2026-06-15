@@ -290,20 +290,18 @@ impl SymbolGraph {
     ) -> Result<(), crate::repo_engine::domain::RepoEngineError> {
         // Check capacity
         if self.max_capacity > 0 && self.definitions.len() >= self.max_capacity {
-            return Err(crate::repo_engine::domain::RepoEngineError::CapacityExceeded {
-                capacity: self.max_capacity,
-            });
+            return Err(
+                crate::repo_engine::domain::RepoEngineError::CapacityExceeded {
+                    capacity: self.max_capacity,
+                },
+            );
         }
 
         let name = def.name.clone();
 
         // Check for duplicates
         if self.definitions.contains_key(&name) {
-            return Err(
-                crate::repo_engine::domain::RepoEngineError::DuplicateSymbol {
-                    name,
-                },
-            );
+            return Err(crate::repo_engine::domain::RepoEngineError::DuplicateSymbol { name });
         }
 
         self.definitions.insert(name, def);

@@ -29,8 +29,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::budget_tracking::domain::LlmBudget;
-use crate::planning::domain::intent::UserIntent;
 use crate::planning::domain::error::PlanningError;
+use crate::planning::domain::intent::UserIntent;
 
 /// Classifies user intent against available templates via LLM.
 ///

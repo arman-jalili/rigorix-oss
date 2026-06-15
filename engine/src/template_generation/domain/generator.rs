@@ -134,10 +134,7 @@ pub enum GeneratorError {
         attempt: u8,
     },
     /// The LLM budget was exhausted before generation completed.
-    BudgetExhausted {
-        calls_used: u32,
-        max_calls: u32,
-    },
+    BudgetExhausted { calls_used: u32, max_calls: u32 },
     /// The LLM API call failed.
     ApiError {
         detail: String,
@@ -145,14 +142,9 @@ pub enum GeneratorError {
         retry_after: Option<u64>,
     },
     /// Maximum retry attempts exhausted.
-    MaxRetriesExhausted {
-        attempts: u8,
-        errors: Vec<String>,
-    },
+    MaxRetriesExhausted { attempts: u8, errors: Vec<String> },
     /// The repository context could not be built.
-    ContextBuildFailed {
-        detail: String,
-    },
+    ContextBuildFailed { detail: String },
 }
 
 /// An invalid symbol reference found during Phase 3 validation.
@@ -217,10 +209,7 @@ impl fmt::Display for GeneratorError {
                 "API error (status: {:?}, retry_after: {:?}): {}",
                 status_code, retry_after, detail
             ),
-            GeneratorError::MaxRetriesExhausted {
-                attempts,
-                errors,
-            } => write!(
+            GeneratorError::MaxRetriesExhausted { attempts, errors } => write!(
                 f,
                 "Max retries exhausted after {} attempts: {}",
                 attempts,
@@ -442,13 +431,12 @@ Now generate a template for the following user intent."##,
             content_type: String,
             text: Option<String>,
         }
-        let message: AnthropicMessage = serde_json::from_str(response_text).map_err(|e| {
-            GeneratorError::ApiError {
+        let message: AnthropicMessage =
+            serde_json::from_str(response_text).map_err(|e| GeneratorError::ApiError {
                 detail: format!("Failed to parse Claude API response: {}", e),
                 status_code: None,
                 retry_after: None,
-            }
-        })?;
+            })?;
         let text = message
             .content
             .into_iter()
@@ -488,7 +476,10 @@ impl TemplateGenerator for ClaudeTemplateGenerator {
             let user_message = self.build_user_message(intent);
 
             let message_content = if attempt > 0 {
-                format!("{}\n\n## Previous Attempt Failed\n\n{}", user_message, last_error)
+                format!(
+                    "{}\n\n## Previous Attempt Failed\n\n{}",
+                    user_message, last_error
+                )
             } else {
                 user_message.clone()
             };
@@ -501,12 +492,10 @@ impl TemplateGenerator for ClaudeTemplateGenerator {
                 "messages": [{"role": "user", "content": message_content}]
             });
 
-            let body_bytes = serde_json::to_vec(&body).map_err(|e| {
-                GeneratorError::ApiError {
-                    detail: format!("Failed to serialize request: {}", e),
-                    status_code: None,
-                    retry_after: None,
-                }
+            let body_bytes = serde_json::to_vec(&body).map_err(|e| GeneratorError::ApiError {
+                detail: format!("Failed to serialize request: {}", e),
+                status_code: None,
+                retry_after: None,
             })?;
 
             let response = self
@@ -541,20 +530,24 @@ impl TemplateGenerator for ClaudeTemplateGenerator {
                     continue;
                 }
                 return Err(GeneratorError::ApiError {
-                    detail: format!("API returned status {}: {}", status.as_u16(),
-                        response_text.chars().take(200).collect::<String>()),
+                    detail: format!(
+                        "API returned status {}: {}",
+                        status.as_u16(),
+                        response_text.chars().take(200).collect::<String>()
+                    ),
                     status_code: Some(status.as_u16()),
                     retry_after,
                 });
             }
 
-            let response_text = response.text().await.map_err(|e| {
-                GeneratorError::ApiError {
+            let response_text = response
+                .text()
+                .await
+                .map_err(|e| GeneratorError::ApiError {
                     detail: format!("Failed to read response body: {}", e),
                     status_code: None,
                     retry_after: None,
-                }
-            })?;
+                })?;
 
             let raw_toml = Self::parse_api_response(&response_text)?;
             let toml_content = Self::strip_code_fences(&raw_toml);
@@ -585,7 +578,10 @@ impl TemplateGenerator for ClaudeTemplateGenerator {
         })
     }
 
-    fn estimate_cost(&self, _intent: &crate::planning::domain::UserIntent) -> GeneratedTemplateCost {
+    fn estimate_cost(
+        &self,
+        _intent: &crate::planning::domain::UserIntent,
+    ) -> GeneratedTemplateCost {
         GeneratedTemplateCost {
             estimated_calls: self.config.max_retries as u32,
             estimated_tokens: self.config.max_tokens,
@@ -600,37 +596,55 @@ mod tests {
     #[test]
     fn test_strip_code_fences_no_fences() {
         let input = "simple toml content";
-        assert_eq!(ClaudeTemplateGenerator::strip_code_fences(input), "simple toml content");
+        assert_eq!(
+            ClaudeTemplateGenerator::strip_code_fences(input),
+            "simple toml content"
+        );
     }
 
     #[test]
     fn test_strip_code_fences_with_language() {
         let input = "```toml\nname = \"test\"\n```";
-        assert_eq!(ClaudeTemplateGenerator::strip_code_fences(input), "name = \"test\"");
+        assert_eq!(
+            ClaudeTemplateGenerator::strip_code_fences(input),
+            "name = \"test\""
+        );
     }
 
     #[test]
     fn test_strip_code_fences_no_language() {
         let input = "```\nname = \"test\"\n```";
-        assert_eq!(ClaudeTemplateGenerator::strip_code_fences(input), "name = \"test\"");
+        assert_eq!(
+            ClaudeTemplateGenerator::strip_code_fences(input),
+            "name = \"test\""
+        );
     }
 
     #[test]
     fn test_strip_code_fences_trailing_content() {
         let input = "```toml\nname = \"test\"\n```\nsome trailing text";
-        assert_eq!(ClaudeTemplateGenerator::strip_code_fences(input), "name = \"test\"");
+        assert_eq!(
+            ClaudeTemplateGenerator::strip_code_fences(input),
+            "name = \"test\""
+        );
     }
 
     #[test]
     fn test_strip_code_fences_only_closing() {
         let input = "name = \"test\"\n```";
-        assert_eq!(ClaudeTemplateGenerator::strip_code_fences(input), "name = \"test\"");
+        assert_eq!(
+            ClaudeTemplateGenerator::strip_code_fences(input),
+            "name = \"test\""
+        );
     }
 
     #[test]
     fn test_strip_code_fences_whitespace() {
         let input = "\n  ```toml\n  name = \"test\"\n  ```  \n";
-        assert_eq!(ClaudeTemplateGenerator::strip_code_fences(input), "name = \"test\"");
+        assert_eq!(
+            ClaudeTemplateGenerator::strip_code_fences(input),
+            "name = \"test\""
+        );
     }
 
     #[test]

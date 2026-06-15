@@ -39,7 +39,9 @@ pub enum PlanningError {
     },
 
     /// A required parameter is missing after extraction.
-    #[error("Missing required parameter '{parameter}' for template '{template_id}': {description}")]
+    #[error(
+        "Missing required parameter '{parameter}' for template '{template_id}': {description}"
+    )]
     MissingParameter {
         /// The template that requires this parameter.
         template_id: String,
@@ -126,5 +128,17 @@ impl From<crate::template_generation::domain::GeneratorError> for PlanningError 
                 detail: err.to_string(),
             },
         }
+    }
+}
+
+impl PlanningError {
+    /// Returns `true` if this error is transient and the operation may succeed on retry.
+    pub fn is_retriable(&self) -> bool {
+        matches!(
+            self,
+            PlanningError::ClassificationError { .. }
+                | PlanningError::ExtractionError { .. }
+                | PlanningError::TemplateEngineError { .. }
+        )
     }
 }

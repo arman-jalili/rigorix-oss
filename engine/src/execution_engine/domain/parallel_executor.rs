@@ -117,7 +117,10 @@ pub enum NodeStatus {
 impl NodeStatus {
     /// Returns true if the node is in a terminal state.
     pub fn is_terminal(&self) -> bool {
-        matches!(self, NodeStatus::Completed | NodeStatus::Failed | NodeStatus::Skipped)
+        matches!(
+            self,
+            NodeStatus::Completed | NodeStatus::Failed | NodeStatus::Skipped
+        )
     }
 
     /// Returns true if the node can transition to `Running`.
@@ -416,13 +419,14 @@ impl ExecutionResult {
     }
 
     /// Record a skipped node.
-    pub fn record_skipped(&mut self, node_id: Uuid) {
+    pub fn record_skipped(&mut self, _node_id: Uuid) {
         self.skipped_count += 1;
     }
 
     /// Returns true if all nodes completed successfully.
     pub fn all_succeeded(&self) -> bool {
-        self.failed_count == 0 && self.skipped_count == 0
+        self.failed_count == 0
+            && self.skipped_count == 0
             && self.completed_count == self.total_nodes
     }
 

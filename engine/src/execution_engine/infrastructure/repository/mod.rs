@@ -58,10 +58,7 @@ pub trait ExecutionResultRepository: Send + Sync {
     ///
     /// Returns the saved node states if the execution was interrupted.
     /// Returns an empty Vec if no in-flight state exists.
-    async fn load_state(
-        &self,
-        dag_id: Uuid,
-    ) -> Result<Vec<NodeExecutionState>, ExecutionError>;
+    async fn load_state(&self, dag_id: Uuid) -> Result<Vec<NodeExecutionState>, ExecutionError>;
 
     /// Delete all execution data (result + state) for a dag_id.
     ///

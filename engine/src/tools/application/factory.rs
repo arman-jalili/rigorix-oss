@@ -18,7 +18,7 @@ use async_trait::async_trait;
 use crate::tools::domain::ToolError;
 
 use super::dto::{
-    ExecuteToolOutput, ExecuteToolInput, ToolInfo, ToolInput, ToolResult, ToolSystemConfig,
+    ExecuteToolInput, ExecuteToolOutput, ToolInfo, ToolInput, ToolResult, ToolSystemConfig,
 };
 
 // ---------------------------------------------------------------------------

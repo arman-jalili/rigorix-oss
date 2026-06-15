@@ -61,7 +61,11 @@ pub struct SearchSymbolsResponse {
 impl From<SearchSymbolsOutput> for SearchSymbolsResponse {
     fn from(output: SearchSymbolsOutput) -> Self {
         Self {
-            symbols: output.symbols.into_iter().map(SymbolSummary::from).collect(),
+            symbols: output
+                .symbols
+                .into_iter()
+                .map(SymbolSummary::from)
+                .collect(),
             total_matches: output.total_matches,
             pattern: output.pattern,
             truncated: output.truncated,
@@ -131,7 +135,11 @@ impl From<SymbolsByFileOutput> for SymbolsByFileResponse {
     fn from(output: SymbolsByFileOutput) -> Self {
         Self {
             file: output.file,
-            symbols: output.symbols.into_iter().map(SymbolSummary::from).collect(),
+            symbols: output
+                .symbols
+                .into_iter()
+                .map(SymbolSummary::from)
+                .collect(),
             total: output.total,
         }
     }
@@ -186,7 +194,11 @@ impl From<IndexFileOutput> for IndexFileResponse {
             symbols_added: output.symbols_added,
             symbols_rejected: output.symbols_rejected,
             duration_ms: output.duration_ms,
-            error: if output.success { None } else { Some("Indexing failed".to_string()) },
+            error: if output.success {
+                None
+            } else {
+                Some("Indexing failed".to_string())
+            },
         }
     }
 }

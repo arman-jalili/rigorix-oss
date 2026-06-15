@@ -171,11 +171,8 @@ impl PlanDiff {
             }
         }
 
-        let impact_level = Self::compute_impact_level(
-            !added.is_empty(),
-            !removed.is_empty(),
-            &modified,
-        );
+        let impact_level =
+            Self::compute_impact_level(!added.is_empty(), !removed.is_empty(), &modified);
 
         Self {
             added,
@@ -195,9 +192,9 @@ impl PlanDiff {
             return ImpactLevel::Breaking;
         }
 
-        let has_structure_changed = modified.iter().any(|d| {
-            d.old_dependencies != d.new_dependencies
-        });
+        let has_structure_changed = modified
+            .iter()
+            .any(|d| d.old_dependencies != d.new_dependencies);
         if has_structure_changed {
             return ImpactLevel::Breaking;
         }

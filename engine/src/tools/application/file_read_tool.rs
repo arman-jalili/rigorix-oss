@@ -83,9 +83,9 @@ impl FileReadTool {
             ToolError::ExecutionFailed(format!("Cannot access path '{}': {}", path_str, e))
         })?;
 
-        let root_canonical = root.canonicalize().map_err(|_| {
-            ToolError::ExecutionFailed("Cannot resolve workspace root".to_string())
-        })?;
+        let root_canonical = root
+            .canonicalize()
+            .map_err(|_| ToolError::ExecutionFailed("Cannot resolve workspace root".to_string()))?;
 
         if !canonical.starts_with(&root_canonical) {
             return Err(ToolError::PathDenied(format!(
@@ -108,11 +108,9 @@ impl Tool for FileReadTool {
         let path_str = input.require_string("path")?;
         let resolved = self.resolve_path(&path_str)?;
 
-        let contents = tokio::fs::read_to_string(&resolved)
-            .await
-            .map_err(|e| {
-                ToolError::ExecutionFailed(format!("Failed to read file '{}': {}", path_str, e))
-            })?;
+        let contents = tokio::fs::read_to_string(&resolved).await.map_err(|e| {
+            ToolError::ExecutionFailed(format!("Failed to read file '{}': {}", path_str, e))
+        })?;
 
         Ok(ToolResult::success(contents))
     }
@@ -126,7 +124,10 @@ mod tests {
 
     fn make_input(path: &str) -> ToolInput {
         let mut params = HashMap::new();
-        params.insert("path".to_string(), serde_json::Value::String(path.to_string()));
+        params.insert(
+            "path".to_string(),
+            serde_json::Value::String(path.to_string()),
+        );
         ToolInput::new(params)
     }
 

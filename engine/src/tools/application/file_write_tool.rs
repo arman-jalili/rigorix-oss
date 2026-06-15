@@ -39,17 +39,17 @@ fn resolve_and_validate_path(
 
     // For write operations, the file may not exist yet.
     // Validate by checking the parent directory exists or can be created.
-    let parent = path.parent().ok_or_else(|| {
-        ToolError::InvalidInput(format!("Invalid path: {}", path_str))
-    })?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| ToolError::InvalidInput(format!("Invalid path: {}", path_str)))?;
 
     // Find the deepest existing ancestor to canonicalize and validate
     let mut check = Some(parent);
     while let Some(p) = check {
         if p.exists() {
-            let p_canonical = p.canonicalize().map_err(|e| {
-                ToolError::ExecutionFailed(format!("Cannot resolve path: {}", e))
-            })?;
+            let p_canonical = p
+                .canonicalize()
+                .map_err(|e| ToolError::ExecutionFailed(format!("Cannot resolve path: {}", e)))?;
             let root_canonical = root.canonicalize().map_err(|_| {
                 ToolError::ExecutionFailed("Cannot resolve workspace root".to_string())
             })?;
@@ -65,9 +65,9 @@ fn resolve_and_validate_path(
     }
 
     // No existing ancestor found — validate root itself
-    let root_canonical = root.canonicalize().map_err(|_| {
-        ToolError::ExecutionFailed("Cannot resolve workspace root".to_string())
-    })?;
+    let root_canonical = root
+        .canonicalize()
+        .map_err(|_| ToolError::ExecutionFailed("Cannot resolve workspace root".to_string()))?;
 
     // Path must be within workspace root
     let path_str_abs = root.join(path_str);
@@ -124,15 +124,13 @@ impl Tool for FileWriteTool {
 
         // Ensure parent directory exists
         if let Some(parent) = resolved.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(|e| {
-                    ToolError::ExecutionFailed(format!(
-                        "Failed to create directory '{}': {}",
-                        parent.display(),
-                        e
-                    ))
-                })?;
+            tokio::fs::create_dir_all(parent).await.map_err(|e| {
+                ToolError::ExecutionFailed(format!(
+                    "Failed to create directory '{}': {}",
+                    parent.display(),
+                    e
+                ))
+            })?;
         }
 
         // Atomic write: write to temp file, then rename
@@ -217,11 +215,9 @@ impl Tool for FileAppendTool {
             )));
         }
 
-        let mut existing = tokio::fs::read_to_string(&resolved)
-            .await
-            .map_err(|e| {
-                ToolError::ExecutionFailed(format!("Failed to read file '{}': {}", path_str, e))
-            })?;
+        let mut existing = tokio::fs::read_to_string(&resolved).await.map_err(|e| {
+            ToolError::ExecutionFailed(format!("Failed to read file '{}': {}", path_str, e))
+        })?;
 
         existing.push_str(&content);
 
@@ -272,7 +268,10 @@ mod tests {
     async fn test_write_new_file() {
         let dir = TempDir::new().unwrap();
         let tool = FileWriteTool::new(dir.path().to_str().unwrap());
-        let result = tool.execute(&make_input("test.txt", "hello world")).await.unwrap();
+        let result = tool
+            .execute(&make_input("test.txt", "hello world"))
+            .await
+            .unwrap();
 
         assert!(result.is_success());
         assert!(result.has_side_effects());
@@ -293,10 +292,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(
-            std::fs::read_to_string(&file_path).unwrap(),
-            "overwritten"
-        );
+        assert_eq!(std::fs::read_to_string(&file_path).unwrap(), "overwritten");
     }
 
     #[tokio::test]
@@ -351,21 +347,23 @@ mod tests {
         std::fs::write(&file_path, "hello ").unwrap();
 
         let tool = FileAppendTool::new(dir.path().to_str().unwrap());
-        let result = tool.execute(&make_input("test.txt", "world")).await.unwrap();
+        let result = tool
+            .execute(&make_input("test.txt", "world"))
+            .await
+            .unwrap();
 
         assert!(result.is_success());
         assert!(result.has_side_effects());
-        assert_eq!(
-            std::fs::read_to_string(&file_path).unwrap(),
-            "hello world"
-        );
+        assert_eq!(std::fs::read_to_string(&file_path).unwrap(), "hello world");
     }
 
     #[tokio::test]
     async fn test_append_to_nonexistent_file() {
         let dir = TempDir::new().unwrap();
         let tool = FileAppendTool::new(dir.path().to_str().unwrap());
-        let result = tool.execute(&make_input("nonexistent.txt", "content")).await;
+        let result = tool
+            .execute(&make_input("nonexistent.txt", "content"))
+            .await;
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), ToolError::ExecutionFailed(_)));

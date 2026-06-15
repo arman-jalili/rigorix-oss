@@ -12,5 +12,4 @@ pub mod error;
 pub mod event;
 pub mod generator;
 
-pub use error::*;
 pub use generator::*;

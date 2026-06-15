@@ -155,11 +155,7 @@ pub trait GrammarRepository: Send + Sync {
     async fn available_languages(&self) -> Vec<SourceLanguage>;
 
     /// Register a grammar for a language (for testing or dynamic loading).
-    async fn register_grammar(
-        &self,
-        language: SourceLanguage,
-        grammar: tree_sitter::Language,
-    );
+    async fn register_grammar(&self, language: SourceLanguage, grammar: tree_sitter::Language);
 
     /// Unload a grammar, freeing its resources.
     async fn unload_grammar(&self, language: &SourceLanguage) -> Result<(), RepoEngineError>;

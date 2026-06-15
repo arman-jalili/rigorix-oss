@@ -124,3 +124,13 @@ pub enum DagError {
         detail: String,
     },
 }
+
+impl DagError {
+    /// Returns `true` if this error is transient and the operation may succeed on retry.
+    pub fn is_retriable(&self) -> bool {
+        matches!(
+            self,
+            DagError::InternalError { .. } | DagError::TaskNotFound { .. }
+        )
+    }
+}

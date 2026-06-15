@@ -47,7 +47,8 @@ impl PlanningPipelineFactory for PlanningPipelineFactoryImpl {
         template_service: Box<dyn crate::templates::application::service::TemplateEngineService>,
     ) -> Result<Box<dyn PlanningPipelineService>, PlanningError> {
         let execution_id = Uuid::new_v4();
-        let pipeline = PlanningPipelineImpl::new(execution_id, classifier, extractor, template_service);
+        let pipeline =
+            PlanningPipelineImpl::new(execution_id, classifier, extractor, template_service);
         Ok(Box::new(pipeline))
     }
 
@@ -59,8 +60,9 @@ impl PlanningPipelineFactory for PlanningPipelineFactoryImpl {
         template_generator: Box<dyn TemplateGenerator>,
     ) -> Result<Box<dyn PlanningPipelineService>, PlanningError> {
         let execution_id = Uuid::new_v4();
-        let pipeline = PlanningPipelineImpl::new(execution_id, classifier, extractor, template_service)
-            .with_generator(template_generator);
+        let pipeline =
+            PlanningPipelineImpl::new(execution_id, classifier, extractor, template_service)
+                .with_generator(template_generator);
         Ok(Box::new(pipeline))
     }
 
@@ -73,7 +75,8 @@ impl PlanningPipelineFactory for PlanningPipelineFactoryImpl {
         validator: Option<Box<dyn CompositeValidator>>,
     ) -> Result<Box<dyn PlanningPipelineService>, PlanningError> {
         let execution_id = Uuid::new_v4();
-        let mut pipeline = PlanningPipelineImpl::new(execution_id, classifier, extractor, template_service);
+        let mut pipeline =
+            PlanningPipelineImpl::new(execution_id, classifier, extractor, template_service);
 
         if let Some(generator) = template_generator {
             pipeline = pipeline.with_generator(generator);

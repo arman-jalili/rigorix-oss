@@ -76,3 +76,8 @@ pub enum EnforcementError {
         detail: String,
     },
 }
+impl EnforcementError {
+    pub fn is_retriable(&self) -> bool {
+        false
+    }
+}

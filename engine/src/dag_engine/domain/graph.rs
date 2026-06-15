@@ -248,7 +248,10 @@ impl TaskGraph {
         let total = self.nodes.len();
 
         if processed < total {
-            return Err(DagError::CycleDetected { found: processed, total });
+            return Err(DagError::CycleDetected {
+                found: processed,
+                total,
+            });
         }
 
         Ok(topo_order)

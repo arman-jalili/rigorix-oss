@@ -70,7 +70,8 @@ impl UserIntent {
     ///
     /// Returns the updated intent (builder-style).
     pub fn with_clarification(mut self, question: String, answer: String) -> Self {
-        self.clarifications.push(ClarificationPair { question, answer });
+        self.clarifications
+            .push(ClarificationPair { question, answer });
         self
     }
 

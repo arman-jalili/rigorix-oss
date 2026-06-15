@@ -131,9 +131,7 @@ impl SymbolValidationService for SymbolValidationServiceImpl {
         let mut any_type_count: u32 = 0;
 
         // Extract all potential symbol references from the template
-        let potential_refs = self
-            .extract_symbol_references(&input.template)
-            .await?;
+        let potential_refs = self.extract_symbol_references(&input.template).await?;
 
         // Check each potential reference against the symbol graph
         for symbol_name in &potential_refs {
@@ -145,13 +143,15 @@ impl SymbolValidationService for SymbolValidationServiceImpl {
             }
 
             // Check for "any" type usage (LLM escape hatch)
-            if symbol_name == "any" || symbol_name.contains("<any>") || symbol_name.contains("Any") {
+            if symbol_name == "any" || symbol_name.contains("<any>") || symbol_name.contains("Any")
+            {
                 any_type_count += 1;
                 if input.flag_any_type {
                     invalid_references.push(InvalidSymbolRef {
                         symbol: symbol_name.clone(),
                         usage: "type".to_string(),
-                        reason: "'any' type used as escape hatch — should use actual type".to_string(),
+                        reason: "'any' type used as escape hatch — should use actual type"
+                            .to_string(),
                         is_any_type: true,
                     });
                 }
@@ -173,10 +173,7 @@ impl SymbolValidationService for SymbolValidationServiceImpl {
                 invalid_references.push(InvalidSymbolRef {
                     symbol: symbol_name.clone(),
                     usage,
-                    reason: format!(
-                        "Symbol '{}' not found in indexed symbol graph",
-                        symbol_name
-                    ),
+                    reason: format!("Symbol '{}' not found in indexed symbol graph", symbol_name),
                     is_any_type: false,
                 });
 
@@ -206,8 +203,7 @@ impl SymbolValidationService for SymbolValidationServiceImpl {
         for node in &template.nodes {
             // Serialize the action to JSON to get the actual field values
             // (avoids Rust Debug formatting artifacts like field names and None)
-            let action_json = serde_json::to_value(&node.action)
-                .unwrap_or(serde_json::Value::Null);
+            let action_json = serde_json::to_value(&node.action).unwrap_or(serde_json::Value::Null);
 
             // Extract string values from the JSON
             Self::extract_strings_from_json(&action_json, &mut refs);
@@ -239,9 +235,7 @@ impl SymbolValidationService for SymbolValidationServiceImpl {
 
         let stats = self
             .symbol_graph
-            .graph_stats(GraphStatsInput {
-                detailed: true,
-            })
+            .graph_stats(GraphStatsInput { detailed: true })
             .await
             .map_err(|e| PlanningError::DownstreamError {
                 component: "SymbolGraphService".to_string(),
@@ -264,14 +258,12 @@ impl SymbolValidationService for SymbolValidationServiceImpl {
             reference_depth: 0,
         };
 
-        let output = self
-            .symbol_graph
-            .lookup_symbol(input)
-            .await
-            .map_err(|e| PlanningError::DownstreamError {
+        let output = self.symbol_graph.lookup_symbol(input).await.map_err(|e| {
+            PlanningError::DownstreamError {
                 component: "SymbolGraphService".to_string(),
                 detail: format!("Symbol lookup failed: {}", e),
-            })?;
+            }
+        })?;
 
         Ok(output.found)
     }
@@ -337,6 +329,4 @@ impl SymbolValidationServiceImpl {
             }
         }
     }
-
-
 }
