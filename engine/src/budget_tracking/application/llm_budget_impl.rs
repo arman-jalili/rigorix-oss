@@ -78,41 +78,52 @@ impl LlmBudgetImpl {
     }
 
     /// Get a reference to the cancellation token (used by the orchestrator).
-    pub fn cancel_token(&self) -> CancellationToken {
+    #[allow(dead_code)]
+    pub(crate) fn cancel_token(&self) -> CancellationToken {
         self.state.cancel_token.clone()
     }
 
     /// Get the maximum calls allowed.
-    pub fn max_calls(&self) -> u32 {
+    #[allow(dead_code)]
+    pub(crate) fn max_calls(&self) -> u32 {
         self.state.max_calls
     }
 
     /// Get the maximum tokens allowed.
-    pub fn max_tokens(&self) -> u32 {
+    #[allow(dead_code)]
+    pub(crate) fn max_tokens(&self) -> u32 {
         self.state.max_tokens
     }
 
     /// Get the number of calls used so far.
-    pub fn calls_used(&self) -> u32 {
+    pub(crate) fn calls_used(&self) -> u32 {
         self.state.used_calls.load(Ordering::Acquire)
     }
 
     /// Get the number of tokens used so far.
-    pub fn tokens_used(&self) -> u32 {
+    pub(crate) fn tokens_used(&self) -> u32 {
         self.state.used_tokens.load(Ordering::Acquire)
     }
 
     /// Get remaining call capacity.
-    pub fn remaining_calls(&self) -> u32 {
+    pub(crate) fn remaining_calls(&self) -> u32 {
         self.state.max_calls.saturating_sub(self.calls_used())
     }
 
     /// Get remaining token capacity.
-    pub fn remaining_tokens(&self) -> u32 {
+    pub(crate) fn remaining_tokens(&self) -> u32 {
         self.state.max_tokens.saturating_sub(self.tokens_used())
     }
 
     /// Check whether a warning threshold has been crossed for calls.
+    /// Check whether a warning threshold has been crossed for calls.
+    ///
+    /// # Design note
+    /// Warnings fire **once per budget lifetime** (when the 80% threshold is
+    /// first crossed). After emission, `calls_warning_emitted` is set and
+    /// subsequent calls return `None`. This is intentional to prevent log
+    /// spam on every LLM call once the threshold is breached. Multi-level
+    /// thresholds (80%, 90%, 95%) would require separate flags per level.
     #[tracing::instrument(skip_all)]
     fn check_call_warning(&self) -> Option<BudgetWarningInfo> {
         let used = self.calls_used();
@@ -382,13 +393,22 @@ impl Drop for LlmBudgetReservationImpl {
         if !self.committed.load(Ordering::Acquire) {
             self.rolled_back.store(true, Ordering::Release);
 
-            // Decrement the call counter
-            self.budget.used_calls.fetch_sub(1, Ordering::AcqRel);
+            // Decrement the call counter (saturating to prevent underflow
+            // in case of double-rollback bugs)
+            self.budget
+                .used_calls
+                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |v| {
+                    Some(v.saturating_sub(1))
+                })
+                .ok();
 
-            // Decrement the token counter by the reserved amount
+            // Decrement the token counter (saturating to prevent underflow)
             self.budget
                 .used_tokens
-                .fetch_sub(self.reserved_tokens, Ordering::AcqRel);
+                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |v| {
+                    Some(v.saturating_sub(self.reserved_tokens))
+                })
+                .ok();
         }
     }
 }
@@ -396,7 +416,7 @@ impl Drop for LlmBudgetReservationImpl {
 #[async_trait]
 impl super::service::LlmBudgetReservation for LlmBudgetReservationImpl {
     #[tracing::instrument(skip_all)]
-    async fn commit(&mut self, actual_tokens: u32) -> Result<(), LlmBudgetError> {
+    async fn commit(&self, actual_tokens: u32) -> Result<(), LlmBudgetError> {
         if self.committed.load(Ordering::Acquire) {
             return Err(LlmBudgetError::ReservationFailed {
                 detail: "Reservation already committed".to_string(),
