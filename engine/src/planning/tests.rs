@@ -19,7 +19,7 @@ use crate::planning::application::pipeline_impl::PlanningPipelineImpl;
 use crate::planning::application::service::PlanningPipelineService;
 use crate::planning::domain::classification::Classifier;
 use crate::planning::domain::extractor::ParameterExtractor;
-use crate::planning::domain::generator::{
+use crate::template_generation::domain::{
     ClaudeGeneratorConfig, ClaudeTemplateGenerator, GeneratedTemplate, GeneratedTemplateCost,
     GeneratorError, InvalidSymbolReference, RepoContext, TemplateGenerator,
 };

@@ -101,7 +101,7 @@ pub trait GeneratedTemplateRepository: Send + Sync {
     async fn save(
         &self,
         intent_hash: &str,
-        generated: &crate::planning::domain::generator::GeneratedTemplate,
+        generated: &crate::template_generation::domain::GeneratedTemplate,
     ) -> Result<(), PlanningError>;
 
     /// Load a generated template by its intent hash.
@@ -111,7 +111,7 @@ pub trait GeneratedTemplateRepository: Send + Sync {
     async fn load_by_intent_hash(
         &self,
         intent_hash: &str,
-    ) -> Result<Option<crate::planning::domain::generator::GeneratedTemplate>, PlanningError>;
+    ) -> Result<Option<crate::template_generation::domain::GeneratedTemplate>, PlanningError>;
 
     /// Load a generated template by its suggested ID.
     ///
@@ -119,7 +119,7 @@ pub trait GeneratedTemplateRepository: Send + Sync {
     async fn load_by_template_id(
         &self,
         template_id: &str,
-    ) -> Result<Option<crate::planning::domain::generator::GeneratedTemplate>, PlanningError>;
+    ) -> Result<Option<crate::template_generation::domain::GeneratedTemplate>, PlanningError>;
 
     /// Delete a cached template entry.
     ///
