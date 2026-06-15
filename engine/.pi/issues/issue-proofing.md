@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-PROOFING"
-  epic: ""planning-pipeline""
+  epic: ""error-handling""
   component: "Proofing & CI Enforcement"
-  module: "planning-pipeline"
+  module: "error-handling"
   status: planned
   priority: critical
   dependencies: []
@@ -26,7 +26,7 @@ guardian_issue:
       - Updated CI stage configuration
 
   canonical_references:
-    - module: ".pi/architecture/modules/planning-pipeline.md"
+    - module: ".pi/architecture/modules/error-handling.md"
 
   acceptance_criteria:
     - "All proofing scripts created and executable"
@@ -47,12 +47,12 @@ guardian_issue:
     every build for zero token cost.
 
   file_changes:
-    - "create: .pi/scripts/ci/check_planning-pipeline_contracts.sh"
-    - "create: .pi/scripts/ci/check_planning-pipeline_coverage.sh"
+    - "create: .pi/scripts/ci/check_error-handling_contracts.sh"
+    - "create: .pi/scripts/ci/check_error-handling_coverage.sh"
     - "modify: .pi/scripts/ci/run_hardening_stages.sh"
 ---
 
-# Proofing & CI Enforcement: planning-pipeline
+# Proofing & CI Enforcement: error-handling
 
 ## Intent
 
@@ -81,17 +81,17 @@ on every PR. No LLM cost. No human review. Just pass or fail.
 
 | Script | Purpose | Location |
 |--------|---------|----------|
-| check_planning-pipeline_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
-| check_planning-pipeline_coverage.sh | Enforce coverage thresholds | .pi/scripts/ci/ |
-| stage_planning-pipeline_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
+| check_error-handling_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
+| check_error-handling_coverage.sh | Enforce coverage thresholds | .pi/scripts/ci/ |
+| stage_error-handling_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
 
 ## CI Pipeline Update
 
 Add the new stage to `run_hardening_stages.sh`:
 
 ```bash
-run_stage "11" "planning-pipeline_proofing" \
-    "${SCRIPTS_DIR}/stage_planning-pipeline_proofing.sh" \
+run_stage "11" "error-handling_proofing" \
+    "${SCRIPTS_DIR}/stage_error-handling_proofing.sh" \
     "always"
 ```
 

@@ -69,6 +69,10 @@ audit/
 
 **Implementation File:** `engine/src/audit/domain/envelope.rs`
 
+status: implemented
+
+depends: none
+
 ```rust
 pub struct AuditEnvelope {
     pub execution_id: Uuid,
@@ -86,6 +90,10 @@ pub struct AuditEnvelope {
 
 **Implementation File:** `engine/src/audit/application/audit_sender_impl.rs`
 
+status: implemented
+
+depends: none
+
 - Uses `reqwest` for HTTP POST delivery to configurable backend URL
 - Exponential backoff with jitter (base * 2^attempt, capped, +25% jitter)
 - Integration with `CircuitBreaker` for backpressure
@@ -98,6 +106,10 @@ pub struct AuditEnvelope {
 
 **Implementation File:** `engine/src/audit/application/audit_queue_impl.rs`
 
+status: implemented
+
+depends: none
+
 - Bounded in-memory FIFO queue (configurable capacity, default 100)
 - Thread-safe via `tokio::sync::Mutex<VecDeque>`
 - Enqueue returns `QueueFull` error at capacity
@@ -108,6 +120,10 @@ pub struct AuditEnvelope {
 **Purpose:** Circuit breaker for HTTP resilience
 
 **Implementation File:** `engine/src/audit/application/circuit_breaker_impl.rs`
+
+status: implemented
+
+depends: none
 
 - State machine: Closed → Open → HalfOpen → Closed
 - Configurable failure threshold and half-open timeout

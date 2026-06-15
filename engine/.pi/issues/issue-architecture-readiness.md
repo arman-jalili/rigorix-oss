@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-READINESS"
-  epic: ""planning-pipeline""
+  epic: ""error-handling""
   component: "Architecture Readiness"
-  module: "planning-pipeline"
+  module: "error-handling"
   status: planned
   priority: critical
   dependencies: []
@@ -32,7 +32,7 @@ guardian_issue:
       - Verify proofing scripts + validators in CI
 
   canonical_references:
-    - module: ".pi/architecture/modules/planning-pipeline.md"
+    - module: ".pi/architecture/modules/error-handling.md"
 
   acceptance_criteria:
     - "Runbook created and reviewed"
@@ -58,30 +58,30 @@ guardian_issue:
     and CI will catch regressions (proofing scripts + validators).
 
   file_changes:
-    - "create: docs/runbook-planning-pipeline.md"
-    - "create: docs/dr-plan-planning-pipeline.md"
+    - "create: docs/runbook-error-handling.md"
+    - "create: docs/dr-plan-error-handling.md"
     - "modify: .pi/architecture/CHANGELOG.md"
-    - "modify: .pi/architecture/modules/planning-pipeline.md"
+    - "modify: .pi/architecture/modules/error-handling.md"
 ---
 
-# Architecture Readiness: planning-pipeline
+# Architecture Readiness: error-handling
 
 ## Intent
 
-Make the planning-pipeline module production-ready. This is the final issue in every epic
+Make the error-handling module production-ready. This is the final issue in every epic
 — it closes the loop between implementation and operability.
 
 ## Deliverables
 
 ### Runbook
-`docs/runbook-planning-pipeline.md` covering:
+`docs/runbook-error-handling.md` covering:
 - Startup sequence and dependencies
 - Graceful shutdown procedure
 - Common failure modes and recovery
 - Configuration reference
 
 ### DR Plan
-`docs/dr-plan-planning-pipeline.md` covering:
+`docs/dr-plan-error-handling.md` covering:
 - Backup strategy and schedule
 - Restore procedure
 - Failover plan

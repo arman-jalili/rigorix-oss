@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
   "id": "PL-4537",
   "name": "\"error-handling\"",
   "items": [
@@ -9,11 +10,16 @@
     "issue-circuitbreaker",
     "issue-proofing",
     "issue-architecture-readiness"
+=======
+  "id": "PL-1517",
+  "name": "\"error-handling\"",
+  "items": [
+    "issue-contract-freeze"
+>>>>>>> origin/main
   ],
   "steps": [
     {
       "name": "implement",
-      "prompt": ".pi/prompts/issue-implementation-series.md",
       "acceptance": {
         "type": "validator",
         "validators": [
@@ -34,14 +40,12 @@
     },
     {
       "name": "create-mr",
-      "prompt": ".pi/prompts/issue-closeout.md",
       "acceptance": {
         "type": "none"
       }
     },
     {
       "name": "merge",
-      "prompt": ".pi/prompts/issue-merge.md",
       "acceptance": {
         "type": "validator",
         "validators": [
@@ -52,9 +56,12 @@
     }
   ],
   "currentItemIndex": 0,
+<<<<<<< HEAD
   "currentStepIndex": 2,
+=======
+  "currentStepIndex": 3,
+>>>>>>> origin/main
   "status": "running",
-  "retryCount": 0,
   "results": [
     {
       "item": "issue-contract-freeze",
@@ -66,24 +73,27 @@
           "reason": ""
         },
         {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
           "step": "validate",
           "status": "passed",
           "reason": ""
+<<<<<<< HEAD
+=======
         },
         {
-          "step": "validate",
+          "step": "create-mr",
           "status": "passed",
           "reason": ""
+>>>>>>> origin/main
         }
       ]
     }
   ],
   "mergeOnValid": true,
   "createdAt": "2026-06-14T18:08:53.160Z",
+<<<<<<< HEAD
   "updatedAt": "2026-06-14T18:11:10.810Z"
 }
+=======
+  "updatedAt": "2026-06-14T18:16:27.743Z"
+}
+>>>>>>> origin/main

@@ -3,7 +3,11 @@ guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
   epic: ""error-handling""
   component: "Contract Freeze"
+<<<<<<< HEAD
   module: "audit"
+=======
+  module: "error-handling"
+>>>>>>> origin/main
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +33,11 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
+<<<<<<< HEAD
     - module: ".pi/architecture/modules/audit.md"
+=======
+    - module: ".pi/architecture/modules/error-handling.md"
+>>>>>>> origin/main
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -47,6 +55,7 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
+<<<<<<< HEAD
     - "create: src/audit/contracts/"
     - "create: src/audit/contracts/dtos/"
     - "create: src/audit/contracts/events/"
@@ -57,15 +66,31 @@ guardian_issue:
 ## Intent
 
 Define and freeze all public interfaces, contracts, and schemas for the audit
+=======
+    - "create: src/error-handling/contracts/"
+    - "create: src/error-handling/contracts/dtos/"
+    - "create: src/error-handling/contracts/events/"
+---
+
+# Contract Freeze: error-handling
+
+## Intent
+
+Define and freeze all public interfaces, contracts, and schemas for the error-handling
+>>>>>>> origin/main
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
+<<<<<<< HEAD
 - AuditEnvelope
 - AuditSender
 - AuditQueue
 - CircuitBreaker
+=======
+- CoreOrchestratorError
+>>>>>>> origin/main
 
 ## What Must Be Frozen
 
