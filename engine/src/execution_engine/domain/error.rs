@@ -46,7 +46,9 @@ pub enum ExecutionError {
     },
 
     /// The retry limit was exhausted for a node.
-    #[error("Retry limit exhausted for node {node_id}: max_retries={max_retries}, attempts={attempts}")]
+    #[error(
+        "Retry limit exhausted for node {node_id}: max_retries={max_retries}, attempts={attempts}"
+    )]
     RetryLimitExhausted {
         /// The UUID of the node that exhausted retries.
         node_id: Uuid,
@@ -109,4 +111,14 @@ pub enum ExecutionError {
         /// The timeout duration in milliseconds.
         timeout_ms: u64,
     },
+}
+impl ExecutionError {
+    pub fn is_retriable(&self) -> bool {
+        matches!(
+            self,
+            ExecutionError::NodeExecutionFailed { .. }
+                | ExecutionError::Timeout { .. }
+                | ExecutionError::InternalError { .. }
+        )
+    }
 }

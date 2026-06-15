@@ -128,3 +128,8 @@ pub enum StateError {
         detail: String,
     },
 }
+impl StateError {
+    pub fn is_retriable(&self) -> bool {
+        matches!(self, StateError::InvalidTransition { .. })
+    }
+}

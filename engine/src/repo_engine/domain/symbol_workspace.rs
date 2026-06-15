@@ -97,18 +97,12 @@ impl SymbolWorkspaceIntent {
     /// Get a human-readable description of this intent.
     pub fn description(&self) -> &'static str {
         match self {
-            SymbolWorkspaceIntent::ReadOnly => {
-                "Reads symbols from the graph without modification"
-            }
-            SymbolWorkspaceIntent::ReadWrite => {
-                "Reads and may add new symbols to the graph"
-            }
+            SymbolWorkspaceIntent::ReadOnly => "Reads symbols from the graph without modification",
+            SymbolWorkspaceIntent::ReadWrite => "Reads and may add new symbols to the graph",
             SymbolWorkspaceIntent::Modification => {
                 "Modifies existing symbol definitions in the graph"
             }
-            SymbolWorkspaceIntent::Deletion => {
-                "Removes symbols from the graph"
-            }
+            SymbolWorkspaceIntent::Deletion => "Removes symbols from the graph",
         }
     }
 }
@@ -166,7 +160,11 @@ mod tests {
             SymbolWorkspaceIntent::Deletion,
         ];
         for intent in cases {
-            assert!(!intent.description().is_empty(), "Description for {:?} should not be empty", intent);
+            assert!(
+                !intent.description().is_empty(),
+                "Description for {:?} should not be empty",
+                intent
+            );
         }
     }
 

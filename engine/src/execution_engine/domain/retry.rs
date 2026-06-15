@@ -93,7 +93,10 @@ impl RetryPolicy {
         if idx < self.retry_strategies.len() {
             self.retry_strategies[idx]
         } else {
-            *self.retry_strategies.last().unwrap_or(&RetryStrategy::SameOperation)
+            *self
+                .retry_strategies
+                .last()
+                .unwrap_or(&RetryStrategy::SameOperation)
         }
     }
 
@@ -110,7 +113,9 @@ impl RetryPolicy {
 
     /// Returns true if the node should be checked for skip conditions.
     pub fn has_skip_conditions(&self) -> bool {
-        self.skip_conditions.as_ref().map_or(false, |c| !c.is_empty())
+        self.skip_conditions
+            .as_ref()
+            .map_or(false, |c| !c.is_empty())
     }
 }
 
@@ -309,7 +314,12 @@ impl RetryDecision {
 
     /// Returns true if this decision is terminal for the node.
     pub fn is_terminal(&self) -> bool {
-        matches!(self, RetryDecision::Fallback { .. } | RetryDecision::Skip { .. } | RetryDecision::Abort { .. })
+        matches!(
+            self,
+            RetryDecision::Fallback { .. }
+                | RetryDecision::Skip { .. }
+                | RetryDecision::Abort { .. }
+        )
     }
 }
 

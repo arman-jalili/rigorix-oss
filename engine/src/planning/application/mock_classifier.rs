@@ -10,7 +10,6 @@
 //! clarification requests and generator fallback triggers.
 
 use async_trait::async_trait;
-use std::collections::HashMap;
 
 use crate::budget_tracking::domain::LlmBudget;
 use crate::planning::domain::classification::{
@@ -47,7 +46,9 @@ pub struct MockClassifier {
 impl MockClassifier {
     /// Create a new empty MockClassifier with no matches.
     pub fn new() -> Self {
-        Self { matches: Vec::new() }
+        Self {
+            matches: Vec::new(),
+        }
     }
 
     /// Register a high-confidence match (auto-select path).
@@ -76,8 +77,12 @@ impl MockClassifier {
         confidence: f64,
         reasoning: impl Into<String>,
     ) -> Self {
-        self.matches
-            .push((text.into(), template_id.into(), confidence, reasoning.into()));
+        self.matches.push((
+            text.into(),
+            template_id.into(),
+            confidence,
+            reasoning.into(),
+        ));
         self
     }
 
@@ -87,12 +92,14 @@ impl MockClassifier {
             .matches
             .iter()
             .filter(|(pattern, _, _, _)| intent.input.contains(pattern))
-            .map(|(_, template_id, confidence, reasoning)| ClassifiedTemplate {
-                template_id: template_id.clone(),
-                confidence: *confidence,
-                reasoning: reasoning.clone(),
-                from_override: false,
-            })
+            .map(
+                |(_, template_id, confidence, reasoning)| ClassifiedTemplate {
+                    template_id: template_id.clone(),
+                    confidence: *confidence,
+                    reasoning: reasoning.clone(),
+                    from_override: false,
+                },
+            )
             .collect();
 
         // Sort by confidence descending
@@ -120,7 +127,7 @@ impl Classifier for MockClassifier {
         _budget: &LlmBudget,
         _available_templates: &[String],
     ) -> Result<ClassificationResult, PlanningError> {
-        let mut alternatives = self.find_best_match(intent);
+        let alternatives = self.find_best_match(intent);
 
         if alternatives.is_empty() {
             return Ok(ClassificationResult {

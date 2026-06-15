@@ -10,7 +10,6 @@
 
 use async_trait::async_trait;
 use std::collections::HashSet;
-use std::path::PathBuf;
 use std::sync::RwLock;
 
 use crate::repo_engine::domain::{RepoEngineError, SymbolGraph, SymbolWorkspaceIntent};
@@ -83,8 +82,7 @@ impl WorkspaceValidationService for WorkspaceValidationServiceImpl {
             })
             .collect();
 
-        let affected_set: HashSet<&str> =
-            affected_symbols.iter().map(|s| s.as_str()).collect();
+        let affected_set: HashSet<&str> = affected_symbols.iter().map(|s| s.as_str()).collect();
 
         // Step 2: Validate based on intent
         match input.intent {
@@ -241,9 +239,7 @@ impl WorkspaceValidationService for WorkspaceValidationServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repo_engine::domain::{
-        Location, SourceLanguage, SymbolDefinition, SymbolKind,
-    };
+    use crate::repo_engine::domain::{Location, SourceLanguage, SymbolDefinition, SymbolKind};
     use std::path::PathBuf;
 
     fn make_graph_with_symbols() -> SymbolGraph {

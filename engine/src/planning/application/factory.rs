@@ -57,9 +57,7 @@ pub trait PlanningPipelineFactory: Send + Sync {
         &self,
         classifier: Box<dyn Classifier>,
         extractor: Box<dyn ParameterExtractor>,
-        template_service: Box<
-            dyn crate::templates::application::service::TemplateEngineService,
-        >,
+        template_service: Box<dyn crate::templates::application::service::TemplateEngineService>,
     ) -> Result<Box<dyn PlanningPipelineService>, PlanningError>;
 
     /// Create a planning pipeline with template generator fallback.
@@ -84,9 +82,7 @@ pub trait PlanningPipelineFactory: Send + Sync {
         &self,
         classifier: Box<dyn Classifier>,
         extractor: Box<dyn ParameterExtractor>,
-        template_service: Box<
-            dyn crate::templates::application::service::TemplateEngineService,
-        >,
+        template_service: Box<dyn crate::templates::application::service::TemplateEngineService>,
         template_generator: Box<dyn TemplateGenerator>,
     ) -> Result<Box<dyn PlanningPipelineService>, PlanningError>;
 
@@ -107,9 +103,7 @@ pub trait PlanningPipelineFactory: Send + Sync {
         &self,
         classifier: Box<dyn Classifier>,
         extractor: Box<dyn ParameterExtractor>,
-        template_service: Box<
-            dyn crate::templates::application::service::TemplateEngineService,
-        >,
+        template_service: Box<dyn crate::templates::application::service::TemplateEngineService>,
         template_generator: Option<Box<dyn TemplateGenerator>>,
         validator: Option<Box<dyn CompositeValidator>>,
     ) -> Result<Box<dyn PlanningPipelineService>, PlanningError>;
@@ -172,9 +166,7 @@ pub trait TemplateGenerationFactory: Send + Sync {
     async fn create_default(
         &self,
         symbol_validation: Box<dyn SymbolValidationService>,
-        template_engine: Box<
-            dyn crate::templates::application::service::TemplateEngineService,
-        >,
+        template_engine: Box<dyn crate::templates::application::service::TemplateEngineService>,
     ) -> Result<Box<dyn TemplateGenerationService>, PlanningError>;
 
     /// Create a template generation service with a custom generator.
@@ -185,9 +177,7 @@ pub trait TemplateGenerationFactory: Send + Sync {
         &self,
         generator: Box<dyn TemplateGenerator>,
         symbol_validation: Box<dyn SymbolValidationService>,
-        template_engine: Box<
-            dyn crate::templates::application::service::TemplateEngineService,
-        >,
+        template_engine: Box<dyn crate::templates::application::service::TemplateEngineService>,
     ) -> Result<Box<dyn TemplateGenerationService>, PlanningError>;
 
     /// Create a template generation service without Phase 3 validation.
@@ -219,9 +209,7 @@ pub trait SymbolValidationFactory: Send + Sync {
     /// Validates against the indexed symbol graph from the Repo Engine.
     async fn create_default(
         &self,
-        symbol_graph: Box<
-            dyn crate::repo_engine::application::service::SymbolGraphService,
-        >,
+        symbol_graph: Box<dyn crate::repo_engine::application::service::SymbolGraphService>,
     ) -> Result<Box<dyn SymbolValidationService>, PlanningError>;
 
     /// Create a disabled symbol validation service (pass-through).

@@ -475,14 +475,8 @@ pub struct RepoEngineConfig {
 impl Default for RepoEngineConfig {
     fn default() -> Self {
         let mut language_extensions = HashMap::new();
-        language_extensions.insert(
-            SourceLanguage::Rust,
-            vec!["rs".to_string()],
-        );
-        language_extensions.insert(
-            SourceLanguage::Python,
-            vec!["py".to_string()],
-        );
+        language_extensions.insert(SourceLanguage::Rust, vec!["rs".to_string()]);
+        language_extensions.insert(SourceLanguage::Python, vec!["py".to_string()]);
         language_extensions.insert(
             SourceLanguage::TypeScript,
             vec!["ts".to_string(), "tsx".to_string()],
@@ -492,7 +486,7 @@ impl Default for RepoEngineConfig {
             language_extensions,
             exclude_patterns: vec!["*.min.*".to_string(), "*.generated.*".to_string()],
             max_file_size: 1_048_576, // 1 MB
-            max_symbol_capacity: 0,    // unlimited
+            max_symbol_capacity: 0,   // unlimited
             build_adjacency: true,
             max_files_per_scan: 100_000,
             index_on_startup: true,

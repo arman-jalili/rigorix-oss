@@ -89,9 +89,7 @@ impl Tool for GitCommitTool {
             .current_dir(&self.repo_root)
             .output()
             .await
-            .map_err(|e| {
-                ToolError::ExecutionFailed(format!("Failed to create commit: {}", e))
-            })?;
+            .map_err(|e| ToolError::ExecutionFailed(format!("Failed to create commit: {}", e)))?;
 
         let duration_ms = start.elapsed().as_millis() as u64;
 
@@ -189,7 +187,10 @@ mod tests {
             .unwrap();
 
         let tool = GitCommitTool::new(dir.path().to_str().unwrap());
-        let result = tool.execute(&make_input("feat: add test file")).await.unwrap();
+        let result = tool
+            .execute(&make_input("feat: add test file"))
+            .await
+            .unwrap();
 
         assert!(result.is_success());
         assert!(result.has_side_effects());

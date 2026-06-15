@@ -25,17 +25,15 @@ use uuid::Uuid;
 
 use crate::planning::domain::classification::ClassificationResult;
 use crate::planning::domain::error::PlanningError;
-use crate::template_generation::domain::RepoContext;
 use crate::planning::domain::intent::UserIntent;
-
+use crate::template_generation::domain::RepoContext;
 
 use super::dto::{
     AvailableTemplatesOutput, BuildRepoContextInput, BuildRepoContextOutput, CheckBudgetInput,
     CheckBudgetOutput, ExtractParametersInput, ExtractParametersOutput, GenerateGraphInput,
     GenerateGraphOutput, GenerateTemplateInput, GenerateTemplateOutput, PlanInput, PlanOutput,
-    PlanWithGraphInput, PlanWithGraphOutput, RequestClarificationInput,
-    RequestClarificationOutput, SymbolValidationInput, SymbolValidationOutput, ValidatePlanInput,
-    ValidatePlanOutput,
+    PlanWithGraphInput, PlanWithGraphOutput, RequestClarificationInput, RequestClarificationOutput,
+    SymbolValidationInput, SymbolValidationOutput, ValidatePlanInput, ValidatePlanOutput,
 };
 
 /// Central planning pipeline service that orchestrates the 6-phase flow.
@@ -106,13 +104,19 @@ pub trait PlanningPipelineService: Send + Sync {
     /// Checks if the available budget has capacity for at least 2 LLM calls
     /// (minimum required for classification + extraction). Returns the
     /// budget status without consuming any capacity.
-    async fn check_budget(&self, input: CheckBudgetInput) -> Result<CheckBudgetOutput, PlanningError>;
+    async fn check_budget(
+        &self,
+        input: CheckBudgetInput,
+    ) -> Result<CheckBudgetOutput, PlanningError>;
 
     /// Classify user intent against available templates.
     ///
     /// Standalone classification step. Useful for UI previews or when
     /// the caller wants to inspect alternatives before proceeding.
-    async fn classify_intent(&self, intent: UserIntent) -> Result<ClassificationResult, PlanningError>;
+    async fn classify_intent(
+        &self,
+        intent: UserIntent,
+    ) -> Result<ClassificationResult, PlanningError>;
 
     /// Extract parameters for a selected template.
     ///

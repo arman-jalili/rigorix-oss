@@ -18,22 +18,14 @@
 //! - All domain types are serializable (Serialize + Deserialize)
 
 pub mod classification;
-pub mod claude_classifier;
 pub mod error;
 pub mod event;
 pub mod extractor;
 pub mod intent;
-pub mod mock_classifier;
-pub mod mock_extractor;
-pub mod openai_classifier;
 pub mod result;
 
 pub use classification::*;
-pub use claude_classifier::*;
 pub use error::*;
 pub use extractor::*;
 pub use intent::*;
-pub use mock_classifier::MockClassifier;
-pub use mock_extractor::MockParameterExtractor;
-pub use openai_classifier::*;
 pub use result::*;

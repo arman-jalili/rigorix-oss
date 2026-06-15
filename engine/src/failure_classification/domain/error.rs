@@ -58,3 +58,11 @@ pub enum FailureClassificationError {
         detail: String,
     },
 }
+impl FailureClassificationError {
+    pub fn is_retriable(&self) -> bool {
+        matches!(
+            self,
+            FailureClassificationError::ClassificationFailed { .. }
+        )
+    }
+}

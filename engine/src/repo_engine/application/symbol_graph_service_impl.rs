@@ -12,6 +12,7 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::RwLock;
 
+#[cfg_attr(not(test), allow(unused_imports))]
 use crate::repo_engine::domain::{
     RepoEngineError, SourceLanguage, SymbolDefinition, SymbolGraph, SymbolKind,
 };
@@ -145,10 +146,7 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
             .into_iter()
             .map(|s| s.clone())
             .filter(|s| {
-                let kind_ok = input
-                    .kind_filter
-                    .as_ref()
-                    .map_or(true, |k| &s.kind == k);
+                let kind_ok = input.kind_filter.as_ref().map_or(true, |k| &s.kind == k);
                 let lang_ok = input
                     .language_filter
                     .as_ref()
@@ -158,7 +156,9 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
             .collect();
 
         let total_matches = results.len();
-        let truncated = input.max_results.map_or(false, |limit| total_matches > limit);
+        let truncated = input
+            .max_results
+            .map_or(false, |limit| total_matches > limit);
 
         if let Some(limit) = input.max_results {
             results.truncate(limit);
@@ -183,12 +183,7 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
         let symbols: Vec<SymbolDefinition> = graph
             .lookup_by_file(&input.file)
             .into_iter()
-            .filter(|s| {
-                input
-                    .kind_filter
-                    .as_ref()
-                    .map_or(true, |k| &s.kind == k)
-            })
+            .filter(|s| input.kind_filter.as_ref().map_or(true, |k| &s.kind == k))
             .map(|s| s.clone())
             .collect();
 
@@ -319,12 +314,8 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
 // Helper to create test symbols
 // ---------------------------------------------------------------------------
 
-fn create_test_symbol(
-    name: &str,
-    kind: SymbolKind,
-    file: &str,
-    line: u32,
-) -> AddSymbolInput {
+#[cfg(test)]
+fn create_test_symbol(name: &str, kind: SymbolKind, file: &str, line: u32) -> AddSymbolInput {
     use crate::repo_engine::domain::Location;
     use std::path::PathBuf;
 
@@ -348,8 +339,8 @@ fn create_test_symbol(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repo_engine::domain::SymbolKind;
     use crate::repo_engine::application::dto::GraphStatsInput;
+    use crate::repo_engine::domain::SymbolKind;
 
     fn sample_add_input(name: &str) -> AddSymbolInput {
         create_test_symbol(name, SymbolKind::Function, "src/lib.rs", 10)
@@ -387,7 +378,10 @@ mod tests {
 
         service.add_symbol(sample_add_input("dup")).await.unwrap();
 
-        let err = service.add_symbol(sample_add_input("dup")).await.unwrap_err();
+        let err = service
+            .add_symbol(sample_add_input("dup"))
+            .await
+            .unwrap_err();
         match err {
             RepoEngineError::DuplicateSymbol { name } => {
                 assert_eq!(name, "dup");
@@ -540,15 +534,17 @@ mod tests {
             .add_symbol(sample_add_input("to_remove"))
             .await
             .unwrap();
-        assert!(service
-            .lookup_symbol(LookupSymbolInput {
-                name: "to_remove".to_string(),
-                include_adjacency: false,
-                reference_depth: 0,
-            })
-            .await
-            .unwrap()
-            .found);
+        assert!(
+            service
+                .lookup_symbol(LookupSymbolInput {
+                    name: "to_remove".to_string(),
+                    include_adjacency: false,
+                    reference_depth: 0,
+                })
+                .await
+                .unwrap()
+                .found
+        );
 
         let removed = service.remove_symbol("to_remove").await.unwrap();
         assert!(removed);
@@ -581,14 +577,8 @@ mod tests {
     async fn test_clear_graph() {
         let service = SymbolGraphServiceImpl::new();
 
-        service
-            .add_symbol(sample_add_input("sym1"))
-            .await
-            .unwrap();
-        service
-            .add_symbol(sample_add_input("sym2"))
-            .await
-            .unwrap();
+        service.add_symbol(sample_add_input("sym1")).await.unwrap();
+        service.add_symbol(sample_add_input("sym2")).await.unwrap();
         assert_eq!(
             service
                 .graph_stats(GraphStatsInput { detailed: false })
@@ -713,16 +703,13 @@ mod tests {
     async fn test_with_capacity() {
         let service = SymbolGraphServiceImpl::with_capacity(2);
 
-        service
-            .add_symbol(sample_add_input("sym1"))
-            .await
-            .unwrap();
-        service
-            .add_symbol(sample_add_input("sym2"))
-            .await
-            .unwrap();
+        service.add_symbol(sample_add_input("sym1")).await.unwrap();
+        service.add_symbol(sample_add_input("sym2")).await.unwrap();
 
-        let err = service.add_symbol(sample_add_input("sym3")).await.unwrap_err();
+        let err = service
+            .add_symbol(sample_add_input("sym3"))
+            .await
+            .unwrap_err();
         match err {
             RepoEngineError::CapacityExceeded { capacity } => {
                 assert_eq!(capacity, 2);
@@ -737,11 +724,7 @@ mod tests {
         let def = SymbolDefinition::new(
             "preloaded".to_string(),
             SymbolKind::Function,
-            crate::repo_engine::domain::Location::new(
-                std::path::PathBuf::from("src/lib.rs"),
-                1,
-                0,
-            ),
+            crate::repo_engine::domain::Location::new(std::path::PathBuf::from("src/lib.rs"), 1, 0),
             "fn preloaded()".to_string(),
             "fn preloaded() {}".to_string(),
             SourceLanguage::Rust,
@@ -761,18 +744,9 @@ mod tests {
     async fn test_lookup_with_adjacency() {
         let service = SymbolGraphServiceImpl::new();
 
-        service
-            .add_symbol(sample_add_input("a"))
-            .await
-            .unwrap();
-        service
-            .add_symbol(sample_add_input("b"))
-            .await
-            .unwrap();
-        service
-            .add_symbol(sample_add_input("c"))
-            .await
-            .unwrap();
+        service.add_symbol(sample_add_input("a")).await.unwrap();
+        service.add_symbol(sample_add_input("b")).await.unwrap();
+        service.add_symbol(sample_add_input("c")).await.unwrap();
 
         service.add_reference("a", "b").await.unwrap();
         service.add_reference("a", "c").await.unwrap();
@@ -820,10 +794,7 @@ mod tests {
 
         service.add_symbol(sample_add_input("a")).await.unwrap();
         service.add_symbol(sample_add_input("b")).await.unwrap();
-        service
-            .add_symbol(sample_add_input("c"))
-            .await
-            .unwrap();
+        service.add_symbol(sample_add_input("c")).await.unwrap();
 
         service.add_reference("a", "b").await.unwrap();
         service.add_reference("b", "c").await.unwrap();

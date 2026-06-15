@@ -186,7 +186,6 @@ pub enum PlanningEvent {
     // -----------------------------------------------------------------------
     // Template Generation Events (fallback path)
     // -----------------------------------------------------------------------
-
     /// Template generation was triggered as a fallback for low-confidence intent.
     TemplateGenerationStarted {
         /// Globally unique execution identifier.
@@ -242,7 +241,6 @@ pub enum PlanningEvent {
     // -----------------------------------------------------------------------
     // Phase 3: Symbol Validation Events
     // -----------------------------------------------------------------------
-
     /// Phase 3 symbol validation has started on a generated template.
     SymbolValidationStarted {
         /// Globally unique execution identifier.
