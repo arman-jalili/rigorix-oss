@@ -205,24 +205,179 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         &self,
         input: ExecuteNodeInput,
     ) -> Result<ExecuteNodeOutput, ExecutionError> {
-        // Simulate node execution for contract compliance.
-        // In production, this delegates to the ToolSystem.
+        // Execute a single node with an inline retry loop.
         //
-        // The actual execution logic follows this flow:
-        // 1. Look up the node from the TaskGraph
-        // 2. Execute the node's tool binding (ToolSystem.execute)
-        // 3. On success: update state, emit event, return TaskResult
-        // 4. On failure: evaluate retry via RetryEvaluationService
-        // 5. If retry: schedule retry with backoff
-        // 6. If terminal: mark node as Failed/Skipped, check fallback
+        // The retry loop follows this lifecycle:
+        // 1. Attempt to execute the node's action
+        // 2. If successful → return TaskResult with success
+        // 3. If failed → build FailureContext, evaluate retry
+        // 4. If Retry → apply backoff, loop
+        // 5. If Fallback/Skip/Abort → terminal, return result
+        //
+        // This is the **inline retry loop** — not a separate retry wrapper.
+        // Each retry can escalate the strategy per the RetryPolicy.
 
-        let node_name = input.node_id.to_string();
-        let result = TaskResult::success(
-            input.node_id,
-            node_name,
-            Some("node execution placeholder".to_string()),
+        let policy = input.retry_policy.clone()
+            .unwrap_or_else(|| self.config.default_retry_policy.clone());
+        let max_attempts = policy.max_attempts;
+        let node_id = input.node_id;
+
+        let mut last_retry_decision: Option<RetryDecision> = None;
+
+        // Inline retry loop per node
+        for attempt in 0..max_attempts {
+            let start = std::time::Instant::now();
+
+            // --- Phase 1: Check skip conditions before execution ---
+            if policy.has_skip_conditions() {
+                if let Some(conditions) = &policy.skip_conditions {
+                    for condition in conditions {
+                        if condition == "always_skip" {
+                            let result = TaskResult::failure(
+                                node_id,
+                                format!("node-{}", node_id),
+                                format!("Skipped by condition: {}", condition),
+                                "skipped".to_string(),
+                                start.elapsed().as_millis() as u64,
+                                attempt,
+                            );
+                            return Ok(ExecuteNodeOutput {
+                                result,
+                                retry_decision: Some(RetryDecision::Skip {
+                                    reason: format!("Skip condition '{}' matched", condition),
+                                }),
+                            });
+                        }
+                    }
+                }
+            }
+
+            // --- Phase 2: Check cancellation (placeholder) ---
+            // In production, checks CancellationToken here
+
+            // --- Phase 3: Execute the node ---
+            // In production, this calls ToolSystem.execute().
+            // Placeholder: simulate success for now.
+            let execution_successful = true;
+            let duration_ms = start.elapsed().as_millis() as u64;
+
+            if execution_successful {
+                // Success! Return immediately
+                let result = TaskResult::success(
+                    node_id,
+                    format!("node-{}", node_id),
+                    Some("execution output placeholder".to_string()),
+                    duration_ms,
+                    attempt,
+                );
+                return Ok(ExecuteNodeOutput {
+                    result,
+                    retry_decision: last_retry_decision,
+                });
+            }
+
+            // --- Phase 4: Handle failure with retry evaluation ---
+            let failure_type = "transient".to_string();
+            let error_message = format!(
+                "Execution failed on attempt {}/{}",
+                attempt + 1, max_attempts
+            );
+
+            let failure_context = FailureContext::new(
+                node_id,
+                format!("node-{}", node_id),
+                "tool",
+                "node intent",
+                &failure_type,
+                &error_message,
+                attempt,
+                max_attempts,
+                duration_ms,
+                duration_ms,
+            );
+
+            let retry_input = EvaluateRetryInput {
+                failure_context,
+                policy: policy.clone(),
+                fallback_node_id: None,
+            };
+
+            let retry_output = self.retry_service
+                .evaluate_retry(retry_input)
+                .await
+                .map_err(|e| ExecutionError::InternalError {
+                    detail: format!("Retry evaluation failed: {}", e),
+                })?;
+
+            match retry_output.decision {
+                RetryDecision::Retry { strategy, attempt: next, backoff_ms, .. } => {
+                    if backoff_ms > 0 {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
+                    }
+                    last_retry_decision = Some(RetryDecision::Retry {
+                        strategy,
+                        attempt: next,
+                        backoff_ms,
+                        reason: format!("Retry attempt {}/{}", attempt + 1, max_attempts),
+                    });
+                    // Loop continues to next attempt
+                }
+                RetryDecision::Fallback { fallback_node_id, .. } => {
+                    let result = TaskResult::failure(
+                        node_id,
+                        format!("node-{}", node_id),
+                        format!("Fallback to node {}", fallback_node_id),
+                        "fallback".to_string(),
+                        duration_ms,
+                        attempt,
+                    );
+                    return Ok(ExecuteNodeOutput {
+                        result,
+                        retry_decision: Some(RetryDecision::Fallback {
+                            fallback_node_id,
+                            reason: format!("Retries exhausted at attempt {}", attempt + 1),
+                        }),
+                    });
+                }
+                RetryDecision::Skip { reason } => {
+                    let result = TaskResult::failure(
+                        node_id,
+                        format!("node-{}", node_id),
+                        reason.clone(),
+                        "skipped".to_string(),
+                        duration_ms,
+                        attempt,
+                    );
+                    return Ok(ExecuteNodeOutput {
+                        result,
+                        retry_decision: Some(RetryDecision::Skip { reason }),
+                    });
+                }
+                RetryDecision::Abort { reason } => {
+                    let result = TaskResult::failure(
+                        node_id,
+                        format!("node-{}", node_id),
+                        reason.clone(),
+                        "aborted".to_string(),
+                        duration_ms,
+                        attempt,
+                    );
+                    return Ok(ExecuteNodeOutput {
+                        result,
+                        retry_decision: Some(RetryDecision::Abort { reason }),
+                    });
+                }
+            }
+        }
+
+        // All attempts exhausted without success
+        let result = TaskResult::failure(
+            node_id,
+            format!("node-{}", node_id),
+            format!("All {} attempts exhausted", max_attempts),
+            "exhausted".to_string(),
             0,
-            0,
+            max_attempts.saturating_sub(1),
         );
 
         Ok(ExecuteNodeOutput {
