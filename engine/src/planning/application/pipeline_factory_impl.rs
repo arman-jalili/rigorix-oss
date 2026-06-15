@@ -33,6 +33,7 @@ impl PlanningPipelineFactoryImpl {
 }
 
 impl Default for PlanningPipelineFactoryImpl {
+    #[tracing::instrument(skip_all)]
     fn default() -> Self {
         Self::new()
     }

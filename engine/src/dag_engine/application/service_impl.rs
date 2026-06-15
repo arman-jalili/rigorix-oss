@@ -52,6 +52,7 @@ impl DagGraphServiceImpl {
 }
 
 impl Default for DagGraphServiceImpl {
+    #[tracing::instrument(skip_all)]
     fn default() -> Self {
         Self::new()
     }
@@ -86,6 +87,7 @@ impl DagGraphService for DagGraphServiceImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn add_node(&self, input: AddNodeInput) -> Result<AddNodeOutput, DagError> {
         let mut graphs = self.graphs.lock().map_err(|e| DagError::InternalError {
             detail: format!("Lock error: {}", e),
@@ -108,6 +110,7 @@ impl DagGraphService for DagGraphServiceImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn seal_graph(&self, input: SealGraphInput) -> Result<SealGraphOutput, DagError> {
         let mut graphs = self.graphs.lock().map_err(|e| DagError::InternalError {
             detail: format!("Lock error: {}", e),
@@ -138,6 +141,7 @@ impl DagGraphService for DagGraphServiceImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn get_graph(&self, input: GetGraphInput) -> Result<GetGraphOutput, DagError> {
         let graphs = self.graphs.lock().map_err(|e| DagError::InternalError {
             detail: format!("Lock error: {}", e),
@@ -156,6 +160,7 @@ impl DagGraphService for DagGraphServiceImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn get_node(&self, input: GetNodeInput) -> Result<GetNodeOutput, DagError> {
         let graphs = self.graphs.lock().map_err(|e| DagError::InternalError {
             detail: format!("Lock error: {}", e),
@@ -177,6 +182,7 @@ impl DagGraphService for DagGraphServiceImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn list_nodes(&self, input: ListNodesInput) -> Result<ListNodesOutput, DagError> {
         let graphs = self.graphs.lock().map_err(|e| DagError::InternalError {
             detail: format!("Lock error: {}", e),
@@ -194,6 +200,7 @@ impl DagGraphService for DagGraphServiceImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn mark_node_completed(&self, dag_id: Uuid, node_id: Uuid) -> Result<(), DagError> {
         let mut graphs = self.graphs.lock().map_err(|e| DagError::InternalError {
             detail: format!("Lock error: {}", e),
@@ -208,6 +215,7 @@ impl DagGraphService for DagGraphServiceImpl {
         graph.mark_completed(node_id)
     }
 
+    #[tracing::instrument(skip_all)]
     async fn get_ready_nodes(&self, dag_id: Uuid) -> Result<Vec<Uuid>, DagError> {
         let graphs = self.graphs.lock().map_err(|e| DagError::InternalError {
             detail: format!("Lock error: {}", e),
@@ -220,6 +228,7 @@ impl DagGraphService for DagGraphServiceImpl {
         Ok(graph.ready_nodes())
     }
 
+    #[tracing::instrument(skip_all)]
     async fn is_sealed(&self, dag_id: Uuid) -> Result<bool, DagError> {
         let graphs = self.graphs.lock().map_err(|e| DagError::InternalError {
             detail: format!("Lock error: {}", e),
@@ -305,6 +314,7 @@ impl ExecutionPolicyServiceImpl {
 
 #[async_trait]
 impl ExecutionPolicyService for ExecutionPolicyServiceImpl {
+    #[tracing::instrument(skip_all)]
     async fn should_retry(&self, input: ShouldRetryInput) -> Result<RetryDecision, DagError> {
         let policy = input.policy;
 

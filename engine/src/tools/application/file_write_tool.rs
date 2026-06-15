@@ -113,10 +113,12 @@ impl FileWriteTool {
 
 #[async_trait]
 impl Tool for FileWriteTool {
+    #[tracing::instrument(skip_all)]
     fn name(&self) -> &str {
         "file-write"
     }
 
+    #[tracing::instrument(skip_all)]
     async fn execute(&self, input: &ToolInput) -> Result<ToolResult, ToolError> {
         let path_str = input.require_string("path")?;
         let content = input.require_string("content")?;
@@ -198,10 +200,12 @@ impl FileAppendTool {
 
 #[async_trait]
 impl Tool for FileAppendTool {
+    #[tracing::instrument(skip_all)]
     fn name(&self) -> &str {
         "file-append"
     }
 
+    #[tracing::instrument(skip_all)]
     async fn execute(&self, input: &ToolInput) -> Result<ToolResult, ToolError> {
         let path_str = input.require_string("path")?;
         let content = input.require_string("content")?;
@@ -247,6 +251,7 @@ mod tests {
     use std::collections::HashMap;
     use tempfile::TempDir;
 
+    #[tracing::instrument(skip_all)]
     fn make_input(path: &str, content: &str) -> ToolInput {
         let mut params = HashMap::new();
         params.insert(

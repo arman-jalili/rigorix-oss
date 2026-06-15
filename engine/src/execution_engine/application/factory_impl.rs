@@ -35,6 +35,7 @@ impl ParallelExecutionFactoryImpl {
 }
 
 impl Default for ParallelExecutionFactoryImpl {
+    #[tracing::instrument(skip_all)]
     fn default() -> Self {
         Self::new()
     }
@@ -67,6 +68,7 @@ impl RetryEvaluationFactoryImpl {
 }
 
 impl Default for RetryEvaluationFactoryImpl {
+    #[tracing::instrument(skip_all)]
     fn default() -> Self {
         Self::new()
     }

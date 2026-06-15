@@ -607,6 +607,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     fn on_progress(&self, callback: Box<dyn Fn(ExecutionProgress) + Send + Sync>) {
         if let Ok(mut callbacks) = self.progress_callbacks.lock() {
             callbacks.push(callback);
@@ -636,6 +637,7 @@ impl RetryEvaluationServiceImpl {
 }
 
 impl Default for RetryEvaluationServiceImpl {
+    #[tracing::instrument(skip_all)]
     fn default() -> Self {
         Self::new()
     }
@@ -662,12 +664,14 @@ impl RetryEvaluationService for RetryEvaluationServiceImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn compute_backoff(&self, failure_context: &FailureContext, policy: &RetryPolicy) -> u64 {
         policy
             .backoff_strategy
             .compute_delay_ms(failure_context.attempt)
     }
 
+    #[tracing::instrument(skip_all)]
     async fn validate_policy(&self, policy: &RetryPolicy) -> Result<Vec<String>, ExecutionError> {
         let mut errors = Vec::new();
 
@@ -701,6 +705,7 @@ impl RetryEvaluationService for RetryEvaluationServiceImpl {
         Ok(errors)
     }
 
+    #[tracing::instrument(skip_all)]
     async fn is_failure_retriable(&self, policy: &RetryPolicy, failure_type: &str) -> bool {
         policy.is_failure_retriable(failure_type)
     }
