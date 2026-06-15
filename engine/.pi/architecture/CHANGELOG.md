@@ -10,6 +10,32 @@ This document tracks all architecture changes requiring implementation updates.
 
 ---
 
+## [2026-06-15] - Execution Engine Epic Implementation Complete
+
+### Added
+- Module: execution-engine
+  - Contract freeze: ParallelExecutorConfig, NodeExecutionState, NodeStatus, TaskResult,
+    ExecutionResult, RetryPolicy, RetryStrategy (5 variants), BackoffStrategy (4 strategies),
+    RetryDecision, FailureContext, ExecutionError (10 variants),
+    ExecutionEngineEvent (11 event payloads), ParallelExecutionService (7 methods),
+    RetryEvaluationService (5 methods), ParallelExecutionFactory, RetryEvaluationFactory,
+    ExecutionResultRepository (7 methods), RetryDecisionRepository (5 methods),
+    HTTP API contracts (10 endpoints), 15+ DTO types
+  - Implemented: ParallelExecutionServiceImpl — JoinSet-based concurrent executor
+    with session management (execute, pause, resume, abort), progress callbacks
+  - Implemented: RetryEvaluationServiceImpl — stateless retry decision engine
+    with strategy escalation, backoff computation, policy validation, skip conditions
+  - Implemented: Inline retry loop in execute_node() — full lifecycle: skip condition
+    check, cancellation check, execution, failure evaluation, backoff, retry/fallback/skip/abort
+  - Implemented: ParallelExecutionFactoryImpl, RetryEvaluationFactoryImpl
+  - Tests: 45 unit tests covering all service methods and retry decisions
+  - Proofing: check_execution-engine_contracts.sh (43 validation points),
+    check_execution-engine_coverage.sh (12 entities + 12 operations),
+    stage_execution-engine_proofing.sh (CI stage 25)
+  - Runbook: docs/runbook-execution-engine.md
+  - DR Plan: docs/dr-plan-execution-engine.md
+  - Architecture docs: .pi/architecture/modules/execution-engine.md
+
 ## [2026-06-14] - Planning Pipeline Epic Implementation Complete
 
 ### Added
