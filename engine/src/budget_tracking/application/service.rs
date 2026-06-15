@@ -117,7 +117,9 @@ pub trait LlmBudgetReservation: Send {
     ///
     /// This is the only way to finalize a reservation without triggering
     /// an automatic rollback on Drop.
-    async fn commit(&mut self, actual_tokens: u32) -> Result<(), LlmBudgetError>;
+    ///
+    /// Takes `&self` because all internal state uses atomic operations.
+    async fn commit(&self, actual_tokens: u32) -> Result<(), LlmBudgetError>;
 
     /// Get the call identifier for this reservation.
     fn call_id(&self) -> u32;
