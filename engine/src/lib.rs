@@ -25,6 +25,7 @@
 
 pub mod audit;
 pub mod budget_tracking;
+pub mod common;
 pub mod cancellation;
 pub mod configuration;
 pub mod dag_engine;
