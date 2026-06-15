@@ -6,6 +6,7 @@
 //! This module is the centralized observability layer consumed by all
 //! other modules.
 
+pub mod health;
 pub mod span_privacy;
 pub mod tracing_config;
 
