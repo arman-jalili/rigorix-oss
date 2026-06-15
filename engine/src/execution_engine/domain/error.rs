@@ -110,3 +110,13 @@ pub enum ExecutionError {
         timeout_ms: u64,
     },
 }
+impl ExecutionError {
+    pub fn is_retriable(&self) -> bool {
+        matches!(
+            self,
+            ExecutionError::NodeExecutionFailed { .. }
+                | ExecutionError::Timeout { .. }
+                | ExecutionError::InternalError { .. }
+        )
+    }
+}

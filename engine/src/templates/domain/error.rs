@@ -114,3 +114,8 @@ pub enum TemplateError {
         attempts: u8,
     },
 }
+impl TemplateError {
+    pub fn is_retriable(&self) -> bool {
+        false
+    }
+}

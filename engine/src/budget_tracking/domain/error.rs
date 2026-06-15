@@ -67,3 +67,8 @@ pub enum LlmBudgetError {
         detail: String,
     },
 }
+impl LlmBudgetError {
+    pub fn is_retriable(&self) -> bool {
+        false
+    }
+}

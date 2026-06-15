@@ -162,12 +162,28 @@ impl CoreOrchestratorError {
         match self {
             // I/O errors are often transient (e.g., file lock contention)
             CoreOrchestratorError::Io(_) => true,
-            // HTTP 5xx errors are typically transient
+            // HTTP 5xx errors are typically transient; 4xx errors are not
             CoreOrchestratorError::Http { status, .. } if *status >= 500 => true,
-            // Enforcement budget errors may be transient on refresh
-            CoreOrchestratorError::Enforcement(_) => false,
-            // By default, domain errors are not retriable at this level
-            _ => false,
+            CoreOrchestratorError::Http { .. } => false,
+            // Delegate to domain-specific retriable logic
+            CoreOrchestratorError::Dag(e) => e.is_retriable(),
+            CoreOrchestratorError::Planning(e) => e.is_retriable(),
+            CoreOrchestratorError::Enforcement(e) => e.is_retriable(),
+            CoreOrchestratorError::Budget(e) => e.is_retriable(),
+            CoreOrchestratorError::Execution(e) => e.is_retriable(),
+            CoreOrchestratorError::Tool(e) => e.is_retriable(),
+            CoreOrchestratorError::SymbolGraph(e) => e.is_retriable(),
+            CoreOrchestratorError::Configuration(e) => e.is_retriable(),
+            CoreOrchestratorError::Cancellation(e) => e.is_retriable(),
+            CoreOrchestratorError::EventSystem(e) => e.is_retriable(),
+            CoreOrchestratorError::Audit(e) => e.is_retriable(),
+            CoreOrchestratorError::State(e) => e.is_retriable(),
+            CoreOrchestratorError::Template(e) => e.is_retriable(),
+            CoreOrchestratorError::FailureClassification(e) => e.is_retriable(),
+            // JSON deserialization errors are not retriable — the input is malformed
+            CoreOrchestratorError::Json(_) => false,
+            // Cancellation is intentional, not transient
+            CoreOrchestratorError::Cancelled(_) => false,
         }
     }
 

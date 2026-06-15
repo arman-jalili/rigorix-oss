@@ -74,3 +74,8 @@ pub enum EventSystemError {
         detail: String,
     },
 }
+impl EventSystemError {
+    pub fn is_retriable(&self) -> bool {
+        matches!(self, EventSystemError::NoSubscribers { .. })
+    }
+}

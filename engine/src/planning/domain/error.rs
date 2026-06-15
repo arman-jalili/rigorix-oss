@@ -128,3 +128,15 @@ impl From<crate::template_generation::domain::GeneratorError> for PlanningError 
         }
     }
 }
+
+impl PlanningError {
+    /// Returns `true` if this error is transient and the operation may succeed on retry.
+    pub fn is_retriable(&self) -> bool {
+        matches!(
+            self,
+            PlanningError::ClassificationError { .. }
+                | PlanningError::ExtractionError { .. }
+                | PlanningError::TemplateEngineError { .. }
+        )
+    }
+}
