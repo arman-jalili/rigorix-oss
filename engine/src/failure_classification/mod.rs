@@ -36,7 +36,6 @@
 //! - DTO schemas serve as the canonical data contract
 
 pub mod application;
-pub mod classify;
 pub mod domain;
 pub mod infrastructure;
 pub mod interfaces;
