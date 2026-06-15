@@ -9,5 +9,8 @@
 pub mod health_check;
 pub mod health_service;
 
+pub mod module_health;
+
 pub use health_check::*;
 pub use health_service::*;
+pub use module_health::*;
