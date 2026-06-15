@@ -13,14 +13,12 @@
 //! - Planning service delegates to PlanDiff::compute for structural comparison
 
 use async_trait::async_trait;
+use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use chrono::Utc;
 use uuid::Uuid;
 
-use crate::dag_engine::domain::{
-    DagError, ImpactLevel, PlanDiff, TaskGraph, TaskNode,
-};
+use crate::dag_engine::domain::{DagError, ImpactLevel, PlanDiff, TaskGraph, TaskNode};
 
 use super::dto::{
     AddNodeInput, AddNodeOutput, ComparePlansInput, ComparePlansOutput, ConstructGraphInput,
@@ -88,19 +86,16 @@ impl DagGraphService for DagGraphServiceImpl {
         })
     }
 
-    async fn add_node(
-        &self,
-        input: AddNodeInput,
-    ) -> Result<AddNodeOutput, DagError> {
+    async fn add_node(&self, input: AddNodeInput) -> Result<AddNodeOutput, DagError> {
         let mut graphs = self.graphs.lock().map_err(|e| DagError::InternalError {
             detail: format!("Lock error: {}", e),
         })?;
 
-        let graph = graphs.get_mut(&input.dag_id).ok_or_else(|| {
-            DagError::InvalidGraph {
+        let graph = graphs
+            .get_mut(&input.dag_id)
+            .ok_or_else(|| DagError::InvalidGraph {
                 reason: format!("Graph {} not found", input.dag_id),
-            }
-        })?;
+            })?;
 
         let node_id = input.node.id;
         graph.add_unchecked(input.node)?;
@@ -113,24 +108,22 @@ impl DagGraphService for DagGraphServiceImpl {
         })
     }
 
-    async fn seal_graph(
-        &self,
-        input: SealGraphInput,
-    ) -> Result<SealGraphOutput, DagError> {
+    async fn seal_graph(&self, input: SealGraphInput) -> Result<SealGraphOutput, DagError> {
         let mut graphs = self.graphs.lock().map_err(|e| DagError::InternalError {
             detail: format!("Lock error: {}", e),
         })?;
 
-        let graph = graphs.get_mut(&input.dag_id).ok_or_else(|| {
-            DagError::InvalidGraph {
+        let graph = graphs
+            .get_mut(&input.dag_id)
+            .ok_or_else(|| DagError::InvalidGraph {
                 reason: format!("Graph {} not found", input.dag_id),
-            }
-        })?;
+            })?;
 
         let total_nodes = graph.node_count() as u32;
         graph.seal()?;
 
-        let topo_order = graph.topological_order()
+        let topo_order = graph
+            .topological_order()
             .map(|o| o.to_vec())
             .unwrap_or_default();
         let processed_count = topo_order.len() as u32;
@@ -145,19 +138,16 @@ impl DagGraphService for DagGraphServiceImpl {
         })
     }
 
-    async fn get_graph(
-        &self,
-        input: GetGraphInput,
-    ) -> Result<GetGraphOutput, DagError> {
+    async fn get_graph(&self, input: GetGraphInput) -> Result<GetGraphOutput, DagError> {
         let graphs = self.graphs.lock().map_err(|e| DagError::InternalError {
             detail: format!("Lock error: {}", e),
         })?;
 
-        let graph = graphs.get(&input.dag_id).ok_or_else(|| {
-            DagError::InvalidGraph {
+        let graph = graphs
+            .get(&input.dag_id)
+            .ok_or_else(|| DagError::InvalidGraph {
                 reason: format!("Graph {} not found", input.dag_id),
-            }
-        })?;
+            })?;
 
         Ok(GetGraphOutput {
             dag_id: input.dag_id,
@@ -166,23 +156,20 @@ impl DagGraphService for DagGraphServiceImpl {
         })
     }
 
-    async fn get_node(
-        &self,
-        input: GetNodeInput,
-    ) -> Result<GetNodeOutput, DagError> {
+    async fn get_node(&self, input: GetNodeInput) -> Result<GetNodeOutput, DagError> {
         let graphs = self.graphs.lock().map_err(|e| DagError::InternalError {
             detail: format!("Lock error: {}", e),
         })?;
 
-        let graph = graphs.get(&input.dag_id).ok_or_else(|| {
-            DagError::InvalidGraph {
+        let graph = graphs
+            .get(&input.dag_id)
+            .ok_or_else(|| DagError::InvalidGraph {
                 reason: format!("Graph {} not found", input.dag_id),
-            }
-        })?;
+            })?;
 
-        let node = graph.get_node(input.node_id).ok_or_else(|| {
-            DagError::TaskNotFound { id: input.node_id }
-        })?;
+        let node = graph
+            .get_node(input.node_id)
+            .ok_or_else(|| DagError::TaskNotFound { id: input.node_id })?;
 
         Ok(GetNodeOutput {
             node: node.clone(),
@@ -190,19 +177,16 @@ impl DagGraphService for DagGraphServiceImpl {
         })
     }
 
-    async fn list_nodes(
-        &self,
-        input: ListNodesInput,
-    ) -> Result<ListNodesOutput, DagError> {
+    async fn list_nodes(&self, input: ListNodesInput) -> Result<ListNodesOutput, DagError> {
         let graphs = self.graphs.lock().map_err(|e| DagError::InternalError {
             detail: format!("Lock error: {}", e),
         })?;
 
-        let graph = graphs.get(&input.dag_id).ok_or_else(|| {
-            DagError::InvalidGraph {
+        let graph = graphs
+            .get(&input.dag_id)
+            .ok_or_else(|| DagError::InvalidGraph {
                 reason: format!("Graph {} not found", input.dag_id),
-            }
-        })?;
+            })?;
 
         Ok(ListNodesOutput {
             nodes: graph.nodes.clone(),
@@ -210,20 +194,16 @@ impl DagGraphService for DagGraphServiceImpl {
         })
     }
 
-    async fn mark_node_completed(
-        &self,
-        dag_id: Uuid,
-        node_id: Uuid,
-    ) -> Result<(), DagError> {
+    async fn mark_node_completed(&self, dag_id: Uuid, node_id: Uuid) -> Result<(), DagError> {
         let mut graphs = self.graphs.lock().map_err(|e| DagError::InternalError {
             detail: format!("Lock error: {}", e),
         })?;
 
-        let graph = graphs.get_mut(&dag_id).ok_or_else(|| {
-            DagError::InvalidGraph {
+        let graph = graphs
+            .get_mut(&dag_id)
+            .ok_or_else(|| DagError::InvalidGraph {
                 reason: format!("Graph {} not found", dag_id),
-            }
-        })?;
+            })?;
 
         graph.mark_completed(node_id)
     }
@@ -233,10 +213,8 @@ impl DagGraphService for DagGraphServiceImpl {
             detail: format!("Lock error: {}", e),
         })?;
 
-        let graph = graphs.get(&dag_id).ok_or_else(|| {
-            DagError::InvalidGraph {
-                reason: format!("Graph {} not found", dag_id),
-            }
+        let graph = graphs.get(&dag_id).ok_or_else(|| DagError::InvalidGraph {
+            reason: format!("Graph {} not found", dag_id),
         })?;
 
         Ok(graph.ready_nodes())
@@ -247,10 +225,8 @@ impl DagGraphService for DagGraphServiceImpl {
             detail: format!("Lock error: {}", e),
         })?;
 
-        let graph = graphs.get(&dag_id).ok_or_else(|| {
-            DagError::InvalidGraph {
-                reason: format!("Graph {} not found", dag_id),
-            }
+        let graph = graphs.get(&dag_id).ok_or_else(|| DagError::InvalidGraph {
+            reason: format!("Graph {} not found", dag_id),
         })?;
 
         Ok(graph.sealed)
@@ -290,7 +266,9 @@ impl DagPlanningService for DagPlanningServiceImpl {
         let diff = PlanDiff::compute(&old_nodes, &new_nodes);
         let summary = match diff.impact_level {
             ImpactLevel::None => "No changes detected between plans".to_string(),
-            ImpactLevel::Low => "Cosmetic or non-functional changes (e.g., intent text, reordering)".to_string(),
+            ImpactLevel::Low => {
+                "Cosmetic or non-functional changes (e.g., intent text, reordering)".to_string()
+            }
             ImpactLevel::Medium => "Behavioural changes within the same scope".to_string(),
             ImpactLevel::High => "Structural changes (tool bindings modified)".to_string(),
             ImpactLevel::Breaking => format!(
@@ -327,17 +305,11 @@ impl ExecutionPolicyServiceImpl {
 
 #[async_trait]
 impl ExecutionPolicyService for ExecutionPolicyServiceImpl {
-    async fn should_retry(
-        &self,
-        input: ShouldRetryInput,
-    ) -> Result<RetryDecision, DagError> {
+    async fn should_retry(&self, input: ShouldRetryInput) -> Result<RetryDecision, DagError> {
         let policy = input.policy;
 
         // Check if the failure type is in the retry_on list
-        let is_retriable = policy
-            .retry_on
-            .iter()
-            .any(|ft| *ft == input.failure_type);
+        let is_retriable = policy.retry_on.iter().any(|ft| *ft == input.failure_type);
 
         if !is_retriable {
             return Ok(RetryDecision::NoRetry {
@@ -420,23 +392,17 @@ impl ExecutionPolicyService for ExecutionPolicyServiceImpl {
 
         // max_backoff_ms must be >= backoff_ms
         if input.policy.max_backoff_ms < input.policy.backoff_ms {
-            errors.push(
-                "max_backoff_ms must be >= backoff_ms".to_string(),
-            );
+            errors.push("max_backoff_ms must be >= backoff_ms".to_string());
         }
 
         // Warn if max_retries is 0 (no retries at all)
         if input.policy.max_retries == 0 {
-            warnings.push(
-                "max_retries is 0: node will not be retried on failure".to_string(),
-            );
+            warnings.push("max_retries is 0: node will not be retried on failure".to_string());
         }
 
         // Warn if retry_on is empty (nothing will trigger a retry)
         if input.policy.retry_on.is_empty() {
-            warnings.push(
-                "retry_on is empty: no failure type will trigger a retry".to_string(),
-            );
+            warnings.push("retry_on is empty: no failure type will trigger a retry".to_string());
         }
 
         Ok(ValidatePolicyOutput {

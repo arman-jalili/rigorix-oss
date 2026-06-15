@@ -92,11 +92,7 @@ pub trait SymbolGraphService: Send + Sync {
     /// Record a reference relationship between two symbols.
     ///
     /// Returns `RepoEngineError::SymbolNotFound` if either symbol doesn't exist.
-    async fn add_reference(
-        &self,
-        from: &str,
-        to: &str,
-    ) -> Result<bool, RepoEngineError>;
+    async fn add_reference(&self, from: &str, to: &str) -> Result<bool, RepoEngineError>;
 
     /// Get access to the underlying `SymbolGraph` for direct inspection.
     ///

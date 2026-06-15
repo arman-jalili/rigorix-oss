@@ -49,7 +49,6 @@ pub enum CoreOrchestratorError {
     // ------------------------------------------------------------------ /
     // Module-level sub-errors (via #[from])
     // ------------------------------------------------------------------ /
-
     /// DAG engine error — graph construction, validation, lifecycle.
     #[error("DAG error: {0}")]
     Dag(#[from] DagError),
@@ -116,7 +115,6 @@ pub enum CoreOrchestratorError {
     // ------------------------------------------------------------------ /
     // Standard library wrappers (via #[from])
     // ------------------------------------------------------------------ /
-
     /// I/O error wrapper.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
@@ -128,7 +126,6 @@ pub enum CoreOrchestratorError {
     // ------------------------------------------------------------------ /
     // Signals and structured errors (manual conversion)
     // ------------------------------------------------------------------ /
-
     /// Operation was cancelled.
     ///
     /// Carries a human-readable description of why the operation was
@@ -243,8 +240,7 @@ mod tests {
     #[test]
     fn test_error_code_mapping() {
         assert_eq!(
-            CoreOrchestratorError::Dag(DagError::CycleDetected { found: 0, total: 0 })
-                .error_code(),
+            CoreOrchestratorError::Dag(DagError::CycleDetected { found: 0, total: 0 }).error_code(),
             "DAG_ERROR"
         );
         assert_eq!(
@@ -324,10 +320,7 @@ mod tests {
                 current: 0,
                 max: 10,
             }),
-            CoreOrchestratorError::Budget(LlmBudgetError::MaxCallsExceeded {
-                used: 0,
-                max: 10,
-            }),
+            CoreOrchestratorError::Budget(LlmBudgetError::MaxCallsExceeded { used: 0, max: 10 }),
             CoreOrchestratorError::Execution(ExecutionError::InvalidState {
                 reason: "test".to_string(),
             }),
@@ -358,11 +351,10 @@ mod tests {
                     reason: "test".to_string(),
                 },
             ),
-            CoreOrchestratorError::Io(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "test",
-            )),
-            CoreOrchestratorError::Json(serde_json::from_str::<serde_json::Value>("invalid").unwrap_err()),
+            CoreOrchestratorError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "test")),
+            CoreOrchestratorError::Json(
+                serde_json::from_str::<serde_json::Value>("invalid").unwrap_err(),
+            ),
             CoreOrchestratorError::Cancelled("test".to_string()),
             CoreOrchestratorError::Http {
                 message: "test".to_string(),
@@ -378,10 +370,7 @@ mod tests {
                 variant
             );
             assert!(
-                std::matches!(
-                    variant.http_status(),
-                    400 | 429 | 499 | 500 | 404
-                ),
+                std::matches!(variant.http_status(), 400 | 429 | 499 | 500 | 404),
                 "Unexpected status for {:?}: {}",
                 variant,
                 variant.http_status()

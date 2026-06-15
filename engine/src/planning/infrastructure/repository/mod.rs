@@ -43,17 +43,18 @@ pub trait PlanningResultRepository: Send + Sync {
     /// Load a planning result by execution ID.
     ///
     /// Returns `None` if no result exists for this execution ID.
-    async fn load_result(&self, execution_id: Uuid) -> Result<Option<PlanningResult>, PlanningError>;
+    async fn load_result(
+        &self,
+        execution_id: Uuid,
+    ) -> Result<Option<PlanningResult>, PlanningError>;
 
     /// Find a planning result by its deterministic hash.
     ///
     /// Enables audit replay — given the same input, the same hash
     /// should always be produced. Returns all results matching the
     /// hash (typically one, but multiple if hash collisions occur).
-    async fn find_by_hash(
-        &self,
-        hash: &PlanningHash,
-    ) -> Result<Vec<PlanningResult>, PlanningError>;
+    async fn find_by_hash(&self, hash: &PlanningHash)
+        -> Result<Vec<PlanningResult>, PlanningError>;
 
     /// List all planning results for a given template.
     ///

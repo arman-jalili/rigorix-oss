@@ -46,7 +46,9 @@ pub enum ExecutionError {
     },
 
     /// The retry limit was exhausted for a node.
-    #[error("Retry limit exhausted for node {node_id}: max_retries={max_retries}, attempts={attempts}")]
+    #[error(
+        "Retry limit exhausted for node {node_id}: max_retries={max_retries}, attempts={attempts}"
+    )]
     RetryLimitExhausted {
         /// The UUID of the node that exhausted retries.
         node_id: Uuid,

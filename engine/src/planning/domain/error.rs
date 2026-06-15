@@ -39,7 +39,9 @@ pub enum PlanningError {
     },
 
     /// A required parameter is missing after extraction.
-    #[error("Missing required parameter '{parameter}' for template '{template_id}': {description}")]
+    #[error(
+        "Missing required parameter '{parameter}' for template '{template_id}': {description}"
+    )]
     MissingParameter {
         /// The template that requires this parameter.
         template_id: String,

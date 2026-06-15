@@ -15,18 +15,18 @@ use crate::planning::application::dto::{
     CheckBudgetInput, ExtractParametersInput, GenerateGraphInput, PlanInput, PlanWithGraphInput,
     RequestClarificationInput, ValidatePlanInput,
 };
+use crate::planning::application::mock_classifier::MockClassifier;
+use crate::planning::application::mock_extractor::MockParameterExtractor;
 use crate::planning::application::pipeline_impl::PlanningPipelineImpl;
 use crate::planning::application::service::PlanningPipelineService;
 use crate::planning::domain::classification::Classifier;
 use crate::planning::domain::extractor::ParameterExtractor;
+use crate::planning::domain::intent::UserIntent;
+use crate::planning::domain::result::{PlanOutput, PlanningHash, PlanningResult};
 use crate::template_generation::domain::{
     ClaudeGeneratorConfig, ClaudeTemplateGenerator, GeneratedTemplate, GeneratedTemplateCost,
     GeneratorError, InvalidSymbolReference, RepoContext, TemplateGenerator,
 };
-use crate::planning::domain::intent::UserIntent;
-use crate::planning::application::mock_classifier::MockClassifier;
-use crate::planning::application::mock_extractor::MockParameterExtractor;
-use crate::planning::domain::result::{PlanOutput, PlanningHash, PlanningResult};
 
 use super::domain::PlanningError;
 
@@ -48,8 +48,10 @@ impl crate::templates::application::service::TemplateEngineService for MockTempl
     async fn register(
         &self,
         _input: crate::templates::application::dto::RegisterInput,
-    ) -> Result<crate::templates::application::dto::RegisterOutput, crate::templates::domain::TemplateError>
-    {
+    ) -> Result<
+        crate::templates::application::dto::RegisterOutput,
+        crate::templates::domain::TemplateError,
+    > {
         Ok(crate::templates::application::dto::RegisterOutput {
             template_id: "mock-registered".to_string(),
             total_templates: 1,
@@ -60,8 +62,10 @@ impl crate::templates::application::service::TemplateEngineService for MockTempl
     async fn generate(
         &self,
         input: crate::templates::application::dto::GenerateInput,
-    ) -> Result<crate::templates::application::dto::GenerateOutput, crate::templates::domain::TemplateError>
-    {
+    ) -> Result<
+        crate::templates::application::dto::GenerateOutput,
+        crate::templates::domain::TemplateError,
+    > {
         Ok(crate::templates::application::dto::GenerateOutput {
             template_id: input.template_id,
             nodes: vec![],
@@ -77,15 +81,19 @@ impl crate::templates::application::service::TemplateEngineService for MockTempl
     async fn get_template(
         &self,
         _input: crate::templates::application::dto::GetTemplateInput,
-    ) -> Result<Option<crate::templates::application::dto::TemplateSummary>, crate::templates::domain::TemplateError>
-    {
+    ) -> Result<
+        Option<crate::templates::application::dto::TemplateSummary>,
+        crate::templates::domain::TemplateError,
+    > {
         Ok(None)
     }
 
     async fn list_templates(
         &self,
-    ) -> Result<crate::templates::application::dto::ListTemplatesOutput, crate::templates::domain::TemplateError>
-    {
+    ) -> Result<
+        crate::templates::application::dto::ListTemplatesOutput,
+        crate::templates::domain::TemplateError,
+    > {
         // Return a "template-read" template so classify_intent finds it
         let template = crate::templates::application::dto::TemplateSummary {
             id: "template-read".to_string(),
@@ -133,7 +141,12 @@ fn create_test_pipeline() -> PlanningPipelineImpl {
     );
 
     let execution_id = Uuid::new_v4();
-    PlanningPipelineImpl::new(execution_id, classifier, extractor, Box::new(MockTemplateEngine::new()))
+    PlanningPipelineImpl::new(
+        execution_id,
+        classifier,
+        extractor,
+        Box::new(MockTemplateEngine::new()),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -153,48 +166,75 @@ fn test_planning_hash_deterministic_across_parameter_order() {
     let intent = UserIntent::new("read the file".to_string(), None);
 
     let hash1 = crate::planning::application::pipeline_impl::compute_planning_hash(
-        "template-id", &params1, &intent.input,
+        "template-id",
+        &params1,
+        &intent.input,
     );
     let hash2 = crate::planning::application::pipeline_impl::compute_planning_hash(
-        "template-id", &params2, &intent.input,
+        "template-id",
+        &params2,
+        &intent.input,
     );
 
     // Different parameter order should produce the same hash
-    assert_eq!(hash1, hash2, "Hash must be deterministic regardless of parameter order");
+    assert_eq!(
+        hash1, hash2,
+        "Hash must be deterministic regardless of parameter order"
+    );
 }
 
 #[test]
 fn test_planning_hash_different_intent_produces_different_hash() {
     let params = HashMap::new();
     let hash1 = crate::planning::application::pipeline_impl::compute_planning_hash(
-        "template-id", &params, "read file",
+        "template-id",
+        &params,
+        "read file",
     );
     let hash2 = crate::planning::application::pipeline_impl::compute_planning_hash(
-        "template-id", &params, "write file",
+        "template-id",
+        &params,
+        "write file",
     );
-    assert_ne!(hash1, hash2, "Different intents must produce different hashes");
+    assert_ne!(
+        hash1, hash2,
+        "Different intents must produce different hashes"
+    );
 }
 
 #[test]
 fn test_planning_hash_format() {
     let params = HashMap::new();
-    let hash = crate::planning::application::pipeline_impl::compute_planning_hash(
-        "t", &params, "test",
+    let hash =
+        crate::planning::application::pipeline_impl::compute_planning_hash("t", &params, "test");
+    assert_eq!(
+        hash.as_str().len(),
+        64,
+        "PlanningHash must be 64 hex characters"
     );
-    assert_eq!(hash.as_str().len(), 64, "PlanningHash must be 64 hex characters");
-    assert!(hash.as_str().chars().all(|c| c.is_ascii_hexdigit()), "Hash must be hex");
+    assert!(
+        hash.as_str().chars().all(|c| c.is_ascii_hexdigit()),
+        "Hash must be hex"
+    );
 }
 
 #[test]
 fn test_planning_hash_different_templates_produce_different_hash() {
     let params = HashMap::new();
     let hash1 = crate::planning::application::pipeline_impl::compute_planning_hash(
-        "template-a", &params, "test",
+        "template-a",
+        &params,
+        "test",
     );
     let hash2 = crate::planning::application::pipeline_impl::compute_planning_hash(
-        "template-b", &params, "test",
+        "template-b",
+        &params,
+        "test",
     );
-    assert_ne!(hash1, hash2, "Different template IDs must produce different hashes");
+    assert_ne!(
+        hash1, hash2,
+        "Different template IDs must produce different hashes"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -203,12 +243,15 @@ fn test_planning_hash_different_templates_produce_different_hash() {
 
 #[tokio::test]
 async fn test_classifier_high_confidence_match() {
-    let classifier = MockClassifier::new()
-        .with_match("read file", "template-read", 0.95);
+    let classifier = MockClassifier::new().with_match("read file", "template-read", 0.95);
 
     let intent = UserIntent::new("please read file xyz".to_string(), None);
     let budget = crate::budget_tracking::domain::LlmBudget {
-        max_calls: 50, max_tokens: 50000, used_calls: 0, used_tokens: 0, label: "test".to_string(),
+        max_calls: 50,
+        max_tokens: 50000,
+        used_calls: 0,
+        used_tokens: 0,
+        label: "test".to_string(),
     };
 
     let result = classifier
@@ -219,18 +262,27 @@ async fn test_classifier_high_confidence_match() {
     assert!(!result.alternatives.is_empty());
     assert_eq!(result.alternatives[0].template_id, "template-read");
     assert!((result.alternatives[0].confidence - 0.95).abs() < 0.01);
-    assert!(!result.requires_clarification, "High confidence should not require clarification");
-    assert!(!result.needs_generator, "High confidence should not need generator");
+    assert!(
+        !result.requires_clarification,
+        "High confidence should not require clarification"
+    );
+    assert!(
+        !result.needs_generator,
+        "High confidence should not need generator"
+    );
 }
 
 #[tokio::test]
 async fn test_classifier_low_confidence_triggers_generator() {
-    let classifier = MockClassifier::new()
-        .with_match("unknown thing", "template-generate", 0.15);
+    let classifier = MockClassifier::new().with_match("unknown thing", "template-generate", 0.15);
 
     let intent = UserIntent::new("unknown thing here".to_string(), None);
     let budget = crate::budget_tracking::domain::LlmBudget {
-        max_calls: 50, max_tokens: 50000, used_calls: 0, used_tokens: 0, label: "test".to_string(),
+        max_calls: 50,
+        max_tokens: 50000,
+        used_calls: 0,
+        used_tokens: 0,
+        label: "test".to_string(),
     };
 
     let result = classifier
@@ -238,18 +290,24 @@ async fn test_classifier_low_confidence_triggers_generator() {
         .await
         .unwrap();
 
-    assert!(result.needs_generator, "Confidence < 0.3 should need generator");
+    assert!(
+        result.needs_generator,
+        "Confidence < 0.3 should need generator"
+    );
     assert!(!result.requires_clarification);
 }
 
 #[tokio::test]
 async fn test_classifier_ambiguous_requires_clarification() {
-    let classifier = MockClassifier::new()
-        .with_match("ambiguous task", "template-a", 0.45);
+    let classifier = MockClassifier::new().with_match("ambiguous task", "template-a", 0.45);
 
     let intent = UserIntent::new("ambiguous task".to_string(), None);
     let budget = crate::budget_tracking::domain::LlmBudget {
-        max_calls: 50, max_tokens: 50000, used_calls: 0, used_tokens: 0, label: "test".to_string(),
+        max_calls: 50,
+        max_tokens: 50000,
+        used_calls: 0,
+        used_tokens: 0,
+        label: "test".to_string(),
     };
 
     let result = classifier
@@ -257,7 +315,10 @@ async fn test_classifier_ambiguous_requires_clarification() {
         .await
         .unwrap();
 
-    assert!(result.requires_clarification, "Confidence 0.3-0.7 should require clarification");
+    assert!(
+        result.requires_clarification,
+        "Confidence 0.3-0.7 should require clarification"
+    );
     assert!(!result.needs_generator);
 }
 
@@ -266,7 +327,11 @@ async fn test_classifier_no_match_triggers_generator() {
     let classifier = MockClassifier::new();
     let intent = UserIntent::new("something completely different".to_string(), None);
     let budget = crate::budget_tracking::domain::LlmBudget {
-        max_calls: 50, max_tokens: 50000, used_calls: 0, used_tokens: 0, label: "test".to_string(),
+        max_calls: 50,
+        max_tokens: 50000,
+        used_calls: 0,
+        used_tokens: 0,
+        label: "test".to_string(),
     };
 
     let result = classifier
@@ -287,7 +352,11 @@ async fn test_classifier_multiple_alternatives_ranked() {
 
     let intent = UserIntent::new("edit file".to_string(), None);
     let budget = crate::budget_tracking::domain::LlmBudget {
-        max_calls: 50, max_tokens: 50000, used_calls: 0, used_tokens: 0, label: "test".to_string(),
+        max_calls: 50,
+        max_tokens: 50000,
+        used_calls: 0,
+        used_tokens: 0,
+        label: "test".to_string(),
     };
 
     let result = classifier
@@ -313,11 +382,20 @@ async fn test_extractor_returns_default_values() {
 
     let intent = UserIntent::new("test".to_string(), None);
     let budget = crate::budget_tracking::domain::LlmBudget {
-        max_calls: 50, max_tokens: 50000, used_calls: 0, used_tokens: 0, label: "test".to_string(),
+        max_calls: 50,
+        max_tokens: 50000,
+        used_calls: 0,
+        used_tokens: 0,
+        label: "test".to_string(),
     };
 
     let result = extractor
-        .extract(&intent, &budget, "template-test", &["target".to_string(), "mode".to_string()])
+        .extract(
+            &intent,
+            &budget,
+            "template-test",
+            &["target".to_string(), "mode".to_string()],
+        )
         .await
         .unwrap();
 
@@ -332,11 +410,20 @@ async fn test_extractor_auto_generates_mock_values() {
 
     let intent = UserIntent::new("test".to_string(), None);
     let budget = crate::budget_tracking::domain::LlmBudget {
-        max_calls: 50, max_tokens: 50000, used_calls: 0, used_tokens: 0, label: "test".to_string(),
+        max_calls: 50,
+        max_tokens: 50000,
+        used_calls: 0,
+        used_tokens: 0,
+        label: "test".to_string(),
     };
 
     let result = extractor
-        .extract(&intent, &budget, "template-test", &["path".to_string(), "mode".to_string()])
+        .extract(
+            &intent,
+            &budget,
+            "template-test",
+            &["path".to_string(), "mode".to_string()],
+        )
         .await
         .unwrap();
 
@@ -347,21 +434,31 @@ async fn test_extractor_auto_generates_mock_values() {
 
 #[tokio::test]
 async fn test_extractor_missing_parameter() {
-    let extractor = MockParameterExtractor::new()
-        .with_missing("template-test", "required_param");
+    let extractor = MockParameterExtractor::new().with_missing("template-test", "required_param");
 
     let intent = UserIntent::new("test".to_string(), None);
     let budget = crate::budget_tracking::domain::LlmBudget {
-        max_calls: 50, max_tokens: 50000, used_calls: 0, used_tokens: 0, label: "test".to_string(),
+        max_calls: 50,
+        max_tokens: 50000,
+        used_calls: 0,
+        used_tokens: 0,
+        label: "test".to_string(),
     };
 
     let result = extractor
-        .extract(&intent, &budget, "template-test", &["required_param".to_string()])
+        .extract(
+            &intent,
+            &budget,
+            "template-test",
+            &["required_param".to_string()],
+        )
         .await
         .unwrap();
 
     assert!(!result.complete);
-    assert!(result.missing_parameters.contains(&"required_param".to_string()));
+    assert!(result
+        .missing_parameters
+        .contains(&"required_param".to_string()));
 }
 
 #[tokio::test]
@@ -370,7 +467,11 @@ async fn test_extractor_simulates_error() {
 
     let intent = UserIntent::new("test".to_string(), None);
     let budget = crate::budget_tracking::domain::LlmBudget {
-        max_calls: 50, max_tokens: 50000, used_calls: 0, used_tokens: 0, label: "test".to_string(),
+        max_calls: 50,
+        max_tokens: 50000,
+        used_calls: 0,
+        used_tokens: 0,
+        label: "test".to_string(),
     };
 
     let result = extractor
@@ -392,7 +493,11 @@ async fn test_extractor_template_specific_overrides() {
 
     let intent = UserIntent::new("test".to_string(), None);
     let budget = crate::budget_tracking::domain::LlmBudget {
-        max_calls: 50, max_tokens: 50000, used_calls: 0, used_tokens: 0, label: "test".to_string(),
+        max_calls: 50,
+        max_tokens: 50000,
+        used_calls: 0,
+        used_tokens: 0,
+        label: "test".to_string(),
     };
 
     // Test with overriding template
@@ -400,14 +505,20 @@ async fn test_extractor_template_specific_overrides() {
         .extract(&intent, &budget, "specific-tpl", &["target".to_string()])
         .await
         .unwrap();
-    assert_eq!(result.parameters.get("target").unwrap(), "/tmp/override.txt");
+    assert_eq!(
+        result.parameters.get("target").unwrap(),
+        "/tmp/override.txt"
+    );
 
     // Test without override (should use default)
     let result2 = extractor
         .extract(&intent, &budget, "other-tpl", &["target".to_string()])
         .await
         .unwrap();
-    assert_eq!(result2.parameters.get("target").unwrap(), "/tmp/default.txt");
+    assert_eq!(
+        result2.parameters.get("target").unwrap(),
+        "/tmp/default.txt"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -530,7 +641,10 @@ async fn test_plan_low_confidence_no_generator_returns_error() {
     match result {
         Err(PlanningError::NoMatchingTemplate { .. }) => {} // Expected: no match
         Err(PlanningError::ClassificationError { .. }) => {} // Also valid: low-confidence match
-        other => panic!("Expected NoMatchingTemplate or ClassificationError, got: {:?}", other),
+        other => panic!(
+            "Expected NoMatchingTemplate or ClassificationError, got: {:?}",
+            other
+        ),
     }
 }
 
@@ -606,7 +720,10 @@ async fn test_request_clarification_generates_question() {
 
     let output = pipeline.request_clarification(input).await.unwrap();
     assert!(!output.question.is_empty(), "Should generate a question");
-    assert!(output.ambiguous_templates.len() >= 1, "Should include ambiguous templates");
+    assert!(
+        output.ambiguous_templates.len() >= 1,
+        "Should include ambiguous templates"
+    );
 }
 
 #[tokio::test]
@@ -633,7 +750,10 @@ async fn test_request_clarification_with_custom_question() {
 #[test]
 fn test_planning_error_display_budget_exhausted() {
     let err = PlanningError::BudgetExhausted {
-        used_calls: 5, max_calls: 5, used_tokens: 10000, max_tokens: 10000,
+        used_calls: 5,
+        max_calls: 5,
+        used_tokens: 10000,
+        max_tokens: 10000,
     };
     let msg = format!("{}", err);
     assert!(msg.contains("5") && msg.contains("exhausted"));
@@ -693,7 +813,10 @@ fn test_user_intent_creation() {
 fn test_user_intent_generates_session_id() {
     let intent1 = UserIntent::new("test".to_string(), None);
     let intent2 = UserIntent::new("test".to_string(), None);
-    assert_ne!(intent1.session_id, intent2.session_id, "Each UserIntent should get a unique session ID");
+    assert_ne!(
+        intent1.session_id, intent2.session_id,
+        "Each UserIntent should get a unique session ID"
+    );
 }
 
 #[test]
@@ -859,7 +982,11 @@ fn test_execution_id_is_consistent() {
 fn test_different_pipelines_have_different_ids() {
     let p1 = create_test_pipeline();
     let p2 = create_test_pipeline();
-    assert_ne!(p1.execution_id(), p2.execution_id(), "Different pipelines must have different IDs");
+    assert_ne!(
+        p1.execution_id(),
+        p2.execution_id(),
+        "Different pipelines must have different IDs"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -887,7 +1014,10 @@ impl TemplateGenerator for MockGenerator {
     }
 
     fn estimate_cost(&self, _intent: &UserIntent) -> GeneratedTemplateCost {
-        GeneratedTemplateCost { estimated_calls: 1, estimated_tokens: 200 }
+        GeneratedTemplateCost {
+            estimated_calls: 1,
+            estimated_tokens: 200,
+        }
     }
 }
 
@@ -926,14 +1056,12 @@ fn test_generator_error_display_validation_failed() {
 fn test_generator_error_display_symbol_validation() {
     let err = GeneratorError::SymbolValidation {
         template_id: "my-template".to_string(),
-        invalid_references: vec![
-            InvalidSymbolReference {
-                symbol: "NonExistentType".to_string(),
-                usage: "type".to_string(),
-                reason: "Type not found in symbol graph".to_string(),
-                is_any_type: false,
-            },
-        ],
+        invalid_references: vec![InvalidSymbolReference {
+            symbol: "NonExistentType".to_string(),
+            usage: "type".to_string(),
+            reason: "Type not found in symbol graph".to_string(),
+            is_any_type: false,
+        }],
         attempt: 1,
     };
     let msg = err.to_string();
@@ -1053,10 +1181,7 @@ fn test_generator_error_serialization_symbol_validation() {
 
 #[test]
 fn test_repo_context_creation() {
-    let ctx = RepoContext::new(
-        std::path::PathBuf::from("/project"),
-        "rust".to_string(),
-    );
+    let ctx = RepoContext::new(std::path::PathBuf::from("/project"), "rust".to_string());
     assert_eq!(ctx.root_dir.to_str().unwrap(), "/project");
     assert_eq!(ctx.project_type, "rust");
     assert!(ctx.directory_tree.is_empty());
@@ -1067,10 +1192,7 @@ fn test_repo_context_creation() {
 
 #[test]
 fn test_repo_context_has_files() {
-    let mut ctx = RepoContext::new(
-        std::path::PathBuf::from("."),
-        "python".to_string(),
-    );
+    let mut ctx = RepoContext::new(std::path::PathBuf::from("."), "python".to_string());
     assert!(!ctx.has_files());
     ctx.directory_tree.push("src/main.py".to_string());
     assert!(ctx.has_files());
@@ -1078,10 +1200,7 @@ fn test_repo_context_has_files() {
 
 #[test]
 fn test_repo_context_has_public_api() {
-    let mut ctx = RepoContext::new(
-        std::path::PathBuf::from("."),
-        "typescript".to_string(),
-    );
+    let mut ctx = RepoContext::new(std::path::PathBuf::from("."), "typescript".to_string());
     assert!(!ctx.has_public_api());
     ctx.public_api.push("fetchUser".to_string());
     assert!(ctx.has_public_api());
@@ -1089,10 +1208,7 @@ fn test_repo_context_has_public_api() {
 
 #[test]
 fn test_repo_context_serialization_roundtrip() {
-    let mut ctx = RepoContext::new(
-        std::path::PathBuf::from("/repo"),
-        "rust".to_string(),
-    );
+    let mut ctx = RepoContext::new(std::path::PathBuf::from("/repo"), "rust".to_string());
     ctx.directory_tree.push("src/lib.rs".to_string());
     ctx.dependencies.push("serde".to_string());
     ctx.public_api.push("MyStruct".to_string());
@@ -1104,7 +1220,10 @@ fn test_repo_context_serialization_roundtrip() {
     assert_eq!(ctx.project_type, deserialized.project_type);
     assert_eq!(ctx.directory_tree, deserialized.directory_tree);
     assert_eq!(ctx.dependencies, deserialized.dependencies);
-    assert_eq!(ctx.symbol_graph_snapshot, deserialized.symbol_graph_snapshot);
+    assert_eq!(
+        ctx.symbol_graph_snapshot,
+        deserialized.symbol_graph_snapshot
+    );
 }
 
 #[test]
@@ -1137,10 +1256,7 @@ fn test_generated_template_cost_creation() {
 async fn test_mock_generator_returns_template() {
     let generator = MockGenerator;
     let intent = UserIntent::new("test".to_string(), None);
-    let ctx = RepoContext::new(
-        std::path::PathBuf::from("."),
-        "rust".to_string(),
-    );
+    let ctx = RepoContext::new(std::path::PathBuf::from("."), "rust".to_string());
     let budget = crate::budget_tracking::domain::LlmBudget {
         max_calls: 10,
         max_tokens: 10000,
@@ -1291,7 +1407,8 @@ fn test_claude_generator_custom_config() {
 #[test]
 fn test_claude_classifier_parse_response_valid_json() {
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::infrastructure::claude_classifier::ClaudeClassifier::new(api_key, None);
+    let classifier =
+        crate::planning::infrastructure::claude_classifier::ClaudeClassifier::new(api_key, None);
 
     let response = r#"{"rankings":[{"template_id":"read-file","confidence":0.95,"reasoning":"Best match for read intent"},{"template_id":"write-file","confidence":0.20,"reasoning":"Poor match"}]}"#;
 
@@ -1306,19 +1423,27 @@ fn test_claude_classifier_parse_response_valid_json() {
 #[test]
 fn test_claude_classifier_parse_response_clamps_confidence() {
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::infrastructure::claude_classifier::ClaudeClassifier::new(api_key, None);
+    let classifier =
+        crate::planning::infrastructure::claude_classifier::ClaudeClassifier::new(api_key, None);
 
     let response = r#"{"rankings":[{"template_id":"t1","confidence":1.5,"reasoning":"Too high"},{"template_id":"t2","confidence":-0.5,"reasoning":"Too low"}]}"#;
 
     let result = classifier.parse_response(response).unwrap();
-    assert!((result[0].confidence - 1.0).abs() < 0.01, "Should clamp to 1.0");
-    assert!((result[1].confidence - 0.0).abs() < 0.01, "Should clamp to 0.0");
+    assert!(
+        (result[0].confidence - 1.0).abs() < 0.01,
+        "Should clamp to 1.0"
+    );
+    assert!(
+        (result[1].confidence - 0.0).abs() < 0.01,
+        "Should clamp to 0.0"
+    );
 }
 
 #[test]
 fn test_claude_classifier_parse_response_empty_rankings() {
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::infrastructure::claude_classifier::ClaudeClassifier::new(api_key, None);
+    let classifier =
+        crate::planning::infrastructure::claude_classifier::ClaudeClassifier::new(api_key, None);
 
     let response = r#"{"rankings":[]}"#;
     let result = classifier.parse_response(response);
@@ -1328,7 +1453,8 @@ fn test_claude_classifier_parse_response_empty_rankings() {
 #[test]
 fn test_claude_classifier_parse_response_invalid_json() {
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::infrastructure::claude_classifier::ClaudeClassifier::new(api_key, None);
+    let classifier =
+        crate::planning::infrastructure::claude_classifier::ClaudeClassifier::new(api_key, None);
 
     let result = classifier.parse_response("not json at all");
     assert!(result.is_err());
@@ -1337,7 +1463,8 @@ fn test_claude_classifier_parse_response_invalid_json() {
 #[test]
 fn test_claude_classifier_parse_response_with_markdown_fence() {
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::infrastructure::claude_classifier::ClaudeClassifier::new(api_key, None);
+    let classifier =
+        crate::planning::infrastructure::claude_classifier::ClaudeClassifier::new(api_key, None);
 
     // Simulate Claude wrapping JSON in markdown code fences
     let response = "Here's the classification:\n```json\n{\"rankings\":[{\"template_id\":\"read\",\"confidence\":0.9,\"reasoning\":\"Good\"}]}\n```";
@@ -1351,20 +1478,28 @@ fn test_claude_classifier_parse_response_with_markdown_fence() {
 fn test_claude_classifier_handles_empty_templates() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::infrastructure::claude_classifier::ClaudeClassifier::new(api_key, None);
+    let classifier =
+        crate::planning::infrastructure::claude_classifier::ClaudeClassifier::new(api_key, None);
     let intent = UserIntent::new("test".to_string(), None);
     let budget = crate::budget_tracking::domain::LlmBudget {
-        max_calls: 50, max_tokens: 50000, used_calls: 0, used_tokens: 0, label: "test".to_string(),
+        max_calls: 50,
+        max_tokens: 50000,
+        used_calls: 0,
+        used_tokens: 0,
+        label: "test".to_string(),
     };
 
-    let result = rt.block_on(classifier.classify_with_alternatives(&intent, &budget, &[])).unwrap();
+    let result = rt
+        .block_on(classifier.classify_with_alternatives(&intent, &budget, &[]))
+        .unwrap();
     assert!(result.alternatives.is_empty());
     assert!(result.needs_generator);
 }
 
 #[test]
 fn test_claude_config_defaults() {
-    let config = crate::planning::infrastructure::claude_classifier::ClaudeClassifierConfig::default();
+    let config =
+        crate::planning::infrastructure::claude_classifier::ClaudeClassifierConfig::default();
     assert_eq!(config.model, "claude-sonnet-4-20250514");
     assert_eq!(config.max_tokens, 1024);
     assert!(config.temperature < 0.5);
@@ -1377,9 +1512,11 @@ fn test_claude_config_defaults() {
 #[test]
 fn test_openai_classifier_parse_response_valid_json() {
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::infrastructure::openai_classifier::OpenaiClassifier::new(api_key, None);
+    let classifier =
+        crate::planning::infrastructure::openai_classifier::OpenaiClassifier::new(api_key, None);
 
-    let response = r#"{"rankings":[{"template_id":"t1","confidence":0.85,"reasoning":"Good match"}]}"#;
+    let response =
+        r#"{"rankings":[{"template_id":"t1","confidence":0.85,"reasoning":"Good match"}]}"#;
 
     let result = classifier.parse_response(response).unwrap();
     assert_eq!(result.len(), 1);
@@ -1390,7 +1527,8 @@ fn test_openai_classifier_parse_response_valid_json() {
 #[test]
 fn test_openai_classifier_parse_response_invalid_json() {
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::infrastructure::openai_classifier::OpenaiClassifier::new(api_key, None);
+    let classifier =
+        crate::planning::infrastructure::openai_classifier::OpenaiClassifier::new(api_key, None);
 
     let result = classifier.parse_response("invalid");
     assert!(result.is_err());
@@ -1399,7 +1537,8 @@ fn test_openai_classifier_parse_response_invalid_json() {
 #[test]
 fn test_openai_classifier_parse_response_empty() {
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::infrastructure::openai_classifier::OpenaiClassifier::new(api_key, None);
+    let classifier =
+        crate::planning::infrastructure::openai_classifier::OpenaiClassifier::new(api_key, None);
 
     let result = classifier.parse_response(r#"{"rankings":[]}"#);
     assert!(result.is_err());
@@ -1408,7 +1547,8 @@ fn test_openai_classifier_parse_response_empty() {
 #[test]
 fn test_openai_classifier_parse_response_with_markdown() {
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::infrastructure::openai_classifier::OpenaiClassifier::new(api_key, None);
+    let classifier =
+        crate::planning::infrastructure::openai_classifier::OpenaiClassifier::new(api_key, None);
 
     let response = "```\n{\"rankings\":[{\"template_id\":\"t1\",\"confidence\":0.75,\"reasoning\":\"OK\"}]}\n```";
     let result = classifier.parse_response(response).unwrap();
@@ -1419,20 +1559,28 @@ fn test_openai_classifier_parse_response_with_markdown() {
 fn test_openai_classifier_handles_empty_templates() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::infrastructure::openai_classifier::OpenaiClassifier::new(api_key, None);
+    let classifier =
+        crate::planning::infrastructure::openai_classifier::OpenaiClassifier::new(api_key, None);
     let intent = UserIntent::new("test".to_string(), None);
     let budget = crate::budget_tracking::domain::LlmBudget {
-        max_calls: 50, max_tokens: 50000, used_calls: 0, used_tokens: 0, label: "test".to_string(),
+        max_calls: 50,
+        max_tokens: 50000,
+        used_calls: 0,
+        used_tokens: 0,
+        label: "test".to_string(),
     };
 
-    let result = rt.block_on(classifier.classify_with_alternatives(&intent, &budget, &[])).unwrap();
+    let result = rt
+        .block_on(classifier.classify_with_alternatives(&intent, &budget, &[]))
+        .unwrap();
     assert!(result.alternatives.is_empty());
     assert!(result.needs_generator);
 }
 
 #[test]
 fn test_openai_config_defaults() {
-    let config = crate::planning::infrastructure::openai_classifier::OpenaiClassifierConfig::default();
+    let config =
+        crate::planning::infrastructure::openai_classifier::OpenaiClassifierConfig::default();
     assert_eq!(config.model, "gpt-4o");
     assert_eq!(config.max_tokens, 1024);
 }
@@ -1454,14 +1602,20 @@ impl crate::repo_engine::application::service::SymbolGraphService for MockSymbol
     async fn add_symbol(
         &self,
         _input: crate::repo_engine::application::dto::AddSymbolInput,
-    ) -> Result<crate::repo_engine::application::dto::AddSymbolOutput, crate::repo_engine::domain::RepoEngineError> {
+    ) -> Result<
+        crate::repo_engine::application::dto::AddSymbolOutput,
+        crate::repo_engine::domain::RepoEngineError,
+    > {
         unimplemented!()
     }
 
     async fn lookup_symbol(
         &self,
         input: crate::repo_engine::application::dto::LookupSymbolInput,
-    ) -> Result<crate::repo_engine::application::dto::LookupSymbolOutput, crate::repo_engine::domain::RepoEngineError> {
+    ) -> Result<
+        crate::repo_engine::application::dto::LookupSymbolOutput,
+        crate::repo_engine::domain::RepoEngineError,
+    > {
         let found = self.symbols.contains(&input.name);
         Ok(crate::repo_engine::application::dto::LookupSymbolOutput {
             symbol: None,
@@ -1474,18 +1628,27 @@ impl crate::repo_engine::application::service::SymbolGraphService for MockSymbol
     async fn search_symbols(
         &self,
         _input: crate::repo_engine::application::dto::SearchSymbolsInput,
-    ) -> Result<crate::repo_engine::application::dto::SearchSymbolsOutput, crate::repo_engine::domain::RepoEngineError> {
+    ) -> Result<
+        crate::repo_engine::application::dto::SearchSymbolsOutput,
+        crate::repo_engine::domain::RepoEngineError,
+    > {
         unimplemented!()
     }
 
     async fn symbols_by_file(
         &self,
         _input: crate::repo_engine::application::dto::SymbolsByFileInput,
-    ) -> Result<crate::repo_engine::application::dto::SymbolsByFileOutput, crate::repo_engine::domain::RepoEngineError> {
+    ) -> Result<
+        crate::repo_engine::application::dto::SymbolsByFileOutput,
+        crate::repo_engine::domain::RepoEngineError,
+    > {
         unimplemented!()
     }
 
-    async fn remove_symbol(&self, _name: &str) -> Result<bool, crate::repo_engine::domain::RepoEngineError> {
+    async fn remove_symbol(
+        &self,
+        _name: &str,
+    ) -> Result<bool, crate::repo_engine::domain::RepoEngineError> {
         unimplemented!()
     }
 
@@ -1496,7 +1659,10 @@ impl crate::repo_engine::application::service::SymbolGraphService for MockSymbol
     async fn graph_stats(
         &self,
         _input: crate::repo_engine::application::dto::GraphStatsInput,
-    ) -> Result<crate::repo_engine::application::dto::GraphStatsOutput, crate::repo_engine::domain::RepoEngineError> {
+    ) -> Result<
+        crate::repo_engine::application::dto::GraphStatsOutput,
+        crate::repo_engine::domain::RepoEngineError,
+    > {
         Ok(crate::repo_engine::application::dto::GraphStatsOutput {
             total_symbols: self.symbols.len(),
             total_indexed: self.symbols.len(),
@@ -1507,7 +1673,11 @@ impl crate::repo_engine::application::service::SymbolGraphService for MockSymbol
         })
     }
 
-    async fn add_reference(&self, _from: &str, _to: &str) -> Result<bool, crate::repo_engine::domain::RepoEngineError> {
+    async fn add_reference(
+        &self,
+        _from: &str,
+        _to: &str,
+    ) -> Result<bool, crate::repo_engine::domain::RepoEngineError> {
         unimplemented!()
     }
 
@@ -1774,29 +1944,30 @@ async fn test_symbol_validation_extracts_references() {
         description: "".to_string(),
         version: "1.0.0".to_string(),
         parameters: vec![],
-        nodes: vec![
-            crate::templates::domain::TemplateNode {
-                id: "step-1".to_string(),
-                name: "Step 1".to_string(),
-                depends_on: vec![],
-                action: crate::templates::domain::TemplateAction::LspQuery {
-                    query_type: "goto-definition".to_string(),
-                    file: "src/SomeStruct".to_string(),
-                    line: 10,
-                    column: 5,
-                },
-                description: None,
-                retry: crate::templates::domain::RetryConfig::default(),
-                validate: vec![],
-                intent: None,
+        nodes: vec![crate::templates::domain::TemplateNode {
+            id: "step-1".to_string(),
+            name: "Step 1".to_string(),
+            depends_on: vec![],
+            action: crate::templates::domain::TemplateAction::LspQuery {
+                query_type: "goto-definition".to_string(),
+                file: "src/SomeStruct".to_string(),
+                line: 10,
+                column: 5,
             },
-        ],
+            description: None,
+            retry: crate::templates::domain::RetryConfig::default(),
+            validate: vec![],
+            intent: None,
+        }],
         tags: vec![],
         category: None,
         author: None,
     };
 
-    let refs = validator.extract_symbol_references(&template).await.unwrap();
+    let refs = validator
+        .extract_symbol_references(&template)
+        .await
+        .unwrap();
     // Should extract "SomeStruct" from the file path "src/SomeStruct"
     assert!(refs.contains(&"SomeStruct".to_string()));
 }
@@ -1878,7 +2049,10 @@ async fn test_symbol_validation_extracts_from_parameters() {
         author: None,
     };
 
-    let refs = validator.extract_symbol_references(&template).await.unwrap();
+    let refs = validator
+        .extract_symbol_references(&template)
+        .await
+        .unwrap();
     // "MyStruct" is PascalCase and should be extracted
     assert!(refs.contains(&"MyStruct".to_string()));
     // "echo" is lowercase and should not be extracted
@@ -1937,7 +2111,10 @@ async fn test_symbol_validation_multiple_hallucinated_types() {
         author: None,
     };
 
-    let refs = validator.extract_symbol_references(&template).await.unwrap();
+    let refs = validator
+        .extract_symbol_references(&template)
+        .await
+        .unwrap();
     assert!(refs.contains(&"FakeStruct".to_string()));
 }
 
@@ -1973,7 +2150,10 @@ async fn test_symbol_validation_does_not_flag_lowercase_names() {
         author: None,
     };
 
-    let refs = validator.extract_symbol_references(&template).await.unwrap();
+    let refs = validator
+        .extract_symbol_references(&template)
+        .await
+        .unwrap();
     // "echo" and "hello" are lowercase and should not be extracted as symbol references
     assert!(!refs.contains(&"echo".to_string()));
     assert!(!refs.contains(&"hello".to_string()));

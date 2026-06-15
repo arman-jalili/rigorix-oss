@@ -8,8 +8,7 @@ use async_trait::async_trait;
 use crate::template_generation::domain::GeneratorError;
 
 use super::dto::{
-    GenerateTemplateInput, GenerateTemplateOutput,
-    SymbolValidationInput, SymbolValidationOutput,
+    GenerateTemplateInput, GenerateTemplateOutput, SymbolValidationInput, SymbolValidationOutput,
 };
 
 /// Service for generating templates from user intent via LLM.

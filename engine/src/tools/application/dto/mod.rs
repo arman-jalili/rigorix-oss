@@ -89,16 +89,14 @@ impl ToolInput {
 
     /// Extract a required string parameter, returning InvalidInput error if missing.
     pub fn require_string(&self, key: &str) -> Result<String, ToolError> {
-        self.get_string(key).ok_or_else(|| {
-            ToolError::InvalidInput(format!("Missing required parameter: {}", key))
-        })
+        self.get_string(key)
+            .ok_or_else(|| ToolError::InvalidInput(format!("Missing required parameter: {}", key)))
     }
 
     /// Extract a required u64 parameter, returning InvalidInput error if missing.
     pub fn require_u64(&self, key: &str) -> Result<u64, ToolError> {
-        self.get_u64(key).ok_or_else(|| {
-            ToolError::InvalidInput(format!("Missing required parameter: {}", key))
-        })
+        self.get_u64(key)
+            .ok_or_else(|| ToolError::InvalidInput(format!("Missing required parameter: {}", key)))
     }
 }
 

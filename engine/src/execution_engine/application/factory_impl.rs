@@ -47,10 +47,7 @@ impl ParallelExecutionFactory for ParallelExecutionFactoryImpl {
         config: ParallelExecutionFactoryConfig,
     ) -> Result<Box<dyn ParallelExecutionService>, ExecutionError> {
         let retry_service = Box::new(RetryEvaluationServiceImpl::new());
-        let executor = ParallelExecutionServiceImpl::new(
-            config.executor_config,
-            retry_service,
-        );
+        let executor = ParallelExecutionServiceImpl::new(config.executor_config, retry_service);
         Ok(Box::new(executor))
     }
 }

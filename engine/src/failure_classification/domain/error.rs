@@ -60,6 +60,9 @@ pub enum FailureClassificationError {
 }
 impl FailureClassificationError {
     pub fn is_retriable(&self) -> bool {
-        matches!(self, FailureClassificationError::ClassificationFailed { .. })
+        matches!(
+            self,
+            FailureClassificationError::ClassificationFailed { .. }
+        )
     }
 }

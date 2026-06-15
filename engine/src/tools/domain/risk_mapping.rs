@@ -109,14 +109,8 @@ mod tests {
     #[test]
     fn test_default_risk_level_lookup() {
         assert_eq!(default_risk_level_for("file-read"), Some(RiskLevel::Low));
-        assert_eq!(
-            default_risk_level_for("run-command"),
-            Some(RiskLevel::High)
-        );
-        assert_eq!(
-            default_risk_level_for("git-commit"),
-            Some(RiskLevel::High)
-        );
+        assert_eq!(default_risk_level_for("run-command"), Some(RiskLevel::High));
+        assert_eq!(default_risk_level_for("git-commit"), Some(RiskLevel::High));
     }
 
     #[test]

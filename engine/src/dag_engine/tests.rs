@@ -17,10 +17,6 @@
 
 use uuid::Uuid;
 
-use crate::dag_engine::domain::{
-    DagError, ExecutionPolicy, FailureType, ImpactLevel, PlanDiff, RetryStrategy,
-    TaskGraph, TaskNode, ValidationRule,
-};
 use crate::dag_engine::application::dto::*;
 use crate::dag_engine::application::service::{
     ComputeBackoffInput, DagGraphService, DagPlanningService, ExecutionPolicyService,
@@ -28,6 +24,10 @@ use crate::dag_engine::application::service::{
 };
 use crate::dag_engine::application::service_impl::{
     DagGraphServiceImpl, DagPlanningServiceImpl, ExecutionPolicyServiceImpl,
+};
+use crate::dag_engine::domain::{
+    DagError, ExecutionPolicy, FailureType, ImpactLevel, PlanDiff, RetryStrategy, TaskGraph,
+    TaskNode, ValidationRule,
 };
 
 // ---------------------------------------------------------------------------
@@ -78,7 +78,9 @@ fn test_add_unchecked_rejects_duplicate_id() {
 #[test]
 fn test_add_unchecked_rejects_sealed_graph() {
     let mut graph = TaskGraph::new();
-    graph.add_unchecked(make_node(Uuid::new_v4(), "first", vec![])).unwrap();
+    graph
+        .add_unchecked(make_node(Uuid::new_v4(), "first", vec![]))
+        .unwrap();
     graph.seal().unwrap();
     let node = make_node(Uuid::new_v4(), "late", vec![]);
     let err = graph.add_unchecked(node).unwrap_err();
@@ -95,13 +97,19 @@ fn test_seal_empty_graph_fails() {
     let err = graph.seal().unwrap_err();
     assert!(matches!(err, DagError::InvalidGraph { .. }));
     let msg = format!("{}", err);
-    assert!(msg.contains("empty"), "Expected error about empty graph: {}", msg);
+    assert!(
+        msg.contains("empty"),
+        "Expected error about empty graph: {}",
+        msg
+    );
 }
 
 #[test]
 fn test_seal_successful_with_single_node() {
     let mut graph = TaskGraph::new();
-    graph.add_unchecked(make_node(Uuid::new_v4(), "solo", vec![])).unwrap();
+    graph
+        .add_unchecked(make_node(Uuid::new_v4(), "solo", vec![]))
+        .unwrap();
     assert!(graph.seal().is_ok());
     assert!(graph.sealed);
     assert!(graph.topological_order().is_some());
@@ -111,12 +119,18 @@ fn test_seal_successful_with_single_node() {
 #[test]
 fn test_seal_double_seal_fails() {
     let mut graph = TaskGraph::new();
-    graph.add_unchecked(make_node(Uuid::new_v4(), "a", vec![])).unwrap();
+    graph
+        .add_unchecked(make_node(Uuid::new_v4(), "a", vec![]))
+        .unwrap();
     graph.seal().unwrap();
     let err = graph.seal().unwrap_err();
     assert!(matches!(err, DagError::InvalidGraph { .. }));
     let msg = format!("{}", err);
-    assert!(msg.contains("already sealed"), "Expected 'already sealed': {}", msg);
+    assert!(
+        msg.contains("already sealed"),
+        "Expected 'already sealed': {}",
+        msg
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -168,9 +182,15 @@ fn test_cycle_detected_three_node_circular() {
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
     let c = Uuid::new_v4();
-    graph.add_unchecked(TaskNode::new(a, "a", "tool", vec![c], "depends on c")).unwrap();
-    graph.add_unchecked(TaskNode::new(b, "b", "tool", vec![a], "depends on a")).unwrap();
-    graph.add_unchecked(TaskNode::new(c, "c", "tool", vec![b], "depends on b")).unwrap();
+    graph
+        .add_unchecked(TaskNode::new(a, "a", "tool", vec![c], "depends on c"))
+        .unwrap();
+    graph
+        .add_unchecked(TaskNode::new(b, "b", "tool", vec![a], "depends on a"))
+        .unwrap();
+    graph
+        .add_unchecked(TaskNode::new(c, "c", "tool", vec![b], "depends on b"))
+        .unwrap();
     let err = graph.seal().unwrap_err();
     assert!(matches!(err, DagError::CycleDetected { found, total } if found < total));
     assert!(err.to_string().contains("Cycle detected"));
@@ -186,9 +206,13 @@ fn test_topological_sort_linear_chain() {
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
     let c = Uuid::new_v4();
-    graph.add_unchecked(make_node(a, "compile", vec![])).unwrap();
+    graph
+        .add_unchecked(make_node(a, "compile", vec![]))
+        .unwrap();
     graph.add_unchecked(make_node(b, "test", vec![a])).unwrap();
-    graph.add_unchecked(make_node(c, "deploy", vec![b])).unwrap();
+    graph
+        .add_unchecked(make_node(c, "deploy", vec![b]))
+        .unwrap();
     graph.seal().unwrap();
     let order = graph.topological_order().unwrap().to_vec();
     // a must come before b, b before c
@@ -206,10 +230,18 @@ fn test_topological_sort_diamond() {
     let left = Uuid::new_v4();
     let right = Uuid::new_v4();
     let merge = Uuid::new_v4();
-    graph.add_unchecked(make_node(root, "root", vec![])).unwrap();
-    graph.add_unchecked(make_node(left, "left", vec![root])).unwrap();
-    graph.add_unchecked(make_node(right, "right", vec![root])).unwrap();
-    graph.add_unchecked(make_node(merge, "merge", vec![left, right])).unwrap();
+    graph
+        .add_unchecked(make_node(root, "root", vec![]))
+        .unwrap();
+    graph
+        .add_unchecked(make_node(left, "left", vec![root]))
+        .unwrap();
+    graph
+        .add_unchecked(make_node(right, "right", vec![root]))
+        .unwrap();
+    graph
+        .add_unchecked(make_node(merge, "merge", vec![left, right]))
+        .unwrap();
     graph.seal().unwrap();
     let order = graph.topological_order().unwrap();
     let pos_root = order.iter().position(|id| *id == root).unwrap();
@@ -242,7 +274,9 @@ fn test_topological_sort_all_nodes_present() {
     let nodes: Vec<_> = (0..10).map(|_| Uuid::new_v4()).collect();
     for (i, &id) in nodes.iter().enumerate() {
         let deps = if i > 0 { vec![nodes[i - 1]] } else { vec![] };
-        graph.add_unchecked(make_node(id, &format!("node-{}", i), deps)).unwrap();
+        graph
+            .add_unchecked(make_node(id, &format!("node-{}", i), deps))
+            .unwrap();
     }
     graph.seal().unwrap();
     assert_eq!(graph.topological_order().unwrap().len(), 10);
@@ -263,13 +297,20 @@ fn test_ready_nodes_after_seal() {
     let mut graph = TaskGraph::new();
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
-    graph.add_unchecked(make_node(a, "no-deps", vec![])).unwrap();
-    graph.add_unchecked(make_node(b, "has-dep", vec![a])).unwrap();
+    graph
+        .add_unchecked(make_node(a, "no-deps", vec![]))
+        .unwrap();
+    graph
+        .add_unchecked(make_node(b, "has-dep", vec![a]))
+        .unwrap();
     graph.seal().unwrap();
     // a has no deps, so it should be ready
     let ready = graph.ready_nodes();
     assert!(ready.contains(&a), "Node a (no deps) should be ready");
-    assert!(!ready.contains(&b), "Node b (has dep on a) should not be ready yet");
+    assert!(
+        !ready.contains(&b),
+        "Node b (has dep on a) should not be ready yet"
+    );
 }
 
 #[test]
@@ -290,7 +331,10 @@ fn test_mark_completed_updates_ready_queue() {
 
     // Now b should be ready
     let ready = graph.ready_nodes();
-    assert!(ready.contains(&b), "Node b should be ready after a completes");
+    assert!(
+        ready.contains(&b),
+        "Node b should be ready after a completes"
+    );
 }
 
 #[test]
@@ -306,7 +350,10 @@ fn test_mark_completed_idempotent() {
     let ready_before = graph.ready_nodes().len();
     graph.mark_completed(a).unwrap(); // Second call, should be no-op
     let ready_after = graph.ready_nodes().len();
-    assert_eq!(ready_before, ready_after, "Marking completed twice should be idempotent");
+    assert_eq!(
+        ready_before, ready_after,
+        "Marking completed twice should be idempotent"
+    );
 }
 
 #[test]
@@ -321,7 +368,9 @@ fn test_mark_completed_unsealed_graph_fails() {
 #[test]
 fn test_mark_completed_nonexistent_node_fails() {
     let mut graph = TaskGraph::new();
-    graph.add_unchecked(make_node(Uuid::new_v4(), "a", vec![])).unwrap();
+    graph
+        .add_unchecked(make_node(Uuid::new_v4(), "a", vec![]))
+        .unwrap();
     graph.seal().unwrap();
     let err = graph.mark_completed(Uuid::new_v4()).unwrap_err();
     assert!(matches!(err, DagError::TaskNotFound { .. }));
@@ -372,7 +421,14 @@ fn test_task_node_with_policy() {
         backoff_ms: 500,
         ..ExecutionPolicy::default()
     };
-    let node = TaskNode::with_policy(id, "deploy", "kubectl apply", vec![], "Deploy to prod", policy.clone());
+    let node = TaskNode::with_policy(
+        id,
+        "deploy",
+        "kubectl apply",
+        vec![],
+        "Deploy to prod",
+        policy.clone(),
+    );
     assert_eq!(node.policy.max_retries, 5);
     assert_eq!(node.policy.backoff_ms, 500);
 }
@@ -381,8 +437,13 @@ fn test_task_node_with_policy() {
 fn test_task_node_with_validation() {
     let id = Uuid::new_v4();
     let node = TaskNode::with_policy_and_validation(
-        id, "test", "cargo test", vec![], "Run tests",
-        ExecutionPolicy::default(), ValidationRule::TestPass,
+        id,
+        "test",
+        "cargo test",
+        vec![],
+        "Run tests",
+        ExecutionPolicy::default(),
+        ValidationRule::TestPass,
     );
     assert_eq!(node.validation_rule, Some(ValidationRule::TestPass));
 }
@@ -396,7 +457,10 @@ fn test_execution_policy_defaults() {
     let policy = ExecutionPolicy::default();
     assert_eq!(policy.max_retries, 3);
     assert_eq!(policy.retry_strategy, RetryStrategy::SameOperation);
-    assert_eq!(policy.retry_on, vec![FailureType::Transient, FailureType::LspConflict]);
+    assert_eq!(
+        policy.retry_on,
+        vec![FailureType::Transient, FailureType::LspConflict]
+    );
     assert!(policy.fallback_node.is_none());
     assert!(policy.validation_rule.is_none());
     assert_eq!(policy.backoff_ms, 100);
@@ -414,7 +478,10 @@ fn test_failure_type_as_str() {
     assert_eq!(FailureType::LspConflict.as_str(), "lsp_conflict");
     assert_eq!(FailureType::CompileError.as_str(), "compile_error");
     assert_eq!(FailureType::TestFailure.as_str(), "test_failure");
-    assert_eq!(FailureType::MissingDependency.as_str(), "missing_dependency");
+    assert_eq!(
+        FailureType::MissingDependency.as_str(),
+        "missing_dependency"
+    );
     assert_eq!(FailureType::PlanConflict.as_str(), "plan_conflict");
     assert_eq!(FailureType::Permanent.as_str(), "permanent");
     assert_eq!(FailureType::Unknown.as_str(), "unknown");
@@ -457,7 +524,10 @@ fn test_impact_level_ordering() {
 
 #[test]
 fn test_impact_level_max() {
-    assert_eq!(ImpactLevel::None.max(ImpactLevel::Breaking), ImpactLevel::Breaking);
+    assert_eq!(
+        ImpactLevel::None.max(ImpactLevel::Breaking),
+        ImpactLevel::Breaking
+    );
     assert_eq!(ImpactLevel::High.max(ImpactLevel::Low), ImpactLevel::High);
 }
 
@@ -540,9 +610,10 @@ fn test_plan_diff_modified_dependencies() {
 async fn test_service_construct_graph() {
     let service = DagGraphServiceImpl::new();
     let node = make_node(Uuid::new_v4(), "compile", vec![]);
-    let output = service.construct_graph(ConstructGraphInput {
-        nodes: vec![node],
-    }).await.unwrap();
+    let output = service
+        .construct_graph(ConstructGraphInput { nodes: vec![node] })
+        .await
+        .unwrap();
 
     assert_eq!(output.node_count, 1);
     assert!(!output.graph.sealed);
@@ -554,9 +625,15 @@ async fn test_service_construct_and_seal() {
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
 
-    let construct = service.construct_graph(ConstructGraphInput {
-        nodes: vec![make_node(a, "compile", vec![]), make_node(b, "test", vec![a])],
-    }).await.unwrap();
+    let construct = service
+        .construct_graph(ConstructGraphInput {
+            nodes: vec![
+                make_node(a, "compile", vec![]),
+                make_node(b, "test", vec![a]),
+            ],
+        })
+        .await
+        .unwrap();
 
     let dag_id = construct.dag_id;
     assert_eq!(construct.node_count, 2);
@@ -599,10 +676,13 @@ async fn test_planning_service_compare_identical() {
     let service = DagPlanningServiceImpl::new();
     let id = Uuid::new_v4();
     let node = make_node(id, "build", vec![]);
-    let output = service.compare_plans(ComparePlansInput {
-        old_nodes: vec![node.clone()],
-        new_nodes: vec![node],
-    }).await.unwrap();
+    let output = service
+        .compare_plans(ComparePlansInput {
+            old_nodes: vec![node.clone()],
+            new_nodes: vec![node],
+        })
+        .await
+        .unwrap();
 
     assert_eq!(output.diff.added.len(), 0);
     assert_eq!(output.diff.removed.len(), 0);
@@ -632,17 +712,23 @@ async fn test_service_add_node_after_construction() {
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
 
-    let construct = service.construct_graph(ConstructGraphInput {
-        nodes: vec![make_node(a, "first", vec![])],
-    }).await.unwrap();
+    let construct = service
+        .construct_graph(ConstructGraphInput {
+            nodes: vec![make_node(a, "first", vec![])],
+        })
+        .await
+        .unwrap();
     let dag_id = construct.dag_id;
     assert_eq!(construct.node_count, 1);
 
     // Add another node
-    let add = service.add_node(AddNodeInput {
-        dag_id,
-        node: make_node(b, "second", vec![a]),
-    }).await.unwrap();
+    let add = service
+        .add_node(AddNodeInput {
+            dag_id,
+            node: make_node(b, "second", vec![a]),
+        })
+        .await
+        .unwrap();
     assert_eq!(add.node_count, 2);
     assert_eq!(add.node_id, b);
 }
@@ -652,9 +738,12 @@ async fn test_service_get_graph_and_node() {
     let service = DagGraphServiceImpl::new();
     let a = Uuid::new_v4();
 
-    let construct = service.construct_graph(ConstructGraphInput {
-        nodes: vec![make_node(a, "hello", vec![])],
-    }).await.unwrap();
+    let construct = service
+        .construct_graph(ConstructGraphInput {
+            nodes: vec![make_node(a, "hello", vec![])],
+        })
+        .await
+        .unwrap();
     let dag_id = construct.dag_id;
 
     // Get graph
@@ -663,7 +752,10 @@ async fn test_service_get_graph_and_node() {
     assert_eq!(get.graph.node_count(), 1);
 
     // Get node
-    let node = service.get_node(GetNodeInput { dag_id, node_id: a }).await.unwrap();
+    let node = service
+        .get_node(GetNodeInput { dag_id, node_id: a })
+        .await
+        .unwrap();
     assert_eq!(node.node.name, "hello");
 }
 
@@ -673,12 +765,15 @@ async fn test_service_list_nodes() {
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
 
-    let construct = service.construct_graph(ConstructGraphInput {
-        nodes: vec![
-            make_node(a, "first", vec![]),
-            make_node(b, "second", vec![]),
-        ],
-    }).await.unwrap();
+    let construct = service
+        .construct_graph(ConstructGraphInput {
+            nodes: vec![
+                make_node(a, "first", vec![]),
+                make_node(b, "second", vec![]),
+            ],
+        })
+        .await
+        .unwrap();
     let dag_id = construct.dag_id;
 
     let list = service.list_nodes(ListNodesInput { dag_id }).await.unwrap();
@@ -692,16 +787,25 @@ async fn test_service_operations_on_nonexistent_graph() {
     let phantom = Uuid::new_v4();
 
     // All operations should fail with InvalidGraph
-    let err = service.seal_graph(SealGraphInput { dag_id: phantom }).await.unwrap_err();
+    let err = service
+        .seal_graph(SealGraphInput { dag_id: phantom })
+        .await
+        .unwrap_err();
     assert!(matches!(err, DagError::InvalidGraph { .. }));
 
-    let err = service.get_graph(GetGraphInput { dag_id: phantom }).await.unwrap_err();
+    let err = service
+        .get_graph(GetGraphInput { dag_id: phantom })
+        .await
+        .unwrap_err();
     assert!(matches!(err, DagError::InvalidGraph { .. }));
 
     let err = service.get_ready_nodes(phantom).await.unwrap_err();
     assert!(matches!(err, DagError::InvalidGraph { .. }));
 
-    let err = service.mark_node_completed(phantom, Uuid::new_v4()).await.unwrap_err();
+    let err = service
+        .mark_node_completed(phantom, Uuid::new_v4())
+        .await
+        .unwrap_err();
     assert!(matches!(err, DagError::InvalidGraph { .. }));
 }
 
@@ -711,15 +815,21 @@ async fn test_service_cycle_detection() {
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
 
-    let construct = service.construct_graph(ConstructGraphInput {
-        nodes: vec![
-            TaskNode::new(a, "a", "tool", vec![b], "depends on b"),
-            TaskNode::new(b, "b", "tool", vec![a], "depends on a"),
-        ],
-    }).await.unwrap();
+    let construct = service
+        .construct_graph(ConstructGraphInput {
+            nodes: vec![
+                TaskNode::new(a, "a", "tool", vec![b], "depends on b"),
+                TaskNode::new(b, "b", "tool", vec![a], "depends on a"),
+            ],
+        })
+        .await
+        .unwrap();
     let dag_id = construct.dag_id;
 
-    let err = service.seal_graph(SealGraphInput { dag_id }).await.unwrap_err();
+    let err = service
+        .seal_graph(SealGraphInput { dag_id })
+        .await
+        .unwrap_err();
     assert!(matches!(err, DagError::CycleDetected { .. }));
 }
 
@@ -754,14 +864,19 @@ async fn test_should_retry_retriable_failure() {
     let service = ExecutionPolicyServiceImpl::new();
     let policy = ExecutionPolicy::default();
 
-    let decision = service.should_retry(ShouldRetryInput {
-        policy,
-        failure_type: FailureType::Transient,
-        retries_attempted: 0,
-    }).await.unwrap();
+    let decision = service
+        .should_retry(ShouldRetryInput {
+            policy,
+            failure_type: FailureType::Transient,
+            retries_attempted: 0,
+        })
+        .await
+        .unwrap();
 
     match decision {
-        RetryDecision::Retry { strategy, attempt, .. } => {
+        RetryDecision::Retry {
+            strategy, attempt, ..
+        } => {
             assert_eq!(strategy, RetryStrategy::SameOperation);
             assert_eq!(attempt, 1);
         }
@@ -774,11 +889,14 @@ async fn test_should_retry_non_retriable_failure() {
     let service = ExecutionPolicyServiceImpl::new();
     let policy = ExecutionPolicy::default();
 
-    let decision = service.should_retry(ShouldRetryInput {
-        policy,
-        failure_type: FailureType::Permanent,
-        retries_attempted: 0,
-    }).await.unwrap();
+    let decision = service
+        .should_retry(ShouldRetryInput {
+            policy,
+            failure_type: FailureType::Permanent,
+            retries_attempted: 0,
+        })
+        .await
+        .unwrap();
 
     match decision {
         RetryDecision::NoRetry { use_fallback, .. } => {
@@ -795,11 +913,14 @@ async fn test_should_retry_exhausted_retries() {
     let policy = ExecutionPolicy::default();
 
     // After 3 attempts, no more retries
-    let decision = service.should_retry(ShouldRetryInput {
-        policy: policy.clone(),
-        failure_type: FailureType::Transient,
-        retries_attempted: 3,
-    }).await.unwrap();
+    let decision = service
+        .should_retry(ShouldRetryInput {
+            policy: policy.clone(),
+            failure_type: FailureType::Transient,
+            retries_attempted: 3,
+        })
+        .await
+        .unwrap();
 
     match decision {
         RetryDecision::NoRetry { reason, .. } => {
@@ -819,11 +940,14 @@ async fn test_should_retry_with_custom_policy() {
     };
 
     // MissingDependency is retriable
-    let decision = service.should_retry(ShouldRetryInput {
-        policy,
-        failure_type: FailureType::MissingDependency,
-        retries_attempted: 0,
-    }).await.unwrap();
+    let decision = service
+        .should_retry(ShouldRetryInput {
+            policy,
+            failure_type: FailureType::MissingDependency,
+            retries_attempted: 0,
+        })
+        .await
+        .unwrap();
 
     match decision {
         RetryDecision::Retry { attempt, .. } => {
@@ -841,11 +965,14 @@ async fn test_should_retry_max_retries_zero() {
         ..ExecutionPolicy::default()
     };
 
-    let decision = service.should_retry(ShouldRetryInput {
-        policy,
-        failure_type: FailureType::Transient,
-        retries_attempted: 0,
-    }).await.unwrap();
+    let decision = service
+        .should_retry(ShouldRetryInput {
+            policy,
+            failure_type: FailureType::Transient,
+            retries_attempted: 0,
+        })
+        .await
+        .unwrap();
 
     match decision {
         RetryDecision::NoRetry { reason, .. } => {
@@ -864,10 +991,10 @@ async fn test_compute_backoff_first_attempt() {
     let service = ExecutionPolicyServiceImpl::new();
     let policy = ExecutionPolicy::default();
 
-    let output = service.compute_backoff(ComputeBackoffInput {
-        policy,
-        attempt: 1,
-    }).await.unwrap();
+    let output = service
+        .compute_backoff(ComputeBackoffInput { policy, attempt: 1 })
+        .await
+        .unwrap();
 
     // First attempt: 100ms * 2.0^0 = 100ms
     assert_eq!(output.delay_ms, 100);
@@ -879,10 +1006,10 @@ async fn test_compute_backoff_second_attempt() {
     let service = ExecutionPolicyServiceImpl::new();
     let policy = ExecutionPolicy::default();
 
-    let output = service.compute_backoff(ComputeBackoffInput {
-        policy,
-        attempt: 2,
-    }).await.unwrap();
+    let output = service
+        .compute_backoff(ComputeBackoffInput { policy, attempt: 2 })
+        .await
+        .unwrap();
 
     // Second attempt: 100ms * 2.0^1 = 200ms
     assert_eq!(output.delay_ms, 200);
@@ -893,10 +1020,10 @@ async fn test_compute_backoff_third_attempt() {
     let service = ExecutionPolicyServiceImpl::new();
     let policy = ExecutionPolicy::default();
 
-    let output = service.compute_backoff(ComputeBackoffInput {
-        policy,
-        attempt: 3,
-    }).await.unwrap();
+    let output = service
+        .compute_backoff(ComputeBackoffInput { policy, attempt: 3 })
+        .await
+        .unwrap();
 
     // Third attempt: 100ms * 2.0^2 = 400ms
     assert_eq!(output.delay_ms, 400);
@@ -912,10 +1039,13 @@ async fn test_compute_backoff_capped_at_max() {
         ..ExecutionPolicy::default()
     };
 
-    let output = service.compute_backoff(ComputeBackoffInput {
-        policy,
-        attempt: 5, // 100 * 10^4 = 1,000,000 → capped at 5,000
-    }).await.unwrap();
+    let output = service
+        .compute_backoff(ComputeBackoffInput {
+            policy,
+            attempt: 5, // 100 * 10^4 = 1,000,000 → capped at 5,000
+        })
+        .await
+        .unwrap();
 
     assert_eq!(output.delay_ms, 5000);
 }
@@ -930,10 +1060,13 @@ async fn test_compute_backoff_custom_policy() {
         ..ExecutionPolicy::default()
     };
 
-    let output = service.compute_backoff(ComputeBackoffInput {
-        policy,
-        attempt: 3, // 1000 * 3.0^2 = 9000ms
-    }).await.unwrap();
+    let output = service
+        .compute_backoff(ComputeBackoffInput {
+            policy,
+            attempt: 3, // 1000 * 3.0^2 = 9000ms
+        })
+        .await
+        .unwrap();
 
     assert_eq!(output.delay_ms, 9000);
 }
@@ -947,9 +1080,10 @@ async fn test_validate_policy_default_valid() {
     let service = ExecutionPolicyServiceImpl::new();
     let policy = ExecutionPolicy::default();
 
-    let output = service.validate_policy(ValidatePolicyInput {
-        policy,
-    }).await.unwrap();
+    let output = service
+        .validate_policy(ValidatePolicyInput { policy })
+        .await
+        .unwrap();
 
     assert!(output.is_valid);
     assert!(output.errors.is_empty());
@@ -963,9 +1097,10 @@ async fn test_validate_policy_zero_backoff() {
         ..ExecutionPolicy::default()
     };
 
-    let output = service.validate_policy(ValidatePolicyInput {
-        policy,
-    }).await.unwrap();
+    let output = service
+        .validate_policy(ValidatePolicyInput { policy })
+        .await
+        .unwrap();
 
     assert!(!output.is_valid);
     assert!(output.errors.iter().any(|e| e.contains("backoff_ms")));
@@ -979,9 +1114,10 @@ async fn test_validate_policy_multiplier_less_than_one() {
         ..ExecutionPolicy::default()
     };
 
-    let output = service.validate_policy(ValidatePolicyInput {
-        policy,
-    }).await.unwrap();
+    let output = service
+        .validate_policy(ValidatePolicyInput { policy })
+        .await
+        .unwrap();
 
     assert!(!output.is_valid);
     assert!(output.errors.iter().any(|e| e.contains("multiplier")));
@@ -996,9 +1132,10 @@ async fn test_validate_policy_max_less_than_base() {
         ..ExecutionPolicy::default()
     };
 
-    let output = service.validate_policy(ValidatePolicyInput {
-        policy,
-    }).await.unwrap();
+    let output = service
+        .validate_policy(ValidatePolicyInput { policy })
+        .await
+        .unwrap();
 
     assert!(!output.is_valid);
     assert!(output.errors.iter().any(|e| e.contains("max_backoff")));
@@ -1014,9 +1151,10 @@ async fn test_validate_policy_multiple_errors() {
         ..ExecutionPolicy::default()
     };
 
-    let output = service.validate_policy(ValidatePolicyInput {
-        policy,
-    }).await.unwrap();
+    let output = service
+        .validate_policy(ValidatePolicyInput { policy })
+        .await
+        .unwrap();
 
     assert!(!output.is_valid);
     assert!(output.errors.len() >= 2);
@@ -1031,7 +1169,10 @@ async fn test_validate_policy_warnings() {
         max_retries: 0,
         ..ExecutionPolicy::default()
     };
-    let output = service.validate_policy(ValidatePolicyInput { policy }).await.unwrap();
+    let output = service
+        .validate_policy(ValidatePolicyInput { policy })
+        .await
+        .unwrap();
     assert!(output.warnings.iter().any(|w| w.contains("max_retries")));
 
     // empty retry_on should warn
@@ -1039,7 +1180,10 @@ async fn test_validate_policy_warnings() {
         retry_on: vec![],
         ..ExecutionPolicy::default()
     };
-    let output = service.validate_policy(ValidatePolicyInput { policy }).await.unwrap();
+    let output = service
+        .validate_policy(ValidatePolicyInput { policy })
+        .await
+        .unwrap();
     assert!(output.warnings.iter().any(|w| w.contains("retry_on")));
 }
 

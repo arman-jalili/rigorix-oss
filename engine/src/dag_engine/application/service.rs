@@ -86,11 +86,7 @@ pub trait DagGraphService: Send + Sync {
     async fn list_nodes(&self, input: ListNodesInput) -> Result<ListNodesOutput, DagError>;
 
     /// Mark a node as completed during execution.
-    async fn mark_node_completed(
-        &self,
-        dag_id: Uuid,
-        node_id: Uuid,
-    ) -> Result<(), DagError>;
+    async fn mark_node_completed(&self, dag_id: Uuid, node_id: Uuid) -> Result<(), DagError>;
 
     /// Get the set of nodes whose dependencies are all satisfied
     /// (ready to execute).
@@ -117,10 +113,8 @@ pub trait DagPlanningService: Send + Sync {
     ///
     /// The resulting PlanDiff is emitted as a DagEvent::PlanCompared
     /// for audit trail recording.
-    async fn compare_plans(
-        &self,
-        input: ComparePlansInput,
-    ) -> Result<ComparePlansOutput, DagError>;
+    async fn compare_plans(&self, input: ComparePlansInput)
+        -> Result<ComparePlansOutput, DagError>;
 
     /// Compute the impact level of a set of proposed changes.
     ///
@@ -166,10 +160,7 @@ pub trait ExecutionPolicyService: Send + Sync {
     /// 2. Have we exhausted `max_retries`?
     ///
     /// Returns a RetryDecision with the outcome and reason.
-    async fn should_retry(
-        &self,
-        input: ShouldRetryInput,
-    ) -> Result<RetryDecision, DagError>;
+    async fn should_retry(&self, input: ShouldRetryInput) -> Result<RetryDecision, DagError>;
 
     /// Compute the backoff delay before retrying.
     ///

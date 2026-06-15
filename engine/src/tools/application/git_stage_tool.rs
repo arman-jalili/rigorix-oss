@@ -53,9 +53,7 @@ impl Tool for GitStageTool {
             .current_dir(&self.repo_root)
             .output()
             .await
-            .map_err(|e| {
-                ToolError::ExecutionFailed(format!("Failed to stage files: {}", e))
-            })?;
+            .map_err(|e| ToolError::ExecutionFailed(format!("Failed to stage files: {}", e)))?;
 
         let duration_ms = start.elapsed().as_millis() as u64;
 
@@ -129,7 +127,10 @@ mod tests {
         let tool = GitStageTool::new(dir.path().to_str().unwrap());
 
         let mut params = HashMap::new();
-        params.insert("path".to_string(), serde_json::Value::String("new.txt".to_string()));
+        params.insert(
+            "path".to_string(),
+            serde_json::Value::String("new.txt".to_string()),
+        );
         let input = ToolInput::new(params);
 
         let result = tool.execute(&input).await.unwrap();
@@ -169,7 +170,10 @@ mod tests {
 
         let tool = GitStageTool::new(dir.path().to_str().unwrap());
         let mut params = HashMap::new();
-        params.insert("path".to_string(), serde_json::Value::String("nonexistent.txt".to_string()));
+        params.insert(
+            "path".to_string(),
+            serde_json::Value::String("nonexistent.txt".to_string()),
+        );
         let input = ToolInput::new(params);
 
         let result = tool.execute(&input).await;

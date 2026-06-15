@@ -150,7 +150,10 @@ Rules:
     }
 
     /// Parse the Claude API response into ranked alternatives.
-    pub(crate) fn parse_response(&self, response_body: &str) -> Result<Vec<ClassifiedTemplate>, PlanningError> {
+    pub(crate) fn parse_response(
+        &self,
+        response_body: &str,
+    ) -> Result<Vec<ClassifiedTemplate>, PlanningError> {
         // Try to extract JSON from the response (may be wrapped in markdown code blocks)
         let json_str = if let Some(start) = response_body.find('{') {
             if let Some(end) = response_body.rfind('}') {
@@ -174,11 +177,14 @@ Rules:
             rankings: Vec<ApiRanking>,
         }
 
-        let parsed: ApiResponse = serde_json::from_str(json_str).map_err(|e| {
-            PlanningError::ClassificationError {
-                detail: format!("Failed to parse Claude response: {} (raw: {})", e, response_body.chars().take(200).collect::<String>()),
-            }
-        })?;
+        let parsed: ApiResponse =
+            serde_json::from_str(json_str).map_err(|e| PlanningError::ClassificationError {
+                detail: format!(
+                    "Failed to parse Claude response: {} (raw: {})",
+                    e,
+                    response_body.chars().take(200).collect::<String>()
+                ),
+            })?;
 
         let templates: Vec<ClassifiedTemplate> = parsed
             .rankings
@@ -235,11 +241,10 @@ impl Classifier for ClaudeClassifier {
         });
 
         // Make the API call
-        let body_bytes = serde_json::to_vec(&body).map_err(|e| {
-            PlanningError::ClassificationError {
+        let body_bytes =
+            serde_json::to_vec(&body).map_err(|e| PlanningError::ClassificationError {
                 detail: format!("Failed to serialize request: {}", e),
-            }
-        })?;
+            })?;
 
         let response = self
             .client
@@ -255,11 +260,13 @@ impl Classifier for ClaudeClassifier {
             })?;
 
         let status = response.status();
-        let response_text = response.text().await.map_err(|e| {
-            PlanningError::ClassificationError {
-                detail: format!("Failed to read Claude response body: {}", e),
-            }
-        })?;
+        let response_text =
+            response
+                .text()
+                .await
+                .map_err(|e| PlanningError::ClassificationError {
+                    detail: format!("Failed to read Claude response body: {}", e),
+                })?;
 
         if !status.is_success() {
             return Err(PlanningError::ClassificationError {
@@ -301,13 +308,23 @@ impl Classifier for ClaudeClassifier {
             })?;
 
         let alternatives = self.parse_response(content_text)?;
-        let requires_clarification =
-            alternatives.first().map(|t| t.confidence < 0.7).unwrap_or(false);
-        let needs_generator = alternatives.first().map(|t| t.confidence < 0.3).unwrap_or(true);
+        let requires_clarification = alternatives
+            .first()
+            .map(|t| t.confidence < 0.7)
+            .unwrap_or(false);
+        let needs_generator = alternatives
+            .first()
+            .map(|t| t.confidence < 0.3)
+            .unwrap_or(true);
 
         let reasoning = alternatives
             .first()
-            .map(|t| format!("Claude classified: top={} confidence={:.2}", t.template_id, t.confidence))
+            .map(|t| {
+                format!(
+                    "Claude classified: top={} confidence={:.2}",
+                    t.template_id, t.confidence
+                )
+            })
             .unwrap_or_else(|| "No matching template found".to_string());
 
         Ok(ClassificationResult {

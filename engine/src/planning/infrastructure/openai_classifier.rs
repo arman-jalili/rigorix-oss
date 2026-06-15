@@ -139,7 +139,10 @@ Rules:
     }
 
     /// Parse the API response.
-    pub(crate) fn parse_response(&self, response_body: &str) -> Result<Vec<ClassifiedTemplate>, PlanningError> {
+    pub(crate) fn parse_response(
+        &self,
+        response_body: &str,
+    ) -> Result<Vec<ClassifiedTemplate>, PlanningError> {
         let json_str = if let Some(start) = response_body.find('{') {
             if let Some(end) = response_body.rfind('}') {
                 &response_body[start..=end]
@@ -162,12 +165,14 @@ Rules:
             rankings: Vec<ApiRanking>,
         }
 
-        let parsed: ApiResponse = serde_json::from_str(json_str).map_err(|e| {
-            PlanningError::ClassificationError {
-                detail: format!("Failed to parse OpenAI response: {} (raw: {})", e, 
-                    response_body.chars().take(200).collect::<String>()),
-            }
-        })?;
+        let parsed: ApiResponse =
+            serde_json::from_str(json_str).map_err(|e| PlanningError::ClassificationError {
+                detail: format!(
+                    "Failed to parse OpenAI response: {} (raw: {})",
+                    e,
+                    response_body.chars().take(200).collect::<String>()
+                ),
+            })?;
 
         let templates: Vec<ClassifiedTemplate> = parsed
             .rankings
@@ -222,11 +227,10 @@ impl Classifier for OpenaiClassifier {
             ]
         });
 
-        let body_bytes = serde_json::to_vec(&body).map_err(|e| {
-            PlanningError::ClassificationError {
+        let body_bytes =
+            serde_json::to_vec(&body).map_err(|e| PlanningError::ClassificationError {
                 detail: format!("Failed to serialize request: {}", e),
-            }
-        })?;
+            })?;
 
         let response = self
             .client
@@ -241,11 +245,13 @@ impl Classifier for OpenaiClassifier {
             })?;
 
         let status = response.status();
-        let response_text = response.text().await.map_err(|e| {
-            PlanningError::ClassificationError {
-                detail: format!("Failed to read OpenAI response body: {}", e),
-            }
-        })?;
+        let response_text =
+            response
+                .text()
+                .await
+                .map_err(|e| PlanningError::ClassificationError {
+                    detail: format!("Failed to read OpenAI response body: {}", e),
+                })?;
 
         if !status.is_success() {
             return Err(PlanningError::ClassificationError {
@@ -297,13 +303,23 @@ impl Classifier for OpenaiClassifier {
             })?;
 
         let alternatives = self.parse_response(content)?;
-        let requires_clarification =
-            alternatives.first().map(|t| t.confidence < 0.7).unwrap_or(false);
-        let needs_generator = alternatives.first().map(|t| t.confidence < 0.3).unwrap_or(true);
+        let requires_clarification = alternatives
+            .first()
+            .map(|t| t.confidence < 0.7)
+            .unwrap_or(false);
+        let needs_generator = alternatives
+            .first()
+            .map(|t| t.confidence < 0.3)
+            .unwrap_or(true);
 
         let reasoning = alternatives
             .first()
-            .map(|t| format!("OpenAI classified: top={} confidence={:.2}", t.template_id, t.confidence))
+            .map(|t| {
+                format!(
+                    "OpenAI classified: top={} confidence={:.2}",
+                    t.template_id, t.confidence
+                )
+            })
             .unwrap_or_else(|| "No matching template found".to_string());
 
         let tokens_used = api_response

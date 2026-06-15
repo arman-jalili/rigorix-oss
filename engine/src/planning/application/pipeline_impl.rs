@@ -24,19 +24,18 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::planning::application::dto::{
-    AvailableTemplatesOutput, CheckBudgetInput, CheckBudgetOutput,
-    ExtractParametersInput, ExtractParametersOutput, GenerateGraphInput, GenerateGraphOutput,
-    PlanInput, PlanOutput, PlanWithGraphInput, PlanWithGraphOutput, RequestClarificationInput,
-    RequestClarificationOutput, ValidatePlanInput, ValidatePlanOutput, ValidationError,
-    ValidationWarning,
+    AvailableTemplatesOutput, CheckBudgetInput, CheckBudgetOutput, ExtractParametersInput,
+    ExtractParametersOutput, GenerateGraphInput, GenerateGraphOutput, PlanInput, PlanOutput,
+    PlanWithGraphInput, PlanWithGraphOutput, RequestClarificationInput, RequestClarificationOutput,
+    ValidatePlanInput, ValidatePlanOutput, ValidationError, ValidationWarning,
 };
 use crate::planning::application::service::PlanningPipelineService;
 use crate::planning::domain::classification::{ClassificationResult, Classifier};
 use crate::planning::domain::error::PlanningError;
 use crate::planning::domain::extractor::{ExtractedParameters, ParameterExtractor};
-use crate::template_generation::domain::TemplateGenerator;
 use crate::planning::domain::intent::UserIntent;
 use crate::planning::domain::result::{PlanningHash, PlanningResult};
+use crate::template_generation::domain::TemplateGenerator;
 
 use super::factory::CompositeValidator;
 
@@ -133,11 +132,7 @@ impl PlanningPipelineImpl {
             }
         })?;
 
-        let template_ids: Vec<String> = templates
-            .templates
-            .iter()
-            .map(|t| t.id.clone())
-            .collect();
+        let template_ids: Vec<String> = templates.templates.iter().map(|t| t.id.clone()).collect();
 
         // Use a mock budget for now — real implementation would get this from budget_tracking
         let budget = crate::budget_tracking::domain::LlmBudget {
@@ -212,7 +207,11 @@ impl PlanningPipelineImpl {
         template_id: &str,
     ) -> Result<(Vec<ValidationError>, Vec<ValidationWarning>), PlanningError> {
         match &self.validator {
-            Some(validator) => validator.validate(self.execution_id, graph, template_id).await,
+            Some(validator) => {
+                validator
+                    .validate(self.execution_id, graph, template_id)
+                    .await
+            }
             None => Ok((vec![], vec![])),
         }
     }
@@ -227,9 +226,7 @@ impl PlanningPipelineImpl {
     }
 
     /// Generate a clarification question when confidence is ambiguous.
-    fn generate_clarification_question(
-        classification: &ClassificationResult,
-    ) -> String {
+    fn generate_clarification_question(classification: &ClassificationResult) -> String {
         if classification.alternatives.is_empty() {
             return "Could you provide more details about what you'd like to do?".to_string();
         }
@@ -237,7 +234,13 @@ impl PlanningPipelineImpl {
         let options: Vec<String> = classification
             .alternatives
             .iter()
-            .map(|t| format!("- {} (confidence: {:.0}%)", t.template_id, t.confidence * 100.0))
+            .map(|t| {
+                format!(
+                    "- {} (confidence: {:.0}%)",
+                    t.template_id,
+                    t.confidence * 100.0
+                )
+            })
             .collect();
 
         format!(
@@ -295,7 +298,11 @@ impl PlanningPipelineService for PlanningPipelineImpl {
                     if !extracted.complete {
                         return Err(PlanningError::MissingParameter {
                             template_id: template.template_id.clone(),
-                            parameter: extracted.missing_parameters.first().cloned().unwrap_or_default(),
+                            parameter: extracted
+                                .missing_parameters
+                                .first()
+                                .cloned()
+                                .unwrap_or_default(),
                             description: format!(
                                 "Missing {} required parameters",
                                 extracted.missing_parameters.len()
@@ -404,7 +411,9 @@ impl PlanningPipelineService for PlanningPipelineImpl {
                 }
                 _ => {
                     // Low confidence or no match: try generator fallback
-                    if input.enable_generator_fallback && generator_attempts < MAX_GENERATOR_ATTEMPTS {
+                    if input.enable_generator_fallback
+                        && generator_attempts < MAX_GENERATOR_ATTEMPTS
+                    {
                         generator_attempts += 1;
                         if let Some(generator) = &self.template_generator {
                             let budget = crate::budget_tracking::domain::LlmBudget {
@@ -425,9 +434,8 @@ impl PlanningPipelineService for PlanningPipelineImpl {
                                 public_api: Vec::new(),
                                 symbol_graph_snapshot: None,
                             };
-                            let generated = generator
-                                .generate(&intent, &repo_context, &budget)
-                                .await?;
+                            let generated =
+                                generator.generate(&intent, &repo_context, &budget).await?;
                             total_llm_calls += generated.llm_calls_used;
                             total_llm_tokens += generated.llm_tokens_used;
 
@@ -506,7 +514,10 @@ impl PlanningPipelineService for PlanningPipelineImpl {
         })
     }
 
-    async fn check_budget(&self, input: CheckBudgetInput) -> Result<CheckBudgetOutput, PlanningError> {
+    async fn check_budget(
+        &self,
+        input: CheckBudgetInput,
+    ) -> Result<CheckBudgetOutput, PlanningError> {
         Ok(self.phase_check_budget(&input))
     }
 
@@ -548,7 +559,9 @@ impl PlanningPipelineService for PlanningPipelineImpl {
         &self,
         input: ValidatePlanInput,
     ) -> Result<ValidatePlanOutput, PlanningError> {
-        let (errors, warnings) = self.phase_validate(&input.graph, &input.template_id).await?;
+        let (errors, warnings) = self
+            .phase_validate(&input.graph, &input.template_id)
+            .await?;
         let error_count = errors.len();
         let warning_count = warnings.len();
 
@@ -642,6 +655,9 @@ pub fn compute_planning_hash(
     hasher.update(intent_input.as_bytes());
 
     let hash_bytes = hasher.finalize();
-    let hash_hex = hash_bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+    let hash_hex = hash_bytes
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<String>();
     PlanningHash::new(hash_hex)
 }

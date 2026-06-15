@@ -140,7 +140,10 @@ mod tests {
 
     fn make_input(command: &str) -> ToolInput {
         let mut params = HashMap::new();
-        params.insert("command".to_string(), serde_json::Value::String(command.to_string()));
+        params.insert(
+            "command".to_string(),
+            serde_json::Value::String(command.to_string()),
+        );
         ToolInput::new(params)
     }
 
@@ -218,7 +221,11 @@ mod tests {
         let tool = GitReadTool::new(dir.path().to_str().unwrap());
         let result = tool.execute(&make_input("diff")).await.unwrap();
 
-        assert!(result.is_success(), "Git diff should succeed, got: {}", result.output);
+        assert!(
+            result.is_success(),
+            "Git diff should succeed, got: {}",
+            result.output
+        );
         // Output should contain a diff showing the modification
         assert!(!result.output.is_empty(), "Diff output should not be empty");
     }

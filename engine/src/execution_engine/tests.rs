@@ -14,18 +14,18 @@ use crate::execution_engine::application::dto::{
     AbortExecutionInput, EvaluateRetryInput, ExecuteGraphInput, ExecuteNodeInput,
     GetExecutionStateInput, PauseExecutionInput, ResumeExecutionInput,
 };
-use crate::execution_engine::application::service_impl::{
-    ParallelExecutionServiceImpl, RetryEvaluationServiceImpl,
-};
 use crate::execution_engine::application::service::{
     ParallelExecutionService, RetryEvaluationService,
 };
+use crate::execution_engine::application::service_impl::{
+    ParallelExecutionServiceImpl, RetryEvaluationServiceImpl,
+};
+use crate::execution_engine::domain::error::ExecutionError;
+use crate::execution_engine::domain::event::ExecutionEngineEvent;
 use crate::execution_engine::domain::{
     BackoffStrategy, ExecutionResult, FailureContext, NodeExecutionState, NodeStatus,
     ParallelExecutorConfig, RetryDecision, RetryPolicy, RetryStrategy, TaskResult,
 };
-use crate::execution_engine::domain::event::ExecutionEngineEvent;
-use crate::execution_engine::domain::error::ExecutionError;
 
 // ---------------------------------------------------------------------------
 // Helper: create a configured service pair
@@ -157,7 +157,10 @@ async fn test_get_execution_state_before_execution_returns_error() {
         .await
         .unwrap_err();
 
-    assert!(matches!(err, crate::execution_engine::domain::ExecutionError::NodeNotFound { .. }));
+    assert!(matches!(
+        err,
+        crate::execution_engine::domain::ExecutionError::NodeNotFound { .. }
+    ));
 }
 
 #[tokio::test]
@@ -317,7 +320,10 @@ async fn test_pause_nonexistent_execution() {
         .await
         .unwrap_err();
 
-    assert!(matches!(err, crate::execution_engine::domain::ExecutionError::NodeNotFound { .. }));
+    assert!(matches!(
+        err,
+        crate::execution_engine::domain::ExecutionError::NodeNotFound { .. }
+    ));
 }
 
 #[tokio::test]
@@ -333,7 +339,10 @@ async fn test_abort_nonexistent_execution() {
         .await
         .unwrap_err();
 
-    assert!(matches!(err, crate::execution_engine::domain::ExecutionError::NodeNotFound { .. }));
+    assert!(matches!(
+        err,
+        crate::execution_engine::domain::ExecutionError::NodeNotFound { .. }
+    ));
 }
 
 #[tokio::test]
@@ -351,7 +360,6 @@ async fn test_on_progress_callback() {
 
     // Create a node state to trigger notification
     let state = NodeExecutionState::new(node_id, "test-node");
-
 
     // Verify callback registered (not triggered since no session)
     // The callback mechanism is trigger-based; in a real execution it fires on completion
@@ -520,7 +528,9 @@ async fn test_retry_exhausted_with_fallback() {
 
     assert!(output.is_terminal);
     match output.decision {
-        RetryDecision::Fallback { fallback_node_id, .. } => {
+        RetryDecision::Fallback {
+            fallback_node_id, ..
+        } => {
             assert_eq!(fallback_node_id, fallback_id);
         }
         other => panic!("Expected Fallback decision, got: {:?}", other),
@@ -592,7 +602,9 @@ async fn test_retry_non_retriable_with_fallback() {
 
     assert!(output.is_terminal);
     match output.decision {
-        RetryDecision::Fallback { fallback_node_id, .. } => {
+        RetryDecision::Fallback {
+            fallback_node_id, ..
+        } => {
             assert_eq!(fallback_node_id, fallback_id);
         }
         other => panic!("Expected Fallback, got: {:?}", other),
@@ -613,14 +625,30 @@ async fn test_retry_strategy_escalation() {
     };
 
     // First failure → SameOperation
-    let ctx1 = FailureContext::new(node_id, "n", "tool", "intent", "transient", "err", 0, 4, 100, 100);
-    let output1 = service.evaluate_retry(EvaluateRetryInput {
-        failure_context: ctx1,
-        policy: policy.clone(),
-        fallback_node_id: None,
-    }).await.unwrap();
+    let ctx1 = FailureContext::new(
+        node_id,
+        "n",
+        "tool",
+        "intent",
+        "transient",
+        "err",
+        0,
+        4,
+        100,
+        100,
+    );
+    let output1 = service
+        .evaluate_retry(EvaluateRetryInput {
+            failure_context: ctx1,
+            policy: policy.clone(),
+            fallback_node_id: None,
+        })
+        .await
+        .unwrap();
     match output1.decision {
-        RetryDecision::Retry { strategy, attempt, .. } => {
+        RetryDecision::Retry {
+            strategy, attempt, ..
+        } => {
             assert_eq!(strategy, RetryStrategy::SameOperation);
             assert_eq!(attempt, 1);
         }
@@ -628,14 +656,30 @@ async fn test_retry_strategy_escalation() {
     }
 
     // Second failure → ExpandContext
-    let ctx2 = FailureContext::new(node_id, "n", "tool", "intent", "transient", "err", 1, 4, 100, 200);
-    let output2 = service.evaluate_retry(EvaluateRetryInput {
-        failure_context: ctx2,
-        policy: policy.clone(),
-        fallback_node_id: None,
-    }).await.unwrap();
+    let ctx2 = FailureContext::new(
+        node_id,
+        "n",
+        "tool",
+        "intent",
+        "transient",
+        "err",
+        1,
+        4,
+        100,
+        200,
+    );
+    let output2 = service
+        .evaluate_retry(EvaluateRetryInput {
+            failure_context: ctx2,
+            policy: policy.clone(),
+            fallback_node_id: None,
+        })
+        .await
+        .unwrap();
     match output2.decision {
-        RetryDecision::Retry { strategy, attempt, .. } => {
+        RetryDecision::Retry {
+            strategy, attempt, ..
+        } => {
             assert_eq!(strategy, RetryStrategy::ExpandContext);
             assert_eq!(attempt, 2);
         }
@@ -643,14 +687,30 @@ async fn test_retry_strategy_escalation() {
     }
 
     // Third failure → AlternateApproach
-    let ctx3 = FailureContext::new(node_id, "n", "tool", "intent", "transient", "err", 2, 4, 100, 300);
-    let output3 = service.evaluate_retry(EvaluateRetryInput {
-        failure_context: ctx3,
-        policy,
-        fallback_node_id: None,
-    }).await.unwrap();
+    let ctx3 = FailureContext::new(
+        node_id,
+        "n",
+        "tool",
+        "intent",
+        "transient",
+        "err",
+        2,
+        4,
+        100,
+        300,
+    );
+    let output3 = service
+        .evaluate_retry(EvaluateRetryInput {
+            failure_context: ctx3,
+            policy,
+            fallback_node_id: None,
+        })
+        .await
+        .unwrap();
     match output3.decision {
-        RetryDecision::Retry { strategy, attempt, .. } => {
+        RetryDecision::Retry {
+            strategy, attempt, ..
+        } => {
             assert_eq!(strategy, RetryStrategy::AlternateApproach);
             assert_eq!(attempt, 3);
         }
@@ -811,9 +871,7 @@ async fn test_retry_evaluation_factory_creates_service() {
 
     let node_id = Uuid::new_v4();
     let policy = RetryPolicy::default();
-    let ctx = FailureContext::new(
-        node_id, "n", "t", "i", "transient", "err", 0, 4, 100, 100,
-    );
+    let ctx = FailureContext::new(node_id, "n", "t", "i", "transient", "err", 0, 4, 100, 100);
 
     let output = service
         .evaluate_retry(EvaluateRetryInput {
@@ -1136,10 +1194,7 @@ async fn test_retry_with_skip_and_continue_strategy_index() {
 
     // Strategy 0 = SameOperation, Strategy 1 = SkipAndContinue
     let policy = RetryPolicy {
-        retry_strategies: vec![
-            RetryStrategy::SameOperation,
-            RetryStrategy::SkipAndContinue,
-        ],
+        retry_strategies: vec![RetryStrategy::SameOperation, RetryStrategy::SkipAndContinue],
         ..Default::default()
     };
 

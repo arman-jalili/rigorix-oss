@@ -35,8 +35,8 @@ use crate::execution_engine::domain::{
 };
 
 use super::dto::{
-    AbortExecutionInput, AbortExecutionOutput, ExecuteGraphInput, ExecuteGraphOutput,
-    ExecuteNodeInput, ExecuteNodeOutput, EvaluateRetryInput, EvaluateRetryOutput,
+    AbortExecutionInput, AbortExecutionOutput, EvaluateRetryInput, EvaluateRetryOutput,
+    ExecuteGraphInput, ExecuteGraphOutput, ExecuteNodeInput, ExecuteNodeOutput,
     GetExecutionStateInput, GetExecutionStateOutput, PauseExecutionInput, PauseExecutionOutput,
     ResumeExecutionInput, ResumeExecutionOutput,
 };
@@ -102,7 +102,13 @@ impl ParallelExecutionServiceImpl {
     /// Notify progress callbacks about a state change.
     /// Reserved for TUI progress reporting integration.
     #[allow(dead_code)]
-    fn notify_progress(&self, dag_id: Uuid, node_id: Uuid, state: &NodeExecutionState, total_nodes: u32) {
+    fn notify_progress(
+        &self,
+        dag_id: Uuid,
+        node_id: Uuid,
+        state: &NodeExecutionState,
+        total_nodes: u32,
+    ) {
         let callbacks = self.progress_callbacks.lock().unwrap();
         if callbacks.is_empty() {
             return;
@@ -112,9 +118,21 @@ impl ParallelExecutionServiceImpl {
         let (completed, failed, skipped) = {
             let sessions = self.sessions.lock().unwrap();
             if let Some(session) = sessions.get(&dag_id) {
-                let c = session.node_states.values().filter(|s| s.status == NodeStatus::Completed).count() as u32;
-                let f = session.node_states.values().filter(|s| s.status == NodeStatus::Failed).count() as u32;
-                let sk = session.node_states.values().filter(|s| s.status == NodeStatus::Skipped).count() as u32;
+                let c = session
+                    .node_states
+                    .values()
+                    .filter(|s| s.status == NodeStatus::Completed)
+                    .count() as u32;
+                let f = session
+                    .node_states
+                    .values()
+                    .filter(|s| s.status == NodeStatus::Failed)
+                    .count() as u32;
+                let sk = session
+                    .node_states
+                    .values()
+                    .filter(|s| s.status == NodeStatus::Skipped)
+                    .count() as u32;
                 (c, f, sk)
             } else {
                 (0, 0, 0)
@@ -144,13 +162,19 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         input: ExecuteGraphInput,
     ) -> Result<ExecuteGraphOutput, ExecutionError> {
         // Resolve config
-        let _config = input.config_override.clone().unwrap_or_else(|| self.config.clone());
+        let _config = input
+            .config_override
+            .clone()
+            .unwrap_or_else(|| self.config.clone());
 
         // Initialise session
         {
-            let mut sessions = self.sessions.lock().map_err(|e| ExecutionError::InternalError {
-                detail: format!("Lock error: {}", e),
-            })?;
+            let mut sessions = self
+                .sessions
+                .lock()
+                .map_err(|e| ExecutionError::InternalError {
+                    detail: format!("Lock error: {}", e),
+                })?;
 
             if sessions.contains_key(&input.dag_id) {
                 return Err(ExecutionError::InvalidState {
@@ -158,15 +182,18 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                 });
             }
 
-            sessions.insert(input.dag_id, ExecutionSession {
-                node_states: HashMap::new(),
-                in_flight: Vec::new(),
-                result: ExecutionResult::new(input.dag_id),
-                paused: false,
-                aborted: false,
-                total_retries: 0,
-                started_at: Utc::now(),
-            });
+            sessions.insert(
+                input.dag_id,
+                ExecutionSession {
+                    node_states: HashMap::new(),
+                    in_flight: Vec::new(),
+                    result: ExecutionResult::new(input.dag_id),
+                    paused: false,
+                    aborted: false,
+                    total_retries: 0,
+                    started_at: Utc::now(),
+                },
+            );
         }
 
         // The real implementation would:
@@ -221,7 +248,9 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         // This is the **inline retry loop** — not a separate retry wrapper.
         // Each retry can escalate the strategy per the RetryPolicy.
 
-        let policy = input.retry_policy.clone()
+        let policy = input
+            .retry_policy
+            .clone()
             .unwrap_or_else(|| self.config.default_retry_policy.clone());
         let max_attempts = policy.max_attempts;
         let node_id = input.node_id;
@@ -284,7 +313,8 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
             let failure_type = "transient".to_string();
             let error_message = format!(
                 "Execution failed on attempt {}/{}",
-                attempt + 1, max_attempts
+                attempt + 1,
+                max_attempts
             );
 
             let failure_context = FailureContext::new(
@@ -306,7 +336,8 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                 fallback_node_id: None,
             };
 
-            let retry_output = self.retry_service
+            let retry_output = self
+                .retry_service
                 .evaluate_retry(retry_input)
                 .await
                 .map_err(|e| ExecutionError::InternalError {
@@ -314,7 +345,12 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                 })?;
 
             match retry_output.decision {
-                RetryDecision::Retry { strategy, attempt: next, backoff_ms, .. } => {
+                RetryDecision::Retry {
+                    strategy,
+                    attempt: next,
+                    backoff_ms,
+                    ..
+                } => {
                     if backoff_ms > 0 {
                         tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
                     }
@@ -326,7 +362,9 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                     });
                     // Loop continues to next attempt
                 }
-                RetryDecision::Fallback { fallback_node_id, .. } => {
+                RetryDecision::Fallback {
+                    fallback_node_id, ..
+                } => {
                     let result = TaskResult::failure(
                         node_id,
                         format!("node-{}", node_id),
@@ -394,17 +432,34 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         &self,
         input: GetExecutionStateInput,
     ) -> Result<GetExecutionStateOutput, ExecutionError> {
-        let sessions = self.sessions.lock().map_err(|e| ExecutionError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let sessions = self
+            .sessions
+            .lock()
+            .map_err(|e| ExecutionError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
 
-        let session = sessions.get(&input.dag_id).ok_or_else(|| {
-            ExecutionError::NodeNotFound { node_id: input.dag_id }
-        })?;
+        let session = sessions
+            .get(&input.dag_id)
+            .ok_or_else(|| ExecutionError::NodeNotFound {
+                node_id: input.dag_id,
+            })?;
 
-        let completed = session.node_states.values().filter(|s| s.status == NodeStatus::Completed).count() as u32;
-        let failed = session.node_states.values().filter(|s| s.status == NodeStatus::Failed).count() as u32;
-        let skipped = session.node_states.values().filter(|s| s.status == NodeStatus::Skipped).count() as u32;
+        let completed = session
+            .node_states
+            .values()
+            .filter(|s| s.status == NodeStatus::Completed)
+            .count() as u32;
+        let failed = session
+            .node_states
+            .values()
+            .filter(|s| s.status == NodeStatus::Failed)
+            .count() as u32;
+        let skipped = session
+            .node_states
+            .values()
+            .filter(|s| s.status == NodeStatus::Skipped)
+            .count() as u32;
         let total = session.node_states.len() as u32;
         let is_complete = completed + failed + skipped >= total && total > 0;
 
@@ -425,13 +480,19 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         &self,
         input: PauseExecutionInput,
     ) -> Result<PauseExecutionOutput, ExecutionError> {
-        let mut sessions = self.sessions.lock().map_err(|e| ExecutionError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|e| ExecutionError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
 
-        let session = sessions.get_mut(&input.dag_id).ok_or_else(|| {
-            ExecutionError::NodeNotFound { node_id: input.dag_id }
-        })?;
+        let session =
+            sessions
+                .get_mut(&input.dag_id)
+                .ok_or_else(|| ExecutionError::NodeNotFound {
+                    node_id: input.dag_id,
+                })?;
 
         if session.paused {
             return Err(ExecutionError::InvalidState {
@@ -441,7 +502,11 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
 
         session.paused = true;
         let in_flight = session.in_flight.len() as u32;
-        let pending = session.node_states.values().filter(|s| s.status == NodeStatus::Ready || s.status == NodeStatus::Pending).count() as u32;
+        let pending = session
+            .node_states
+            .values()
+            .filter(|s| s.status == NodeStatus::Ready || s.status == NodeStatus::Pending)
+            .count() as u32;
 
         Ok(PauseExecutionOutput {
             dag_id: input.dag_id,
@@ -455,13 +520,19 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         &self,
         input: ResumeExecutionInput,
     ) -> Result<ResumeExecutionOutput, ExecutionError> {
-        let mut sessions = self.sessions.lock().map_err(|e| ExecutionError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|e| ExecutionError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
 
-        let session = sessions.get_mut(&input.dag_id).ok_or_else(|| {
-            ExecutionError::NodeNotFound { node_id: input.dag_id }
-        })?;
+        let session =
+            sessions
+                .get_mut(&input.dag_id)
+                .ok_or_else(|| ExecutionError::NodeNotFound {
+                    node_id: input.dag_id,
+                })?;
 
         if !session.paused {
             return Err(ExecutionError::InvalidState {
@@ -470,7 +541,11 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         }
 
         session.paused = false;
-        let ready = session.node_states.values().filter(|s| s.status == NodeStatus::Ready).count() as u32;
+        let ready = session
+            .node_states
+            .values()
+            .filter(|s| s.status == NodeStatus::Ready)
+            .count() as u32;
 
         Ok(ResumeExecutionOutput {
             dag_id: input.dag_id,
@@ -483,13 +558,19 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         &self,
         input: AbortExecutionInput,
     ) -> Result<AbortExecutionOutput, ExecutionError> {
-        let mut sessions = self.sessions.lock().map_err(|e| ExecutionError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|e| ExecutionError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
 
-        let session = sessions.get_mut(&input.dag_id).ok_or_else(|| {
-            ExecutionError::NodeNotFound { node_id: input.dag_id }
-        })?;
+        let session =
+            sessions
+                .get_mut(&input.dag_id)
+                .ok_or_else(|| ExecutionError::NodeNotFound {
+                    node_id: input.dag_id,
+                })?;
 
         if session.aborted {
             return Err(ExecutionError::InvalidState {
@@ -500,7 +581,11 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         session.aborted = true;
         // Mark all non-terminal nodes as skipped
         let mut skipped = 0u32;
-        let completed = session.node_states.values().filter(|s| s.status == NodeStatus::Completed).count() as u32;
+        let completed = session
+            .node_states
+            .values()
+            .filter(|s| s.status == NodeStatus::Completed)
+            .count() as u32;
 
         for state in session.node_states.values_mut() {
             if !state.is_terminal() {
@@ -577,18 +662,13 @@ impl RetryEvaluationService for RetryEvaluationServiceImpl {
         })
     }
 
-    async fn compute_backoff(
-        &self,
-        failure_context: &FailureContext,
-        policy: &RetryPolicy,
-    ) -> u64 {
-        policy.backoff_strategy.compute_delay_ms(failure_context.attempt)
+    async fn compute_backoff(&self, failure_context: &FailureContext, policy: &RetryPolicy) -> u64 {
+        policy
+            .backoff_strategy
+            .compute_delay_ms(failure_context.attempt)
     }
 
-    async fn validate_policy(
-        &self,
-        policy: &RetryPolicy,
-    ) -> Result<Vec<String>, ExecutionError> {
+    async fn validate_policy(&self, policy: &RetryPolicy) -> Result<Vec<String>, ExecutionError> {
         let mut errors = Vec::new();
 
         if policy.max_attempts == 0 {
@@ -621,11 +701,7 @@ impl RetryEvaluationService for RetryEvaluationServiceImpl {
         Ok(errors)
     }
 
-    async fn is_failure_retriable(
-        &self,
-        policy: &RetryPolicy,
-        failure_type: &str,
-    ) -> bool {
+    async fn is_failure_retriable(&self, policy: &RetryPolicy, failure_type: &str) -> bool {
         policy.is_failure_retriable(failure_type)
     }
 
@@ -709,7 +785,9 @@ impl RetryEvaluationService for RetryEvaluationServiceImpl {
         }
 
         // 5. Compute backoff
-        let backoff_ms = policy.backoff_strategy.compute_delay_ms(failure_context.attempt);
+        let backoff_ms = policy
+            .backoff_strategy
+            .compute_delay_ms(failure_context.attempt);
 
         RetryDecision::Retry {
             strategy,

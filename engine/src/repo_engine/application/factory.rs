@@ -142,10 +142,7 @@ pub trait IndexerFactory: Send + Sync {
     /// Get the indexer for a specific language.
     ///
     /// Returns `None` if the language is not supported.
-    async fn get_indexer(
-        &self,
-        language: &SourceLanguage,
-    ) -> Option<Box<dyn LanguageIndexer>>;
+    async fn get_indexer(&self, language: &SourceLanguage) -> Option<Box<dyn LanguageIndexer>>;
 }
 
 // ---------------------------------------------------------------------------

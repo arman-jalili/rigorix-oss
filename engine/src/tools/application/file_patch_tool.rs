@@ -75,9 +75,9 @@ impl FilePatchTool {
             ToolError::ExecutionFailed(format!("Cannot access path '{}': {}", path_str, e))
         })?;
 
-        let root_canonical = root.canonicalize().map_err(|_| {
-            ToolError::ExecutionFailed("Cannot resolve workspace root".to_string())
-        })?;
+        let root_canonical = root
+            .canonicalize()
+            .map_err(|_| ToolError::ExecutionFailed("Cannot resolve workspace root".to_string()))?;
 
         if !canonical.starts_with(&root_canonical) {
             return Err(ToolError::PathDenied(format!(
@@ -100,15 +100,16 @@ impl Tool for FilePatchTool {
         let path_str = input.require_string("path")?;
         let search = input.require_string("search")?;
         let insert = input.require_string("insert")?;
-        let before = input.get_string("before").map(|s| s == "true").unwrap_or(false);
+        let before = input
+            .get_string("before")
+            .map(|s| s == "true")
+            .unwrap_or(false);
 
         let resolved = self.resolve_path(&path_str)?;
 
-        let contents = tokio::fs::read_to_string(&resolved)
-            .await
-            .map_err(|e| {
-                ToolError::ExecutionFailed(format!("Failed to read file '{}': {}", path_str, e))
-            })?;
+        let contents = tokio::fs::read_to_string(&resolved).await.map_err(|e| {
+            ToolError::ExecutionFailed(format!("Failed to read file '{}': {}", path_str, e))
+        })?;
 
         // Find all occurrences of the search string
         let occurrences: Vec<_> = contents.match_indices(&search).collect();
@@ -136,11 +137,21 @@ impl Tool for FilePatchTool {
             match_pos + search.len()
         };
 
-        let new_contents = format!("{}{}{}", &contents[..insert_pos], insert, &contents[insert_pos..]);
+        let new_contents = format!(
+            "{}{}{}",
+            &contents[..insert_pos],
+            insert,
+            &contents[insert_pos..]
+        );
 
-        tokio::fs::write(&resolved, &new_contents).await.map_err(|e| {
-            ToolError::ExecutionFailed(format!("Failed to write patched file '{}': {}", path_str, e))
-        })?;
+        tokio::fs::write(&resolved, &new_contents)
+            .await
+            .map_err(|e| {
+                ToolError::ExecutionFailed(format!(
+                    "Failed to write patched file '{}': {}",
+                    path_str, e
+                ))
+            })?;
 
         let patched_len = insert.len();
         let result = ToolResult {
@@ -155,7 +166,12 @@ impl Tool for FilePatchTool {
             side_effects: vec![SideEffect::new(
                 &path_str,
                 "file_patch",
-                format!("Inserted {} bytes {} '{}'", patched_len, if before { "before" } else { "after" }, search),
+                format!(
+                    "Inserted {} bytes {} '{}'",
+                    patched_len,
+                    if before { "before" } else { "after" },
+                    search
+                ),
             )],
             duration_ms: 0,
             dry_run: false,
@@ -173,18 +189,39 @@ mod tests {
 
     fn make_input(path: &str, search: &str, insert: &str) -> ToolInput {
         let mut params = HashMap::new();
-        params.insert("path".to_string(), serde_json::Value::String(path.to_string()));
-        params.insert("search".to_string(), serde_json::Value::String(search.to_string()));
-        params.insert("insert".to_string(), serde_json::Value::String(insert.to_string()));
+        params.insert(
+            "path".to_string(),
+            serde_json::Value::String(path.to_string()),
+        );
+        params.insert(
+            "search".to_string(),
+            serde_json::Value::String(search.to_string()),
+        );
+        params.insert(
+            "insert".to_string(),
+            serde_json::Value::String(insert.to_string()),
+        );
         ToolInput::new(params)
     }
 
     fn make_input_with_before(path: &str, search: &str, insert: &str, before: bool) -> ToolInput {
         let mut params = HashMap::new();
-        params.insert("path".to_string(), serde_json::Value::String(path.to_string()));
-        params.insert("search".to_string(), serde_json::Value::String(search.to_string()));
-        params.insert("insert".to_string(), serde_json::Value::String(insert.to_string()));
-        params.insert("before".to_string(), serde_json::Value::String(before.to_string()));
+        params.insert(
+            "path".to_string(),
+            serde_json::Value::String(path.to_string()),
+        );
+        params.insert(
+            "search".to_string(),
+            serde_json::Value::String(search.to_string()),
+        );
+        params.insert(
+            "insert".to_string(),
+            serde_json::Value::String(insert.to_string()),
+        );
+        params.insert(
+            "before".to_string(),
+            serde_json::Value::String(before.to_string()),
+        );
         ToolInput::new(params)
     }
 
@@ -195,7 +232,10 @@ mod tests {
         std::fs::write(&file_path, "fn main() {\n}").unwrap();
 
         let tool = FilePatchTool::new(dir.path().to_str().unwrap());
-        let result = tool.execute(&make_input("test.rs", "{\n", "    println!(\"hi\");\n")).await.unwrap();
+        let result = tool
+            .execute(&make_input("test.rs", "{\n", "    println!(\"hi\");\n"))
+            .await
+            .unwrap();
 
         assert!(result.is_success());
         assert!(result.has_side_effects());
@@ -210,7 +250,15 @@ mod tests {
         std::fs::write(&file_path, "println!(\"world\");").unwrap();
 
         let tool = FilePatchTool::new(dir.path().to_str().unwrap());
-        let result = tool.execute(&make_input_with_before("test.rs", "println!(\"world\");", "println!(\"hello \");", true)).await.unwrap();
+        let result = tool
+            .execute(&make_input_with_before(
+                "test.rs",
+                "println!(\"world\");",
+                "println!(\"hello \");",
+                true,
+            ))
+            .await
+            .unwrap();
 
         assert!(result.is_success());
         let content = std::fs::read_to_string(&file_path).unwrap();
@@ -224,7 +272,9 @@ mod tests {
         std::fs::write(&file_path, "fn main() {}").unwrap();
 
         let tool = FilePatchTool::new(dir.path().to_str().unwrap());
-        let result = tool.execute(&make_input("test.rs", "nonexistent", "content")).await;
+        let result = tool
+            .execute(&make_input("test.rs", "nonexistent", "content"))
+            .await;
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), ToolError::ExecutionFailed(_)));
@@ -264,7 +314,9 @@ mod tests {
     async fn test_patch_path_traversal_denied() {
         let dir = TempDir::new().unwrap();
         let tool = FilePatchTool::new(dir.path().to_str().unwrap());
-        let result = tool.execute(&make_input("../outside.rs", "search", "insert")).await;
+        let result = tool
+            .execute(&make_input("../outside.rs", "search", "insert"))
+            .await;
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), ToolError::PathDenied(_)));

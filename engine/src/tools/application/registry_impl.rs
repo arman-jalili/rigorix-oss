@@ -47,7 +47,8 @@ impl ToolRegistryImpl {
 
     /// Create a ToolInfo from a registered tool entry.
     fn build_tool_info(name: &str, entry: &RegisteredTool) -> ToolInfo {
-        let risk_level = default_risk_level_for(name).unwrap_or(crate::risk_gating::domain::risk_level::RiskLevel::High);
+        let risk_level = default_risk_level_for(name)
+            .unwrap_or(crate::risk_gating::domain::risk_level::RiskLevel::High);
 
         ToolInfo {
             name: name.to_string(),
@@ -109,28 +110,28 @@ impl ToolRegistryService for ToolRegistryImpl {
         })
     }
 
-    async fn execute_tool(
-        &self,
-        input: ExecuteToolInput,
-    ) -> Result<ExecuteToolOutput, ToolError> {
+    async fn execute_tool(&self, input: ExecuteToolInput) -> Result<ExecuteToolOutput, ToolError> {
         let tool_name = input.tool_name.clone();
 
         // Look up the tool and extract risk level + tool Arc
         let (risk_level, tool_arc) = {
             let tools = self.tools.read().await;
 
-            tools.get(&tool_name).map(|entry| {
-                let risk_level = default_risk_level_for(&tool_name)
-                    .unwrap_or(crate::risk_gating::domain::risk_level::RiskLevel::High);
-                (risk_level, entry.tool.clone())
-            }).ok_or_else(|| {
-                let available: Vec<String> = tools.keys().cloned().collect();
-                ToolError::NotFound(format!(
-                    "Tool '{}' not found. Available: [{}]",
-                    tool_name,
-                    available.join(", ")
-                ))
-            })?
+            tools
+                .get(&tool_name)
+                .map(|entry| {
+                    let risk_level = default_risk_level_for(&tool_name)
+                        .unwrap_or(crate::risk_gating::domain::risk_level::RiskLevel::High);
+                    (risk_level, entry.tool.clone())
+                })
+                .ok_or_else(|| {
+                    let available: Vec<String> = tools.keys().cloned().collect();
+                    ToolError::NotFound(format!(
+                        "Tool '{}' not found. Available: [{}]",
+                        tool_name,
+                        available.join(", ")
+                    ))
+                })?
         };
 
         // Apply risk gating
@@ -221,11 +222,7 @@ impl ToolExecutionService for ToolRegistryImpl {
         tool.execute(&input).await
     }
 
-    async fn dry_run(
-        &self,
-        _tool: &dyn Tool,
-        _input: ToolInput,
-    ) -> Result<ToolResult, ToolError> {
+    async fn dry_run(&self, _tool: &dyn Tool, _input: ToolInput) -> Result<ToolResult, ToolError> {
         Ok(ToolResult {
             output: "[DRY RUN] Preview only, no side effects".to_string(),
             exit_code: 0,
@@ -239,10 +236,10 @@ impl ToolExecutionService for ToolRegistryImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tools::application::dto::ToolInput;
     use crate::tools::application::file_read_tool::FileReadTool;
     use crate::tools::application::file_write_tool::FileWriteTool;
     use crate::tools::application::run_command_tool::RunCommandTool;
-    use crate::tools::application::dto::ToolInput;
     use std::collections::HashMap;
     use tempfile::TempDir;
 
@@ -251,7 +248,10 @@ mod tests {
         let tool: Box<dyn Tool> = match name {
             "file-read" => Box::new(FileReadTool::new(dir.path().to_str().unwrap())),
             "file-write" => Box::new(FileWriteTool::new(dir.path().to_str().unwrap())),
-            "run-command" => Box::new(RunCommandTool::new(dir.path().to_str().unwrap(), vec!["echo"])),
+            "run-command" => Box::new(RunCommandTool::new(
+                dir.path().to_str().unwrap(),
+                vec!["echo"],
+            )),
             _ => panic!("Unknown test tool: {}", name),
         };
         (tool, dir)
