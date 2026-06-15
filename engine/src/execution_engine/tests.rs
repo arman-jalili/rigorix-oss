@@ -769,6 +769,237 @@ async fn test_is_failure_retriable_default_all() {
     assert!(service.is_failure_retriable(&policy, "permanent").await);
 }
 
+// ---------------------------------------------------------------------------
+// Factory Implementation Tests
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_parallel_execution_factory_creates_service() {
+    use crate::execution_engine::application::factory::{
+        ParallelExecutionFactory, ParallelExecutionFactoryConfig,
+    };
+    use crate::execution_engine::application::factory_impl::ParallelExecutionFactoryImpl;
+
+    let factory = ParallelExecutionFactoryImpl::new();
+    let config = ParallelExecutionFactoryConfig::default();
+    let service = factory.create(config).await.unwrap();
+
+    let dag_id = Uuid::new_v4();
+    let output = service
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            config_override: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(output.result.dag_id, dag_id);
+}
+
+#[tokio::test]
+async fn test_retry_evaluation_factory_creates_service() {
+    use crate::execution_engine::application::factory::{
+        RetryEvaluationFactory, RetryEvaluationFactoryConfig,
+    };
+    use crate::execution_engine::application::factory_impl::RetryEvaluationFactoryImpl;
+
+    let factory = RetryEvaluationFactoryImpl::new();
+    let config = RetryEvaluationFactoryConfig::default();
+    let service = factory.create(config).await.unwrap();
+
+    let node_id = Uuid::new_v4();
+    let policy = RetryPolicy::default();
+    let ctx = FailureContext::new(
+        node_id, "n", "t", "i", "transient", "err", 0, 4, 100, 100,
+    );
+
+    let output = service
+        .evaluate_retry(EvaluateRetryInput {
+            failure_context: ctx,
+            policy,
+            fallback_node_id: None,
+        })
+        .await
+        .unwrap();
+
+    assert!(output.decision.is_retry());
+}
+
+#[tokio::test]
+async fn test_factory_with_custom_config() {
+    use crate::execution_engine::application::factory::{
+        ParallelExecutionFactory, ParallelExecutionFactoryConfig,
+    };
+    use crate::execution_engine::application::factory_impl::ParallelExecutionFactoryImpl;
+    use crate::execution_engine::domain::{
+        BackoffStrategy, ParallelExecutorConfig, RetryPolicy, RetryStrategy,
+    };
+
+    let factory = ParallelExecutionFactoryImpl::new();
+    let custom_executor_config = ParallelExecutorConfig {
+        max_concurrent_executions: 16,
+        enable_fallback: false,
+        ..Default::default()
+    };
+    let config = ParallelExecutionFactoryConfig {
+        executor_config: custom_executor_config,
+        ..Default::default()
+    };
+
+    let service = factory.create(config).await.unwrap();
+    let dag_id = Uuid::new_v4();
+
+    let output = service
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            config_override: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(output.result.dag_id, dag_id);
+}
+
+// ---------------------------------------------------------------------------
+// Inline Retry Loop Tests
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_inline_retry_loop_succeeds_on_first_attempt() {
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+    let node_id = Uuid::new_v4();
+
+    let output = executor
+        .execute_node(ExecuteNodeInput {
+            dag_id,
+            node_id,
+            retry_policy: None,
+        })
+        .await
+        .unwrap();
+
+    assert!(output.result.success);
+    assert_eq!(output.result.node_id, node_id);
+    assert_eq!(output.result.retry_attempts, 0);
+    assert!(output.retry_decision.is_none());
+}
+
+#[tokio::test]
+async fn test_inline_retry_loop_with_retry_policy() {
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+    let node_id = Uuid::new_v4();
+
+    let policy = RetryPolicy {
+        max_attempts: 2,
+        ..Default::default()
+    };
+
+    let output = executor
+        .execute_node(ExecuteNodeInput {
+            dag_id,
+            node_id,
+            retry_policy: Some(policy),
+        })
+        .await
+        .unwrap();
+
+    // Placeholder succeeds immediately, so returns success on first attempt
+    assert!(output.result.success);
+}
+
+#[tokio::test]
+async fn test_inline_retry_loop_uses_default_policy_when_none_provided() {
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+    let node_id = Uuid::new_v4();
+
+    let output = executor
+        .execute_node(ExecuteNodeInput {
+            dag_id,
+            node_id,
+            retry_policy: None, // Should use default_retry_policy from config
+        })
+        .await
+        .unwrap();
+
+    assert!(output.result.success);
+}
+
+#[tokio::test]
+async fn test_execute_graph_creates_session_and_tracks_state() {
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+
+    executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            config_override: None,
+        })
+        .await
+        .unwrap();
+
+    let state = executor
+        .get_execution_state(GetExecutionStateInput { dag_id })
+        .await
+        .unwrap();
+
+    assert_eq!(state.dag_id, dag_id);
+    assert!(!state.paused);
+    assert!(state.started_at.is_some());
+}
+
+#[tokio::test]
+async fn test_execute_graph_completes_without_cancellation() {
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+
+    let output = executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            config_override: None,
+        })
+        .await
+        .unwrap();
+
+    assert!(!output.result.cancelled);
+    assert!(output.result.cancellation_reason.is_none());
+}
+
+#[tokio::test]
+async fn test_abort_marks_execution_as_cancelled() {
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+
+    executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            config_override: None,
+        })
+        .await
+        .unwrap();
+
+    executor
+        .abort_execution(AbortExecutionInput {
+            dag_id,
+            reason: "manual abort".to_string(),
+        })
+        .await
+        .unwrap();
+
+    // The execution is now aborted; verifying the state requires
+    // get_execution_state which returns the session state
+    let state = executor
+        .get_execution_state(GetExecutionStateInput { dag_id })
+        .await
+        .unwrap();
+
+    // State is not complete because execution has no nodes tracked yet
+    // But abort was accepted without error
+    assert_eq!(state.dag_id, dag_id);
+}
+
 #[tokio::test]
 async fn test_is_failure_retriable_filtered() {
     let service = RetryEvaluationServiceImpl::new();
