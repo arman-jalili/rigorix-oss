@@ -703,4 +703,67 @@ mod tests {
         let deserialized: GeneratedTemplate = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.suggested_id, "test");
     }
+
+    // -- ClaudeTemplateGenerator unit tests (L-04) --
+
+    #[test]
+    fn test_strip_code_fences_with_markdown_json() {
+        let input = "```json\n{\"name\": \"test\"}\n```";
+        let result = ClaudeTemplateGenerator::strip_code_fences(input);
+        assert_eq!(result, "{\"name\": \"test\"}");
+    }
+
+    #[test]
+    fn test_parse_api_response_valid_anthropic_format() {
+        let input = r#"{"content": [{"type": "text", "text": "template: {\"name\": \"test\"}"}]}"#;
+        let result = ClaudeTemplateGenerator::parse_api_response(input);
+        assert!(result.is_ok(), "Should parse valid Anthropic response");
+        assert!(result.unwrap().contains("template:"));
+    }
+
+    #[test]
+    fn test_parse_api_response_invalid_json() {
+        let result = ClaudeTemplateGenerator::parse_api_response("not json");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_api_response_missing_content() {
+        let input = r#"{"content": []}"#;
+        let result = ClaudeTemplateGenerator::parse_api_response(input);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_build_system_prompt_contains_context() {
+        let config = ClaudeGeneratorConfig::default();
+        let generator = ClaudeTemplateGenerator::new("test-key".to_string(), Some(config));
+        let ctx = RepoContext {
+            root_dir: std::path::PathBuf::from("/test"),
+            project_type: "rust".to_string(),
+            directory_tree: vec!["src/".to_string()],
+            dependencies: vec!["tokio".to_string()],
+            public_api: vec!["pub fn run()".to_string()],
+            symbol_graph_snapshot: None,
+        };
+        let prompt = generator.build_system_prompt(&ctx);
+        assert!(prompt.contains("rust"), "Prompt should mention project type");
+        assert!(prompt.contains("tokio"), "Prompt should mention dependencies");
+        assert!(
+            prompt.contains("pub fn run()"),
+            "Prompt should mention public API"
+        );
+    }
+
+    #[test]
+    fn test_build_user_message_contains_intent() {
+        let config = ClaudeGeneratorConfig::default();
+        let generator = ClaudeTemplateGenerator::new("test-key".to_string(), Some(config));
+        let intent = crate::planning::domain::intent::UserIntent::new(
+            "read the file".to_string(),
+            None,
+        );
+        let message = generator.build_user_message(&intent);
+        assert!(message.contains("read the file"));
+    }
 }
