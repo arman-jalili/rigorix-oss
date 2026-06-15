@@ -20,6 +20,7 @@ impl SecretFactoryImpl {
 }
 
 impl Default for SecretFactoryImpl {
+    #[tracing::instrument(skip_all)]
     fn default() -> Self {
         Self::new()
     }
@@ -27,6 +28,7 @@ impl Default for SecretFactoryImpl {
 
 #[async_trait]
 impl SecretFactory for SecretFactoryImpl {
+    #[tracing::instrument(skip_all)]
     async fn load_from_env(&self, env_var: &str, fallback: Option<String>) -> Option<Secret> {
         match std::env::var(env_var) {
             Ok(value) => {
@@ -40,6 +42,7 @@ impl SecretFactory for SecretFactoryImpl {
         }
     }
 
+    #[tracing::instrument(skip_all)]
     fn create_from_value(&self, value: &str) -> Secret {
         Secret::new(value)
     }

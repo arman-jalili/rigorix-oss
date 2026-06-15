@@ -27,6 +27,7 @@ impl ConfigFactoryImpl {
 }
 
 impl Default for ConfigFactoryImpl {
+    #[tracing::instrument(skip_all)]
     fn default() -> Self {
         Self::new()
     }
@@ -34,6 +35,7 @@ impl Default for ConfigFactoryImpl {
 
 #[async_trait]
 impl ConfigFactory for ConfigFactoryImpl {
+    #[tracing::instrument(skip_all)]
     async fn build_from_toml(&self, toml_content: &str) -> Result<ConfigDto, ConfigurationError> {
         // Deserialize into a raw ConfigDto via serde
         // We use a generous schema that accepts partial configs
@@ -81,6 +83,7 @@ impl ConfigFactory for ConfigFactoryImpl {
         Ok(config)
     }
 
+    #[tracing::instrument(skip_all)]
     fn defaults(&self) -> ConfigDto {
         ConfigDto {
             orchestrator: OrchestratorConfig::default(),
@@ -106,6 +109,7 @@ impl ConfigFactory for ConfigFactoryImpl {
 }
 
 /// Merge a partial serde JSON value into a defaults ConfigDto.
+#[tracing::instrument(skip_all)]
 fn merge_into_defaults(raw: serde_json::Value, mut defaults: ConfigDto) -> ConfigDto {
     if let Some(obj) = raw.as_object() {
         if let Some(orchestrator) = obj.get("orchestrator").and_then(|v| v.as_object()) {
@@ -227,6 +231,7 @@ fn merge_into_defaults(raw: serde_json::Value, mut defaults: ConfigDto) -> Confi
 
 /// Apply a single deep override like `orchestrator.max_parallel_tasks=8`
 /// or `orchestrator__max_parallel_tasks=8` to a ConfigDto.
+#[tracing::instrument(skip_all)]
 fn apply_deep_override(config: &mut ConfigDto, key: &str, value: &str) {
     // Support both `.` and `__` as separators
     let separator = if key.contains('.') { "." } else { "__" };

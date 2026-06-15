@@ -67,6 +67,7 @@ impl SymbolGraphServiceImpl {
 }
 
 impl Default for SymbolGraphServiceImpl {
+    #[tracing::instrument(skip_all)]
     fn default() -> Self {
         Self::new()
     }
@@ -74,6 +75,7 @@ impl Default for SymbolGraphServiceImpl {
 
 #[async_trait]
 impl SymbolGraphService for SymbolGraphServiceImpl {
+    #[tracing::instrument(skip_all)]
     async fn add_symbol(&self, input: AddSymbolInput) -> Result<AddSymbolOutput, RepoEngineError> {
         let def = SymbolDefinition::new(
             input.name.clone(),
@@ -196,6 +198,7 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn remove_symbol(&self, name: &str) -> Result<bool, RepoEngineError> {
         let mut graph = self.graph.write().map_err(|e| RepoEngineError::Internal {
             detail: format!("RwLock poisoned: {}", e),
@@ -217,6 +220,7 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
         Ok(graph.remove(name))
     }
 
+    #[tracing::instrument(skip_all)]
     async fn clear_graph(&self) -> Result<(), RepoEngineError> {
         let mut graph = self.graph.write().map_err(|e| RepoEngineError::Internal {
             detail: format!("RwLock poisoned: {}", e),
@@ -270,6 +274,7 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn add_reference(&self, from: &str, to: &str) -> Result<bool, RepoEngineError> {
         let mut graph = self.graph.write().map_err(|e| RepoEngineError::Internal {
             detail: format!("RwLock poisoned: {}", e),
@@ -302,6 +307,7 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
         Ok(graph.add_reference(from, to))
     }
 
+    #[tracing::instrument(skip_all)]
     fn graph(&self) -> &SymbolGraph {
         // This method is intentionally limited — the RwLock prevents returning
         // a reference to the inner graph. Implementations requiring direct access
@@ -342,6 +348,7 @@ mod tests {
     use crate::repo_engine::application::dto::GraphStatsInput;
     use crate::repo_engine::domain::SymbolKind;
 
+    #[tracing::instrument(skip_all)]
     fn sample_add_input(name: &str) -> AddSymbolInput {
         create_test_symbol(name, SymbolKind::Function, "src/lib.rs", 10)
     }

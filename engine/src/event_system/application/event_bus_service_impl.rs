@@ -70,11 +70,13 @@ impl EventBusServiceImpl {
     }
 
     /// Get the next monotonic sequence number.
+    #[tracing::instrument(skip_all)]
     fn next_sequence(&self) -> u64 {
         self.sequence.fetch_add(1, Ordering::SeqCst) + 1
     }
 
     /// Get the current sequence number without incrementing.
+    #[tracing::instrument(skip_all)]
     fn current_sequence(&self) -> u64 {
         self.sequence.load(Ordering::SeqCst)
     }
@@ -82,6 +84,7 @@ impl EventBusServiceImpl {
     /// Subscribe to the broadcast channel without registering a named subscriber.
     ///
     /// Returns a receiver and the count of active subscribers.
+    #[tracing::instrument(skip_all)]
     fn raw_subscribe(&self) -> (broadcast::Receiver<ExecutionEvent>, usize) {
         let rx = self.sender.subscribe();
         let count = self.sender.receiver_count();
@@ -125,6 +128,7 @@ impl EventBusService for EventBusServiceImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn subscribe(&self, input: SubscribeInput) -> Result<SubscribeOutput, EventSystemError> {
         let subscriber_name = input
             .subscriber_name
@@ -305,6 +309,7 @@ impl EventBusService for EventBusServiceImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn event_count(&self) -> Result<EventCountOutput, EventSystemError> {
         let buffer = self.persisted.lock().await;
         Ok(EventCountOutput {
@@ -321,6 +326,7 @@ mod tests {
     use chrono::Utc;
 
     // Helper to create a sample event for testing
+    #[tracing::instrument(skip_all)]
     fn sample_event(execution_id: uuid::Uuid) -> ExecutionEvent {
         ExecutionEvent::NodeStarted {
             execution_id,
@@ -330,6 +336,7 @@ mod tests {
         }
     }
 
+    #[tracing::instrument(skip_all)]
     fn sample_event_completed(execution_id: uuid::Uuid) -> ExecutionEvent {
         ExecutionEvent::ExecutionCompleted {
             execution_id,

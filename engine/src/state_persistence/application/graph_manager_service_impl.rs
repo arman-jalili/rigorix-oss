@@ -30,6 +30,7 @@ impl FileSystemGraphManager {
 
 #[async_trait]
 impl GraphManagerService for FileSystemGraphManager {
+    #[tracing::instrument(skip_all)]
     async fn save_graph(&self, graph: &ExecutionSummary) -> Result<(), StateError> {
         // Build an ExecutionGraph from the summary data.
         // Use execution_id as graph_id for direct lookup by execution ID.
@@ -47,6 +48,7 @@ impl GraphManagerService for FileSystemGraphManager {
         self.repository.save_graph(&exec_graph).await
     }
 
+    #[tracing::instrument(skip_all)]
     async fn load_graph(&self, graph_id: Uuid) -> Result<ExecutionSummary, StateError> {
         let graph = self.repository.load_graph(graph_id).await?;
         Ok(ExecutionSummary {
@@ -63,6 +65,7 @@ impl GraphManagerService for FileSystemGraphManager {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn list_graphs(&self, limit: u32) -> Result<ListExecutionsOutput, StateError> {
         let ids = self.repository.list_graphs(limit, 0).await?;
         let total_count = self.repository.count().await? as u32;
@@ -93,6 +96,7 @@ impl GraphManagerService for FileSystemGraphManager {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn delete_graph(&self, graph_id: Uuid) -> Result<(), StateError> {
         self.repository.delete_graph(graph_id).await
     }
@@ -107,6 +111,7 @@ mod tests {
     use crate::state_persistence::domain::ExecutionStatus;
     use crate::state_persistence::infrastructure::FileSystemGraphRepository;
 
+    #[tracing::instrument(skip_all)]
     async fn create_manager() -> (FileSystemGraphManager, TempDir) {
         let dir = TempDir::new().unwrap();
         let repo = FileSystemGraphRepository::new(dir.path().to_path_buf())
@@ -116,6 +121,7 @@ mod tests {
         (manager, dir)
     }
 
+    #[tracing::instrument(skip_all)]
     fn create_summary(execution_id: Uuid) -> ExecutionSummary {
         ExecutionSummary {
             execution_id,

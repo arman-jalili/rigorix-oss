@@ -40,6 +40,7 @@ impl FailureMappingServiceImpl {
 }
 
 impl Default for FailureMappingServiceImpl {
+    #[tracing::instrument(skip_all)]
     fn default() -> Self {
         Self::new()
     }

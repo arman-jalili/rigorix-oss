@@ -47,6 +47,7 @@ impl FileReadTool {
     /// For read operations, the file must exist (canonicalize succeeds).
     /// For path traversal detection, we check the path before canonicalization
     /// using the normalized form.
+    #[tracing::instrument(skip_all)]
     fn resolve_path(&self, path_str: &str) -> Result<std::path::PathBuf, ToolError> {
         let root = Path::new(&self.workspace_root);
 
@@ -100,10 +101,12 @@ impl FileReadTool {
 
 #[async_trait]
 impl Tool for FileReadTool {
+    #[tracing::instrument(skip_all)]
     fn name(&self) -> &str {
         "file-read"
     }
 
+    #[tracing::instrument(skip_all)]
     async fn execute(&self, input: &ToolInput) -> Result<ToolResult, ToolError> {
         let path_str = input.require_string("path")?;
         let resolved = self.resolve_path(&path_str)?;
@@ -122,6 +125,7 @@ mod tests {
     use std::collections::HashMap;
     use tempfile::TempDir;
 
+    #[tracing::instrument(skip_all)]
     fn make_input(path: &str) -> ToolInput {
         let mut params = HashMap::new();
         params.insert(
