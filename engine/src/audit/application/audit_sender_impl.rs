@@ -71,6 +71,7 @@ impl AuditSenderImpl {
     }
 
     /// Compute the next backoff delay with jitter.
+    #[tracing::instrument(skip_all)]
     fn backoff_delay(attempt: u32, base_secs: u64, max_secs: u64) -> tokio::time::Duration {
         let base = base_secs * 2u64.pow(attempt.saturating_sub(1));
         let delay = base.min(max_secs);
@@ -82,6 +83,7 @@ impl AuditSenderImpl {
 
 #[async_trait]
 impl AuditSender for AuditSenderImpl {
+    #[tracing::instrument(skip_all)]
     async fn send(&self, input: SendEnvelopeInput) -> Result<SendEnvelopeOutput, AuditError> {
         let backend_url = input
             .backend_url
@@ -231,6 +233,7 @@ mod tests {
     use crate::audit::application::circuit_breaker_impl::CircuitBreakerImpl;
     use crate::audit::domain::{EventStatus, ExecutionEventRef};
 
+    #[tracing::instrument(skip_all)]
     fn sample_envelope() -> crate::audit::domain::AuditEnvelope {
         crate::audit::domain::AuditEnvelope {
             execution_id: uuid::Uuid::new_v4(),

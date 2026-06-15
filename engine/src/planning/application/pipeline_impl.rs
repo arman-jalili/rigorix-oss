@@ -107,6 +107,7 @@ impl PlanningPipelineImpl {
     ///
     /// For the implementation, we check that we have sufficient budget
     /// capacity. The actual budget tracking is done by the budget_tracking module.
+    #[tracing::instrument(skip_all)]
     fn phase_check_budget(&self, _input: &CheckBudgetInput) -> CheckBudgetOutput {
         // In a full implementation, this would query the LlmBudget
         // For now, we assume budget is available (passed pre-check)
@@ -226,6 +227,7 @@ impl PlanningPipelineImpl {
     }
 
     /// Generate a clarification question when confidence is ambiguous.
+    #[tracing::instrument(skip_all)]
     fn generate_clarification_question(classification: &ClassificationResult) -> String {
         if classification.alternatives.is_empty() {
             return "Could you provide more details about what you'd like to do?".to_string();
@@ -253,6 +255,7 @@ impl PlanningPipelineImpl {
 
 #[async_trait]
 impl PlanningPipelineService for PlanningPipelineImpl {
+    #[tracing::instrument(skip_all)]
     async fn plan(&self, input: PlanInput) -> Result<PlanOutput, PlanningError> {
         // Phase 1: Budget pre-check
         let budget_input = CheckBudgetInput {
@@ -592,6 +595,7 @@ impl PlanningPipelineService for PlanningPipelineImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn available_templates(&self) -> Result<AvailableTemplatesOutput, PlanningError> {
         let templates = self.template_service.list_templates().await.map_err(|e| {
             PlanningError::TemplateEngineError {
@@ -619,6 +623,7 @@ impl PlanningPipelineService for PlanningPipelineImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     fn execution_id(&self) -> Uuid {
         self.execution_id
     }

@@ -160,6 +160,7 @@ impl AuditService for AuditServiceImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn retry_pending(&self) -> Result<RetryPendingOutput, AuditError> {
         let mut delivered = 0u32;
         let mut still_pending = 0u32;
@@ -195,6 +196,7 @@ impl AuditService for AuditServiceImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn status(&self) -> Result<AuditStatusOutput, AuditError> {
         let pending_count = self.queue.len().await?;
         Ok(AuditStatusOutput {
@@ -210,6 +212,7 @@ mod tests {
     use super::*;
     use crate::audit::domain::{EventStatus, ExecutionEventRef};
 
+    #[tracing::instrument(skip_all)]
     fn sample_input() -> BuildEnvelopeInput {
         BuildEnvelopeInput {
             execution_id: uuid::Uuid::new_v4(),

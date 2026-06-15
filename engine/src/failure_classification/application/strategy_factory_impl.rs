@@ -53,18 +53,22 @@ impl StrategyFactory for StrategyFactoryImpl {
         Ok(RetryStrategy::ExpandContext { level })
     }
 
+    #[tracing::instrument(skip_all)]
     fn create_same_operation(&self) -> RetryStrategy {
         RetryStrategy::SameOperation
     }
 
+    #[tracing::instrument(skip_all)]
     fn create_re_execute(&self) -> RetryStrategy {
         RetryStrategy::ReExecute
     }
 
+    #[tracing::instrument(skip_all)]
     fn create_fallback(&self) -> RetryStrategy {
         RetryStrategy::Fallback
     }
 
+    #[tracing::instrument(skip_all)]
     fn build_default_mapping(&self) -> HashMap<FailureType, RetryStrategy> {
         let mut map = HashMap::new();
         map.insert(FailureType::Transient, RetryStrategy::SameOperation);

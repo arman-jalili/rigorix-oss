@@ -64,6 +64,7 @@ impl TemplateEngineImpl {
 }
 
 impl Default for TemplateEngineImpl {
+    #[tracing::instrument(skip_all)]
     fn default() -> Self {
         Self::new()
     }
@@ -71,6 +72,7 @@ impl Default for TemplateEngineImpl {
 
 #[async_trait]
 impl TemplateEngineService for TemplateEngineImpl {
+    #[tracing::instrument(skip_all)]
     async fn register(&self, input: RegisterInput) -> Result<RegisterOutput, TemplateError> {
         let mut templates = self.templates.write().expect("lock poisoned");
         let id = input.template.id.clone();
@@ -100,6 +102,7 @@ impl TemplateEngineService for TemplateEngineImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn generate(&self, input: GenerateInput) -> Result<GenerateOutput, TemplateError> {
         let templates = self.templates.read().expect("lock poisoned");
         let entry = templates.get(&input.template_id).ok_or_else(|| {
@@ -195,6 +198,7 @@ impl TemplateEngineService for TemplateEngineImpl {
             }))
     }
 
+    #[tracing::instrument(skip_all)]
     async fn list_templates(&self) -> Result<ListTemplatesOutput, TemplateError> {
         let templates = self.templates.read().expect("lock poisoned");
         let summaries: Vec<TemplateSummary> = templates
@@ -220,11 +224,13 @@ impl TemplateEngineService for TemplateEngineImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn has_template(&self, template_id: &str) -> bool {
         let templates = self.templates.read().expect("lock poisoned");
         templates.contains_key(template_id)
     }
 
+    #[tracing::instrument(skip_all)]
     async fn template_count(&self) -> usize {
         let templates = self.templates.read().expect("lock poisoned");
         templates.len()
@@ -401,6 +407,7 @@ mod tests {
     use crate::templates::domain::{TemplateAction, TemplateNode};
     use uuid::Uuid;
 
+    #[tracing::instrument(skip_all)]
     fn create_test_template(id: &str, name: &str) -> Template {
         Template {
             id: id.to_string(),

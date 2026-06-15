@@ -111,6 +111,7 @@ impl CancellationManagerImpl {
 }
 
 impl Default for CancellationManagerImpl {
+    #[tracing::instrument(skip_all)]
     fn default() -> Self {
         Self::new(30) // Default 30-second graceful timeout
     }
@@ -237,14 +238,17 @@ impl CancellationService for CancellationManagerImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     fn is_cancelled(&self) -> bool {
         self.cancelled.load(Ordering::SeqCst) || self.token.is_cancelled()
     }
 
+    #[tracing::instrument(skip_all)]
     fn current_signal(&self) -> Option<ShutdownSignal> {
         self.signal_rx.borrow().clone()
     }
 
+    #[tracing::instrument(skip_all)]
     async fn status(&self) -> ShutdownStatusOutput {
         let elapsed = self.request_time.lock().await;
         ShutdownStatusOutput {
@@ -259,6 +263,7 @@ impl CancellationService for CancellationManagerImpl {
         }
     }
 
+    #[tracing::instrument(skip_all)]
     fn subscribe(&self) -> watch::Receiver<ShutdownSignal> {
         // Create a bridging channel that flattens Option<ShutdownSignal> -> ShutdownSignal
         let (tx, rx) = watch::channel(ShutdownSignal::Graceful);
@@ -280,6 +285,7 @@ impl CancellationService for CancellationManagerImpl {
         rx
     }
 
+    #[tracing::instrument(skip_all)]
     fn cancellation_token(&self) -> CancellationToken {
         self.token.clone()
     }
@@ -311,6 +317,7 @@ impl CancellationManagerImpl {
     }
 
     /// Run all registered cleanup handlers.
+    #[tracing::instrument(skip_all)]
     async fn run_cleanup(&self) -> bool {
         let handlers = self.cleanup_handlers.read().await;
         let mut all_ok = true;
@@ -327,6 +334,7 @@ impl CancellationManagerImpl {
 mod tests {
     use super::*;
 
+    #[tracing::instrument(skip_all)]
     fn create_manager() -> CancellationManagerImpl {
         CancellationManagerImpl::new(5)
     }
@@ -622,11 +630,13 @@ mod tests {
 
         #[async_trait]
         impl CleanupHandler for TestCleanup {
+            #[tracing::instrument(skip_all)]
             async fn cleanup(&self, _task_id: &str) -> Result<(), CancellationError> {
                 self.flag.store(true, std::sync::atomic::Ordering::SeqCst);
                 Ok(())
             }
 
+            #[tracing::instrument(skip_all)]
             async fn release(&self, _task_id: &str) -> Result<(), CancellationError> {
                 Ok(())
             }

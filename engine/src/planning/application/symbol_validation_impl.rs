@@ -54,6 +54,7 @@ impl SymbolValidationServiceImpl {
     }
 
     /// Check if a given name looks like a type reference (PascalCase or ALL_CAPS).
+    #[tracing::instrument(skip_all)]
     fn looks_like_type(name: &str) -> bool {
         if name.is_empty() {
             return false;
@@ -66,6 +67,7 @@ impl SymbolValidationServiceImpl {
     }
 
     /// Check if a name looks like a keyword or built-in path.
+    #[tracing::instrument(skip_all)]
     fn is_reserved_name(name: &str) -> bool {
         matches!(
             name,
@@ -230,6 +232,7 @@ impl SymbolValidationService for SymbolValidationServiceImpl {
         Ok(refs.into_iter().collect())
     }
 
+    #[tracing::instrument(skip_all)]
     async fn get_symbol_graph_snapshot(&self) -> Result<serde_json::Value, PlanningError> {
         use crate::repo_engine::application::dto::GraphStatsInput;
 
@@ -249,6 +252,7 @@ impl SymbolValidationService for SymbolValidationServiceImpl {
         }))
     }
 
+    #[tracing::instrument(skip_all)]
     async fn symbol_exists(&self, name: &str) -> Result<bool, PlanningError> {
         use crate::repo_engine::application::dto::LookupSymbolInput;
 
@@ -275,6 +279,7 @@ impl SymbolValidationService for SymbolValidationServiceImpl {
 
 impl SymbolValidationServiceImpl {
     /// Recursively extract PascalCase words from a JSON value's string fields.
+    #[tracing::instrument(skip_all)]
     fn extract_strings_from_json(value: &serde_json::Value, refs: &mut BTreeSet<String>) {
         match value {
             serde_json::Value::String(s) => {
@@ -301,6 +306,7 @@ impl SymbolValidationServiceImpl {
     /// - ALL_CAPS words (constants like "MAX_SIZE")
     /// - "any" keyword (LLM escape hatch)
     /// - Dotted names (field accesses like "obj.field")
+    #[tracing::instrument(skip_all)]
     fn extract_pascal_case_words(text: &str, refs: &mut BTreeSet<String>) {
         let mut current_word = String::new();
         for ch in text.chars() {

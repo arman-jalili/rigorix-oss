@@ -46,6 +46,7 @@ impl FileSystemStateManager {
 
 #[async_trait]
 impl StateManagerService for FileSystemStateManager {
+    #[tracing::instrument(skip_all)]
     async fn save_state(&self, input: SaveStateInput) -> Result<SaveStateOutput, StateError> {
         let state = input.state;
         let execution_id = state.execution_id;
@@ -62,6 +63,7 @@ impl StateManagerService for FileSystemStateManager {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn load_state(&self, input: LoadStateInput) -> Result<LoadStateOutput, StateError> {
         let state = self.repository.load(input.execution_id).await?;
 
@@ -162,6 +164,7 @@ impl StateManagerService for FileSystemStateManager {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn delete_state(&self, execution_id: Uuid) -> Result<(), StateError> {
         self.repository.delete(execution_id).await
     }
@@ -176,6 +179,7 @@ mod tests {
     use crate::state_persistence::domain::{ExecutionState, ExecutionStatus, NodeStatus};
     use crate::state_persistence::infrastructure::FileSystemStateRepository;
 
+    #[tracing::instrument(skip_all)]
     async fn create_manager() -> (FileSystemStateManager, TempDir) {
         let dir = TempDir::new().unwrap();
         let repo = FileSystemStateRepository::new(dir.path().to_path_buf())
@@ -185,6 +189,7 @@ mod tests {
         (manager, dir)
     }
 
+    #[tracing::instrument(skip_all)]
     fn create_save_input(execution_id: Uuid, _status: ExecutionStatus) -> SaveStateInput {
         let state = ExecutionState::new(execution_id, "hash_123".to_string());
         SaveStateInput { state }
