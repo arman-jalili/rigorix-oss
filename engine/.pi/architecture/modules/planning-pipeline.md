@@ -29,12 +29,12 @@ Orchestrates the LLM-based planning flow from user intent to validated plan. Pha
 | PlanningPipelineFactoryImpl | `application/pipeline_factory_impl.rs` | Pipeline construction implementation | #factory |
 | CompositeValidator (trait) | `application/factory.rs` | Optional plan validation | #validator |
 | Classifier (trait) | `domain/classification.rs` | LLM-based intent classification | #classifier |
-| ClaudeClassifier | `domain/claude_classifier.rs` | Anthropic Messages API implementation | #claude |
-| OpenaiClassifier | `domain/openai_classifier.rs` | OpenAI-compatible API implementation | #openai |
-| MockClassifier | `domain/mock_classifier.rs` | Test double for offline/CI mode | #mock |
+| ClaudeClassifier | `infrastructure/claude_classifier.rs` | Anthropic Messages API implementation | #claude |
+| OpenaiClassifier | `infrastructure/openai_classifier.rs` | OpenAI-compatible API implementation | #openai |
+| MockClassifier | `infrastructure/mock_classifier.rs` | Test double for offline/CI mode | #mock |
 | ParameterExtractor (trait) | `domain/extractor.rs` | LLM-based parameter extraction | #extractor |
-| MockParameterExtractor | `domain/mock_extractor.rs` | Test double for parameter extraction | #extractor |
-| TemplateGenerator (trait) | `domain/generator.rs` | Fallback template generation | #generator |
+| MockParameterExtractor | `infrastructure/mock_extractor.rs` | Test double for parameter extraction | #extractor |
+| TemplateGenerator (trait) | `../template_generation/domain/generator.rs` | Fallback template generation | #generator |
 | PlanningResult | `domain/result.rs` | Deterministic contract from planning phase | #result |
 | PlanOutput | `domain/result.rs` | Extended result with TaskGraph | #result |
 | PlanningHash | `domain/result.rs` | SHA-256 deterministic replay identifier | #result |
@@ -102,7 +102,7 @@ pub trait Classifier: Send + Sync {
 
 ### ClaudeClassifier
 
-**Implementation File:** `engine/src/planning/domain/claude_classifier.rs`
+**Implementation File:** `engine/src/planning/infrastructure/claude_classifier.rs`
 
 - Uses Anthropic Messages API via `reqwest`
 - Default model: `claude-sonnet-4-20250514`
@@ -113,7 +113,7 @@ pub trait Classifier: Send + Sync {
 
 ### OpenaiClassifier
 
-**Implementation File:** `engine/src/planning/domain/openai_classifier.rs`
+**Implementation File:** `engine/src/planning/infrastructure/openai_classifier.rs`
 
 - Uses OpenAI Chat Completions API via `reqwest`
 - Default model: `gpt-4o`

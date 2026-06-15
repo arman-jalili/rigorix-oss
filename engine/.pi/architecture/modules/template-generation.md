@@ -24,7 +24,7 @@ Generates new TOML workflow templates from natural language user intent when no 
 | Component | File Path | Purpose | Canonical Section |
 |-----------|-----------|---------|-------------------|
 | TemplateGenerator (trait) | `engine/src/template_generation/domain/generator.rs` | Async trait for template generation | #trait |
-| ClaudeTemplateGenerator | `engine/src/template_generation/domain/generator.rs` | Anthropic Messages API implementation | #claude |
+| ClaudeTemplateGenerator | `engine/src/template_generation/infrastructure/generator.rs` | Anthropic Messages API implementation | #claude |
 | MockGenerator | `engine/src/planning/tests.rs` | Test double returning fixed template | #mock |
 | RepoContext | `engine/src/template_generation/domain/generator.rs` | Repository snapshot for generation context | #context |
 | GeneratedTemplate | `engine/src/template_generation/domain/generator.rs` | Output DTO for generated template | #generated-template |
@@ -60,7 +60,7 @@ pub trait TemplateGenerator: Send + Sync {
 
 **Purpose:** Production generator using Anthropic Messages API with structured prompt engineering
 
-**Implementation File:** `engine/src/template_generation/domain/generator.rs`
+**Implementation File:** `engine/src/template_generation/infrastructure/generator.rs`
 
 **Key behaviors:**
 - Builds prompt with template schema, valid action types, retry strategies, existing templates, repo context
@@ -200,7 +200,7 @@ pub struct RepoContext {
 
 | Test Type | Coverage Target | Files |
 |-----------|-----------------|-------|
-| Unit | 90% | `engine/src/template_generation/domain/generator.rs` (inline tests in tests.rs) |
+| Unit | 90% | `engine/src/template_generation/infrastructure/generator.rs` (inline tests in tests.rs) |
 | Integration | 85% | `engine/src/template_generation/tests.rs` |
 
 **Key Test Scenarios:**
