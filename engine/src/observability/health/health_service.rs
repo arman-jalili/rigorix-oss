@@ -53,15 +53,22 @@ impl HealthService {
         let mut reports = Vec::with_capacity(checks.len());
 
         for check in checks.iter() {
-            let report = check
-                .check_health_with_timeout(self.default_timeout)
-                .await;
+            let report = check.check_health_with_timeout(self.default_timeout).await;
             reports.push(report);
         }
 
-        let healthy_count = reports.iter().filter(|r| r.status == HealthStatus::Healthy).count();
-        let degraded_count = reports.iter().filter(|r| r.status == HealthStatus::Degraded).count();
-        let unhealthy_count = reports.iter().filter(|r| r.status == HealthStatus::Unhealthy).count();
+        let healthy_count = reports
+            .iter()
+            .filter(|r| r.status == HealthStatus::Healthy)
+            .count();
+        let degraded_count = reports
+            .iter()
+            .filter(|r| r.status == HealthStatus::Degraded)
+            .count();
+        let unhealthy_count = reports
+            .iter()
+            .filter(|r| r.status == HealthStatus::Unhealthy)
+            .count();
 
         let status = if unhealthy_count > 0 {
             HealthStatus::Unhealthy
@@ -93,7 +100,11 @@ impl HealthService {
 }
 
 fn unhealthy_count(health: &AggregateHealth) -> usize {
-    health.components.iter().filter(|r| r.status == HealthStatus::Unhealthy).count()
+    health
+        .components
+        .iter()
+        .filter(|r| r.status == HealthStatus::Unhealthy)
+        .count()
 }
 
 #[cfg(test)]
@@ -124,14 +135,18 @@ mod tests {
     #[tokio::test]
     async fn test_all_healthy() {
         let service = HealthService::new(Duration::from_secs(1));
-        service.register(Arc::new(MockHealthCheck {
-            name: "db".to_string(),
-            status: HealthStatus::Healthy,
-        })).await;
-        service.register(Arc::new(MockHealthCheck {
-            name: "cache".to_string(),
-            status: HealthStatus::Healthy,
-        })).await;
+        service
+            .register(Arc::new(MockHealthCheck {
+                name: "db".to_string(),
+                status: HealthStatus::Healthy,
+            }))
+            .await;
+        service
+            .register(Arc::new(MockHealthCheck {
+                name: "cache".to_string(),
+                status: HealthStatus::Healthy,
+            }))
+            .await;
 
         let health = service.check_all().await;
         assert_eq!(health.status, HealthStatus::Healthy);
@@ -141,14 +156,18 @@ mod tests {
     #[tokio::test]
     async fn test_some_unhealthy() {
         let service = HealthService::new(Duration::from_secs(1));
-        service.register(Arc::new(MockHealthCheck {
-            name: "db".to_string(),
-            status: HealthStatus::Healthy,
-        })).await;
-        service.register(Arc::new(MockHealthCheck {
-            name: "api".to_string(),
-            status: HealthStatus::Unhealthy,
-        })).await;
+        service
+            .register(Arc::new(MockHealthCheck {
+                name: "db".to_string(),
+                status: HealthStatus::Healthy,
+            }))
+            .await;
+        service
+            .register(Arc::new(MockHealthCheck {
+                name: "api".to_string(),
+                status: HealthStatus::Unhealthy,
+            }))
+            .await;
 
         let health = service.check_all().await;
         assert_eq!(health.status, HealthStatus::Unhealthy);
@@ -159,14 +178,18 @@ mod tests {
     #[tokio::test]
     async fn test_degraded() {
         let service = HealthService::new(Duration::from_secs(1));
-        service.register(Arc::new(MockHealthCheck {
-            name: "db".to_string(),
-            status: HealthStatus::Healthy,
-        })).await;
-        service.register(Arc::new(MockHealthCheck {
-            name: "cache".to_string(),
-            status: HealthStatus::Degraded,
-        })).await;
+        service
+            .register(Arc::new(MockHealthCheck {
+                name: "db".to_string(),
+                status: HealthStatus::Healthy,
+            }))
+            .await;
+        service
+            .register(Arc::new(MockHealthCheck {
+                name: "cache".to_string(),
+                status: HealthStatus::Degraded,
+            }))
+            .await;
 
         let health = service.check_all().await;
         assert_eq!(health.status, HealthStatus::Degraded);

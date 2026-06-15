@@ -5,9 +5,7 @@
 //! Provides a centralized MetricsRegistry where all modules register their
 //! Prometheus counters, gauges, and histograms.
 
-use prometheus::{
-    Counter, CounterVec, Gauge, GaugeVec, Histogram, HistogramVec, Registry,
-};
+use prometheus::{Counter, CounterVec, Gauge, GaugeVec, Histogram, HistogramVec, Registry};
 
 /// Centralized metrics registry for the Rigorix observability system.
 ///
@@ -34,11 +32,7 @@ impl MetricsRegistry {
     }
 
     /// Register and return a counter.
-    pub fn counter(
-        &self,
-        name: &str,
-        help: &str,
-    ) -> prometheus::Result<Counter> {
+    pub fn counter(&self, name: &str, help: &str) -> prometheus::Result<Counter> {
         let counter = Counter::new(name, help)?;
         self.registry.register(Box::new(counter.clone()))?;
         Ok(counter)
@@ -57,11 +51,7 @@ impl MetricsRegistry {
     }
 
     /// Register and return a gauge.
-    pub fn gauge(
-        &self,
-        name: &str,
-        help: &str,
-    ) -> prometheus::Result<Gauge> {
+    pub fn gauge(&self, name: &str, help: &str) -> prometheus::Result<Gauge> {
         let gauge = Gauge::new(name, help)?;
         self.registry.register(Box::new(gauge.clone()))?;
         Ok(gauge)
@@ -86,9 +76,8 @@ impl MetricsRegistry {
         help: &str,
         buckets: Vec<f64>,
     ) -> prometheus::Result<Histogram> {
-        let histogram = Histogram::with_opts(
-            prometheus::HistogramOpts::new(name, help).buckets(buckets),
-        )?;
+        let histogram =
+            Histogram::with_opts(prometheus::HistogramOpts::new(name, help).buckets(buckets))?;
         self.registry.register(Box::new(histogram.clone()))?;
         Ok(histogram)
     }
@@ -133,8 +122,7 @@ pub mod metric_names {
     // Counters
     pub const BUDGET_CALLS_TOTAL: &str = "rigorix_budget_calls_total";
     pub const RETRY_ATTEMPTS_TOTAL: &str = "rigorix_retry_attempts_total";
-    pub const CIRCUIT_BREAKER_TRANSITIONS_TOTAL: &str =
-        "rigorix_circuit_breaker_transitions_total";
+    pub const CIRCUIT_BREAKER_TRANSITIONS_TOTAL: &str = "rigorix_circuit_breaker_transitions_total";
 
     // Gauges
     pub const ACTIVE_EXECUTIONS: &str = "rigorix_active_executions";
@@ -217,9 +205,7 @@ mod tests {
     #[test]
     fn test_counter_increment() {
         let registry = MetricsRegistry::new();
-        let counter = registry
-            .counter("test_counter", "Test counter")
-            .unwrap();
+        let counter = registry.counter("test_counter", "Test counter").unwrap();
         counter.inc();
         counter.inc_by(3.0);
 

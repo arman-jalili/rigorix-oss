@@ -8,8 +8,8 @@
 
 use super::health_check::{HealthCheck, HealthReport, HealthStatus};
 use async_trait::async_trait;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::Arc;
 
 /// A simple health check that reports a component's status and key metric.
 pub struct SimpleHealthCheck {
@@ -44,18 +44,14 @@ impl HealthCheck for SimpleHealthCheck {
             component: self.name.clone(),
             status: HealthStatus::Healthy,
             message: "OK".to_string(),
-            last_activity_at: Some(
-                self.last_activity.load(Ordering::Acquire),
-            ),
+            last_activity_at: Some(self.last_activity.load(Ordering::Acquire)),
             duration_ms: None,
         }
     }
 }
 
 /// Register a set of default module health checks with the HealthService.
-pub async fn register_all_module_checks(
-    service: &super::health_service::HealthService,
-) {
+pub async fn register_all_module_checks(service: &super::health_service::HealthService) {
     let module_names = [
         "audit",
         "budget_tracking",

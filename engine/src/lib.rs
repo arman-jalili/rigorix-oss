@@ -25,7 +25,6 @@
 
 pub mod audit;
 pub mod budget_tracking;
-pub mod observability;
 pub mod cancellation;
 pub mod configuration;
 pub mod dag_engine;
@@ -34,6 +33,7 @@ pub mod error;
 pub mod event_system;
 pub mod execution_engine;
 pub mod failure_classification;
+pub mod observability;
 pub mod planning;
 pub mod repo_engine;
 pub mod risk_gating;

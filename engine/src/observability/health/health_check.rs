@@ -84,10 +84,7 @@ pub trait HealthCheck: Send + Sync {
     async fn check_health(&self) -> HealthReport;
 
     /// Run the health check with a timeout.
-    async fn check_health_with_timeout(
-        &self,
-        timeout: Duration,
-    ) -> HealthReport {
+    async fn check_health_with_timeout(&self, timeout: Duration) -> HealthReport {
         let start = std::time::Instant::now();
         let check = self.check_health();
         tokio::select! {
