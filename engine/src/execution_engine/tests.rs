@@ -21,9 +21,11 @@ use crate::execution_engine::application::service::{
     ParallelExecutionService, RetryEvaluationService,
 };
 use crate::execution_engine::domain::{
-    BackoffStrategy, FailureContext, NodeExecutionState,
-    ParallelExecutorConfig, RetryDecision, RetryPolicy, RetryStrategy,
+    BackoffStrategy, ExecutionResult, FailureContext, NodeExecutionState, NodeStatus,
+    ParallelExecutorConfig, RetryDecision, RetryPolicy, RetryStrategy, TaskResult,
 };
+use crate::execution_engine::domain::event::ExecutionEngineEvent;
+use crate::execution_engine::domain::error::ExecutionError;
 
 // ---------------------------------------------------------------------------
 // Helper: create a configured service pair
