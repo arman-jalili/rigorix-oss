@@ -34,7 +34,7 @@ use crate::planning::application::service::PlanningPipelineService;
 use crate::planning::domain::classification::{ClassificationResult, Classifier};
 use crate::planning::domain::error::PlanningError;
 use crate::planning::domain::extractor::{ExtractedParameters, ParameterExtractor};
-use crate::planning::domain::generator::TemplateGenerator;
+use crate::template_generation::domain::TemplateGenerator;
 use crate::planning::domain::intent::UserIntent;
 use crate::planning::domain::result::{PlanningHash, PlanningResult};
 
@@ -417,7 +417,7 @@ impl PlanningPipelineService for PlanningPipelineImpl {
 
                             // Build a minimal RepoContext for the generator.
                             // Full RepoContext building is handled by TemplateGenerationService.
-                            let repo_context = crate::planning::domain::generator::RepoContext {
+                            let repo_context = crate::template_generation::domain::RepoContext {
                                 root_dir: std::path::PathBuf::from("."),
                                 project_type: "unknown".to_string(),
                                 directory_tree: Vec::new(),

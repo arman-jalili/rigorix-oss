@@ -25,7 +25,7 @@ use uuid::Uuid;
 
 use crate::planning::domain::classification::ClassificationResult;
 use crate::planning::domain::error::PlanningError;
-use crate::planning::domain::generator::RepoContext;
+use crate::template_generation::domain::RepoContext;
 use crate::planning::domain::intent::UserIntent;
 
 
@@ -217,7 +217,7 @@ pub trait TemplateGenerationService: Send + Sync {
         &self,
         intent: &UserIntent,
         repo_context: &RepoContext,
-    ) -> Result<crate::planning::domain::generator::GeneratedTemplateCost, PlanningError>;
+    ) -> Result<crate::template_generation::domain::GeneratedTemplateCost, PlanningError>;
 
     /// Generate a template and immediately register it in the TemplateEngine.
     ///
