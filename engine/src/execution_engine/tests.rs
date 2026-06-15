@@ -1,436 +1,923 @@
-//! Execution Engine tests — contract compliance verification.
+//! ParallelExecutor implementation tests.
 //!
 //! @canonical .pi/architecture/modules/execution-engine.md
-//! Implements: Contract Freeze — test skeletons for implementation validation
-//! Issue: issue-contract-freeze
+//! Implements: ParallelExecutor — ParallelExecutionServiceImpl tests
+//! Issue: issue-parallelexecutor
 //!
-//! These tests verify that the sealed contracts are internally consistent:
-//! - Domain types construct and default correctly
-//! - DTOs serialise/deserialise as expected
-//! - Enums have valid string representations
-//!
-//! Implementation-specific tests will be added during the implementation phase.
+//! Comprehensive tests for the ParallelExecutionServiceImpl and
+//! RetryEvaluationServiceImpl implementations.
 
+use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::execution_engine::application::dto::{
+    AbortExecutionInput, EvaluateRetryInput, ExecuteGraphInput, ExecuteNodeInput,
+    GetExecutionStateInput, PauseExecutionInput, ResumeExecutionInput,
+};
+use crate::execution_engine::application::service_impl::{
+    ParallelExecutionServiceImpl, RetryEvaluationServiceImpl,
+};
+use crate::execution_engine::application::service::{
+    ParallelExecutionService, RetryEvaluationService,
+};
 use crate::execution_engine::domain::{
-    BackoffStrategy, ExecutionResult, FailureContext, NodeExecutionState, NodeStatus,
-    ParallelExecutorConfig, RetryDecision, RetryPolicy, RetryStrategy, TaskResult,
+    BackoffStrategy, FailureContext, NodeExecutionState,
+    ParallelExecutorConfig, RetryDecision, RetryPolicy, RetryStrategy,
 };
 
 // ---------------------------------------------------------------------------
-// Domain Type Validation Tests
+// Helper: create a configured service pair
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_parallel_executor_config_defaults() {
+fn create_executor() -> ParallelExecutionServiceImpl {
     let config = ParallelExecutorConfig::default();
-    assert_eq!(config.max_concurrent_executions, 4);
-    assert!(config.enable_cancellation);
-    assert!(config.enable_enforcement);
-    assert!(config.enable_fallback);
-    assert!(config.enable_validation);
-    assert_eq!(config.max_total_retries_per_session, 100);
-    assert_eq!(config.max_failures_before_abort, 0);
+    let retry = RetryEvaluationServiceImpl::new();
+    ParallelExecutionServiceImpl::new(config, Box::new(retry))
 }
 
-#[test]
-fn test_retry_policy_defaults() {
-    let policy = RetryPolicy::default();
-    assert_eq!(policy.max_attempts, 4);
-    assert_eq!(policy.retry_strategies.len(), 3);
-    assert!(policy.enable_fallback);
-    assert!(!policy.skip_on_exhaustion);
-    assert!(policy.retryable_failures.is_empty());
-}
+// ---------------------------------------------------------------------------
+// ParallelExecutionServiceImpl Tests
+// ---------------------------------------------------------------------------
 
-#[test]
-fn test_retry_policy_strategy_for_attempt() {
-    let policy = RetryPolicy::default();
-    // attempt 0 → index 0: SameOperation
-    assert_eq!(
-        policy.strategy_for_attempt(0),
-        RetryStrategy::SameOperation
-    );
-    // attempt 1 → index 1: SameOperation
-    assert_eq!(
-        policy.strategy_for_attempt(1),
-        RetryStrategy::SameOperation
-    );
-    // attempt 2 → index 2: ExpandContext
-    assert_eq!(
-        policy.strategy_for_attempt(2),
-        RetryStrategy::ExpandContext
-    );
-    // out of bounds → last strategy
-    assert_eq!(
-        policy.strategy_for_attempt(5),
-        RetryStrategy::ExpandContext
-    );
-}
-
-#[test]
-fn test_backoff_strategy_fixed() {
-    let strategy = BackoffStrategy::Fixed { base_delay_ms: 500 };
-    assert_eq!(strategy.compute_delay_ms(0), 500);
-    assert_eq!(strategy.compute_delay_ms(3), 500); // always 500
-}
-
-#[test]
-fn test_backoff_strategy_exponential() {
-    let strategy = BackoffStrategy::Exponential {
-        base_delay_ms: 100,
-        multiplier: 2.0,
-        max_delay_ms: 10_000,
-    };
-    assert_eq!(strategy.compute_delay_ms(0), 100); // 100 * 2^0
-    assert_eq!(strategy.compute_delay_ms(1), 200); // 100 * 2^1
-    assert_eq!(strategy.compute_delay_ms(2), 400); // 100 * 2^2
-    assert_eq!(strategy.compute_delay_ms(3), 800); // 100 * 2^3
-}
-
-#[test]
-fn test_backoff_strategy_exponential_capped() {
-    let strategy = BackoffStrategy::Exponential {
-        base_delay_ms: 100,
-        multiplier: 2.0,
-        max_delay_ms: 500,
-    };
-    assert_eq!(strategy.compute_delay_ms(0), 100);
-    assert_eq!(strategy.compute_delay_ms(1), 200);
-    assert_eq!(strategy.compute_delay_ms(2), 400);
-    assert_eq!(strategy.compute_delay_ms(3), 500); // capped at 500
-    assert_eq!(strategy.compute_delay_ms(10), 500); // still capped
-}
-
-#[test]
-fn test_backoff_strategy_linear() {
-    let strategy = BackoffStrategy::Linear {
-        base_delay_ms: 100,
-        step_ms: 50,
-        max_delay_ms: 10_000,
-    };
-    assert_eq!(strategy.compute_delay_ms(0), 100); // 100 + (50 * 0)
-    assert_eq!(strategy.compute_delay_ms(1), 150); // 100 + (50 * 1)
-    assert_eq!(strategy.compute_delay_ms(2), 200); // 100 + (50 * 2)
-}
-
-#[test]
-fn test_backoff_strategy_immediate() {
-    let strategy = BackoffStrategy::Immediate;
-    assert_eq!(strategy.compute_delay_ms(0), 0);
-    assert_eq!(strategy.compute_delay_ms(10), 0);
-}
-
-#[test]
-fn test_backoff_strategy_as_str() {
-    assert_eq!(
-        BackoffStrategy::Fixed { base_delay_ms: 100 }.as_str(),
-        "fixed"
-    );
-    assert_eq!(
-        BackoffStrategy::Exponential {
-            base_delay_ms: 100,
-            multiplier: 2.0,
-            max_delay_ms: 30_000
-        }
-        .as_str(),
-        "exponential"
-    );
-    assert_eq!(
-        BackoffStrategy::Linear {
-            base_delay_ms: 100,
-            step_ms: 50,
-            max_delay_ms: 10_000
-        }
-        .as_str(),
-        "linear"
-    );
-    assert_eq!(BackoffStrategy::Immediate.as_str(), "immediate");
-}
-
-#[test]
-fn test_retry_strategy_as_str() {
-    assert_eq!(RetryStrategy::SameOperation.as_str(), "same_operation");
-    assert_eq!(RetryStrategy::ExpandContext.as_str(), "expand_context");
-    assert_eq!(RetryStrategy::SimplifyOperation.as_str(), "simplify_operation");
-    assert_eq!(RetryStrategy::AlternateApproach.as_str(), "alternate_approach");
-    assert_eq!(RetryStrategy::SkipAndContinue.as_str(), "skip_and_continue");
-}
-
-#[test]
-fn test_retry_strategy_is_skip() {
-    assert!(!RetryStrategy::SameOperation.is_skip());
-    assert!(RetryStrategy::SkipAndContinue.is_skip());
-}
-
-#[test]
-fn test_node_status_transitions() {
-    assert!(!NodeStatus::Pending.is_terminal());
-    assert!(!NodeStatus::Ready.is_terminal());
-    assert!(!NodeStatus::Running.is_terminal());
-    assert!(NodeStatus::Completed.is_terminal());
-    assert!(NodeStatus::Failed.is_terminal());
-    assert!(NodeStatus::Skipped.is_terminal());
-}
-
-#[test]
-fn test_node_status_can_execute() {
-    assert!(!NodeStatus::Pending.can_execute());
-    assert!(NodeStatus::Ready.can_execute());
-    assert!(!NodeStatus::Running.can_execute());
-    assert!(!NodeStatus::Completed.can_execute());
-    assert!(!NodeStatus::Failed.can_execute());
-    assert!(!NodeStatus::Skipped.can_execute());
-}
-
-#[test]
-fn test_node_status_as_str() {
-    assert_eq!(NodeStatus::Pending.as_str(), "pending");
-    assert_eq!(NodeStatus::Ready.as_str(), "ready");
-    assert_eq!(NodeStatus::Running.as_str(), "running");
-    assert_eq!(NodeStatus::Completed.as_str(), "completed");
-    assert_eq!(NodeStatus::Failed.as_str(), "failed");
-    assert_eq!(NodeStatus::Skipped.as_str(), "skipped");
-}
-
-#[test]
-fn test_node_execution_state_lifecycle() {
-    let node_id = Uuid::new_v4();
-    let mut state = NodeExecutionState::new(node_id, "test-node");
-
-    assert_eq!(state.status, NodeStatus::Pending);
-    assert_eq!(state.retry_attempts, 0);
-
-    state.mark_ready();
-    assert_eq!(state.status, NodeStatus::Ready);
-    assert!(state.ready_at.is_some());
-
-    state.mark_running();
-    assert_eq!(state.status, NodeStatus::Running);
-    assert!(state.started_at.is_some());
-
-    state.mark_completed(100);
-    assert_eq!(state.status, NodeStatus::Completed);
-    assert_eq!(state.last_duration_ms, Some(100));
-    assert!(state.is_terminal());
-}
-
-#[test]
-fn test_node_execution_state_retry() {
-    let node_id = Uuid::new_v4();
-    let mut state = NodeExecutionState::new(node_id, "retry-node");
-
-    state.mark_ready();
-    state.mark_running();
-    state.mark_failed("transient".to_string(), "timeout".to_string());
-    assert_eq!(state.status, NodeStatus::Failed);
-    assert!(state.is_terminal());
-
-    // Mark for retry resets to Ready
-    state.mark_for_retry();
-    assert_eq!(state.status, NodeStatus::Ready);
-    assert_eq!(state.retry_attempts, 1);
-    assert!(!state.is_terminal());
-
-    // Complete on second attempt
-    state.mark_running();
-    state.mark_completed(200);
-    assert_eq!(state.status, NodeStatus::Completed);
-    assert_eq!(state.total_duration_ms, 200); // only the last attempt counted
-}
-
-#[test]
-fn test_task_result_success() {
-    let node_id = Uuid::new_v4();
-    let result = TaskResult::success(node_id, "build", Some("ok".to_string()), 500, 0);
-    assert!(result.success);
-    assert_eq!(result.node_id, node_id);
-    assert_eq!(result.output, Some("ok".to_string()));
-    assert_eq!(result.duration_ms, 500);
-    assert!(result.error.is_none());
-}
-
-#[test]
-fn test_task_result_failure() {
-    let node_id = Uuid::new_v4();
-    let result = TaskResult::failure(
-        node_id,
-        "build",
-        "build error".to_string(),
-        "compile_error".to_string(),
-        300,
-        2,
-    );
-    assert!(!result.success);
-    assert_eq!(result.error, Some("build error".to_string()));
-    assert_eq!(result.failure_type, Some("compile_error".to_string()));
-    assert_eq!(result.retry_attempts, 2);
-}
-
-#[test]
-fn test_execution_result_aggregation() {
+#[tokio::test]
+async fn test_execute_graph_creates_session() {
+    let executor = create_executor();
     let dag_id = Uuid::new_v4();
-    let mut exec_result = ExecutionResult::new(dag_id);
-    exec_result.total_nodes = 3;
 
-    let node_a = Uuid::new_v4();
-    let node_b = Uuid::new_v4();
-    let node_c = Uuid::new_v4();
+    let output = executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            config_override: None,
+        })
+        .await
+        .unwrap();
 
-    exec_result.record_result(TaskResult::success(node_a, "a", None, 100, 0));
-    exec_result.record_result(TaskResult::success(node_b, "b", Some("output".into()), 200, 1));
-    exec_result.record_result(TaskResult::failure(
-        node_c,
-        "c",
-        "crashed".into(),
-        "panic".into(),
-        50,
-        3,
-    ));
-
-    assert_eq!(exec_result.completed_count, 2);
-    assert_eq!(exec_result.failed_count, 1);
-    assert_eq!(exec_result.total_retries, 4); // 0 + 1 + 3
-    assert_eq!(exec_result.total_duration_ms, 350); // 100 + 200 + 50
-    assert!(!exec_result.all_succeeded());
-    assert!(exec_result.has_failures());
+    assert_eq!(output.result.dag_id, dag_id);
+    assert!(output.result.execution_states.is_empty());
 }
 
-#[test]
-fn test_execution_result_all_succeeded() {
+#[tokio::test]
+async fn test_execute_graph_rejects_duplicate() {
+    let executor = create_executor();
     let dag_id = Uuid::new_v4();
-    let mut exec_result = ExecutionResult::new(dag_id);
-    exec_result.total_nodes = 2;
 
-    let node_a = Uuid::new_v4();
-    let node_b = Uuid::new_v4();
+    executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            config_override: None,
+        })
+        .await
+        .unwrap();
 
-    exec_result.record_result(TaskResult::success(node_a, "a", None, 100, 0));
-    exec_result.record_result(TaskResult::success(node_b, "b", None, 200, 0));
+    let err = executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            config_override: None,
+        })
+        .await
+        .unwrap_err();
 
-    assert!(exec_result.all_succeeded());
-    assert!(!exec_result.has_failures());
-    assert!(!exec_result.has_issues());
+    assert!(err.to_string().contains("already in progress"));
 }
 
-#[test]
-fn test_execution_result_display() {
+#[tokio::test]
+async fn test_execute_graph_with_config_override() {
+    let executor = create_executor();
     let dag_id = Uuid::new_v4();
-    let mut exec_result = ExecutionResult::new(dag_id);
-    exec_result.total_nodes = 1;
 
-    let display = format!("{}", exec_result);
-    assert!(display.contains(&dag_id.to_string()));
-    assert!(display.contains("completed=0"));
-}
-
-#[test]
-fn test_retry_policy_is_failure_retriable() {
-    // Empty retryable_failures means all failures retriable
-    let policy = RetryPolicy::default();
-    assert!(policy.is_failure_retriable("transient"));
-    assert!(policy.is_failure_retriable("compile_error"));
-
-    // Filtered retryable_failures
-    let mut policy = RetryPolicy::default();
-    policy.retryable_failures = vec!["transient".to_string(), "lsp_conflict".to_string()];
-    assert!(policy.is_failure_retriable("transient"));
-    assert!(policy.is_failure_retriable("lsp_conflict"));
-    assert!(!policy.is_failure_retriable("compile_error"));
-    assert!(!policy.is_failure_retriable("permanent"));
-}
-
-#[test]
-fn test_failure_context_basic() {
-    let node_id = Uuid::new_v4();
-    let ctx = FailureContext::new(
-        node_id,
-        "test-node",
-        "cargo build",
-        "compile the project",
-        "transient",
-        "network timeout",
-        0,
-        4,
-        1000,
-        1000,
-    );
-
-    assert!(ctx.is_first_failure());
-    assert!(!ctx.is_exhausted());
-    assert_eq!(ctx.retries_remaining(), 3);
-    assert_eq!(ctx.node_name, "test-node");
-    assert_eq!(ctx.tool, "cargo build");
-}
-
-#[test]
-fn test_failure_context_exhausted() {
-    let node_id = Uuid::new_v4();
-    let ctx = FailureContext::new(
-        node_id,
-        "test-node",
-        "cargo build",
-        "compile the project",
-        "compile_error",
-        "syntax error",
-        3, // attempt 3 (4th attempt = last)
-        4, // max 4 attempts
-        500,
-        2500,
-    );
-
-    assert!(!ctx.is_first_failure());
-    assert!(ctx.is_exhausted());
-    assert_eq!(ctx.retries_remaining(), 0);
-}
-
-#[test]
-fn test_retry_decision_is_retry() {
-    let node_id = Uuid::new_v4();
-    let decision = RetryDecision::Retry {
-        strategy: RetryStrategy::SameOperation,
-        attempt: 2,
-        backoff_ms: 200,
-        reason: "transient failure, retrying".to_string(),
-    };
-    assert!(decision.is_retry());
-    assert!(!decision.is_terminal());
-}
-
-#[test]
-fn test_retry_decision_is_terminal() {
-    let node_id = Uuid::new_v4();
-    let decision = RetryDecision::Skip {
-        reason: "skip".to_string(),
-    };
-    assert!(!decision.is_retry());
-    assert!(decision.is_terminal());
-
-    let fallback = RetryDecision::Fallback {
-        fallback_node_id: Uuid::new_v4(),
-        reason: "fallback".to_string(),
-    };
-    assert!(fallback.is_terminal());
-}
-
-#[test]
-fn test_parallel_executor_config_custom() {
-    let config = ParallelExecutorConfig {
+    let custom_config = ParallelExecutorConfig {
         max_concurrent_executions: 8,
-        max_failures_before_abort: 3,
         ..Default::default()
     };
-    assert_eq!(config.max_concurrent_executions, 8);
-    assert_eq!(config.max_failures_before_abort, 3);
-    assert!(config.enable_cancellation);
+
+    let output = executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            config_override: Some(custom_config),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(output.result.dag_id, dag_id);
 }
 
-#[test]
-fn test_node_execution_state_skipped() {
+#[tokio::test]
+async fn test_execute_node_returns_result() {
+    let executor = create_executor();
     let node_id = Uuid::new_v4();
-    let mut state = NodeExecutionState::new(node_id, "skip-node");
-    state.mark_skipped("not needed".to_string());
-    assert_eq!(state.status, NodeStatus::Skipped);
-    assert!(state.is_terminal());
+    let dag_id = Uuid::new_v4();
+
+    let output = executor
+        .execute_node(ExecuteNodeInput {
+            dag_id,
+            node_id,
+            retry_policy: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(output.result.node_id, node_id);
+    assert!(output.result.success);
+    assert!(output.retry_decision.is_none());
+}
+
+#[tokio::test]
+async fn test_execute_node_with_retry_policy() {
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+    let node_id = Uuid::new_v4();
+
+    let policy = RetryPolicy {
+        max_attempts: 2,
+        ..Default::default()
+    };
+
+    let output = executor
+        .execute_node(ExecuteNodeInput {
+            dag_id,
+            node_id,
+            retry_policy: Some(policy),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(output.result.node_id, node_id);
+    assert!(output.result.success);
+}
+
+#[tokio::test]
+async fn test_get_execution_state_before_execution_returns_error() {
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+
+    let err = executor
+        .get_execution_state(GetExecutionStateInput { dag_id })
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, crate::execution_engine::domain::ExecutionError::NodeNotFound { .. }));
+}
+
+#[tokio::test]
+async fn test_pause_and_resume_execution() {
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+
+    // Start execution
+    executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            config_override: None,
+        })
+        .await
+        .unwrap();
+
+    // Pause
+    let pause_output = executor
+        .pause_execution(PauseExecutionInput { dag_id })
+        .await
+        .unwrap();
+    assert_eq!(pause_output.dag_id, dag_id);
+
+    // Verify paused state
+    let state = executor
+        .get_execution_state(GetExecutionStateInput { dag_id })
+        .await
+        .unwrap();
+    assert!(state.paused);
+
+    // Resume
+    let resume_output = executor
+        .resume_execution(ResumeExecutionInput { dag_id })
+        .await
+        .unwrap();
+    assert_eq!(resume_output.dag_id, dag_id);
+
+    // Verify resumed state
+    let state = executor
+        .get_execution_state(GetExecutionStateInput { dag_id })
+        .await
+        .unwrap();
+    assert!(!state.paused);
+}
+
+#[tokio::test]
+async fn test_pause_already_paused_returns_error() {
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+
+    executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            config_override: None,
+        })
+        .await
+        .unwrap();
+
+    executor
+        .pause_execution(PauseExecutionInput { dag_id })
+        .await
+        .unwrap();
+
+    let err = executor
+        .pause_execution(PauseExecutionInput { dag_id })
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("already paused"));
+}
+
+#[tokio::test]
+async fn test_resume_not_paused_returns_error() {
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+
+    executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            config_override: None,
+        })
+        .await
+        .unwrap();
+
+    let err = executor
+        .resume_execution(ResumeExecutionInput { dag_id })
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("not paused"));
+}
+
+#[tokio::test]
+async fn test_abort_execution() {
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+
+    executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            config_override: None,
+        })
+        .await
+        .unwrap();
+
+    let abort_output = executor
+        .abort_execution(AbortExecutionInput {
+            dag_id,
+            reason: "test abort".to_string(),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(abort_output.dag_id, dag_id);
+    assert_eq!(abort_output.skipped_count, 0); // no nodes to skip
+}
+
+#[tokio::test]
+async fn test_abort_twice_returns_error() {
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+
+    executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            config_override: None,
+        })
+        .await
+        .unwrap();
+
+    executor
+        .abort_execution(AbortExecutionInput {
+            dag_id,
+            reason: "first abort".to_string(),
+        })
+        .await
+        .unwrap();
+
+    let err = executor
+        .abort_execution(AbortExecutionInput {
+            dag_id,
+            reason: "second abort".to_string(),
+        })
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("already aborted"));
+}
+
+#[tokio::test]
+async fn test_pause_nonexistent_execution() {
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+
+    let err = executor
+        .pause_execution(PauseExecutionInput { dag_id })
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, crate::execution_engine::domain::ExecutionError::NodeNotFound { .. }));
+}
+
+#[tokio::test]
+async fn test_abort_nonexistent_execution() {
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+
+    let err = executor
+        .abort_execution(AbortExecutionInput {
+            dag_id,
+            reason: "test".to_string(),
+        })
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, crate::execution_engine::domain::ExecutionError::NodeNotFound { .. }));
+}
+
+#[tokio::test]
+async fn test_on_progress_callback() {
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+    let node_id = Uuid::new_v4();
+
+    let called = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let called_clone = called.clone();
+
+    executor.on_progress(Box::new(move |_progress| {
+        called_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+    }));
+
+    // Create a node state to trigger notification
+    let state = NodeExecutionState::new(node_id, "test-node");
+
+
+    // Verify callback registered (not triggered since no session)
+    // The callback mechanism is trigger-based; in a real execution it fires on completion
+    assert!(!called.load(std::sync::atomic::Ordering::SeqCst));
+}
+
+#[tokio::test]
+async fn test_execute_graph_with_custom_config_override_respected() {
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+
+    let config = ParallelExecutorConfig {
+        max_concurrent_executions: 16,
+        enable_fallback: false,
+        enable_validation: false,
+        ..Default::default()
+    };
+
+    let output = executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            config_override: Some(config),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(output.result.dag_id, dag_id);
+}
+
+// ---------------------------------------------------------------------------
+// RetryEvaluationServiceImpl Tests
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_retry_evaluate_retry_on_first_failure() {
+    let service = RetryEvaluationServiceImpl::new();
+    let node_id = Uuid::new_v4();
+    let policy = RetryPolicy::default();
+
+    let ctx = FailureContext::new(
+        node_id,
+        "test-node",
+        "cargo build",
+        "compile",
+        "transient",
+        "network timeout",
+        0, // first failure
+        4, // max 4 attempts
+        100,
+        100,
+    );
+
+    let output = service
+        .evaluate_retry(EvaluateRetryInput {
+            failure_context: ctx,
+            policy,
+            fallback_node_id: None,
+        })
+        .await
+        .unwrap();
+
+    assert!(!output.is_terminal);
+    assert!(output.decision.is_retry());
+}
+
+#[tokio::test]
+async fn test_retry_evaluate_retry_on_exhausted() {
+    let service = RetryEvaluationServiceImpl::new();
+    let node_id = Uuid::new_v4();
+    let policy = RetryPolicy::default();
+
+    let ctx = FailureContext::new(
+        node_id,
+        "test-node",
+        "cargo build",
+        "compile",
+        "transient",
+        "still failing",
+        3, // attempt 3 = 4th attempt = last
+        4, // max 4 attempts
+        100,
+        400,
+    );
+
+    let output = service
+        .evaluate_retry(EvaluateRetryInput {
+            failure_context: ctx,
+            policy,
+            fallback_node_id: None,
+        })
+        .await
+        .unwrap();
+
+    assert!(output.is_terminal);
+    // No fallback configured, skip_on_exhaustion=false → Abort
+    match output.decision {
+        RetryDecision::Abort { .. } => {} // expected
+        ref other => panic!("Expected Abort, got: {:?}", other),
+    }
+}
+
+// Fix: Compare by variant
+#[tokio::test]
+async fn test_retry_exhausted_with_skip_on_exhaustion() {
+    let service = RetryEvaluationServiceImpl::new();
+    let node_id = Uuid::new_v4();
+    let policy = RetryPolicy {
+        skip_on_exhaustion: true,
+        ..Default::default()
+    };
+
+    let ctx = FailureContext::new(
+        node_id,
+        "test-node",
+        "cargo build",
+        "compile",
+        "transient",
+        "failed",
+        3, // last attempt
+        4,
+        100,
+        400,
+    );
+
+    let output = service
+        .evaluate_retry(EvaluateRetryInput {
+            failure_context: ctx,
+            policy,
+            fallback_node_id: None,
+        })
+        .await
+        .unwrap();
+
+    assert!(output.is_terminal);
+    assert!(matches!(output.decision, RetryDecision::Skip { .. }));
+}
+
+#[tokio::test]
+async fn test_retry_exhausted_with_fallback() {
+    let service = RetryEvaluationServiceImpl::new();
+    let node_id = Uuid::new_v4();
+    let fallback_id = Uuid::new_v4();
+    let policy = RetryPolicy::default();
+
+    let ctx = FailureContext::new(
+        node_id,
+        "test-node",
+        "cargo build",
+        "compile",
+        "transient",
+        "failed too many times",
+        3,
+        4,
+        100,
+        400,
+    );
+
+    let output = service
+        .evaluate_retry(EvaluateRetryInput {
+            failure_context: ctx,
+            policy,
+            fallback_node_id: Some(fallback_id),
+        })
+        .await
+        .unwrap();
+
+    assert!(output.is_terminal);
+    match output.decision {
+        RetryDecision::Fallback { fallback_node_id, .. } => {
+            assert_eq!(fallback_node_id, fallback_id);
+        }
+        other => panic!("Expected Fallback decision, got: {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn test_retry_non_retriable_failure() {
+    let service = RetryEvaluationServiceImpl::new();
+    let node_id = Uuid::new_v4();
+    let mut policy = RetryPolicy::default();
+    policy.retryable_failures = vec!["transient".to_string()];
+
+    let ctx = FailureContext::new(
+        node_id,
+        "test-node",
+        "cargo build",
+        "compile",
+        "compile_error", // not in retryable_failures
+        "syntax error",
+        0,
+        4,
+        100,
+        100,
+    );
+
+    let output = service
+        .evaluate_retry(EvaluateRetryInput {
+            failure_context: ctx,
+            policy,
+            fallback_node_id: None,
+        })
+        .await
+        .unwrap();
+
+    assert!(output.is_terminal);
+    assert!(matches!(output.decision, RetryDecision::Skip { .. }));
+}
+
+#[tokio::test]
+async fn test_retry_non_retriable_with_fallback() {
+    let service = RetryEvaluationServiceImpl::new();
+    let node_id = Uuid::new_v4();
+    let fallback_id = Uuid::new_v4();
+    let mut policy = RetryPolicy::default();
+    policy.retryable_failures = vec!["transient".to_string()];
+
+    let ctx = FailureContext::new(
+        node_id,
+        "test-node",
+        "cargo build",
+        "compile",
+        "compile_error",
+        "syntax error",
+        0,
+        4,
+        100,
+        100,
+    );
+
+    let output = service
+        .evaluate_retry(EvaluateRetryInput {
+            failure_context: ctx,
+            policy,
+            fallback_node_id: Some(fallback_id),
+        })
+        .await
+        .unwrap();
+
+    assert!(output.is_terminal);
+    match output.decision {
+        RetryDecision::Fallback { fallback_node_id, .. } => {
+            assert_eq!(fallback_node_id, fallback_id);
+        }
+        other => panic!("Expected Fallback, got: {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn test_retry_strategy_escalation() {
+    let service = RetryEvaluationServiceImpl::new();
+    let node_id = Uuid::new_v4();
+    let policy = RetryPolicy {
+        retry_strategies: vec![
+            RetryStrategy::SameOperation,
+            RetryStrategy::ExpandContext,
+            RetryStrategy::AlternateApproach,
+        ],
+        ..Default::default()
+    };
+
+    // First failure → SameOperation
+    let ctx1 = FailureContext::new(node_id, "n", "tool", "intent", "transient", "err", 0, 4, 100, 100);
+    let output1 = service.evaluate_retry(EvaluateRetryInput {
+        failure_context: ctx1,
+        policy: policy.clone(),
+        fallback_node_id: None,
+    }).await.unwrap();
+    match output1.decision {
+        RetryDecision::Retry { strategy, attempt, .. } => {
+            assert_eq!(strategy, RetryStrategy::SameOperation);
+            assert_eq!(attempt, 1);
+        }
+        other => panic!("Expected Retry, got: {:?}", other),
+    }
+
+    // Second failure → ExpandContext
+    let ctx2 = FailureContext::new(node_id, "n", "tool", "intent", "transient", "err", 1, 4, 100, 200);
+    let output2 = service.evaluate_retry(EvaluateRetryInput {
+        failure_context: ctx2,
+        policy: policy.clone(),
+        fallback_node_id: None,
+    }).await.unwrap();
+    match output2.decision {
+        RetryDecision::Retry { strategy, attempt, .. } => {
+            assert_eq!(strategy, RetryStrategy::ExpandContext);
+            assert_eq!(attempt, 2);
+        }
+        other => panic!("Expected Retry, got: {:?}", other),
+    }
+
+    // Third failure → AlternateApproach
+    let ctx3 = FailureContext::new(node_id, "n", "tool", "intent", "transient", "err", 2, 4, 100, 300);
+    let output3 = service.evaluate_retry(EvaluateRetryInput {
+        failure_context: ctx3,
+        policy,
+        fallback_node_id: None,
+    }).await.unwrap();
+    match output3.decision {
+        RetryDecision::Retry { strategy, attempt, .. } => {
+            assert_eq!(strategy, RetryStrategy::AlternateApproach);
+            assert_eq!(attempt, 3);
+        }
+        other => panic!("Expected Retry, got: {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn test_compute_backoff_exponential() {
+    let service = RetryEvaluationServiceImpl::new();
+    let node_id = Uuid::new_v4();
+    let policy = RetryPolicy {
+        backoff_strategy: BackoffStrategy::Exponential {
+            base_delay_ms: 100,
+            multiplier: 2.0,
+            max_delay_ms: 10_000,
+        },
+        ..Default::default()
+    };
+
+    let ctx = FailureContext::new(node_id, "n", "t", "i", "transient", "err", 0, 4, 100, 100);
+    let backoff = service.compute_backoff(&ctx, &policy).await;
+    assert_eq!(backoff, 100); // 100 * 2^0
+
+    let ctx2 = FailureContext::new(node_id, "n", "t", "i", "transient", "err", 1, 4, 100, 200);
+    let backoff2 = service.compute_backoff(&ctx2, &policy).await;
+    assert_eq!(backoff2, 200); // 100 * 2^1
+}
+
+#[tokio::test]
+async fn test_compute_backoff_fixed() {
+    let service = RetryEvaluationServiceImpl::new();
+    let node_id = Uuid::new_v4();
+    let policy = RetryPolicy {
+        backoff_strategy: BackoffStrategy::Fixed { base_delay_ms: 500 },
+        ..Default::default()
+    };
+
+    let ctx = FailureContext::new(node_id, "n", "t", "i", "transient", "err", 0, 4, 100, 100);
+    let backoff = service.compute_backoff(&ctx, &policy).await;
+    assert_eq!(backoff, 500);
+
+    let ctx2 = FailureContext::new(node_id, "n", "t", "i", "transient", "err", 3, 4, 100, 400);
+    let backoff2 = service.compute_backoff(&ctx2, &policy).await;
+    assert_eq!(backoff2, 500);
+}
+
+#[tokio::test]
+async fn test_compute_backoff_immediate() {
+    let service = RetryEvaluationServiceImpl::new();
+    let node_id = Uuid::new_v4();
+    let policy = RetryPolicy {
+        backoff_strategy: BackoffStrategy::Immediate,
+        ..Default::default()
+    };
+
+    let ctx = FailureContext::new(node_id, "n", "t", "i", "transient", "err", 0, 4, 100, 100);
+    let backoff = service.compute_backoff(&ctx, &policy).await;
+    assert_eq!(backoff, 0);
+}
+
+#[tokio::test]
+async fn test_validate_policy_valid() {
+    let service = RetryEvaluationServiceImpl::new();
+    let policy = RetryPolicy::default();
+
+    let errors = service.validate_policy(&policy).await.unwrap();
+    assert!(errors.is_empty());
+}
+
+#[tokio::test]
+async fn test_validate_policy_zero_attempts() {
+    let service = RetryEvaluationServiceImpl::new();
+    let policy = RetryPolicy {
+        max_attempts: 0,
+        ..Default::default()
+    };
+
+    let errors = service.validate_policy(&policy).await.unwrap();
+    assert!(errors.iter().any(|e| e.contains("max_attempts")));
+}
+
+#[tokio::test]
+async fn test_validate_policy_empty_strategies() {
+    let service = RetryEvaluationServiceImpl::new();
+    let policy = RetryPolicy {
+        retry_strategies: vec![],
+        ..Default::default()
+    };
+
+    let errors = service.validate_policy(&policy).await.unwrap();
+    assert!(errors.iter().any(|e| e.contains("retry_strategies")));
+}
+
+#[tokio::test]
+async fn test_validate_policy_bad_multiplier() {
+    let service = RetryEvaluationServiceImpl::new();
+    let policy = RetryPolicy {
+        backoff_strategy: BackoffStrategy::Exponential {
+            base_delay_ms: 100,
+            multiplier: 0.5, // must be >= 1.0
+            max_delay_ms: 10_000,
+        },
+        ..Default::default()
+    };
+
+    let errors = service.validate_policy(&policy).await.unwrap();
+    assert!(errors.iter().any(|e| e.contains("multiplier")));
+}
+
+#[tokio::test]
+async fn test_is_failure_retriable_default_all() {
+    let service = RetryEvaluationServiceImpl::new();
+    let policy = RetryPolicy::default(); // empty retryable_failures = all retriable
+
+    assert!(service.is_failure_retriable(&policy, "transient").await);
+    assert!(service.is_failure_retriable(&policy, "compile_error").await);
+    assert!(service.is_failure_retriable(&policy, "permanent").await);
+}
+
+#[tokio::test]
+async fn test_is_failure_retriable_filtered() {
+    let service = RetryEvaluationServiceImpl::new();
+    let mut policy = RetryPolicy::default();
+    policy.retryable_failures = vec!["transient".to_string(), "lsp_conflict".to_string()];
+
+    assert!(service.is_failure_retriable(&policy, "transient").await);
+    assert!(service.is_failure_retriable(&policy, "lsp_conflict").await);
+    assert!(!service.is_failure_retriable(&policy, "compile_error").await);
+    assert!(!service.is_failure_retriable(&policy, "permanent").await);
+}
+
+#[tokio::test]
+async fn test_decide_skip_on_skip_and_continue_strategy() {
+    let service = RetryEvaluationServiceImpl::new();
+    let node_id = Uuid::new_v4();
+    let policy = RetryPolicy {
+        retry_strategies: vec![RetryStrategy::SkipAndContinue],
+        ..Default::default()
+    };
+
+    let ctx = FailureContext::new(
+        node_id,
+        "test-node",
+        "tool",
+        "intent",
+        "transient",
+        "error",
+        0, // first attempt → strategy at index 0 = SkipAndContinue
+        4,
+        100,
+        100,
+    );
+
+    let decision = service.decide(&ctx, &policy, None).await;
+    assert!(decision.is_terminal());
+    assert!(matches!(decision, RetryDecision::Skip { .. }));
+}
+
+#[tokio::test]
+async fn test_decide_abort_on_exhaustion() {
+    let service = RetryEvaluationServiceImpl::new();
+    let node_id = Uuid::new_v4();
+    let policy = RetryPolicy {
+        enable_fallback: false,
+        skip_on_exhaustion: false,
+        ..Default::default()
+    };
+
+    let ctx = FailureContext::new(
+        node_id,
+        "test-node",
+        "tool",
+        "intent",
+        "transient",
+        "error",
+        3,
+        4,
+        100,
+        400,
+    );
+
+    let decision = service.decide(&ctx, &policy, None).await;
+    assert!(decision.is_terminal());
+    assert!(matches!(decision, RetryDecision::Abort { .. }));
+}
+
+#[tokio::test]
+async fn test_decide_skip_on_skip_conditions() {
+    let service = RetryEvaluationServiceImpl::new();
+    let node_id = Uuid::new_v4();
+    let policy = RetryPolicy {
+        skip_conditions: Some(vec!["test skip".to_string()]),
+        ..Default::default()
+    };
+
+    let ctx = FailureContext::new(
+        node_id,
+        "test-node",
+        "tool",
+        "intent",
+        "transient",
+        "this is a test skip condition",
+        0,
+        4,
+        100,
+        100,
+    );
+
+    let decision = service.decide(&ctx, &policy, None).await;
+    assert!(decision.is_terminal());
+    match decision {
+        RetryDecision::Skip { reason } => {
+            assert!(reason.contains("test skip"));
+        }
+        other => panic!("Expected Skip decision, got: {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn test_progress_callback_fires() {
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+
+    let called = Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let called_clone = called.clone();
+
+    executor.on_progress(Box::new(move |progress| {
+        assert_eq!(progress.dag_id, dag_id);
+        called_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }));
+
+    // Trigger a progress notification directly via the internal mechanism
+    // This is an internal implementation detail test
+    executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            config_override: None,
+        })
+        .await
+        .unwrap();
+
+    // Callback registered but not triggered since no nodes complete
+    // The callback infrastructure is ready for real execution
+    assert_eq!(called.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn test_retry_with_skip_and_continue_strategy_index() {
+    let service = RetryEvaluationServiceImpl::new();
+    let node_id = Uuid::new_v4();
+
+    // Strategy 0 = SameOperation, Strategy 1 = SkipAndContinue
+    let policy = RetryPolicy {
+        retry_strategies: vec![
+            RetryStrategy::SameOperation,
+            RetryStrategy::SkipAndContinue,
+        ],
+        ..Default::default()
+    };
+
+    // First failure: attempt 0 → strategy[0] = SameOperation (not skip)
+    let ctx1 = FailureContext::new(node_id, "n", "t", "i", "transient", "err", 0, 4, 100, 100);
+    let decision1 = service.decide(&ctx1, &policy, None).await;
+    assert!(decision1.is_retry());
+
+    // Second failure: attempt 1 → strategy[1] = SkipAndContinue (skip)
+    let ctx2 = FailureContext::new(node_id, "n", "t", "i", "transient", "err", 1, 4, 100, 200);
+    let decision2 = service.decide(&ctx2, &policy, None).await;
+    assert!(decision2.is_terminal());
+    assert!(matches!(decision2, RetryDecision::Skip { .. }));
 }

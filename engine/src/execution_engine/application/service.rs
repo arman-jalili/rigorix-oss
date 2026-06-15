@@ -19,7 +19,7 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::execution_engine::domain::{
-    ExecutionError, ExecutionResult, FailureContext, NodeExecutionState, RetryDecision,
+    ExecutionError, FailureContext, NodeExecutionState, RetryDecision,
 };
 
 use super::dto::{

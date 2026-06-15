@@ -1,99 +1,24 @@
 {
-<<<<<<< HEAD
-  "id": "PL-4537",
-  "name": "\"error-handling\"",
+  "id": "PL-3732",
+  "name": "execution-engine",
   "items": [
-    "issue-contract-freeze",
-    "issue-auditenvelope",
-    "issue-auditsender",
-    "issue-auditqueue",
-    "issue-circuitbreaker",
+    "issue-parallelexecutor",
+    "issue-retry-logic",
     "issue-proofing",
     "issue-architecture-readiness"
-=======
-  "id": "PL-1517",
-  "name": "\"error-handling\"",
-  "items": [
-    "issue-contract-freeze"
->>>>>>> origin/main
   ],
   "steps": [
-    {
-      "name": "implement",
-      "acceptance": {
-        "type": "validator",
-        "validators": [
-          "ci"
-        ]
-      }
-    },
-    {
-      "name": "validate",
-      "acceptance": {
-        "type": "validator",
-        "validators": [
-          "ci",
-          "tests",
-          "security"
-        ]
-      }
-    },
-    {
-      "name": "create-mr",
-      "acceptance": {
-        "type": "none"
-      }
-    },
-    {
-      "name": "merge",
-      "acceptance": {
-        "type": "validator",
-        "validators": [
-          "ci",
-          "canonical"
-        ]
-      }
-    }
+    "implement",
+    "validate",
+    "create-mr",
+    "merge"
   ],
   "currentItemIndex": 0,
-<<<<<<< HEAD
-  "currentStepIndex": 2,
-=======
-  "currentStepIndex": 3,
->>>>>>> origin/main
+  "currentStepIndex": 0,
   "status": "running",
-  "results": [
-    {
-      "item": "issue-contract-freeze",
-      "status": "in-progress",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-<<<<<<< HEAD
-=======
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
->>>>>>> origin/main
-        }
-      ]
-    }
-  ],
+  "retryCount": 0,
+  "results": [],
   "mergeOnValid": true,
-  "createdAt": "2026-06-14T18:08:53.160Z",
-<<<<<<< HEAD
-  "updatedAt": "2026-06-14T18:11:10.810Z"
+  "createdAt": "2026-06-15T15:50:13.205Z",
+  "updatedAt": "2026-06-15T15:50:13.205Z"
 }
-=======
-  "updatedAt": "2026-06-14T18:16:27.743Z"
-}
->>>>>>> origin/main
