@@ -222,6 +222,13 @@ impl fmt::Display for GeneratorError {
     }
 }
 
+impl GeneratorError {
+    /// Returns `true` if this error is transient and the operation may succeed on retry.
+    pub fn is_retriable(&self) -> bool {
+        matches!(self, GeneratorError::ApiError { .. })
+    }
+}
+
 // ---------------------------------------------------------------------------
 // ClaudeTemplateGenerator — Anthropic Messages API Implementation
 // ---------------------------------------------------------------------------
