@@ -14,7 +14,7 @@
 //! - `cancellation` — Graceful and immediate cancellation management
 //! - `audit` — Execution audit trails, typed envelopes, circuit breaker
 //! - `failure_classification` — Failure type classification and retry strategy selection
-//! - `execution` — Task execution lifecycle, errors, timeouts, fallback handling
+//! - `execution_engine` — Parallel DAG execution, retry logic, session management
 //! - `error` — CoreOrchestratorError root error type with #[from] for all sub-errors
 //!
 //! ## Architecture
@@ -32,7 +32,6 @@ pub mod execution_engine;
 pub mod enforcement;
 pub mod error;
 pub mod event_system;
-pub mod execution;
 pub mod failure_classification;
 pub mod planning;
 pub mod repo_engine;

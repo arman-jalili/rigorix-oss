@@ -30,7 +30,7 @@ use crate::configuration::domain::ConfigurationError;
 use crate::dag_engine::domain::DagError;
 use crate::enforcement::domain::EnforcementError;
 use crate::event_system::domain::EventSystemError;
-use crate::execution::domain::ExecutionError;
+use crate::execution_engine::domain::ExecutionError;
 use crate::failure_classification::domain::FailureClassificationError;
 use crate::planning::domain::PlanningError;
 use crate::repo_engine::domain::RepoEngineError;
@@ -312,8 +312,8 @@ mod tests {
                 used: 0,
                 max: 10,
             }),
-            CoreOrchestratorError::Execution(ExecutionError::NotInitialized {
-                detail: "test".to_string(),
+            CoreOrchestratorError::Execution(ExecutionError::InvalidState {
+                reason: "test".to_string(),
             }),
             CoreOrchestratorError::Tool(ToolError::NotFound("test".to_string())),
             CoreOrchestratorError::SymbolGraph(RepoEngineError::SymbolNotFound {
