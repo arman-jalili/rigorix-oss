@@ -23,12 +23,14 @@ Generates new TOML workflow templates from natural language user intent when no 
 
 | Component | File Path | Purpose | Canonical Section |
 |-----------|-----------|---------|-------------------|
-| TemplateGenerator (trait) | `rigorix/src/planning/generator.rs` | Async trait for template generation | #trait |
-| ClaudeTemplateGenerator | `rigorix/src/planning/generator.rs` | Anthropic Messages API implementation | #claude |
-| OpenaiTemplateGenerator | `rigorix/src/planning/openai.rs` | OpenAI-compatible API implementation | #openai |
-| MockGenerator | `rigorix/src/planning/generator.rs` | Test double returning fixed template | #mock |
-| RepoContext | `rigorix/src/planning/generator.rs` | Repository snapshot for generation context | #context |
-| GeneratorError | `rigorix/src/planning/generator.rs` | Typed error enum for generation failures | #errors |
+| TemplateGenerator (trait) | `engine/src/planning/domain/generator.rs` | Async trait for template generation | #trait |
+| ClaudeTemplateGenerator | `engine/src/planning/domain/generator.rs` | Anthropic Messages API implementation | #claude |
+| MockGenerator | `engine/src/planning/tests.rs` | Test double returning fixed template | #mock |
+| RepoContext | `engine/src/planning/domain/generator.rs` | Repository snapshot for generation context | #context |
+| GeneratedTemplate | `engine/src/planning/domain/generator.rs` | Output DTO for generated template | #generated-template |
+| GeneratorError | `engine/src/planning/domain/generator.rs` | Typed error enum for generation failures | #errors |
+| InvalidSymbolReference | `engine/src/planning/domain/generator.rs` | Phase 3 validation failure detail | #symbol-ref |
+| SymbolValidationServiceImpl | `engine/src/planning/application/symbol_validation_impl.rs` | Phase 3 service: validates generated template against indexed symbols | #symbol-validation |
 
 ---
 
@@ -38,16 +40,19 @@ Generates new TOML workflow templates from natural language user intent when no 
 
 **Purpose:** Abstract interface for LLM-based template generation
 
-**Implementation File:** `rigorix/src/planning/generator.rs`
+**Implementation File:** `engine/src/planning/domain/generator.rs`
 
 **Interface:**
 
 ```rust
 #[async_trait]
 pub trait TemplateGenerator: Send + Sync {
-    async fn generate(
-        &self, intent: &UserIntent, repo_context: &RepoContext, budget: &LlmBudget
-    ) -> Result<Template, GeneratorError>;
+    /// Generate a template definition from user intent.
+    async fn generate(&self, input: GenerateInput) -> Result<GeneratedTemplate, GeneratorError>;
+
+    /// Called by the planning pipeline after generation to register
+    /// the generated template into the TemplateEngine.
+    async fn register_template(&self, template: &GeneratedTemplate) -> Result<(), GeneratorError>;
 }
 ```
 
@@ -55,7 +60,7 @@ pub trait TemplateGenerator: Send + Sync {
 
 **Purpose:** Production generator using Anthropic Messages API with structured prompt engineering
 
-**Implementation File:** `rigorix/src/planning/generator.rs`
+**Implementation File:** `engine/src/planning/domain/generator.rs`
 
 **Key behaviors:**
 - Builds prompt with template schema, valid action types, retry strategies, existing templates, repo context
@@ -63,6 +68,18 @@ pub trait TemplateGenerator: Send + Sync {
 - Up to 3 retry attempts on TOML parse/validation errors, feeding error back to LLM
 - Strips markdown code fences from LLM response
 - Rate limit handling with Retry-After header support
+- Configurable via `ClaudeGeneratorConfig` (api_key, model, max_retries, timeout)
+
+### MockGenerator
+
+**Purpose:** Deterministic test double for unit and integration tests
+
+**Implementation File:** `engine/src/planning/tests.rs`
+
+**Behaviors:**
+- Returns a fixed, pre-defined template for any intent
+- Used in tests where deterministic output is required
+- No LLM calls — zero cost test fixture
 
 ### Phase 3: Symbol Validation
 
@@ -72,33 +89,34 @@ Validates generated template against indexed symbol graph before registration:
 - Validates type references exist in the codebase
 - Returns `GeneratorError::SymbolValidation` on mismatch
 
+**Implementation File:** `engine/src/planning/application/symbol_validation_impl.rs`
+
 ---
 
 ## Data Flow
 
 ```mermaid
 flowchart TB
-    UI["UserIntent (low confidence)"] --> RC["RepoContext::from_path
-(dir_tree, project_type,
-dependencies, public_api)"]
+    UI["UserIntent (low confidence)"] --> RC["RepoContext
+(directory tree, project
+type, dependencies,
+public API)"]
     RC --> GEN["TemplateGenerator::generate
-(intent, context, budget)"]
+(intent, context)"]
     
     subgraph Generation
         direction TB
-        G1["1. Budget reservation (RAII)"]
-        G2["2. Build structured prompt"]
-        G3["3. LLM API call (retry ≤3)"]
-        G4["4. Extract TOML from response"]
-        G5["5. toml::from_str → Template"]
-        G6["6. validate_template()"]
-        G7["7. Phase 3: validate against symbols"]
-        G1 --> G2 --> G3 --> G4 --> G5 --> G6 --> G7
+        G1["1. Build structured prompt"]
+        G2["2. LLM API call (retry ≤3)"]
+        G3["3. Extract TOML from response"]
+        G4["4. toml::from_str → GeneratedTemplate"]
+        G5["5. Phase 3: validate against symbols"]
+        G1 --> G2 --> G3 --> G4 --> G5
     end
     
     GEN --> Generation
-    G7 -->|valid| OUT["Template (validated)"]
-    G7 -->|invalid| RETRY["Retry with
+    G5 -->|valid| OUT["GeneratedTemplate (validated)"]
+    G5 -->|invalid| RETRY["Retry with
 LLM feedback"]
     RETRY --> G2
     
@@ -112,7 +130,45 @@ with new template"]
 2. Generate template via LLM with up to 3 retry attempts on parse/validation failures
 3. Phase 3 validates generated template against indexed symbol graph (catches hallucinated types)
 4. Validated template is registered into TemplateEngine and classification is re-run
+
+---
+
+## Key Data Types
+
+### GeneratedTemplate
+
+```rust
+pub struct GeneratedTemplate {
+    pub name: String,
+    pub description: String,
+    pub toml_content: String,
+    pub parameters: Vec<GeneratedParameter>,
+}
 ```
+
+### RepoContext
+
+```rust
+pub struct RepoContext {
+    pub root_dir: PathBuf,
+    pub project_type: String,
+    pub directory_tree: Vec<String>,
+    pub dependencies: Vec<String>,
+    pub public_api: Vec<String>,
+    pub key_files: Vec<String>,
+}
+```
+
+### GeneratorError
+
+| Variant | Description |
+|---------|-------------|
+| LlmError | LLM API call failed (network, auth, rate limit) |
+| ParseError | LLM response could not be parsed as valid TOML |
+| ValidationError | Generated template failed schema validation |
+| SymbolValidation | Generated template references non-existent symbols |
+| BudgetExhausted | LLM budget fully consumed before generation |
+| InternalError | Unexpected internal failure |
 
 ---
 
@@ -136,7 +192,7 @@ with new template"]
 | LLM hallucinates types/fields | Phase 3 symbol validation against actual symbol graph | security-validator |
 | LLM invents dependencies | Prompt constrains to EXISTING DEPENDENCIES only | security-validator |
 | RunCommand without allowlist | Template validator rejects unapproved commands | security-validator |
-| Budget exhaustion | RAII budget reservation before API call | operations-validator |
+| Budget exhaustion | Budget reservation before API call | operations-validator |
 
 ---
 
@@ -144,8 +200,8 @@ with new template"]
 
 | Test Type | Coverage Target | Files |
 |-----------|-----------------|-------|
-| Unit | 90% | `rigorix/src/planning/generator.rs` (inline tests) |
-| Integration | 85% | `rigorix/tests/e2e_full_pipeline.rs` |
+| Unit | 90% | `engine/src/planning/domain/generator.rs` (inline tests in tests.rs) |
+| Integration | 85% | `engine/src/planning/tests.rs` |
 
 **Key Test Scenarios:**
 - MockGenerator returns fixed template → registration succeeds
@@ -155,5 +211,5 @@ with new template"]
 
 ---
 
-*Last updated: 2026-06-13*
-*Module version: 1.0.0*
+*Last updated: 2026-06-15*
+*Module version: 1.0.1* — Fixed file paths to match actual codebase layout
