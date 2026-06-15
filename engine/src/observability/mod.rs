@@ -7,6 +7,7 @@
 //! other modules.
 
 pub mod health;
+pub mod metrics;
 pub mod span_privacy;
 pub mod tracing_config;
 

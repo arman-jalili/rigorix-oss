@@ -23,6 +23,7 @@ tree-sitter = "0.25"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = "0.2"
+prometheus = "0.14.0"
 
 [dev-dependencies]
 tempfile = "3"
