@@ -51,6 +51,7 @@ impl EventBusFactory for EventBusFactoryImpl {
         Ok(Box::new(EventBusServiceImpl::new(config)))
     }
 
+    #[tracing::instrument(skip_all)]
     async fn create_default(&self) -> Result<Box<dyn EventBusService>, EventSystemError> {
         Ok(Box::new(EventBusServiceImpl::default()))
     }

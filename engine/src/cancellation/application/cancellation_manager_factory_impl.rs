@@ -29,6 +29,7 @@ impl CancellationManagerFactoryImpl {
 }
 
 impl Default for CancellationManagerFactoryImpl {
+    #[tracing::instrument(skip_all)]
     fn default() -> Self {
         Self::new()
     }
@@ -36,6 +37,7 @@ impl Default for CancellationManagerFactoryImpl {
 
 #[async_trait]
 impl CancellationManagerFactory for CancellationManagerFactoryImpl {
+    #[tracing::instrument(skip_all)]
     async fn create_default(&self) -> Result<Box<dyn CancellationService>, CancellationError> {
         Ok(Box::new(CancellationManagerImpl::default()))
     }
@@ -60,6 +62,7 @@ impl CancellationManagerFactory for CancellationManagerFactoryImpl {
         )))
     }
 
+    #[tracing::instrument(skip_all)]
     async fn register_cleanup_handler(&self, task_type: &str, handler: Box<dyn CleanupHandler>) {
         // This is a no-op at the factory level — cleanup handlers are
         // registered on the specific CancellationManagerImpl instance

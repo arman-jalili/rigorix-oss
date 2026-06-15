@@ -62,6 +62,7 @@ impl CircuitBreakerImpl {
 
 #[async_trait]
 impl CircuitBreakerTrait for CircuitBreakerImpl {
+    #[tracing::instrument(skip_all)]
     async fn allow_request(&self) -> Result<(), AuditError> {
         self.total_requests.fetch_add(1, Ordering::SeqCst);
 
@@ -100,6 +101,7 @@ impl CircuitBreakerTrait for CircuitBreakerImpl {
         }
     }
 
+    #[tracing::instrument(skip_all)]
     async fn record_success(&self) -> Result<(), AuditError> {
         let mut state = self.state.write().await;
 
@@ -124,6 +126,7 @@ impl CircuitBreakerTrait for CircuitBreakerImpl {
         Ok(())
     }
 
+    #[tracing::instrument(skip_all)]
     async fn record_failure(&self) -> Result<(), AuditError> {
         self.total_failures.fetch_add(1, Ordering::SeqCst);
         let failures = self.consecutive_failures.fetch_add(1, Ordering::SeqCst) + 1;
@@ -151,10 +154,12 @@ impl CircuitBreakerTrait for CircuitBreakerImpl {
         Ok(())
     }
 
+    #[tracing::instrument(skip_all)]
     async fn state(&self) -> Result<CircuitBreakerState, AuditError> {
         Ok(*self.state.read().await)
     }
 
+    #[tracing::instrument(skip_all)]
     async fn stats(&self) -> Result<CircuitBreakerStats, AuditError> {
         Ok(CircuitBreakerStats {
             state: *self.state.read().await,
@@ -165,6 +170,7 @@ impl CircuitBreakerTrait for CircuitBreakerImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn reset(&self) -> Result<(), AuditError> {
         let mut state = self.state.write().await;
         *state = CircuitBreakerState::Closed;

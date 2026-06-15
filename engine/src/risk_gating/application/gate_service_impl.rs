@@ -225,6 +225,7 @@ impl RiskGateService for RiskGateServiceImpl {
         }
     }
 
+    #[tracing::instrument(skip_all)]
     async fn get_config(&self) -> Result<GetConfigOutput, RiskGatingError> {
         let config = self.config.read().expect("Config lock poisoned");
         let override_count = config.tool_overrides.len() as u32;
@@ -256,6 +257,7 @@ impl RiskGateService for RiskGateServiceImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn reload_config(&self) -> Result<ReloadConfigOutput, RiskGatingError> {
         // In a real implementation, this would re-read from Config source.
         // For now, use the existing config (no-op reload).
@@ -271,6 +273,7 @@ impl RiskGateService for RiskGateServiceImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     fn classifier(&self) -> &dyn RiskClassifier {
         // Return the classifier through the RwLock guard.
         // The trait requires `&dyn RiskClassifier` with the lifetime of `&self`,
@@ -291,6 +294,7 @@ impl RiskGateService for RiskGateServiceImpl {
         extended as &dyn RiskClassifier
     }
 
+    #[tracing::instrument(skip_all)]
     fn config(&self) -> &RiskConfig {
         // SAFETY: Same reasoning as `classifier()` — the `RiskConfig` behind
         // the `RwLock` lives as long as `self`.
@@ -306,6 +310,7 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
+    #[tracing::instrument(skip_all)]
     fn create_service(execution_id: &str) -> RiskGateServiceImpl {
         let config = RiskConfig::default();
         let gate_registry = Arc::new(GateStateRegistry::new());

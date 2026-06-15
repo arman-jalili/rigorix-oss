@@ -46,6 +46,7 @@ impl AuditQueueImpl {
 }
 
 impl Default for AuditQueueImpl {
+    #[tracing::instrument(skip_all)]
     fn default() -> Self {
         Self::new(100) // Default capacity of 100
     }
@@ -53,6 +54,7 @@ impl Default for AuditQueueImpl {
 
 #[async_trait]
 impl AuditQueue for AuditQueueImpl {
+    #[tracing::instrument(skip_all)]
     async fn enqueue(&self, input: EnqueueInput) -> Result<EnqueueOutput, AuditError> {
         let mut queue = self.queue.lock().await;
 
@@ -77,6 +79,7 @@ impl AuditQueue for AuditQueueImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn dequeue(&self) -> Result<Option<EnqueueOutput>, AuditError> {
         let mut queue = self.queue.lock().await;
 
@@ -90,6 +93,7 @@ impl AuditQueue for AuditQueueImpl {
         }
     }
 
+    #[tracing::instrument(skip_all)]
     async fn peek(&self) -> Result<Option<EnqueueOutput>, AuditError> {
         let queue = self.queue.lock().await;
 
@@ -103,16 +107,19 @@ impl AuditQueue for AuditQueueImpl {
         }
     }
 
+    #[tracing::instrument(skip_all)]
     async fn len(&self) -> Result<u32, AuditError> {
         let queue = self.queue.lock().await;
         Ok(queue.len() as u32)
     }
 
+    #[tracing::instrument(skip_all)]
     async fn is_empty(&self) -> Result<bool, AuditError> {
         let queue = self.queue.lock().await;
         Ok(queue.is_empty())
     }
 
+    #[tracing::instrument(skip_all)]
     async fn clear(&self) -> Result<u32, AuditError> {
         let mut queue = self.queue.lock().await;
         let count = queue.len() as u32;
@@ -126,6 +133,7 @@ mod tests {
     use super::*;
     use crate::audit::domain::{EventStatus, ExecutionEventRef};
 
+    #[tracing::instrument(skip_all)]
     fn sample_envelope() -> AuditEnvelope {
         AuditEnvelope {
             execution_id: uuid::Uuid::new_v4(),
@@ -143,6 +151,7 @@ mod tests {
         }
     }
 
+    #[tracing::instrument(skip_all)]
     fn sample_input() -> EnqueueInput {
         EnqueueInput {
             envelope: sample_envelope(),

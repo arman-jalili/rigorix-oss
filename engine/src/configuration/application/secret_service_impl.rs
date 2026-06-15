@@ -24,6 +24,7 @@ impl SecretServiceImpl {
 }
 
 impl Default for SecretServiceImpl {
+    #[tracing::instrument(skip_all)]
     fn default() -> Self {
         Self::new(Box::new(SecretFactoryImpl::new()))
     }
@@ -31,6 +32,7 @@ impl Default for SecretServiceImpl {
 
 #[async_trait]
 impl SecretService for SecretServiceImpl {
+    #[tracing::instrument(skip_all)]
     async fn load(&self, input: LoadSecretInput) -> Result<LoadSecretOutput, ConfigurationError> {
         let secret = self
             .factory
@@ -88,6 +90,7 @@ mod tests {
     use super::*;
     use crate::configuration::infrastructure::secret_factory_impl::SecretFactoryImpl;
 
+    #[tracing::instrument(skip_all)]
     fn create_service() -> SecretServiceImpl {
         SecretServiceImpl::new(Box::new(SecretFactoryImpl::new()))
     }

@@ -46,6 +46,7 @@ impl ConfigServiceImpl {
 }
 
 impl Default for ConfigServiceImpl {
+    #[tracing::instrument(skip_all)]
     fn default() -> Self {
         let cwd = std::env::current_dir().unwrap_or_default();
         Self::new(
@@ -57,6 +58,7 @@ impl Default for ConfigServiceImpl {
 
 #[async_trait]
 impl ConfigService for ConfigServiceImpl {
+    #[tracing::instrument(skip_all)]
     async fn load(&self, input: LoadConfigInput) -> Result<LoadConfigOutput, ConfigurationError> {
         let mut sources_used: Vec<String> = Vec::new();
 
@@ -191,6 +193,7 @@ impl ConfigService for ConfigServiceImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn reload(&self) -> Result<LoadConfigOutput, ConfigurationError> {
         let input = self.last_input.lock().await.take();
         match input {
@@ -204,6 +207,7 @@ impl ConfigService for ConfigServiceImpl {
 }
 
 /// Merge `source` fields into `base` (source overrides base).
+#[tracing::instrument(skip_all)]
 fn merge_config(base: &mut ConfigDto, source: ConfigDto) {
     // Override individual fields that are non-default in source
     // Compare to defaults to detect user-specified values
@@ -232,6 +236,7 @@ fn merge_config(base: &mut ConfigDto, source: ConfigDto) {
 // Need a comparison default — different from the actual domain defaults
 // so we can detect user-specified values during merge.
 impl ConfigDto {
+    #[tracing::instrument(skip_all)]
     fn default_for_comparison() -> Self {
         Self {
             orchestrator: Default::default(),
@@ -250,6 +255,7 @@ impl ConfigDto {
 }
 
 impl LlmConfigDto {
+    #[tracing::instrument(skip_all)]
     fn default_for_comparison() -> Self {
         Self {
             provider: String::new(),
@@ -269,6 +275,7 @@ mod tests {
     use crate::configuration::infrastructure::filesystem_config_repository::FilesystemConfigRepository;
     use std::path::PathBuf;
 
+    #[tracing::instrument(skip_all)]
     fn create_service() -> ConfigServiceImpl {
         let cwd = PathBuf::from("/tmp");
         let repo = Box::new(FilesystemConfigRepository::new(cwd));

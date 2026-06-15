@@ -84,6 +84,7 @@ impl ExecutionEnforcerImpl {
     ///
     /// Checks tool-specific policies first, then falls back to the
     /// default tool policy.
+    #[tracing::instrument(skip_all)]
     fn get_tool_policy(&self, state: &EnforcerState, tool: &str) -> ToolPolicy {
         state
             .config
@@ -94,6 +95,7 @@ impl ExecutionEnforcerImpl {
     }
 
     /// Calculate the usage ratio for a budget, capped at 1.0.
+    #[tracing::instrument(skip_all)]
     fn usage_ratio(used: u64, limit: u64) -> f64 {
         if limit == 0 {
             return 0.0;
@@ -102,6 +104,7 @@ impl ExecutionEnforcerImpl {
     }
 
     /// Create a budget snapshot from a resource budget.
+    #[tracing::instrument(skip_all)]
     fn build_budget_snapshot(budget: &ResourceBudget) -> BudgetSnapshot {
         let usage_ratio = Self::usage_ratio(budget.current_usage, budget.hard_limit);
         let warning_active =
@@ -116,6 +119,7 @@ impl ExecutionEnforcerImpl {
     }
 
     /// Build a ResourceBudgetStatus from a budget entry.
+    #[tracing::instrument(skip_all)]
     fn build_resource_budget_status(name: &str, budget: &ResourceBudget) -> ResourceBudgetStatus {
         let usage_ratio = Self::usage_ratio(budget.current_usage, budget.hard_limit);
         let warning_active = usage_ratio >= budget.soft_warning_threshold;
@@ -403,6 +407,7 @@ impl ExecutionEnforcer for ExecutionEnforcerImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn reload_config(&self) -> Result<ReloadConfigOutput, EnforcementError> {
         let mut state = self
             .state
@@ -442,10 +447,12 @@ impl ExecutionEnforcer for ExecutionEnforcerImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     fn has_active_warnings(&self) -> bool {
         self.has_warnings.load(Ordering::SeqCst)
     }
 
+    #[tracing::instrument(skip_all)]
     fn active_warnings(&self) -> Vec<ActiveWarning> {
         self.state
             .read()
@@ -463,11 +470,13 @@ mod tests {
     };
     use crate::enforcement::domain::{EnforcementPresetProfile, ResourceBudget, ToolRiskLevel};
 
+    #[tracing::instrument(skip_all)]
     fn create_test_enforcer() -> ExecutionEnforcerImpl {
         let config = EnforcementConfig::standard();
         ExecutionEnforcerImpl::new("test-exec-1", config)
     }
 
+    #[tracing::instrument(skip_all)]
     fn create_strict_enforcer() -> ExecutionEnforcerImpl {
         let config = EnforcementConfig::strict();
         ExecutionEnforcerImpl::new("test-exec-2", config)

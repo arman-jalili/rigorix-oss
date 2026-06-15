@@ -113,6 +113,7 @@ impl LlmBudgetImpl {
     }
 
     /// Check whether a warning threshold has been crossed for calls.
+    #[tracing::instrument(skip_all)]
     fn check_call_warning(&self) -> Option<BudgetWarningInfo> {
         let used = self.calls_used();
         if self.state.calls_warning_emitted.load(Ordering::Relaxed) {
@@ -136,6 +137,7 @@ impl LlmBudgetImpl {
     }
 
     /// Check whether a warning threshold has been crossed for tokens.
+    #[tracing::instrument(skip_all)]
     fn check_token_warning(&self) -> Option<BudgetWarningInfo> {
         let used = self.tokens_used();
         if self.state.tokens_warning_emitted.load(Ordering::Relaxed) {
@@ -308,10 +310,12 @@ impl LlmBudgetService for LlmBudgetImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     fn has_capacity(&self) -> bool {
         self.remaining_calls() > 0 && self.remaining_tokens() > 0
     }
 
+    #[tracing::instrument(skip_all)]
     fn active_warnings(&self) -> Vec<BudgetWarningInfo> {
         let mut warnings = Vec::new();
         if let Some(w) = self.check_call_warning() {
@@ -372,6 +376,7 @@ impl LlmBudgetReservationImpl {
 }
 
 impl Drop for LlmBudgetReservationImpl {
+    #[tracing::instrument(skip_all)]
     fn drop(&mut self) {
         // Auto-rollback: decrement call and token counters if not committed.
         if !self.committed.load(Ordering::Acquire) {
@@ -390,6 +395,7 @@ impl Drop for LlmBudgetReservationImpl {
 
 #[async_trait]
 impl super::service::LlmBudgetReservation for LlmBudgetReservationImpl {
+    #[tracing::instrument(skip_all)]
     async fn commit(&mut self, actual_tokens: u32) -> Result<(), LlmBudgetError> {
         if self.committed.load(Ordering::Acquire) {
             return Err(LlmBudgetError::ReservationFailed {
@@ -421,18 +427,22 @@ impl super::service::LlmBudgetReservation for LlmBudgetReservationImpl {
         Ok(())
     }
 
+    #[tracing::instrument(skip_all)]
     fn call_id(&self) -> u32 {
         self.call_id
     }
 
+    #[tracing::instrument(skip_all)]
     fn reserved_tokens(&self) -> u32 {
         self.reserved_tokens
     }
 
+    #[tracing::instrument(skip_all)]
     fn is_committed(&self) -> bool {
         self.committed.load(Ordering::Acquire)
     }
 
+    #[tracing::instrument(skip_all)]
     fn is_rolled_back(&self) -> bool {
         self.rolled_back.load(Ordering::Acquire)
     }
@@ -448,6 +458,7 @@ mod tests {
     use crate::budget_tracking::application::dto::*;
     use crate::budget_tracking::application::service::LlmBudgetReservation;
 
+    #[tracing::instrument(skip_all)]
     fn sample_execution_id() -> uuid::Uuid {
         uuid::Uuid::new_v4()
     }

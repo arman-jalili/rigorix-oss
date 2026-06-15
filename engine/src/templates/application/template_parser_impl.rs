@@ -36,6 +36,7 @@ impl<R: TemplateRepository> TemplateParserImpl<R> {
 
 #[async_trait]
 impl<R: TemplateRepository + Send + Sync> TemplateParserService for TemplateParserImpl<R> {
+    #[tracing::instrument(skip_all)]
     async fn parse_file(&self, input: ParseFileInput) -> Result<ParseOutput, TemplateError> {
         let source = input.path.clone();
         let content = self.repository.read_template_file(&source).await?;
@@ -47,6 +48,7 @@ impl<R: TemplateRepository + Send + Sync> TemplateParserService for TemplatePars
         self.parse_str(parse_input).await
     }
 
+    #[tracing::instrument(skip_all)]
     async fn parse_str(&self, input: ParseStrInput) -> Result<ParseOutput, TemplateError> {
         // Attempt TOML deserialization
         let template: Template = match toml::from_str(&input.toml_content) {
@@ -81,6 +83,7 @@ impl<R: TemplateRepository + Send + Sync> TemplateParserService for TemplatePars
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn load_directory(&self, path: &str) -> Result<LoadDirectoryOutput, TemplateError> {
         let files = self.repository.list_template_files(path, "toml").await?;
 
@@ -219,6 +222,7 @@ struct ValidationResult {
 /// - Node IDs are unique
 /// - Dependency references are valid
 /// - Parameter definitions have names
+#[tracing::instrument(skip_all)]
 fn validate_template_structure(template: &Template) -> ValidationResult {
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
@@ -299,6 +303,7 @@ fn validate_template_structure(template: &Template) -> ValidationResult {
 /// Detect cycles in the template's node dependency graph using Kahn's algorithm.
 ///
 /// Returns a list of cycles, where each cycle is a list of node IDs involved.
+#[tracing::instrument(skip_all)]
 fn detect_cycles(template: &Template) -> Vec<Vec<String>> {
     let node_count = template.nodes.len();
     if node_count == 0 {
@@ -365,6 +370,7 @@ fn detect_cycles(template: &Template) -> Vec<Vec<String>> {
 }
 
 /// Validate that parameter references in node actions match parameter definitions.
+#[tracing::instrument(skip_all)]
 fn validate_param_references(template: &Template) -> ValidationResult {
     let errors = Vec::new();
     let mut warnings = Vec::new();
@@ -401,10 +407,12 @@ mod tests {
     use super::*;
     use crate::templates::infrastructure::repository::InMemoryTemplateRepository;
 
+    #[tracing::instrument(skip_all)]
     fn create_test_repo() -> InMemoryTemplateRepository {
         InMemoryTemplateRepository::new()
     }
 
+    #[tracing::instrument(skip_all)]
     fn valid_template_toml() -> &'static str {
         r#"
 id = "test-template"

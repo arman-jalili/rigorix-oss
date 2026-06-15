@@ -125,6 +125,7 @@ impl FailureClassifierService for FailureClassifierServiceImpl {
 /// 3. LSP conflicts
 /// 4. Transient errors
 /// 5. Default to NonRetryable
+#[tracing::instrument(skip_all)]
 fn classify_internal(error_lower: &str, context_lower: &str) -> (FailureType, String) {
     // Check for resource exhaustion
     if contains_any(
@@ -256,6 +257,7 @@ pub fn default_strategy_for(failure_type: &FailureType) -> RetryStrategy {
 }
 
 /// Returns `true` if `text` contains any of the given substrings.
+#[tracing::instrument(skip_all)]
 fn contains_any(text: &str, patterns: &[&str]) -> bool {
     patterns.iter().any(|p| text.contains(p))
 }

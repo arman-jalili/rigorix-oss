@@ -51,6 +51,7 @@ impl WorkspaceValidationServiceImpl {
 }
 
 impl Default for WorkspaceValidationServiceImpl {
+    #[tracing::instrument(skip_all)]
     fn default() -> Self {
         Self::new()
     }
@@ -242,6 +243,7 @@ mod tests {
     use crate::repo_engine::domain::{Location, SourceLanguage, SymbolDefinition, SymbolKind};
     use std::path::PathBuf;
 
+    #[tracing::instrument(skip_all)]
     fn make_graph_with_symbols() -> SymbolGraph {
         let mut graph = SymbolGraph::new();
         let def = SymbolDefinition::new(

@@ -46,6 +46,7 @@ impl ToolRegistryImpl {
     }
 
     /// Create a ToolInfo from a registered tool entry.
+    #[tracing::instrument(skip_all)]
     fn build_tool_info(name: &str, entry: &RegisteredTool) -> ToolInfo {
         let risk_level = default_risk_level_for(name)
             .unwrap_or(crate::risk_gating::domain::risk_level::RiskLevel::High);
@@ -61,6 +62,7 @@ impl ToolRegistryImpl {
 }
 
 impl Default for ToolRegistryImpl {
+    #[tracing::instrument(skip_all)]
     fn default() -> Self {
         Self::new()
     }
@@ -110,6 +112,7 @@ impl ToolRegistryService for ToolRegistryImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn execute_tool(&self, input: ExecuteToolInput) -> Result<ExecuteToolOutput, ToolError> {
         let tool_name = input.tool_name.clone();
 
@@ -169,6 +172,7 @@ impl ToolRegistryService for ToolRegistryImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn get_tool(&self, input: GetToolInput) -> Result<GetToolOutput, ToolError> {
         let tools = self.tools.read().await;
 
@@ -185,6 +189,7 @@ impl ToolRegistryService for ToolRegistryImpl {
         }
     }
 
+    #[tracing::instrument(skip_all)]
     async fn list_tools(&self) -> Result<ListToolsOutput, ToolError> {
         let tools = self.tools.read().await;
 
@@ -201,11 +206,13 @@ impl ToolRegistryService for ToolRegistryImpl {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn has_tool(&self, tool_name: &str) -> bool {
         let tools = self.tools.read().await;
         tools.contains_key(tool_name)
     }
 
+    #[tracing::instrument(skip_all)]
     async fn tool_count(&self) -> usize {
         let tools = self.tools.read().await;
         tools.len()
@@ -222,6 +229,7 @@ impl ToolExecutionService for ToolRegistryImpl {
         tool.execute(&input).await
     }
 
+    #[tracing::instrument(skip_all)]
     async fn dry_run(&self, _tool: &dyn Tool, _input: ToolInput) -> Result<ToolResult, ToolError> {
         Ok(ToolResult {
             output: "[DRY RUN] Preview only, no side effects".to_string(),
@@ -243,6 +251,7 @@ mod tests {
     use std::collections::HashMap;
     use tempfile::TempDir;
 
+    #[tracing::instrument(skip_all)]
     fn create_test_tool(name: &str) -> (Box<dyn Tool>, TempDir) {
         let dir = TempDir::new().unwrap();
         let tool: Box<dyn Tool> = match name {
@@ -257,6 +266,7 @@ mod tests {
         (tool, dir)
     }
 
+    #[tracing::instrument(skip_all)]
     fn register_input(name: &str) -> RegisterToolInput {
         RegisterToolInput {
             name: name.to_string(),

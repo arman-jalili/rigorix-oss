@@ -22,6 +22,7 @@ pub struct LlmBudgetFactoryImpl;
 #[async_trait]
 impl LlmBudgetFactory for LlmBudgetFactoryImpl {
     /// Default mode: 5 calls, 10K tokens.
+    #[tracing::instrument(skip_all)]
     async fn create_default(&self) -> Result<Box<dyn LlmBudgetService>, LlmBudgetError> {
         Ok(Box::new(LlmBudgetImpl::new(
             5,
@@ -31,6 +32,7 @@ impl LlmBudgetFactory for LlmBudgetFactoryImpl {
     }
 
     /// Advanced mode: 20 calls, 100K tokens.
+    #[tracing::instrument(skip_all)]
     async fn create_advanced(&self) -> Result<Box<dyn LlmBudgetService>, LlmBudgetError> {
         Ok(Box::new(LlmBudgetImpl::new(
             20,
@@ -40,6 +42,7 @@ impl LlmBudgetFactory for LlmBudgetFactoryImpl {
     }
 
     /// Aggressive mode: 50 calls, 500K tokens.
+    #[tracing::instrument(skip_all)]
     async fn create_aggressive(&self) -> Result<Box<dyn LlmBudgetService>, LlmBudgetError> {
         Ok(Box::new(LlmBudgetImpl::new(
             50,
