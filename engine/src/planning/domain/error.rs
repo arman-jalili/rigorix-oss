@@ -108,3 +108,23 @@ pub enum PlanningError {
     #[error("Planning cancelled by user")]
     Cancelled,
 }
+
+impl From<crate::template_generation::domain::GeneratorError> for PlanningError {
+    fn from(err: crate::template_generation::domain::GeneratorError) -> Self {
+        use crate::template_generation::domain::GeneratorError;
+        match err {
+            GeneratorError::BudgetExhausted {
+                calls_used,
+                max_calls,
+            } => PlanningError::BudgetExhausted {
+                used_calls: calls_used,
+                max_calls,
+                used_tokens: 0,
+                max_tokens: 0,
+            },
+            _ => PlanningError::TemplateEngineError {
+                detail: err.to_string(),
+            },
+        }
+    }
+}
