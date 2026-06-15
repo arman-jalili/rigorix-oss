@@ -55,3 +55,10 @@ pub enum RiskGatingError {
         detail: String,
     },
 }
+
+impl RiskGatingError {
+    /// Returns `true` if this error is transient and the operation may succeed on retry.
+    pub fn is_retriable(&self) -> bool {
+        matches!(self, RiskGatingError::ClassificationError { .. })
+    }
+}
