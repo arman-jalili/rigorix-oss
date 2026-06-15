@@ -12,7 +12,7 @@
 //! # Usage
 //!
 //! ```ignore
-//! use rigorix::failure_classification::classify::classify_failure;
+//! use rigorix::failure_classification::application::classify::classify_failure;
 //!
 //! let failure_type = classify_failure("connection timeout");
 //! assert_eq!(failure_type, FailureType::Transient);
@@ -42,7 +42,7 @@ use crate::failure_classification::domain::FailureType;
 /// # Examples
 ///
 /// ```
-/// use rigorix::failure_classification::classify::classify_failure;
+/// use rigorix::failure_classification::application::classify::classify_failure;
 /// use rigorix::failure_classification::domain::FailureType;
 ///
 /// assert_eq!(classify_failure("connection timed out"), FailureType::Transient);
