@@ -24,8 +24,8 @@ use crate::template_generation::domain::{
     GeneratorError, InvalidSymbolReference, RepoContext, TemplateGenerator,
 };
 use crate::planning::domain::intent::UserIntent;
-use crate::planning::domain::mock_classifier::MockClassifier;
-use crate::planning::domain::mock_extractor::MockParameterExtractor;
+use crate::planning::application::mock_classifier::MockClassifier;
+use crate::planning::application::mock_extractor::MockParameterExtractor;
 use crate::planning::domain::result::{PlanOutput, PlanningHash, PlanningResult};
 
 use super::domain::PlanningError;
@@ -1291,7 +1291,7 @@ fn test_claude_generator_custom_config() {
 #[test]
 fn test_claude_classifier_parse_response_valid_json() {
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::domain::claude_classifier::ClaudeClassifier::new(api_key, None);
+    let classifier = crate::planning::infrastructure::claude_classifier::ClaudeClassifier::new(api_key, None);
 
     let response = r#"{"rankings":[{"template_id":"read-file","confidence":0.95,"reasoning":"Best match for read intent"},{"template_id":"write-file","confidence":0.20,"reasoning":"Poor match"}]}"#;
 
@@ -1306,7 +1306,7 @@ fn test_claude_classifier_parse_response_valid_json() {
 #[test]
 fn test_claude_classifier_parse_response_clamps_confidence() {
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::domain::claude_classifier::ClaudeClassifier::new(api_key, None);
+    let classifier = crate::planning::infrastructure::claude_classifier::ClaudeClassifier::new(api_key, None);
 
     let response = r#"{"rankings":[{"template_id":"t1","confidence":1.5,"reasoning":"Too high"},{"template_id":"t2","confidence":-0.5,"reasoning":"Too low"}]}"#;
 
@@ -1318,7 +1318,7 @@ fn test_claude_classifier_parse_response_clamps_confidence() {
 #[test]
 fn test_claude_classifier_parse_response_empty_rankings() {
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::domain::claude_classifier::ClaudeClassifier::new(api_key, None);
+    let classifier = crate::planning::infrastructure::claude_classifier::ClaudeClassifier::new(api_key, None);
 
     let response = r#"{"rankings":[]}"#;
     let result = classifier.parse_response(response);
@@ -1328,7 +1328,7 @@ fn test_claude_classifier_parse_response_empty_rankings() {
 #[test]
 fn test_claude_classifier_parse_response_invalid_json() {
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::domain::claude_classifier::ClaudeClassifier::new(api_key, None);
+    let classifier = crate::planning::infrastructure::claude_classifier::ClaudeClassifier::new(api_key, None);
 
     let result = classifier.parse_response("not json at all");
     assert!(result.is_err());
@@ -1337,7 +1337,7 @@ fn test_claude_classifier_parse_response_invalid_json() {
 #[test]
 fn test_claude_classifier_parse_response_with_markdown_fence() {
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::domain::claude_classifier::ClaudeClassifier::new(api_key, None);
+    let classifier = crate::planning::infrastructure::claude_classifier::ClaudeClassifier::new(api_key, None);
 
     // Simulate Claude wrapping JSON in markdown code fences
     let response = "Here's the classification:\n```json\n{\"rankings\":[{\"template_id\":\"read\",\"confidence\":0.9,\"reasoning\":\"Good\"}]}\n```";
@@ -1351,7 +1351,7 @@ fn test_claude_classifier_parse_response_with_markdown_fence() {
 fn test_claude_classifier_handles_empty_templates() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::domain::claude_classifier::ClaudeClassifier::new(api_key, None);
+    let classifier = crate::planning::infrastructure::claude_classifier::ClaudeClassifier::new(api_key, None);
     let intent = UserIntent::new("test".to_string(), None);
     let budget = crate::budget_tracking::domain::LlmBudget {
         max_calls: 50, max_tokens: 50000, used_calls: 0, used_tokens: 0, label: "test".to_string(),
@@ -1364,7 +1364,7 @@ fn test_claude_classifier_handles_empty_templates() {
 
 #[test]
 fn test_claude_config_defaults() {
-    let config = crate::planning::domain::claude_classifier::ClaudeClassifierConfig::default();
+    let config = crate::planning::infrastructure::claude_classifier::ClaudeClassifierConfig::default();
     assert_eq!(config.model, "claude-sonnet-4-20250514");
     assert_eq!(config.max_tokens, 1024);
     assert!(config.temperature < 0.5);
@@ -1377,7 +1377,7 @@ fn test_claude_config_defaults() {
 #[test]
 fn test_openai_classifier_parse_response_valid_json() {
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::domain::openai_classifier::OpenaiClassifier::new(api_key, None);
+    let classifier = crate::planning::infrastructure::openai_classifier::OpenaiClassifier::new(api_key, None);
 
     let response = r#"{"rankings":[{"template_id":"t1","confidence":0.85,"reasoning":"Good match"}]}"#;
 
@@ -1390,7 +1390,7 @@ fn test_openai_classifier_parse_response_valid_json() {
 #[test]
 fn test_openai_classifier_parse_response_invalid_json() {
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::domain::openai_classifier::OpenaiClassifier::new(api_key, None);
+    let classifier = crate::planning::infrastructure::openai_classifier::OpenaiClassifier::new(api_key, None);
 
     let result = classifier.parse_response("invalid");
     assert!(result.is_err());
@@ -1399,7 +1399,7 @@ fn test_openai_classifier_parse_response_invalid_json() {
 #[test]
 fn test_openai_classifier_parse_response_empty() {
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::domain::openai_classifier::OpenaiClassifier::new(api_key, None);
+    let classifier = crate::planning::infrastructure::openai_classifier::OpenaiClassifier::new(api_key, None);
 
     let result = classifier.parse_response(r#"{"rankings":[]}"#);
     assert!(result.is_err());
@@ -1408,7 +1408,7 @@ fn test_openai_classifier_parse_response_empty() {
 #[test]
 fn test_openai_classifier_parse_response_with_markdown() {
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::domain::openai_classifier::OpenaiClassifier::new(api_key, None);
+    let classifier = crate::planning::infrastructure::openai_classifier::OpenaiClassifier::new(api_key, None);
 
     let response = "```\n{\"rankings\":[{\"template_id\":\"t1\",\"confidence\":0.75,\"reasoning\":\"OK\"}]}\n```";
     let result = classifier.parse_response(response).unwrap();
@@ -1419,7 +1419,7 @@ fn test_openai_classifier_parse_response_with_markdown() {
 fn test_openai_classifier_handles_empty_templates() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let api_key = "test-key".to_string();
-    let classifier = crate::planning::domain::openai_classifier::OpenaiClassifier::new(api_key, None);
+    let classifier = crate::planning::infrastructure::openai_classifier::OpenaiClassifier::new(api_key, None);
     let intent = UserIntent::new("test".to_string(), None);
     let budget = crate::budget_tracking::domain::LlmBudget {
         max_calls: 50, max_tokens: 50000, used_calls: 0, used_tokens: 0, label: "test".to_string(),
@@ -1432,7 +1432,7 @@ fn test_openai_classifier_handles_empty_templates() {
 
 #[test]
 fn test_openai_config_defaults() {
-    let config = crate::planning::domain::openai_classifier::OpenaiClassifierConfig::default();
+    let config = crate::planning::infrastructure::openai_classifier::OpenaiClassifierConfig::default();
     assert_eq!(config.model, "gpt-4o");
     assert_eq!(config.max_tokens, 1024);
 }

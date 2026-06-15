@@ -11,6 +11,10 @@
 //! The primary repository is `PlanningResultRepository` for persisting
 //! and loading planning results and their deterministic hashes.
 
+pub mod claude_classifier;
+pub mod openai_classifier;
 pub mod repository;
 
+pub use claude_classifier::*;
+pub use openai_classifier::*;
 pub use repository::*;
