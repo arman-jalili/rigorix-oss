@@ -1,0 +1,31 @@
+#!/bin/sh
+# Pre-commit hook for Rigorix
+# Installed via: git config core.hooksPath .githooks
+
+echo "🔍 Running pre-commit checks..."
+
+# Stash any unstaged changes so we only check staged files
+stash_name="pre-commit-$(date +%s)"
+git stash push -k -q -- "${stash_name}" 2>/dev/null || true
+
+# Check formatting
+echo "  → cargo fmt --check..."
+if ! cargo fmt --check 2>/dev/null; then
+    echo "❌ cargo fmt failed. Run 'cargo fmt' to fix."
+    git stash pop -q 2>/dev/null || true
+    exit 1
+fi
+
+# Check clippy
+echo "  → cargo clippy..."
+if ! cargo clippy -- -D warnings 2>/dev/null; then
+    echo "❌ cargo clippy failed."
+    git stash pop -q 2>/dev/null || true
+    exit 1
+fi
+
+# Pop stash
+git stash pop -q 2>/dev/null || true
+
+echo "✅ Pre-commit checks passed."
+exit 0
