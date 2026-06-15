@@ -30,6 +30,10 @@ pub mod configuration;
 pub mod dag_engine;
 pub mod enforcement;
 pub mod error;
+
+/// Convenience alias for `Result<T, CoreOrchestratorError>`.
+pub type Result<T> = std::result::Result<T, crate::error::CoreOrchestratorError>;
+
 pub mod event_system;
 pub mod execution_engine;
 pub mod failure_classification;
