@@ -22,7 +22,7 @@ Classifies tools/tasks by risk level (Low, Medium, High) and enforces gating pol
 | Component | File Path | Purpose | Canonical Section |
 |-----------|-----------|---------|-------------------|
 | RiskClassifier | `src/risk_gating/domain/risk_classifier.rs` | Trait: maps tool name → RiskLevel | #classifier |
-| DefaultClassifier | `src/risk_gating/domain/default_classifier.rs` | Concrete impl with 20+ built-in rules | #classifier |
+| DefaultClassifier | `src/risk_gating/infrastructure/default_classifier.rs` | Concrete impl with 20+ built-in rules | #classifier |
 | RiskLevel | `src/risk_gating/domain/risk_level.rs` | Enum: Low, Medium, High | #level |
 | RiskConfig | `src/risk_gating/domain/risk_config.rs` | Configurable risk policies and overrides | #config |
 | RiskGateService | `src/risk_gating/application/service.rs` | Service trait: evaluate, classify, resolve, override | #service |
@@ -43,7 +43,7 @@ Classifies tools/tasks by risk level (Low, Medium, High) and enforces gating pol
 
 **Purpose:** Determines risk level of a tool based on its name and parameters
 
-**Implementation:** `DefaultClassifier` in `src/risk_gating/domain/default_classifier.rs`
+**Implementation:** `DefaultClassifier` in `src/risk_gating/infrastructure/default_classifier.rs`
 
 **Full Classification Rules:**
 | Tool Pattern | Risk Level | Rationale |
@@ -121,11 +121,14 @@ risk_gating/
 ├── domain/
 │   ├── risk_level.rs              # RiskLevel enum + GatingAction
 │   ├── risk_classifier.rs         # RiskClassifier trait + ClassificationResult
-│   ├── default_classifier.rs      # DefaultClassifier impl (20+ rules)
 │   ├── risk_config.rs             # RiskConfig struct + builders
 │   ├── gate_state.rs              # GateStateRegistry
 │   ├── error.rs                   # RiskGatingError (5 variants)
 │   └── event/mod.rs               # RiskGateEvent (5 event types)
+├── infrastructure/
+│   ├── repository/mod.rs          # RiskConfigRepository trait
+│   ├── default_config_repository.rs # InMemoryConfigRepository
+│   └── default_classifier.rs      # DefaultClassifier impl (20+ rules)
 ├── application/
 │   ├── service.rs                 # RiskGateService trait (7 methods)
 │   ├── gate_service_impl.rs       # RiskGateServiceImpl
