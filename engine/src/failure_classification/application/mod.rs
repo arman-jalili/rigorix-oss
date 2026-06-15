@@ -15,6 +15,7 @@
 //! - DTOs include validation annotations/documentation
 //! - No implementation logic — only trait definitions
 
+pub mod classify;
 pub mod dto;
 pub mod factory;
 pub mod failure_classifier_service_impl;
