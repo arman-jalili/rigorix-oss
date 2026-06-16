@@ -1,71 +1,71 @@
 {
-  "name": "\"cli-boundary\"",
-  "trackingIssueId": "350",
+  "name": "\"tui\"",
+  "trackingIssueId": "366",
   "epicId": null,
   "slices": [
     {
-      "module": "cli-boundary",
+      "module": "tui",
       "components": [
         {
-          "name": "CliParser",
+          "name": "CommandBar",
           "status": "planned",
-          "description": "Clap argument parser defining 14 CLI commands, global flags (--format, -v), and shortcut flags (--run, --exec, --history). Produces `CliCommand` enum.",
+          "description": "Persistent text input at screen bottom for intents and `/commands`. Supports autocomplete, history navigation, and text entry with fuzzy-find command palette.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "Dispatcher",
+          "name": "PlanReview",
           "status": "planned",
-          "description": "Match parsed `CliCommand` to the appropriate handler — orchestrator (run/plan/cancel/status), engine service (history/explain/diff-plan/generate/template/audit/logs/config), or CLI-only (init/key/tui).",
-          "dependencies": [
-            "CliParser"
-          ]
-        },
-        {
-          "name": "OrchestratorBuilder",
-          "status": "planned",
-          "description": "Build and wire `OrchestratorService` with config + repo_root. Passes shared `CancellationToken` from signal handler. Used by `run`, `plan`, `cancel`, `status` commands.",
-          "dependencies": [
-            "ConfigLoader"
-          ]
-        },
-        {
-          "name": "ConfigLoader",
-          "status": "planned",
-          "description": "Merge `rigorix.toml` + environment variables (`RIGORIX_*`) + CLI flags with priority ordering. Produces engine `Config`.",
+          "description": "Plan preview view showing template, confidence, DAG nodes, parameters, and action choices ([r] Run, [p] Plan Only, [g] Generate, [Esc] Cancel). Every intent shows plan preview first (plan-first principle).",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "OutputFormatter",
+          "name": "EventBridge",
           "status": "planned",
-          "description": "`LogFormatter` trait with four implementations — Pretty (human-readable with Unicode), JSON (CI/CD), Markdown (docs), Quiet (exit codes only). Drives all command output.",
+          "description": "Async subscriber converting engine `ExecutionEvent`s into `ViewModelMutation`s via the engine's EventBus broadcast channel. Handles lag (trigger reconciliation at ≥ 50 dropped events) and reverse-channel `TuiCommand` messages.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "SignalHandler",
+          "name": "ViewModel",
           "status": "planned",
-          "description": "Ctrl+C detection with two-level cancellation (single = graceful finish in-flight node, double within 2s = immediate abort). SIGTERM handling for Unix. Shares `CancellationToken` with orchestrator.",
+          "description": "Root state model with double-buffering — `TuiViewModel` (execution phase, DAG tree, event log, metrics, budget), `DagViewModel` (node tree), `NodeViewModel`, `MetricsViewModel`, `LlmBudgetViewModel`. Write buffer written by EventBridge, read buffer consumed by render loop.",
+          "dependencies": [
+            "EventBridge"
+          ]
+        },
+        {
+          "name": "Renderer",
+          "status": "planned",
+          "description": "ratatui widget rendering: DAG Tree, Progress Bar, Status Bar, Event Log, Modal, Keybind Hints, Tool Output. Adaptive layout (Compact 80×24, Standard 120×30, Full 160×40). Command bar always visible at bottom.",
+          "dependencies": [
+            "ViewModel"
+          ]
+        },
+        {
+          "name": "Views",
+          "status": "planned",
+          "description": "Full-screen view implementations: Dashboard (DAG tree + details + metrics), Nodes (node list table), Events (filterable timeline), Plan (preview with actions), History (past execution browser), Settings, Templates, Clarification, Diff (plan comparison).",
+          "dependencies": [
+            "Renderer"
+          ]
+        },
+        {
+          "name": "InputHandler",
+          "status": "planned",
+          "description": "Keyboard event dispatch with global key bindings (Esc, Tab, q, F1, Ctrl+C), command-bar-focused bindings, plan preview bindings, and view-specific bindings. Also handles `:q`, `:cancel`, `:cancel!` commands.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "TracingInit",
+          "name": "OrchestratorSpawner",
           "status": "planned",
-          "description": "Initialize `tracing-subscriber` with `RIGORIX_LOG` env filter. Installed at startup before any command dispatch.",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "CliError",
-          "status": "planned",
-          "description": "Error type mapping engine errors to CLI exit codes (0 success, 1 general error, 2 config error, 3 invalid args, 130 cancelled, 137 killed).",
+          "description": "Spawns engine orchestrator in a `tokio::spawn`'d background task. Builds same `OrchestratorBuilder` as cli_boundary. Manages lifecycle — start, graceful cancel, immediate abort — keeping UI responsive.",
           "dependencies": [
             "none"
           ]
@@ -73,65 +73,65 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "CliParser",
+          "name": "CommandBar",
           "status": "planned",
-          "description": "Clap argument parser defining 14 CLI commands, global flags (--format, -v), and shortcut flags (--run, --exec, --history). Produces `CliCommand` enum.",
+          "description": "Persistent text input at screen bottom for intents and `/commands`. Supports autocomplete, history navigation, and text entry with fuzzy-find command palette.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "Dispatcher",
+          "name": "PlanReview",
           "status": "planned",
-          "description": "Match parsed `CliCommand` to the appropriate handler — orchestrator (run/plan/cancel/status), engine service (history/explain/diff-plan/generate/template/audit/logs/config), or CLI-only (init/key/tui).",
-          "dependencies": [
-            "CliParser"
-          ]
-        },
-        {
-          "name": "OrchestratorBuilder",
-          "status": "planned",
-          "description": "Build and wire `OrchestratorService` with config + repo_root. Passes shared `CancellationToken` from signal handler. Used by `run`, `plan`, `cancel`, `status` commands.",
-          "dependencies": [
-            "ConfigLoader"
-          ]
-        },
-        {
-          "name": "ConfigLoader",
-          "status": "planned",
-          "description": "Merge `rigorix.toml` + environment variables (`RIGORIX_*`) + CLI flags with priority ordering. Produces engine `Config`.",
+          "description": "Plan preview view showing template, confidence, DAG nodes, parameters, and action choices ([r] Run, [p] Plan Only, [g] Generate, [Esc] Cancel). Every intent shows plan preview first (plan-first principle).",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "OutputFormatter",
+          "name": "EventBridge",
           "status": "planned",
-          "description": "`LogFormatter` trait with four implementations — Pretty (human-readable with Unicode), JSON (CI/CD), Markdown (docs), Quiet (exit codes only). Drives all command output.",
+          "description": "Async subscriber converting engine `ExecutionEvent`s into `ViewModelMutation`s via the engine's EventBus broadcast channel. Handles lag (trigger reconciliation at ≥ 50 dropped events) and reverse-channel `TuiCommand` messages.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "SignalHandler",
+          "name": "ViewModel",
           "status": "planned",
-          "description": "Ctrl+C detection with two-level cancellation (single = graceful finish in-flight node, double within 2s = immediate abort). SIGTERM handling for Unix. Shares `CancellationToken` with orchestrator.",
+          "description": "Root state model with double-buffering — `TuiViewModel` (execution phase, DAG tree, event log, metrics, budget), `DagViewModel` (node tree), `NodeViewModel`, `MetricsViewModel`, `LlmBudgetViewModel`. Write buffer written by EventBridge, read buffer consumed by render loop.",
+          "dependencies": [
+            "EventBridge"
+          ]
+        },
+        {
+          "name": "Renderer",
+          "status": "planned",
+          "description": "ratatui widget rendering: DAG Tree, Progress Bar, Status Bar, Event Log, Modal, Keybind Hints, Tool Output. Adaptive layout (Compact 80×24, Standard 120×30, Full 160×40). Command bar always visible at bottom.",
+          "dependencies": [
+            "ViewModel"
+          ]
+        },
+        {
+          "name": "Views",
+          "status": "planned",
+          "description": "Full-screen view implementations: Dashboard (DAG tree + details + metrics), Nodes (node list table), Events (filterable timeline), Plan (preview with actions), History (past execution browser), Settings, Templates, Clarification, Diff (plan comparison).",
+          "dependencies": [
+            "Renderer"
+          ]
+        },
+        {
+          "name": "InputHandler",
+          "status": "planned",
+          "description": "Keyboard event dispatch with global key bindings (Esc, Tab, q, F1, Ctrl+C), command-bar-focused bindings, plan preview bindings, and view-specific bindings. Also handles `:q`, `:cancel`, `:cancel!` commands.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "TracingInit",
+          "name": "OrchestratorSpawner",
           "status": "planned",
-          "description": "Initialize `tracing-subscriber` with `RIGORIX_LOG` env filter. Installed at startup before any command dispatch.",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "CliError",
-          "status": "planned",
-          "description": "Error type mapping engine errors to CLI exit codes (0 success, 1 general error, 2 config error, 3 invalid args, 130 cancelled, 137 killed).",
+          "description": "Spawns engine orchestrator in a `tokio::spawn`'d background task. Builds same `OrchestratorBuilder` as cli_boundary. Manages lifecycle — start, graceful cancel, immediate abort — keeping UI responsive.",
           "dependencies": [
             "none"
           ]
@@ -144,70 +144,70 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "351"
+      "remoteIssueId": "367"
     },
     {
-      "id": "issue-cliparser",
-      "title": "CliParser: Clap argument parser defining 14 CLI commands, global flags (--format, -v), and ",
+      "id": "issue-commandbar",
+      "title": "CommandBar: Persistent text input at screen bottom for intents and `/commands`. Supports aut",
       "status": "planned",
-      "remoteIssueId": "352"
+      "remoteIssueId": "368"
     },
     {
-      "id": "issue-dispatcher",
-      "title": "Dispatcher: Match parsed `CliCommand` to the appropriate handler — orchestrator (run/plan/ca",
+      "id": "issue-planreview",
+      "title": "PlanReview: Plan preview view showing template, confidence, DAG nodes, parameters, and actio",
       "status": "planned",
-      "remoteIssueId": "353"
+      "remoteIssueId": "369"
     },
     {
-      "id": "issue-orchestratorbuilder",
-      "title": "OrchestratorBuilder: Build and wire `OrchestratorService` with config + repo_root. Passes shared `Can",
+      "id": "issue-eventbridge",
+      "title": "EventBridge: Async subscriber converting engine `ExecutionEvent`s into `ViewModelMutation`s v",
       "status": "planned",
-      "remoteIssueId": "354"
+      "remoteIssueId": "370"
     },
     {
-      "id": "issue-configloader",
-      "title": "ConfigLoader: Merge `rigorix.toml` + environment variables (`RIGORIX_*`) + CLI flags with prio",
+      "id": "issue-viewmodel",
+      "title": "ViewModel: Root state model with double-buffering — `TuiViewModel` (execution phase, DAG tr",
       "status": "planned",
-      "remoteIssueId": "355"
+      "remoteIssueId": "371"
     },
     {
-      "id": "issue-outputformatter",
-      "title": "OutputFormatter: `LogFormatter` trait with four implementations — Pretty (human-readable with Uni",
+      "id": "issue-renderer",
+      "title": "Renderer: ratatui widget rendering: DAG Tree, Progress Bar, Status Bar, Event Log, Modal, ",
       "status": "planned",
-      "remoteIssueId": "356"
+      "remoteIssueId": "372"
     },
     {
-      "id": "issue-signalhandler",
-      "title": "SignalHandler: Ctrl+C detection with two-level cancellation (single = graceful finish in-flight",
+      "id": "issue-views",
+      "title": "Views: Full-screen view implementations: Dashboard (DAG tree + details + metrics), Node",
       "status": "planned",
-      "remoteIssueId": "357"
+      "remoteIssueId": "373"
     },
     {
-      "id": "issue-tracinginit",
-      "title": "TracingInit: Initialize `tracing-subscriber` with `RIGORIX_LOG` env filter. Installed at star",
+      "id": "issue-inputhandler",
+      "title": "InputHandler: Keyboard event dispatch with global key bindings (Esc, Tab, q, F1, Ctrl+C), comm",
       "status": "planned",
-      "remoteIssueId": "358"
+      "remoteIssueId": "374"
     },
     {
-      "id": "issue-clierror",
-      "title": "CliError: Error type mapping engine errors to CLI exit codes (0 success, 1 general error, ",
+      "id": "issue-orchestratorspawner",
+      "title": "OrchestratorSpawner: Spawns engine orchestrator in a `tokio::spawn`'d background task. Builds same `O",
       "status": "planned",
-      "remoteIssueId": "359"
+      "remoteIssueId": "375"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "360"
+      "remoteIssueId": "376"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "361"
+      "remoteIssueId": "377"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-06-16T21:27:43.909Z"
+  "createdAt": "2026-06-16T22:08:30.179Z"
 }

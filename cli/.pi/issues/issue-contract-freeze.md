@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: ""cli-boundary""
+  epic: ""tui""
   component: "Contract Freeze"
-  module: "cli-boundary"
+  module: "tui"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/cli-boundary.md"
+    - module: ".pi/architecture/modules/tui.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -47,29 +47,29 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/cli-boundary/contracts/"
-    - "create: src/cli-boundary/contracts/dtos/"
-    - "create: src/cli-boundary/contracts/events/"
+    - "create: src/tui/contracts/"
+    - "create: src/tui/contracts/dtos/"
+    - "create: src/tui/contracts/events/"
 ---
 
-# Contract Freeze: cli-boundary
+# Contract Freeze: tui
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the cli-boundary
+Define and freeze all public interfaces, contracts, and schemas for the tui
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- CliParser
-- Dispatcher
-- OrchestratorBuilder
-- ConfigLoader
-- OutputFormatter
-- SignalHandler
-- TracingInit
-- CliError
+- CommandBar
+- PlanReview
+- EventBridge
+- ViewModel
+- Renderer
+- Views
+- InputHandler
+- OrchestratorSpawner
 
 ## What Must Be Frozen
 
