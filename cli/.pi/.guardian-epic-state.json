@@ -1,15 +1,23 @@
 {
-  "name": "\"observability\"",
-  "trackingIssueId": "252",
+  "name": "\"templates\"",
+  "trackingIssueId": "260",
   "epicId": null,
   "slices": [
     {
-      "module": "module-template",
+      "module": "templates",
       "components": [
         {
-          "name": "[Component Name]",
+          "name": "TemplateListCommand",
           "status": "planned",
-          "description": "[What this component does]",
+          "description": "Lists all registered templates with descriptions",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "TemplateShowCommand",
+          "status": "planned",
+          "description": "Shows full template definition (TOML)",
           "dependencies": [
             "none"
           ]
@@ -17,9 +25,9 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "[Component Name]",
+          "name": "TemplateListCommand",
           "status": "planned",
-          "description": "[What this component does]",
+          "description": "Lists all registered templates with descriptions",
           "dependencies": [
             "none"
           ]
@@ -31,29 +39,29 @@
     {
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
-      "status": "planned",
-      "remoteIssueId": "253"
+      "status": "done",
+      "remoteIssueId": "261"
     },
     {
       "id": "issue--component-name-",
-      "title": "[Component Name]: [What this component does]",
-      "status": "planned",
-      "remoteIssueId": "254"
+      "title": "Template List & Show Commands",
+      "status": "closed",
+      "remoteIssueId": ""
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "255"
+      "remoteIssueId": "263"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "256"
+      "remoteIssueId": "264"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-06-16T17:08:12.151Z"
+  "createdAt": "2026-06-16T17:37:51.004Z"
 }

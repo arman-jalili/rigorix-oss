@@ -1,7 +1,7 @@
 ---
 guardian_issue:
   id: "ISSUE-READINESS"
-  epic: ""observability""
+  epic: ""templates""
   component: "Architecture Readiness"
   module: "module-template"
   status: planned
