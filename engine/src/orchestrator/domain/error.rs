@@ -73,7 +73,7 @@ pub enum OrchestratorError {
         /// Error detail for diagnostics.
         detail: String,
         /// Source module or service that generated the error.
-        source: String,
+        source_module: String,
     },
 }
 

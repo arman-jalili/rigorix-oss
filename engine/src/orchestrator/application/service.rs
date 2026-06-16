@@ -75,5 +75,5 @@ pub trait OrchestratorService: Send + Sync {
     /// Allows external consumers to subscribe to lifecycle events before a
     /// run starts. The returned reference must be valid for the lifetime of
     /// the service.
-    fn event_bus(&self) -> &dyn crate::event_system::domain::EventBus;
+    fn event_bus(&self) -> &dyn crate::event_system::application::EventBusService;
 }

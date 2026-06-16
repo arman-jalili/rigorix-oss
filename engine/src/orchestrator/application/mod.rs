@@ -17,8 +17,10 @@
 
 pub mod builder;
 pub mod dto;
+pub mod orchestrator_impl;
 pub mod service;
 
 pub use builder::*;
 pub use dto::*;
+pub use orchestrator_impl::*;
 pub use service::*;
