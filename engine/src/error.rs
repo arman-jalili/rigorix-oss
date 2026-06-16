@@ -32,6 +32,7 @@ use crate::enforcement::domain::EnforcementError;
 use crate::event_system::domain::EventSystemError;
 use crate::execution_engine::domain::ExecutionError;
 use crate::failure_classification::domain::FailureClassificationError;
+use crate::orchestrator::domain::OrchestratorError;
 use crate::planning::domain::PlanningError;
 use crate::repo_engine::domain::RepoEngineError;
 use crate::state_persistence::domain::StateError;
@@ -107,6 +108,10 @@ pub enum CoreOrchestratorError {
     #[error("Template error: {0}")]
     Template(#[from] TemplateError),
 
+    /// Orchestrator error — lifecycle failures, sub-service wiring.
+    #[error("Orchestrator error: {0}")]
+    Orchestrator(#[from] OrchestratorError),
+
     /// Failure classification error — classification failures,
     /// missing strategies.
     #[error("Failure classification error: {0}")]
@@ -176,6 +181,7 @@ impl CoreOrchestratorError {
             CoreOrchestratorError::Audit(e) => e.is_retriable(),
             CoreOrchestratorError::State(e) => e.is_retriable(),
             CoreOrchestratorError::Template(e) => e.is_retriable(),
+            CoreOrchestratorError::Orchestrator(e) => e.is_retriable(),
             CoreOrchestratorError::FailureClassification(e) => e.is_retriable(),
             // JSON deserialization errors are not retriable — the input is malformed
             CoreOrchestratorError::Json(_) => false,
@@ -200,6 +206,7 @@ impl CoreOrchestratorError {
             CoreOrchestratorError::Audit(_) => "AUDIT_ERROR",
             CoreOrchestratorError::State(_) => "STATE_ERROR",
             CoreOrchestratorError::Template(_) => "TEMPLATE_ERROR",
+            CoreOrchestratorError::Orchestrator(_) => "ORCHESTRATOR_ERROR",
             CoreOrchestratorError::FailureClassification(_) => "FAILURE_CLASSIFICATION_ERROR",
             CoreOrchestratorError::Io(_) => "IO_ERROR",
             CoreOrchestratorError::Json(_) => "JSON_ERROR",
@@ -224,6 +231,7 @@ impl CoreOrchestratorError {
             CoreOrchestratorError::Audit(_) => 500,
             CoreOrchestratorError::State(_) => 500,
             CoreOrchestratorError::Template(_) => 400,
+            CoreOrchestratorError::Orchestrator(_) => 500,
             CoreOrchestratorError::FailureClassification(_) => 500,
             CoreOrchestratorError::Io(_) => 500,
             CoreOrchestratorError::Json(_) => 400,
@@ -344,6 +352,10 @@ mod tests {
             CoreOrchestratorError::Template(TemplateError::NotFound {
                 id: "test".to_string(),
                 available: vec![],
+            }),
+            CoreOrchestratorError::Orchestrator(OrchestratorError::PlanningFailed {
+                detail: "test".to_string(),
+                intent: "test".to_string(),
             }),
             CoreOrchestratorError::FailureClassification(
                 FailureClassificationError::ClassificationFailed {

@@ -35,6 +35,7 @@ pub mod event_system;
 pub mod execution_engine;
 pub mod failure_classification;
 pub mod observability;
+pub mod orchestrator;
 pub mod planning;
 pub mod repo_engine;
 pub mod risk_gating;
