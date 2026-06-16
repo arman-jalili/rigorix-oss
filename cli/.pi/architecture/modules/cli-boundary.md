@@ -1,165 +1,111 @@
 # CLI Boundary
 
-## Module Status
+## Status
 
-**Status:** ✅ Implemented — contract freeze complete, proofing scripts active
+**Status:** ✅ Architecture defined — source code removed pending regeneration
 **Last reviewed:** 2026-06-16
-**Source session:** 71e2b81a-a7a1-48ee-ab8f-56284bbec92d
-**Issues:** #296 (contract freeze), #298 (proofing), #299 (architecture readiness)
 
 ## Description
 
-User-facing command dispatch, TUI rendering, argument parsing, and process lifecycle. The outermost shell that wires engine capabilities to the terminal.
+User-facing command-line interface for Rigorix. A thin binary that parses commands, loads configuration, calls the `rigorix-engine` library, and renders output. Per ADR-002, the CLI contains zero business logic — all execution, planning, and domain logic lives in the engine crate.
 
-The CLI is the entry point for all user interaction. It parses commands, loads configuration, instantiates the engine orchestrator, runs execution sessions, and renders output (TUI or JSON).
+## Responsibilities
 
-## Components
+| Responsibility | Implementation |
+|---------------|---------------|
+| Command parsing | Clap argument parser → `CliCommand` enum |
+| Config loading | Merge `rigorix.toml` + env vars + CLI flags → engine `Config` |
+| Signal handling | Ctrl+C detection → forward to engine `CancellationToken` |
+| Tracing init | `tracing-subscriber` with `RIGORIX_LOG` env filter |
+| Output formatting | Pretty (human), JSON (CI/CD), Quiet modes |
+| TUI rendering | Ratatui — subscribes to engine EventBus (Phase 2) |
 
-| Component | File | Module | Purpose |
-|-----------|------|--------|---------|
-| CommandParser | `cli/src/cli_boundary/interfaces/cli/mod.rs` | cli_boundary | Parses CLI args into CliCommand enum (Run, Plan, Init, Generate, Audit, History, Logs, Template) |
-| CliOrchestrator | `cli/src/main.rs` (dispatch) | (entry point) | Top-level orchestrator: wires CommandParser → Config → Engine → output rendering |
-| ExecutionSession (trait) | `cli/src/cli_boundary/application/service.rs` | cli_boundary | Manages a single execution lifecycle: load config → plan → execute → render output |
-| CliOrchestratorFactory (trait) | `cli/src/cli_boundary/application/factory.rs` | cli_boundary | Factory for constructing orchestrator instances |
-| TuiRenderer (trait) | `cli/src/cli_boundary/tui/mod.rs` | cli_boundary | ratatui-based terminal UI: subscribes to EventBus, renders live node graph, budget bars, status |
-| LogFormatter (trait) | `cli/src/cli_boundary/infrastructure/output.rs` | cli_boundary | Formats output as human-readable or JSON for CI/CD integration |
-| LogFormatterImpl | `cli/src/cli_boundary/infrastructure/output_impl.rs` | cli_boundary | Pretty, JSON, and quiet output formatter implementation |
+## Commands
 
-## Domain Events
+| Command | Description | Engine Dependency |
+|---------|-------------|-------------------|
+| `rigorix run <intent>` | Execute a plan | `planning::PlanningPipelineService`, `execution_engine::executor` |
+| `rigorix plan <intent>` | Preview a plan | `planning::PlanningPipelineService` |
+| `rigorix init` | Scaffold project | Filesystem only |
+| `rigorix generate <intent>` | Generate a template | `template_generation::TemplateGenerator` |
+| `rigorix history` | List/show past sessions | `state_persistence::StateManager` |
+| `rigorix audit` | View audit trails | `audit::AuditService` |
+| `rigorix logs` | Stream execution events | `event_system::EventBus` |
+| `rigorix template` | List/show templates | `templates::TemplateRegistry` |
 
-| Event | Description | Triggered By |
-|-------|-------------|-------------|
-| CommandDispatched | A CLI command was parsed and dispatched | CommandParser |
-| SessionStarted | An execution session began | ExecutionSession |
-| SessionCompleted | Execution session finished (success, failure, or cancelled) | ExecutionSession |
-
-## Ubiquitous Language
-
-| Term | Definition |
-|------|-----------|
-| CliCommand | Parsed CLI command variant: Run, Plan, Init, Generate, Audit, History, Logs |
-| ExecutionSession | A single CLI-managed execution run linking engine execution_id to CLI session metadata |
-| TuiRenderer | ratatui-based terminal UI rendering engine execution events in real-time |
-| LogFormatter | Formats engine output as human-readable or JSON |
-
-## Implementation Details
-
-### Architecture Layers
-
-Each bounded context is a self-contained module with Clean Architecture layers:
+## Architecture
 
 ```
 cli/src/
-├── cli_boundary/     # Shared CLI types — command dispatch, output, TUI
-│   ├── domain/       # CliError enum (12 variants), CliEvent enum (6 event types)
-│   │   ├── error.rs
-│   │   └── event/
-│   ├── application/  # CliOrchestrator, ExecutionSession traits, DTOs
-│   │   ├── service.rs
-│   │   ├── factory.rs
-│   │   └── dto/      # 20+ input/output DTOs
-│   ├── infrastructure/  # LogFormatter trait + impl
-│   │   ├── output.rs
-│   │   ├── output_impl.rs
-│   │   └── repository/  # Reserved for future persistence
-│   ├── interfaces/   # Clap CLI command definitions
-│   │   └── cli/
-│   ├── tui/          # TUI renderer trait (ratatui)
-│   └── tests.rs      # 35+ contract tests
-├── configuration/    # Multi-source config loading
-│   ├── domain/       # CliConfig value object
-│   │   └── config.rs
-│   └── infrastructure/  # CliConfigLoader trait + CliConfigLoaderImpl
-│       ├── config.rs
-│       └── config_impl.rs
-├── observability/    # Tracing, health checks, event schemas
-│   ├── domain/event/ # ObservabilityEvent payload schemas
-│   │   └── observability.rs
-│   └── infrastructure/  # TracingInitializer trait + tracing impl
-│       ├── observability.rs
-│       └── tracing.rs
-├── cancellation/     # Signal handler for Ctrl+C
-│   └── infrastructure/  # SignalHandler trait + SignalHandlerImpl
-│       ├── signal.rs
-│       └── signal_impl.rs
-├── main.rs           # Binary entry point with full command dispatch
-└── lib.rs            # Library root
+├── main.rs                  # Binary entry point
+├── lib.rs                   # Library root (re-exports cli_boundary)
+└── cli_boundary/
+    ├── cli.rs               # Clap command definitions (CliCommand enum)
+    ├── dispatch.rs           # Main dispatch: command → engine → format
+    ├── config.rs             # Config loader (TOML + env + flags)
+    ├── config_impl.rs        # Config loader implementation
+    ├── output.rs             # LogFormatter trait
+    ├── output_impl.rs        # Pretty/JSON/Quiet formatters
+    ├── signal.rs             # SignalHandler (Ctrl+C)
+    ├── tracing.rs            # Tracing initialization
+    ├── tui.rs                # Ratatui renderer (Phase 2)
+    ├── error.rs              # CliError → exit codes
+    └── tests.rs              # Integration tests
 ```
 
-### Config Loading Priority
+## Config Loading Priority
+
 1. CLI flag overrides (highest)
 2. Environment variables (`RIGORIX_*`)
 3. `rigorix.toml` config file
 4. Engine defaults (lowest)
 
-### Signal Handling
-- Single Ctrl+C → `ShutdownLevel::Graceful` (exit code 130)
-- Double Ctrl+C within 2s → `ShutdownLevel::Immediate` (exit code 137)
+The CLI loads and merges these sources, then passes the result to `engine::configuration::ConfigService::load()`.
 
-## Proofing & CI
+## Signal Handling
 
-### Proofing Scripts (`.pi/scripts/ci/`)
-| Script | Module | What it Checks | |
-|--------|--------|---------------|-|
-| `check_cli_contracts.sh` | cli_boundary | Each trait has a concrete impl | 7/7 pass |
-| `check_cli_coverage.sh` | cli_boundary | Test counts per module | 30+ total |
-| `stage_cli_proofing.sh` | cli_boundary | CI stage wrapper | 3/3 pass |
-| `check_config_contracts.sh` | configuration | 17 config contract checks | 17/17 pass |
-| `check_config_coverage.sh` | configuration | Config module coverage thresholds | 3/3 pass |
-| `stage_config_proofing.sh` | configuration | CI stage wrapper | 3/3 pass |
-| `check_observability_contracts.sh` | observability | 15 observability contract checks | 15/15 pass |
-| `check_observability_coverage.sh` | observability | Observability module coverage | 3/3 pass |
-| `stage_observability_proofing.sh` | observability | CI stage wrapper | 3/3 pass |
+- Single Ctrl+C → `ShutdownLevel::Graceful` (finish in-flight node, exit 130)
+- Double Ctrl+C within 2s → `ShutdownLevel::Immediate` (abort all, exit 137)
 
-### CI Stages
-- Stage 11 — `cli_proofing` — runs on every PR
-- Stage 12 — `config_proofing` — runs on every PR
-- Stage 13 — `observability_proofing` — runs on every PR
+Signal handler forwards to `engine::cancellation::CancellationService`.
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | General error / engine error |
+| 2 | Configuration error |
+| 3 | Invalid command |
+| 130 | Cancelled (Ctrl+C) |
+| 137 | Killed / timeout |
+
+## Domain Events
+
+| Event | Description | Trigger |
+|-------|-------------|---------|
+| CommandDispatched | A CLI command was parsed and dispatched | `dispatch()` |
+| SessionStarted | Execution session began | `run` command |
+| SessionCompleted | Execution session finished | Engine returns result |
+
+## Ubiquitous Language
+
+| Term | Definition |
+|------|-----------|
+| CliCommand | Parsed CLI command (Run, Plan, Init, Generate, History, Logs, Audit, Template) |
+| CliError | CLI error type mapping engine errors to exit codes |
+| LogFormatter | Formats engine output as Pretty, JSON, or Quiet |
+| TuiRenderer | Ratatui-based terminal UI |
 
 ## Dependencies
 
-- Depends on: `rigorix-engine` crate (all engine modules via a single orchestrator facade)
-- Depends on: `Configuration` (loads engine config from rigorix.toml)
-- Depends on: `Cancellation` (forwards cancellation signals to engine)
-- Depends on: `State Persistence` (reads execution history for `rigorix history`)
-- Depends on: `Audit` (queries audit envelopes for `rigorix audit`)
-- Depends on: `Template Generation` (exposes `rigorix generate` command)
-- Depends on: `Planning Pipeline` (exposes `rigorix plan` command)
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| File | Module | Purpose |
-|------|--------|---------|
-| `cli/Cargo.toml` | (manifest) | CLI crate manifest with rigorix-engine dependency |
-| `cli/src/main.rs` | (entry point) | Binary entry point with command dispatch |
-| `cli/src/lib.rs` | (root) | Library root — re-exports all modules |
-| `cli/src/cli_boundary/interfaces/cli/mod.rs` | cli_boundary | CliCommand enum and argument parsing (clap) |
-| `cli/src/cli_boundary/application/service.rs` | cli_boundary | CliOrchestrator + ExecutionSession traits |
-| `cli/src/cli_boundary/application/factory.rs` | cli_boundary | Factory interfaces |
-| `cli/src/cli_boundary/application/dto/mod.rs` | cli_boundary | 20+ input/output DTOs |
-| `cli/src/cli_boundary/domain/error.rs` | cli_boundary | CliError enum (12 variants) |
-| `cli/src/cli_boundary/domain/event/mod.rs` | cli_boundary | CliEvent enum (6 event types) |
-| `cli/src/cli_boundary/infrastructure/output.rs` | cli_boundary | LogFormatter trait |
-| `cli/src/cli_boundary/infrastructure/output_impl.rs` | cli_boundary | LogFormatterImpl — pretty, JSON, quiet |
-| `cli/src/cli_boundary/tui/mod.rs` | cli_boundary | ratatui terminal UI trait |
-| `cli/src/cli_boundary/tests.rs` | cli_boundary | 35+ contract tests |
-| `cli/src/configuration/infrastructure/config_impl.rs` | configuration | Config loader implementation |
-| `cli/src/cancellation/infrastructure/signal_impl.rs` | cancellation | Signal handler implementation |
-| `cli/src/observability/infrastructure/tracing.rs` | observability | Tracing initialization |
-| `cli/docs/runbook.md` | docs | Operations runbook |
-| `cli/docs/dr-plan.md` | docs | Disaster recovery plan |
+- Depends on: `rigorix-engine` crate (all engine modules via library API)
+- Depends on: `clap` (arg parsing), `ratatui` (TUI), `tracing` (logging)
 
 ## ADRs
 
 | ADR | Title | Status |
 |-----|-------|--------|
-| ADR-001 | Domain-Driven Design with Bounded Contexts | Implemented |
-| ADR-002 | CLI/Engine Split | Implemented |
-| ADR-003 | Ratatui TUI | Planned (Phase 5) |
-| ADR-004 | TOML Template Format | Contract defined |
-| ADR-005 | EventBus Pub-Sub | Contract defined |
-| ADR-007 | Ephemeral CLI | Implemented |
-| ADR-009 | Claude LLM Provider | Contract defined |
-| ADR-010 | Persist Generated Templates | Contract defined |
+| ADR-002 | CLI/Engine Split | Accepted |
+| ADR-003 | Ratatui TUI | Accepted |
+| ADR-007 | Ephemeral CLI — No Daemon for v1 | Accepted |

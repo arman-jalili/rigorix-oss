@@ -1,6 +1,6 @@
 {
-  "id": "PL-1412",
-  "name": "\"templates\"",
+  "id": "PL-4943",
+  "name": "\"event-system\"",
   "items": [
     "issue-contract-freeze",
     "issue--component-name-",
@@ -48,15 +48,72 @@
       }
     }
   ],
-  "currentItemIndex": 0,
-  "currentStepIndex": 3,
-  "status": "running",
+  "currentItemIndex": 4,
+  "currentStepIndex": 0,
+  "status": "done",
   "retryCount": 0,
   "results": [
     {
       "item": "issue-contract-freeze",
-      "status": "in-progress",
+      "status": "done",
       "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "issue--component-name-",
+      "status": "failed",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "failed",
+          "reason": "Issue #332 is an unfilled template stub."
+        },
+        {
+          "step": "validate",
+          "status": "failed",
+          "reason": "skipped due to prior failure"
+        },
+        {
+          "step": "create-mr",
+          "status": "failed",
+          "reason": "skipped due to prior failure"
+        },
+        {
+          "step": "merge",
+          "status": "failed",
+          "reason": "skipped due to prior failure"
+        }
+      ]
+    },
+    {
+      "item": "issue-proofing",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
         {
           "step": "implement",
           "status": "passed",
@@ -73,9 +130,35 @@
           "reason": ""
         }
       ]
+    },
+    {
+      "item": "issue-architecture-readiness",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
     }
   ],
   "mergeOnValid": true,
-  "createdAt": "2026-06-16T18:04:16.737Z",
-  "updatedAt": "2026-06-16T18:16:20.493Z"
+  "createdAt": "2026-06-16T19:50:40.576Z",
+  "updatedAt": "2026-06-16T19:54:16.358Z"
 }

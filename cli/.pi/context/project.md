@@ -1,88 +1,59 @@
-# Project Context
-
-> Single source of truth for project-specific knowledge. All agents load this ONCE.
-> **This is a template** — replace placeholders with actual values during `guardian init`.
+# Project Context — rigorix-cli
 
 ## Project Overview
 
-- **Name:** {{PROJECT_NAME}}
-- **Version:** {{PROJECT_VERSION}}
-- **Language:** rust
-- **Type:** {{PROJECT_TYPE}}
+- **Name:** rigorix-cli
+- **Version:** 0.1.0
+- **Language:** Rust
+- **Type:** binary (thin wrapper around rigorix-engine library)
 - **Repository:** arman-jalili/rigorix-oss
 
-## Core Principles
+## Core Architecture
 
-1. **Template-driven** - Workflows in templates, not dynamic generation
-2. **DAG-based** - Task nodes with dependencies, topological execution
-3. **Minimal LLM** - LLM = planning tool only
-4. **Bounded autonomy** - Hard caps on dynamic behavior
-5. **Bounded retries** - Max 3 retries with exponential backoff + jitter (±25%)
-6. **Risk-gated** - Safe=auto, Medium=confirm, Dangerous=dry-run
-7. **Pre-validated** - Validator catches errors BEFORE execution
-8. **Auditable** - Planning decisions tracked and diffable
-
-## Architecture
-
-### Structure
+The CLI is a **thin binary** with one module (`cli_boundary`). All business logic lives in the `rigorix-engine` library crate.
 
 ```
-{{PROJECT_NAME}}/
-├── src/                 # Source code
-├── tests/               # Test files
-├── docs/                # Documentation
-└── .pi/                 # Agent framework
+cli/src/
+├── main.rs           # Entry point: parse → load → dispatch → format → exit
+├── lib.rs            # Re-exports cli_boundary
+└── cli_boundary/
+    ├── cli.rs        # Clap command definitions
+    ├── dispatch.rs   # Command → engine API → format
+    ├── config.rs     # Config loading (TOML + env + flags)
+    ├── config_impl.rs
+    ├── output.rs     # LogFormatter trait
+    ├── output_impl.rs # Pretty/JSON/Quiet formatters
+    ├── signal.rs     # SignalHandler (Ctrl+C)
+    ├── tracing.rs    # Tracing init
+    ├── tui.rs        # Ratatui renderer (Phase 2)
+    ├── error.rs      # CliError → exit codes
+    └── tests.rs
 ```
 
-### Key Patterns
+## Architecture Principles
 
-- **Error handling:** {{ERROR_HANDLING_PATTERN}}
-- **Tracing:** {{TRACING_PATTERN}}
-- **Cancellation:** {{CANCELLATION_PATTERN}}
-- **Atomic writes:** {{ATOMIC_WRITE_PATTERN}}
-
-## Quality Gates
-
-### Before Commit
-```bash
-{{BUILD_COMMAND}} && {{FORMAT_COMMAND}}
-```
-
-### Before Push
-```bash
-{{TEST_COMMAND}} && {{LINT_COMMAND}}
-```
-
-### Before Merge
-```bash
-{{TEST_COMMAND}}
-{{LINT_COMMAND}}
-{{FORMAT_CHECK_COMMAND}}
-{{SECURITY_AUDIT_COMMAND}}
-```
-
-## Scope Classification
-
-| Scope | Files | Lines | Required Validators |
-|-------|-------|-------|---------------------|
-| Simple | 1 | < 50 | ci-mr (automated) |
-| Moderate | 2-5 | 50-200 | architecture-validator |
-| Complex | 5-15 | 200-500 | architecture + security |
-| Critical | 15+ or core | 500+ | All validators + human |
+1. **CLI calls engine directly** — no wrapper traits, no mirror DTOs, no parallel domain layers
+2. **No business logic in CLI** — all planning, execution, templates, budgets, enforcement lives in engine
+3. **Single module** — `cli_boundary` is the only CLI module
+4. **Exit codes:** 0=success, 1=error, 2=config error, 3=invalid command, 130=cancelled, 137=killed
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| docs/ARCHITECTURE.md | Architecture specification |
-| {{KEY_FILE_1}} | {{KEY_FILE_1_PURPOSE}} |
-| {{KEY_FILE_2}} | {{KEY_FILE_2_PURPOSE}} |
+| `Cargo.toml` | Manifest with `rigorix-engine` dependency |
+| `src/main.rs` | Binary entry point |
+| `src/lib.rs` | Library root |
+| `src/cli_boundary/cli.rs` | Clap command definitions |
+| `src/cli_boundary/dispatch.rs` | Command dispatch logic |
+| `.pi/architecture/modules/cli-boundary.md` | Architecture doc |
 
 ## Commands
 
 | Command | Purpose |
 |---------|---------|
-| `{{BUILD_COMMAND}}` | Build project |
-| `{{TEST_COMMAND}}` | Run tests |
-| `{{LINT_COMMAND}}` | Lint check |
-| `{{SECURITY_AUDIT_COMMAND}}` | Security audit |
+| `cargo build` | Build CLI |
+| `cargo test` | Run tests |
+| `cargo fmt --check` | Format check |
+| `cargo clippy` | Lint |
+| `cargo audit` | Security audit |

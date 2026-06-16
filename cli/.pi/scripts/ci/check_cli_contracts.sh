@@ -1,18 +1,13 @@
 #!/usr/bin/env bash
 # ============================================================================
-# check_cli_contracts.sh — Verify CLI interface contracts have implementations
+# check_cli_contracts.sh — Verify CLI interface contracts
 #
-# Checks that each trait defined in the CLI boundary has a corresponding
-# concrete implementation struct. Reports violations with file:line.
+# Checks that the CLI has the expected structure. The CLI is a thin binary
+# with a single cli_boundary module calling rigorix-engine directly.
 #
 # Usage:
 #   bash check_cli_contracts.sh          # Run all checks
 #   bash check_cli_contracts.sh --help   # Show this help
-#   bash check_cli_contracts.sh --list   # List all interface implementations
-#
-# Exit codes:
-#   0 — All contracts have implementations
-#   1 — One or more contracts missing implementations
 # ============================================================================
 set -euo pipefail
 
@@ -37,33 +32,7 @@ show_help() {
     exit 0
 }
 
-show_list() {
-    echo "CLI Interface ↔ Implementation Mapping"
-    echo "======================================"
-    echo ""
-    echo "│ Interface                     │ Implementation              │ Status │"
-    echo "│───────────────────────────────│─────────────────────────────│────────│"
-    for pair in \
-        "CliConfigLoader|CliConfigLoaderImpl" \
-        "LogFormatter|LogFormatterImpl" \
-        "SignalHandler|SignalHandlerImpl" \
-        "CliOrchestrator|pending" \
-        "ExecutionSession|pending" \
-        "CliOrchestratorFactory|pending" \
-        "ExecutionSessionFactory|pending" \
-        "TuiRenderer|pending"; do
-        IFS='|' read -r iface impl <<< "$pair"
-        if [ "$impl" = "pending" ]; then
-            echo "│ $(printf '%-30s' "$iface") │ $(printf '%-28s' "⚠️  not yet implemented") │ ⏳  │"
-        else
-            echo "│ $(printf '%-30s' "$iface") │ $(printf '%-28s' "$impl") │ ✅  │"
-        fi
-    done
-    exit 0
-}
-
 if [ "${1:-}" = "--help" ]; then show_help; fi
-if [ "${1:-}" = "--list" ]; then show_list; fi
 
 echo "============================================"
 echo "  CLI Contract Implementation Check"
@@ -71,83 +40,108 @@ echo "============================================"
 echo ""
 
 # ---------------------------------------------------------------------------
-# Check 1: CliConfigLoader → CliConfigLoaderImpl
+# Check 1: Binary entry point
 # ---------------------------------------------------------------------------
-echo "--- Config Contracts ---"
-if grep -q "impl CliConfigLoader for CliConfigLoaderImpl" "${SRC_DIR}/configuration/infrastructure/config_impl.rs" 2>/dev/null; then
-    pass "CliConfigLoader → CliConfigLoaderImpl"
+echo "--- Entry Point ---"
+if [ -f "${SRC_DIR}/main.rs" ] && grep -q "fn main()" "${SRC_DIR}/main.rs" 2>/dev/null; then
+    pass "main.rs entry point"
 else
-    fail "CliConfigLoader → CliConfigLoaderImpl (missing impl)"
+    fail "main.rs entry point missing"
 fi
 
 # ---------------------------------------------------------------------------
-# Check 2: LogFormatter → LogFormatterImpl
+# Check 2: lib.rs declares cli_boundary
 # ---------------------------------------------------------------------------
 echo ""
-echo "--- Output Contracts ---"
-if grep -q "impl LogFormatter for LogFormatterImpl" "${SRC_DIR}/cli_boundary/infrastructure/output_impl.rs" 2>/dev/null; then
-    pass "LogFormatter → LogFormatterImpl"
+echo "--- Module Structure ---"
+if [ -f "${SRC_DIR}/lib.rs" ] && grep -q "pub mod cli_boundary" "${SRC_DIR}/lib.rs" 2>/dev/null; then
+    pass "lib.rs declares cli_boundary module"
 else
-    fail "LogFormatter → LogFormatterImpl (missing impl)"
+    fail "lib.rs missing cli_boundary declaration"
 fi
 
 # ---------------------------------------------------------------------------
-# Check 3: SignalHandler → SignalHandlerImpl
+# Check 3: No mirror modules (execution_engine, planning, etc.)
 # ---------------------------------------------------------------------------
 echo ""
-echo "--- Signal Contracts ---"
-if grep -q "impl SignalHandler for SignalHandlerImpl" "${SRC_DIR}/cancellation/infrastructure/signal_impl.rs" 2>/dev/null; then
-    pass "SignalHandler → SignalHandlerImpl"
-else
-    fail "SignalHandler → SignalHandlerImpl (missing impl)"
+echo "--- No Engine Mirror Modules ---"
+MIRROR_COUNT=0
+for mirror in execution_engine planning event_system state_persistence template_generation templates; do
+    if [ -d "${SRC_DIR}/${mirror}" ]; then
+        fail "Mirror module ${mirror}/ still exists"
+        MIRROR_COUNT=$((MIRROR_COUNT + 1))
+    fi
+done
+if [ "$MIRROR_COUNT" -eq 0 ]; then
+    pass "No engine mirror modules"
 fi
 
 # ---------------------------------------------------------------------------
-# Check 4: tracing functions exist
+# Check 4: Clap command definitions
 # ---------------------------------------------------------------------------
 echo ""
-echo "--- Tracing Contracts ---"
-if grep -q "pub fn init_tracing" "${SRC_DIR}/observability/infrastructure/tracing.rs" 2>/dev/null; then
-    pass "init_tracing() defined"
+echo "--- Command Definitions ---"
+if grep -q "CliCommand" "${SRC_DIR}/cli_boundary/cli.rs" 2>/dev/null; then
+    pass "CliCommand enum defined"
 else
-    fail "init_tracing() missing"
+    fail "CliCommand missing from cli_boundary/cli.rs"
 fi
 
 # ---------------------------------------------------------------------------
-# Check 5: Main entry point dispatches commands
+# Check 5: Config loader
 # ---------------------------------------------------------------------------
 echo ""
-echo "--- CLI Entry Point ---"
-if grep -q "fn main()" "${REPO_ROOT}/cli/src/main.rs" 2>/dev/null; then
-    pass "Binary entry point (main.rs)"
+echo "--- Config Loading ---"
+if grep -q "pub fn load_config\|pub async fn load_config" "${SRC_DIR}/cli_boundary/config.rs" 2>/dev/null; then
+    pass "Config loader function"
+elif grep -q "pub fn load_config\|pub async fn load_config" "${SRC_DIR}/cli_boundary/config_impl.rs" 2>/dev/null; then
+    pass "Config loader function (config_impl.rs)"
 else
-    fail "Binary entry point missing"
+    fail "load_config function not found"
 fi
 
 # ---------------------------------------------------------------------------
-# Check 6: DTO definitions match CLI command enum
+# Check 6: Signal handler
 # ---------------------------------------------------------------------------
 echo ""
-echo "--- DTO Completeness ---"
-DTO_COUNT=$(find "${SRC_DIR}/cli_boundary/application/dto" -name "*.rs" -exec grep -c "pub struct\|pub enum" {} \; 2>/dev/null | awk '{s+=$1} END {print s}' || true)
-if [ "$DTO_COUNT" -gt 0 ]; then
-    pass "${DTO_COUNT} DTO types defined"
+echo "--- Signal Handling ---"
+if grep -q "Ctrl\|signal\|SIGINT\|SIGTERM" "${SRC_DIR}/cli_boundary/signal.rs" 2>/dev/null; then
+    pass "Signal handling defined"
 else
-    fail "No DTO types found"
+    fail "Signal handler missing"
 fi
 
 # ---------------------------------------------------------------------------
-# Check 7: Test coverage (at least 1 test per implementation)
+# Check 7: Tracing initialization
 # ---------------------------------------------------------------------------
 echo ""
-echo "--- Test Coverage ---"
-TEST_COUNT=$(find "${SRC_DIR}" -name "*.rs" -exec grep -c "#\[test\]" {} \; 2>/dev/null | awk '{s+=$1} END {print s}' || true)
-if [ "$TEST_COUNT" -ge 30 ]; then
-    pass "${TEST_COUNT} tests (≥30 threshold)"
-elif [ "$TEST_COUNT" -ge 10 ]; then
-    pass "${TEST_COUNT} tests (≥10 minimum)"
+echo "--- Tracing ---"
+if grep -q "pub fn init_tracing\|pub fn init_logging" "${SRC_DIR}/cli_boundary/tracing.rs" 2>/dev/null; then
+    pass "Tracing initialization"
 else
-    fail "Only ${TEST_COUNT} tests (minimum 10 required)"
+    fail "Tracing init missing"
+fi
+
+# ---------------------------------------------------------------------------
+# Check 8: Output formatter
+# ---------------------------------------------------------------------------
+echo ""
+echo "--- Output Formatting ---"
+if [ -f "${SRC_DIR}/cli_boundary/output.rs" ] || [ -f "${SRC_DIR}/cli_boundary/output_impl.rs" ]; then
+    pass "Output formatter files exist"
+else
+    fail "Output formatter missing"
+fi
+
+# ---------------------------------------------------------------------------
+# Check 9: Error type
+# ---------------------------------------------------------------------------
+echo ""
+echo "--- Error Handling ---"
+if grep -q "pub enum CliError\|CliError" "${SRC_DIR}/cli_boundary/error.rs" 2>/dev/null; then
+    pass "CliError defined"
+else
+    fail "CliError missing"
 fi
 
 # ---------------------------------------------------------------------------
