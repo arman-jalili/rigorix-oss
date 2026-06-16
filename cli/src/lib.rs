@@ -59,6 +59,7 @@
 pub mod cancellation;
 pub mod cli_boundary;
 pub mod configuration;
+pub mod execution_engine;
 pub mod observability;
 pub mod planning;
 pub mod template_generation;
