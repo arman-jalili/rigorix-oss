@@ -101,7 +101,7 @@ async fn main() {
 
     // Initialize template command handler
     let template_handler =
-        match rigorix::cli_boundary::commands::template_cmd::TemplateCommandHandler::new(
+        match rigorix::templates::infrastructure::template_handler::TemplateCommandHandler::new(
             config.clone(),
         )
         .await
@@ -217,7 +217,7 @@ async fn dispatch_command(
     command: CliCommand,
     _config: &CliConfig,
     formatter: &LogFormatterImpl,
-    template_handler: &rigorix::cli_boundary::commands::template_cmd::TemplateCommandHandler,
+    template_handler: &rigorix::templates::infrastructure::template_handler::TemplateCommandHandler,
 ) -> Result<String, CliError> {
     match command {
         CliCommand::Run {
