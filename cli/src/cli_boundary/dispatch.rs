@@ -146,8 +146,8 @@ pub async fn dispatch(
         CliCommand::Config { .. } => DispatchResult::success("Config"),
         CliCommand::Init => DispatchResult::success("Init"),
         CliCommand::Key { .. } => DispatchResult::success("Key"),
-        CliCommand::Tui { exec, run } => DispatchResult::success(format!(
-            "Tui: exec={exec:?}, run={run:?}"
-        )),
+        CliCommand::Tui { exec, run } => {
+            DispatchResult::success(format!("Tui: exec={exec:?}, run={run:?}"))
+        }
     }
 }

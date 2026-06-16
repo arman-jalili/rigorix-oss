@@ -19,8 +19,8 @@
 //!
 //! The same builder is used by both `cli_boundary::dispatch` and `tui::run`.
 
-use tokio_util::sync::CancellationToken;
 use rigorix_engine::orchestrator::application::service::OrchestratorService;
+use tokio_util::sync::CancellationToken;
 
 use crate::cli_boundary::config::CliConfig;
 

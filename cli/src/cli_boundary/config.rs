@@ -17,8 +17,8 @@
 //! The CLI loads and merges these sources, then passes the result to
 //! `engine::configuration::ConfigService::load()`.
 
-use serde::{Deserialize, Serialize};
 use rigorix_engine::configuration::domain::config::Config;
+use serde::{Deserialize, Serialize};
 
 use crate::cli_boundary::error::CliError;
 

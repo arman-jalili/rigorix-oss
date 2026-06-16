@@ -40,7 +40,8 @@ async fn main() {
             rigorix::tui::run(config, cancellation_token, exec, run).await;
         }
         _ => {
-            let result = cli_boundary::dispatch::dispatch(command, config, cancellation_token).await;
+            let result =
+                cli_boundary::dispatch::dispatch(command, config, cancellation_token).await;
             cli_boundary::output::format_and_exit(result);
         }
     }

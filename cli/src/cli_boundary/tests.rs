@@ -17,7 +17,13 @@ use crate::cli_boundary::output::{self, LogFormatter};
 #[test]
 fn test_parse_args_defaults_to_tui() {
     let cmd = parse_args();
-    assert!(matches!(cmd, CliCommand::Tui { exec: None, run: None }));
+    assert!(matches!(
+        cmd,
+        CliCommand::Tui {
+            exec: None,
+            run: None
+        }
+    ));
 }
 
 #[test]

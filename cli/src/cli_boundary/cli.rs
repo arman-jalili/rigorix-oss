@@ -98,7 +98,6 @@ pub enum ConfigAction {
 #[derive(Debug)]
 pub enum CliCommand {
     // ── Tier 1: Via OrchestratorService ──────────────────────────────
-
     /// Full lifecycle: plan → execute → persist → emit → record.
     Run {
         /// Natural-language intent describing what to execute.
@@ -130,7 +129,6 @@ pub enum CliCommand {
     Status,
 
     // ── Tier 2: Via Engine Services Directly ─────────────────────────
-
     /// List past executions with optional filtering.
     History {
         /// Maximum number of entries to show.
@@ -165,14 +163,10 @@ pub enum CliCommand {
     },
 
     /// Browse or inspect available templates.
-    Template {
-        action: TemplateAction,
-    },
+    Template { action: TemplateAction },
 
     /// Browse audit trails for execution records.
-    Audit {
-        action: AuditAction,
-    },
+    Audit { action: AuditAction },
 
     /// View raw execution session logs.
     Logs {
@@ -181,12 +175,9 @@ pub enum CliCommand {
     },
 
     /// Manage or inspect CLI/engine configuration.
-    Config {
-        action: ConfigAction,
-    },
+    Config { action: ConfigAction },
 
     // ── Tier 3: CLI-Only ────────────────────────────────────────
-
     /// Scaffold `.rigorix/` directory with a default `rigorix.toml`.
     Init,
 
@@ -197,7 +188,6 @@ pub enum CliCommand {
     },
 
     // ── TUI ──────────────────────────────────────────────────────
-
     /// Launch the interactive terminal UI.
     ///
     /// When no subcommand is given, `parse_args()` returns this variant
