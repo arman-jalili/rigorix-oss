@@ -17,7 +17,7 @@ When implementing, read ONLY the section you need:
 | When you need... | Read this section from the reference |
 |-----------------|--------------------------------------|
 | Module structure | Section 1 — Clean Architecture 4-layer layout + header template |
-| Error types | Section 2 — thiserror enums, root error aggregation, is_retriable() |
+| Error types | Section 2 — thiserror enums, root error aggregation, is_retriable(), #[source], #[backtrace] |
 | Secret handling | Section 3 — Secret value object with redacted Display |
 | State machines | Section 4 — Typed enum with is_terminal(), transition methods |
 | RAII guards | Section 5 — Budget reservation with Drop auto-release |
@@ -37,12 +37,11 @@ When implementing, read ONLY the section you need:
 ## Command
 
 ```
-# Read the section you need:
-read .pi/skills/rust-enterprise-codegen.md
-# Then grep for the specific pattern:
-grep "section 6" .pi/skills/rust-enterprise-codegen.md
-# Or read limited lines:
-read .pi/skills/rust-enterprise-codegen.md --limit 60
+# Read the section you need (use the Read tool with limit parameter):
+Read file_path=".pi/skills/rust-enterprise-codegen.md" limit=60
+# Or grep for a specific section header:
+Grep pattern="## 6\. Async" path=".pi/skills/rust-enterprise-codegen.md"
+# Then Read with offset/limit targeting the lines you need
 ```
 
 ## Rules
