@@ -73,7 +73,7 @@ echo ""
 # Check 1: TracingInitializer trait defined
 # ---------------------------------------------------------------------------
 echo "--- Trait Definitions ---"
-if grep -q "pub trait TracingInitializer" "${SRC_DIR}/infrastructure/observability.rs" 2>/dev/null; then
+if grep -q "pub trait TracingInitializer" "${SRC_DIR}/observability/infrastructure/observability.rs" 2>/dev/null; then
     pass "TracingInitializer trait defined (infrastructure/observability.rs)"
 else
     fail "TracingInitializer trait missing"
@@ -83,7 +83,7 @@ fi
 # Check 2: TracingInitializer trait methods
 # ---------------------------------------------------------------------------
 for method in "init_tracing" "init_default_tracing" "is_initialized" "init_health_checks"; do
-    if grep -q "async fn $method\|fn $method" "${SRC_DIR}/infrastructure/observability.rs" 2>/dev/null; then
+    if grep -q "async fn $method\|fn $method" "${SRC_DIR}/observability/infrastructure/observability.rs" 2>/dev/null; then
         pass "TracingInitializer::$method() defined"
     else
         fail "TracingInitializer::$method() missing"
@@ -95,13 +95,13 @@ done
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Tracing Implementation ---"
-if grep -q "pub fn init_tracing" "${REPO_ROOT}/cli/src/tracing.rs" 2>/dev/null; then
+if grep -q "pub fn init_tracing" "${REPO_ROOT}/cli/src/observability/infrastructure/tracing.rs" 2>/dev/null; then
     pass "init_tracing() implemented in tracing.rs"
 else
     fail "init_tracing() missing from tracing.rs"
 fi
 
-if grep -q "pub fn init_default_tracing" "${REPO_ROOT}/cli/src/tracing.rs" 2>/dev/null; then
+if grep -q "pub fn init_default_tracing" "${REPO_ROOT}/cli/src/observability/infrastructure/tracing.rs" 2>/dev/null; then
     pass "init_default_tracing() implemented in tracing.rs"
 else
     fail "init_default_tracing() missing from tracing.rs"
@@ -112,7 +112,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Event Schemas ---"
-if grep -q "pub enum ObservabilityEvent" "${SRC_DIR}/domain/event/observability.rs" 2>/dev/null; then
+if grep -q "pub enum ObservabilityEvent" "${SRC_DIR}/observability/domain/event/observability.rs" 2>/dev/null; then
     pass "ObservabilityEvent enum defined"
 else
     fail "ObservabilityEvent enum missing"
@@ -120,7 +120,7 @@ fi
 
 # Check all event variants
 for variant in "TracingInitialized" "HealthCheck" "HealthStatusChanged"; do
-    if grep -q "${variant}Payload" "${SRC_DIR}/domain/event/observability.rs" 2>/dev/null; then
+    if grep -q "${variant}Payload" "${SRC_DIR}/observability/domain/event/observability.rs" 2>/dev/null; then
         pass "ObservabilityEvent::$variant payload defined"
     else
         fail "ObservabilityEvent::$variant payload missing"
@@ -130,7 +130,7 @@ done
 # ---------------------------------------------------------------------------
 # Check 5: HealthStatus enum defined
 # ---------------------------------------------------------------------------
-if grep -q "pub enum HealthStatus" "${SRC_DIR}/domain/event/observability.rs" 2>/dev/null; then
+if grep -q "pub enum HealthStatus" "${SRC_DIR}/observability/domain/event/observability.rs" 2>/dev/null; then
     pass "HealthStatus enum defined (healthy, degraded, unhealthy)"
 else
     fail "HealthStatus enum missing"
@@ -141,7 +141,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- CliEvent Integration ---"
-if grep -q "Observability(ObservabilityEvent)" "${SRC_DIR}/domain/event/mod.rs" 2>/dev/null; then
+if grep -q "Observability(ObservabilityEvent)" "${SRC_DIR}/cli_boundary/domain/event/mod.rs" 2>/dev/null; then
     pass "ObservabilityEvent registered in CliEvent enum"
 else
     fail "ObservabilityEvent not registered in CliEvent"

@@ -49,7 +49,7 @@ echo ""
 # Check 1: tracing.rs tests
 # ---------------------------------------------------------------------------
 echo "--- Tracing Tests ---"
-TRACING_TESTS=$(grep -c "#\[test\]" "${SRC_DIR}/../tracing.rs" 2>/dev/null || true)
+TRACING_TESTS=$(grep -c "#\[test\]" "${SRC_DIR}/observability/infrastructure/tracing.rs" 2>/dev/null || true)
 TRACING_TESTS=$((TRACING_TESTS + $(grep -c "#\[test\]" "${SRC_DIR}/tracing.rs" 2>/dev/null || true)))
 
 if [ "$TRACING_TESTS" -ge 2 ]; then
