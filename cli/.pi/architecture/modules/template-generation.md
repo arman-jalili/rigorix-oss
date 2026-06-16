@@ -18,11 +18,11 @@ The engine crate (`rigorix-engine`) provides the `TemplateGenerator` trait and `
 
 ## Components
 
-| Component | File (planned) | Purpose |
-|-----------|---------------|---------|
-| CliGenerateHandler | `cli/src/generate.rs` | Wraps engine TemplateGenerator, handles `rigorix generate` command with flags |
-| TemplatePersistenceService | `cli/src/generate.rs` | Saves generated TOML to `.rigorix/templates/<id>.toml` with atomic write-rename |
-| RepoContextBuilder | `cli/src/generate.rs` | Builds RepoContext from the project directory (file tree, deps via Cargo.toml, public API via SymbolGraph) |
+| Component | File (planned) | Module | Purpose |
+|-----------|---------------|--------|---------|
+| CliGenerateHandler | `cli/src/cli_boundary/commands/generate_cmd.rs` | cli_boundary | Wraps engine TemplateGenerator, handles `rigorix generate` command with flags |
+| TemplatePersistenceService | `cli/src/cli_boundary/commands/generate_cmd.rs` | cli_boundary | Saves generated TOML to `.rigorix/templates/<id>.toml` with atomic write-rename |
+| RepoContextBuilder | `cli/src/cli_boundary/commands/generate_cmd.rs` | cli_boundary | Builds RepoContext from the project directory (file tree, deps via Cargo.toml, public API via SymbolGraph) |
 
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |
@@ -65,7 +65,7 @@ The engine crate (`rigorix-engine`) provides the `TemplateGenerator` trait and `
 
 | File | Purpose |
 |------|---------|
-| `cli/src/generate.rs` | CLI-side: GenerateHandler, PersistenceService, RepoContextBuilder |
+| `cli/src/cli_boundary/commands/generate_cmd.rs` | CLI-side: GenerateHandler, PersistenceService, RepoContextBuilder |
 | `engine/src/template_generation/domain/generator.rs` | Engine: TemplateGenerator trait, ClaudeTemplateGenerator, GeneratedTemplate, RepoContext, GeneratorError |
 | `engine/src/template_generation/application/` | Engine: service traits and DTOs |
 | `engine/src/template_generation/infrastructure/` | Engine: repository interfaces for template storage |

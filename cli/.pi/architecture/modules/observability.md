@@ -18,12 +18,12 @@ Provides structured tracing, health checking, and metrics collection. Centralize
 ## Components
 
 **CLI-facing:**
-| Component | File | Purpose |
-|-----------|------|---------|
-| TracingInitializer (trait) | `cli/src/infrastructure/observability.rs` | Interface for initializing tracing and health checks |
-| init_tracing() | `cli/src/tracing.rs` | Initializes engine tracing with CLI-specific log level and format |
-| init_default_tracing() | `cli/src/tracing.rs` | Initializes tracing with safe defaults (pretty, info) |
-| ObservabilityEvent | `cli/src/domain/event/observability.rs` | Event schemas: TracingInitialized, HealthCheckPerformed, HealthStatusChanged |
+| Component | File | Module | Purpose |
+|-----------|------|--------|---------|
+| TracingInitializer (trait) | `cli/src/observability/infrastructure/observability.rs` | observability | Interface for initializing tracing and health checks |
+| init_tracing() | `cli/src/observability/infrastructure/tracing.rs` | observability | Initializes engine tracing with CLI-specific log level and format |
+| init_default_tracing() | `cli/src/observability/infrastructure/tracing.rs` | observability | Initializes tracing with safe defaults (pretty, info) |
+| ObservabilityEvent | `cli/src/observability/domain/event/observability.rs` | observability | Event schemas: TracingInitialized, HealthCheckPerformed, HealthStatusChanged |
 
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |
@@ -55,10 +55,10 @@ Provides structured tracing, health checking, and metrics collection. Centralize
 
 | File | Purpose |
 |------|---------|
-| `cli/src/infrastructure/observability.rs` | TracingInitializer trait (contract) |
-| `cli/src/tracing.rs` | Tracing initialization implementation |
-| `cli/src/domain/event/observability.rs` | Observability event schemas |
-| `cli/src/domain/event/mod.rs` | CliEvent integration (Observability variant) |
+| `cli/src/observability/infrastructure/observability.rs` | TracingInitializer trait (contract) |
+| `cli/src/observability/infrastructure/tracing.rs` | Tracing initialization implementation |
+| `cli/src/observability/domain/event/observability.rs` | Observability event schemas |
+| `cli/src/cli_boundary/domain/event/mod.rs` | CliEvent integration (Observability variant) — defined in cli_boundary module |
 | `cli/.pi/scripts/ci/check_observability_contracts.sh` | Automated contract validation (15 checks) |
 | `cli/.pi/scripts/ci/check_observability_coverage.sh` | Coverage threshold enforcement |
 | `cli/.pi/scripts/ci/stage_observability_proofing.sh` | CI stage wrapper (stage 13) |

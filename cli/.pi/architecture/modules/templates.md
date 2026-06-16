@@ -15,10 +15,10 @@ Templates are stored in `.rigorix/templates/*.toml` and loaded at startup. The e
 ## Components
 
 **CLI-facing:**
-| Component | File (planned) | Purpose |
-|-----------|---------------|---------|
-| TemplateListCommand | `cli/src/template_cmd.rs` | Lists all registered templates with descriptions |
-| TemplateShowCommand | `cli/src/template_cmd.rs` | Shows full template definition (TOML) |
+| Component | File (planned) | Module | Purpose |
+|-----------|---------------|--------|---------|
+| TemplateListCommand | `cli/src/cli_boundary/commands/template_cmd.rs` | cli_boundary | Lists all registered templates with descriptions |
+| TemplateShowCommand | `cli/src/cli_boundary/commands/template_cmd.rs` | cli_boundary | Shows full template definition (TOML) |
 
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |
@@ -61,7 +61,7 @@ Templates are stored in `.rigorix/templates/*.toml` and loaded at startup. The e
 
 | File | Purpose |
 |------|---------|
-| `cli/src/template_cmd.rs` | CLI template list/show commands |
+| `cli/src/cli_boundary/commands/template_cmd.rs` | CLI template list/show commands |
 | `engine/src/templates/domain/template.rs` | Template aggregate, TemplateNode, TemplateAction, ParameterDef |
 | `engine/src/templates/application/` | TemplateParser, TemplateEngine service traits and impls |
 | `engine/src/templates/` | BuiltinTemplates (13 built-in definitions) |

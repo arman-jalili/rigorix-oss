@@ -15,10 +15,10 @@ The CLI reads persisted state for `rigorix history` and `rigorix logs` commands.
 ## Components
 
 **CLI-facing:**
-| Component | File (planned) | Purpose |
-|-----------|---------------|---------|
-| HistoryCommand | `cli/src/history_cmd.rs` | Lists past execution sessions with summary |
-| LogsCommand | `cli/src/logs_cmd.rs` | Streams or queries execution events |
+| Component | File (planned) | Module | Purpose |
+|-----------|---------------|--------|---------|
+| HistoryCommand | `cli/src/cli_boundary/commands/history_cmd.rs` | cli_boundary | Lists past execution sessions with summary |
+| LogsCommand | `cli/src/cli_boundary/commands/logs_cmd.rs` | cli_boundary | Streams or queries execution events |
 
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |
