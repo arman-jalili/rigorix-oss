@@ -12,6 +12,23 @@ This document tracks all architecture changes requiring implementation updates.
 
 ## Entries
 
+## [2026-06-16] - Observability Module Implementation (Issues #289, #291, #292)
+
+### Changes
+- Contract freeze: defined all public interfaces, DTO schemas, error types
+  - TracingInitializer trait moved to application/layer
+  - ObservabilityCliError enum with typed errors
+  - InitTracingInput/Output, HealthCheckInput/Output, MetricsOutput DTOs
+  - ObservabilityCliRepository trait for state tracking
+  - HTTP API contracts: health, tracing status, metrics
+- Updated existing observability proofing scripts to find trait in application/
+- Created docs/runbook-observability.md and docs/dr-plan-observability.md
+- Updated architecture doc with final contracts and file paths
+
+### Status
+- Observability module: IMPLEMENTED (contract freeze + proofing + readiness)
+- CI proofing scripts: stage 13 — observability_proofing — ALL PASS
+
 ## [2026-06-16] - Configuration Module Implementation (Issues #282, #284, #285)
 
 ### Changes
