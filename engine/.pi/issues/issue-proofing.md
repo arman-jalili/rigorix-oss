@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-PROOFING"
-  epic: ""error-handling""
+  epic: ""orchestrator""
   component: "Proofing & CI Enforcement"
-  module: "error-handling"
+  module: "orchestrator"
   status: planned
   priority: critical
   dependencies: []
@@ -26,7 +26,7 @@ guardian_issue:
       - Updated CI stage configuration
 
   canonical_references:
-    - module: ".pi/architecture/modules/error-handling.md"
+    - module: ".pi/architecture/modules/orchestrator.md"
 
   acceptance_criteria:
     - "All proofing scripts created and executable"
@@ -47,12 +47,12 @@ guardian_issue:
     every build for zero token cost.
 
   file_changes:
-    - "create: .pi/scripts/ci/check_error-handling_contracts.sh"
-    - "create: .pi/scripts/ci/check_error-handling_coverage.sh"
+    - "create: .pi/scripts/ci/check_orchestrator_contracts.sh"
+    - "create: .pi/scripts/ci/check_orchestrator_coverage.sh"
     - "modify: .pi/scripts/ci/run_hardening_stages.sh"
 ---
 
-# Proofing & CI Enforcement: error-handling
+# Proofing & CI Enforcement: orchestrator
 
 ## Intent
 
@@ -81,17 +81,17 @@ on every PR. No LLM cost. No human review. Just pass or fail.
 
 | Script | Purpose | Location |
 |--------|---------|----------|
-| check_error-handling_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
-| check_error-handling_coverage.sh | Enforce coverage thresholds | .pi/scripts/ci/ |
-| stage_error-handling_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
+| check_orchestrator_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
+| check_orchestrator_coverage.sh | Enforce coverage thresholds | .pi/scripts/ci/ |
+| stage_orchestrator_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
 
 ## CI Pipeline Update
 
 Add the new stage to `run_hardening_stages.sh`:
 
 ```bash
-run_stage "11" "error-handling_proofing" \
-    "${SCRIPTS_DIR}/stage_error-handling_proofing.sh" \
+run_stage "11" "orchestrator_proofing" \
+    "${SCRIPTS_DIR}/stage_orchestrator_proofing.sh" \
     "always"
 ```
 

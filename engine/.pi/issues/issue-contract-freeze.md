@@ -1,13 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: ""error-handling""
+  epic: ""orchestrator""
   component: "Contract Freeze"
-<<<<<<< HEAD
-  module: "audit"
-=======
-  module: "error-handling"
->>>>>>> origin/main
+  module: "orchestrator"
   status: planned
   priority: critical
   dependencies: []
@@ -33,11 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-<<<<<<< HEAD
-    - module: ".pi/architecture/modules/audit.md"
-=======
-    - module: ".pi/architecture/modules/error-handling.md"
->>>>>>> origin/main
+    - module: ".pi/architecture/modules/orchestrator.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -55,42 +47,24 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-<<<<<<< HEAD
-    - "create: src/audit/contracts/"
-    - "create: src/audit/contracts/dtos/"
-    - "create: src/audit/contracts/events/"
+    - "create: src/orchestrator/contracts/"
+    - "create: src/orchestrator/contracts/dtos/"
+    - "create: src/orchestrator/contracts/events/"
 ---
 
-# Contract Freeze: audit
+# Contract Freeze: orchestrator
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the audit
-=======
-    - "create: src/error-handling/contracts/"
-    - "create: src/error-handling/contracts/dtos/"
-    - "create: src/error-handling/contracts/events/"
----
-
-# Contract Freeze: error-handling
-
-## Intent
-
-Define and freeze all public interfaces, contracts, and schemas for the error-handling
->>>>>>> origin/main
+Define and freeze all public interfaces, contracts, and schemas for the orchestrator
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-<<<<<<< HEAD
-- AuditEnvelope
-- AuditSender
-- AuditQueue
-- CircuitBreaker
-=======
-- CoreOrchestratorError
->>>>>>> origin/main
+- OrchestratorService
+- OrchestratorBuilder
+- ExecutionRecord
 
 ## What Must Be Frozen
 
