@@ -13,12 +13,12 @@ use rigorix_engine::templates::application::{
 };
 use tracing::info;
 
-use crate::cli_boundary::application::dto::{
-    TemplateListOutput, TemplateShowOutput, TemplateSummary as CliTemplateSummary,
-};
 use crate::cli_boundary::domain::error::CliError;
 use crate::configuration::domain::config::CliConfig;
-use crate::templates::infrastructure::service::TemplateCommandService;
+use crate::templates::application::dto::{
+    TemplateListOutput, TemplateShowOutput, TemplateSummary as CliTemplateSummary,
+};
+use crate::templates::application::service::TemplateCommandService;
 
 /// Implementation of `TemplateCommandService` backed by the engine's
 /// `TemplateEngineImpl`.
