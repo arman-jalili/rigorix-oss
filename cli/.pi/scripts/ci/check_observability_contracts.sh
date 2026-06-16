@@ -73,8 +73,8 @@ echo ""
 # Check 1: TracingInitializer trait defined
 # ---------------------------------------------------------------------------
 echo "--- Trait Definitions ---"
-if grep -q "pub trait TracingInitializer" "${SRC_DIR}/observability/infrastructure/observability.rs" 2>/dev/null; then
-    pass "TracingInitializer trait defined (infrastructure/observability.rs)"
+if grep -q "pub trait TracingInitializer" "${SRC_DIR}/observability/application/service.rs" 2>/dev/null; then
+    pass "TracingInitializer trait defined (application/service.rs)"
 else
     fail "TracingInitializer trait missing"
 fi
@@ -83,7 +83,7 @@ fi
 # Check 2: TracingInitializer trait methods
 # ---------------------------------------------------------------------------
 for method in "init_tracing" "init_default_tracing" "is_initialized" "init_health_checks"; do
-    if grep -q "async fn $method\|fn $method" "${SRC_DIR}/observability/infrastructure/observability.rs" 2>/dev/null; then
+    if grep -q "async fn $method\|fn $method" "${SRC_DIR}/observability/application/service.rs" 2>/dev/null; then
         pass "TracingInitializer::$method() defined"
     else
         fail "TracingInitializer::$method() missing"
