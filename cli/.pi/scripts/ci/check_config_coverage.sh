@@ -50,8 +50,8 @@ echo ""
 # Check 1: Config loader tests
 # ---------------------------------------------------------------------------
 echo "--- Config Loader Tests ---"
-CONFIG_IMPL_TESTS=$(grep -c "#\[tokio::test\]" "${SRC_DIR}/infrastructure/config_impl.rs" 2>/dev/null || true)
-CONFIG_IMPL_TEST_FNS=$(grep -c "#\[test\]" "${SRC_DIR}/infrastructure/config_impl.rs" 2>/dev/null || true)
+CONFIG_IMPL_TESTS=$(grep -c "#\[tokio::test\]" "${SRC_DIR}/configuration/infrastructure/config_impl.rs" 2>/dev/null || true)
+CONFIG_IMPL_TEST_FNS=$(grep -c "#\[test\]" "${SRC_DIR}/configuration/infrastructure/config_impl.rs" 2>/dev/null || true)
 CONFIG_TOTAL=$((CONFIG_IMPL_TESTS + CONFIG_IMPL_TEST_FNS))
 
 if [ "$CONFIG_TOTAL" -ge 6 ]; then
@@ -67,10 +67,10 @@ echo ""
 echo "--- Config Domain Type Tests ---"
 
 # Check domain/config.rs for tests
-DOMAIN_CONFIG_TESTS=$(grep -c "#\[test\]" "${SRC_DIR}/domain/config.rs" 2>/dev/null || true)
+DOMAIN_CONFIG_TESTS=$(grep -c "#\[test\]" "${SRC_DIR}/configuration/domain/config.rs" 2>/dev/null || true)
 
 # Check tests.rs for config-related tests
-CONFIG_TESTS_IN_TESTS=$(grep -c "test_cli_config" "${SRC_DIR}/tests.rs" 2>/dev/null || true)
+CONFIG_TESTS_IN_TESTS=$(grep -c "test_cli_config" "${SRC_DIR}/cli_boundary/tests.rs" 2>/dev/null || true)
 
 if [ "$CONFIG_TESTS_IN_TESTS" -ge 2 ]; then
     pass "tests.rs: ${CONFIG_TESTS_IN_TESTS} config-related tests (min: 2)"

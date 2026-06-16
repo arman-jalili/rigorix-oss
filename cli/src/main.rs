@@ -29,17 +29,19 @@ use std::process;
 use clap::Parser;
 use tracing::info;
 
-use rigorix::domain::config::{CliConfig, ColorMode, LogFormat, LogLevel, OutputFormat};
-use rigorix::domain::error::CliError;
-use rigorix::infrastructure::config::CliConfigLoader;
-use rigorix::infrastructure::config_impl::{
+use rigorix::cancellation::infrastructure::signal::SignalHandler;
+use rigorix::cancellation::infrastructure::signal_impl::SignalHandlerImpl;
+use rigorix::cli_boundary::domain::error::CliError;
+use rigorix::cli_boundary::infrastructure::output::LogFormatter;
+use rigorix::cli_boundary::infrastructure::output_impl::LogFormatterImpl;
+use rigorix::cli_boundary::interfaces::cli::{CliArgs, CliCommand, GlobalOptions};
+use rigorix::configuration::domain::config::{
+    CliConfig, ColorMode, LogFormat, LogLevel, OutputFormat,
+};
+use rigorix::configuration::infrastructure::config::CliConfigLoader;
+use rigorix::configuration::infrastructure::config_impl::{
     CliConfigLoaderImpl, build_engine_cli_overrides, validate_api_key_for_command,
 };
-use rigorix::infrastructure::output::LogFormatter;
-use rigorix::infrastructure::output_impl::LogFormatterImpl;
-use rigorix::infrastructure::signal::SignalHandler;
-use rigorix::infrastructure::signal_impl::SignalHandlerImpl;
-use rigorix::interfaces::cli::{CliArgs, CliCommand, GlobalOptions};
 use rigorix_engine::configuration::application::ConfigService;
 
 #[tokio::main]
@@ -81,7 +83,10 @@ async fn main() {
     }
 
     // Initialize tracing AFTER config is loaded (so we respect RIGORIX_LOG)
-    rigorix::tracing::init_tracing(config.log_level, config.log_format);
+    rigorix::observability::infrastructure::tracing::init_tracing(
+        config.log_level,
+        config.log_format,
+    );
     info!("rigorix CLI starting");
 
     // Install signal handler
@@ -208,7 +213,7 @@ async fn dispatch_command(
         } => {
             info!("Command: run — intent: {}, dry_run: {}", intent, dry_run);
 
-            let _input = rigorix::application::dto::RunInput {
+            let _input = rigorix::cli_boundary::application::dto::RunInput {
                 intent,
                 dry_run,
                 skip_confirmations,
@@ -216,10 +221,10 @@ async fn dispatch_command(
             };
 
             // Placeholder: return a stub response until engine integration is wired
-            let output = rigorix::application::dto::RunOutput {
+            let output = rigorix::cli_boundary::application::dto::RunOutput {
                 session_id: "pending".into(),
-                outcome: rigorix::domain::event::SessionOutcome::Completed,
-                summary: rigorix::application::dto::ExecutionSummary {
+                outcome: rigorix::cli_boundary::domain::event::SessionOutcome::Completed,
+                summary: rigorix::cli_boundary::application::dto::ExecutionSummary {
                     total_nodes: 0,
                     completed: 0,
                     failed: 0,
@@ -234,10 +239,10 @@ async fn dispatch_command(
         CliCommand::Plan { intent } => {
             info!("Command: plan — intent: {}", intent);
 
-            let _input = rigorix::application::dto::PlanInput { intent };
+            let _input = rigorix::cli_boundary::application::dto::PlanInput { intent };
 
             // Placeholder
-            let output = rigorix::application::dto::PlanOutput {
+            let output = rigorix::cli_boundary::application::dto::PlanOutput {
                 template_id: "none".into(),
                 template_name: "No template matched".into(),
                 confidence: 0.0,
@@ -259,7 +264,7 @@ async fn dispatch_command(
         } => {
             info!("Command: init — path: {}", path);
 
-            let input = rigorix::application::dto::InitInput {
+            let input = rigorix::cli_boundary::application::dto::InitInput {
                 target_path: path,
                 interactive: !non_interactive,
                 api_key,
@@ -279,7 +284,7 @@ async fn dispatch_command(
         } => {
             info!("Command: generate — intent: {}", intent);
 
-            let input = rigorix::application::dto::GenerateInput {
+            let input = rigorix::cli_boundary::application::dto::GenerateInput {
                 intent,
                 stdout,
                 dry_run,
@@ -294,23 +299,24 @@ async fn dispatch_command(
         CliCommand::History(history_cmd) => {
             info!("Command: history");
             match history_cmd {
-                rigorix::interfaces::cli::HistoryCommands::List {
+                rigorix::cli_boundary::interfaces::cli::HistoryCommands::List {
                     limit: _,
                     status: _,
                 } => {
-                    let output = rigorix::application::dto::HistoryListOutput {
+                    let output = rigorix::cli_boundary::application::dto::HistoryListOutput {
                         sessions: vec![],
                         total: 0,
                     };
                     formatter.format_history_list(&output).await
                 }
-                rigorix::interfaces::cli::HistoryCommands::Show { session_id } => {
-                    let output = rigorix::application::dto::HistoryShowOutput {
-                        session: rigorix::application::dto::SessionSummary {
+                rigorix::cli_boundary::interfaces::cli::HistoryCommands::Show { session_id } => {
+                    let output = rigorix::cli_boundary::application::dto::HistoryShowOutput {
+                        session: rigorix::cli_boundary::application::dto::SessionSummary {
                             session_id,
                             command: String::new(),
                             template_id: None,
-                            outcome: rigorix::domain::event::SessionOutcome::Completed,
+                            outcome:
+                                rigorix::cli_boundary::domain::event::SessionOutcome::Completed,
                             duration_ms: 0,
                             timestamp: String::new(),
                         },
@@ -330,7 +336,7 @@ async fn dispatch_command(
             limit,
         } => {
             info!("Command: logs — follow: {}", follow);
-            let _input = rigorix::application::dto::LogsInput {
+            let _input = rigorix::cli_boundary::application::dto::LogsInput {
                 session_id,
                 event_type,
                 node_id,
@@ -339,7 +345,7 @@ async fn dispatch_command(
                 limit,
             };
 
-            let output = rigorix::application::dto::LogsOutput {
+            let output = rigorix::cli_boundary::application::dto::LogsOutput {
                 entries: vec![],
                 total: 0,
             };
@@ -349,16 +355,16 @@ async fn dispatch_command(
         CliCommand::Audit(audit_cmd) => {
             info!("Command: audit");
             match audit_cmd {
-                rigorix::interfaces::cli::AuditCommands::List { limit: _ } => {
-                    let output = rigorix::application::dto::AuditListOutput {
+                rigorix::cli_boundary::interfaces::cli::AuditCommands::List { limit: _ } => {
+                    let output = rigorix::cli_boundary::application::dto::AuditListOutput {
                         audits: vec![],
                         total: 0,
                     };
                     formatter.format_audit_list(&output).await
                 }
-                rigorix::interfaces::cli::AuditCommands::Show { audit_id } => {
-                    let output = rigorix::application::dto::AuditShowOutput {
-                        audit: rigorix::application::dto::AuditSummary {
+                rigorix::cli_boundary::interfaces::cli::AuditCommands::Show { audit_id } => {
+                    let output = rigorix::cli_boundary::application::dto::AuditShowOutput {
+                        audit: rigorix::cli_boundary::application::dto::AuditSummary {
                             audit_id,
                             session_id: String::new(),
                             planning_hash: String::new(),
@@ -368,11 +374,11 @@ async fn dispatch_command(
                     };
                     formatter.format_audit_show(&output).await
                 }
-                rigorix::interfaces::cli::AuditCommands::Diff {
+                rigorix::cli_boundary::interfaces::cli::AuditCommands::Diff {
                     audit_id_1,
                     audit_id_2,
                 } => {
-                    let output = rigorix::application::dto::AuditDiffOutput {
+                    let output = rigorix::cli_boundary::application::dto::AuditDiffOutput {
                         identical: true,
                         planning_hash_1: audit_id_1,
                         planning_hash_2: audit_id_2,
@@ -386,15 +392,15 @@ async fn dispatch_command(
         CliCommand::Template(template_cmd) => {
             info!("Command: template");
             match template_cmd {
-                rigorix::interfaces::cli::TemplateCommands::List => {
-                    let output = rigorix::application::dto::TemplateListOutput {
+                rigorix::cli_boundary::interfaces::cli::TemplateCommands::List => {
+                    let output = rigorix::cli_boundary::application::dto::TemplateListOutput {
                         templates: vec![],
                         total: 0,
                     };
                     formatter.format_template_list(&output).await
                 }
-                rigorix::interfaces::cli::TemplateCommands::Show { template_id } => {
-                    let output = rigorix::application::dto::TemplateShowOutput {
+                rigorix::cli_boundary::interfaces::cli::TemplateCommands::Show { template_id } => {
+                    let output = rigorix::cli_boundary::application::dto::TemplateShowOutput {
                         content: format!(
                             "Template '{}' not found (engine integration pending)",
                             template_id

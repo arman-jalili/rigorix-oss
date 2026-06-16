@@ -74,7 +74,7 @@ echo ""
 # Check 1: CliConfigLoader → CliConfigLoaderImpl
 # ---------------------------------------------------------------------------
 echo "--- Config Contracts ---"
-if grep -q "impl CliConfigLoader for CliConfigLoaderImpl" "${SRC_DIR}/infrastructure/config_impl.rs" 2>/dev/null; then
+if grep -q "impl CliConfigLoader for CliConfigLoaderImpl" "${SRC_DIR}/configuration/infrastructure/config_impl.rs" 2>/dev/null; then
     pass "CliConfigLoader → CliConfigLoaderImpl"
 else
     fail "CliConfigLoader → CliConfigLoaderImpl (missing impl)"
@@ -85,7 +85,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Output Contracts ---"
-if grep -q "impl LogFormatter for LogFormatterImpl" "${SRC_DIR}/infrastructure/output_impl.rs" 2>/dev/null; then
+if grep -q "impl LogFormatter for LogFormatterImpl" "${SRC_DIR}/cli_boundary/infrastructure/output_impl.rs" 2>/dev/null; then
     pass "LogFormatter → LogFormatterImpl"
 else
     fail "LogFormatter → LogFormatterImpl (missing impl)"
@@ -96,7 +96,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Signal Contracts ---"
-if grep -q "impl SignalHandler for SignalHandlerImpl" "${SRC_DIR}/infrastructure/signal_impl.rs" 2>/dev/null; then
+if grep -q "impl SignalHandler for SignalHandlerImpl" "${SRC_DIR}/cancellation/infrastructure/signal_impl.rs" 2>/dev/null; then
     pass "SignalHandler → SignalHandlerImpl"
 else
     fail "SignalHandler → SignalHandlerImpl (missing impl)"
@@ -107,7 +107,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Tracing Contracts ---"
-if grep -q "pub fn init_tracing" "${SRC_DIR}/tracing.rs" 2>/dev/null; then
+if grep -q "pub fn init_tracing" "${SRC_DIR}/observability/infrastructure/tracing.rs" 2>/dev/null; then
     pass "init_tracing() defined"
 else
     fail "init_tracing() missing"
