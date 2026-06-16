@@ -28,8 +28,10 @@
 //! │   ├── interfaces/   # Clap CLI command definitions
 //! │   └── tui/          # Ratatui TUI renderer
 //! ├── configuration/    # Multi-source config loading
-//! │   ├── domain/       # CliConfig value object
-//! │   └── infrastructure/ # CliConfigLoader trait + impl
+//! │   ├── domain/       # CliConfig, ConfigCliError, ConfigCliEvent
+//! │   ├── application/  # CliConfigLoader trait, DTO schemas
+//! │   ├── infrastructure/ # CliConfigLoaderImpl, ConfigCliRepository
+//! │   └── interfaces/   # HTTP API contracts
 //! ├── observability/    # Tracing, health checks, event schemas
 //! │   ├── domain/       # ObservabilityEvent schemas
 //! │   └── infrastructure/ # TracingInitializer trait + tracing impl
