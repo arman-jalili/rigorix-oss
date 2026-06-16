@@ -16,11 +16,13 @@
 //! - No implementation logic — only trait definitions
 
 pub mod builder;
+pub mod builder_impl;
 pub mod dto;
 pub mod orchestrator_impl;
 pub mod service;
 
 pub use builder::*;
+pub use builder_impl::*;
 pub use dto::*;
 pub use orchestrator_impl::*;
 pub use service::*;
