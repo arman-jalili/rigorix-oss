@@ -9,6 +9,7 @@
 
 pub mod config;
 pub mod config_impl;
+pub mod observability;
 pub mod output;
 pub mod output_impl;
 pub mod repository;

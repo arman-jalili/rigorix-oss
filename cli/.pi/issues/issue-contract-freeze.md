@@ -1,7 +1,7 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: ""configuration""
+  epic: ""observability""
   component: "Contract Freeze"
   module: "module-template"
   status: planned

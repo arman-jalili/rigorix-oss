@@ -1,6 +1,6 @@
 {
-  "id": "PL-4197",
-  "name": "\"configuration\"",
+  "id": "PL-3991",
+  "name": "\"observability\"",
   "items": [
     "issue-contract-freeze",
     "issue--component-name-",
@@ -48,65 +48,12 @@
       }
     }
   ],
-  "currentItemIndex": 2,
+  "currentItemIndex": 0,
   "currentStepIndex": 0,
   "status": "running",
   "retryCount": 0,
-  "results": [
-    {
-      "item": "issue-contract-freeze",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue--component-name-",
-      "status": "failed",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "failed",
-          "reason": "Issue #246 is a placeholder template with no real component — the configuration module's contracts are frozen and implemented. Skipping to real remaining issues (#247 Proofing, #248 Readiness)."
-        },
-        {
-          "step": "validate",
-          "status": "failed",
-          "reason": "skipped due to prior failure"
-        },
-        {
-          "step": "create-mr",
-          "status": "failed",
-          "reason": "skipped due to prior failure"
-        },
-        {
-          "step": "merge",
-          "status": "failed",
-          "reason": "skipped due to prior failure"
-        }
-      ]
-    }
-  ],
+  "results": [],
   "mergeOnValid": true,
-  "createdAt": "2026-06-16T16:53:11.184Z",
-  "updatedAt": "2026-06-16T17:02:04.417Z"
+  "createdAt": "2026-06-16T17:08:12.187Z",
+  "updatedAt": "2026-06-16T17:08:12.187Z"
 }

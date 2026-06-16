@@ -16,6 +16,10 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use self::observability::ObservabilityEvent;
+
+pub mod observability;
+
 /// Events emitted by the CLI boundary during execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
@@ -34,6 +38,9 @@ pub enum CliEvent {
 
     /// TUI was enabled or disabled.
     TuiStatus(TuiStatusPayload),
+
+    /// An observability event occurred (tracing init, health check, metrics).
+    Observability(ObservabilityEvent),
 }
 
 /// Payload for command dispatch events.

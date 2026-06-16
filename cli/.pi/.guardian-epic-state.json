@@ -1,6 +1,6 @@
 {
-  "name": "\"configuration\"",
-  "trackingIssueId": "244",
+  "name": "\"observability\"",
+  "trackingIssueId": "252",
   "epicId": null,
   "slices": [
     {
@@ -32,28 +32,28 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "245"
+      "remoteIssueId": "253"
     },
     {
       "id": "issue--component-name-",
       "title": "[Component Name]: [What this component does]",
       "status": "planned",
-      "remoteIssueId": "246"
+      "remoteIssueId": "254"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "247"
+      "remoteIssueId": "255"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "248"
+      "remoteIssueId": "256"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-06-16T16:53:11.151Z"
+  "createdAt": "2026-06-16T17:08:12.151Z"
 }
