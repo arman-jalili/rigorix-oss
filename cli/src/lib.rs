@@ -33,8 +33,10 @@
 //! │   ├── infrastructure/ # CliConfigLoaderImpl, ConfigCliRepository
 //! │   └── interfaces/   # HTTP API contracts
 //! ├── observability/    # Tracing, health checks, event schemas
-//! │   ├── domain/       # ObservabilityEvent schemas
-//! │   └── infrastructure/ # TracingInitializer trait + tracing impl
+//! │   ├── domain/       # ObservabilityCliError, ObservabilityEvent
+//! │   ├── application/  # TracingInitializer trait, DTO schemas
+//! │   ├── infrastructure/ # Tracing init impl, ObservabilityCliRepository
+//! │   └── interfaces/   # HTTP API contracts
 //! ├── cancellation/     # Signal handler for Ctrl+C
 //! │   ├── domain/       # CancellationCliError, CancellationCliEvent
 //! │   ├── application/  # SignalHandler trait, DTO schemas
