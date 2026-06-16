@@ -2,7 +2,7 @@
 
 ## Status
 
-**Status:** ✅ Architecture defined — source code removed pending regeneration  
+**Status:** ✅ Architecture defined — source code implemented
 **Last reviewed:** 2026-06-16
 
 ## Description
