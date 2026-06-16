@@ -14,6 +14,8 @@ The CLI does not directly interact with this module — it is used internally by
 
 ## Components
 
+**CLI-facing:** None — CLI wraps engine contracts directly. No CLI-specific interface files needed.
+
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |
 |-----------|--------------|----------|

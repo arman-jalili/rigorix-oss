@@ -14,6 +14,8 @@ The CLI may define custom tool aliases via `rigorix.toml` `[[tool_aliases]]` sec
 
 ## Components
 
+**CLI-facing:** None — CLI wraps engine contracts directly. No CLI-specific interface files needed.
+
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |
 |-----------|--------------|----------|

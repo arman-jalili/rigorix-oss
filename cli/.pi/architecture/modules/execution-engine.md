@@ -14,6 +14,8 @@ Consumes sealed TaskGraph from the DAG Engine. Emits ExecutionEvents for real-ti
 
 ## Components
 
+**CLI-facing:** None — CLI wraps engine contracts directly. No CLI-specific interface files needed.
+
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |
 |-----------|--------------|----------|

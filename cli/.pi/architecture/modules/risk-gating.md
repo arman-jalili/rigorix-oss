@@ -17,6 +17,8 @@ Every tool invocation passes through the risk gate before execution. The CLI sur
 
 ## Components
 
+**CLI-facing:** None — CLI wraps engine contracts directly. No CLI-specific interface files needed.
+
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |
 |-----------|--------------|----------|
