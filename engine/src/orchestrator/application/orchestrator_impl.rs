@@ -537,6 +537,31 @@ pub(crate) mod mocks {
         }
     }
 
+    // --- MockAuditService ---
+    pub(crate) struct MockAuditService;
+    impl MockAuditService {
+        pub fn new() -> Self { Self }
+    }
+    #[async_trait]
+    impl crate::audit::application::AuditService for MockAuditService {
+        async fn build_and_send(&self, _: crate::audit::application::BuildEnvelopeInput) -> Result<crate::audit::application::BuildEnvelopeOutput, crate::audit::domain::AuditError> {
+            Ok(crate::audit::application::BuildEnvelopeOutput { envelope: crate::audit::domain::AuditEnvelope {
+                execution_id: Uuid::new_v4(),
+                timestamp: chrono::Utc::now(),
+                template_id: "mock".into(),
+                planning_hash: "hash".into(),
+                events: vec![],
+                signature: None,
+            }, signed: false, event_count: 0 })
+        }
+        async fn retry_pending(&self) -> Result<crate::audit::application::RetryPendingOutput, crate::audit::domain::AuditError> {
+            Ok(crate::audit::application::RetryPendingOutput { delivered: 0, still_pending: 0, dropped: 0 })
+        }
+        async fn status(&self) -> Result<crate::audit::application::AuditStatusOutput, crate::audit::domain::AuditError> {
+            Ok(crate::audit::application::AuditStatusOutput { pending_count: 0, circuit_breaker_state: crate::audit::domain::CircuitBreakerState::Closed, backend_available: false })
+        }
+    }
+
     // --- MockBudgetService ---
     pub(crate) struct MockBudgetService;
     #[async_trait]
