@@ -252,6 +252,11 @@ run_stage "17" "planning_proofing" \
     "${SCRIPTS_DIR}/stage_planning_proofing.sh" \
     "always"
 
+# Stage 18: Execution Engine Module Proofing
+run_stage "18" "execution_proofing" \
+    "${SCRIPTS_DIR}/stage_execution_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""

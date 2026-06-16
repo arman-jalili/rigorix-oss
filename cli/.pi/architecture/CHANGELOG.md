@@ -12,6 +12,20 @@ This document tracks all architecture changes requiring implementation updates.
 
 ## Entries
 
+## [2026-06-16] - Execution Engine Module Implementation (Issues #317, #319, #320)
+
+### Changes
+- Contract freeze: created full CLI execution_engine module
+  - ExecutionCommandService trait (execute, status, abort)
+  - Domain errors (6 variants), events (7 variants), DTOs
+  - ExecutionRepository trait, HTTP API contracts (3 endpoints)
+- Created proofing: check_execution_contracts.sh, stage 18
+- Created runbook and DR plan docs
+
+### Status
+- Execution engine module: IMPLEMENTED
+- CI proofing: stage 18 — ALL PASS
+
 ## [2026-06-16] - Planning Pipeline Module Implementation (Issues #310, #312, #313)
 
 ### Changes
