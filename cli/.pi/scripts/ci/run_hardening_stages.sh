@@ -237,6 +237,11 @@ run_stage "14" "template_proofing" \
     "${SCRIPTS_DIR}/stage_template_proofing.sh" \
     "always"
 
+# Stage 15: Cancellation Module Proofing
+run_stage "15" "cancellation_proofing" \
+    "${SCRIPTS_DIR}/stage_cancellation_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""
