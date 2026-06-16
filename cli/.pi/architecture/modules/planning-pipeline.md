@@ -19,8 +19,8 @@ When no template matches with sufficient confidence, the pipeline falls back to 
 **CLI-facing:**
 | Component | File (planned) | Module | Purpose |
 |-----------|---------------|--------|---------|
-| PlanCommandService (trait) | `cli/src/planning_pipeline/infrastructure/service.rs` | planning_pipeline | Service trait for plan command |
-| PlanEngineHandler | `cli/src/planning_pipeline/infrastructure/plan_handler_impl.rs` | planning_pipeline | Implements PlanCommandService via engine PlanningPipelineService |
+| PlanCommandService (trait) | `cli/src/planning/infrastructure/service.rs` | planning | Service trait for plan command |
+| PlanEngineHandler | `cli/src/planning/infrastructure/plan_handler_impl.rs` | planning | Implements PlanCommandService via engine PlanningPipelineService |
 
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |
@@ -65,8 +65,8 @@ When no template matches with sufficient confidence, the pipeline falls back to 
 
 | File | Purpose |
 |------|---------|
-| `cli/src/planning_pipeline/infrastructure/service.rs` | PlanCommandService trait (planned) |
-| `cli/src/planning_pipeline/infrastructure/plan_handler_impl.rs` | PlanEngineHandler implementation (planned) |
+| `cli/src/planning/infrastructure/service.rs` | PlanCommandService trait (planned) |
+| `cli/src/planning/infrastructure/plan_handler_impl.rs` | PlanEngineHandler implementation (planned) |
 | `engine/src/planning/application/service.rs` | PlanningPipelineService trait |
 | `engine/src/planning/application/pipeline_impl.rs` | Pipeline implementation with fallback wiring |
 | `engine/src/planning/domain/` | Core domain entities (frozen contracts) |

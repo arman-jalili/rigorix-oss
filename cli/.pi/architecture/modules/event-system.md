@@ -15,10 +15,10 @@ Captures all execution events as an append-only log via tokio broadcast channel 
 ## Components
 
 **CLI-facing:**
-| Component | File | Purpose |
-|-----------|------|---------|
-| TuiEventSubscriber | `cli/src/cli_boundary/tui/events.rs` (planned) | Subscribes to EventBus, feeds events to TUI render loop |
-| ConsoleEventPrinter | `cli/src/cli_boundary/infrastructure/output_impl.rs` | Formats event summaries as human-readable or JSON output |
+| Component | File (planned) | Module | Purpose |
+|-----------|---------------|--------|---------|
+| EventSubscriberService (trait) | `cli/src/event_system/infrastructure/service.rs` | event_system | Service trait for subscribing to EventBus events |
+| EventSubscriberHandler | `cli/src/event_system/infrastructure/event_subscriber_impl.rs` | event_system | Subscribes to EventBus, feeds events to TUI render loop and console output |
 
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |
