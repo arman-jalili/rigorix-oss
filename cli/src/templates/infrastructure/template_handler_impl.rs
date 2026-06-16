@@ -1,13 +1,13 @@
-//! Template list/show command handler.
+//! TemplateCommandService implementation.
 //!
 //! @canonical .pi/architecture/modules/templates.md
-//! Implements: `rigorix template list` and `rigorix template show`
+//! Implements: TemplateCommandService trait — wraps engine's TemplateEngineService
 //! Issue: Phase 2.1
 //!
-//! Wraps the engine's TemplateEngineService for CLI consumption.
-//! The engine handles built-in and user template registration;
-//! this handler just queries it for display.
+//! Bridges the CLI's TemplateCommandService trait to the engine's
+//! TemplateEngineService. Handles template listing and inspection.
 
+use async_trait::async_trait;
 use rigorix_engine::templates::application::{
     GetTemplateInput, TemplateEngineImpl, TemplateEngineService,
 };
@@ -18,35 +18,27 @@ use crate::cli_boundary::application::dto::{
 };
 use crate::cli_boundary::domain::error::CliError;
 use crate::configuration::domain::config::CliConfig;
+use crate::templates::infrastructure::service::TemplateCommandService;
 
-/// Handles the `rigorix template` command group.
-///
-/// Wraps the engine's TemplateEngineService to provide template
-/// listing and inspection from the CLI.
-pub struct TemplateCommandHandler {
+/// Implementation of `TemplateCommandService` backed by the engine's
+/// `TemplateEngineImpl`.
+pub struct TemplateEngineHandler {
     engine: TemplateEngineImpl,
     _config: CliConfig,
 }
 
-impl TemplateCommandHandler {
-    /// Create a new handler with an empty template engine.
-    ///
-    /// Templates are loaded lazily by the engine on first access
-    /// or registered via the engine's own initialization flow.
-    pub async fn new(config: CliConfig) -> Result<Self, CliError> {
+#[async_trait]
+impl TemplateCommandService for TemplateEngineHandler {
+    async fn new(config: CliConfig) -> Result<Self, CliError> {
         let engine = TemplateEngineImpl::new();
-        info!("Template command handler initialized");
+        info!("Template engine handler initialized");
         Ok(Self {
             engine,
             _config: config,
         })
     }
 
-    /// List all registered templates.
-    ///
-    /// Returns all built-in and user templates registered in the engine.
-    /// Maps the engine's `TemplateSummary` to the CLI's `TemplateSummary`.
-    pub async fn list(&self) -> Result<TemplateListOutput, CliError> {
+    async fn list(&self) -> Result<TemplateListOutput, CliError> {
         let output = self
             .engine
             .list_templates()
@@ -72,11 +64,7 @@ impl TemplateCommandHandler {
         })
     }
 
-    /// Show a specific template's metadata by ID.
-    ///
-    /// Returns the template summary as TOML-formatted content.
-    /// If the template is not found, returns a clear error.
-    pub async fn show(&self, template_id: &str) -> Result<TemplateShowOutput, CliError> {
+    async fn show(&self, template_id: &str) -> Result<TemplateShowOutput, CliError> {
         let input = GetTemplateInput {
             template_id: template_id.to_string(),
         };
