@@ -60,6 +60,7 @@ pub mod cancellation;
 pub mod cli_boundary;
 pub mod configuration;
 pub mod observability;
+pub mod template_generation;
 pub mod templates;
 
 // Tests are defined in cli_boundary::tests which is #[cfg(test)] only.
