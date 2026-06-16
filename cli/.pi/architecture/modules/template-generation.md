@@ -18,11 +18,13 @@ The engine crate (`rigorix-engine`) provides the `TemplateGenerator` trait and `
 
 ## Components
 
+**CLI-facing:**
 | Component | File (planned) | Module | Purpose |
 |-----------|---------------|--------|---------|
-| CliGenerateHandler | `cli/src/cli_boundary/commands/generate_cmd.rs` | cli_boundary | Wraps engine TemplateGenerator, handles `rigorix generate` command with flags |
-| TemplatePersistenceService | `cli/src/cli_boundary/commands/generate_cmd.rs` | cli_boundary | Saves generated TOML to `.rigorix/templates/<id>.toml` with atomic write-rename |
-| RepoContextBuilder | `cli/src/cli_boundary/commands/generate_cmd.rs` | cli_boundary | Builds RepoContext from the project directory (file tree, deps via Cargo.toml, public API via SymbolGraph) |
+| GenerateCommandHandler (trait) | `cli/src/template_generation/infrastructure/service.rs` | template_generation | Service trait for template generation |
+| GenerateEngineHandler | `cli/src/template_generation/infrastructure/generate_handler_impl.rs` | template_generation | Implements GenerateCommandHandler via engine TemplateGenerator |
+| TemplatePersistenceService | `cli/src/template_generation/infrastructure/persist_service_impl.rs` | template_generation | Saves generated TOML with atomic write-rename |
+| RepoContextBuilder | `cli/src/template_generation/infrastructure/repo_context_impl.rs` | template_generation | Builds RepoContext from project directory |
 
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |
@@ -65,7 +67,10 @@ The engine crate (`rigorix-engine`) provides the `TemplateGenerator` trait and `
 
 | File | Purpose |
 |------|---------|
-| `cli/src/cli_boundary/commands/generate_cmd.rs` | CLI-side: GenerateHandler, PersistenceService, RepoContextBuilder |
+| `cli/src/template_generation/infrastructure/service.rs` | GenerateCommandHandler trait (planned) |
+| `cli/src/template_generation/infrastructure/generate_handler_impl.rs` | GenerateEngineHandler implementation (planned) |
+| `cli/src/template_generation/infrastructure/persist_service_impl.rs` | TemplatePersistenceService (planned) |
+| `cli/src/template_generation/infrastructure/repo_context_impl.rs` | RepoContextBuilder (planned) |
 | `engine/src/template_generation/domain/generator.rs` | Engine: TemplateGenerator trait, ClaudeTemplateGenerator, GeneratedTemplate, RepoContext, GeneratorError |
 | `engine/src/template_generation/application/` | Engine: service traits and DTOs |
 | `engine/src/template_generation/infrastructure/` | Engine: repository interfaces for template storage |

@@ -17,8 +17,10 @@ The CLI reads persisted state for `rigorix history` and `rigorix logs` commands.
 **CLI-facing:**
 | Component | File (planned) | Module | Purpose |
 |-----------|---------------|--------|---------|
-| HistoryCommand | `cli/src/cli_boundary/commands/history_cmd.rs` | cli_boundary | Lists past execution sessions with summary |
-| LogsCommand | `cli/src/cli_boundary/commands/logs_cmd.rs` | cli_boundary | Streams or queries execution events |
+| HistoryCommandHandler (trait) | `cli/src/state_persistence/infrastructure/service.rs` | state_persistence | Service trait for history command |
+| HistoryEngineHandler | `cli/src/state_persistence/infrastructure/history_handler_impl.rs` | state_persistence | Implements HistoryCommandService via engine StatePersistenceService |
+| LogsCommandHandler (trait) | `cli/src/state_persistence/infrastructure/logs_service.rs` | state_persistence | Service trait for logs command |
+| LogsEngineHandler | `cli/src/state_persistence/infrastructure/logs_handler_impl.rs` | state_persistence | Implements LogsCommandService via engine EventSystemService |
 
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |

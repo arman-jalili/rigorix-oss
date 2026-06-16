@@ -129,9 +129,9 @@ cli/src/
 
 | File | Purpose |
 |------|---------|
-| `cli/Cargo.toml` | CLI crate manifest with rigorix-engine dependency |
 | File | Module | Purpose |
 |------|--------|---------|
+| `cli/Cargo.toml` | (manifest) | CLI crate manifest with rigorix-engine dependency |
 | `cli/src/main.rs` | (entry point) | Binary entry point with command dispatch |
 | `cli/src/lib.rs` | (root) | Library root — re-exports all modules |
 | `cli/src/cli_boundary/interfaces/cli/mod.rs` | cli_boundary | CliCommand enum and argument parsing (clap) |

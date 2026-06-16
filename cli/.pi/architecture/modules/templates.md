@@ -2,7 +2,7 @@
 
 ## Module Status
 
-**Status:** Planned — CLI integration over engine contracts
+**Status:** Implemented — CLI integration over engine contracts
 **Last reviewed:** 2026-06-16
 **Source session:** 71e2b81a-a7a1-48ee-ab8f-56284bbec92d
 
@@ -15,10 +15,10 @@ Templates are stored in `.rigorix/templates/*.toml` and loaded at startup. The e
 ## Components
 
 **CLI-facing:**
-| Component | File (planned) | Module | Purpose |
-|-----------|---------------|--------|---------|
-| TemplateListCommand | `cli/src/cli_boundary/commands/template_cmd.rs` | cli_boundary | Lists all registered templates with descriptions |
-| TemplateShowCommand | `cli/src/cli_boundary/commands/template_cmd.rs` | cli_boundary | Shows full template definition (TOML) |
+| Component | File | Module | Purpose |
+|-----------|------|--------|---------|
+| TemplateCommandService (trait) | `cli/src/templates/infrastructure/service.rs` | templates | Service trait for template list/show commands |
+| TemplateEngineHandler | `cli/src/templates/infrastructure/template_handler_impl.rs` | templates | Implements TemplateCommandService via engine TemplateEngineService |
 
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |
@@ -61,7 +61,8 @@ Templates are stored in `.rigorix/templates/*.toml` and loaded at startup. The e
 
 | File | Purpose |
 |------|---------|
-| `cli/src/cli_boundary/commands/template_cmd.rs` | CLI template list/show commands |
+| `cli/src/templates/infrastructure/service.rs` | TemplateCommandService trait |
+| `cli/src/templates/infrastructure/template_handler_impl.rs` | TemplateEngineHandler implementation |
 | `engine/src/templates/domain/template.rs` | Template aggregate, TemplateNode, TemplateAction, ParameterDef |
 | `engine/src/templates/application/` | TemplateParser, TemplateEngine service traits and impls |
 | `engine/src/templates/` | BuiltinTemplates (13 built-in definitions) |
