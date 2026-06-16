@@ -30,3 +30,64 @@ pub fn fuzzy_search(query: &str) -> Vec<(&'static str, &'static str)> {
         .copied()
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fuzzy_search_exact_cmd() {
+        let results = fuzzy_search("/history");
+        assert!(!results.is_empty());
+        assert!(results.iter().any(|(cmd, _)| *cmd == "/history"));
+    }
+
+    #[test]
+    fn test_fuzzy_search_partial_cmd() {
+        let results = fuzzy_search("hist");
+        assert!(!results.is_empty());
+        assert!(results.iter().any(|(cmd, _)| *cmd == "/history"));
+    }
+
+    #[test]
+    fn test_fuzzy_search_partial_desc() {
+        let results = fuzzy_search("audit");
+        assert!(!results.is_empty());
+        assert!(results.iter().any(|(cmd, _)| *cmd == "/audit"));
+    }
+
+    #[test]
+    fn test_fuzzy_search_no_match() {
+        let results = fuzzy_search("zzzznotfound");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_fuzzy_search_empty_query() {
+        let results = fuzzy_search("");
+        assert_eq!(results.len(), SLASH_COMMANDS.len());
+    }
+
+    #[test]
+    fn test_fuzzy_search_case_insensitive() {
+        let results = fuzzy_search("HISTORY");
+        assert!(!results.is_empty());
+        assert!(results.iter().any(|(cmd, _)| *cmd == "/history"));
+    }
+
+    #[test]
+    fn test_slash_commands_not_empty() {
+        assert!(!SLASH_COMMANDS.is_empty());
+    }
+
+    #[test]
+    fn test_every_command_has_description() {
+        for (cmd, desc) in SLASH_COMMANDS {
+            assert!(!cmd.is_empty(), "Command should not be empty");
+            assert!(
+                !desc.is_empty(),
+                "Description for {cmd} should not be empty"
+            );
+        }
+    }
+}

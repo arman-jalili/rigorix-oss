@@ -114,3 +114,134 @@ impl CommandBarState {
         }
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::field_reassign_with_default)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_state() {
+        let s = CommandBarState::default();
+        assert!(s.text.is_empty());
+        assert!(s.focused);
+        assert!(s.history.is_empty());
+        assert_eq!(s.history_index, -1);
+    }
+
+    #[test]
+    fn test_parse_intent() {
+        let s = CommandBarState {
+            text: "add authentication".into(),
+            ..Default::default()
+        };
+        let parsed = s.parse();
+        assert!(matches!(parsed, Some(CommandBarInput::Intent(i)) if i == "add authentication"));
+    }
+
+    #[test]
+    fn test_parse_slash_command() {
+        let s = CommandBarState {
+            text: "/history".into(),
+            ..Default::default()
+        };
+        let parsed = s.parse();
+        assert!(matches!(parsed, Some(CommandBarInput::SlashCommand(c)) if c == "history"));
+    }
+
+    #[test]
+    fn test_parse_colon_command() {
+        let s = CommandBarState {
+            text: ":q".into(),
+            ..Default::default()
+        };
+        let parsed = s.parse();
+        assert!(matches!(parsed, Some(CommandBarInput::ColonCommand(c)) if c == "q"));
+    }
+
+    #[test]
+    fn test_parse_empty_returns_none() {
+        let s = CommandBarState::default();
+        assert!(s.parse().is_none());
+    }
+
+    #[test]
+    fn test_submit_clears_and_adds_to_history() {
+        let mut s = CommandBarState {
+            text: "add auth".into(),
+            ..Default::default()
+        };
+        s.submit();
+        assert!(s.text.is_empty());
+        assert_eq!(s.history.len(), 1);
+        assert_eq!(s.history[0], "add auth");
+    }
+
+    #[test]
+    fn test_submit_empty_does_nothing() {
+        let mut s = CommandBarState::default();
+        s.submit();
+        assert!(s.history.is_empty());
+    }
+
+    #[test]
+    fn test_history_up_navigates_back() {
+        let mut s = CommandBarState::default();
+        s.history.push("first".into());
+        s.history.push("second".into());
+        s.history_up();
+        assert_eq!(s.text, "second");
+        s.history_up();
+        assert_eq!(s.text, "first");
+        s.history_up();
+        assert_eq!(s.text, "first");
+    }
+
+    #[test]
+    fn test_history_down_navigates_forward() {
+        let mut s = CommandBarState::default();
+        s.history.push("first".into());
+        s.history.push("second".into());
+        s.history_up();
+        s.history_up();
+        s.history_down();
+        assert_eq!(s.text, "second");
+        s.history_down();
+        assert!(s.text.is_empty());
+    }
+
+    #[test]
+    fn test_history_up_down_empty_history() {
+        let mut s = CommandBarState::default();
+        s.history_up();
+        assert!(s.text.is_empty());
+        s.history_down();
+        assert!(s.text.is_empty());
+    }
+
+    #[test]
+    fn test_submit_multiple_commands() {
+        let mut s = CommandBarState::default();
+        // Use submit which consumes and clears the text (field reassign needed for new input)
+        s.text = "cmd1".into();
+        s.submit();
+        s.text = "cmd2".into();
+        s.submit();
+        s.text = "cmd3".into();
+        s.submit();
+        // lint: field_reassign_with_default is acceptable in tests for multi-step workflows
+        assert_eq!(s.history.len(), 3);
+        assert_eq!(s.history[0], "cmd1");
+        assert_eq!(s.history[2], "cmd3");
+    }
+
+    #[test]
+    fn test_history_index_reset_after_submit() {
+        let mut s = CommandBarState {
+            text: "test".into(),
+            ..Default::default()
+        };
+        s.submit();
+        assert_eq!(s.history_index, -1);
+    }
+}
