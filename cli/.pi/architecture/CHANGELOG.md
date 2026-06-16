@@ -12,6 +12,35 @@ This document tracks all architecture changes requiring implementation updates.
 
 ## Entries
 
+## [2026-06-16] - Observability Module Implementation (Issues #253, #254, #255, #256)
+
+### Changes
+- Defined TracingInitializer trait in infrastructure/observability.rs
+- Created ObservabilityEvent schemas with 3 payload variants
+- Added Observability variant to CliEvent enum
+- Created proofing scripts: check_observability_contracts.sh (15 checks), check_observability_coverage.sh
+- Created stage_observability_proofing.sh — CI stage wrapper
+- Integrated stage 13 (observability_proofing) into CI hardening pipeline
+- Updated observability module architecture doc with final file paths and contracts
+
+### Files Created
+- `cli/src/infrastructure/observability.rs` — TracingInitializer trait
+- `cli/src/domain/event/observability.rs` — ObservabilityEvent schemas
+- `cli/.pi/scripts/ci/check_observability_contracts.sh` — 15 automated contract checks
+- `cli/.pi/scripts/ci/check_observability_coverage.sh` — Coverage threshold enforcement
+- `cli/.pi/scripts/ci/stage_observability_proofing.sh` — CI stage wrapper
+
+### Files Modified
+- `cli/src/domain/event/mod.rs` — Added Observability variant + pub mod observability
+- `cli/src/infrastructure/mod.rs` — Added pub mod observability
+- `cli/.pi/architecture/modules/observability.md` — Updated with final paths and proofing scripts
+- `cli/.pi/scripts/ci/run_hardening_stages.sh` — Added stage 13
+
+### Status
+- Observability module: IMPLEMENTED
+- 38 tests passing, clippy clean, fmt clean
+- CI proofing scripts: stage 13 — observability_proofing — ALL PASS
+
 ## [2026-06-16] - Configuration Module Implementation (Issues #245, #246, #247, #248)
 
 ### Changes
