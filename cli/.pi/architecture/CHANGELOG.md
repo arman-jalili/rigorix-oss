@@ -12,7 +12,56 @@ This document tracks all architecture changes requiring implementation updates.
 
 ## Entries
 
-## [2026-06-16] - Observability Module Implementation (Issues #253, #254, #255, #256)
+## [2026-06-16] - Templates Module Implementation (Issues #266, #268, #269)
+
+### Changes
+- Contract freeze: defined all public interfaces, DTO schemas, event schemas, and API contracts
+  - TemplateCommandService trait moved to application/layer (canonical Clean Architecture)
+  - TemplateCliError enum with typed CLI template errors
+  - TemplateCliEvent payload schemas for logging/UI
+  - TemplateListInput/Output, TemplateShowInput/Output DTOs with From conversions
+  - TemplateCliRepository trait for CLI-level template data persistence
+  - HTTP API contracts with endpoint paths, request/response schemas, error formats
+- Created proofing scripts: check_template_contracts.sh (15 checks), check_template_coverage.sh
+- Created stage_template_proofing.sh — CI stage wrapper
+- Integrated stage 14 (template_proofing) into CI hardening pipeline
+- Created docs/runbook-template.md and docs/dr-plan-template.md
+- Updated templates module architecture doc with final contracts and file paths
+
+### Files Created
+- `cli/src/templates/application/service.rs` — TemplateCommandService trait (moved from infrastructure)
+- `cli/src/templates/application/dto/mod.rs` — DTO schemas + From conversions
+- `cli/src/templates/domain/error.rs` — TemplateCliError enum
+- `cli/src/templates/domain/event/mod.rs` — TemplateCliEvent schemas
+- `cli/src/templates/infrastructure/repository/mod.rs` — TemplateCliRepository trait
+- `cli/src/templates/interfaces/http/mod.rs` — HTTP API endpoint contracts
+- `cli/docs/runbook-template.md` — Operations runbook
+- `cli/docs/dr-plan-template.md` — Disaster recovery plan
+- `cli/.pi/scripts/ci/check_template_contracts.sh` — 15 automated contract checks
+- `cli/.pi/scripts/ci/check_template_coverage.sh` — Coverage threshold enforcement
+- `cli/.pi/scripts/ci/stage_template_proofing.sh` — CI stage wrapper
+
+### Files Modified
+- `cli/src/templates/domain/mod.rs` — Export error/event modules
+- `cli/src/templates/application/mod.rs` — Export DTO/service modules
+- `cli/src/templates/infrastructure/mod.rs` — Repository module + re-export from application
+- `cli/src/templates/infrastructure/service.rs` — Now re-exports from application/
+- `cli/src/templates/infrastructure/template_handler_impl.rs` — Import from application layer
+- `cli/src/templates/interfaces/mod.rs` — Export HTTP module
+- `cli/src/templates/mod.rs` — Architecture tree documentation
+- `cli/src/main.rs` — TemplateCommandService import from application/
+- `cli/.pi/scripts/ci/run_hardening_stages.sh` — Added stage 14 (template_proofing)
+- `cli/.pi/scripts/languages/rust/validate-ci.sh` — Fixed package name bug (rigorix → rigorix-cli)
+- `cli/.pi/architecture/modules/templates.md` — Updated with final contracts, proofing, runbook
+
+### Status
+- Templates module: IMPLEMENTED (contract freeze + proofing + readiness)
+- 38 tests passing, clippy clean, fmt clean
+- CI proofing scripts: stage 14 — template_proofing — ALL PASS (15 contract checks, 9 coverage checks)
+- Contract proofing: 15/15 checks passed
+- Coverage proofing: 9/9 checks passed
+
+## [2026-06-16] - Observability Module Implementation (Issues #253, #254, #255, #256) (Issues #253, #254, #255, #256)
 
 ### Changes
 - Defined TracingInitializer trait in infrastructure/observability.rs
