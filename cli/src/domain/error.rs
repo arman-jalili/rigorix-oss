@@ -21,7 +21,6 @@ pub enum CliError {
     // -----------------------------------------------------------------------
     // Configuration Errors
     // -----------------------------------------------------------------------
-
     /// No configuration file found and no defaults could be applied.
     #[error("No configuration found: {detail}")]
     ConfigNotFound {
@@ -50,7 +49,6 @@ pub enum CliError {
     // -----------------------------------------------------------------------
     // Command Errors
     // -----------------------------------------------------------------------
-
     /// An unsupported or unknown command was provided.
     #[error("Unknown command: {command}")]
     UnknownCommand {
@@ -81,7 +79,6 @@ pub enum CliError {
     // -----------------------------------------------------------------------
     // Execution Errors
     // -----------------------------------------------------------------------
-
     /// The execution session failed to start.
     #[error("Failed to start execution session: {detail}")]
     SessionStartFailed {
@@ -103,7 +100,6 @@ pub enum CliError {
     // -----------------------------------------------------------------------
     // Output Errors
     // -----------------------------------------------------------------------
-
     /// Failed to render output in the requested format.
     #[error("Failed to render output: {detail}")]
     OutputRenderError {
@@ -121,7 +117,6 @@ pub enum CliError {
     // -----------------------------------------------------------------------
     // Signal Errors
     // -----------------------------------------------------------------------
-
     /// Failed to install the signal handler.
     #[error("Failed to install signal handler: {detail}")]
     SignalHandlerError {
@@ -132,7 +127,6 @@ pub enum CliError {
     // -----------------------------------------------------------------------
     // Engine Errors (passthrough)
     // -----------------------------------------------------------------------
-
     /// An error originating from the engine crate.
     ///
     /// This wraps the engine's `CoreOrchestratorError` and preserves

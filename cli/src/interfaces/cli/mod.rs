@@ -66,19 +66,11 @@ pub struct GlobalOptions {
     pub log_level: String,
 
     /// Log format: pretty or json.
-    #[arg(
-        long = "log-format",
-        global = true,
-        default_value = "pretty"
-    )]
+    #[arg(long = "log-format", global = true, default_value = "pretty")]
     pub log_format: String,
 
     /// Path to a custom config file.
-    #[arg(
-        long = "config",
-        global = true,
-        env = "RIGORIX_CONFIG"
-    )]
+    #[arg(long = "config", global = true, env = "RIGORIX_CONFIG")]
     pub config_path: Option<String>,
 }
 

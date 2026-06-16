@@ -22,9 +22,9 @@ use crate::domain::error::CliError;
 use super::dto::{
     AuditDiffInput, AuditDiffOutput, AuditListInput, AuditListOutput, AuditShowInput,
     AuditShowOutput, GenerateInput, GenerateOutput, HistoryListInput, HistoryListOutput,
-    HistoryShowInput, HistoryShowOutput, InitInput, InitOutput, LogsInput, LogsOutput,
-    PlanInput, PlanOutput, RunInput, RunOutput, TemplateListInput, TemplateListOutput,
-    TemplateShowInput, TemplateShowOutput,
+    HistoryShowInput, HistoryShowOutput, InitInput, InitOutput, LogsInput, LogsOutput, PlanInput,
+    PlanOutput, RunInput, RunOutput, TemplateListInput, TemplateListOutput, TemplateShowInput,
+    TemplateShowOutput,
 };
 
 /// Top-level orchestrator for the CLI.
@@ -74,19 +74,13 @@ pub trait CliOrchestrator: Send + Sync {
     ///
     /// Entry point for `rigorix history`. Reads persisted execution
     /// state files and returns session summaries.
-    async fn history_list(
-        &self,
-        input: HistoryListInput,
-    ) -> Result<HistoryListOutput, CliError>;
+    async fn history_list(&self, input: HistoryListInput) -> Result<HistoryListOutput, CliError>;
 
     /// Show details of a specific execution session.
     ///
     /// Entry point for `rigorix history show <id>`. Returns per-node
     /// execution results.
-    async fn history_show(
-        &self,
-        input: HistoryShowInput,
-    ) -> Result<HistoryShowOutput, CliError>;
+    async fn history_show(&self, input: HistoryShowInput) -> Result<HistoryShowOutput, CliError>;
 
     /// Stream or replay execution events.
     ///
@@ -112,18 +106,14 @@ pub trait CliOrchestrator: Send + Sync {
     /// List all registered templates.
     ///
     /// Entry point for `rigorix template list`.
-    async fn template_list(
-        &self,
-        input: TemplateListInput,
-    ) -> Result<TemplateListOutput, CliError>;
+    async fn template_list(&self, input: TemplateListInput)
+    -> Result<TemplateListOutput, CliError>;
 
     /// Show a specific template's TOML definition.
     ///
     /// Entry point for `rigorix template show <id>`.
-    async fn template_show(
-        &self,
-        input: TemplateShowInput,
-    ) -> Result<TemplateShowOutput, CliError>;
+    async fn template_show(&self, input: TemplateShowInput)
+    -> Result<TemplateShowOutput, CliError>;
 
     /// Get the current CLI configuration.
     fn config(&self) -> &CliConfig;

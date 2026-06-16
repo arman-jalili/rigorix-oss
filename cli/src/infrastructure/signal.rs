@@ -20,7 +20,6 @@ use async_trait::async_trait;
 
 use crate::domain::error::CliError;
 
-
 /// Represents a shutdown signal level from the user.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShutdownLevel {

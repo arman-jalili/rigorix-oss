@@ -18,8 +18,8 @@ use async_trait::async_trait;
 use crate::domain::config::CliConfig;
 use crate::domain::error::CliError;
 
-use super::service::{CliOrchestrator, ExecutionSession};
 use super::dto::RunInput;
+use super::service::{CliOrchestrator, ExecutionSession};
 
 /// Factory for constructing `CliOrchestrator` instances.
 ///
@@ -60,8 +60,5 @@ pub trait ExecutionSessionFactory: Send + Sync {
     /// Create a new execution session for the given run input.
     ///
     /// The session is not started yet — call `start()` to begin.
-    async fn create_session(
-        &self,
-        input: RunInput,
-    ) -> Result<Box<dyn ExecutionSession>, CliError>;
+    async fn create_session(&self, input: RunInput) -> Result<Box<dyn ExecutionSession>, CliError>;
 }

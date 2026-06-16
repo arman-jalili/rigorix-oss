@@ -142,20 +142,26 @@ mod tests {
 
     #[test]
     fn test_retriable_errors() {
-        assert!(CliError::ConfigNotFound {
-            detail: "test".into()
-        }
-        .is_retriable());
-        assert!(CliError::MissingConfig {
-            field: "key".into(),
-            hint: "set key".into()
-        }
-        .is_retriable());
-        assert!(CliError::MissingArgument {
-            command: "run".into(),
-            argument: "intent".into()
-        }
-        .is_retriable());
+        assert!(
+            CliError::ConfigNotFound {
+                detail: "test".into()
+            }
+            .is_retriable()
+        );
+        assert!(
+            CliError::MissingConfig {
+                field: "key".into(),
+                hint: "set key".into()
+            }
+            .is_retriable()
+        );
+        assert!(
+            CliError::MissingArgument {
+                command: "run".into(),
+                argument: "intent".into()
+            }
+            .is_retriable()
+        );
         assert!(!CliError::SessionCancelled.is_retriable());
     }
 

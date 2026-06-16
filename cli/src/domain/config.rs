@@ -16,9 +16,10 @@
 use serde::{Deserialize, Serialize};
 
 /// The output rendering format for CLI commands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OutputFormat {
     /// Human-readable, colorized terminal output.
+    #[default]
     #[serde(rename = "pretty")]
     Pretty,
 
@@ -48,11 +49,6 @@ impl OutputFormat {
     }
 }
 
-impl Default for OutputFormat {
-    fn default() -> Self {
-        OutputFormat::Pretty
-    }
-}
 
 /// CLI-specific configuration, merged from CLI flags, environment variables,
 /// `rigorix.toml`, and engine defaults.

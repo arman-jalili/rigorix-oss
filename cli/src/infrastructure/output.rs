@@ -41,49 +41,28 @@ pub trait LogFormatter: Send + Sync {
     async fn format_init(&self, output: &InitOutput) -> Result<String, CliError>;
 
     /// Format a `history list` command output.
-    async fn format_history_list(
-        &self,
-        output: &HistoryListOutput,
-    ) -> Result<String, CliError>;
+    async fn format_history_list(&self, output: &HistoryListOutput) -> Result<String, CliError>;
 
     /// Format a `history show` command output.
-    async fn format_history_show(
-        &self,
-        output: &HistoryShowOutput,
-    ) -> Result<String, CliError>;
+    async fn format_history_show(&self, output: &HistoryShowOutput) -> Result<String, CliError>;
 
     /// Format a `logs` command output.
     async fn format_logs(&self, output: &LogsOutput) -> Result<String, CliError>;
 
     /// Format an `audit list` command output.
-    async fn format_audit_list(
-        &self,
-        output: &AuditListOutput,
-    ) -> Result<String, CliError>;
+    async fn format_audit_list(&self, output: &AuditListOutput) -> Result<String, CliError>;
 
     /// Format an `audit show` command output.
-    async fn format_audit_show(
-        &self,
-        output: &AuditShowOutput,
-    ) -> Result<String, CliError>;
+    async fn format_audit_show(&self, output: &AuditShowOutput) -> Result<String, CliError>;
 
     /// Format an `audit diff` command output.
-    async fn format_audit_diff(
-        &self,
-        output: &AuditDiffOutput,
-    ) -> Result<String, CliError>;
+    async fn format_audit_diff(&self, output: &AuditDiffOutput) -> Result<String, CliError>;
 
     /// Format a `template list` command output.
-    async fn format_template_list(
-        &self,
-        output: &TemplateListOutput,
-    ) -> Result<String, CliError>;
+    async fn format_template_list(&self, output: &TemplateListOutput) -> Result<String, CliError>;
 
     /// Format a `template show` command output.
-    async fn format_template_show(
-        &self,
-        output: &TemplateShowOutput,
-    ) -> Result<String, CliError>;
+    async fn format_template_show(&self, output: &TemplateShowOutput) -> Result<String, CliError>;
 
     /// Format a CLI error for display.
     ///

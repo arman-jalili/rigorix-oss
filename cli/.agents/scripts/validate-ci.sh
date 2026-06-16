@@ -8,17 +8,18 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 detect_language() {
-    if [ -f "poetry.lock" ]; then
+    if [ -f "${PROJECT_ROOT}/poetry.lock" ]; then
         echo "python"
-    elif [ -f "pyproject.toml" ]; then
+    elif [ -f "${PROJECT_ROOT}/pyproject.toml" ]; then
         echo "python"
-    elif [ -f "Cargo.lock" ] || [ -f "Cargo.toml" ]; then
+    elif [ -f "${PROJECT_ROOT}/Cargo.lock" ] || [ -f "${PROJECT_ROOT}/Cargo.toml" ]; then
         echo "rust"
-    elif [ -f "go.mod" ]; then
+    elif [ -f "${PROJECT_ROOT}/go.mod" ]; then
         echo "go"
-    elif [ -f "package.json" ]; then
+    elif [ -f "${PROJECT_ROOT}/package.json" ]; then
         echo "typescript"
     else
         echo "unknown"
@@ -26,12 +27,12 @@ detect_language() {
 }
 
 LANG=$(detect_language)
-LANG_SCRIPT="${SCRIPT_DIR}/languages/${LANG}/validate-ci.sh"
+LANG_SCRIPT="${PROJECT_ROOT}/.pi/scripts/languages/${LANG}/validate-ci.sh"
 
 if [ -f "$LANG_SCRIPT" ]; then
     exec bash "$LANG_SCRIPT" "$@"
 else
-    echo "No CI validator for language: C.UTF-8"
-    echo "Create: $LANG_SCRIPT"
+    echo "No CI validator for language: ${LANG}"
+    echo "Expected at: ${LANG_SCRIPT}"
     exit 0
 fi
