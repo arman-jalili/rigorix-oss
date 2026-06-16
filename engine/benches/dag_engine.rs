@@ -6,7 +6,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use uuid::Uuid;
 
-use rigorix::dag_engine::domain::graph::{TaskGraph, TaskNode};
+use rigorix_engine::dag_engine::domain::graph::{TaskGraph, TaskNode};
 
 fn build_graph(node_count: usize, edge_factor: usize) -> TaskGraph {
     let mut graph = TaskGraph::new();

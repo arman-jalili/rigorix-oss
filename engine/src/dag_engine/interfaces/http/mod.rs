@@ -157,6 +157,7 @@ pub struct ReadyNodesResponse {
 /// **Path Params:**
 /// - `id` — Graph UUID
 /// - `node_id` — Node UUID
+///
 /// **Response:** `200 OK`
 pub const MARK_COMPLETE_PATH: &str = "/api/v1/dag/graphs/{id}/nodes/{node_id}/complete";
 pub const MARK_COMPLETE_METHOD: &str = "POST";

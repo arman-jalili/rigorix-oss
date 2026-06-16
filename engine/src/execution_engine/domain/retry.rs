@@ -364,6 +364,10 @@ pub struct FailureContext {
 
 impl FailureContext {
     /// Create a new FailureContext.
+    ///
+    /// Uses many arguments for ergonomic construction in retry evaluation.
+    /// Consider a builder pattern if this grows further.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         node_id: Uuid,
         node_name: impl Into<String>,

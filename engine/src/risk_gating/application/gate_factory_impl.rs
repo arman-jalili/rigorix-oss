@@ -32,6 +32,7 @@ impl RiskGateFactoryImpl {
     }
 
     /// Create a new `RiskGateFactoryImpl` with a fresh gate registry.
+    #[allow(clippy::should_implement_trait)]
     pub fn default() -> Self {
         Self {
             gate_registry: Arc::new(GateStateRegistry::new()),

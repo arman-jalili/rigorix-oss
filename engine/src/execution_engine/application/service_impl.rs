@@ -21,6 +21,9 @@
 //! - JoinSet dispatches nodes up to `max_concurrent_executions`
 //! - RetryEvaluationServiceImpl is stateless — decisions are purely computational
 
+/// Progress callback for node state changes.
+pub type ProgressCallback = Box<dyn Fn(ExecutionProgress) + Send + Sync>;
+
 use async_trait::async_trait;
 use chrono::Utc;
 use std::collections::HashMap;
@@ -80,7 +83,7 @@ pub struct ParallelExecutionServiceImpl {
     /// Global executor config.
     config: ParallelExecutorConfig,
     /// Registered progress callbacks.
-    progress_callbacks: Mutex<Vec<Box<dyn Fn(ExecutionProgress) + Send + Sync>>>,
+    progress_callbacks: Mutex<Vec<ProgressCallback>>,
     /// The retry evaluation service for retry decisions.
     retry_service: Box<dyn RetryEvaluationService>,
 }
@@ -262,8 +265,8 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
             let start = std::time::Instant::now();
 
             // --- Phase 1: Check skip conditions before execution ---
-            if policy.has_skip_conditions() {
-                if let Some(conditions) = &policy.skip_conditions {
+            if policy.has_skip_conditions()
+                && let Some(conditions) = &policy.skip_conditions {
                     for condition in conditions {
                         if condition == "always_skip" {
                             let result = TaskResult::failure(
@@ -283,7 +286,6 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                         }
                     }
                 }
-            }
 
             // --- Phase 2: Check cancellation (placeholder) ---
             // In production, checks CancellationToken here
@@ -608,7 +610,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
     }
 
     #[tracing::instrument(skip_all)]
-    fn on_progress(&self, callback: Box<dyn Fn(ExecutionProgress) + Send + Sync>) {
+    fn on_progress(&self, callback: ProgressCallback) {
         if let Ok(mut callbacks) = self.progress_callbacks.lock() {
             callbacks.push(callback);
         }
@@ -743,14 +745,13 @@ impl RetryEvaluationService for RetryEvaluationServiceImpl {
                 failure_context.max_attempts,
             );
 
-            if let Some(fallback_id) = fallback_node_id {
-                if policy.enable_fallback {
+            if let Some(fallback_id) = fallback_node_id
+                && policy.enable_fallback {
                     return RetryDecision::Fallback {
                         fallback_node_id: fallback_id,
                         reason: format!("{}. Executing fallback", reason),
                     };
                 }
-            }
 
             if policy.skip_on_exhaustion {
                 return RetryDecision::Skip {

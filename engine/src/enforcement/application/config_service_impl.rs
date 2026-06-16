@@ -118,18 +118,17 @@ impl ConfigBuilder {
     ) -> Result<(), Vec<ConfigValidationError>> {
         let mut errors = Vec::new();
 
-        if let Some(max_calls) = policy.max_calls {
-            if max_calls == 0 {
+        if let Some(max_calls) = policy.max_calls
+            && max_calls == 0 {
                 errors.push(ConfigValidationError {
                     field: "tool_policy.max_calls".to_string(),
                     message: "max_calls must be greater than 0 if set".to_string(),
                     value: Some("0".to_string()),
                 });
             }
-        }
 
-        if let Some(budget_key) = &policy.budget_key {
-            if !config.budgets.contains_key(budget_key) {
+        if let Some(budget_key) = &policy.budget_key
+            && !config.budgets.contains_key(budget_key) {
                 errors.push(ConfigValidationError {
                     field: "tool_policy.budget_key".to_string(),
                     message: format!(
@@ -139,7 +138,6 @@ impl ConfigBuilder {
                     value: Some(budget_key.clone()),
                 });
             }
-        }
 
         if errors.is_empty() {
             Ok(())

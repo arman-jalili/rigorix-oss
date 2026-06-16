@@ -175,11 +175,10 @@ impl<R: TemplateRepository + Send + Sync> TemplateParserService for TemplatePars
 
         for id in &source_ids {
             // Apply category filter if specified
-            if let Some(ref categories) = input.categories {
-                if !categories.iter().any(|c| id.contains(c)) {
+            if let Some(ref categories) = input.categories
+                && !categories.iter().any(|c| id.contains(c)) {
                     continue;
                 }
-            }
 
             if let Some(source) = self.repository.get_builtin_source(id).await {
                 match self
@@ -332,7 +331,7 @@ fn detect_cycles(template: &Template) -> Vec<Vec<String>> {
     // Kahn's algorithm
     let mut queue: Vec<&str> = in_degree
         .iter()
-        .filter(|(_, &deg)| deg == 0)
+        .filter(|&(_, &deg)| deg == 0)
         .map(|(id, _)| *id)
         .collect();
 
@@ -358,7 +357,7 @@ fn detect_cycles(template: &Template) -> Vec<Vec<String>> {
         // Nodes with remaining in-degree are part of cycles
         let cycle_nodes: Vec<String> = in_degree
             .iter()
-            .filter(|(_, &deg)| deg > 0)
+            .filter(|&(_, &deg)| deg > 0)
             .map(|(id, _)| id.to_string())
             .collect();
         if cycle_nodes.is_empty() {

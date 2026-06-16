@@ -4,9 +4,9 @@
 //! invariants hold. Full pipeline integration tests require
 //! wiring real classifier and template engine components.
 
-use rigorix::planning::domain::classification::ClassifiedTemplate;
-use rigorix::planning::domain::intent::UserIntent;
-use rigorix::planning::domain::result::PlanningHash;
+use rigorix_engine::planning::domain::classification::ClassifiedTemplate;
+use rigorix_engine::planning::domain::intent::UserIntent;
+use rigorix_engine::planning::domain::result::PlanningHash;
 
 #[test]
 fn test_user_intent_construction() {

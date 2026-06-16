@@ -84,12 +84,11 @@ impl GateStateRegistry {
             .write()
             .expect("GateStateRegistry lock poisoned");
 
-        if let Some(exec_gates) = pending.get_mut(execution_id) {
-            if let Some(gate) = exec_gates.get_mut(gate_id) {
+        if let Some(exec_gates) = pending.get_mut(execution_id)
+            && let Some(gate) = exec_gates.get_mut(gate_id) {
                 gate.resolved = true;
                 return Some(gate.clone());
             }
-        }
         None
     }
 

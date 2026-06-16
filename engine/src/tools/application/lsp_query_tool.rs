@@ -30,7 +30,7 @@ pub enum LspQueryType {
 
 impl LspQueryType {
     /// Parse a query type from a string.
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "goto-definition" | "goto_definition" => Some(Self::GotoDefinition),
             "find-references" | "find_references" | "references" => Some(Self::FindReferences),
@@ -94,7 +94,7 @@ impl Tool for LspQueryTool {
         let line = input.require_u64("line")?;
         let column = input.require_u64("column")?;
 
-        let query_type = LspQueryType::from_str(&query_type_str).ok_or_else(|| {
+        let query_type = LspQueryType::parse(&query_type_str).ok_or_else(|| {
             ToolError::InvalidInput(format!(
                 "Unknown query type: '{}'. Supported types: goto-definition, find-references, \
                  hover, completion, document-symbols",
@@ -229,31 +229,31 @@ mod tests {
     #[test]
     fn test_lsp_query_type_parsing() {
         assert_eq!(
-            LspQueryType::from_str("goto-definition"),
+            LspQueryType::parse("goto-definition"),
             Some(LspQueryType::GotoDefinition)
         );
         assert_eq!(
-            LspQueryType::from_str("goto_definition"),
+            LspQueryType::parse("goto_definition"),
             Some(LspQueryType::GotoDefinition)
         );
         assert_eq!(
-            LspQueryType::from_str("references"),
+            LspQueryType::parse("references"),
             Some(LspQueryType::FindReferences)
         );
         assert_eq!(
-            LspQueryType::from_str("find-references"),
+            LspQueryType::parse("find-references"),
             Some(LspQueryType::FindReferences)
         );
-        assert_eq!(LspQueryType::from_str("hover"), Some(LspQueryType::Hover));
+        assert_eq!(LspQueryType::parse("hover"), Some(LspQueryType::Hover));
         assert_eq!(
-            LspQueryType::from_str("completion"),
+            LspQueryType::parse("completion"),
             Some(LspQueryType::Completion)
         );
         assert_eq!(
-            LspQueryType::from_str("symbols"),
+            LspQueryType::parse("symbols"),
             Some(LspQueryType::DocumentSymbols)
         );
-        assert_eq!(LspQueryType::from_str("unknown"), None);
+        assert_eq!(LspQueryType::parse("unknown"), None);
     }
 
     #[test]

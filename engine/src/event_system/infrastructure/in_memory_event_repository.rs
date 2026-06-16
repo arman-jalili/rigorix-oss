@@ -120,11 +120,10 @@ impl PersistedEventRepository for InMemoryEventRepository {
                 true
             })
             .filter(|pe| {
-                if let Some(after) = input.after_sequence {
-                    if pe.sequence <= after {
+                if let Some(after) = input.after_sequence
+                    && pe.sequence <= after {
                         return false;
                     }
-                }
                 true
             })
             .filter(|pe| {
@@ -162,16 +161,14 @@ impl PersistedEventRepository for InMemoryEventRepository {
                     ExecutionEvent::ExecutionCancelled { timestamp, .. } => timestamp,
                     ExecutionEvent::BudgetWarning { timestamp, .. } => timestamp,
                 };
-                if let Some(after) = &input.after_timestamp {
-                    if ts < after {
+                if let Some(after) = &input.after_timestamp
+                    && ts < after {
                         return false;
                     }
-                }
-                if let Some(before) = &input.before_timestamp {
-                    if ts > before {
+                if let Some(before) = &input.before_timestamp
+                    && ts > before {
                         return false;
                     }
-                }
                 true
             })
             .cloned()

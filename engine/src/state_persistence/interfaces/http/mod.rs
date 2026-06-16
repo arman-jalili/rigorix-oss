@@ -101,6 +101,7 @@ pub struct NodeStateResponse {
 /// **Path Params:**
 /// - `id` — Execution UUID
 /// - `node_id` — Node UUID
+///
 /// **Response:** `200 OK` with `NodeStateResponse`
 pub const GET_NODE_STATE_PATH: &str = "/api/v1/state/executions/{id}/nodes/{node_id}";
 pub const GET_NODE_STATE_METHOD: &str = "GET";

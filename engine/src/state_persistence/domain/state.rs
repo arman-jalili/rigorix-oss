@@ -397,7 +397,7 @@ impl ExecutionState {
         }
 
         let current_retries = node.retries;
-        if current_retries >= u8::MAX {
+        if current_retries == u8::MAX {
             return Err(StateError::RetryLimitExceeded {
                 node_id: node_id.to_string(),
                 retries: current_retries,

@@ -29,14 +29,10 @@ impl StateManagerFactory for FileSystemStateManagerFactory {
     async fn create(
         &self,
         state_dir: PathBuf,
-        config: CreateStateManagerConfig,
+        _config: CreateStateManagerConfig,
     ) -> Result<Box<dyn StateManagerService>, StateError> {
-        // Create repository with the state directory
-        let repo = if config.create_dir_if_missing {
-            FileSystemStateRepository::new(state_dir).await?
-        } else {
-            FileSystemStateRepository::new(state_dir).await?
-        };
+        // TODO: config.create_dir_if_missing handling (currently both branches identical)
+        let repo = FileSystemStateRepository::new(state_dir).await?;
 
         let manager = FileSystemStateManager::new(Box::new(repo));
         Ok(Box::new(manager))

@@ -218,15 +218,14 @@ impl SymbolValidationService for SymbolValidationServiceImpl {
 
         // Also check parameter default values for type references
         for param in &template.parameters {
-            if let Some(ref default_val) = param.default {
-                if let Some(s) = default_val.as_str() {
+            if let Some(ref default_val) = param.default
+                && let Some(s) = default_val.as_str() {
                     for word in s.split_whitespace() {
                         if Self::looks_like_type(word) {
                             refs.insert(word.to_string());
                         }
                     }
                 }
-            }
         }
 
         Ok(refs.into_iter().collect())

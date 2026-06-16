@@ -15,7 +15,7 @@
 //! - Implementations are hidden behind these interfaces
 
 use async_trait::async_trait;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::repo_engine::domain::{RepoEngineError, SourceLanguage, SymbolDefinition, SymbolGraph};
 
@@ -91,26 +91,26 @@ pub trait SourceRepository: Send + Sync {
     ///
     /// Returns `RepoEngineError::Io` for filesystem errors.
     /// Files exceeding the configured size limit return `RepoEngineError::Internal`.
-    async fn read_source(&self, path: &PathBuf) -> Result<String, RepoEngineError>;
+    async fn read_source(&self, path: &Path) -> Result<String, RepoEngineError>;
 
     /// List all source files in a directory matching the given extensions.
     ///
     /// Returns file paths. Non-recursive by default.
     async fn list_source_files(
         &self,
-        dir: &PathBuf,
+        dir: &Path,
         extensions: &[String],
         recursive: bool,
     ) -> Result<Vec<PathBuf>, RepoEngineError>;
 
     /// Check if a source file exists and is accessible.
-    async fn source_exists(&self, path: &PathBuf) -> bool;
+    async fn source_exists(&self, path: &Path) -> bool;
 
     /// Get the size of a source file in bytes.
-    async fn file_size(&self, path: &PathBuf) -> Result<u64, RepoEngineError>;
+    async fn file_size(&self, path: &Path) -> Result<u64, RepoEngineError>;
 
     /// Get the file extension from a path.
-    fn extension(&self, path: &PathBuf) -> Option<String>;
+    fn extension(&self, path: &Path) -> Option<String>;
 
     /// Detect the language from a file extension.
     fn detect_language(&self, extension: &str) -> Option<SourceLanguage> {

@@ -367,7 +367,7 @@ fn compute_topological_order(
     // Start with zero in-degree nodes
     let mut queue: Vec<&str> = in_degree
         .iter()
-        .filter(|(_, &deg)| deg == 0)
+        .filter(|&(_, &deg)| deg == 0)
         .map(|(id, _)| *id)
         .collect();
 

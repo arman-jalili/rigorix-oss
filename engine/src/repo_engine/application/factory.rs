@@ -14,7 +14,7 @@
 //! - No mutable state in factory implementations
 
 use async_trait::async_trait;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::repo_engine::domain::{
     Location, RepoEngineError, SourceLanguage, SymbolDefinition, SymbolGraph, SymbolKind,
@@ -74,7 +74,7 @@ pub trait GraphFactory: Send + Sync {
     async fn with_capacity(&self, max: usize) -> SymbolGraph;
 
     /// Create a symbol graph from configuration.
-    async fn from_config(&self, config: &RepoEngineConfig) -> SymbolGraph;
+    async fn build_from_config(&self, config: &RepoEngineConfig) -> SymbolGraph;
 
     /// Batch-add multiple symbol definitions to a graph.
     ///
@@ -166,7 +166,7 @@ pub trait LanguageIndexer: Send + Sync {
     /// an existing graph. Validation happens at the service layer.
     async fn index_source(
         &self,
-        path: &PathBuf,
+        path: &Path,
         source: &str,
     ) -> Result<Vec<SymbolDefinition>, RepoEngineError>;
 

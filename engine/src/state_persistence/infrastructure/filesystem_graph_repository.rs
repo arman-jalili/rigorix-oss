@@ -206,11 +206,10 @@ impl GraphRepository for FileSystemGraphRepository {
             }
 
             // Extract UUID from filename (remove .graph.json suffix)
-            if let Some(stem) = file_name.strip_suffix(".graph.json") {
-                if let Ok(uuid) = Uuid::parse_str(stem) {
+            if let Some(stem) = file_name.strip_suffix(".graph.json")
+                && let Ok(uuid) = Uuid::parse_str(stem) {
                     ids.push(uuid);
                 }
-            }
         }
 
         // Sort by UUID for deterministic ordering (most recent UUIDs sort later)
