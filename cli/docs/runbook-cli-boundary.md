@@ -1,43 +1,37 @@
-# Runbook: CLI Boundary Module
-
-> **Module:** `cli/src/cli_boundary/`
-> **Version:** 0.1.0
-> **Last Updated:** 2026-06-16
-
-## Overview
-
-The CLI boundary is the entry point for all user-facing commands. It handles command parsing, config loading, signal handling, tracing init, template dispatch, and output formatting.
-
-## Architecture
-
-```
-User → CliArgs (clap) → dispatch_command()
-          ↓
-    CliOrchestrator (run/plan/generate)
-    TemplateCommandHandler (template list/show)
-    LogFormatter (pretty/json/quiet output)
-```
+# CLI Boundary — Runbook
 
 ## Startup Sequence
 
-1. CLI args parsed via clap
-2. Config loaded (flags > env > file > defaults)
-3. API key validated for LLM commands
-4. Engine ConfigService initialized
-5. Tracing initialized
-6. Signal handler installed
-7. Command dispatched → output formatted → exit
+1. **Tracing Init**: `cli_boundary::tracing::init_tracing()` — reads `RIGORIX_LOG` env var (default: `info`)
+2. **Config Load**: `cli_boundary::config::load_config()` — merges `rigorix.toml` + `RIGORIX_*` env + defaults
+3. **Signal Handler**: `cli_boundary::signal::install_signal_handler()` — installs Ctrl+C/SIGTERM handlers
+4. **Parse Args**: `cli_boundary::cli::parse_args()` — resolves `CliCommand` from argv
+5. **Dispatch**: `cli_boundary::dispatch::dispatch()` — routes command to appropriate handler
 
-## Graceful Shutdown
+## Shutdown Sequence
 
-Ctrl+C → SignalHandler → `ShutdownLevel::Graceful` → orchestrator stops accepting work.
-Double Ctrl+C within 2s → `ShutdownLevel::Immediate` → abort all in-flight.
+| Trigger | Behaviour |
+|---------|-----------|
+| Single Ctrl+C | Graceful: finish in-flight node, exit 130 |
+| Double Ctrl+C (within 2s) | Immediate abort, exit 137 |
+| SIGTERM (Unix) | Immediate abort, exit 137 |
+| Natural completion | Exit 0 |
+
+## Configuration Sources (Priority)
+
+| Priority | Source | Example |
+|----------|--------|---------|
+| 1 (highest) | CLI flags | `--max-llm-calls 100` |
+| 2 | Env vars | `RIGORIX_ORCHESTRATOR_MAX_PARALLEL_TASKS=8` |
+| 3 | `rigorix.toml` (CWD) | Project-level config |
+| 4 | `~/.rigorix/config.toml` | User-level config |
+| 5 (lowest) | Engine defaults | Compiled-in defaults |
 
 ## Common Failure Modes
 
-| Failure | Symptom | Recovery |
-|---------|---------|----------|
-| Missing config | ConfigNotFound error | Run `rigorix init` |
-| Missing API key | MissingConfig error | Set RIGORIX_API_KEY |
-| Unknown command | UnknownCommand error | Check `rigorix --help` |
-| Engine error | Engine error passthrough | Check engine status |
+| Symptom | Likely Cause | Resolution |
+|---------|-------------|------------|
+| Exit code 2 | Bad config file | Run `rigorix config validate` |
+| Exit code 3 | Invalid arguments | Run `rigorix --help` |
+| Exit code 1 | Engine error | Check logs with `RIGORIX_LOG=debug` |
+| Hanging | No Ctrl+C handler | Send SIGTERM (kill -15) |
