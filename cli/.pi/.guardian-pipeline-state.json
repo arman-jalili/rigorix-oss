@@ -1,9 +1,16 @@
 {
-  "id": "PL-4943",
-  "name": "\"event-system\"",
+  "id": "PL-1691",
+  "name": "\"cli-boundary\"",
   "items": [
     "issue-contract-freeze",
-    "issue--component-name-",
+    "issue-cliparser",
+    "issue-dispatcher",
+    "issue-orchestratorbuilder",
+    "issue-configloader",
+    "issue-outputformatter",
+    "issue-signalhandler",
+    "issue-tracinginit",
+    "issue-clierror",
     "issue-proofing",
     "issue-architecture-readiness"
   ],
@@ -48,117 +55,12 @@
       }
     }
   ],
-  "currentItemIndex": 4,
+  "currentItemIndex": 0,
   "currentStepIndex": 0,
-  "status": "done",
+  "status": "running",
   "retryCount": 0,
-  "results": [
-    {
-      "item": "issue-contract-freeze",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue--component-name-",
-      "status": "failed",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "failed",
-          "reason": "Issue #332 is an unfilled template stub."
-        },
-        {
-          "step": "validate",
-          "status": "failed",
-          "reason": "skipped due to prior failure"
-        },
-        {
-          "step": "create-mr",
-          "status": "failed",
-          "reason": "skipped due to prior failure"
-        },
-        {
-          "step": "merge",
-          "status": "failed",
-          "reason": "skipped due to prior failure"
-        }
-      ]
-    },
-    {
-      "item": "issue-proofing",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-architecture-readiness",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    }
-  ],
+  "results": [],
   "mergeOnValid": true,
-  "createdAt": "2026-06-16T19:50:40.576Z",
-  "updatedAt": "2026-06-16T19:54:16.358Z"
+  "createdAt": "2026-06-16T21:27:43.948Z",
+  "updatedAt": "2026-06-16T21:27:43.948Z"
 }

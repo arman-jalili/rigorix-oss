@@ -1,0 +1,219 @@
+//! Output formatter — renders `DispatchResult` in the selected format.
+//!
+//! @canonical .pi/architecture/modules/cli-boundary.md#output-formats
+//! Implements: Contract Freeze — OutputFormatter component: LogFormatter trait and types
+//! Issue: issue-contract-freeze
+//!
+//! # Contract (Frozen)
+//!
+//! The output formatter provides four output formats controlled by `--format`:
+//!
+//! | Format | Use Case | Description |
+//! |--------|----------|-------------|
+//! | Pretty | Interactive terminal | Human-readable with Unicode symbols |
+//! | Json | CI/CD, scripting | Structured JSON to stdout |
+//! | Markdown | Documentation | Markdown-formatted output |
+//! | Quiet | Automation | Minimal output, exit codes only |
+//!
+//! Each format implements `LogFormatter` which provides:
+//! - `format_run(result)` — format a run/plan/cancel/status result
+//! - `format_list(items)` — format a list result (history, templates, etc.)
+//! - `format_detail(item)` — format a detailed result (explain, show, etc.)
+//! - `format_error(error)` — format an error result
+//!
+//! `format_and_exit()` is the single entry point used by `main()`. It writes
+//! the formatted output to stdout/stderr and calls `process::exit()` with the
+//! appropriate exit code.
+
+use std::fmt;
+
+use serde_json::Value as JsonValue;
+
+use crate::cli_boundary::cli::Format;
+use crate::cli_boundary::dispatch::DispatchResult;
+
+// ---------------------------------------------------------------------------
+// LogFormatter trait
+// ---------------------------------------------------------------------------
+
+/// Output formatter that renders `DispatchResult` into a specific format.
+///
+/// Implementations must handle:
+/// - Empty results (no data, empty list)
+/// - Error results (non-zero exit code)
+/// - Structured data rendering (JSON, Markdown tables)
+/// - Human-readable summary (Pretty, Quiet)
+pub trait LogFormatter: fmt::Debug + Send + Sync {
+    /// Format the summary text of a dispatch result.
+    fn format_summary(&self, result: &DispatchResult) -> String;
+
+    /// Format a single structured data item.
+    fn format_item(&self, label: &str, data: &JsonValue) -> String;
+
+    /// Format a list of structured data items.
+    fn format_list(&self, title: &str, items: &[JsonValue]) -> String;
+
+    /// Format an error result.
+    fn format_error(&self, result: &DispatchResult) -> String;
+}
+
+// ---------------------------------------------------------------------------
+// Formatter implementations
+// ---------------------------------------------------------------------------
+
+/// Pretty (human-readable) formatter with Unicode symbols.
+///
+/// Default format when `--format` is not specified.
+#[derive(Debug)]
+pub struct PrettyFormatter;
+
+impl LogFormatter for PrettyFormatter {
+    fn format_summary(&self, result: &DispatchResult) -> String {
+        if result.is_success() {
+            format!("✓ {}", result.summary)
+        } else {
+            format!("✗ {}", result.summary)
+        }
+    }
+
+    fn format_item(&self, label: &str, data: &JsonValue) -> String {
+        format!("{}: {}", label, data)
+    }
+
+    fn format_list(&self, _title: &str, items: &[JsonValue]) -> String {
+        items
+            .iter()
+            .map(|item| format!("• {}", item))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn format_error(&self, result: &DispatchResult) -> String {
+        format!("Error: {} (exit code {})", result.summary, result.exit_code)
+    }
+}
+
+/// JSON formatter for CI/CD integration.
+#[derive(Debug)]
+pub struct JsonFormatter;
+
+impl LogFormatter for JsonFormatter {
+    fn format_summary(&self, result: &DispatchResult) -> String {
+        let value = serde_json::json!({
+            "success": result.is_success(),
+            "summary": result.summary,
+            "exit_code": result.exit_code,
+            "data": result.data,
+        });
+        serde_json::to_string_pretty(&value).unwrap_or_else(|_| result.summary.clone())
+    }
+
+    fn format_item(&self, _label: &str, data: &JsonValue) -> String {
+        serde_json::to_string_pretty(data).unwrap_or_default()
+    }
+
+    fn format_list(&self, _title: &str, items: &[JsonValue]) -> String {
+        serde_json::to_string_pretty(items).unwrap_or_default()
+    }
+
+    fn format_error(&self, result: &DispatchResult) -> String {
+        let value = serde_json::json!({
+            "success": false,
+            "error": result.summary,
+            "exit_code": result.exit_code,
+        });
+        serde_json::to_string_pretty(&value).unwrap_or_else(|_| result.summary.clone())
+    }
+}
+
+/// Markdown formatter for documentation output.
+#[derive(Debug)]
+pub struct MarkdownFormatter;
+
+impl LogFormatter for MarkdownFormatter {
+    fn format_summary(&self, result: &DispatchResult) -> String {
+        if result.is_success() {
+            format!("✅ **{}**", result.summary)
+        } else {
+            format!("❌ **{}**", result.summary)
+        }
+    }
+
+    fn format_item(&self, label: &str, data: &JsonValue) -> String {
+        format!("### {}\n\n```json\n{}\n```", label, data)
+    }
+
+    fn format_list(&self, title: &str, items: &[JsonValue]) -> String {
+        let mut output = format!("## {}\n\n", title);
+        for item in items {
+            output.push_str(&format!("- {}\n", item));
+        }
+        output
+    }
+
+    fn format_error(&self, result: &DispatchResult) -> String {
+        format!(
+            "> **Error:** {}  \n> Exit code: `{}`",
+            result.summary, result.exit_code
+        )
+    }
+}
+
+/// Quiet formatter — minimal output, exit codes only.
+#[derive(Debug)]
+pub struct QuietFormatter;
+
+impl LogFormatter for QuietFormatter {
+    fn format_summary(&self, _result: &DispatchResult) -> String {
+        String::new()
+    }
+
+    fn format_item(&self, _label: &str, _data: &JsonValue) -> String {
+        String::new()
+    }
+
+    fn format_list(&self, _title: &str, _items: &[JsonValue]) -> String {
+        String::new()
+    }
+
+    fn format_error(&self, result: &DispatchResult) -> String {
+        format!("Error: {}", result.summary)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/// Resolve a `Format` to its `LogFormatter` implementation.
+pub fn formatter_for(format: Format) -> Box<dyn LogFormatter> {
+    match format {
+        Format::Pretty => Box::new(PrettyFormatter),
+        Format::Json => Box::new(JsonFormatter),
+        Format::Markdown => Box::new(MarkdownFormatter),
+        Format::Quiet => Box::new(QuietFormatter),
+    }
+}
+
+/// Format a `DispatchResult` and exit the process with the appropriate code.
+///
+/// This is the single entry point for all command output. It:
+/// 1. Selects the formatter based on the result's format
+/// 2. Renders the output to stdout (success) or stderr (error)
+/// 3. Calls `std::process::exit()` with the result's exit code
+///
+/// # Panics
+///
+/// This function never returns — it always calls `process::exit()`.
+pub fn format_and_exit(result: DispatchResult) -> ! {
+    // Placeholder: prints summary and exits.
+    // Implementation issue: select formatter based on CLI --format flag,
+    // render output to appropriate stream, then process::exit().
+    let formatter = formatter_for(Format::Pretty);
+    if result.is_success() {
+        println!("{}", formatter.format_summary(&result));
+    } else {
+        eprintln!("{}", formatter.format_error(&result));
+    }
+    std::process::exit(result.exit_code);
+}
