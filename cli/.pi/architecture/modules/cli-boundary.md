@@ -14,15 +14,15 @@ The CLI is the entry point for all user interaction. It parses commands, loads c
 
 ## Components
 
-| Component | File (implemented) | Purpose |
-|-----------|---------------|---------|
-| CommandParser | `cli/src/interfaces/cli/mod.rs` | Parses CLI args into CliCommand enum (Run, Plan, Init, Generate, Audit, History, Logs, Template) |
-| CliConfigLoader | `cli/src/infrastructure/config_impl.rs` | Loads and merges CLI-specific config (output format, TUI enabled) with engine Config |
-| CliOrchestrator | `cli/src/main.rs` (dispatch) | Top-level orchestrator: wires CommandParser → Config → Engine → output rendering |
-| ExecutionSession | `cli/src/application/service.rs` (trait) | Manages a single execution lifecycle: load config → plan → execute → render output |
-| TuiRenderer | `cli/src/tui/mod.rs` (trait) | ratatui-based terminal UI: subscribes to EventBus, renders live node graph, budget bars, status |
-| LogFormatter | `cli/src/infrastructure/output_impl.rs` | Formats output as human-readable or JSON for CI/CD integration |
-| SignalHandler | `cli/src/infrastructure/signal_impl.rs` | Captures Ctrl+C (graceful) and double-Ctrl+C (immediate) for cancellation |
+| Component | File | Module | Purpose |
+|-----------|------|--------|---------|
+| CommandParser | `cli/src/cli_boundary/interfaces/cli/mod.rs` | cli_boundary | Parses CLI args into CliCommand enum (Run, Plan, Init, Generate, Audit, History, Logs, Template) |
+| CliOrchestrator | `cli/src/main.rs` (dispatch) | (entry point) | Top-level orchestrator: wires CommandParser → Config → Engine → output rendering |
+| ExecutionSession (trait) | `cli/src/cli_boundary/application/service.rs` | cli_boundary | Manages a single execution lifecycle: load config → plan → execute → render output |
+| CliOrchestratorFactory (trait) | `cli/src/cli_boundary/application/factory.rs` | cli_boundary | Factory for constructing orchestrator instances |
+| TuiRenderer (trait) | `cli/src/cli_boundary/tui/mod.rs` | cli_boundary | ratatui-based terminal UI: subscribes to EventBus, renders live node graph, budget bars, status |
+| LogFormatter (trait) | `cli/src/cli_boundary/infrastructure/output.rs` | cli_boundary | Formats output as human-readable or JSON for CI/CD integration |
+| LogFormatterImpl | `cli/src/cli_boundary/infrastructure/output_impl.rs` | cli_boundary | Pretty, JSON, and quiet output formatter implementation |
 
 ## Domain Events
 
@@ -45,31 +45,44 @@ The CLI is the entry point for all user interaction. It parses commands, loads c
 
 ### Architecture Layers
 
+Each bounded context is a self-contained module with Clean Architecture layers:
+
 ```
 cli/src/
-├── domain/           # CLI-specific domain types
-│   ├── config.rs     # CliConfig, OutputFormat, ColorMode, LogLevel, LogFormat
-│   ├── error.rs      # CliError enum (12 variants, exit codes, retriable detection)
-│   └── event/        # CliEvent enum (5 event types)
-├── application/      # Service traits, DTOs, factory interfaces
-│   ├── service.rs    # CliOrchestrator trait (10 commands), ExecutionSession trait
-│   ├── factory.rs    # Factory interfaces
-│   └── dto/          # 20+ input/output DTOs
-├── infrastructure/   # I/O implementations
-│   ├── config.rs     # CliConfigLoader trait
-│   ├── config_impl.rs # CliConfigLoaderImpl — multi-source merging
-│   ├── output.rs     # LogFormatter trait
-│   ├── output_impl.rs # LogFormatterImpl — pretty, JSON, quiet
-│   ├── signal.rs     # SignalHandler trait + ShutdownLevel enum
-│   ├── signal_impl.rs # SignalHandlerImpl — double-press Ctrl+C
-│   └── repository/   # Reserved for future persistence
-├── interfaces/       # API contracts
-│   └── cli/          # Clap CLI command definitions
-├── tracing.rs        # Tracing initialization (pretty/JSON)
-├── tui/              # TUI renderer trait (ratatui)
+├── cli_boundary/     # Shared CLI types — command dispatch, output, TUI
+│   ├── domain/       # CliError enum (12 variants), CliEvent enum (6 event types)
+│   │   ├── error.rs
+│   │   └── event/
+│   ├── application/  # CliOrchestrator, ExecutionSession traits, DTOs
+│   │   ├── service.rs
+│   │   ├── factory.rs
+│   │   └── dto/      # 20+ input/output DTOs
+│   ├── infrastructure/  # LogFormatter trait + impl
+│   │   ├── output.rs
+│   │   ├── output_impl.rs
+│   │   └── repository/  # Reserved for future persistence
+│   ├── interfaces/   # Clap CLI command definitions
+│   │   └── cli/
+│   ├── tui/          # TUI renderer trait (ratatui)
+│   └── tests.rs      # 35+ contract tests
+├── configuration/    # Multi-source config loading
+│   ├── domain/       # CliConfig value object
+│   │   └── config.rs
+│   └── infrastructure/  # CliConfigLoader trait + CliConfigLoaderImpl
+│       ├── config.rs
+│       └── config_impl.rs
+├── observability/    # Tracing, health checks, event schemas
+│   ├── domain/event/ # ObservabilityEvent payload schemas
+│   │   └── observability.rs
+│   └── infrastructure/  # TracingInitializer trait + tracing impl
+│       ├── observability.rs
+│       └── tracing.rs
+├── cancellation/     # Signal handler for Ctrl+C
+│   └── infrastructure/  # SignalHandler trait + SignalHandlerImpl
+│       ├── signal.rs
+│       └── signal_impl.rs
 ├── main.rs           # Binary entry point with full command dispatch
-├── lib.rs            # Library root
-└── tests.rs          # 35+ contract tests
+└── lib.rs            # Library root
 ```
 
 ### Config Loading Priority
@@ -85,14 +98,22 @@ cli/src/
 ## Proofing & CI
 
 ### Proofing Scripts (`.pi/scripts/ci/`)
-| Script | What it Checks | Threshold |
-|--------|---------------|-----------|
-| `check_cli_contracts.sh` | Each trait has a concrete impl | 7/7 pass |
-| `check_cli_coverage.sh` | Test counts per module | 30+ total |
-| `stage_cli_proofing.sh` | CI stage wrapper | 3/3 pass |
+| Script | Module | What it Checks | |
+|--------|--------|---------------|-|
+| `check_cli_contracts.sh` | cli_boundary | Each trait has a concrete impl | 7/7 pass |
+| `check_cli_coverage.sh` | cli_boundary | Test counts per module | 30+ total |
+| `stage_cli_proofing.sh` | cli_boundary | CI stage wrapper | 3/3 pass |
+| `check_config_contracts.sh` | configuration | 17 config contract checks | 17/17 pass |
+| `check_config_coverage.sh` | configuration | Config module coverage thresholds | 3/3 pass |
+| `stage_config_proofing.sh` | configuration | CI stage wrapper | 3/3 pass |
+| `check_observability_contracts.sh` | observability | 15 observability contract checks | 15/15 pass |
+| `check_observability_coverage.sh` | observability | Observability module coverage | 3/3 pass |
+| `stage_observability_proofing.sh` | observability | CI stage wrapper | 3/3 pass |
 
-### CI Stage
-- Stage 11 in `run_hardening_stages.sh` — runs on every PR
+### CI Stages
+- Stage 11 — `cli_proofing` — runs on every PR
+- Stage 12 — `config_proofing` — runs on every PR
+- Stage 13 — `observability_proofing` — runs on every PR
 
 ## Dependencies
 
@@ -109,16 +130,25 @@ cli/src/
 | File | Purpose |
 |------|---------|
 | `cli/Cargo.toml` | CLI crate manifest with rigorix-engine dependency |
-| `cli/src/main.rs` | Binary entry point with command dispatch |
-| `cli/src/lib.rs` | Library root with all modules |
-| `cli/src/interfaces/cli/mod.rs` | CliCommand enum and argument parsing (clap) |
-| `cli/src/infrastructure/config_impl.rs` | Config loader implementation |
-| `cli/src/infrastructure/signal_impl.rs` | Signal handler implementation |
-| `cli/src/infrastructure/output_impl.rs` | Output formatting implementation |
-| `cli/src/tracing.rs` | Tracing initialization |
-| `cli/src/tui/mod.rs` | ratatui terminal UI trait |
-| `cli/docs/runbook.md` | Operations runbook |
-| `cli/docs/dr-plan.md` | Disaster recovery plan |
+| File | Module | Purpose |
+|------|--------|---------|
+| `cli/src/main.rs` | (entry point) | Binary entry point with command dispatch |
+| `cli/src/lib.rs` | (root) | Library root — re-exports all modules |
+| `cli/src/cli_boundary/interfaces/cli/mod.rs` | cli_boundary | CliCommand enum and argument parsing (clap) |
+| `cli/src/cli_boundary/application/service.rs` | cli_boundary | CliOrchestrator + ExecutionSession traits |
+| `cli/src/cli_boundary/application/factory.rs` | cli_boundary | Factory interfaces |
+| `cli/src/cli_boundary/application/dto/mod.rs` | cli_boundary | 20+ input/output DTOs |
+| `cli/src/cli_boundary/domain/error.rs` | cli_boundary | CliError enum (12 variants) |
+| `cli/src/cli_boundary/domain/event/mod.rs` | cli_boundary | CliEvent enum (6 event types) |
+| `cli/src/cli_boundary/infrastructure/output.rs` | cli_boundary | LogFormatter trait |
+| `cli/src/cli_boundary/infrastructure/output_impl.rs` | cli_boundary | LogFormatterImpl — pretty, JSON, quiet |
+| `cli/src/cli_boundary/tui/mod.rs` | cli_boundary | ratatui terminal UI trait |
+| `cli/src/cli_boundary/tests.rs` | cli_boundary | 35+ contract tests |
+| `cli/src/configuration/infrastructure/config_impl.rs` | configuration | Config loader implementation |
+| `cli/src/cancellation/infrastructure/signal_impl.rs` | cancellation | Signal handler implementation |
+| `cli/src/observability/infrastructure/tracing.rs` | observability | Tracing initialization |
+| `cli/docs/runbook.md` | docs | Operations runbook |
+| `cli/docs/dr-plan.md` | docs | Disaster recovery plan |
 
 ## ADRs
 
