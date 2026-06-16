@@ -12,6 +12,22 @@ This document tracks all architecture changes requiring implementation updates.
 
 ## Entries
 
+## [2026-06-16] - Template Generation Module Implementation (Issues #303, #305, #306)
+
+### Changes
+- Contract freeze: created full CLI template_generation module
+  - GenerateCommandService trait, domain errors/events, DTOs
+  - TemplateGenerationRepository trait
+  - HTTP API contracts (3 endpoints)
+- Created proofing scripts: check_template_generation_contracts.sh (11 checks)
+- Created stage_template_generation_proofing.sh — CI stage wrapper
+- Integrated stage 16 into CI hardening pipeline
+- Created runbook and DR plan docs
+
+### Status
+- Template generation module: IMPLEMENTED (contract freeze + proofing + readiness)
+- CI proofing: stage 16 — ALL PASS
+
 ## [2026-06-16] - CLI Boundary Module Implementation (Issues #296, #298, #299)
 
 ### Changes
