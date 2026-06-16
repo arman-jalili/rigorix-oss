@@ -62,6 +62,7 @@ pub mod configuration;
 pub mod execution_engine;
 pub mod observability;
 pub mod planning;
+pub mod state_persistence;
 pub mod template_generation;
 pub mod templates;
 
