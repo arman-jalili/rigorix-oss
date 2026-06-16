@@ -227,6 +227,11 @@ run_stage "12" "config_proofing" \
     "${SCRIPTS_DIR}/stage_config_proofing.sh" \
     "always"
 
+# Stage 13: Observability Module Proofing
+run_stage "13" "observability_proofing" \
+    "${SCRIPTS_DIR}/stage_observability_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""

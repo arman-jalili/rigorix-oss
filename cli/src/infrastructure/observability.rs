@@ -42,8 +42,11 @@ pub trait TracingInitializer: Send + Sync {
     ///
     /// # Errors
     /// Returns `CliError::Internal` if tracing cannot be initialized.
-    async fn init_tracing(&self, log_level: LogLevel, log_format: LogFormat)
-        -> Result<(), CliError>;
+    async fn init_tracing(
+        &self,
+        log_level: LogLevel,
+        log_format: LogFormat,
+    ) -> Result<(), CliError>;
 
     /// Initialize tracing with safe defaults (pretty, info level).
     ///
