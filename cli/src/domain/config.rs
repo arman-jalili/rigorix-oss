@@ -49,7 +49,6 @@ impl OutputFormat {
     }
 }
 
-
 /// CLI-specific configuration, merged from CLI flags, environment variables,
 /// `rigorix.toml`, and engine defaults.
 ///
