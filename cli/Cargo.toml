@@ -24,6 +24,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 ratatui = "0.29"
 crossterm = "0.28"
 futures = "0.3"
+dirs = "6"
 
 [dev-dependencies]
 tempfile = "3"
