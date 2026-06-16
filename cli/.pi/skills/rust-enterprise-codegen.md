@@ -173,6 +173,36 @@ impl RootError {
 }
 ```
 
+### Error Source Chains
+
+`#[from]` automatically implements both `From` and `Error::source()`. When you need `source()` without `From` (e.g., named fields), use `#[source]`:
+
+```rust
+#[derive(Error, Debug)]
+#[error("planning failed: {context}")]
+pub struct PlanningFailure {
+    context: String,
+    #[source]
+    cause: PlanningError,
+}
+```
+
+### Backtrace Capture (Nightly Only)
+
+On nightly Rust (`#![feature(error_generic_member_access)]`), thiserror can capture backtraces automatically. Fields of type `std::backtrace::Backtrace` are auto-detected, and `#[backtrace]` on a source field forwards the backtrace from the wrapped error:
+
+```rust
+#![feature(error_generic_member_access)]
+
+#[derive(Error, Debug)]
+#[error("IO operation failed")]
+pub struct IoError {
+    #[from]
+    source: std::io::Error,
+    backtrace: std::backtrace::Backtrace,  // auto-captured
+}
+```
+
 ### Rules
 
 - ✅ Use `thiserror` for ALL library/domain errors
@@ -180,6 +210,8 @@ impl RootError {
 - ✅ Include context in error fields (what was requested, what's available)
 - ✅ Implement `is_retriable()` for each error that might have transient variants
 - ✅ Root error aggregates sub-errors via `#[from]` for `?` operator propagation
+- ✅ `#[from]` implies `#[source]` — no need for both on the same field
+- ✅ Use `#[source]` on named fields when you want `Error::source()` without auto-`From`
 - ❌ NEVER use `anyhow` in library code — reserved for binary crates only
 - ❌ NEVER use `.unwrap()` or `.expect()` in production code
 - ❌ NEVER use `String` errors — always typed enums
@@ -194,8 +226,8 @@ impl RootError {
 /// # Security
 /// - Debug/Display show `[REDACTED]` (never leak)
 /// - Only `.expose()` reveals the inner value
-/// - Serde serialization is transparent (writes actual value)
-/// - Hash/Eq compare by inner value
+/// - Does NOT derive Serialize — secrets must not be serialized
+/// - If serialization is needed, implement a custom Serialize that is opt-in only
 #[derive(Clone)]
 pub struct Secret(String);
 
@@ -387,11 +419,16 @@ use tokio::task::JoinSet;
 pub async fn execute_parallel(nodes: Vec<TaskNode>, max_concurrent: u32) -> ExecutionResult {
     let mut join_set = JoinSet::new();
     let mut results = HashMap::new();
+    let mut nodes_iter = nodes.into_iter();
 
-    for node in nodes.into_iter().take(max_concurrent as usize) {
-        join_set.spawn(execute_node(node));
+    // Spawn initial batch up to max_concurrent
+    for _ in 0..max_concurrent {
+        if let Some(node) = nodes_iter.next() {
+            join_set.spawn(execute_node(node));
+        }
     }
 
+    // As each task completes, spawn the next one (replenish)
     while let Some(result) = join_set.join_next().await {
         match result {
             Ok(Ok(task_result)) => {
@@ -403,6 +440,10 @@ pub async fn execute_parallel(nodes: Vec<TaskNode>, max_concurrent: u32) -> Exec
             Err(join_error) => {
                 // Handle task panic
             }
+        }
+        // Replenish: spawn the next node if any remain
+        if let Some(node) = nodes_iter.next() {
+            join_set.spawn(execute_node(node));
         }
     }
 
@@ -437,7 +478,9 @@ pub async fn poll_with_cancellation(
 - ✅ Use `tokio::sync::broadcast` for fan-out pub-sub
 - ✅ Use `tokio_util::sync::CancellationToken` for cooperative cancellation
 - ✅ Use `tokio::select!` for timeout/cancellation-aware waits
-- ❌ Never use `std::sync::Mutex` in async context — use `tokio::sync::Mutex` or `tokio::sync::RwLock`
+- ✅ Use `std::sync::Mutex` for short critical sections that don't cross `.await` points (cheap, no allocation)
+- ✅ Use `tokio::sync::Mutex` only when the lock must be held across `.await` points
+- ❌ Never hold `std::sync::Mutex` across `.await` points — blocks the async runtime thread
 - ❌ Never use unbounded channels (`mpsc::unbounded_channel`) without explicit justification
 - ❌ Never block with `std::thread::sleep` in async code — use `tokio::time::sleep`
 
@@ -990,8 +1033,13 @@ let (tx, rx) = tokio::sync::mpsc::unbounded_channel();  // BAD — no backpressu
 // ❌ unwrap/expect in production
 let value = result.unwrap();  // BAD — use ? or proper error handling
 
-// ❌ std::sync::Mutex in async code
-let data = std::sync::Mutex::new(vec![]);  // BAD — use tokio::sync::Mutex
+// ❌ std::sync::Mutex held across .await — blocks the runtime thread
+async fn bad() {
+    let data = std::sync::Mutex::new(vec![]);
+    let guard = data.lock().unwrap();
+    tokio::time::sleep(Duration::from_secs(1)).await;  // BAD
+    // guard still held here — runtime thread is blocked
+}
 
 // ❌ Direct field mutation of state
 node.status = NodeStatus::Running;  // BAD — use transition methods
@@ -1027,7 +1075,7 @@ description = "One-line description of this crate"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["sync", "time", "macros", "rt"] }
 tokio-util = "0.7"
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
@@ -1085,7 +1133,7 @@ async fn make_api_call(client: &reqwest::Client, api_key: &str) -> Result<Respon
 
 ---
 
-*Version: 2.0.0*
+*Version: 2.1.0*
 *Last updated: 2026-06-16*
 *Source: rigorix-engine codebase patterns + DDD architecture analysis*
 *Validated against: ADR-001 through ADR-012*
