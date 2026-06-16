@@ -12,6 +12,46 @@ This document tracks all architecture changes requiring implementation updates.
 
 ## Entries
 
+## [2026-06-16] - Configuration Module Implementation (Issues #282, #284, #285)
+
+### Changes
+- Contract freeze: defined all public interfaces, DTO schemas, event schemas, and API contracts
+  - CliConfigLoader trait moved to application/layer (canonical Clean Architecture)
+  - ConfigCliError enum with typed CLI config errors (6 variants)
+  - ConfigCliEvent payload schemas for logging/UI (7 events)
+  - LoadConfigInput/Output, ValidateConfigInput/Output DTOs
+  - ConfigCliRepository trait for CLI-level config data persistence
+  - HTTP API contracts with 3 endpoints: get config, validate, reload
+- Updated existing config proofing scripts to find CliConfigLoader in application/layer
+- Created docs/runbook-configuration.md and docs/dr-plan-configuration.md
+- Updated config module architecture doc with final contracts and file paths
+
+### Files Created
+- `cli/src/configuration/application/dto/mod.rs` — DTO schemas
+- `cli/src/configuration/application/service.rs` — CliConfigLoader trait (moved from infrastructure)
+- `cli/src/configuration/domain/error.rs` — ConfigCliError enum
+- `cli/src/configuration/domain/event/mod.rs` — ConfigCliEvent schemas
+- `cli/src/configuration/infrastructure/repository/mod.rs` — ConfigCliRepository trait
+- `cli/src/configuration/interfaces/http/mod.rs` — HTTP API endpoint contracts
+- `cli/src/configuration/interfaces/mod.rs` — Module declaration
+- `cli/docs/runbook-configuration.md` — Operations runbook
+- `cli/docs/dr-plan-configuration.md` — Disaster recovery plan
+
+### Files Modified
+- `cli/src/configuration/domain/mod.rs` — Export error/event modules
+- `cli/src/configuration/application/mod.rs` — Export DTO/service modules
+- `cli/src/configuration/infrastructure/mod.rs` — Repository module + re-export from application
+- `cli/src/configuration/infrastructure/config.rs` — Now re-exports CliConfigLoader from application
+- `cli/src/configuration/mod.rs` — Architecture tree documentation
+- `cli/src/lib.rs` — Updated architecture tree
+- `cli/.pi/architecture/modules/configuration.md` — Updated with final contracts, proofing, runbook
+- `cli/.pi/scripts/ci/check_config_contracts.sh` — Updated grep paths for trait migration
+
+### Status
+- Configuration module: IMPLEMENTED (contract freeze + proofing + readiness)
+- 38 tests passing, clippy clean, fmt clean
+- CI proofing scripts: stage 12 — config_proofing — ALL PASS (17 contract checks, 3 coverage checks)
+
 ## [2026-06-16] - Cancellation Module Implementation (Issues #274, #276, #277)
 
 ### Changes
