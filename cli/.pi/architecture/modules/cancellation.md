@@ -17,9 +17,10 @@ The CLI's SignalHandler captures terminal signals and forwards them to the engin
 ## Components
 
 **CLI-facing:**
-| Component | File (planned) | Purpose |
-|-----------|---------------|---------|
-| SignalHandler | `cli/src/signal.rs` | Captures Ctrl+C / SIGINT, differentiates single vs double press |
+| Component | File | Module | Purpose |
+|-----------|------|--------|---------|
+| SignalHandler (trait) | `cli/src/cancellation/infrastructure/signal.rs` | cancellation | SignalHandler trait + ShutdownLevel enum (Graceful, Immediate) |
+| SignalHandlerImpl | `cli/src/cancellation/infrastructure/signal_impl.rs` | cancellation | Double-press Ctrl+C detection (2s window) |
 
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |

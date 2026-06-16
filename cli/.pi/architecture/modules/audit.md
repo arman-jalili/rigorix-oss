@@ -15,11 +15,11 @@ The CLI exposes `rigorix audit list` and `rigorix audit show` to inspect past au
 ## Components
 
 **CLI-facing:**
-| Component | File (planned) | Purpose |
-|-----------|---------------|---------|
-| AuditListCommand | `cli/src/audit_cmd.rs` | Lists audit envelopes with summary |
-| AuditShowCommand | `cli/src/audit_cmd.rs` | Shows full audit envelope details |
-| AuditDiffCommand | `cli/src/audit_cmd.rs` | Diffs two audit envelopes |
+| Component | File (planned) | Module | Purpose |
+|-----------|---------------|--------|---------|
+| AuditListCommand | `cli/src/cli_boundary/commands/audit_cmd.rs` | cli_boundary | Lists audit envelopes with summary |
+| AuditShowCommand | `cli/src/cli_boundary/commands/audit_cmd.rs` | cli_boundary | Shows full audit envelope details |
+| AuditDiffCommand | `cli/src/cli_boundary/commands/audit_cmd.rs` | cli_boundary | Diffs two audit envelopes |
 
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |

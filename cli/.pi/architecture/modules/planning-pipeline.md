@@ -17,10 +17,10 @@ When no template matches with sufficient confidence, the pipeline falls back to 
 ## Components
 
 **CLI-facing:**
-| Component | File (planned) | Purpose |
-|-----------|---------------|---------|
-| PlanCommand | `cli/src/plan.rs` | Wraps PlanningPipelineService for `rigorix plan` — outputs plan summary |
-| PlanPreviewRenderer | `cli/src/plan.rs` | Formats PlanOutput as human-readable DAG preview or JSON |
+| Component | File (planned) | Module | Purpose |
+|-----------|---------------|--------|---------|
+| PlanCommand | `cli/src/cli_boundary/commands/plan_cmd.rs` | cli_boundary | Wraps PlanningPipelineService for `rigorix plan` — outputs plan summary |
+| PlanPreviewRenderer | `cli/src/cli_boundary/commands/plan_cmd.rs` | cli_boundary | Formats PlanOutput as human-readable DAG preview or JSON |
 
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |
@@ -65,7 +65,7 @@ When no template matches with sufficient confidence, the pipeline falls back to 
 
 | File | Purpose |
 |------|---------|
-| `cli/src/plan.rs` | CLI plan command and preview rendering |
+| `cli/src/cli_boundary/commands/plan_cmd.rs` | CLI plan command and preview rendering |
 | `engine/src/planning/application/service.rs` | PlanningPipelineService trait |
 | `engine/src/planning/application/pipeline_impl.rs` | Pipeline implementation with fallback wiring |
 | `engine/src/planning/domain/` | Core domain entities (frozen contracts) |

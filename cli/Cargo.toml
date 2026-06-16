@@ -1,8 +1,11 @@
 [package]
-name = "rigorix"
+name = "rigorix-cli"
 version = "0.1.0"
 edition = "2024"
 description = "Template-driven DAG execution CLI — thin wrapper around rigorix-engine"
+
+[lib]
+name = "rigorix"
 
 [dependencies]
 rigorix-engine = { path = "../engine" }
