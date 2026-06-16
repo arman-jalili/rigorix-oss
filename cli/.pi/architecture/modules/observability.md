@@ -18,9 +18,12 @@ Provides structured tracing, health checking, and metrics collection. Centralize
 ## Components
 
 **CLI-facing:**
-| Component | File (planned) | Purpose |
-|-----------|---------------|---------|
-| TracingInitializer | `cli/src/tracing.rs` | Initializes engine tracing with CLI-specific config |
+| Component | File | Purpose |
+|-----------|------|---------|
+| TracingInitializer (trait) | `cli/src/infrastructure/observability.rs` | Interface for initializing tracing and health checks |
+| init_tracing() | `cli/src/tracing.rs` | Initializes engine tracing with CLI-specific log level and format |
+| init_default_tracing() | `cli/src/tracing.rs` | Initializes tracing with safe defaults (pretty, info) |
+| ObservabilityEvent | `cli/src/domain/event/observability.rs` | Event schemas: TracingInitialized, HealthCheckPerformed, HealthStatusChanged |
 
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |
@@ -47,3 +50,33 @@ Provides structured tracing, health checking, and metrics collection. Centralize
 - Depends on: `engine::observability` (tracing, health, metrics)
 - Dependencies: tracing, tracing-subscriber, tracing-appender, prometheus
 - Used by: All modules (initialized at startup)
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `cli/src/infrastructure/observability.rs` | TracingInitializer trait (contract) |
+| `cli/src/tracing.rs` | Tracing initialization implementation |
+| `cli/src/domain/event/observability.rs` | Observability event schemas |
+| `cli/src/domain/event/mod.rs` | CliEvent integration (Observability variant) |
+| `cli/.pi/scripts/ci/check_observability_contracts.sh` | Automated contract validation (15 checks) |
+| `cli/.pi/scripts/ci/check_observability_coverage.sh` | Coverage threshold enforcement |
+| `cli/.pi/scripts/ci/stage_observability_proofing.sh` | CI stage wrapper (stage 13) |
+| `engine/src/observability/tracing_config.rs` | Tracing config (level, format) |
+| `engine/src/observability/health/` | Health check endpoints and aggregator |
+| `engine/src/observability/metrics/` | Prometheus metrics collection |
+| `engine/src/observability/span_privacy.rs` | Sensitive field redaction |
+
+## ADRs
+
+| ADR | Title | Status |
+|-----|-------|--------|
+| ADR-001 | Domain-Driven Design with Bounded Contexts | Accepted |
+
+## Proofing Scripts
+
+| Script | Purpose | Stage |
+|--------|---------|-------|
+| `check_observability_contracts.sh` | 15 automated checks for observability contracts (trait, events, wiring) | stage 13 — observability_proofing |
+| `check_observability_coverage.sh` | Coverage thresholds (2+ tracing tests, 35+ overall) | stage 13 — observability_proofing |
+| `stage_observability_proofing.sh` | CI stage wrapper | stage 13 — observability_proofing |
