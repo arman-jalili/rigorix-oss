@@ -47,4 +47,7 @@ pub mod infrastructure;
 pub mod interfaces;
 
 #[cfg(test)]
+pub mod concurrency_tests;
+
+#[cfg(test)]
 pub(crate) mod tests;
