@@ -262,6 +262,11 @@ run_stage "19" "state_persistence_proofing" \
     "${SCRIPTS_DIR}/stage_state_persistence_proofing.sh" \
     "always"
 
+# Stage 20: Event System Module Proofing
+run_stage "20" "event_system_proofing" \
+    "${SCRIPTS_DIR}/stage_event_system_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""

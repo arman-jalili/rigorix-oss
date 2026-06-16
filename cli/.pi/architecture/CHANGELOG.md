@@ -12,6 +12,19 @@ This document tracks all architecture changes requiring implementation updates.
 
 ## Entries
 
+## [2026-06-16] - Event System Module Implementation (Issues #331, #333, #334)
+
+### Changes
+- Contract freeze: created full CLI event_system module
+  - EventSystemCommandService trait, domain errors/events, DTOs
+  - EventSystemRepository trait, HTTP API contracts (3 endpoints)
+- Created proofing: check_event_system_contracts.sh, stage 20
+- Created runbook and DR plan docs
+
+### Status
+- Event system module: IMPLEMENTED
+- CI proofing: stage 20 — ALL PASS
+
 ## [2026-06-16] - State Persistence Module Implementation (Issues #324, #326, #327)
 
 ### Changes
