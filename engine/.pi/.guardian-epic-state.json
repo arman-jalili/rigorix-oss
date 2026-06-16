@@ -1,175 +1,103 @@
 {
-  "name": "\"error-handling\"",
-<<<<<<< HEAD
-  "trackingIssueId": "173",
+  "name": "\"orchestrator\"",
+  "trackingIssueId": "337",
   "epicId": null,
   "slices": [
     {
-      "module": "audit",
+      "module": "orchestrator",
       "components": [
         {
-          "name": "AuditEnvelope",
+          "name": "OrchestratorService",
           "status": "planned",
-          "description": "Typed envelope containing execution audit data",
-=======
-  "trackingIssueId": "186",
-  "epicId": null,
-  "slices": [
-    {
-      "module": "error-handling",
-      "components": [
-        {
-          "name": "CoreOrchestratorError",
-          "status": "done",
-          "description": "Root error type with `#[from]` for all sub-errors",
->>>>>>> origin/main
+          "description": "Single entry point for executing a Rigorix run from intent to result.",
           "dependencies": [
             "none"
           ]
         },
         {
-<<<<<<< HEAD
-          "name": "AuditSender",
+          "name": "OrchestratorBuilder",
           "status": "planned",
-          "description": "Deliver envelopes via HTTP with retry logic",
+          "description": "Constructs an Orchestrator from a Config, wiring all internal dependencies.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "AuditQueue",
+          "name": "ExecutionRecord",
           "status": "planned",
-          "description": "Queue for failed deliveries",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "CircuitBreaker",
-          "status": "planned",
-          "description": "Circuit breaker for HTTP resilience",
-=======
-          "name": "ExecutionError",
-          "status": "done",
-          "description": "Execution task failures, timeouts, fallback handling",
->>>>>>> origin/main
+          "description": "Complete output of a run, containing everything needed for audit, TUI, and persistence.",
           "dependencies": [
             "none"
           ]
         }
       ],
-<<<<<<< HEAD
       "nextLogicalSlice": [
         {
-          "name": "AuditEnvelope",
+          "name": "OrchestratorService",
           "status": "planned",
-          "description": "Typed envelope containing execution audit data",
+          "description": "Single entry point for executing a Rigorix run from intent to result.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "AuditSender",
+          "name": "OrchestratorBuilder",
           "status": "planned",
-          "description": "Deliver envelopes via HTTP with retry logic",
+          "description": "Constructs an Orchestrator from a Config, wiring all internal dependencies.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "AuditQueue",
+          "name": "ExecutionRecord",
           "status": "planned",
-          "description": "Queue for failed deliveries",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "CircuitBreaker",
-          "status": "planned",
-          "description": "Circuit breaker for HTTP resilience",
+          "description": "Complete output of a run, containing everything needed for audit, TUI, and persistence.",
           "dependencies": [
             "none"
           ]
         }
       ]
-=======
-      "nextLogicalSlice": []
->>>>>>> origin/main
     }
   ],
   "issues": [
     {
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
-<<<<<<< HEAD
       "status": "planned",
-      "remoteIssueId": "174"
+      "remoteIssueId": "338"
     },
     {
-      "id": "issue-auditenvelope",
-      "title": "AuditEnvelope: Typed envelope containing execution audit data",
+      "id": "issue-orchestratorservice",
+      "title": "OrchestratorService: Single entry point for executing a Rigorix run from intent to result.",
       "status": "planned",
-      "remoteIssueId": "175"
+      "remoteIssueId": "339"
     },
     {
-      "id": "issue-auditsender",
-      "title": "AuditSender: Deliver envelopes via HTTP with retry logic",
+      "id": "issue-orchestratorbuilder",
+      "title": "OrchestratorBuilder: Constructs an Orchestrator from a Config, wiring all internal dependencies.",
       "status": "planned",
-      "remoteIssueId": "176"
+      "remoteIssueId": "340"
     },
     {
-      "id": "issue-auditqueue",
-      "title": "AuditQueue: Queue for failed deliveries",
+      "id": "issue-executionrecord",
+      "title": "ExecutionRecord: Complete output of a run, containing everything needed for audit, TUI, and persi",
       "status": "planned",
-      "remoteIssueId": "177"
-    },
-    {
-      "id": "issue-circuitbreaker",
-      "title": "CircuitBreaker: Circuit breaker for HTTP resilience",
-      "status": "planned",
-      "remoteIssueId": "178"
-=======
-      "status": "done",
-      "remoteIssueId": "187"
-    },
-    {
-      "id": "issue-coreorchestratorerror",
-      "title": "CoreOrchestratorError: Root error type with `#[from]` for all sub-errors",
-      "status": "done",
-      "remoteIssueId": "188"
->>>>>>> origin/main
+      "remoteIssueId": "341"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
-<<<<<<< HEAD
       "status": "planned",
-      "remoteIssueId": "179"
-=======
-      "status": "done",
-      "remoteIssueId": "189"
->>>>>>> origin/main
+      "remoteIssueId": "342"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
-<<<<<<< HEAD
       "status": "planned",
-      "remoteIssueId": "180"
+      "remoteIssueId": "343"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-06-14T18:08:53.120Z"
+  "createdAt": "2026-06-16T20:26:13.479Z"
 }
-=======
-      "status": "done",
-      "remoteIssueId": "190"
-    }
-  ],
-  "status": "done",
-  "currentIssueIndex": 3,
-  "createdAt": "2026-06-14T18:24:30.711Z"
-}
->>>>>>> origin/main

@@ -1,24 +1,318 @@
 {
-  "id": "PL-3732",
-  "name": "execution-engine",
+  "id": "PL-6721",
+  "name": "\"orchestrator\"",
   "items": [
-    "issue-parallelexecutor",
-    "issue-retry-logic",
+    "issue-contract-freeze",
+    "issue-orchestratorservice",
+    "issue-orchestratorbuilder",
+    "issue-executionrecord",
     "issue-proofing",
     "issue-architecture-readiness"
   ],
   "steps": [
-    "implement",
-    "validate",
-    "create-mr",
-    "merge"
+    {
+      "name": "implement",
+      "prompt": ".pi/prompts/issue-implementation-series.md",
+      "acceptance": {
+        "type": "validator",
+        "validators": [
+          "ci"
+        ]
+      }
+    },
+    {
+      "name": "validate",
+      "acceptance": {
+        "type": "validator",
+        "validators": [
+          "ci",
+          "tests",
+          "security"
+        ]
+      }
+    },
+    {
+      "name": "create-mr",
+      "prompt": ".pi/prompts/issue-closeout.md",
+      "acceptance": {
+        "type": "none"
+      }
+    },
+    {
+      "name": "merge",
+      "prompt": ".pi/prompts/issue-merge.md",
+      "acceptance": {
+        "type": "validator",
+        "validators": [
+          "ci",
+          "canonical"
+        ]
+      }
+    }
   ],
-  "currentItemIndex": 0,
+  "currentItemIndex": 6,
   "currentStepIndex": 0,
-  "status": "running",
+  "status": "done",
   "retryCount": 0,
-  "results": [],
+  "results": [
+    {
+      "item": "issue-contract-freeze",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "issue-orchestratorservice",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "issue-orchestratorbuilder",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "issue-executionrecord",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "issue-proofing",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "issue-architecture-readiness",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    }
+  ],
   "mergeOnValid": true,
-  "createdAt": "2026-06-15T15:50:13.205Z",
-  "updatedAt": "2026-06-15T15:50:13.205Z"
+  "createdAt": "2026-06-16T20:26:13.517Z",
+  "updatedAt": "2026-06-16T20:59:31.759Z"
 }

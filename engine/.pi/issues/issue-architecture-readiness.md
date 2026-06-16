@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-READINESS"
-  epic: ""error-handling""
+  epic: ""orchestrator""
   component: "Architecture Readiness"
-  module: "error-handling"
+  module: "orchestrator"
   status: planned
   priority: critical
   dependencies: []
@@ -32,7 +32,7 @@ guardian_issue:
       - Verify proofing scripts + validators in CI
 
   canonical_references:
-    - module: ".pi/architecture/modules/error-handling.md"
+    - module: ".pi/architecture/modules/orchestrator.md"
 
   acceptance_criteria:
     - "Runbook created and reviewed"
@@ -58,30 +58,30 @@ guardian_issue:
     and CI will catch regressions (proofing scripts + validators).
 
   file_changes:
-    - "create: docs/runbook-error-handling.md"
-    - "create: docs/dr-plan-error-handling.md"
+    - "create: docs/runbook-orchestrator.md"
+    - "create: docs/dr-plan-orchestrator.md"
     - "modify: .pi/architecture/CHANGELOG.md"
-    - "modify: .pi/architecture/modules/error-handling.md"
+    - "modify: .pi/architecture/modules/orchestrator.md"
 ---
 
-# Architecture Readiness: error-handling
+# Architecture Readiness: orchestrator
 
 ## Intent
 
-Make the error-handling module production-ready. This is the final issue in every epic
+Make the orchestrator module production-ready. This is the final issue in every epic
 — it closes the loop between implementation and operability.
 
 ## Deliverables
 
 ### Runbook
-`docs/runbook-error-handling.md` covering:
+`docs/runbook-orchestrator.md` covering:
 - Startup sequence and dependencies
 - Graceful shutdown procedure
 - Common failure modes and recovery
 - Configuration reference
 
 ### DR Plan
-`docs/dr-plan-error-handling.md` covering:
+`docs/dr-plan-orchestrator.md` covering:
 - Backup strategy and schedule
 - Restore procedure
 - Failover plan
