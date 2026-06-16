@@ -14,6 +14,8 @@ The CLI surfaces budget warnings in the TUI via EventBus `BudgetWarning` events.
 
 ## Components
 
+**CLI-facing:** None — CLI wraps engine budget contracts directly. No CLI-specific interface files needed.
+
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |
 |-----------|--------------|----------|

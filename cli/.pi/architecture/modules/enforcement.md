@@ -14,6 +14,8 @@ The CLI surfaces budget warnings and enforcement actions in the TUI and log outp
 
 ## Components
 
+**CLI-facing:** None — CLI wraps engine contracts directly. No CLI-specific interface files needed.
+
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |
 |-----------|--------------|----------|
