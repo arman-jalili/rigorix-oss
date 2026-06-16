@@ -21,11 +21,11 @@ Provides validated `Config` to all other contexts. Includes `Secret` type for sa
 **CLI-facing:**
 | Component | File | Purpose |
 |-----------|------|---------|
-| CliConfig | `cli/src/domain/config.rs` | CLI-specific configuration value object (output format, color, TUI, log settings) |
-| CliConfigLoader (trait) | `cli/src/infrastructure/config.rs` | Config loading interface — load, load_from_path, has_default_config |
-| CliConfigLoaderImpl | `cli/src/infrastructure/config_impl.rs` | Multi-source merging: CLI flags → env vars → rigorix.toml → engine defaults |
-| validate_api_key_for_command | `cli/src/infrastructure/config_impl.rs` | Pre-flight validation: reports clear error for missing API key on run/plan/generate |
-| build_engine_cli_overrides | `cli/src/infrastructure/config_impl.rs` | Bridges CLI config to engine's ConfigService as dot-notation overrides |
+| CliConfig | `cli/src/configuration/domain/config.rs` | CLI-specific configuration value object (output format, color, TUI, log settings) |
+| CliConfigLoader (trait) | `cli/src/configuration/infrastructure/config.rs` | Config loading interface — load, load_from_path, has_default_config |
+| CliConfigLoaderImpl | `cli/src/configuration/infrastructure/config_impl.rs` | Multi-source merging: CLI flags → env vars → rigorix.toml → engine defaults |
+| validate_api_key_for_command | `cli/src/configuration/infrastructure/config_impl.rs` | Pre-flight validation: reports clear error for missing API key on run/plan/generate |
+| build_engine_cli_overrides | `cli/src/configuration/infrastructure/config_impl.rs` | Bridges CLI config to engine's ConfigService as dot-notation overrides |
 
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |
@@ -63,10 +63,10 @@ Provides validated `Config` to all other contexts. Includes `Secret` type for sa
 
 | File | Purpose |
 |------|---------|
-| `cli/src/domain/config.rs` | CliConfig value object with all CLI settings |
-| `cli/src/domain/error.rs` | CliError (ConfigNotFound, ConfigParseError, MissingConfig) |
-| `cli/src/infrastructure/config.rs` | CliConfigLoader trait |
-| `cli/src/infrastructure/config_impl.rs` | CliConfigLoaderImpl + validation helpers |
+| `cli/src/configuration/domain/config.rs` | CliConfig value object with all CLI settings |
+| `cli/src/configuration/infrastructure/config.rs` | CliConfigLoader trait |
+| `cli/src/configuration/infrastructure/config_impl.rs` | CliConfigLoaderImpl + validation helpers |
+| `cli/src/cli_boundary/domain/error.rs` | CliError (ConfigNotFound, ConfigParseError, MissingConfig) — defined in cli_boundary module |
 | `cli/src/main.rs` | Startup sequence: load → validate → bridge to engine → dispatch |
 | `cli/.pi/scripts/ci/check_config_contracts.sh` | Automated contract validation (17 checks) |
 | `cli/.pi/scripts/ci/check_config_coverage.sh` | Coverage threshold enforcement |
