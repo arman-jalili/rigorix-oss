@@ -12,6 +12,32 @@ This document tracks all architecture changes requiring implementation updates.
 
 ## Entries
 
+## [2026-06-16] - Phase 1 Implementation Complete (Issues #237, #238, #239)
+
+### Changes
+- Implemented CliConfigLoaderImpl: multi-source config merging (flags → env → file → defaults)
+- Implemented SignalHandlerImpl: Ctrl+C double-press detection (2s window)
+- Implemented LogFormatterImpl: pretty, JSON, and quiet output for all 10 commands
+- Implemented init_tracing: tracing-subscriber with pretty/json format support
+- Created proofing scripts: check_cli_contracts.sh, check_cli_coverage.sh, stage_cli_proofing.sh
+- Integrated stage 11 (cli_proofing) into CI hardening pipeline
+- Created docs/runbook.md and docs/dr-plan.md
+
+### Files Created
+- `cli/src/infrastructure/config_impl.rs` — Config loader implementation
+- `cli/src/infrastructure/signal_impl.rs` — Signal handler implementation
+- `cli/src/infrastructure/output_impl.rs` — Output formatter implementation
+- `cli/src/tracing.rs` — Tracing initialization
+- `cli/.pi/scripts/ci/check_cli_contracts.sh` — Contract proofing
+- `cli/.pi/scripts/ci/check_cli_coverage.sh` — Coverage proofing
+- `cli/.pi/scripts/ci/stage_cli_proofing.sh` — CI stage wrapper
+- `cli/docs/runbook.md` — Operations runbook
+- `cli/docs/dr-plan.md` — Disaster recovery plan
+
+### Status
+- CLI boundary: IMPLEMENTED (Phase 1 complete)
+- All validators pass: ci, tests, security, architecture, canonical, operations
+
 ## [2026-06-16] - Initial Architecture Scaffold (Session 71e2b81a)
 
 ### Added
