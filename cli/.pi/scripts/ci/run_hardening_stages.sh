@@ -247,6 +247,11 @@ run_stage "16" "template_generation_proofing" \
     "${SCRIPTS_DIR}/stage_template_generation_proofing.sh" \
     "always"
 
+# Stage 17: Planning Pipeline Module Proofing
+run_stage "17" "planning_proofing" \
+    "${SCRIPTS_DIR}/stage_planning_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""
