@@ -16,24 +16,25 @@
 //!
 //! # Architecture
 //!
+//! Each bounded context is a self-contained module with Clean Architecture
+//! layers (domain → application → infrastructure → interfaces):
+//!
 //! ```text
 //! cli/src/
-//! ├── domain/           # CLI-specific domain types, errors, events
-//! │   ├── error.rs      # CliError enum
-//! │   ├── config.rs     # CliConfig value object
-//! │   └── event/        # CLI event payload schemas
-//! ├── application/      # Service traits, DTOs, factory interfaces
-//! │   ├── service.rs    # CliOrchestrator, ExecutionSession traits
-//! │   ├── factory.rs    # Factory interfaces
-//! │   └── dto/          # Input/Output DTOs with validation
-//! ├── infrastructure/   # I/O concern interfaces
-//! │   ├── config.rs     # CliConfigLoader trait
-//! │   ├── output.rs     # LogFormatter trait
-//! │   ├── signal.rs     # SignalHandler trait
-//! │   └── repository/   # (reserved for future CLI state persistence)
-//! ├── interfaces/       # API contracts
-//! │   └── cli/          # Clap CLI command definitions
-//! └── tui/              # Ratatui TUI renderer
+//! ├── cli-boundary/     # Command dispatch, output, TUI, shared CLI types
+//! │   ├── domain/       # CliError, CliEvent enums
+//! │   ├── application/  # CliOrchestrator, ExecutionSession traits, DTOs
+//! │   ├── infrastructure/ # LogFormatter trait + impl, repository
+//! │   ├── interfaces/   # Clap CLI command definitions
+//! │   └── tui/          # Ratatui TUI renderer
+//! ├── configuration/    # Multi-source config loading
+//! │   ├── domain/       # CliConfig value object
+//! │   └── infrastructure/ # CliConfigLoader trait + impl
+//! ├── observability/    # Tracing, health checks, event schemas
+//! │   ├── domain/       # ObservabilityEvent schemas
+//! │   └── infrastructure/ # TracingInitializer trait + tracing impl
+//! └── cancellation/     # Signal handler for Ctrl+C
+//!     └── infrastructure/ # SignalHandler trait + impl
 //! ```
 //!
 //! # Contract Freeze Notice
@@ -43,12 +44,11 @@
 //! - Implementation PRs MUST reference these interfaces
 //! - DTO schemas serve as the canonical data contract
 
-pub mod application;
-pub mod domain;
-pub mod infrastructure;
-pub mod interfaces;
-pub mod tracing;
-pub mod tui;
+pub mod cancellation;
+pub mod cli_boundary;
+pub mod configuration;
+pub mod observability;
 
-#[cfg(test)]
-pub mod tests;
+// Tests are defined in cli_boundary::tests which is #[cfg(test)] only.
+// They are discovered by cargo because the module is declared from
+// cli_boundary/mod.rs, not from here.

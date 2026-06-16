@@ -73,7 +73,7 @@ echo ""
 # Check 1: CliConfigLoader trait defined
 # ---------------------------------------------------------------------------
 echo "--- Config Trait Definitions ---"
-if grep -q "pub trait CliConfigLoader" "${SRC_DIR}/infrastructure/config.rs" 2>/dev/null; then
+if grep -q "pub trait CliConfigLoader" "${SRC_DIR}/configuration/infrastructure/config.rs" 2>/dev/null; then
     pass "CliConfigLoader trait defined (infrastructure/config.rs)"
 else
     fail "CliConfigLoader trait missing"
@@ -82,7 +82,7 @@ fi
 # ---------------------------------------------------------------------------
 # Check 2: CliConfigLoader → CliConfigLoaderImpl
 # ---------------------------------------------------------------------------
-if grep -q "impl CliConfigLoader for CliConfigLoaderImpl" "${SRC_DIR}/infrastructure/config_impl.rs" 2>/dev/null; then
+if grep -q "impl CliConfigLoader for CliConfigLoaderImpl" "${SRC_DIR}/configuration/infrastructure/config_impl.rs" 2>/dev/null; then
     pass "CliConfigLoader → CliConfigLoaderImpl implementation"
 else
     fail "CliConfigLoader → CliConfigLoaderImpl (missing impl)"
@@ -96,7 +96,7 @@ echo "--- CliConfig Struct ---"
 REQUIRED_FIELDS=("output_format" "tui_enabled" "color" "log_level" "log_format" "config_path" "force_tui" "api_key_configured")
 MISSING_FIELDS=()
 for field in "${REQUIRED_FIELDS[@]}"; do
-    if ! grep -q "pub $field" "${SRC_DIR}/domain/config.rs" 2>/dev/null; then
+    if ! grep -q "pub $field" "${SRC_DIR}/configuration/domain/config.rs" 2>/dev/null; then
         MISSING_FIELDS+=("$field")
     fi
 done
@@ -113,7 +113,7 @@ fi
 echo ""
 echo "--- Config Value Types ---"
 for vtype in "OutputFormat" "ColorMode" "LogLevel" "LogFormat"; do
-    if grep -q "pub enum $vtype" "${SRC_DIR}/domain/config.rs" 2>/dev/null; then
+    if grep -q "pub enum $vtype" "${SRC_DIR}/configuration/domain/config.rs" 2>/dev/null; then
         pass "pub enum $vtype defined"
     else
         fail "pub enum $vtype missing"
@@ -125,13 +125,13 @@ done
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Config Validation ---"
-if grep -q "pub fn validate_api_key_for_command" "${SRC_DIR}/infrastructure/config_impl.rs" 2>/dev/null; then
+if grep -q "pub fn validate_api_key_for_command" "${SRC_DIR}/configuration/infrastructure/config_impl.rs" 2>/dev/null; then
     pass "validate_api_key_for_command() exported"
 else
     fail "validate_api_key_for_command() missing"
 fi
 
-if grep -q "pub fn build_engine_cli_overrides" "${SRC_DIR}/infrastructure/config_impl.rs" 2>/dev/null; then
+if grep -q "pub fn build_engine_cli_overrides" "${SRC_DIR}/configuration/infrastructure/config_impl.rs" 2>/dev/null; then
     pass "build_engine_cli_overrides() exported"
 else
     fail "build_engine_cli_overrides() missing"
@@ -142,7 +142,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Config Error Types ---"
-if grep -q "ConfigNotFound\|ConfigParseError\|MissingConfig" "${SRC_DIR}/domain/error.rs" 2>/dev/null; then
+if grep -q "ConfigNotFound\|ConfigParseError\|MissingConfig" "${SRC_DIR}/cli_boundary/domain/error.rs" 2>/dev/null; then
     pass "Config error variants defined (ConfigNotFound, ConfigParseError, MissingConfig)"
 else
     fail "Config error variants missing"
@@ -182,7 +182,7 @@ fi
 echo ""
 echo "--- Trait Method Completeness ---"
 for method in "load" "load_from_path" "has_default_config" "searched_paths"; do
-    if grep -q "async fn $method" "${SRC_DIR}/infrastructure/config.rs" 2>/dev/null; then
+    if grep -q "async fn $method" "${SRC_DIR}/configuration/infrastructure/config.rs" 2>/dev/null; then
         pass "CliConfigLoader::$method() defined"
     else
         fail "CliConfigLoader::$method() missing"
