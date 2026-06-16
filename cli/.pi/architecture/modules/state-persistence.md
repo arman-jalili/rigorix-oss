@@ -2,7 +2,8 @@
 
 ## Module Status
 
-**Status:** Engine contract frozen — CLI uses as library
+**Status:** ✅ Implemented — contract freeze complete, proofing scripts active
+**Issues:** #324 (contract freeze), #326 (proofing), #327 (architecture readiness)
 **Last reviewed:** 2026-06-16
 **Source session:** 71e2b81a-a7a1-48ee-ab8f-56284bbec92d
 
