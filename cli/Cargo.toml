@@ -1,0 +1,26 @@
+[package]
+name = "rigorix"
+version = "0.1.0"
+edition = "2024"
+description = "Template-driven DAG execution CLI — thin wrapper around rigorix-engine"
+
+[dependencies]
+rigorix-engine = { path = "../engine" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+async-trait = "0.1"
+clap = { version = "4", features = ["derive", "env"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+ratatui = "0.29"
+crossterm = "0.28"
+futures = "0.3"
+
+[dev-dependencies]
+tempfile = "3"

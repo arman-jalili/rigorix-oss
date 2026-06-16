@@ -1,0 +1,59 @@
+{
+  "id": "PL-3081",
+  "name": "\"cli-boundary\"",
+  "items": [
+    "issue-contract-freeze",
+    "issue--component-name-",
+    "issue-proofing",
+    "issue-architecture-readiness"
+  ],
+  "steps": [
+    {
+      "name": "implement",
+      "prompt": ".pi/prompts/issue-implementation-series.md",
+      "acceptance": {
+        "type": "validator",
+        "validators": [
+          "ci"
+        ]
+      }
+    },
+    {
+      "name": "validate",
+      "acceptance": {
+        "type": "validator",
+        "validators": [
+          "ci",
+          "tests",
+          "security"
+        ]
+      }
+    },
+    {
+      "name": "create-mr",
+      "prompt": ".pi/prompts/issue-closeout.md",
+      "acceptance": {
+        "type": "none"
+      }
+    },
+    {
+      "name": "merge",
+      "prompt": ".pi/prompts/issue-merge.md",
+      "acceptance": {
+        "type": "validator",
+        "validators": [
+          "ci",
+          "canonical"
+        ]
+      }
+    }
+  ],
+  "currentItemIndex": 0,
+  "currentStepIndex": 0,
+  "status": "running",
+  "retryCount": 0,
+  "results": [],
+  "mergeOnValid": true,
+  "createdAt": "2026-06-16T05:15:11.691Z",
+  "updatedAt": "2026-06-16T05:15:11.691Z"
+}

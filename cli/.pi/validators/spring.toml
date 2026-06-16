@@ -1,0 +1,142 @@
+# Guardian Spring Boot TOML Validators
+#
+# Declarative validation rules for Spring Boot convention enforcement.
+# Pipeline stages: strip_ansi → replace → match_output → strip/keep_lines → truncate → head/tail → max_lines → on_empty
+#
+# Package ring conventions (shared with validate-annotations.sh and validate-spring-architecture.sh):
+#   domain/ → zero external dependencies
+#   application/ → domain/ only
+#   infrastructure/ → domain/ + application/
+#   web/ → application/ only
+
+schema_version = 1
+
+# ── @Transactional Coverage ─────────────────────────────────────────────────
+
+[filters.transactional-coverage]
+command = "validate-annotations"
+description = "Detect @Service classes missing @Transactional on public methods"
+strip_ansi = true
+keep_lines_matching = ["Service class without @Transactional", "Missing @Transactional", "FAIL"]
+max_lines = 20
+on_empty = "✅ All @Service classes have @Transactional annotations"
+
+[[tests.transactional-coverage]]
+name = "passes when all services have @Transactional"
+input = """
+[PASS] All @Service classes have @Transactional annotations
+"""
+expected = "✅ All @Service classes have @Transactional annotations"
+
+[[tests.transactional-coverage]]
+name = "flags missing @Transactional"
+input = """
+[WARN] Service class without @Transactional: src/main/java/com/myapp/service/BadService.java (3 public methods, 0 @Transactional)
+"""
+expected = "src/main/java/com/myapp/service/BadService.java"
+
+# ── @PostConstruct Placement ────────────────────────────────────────────────
+
+[filters.postconstruct-placement]
+command = "validate-annotations"
+description = "Detect @PostConstruct in controller classes (should be in service/config/component)"
+strip_ansi = true
+keep_lines_matching = ["@PostConstruct found in controller", "FAIL"]
+max_lines = 10
+on_empty = "✅ No @PostConstruct in controller classes"
+
+[[tests.postconstruct-placement]]
+name = "passes when @PostConstruct is in valid packages"
+input = """
+[PASS] No @PostConstruct found in controller classes
+"""
+expected = "✅ No @PostConstruct in controller classes"
+
+[[tests.postconstruct-placement]]
+name = "flags @PostConstruct in controllers"
+input = """
+[FAIL] @PostConstruct found in controller: src/main/java/com/myapp/web/BadController.java
+"""
+expected = "BadController.java"
+
+# ── Field Injection Detection ──────────────────────────────────────────────
+
+[filters.field-injection]
+command = "validate-annotations"
+description = "Detect field-level @Autowired (prefer constructor injection)"
+strip_ansi = true
+keep_lines_matching = ["@Autowired", "field-level", "field injection", "WARN", "FAIL"]
+max_lines = 20
+on_empty = "✅ No field-level @Autowired found (constructor injection used)"
+
+[[tests.field-injection]]
+name = "passes with constructor injection"
+input = """
+[PASS] No field-level @Autowired found (constructor injection used)
+"""
+expected = "✅ No field-level @Autowired found (constructor injection used)"
+
+[[tests.field-injection]]
+name = "flags field injection"
+input = """
+[FAIL] Field-level @Autowired found (5 occurrences) — prefer constructor injection
+"""
+expected = "Field-level @Autowired found"
+
+# ── Layering: Web → Infrastructure ─────────────────────────────────────────
+
+[filters.layering-web-infrastructure]
+command = "validate-annotations"
+description = "Detect web layer importing repository/infrastructure directly"
+strip_ansi = true
+keep_lines_matching = ["imports repository/infrastructure", "imports infrastructure/repository", "FAIL"]
+max_lines = 20
+on_empty = "✅ Web layer has no direct repository imports (correct layering)"
+
+[[tests.layering-web-infrastructure]]
+name = "passes with clean layering"
+input = """
+[PASS] Web layer has no direct repository imports (correct layering)
+"""
+expected = "✅ Web layer has no direct repository imports (correct layering)"
+
+[[tests.layering-web-infrastructure]]
+name = "flags direct repository import"
+input = """
+[FAIL] Web layer imports repository/infrastructure directly: src/main/java/com/myapp/web/UserController.java
+"""
+expected = "UserController.java"
+
+# ── Domain Layer Purity ────────────────────────────────────────────────────
+
+[filters.domain-layer-purity]
+command = "validate-spring-architecture"
+description = "Ensure domain layer has no external dependencies (no imports from other layers)"
+strip_ansi = true
+keep_lines_matching = ["Domain layer import from", "Domain ring", "FAIL"]
+max_lines = 20
+on_empty = "✅ Domain ring has no external dependencies (clean)"
+
+[[tests.domain-layer-purity]]
+name = "passes with clean domain"
+input = """
+[PASS] Domain ring has no external dependencies (clean)
+"""
+expected = "✅ Domain ring has no external dependencies (clean)"
+
+# ── Application Layer Purity ───────────────────────────────────────────────
+
+[filters.application-layer-purity]
+command = "validate-spring-architecture"
+description = "Ensure application layer only imports from domain layer"
+strip_ansi = true
+keep_lines_matching = ["Application layer imports from", "imports.*infrastructure", "imports.*repository", "FAIL"]
+max_lines = 20
+on_empty = "✅ Application ring only depends on domain (clean)"
+
+[[tests.application-layer-purity]]
+name = "passes with clean application layer"
+input = """
+[PASS] Application ring only depends on domain (clean)
+"""
+expected = "✅ Application ring only depends on domain (clean)"

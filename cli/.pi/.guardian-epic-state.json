@@ -1,0 +1,59 @@
+{
+  "name": "\"cli-boundary\"",
+  "trackingIssueId": "235",
+  "epicId": null,
+  "slices": [
+    {
+      "module": "module-template",
+      "components": [
+        {
+          "name": "[Component Name]",
+          "status": "planned",
+          "description": "[What this component does]",
+          "dependencies": [
+            "none"
+          ]
+        }
+      ],
+      "nextLogicalSlice": [
+        {
+          "name": "[Component Name]",
+          "status": "planned",
+          "description": "[What this component does]",
+          "dependencies": [
+            "none"
+          ]
+        }
+      ]
+    }
+  ],
+  "issues": [
+    {
+      "id": "issue-contract-freeze",
+      "title": "Contract Freeze: Define interfaces and contracts",
+      "status": "planned",
+      "remoteIssueId": "236"
+    },
+    {
+      "id": "issue--component-name-",
+      "title": "[Component Name]: [What this component does]",
+      "status": "planned",
+      "remoteIssueId": "237"
+    },
+    {
+      "id": "issue-proofing",
+      "title": "Proofing: Validation scripts + CI integration",
+      "status": "planned",
+      "remoteIssueId": "238"
+    },
+    {
+      "id": "issue-architecture-readiness",
+      "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
+      "status": "planned",
+      "remoteIssueId": "239"
+    }
+  ],
+  "status": "planning",
+  "currentIssueIndex": 0,
+  "createdAt": "2026-06-16T05:15:11.668Z"
+}
