@@ -12,6 +12,20 @@ This document tracks all architecture changes requiring implementation updates.
 
 ## Entries
 
+## [2026-06-16] - CLI Boundary Module Implementation (Issues #296, #298, #299)
+
+### Changes
+- Contract freeze: added missing HTTP API contracts and repository trait
+  - interfaces/http/mod.rs: 10 API endpoint contracts with request/response schemas
+  - CliBoundaryRepository trait: 5 methods for CLI metadata persistence
+- Updated CLI proofing scripts (stage 11) for restructured module paths
+- Created docs/runbook-cli-boundary.md and docs/dr-plan-cli-boundary.md
+- Updated architecture doc
+
+### Status
+- CLI boundary: IMPLEMENTED (contract freeze + proofing + readiness)
+- CI proofing: stage 11 — cli_proofing — ALL PASS
+
 ## [2026-06-16] - Observability Module Implementation (Issues #289, #291, #292)
 
 ### Changes
