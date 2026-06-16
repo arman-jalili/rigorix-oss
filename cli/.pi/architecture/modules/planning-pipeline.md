@@ -19,8 +19,8 @@ When no template matches with sufficient confidence, the pipeline falls back to 
 **CLI-facing:**
 | Component | File (planned) | Module | Purpose |
 |-----------|---------------|--------|---------|
-| PlanCommand | `cli/src/cli_boundary/commands/plan_cmd.rs` | cli_boundary | Wraps PlanningPipelineService for `rigorix plan` — outputs plan summary |
-| PlanPreviewRenderer | `cli/src/cli_boundary/commands/plan_cmd.rs` | cli_boundary | Formats PlanOutput as human-readable DAG preview or JSON |
+| PlanCommandService (trait) | `cli/src/planning_pipeline/infrastructure/service.rs` | planning_pipeline | Service trait for plan command |
+| PlanEngineHandler | `cli/src/planning_pipeline/infrastructure/plan_handler_impl.rs` | planning_pipeline | Implements PlanCommandService via engine PlanningPipelineService |
 
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |
@@ -65,7 +65,8 @@ When no template matches with sufficient confidence, the pipeline falls back to 
 
 | File | Purpose |
 |------|---------|
-| `cli/src/cli_boundary/commands/plan_cmd.rs` | CLI plan command and preview rendering |
+| `cli/src/planning_pipeline/infrastructure/service.rs` | PlanCommandService trait (planned) |
+| `cli/src/planning_pipeline/infrastructure/plan_handler_impl.rs` | PlanEngineHandler implementation (planned) |
 | `engine/src/planning/application/service.rs` | PlanningPipelineService trait |
 | `engine/src/planning/application/pipeline_impl.rs` | Pipeline implementation with fallback wiring |
 | `engine/src/planning/domain/` | Core domain entities (frozen contracts) |

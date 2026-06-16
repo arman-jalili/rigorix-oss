@@ -17,9 +17,8 @@ The CLI exposes `rigorix audit list` and `rigorix audit show` to inspect past au
 **CLI-facing:**
 | Component | File (planned) | Module | Purpose |
 |-----------|---------------|--------|---------|
-| AuditListCommand | `cli/src/cli_boundary/commands/audit_cmd.rs` | cli_boundary | Lists audit envelopes with summary |
-| AuditShowCommand | `cli/src/cli_boundary/commands/audit_cmd.rs` | cli_boundary | Shows full audit envelope details |
-| AuditDiffCommand | `cli/src/cli_boundary/commands/audit_cmd.rs` | cli_boundary | Diffs two audit envelopes |
+| AuditCommandService (trait) | `cli/src/audit/infrastructure/service.rs` | audit | Service trait for audit commands |
+| AuditEngineHandler | `cli/src/audit/infrastructure/audit_handler_impl.rs` | audit | Implements AuditCommandService via engine AuditService |
 
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |
