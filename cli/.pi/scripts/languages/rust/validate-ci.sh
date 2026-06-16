@@ -66,7 +66,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Tests ---"
-if cargo test --package rigorix-cli --quiet 2>/dev/null; then
+if cargo test --package rigorix-cli 2>/dev/null; then
     pass "All tests passed"
 else
     fail "Tests failed"
