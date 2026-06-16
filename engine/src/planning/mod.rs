@@ -41,6 +41,8 @@ pub mod infrastructure;
 pub mod interfaces;
 
 #[cfg(test)]
+pub mod property_tests;
+#[cfg(test)]
 pub(crate) mod tests;
 
 #[cfg(feature = "live-tests")]
