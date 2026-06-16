@@ -2,9 +2,10 @@
 
 ## Module Status
 
-**Status:** Planned — CLI integration layer over engine crate
+**Status:** ✅ Implemented — contract freeze complete, proofing scripts active
 **Last reviewed:** 2026-06-16
 **Source session:** 71e2b81a-a7a1-48ee-ab8f-56284bbec92d
+**Issues:** #303 (contract freeze), #305 (proofing), #306 (architecture readiness)
 
 ## Description
 
