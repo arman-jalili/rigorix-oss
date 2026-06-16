@@ -12,6 +12,35 @@ This document tracks all architecture changes requiring implementation updates.
 
 ## Entries
 
+## [2026-06-16] - Configuration Module Implementation (Issues #245, #246, #247, #248)
+
+### Changes
+- Added `api_key_configured` field to `CliConfig` for API key presence tracking
+- Added `validate_api_key_for_command()` — fails fast with clear error for missing API key
+- Added `build_engine_cli_overrides()` — bridges CLI config to engine ConfigService
+- Wired engine `ConfigService` into CLI startup sequence (init_engine_config)
+- Created proofing scripts: check_config_contracts.sh (17 checks), check_config_coverage.sh
+- Created stage_config_proofing.sh — CI stage wrapper
+- Integrated stage 12 (config_proofing) into CI hardening pipeline
+- Updated configuration module architecture doc with final file paths and contracts
+
+### Files Created
+- `cli/.pi/scripts/ci/check_config_contracts.sh` — 17 automated config contract checks
+- `cli/.pi/scripts/ci/check_config_coverage.sh` — Coverage threshold enforcement
+- `cli/.pi/scripts/ci/stage_config_proofing.sh` — CI stage wrapper
+
+### Files Modified
+- `cli/src/domain/config.rs` — Added api_key_configured field
+- `cli/src/infrastructure/config_impl.rs` — API key tracking, validation helpers, engine bridge
+- `cli/src/main.rs` — Startup validation + engine ConfigService integration
+- `cli/.pi/architecture/modules/configuration.md` — Updated with final implementation details
+- `cli/.pi/scripts/ci/run_hardening_stages.sh` — Added stage 12
+
+### Status
+- Configuration module: IMPLEMENTED
+- 38 tests passing, clippy clean, fmt clean
+- CI proofing scripts: stage 12 — config_proofing — ALL PASS
+
 ## [2026-06-16] - Phase 1 Implementation Complete (Issues #237, #238, #239)
 
 ### Changes
