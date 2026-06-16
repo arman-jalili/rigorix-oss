@@ -2,7 +2,7 @@
 
 ## Status
 
-**Status:** ✅ Architecture defined — source code implemented
+**Status:** ✅ Architecture defined — source code stub only (pending TUI implementation)
 **Last reviewed:** 2026-06-16
 
 ## Description
