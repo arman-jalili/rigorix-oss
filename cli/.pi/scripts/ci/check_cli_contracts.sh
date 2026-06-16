@@ -129,7 +129,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- DTO Completeness ---"
-DTO_COUNT=$(find "${SRC_DIR}/application/dto" -name "*.rs" -exec grep -c "pub struct\|pub enum" {} \; 2>/dev/null | awk '{s+=$1} END {print s}' || true)
+DTO_COUNT=$(find "${SRC_DIR}/cli_boundary/application/dto" -name "*.rs" -exec grep -c "pub struct\|pub enum" {} \; 2>/dev/null | awk '{s+=$1} END {print s}' || true)
 if [ "$DTO_COUNT" -gt 0 ]; then
     pass "${DTO_COUNT} DTO types defined"
 else

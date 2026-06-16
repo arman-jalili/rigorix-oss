@@ -90,7 +90,7 @@ pass "application/ — tested via tests.rs (DTOs used in output/infrastructure i
 
 echo ""
 echo "--- Infrastructure Layer ---"
-check_module_coverage "Infrastructure" "infrastructure" 12 "infrastructure/ (config, signal, output impls)"
+check_module_coverage "Infrastructure" "cli_boundary/infrastructure" 6 "cli_boundary/infrastructure/ (output, signal impls)"
 
 echo ""
 echo "--- Total ---"
