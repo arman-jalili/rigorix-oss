@@ -48,12 +48,65 @@
       }
     }
   ],
-  "currentItemIndex": 0,
+  "currentItemIndex": 2,
   "currentStepIndex": 0,
   "status": "running",
   "retryCount": 0,
-  "results": [],
+  "results": [
+    {
+      "item": "issue-contract-freeze",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "issue--component-name-",
+      "status": "failed",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "failed",
+          "reason": "Issue #254 is a placeholder template with no real component — the observability module's contracts are already frozen. Skipping to real remaining issues (#255 Proofing, #256 Readiness)."
+        },
+        {
+          "step": "validate",
+          "status": "failed",
+          "reason": "skipped due to prior failure"
+        },
+        {
+          "step": "create-mr",
+          "status": "failed",
+          "reason": "skipped due to prior failure"
+        },
+        {
+          "step": "merge",
+          "status": "failed",
+          "reason": "skipped due to prior failure"
+        }
+      ]
+    }
+  ],
   "mergeOnValid": true,
   "createdAt": "2026-06-16T17:08:12.187Z",
-  "updatedAt": "2026-06-16T17:08:12.187Z"
+  "updatedAt": "2026-06-16T17:10:24.582Z"
 }
