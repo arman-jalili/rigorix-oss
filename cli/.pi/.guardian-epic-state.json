@@ -1,15 +1,71 @@
 {
-  "name": "\"event-system\"",
-  "trackingIssueId": "330",
+  "name": "\"cli-boundary\"",
+  "trackingIssueId": "350",
   "epicId": null,
   "slices": [
     {
-      "module": "module-template",
+      "module": "cli-boundary",
       "components": [
         {
-          "name": "[Component Name]",
+          "name": "CliParser",
           "status": "planned",
-          "description": "[What this component does]",
+          "description": "Clap argument parser defining 14 CLI commands, global flags (--format, -v), and shortcut flags (--run, --exec, --history). Produces `CliCommand` enum.",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "Dispatcher",
+          "status": "planned",
+          "description": "Match parsed `CliCommand` to the appropriate handler — orchestrator (run/plan/cancel/status), engine service (history/explain/diff-plan/generate/template/audit/logs/config), or CLI-only (init/key/tui).",
+          "dependencies": [
+            "CliParser"
+          ]
+        },
+        {
+          "name": "OrchestratorBuilder",
+          "status": "planned",
+          "description": "Build and wire `OrchestratorService` with config + repo_root. Passes shared `CancellationToken` from signal handler. Used by `run`, `plan`, `cancel`, `status` commands.",
+          "dependencies": [
+            "ConfigLoader"
+          ]
+        },
+        {
+          "name": "ConfigLoader",
+          "status": "planned",
+          "description": "Merge `rigorix.toml` + environment variables (`RIGORIX_*`) + CLI flags with priority ordering. Produces engine `Config`.",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "OutputFormatter",
+          "status": "planned",
+          "description": "`LogFormatter` trait with four implementations — Pretty (human-readable with Unicode), JSON (CI/CD), Markdown (docs), Quiet (exit codes only). Drives all command output.",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "SignalHandler",
+          "status": "planned",
+          "description": "Ctrl+C detection with two-level cancellation (single = graceful finish in-flight node, double within 2s = immediate abort). SIGTERM handling for Unix. Shares `CancellationToken` with orchestrator.",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "TracingInit",
+          "status": "planned",
+          "description": "Initialize `tracing-subscriber` with `RIGORIX_LOG` env filter. Installed at startup before any command dispatch.",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "CliError",
+          "status": "planned",
+          "description": "Error type mapping engine errors to CLI exit codes (0 success, 1 general error, 2 config error, 3 invalid args, 130 cancelled, 137 killed).",
           "dependencies": [
             "none"
           ]
@@ -17,9 +73,65 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "[Component Name]",
+          "name": "CliParser",
           "status": "planned",
-          "description": "[What this component does]",
+          "description": "Clap argument parser defining 14 CLI commands, global flags (--format, -v), and shortcut flags (--run, --exec, --history). Produces `CliCommand` enum.",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "Dispatcher",
+          "status": "planned",
+          "description": "Match parsed `CliCommand` to the appropriate handler — orchestrator (run/plan/cancel/status), engine service (history/explain/diff-plan/generate/template/audit/logs/config), or CLI-only (init/key/tui).",
+          "dependencies": [
+            "CliParser"
+          ]
+        },
+        {
+          "name": "OrchestratorBuilder",
+          "status": "planned",
+          "description": "Build and wire `OrchestratorService` with config + repo_root. Passes shared `CancellationToken` from signal handler. Used by `run`, `plan`, `cancel`, `status` commands.",
+          "dependencies": [
+            "ConfigLoader"
+          ]
+        },
+        {
+          "name": "ConfigLoader",
+          "status": "planned",
+          "description": "Merge `rigorix.toml` + environment variables (`RIGORIX_*`) + CLI flags with priority ordering. Produces engine `Config`.",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "OutputFormatter",
+          "status": "planned",
+          "description": "`LogFormatter` trait with four implementations — Pretty (human-readable with Unicode), JSON (CI/CD), Markdown (docs), Quiet (exit codes only). Drives all command output.",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "SignalHandler",
+          "status": "planned",
+          "description": "Ctrl+C detection with two-level cancellation (single = graceful finish in-flight node, double within 2s = immediate abort). SIGTERM handling for Unix. Shares `CancellationToken` with orchestrator.",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "TracingInit",
+          "status": "planned",
+          "description": "Initialize `tracing-subscriber` with `RIGORIX_LOG` env filter. Installed at startup before any command dispatch.",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "CliError",
+          "status": "planned",
+          "description": "Error type mapping engine errors to CLI exit codes (0 success, 1 general error, 2 config error, 3 invalid args, 130 cancelled, 137 killed).",
           "dependencies": [
             "none"
           ]
@@ -32,28 +144,70 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "331"
+      "remoteIssueId": "351"
     },
     {
-      "id": "issue--component-name-",
-      "title": "[Component Name]: [What this component does]",
+      "id": "issue-cliparser",
+      "title": "CliParser: Clap argument parser defining 14 CLI commands, global flags (--format, -v), and ",
       "status": "planned",
-      "remoteIssueId": "332"
+      "remoteIssueId": "352"
+    },
+    {
+      "id": "issue-dispatcher",
+      "title": "Dispatcher: Match parsed `CliCommand` to the appropriate handler — orchestrator (run/plan/ca",
+      "status": "planned",
+      "remoteIssueId": "353"
+    },
+    {
+      "id": "issue-orchestratorbuilder",
+      "title": "OrchestratorBuilder: Build and wire `OrchestratorService` with config + repo_root. Passes shared `Can",
+      "status": "planned",
+      "remoteIssueId": "354"
+    },
+    {
+      "id": "issue-configloader",
+      "title": "ConfigLoader: Merge `rigorix.toml` + environment variables (`RIGORIX_*`) + CLI flags with prio",
+      "status": "planned",
+      "remoteIssueId": "355"
+    },
+    {
+      "id": "issue-outputformatter",
+      "title": "OutputFormatter: `LogFormatter` trait with four implementations — Pretty (human-readable with Uni",
+      "status": "planned",
+      "remoteIssueId": "356"
+    },
+    {
+      "id": "issue-signalhandler",
+      "title": "SignalHandler: Ctrl+C detection with two-level cancellation (single = graceful finish in-flight",
+      "status": "planned",
+      "remoteIssueId": "357"
+    },
+    {
+      "id": "issue-tracinginit",
+      "title": "TracingInit: Initialize `tracing-subscriber` with `RIGORIX_LOG` env filter. Installed at star",
+      "status": "planned",
+      "remoteIssueId": "358"
+    },
+    {
+      "id": "issue-clierror",
+      "title": "CliError: Error type mapping engine errors to CLI exit codes (0 success, 1 general error, ",
+      "status": "planned",
+      "remoteIssueId": "359"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "333"
+      "remoteIssueId": "360"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "334"
+      "remoteIssueId": "361"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-06-16T19:50:40.537Z"
+  "createdAt": "2026-06-16T21:27:43.909Z"
 }

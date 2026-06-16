@@ -101,6 +101,7 @@ impl OrchestratorServiceImpl {
         Uuid::new_v4()
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn build_record(
         &self,
         execution_id: Uuid,
@@ -111,8 +112,9 @@ impl OrchestratorServiceImpl {
         context: ExecutionContext,
         events: Vec<ExecutionEventInfo>,
     ) -> ExecutionRecord {
-        let completed_at = Some(chrono::Utc::now());
-        let duration_ms = completed_at.unwrap().signed_duration_since(started_at).num_milliseconds().max(0) as u64;
+        let now = chrono::Utc::now();
+        let duration_ms = now.signed_duration_since(started_at).num_milliseconds().max(0) as u64;
+        let completed_at = Some(now);
         ExecutionRecord {
             execution_id,
             planning: planning_meta.unwrap_or(PlanningMetadata {
@@ -285,8 +287,9 @@ impl OrchestratorService for OrchestratorServiceImpl {
         );
 
         // 10. Optional audit (best-effort)
-        if let Some(ref audit) = self.audit_service {
-            if self.config.audit_enabled {
+        if let Some(ref audit) = self.audit_service
+            && self.config.audit_enabled
+        {
                 let aref: Vec<crate::audit::domain::ExecutionEventRef> = record.events.iter().map(|e| {
                     crate::audit::domain::ExecutionEventRef {
                         event_type: e.event_type.clone(),
@@ -302,7 +305,6 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     planning_prompt: record.planning.prompt_hash.clone(),
                     events: aref, metadata: None, sign: false,
                 }).await;
-            }
         }
 
         // Update state
