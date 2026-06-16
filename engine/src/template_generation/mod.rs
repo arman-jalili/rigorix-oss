@@ -24,3 +24,6 @@ pub mod interfaces;
 
 #[cfg(test)]
 pub(crate) mod tests;
+
+#[cfg(all(test, feature = "live-tests"))]
+pub(crate) mod live_generator_tests;

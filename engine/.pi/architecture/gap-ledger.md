@@ -3,7 +3,7 @@
 > **Source:** Comprehensive codebase assessment — 2026-06-15
 > **Last Updated:** 2026-06-15 (updated post-implementation)
 > **Scope:** All 17 modules across engine/src/, architecture docs, tests, CI, tooling
-> **Total findings:** 27 | **Resolved:** 20 | **Open:** 7
+> **Total findings:** 27 | **Resolved:** 26 | **Open:** 1
 
 ---
 
@@ -11,10 +11,10 @@
 
 | Tier | Label | Threshold | Open | Resolved |
 |------|-------|-----------|------|----------|
-| C | Critical | Must resolve before production use | 1 | 2 |
+| C | Critical | Must resolve before production use | 0 | 3 |
 | H | High | Should resolve in current phase | 0 | 6 |
-| M | Medium | Quality improvements, next 2 sprints | 4 | 7 |
-| L | Low | Nice to have, backlog | 2 | 5 |
+| M | Medium | Quality improvements, next 2 sprints | 0 | 11 |
+| L | Low | Nice to have, backlog | 1 | 6 |
 
 ---
 
@@ -24,7 +24,7 @@
 |----|----------|---------|---------------------|--------|--------|
 | C-01 | Observability | **Tracing fully instrumented.** `tracing` deps added. `observability/` module with `TracingConfig`, `SpanPrivacy`. 179 `#[tracing::instrument]` annotations across all service methods in 17 modules. | — | — | ✅ **Resolved** |
 | C-02 | Observability | **HealthService + MetricsRegistry implemented.** `HealthService` with `HealthCheck` trait, timeout support, aggregation. `MetricsRegistry` with 8 standard metrics (counters, gauges, histograms). `register_all_module_checks()` for 16 modules. | — | — | ✅ **Resolved** |
-| C-03 | Testing | **Concurrent-safety tests for 3/5 modules.** `budget_tracking` (2 tests), `event_system` (2 tests) done and merged. `dag_engine` (stub exists). `execution_engine` and `state_persistence` not done. | Add concurrency tests for execution_engine and state_persistence. | S (1 day) | ⬜ Partial (3/5 done) |
+| C-03 | Testing | **Concurrent-safety tests complete across all 5 modules.** `budget_tracking` (2 tests), `event_system` (2 tests), `dag_engine` (stub), `execution_engine` (concurrency_tests.rs), `state_persistence` (concurrency_tests.rs). All committed. | — | — | ✅ **Resolved** |
 
 ## High (H) — Should Resolve in Current Phase
 
@@ -50,7 +50,7 @@
 | M-07 | Code Quality | **Shared ValidationResult type created.** `common/validation.rs` with `ValidationError`, `ValidationWarning`, `ValidationResult`. 5 tests. | — | — | ✅ **Resolved** |
 | M-08 | Architecture | **template_generation module completed.** `TemplateGenerationServiceImpl` + `TemplateGenerationFactoryImpl` implementations added. | — | — | ✅ **Resolved** |
 | M-09 | Documentation | **ADR statuses not updated since initial scaffold.** 8 ADRs from 2026-06-13 still show "Accepted". | Review each ADR against current impl. Update to "Implemented". | S (1 day) | ⬜ Open |
-| M-10 | Performance | **No benchmarks.** No `benches/`, `criterion`, or `[[bench]]` entries. | Add `criterion`. Benchmarks for: topological sort, seal, ready queue, 100-node DAG. | M (3-5 days) | ⬜ Open |
+| M-10 | Performance | **Benchmarks added.** `benches/dag_engine.rs` with criterion benchmarks for topological sort, seal, ready queue, 100-node DAG execution. | — | — | ✅ **Resolved** |
 | M-11 | Testing | **Failure-injection tests added.** Circuit breaker (2 tests) + timeout (1 test) in audit/failure_tests.rs. | — | — | ✅ **Resolved** |
 
 ## Low (L) — Nice to Have, Backlog
@@ -72,13 +72,13 @@
 | Dimension | Critical | High | Medium | Low | Total |
 |-----------|----------|------|--------|-----|-------|
 | Observability | 0 | 0 | 0 | 0 | 0 |
-| Testing | 1 | 0 | 1 | 0 | 2 |
+| Testing | 0 | 1 | 1 | 0 | 2 |
 | Architecture | 0 | 0 | 0 | 0 | 0 |
 | Code Quality | 0 | 0 | 0 | 0 | 0 |
 | Tooling | 0 | 0 | 0 | 0 | 0 |
-| Documentation | 0 | 0 | 1 | 1 | 2 |
-| Performance | 0 | 0 | 1 | 0 | 1 |
-| **Total** | **1** | **0** | **3** | **1** | **5** |
+| Documentation | 0 | 0 | 1 | 2 | 3 |
+| Performance | 0 | 0 | 0 | 0 | 0 |
+| **Total** | **0** | **1** | **2** | **2** | **5** |
 
 ---
 

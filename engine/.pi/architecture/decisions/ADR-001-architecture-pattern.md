@@ -1,6 +1,6 @@
 # ADR-001: Domain-Driven Design with Bounded Contexts
 
-**Status:** Proposed
+**Status:** Implemented
 **Date:** 2026-06-13
 **Session:** 63c25384-1902-4b72-83bb-257f3f682af5
 
