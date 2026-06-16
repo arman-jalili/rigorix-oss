@@ -251,6 +251,7 @@ fn test_cli_config_serde_roundtrip() {
         log_format: crate::domain::config::LogFormat::Json,
         config_path: Some("/tmp/rigorix.toml".into()),
         force_tui: false,
+        api_key_configured: false,
     };
 
     let json = serde_json::to_string(&config).unwrap();

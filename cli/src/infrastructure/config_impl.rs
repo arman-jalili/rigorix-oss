@@ -11,6 +11,7 @@
 //! 3. rigorix.toml config file
 //! 4. Engine defaults
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
@@ -69,6 +70,11 @@ impl CliConfigLoaderImpl {
 
     /// Apply environment variable overrides (RIGORIX_*) to a CliConfig.
     fn apply_env_overrides(config: &mut CliConfig) {
+        // Track API key presence
+        if std::env::var("RIGORIX_API_KEY").is_ok() {
+            config.api_key_configured = true;
+        }
+
         if let Ok(val) = std::env::var("RIGORIX_FORMAT") {
             config.output_format = match val.as_str() {
                 "json" => OutputFormat::Json,
@@ -262,6 +268,7 @@ fn apply_toml_to_config(config: &mut CliConfig, toml: &toml::Value) {
         // SAFETY: Setting env var for LLM API key during CLI startup.
         // This is safe because no other thread reads RIGORIX_API_KEY concurrently.
         unsafe { std::env::set_var("RIGORIX_API_KEY", api_key) };
+        config.api_key_configured = true;
     }
 
     // Parse [cli.logging] section (backward compat)
@@ -286,6 +293,54 @@ fn apply_toml_to_config(config: &mut CliConfig, toml: &toml::Value) {
             };
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Public validation helpers
+// ---------------------------------------------------------------------------
+
+/// Commands that require an LLM API key.
+pub fn command_requires_api_key(command: &str) -> bool {
+    matches!(command, "run" | "plan" | "generate")
+}
+
+/// Validate that the API key is configured for commands that need it.
+///
+/// Returns `None` if validation passes, or `Some(CliError::MissingConfig)`
+/// if the command requires an API key but none was found.
+pub fn validate_api_key_for_command(config: &CliConfig, command: &str) -> Option<CliError> {
+    if command_requires_api_key(command) && !config.api_key_configured {
+        return Some(CliError::MissingConfig {
+            field: "api_key".into(),
+            hint: "Set RIGORIX_API_KEY environment variable, add [cli.api_key] to rigorix.toml, or run `rigorix init` to configure interactively.".into(),
+        });
+    }
+    None
+}
+
+/// Build a `HashMap<String, String>` of CLI overrides for the engine's `ConfigService`.
+///
+/// Bridges the CLI-side `CliConfig` values to the engine's config schema
+/// using dot-notation keys (e.g., `logging.level`).
+pub fn build_engine_cli_overrides(config: &CliConfig) -> HashMap<String, String> {
+    let mut overrides = HashMap::new();
+
+    // Forward log settings to engine
+    overrides.insert(
+        "logging.level".to_string(),
+        config.log_level.as_tracing_filter().to_string(),
+    );
+    overrides.insert(
+        "logging.format".to_string(),
+        if config.log_format.is_json() {
+            "json"
+        } else {
+            "text"
+        }
+        .to_string(),
+    );
+
+    overrides
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 ---
 guardian_issue:
   id: "ISSUE-READINESS"
-  epic: ""cli-boundary""
+  epic: ""configuration""
   component: "Architecture Readiness"
   module: "module-template"
   status: planned
