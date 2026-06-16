@@ -102,6 +102,13 @@ pub struct CliConfig {
     /// CLI flag: `--force-tui`
     /// Default: `false`
     pub force_tui: bool,
+
+    /// Whether an API key was found in any source.
+    ///
+    /// Populated during config loading from `RIGORIX_API_KEY` env var
+    /// or the `cli.api_key` field in `rigorix.toml`.
+    /// Used to fail early with a clear error for commands requiring LLM access.
+    pub api_key_configured: bool,
 }
 
 impl Default for CliConfig {
@@ -114,6 +121,7 @@ impl Default for CliConfig {
             log_format: LogFormat::Pretty,
             config_path: None,
             force_tui: false,
+            api_key_configured: false,
         }
     }
 }

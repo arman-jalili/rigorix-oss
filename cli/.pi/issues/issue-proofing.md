@@ -1,7 +1,7 @@
 ---
 guardian_issue:
   id: "ISSUE-PROOFING"
-  epic: ""cli-boundary""
+  epic: ""configuration""
   component: "Proofing & CI Enforcement"
   module: "module-template"
   status: planned

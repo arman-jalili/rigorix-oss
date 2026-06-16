@@ -1,7 +1,7 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: ""cli-boundary""
+  epic: ""configuration""
   component: "Contract Freeze"
   module: "module-template"
   status: planned

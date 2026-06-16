@@ -32,12 +32,15 @@ use tracing::info;
 use rigorix::domain::config::{CliConfig, ColorMode, LogFormat, LogLevel, OutputFormat};
 use rigorix::domain::error::CliError;
 use rigorix::infrastructure::config::CliConfigLoader;
-use rigorix::infrastructure::config_impl::CliConfigLoaderImpl;
+use rigorix::infrastructure::config_impl::{
+    CliConfigLoaderImpl, build_engine_cli_overrides, validate_api_key_for_command,
+};
 use rigorix::infrastructure::output::LogFormatter;
 use rigorix::infrastructure::output_impl::LogFormatterImpl;
 use rigorix::infrastructure::signal::SignalHandler;
 use rigorix::infrastructure::signal_impl::SignalHandlerImpl;
 use rigorix::interfaces::cli::{CliArgs, CliCommand, GlobalOptions};
+use rigorix_engine::configuration::application::ConfigService;
 
 #[tokio::main]
 async fn main() {
@@ -55,6 +58,27 @@ async fn main() {
             process::exit(e.exit_code());
         }
     };
+
+    // Validate config for the specific command before proceeding
+    let command_name = command_name(&args.command);
+    if let Some(err) = validate_api_key_for_command(&config, command_name) {
+        eprintln!("{}", err);
+        process::exit(err.exit_code());
+    }
+
+    // Bridge CLI config to engine's ConfigService
+    match init_engine_config(&config).await {
+        Ok(engine_config) => {
+            info!(
+                "Engine config loaded — sources: {:?}",
+                engine_config.sources_used
+            );
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            process::exit(e.exit_code());
+        }
+    }
 
     // Initialize tracing AFTER config is loaded (so we respect RIGORIX_LOG)
     rigorix::tracing::init_tracing(config.log_level, config.log_format);
@@ -115,6 +139,45 @@ fn parse_global_options(opts: &GlobalOptions) -> CliConfig {
         config_path: opts.config_path.clone(),
         ..CliConfig::default()
     }
+}
+
+/// Return a string name for the command (for validation purposes).
+fn command_name(command: &CliCommand) -> &'static str {
+    match command {
+        CliCommand::Run { .. } => "run",
+        CliCommand::Plan { .. } => "plan",
+        CliCommand::Init { .. } => "init",
+        CliCommand::Generate { .. } => "generate",
+        CliCommand::History(_) => "history",
+        CliCommand::Logs { .. } => "logs",
+        CliCommand::Audit(_) => "audit",
+        CliCommand::Template(_) => "template",
+    }
+}
+
+/// Initialize the engine's `ConfigService` with CLI-side values.
+///
+/// Bridges the CLI configuration to the engine's configuration pipeline so that
+/// CLI flags, env vars, and the config file are all available to engine services.
+async fn init_engine_config(
+    cli_config: &CliConfig,
+) -> Result<rigorix_engine::configuration::application::dto::LoadConfigOutput, CliError> {
+    let engine_service =
+        rigorix_engine::configuration::application::config_service_impl::ConfigServiceImpl::default(
+        );
+
+    let cli_overrides = build_engine_cli_overrides(cli_config);
+
+    let input = rigorix_engine::configuration::application::dto::LoadConfigInput {
+        config_path: cli_config.config_path.clone(),
+        cli_overrides: Some(cli_overrides),
+        ..Default::default()
+    };
+
+    engine_service
+        .load(input)
+        .await
+        .map_err(|e| CliError::Engine(rigorix_engine::error::CoreOrchestratorError::from(e)))
 }
 
 /// Load and merge CLI configuration.

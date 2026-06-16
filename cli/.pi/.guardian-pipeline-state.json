@@ -1,6 +1,6 @@
 {
-  "id": "PL-3081",
-  "name": "\"cli-boundary\"",
+  "id": "PL-4197",
+  "name": "\"configuration\"",
   "items": [
     "issue-contract-freeze",
     "issue--component-name-",
@@ -48,84 +48,17 @@
       }
     }
   ],
-  "currentItemIndex": 3,
-  "currentStepIndex": 0,
+  "currentItemIndex": 0,
+  "currentStepIndex": 1,
   "status": "running",
   "retryCount": 0,
   "results": [
     {
       "item": "issue-contract-freeze",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue--component-name-",
-      "status": "done",
+      "status": "in-progress",
       "stepResults": [
         {
           "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-proofing",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
           "status": "passed",
           "reason": ""
         }
@@ -133,6 +66,6 @@
     }
   ],
   "mergeOnValid": true,
-  "createdAt": "2026-06-16T05:15:11.691Z",
-  "updatedAt": "2026-06-16T16:49:08.053Z"
+  "createdAt": "2026-06-16T16:53:11.184Z",
+  "updatedAt": "2026-06-16T16:58:11.784Z"
 }
