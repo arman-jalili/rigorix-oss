@@ -176,7 +176,7 @@ by name"]
 
 ---
 
-*Last updated: 2026-06-14*
+Last updated: 2026-06-15
 *Module version: 2.0.0 — Implementation Complete*
 *Tests: 46 unit tests across all layers*
 *CI: Stage 22 (repo-engine_proofing) in hardening pipeline with 28 contract checks*

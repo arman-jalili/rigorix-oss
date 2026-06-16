@@ -3,7 +3,7 @@
 > **Source:** Comprehensive codebase assessment — 2026-06-15
 > **Last Updated:** 2026-06-15 (updated post-implementation)
 > **Scope:** All 17 modules across engine/src/, architecture docs, tests, CI, tooling
-> **Total findings:** 27 | **Resolved:** 26 | **Open:** 1
+> **Total findings:** 27 | **Resolved:** 27 | **Open:** 0
 
 ---
 
@@ -14,7 +14,7 @@
 | C | Critical | Must resolve before production use | 0 | 3 |
 | H | High | Should resolve in current phase | 0 | 6 |
 | M | Medium | Quality improvements, next 2 sprints | 0 | 11 |
-| L | Low | Nice to have, backlog | 1 | 6 |
+| L | Low | Nice to have, backlog | 0 | 7 |
 
 ---
 
@@ -61,7 +61,7 @@
 | L-02 | Code Quality | **Warning dedup documented as intentional.** One-shot design noted with doc comment. | — | — | ✅ **Resolved** |
 | L-03 | Code Quality | **commit(&mut self) → commit(&self).** Atomics make mutable borrow unnecessary. | — | — | ✅ **Resolved** |
 | L-04 | Testing | **ClaudeTemplateGenerator unit tests added.** 6 tests: strip_code_fences variants, parse_api_response (valid/invalid/missing), build_system_prompt, build_user_message. | — | — | ✅ **Resolved** |
-| L-05 | Documentation | **Module architecture docs partially stale.** 3 docs updated. 14 remaining need audit. | Audit each against actual code. | M (2-3 days) | ⬜ Partial |
+| L-05 | Documentation | **All 17 module docs updated.** Status footers with "Implemented" and "Last verified: 2026-06-15" added. Observability module doc created. | — | — | ✅ **Resolved** |
 | L-06 | Tooling | **Coverage installer added.** `install_coverage_tools.sh` for CI. Pre-commit hook for fmt+clippy. | Install `cargo-llvm-cov` in CI. | — | ✅ **Resolved** |
 | L-07 | Architecture | **RAII Drop underflow fixed.** `saturating_sub` via `fetch_update` in `LlmBudgetReservationImpl::drop()`. | — | — | ✅ **Resolved** |
 
@@ -72,13 +72,13 @@
 | Dimension | Critical | High | Medium | Low | Total |
 |-----------|----------|------|--------|-----|-------|
 | Observability | 0 | 0 | 0 | 0 | 0 |
-| Testing | 0 | 1 | 1 | 0 | 2 |
+| Testing | 0 | 0 | 0 | 0 | 0 |
 | Architecture | 0 | 0 | 0 | 0 | 0 |
 | Code Quality | 0 | 0 | 0 | 0 | 0 |
 | Tooling | 0 | 0 | 0 | 0 | 0 |
-| Documentation | 0 | 0 | 1 | 2 | 3 |
+| Documentation | 0 | 0 | 0 | 0 | 0 |
 | Performance | 0 | 0 | 0 | 0 | 0 |
-| **Total** | **0** | **1** | **2** | **2** | **5** |
+| **Total** | **0** | **0** | **0** | **0** | **0** |
 
 ---
 
