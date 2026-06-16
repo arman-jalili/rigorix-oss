@@ -2,9 +2,10 @@
 
 ## Module Status
 
-**Status:** Engine contract frozen — CLI uses as library
+**Status:** ✅ Implemented — contract freeze complete, proofing scripts active
 **Last reviewed:** 2026-06-16
 **Source session:** 71e2b81a-a7a1-48ee-ab8f-56284bbec92d
+**Issues:** #317 (contract freeze), #319 (proofing), #320 (architecture readiness)
 
 ## Description
 
@@ -14,7 +15,13 @@ Consumes sealed TaskGraph from the DAG Engine. Emits ExecutionEvents for real-ti
 
 ## Components
 
-**CLI-facing:** None — CLI wraps engine contracts directly. No CLI-specific interface files needed.
+**CLI-facing:**
+| Component | File | Module | Purpose |
+|-----------|------|--------|---------|
+| ExecutionCommandService (trait) | `cli/src/execution_engine/application/service.rs` | application | Service trait for execute/status/abort |
+| ExecutionCliError | `cli/src/execution_engine/domain/error.rs` | domain | Typed error enum |
+| ExecutionCliEvent | `cli/src/execution_engine/domain/event/mod.rs` | domain | Event payload schemas |
+| ExecutionRepository (trait) | `cli/src/execution_engine/infrastructure/repository/mod.rs` | infrastructure | Repository interface |
 
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |
