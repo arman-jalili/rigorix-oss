@@ -12,6 +12,22 @@ This document tracks all architecture changes requiring implementation updates.
 
 ## Entries
 
+## [2026-06-16] - Planning Pipeline Module Implementation (Issues #310, #312, #313)
+
+### Changes
+- Contract freeze: created full CLI planning module
+  - PlanCommandService trait, domain errors/events, DTOs
+  - PlanningRepository trait
+  - HTTP API contracts (2 endpoints: plan, classify)
+- Created proofing scripts: check_planning_contracts.sh
+- Created stage_planning_proofing.sh — CI stage wrapper
+- Integrated stage 17 into CI hardening pipeline
+- Created runbook and DR plan docs
+
+### Status
+- Planning pipeline module: IMPLEMENTED
+- CI proofing: stage 17 — ALL PASS
+
 ## [2026-06-16] - Template Generation Module Implementation (Issues #303, #305, #306)
 
 ### Changes
