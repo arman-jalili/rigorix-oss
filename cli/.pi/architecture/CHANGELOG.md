@@ -12,6 +12,53 @@ This document tracks all architecture changes requiring implementation updates.
 
 ## Entries
 
+## [2026-06-16] - Cancellation Module Implementation (Issues #274, #276, #277)
+
+### Changes
+- Contract freeze: defined all public interfaces, DTO schemas, event schemas, and API contracts
+  - SignalHandler trait + ShutdownLevel enum moved to application/layer (canonical Clean Architecture)
+  - CancellationCliError enum with typed CLI cancellation errors
+  - CancellationCliEvent payload schemas for logging/UI
+  - GracefulShutdownInput/Output, ImmediateShutdownInput, SignalStatus DTOs
+  - CancellationCliRepository trait for CLI-level signal state persistence
+  - HTTP API contracts with 3 endpoints: status, graceful shutdown, immediate abort
+- Created proofing scripts: check_cancellation_contracts.sh (13 checks), check_cancellation_coverage.sh
+- Created stage_cancellation_proofing.sh — CI stage wrapper
+- Integrated stage 15 (cancellation_proofing) into CI hardening pipeline
+- Created docs/runbook-cancellation.md and docs/dr-plan-cancellation.md
+- Updated cancellation module architecture doc with final contracts and file paths
+
+### Files Created
+- `cli/src/cancellation/application/service.rs` — SignalHandler trait + ShutdownLevel (moved from infrastructure)
+- `cli/src/cancellation/application/dto/mod.rs` — DTO schemas for shutdown/status
+- `cli/src/cancellation/domain/error.rs` — CancellationCliError enum
+- `cli/src/cancellation/domain/event/mod.rs` — CancellationCliEvent schemas
+- `cli/src/cancellation/infrastructure/repository/mod.rs` — CancellationCliRepository trait
+- `cli/src/cancellation/interfaces/http/mod.rs` — HTTP API endpoint contracts
+- `cli/src/cancellation/interfaces/mod.rs` — Module declaration
+- `cli/docs/runbook-cancellation.md` — Operations runbook
+- `cli/docs/dr-plan-cancellation.md` — Disaster recovery plan
+- `cli/.pi/scripts/ci/check_cancellation_contracts.sh` — 13 automated contract checks
+- `cli/.pi/scripts/ci/check_cancellation_coverage.sh` — Coverage threshold enforcement
+- `cli/.pi/scripts/ci/stage_cancellation_proofing.sh` — CI stage wrapper
+
+### Files Modified
+- `cli/src/cancellation/domain/mod.rs` — Export error/event modules
+- `cli/src/cancellation/application/mod.rs` — Export DTO/service modules
+- `cli/src/cancellation/infrastructure/mod.rs` — Repository module + re-export from application
+- `cli/src/cancellation/infrastructure/signal.rs` — Now re-exports SignalHandler + ShutdownLevel
+- `cli/src/cancellation/mod.rs` — Architecture tree documentation
+- `cli/src/lib.rs` — Updated architecture tree with all layers
+- `cli/.pi/scripts/ci/run_hardening_stages.sh` — Added stage 15 (cancellation_proofing)
+- `cli/.pi/architecture/modules/cancellation.md` — Updated with final contracts, proofing, runbook
+
+### Status
+- Cancellation module: IMPLEMENTED (contract freeze + proofing + readiness)
+- 38 tests passing, clippy clean, fmt clean
+- CI proofing scripts: stage 15 — cancellation_proofing — ALL PASS (13 contract checks, 8 coverage checks)
+- Contract proofing: 13/13 checks passed
+- Coverage proofing: 8/8 checks passed
+
 ## [2026-06-16] - Templates Module Implementation (Issues #266, #268, #269)
 
 ### Changes
