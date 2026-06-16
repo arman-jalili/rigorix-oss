@@ -18,7 +18,7 @@ use ratatui::Frame;
 use ratatui::Terminal;
 use ratatui::crossterm::event::{self, Event, KeyEventKind};
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Style, Stylize};
+use ratatui::style::{Color, Modifier, Style, Stylize};
 use tokio_util::sync::CancellationToken;
 
 use crate::cli_boundary::config::CliConfig;
@@ -342,16 +342,10 @@ fn render_main_content(
         ActiveView::History => render_history_view(frame, area, vm),
         ActiveView::Events => render_events_view(frame, area, vm),
         ActiveView::Nodes => render_nodes_view(frame, area, vm, selected_node),
-        ActiveView::Settings => {
-            render_text_view(frame, area, "Settings", "Settings — configure Rigorix")
-        }
-        ActiveView::Templates => {
-            render_text_view(frame, area, "Templates", "Templates — browse and manage")
-        }
-        ActiveView::Clarification => {
-            render_text_view(frame, area, "Clarification", "LLM clarification requests")
-        }
-        ActiveView::Diff => render_text_view(frame, area, "Diff", "Diff — plan comparison"),
+        ActiveView::Settings => render_settings_view(frame, area),
+        ActiveView::Templates => render_templates_view(frame, area, vm),
+        ActiveView::Clarification => render_clarification_view(frame, area),
+        ActiveView::Diff => render_diff_view(frame, area, vm),
     }
 }
 
@@ -564,16 +558,220 @@ fn render_nodes_view(
     widgets::render_node_detail(frame, chunks[1], node);
 }
 
-/// Render a simple text view (placeholder).
-fn render_text_view(frame: &mut Frame<'_>, area: Rect, title: &str, subtitle: &str) {
-    let block = ratatui::widgets::Block::default()
-        .title(format!(" {title} "))
-        .borders(ratatui::widgets::Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray));
-    let paragraph = ratatui::widgets::Paragraph::new(format!(
-        "\n\n  {subtitle}\n\n  More details coming soon."
-    ))
-    .block(block)
-    .wrap(ratatui::widgets::Wrap { trim: false });
+/// Render the Settings view — configuration options.
+fn render_settings_view(frame: &mut Frame<'_>, area: Rect) {
+    let chunks = Layout::vertical([Constraint::Length(4), Constraint::Min(1)]).split(area);
+
+    let header = ratatui::widgets::Paragraph::new(ratatui::text::Line::from(vec![
+        ratatui::text::Span::styled(
+            " Rigorix Configuration ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]))
+    .block(ratatui::widgets::Block::default().borders(ratatui::widgets::Borders::ALL));
+    frame.render_widget(header, chunks[0]);
+
+    let items = vec![
+        "  Output Format    --format pretty|json|markdown|quiet",
+        "  Verbosity        -v (debug), -vv (trace)",
+        "  Log Filter       RIGORIX_LOG env var (default: info)",
+        "  Config File      rigorix.toml (CWD) or ~/.rigorix/config.toml",
+        "  Parallel Tasks   orchestrator.max_parallel_tasks (default: 4)",
+        "  Max Retries      orchestrator.max_retries (default: 3)",
+        "  Timeout          orchestrator.default_timeout_secs (default: 120)",
+        "  LLM Provider     llm.provider (anthropic|openai|deepseek)",
+        "  LLM Model        llm.model (default: claude-sonnet-4-6)",
+        "  Audit Enabled    audit.enabled (default: false)",
+        "",
+        "  Run `rigorix config show` to see current values",
+        "  Run `rigorix config validate` to check configuration",
+    ];
+    let lines: Vec<ratatui::text::Line> = items
+        .iter()
+        .map(|s| ratatui::text::Line::from(ratatui::text::Span::raw(*s)))
+        .collect();
+
+    let list = ratatui::widgets::List::new(lines).block(
+        ratatui::widgets::Block::default()
+            .title(" Settings ")
+            .borders(ratatui::widgets::Borders::ALL)
+            .border_style(Style::default().fg(Color::Yellow)),
+    );
+    frame.render_widget(list, chunks[1]);
+}
+
+/// Render the Templates view — available templates.
+fn render_templates_view(frame: &mut Frame<'_>, area: Rect, vm: &TuiViewModel) {
+    let templates = if vm.template_id.is_some() {
+        vec![
+            format!(
+                "  Active template: {}",
+                vm.template_id.as_deref().unwrap_or("(none)")
+            ),
+            "  Templates listed here are stored in .rigorix/templates/".to_string(),
+            "".to_string(),
+            "  Available commands:".to_string(),
+            "    /templates      List all templates".to_string(),
+            "    /generate       Create a new template from intent".to_string(),
+            "    :template show  <id>  Show template details".to_string(),
+        ]
+    } else {
+        vec![
+            "  No templates loaded yet.".to_string(),
+            "".to_string(),
+            "  Run an intent with [g] Generate to create a template,".to_string(),
+            "  or type `/generate` in the command bar.".to_string(),
+            "".to_string(),
+            "  Templates are stored in .rigorix/templates/ as YAML files".to_string(),
+            "  and can be reused across sessions.".to_string(),
+        ]
+    };
+
+    let lines: Vec<ratatui::text::Line> = templates
+        .iter()
+        .map(|s| ratatui::text::Line::from(ratatui::text::Span::raw(s.as_str())))
+        .collect();
+
+    let list = ratatui::widgets::List::new(lines).block(
+        ratatui::widgets::Block::default()
+            .title(" Templates ")
+            .borders(ratatui::widgets::Borders::ALL)
+            .border_style(Style::default().fg(Color::Green)),
+    );
+    frame.render_widget(list, area);
+}
+
+/// Render the Clarification view — LLM clarification requests.
+fn render_clarification_view(frame: &mut Frame<'_>, area: Rect) {
+    let items = vec![
+        ratatui::text::Line::from(ratatui::text::Span::styled(
+            "  LLM Clarification Requests",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )),
+        ratatui::text::Line::from(""),
+        ratatui::text::Line::from(ratatui::text::Span::raw(
+            "  When the LLM needs more information to generate a plan,",
+        )),
+        ratatui::text::Line::from(ratatui::text::Span::raw(
+            "  it will ask clarifying questions here.",
+        )),
+        ratatui::text::Line::from(""),
+        ratatui::text::Line::from(ratatui::text::Span::styled(
+            "  Example questions:",
+            Style::default().fg(Color::Blue),
+        )),
+        ratatui::text::Line::from(ratatui::text::Span::raw(
+            "    • Which authentication method should be used? (OAuth2 / API key / JWT)",
+        )),
+        ratatui::text::Line::from(ratatui::text::Span::raw(
+            "    • Should the new endpoint be public or require authentication?",
+        )),
+        ratatui::text::Line::from(ratatui::text::Span::raw(
+            "    • What database backend should be used? (PostgreSQL / SQLite)",
+        )),
+        ratatui::text::Line::from(""),
+        ratatui::text::Line::from(ratatui::text::Span::styled(
+            "  Type your answer in the command bar and press Enter.",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+
+    let paragraph = ratatui::widgets::Paragraph::new(items)
+        .block(
+            ratatui::widgets::Block::default()
+                .title(" Clarification ")
+                .borders(ratatui::widgets::Borders::ALL)
+                .border_style(Style::default().fg(Color::Magenta)),
+        )
+        .wrap(ratatui::widgets::Wrap { trim: false });
     frame.render_widget(paragraph, area);
+}
+
+/// Render the Diff view — plan comparison side-by-side.
+fn render_diff_view(frame: &mut Frame<'_>, area: Rect, vm: &TuiViewModel) {
+    let chunks =
+        Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)]).split(area);
+
+    // Left side (current/older plan)
+    let left_nodes: Vec<ratatui::text::Line> = if vm.nodes.is_empty() {
+        vec![ratatui::text::Line::from(ratatui::text::Span::styled(
+            "  (no plan loaded)",
+            Style::default().fg(Color::DarkGray),
+        ))]
+    } else {
+        vm.nodes
+            .values()
+            .take(20)
+            .map(|n| {
+                let icon = match n.status {
+                    NodeStatus::Completed => "✓",
+                    NodeStatus::InProgress => "▶",
+                    NodeStatus::Failed => "✗",
+                    NodeStatus::Retrying => "↻",
+                    _ => "·",
+                };
+                ratatui::text::Line::from(vec![
+                    ratatui::text::Span::raw(format!("  {} ", icon)),
+                    ratatui::text::Span::raw(&n.name),
+                    ratatui::text::Span::styled(
+                        format!(" ({})", n.tool_name),
+                        Style::default().fg(Color::Blue),
+                    ),
+                ])
+            })
+            .collect()
+    };
+
+    let left_list = ratatui::widgets::List::new(left_nodes).block(
+        ratatui::widgets::Block::default()
+            .title(" Plan A ")
+            .borders(ratatui::widgets::Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan)),
+    );
+    frame.render_widget(left_list, chunks[0]);
+
+    // Right side (diff/newer plan)
+    let right_lines = vec![
+        ratatui::text::Line::from(ratatui::text::Span::styled(
+            "  Diff view shows changes between two plans.",
+            Style::default().fg(Color::DarkGray),
+        )),
+        ratatui::text::Line::from(""),
+        ratatui::text::Line::from(ratatui::text::Span::raw(
+            "  Use `:diff <id1> <id2>` to compare two executions,",
+        )),
+        ratatui::text::Line::from(ratatui::text::Span::styled(
+            "  or press [d] on a plan preview to diff against the last.",
+            Style::default().fg(Color::Yellow),
+        )),
+        ratatui::text::Line::from(""),
+        ratatui::text::Line::from(ratatui::text::Span::styled(
+            "  Changes are highlighted:",
+            Style::default().fg(Color::Green),
+        )),
+        ratatui::text::Line::from(ratatui::text::Span::styled(
+            "    + Added nodes",
+            Style::default().fg(Color::Green),
+        )),
+        ratatui::text::Line::from(ratatui::text::Span::styled(
+            "    - Removed nodes",
+            Style::default().fg(Color::Red),
+        )),
+        ratatui::text::Line::from(ratatui::text::Span::styled(
+            "    ~ Modified nodes",
+            Style::default().fg(Color::Yellow),
+        )),
+    ];
+
+    let right_para = ratatui::widgets::Paragraph::new(right_lines).block(
+        ratatui::widgets::Block::default()
+            .title(" Diff ")
+            .borders(ratatui::widgets::Borders::ALL)
+            .border_style(Style::default().fg(Color::Yellow)),
+    );
+    frame.render_widget(right_para, chunks[1]);
 }
