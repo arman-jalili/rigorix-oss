@@ -42,6 +42,7 @@ use rigorix::configuration::infrastructure::config::CliConfigLoader;
 use rigorix::configuration::infrastructure::config_impl::{
     CliConfigLoaderImpl, build_engine_cli_overrides, validate_api_key_for_command,
 };
+use rigorix::templates::infrastructure::TemplateCommandService;
 use rigorix_engine::configuration::application::ConfigService;
 
 #[tokio::main]
@@ -100,18 +101,17 @@ async fn main() {
     };
 
     // Initialize template command handler
-    let template_handler =
-        match rigorix::templates::infrastructure::template_handler::TemplateCommandHandler::new(
-            config.clone(),
-        )
-        .await
-        {
-            Ok(handler) => handler,
-            Err(e) => {
-                eprintln!("Failed to initialize template system: {}", e);
-                process::exit(e.exit_code());
-            }
-        };
+    let template_handler = match rigorix::templates::infrastructure::TemplateEngineHandler::new(
+        config.clone(),
+    )
+    .await
+    {
+        Ok(handler) => handler,
+        Err(e) => {
+            eprintln!("Failed to initialize template system: {}", e);
+            process::exit(e.exit_code());
+        }
+    };
 
     // Dispatch command
     let formatter = LogFormatterImpl::new(config.output_format);
@@ -217,7 +217,7 @@ async fn dispatch_command(
     command: CliCommand,
     _config: &CliConfig,
     formatter: &LogFormatterImpl,
-    template_handler: &rigorix::templates::infrastructure::template_handler::TemplateCommandHandler,
+    template_handler: &impl rigorix::templates::infrastructure::TemplateCommandService,
 ) -> Result<String, CliError> {
     match command {
         CliCommand::Run {
