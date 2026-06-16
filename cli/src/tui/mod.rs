@@ -1,8 +1,7 @@
 //! Terminal UI module — interactive TUI (ratatui).
 //!
 //! @canonical .pi/architecture/modules/tui.md
-//! Implements: TUI module — render loop with ratatui
-//! Issue: issue-renderer, issue-views, issue-inputhandler
+//! Implements: TUI module — full render loop with widget-based views
 
 pub mod command_bar;
 pub mod event_bridge;
@@ -15,12 +14,11 @@ pub mod widgets;
 
 use std::time::Duration;
 
+use ratatui::Frame;
 use ratatui::Terminal;
 use ratatui::crossterm::event::{self, Event, KeyEventKind};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style, Stylize};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use tokio_util::sync::CancellationToken;
 
 use crate::cli_boundary::config::CliConfig;
@@ -28,8 +26,8 @@ use crate::cli_boundary::config::CliConfig;
 use self::command_bar::CommandBarState;
 use self::input::keymap;
 use self::input::{InputFocus, KeyAction};
-use self::view_model::{ActiveView, ExecutionPhase, TuiViewModel};
-use self::widgets::LayoutMode;
+use self::view_model::{ActiveView, ExecutionPhase, NodeStatus, TuiViewModel};
+use self::widgets::{LayoutMode, WidgetContext};
 
 /// Run the interactive TUI.
 pub async fn run(
@@ -41,36 +39,52 @@ pub async fn run(
     let _ = (config, cancellation_token, exec, run);
 
     // Initialise terminal using crossterm
-    let stdout = std::io::stdout();
     let _ = ratatui::crossterm::terminal::enable_raw_mode();
-    let mut terminal = match ratatui::Terminal::new(ratatui::backend::CrosstermBackend::new(stdout))
-    {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("Failed to initialise terminal: {e}");
-            let _ = ratatui::crossterm::terminal::disable_raw_mode();
-            return;
-        }
-    };
+    let _ = ratatui::crossterm::execute!(
+        std::io::stdout(),
+        ratatui::crossterm::terminal::EnterAlternateScreen,
+        ratatui::crossterm::event::EnableMouseCapture
+    );
+    let mut terminal =
+        match Terminal::new(ratatui::backend::CrosstermBackend::new(std::io::stdout())) {
+            Ok(t) => t,
+            Err(e) => {
+                restore_terminal();
+                eprintln!("Failed to initialise terminal: {e}");
+                return;
+            }
+        };
 
     // Initialise state
     let mut vm = TuiViewModel::default();
     let mut command_bar = CommandBarState::default();
     let mut input_focus = InputFocus::CommandBar;
+    let mut selected_node: Option<String> = None;
 
     // Run event loop
-    let result = run_event_loop(&mut terminal, &mut vm, &mut command_bar, &mut input_focus).await;
+    let result = run_event_loop(
+        &mut terminal,
+        &mut vm,
+        &mut command_bar,
+        &mut input_focus,
+        &mut selected_node,
+    )
+    .await;
 
     // Restore terminal
+    restore_terminal();
+    if let Err(e) = result {
+        eprintln!("TUI error: {e}");
+    }
+}
+
+fn restore_terminal() {
     let _ = ratatui::crossterm::terminal::disable_raw_mode();
     let _ = ratatui::crossterm::execute!(
         std::io::stdout(),
         ratatui::crossterm::terminal::LeaveAlternateScreen,
         ratatui::crossterm::event::DisableMouseCapture
     );
-    if let Err(e) = result {
-        eprintln!("TUI error: {e}");
-    }
 }
 
 /// Main TUI event loop.
@@ -79,6 +93,7 @@ async fn run_event_loop(
     vm: &mut TuiViewModel,
     command_bar: &mut CommandBarState,
     input_focus: &mut InputFocus,
+    selected_node: &mut Option<String>,
 ) -> Result<(), String> {
     loop {
         // Render frame
@@ -86,7 +101,21 @@ async fn run_event_loop(
             .draw(|frame| {
                 let area = frame.area();
                 let layout_mode = LayoutMode::from_size(area.width, area.height);
-                render_frame(frame, area, layout_mode, vm, command_bar, input_focus);
+                let ctx = WidgetContext {
+                    area,
+                    layout_mode,
+                    color_enabled: true,
+                    detailed: layout_mode != LayoutMode::Compact,
+                };
+                draw_frame(
+                    frame,
+                    area,
+                    &ctx,
+                    vm,
+                    command_bar,
+                    input_focus,
+                    selected_node,
+                );
             })
             .map_err(|e| format!("Render error: {e}"))?;
 
@@ -96,8 +125,8 @@ async fn run_event_loop(
             && (key.kind == KeyEventKind::Press || key.kind == KeyEventKind::Repeat)
         {
             let action = keymap::map_key(key, *input_focus);
-            if !handle_action(action, vm, command_bar, input_focus, key) {
-                break; // Quit
+            if !handle_action(action, vm, command_bar, input_focus, selected_node, key) {
+                break;
             }
         }
     }
@@ -105,27 +134,28 @@ async fn run_event_loop(
 }
 
 /// Handle a key action. Returns false if the TUI should quit.
+#[allow(clippy::too_many_arguments)]
 fn handle_action(
     action: KeyAction,
     vm: &mut TuiViewModel,
     command_bar: &mut CommandBarState,
     input_focus: &mut InputFocus,
+    selected_node: &mut Option<String>,
     key: event::KeyEvent,
 ) -> bool {
-    use KeyAction::*;
-
     match action {
-        Quit => return false,
+        KeyAction::Quit => return false,
 
-        FocusCommandBar => {
+        KeyAction::FocusCommandBar => {
             *input_focus = InputFocus::CommandBar;
             command_bar.focused = true;
         }
-        BlurCommandBar => {
+        KeyAction::BlurCommandBar => {
             *input_focus = InputFocus::Dashboard;
             command_bar.focused = false;
         }
-        ExecuteCommand => {
+
+        KeyAction::ExecuteCommand => {
             if let Some(parsed) = command_bar.parse() {
                 match parsed {
                     command_bar::CommandBarInput::Intent(intent) => {
@@ -133,15 +163,15 @@ fn handle_action(
                         vm.phase = ExecutionPhase::Planning;
                         vm.active_view = ActiveView::Plan;
                     }
-                    command_bar::CommandBarInput::SlashCommand(cmd) => {
-                        match cmd.as_str() {
-                            "history" => vm.active_view = ActiveView::History,
-                            "templates" => vm.active_view = ActiveView::Templates,
-                            "audit" => vm.active_view = ActiveView::Events,
-                            "help" => { /* show help overlay */ }
-                            _ => {}
-                        }
-                    }
+                    command_bar::CommandBarInput::SlashCommand(cmd) => match cmd.as_str() {
+                        "history" => vm.active_view = ActiveView::History,
+                        "templates" => vm.active_view = ActiveView::Templates,
+                        "audit" | "events" => vm.active_view = ActiveView::Events,
+                        "nodes" => vm.active_view = ActiveView::Nodes,
+                        "settings" => vm.active_view = ActiveView::Settings,
+                        "help" => { /* show help overlay — future */ }
+                        _ => {}
+                    },
                     command_bar::CommandBarInput::ColonCommand(cmd) => match cmd.as_str() {
                         "q" => return false,
                         "cancel" => vm.phase = ExecutionPhase::Cancelled,
@@ -152,43 +182,86 @@ fn handle_action(
                 command_bar.submit();
             }
         }
-        NextView | PrevView => {
-            let views = [
+
+        KeyAction::NextView => {
+            let cycle = [
                 ActiveView::Dashboard,
                 ActiveView::Nodes,
                 ActiveView::Events,
                 ActiveView::History,
             ];
-            let idx = views.iter().position(|v| *v == vm.active_view).unwrap_or(0);
-            vm.active_view = views[(idx + 1) % views.len()];
+            let idx = cycle.iter().position(|v| *v == vm.active_view).unwrap_or(0);
+            vm.active_view = cycle[(idx + 1) % cycle.len()];
+        }
+        KeyAction::PrevView => {
+            let cycle = [
+                ActiveView::Dashboard,
+                ActiveView::Nodes,
+                ActiveView::Events,
+                ActiveView::History,
+            ];
+            let idx = cycle.iter().position(|v| *v == vm.active_view).unwrap_or(0);
+            vm.active_view = cycle[(idx + cycle.len() - 1) % cycle.len()];
         }
 
-        // Plan preview actions
-        RunPlan => {
+        KeyAction::RunPlan => {
             vm.phase = ExecutionPhase::Executing;
             vm.active_view = ActiveView::Dashboard;
         }
-        PlanOnly => {
+        KeyAction::PlanOnly => {
             vm.active_view = ActiveView::Dashboard;
         }
-        GenerateTemplate => {
+        KeyAction::GenerateTemplate => {
             vm.active_view = ActiveView::Templates;
         }
 
-        // Scroll / navigation
-        SelectNext => {}
-        SelectPrev => {}
-        Scroll(_) => {}
-        ToggleExpand => {}
-        ShowDetail => {}
-        ShowOutput => {}
-
-        // Command bar text input
-        _ if *input_focus == InputFocus::CommandBar => {
-            handle_command_bar_key(command_bar, key);
+        KeyAction::SelectNext => {
+            let ids: Vec<String> = vm.nodes.keys().cloned().collect();
+            if !ids.is_empty() {
+                let idx = selected_node
+                    .as_ref()
+                    .and_then(|s| ids.iter().position(|id| id == s))
+                    .unwrap_or(0);
+                *selected_node = Some(ids[(idx + 1) % ids.len()].clone());
+            }
+        }
+        KeyAction::SelectPrev => {
+            let ids: Vec<String> = vm.nodes.keys().cloned().collect();
+            if !ids.is_empty() {
+                let idx = selected_node
+                    .as_ref()
+                    .and_then(|s| ids.iter().position(|id| id == s))
+                    .unwrap_or(0);
+                *selected_node = Some(ids[(idx + ids.len() - 1) % ids.len()].clone());
+            }
         }
 
-        None | CancelGraceful | CancelImmediate | ShowHelp | Search | FilterEvents(_) => {}
+        KeyAction::ToggleExpand => {}
+        KeyAction::ShowDetail => {
+            if selected_node.is_some() {
+                vm.active_view = ActiveView::Nodes;
+            }
+        }
+        KeyAction::ShowOutput => {}
+        KeyAction::Scroll(_) => {}
+        KeyAction::CancelGraceful => {
+            vm.phase = ExecutionPhase::Cancelled;
+        }
+        KeyAction::CancelImmediate => {
+            vm.phase = ExecutionPhase::Cancelled;
+        }
+        KeyAction::ShowHelp => {}
+        KeyAction::Search => {}
+        KeyAction::FilterEvents(_) => {}
+
+        KeyAction::None => {
+            // If command bar focused, handle text input
+            if *input_focus == InputFocus::CommandBar
+                && matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat)
+            {
+                handle_command_bar_key(command_bar, key);
+            }
+        }
     }
     true
 }
@@ -197,7 +270,7 @@ fn handle_action(
 fn handle_command_bar_key(state: &mut CommandBarState, key: event::KeyEvent) {
     use event::KeyCode;
     match key.code {
-        KeyCode::Char(c) => {
+        KeyCode::Char(c) if !key.modifiers.contains(event::KeyModifiers::CONTROL) => {
             state.text.insert(state.cursor, c);
             state.cursor += 1;
         }
@@ -212,12 +285,8 @@ fn handle_command_bar_key(state: &mut CommandBarState, key: event::KeyEvent) {
                 state.text.remove(state.cursor);
             }
         }
-        KeyCode::Left => {
-            state.cursor = state.cursor.saturating_sub(1);
-        }
-        KeyCode::Right => {
-            state.cursor = state.cursor.min(state.text.len());
-        }
+        KeyCode::Left => state.cursor = state.cursor.saturating_sub(1),
+        KeyCode::Right => state.cursor = (state.cursor + 1).min(state.text.len()),
         KeyCode::Up => state.history_up(),
         KeyCode::Down => state.history_down(),
         KeyCode::Home => state.cursor = 0,
@@ -226,248 +295,285 @@ fn handle_command_bar_key(state: &mut CommandBarState, key: event::KeyEvent) {
     }
 }
 
-/// Render the entire TUI frame.
-fn render_frame(
-    frame: &mut ratatui::Frame<'_>,
+/// Draw the complete TUI frame.
+fn draw_frame(
+    frame: &mut Frame<'_>,
     area: Rect,
-    layout_mode: LayoutMode,
+    ctx: &WidgetContext,
     vm: &TuiViewModel,
     command_bar: &CommandBarState,
     input_focus: &InputFocus,
+    selected_node: &Option<String>,
 ) {
-    let has_status_bar = true;
-    let bar_height = if has_status_bar { 3 } else { 1 };
+    // Layout: status bar (1 line) + main content (fills) + command bar (3 lines)
+    let chunks = Layout::vertical([
+        Constraint::Length(3),
+        Constraint::Min(1),
+        Constraint::Length(3),
+    ])
+    .split(area);
 
-    let chunks = Layout::vertical([Constraint::Min(1), Constraint::Length(bar_height)]).split(area);
+    // Status bar
+    widgets::render_status_bar(frame, chunks[0], vm);
 
-    // Main content area
-    render_main_content(frame, chunks[0], layout_mode, vm);
+    // Main content area (based on active view)
+    render_main_content(frame, chunks[1], ctx, vm, selected_node);
 
-    // Status bar + command bar
-    render_bottom_bar(frame, chunks[1], command_bar, input_focus, vm);
+    // Command bar
+    widgets::render_command_bar(
+        frame,
+        chunks[2],
+        command_bar,
+        *input_focus == InputFocus::CommandBar,
+    );
 }
 
 /// Render the main content area based on active view.
 fn render_main_content(
-    frame: &mut ratatui::Frame<'_>,
+    frame: &mut Frame<'_>,
     area: Rect,
-    layout_mode: LayoutMode,
+    ctx: &WidgetContext,
     vm: &TuiViewModel,
+    selected_node: &Option<String>,
 ) {
-    let _ = layout_mode;
-
     match vm.active_view {
-        ActiveView::Dashboard => render_dashboard(frame, area, vm),
-        ActiveView::Plan => render_plan_preview(frame, area, vm),
-        ActiveView::History => render_history(frame, area, vm),
-        ActiveView::Events => render_events(frame, area, vm),
-        ActiveView::Nodes => render_nodes(frame, area, vm),
-        ActiveView::Settings => render_settings(frame, area),
-        ActiveView::Templates => render_templates(frame, area),
-        ActiveView::Clarification => render_placeholder(frame, area, "Clarification"),
-        ActiveView::Diff => render_placeholder(frame, area, "Diff"),
+        ActiveView::Dashboard => render_dashboard_view(frame, area, ctx, vm, selected_node),
+        ActiveView::Plan => render_plan_view(frame, area, vm),
+        ActiveView::History => render_history_view(frame, area, vm),
+        ActiveView::Events => render_events_view(frame, area, vm),
+        ActiveView::Nodes => render_nodes_view(frame, area, vm, selected_node),
+        ActiveView::Settings => {
+            render_text_view(frame, area, "Settings", "Settings — configure Rigorix")
+        }
+        ActiveView::Templates => {
+            render_text_view(frame, area, "Templates", "Templates — browse and manage")
+        }
+        ActiveView::Clarification => {
+            render_text_view(frame, area, "Clarification", "LLM clarification requests")
+        }
+        ActiveView::Diff => render_text_view(frame, area, "Diff", "Diff — plan comparison"),
     }
 }
 
-/// Render a placeholder view.
-fn render_placeholder(frame: &mut ratatui::Frame<'_>, area: Rect, name: &str) {
-    let block = Block::default()
-        .title(format!(" {name} "))
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray));
-    let text = Paragraph::new(format!("{name} view — implementation pending"))
-        .block(block)
-        .wrap(Wrap { trim: false });
-    frame.render_widget(text, area);
-}
+/// Render the dashboard view with DAG tree + details + metrics.
+fn render_dashboard_view(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    ctx: &WidgetContext,
+    vm: &TuiViewModel,
+    selected_node: &Option<String>,
+) {
+    let detailed = ctx.detailed;
 
-/// Render the dashboard view (DAG tree + details + metrics).
-fn render_dashboard(frame: &mut ratatui::Frame<'_>, area: Rect, vm: &TuiViewModel) {
-    let chunks = Layout::vertical([
-        Constraint::Length(3),
-        Constraint::Min(1),
-        Constraint::Length(6),
-    ])
-    .split(area);
-
-    // Header
-    let phase_str = format!("{:?}", vm.phase);
-    let header = Paragraph::new(Line::from(vec![
-        Span::styled(" Rigorix ", Style::default().fg(Color::Cyan).bold()),
-        Span::raw(" — "),
-        Span::styled(phase_str, Style::default().fg(Color::Yellow)),
-    ]))
-    .block(Block::default().borders(Borders::ALL));
-    frame.render_widget(header, chunks[0]);
-
-    // Node list / details area
-    let node_chunks = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(chunks[1]);
-
-    let node_list = if vm.nodes.is_empty() {
-        Paragraph::new(" No execution loaded. Type an intent in the command bar.")
-            .block(Block::default().title(" Nodes ").borders(Borders::ALL))
+    let chunks = if detailed {
+        Layout::horizontal([
+            Constraint::Percentage(50),
+            Constraint::Percentage(30),
+            Constraint::Percentage(20),
+        ])
+        .split(area)
     } else {
-        let node_text: Vec<String> = vm
-            .nodes
-            .values()
-            .map(|n| format!("  {} [{}]", n.name, status_char(n.status)))
-            .collect();
-        Paragraph::new(node_text.join("\n"))
-            .block(Block::default().title(" Nodes ").borders(Borders::ALL))
+        Layout::horizontal([Constraint::Percentage(60), Constraint::Percentage(40)]).split(area)
     };
-    frame.render_widget(node_list, node_chunks[0]);
 
-    // Details panel
-    let details = Paragraph::new(" Select a node to view details")
-        .block(Block::default().title(" Details ").borders(Borders::ALL));
-    frame.render_widget(details, node_chunks[1]);
+    // Left: DAG tree
+    widgets::render_dag_tree(frame, chunks[0], vm);
 
-    // Metrics bar
-    let metrics_text = format!(
-        " LLM calls: {} | Tokens: {} | Nodes: {}/{} | Throughput: {:.1}/s",
-        vm.metrics.llm_calls,
-        vm.metrics.tokens,
-        vm.metrics.nodes_completed,
-        vm.metrics.nodes_total,
-        vm.metrics.throughput,
-    );
-    let metrics = Paragraph::new(metrics_text)
-        .block(Block::default().title(" Metrics ").borders(Borders::ALL));
-    frame.render_widget(metrics, chunks[2]);
+    if detailed && chunks.len() > 2 {
+        // Center: node details
+        let node = selected_node.as_ref().and_then(|id| vm.nodes.get(id));
+        widgets::render_node_detail(frame, chunks[1], node);
+
+        // Right: metrics + budget
+        let right_chunks = Layout::vertical([
+            Constraint::Length(5),
+            Constraint::Length(5),
+            Constraint::Min(1),
+        ])
+        .split(chunks[2]);
+
+        widgets::render_progress_bar(frame, right_chunks[0], vm);
+        widgets::render_metrics_panel(frame, right_chunks[1], vm);
+        widgets::render_event_log(frame, right_chunks[2], vm);
+    } else {
+        // Compact: details only
+        let right_chunks =
+            Layout::vertical([Constraint::Length(8), Constraint::Min(1)]).split(chunks[1]);
+        widgets::render_metrics_panel(frame, right_chunks[0], vm);
+        widgets::render_event_log(frame, right_chunks[1], vm);
+    }
 }
 
 /// Render the plan preview view.
-fn render_plan_preview(frame: &mut ratatui::Frame<'_>, area: Rect, vm: &TuiViewModel) {
+fn render_plan_view(frame: &mut Frame<'_>, area: Rect, vm: &TuiViewModel) {
     let intent = vm.intent.as_deref().unwrap_or("(no intent)");
     let template = vm.template_id.as_deref().unwrap_or("(detecting...)");
+    let node_count = vm.nodes.len();
 
-    let text = format!(
-        "\n  Intent: {intent}\n  Template: {template}\n\n  [r] Run    [p] Plan Only    [g] Generate    [Esc] Cancel\n"
-    );
-    let preview = Paragraph::new(text)
-        .block(
-            Block::default()
-                .title(" Plan Preview ")
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Cyan)),
-        )
-        .wrap(Wrap { trim: false });
-    frame.render_widget(preview, area);
+    let lines = vec![
+        ratatui::text::Line::from(""),
+        ratatui::text::Line::from(vec![
+            ratatui::text::Span::styled(" Intent: ", ratatui::style::Style::default().bold()),
+            ratatui::text::Span::raw(intent),
+        ]),
+        ratatui::text::Line::from(vec![
+            ratatui::text::Span::styled(" Template: ", ratatui::style::Style::default().bold()),
+            ratatui::text::Span::raw(template),
+        ]),
+        ratatui::text::Line::from(vec![
+            ratatui::text::Span::styled(" Nodes: ", ratatui::style::Style::default().bold()),
+            ratatui::text::Span::raw(node_count.to_string()),
+        ]),
+        ratatui::text::Line::from(""),
+        ratatui::text::Line::from(vec![
+            ratatui::text::Span::styled(
+                " [r] Run",
+                ratatui::style::Style::default().fg(Color::Green),
+            ),
+            ratatui::text::Span::raw("    "),
+            ratatui::text::Span::styled(
+                "[p] Plan Only",
+                ratatui::style::Style::default().fg(Color::Yellow),
+            ),
+            ratatui::text::Span::raw("    "),
+            ratatui::text::Span::styled(
+                "[g] Generate",
+                ratatui::style::Style::default().fg(Color::Blue),
+            ),
+            ratatui::text::Span::raw("    "),
+            ratatui::text::Span::styled(
+                "[Esc] Cancel",
+                ratatui::style::Style::default().fg(Color::Red),
+            ),
+        ]),
+    ];
+
+    let block = ratatui::widgets::Block::default()
+        .title(" Plan Preview ")
+        .borders(ratatui::widgets::Borders::ALL)
+        .border_style(ratatui::style::Style::default().fg(Color::Cyan));
+    let paragraph = ratatui::widgets::Paragraph::new(lines)
+        .block(block)
+        .wrap(ratatui::widgets::Wrap { trim: false });
+    frame.render_widget(paragraph, area);
 }
 
 /// Render the history view.
-fn render_history(frame: &mut ratatui::Frame<'_>, area: Rect, vm: &TuiViewModel) {
-    let entries = if vm.command_bar_history.is_empty() {
-        " No previous commands.".to_string()
+fn render_history_view(frame: &mut Frame<'_>, area: Rect, vm: &TuiViewModel) {
+    let entries: Vec<ratatui::text::Line> = if vm.command_bar_history.is_empty() {
+        vec![ratatui::text::Line::from(" No previous commands.")]
     } else {
         vm.command_bar_history
             .iter()
             .enumerate()
-            .map(|(i, cmd)| format!("  {}. {cmd}", i + 1))
-            .collect::<Vec<_>>()
-            .join("\n")
+            .map(|(i, cmd)| ratatui::text::Line::from(format!("  {}. {cmd}", i + 1)))
+            .collect()
     };
-    let text =
-        Paragraph::new(entries).block(Block::default().title(" History ").borders(Borders::ALL));
-    frame.render_widget(text, area);
+
+    let list = ratatui::widgets::List::new(entries).block(
+        ratatui::widgets::Block::default()
+            .title(" Command History ")
+            .borders(ratatui::widgets::Borders::ALL)
+            .border_style(ratatui::style::Style::default().fg(Color::Blue)),
+    );
+    frame.render_widget(list, area);
 }
 
 /// Render the events view.
-fn render_events(frame: &mut ratatui::Frame<'_>, area: Rect, vm: &TuiViewModel) {
-    let entries = if vm.event_log.is_empty() {
-        " No events.".to_string()
+fn render_events_view(frame: &mut Frame<'_>, area: Rect, vm: &TuiViewModel) {
+    let entries: Vec<ratatui::text::Line> = if vm.event_log.is_empty() {
+        vec![ratatui::text::Line::from(" No events.")]
     } else {
         vm.event_log
             .iter()
-            .map(|e| format!("  [{}] {} — {}", e.timestamp_ms, e.event_type, e.summary))
-            .collect::<Vec<_>>()
-            .join("\n")
-    };
-    let text =
-        Paragraph::new(entries).block(Block::default().title(" Events ").borders(Borders::ALL));
-    frame.render_widget(text, area);
-}
-
-/// Render the nodes view.
-fn render_nodes(frame: &mut ratatui::Frame<'_>, area: Rect, vm: &TuiViewModel) {
-    let entries = if vm.nodes.is_empty() {
-        " No nodes.".to_string()
-    } else {
-        vm.nodes
-            .values()
-            .map(|n| {
-                format!(
-                    "  {} | {} | tool={} | retries={}",
-                    status_char(n.status),
-                    n.name,
-                    n.tool_name,
-                    n.retry_count
-                )
+            .rev()
+            .take(100)
+            .map(|e| {
+                let color = match e.event_type.as_str() {
+                    t if t.contains("Error") || t.contains("Failed") => Color::Red,
+                    t if t.contains("Completed") => Color::Green,
+                    t if t.contains("Started") || t.contains("Running") => Color::Cyan,
+                    _ => Color::White,
+                };
+                ratatui::text::Line::from(vec![
+                    ratatui::text::Span::styled(
+                        format!("[{}] ", &e.event_type[..e.event_type.len().min(15)]),
+                        ratatui::style::Style::default().fg(color),
+                    ),
+                    ratatui::text::Span::raw(&e.summary),
+                ])
             })
-            .collect::<Vec<_>>()
-            .join("\n")
+            .collect()
     };
-    let text =
-        Paragraph::new(entries).block(Block::default().title(" Nodes ").borders(Borders::ALL));
-    frame.render_widget(text, area);
+
+    let list = ratatui::widgets::List::new(entries).block(
+        ratatui::widgets::Block::default()
+            .title(" Events ")
+            .borders(ratatui::widgets::Borders::ALL)
+            .border_style(ratatui::style::Style::default().fg(Color::Magenta)),
+    );
+    frame.render_widget(list, area);
 }
 
-/// Render the settings view.
-fn render_settings(frame: &mut ratatui::Frame<'_>, area: Rect) {
-    let text = Paragraph::new(" Settings view — implementation pending")
-        .block(Block::default().title(" Settings ").borders(Borders::ALL));
-    frame.render_widget(text, area);
-}
-
-/// Render the templates view.
-fn render_templates(frame: &mut ratatui::Frame<'_>, area: Rect) {
-    let text = Paragraph::new(" Templates view — implementation pending")
-        .block(Block::default().title(" Templates ").borders(Borders::ALL));
-    frame.render_widget(text, area);
-}
-
-/// Render the bottom bar (status + command input).
-fn render_bottom_bar(
-    frame: &mut ratatui::Frame<'_>,
+/// Render the nodes detail view.
+fn render_nodes_view(
+    frame: &mut Frame<'_>,
     area: Rect,
-    command_bar: &CommandBarState,
-    input_focus: &InputFocus,
     vm: &TuiViewModel,
+    selected_node: &Option<String>,
 ) {
-    let chunks = Layout::horizontal([Constraint::Length(20), Constraint::Min(1)]).split(area);
+    let chunks =
+        Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)]).split(area);
 
-    // Status info
-    let phase_str = format!(" {:?} ", vm.phase);
-    let status_line = Paragraph::new(Line::from(vec![
-        Span::raw(phase_str),
-        Span::raw(format!(" | {} nodes", vm.nodes.len())),
-    ]));
-    frame.render_widget(status_line, chunks[0]);
+    // Left: node list
+    let items: Vec<ratatui::widgets::ListItem> = vm
+        .nodes
+        .values()
+        .map(|n| {
+            let icon = match n.status {
+                NodeStatus::Completed => "✓",
+                NodeStatus::InProgress => "▶",
+                NodeStatus::Failed => "✗",
+                NodeStatus::Retrying => "↻",
+                NodeStatus::Pending => "·",
+                NodeStatus::Skipped => "–",
+            };
+            let selected = selected_node.as_deref() == Some(&n.id);
+            let style = if selected {
+                Style::default().bg(Color::Blue).fg(Color::White)
+            } else {
+                Style::default()
+            };
+            ratatui::widgets::ListItem::new(ratatui::text::Line::from(vec![
+                ratatui::text::Span::raw(format!(" {} ", icon)),
+                ratatui::text::Span::raw(&n.name),
+            ]))
+            .style(style)
+        })
+        .collect();
 
-    // Command bar text input
-    let prefix = if command_bar.focused { ">" } else { " " };
-    let cmd_text = format!(" {prefix} {}", command_bar.text);
-    let cmd_style = if *input_focus == InputFocus::CommandBar {
-        Style::default().fg(Color::Green)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
-    let cmd_line = Paragraph::new(cmd_text)
-        .style(cmd_style)
-        .block(Block::default().borders(Borders::ALL));
-    frame.render_widget(cmd_line, chunks[1]);
+    let list = ratatui::widgets::List::new(items).block(
+        ratatui::widgets::Block::default()
+            .title(" All Nodes ")
+            .borders(ratatui::widgets::Borders::ALL),
+    );
+    frame.render_widget(list, chunks[0]);
+
+    // Right: selected node details
+    let node = selected_node.as_ref().and_then(|id| vm.nodes.get(id));
+    widgets::render_node_detail(frame, chunks[1], node);
 }
 
-/// Return a single character representing the node status.
-fn status_char(status: view_model::NodeStatus) -> char {
-    use view_model::NodeStatus::*;
-    match status {
-        Pending => '·',
-        InProgress => '▶',
-        Completed => '✓',
-        Failed => '✗',
-        Retrying => '↻',
-        Skipped => '–',
-    }
+/// Render a simple text view (placeholder).
+fn render_text_view(frame: &mut Frame<'_>, area: Rect, title: &str, subtitle: &str) {
+    let block = ratatui::widgets::Block::default()
+        .title(format!(" {title} "))
+        .borders(ratatui::widgets::Borders::ALL)
+        .border_style(Style::default().fg(Color::DarkGray));
+    let paragraph = ratatui::widgets::Paragraph::new(format!(
+        "\n\n  {subtitle}\n\n  More details coming soon."
+    ))
+    .block(block)
+    .wrap(ratatui::widgets::Wrap { trim: false });
+    frame.render_widget(paragraph, area);
 }
