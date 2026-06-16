@@ -132,10 +132,9 @@ pub async fn dispatch(
         CliCommand::History { limit, status } => {
             DispatchResult::success(format!("History: limit={limit:?}, status={status:?}"))
         }
-        CliCommand::Explain {
-            execution_id,
-            diff_id,
-        } => DispatchResult::success(format!("Explain: {execution_id}, diff={diff_id:?}")),
+        CliCommand::Explain { execution_id, diff } => {
+            DispatchResult::success(format!("Explain: {execution_id}, diff={diff:?}"))
+        }
         CliCommand::DiffPlan { id1, id2 } => {
             DispatchResult::success(format!("DiffPlan: {id1} vs {id2}"))
         }
