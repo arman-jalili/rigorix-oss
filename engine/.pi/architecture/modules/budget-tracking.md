@@ -290,5 +290,5 @@ pub enum LlmBudgetError {
 
 ---
 
-*Last updated: 2026-06-14*
+Last updated: 2026-06-15
 *Module version: 1.1.0*

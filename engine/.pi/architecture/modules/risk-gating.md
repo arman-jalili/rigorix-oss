@@ -242,5 +242,5 @@ Error responses follow a unified `ApiErrorResponse` format with standardized cod
 
 ---
 
-*Last updated: 2026-06-14*
+Last updated: 2026-06-15
 *Module version: 2.0.0*
