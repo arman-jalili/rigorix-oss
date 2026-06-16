@@ -33,8 +33,16 @@
 //! ├── observability/    # Tracing, health checks, event schemas
 //! │   ├── domain/       # ObservabilityEvent schemas
 //! │   └── infrastructure/ # TracingInitializer trait + tracing impl
-//! └── cancellation/     # Signal handler for Ctrl+C
-//!     └── infrastructure/ # SignalHandler trait + impl
+//! ├── cancellation/     # Signal handler for Ctrl+C
+//! │   ├── domain/       # CancellationCliError, CancellationCliEvent
+//! │   ├── application/  # SignalHandler trait, DTO schemas
+//! │   ├── infrastructure/ # SignalHandlerImpl, CancellationCliRepository
+//! │   └── interfaces/   # HTTP API contracts
+//! └── templates/        # Template list/show commands
+//!     ├── domain/       # TemplateCliError, TemplateCliEvent
+//!     ├── application/  # TemplateCommandService trait, DTOs
+//!     ├── infrastructure/ # TemplateEngineHandler, TemplateCliRepository
+//!     └── interfaces/   # HTTP API contracts
 //! ```
 //!
 //! # Contract Freeze Notice
