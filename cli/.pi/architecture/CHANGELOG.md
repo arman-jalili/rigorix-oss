@@ -1,5 +1,53 @@
 # Architecture Change Log
 
+## [2026-06-16] — TUI Module Implementation Complete
+
+### Change
+Completed full implementation of the TUI module with 8 components per the contract freeze.
+
+### Components Implemented
+| Component | Module | Status |
+|-----------|--------|--------|
+| CommandBar | `tui::command_bar` | ✅ Text input with history + slash/colon commands |
+| PlanReview | `tui::plan_review` | ✅ Plan preview state with action choices |
+| EventBridge | `tui::event_bridge` | ✅ Trait + types (engine wiring pending) |
+| ViewModel | `tui::view_model` | ✅ Double-buffered state + mutation applier |
+| Renderer | `tui::widgets/*` | ✅ 7 ratatui widgets in separate files |
+| Views | `tui/views/*` | ✅ 9 views with real rendering content |
+| InputHandler | `tui/input/*` | ✅ Real keymap, command palette, focus handling |
+| OrchestratorSpawner | `tui::orchestrator_spawner` | ✅ Trait + types (engine wiring pending) |
+
+### File Structure
+```
+src/tui/
+├── mod.rs              # Run loop + event handling
+├── command_bar.rs      # CommandBarState with history
+├── event_bridge.rs     # EventBridge trait
+├── orchestrator_spawner.rs  # OrchestratorSpawner trait
+├── plan_review.rs      # PlanReviewState
+├── view_model.rs       # ViewModel types + mutation applier
+├── views/              # 9 view files (1 per view)
+├── widgets/            # 7 widget files + types
+└── input/              # keymap.rs + command_palette.rs
+```
+
+### Tests
+- 70 unit tests total (was 27)
+- ViewModel: 25 tests (mutation variants, batch, defaults)
+- CommandBar: 14 tests (parse, submit, history)
+- CommandPalette: 8 tests (fuzzy search, case, integrity)
+
+### Documentation
+- `docs/runbook-tui.md` — startup/shutdown/failure docs
+- `docs/dr-plan-tui.md` — backup/restore/failover docs
+
+### Status
+- Architecture: ✅ Defined
+- Source code: ✅ Implemented (engine wiring stubs remain)
+- Tests: 70/70 passing
+- CI proofing: ✅ Complete
+- Documentation: ✅ Runbook + DR plan
+
 ## [2026-06-16] — Architecture Simplification (Single-Module CLI)
 
 ### Change
