@@ -73,7 +73,7 @@ echo ""
 # Check 1: CliConfigLoader trait defined
 # ---------------------------------------------------------------------------
 echo "--- Config Trait Definitions ---"
-if grep -q "pub trait CliConfigLoader" "${SRC_DIR}/configuration/infrastructure/config.rs" 2>/dev/null; then
+if grep -q "pub trait CliConfigLoader" "${SRC_DIR}/configuration/application/service.rs" 2>/dev/null; then
     pass "CliConfigLoader trait defined (infrastructure/config.rs)"
 else
     fail "CliConfigLoader trait missing"
@@ -182,7 +182,7 @@ fi
 echo ""
 echo "--- Trait Method Completeness ---"
 for method in "load" "load_from_path" "has_default_config" "searched_paths"; do
-    if grep -q "async fn $method" "${SRC_DIR}/configuration/infrastructure/config.rs" 2>/dev/null; then
+    if grep -q "async fn $method" "${SRC_DIR}/configuration/application/service.rs" 2>/dev/null; then
         pass "CliConfigLoader::$method() defined"
     else
         fail "CliConfigLoader::$method() missing"
