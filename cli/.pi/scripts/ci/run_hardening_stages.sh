@@ -232,6 +232,11 @@ run_stage "13" "observability_proofing" \
     "${SCRIPTS_DIR}/stage_observability_proofing.sh" \
     "always"
 
+# Stage 14: Templates Module Proofing
+run_stage "14" "template_proofing" \
+    "${SCRIPTS_DIR}/stage_template_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""
