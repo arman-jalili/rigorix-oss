@@ -222,6 +222,11 @@ run_stage "11" "cli_proofing" \
     "${SCRIPTS_DIR}/stage_cli_proofing.sh" \
     "always"
 
+# Stage 12: Config Module Proofing
+run_stage "12" "config_proofing" \
+    "${SCRIPTS_DIR}/stage_config_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""
