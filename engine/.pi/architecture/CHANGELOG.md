@@ -10,6 +10,25 @@ This document tracks all architecture changes requiring implementation updates.
 
 ---
 
+## [2026-06-16] — Orchestrator Module Added
+
+### Added
+- Module: orchestrator
+  - New top-level entry point that wires planning → execution → state persistence → event emission → audit
+  - OrchestratorService trait: `run()`, `plan_only()`, `cancel()`, `status()`, `event_bus()`
+  - OrchestratorBuilder: constructs orchestrator from Config with all sub-service wiring
+  - ExecutionRecord: aggregate result containing planning metadata, task results, and drained events
+  - OrchestratorError: typed error enum wrapping planning, execution, state, audit, cancellation errors
+  - DTOs: RunInput/RunOutput, PlanOnlyInput/PlanOnlyOutput, CancelInput/CancelOutput, StatusOutput
+  - Module doc created at `.pi/architecture/modules/orchestrator.md`
+
+### Rationale
+Without an orchestrator, every consumer (CLI, CI/CD, IDE) must wire 5+ engine services manually.
+The original project had an orchestrator — this restores it in the new engine architecture.
+
+
+---
+
 ## [2026-06-15] - Execution Engine Epic Implementation Complete
 
 ### Added
@@ -481,3 +500,19 @@ When making architecture changes:
 
 *Last updated: 2026-06-13*
 *Architecture version: 1.0.0*
+
+## [2026-06-16] — Orchestrator Implementation Complete
+
+### Changed
+- Updated module status from "pending" to "done" in orchestrator architecture doc
+- Implemented OrchestratorService (#339): full 10-step lifecycle with mock-based unit tests (8 tests)
+- Implemented OrchestratorBuilder (#340): dependency injection wiring with fluent builder API (7 tests)
+- Implemented ExecutionRecord (#341): helpers, constructors, serialization roundtrip (11 tests)
+- Created proofing scripts (#342): 23 contract checks + CI integration as stage #26
+- Created runbook-orchestrator.md and dr-plan-orchestrator.md (#343)
+
+### Implementation Stats
+- **26 tests** across orchestrator module
+- **6 PRs** merged: #344 (contract), #345 (service), #346 (builder), #347 (record), #348 (proofing)
+- **2 docs** created: runbook + DR plan
+- **3 CI scripts** created: contract check, coverage check, stage wrapper
