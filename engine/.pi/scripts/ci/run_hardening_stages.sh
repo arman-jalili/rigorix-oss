@@ -294,6 +294,11 @@ run_stage "24" "error-handling_proofing" \
 run_stage "25" "execution-engine_proofing" \
     "${SCRIPTS_DIR}/stage_execution-engine_proofing.sh" \
     "always"
+
+# Stage 26: Orchestrator Proofing
+run_stage "26" "orchestrator_proofing" \
+    "${SCRIPTS_DIR}/stage_orchestrator_proofing.sh" \
+    "always"
 # ── Summary ──
 
 echo ""
