@@ -210,8 +210,10 @@ pub enum SourceLanguage {
 
 /// Visibility/access level of a code symbol.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum SymbolVisibility {
     /// Public — accessible from outside the module.
+    #[default]
     Public,
     /// Private — only accessible within the module.
     Private,
@@ -221,11 +223,6 @@ pub enum SymbolVisibility {
     Crate,
 }
 
-impl Default for SymbolVisibility {
-    fn default() -> Self {
-        SymbolVisibility::Public
-    }
-}
 
 // ---------------------------------------------------------------------------
 // SymbolGraph

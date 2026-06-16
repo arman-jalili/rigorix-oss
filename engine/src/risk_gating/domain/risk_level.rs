@@ -35,9 +35,11 @@ use serde::{Deserialize, Serialize};
 ///   requiring explicit opt-in to execute with side effects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum RiskLevel {
     /// Read-only operations with no side effects.
     /// Gate: auto-execute without user interaction.
+    #[default]
     Low,
 
     /// State-modifying operations that are reversible.
@@ -92,11 +94,6 @@ pub enum GatingAction {
     DryRun,
 }
 
-impl Default for RiskLevel {
-    fn default() -> Self {
-        RiskLevel::Low
-    }
-}
 
 #[cfg(test)]
 mod tests {

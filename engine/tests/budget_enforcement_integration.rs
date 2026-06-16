@@ -8,7 +8,6 @@ use rigorix::budget_tracking::application::dto::{
 };
 use rigorix::budget_tracking::application::factory::LlmBudgetFactory;
 use rigorix::budget_tracking::application::llm_budget_factory_impl::LlmBudgetFactoryImpl;
-use rigorix::budget_tracking::application::service::LlmBudgetService;
 use uuid::Uuid;
 
 #[tokio::test]

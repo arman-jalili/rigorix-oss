@@ -415,7 +415,7 @@ Now generate a template for the following user intent."##,
         if content_after_open.is_empty() && first_fence.is_some() {
             return trimmed
                 .trim_end_matches("```")
-                .trim_end_matches(|c: char| c == '`')
+                .trim_end_matches('`')
                 .trim()
                 .to_string();
         }

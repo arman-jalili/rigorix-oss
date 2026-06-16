@@ -335,7 +335,7 @@ impl ExecutionEnforcer for ExecutionEnforcerImpl {
                 input
                     .resources
                     .as_ref()
-                    .map_or(true, |resources| resources.contains(name))
+                    .is_none_or(|resources| resources.contains(name))
             })
             .map(|(name, budget)| Self::build_resource_budget_status(name, budget))
             .collect();
@@ -468,7 +468,7 @@ mod tests {
         CheckExecutionLimitsInput, EvaluateToolCallInput, GetBudgetStatusInput,
         TrackResourceUsageInput,
     };
-    use crate::enforcement::domain::{EnforcementPresetProfile, ResourceBudget, ToolRiskLevel};
+    use crate::enforcement::domain::{ResourceBudget, ToolRiskLevel};
 
     #[tracing::instrument(skip_all)]
     fn create_test_enforcer() -> ExecutionEnforcerImpl {
@@ -571,7 +571,7 @@ mod tests {
         let enforcer = create_strict_enforcer();
 
         // Set tool call count to the max
-        for i in 0..200 {
+        for _i in 0..200 {
             let track_input = TrackResourceUsageInput {
                 execution_id: "test-exec-2".to_string(),
                 resource: "tool_calls".to_string(),

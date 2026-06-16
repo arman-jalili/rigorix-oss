@@ -308,7 +308,7 @@ impl RiskGateService for RiskGateServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
+    
 
     #[tracing::instrument(skip_all)]
     fn create_service(execution_id: &str) -> RiskGateServiceImpl {

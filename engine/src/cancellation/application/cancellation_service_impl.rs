@@ -125,7 +125,7 @@ impl CancellationService for CancellationManagerImpl {
     ) -> Result<CancelExecutionOutput, CancellationError> {
         // Check if already cancelling
         if self.cancelled.load(Ordering::SeqCst) {
-            let current = self.signal_rx.borrow().clone();
+            let current = *self.signal_rx.borrow();
             return Err(CancellationError::AlreadyCancelling {
                 current_signal: current.unwrap_or(ShutdownSignal::Graceful),
             });
@@ -158,7 +158,7 @@ impl CancellationService for CancellationManagerImpl {
     ) -> Result<CancelExecutionOutput, CancellationError> {
         // Check if already cancelling
         if self.cancelled.load(Ordering::SeqCst) {
-            let current = self.signal_rx.borrow().clone();
+            let current = *self.signal_rx.borrow();
             return Err(CancellationError::AlreadyCancelling {
                 current_signal: current.unwrap_or(ShutdownSignal::Immediate),
             });
@@ -224,10 +224,9 @@ impl CancellationService for CancellationManagerImpl {
 
         Ok(ShutdownOutput {
             execution_id: input.execution_id,
-            signal_used: self
+            signal_used: (*self
                 .signal_rx
-                .borrow()
-                .clone()
+                .borrow())
                 .unwrap_or(ShutdownSignal::Graceful),
             total_tasks: total_at_start + completed + cancelled,
             completed_tasks: completed,
@@ -245,7 +244,7 @@ impl CancellationService for CancellationManagerImpl {
 
     #[tracing::instrument(skip_all)]
     fn current_signal(&self) -> Option<ShutdownSignal> {
-        self.signal_rx.borrow().clone()
+        *self.signal_rx.borrow()
     }
 
     #[tracing::instrument(skip_all)]
@@ -270,13 +269,13 @@ impl CancellationService for CancellationManagerImpl {
         let mut inner = self.signal_tx.subscribe();
         tokio::spawn(async move {
             // Forward the initial value
-            let initial = inner.borrow().clone();
+            let initial = *inner.borrow();
             if let Some(signal) = initial {
                 let _ = tx.send(signal);
             }
             // Forward subsequent updates
             while inner.changed().await.is_ok() {
-                let signal = inner.borrow().clone();
+                let signal = *inner.borrow();
                 if let Some(s) = signal {
                     let _ = tx.send(s);
                 }

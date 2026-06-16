@@ -482,7 +482,7 @@ mod tests {
     #[tokio::test]
     async fn test_consistency_with_service() {
         use crate::failure_classification::application::{
-            ClassifyFailureInput, FailureClassifierService, FailureClassifierServiceImpl,
+            FailureClassifierService, FailureClassifierServiceImpl,
         };
         use crate::failure_classification::domain::FailureType;
 

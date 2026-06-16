@@ -114,7 +114,7 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
             detail: format!("RwLock poisoned: {}", e),
         })?;
 
-        let symbol = graph.lookup(&input.name).map(|s| s.clone());
+        let symbol = graph.lookup(&input.name).cloned();
 
         let (references_from, references_to) = if input.include_adjacency {
             let from = graph
@@ -145,22 +145,20 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
 
         let mut results: Vec<SymbolDefinition> = graph
             .search(&input.pattern)
-            .into_iter()
-            .map(|s| s.clone())
-            .filter(|s| {
-                let kind_ok = input.kind_filter.as_ref().map_or(true, |k| &s.kind == k);
+            .into_iter().filter(|&s| {
+                let kind_ok = input.kind_filter.as_ref().is_none_or(|k| &s.kind == k);
                 let lang_ok = input
                     .language_filter
                     .as_ref()
-                    .map_or(true, |l| &s.language == l);
+                    .is_none_or(|l| &s.language == l);
                 kind_ok && lang_ok
-            })
+            }).cloned()
             .collect();
 
         let total_matches = results.len();
         let truncated = input
             .max_results
-            .map_or(false, |limit| total_matches > limit);
+            .is_some_and(|limit| total_matches > limit);
 
         if let Some(limit) = input.max_results {
             results.truncate(limit);
@@ -185,8 +183,7 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
         let symbols: Vec<SymbolDefinition> = graph
             .lookup_by_file(&input.file)
             .into_iter()
-            .filter(|s| input.kind_filter.as_ref().map_or(true, |k| &s.kind == k))
-            .map(|s| s.clone())
+            .filter(|s| input.kind_filter.as_ref().is_none_or(|k| &s.kind == k)).cloned()
             .collect();
 
         let total = symbols.len();

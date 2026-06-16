@@ -121,7 +121,7 @@ impl GateStateRegistry {
         pending
             .get(execution_id)
             .and_then(|gates| gates.get(gate_id))
-            .map_or(false, |g| !g.resolved)
+            .is_some_and(|g| !g.resolved)
     }
 
     /// Clean up all gates for a completed execution.

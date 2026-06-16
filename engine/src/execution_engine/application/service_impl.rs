@@ -441,7 +441,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
 
         let session = sessions
             .get(&input.dag_id)
-            .ok_or_else(|| ExecutionError::NodeNotFound {
+            .ok_or(ExecutionError::NodeNotFound {
                 node_id: input.dag_id,
             })?;
 
@@ -490,7 +490,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         let session =
             sessions
                 .get_mut(&input.dag_id)
-                .ok_or_else(|| ExecutionError::NodeNotFound {
+                .ok_or(ExecutionError::NodeNotFound {
                     node_id: input.dag_id,
                 })?;
 
@@ -530,7 +530,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         let session =
             sessions
                 .get_mut(&input.dag_id)
-                .ok_or_else(|| ExecutionError::NodeNotFound {
+                .ok_or(ExecutionError::NodeNotFound {
                     node_id: input.dag_id,
                 })?;
 
@@ -568,7 +568,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         let session =
             sessions
                 .get_mut(&input.dag_id)
-                .ok_or_else(|| ExecutionError::NodeNotFound {
+                .ok_or(ExecutionError::NodeNotFound {
                     node_id: input.dag_id,
                 })?;
 

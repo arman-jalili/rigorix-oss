@@ -17,7 +17,7 @@ mod tests {
             (3, 200, 0),
         ];
 
-        for (calls, max_tokens, actual_tokens) in scenarios {
+        for (calls, max_tokens, _actual_tokens) in scenarios {
             let budget = LlmBudget {
                 max_calls: calls + 1,
                 max_tokens,
