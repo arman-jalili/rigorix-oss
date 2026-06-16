@@ -31,6 +31,9 @@ use tracing::info;
 
 use rigorix::cancellation::infrastructure::signal::SignalHandler;
 use rigorix::cancellation::infrastructure::signal_impl::SignalHandlerImpl;
+use rigorix::cli_boundary::application::dto::{
+    TemplateListOutput as CliTemplateListOutput, TemplateShowOutput as CliTemplateShowOutput,
+};
 use rigorix::cli_boundary::domain::error::CliError;
 use rigorix::cli_boundary::infrastructure::output::LogFormatter;
 use rigorix::cli_boundary::infrastructure::output_impl::LogFormatterImpl;
@@ -42,7 +45,7 @@ use rigorix::configuration::infrastructure::config::CliConfigLoader;
 use rigorix::configuration::infrastructure::config_impl::{
     CliConfigLoaderImpl, build_engine_cli_overrides, validate_api_key_for_command,
 };
-use rigorix::templates::infrastructure::TemplateCommandService;
+use rigorix::templates::application::TemplateCommandService;
 use rigorix_engine::configuration::application::ConfigService;
 
 #[tokio::main]
@@ -217,7 +220,7 @@ async fn dispatch_command(
     command: CliCommand,
     _config: &CliConfig,
     formatter: &LogFormatterImpl,
-    template_handler: &impl rigorix::templates::infrastructure::TemplateCommandService,
+    template_handler: &impl rigorix::templates::application::TemplateCommandService,
 ) -> Result<String, CliError> {
     match command {
         CliCommand::Run {
@@ -409,13 +412,19 @@ async fn dispatch_command(
             match template_cmd {
                 rigorix::cli_boundary::interfaces::cli::TemplateCommands::List => {
                     match template_handler.list().await {
-                        Ok(output) => formatter.format_template_list(&output).await,
+                        Ok(output) => {
+                            let cli_output: CliTemplateListOutput = output.into();
+                            formatter.format_template_list(&cli_output).await
+                        }
                         Err(e) => Err(e),
                     }
                 }
                 rigorix::cli_boundary::interfaces::cli::TemplateCommands::Show { template_id } => {
                     match template_handler.show(&template_id).await {
-                        Ok(output) => formatter.format_template_show(&output).await,
+                        Ok(output) => {
+                            let cli_output: CliTemplateShowOutput = output.into();
+                            formatter.format_template_show(&cli_output).await
+                        }
                         Err(e) => Err(e),
                     }
                 }

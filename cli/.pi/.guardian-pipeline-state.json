@@ -1,5 +1,5 @@
 {
-  "id": "PL-5888",
+  "id": "PL-1412",
   "name": "\"templates\"",
   "items": [
     "issue-contract-freeze",
@@ -48,14 +48,14 @@
       }
     }
   ],
-  "currentItemIndex": 4,
-  "currentStepIndex": 0,
-  "status": "done",
+  "currentItemIndex": 0,
+  "currentStepIndex": 3,
+  "status": "running",
   "retryCount": 0,
   "results": [
     {
       "item": "issue-contract-freeze",
-      "status": "done",
+      "status": "in-progress",
       "stepResults": [
         {
           "step": "implement",
@@ -71,94 +71,11 @@
           "step": "create-mr",
           "status": "passed",
           "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue--component-name-",
-      "status": "failed",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "failed",
-          "reason": "Issue #262 is a placeholder — epic was created with 'module: module-template' instead of 'module: templates'. The real templates module doc (templates.md) has proper components defined (TemplateListCommand, TemplateShowCommand). The contract freeze interfaces already exist in the frozen CLI contracts. See explanation above."
-        },
-        {
-          "step": "validate",
-          "status": "failed",
-          "reason": "skipped due to prior failure"
-        },
-        {
-          "step": "create-mr",
-          "status": "failed",
-          "reason": "skipped due to prior failure"
-        },
-        {
-          "step": "merge",
-          "status": "failed",
-          "reason": "skipped due to prior failure"
-        }
-      ]
-    },
-    {
-      "item": "issue-proofing",
-      "status": "failed",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "failed",
-          "reason": "Pipeline was created with 'module: module-template' (boilerplate doc) instead of 'module: templates' (real module doc). The templates module has proper CLI components (TemplateListCommand, TemplateShowCommand) defined in templates.md, but the architect read the wrong file. Proofing and readiness for the templates module should be done when a properly-created epic exists."
-        },
-        {
-          "step": "validate",
-          "status": "failed",
-          "reason": "skipped due to prior failure"
-        },
-        {
-          "step": "create-mr",
-          "status": "failed",
-          "reason": "skipped due to prior failure"
-        },
-        {
-          "step": "merge",
-          "status": "failed",
-          "reason": "skipped due to prior failure"
-        }
-      ]
-    },
-    {
-      "item": "issue-architecture-readiness",
-      "status": "failed",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "failed",
-          "reason": "Same issue — pipeline references module-template instead of templates. Architecture readiness for the real templates module should be done when a properly-created epic exists."
-        },
-        {
-          "step": "validate",
-          "status": "failed",
-          "reason": "skipped due to prior failure"
-        },
-        {
-          "step": "create-mr",
-          "status": "failed",
-          "reason": "skipped due to prior failure"
-        },
-        {
-          "step": "merge",
-          "status": "failed",
-          "reason": "skipped due to prior failure"
         }
       ]
     }
   ],
   "mergeOnValid": true,
-  "createdAt": "2026-06-16T17:37:51.044Z",
-  "updatedAt": "2026-06-16T17:39:22.071Z"
+  "createdAt": "2026-06-16T18:04:16.737Z",
+  "updatedAt": "2026-06-16T18:16:20.493Z"
 }

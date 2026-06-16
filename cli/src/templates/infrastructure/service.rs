@@ -1,29 +1,12 @@
-//! Template command service trait.
+//! Template command service — re-exported from the application layer.
 //!
 //! @canonical .pi/architecture/modules/templates.md
-//! Implements: Contract Freeze — TemplateCommandService trait
-//! Issue: Phase 2.1
+//! The `TemplateCommandService` trait is defined in `application/service.rs`
+//! (its canonical Clean Architecture location). This module re-exports it
+//! for backward compatibility with existing imports.
 //!
-//! CLI-side interface for template operations, wrapping the engine's
-//! TemplateEngineService. Trait in infrastructure, impl in _impl file.
+//! # Migration
+//! New code should import directly from `crate::templates::application::TemplateCommandService`.
+//! This re-export will be removed in a future update.
 
-use async_trait::async_trait;
-
-use crate::cli_boundary::application::dto::{TemplateListOutput, TemplateShowOutput};
-use crate::cli_boundary::domain::error::CliError;
-use crate::configuration::domain::config::CliConfig;
-
-/// Service trait for template CLI commands.
-#[async_trait]
-pub trait TemplateCommandService: Send + Sync {
-    /// Create a new service instance.
-    async fn new(config: CliConfig) -> Result<Self, CliError>
-    where
-        Self: Sized;
-
-    /// List all registered templates.
-    async fn list(&self) -> Result<TemplateListOutput, CliError>;
-
-    /// Show a specific template by ID.
-    async fn show(&self, template_id: &str) -> Result<TemplateShowOutput, CliError>;
-}
+pub use crate::templates::application::service::TemplateCommandService;
