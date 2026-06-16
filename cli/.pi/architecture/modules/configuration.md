@@ -2,7 +2,7 @@
 
 ## Module Status
 
-**Status:** Planned — CLI integration over engine contracts
+**Status:** Implemented — CLI integration over engine contracts
 **Last reviewed:** 2026-06-16
 **Source session:** 71e2b81a-a7a1-48ee-ab8f-56284bbec92d
 
@@ -19,10 +19,13 @@ Provides validated `Config` to all other contexts. Includes `Secret` type for sa
 ## Components
 
 **CLI-facing:**
-| Component | File (planned) | Purpose |
-|-----------|---------------|---------|
-| ConfigMergeService | `cli/src/config.rs` | Merges CLI flags + env vars + rigorix.toml into engine Config |
-| ConfigValidator | `cli/src/config.rs` | Pre-flight validation: API key present, template dir exists, etc. |
+| Component | File | Purpose |
+|-----------|------|---------|
+| CliConfig | `cli/src/domain/config.rs` | CLI-specific configuration value object (output format, color, TUI, log settings) |
+| CliConfigLoader (trait) | `cli/src/infrastructure/config.rs` | Config loading interface — load, load_from_path, has_default_config |
+| CliConfigLoaderImpl | `cli/src/infrastructure/config_impl.rs` | Multi-source merging: CLI flags → env vars → rigorix.toml → engine defaults |
+| validate_api_key_for_command | `cli/src/infrastructure/config_impl.rs` | Pre-flight validation: reports clear error for missing API key on run/plan/generate |
+| build_engine_cli_overrides | `cli/src/infrastructure/config_impl.rs` | Bridges CLI config to engine's ConfigService as dot-notation overrides |
 
 **Engine dependencies (frozen contracts):**
 | Component | Engine Source | Contract |
@@ -60,7 +63,14 @@ Provides validated `Config` to all other contexts. Includes `Secret` type for sa
 
 | File | Purpose |
 |------|---------|
-| `cli/src/config.rs` | CLI-side config loading and merging |
+| `cli/src/domain/config.rs` | CliConfig value object with all CLI settings |
+| `cli/src/domain/error.rs` | CliError (ConfigNotFound, ConfigParseError, MissingConfig) |
+| `cli/src/infrastructure/config.rs` | CliConfigLoader trait |
+| `cli/src/infrastructure/config_impl.rs` | CliConfigLoaderImpl + validation helpers |
+| `cli/src/main.rs` | Startup sequence: load → validate → bridge to engine → dispatch |
+| `cli/.pi/scripts/ci/check_config_contracts.sh` | Automated contract validation (17 checks) |
+| `cli/.pi/scripts/ci/check_config_coverage.sh` | Coverage threshold enforcement |
+| `cli/.pi/scripts/ci/stage_config_proofing.sh` | CI stage wrapper (stage 12) |
 | `engine/src/configuration/domain/config.rs` | Config aggregate, EnforcementPreset |
 | `engine/src/configuration/domain/secret.rs` | Secret value object |
 | `engine/src/configuration/application/service.rs` | ConfigService, SecretService traits |
@@ -69,4 +79,14 @@ Provides validated `Config` to all other contexts. Includes `Secret` type for sa
 
 | ADR | Title | Status |
 |-----|-------|--------|
-| ADR-001 | Domain-Driven Design with Bounded Contexts | Proposed |
+| ADR-001 | Domain-Driven Design with Bounded Contexts | Accepted |
+| ADR-002 | CLI/Engine Architecture Split | Accepted |
+| ADR-007 | Ephemeral CLI — No Daemon for v1 | Accepted |
+
+## Proofing Scripts
+
+| Script | Purpose | Stage |
+|--------|---------|-------|
+| `check_config_contracts.sh` | 17 automated checks for config contracts (traits, impls, fields, validation, wiring) | stage 12 — config_proofing |
+| `check_config_coverage.sh` | Coverage thresholds (6+ loader tests, 2+ domain tests, 35+ overall) | stage 12 — config_proofing |
+| `stage_config_proofing.sh` | CI stage wrapper — runs contracts + coverage + full CI validation | stage 12 — config_proofing |
