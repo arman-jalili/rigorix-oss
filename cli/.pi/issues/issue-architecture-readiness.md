@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-READINESS"
-  epic: ""cli-boundary""
+  epic: ""tui""
   component: "Architecture Readiness"
-  module: "cli-boundary"
+  module: "tui"
   status: planned
   priority: critical
   dependencies: []
@@ -32,7 +32,7 @@ guardian_issue:
       - Verify proofing scripts + validators in CI
 
   canonical_references:
-    - module: ".pi/architecture/modules/cli-boundary.md"
+    - module: ".pi/architecture/modules/tui.md"
 
   acceptance_criteria:
     - "Runbook created and reviewed"
@@ -58,30 +58,30 @@ guardian_issue:
     and CI will catch regressions (proofing scripts + validators).
 
   file_changes:
-    - "create: docs/runbook-cli-boundary.md"
-    - "create: docs/dr-plan-cli-boundary.md"
+    - "create: docs/runbook-tui.md"
+    - "create: docs/dr-plan-tui.md"
     - "modify: .pi/architecture/CHANGELOG.md"
-    - "modify: .pi/architecture/modules/cli-boundary.md"
+    - "modify: .pi/architecture/modules/tui.md"
 ---
 
-# Architecture Readiness: cli-boundary
+# Architecture Readiness: tui
 
 ## Intent
 
-Make the cli-boundary module production-ready. This is the final issue in every epic
+Make the tui module production-ready. This is the final issue in every epic
 — it closes the loop between implementation and operability.
 
 ## Deliverables
 
 ### Runbook
-`docs/runbook-cli-boundary.md` covering:
+`docs/runbook-tui.md` covering:
 - Startup sequence and dependencies
 - Graceful shutdown procedure
 - Common failure modes and recovery
 - Configuration reference
 
 ### DR Plan
-`docs/dr-plan-cli-boundary.md` covering:
+`docs/dr-plan-tui.md` covering:
 - Backup strategy and schedule
 - Restore procedure
 - Failover plan

@@ -1,16 +1,16 @@
 {
-  "id": "PL-1691",
-  "name": "\"cli-boundary\"",
+  "id": "PL-9307",
+  "name": "\"tui\"",
   "items": [
     "issue-contract-freeze",
-    "issue-cliparser",
-    "issue-dispatcher",
-    "issue-orchestratorbuilder",
-    "issue-configloader",
-    "issue-outputformatter",
-    "issue-signalhandler",
-    "issue-tracinginit",
-    "issue-clierror",
+    "issue-commandbar",
+    "issue-planreview",
+    "issue-eventbridge",
+    "issue-viewmodel",
+    "issue-renderer",
+    "issue-views",
+    "issue-inputhandler",
+    "issue-orchestratorspawner",
     "issue-proofing",
     "issue-architecture-readiness"
   ],
@@ -55,39 +55,12 @@
       }
     }
   ],
-  "currentItemIndex": 1,
+  "currentItemIndex": 0,
   "currentStepIndex": 0,
   "status": "running",
   "retryCount": 0,
-  "results": [
-    {
-      "item": "issue-contract-freeze",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    }
-  ],
+  "results": [],
   "mergeOnValid": true,
-  "createdAt": "2026-06-16T21:27:43.948Z",
-  "updatedAt": "2026-06-16T21:42:43.073Z"
+  "createdAt": "2026-06-16T22:08:30.203Z",
+  "updatedAt": "2026-06-16T22:08:30.203Z"
 }

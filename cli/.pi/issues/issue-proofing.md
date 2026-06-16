@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-PROOFING"
-  epic: ""cli-boundary""
+  epic: ""tui""
   component: "Proofing & CI Enforcement"
-  module: "cli-boundary"
+  module: "tui"
   status: planned
   priority: critical
   dependencies: []
@@ -26,7 +26,7 @@ guardian_issue:
       - Updated CI stage configuration
 
   canonical_references:
-    - module: ".pi/architecture/modules/cli-boundary.md"
+    - module: ".pi/architecture/modules/tui.md"
 
   acceptance_criteria:
     - "All proofing scripts created and executable"
@@ -47,12 +47,12 @@ guardian_issue:
     every build for zero token cost.
 
   file_changes:
-    - "create: .pi/scripts/ci/check_cli-boundary_contracts.sh"
-    - "create: .pi/scripts/ci/check_cli-boundary_coverage.sh"
+    - "create: .pi/scripts/ci/check_tui_contracts.sh"
+    - "create: .pi/scripts/ci/check_tui_coverage.sh"
     - "modify: .pi/scripts/ci/run_hardening_stages.sh"
 ---
 
-# Proofing & CI Enforcement: cli-boundary
+# Proofing & CI Enforcement: tui
 
 ## Intent
 
@@ -81,17 +81,17 @@ on every PR. No LLM cost. No human review. Just pass or fail.
 
 | Script | Purpose | Location |
 |--------|---------|----------|
-| check_cli-boundary_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
-| check_cli-boundary_coverage.sh | Enforce coverage thresholds | .pi/scripts/ci/ |
-| stage_cli-boundary_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
+| check_tui_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
+| check_tui_coverage.sh | Enforce coverage thresholds | .pi/scripts/ci/ |
+| stage_tui_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
 
 ## CI Pipeline Update
 
 Add the new stage to `run_hardening_stages.sh`:
 
 ```bash
-run_stage "11" "cli-boundary_proofing" \
-    "${SCRIPTS_DIR}/stage_cli-boundary_proofing.sh" \
+run_stage "11" "tui_proofing" \
+    "${SCRIPTS_DIR}/stage_tui_proofing.sh" \
     "always"
 ```
 
