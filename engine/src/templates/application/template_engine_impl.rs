@@ -201,9 +201,7 @@ impl TemplateEngineService for TemplateEngineImpl {
     #[tracing::instrument(skip_all)]
     async fn list_templates(&self) -> Result<ListTemplatesOutput, TemplateError> {
         let templates = self.templates.read().expect("lock poisoned");
-        let summaries: Vec<TemplateSummary> = templates
-            .iter()
-            .map(|(_, entry)| TemplateSummary {
+        let summaries: Vec<TemplateSummary> = templates.values().map(|entry| TemplateSummary {
                 id: entry.template.id.clone(),
                 name: entry.template.name.clone(),
                 description: entry.template.description.clone(),
@@ -344,9 +342,9 @@ fn substitute_params_in_action(
 /// Compute topological order of node IDs using Kahn's algorithm.
 ///
 /// Returns an empty vec if a cycle is detected.
-fn compute_topological_order<'a>(
-    nodes: &'a [crate::templates::domain::TemplateNode],
-) -> Vec<&'a str> {
+fn compute_topological_order(
+    nodes: &[crate::templates::domain::TemplateNode],
+) -> Vec<&str> {
     let mut in_degree: HashMap<&str, usize> = HashMap::new();
     let mut adjacency: HashMap<&str, Vec<&str>> = HashMap::new();
 

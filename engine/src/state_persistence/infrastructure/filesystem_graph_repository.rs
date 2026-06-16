@@ -236,7 +236,7 @@ mod tests {
     use chrono::Utc;
     use tempfile::TempDir;
 
-    use crate::state_persistence::domain::{ExecutionGraphNode, ExecutionStatus, NodeStatus};
+    use crate::state_persistence::domain::{ExecutionGraphNode, ExecutionStatus};
 
     fn create_test_graph(execution_id: Uuid) -> ExecutionGraph {
         let nodes = vec![

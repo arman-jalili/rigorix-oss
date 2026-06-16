@@ -147,6 +147,9 @@ pub struct ValidateConfigOutput {
 }
 
 /// A single validation error with structured context.
+///
+/// TODO: Consider migrating to `crate::common::validation::ValidationError`
+/// which provides a shared `rule` + `node_id` pattern.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ValidationError {
     /// The field that failed validation.

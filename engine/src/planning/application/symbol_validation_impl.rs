@@ -313,26 +313,24 @@ impl SymbolValidationServiceImpl {
             if ch.is_alphanumeric() || ch == '_' || ch == '.' {
                 current_word.push(ch);
             } else {
-                if current_word.len() > 1 {
-                    if Self::looks_like_type(&current_word)
+                if current_word.len() > 1
+                    && (Self::looks_like_type(&current_word)
                         || current_word.contains('.')
                         || current_word == "any"
-                        || current_word == "Any"
+                        || current_word == "Any")
                     {
                         refs.insert(current_word.clone());
                     }
-                }
                 current_word.clear();
             }
         }
-        if current_word.len() > 1 {
-            if Self::looks_like_type(&current_word)
+        if current_word.len() > 1
+            && (Self::looks_like_type(&current_word)
                 || current_word.contains('.')
                 || current_word == "any"
-                || current_word == "Any"
+                || current_word == "Any")
             {
                 refs.insert(current_word);
             }
-        }
     }
 }

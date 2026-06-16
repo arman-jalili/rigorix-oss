@@ -612,8 +612,10 @@ pub enum ToolRiskLevel {
 /// Enforcement preset profile — the concrete values selected by
 /// `EnforcementPreset` (defined in `crate::configuration::domain`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum EnforcementPresetProfile {
     /// Standard safety limits — suitable for normal operation.
+    #[default]
     Standard,
     /// Stricter limits — suitable for production or untrusted code.
     Strict,
@@ -621,8 +623,3 @@ pub enum EnforcementPresetProfile {
     Maximum,
 }
 
-impl Default for EnforcementPresetProfile {
-    fn default() -> Self {
-        Self::Standard
-    }
-}

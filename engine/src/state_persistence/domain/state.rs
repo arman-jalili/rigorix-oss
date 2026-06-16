@@ -35,8 +35,10 @@ use super::error::StateError;
 /// - `Failed`: Execution terminated with an unrecoverable error
 /// - `Cancelled`: Execution was cancelled (user-initiated or graceful shutdown)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum ExecutionStatus {
     /// Execution created but not yet started.
+    #[default]
     Pending,
     /// Execution is actively running nodes.
     Running,
@@ -74,11 +76,6 @@ impl ExecutionStatus {
     }
 }
 
-impl Default for ExecutionStatus {
-    fn default() -> Self {
-        ExecutionStatus::Pending
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Per-Node Status
@@ -93,8 +90,10 @@ impl Default for ExecutionStatus {
 /// - `Failed`: Node failed (may be retried depending on policy)
 /// - `Skipped`: Node was skipped (dependency failed or policy decision)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum NodeStatus {
     /// Node created but not yet started.
+    #[default]
     Pending,
     /// Node is currently executing.
     InProgress,
@@ -132,11 +131,6 @@ impl NodeStatus {
     }
 }
 
-impl Default for NodeStatus {
-    fn default() -> Self {
-        NodeStatus::Pending
-    }
-}
 
 // ---------------------------------------------------------------------------
 // ExecutionState — Root Aggregate
@@ -435,6 +429,7 @@ impl ExecutionState {
 
 /// Summary of node status counts.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct NodeStatusSummary {
     /// Number of nodes still pending.
     pub pending: u32,
@@ -448,17 +443,6 @@ pub struct NodeStatusSummary {
     pub skipped: u32,
 }
 
-impl Default for NodeStatusSummary {
-    fn default() -> Self {
-        Self {
-            pending: 0,
-            in_progress: 0,
-            completed: 0,
-            failed: 0,
-            skipped: 0,
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // NodeState

@@ -20,11 +20,9 @@ use crate::execution_engine::application::service::{
 use crate::execution_engine::application::service_impl::{
     ParallelExecutionServiceImpl, RetryEvaluationServiceImpl,
 };
-use crate::execution_engine::domain::error::ExecutionError;
-use crate::execution_engine::domain::event::ExecutionEngineEvent;
 use crate::execution_engine::domain::{
-    BackoffStrategy, ExecutionResult, FailureContext, NodeExecutionState, NodeStatus,
-    ParallelExecutorConfig, RetryDecision, RetryPolicy, RetryStrategy, TaskResult,
+    BackoffStrategy, FailureContext, NodeExecutionState,
+    ParallelExecutorConfig, RetryDecision, RetryPolicy, RetryStrategy,
 };
 
 // ---------------------------------------------------------------------------
@@ -348,7 +346,7 @@ async fn test_abort_nonexistent_execution() {
 #[tokio::test]
 async fn test_on_progress_callback() {
     let executor = create_executor();
-    let dag_id = Uuid::new_v4();
+    let _dag_id = Uuid::new_v4();
     let node_id = Uuid::new_v4();
 
     let called = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -359,7 +357,7 @@ async fn test_on_progress_callback() {
     }));
 
     // Create a node state to trigger notification
-    let state = NodeExecutionState::new(node_id, "test-node");
+    let _state = NodeExecutionState::new(node_id, "test-node");
 
     // Verify callback registered (not triggered since no session)
     // The callback mechanism is trigger-based; in a real execution it fires on completion
@@ -891,9 +889,7 @@ async fn test_factory_with_custom_config() {
         ParallelExecutionFactory, ParallelExecutionFactoryConfig,
     };
     use crate::execution_engine::application::factory_impl::ParallelExecutionFactoryImpl;
-    use crate::execution_engine::domain::{
-        BackoffStrategy, ParallelExecutorConfig, RetryPolicy, RetryStrategy,
-    };
+    use crate::execution_engine::domain::ParallelExecutorConfig;
 
     let factory = ParallelExecutionFactoryImpl::new();
     let custom_executor_config = ParallelExecutorConfig {

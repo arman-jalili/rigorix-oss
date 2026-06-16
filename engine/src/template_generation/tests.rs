@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use crate::template_generation::domain::{
     ClaudeGeneratorConfig, ClaudeTemplateGenerator, GeneratedTemplate, GeneratedTemplateCost,
-    GeneratorError, InvalidSymbolReference, RepoContext, TemplateGenerator,
+    GeneratorError, InvalidSymbolReference, RepoContext,
 };
 
 #[test]

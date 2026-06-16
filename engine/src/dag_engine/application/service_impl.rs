@@ -174,7 +174,7 @@ impl DagGraphService for DagGraphServiceImpl {
 
         let node = graph
             .get_node(input.node_id)
-            .ok_or_else(|| DagError::TaskNotFound { id: input.node_id })?;
+            .ok_or(DagError::TaskNotFound { id: input.node_id })?;
 
         Ok(GetNodeOutput {
             node: node.clone(),
@@ -248,6 +248,12 @@ impl DagGraphService for DagGraphServiceImpl {
 /// the structural node-by-node comparison logic.
 pub struct DagPlanningServiceImpl;
 
+impl Default for DagPlanningServiceImpl {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DagPlanningServiceImpl {
     pub fn new() -> Self {
         Self
@@ -306,6 +312,12 @@ impl DagPlanningService for DagPlanningServiceImpl {
 /// ExecutionPolicy + failure context).
 pub struct ExecutionPolicyServiceImpl;
 
+impl Default for ExecutionPolicyServiceImpl {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ExecutionPolicyServiceImpl {
     pub fn new() -> Self {
         Self
@@ -319,7 +331,7 @@ impl ExecutionPolicyService for ExecutionPolicyServiceImpl {
         let policy = input.policy;
 
         // Check if the failure type is in the retry_on list
-        let is_retriable = policy.retry_on.iter().any(|ft| *ft == input.failure_type);
+        let is_retriable = policy.retry_on.contains(&input.failure_type);
 
         if !is_retriable {
             return Ok(RetryDecision::NoRetry {

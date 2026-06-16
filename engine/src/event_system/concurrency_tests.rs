@@ -8,7 +8,6 @@ mod tests {
     use crate::event_system::application::dto::{DrainPersistedInput, PublishEventInput};
     use crate::event_system::application::event_bus_factory_impl::EventBusFactoryImpl;
     use crate::event_system::application::factory::EventBusFactory;
-    use crate::event_system::application::service::EventBusService;
     use crate::event_system::domain::ExecutionEvent;
     use uuid::Uuid;
 
@@ -23,7 +22,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_concurrent_publish_no_panic() {
         let factory = EventBusFactoryImpl;
-        let bus = factory.create_default().await.unwrap();
+        let _bus = factory.create_default().await.unwrap();
         let exec_id = Uuid::new_v4();
         let num_publishers = 5;
         let events_per_publisher = 20;

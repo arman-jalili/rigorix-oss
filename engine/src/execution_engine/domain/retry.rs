@@ -115,7 +115,7 @@ impl RetryPolicy {
     pub fn has_skip_conditions(&self) -> bool {
         self.skip_conditions
             .as_ref()
-            .map_or(false, |c| !c.is_empty())
+            .is_some_and(|c| !c.is_empty())
     }
 }
 

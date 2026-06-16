@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::planning::application::dto::{
-    CheckBudgetInput, ExtractParametersInput, GenerateGraphInput, PlanInput, PlanWithGraphInput,
+    ExtractParametersInput, GenerateGraphInput, PlanInput, PlanWithGraphInput,
     RequestClarificationInput, ValidatePlanInput,
 };
 use crate::planning::application::mock_classifier::MockClassifier;
@@ -22,7 +22,7 @@ use crate::planning::application::service::PlanningPipelineService;
 use crate::planning::domain::classification::Classifier;
 use crate::planning::domain::extractor::ParameterExtractor;
 use crate::planning::domain::intent::UserIntent;
-use crate::planning::domain::result::{PlanOutput, PlanningHash, PlanningResult};
+use crate::planning::domain::result::{PlanningHash, PlanningResult};
 use crate::template_generation::domain::{
     ClaudeGeneratorConfig, ClaudeTemplateGenerator, GeneratedTemplate, GeneratedTemplateCost,
     GeneratorError, InvalidSymbolReference, RepoContext, TemplateGenerator,

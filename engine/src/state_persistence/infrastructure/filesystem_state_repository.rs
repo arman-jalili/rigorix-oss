@@ -168,12 +168,12 @@ impl StateRepository for FileSystemStateRepository {
             let path = entry.path();
 
             // Skip temp files and non-JSON files
-            if path.extension().map_or(true, |ext| ext != "json") {
+            if path.extension().is_none_or(|ext| ext != "json") {
                 continue;
             }
             if path
                 .file_name()
-                .map_or(true, |name| name.to_string_lossy().ends_with(".json.tmp"))
+                .is_none_or(|name| name.to_string_lossy().ends_with(".json.tmp"))
             {
                 continue;
             }

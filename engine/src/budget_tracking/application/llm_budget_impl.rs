@@ -667,7 +667,7 @@ mod tests {
             .unwrap();
 
         // Create the reservation guard
-        let mut guard = LlmBudgetReservationImpl::new(
+        let guard = LlmBudgetReservationImpl::new(
             budget.state.clone(),
             output.reservation.call_id,
             output.reservation.reserved_tokens,
@@ -704,7 +704,7 @@ mod tests {
             .await
             .unwrap();
 
-        let mut guard = LlmBudgetReservationImpl::new(
+        let guard = LlmBudgetReservationImpl::new(
             budget.state.clone(),
             output.reservation.call_id,
             output.reservation.reserved_tokens,
@@ -735,7 +735,7 @@ mod tests {
             .await
             .unwrap();
 
-        let mut guard = LlmBudgetReservationImpl::new(
+        let guard = LlmBudgetReservationImpl::new(
             budget.state.clone(),
             output.reservation.call_id,
             output.reservation.reserved_tokens,
@@ -801,7 +801,7 @@ mod tests {
 
         // Create guard, commit, then drop — should NOT rollback
         {
-            let mut guard = LlmBudgetReservationImpl::new(
+            let guard = LlmBudgetReservationImpl::new(
                 budget.state.clone(),
                 output.reservation.call_id,
                 output.reservation.reserved_tokens,
