@@ -1,7 +1,7 @@
 ---
 guardian_issue:
   id: "ISSUE-PROOFING"
-  epic: ""observability""
+  epic: ""templates""
   component: "Proofing & CI Enforcement"
   module: "module-template"
   status: planned

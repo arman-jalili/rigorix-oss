@@ -99,9 +99,23 @@ async fn main() {
         }
     };
 
+    // Initialize template command handler
+    let template_handler =
+        match rigorix::cli_boundary::commands::template_cmd::TemplateCommandHandler::new(
+            config.clone(),
+        )
+        .await
+        {
+            Ok(handler) => handler,
+            Err(e) => {
+                eprintln!("Failed to initialize template system: {}", e);
+                process::exit(e.exit_code());
+            }
+        };
+
     // Dispatch command
     let formatter = LogFormatterImpl::new(config.output_format);
-    let result = dispatch_command(args.command, &config, &formatter).await;
+    let result = dispatch_command(args.command, &config, &formatter, &template_handler).await;
 
     // Handle result
     match result {
@@ -203,6 +217,7 @@ async fn dispatch_command(
     command: CliCommand,
     _config: &CliConfig,
     formatter: &LogFormatterImpl,
+    template_handler: &rigorix::cli_boundary::commands::template_cmd::TemplateCommandHandler,
 ) -> Result<String, CliError> {
     match command {
         CliCommand::Run {
@@ -393,20 +408,16 @@ async fn dispatch_command(
             info!("Command: template");
             match template_cmd {
                 rigorix::cli_boundary::interfaces::cli::TemplateCommands::List => {
-                    let output = rigorix::cli_boundary::application::dto::TemplateListOutput {
-                        templates: vec![],
-                        total: 0,
-                    };
-                    formatter.format_template_list(&output).await
+                    match template_handler.list().await {
+                        Ok(output) => formatter.format_template_list(&output).await,
+                        Err(e) => Err(e),
+                    }
                 }
                 rigorix::cli_boundary::interfaces::cli::TemplateCommands::Show { template_id } => {
-                    let output = rigorix::cli_boundary::application::dto::TemplateShowOutput {
-                        content: format!(
-                            "Template '{}' not found (engine integration pending)",
-                            template_id
-                        ),
-                    };
-                    formatter.format_template_show(&output).await
+                    match template_handler.show(&template_id).await {
+                        Ok(output) => formatter.format_template_show(&output).await,
+                        Err(e) => Err(e),
+                    }
                 }
             }
         }
