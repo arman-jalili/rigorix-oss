@@ -136,18 +136,8 @@ impl PlanDiff {
                         || old_node.dependencies != new_node.dependencies
                         || old_node.policy != new_node.policy
                         || old_node.name != new_node.name
+                        || old_node.intent != new_node.intent
                     {
-                        modified.push(NodeDiff {
-                            node_id: new_node.id,
-                            name: new_node.name.clone(),
-                            tool: new_node.tool.clone(),
-                            old_tool: old_node.tool.clone(),
-                            old_dependencies: old_node.dependencies.clone(),
-                            new_dependencies: new_node.dependencies.clone(),
-                            old_intent: old_node.intent.clone(),
-                            new_intent: new_node.intent.clone(),
-                        });
-                    } else if old_node.intent != new_node.intent {
                         modified.push(NodeDiff {
                             node_id: new_node.id,
                             name: new_node.name.clone(),

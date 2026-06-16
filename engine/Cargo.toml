@@ -1,20 +1,8 @@
 [package]
-name = "rigorix"
+name = "rigorix-engine"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "Template-driven DAG execution engine with bounded autonomy"
-
-[lints.clippy]
-# Suppress pre-existing style warnings that would require wide refactoring
-ptr_arg = "allow"
-collapsible_if = "allow"
-map_or = "allow"
-derivable_impls = "allow"
-doc_lazy_continuation = "allow"
-too_many_arguments = "allow"
-type_complexity = "allow"
-should_implement_trait = "allow"
-new_ret_no_self = "allow"
 
 [features]
 live-tests = []

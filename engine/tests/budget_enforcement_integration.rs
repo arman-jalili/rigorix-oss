@@ -3,11 +3,11 @@
 //! Tests that budget exhaustion correctly prevents execution from starting
 //! and propagates LlmBudgetError.
 
-use rigorix::budget_tracking::application::dto::{
+use rigorix_engine::budget_tracking::application::dto::{
     CommitReservationInput, GetBudgetStatusInput, ReserveBudgetInput,
 };
-use rigorix::budget_tracking::application::factory::LlmBudgetFactory;
-use rigorix::budget_tracking::application::llm_budget_factory_impl::LlmBudgetFactoryImpl;
+use rigorix_engine::budget_tracking::application::factory::LlmBudgetFactory;
+use rigorix_engine::budget_tracking::application::llm_budget_factory_impl::LlmBudgetFactoryImpl;
 use uuid::Uuid;
 
 #[tokio::test]

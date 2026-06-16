@@ -2,10 +2,10 @@
 //!
 //! Tests audit envelope building and HMAC signature verification.
 
-use rigorix::audit::application::dto::BuildEnvelopeInput;
-use rigorix::audit::application::envelope_factory_impl::AuditEnvelopeFactoryImpl;
-use rigorix::audit::application::factory::AuditEnvelopeFactory;
-use rigorix::audit::domain::envelope::ExecutionEventRef;
+use rigorix_engine::audit::application::dto::BuildEnvelopeInput;
+use rigorix_engine::audit::application::envelope_factory_impl::AuditEnvelopeFactoryImpl;
+use rigorix_engine::audit::application::factory::AuditEnvelopeFactory;
+use rigorix_engine::audit::domain::envelope::ExecutionEventRef;
 use std::collections::HashMap;
 
 #[tokio::test]
@@ -22,7 +22,7 @@ async fn test_audit_envelope_has_hmac_signature() {
                 summary: "Execution started".to_string(),
                 occurred_at: chrono::Utc::now(),
                 correlation_id: None,
-                status: rigorix::audit::domain::envelope::EventStatus::Success,
+                status: rigorix_engine::audit::domain::envelope::EventStatus::Success,
             },
         ],
         metadata: Some(HashMap::from([

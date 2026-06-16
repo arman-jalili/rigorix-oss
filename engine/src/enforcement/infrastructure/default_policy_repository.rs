@@ -40,6 +40,7 @@ impl DefaultPolicyRepository {
     }
 
     /// Create a new `DefaultPolicyRepository` using the Standard preset.
+    #[allow(clippy::should_implement_trait)]
     pub fn default() -> Self {
         Self::new(EnforcementConfig::standard())
     }

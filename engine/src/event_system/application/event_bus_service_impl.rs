@@ -65,6 +65,7 @@ impl EventBusServiceImpl {
     }
 
     /// Create a new EventBus service with default configuration.
+    #[allow(clippy::should_implement_trait)]
     pub fn default() -> Self {
         Self::new(EventBusConfig::default())
     }
@@ -208,11 +209,10 @@ impl EventBusService for EventBusServiceImpl {
             })
             .filter(|pe| {
                 // Filter by sequence
-                if let Some(after) = input.after_sequence {
-                    if pe.sequence <= after {
+                if let Some(after) = input.after_sequence
+                    && pe.sequence <= after {
                         return false;
                     }
-                }
                 true
             })
             .filter(|pe| {

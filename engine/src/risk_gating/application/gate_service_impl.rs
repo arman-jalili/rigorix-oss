@@ -198,13 +198,12 @@ impl RiskGateService for RiskGateServiceImpl {
             .is_gate_pending(&input.execution_id, &input.gate_id)
         {
             // Check if it was already resolved
-            if let Some(gate) = self.gate_registry.get_gate(&input.gate_id) {
-                if gate.resolved {
+            if let Some(gate) = self.gate_registry.get_gate(&input.gate_id)
+                && gate.resolved {
                     return Err(RiskGatingError::InvalidState {
                         detail: format!("Gate {} has already been resolved", input.gate_id),
                     });
                 }
-            }
             return Err(RiskGatingError::InvalidState {
                 detail: format!("Gate {} not found", input.gate_id),
             });

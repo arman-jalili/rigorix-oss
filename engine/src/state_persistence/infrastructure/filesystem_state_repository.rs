@@ -179,11 +179,10 @@ impl StateRepository for FileSystemStateRepository {
             }
 
             // Extract UUID from filename
-            if let Some(file_stem) = path.file_stem() {
-                if let Ok(uuid) = Uuid::parse_str(&file_stem.to_string_lossy()) {
+            if let Some(file_stem) = path.file_stem()
+                && let Ok(uuid) = Uuid::parse_str(&file_stem.to_string_lossy()) {
                     ids.push(uuid);
                 }
-            }
         }
 
         Ok(ids)

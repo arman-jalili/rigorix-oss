@@ -1311,8 +1311,8 @@ fn test_invalid_symbol_reference_any_type() {
 fn test_template_generator_trait_is_object_safe() {
     // Verify the trait can be used as a trait object
     fn takes_generator(_gen: &dyn TemplateGenerator) {}
-    let gen = MockGenerator;
-    takes_generator(&gen);
+    let generator = MockGenerator;
+    takes_generator(&generator);
 }
 
 // ---------------------------------------------------------------------------
@@ -1375,9 +1375,9 @@ fn test_claude_generator_strip_code_fences_whitespace() {
 #[test]
 fn test_claude_generator_estimate_cost() {
     let api_key = "test-key".to_string();
-    let gen = ClaudeTemplateGenerator::new(api_key, None);
+    let generator = ClaudeTemplateGenerator::new(api_key, None);
     let intent = crate::planning::domain::intent::UserIntent::new("test".to_string(), None);
-    let cost = gen.estimate_cost(&intent);
+    let cost = generator.estimate_cost(&intent);
     assert_eq!(cost.estimated_calls, 3);
     assert_eq!(cost.estimated_tokens, 4096);
 }
@@ -1393,9 +1393,9 @@ fn test_claude_generator_custom_config() {
         max_retries: 2,
     };
     let api_key = "test-key".to_string();
-    let gen = ClaudeTemplateGenerator::new(api_key, Some(config));
+    let generator = ClaudeTemplateGenerator::new(api_key, Some(config));
     let intent = crate::planning::domain::intent::UserIntent::new("test".to_string(), None);
-    let cost = gen.estimate_cost(&intent);
+    let cost = generator.estimate_cost(&intent);
     assert_eq!(cost.estimated_calls, 2);
     assert_eq!(cost.estimated_tokens, 2048);
 }

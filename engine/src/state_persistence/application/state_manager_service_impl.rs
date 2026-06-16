@@ -141,11 +141,10 @@ impl StateManagerService for FileSystemStateManager {
                     let summary = ExecutionSummary::from(&state);
 
                     // Apply status filter if specified
-                    if let Some(ref filter) = input.status_filter {
-                        if state.status != *filter {
+                    if let Some(ref filter) = input.status_filter
+                        && state.status != *filter {
                             continue;
                         }
-                    }
 
                     executions.push(summary);
                 }

@@ -185,8 +185,8 @@ impl ExecutionEnforcer for ExecutionEnforcerImpl {
         };
 
         // 5. Check if budget is exceeded
-        if let Some(ref snapshot) = budget_status {
-            if snapshot.used >= snapshot.limit {
+        if let Some(ref snapshot) = budget_status
+            && snapshot.used >= snapshot.limit {
                 return Ok(EvaluateToolCallOutput {
                     allowed: false,
                     reason: Some(format!(
@@ -200,7 +200,6 @@ impl ExecutionEnforcer for ExecutionEnforcerImpl {
                     active_warnings: state.warnings.keys().cloned().collect(),
                 });
             }
-        }
 
         // 6. Check execution limits
         if state.tool_call_count >= state.config.execution_limits.max_tool_calls {
