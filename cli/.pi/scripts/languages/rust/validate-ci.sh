@@ -55,7 +55,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Build ---"
-if cargo build --package rigorix --quiet 2>/dev/null; then
+if cargo build --package rigorix-cli --quiet 2>/dev/null; then
     pass "Build succeeded"
 else
     fail "Build failed"
@@ -66,7 +66,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Tests ---"
-if cargo test --package rigorix --quiet 2>/dev/null; then
+if cargo test --package rigorix-cli --quiet 2>/dev/null; then
     pass "All tests passed"
 else
     fail "Tests failed"
@@ -78,7 +78,7 @@ fi
 echo ""
 echo "--- Lint ---"
 if command -v cargo &>/dev/null && cargo clippy --version &>/dev/null; then
-    if cargo clippy --package rigorix --all-targets -- -D warnings 2>/dev/null; then
+    if cargo clippy --package rigorix-cli --all-targets -- -D warnings 2>/dev/null; then
         pass "Clippy passed"
     else
         fail "Clippy found issues"
@@ -93,7 +93,7 @@ fi
 echo ""
 echo "--- Format ---"
 if command -v cargo &>/dev/null && cargo fmt --version &>/dev/null; then
-    if cargo fmt --check --package rigorix 2>/dev/null; then
+    if cargo fmt --check --package rigorix-cli 2>/dev/null; then
         pass "Format check passed"
     else
         fail "Format check failed (run 'cargo fmt')"
