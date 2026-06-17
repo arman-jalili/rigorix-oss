@@ -1,0 +1,19 @@
+id = "add-authentication-middleware"
+name = "Add Authentication Middleware"
+description = "Execute: add authentication middleware"
+version = "1.0.0"
+
+[[parameters]]
+name = "command"
+description = "Command to run"
+required = true
+param_type = "string"
+default = "echo done"
+
+[[nodes]]
+id = "execute"
+name = "Execute"
+depends_on = []
+[nodes.action]
+type = "run_command"
+command = "{{ command }}"

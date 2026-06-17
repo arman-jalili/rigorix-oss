@@ -38,6 +38,10 @@ enum VmCommand {
     TemplateId(String),
     /// Set LLM calls metric.
     LlmCalls(u64),
+    /// Set LLM tokens metric.
+    Tokens(u64),
+    /// Populate DAG nodes from plan graph JSON.
+    SetNodes(Vec<view_model::NodeViewModel>),
     /// Set an error message and phase to Failed.
     Error(String),
 }
@@ -170,11 +174,52 @@ fn apply_vm_command(vm: &mut TuiViewModel, cmd: VmCommand) {
         VmCommand::ExecutionId(id) => vm.execution_id = Some(id),
         VmCommand::TemplateId(tid) => vm.template_id = Some(tid),
         VmCommand::LlmCalls(n) => vm.metrics.llm_calls = n,
+        VmCommand::Tokens(n) => vm.metrics.tokens = n,
+        VmCommand::SetNodes(nodes) => {
+            vm.nodes.clear();
+            for n in nodes {
+                vm.nodes.insert(n.id.clone(), n);
+            }
+        }
         VmCommand::Error(err) => {
             vm.error = Some(err);
             vm.phase = ExecutionPhase::Failed;
         }
     }
+}
+
+/// Parse the graph JSON from a plan output into NodeViewModel items.
+fn parse_graph_nodes(graph: &serde_json::Value) -> Vec<view_model::NodeViewModel> {
+    let mut nodes = Vec::new();
+    if let Some(raw_nodes) = graph.get("nodes").and_then(|n| n.as_array()) {
+        for raw in raw_nodes {
+            let id = raw["id"].as_str().unwrap_or("").to_string();
+            let name = raw["name"].as_str().unwrap_or(&id).to_string();
+            let tool_name = raw["tool"].as_str().unwrap_or("").to_string();
+            let deps = raw["dependencies"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            nodes.push(view_model::NodeViewModel {
+                id,
+                name,
+                tool_name,
+                status: view_model::NodeStatus::Pending,
+                dependencies: deps,
+                dependents: Vec::new(),
+                timing_ms: None,
+                output_preview: None,
+                error: None,
+                retry_count: 0,
+                risk_level: None,
+            });
+        }
+    }
+    nodes
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -315,6 +360,15 @@ fn handle_action(
                                 if let Some(calls) = output.plan["llm_calls_used"].as_u64() {
                                     let _ = tx.send(VmCommand::LlmCalls(calls)).await;
                                 }
+                                // Update tokens metric
+                                if let Some(tokens) = output.plan["llm_tokens_used"].as_u64() {
+                                    let _ = tx.send(VmCommand::Tokens(tokens)).await;
+                                }
+                                // Parse graph nodes
+                                let nodes = parse_graph_nodes(&output.graph);
+                                if !nodes.is_empty() {
+                                    let _ = tx.send(VmCommand::SetNodes(nodes)).await;
+                                }
                                 let _ = tx.send(VmCommand::Phase(ExecutionPhase::Completed)).await;
                             }
                             Err(e) => {
@@ -367,6 +421,15 @@ fn handle_action(
                                 // Update LLM calls metric
                                 if let Some(calls) = output.plan["llm_calls_used"].as_u64() {
                                     let _ = tx.send(VmCommand::LlmCalls(calls)).await;
+                                }
+                                // Update tokens metric
+                                if let Some(tokens) = output.plan["llm_tokens_used"].as_u64() {
+                                    let _ = tx.send(VmCommand::Tokens(tokens)).await;
+                                }
+                                // Parse graph nodes
+                                let nodes = parse_graph_nodes(&output.graph);
+                                if !nodes.is_empty() {
+                                    let _ = tx.send(VmCommand::SetNodes(nodes)).await;
                                 }
                                 let _ = tx.send(VmCommand::Phase(ExecutionPhase::Completed)).await;
                             }
