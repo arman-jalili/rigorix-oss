@@ -8,7 +8,7 @@ name = "command"
 description = "Command to run"
 required = true
 param_type = "string"
-default = "echo done"
+default = "npm install passport"
 
 [[nodes]]
 id = "execute"

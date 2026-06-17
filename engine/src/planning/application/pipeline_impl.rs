@@ -446,16 +446,25 @@ impl PlanningPipelineService for PlanningPipelineImpl {
                             total_llm_tokens += generated.llm_tokens_used;
 
                             // Register the generated template
-                            let template = crate::templates::domain::Template {
-                                id: generated.suggested_id,
-                                name: generated.suggested_name,
-                                description: generated.description,
-                                version: "1.0.0".to_string(),
-                                parameters: vec![],
-                                nodes: vec![],
-                                tags: vec![],
-                                category: None,
-                                author: None,
+                            // Parse the TOML content to get real nodes and parameters
+                            let template = match toml::from_str::<crate::templates::domain::Template>(
+                                &generated.toml_content,
+                            ) {
+                                Ok(t) => t,
+                                Err(_) => {
+                                    // Fallback: create a minimal template with just metadata
+                                    crate::templates::domain::Template {
+                                        id: generated.suggested_id,
+                                        name: generated.suggested_name,
+                                        description: generated.description,
+                                        version: "1.0.0".to_string(),
+                                        parameters: vec![],
+                                        nodes: vec![],
+                                        tags: vec![],
+                                        category: None,
+                                        author: None,
+                                    }
+                                }
                             };
                             let register_input =
                                 crate::templates::application::dto::RegisterInput {
