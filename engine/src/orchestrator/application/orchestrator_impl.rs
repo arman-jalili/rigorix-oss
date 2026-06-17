@@ -118,7 +118,7 @@ impl OrchestratorServiceImpl {
         ExecutionRecord {
             execution_id,
             planning: planning_meta.unwrap_or(PlanningMetadata {
-                template_id: String::new(), confidence: 0.0, llm_calls: 0, total_tokens: 0, prompt_hash: String::new(),
+                template_id: String::new(), confidence: 0.0, llm_calls: 0, total_tokens: 0, prompt_hash: String::new(), generated_toml: None,
             }),
             task_results,
             events,
@@ -179,6 +179,7 @@ impl OrchestratorServiceImpl {
             llm_calls: pr.llm_calls_used,
             total_tokens: pr.llm_tokens_used,
             prompt_hash: pr.planning_hash.0.clone(),
+            generated_toml: pr.generated_toml.clone(),
         }
     }
 }
@@ -392,7 +393,7 @@ pub(crate) mod mocks {
         crate::planning::domain::result::PlanningResult::new(
             eid, "mock-template".into(), 0.95, HashMap::new(),
             crate::planning::domain::result::PlanningHash("a".repeat(64)),
-            false, 2, 500,
+            false, 2, 500, None,
         )
     }
 

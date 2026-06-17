@@ -101,6 +101,11 @@ pub struct PlanningResult {
 
     /// Number of LLM tokens consumed during planning.
     pub llm_tokens_used: u32,
+
+    /// Raw TOML content when the template was generated on-the-fly
+    /// (not pre-registered). `None` when using a pre-existing template.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generated_toml: Option<String>,
 }
 
 impl PlanningResult {
@@ -115,6 +120,7 @@ impl PlanningResult {
         required_clarification: bool,
         llm_calls_used: u32,
         llm_tokens_used: u32,
+        generated_toml: Option<String>,
     ) -> Self {
         Self {
             execution_id,
@@ -126,6 +132,7 @@ impl PlanningResult {
             planned_at: Utc::now(),
             llm_calls_used,
             llm_tokens_used,
+            generated_toml,
         }
     }
 }

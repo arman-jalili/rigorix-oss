@@ -26,6 +26,18 @@ use self::input::{InputFocus, KeyAction};
 use self::view_model::{ActiveView, ExecutionPhase, TuiViewModel};
 use self::widgets::{LayoutMode, WidgetContext, cmd_bar, status_bar};
 
+/// Commands sent from the background orchestrator task to the TUI event loop.
+#[allow(clippy::enum_variant_names, dead_code)]
+#[derive(Debug)]
+enum VmCommand {
+    /// Set the execution phase.
+    Phase(ExecutionPhase),
+    /// Set execution ID.
+    ExecutionId(uuid::Uuid),
+    /// Set an error message and phase to Failed.
+    Error(String),
+}
+
 /// Run the interactive TUI.
 pub async fn run(
     config: CliConfig,
@@ -33,7 +45,8 @@ pub async fn run(
     exec: Option<uuid::Uuid>,
     run: Option<String>,
 ) {
-    let _ = (config, cancellation_token, exec, run);
+    let _ = (exec, run);
+    let (vm_tx, mut vm_rx) = tokio::sync::mpsc::channel::<VmCommand>(64);
 
     let _ = ratatui::crossterm::terminal::enable_raw_mode();
     let _ = ratatui::crossterm::execute!(
@@ -62,6 +75,10 @@ pub async fn run(
         &mut command_bar,
         &mut input_focus,
         &mut selected_node,
+        config,
+        cancellation_token,
+        vm_tx,
+        &mut vm_rx,
     )
     .await;
 
@@ -80,12 +97,17 @@ fn restore_terminal() {
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_event_loop(
     terminal: &mut Terminal<ratatui::prelude::CrosstermBackend<std::io::Stdout>>,
     vm: &mut TuiViewModel,
     command_bar: &mut CommandBarState,
     input_focus: &mut InputFocus,
     selected_node: &mut Option<String>,
+    config: crate::cli_boundary::config::CliConfig,
+    cancellation_token: tokio_util::sync::CancellationToken,
+    vm_tx: tokio::sync::mpsc::Sender<VmCommand>,
+    vm_rx: &mut tokio::sync::mpsc::Receiver<VmCommand>,
 ) -> Result<(), String> {
     loop {
         terminal
@@ -115,12 +137,38 @@ async fn run_event_loop(
             && (key.kind == KeyEventKind::Press || key.kind == KeyEventKind::Repeat)
         {
             let action = keymap::map_key(key, *input_focus);
-            if !handle_action(action, vm, command_bar, input_focus, selected_node, key) {
+            if !handle_action(
+                action,
+                vm,
+                command_bar,
+                input_focus,
+                selected_node,
+                key,
+                &vm_tx,
+                &config,
+                &cancellation_token,
+            ) {
                 break;
             }
         }
+        // Poll for commands from background orchestrator task
+        while let Ok(cmd) = vm_rx.try_recv() {
+            apply_vm_command(vm, cmd);
+        }
     }
     Ok(())
+}
+
+/// Apply a VmCommand to the ViewModel.
+fn apply_vm_command(vm: &mut TuiViewModel, cmd: VmCommand) {
+    match cmd {
+        VmCommand::Phase(phase) => vm.phase = phase,
+        VmCommand::ExecutionId(id) => vm.execution_id = Some(id),
+        VmCommand::Error(err) => {
+            vm.error = Some(err);
+            vm.phase = ExecutionPhase::Failed;
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -131,6 +179,9 @@ fn handle_action(
     input_focus: &mut InputFocus,
     selected_node: &mut Option<String>,
     key: event::KeyEvent,
+    vm_tx: &tokio::sync::mpsc::Sender<VmCommand>,
+    config: &crate::cli_boundary::config::CliConfig,
+    cancellation_token: &tokio_util::sync::CancellationToken,
 ) -> bool {
     match action {
         KeyAction::Quit => return false,
@@ -187,9 +238,75 @@ fn handle_action(
         }
         KeyAction::RunPlan => {
             vm.phase = ExecutionPhase::Executing;
-            vm.active_view = ActiveView::Dashboard;
+            // Spawn the orchestrator in a background task
+            let tx = vm_tx.clone();
+            let cfg = config.clone();
+            let ct = cancellation_token.clone();
+            let intent = vm.intent.clone().unwrap_or_default();
+            tokio::spawn(async move {
+                match crate::cli_boundary::orchestrator::build_orchestrator(cfg, ct, String::new())
+                    .await
+                {
+                    Ok(orch) => {
+                        let input = rigorix_engine::orchestrator::application::dto::RunInput {
+                            intent,
+                            config: serde_json::Value::Null,
+                            repo_root: String::new(),
+                            enforcement_preset: None,
+                        };
+                        match orch.run(input).await {
+                            Ok(output) => {
+                                let _ = tx.send(VmCommand::ExecutionId(output.execution_id)).await;
+                                let _ = tx.send(VmCommand::Phase(ExecutionPhase::Completed)).await;
+                            }
+                            Err(e) => {
+                                let _ = tx.send(VmCommand::Error(format!("Run failed: {e}"))).await;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let _ = tx.send(VmCommand::Error(e.to_string())).await;
+                    }
+                }
+            });
         }
         KeyAction::PlanOnly => {
+            vm.phase = ExecutionPhase::Planning;
+            let tx = vm_tx.clone();
+            let cfg = config.clone();
+            let ct = cancellation_token.clone();
+            let intent = vm.intent.clone().unwrap_or_default();
+            tokio::spawn(async move {
+                match crate::cli_boundary::orchestrator::build_orchestrator(cfg, ct, String::new())
+                    .await
+                {
+                    Ok(orch) => {
+                        let input = rigorix_engine::orchestrator::application::dto::PlanOnlyInput {
+                            intent,
+                            config: serde_json::Value::Null,
+                            repo_root: String::new(),
+                        };
+                        match orch.plan_only(input).await {
+                            Ok(output) => {
+                                // Extract execution_id from plan JSON
+                                let exec_id = output.plan["execution_id"]
+                                    .as_str()
+                                    .and_then(|s| s.parse().ok());
+                                if let Some(id) = exec_id {
+                                    let _ = tx.send(VmCommand::ExecutionId(id)).await;
+                                }
+                            }
+                            Err(e) => {
+                                let _ =
+                                    tx.send(VmCommand::Error(format!("Plan failed: {e}"))).await;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let _ = tx.send(VmCommand::Error(e.to_string())).await;
+                    }
+                }
+            });
             vm.active_view = ActiveView::Dashboard;
         }
         KeyAction::GenerateTemplate => {

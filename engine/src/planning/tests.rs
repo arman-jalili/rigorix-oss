@@ -884,6 +884,7 @@ fn test_planning_result_creation() {
         false,
         2,
         500,
+        None,
     );
 
     assert_eq!(result.template_id, "template-id");
@@ -914,6 +915,7 @@ fn test_planning_result_tracks_timestamps() {
         false,
         1,
         100,
+        None,
     );
 
     // planned_at should be set to now (within reasonable tolerance)

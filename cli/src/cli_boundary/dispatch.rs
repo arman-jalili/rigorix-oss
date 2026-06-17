@@ -208,6 +208,14 @@ pub async fn dispatch(
             };
             match orch.run(input).await {
                 Ok(output) => {
+                    // Save generated template to disk if present
+                    if let Some(toml) = &output.record.planning.generated_toml {
+                        let tpl_dir = std::path::PathBuf::from(".rigorix/templates");
+                        let tpl_path =
+                            tpl_dir.join(format!("{}.toml", output.record.planning.template_id));
+                        let _ = tokio::fs::create_dir_all(&tpl_dir).await;
+                        let _ = tokio::fs::write(&tpl_path, toml).await;
+                    }
                     let data = serde_json::json!({
                         "execution_id": output.execution_id,
                         "status": "completed",
@@ -229,10 +237,20 @@ pub async fn dispatch(
                 repo_root: String::new(),
             };
             match orch.plan_only(input).await {
-                Ok(output) => DispatchResult::success_with_data(
-                    "Plan generated",
-                    serde_json::json!({ "plan": output.plan, "graph": output.graph }),
-                ),
+                Ok(output) => {
+                    // Save generated template to disk if present
+                    if let Some(toml) = output.plan["generated_toml"].as_str() {
+                        let template_id = output.plan["template_id"].as_str().unwrap_or("unknown");
+                        let tpl_dir = std::path::PathBuf::from(".rigorix/templates");
+                        let tpl_path = tpl_dir.join(format!("{template_id}.toml"));
+                        let _ = tokio::fs::create_dir_all(&tpl_dir).await;
+                        let _ = tokio::fs::write(&tpl_path, toml).await;
+                    }
+                    DispatchResult::success_with_data(
+                        "Plan generated",
+                        serde_json::json!({ "plan": output.plan, "graph": output.graph }),
+                    )
+                }
                 Err(e) => DispatchResult::error(format!("Plan failed: {e}"), 1),
             }
         }
