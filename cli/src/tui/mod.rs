@@ -36,6 +36,8 @@ enum VmCommand {
     ExecutionId(uuid::Uuid),
     /// Set template ID.
     TemplateId(String),
+    /// Set LLM calls metric.
+    LlmCalls(u64),
     /// Set an error message and phase to Failed.
     Error(String),
 }
@@ -167,6 +169,7 @@ fn apply_vm_command(vm: &mut TuiViewModel, cmd: VmCommand) {
         VmCommand::Phase(phase) => vm.phase = phase,
         VmCommand::ExecutionId(id) => vm.execution_id = Some(id),
         VmCommand::TemplateId(tid) => vm.template_id = Some(tid),
+        VmCommand::LlmCalls(n) => vm.metrics.llm_calls = n,
         VmCommand::Error(err) => {
             vm.error = Some(err);
             vm.phase = ExecutionPhase::Failed;
@@ -298,6 +301,20 @@ fn handle_action(
                                 if let Some(id) = exec_id {
                                     let _ = tx.send(VmCommand::ExecutionId(id)).await;
                                 }
+                                // Extract and save generated template
+                                if let Some(toml) = output.plan["generated_toml"].as_str() {
+                                    let tid =
+                                        output.plan["template_id"].as_str().unwrap_or("unknown");
+                                    let tpl_dir = std::path::PathBuf::from(".rigorix/templates");
+                                    let tpl_path = tpl_dir.join(format!("{tid}.toml"));
+                                    let _ = tokio::fs::create_dir_all(&tpl_dir).await;
+                                    let _ = tokio::fs::write(&tpl_path, toml).await;
+                                    let _ = tx.send(VmCommand::TemplateId(tid.to_string())).await;
+                                }
+                                // Update LLM calls metric
+                                if let Some(calls) = output.plan["llm_calls_used"].as_u64() {
+                                    let _ = tx.send(VmCommand::LlmCalls(calls)).await;
+                                }
                                 let _ = tx.send(VmCommand::Phase(ExecutionPhase::Completed)).await;
                             }
                             Err(e) => {
@@ -337,9 +354,19 @@ fn handle_action(
                                 if let Some(id) = exec_id {
                                     let _ = tx.send(VmCommand::ExecutionId(id)).await;
                                 }
-                                // Extract template_id and set it on ViewModel
-                                if let Some(tid) = output.plan["template_id"].as_str() {
+                                // Extract and save generated template
+                                if let Some(toml) = output.plan["generated_toml"].as_str() {
+                                    let tid =
+                                        output.plan["template_id"].as_str().unwrap_or("unknown");
+                                    let tpl_dir = std::path::PathBuf::from(".rigorix/templates");
+                                    let tpl_path = tpl_dir.join(format!("{tid}.toml"));
+                                    let _ = tokio::fs::create_dir_all(&tpl_dir).await;
+                                    let _ = tokio::fs::write(&tpl_path, toml).await;
                                     let _ = tx.send(VmCommand::TemplateId(tid.to_string())).await;
+                                }
+                                // Update LLM calls metric
+                                if let Some(calls) = output.plan["llm_calls_used"].as_u64() {
+                                    let _ = tx.send(VmCommand::LlmCalls(calls)).await;
                                 }
                                 let _ = tx.send(VmCommand::Phase(ExecutionPhase::Completed)).await;
                             }
