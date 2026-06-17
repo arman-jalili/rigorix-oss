@@ -1,4 +1,4 @@
-use crate::tui::view_model::TuiViewModel;
+use crate::tui::view_model::{ExecutionPhase, TuiViewModel};
 use ratatui::{
     Frame,
     layout::Rect,
@@ -8,27 +8,28 @@ use ratatui::{
 };
 
 pub fn render(frame: &mut Frame<'_>, area: Rect, vm: &TuiViewModel) {
-    let lines: Vec<String> = if vm.template_id.is_some() {
+    let lines: Vec<String> = if vm.phase == ExecutionPhase::Planning {
         vec![
-            format!(
-                "  Active template: {}",
-                vm.template_id.as_deref().unwrap_or("(none)")
-            ),
-            "  Templates are stored in .rigorix/templates/".into(),
+            "  Generating template from intent...".into(),
+            "  Calling LLM to create a template definition.".into(),
+            "  This may take a few seconds.".into(),
+        ]
+    } else if let Some(tid) = &vm.template_id {
+        vec![
+            format!("  Generated template: {}", tid),
+            "  Template saved to .rigorix/templates/{tid}.toml".into(),
             "".into(),
-            "  Available commands:".into(),
-            "    /templates      List all templates".into(),
-            "    /generate       Create a new template from intent".into(),
-            "    :template show  <id>  Show template details".into(),
+            "  Press [/] templates to refresh list,".into(),
+            "  or start a new intent to generate another template.".into(),
         ]
     } else {
         vec![
             "  No templates loaded yet.".into(),
             "".into(),
-            "  Run an intent with [g] Generate to create a template,".into(),
-            "  or type `/generate` in the command bar.".into(),
+            "  Type an intent in the command bar, then press [g] Generate".into(),
+            "  to create a template from your intent using the LLM.".into(),
             "".into(),
-            "  Templates are stored in .rigorix/templates/ as YAML files".into(),
+            "  Templates are stored in .rigorix/templates/ as TOML files".into(),
             "  and can be reused across sessions.".into(),
         ]
     };

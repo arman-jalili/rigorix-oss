@@ -34,6 +34,8 @@ enum VmCommand {
     Phase(ExecutionPhase),
     /// Set execution ID.
     ExecutionId(uuid::Uuid),
+    /// Set template ID.
+    TemplateId(String),
     /// Set an error message and phase to Failed.
     Error(String),
 }
@@ -164,6 +166,7 @@ fn apply_vm_command(vm: &mut TuiViewModel, cmd: VmCommand) {
     match cmd {
         VmCommand::Phase(phase) => vm.phase = phase,
         VmCommand::ExecutionId(id) => vm.execution_id = Some(id),
+        VmCommand::TemplateId(tid) => vm.template_id = Some(tid),
         VmCommand::Error(err) => {
             vm.error = Some(err);
             vm.phase = ExecutionPhase::Failed;
@@ -310,6 +313,46 @@ fn handle_action(
             vm.active_view = ActiveView::Dashboard;
         }
         KeyAction::GenerateTemplate => {
+            vm.phase = ExecutionPhase::Planning;
+            let tx = vm_tx.clone();
+            let cfg = config.clone();
+            let ct = cancellation_token.clone();
+            let intent = vm.intent.clone().unwrap_or_default();
+            tokio::spawn(async move {
+                match crate::cli_boundary::orchestrator::build_orchestrator(cfg, ct, String::new())
+                    .await
+                {
+                    Ok(orch) => {
+                        let input = rigorix_engine::orchestrator::application::dto::PlanOnlyInput {
+                            intent,
+                            config: serde_json::Value::Null,
+                            repo_root: String::new(),
+                        };
+                        match orch.plan_only(input).await {
+                            Ok(output) => {
+                                let exec_id = output.plan["execution_id"]
+                                    .as_str()
+                                    .and_then(|s| s.parse().ok());
+                                if let Some(id) = exec_id {
+                                    let _ = tx.send(VmCommand::ExecutionId(id)).await;
+                                }
+                                // Extract template_id and set it on ViewModel
+                                if let Some(tid) = output.plan["template_id"].as_str() {
+                                    let _ = tx.send(VmCommand::TemplateId(tid.to_string())).await;
+                                }
+                            }
+                            Err(e) => {
+                                let _ = tx
+                                    .send(VmCommand::Error(format!("Generate failed: {e}")))
+                                    .await;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let _ = tx.send(VmCommand::Error(e.to_string())).await;
+                    }
+                }
+            });
             vm.active_view = ActiveView::Templates;
         }
         KeyAction::SelectNext | KeyAction::SelectPrev => {
