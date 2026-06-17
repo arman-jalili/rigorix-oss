@@ -193,6 +193,32 @@ pub async fn build_orchestrator(
 
     let template_service: Box<dyn TemplateEngineService> = Box::new(TemplateEngineImpl::new());
 
+    // Load existing templates from .rigorix/templates/ directory
+    let tpl_dir = std::path::PathBuf::from(&repo_root).join(".rigorix/templates");
+    if tpl_dir.exists()
+        && let Ok(mut entries) = tokio::fs::read_dir(&tpl_dir).await
+    {
+        let mut files = Vec::new();
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("toml") {
+                files.push(path);
+            }
+        }
+        for path in files {
+            if let Ok(content) = tokio::fs::read_to_string(&path).await
+                && let Ok(template) =
+                    toml::from_str::<rigorix_engine::templates::domain::Template>(&content)
+            {
+                let input = rigorix_engine::templates::application::dto::RegisterInput {
+                    template,
+                    overwrite: true,
+                };
+                let _ = template_service.register(input).await;
+            }
+        }
+    }
+
     // Create template generator for LLM-based plan generation when no template matches.
     // Resolve the API URL with the correct endpoint path per provider.
     // The api_base_url from models.json is the base (e.g. https://api.deepseek.com/v1).
