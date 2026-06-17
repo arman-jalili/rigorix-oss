@@ -151,34 +151,41 @@ pub async fn build_orchestrator(
         })?;
 
     // Build classifier and template generator based on provider
+    // Base URL without endpoint path — classifier and generator append their own paths.
     let api_base_url = llm.base_url.clone().unwrap_or_else(|| match llm.provider {
-        LlmProvider::Anthropic => "https://api.anthropic.com/v1/messages".into(),
-        _ => "https://api.openai.com/v1/chat/completions".into(),
+        LlmProvider::Anthropic => "https://api.anthropic.com/v1".into(),
+        _ => "https://api.openai.com/v1".into(),
     });
     let api_key_for_generator = api_key.clone();
 
     let classifier: Box<dyn rigorix_engine::planning::domain::classification::Classifier> =
         match llm.provider {
-            LlmProvider::Anthropic => Box::new(ClaudeClassifier::new(
-                api_key.clone(),
-                Some(ClaudeClassifierConfig {
-                    api_url: api_base_url,
-                    model: llm.model.clone(),
-                    max_tokens: llm.max_tokens,
-                    temperature: llm.temperature,
-                    timeout_secs: 120,
-                }),
-            )),
-            _ => Box::new(OpenaiClassifier::new(
-                api_key,
-                Some(OpenaiClassifierConfig {
-                    api_url: api_base_url,
-                    model: llm.model.clone(),
-                    max_tokens: llm.max_tokens,
-                    temperature: llm.temperature,
-                    timeout_secs: 120,
-                }),
-            )),
+            LlmProvider::Anthropic => {
+                let url = format!("{}/messages", api_base_url.trim_end_matches('/'));
+                Box::new(ClaudeClassifier::new(
+                    api_key.clone(),
+                    Some(ClaudeClassifierConfig {
+                        api_url: url,
+                        model: llm.model.clone(),
+                        max_tokens: llm.max_tokens,
+                        temperature: llm.temperature,
+                        timeout_secs: 120,
+                    }),
+                ))
+            }
+            _ => {
+                let url = format!("{}/chat/completions", api_base_url.trim_end_matches('/'));
+                Box::new(OpenaiClassifier::new(
+                    api_key,
+                    Some(OpenaiClassifierConfig {
+                        api_url: url,
+                        model: llm.model.clone(),
+                        max_tokens: llm.max_tokens,
+                        temperature: llm.temperature,
+                        timeout_secs: 120,
+                    }),
+                ))
+            }
         };
 
     let extractor = Box::new(MockParameterExtractor::new())
@@ -187,15 +194,29 @@ pub async fn build_orchestrator(
     let template_service: Box<dyn TemplateEngineService> = Box::new(TemplateEngineImpl::new());
 
     // Create template generator for LLM-based plan generation when no template matches.
-    // Use ClaudeTemplateGenerator for Anthropic, OpenaiTemplateGenerator for others.
+    // Resolve the API URL with the correct endpoint path per provider.
+    // The api_base_url from models.json is the base (e.g. https://api.deepseek.com/v1).
+    // OpenAI-compatible providers need /chat/completions, Anthropic needs /messages.
+    let generator_api_url = match llm.provider {
+        LlmProvider::Anthropic => format!("{}/messages", api_base_url.trim_end_matches('/')),
+        _ => format!("{}/chat/completions", api_base_url.trim_end_matches('/')),
+    };
+    let generator_config = Some(ClaudeGeneratorConfig {
+        api_url: generator_api_url,
+        model: llm.model.clone(),
+        max_tokens: llm.max_tokens,
+        timeout_secs: 120,
+        temperature: llm.temperature,
+        max_retries: 3,
+    });
     let generator: Option<Box<dyn TemplateGenerator>> = match llm.provider {
         LlmProvider::Anthropic => Some(Box::new(ClaudeTemplateGenerator::new(
             api_key_for_generator,
-            Some(ClaudeGeneratorConfig::default()),
+            generator_config,
         ))),
         _ => Some(Box::new(OpenaiTemplateGenerator::new(
             api_key_for_generator,
-            Some(ClaudeGeneratorConfig::default()),
+            generator_config,
         ))),
     };
 
