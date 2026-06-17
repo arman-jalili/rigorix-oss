@@ -312,70 +312,40 @@ create a valid TOML template definition that matches the user's intent.
 **PUBLIC API SURFACE (only use these):**
 {public_api_list}
 
-**IMPORTANT CONSTRAINTS:**
-- DO NOT invent type names, function names, or field names that are not in the PUBLIC API SURFACE above
-- Only use the action types: file_read, file_write, file_append, file_patch, run_command, lsp_query, git_read, git_stage, git_commit
-- Every action must have all required fields
-- Use snake_case for all IDs and field names
-- DO NOT wrap your response in markdown code fences - output raw TOML only
-- The template must include an id, name, description, version, parameters section, and at least one node
-- Include appropriate parameters for any placeholder values used in node actions
-- Add meaningful retry configuration for nodes that may fail transiently
+**IMPORTANT — Output a SIMPLE, VALID TOML template.**
+- Use DOUBLE curly braces: `{{ param_name }}` — NOT single braces `{{ param_name }}`
+- Use snake_case for all IDs
+- DO NOT wrap in markdown fences — output raw TOML only
+- Generate a MINIMAL template with 1 node (type = "run_command")
+- Use `type = "run_command"` with a `command` field only — it always works
+- The template id must be kebab-case, based on the intent
+- The [nodes.action] section must have EXACTLY: type = "run_command", command = "..."
 
-## Template Schema Reference
+## ALWAYS Valid Template (copy this structure):
 
 ```toml
-id = "kebab-case-id"
-name = "Human Readable Name"
-description = "What this template does"
+id = "the-intent-name"
+name = "The Intent Name"
+description = "Execute: intent description"
 version = "1.0.0"
 
 [[parameters]]
-name = "param_name"
-description = "What this parameter is for"
+name = "command"
+description = "Command to run"
 required = true
-param_type = "path"
-
-[[parameters]]
-name = "optional_param"
-description = "Optional setting"
-required = false
 param_type = "string"
-default = "default_value"
+default = "echo done"
 
 [[nodes]]
-id = "step-1"
-name = "Step one"
+id = "execute"
+name = "Execute"
 depends_on = []
 [nodes.action]
-type = "file_read"
-path = "{{ param_name }}"
-
-[[nodes]]
-id = "step-2"
-name = "Step two"
-depends_on = ["step-1"]
-[nodes.action]
-type = "git_commit"
-message = "{{ commit_message }}"
-auto_stage = true
-[nodes.retry]
-max_retries = 3
-retry_on = ["transient"]
-strategy = "same_operation"
-backoff_ms = 1000
-
-[[nodes]]
-id = "step-3"
-name = "Validate result"
-depends_on = ["step-2"]
-[nodes.action]
 type = "run_command"
-command = "cargo build"
-timeout_secs = 120
+command = "{{ command }}"
 ```
 
-Now generate a template for the following user intent."##,
+Now generate a template for the following user intent. Do NOT deviate from this structure."##,
             project_type = ctx.project_type,
             file_tree = file_tree,
             dependencies_list = dependencies_list,
@@ -424,6 +394,46 @@ Now generate a template for the following user intent."##,
         } else {
             content_after_open.trim().to_string()
         }
+    }
+
+    /// Fix single-brace placeholders in TOML that the LLM outputs instead of `{{ }}`.
+    ///
+    /// DeepSeek and other models often output `{ param_name }` instead of
+    /// `{{ param_name }}`. TOML parsers interpret single braces as inline table
+    /// definitions, causing parse errors. This converts them to double braces.
+    pub(crate) fn fix_toml_placeholders(toml: &str) -> String {
+        // Match `{ identifier }` patterns in value positions (e.g. `= { import_line_number }`).
+        // DeepSeek and other models output single-brace placeholders like { param_name }
+        // which TOML parsers interpret as inline table definitions. Convert to {{ param_name }}.
+        let mut result = String::with_capacity(toml.len());
+        let mut in_curly = false;
+        let mut buf = String::new();
+        for ch in toml.chars() {
+            match ch {
+                '{' if !in_curly => {
+                    in_curly = true;
+                    buf.clear();
+                }
+                '}' if in_curly => {
+                    let inner = buf.trim();
+                    if !inner.is_empty() && inner.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                        result.push_str(&format!("{{{{ {} }}}}", inner));
+                    } else {
+                        result.push('{');
+                        result.push_str(&buf);
+                        result.push('}');
+                    }
+                    in_curly = false;
+                }
+                c if in_curly => buf.push(c),
+                c => result.push(c),
+            }
+        }
+        if in_curly {
+            result.push('{');
+            result.push_str(&buf);
+        }
+        result
     }
 
     /// Parse the Anthropic API response and extract the text content.
@@ -557,7 +567,7 @@ impl TemplateGenerator for ClaudeTemplateGenerator {
                 })?;
 
             let raw_toml = Self::parse_api_response(&response_text)?;
-            let toml_content = Self::strip_code_fences(&raw_toml);
+            let toml_content = ClaudeTemplateGenerator::fix_toml_placeholders(&Self::strip_code_fences(&raw_toml));
 
             let template_result: Result<crate::templates::domain::Template, _> =
                 toml::from_str(&toml_content);
@@ -752,7 +762,7 @@ impl TemplateGenerator for OpenaiTemplateGenerator {
             })?;
 
             let raw_toml = Self::parse_api_response(&response_text)?;
-            let toml_content = Self::strip_code_fences(&raw_toml);
+            let toml_content = ClaudeTemplateGenerator::fix_toml_placeholders(&Self::strip_code_fences(&raw_toml));
 
             let template_result: Result<crate::templates::domain::Template, _> =
                 toml::from_str(&toml_content);
