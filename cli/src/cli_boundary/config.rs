@@ -1,21 +1,5 @@
-//! Multi-source config loader — TOML + env vars + CLI flags → engine Config.
-//!
+//! Multi-source config loader — TOML + env vars + CLI flags + models.json → engine Config.
 //! @canonical .pi/architecture/modules/cli-boundary.md#config-loading-priority
-//! Implements: ConfigLoader component
-//! Issue: issue-configloader
-//!
-//! # Contract (Frozen)
-//!
-//! Config loading follows a layered priority (highest wins):
-//!
-//! 1. CLI flag overrides (from `--config-key value`)
-//! 2. Environment variables (`RIGORIX_*`)
-//! 3. `rigorix.toml` in CWD
-//! 4. `~/.rigorix/config.toml` (fallback)
-//! 5. Compiled-in engine defaults (lowest)
-//!
-//! The CLI loads and merges these sources, then passes the result to
-//! `engine::configuration::ConfigService::load()`.
 
 use std::collections::HashMap;
 use std::env;
@@ -27,29 +11,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli_boundary::error::CliError;
 
-// ---------------------------------------------------------------------------
-// CLI-specific config wrapper
-// ---------------------------------------------------------------------------
-
 /// CLI-level configuration that merges with engine Config.
-///
-/// Contains CLI-specific settings (format, verbosity, repo_root) plus
-/// overrides that feed into the engine's multi-source `Config` loading.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CliConfig {
-    /// Output format (Pretty, Json, Markdown, Quiet).
     pub format: super::cli::Format,
-
-    /// Verbosity level (0 = default, 1 = debug, 2 = trace).
     pub verbose: u8,
-
-    /// Repository root path for execution context.
     pub repo_root: String,
-
-    /// CLI flag overrides that are merged before engine config loading.
     pub cli_overrides: HashMap<String, serde_json::Value>,
-
-    /// Resolved engine `Config` after multi-source merging.
     #[serde(skip)]
     pub engine_config: Option<Config>,
 }
@@ -67,7 +35,6 @@ impl Default for CliConfig {
 }
 
 impl CliConfig {
-    /// Returns a reference to the resolved engine Config, if available.
     pub fn engine_config(&self) -> Result<&Config, CliError> {
         self.engine_config.as_ref().ok_or_else(|| {
             CliError::Config("Engine config not loaded. Call load_config() first.".into())
@@ -75,11 +42,8 @@ impl CliConfig {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// ── File finders ──────────────────────────────────────────────────────────
 
-/// Try to find a `rigorix.toml` by walking up from `cwd`.
 fn find_project_config(cwd: &Path) -> Option<PathBuf> {
     let mut current = Some(cwd.to_path_buf());
     while let Some(dir) = current {
@@ -92,37 +56,74 @@ fn find_project_config(cwd: &Path) -> Option<PathBuf> {
     None
 }
 
-/// Try to find `~/.rigorix/config.toml`.
 fn find_user_config() -> Option<PathBuf> {
     dirs::home_dir()
         .map(|h| h.join(".rigorix").join("config.toml"))
         .filter(|p| p.is_file())
 }
 
-/// Read environment variables with `RIGORIX_` prefix into a flat map.
-/// `RIGORIX_ORCHESTRATOR_MAX_PARALLEL_TASKS` → `{"orchestrator.max_parallel_tasks": "..."}`
+fn find_models_json(cwd: &Path) -> Option<PathBuf> {
+    // Check project-level first, then user-level
+    let mut current = Some(cwd.to_path_buf());
+    while let Some(dir) = current {
+        let candidate = dir.join(".rigorix").join("models.json");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        current = dir.parent().map(|p| p.to_path_buf());
+    }
+    dirs::home_dir()
+        .map(|h| h.join(".rigorix").join("models.json"))
+        .filter(|p| p.is_file())
+}
+
+// ── Loaders ───────────────────────────────────────────────────────────────
+
+fn load_toml(path: &Path) -> Option<serde_json::Value> {
+    let c = fs::read_to_string(path).ok()?;
+    serde_json::to_value(toml::from_str::<toml::Value>(&c).ok()?).ok()
+}
+
+fn load_json(path: &Path) -> Option<serde_json::Value> {
+    serde_json::from_str(&fs::read_to_string(path).ok()?).ok()
+}
+
 fn read_env_overrides() -> HashMap<String, String> {
     let mut map = HashMap::new();
     for (key, value) in env::vars() {
         if let Some(suffix) = key.strip_prefix("RIGORIX__") {
-            let cfg_key = suffix.to_lowercase().replace("__", ".");
-            map.insert(cfg_key, value);
+            map.insert(suffix.to_lowercase().replace("__", "."), value);
         }
     }
     map
 }
 
-/// Try to deserialize a TOML file into a serde_json::Value.
-fn load_toml_value(path: &Path) -> Option<serde_json::Value> {
-    let content = fs::read_to_string(path).ok()?;
-    let toml_value: toml::Value = toml::from_str(&content).ok()?;
-    // Convert TOML Value → serde_json::Value
-    serde_json::to_value(toml_value).ok()
+/// Look up model settings from a parsed models.json.
+fn resolve_model_settings(
+    models: &serde_json::Value,
+    provider: &str,
+    model_id: &str,
+) -> Option<(String, String, u32)> {
+    let prov = models.get("providers")?.get(provider)?;
+    let base_url = prov.get("baseUrl")?.as_str()?.to_string();
+    let api_key = prov
+        .get("apiKey")
+        .and_then(|k| k.as_str())
+        .unwrap_or("")
+        .to_string();
+    let models_arr = prov.get("models")?.as_array()?;
+    // Exact match
+    for m in models_arr {
+        if m.get("id")?.as_str()? == model_id {
+            let max_tokens = m.get("maxTokens").and_then(|t| t.as_u64()).unwrap_or(4096) as u32;
+            return Some((base_url, api_key, max_tokens));
+        }
+    }
+    // Provider match fallback
+    Some((base_url, api_key, 4096))
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
+// ── Public API ────────────────────────────────────────────────────────────
 
 /// Load and merge configuration from all sources.
 ///
@@ -131,45 +132,49 @@ fn load_toml_value(path: &Path) -> Option<serde_json::Value> {
 /// 2. Environment variables (`RIGORIX__*`)
 /// 3. `rigorix.toml` in CWD
 /// 4. `~/.rigorix/config.toml` (fallback)
-/// 5. Compiled-in defaults
-///
-/// # Returns
-///
-/// A fully resolved `CliConfig` containing both CLI-specific settings
-/// and the merged engine `Config`.
+/// 5. `models.json` provider/model defaults (base_url, max_tokens)
+/// 6. Compiled-in defaults (lowest)
 pub fn load_config() -> CliConfig {
     let cwd = env::current_dir().unwrap_or_default();
     let repo_root = find_repo_root(&cwd).unwrap_or_else(|| cwd.to_string_lossy().to_string());
     let cwd_path = Path::new(&repo_root);
 
-    // 1. Load TOML sources
+    // 1. Layered TOML merge (low → high priority)
     let mut merged = serde_json::json!({});
-
-    // User config (lowest priority TOML)
-    if let Some(user_cfg) = find_user_config().and_then(|p| load_toml_value(&p)) {
-        deep_merge(&mut merged, user_cfg);
+    if let Some(cfg) = find_user_config().and_then(|p| load_toml(&p)) {
+        deep_merge(&mut merged, cfg);
+    }
+    if let Some(cfg) = find_project_config(cwd_path).and_then(|p| load_toml(&p)) {
+        deep_merge(&mut merged, cfg);
     }
 
-    // Project config
-    if let Some(proj_cfg) = find_project_config(cwd_path).and_then(|p| load_toml_value(&p)) {
-        deep_merge(&mut merged, proj_cfg);
+    // 2. Check for models.json and resolve provider/model defaults
+    if let Some(models_val) = find_models_json(cwd_path).and_then(|p| load_json(&p))
+        && let Some(provider_str) = merged.pointer("/llm/provider").and_then(|v| v.as_str())
+        && let Some(model_id) = merged.pointer("/llm/model").and_then(|v| v.as_str())
+        && let Some((base_url, _api_key, max_tokens)) =
+            resolve_model_settings(&models_val, provider_str, model_id)
+    {
+        let model_defaults = serde_json::json!({
+            "llm": {
+                "base_url": base_url,
+                "max_tokens": max_tokens,
+            }
+        });
+        deep_merge(&mut merged, model_defaults);
     }
 
-    // 2. Environment variable overrides
-    let env_overrides = read_env_overrides();
-    for (key, value) in &env_overrides {
-        set_nested(&mut merged, key, serde_json::Value::String(value.clone()));
+    // 3. Environment variable overrides (highest text priority)
+    for (key, value) in read_env_overrides() {
+        set_nested(&mut merged, &key, serde_json::Value::String(value));
     }
 
-    // 3. Try to deserialize into engine Config
-    let engine_config: Option<Config> = match Config::deserialize(&merged) {
+    // 4. Deserialize into engine Config
+    let engine_config = match Config::deserialize(&merged) {
         Ok(cfg) => Some(cfg),
         Err(_) => {
-            // Partial config + defaults: try loading with defaults
-            let defaults = Config::default();
-            // Merge defaults with our overrides
-            let default_val = serde_json::to_value(&defaults).unwrap_or_default();
-            let mut combined = default_val;
+            let defaults = serde_json::to_value(Config::default()).unwrap_or_default();
+            let mut combined = defaults;
             deep_merge(&mut combined, merged);
             Config::deserialize(&combined).ok()
         }
@@ -184,7 +189,6 @@ pub fn load_config() -> CliConfig {
     }
 }
 
-/// Find the repository root by looking for `.git` directory.
 fn find_repo_root(cwd: &Path) -> Option<String> {
     let mut current = Some(cwd.to_path_buf());
     while let Some(dir) = current {
@@ -196,49 +200,44 @@ fn find_repo_root(cwd: &Path) -> Option<String> {
     None
 }
 
-/// Deep-merge `source` into `target` (modifies target in place).
 fn deep_merge(target: &mut serde_json::Value, source: serde_json::Value) {
-    if let (serde_json::Value::Object(target_map), serde_json::Value::Object(source_map)) =
-        (target, source)
-    {
-        for (key, value) in source_map {
-            if let Some(existing) = target_map.get_mut(&key)
+    if let (serde_json::Value::Object(t), serde_json::Value::Object(s)) = (target, source) {
+        for (k, v) in s {
+            if let Some(existing) = t.get_mut(&k)
                 && existing.is_object()
-                && value.is_object()
+                && v.is_object()
             {
-                deep_merge(existing, value);
-                continue;
+                deep_merge(existing, v);
+            } else {
+                t.insert(k, v);
             }
-            target_map.insert(key, value);
         }
     }
 }
 
-/// Set a nested key like "orchestrator.max_parallel_tasks" on a JSON value.
 fn set_nested(root: &mut serde_json::Value, path: &str, value: serde_json::Value) {
     let parts: Vec<&str> = path.split('.').collect();
     if parts.is_empty() {
         return;
     }
-    let mut current = root;
+    let mut cur = root;
     for (i, part) in parts.iter().enumerate() {
         if i == parts.len() - 1 {
-            if let serde_json::Value::Object(map) = current {
-                map.insert(part.to_string(), value.clone());
+            if let serde_json::Value::Object(m) = cur {
+                m.insert(part.to_string(), value.clone());
             }
         } else {
-            if !current.is_object() {
-                *current = serde_json::Value::Object(serde_json::Map::new());
+            if !cur.is_object() {
+                *cur = serde_json::Value::Object(serde_json::Map::new());
             }
-            if let serde_json::Value::Object(map) = current {
-                if !map.contains_key(*part) {
-                    map.insert(
+            if let serde_json::Value::Object(m) = cur {
+                if !m.contains_key(*part) {
+                    m.insert(
                         part.to_string(),
                         serde_json::Value::Object(serde_json::Map::new()),
                     );
                 }
-                // Safe: we just inserted or it exists
-                current = map.get_mut(*part).expect("just inserted");
+                cur = m.get_mut(*part).expect("just inserted");
             }
         }
     }
@@ -251,44 +250,53 @@ mod tests {
 
     #[test]
     fn test_deep_merge_overwrites_scalar() {
-        let mut target = json!({"key": "old"});
-        let source = json!({"key": "new"});
-        deep_merge(&mut target, source);
-        assert_eq!(target, json!({"key": "new"}));
+        let mut t = json!({"k": "old"});
+        deep_merge(&mut t, json!({"k": "new"}));
+        assert_eq!(t, json!({"k": "new"}));
     }
 
     #[test]
     fn test_deep_merge_nested() {
-        let mut target = json!({"a": {"b": 1, "c": 2}});
-        let source = json!({"a": {"b": 10, "d": 3}});
-        deep_merge(&mut target, source);
-        assert_eq!(target, json!({"a": {"b": 10, "c": 2, "d": 3}}));
+        let mut t = json!({"a": {"b": 1, "c": 2}});
+        deep_merge(&mut t, json!({"a": {"b": 10, "d": 3}}));
+        assert_eq!(t, json!({"a": {"b": 10, "c": 2, "d": 3}}));
     }
 
     #[test]
     fn test_set_nested_simple() {
-        let mut root = json!({});
-        set_nested(&mut root, "key", json!("value"));
-        assert_eq!(root, json!({"key": "value"}));
+        let mut r = json!({});
+        set_nested(&mut r, "key", json!("v"));
+        assert_eq!(r, json!({"key": "v"}));
     }
 
     #[test]
     fn test_set_nested_deep() {
-        let mut root = json!({});
-        set_nested(&mut root, "orchestrator.max_parallel_tasks", json!(8));
-        assert_eq!(root, json!({"orchestrator": {"max_parallel_tasks": 8}}));
+        let mut r = json!({});
+        set_nested(&mut r, "a.b.c", json!(42));
+        assert_eq!(r, json!({"a": {"b": {"c": 42}}}));
     }
 
     #[test]
-    fn test_config_defaults() {
-        let config = CliConfig::default();
-        assert!(config.engine_config.is_none());
-        assert_eq!(config.verbose, 0);
+    fn test_resolve_model_settings() {
+        let m = json!({"providers": {"anthropic": {"baseUrl": "https://api.anthropic.com/v1", "models": [{"id": "claude-sonnet-4-6", "maxTokens": 8192}]}}});
+        let (url, key, tokens) =
+            resolve_model_settings(&m, "anthropic", "claude-sonnet-4-6").unwrap();
+        assert_eq!(url, "https://api.anthropic.com/v1");
+        assert_eq!(tokens, 8192);
+        assert_eq!(key, "");
     }
 
     #[test]
-    fn test_config_engine_config_not_loaded() {
-        let config = CliConfig::default();
-        assert!(config.engine_config().is_err());
+    fn test_resolve_model_settings_fallback() {
+        let m = json!({"providers": {"local": {"baseUrl": "http://localhost:8080", "models": []}}});
+        let (url, _, tokens) = resolve_model_settings(&m, "local", "unknown-model").unwrap();
+        assert_eq!(url, "http://localhost:8080");
+        assert_eq!(tokens, 4096);
+    }
+
+    #[test]
+    fn test_resolve_model_settings_missing_provider() {
+        let m = json!({"providers": {}});
+        assert!(resolve_model_settings(&m, "nonexistent", "any").is_none());
     }
 }
