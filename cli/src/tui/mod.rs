@@ -110,7 +110,7 @@ async fn run_event_loop(
             })
             .map_err(|e| format!("Render error: {e}"))?;
 
-        if event::poll(Duration::from_millis(100)).map_err(|e| format!("Poll error: {e}"))?
+        if event::poll(Duration::from_millis(50)).map_err(|e| format!("Poll error: {e}"))?
             && let Event::Key(key) = event::read().map_err(|e| format!("Read error: {e}"))?
             && (key.kind == KeyEventKind::Press || key.kind == KeyEventKind::Repeat)
         {
@@ -149,6 +149,8 @@ fn handle_action(
                         vm.intent = Some(intent.clone());
                         vm.phase = ExecutionPhase::Planning;
                         vm.active_view = ActiveView::Plan;
+                        *input_focus = InputFocus::PlanReview;
+                        command_bar.focused = false;
                     }
                     command_bar::CommandBarInput::SlashCommand(cmd) => match cmd.as_str() {
                         "history" => vm.active_view = ActiveView::History,

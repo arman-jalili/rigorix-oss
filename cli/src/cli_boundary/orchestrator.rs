@@ -186,12 +186,17 @@ pub async fn build_orchestrator(
 
     let template_service: Box<dyn TemplateEngineService> = Box::new(TemplateEngineImpl::new());
 
-    // Create template generator for LLM-based plan generation when no template matches
-    let generator: Option<Box<dyn TemplateGenerator>> =
-        Some(Box::new(ClaudeTemplateGenerator::new(
+    // Create template generator for LLM-based plan generation when no template matches.
+    // ClaudeTemplateGenerator sends Anthropic-format requests (x-api-key header).
+    // For OpenAI-compatible providers (DeepSeek, OpenAI, local), skip the generator
+    // since they expect Authorization: Bearer header format.
+    let generator: Option<Box<dyn TemplateGenerator>> = match llm.provider {
+        LlmProvider::Anthropic => Some(Box::new(ClaudeTemplateGenerator::new(
             api_key_for_generator,
             Some(ClaudeGeneratorConfig::default()),
-        )));
+        ))),
+        _ => None,
+    };
 
     let planning = PlanningPipelineFactoryImpl::new()
         .create_custom(classifier, extractor, template_service, generator, None)
