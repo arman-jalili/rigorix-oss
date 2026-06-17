@@ -194,11 +194,64 @@ impl PlanningPipelineImpl {
         })?;
 
         Ok(GenerateGraphOutput {
-            graph: crate::dag_engine::domain::TaskGraph::default(),
+            graph: Self::build_task_graph(&output),
             node_count: output.node_count as u32,
             sealed: output.valid,
             from_generator: false,
         })
+    }
+
+    /// Build a TaskGraph from the template engine's GenerateOutput nodes.
+    fn build_task_graph(
+        output: &crate::templates::application::dto::GenerateOutput,
+    ) -> crate::dag_engine::domain::TaskGraph {
+        use crate::templates::domain::TemplateAction;
+        use std::collections::HashMap;
+
+        // Map template node IDs to TaskNode UUIDs
+        let mut node_id_map: HashMap<String, uuid::Uuid> = HashMap::new();
+        for node in &output.nodes {
+            let id = uuid::Uuid::new_v4();
+            node_id_map.insert(node.id.clone(), id);
+        }
+
+        // Build dependency map: for each node, find its dependency UUIDs from edges
+        let mut dep_map: HashMap<String, Vec<uuid::Uuid>> = HashMap::new();
+        for (from_id, to_id) in &output.edges {
+            if let Some(&to_uuid) = node_id_map.get(to_id) {
+                dep_map.entry(from_id.clone())
+                    .or_default()
+                    .push(to_uuid);
+            }
+        }
+
+        let mut graph = crate::dag_engine::domain::TaskGraph::new();
+        for node in &output.nodes {
+            let node_id = node_id_map[&node.id];
+            let deps: Vec<uuid::Uuid> = dep_map
+                .remove(&node.id)
+                .unwrap_or_default();
+            let (tool, intent) = match &node.action {
+                TemplateAction::RunCommand {
+                    command, ..
+                } => ("run_command", command.clone()),
+                TemplateAction::FileRead { path } => ("file_read", path.clone()),
+                TemplateAction::FileWrite { content, .. } => ("file_write", content.clone()),
+                TemplateAction::FileAppend { content, .. } => ("file_append", content.clone()),
+                TemplateAction::LspQuery {
+                    query_type, ..
+                } => ("lsp_query", query_type.clone()),
+                _ => ("unknown", String::new()),
+            };
+            graph.nodes.push(crate::dag_engine::domain::TaskNode::new(
+                node_id,
+                &node.name,
+                tool.to_string(),
+                deps,
+                intent,
+            ));
+        }
+        graph
     }
 
     /// Phase 5: Validate plan.
