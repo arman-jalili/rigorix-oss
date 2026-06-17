@@ -230,8 +230,11 @@ impl Default for LlmConfig {
 /// Supported LLM providers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LlmProvider {
+    #[serde(rename = "anthropic")]
     Anthropic,
+    #[serde(rename = "openai")]
     OpenAI,
+    #[serde(rename = "deepseek")]
     DeepSeek,
     #[serde(other)]
     Custom,
