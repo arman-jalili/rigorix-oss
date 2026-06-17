@@ -596,6 +596,198 @@ impl TemplateGenerator for ClaudeTemplateGenerator {
     }
 }
 
+// ── OpenAI-compatible TemplateGenerator ─────────────────────────────────
+
+/// Template generator for OpenAI-compatible APIs (OpenAI, DeepSeek, local).
+/// Sends requests using the OpenAI chat completions format:
+/// POST /v1/chat/completions with Authorization: Bearer header.
+pub struct OpenaiTemplateGenerator {
+    api_key: String,
+    config: ClaudeGeneratorConfig,
+    client: reqwest::Client,
+}
+
+impl OpenaiTemplateGenerator {
+    pub fn new(api_key: String, config: Option<ClaudeGeneratorConfig>) -> Self {
+        let config = config.unwrap_or_default();
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(config.timeout_secs))
+            .build()
+            .expect("Failed to create HTTP client");
+        Self { api_key, config, client }
+    }
+
+    fn build_system_prompt(&self, ctx: &RepoContext) -> String {
+        ClaudeTemplateGenerator::new("".into(), None).build_system_prompt(ctx)
+    }
+
+    fn build_user_message(&self, intent: &crate::planning::domain::UserIntent) -> String {
+        ClaudeTemplateGenerator::new("".into(), None).build_user_message(intent)
+    }
+
+    fn strip_code_fences(response: &str) -> String {
+        ClaudeTemplateGenerator::strip_code_fences(response)
+    }
+
+    /// Parse the OpenAI API response and extract the text content.
+    fn parse_api_response(response_text: &str) -> Result<String, GeneratorError> {
+        #[derive(Deserialize)]
+        struct OpenaiResponse {
+            choices: Vec<OpenaiChoice>,
+        }
+        #[derive(Deserialize)]
+        struct OpenaiChoice {
+            message: OpenaiMessage,
+        }
+        #[derive(Deserialize)]
+        struct OpenaiMessage {
+            content: Option<String>,
+        }
+        let resp: OpenaiResponse =
+            serde_json::from_str(response_text).map_err(|e| GeneratorError::ApiError {
+                detail: format!("Failed to parse OpenAI API response: {}", e),
+                status_code: None,
+                retry_after: None,
+            })?;
+        resp.choices
+            .into_iter()
+            .next()
+            .and_then(|c| c.message.content)
+            .ok_or_else(|| GeneratorError::ApiError {
+                detail: "OpenAI response has no content".to_string(),
+                status_code: None,
+                retry_after: None,
+            })
+    }
+
+    fn extract_retry_after(response: &reqwest::Response) -> Option<u64> {
+        response
+            .headers()
+            .get("retry-after")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok())
+    }
+}
+
+#[async_trait]
+impl TemplateGenerator for OpenaiTemplateGenerator {
+    async fn generate(
+        &self,
+        intent: &crate::planning::domain::UserIntent,
+        repo_context: &RepoContext,
+        _budget: &crate::budget_tracking::domain::LlmBudget,
+    ) -> Result<GeneratedTemplate, GeneratorError> {
+        let max_retries = self.config.max_retries;
+        let mut last_error = String::new();
+
+        for attempt in 0..max_retries {
+            let system_prompt = self.build_system_prompt(repo_context);
+            let user_message = self.build_user_message(intent);
+
+            let message_content = if attempt > 0 {
+                format!( "{}\n\n## Previous Attempt Failed\n\n{}", user_message, last_error )
+            } else {
+                user_message.clone()
+            };
+
+            // OpenAI format: system is a message with role "system"
+            let body = serde_json::json!({
+                "model": self.config.model,
+                "max_tokens": self.config.max_tokens,
+                "temperature": self.config.temperature,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": message_content}
+                ]
+            });
+
+            let body_bytes = serde_json::to_vec(&body).map_err(|e| GeneratorError::ApiError {
+                detail: format!("Failed to serialize request: {}", e),
+                status_code: None, retry_after: None,
+            })?;
+
+            let response = self
+                .client
+                .post(&self.config.api_url)
+                .header("Authorization", format!("Bearer {}", &self.api_key))
+                .header("content-type", "application/json")
+                .body(body_bytes)
+                .send()
+                .await
+                .map_err(|e| GeneratorError::ApiError {
+                    detail: format!("HTTP request failed: {}", e),
+                    status_code: None, retry_after: None,
+                })?;
+
+            let status = response.status();
+            let retry_after = Self::extract_retry_after(&response);
+
+            if !status.is_success() {
+                let response_text = response.text().await.unwrap_or_default();
+                if status.as_u16() == 429 || status.as_u16() >= 500 {
+                    last_error = format!(
+                        "API returned status {}: {}",
+                        status.as_u16(),
+                        response_text.chars().take(200).collect::<String>()
+                    );
+                    if let Some(seconds) = retry_after {
+                        tokio::time::sleep(Duration::from_secs(seconds)).await;
+                    }
+                    continue;
+                }
+                return Err(GeneratorError::ApiError {
+                    detail: format!(
+                        "API returned status {}: {}",
+                        status.as_u16(),
+                        response_text.chars().take(200).collect::<String>()
+                    ),
+                    status_code: Some(status.as_u16()),
+                    retry_after,
+                });
+            }
+
+            let response_text = response.text().await.map_err(|e| GeneratorError::ApiError {
+                detail: format!("Failed to read response body: {}", e),
+                status_code: None, retry_after: None,
+            })?;
+
+            let raw_toml = Self::parse_api_response(&response_text)?;
+            let toml_content = Self::strip_code_fences(&raw_toml);
+
+            let template_result: Result<crate::templates::domain::Template, _> =
+                toml::from_str(&toml_content);
+
+            match template_result {
+                Ok(template) => {
+                    return Ok(GeneratedTemplate {
+                        toml_content,
+                        suggested_id: template.id.clone(),
+                        suggested_name: template.name.clone(),
+                        description: template.description.clone(),
+                        llm_calls_used: attempt as u32 + 1,
+                        llm_tokens_used: 0,
+                    });
+                }
+                Err(e) => {
+                    last_error = format!("TOML parse error: {}", e);
+                }
+            }
+        }
+
+        Err(GeneratorError::MaxRetriesExhausted {
+            attempts: max_retries,
+            errors: vec![last_error],
+        })
+    }
+
+    fn estimate_cost(&self, _intent: &crate::planning::domain::UserIntent) -> GeneratedTemplateCost {
+        GeneratedTemplateCost {
+            estimated_calls: self.config.max_retries as u32,
+            estimated_tokens: self.config.max_tokens,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

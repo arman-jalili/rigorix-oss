@@ -39,7 +39,7 @@ use rigorix_engine::state_persistence::application::factory::{
 };
 use rigorix_engine::state_persistence::application::state_manager_factory_impl::FileSystemStateManagerFactory;
 use rigorix_engine::template_generation::domain::{
-    ClaudeGeneratorConfig, ClaudeTemplateGenerator, TemplateGenerator,
+    ClaudeGeneratorConfig, ClaudeTemplateGenerator, OpenaiTemplateGenerator, TemplateGenerator,
 };
 use rigorix_engine::templates::application::service::TemplateEngineService;
 use rigorix_engine::templates::application::template_engine_impl::TemplateEngineImpl;
@@ -187,15 +187,16 @@ pub async fn build_orchestrator(
     let template_service: Box<dyn TemplateEngineService> = Box::new(TemplateEngineImpl::new());
 
     // Create template generator for LLM-based plan generation when no template matches.
-    // ClaudeTemplateGenerator sends Anthropic-format requests (x-api-key header).
-    // For OpenAI-compatible providers (DeepSeek, OpenAI, local), skip the generator
-    // since they expect Authorization: Bearer header format.
+    // Use ClaudeTemplateGenerator for Anthropic, OpenaiTemplateGenerator for others.
     let generator: Option<Box<dyn TemplateGenerator>> = match llm.provider {
         LlmProvider::Anthropic => Some(Box::new(ClaudeTemplateGenerator::new(
             api_key_for_generator,
             Some(ClaudeGeneratorConfig::default()),
         ))),
-        _ => None,
+        _ => Some(Box::new(OpenaiTemplateGenerator::new(
+            api_key_for_generator,
+            Some(ClaudeGeneratorConfig::default()),
+        ))),
     };
 
     let planning = PlanningPipelineFactoryImpl::new()
