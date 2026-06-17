@@ -332,7 +332,7 @@ version = "1.0.0"
 [[parameters]]
 name = "command"
 description = "Command to run"
-required = true
+required = false
 param_type = "string"
 default = "echo done"
 
