@@ -8,19 +8,35 @@ use ratatui::{
 };
 
 pub fn render(frame: &mut Frame<'_>, area: Rect, vm: &TuiViewModel) {
-    let lines: Vec<String> = if vm.phase == ExecutionPhase::Planning {
+    let lines: Vec<String> = if let Some(err) = &vm.error {
+        vec![
+            format!("  Error: {}", err),
+            "".into(),
+            "  Press [Tab] to return to Dashboard,".into(),
+            "  or type a new intent in the command bar.".into(),
+        ]
+    } else if vm.phase == ExecutionPhase::Planning {
         vec![
             "  Generating template from intent...".into(),
             "  Calling LLM to create a template definition.".into(),
-            "  This may take a few seconds.".into(),
+            format!(
+                "  Phase: {:?} | LLM calls: {}",
+                vm.phase, vm.metrics.llm_calls
+            ),
+            "".into(),
+            "  Press [Tab] to check Dashboard for progress.".into(),
         ]
     } else if let Some(tid) = &vm.template_id {
         vec![
             format!("  Generated template: {}", tid),
-            "  Template saved to .rigorix/templates/{tid}.toml".into(),
+            format!("  Saved to .rigorix/templates/{}.toml", tid),
+            format!(
+                "  Status: {:?} | LLM calls: {}",
+                vm.phase, vm.metrics.llm_calls
+            ),
             "".into(),
-            "  Press [/] templates to refresh list,".into(),
-            "  or start a new intent to generate another template.".into(),
+            "  Press [Tab] to return to Dashboard,".into(),
+            "  or type a new intent to generate another template.".into(),
         ]
     } else {
         vec![

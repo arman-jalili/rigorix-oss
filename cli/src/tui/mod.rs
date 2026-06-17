@@ -298,6 +298,7 @@ fn handle_action(
                                 if let Some(id) = exec_id {
                                     let _ = tx.send(VmCommand::ExecutionId(id)).await;
                                 }
+                                let _ = tx.send(VmCommand::Phase(ExecutionPhase::Completed)).await;
                             }
                             Err(e) => {
                                 let _ =
@@ -340,6 +341,7 @@ fn handle_action(
                                 if let Some(tid) = output.plan["template_id"].as_str() {
                                     let _ = tx.send(VmCommand::TemplateId(tid.to_string())).await;
                                 }
+                                let _ = tx.send(VmCommand::Phase(ExecutionPhase::Completed)).await;
                             }
                             Err(e) => {
                                 let _ = tx
