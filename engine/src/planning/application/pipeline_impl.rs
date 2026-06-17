@@ -276,6 +276,7 @@ impl PlanningPipelineService for PlanningPipelineImpl {
         let mut total_llm_calls = 0u32;
         let mut total_llm_tokens = 0u32;
         let mut _from_generator = false;
+        let mut generated_toml: Option<String> = None;
         let clarification_used = false;
         let mut generator_attempts = 0u32;
         const MAX_GENERATOR_ATTEMPTS: u32 = 3;
@@ -351,6 +352,7 @@ impl PlanningPipelineService for PlanningPipelineImpl {
                         clarification_used,
                         total_llm_calls,
                         total_llm_tokens,
+                        generated_toml.clone(),
                     );
                     let completed_at = planning_result.planned_at;
 
@@ -392,6 +394,7 @@ impl PlanningPipelineService for PlanningPipelineImpl {
                             true,
                             total_llm_calls,
                             total_llm_tokens,
+                        generated_toml.clone(),
                         );
                         let completed_at = planning_result.planned_at;
 
@@ -467,6 +470,7 @@ impl PlanningPipelineService for PlanningPipelineImpl {
                                 })?;
 
                             _from_generator = true;
+                            generated_toml = Some(generated.toml_content.clone());
                             // Re-classify with the new template available
                             continue;
                         }

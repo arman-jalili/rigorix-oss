@@ -67,6 +67,11 @@ pub struct PlanningMetadata {
 
     /// Hash of the planning prompt for replay reproducibility.
     pub prompt_hash: String,
+
+    /// Raw TOML content when the template was generated on-the-fly.
+    /// None when using a pre-existing template.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generated_toml: Option<String>,
 }
 
 /// Result of executing a single DAG node.
@@ -249,6 +254,7 @@ impl Default for PlanningMetadata {
             llm_calls: 0,
             total_tokens: 0,
             prompt_hash: String::new(),
+            generated_toml: None,
         }
     }
 }
