@@ -38,6 +38,9 @@ use rigorix_engine::state_persistence::application::factory::{
     CreateStateManagerConfig, StateManagerFactory,
 };
 use rigorix_engine::state_persistence::application::state_manager_factory_impl::FileSystemStateManagerFactory;
+use rigorix_engine::template_generation::domain::{
+    ClaudeGeneratorConfig, ClaudeTemplateGenerator, TemplateGenerator,
+};
 use rigorix_engine::templates::application::service::TemplateEngineService;
 use rigorix_engine::templates::application::template_engine_impl::TemplateEngineImpl;
 
@@ -147,13 +150,19 @@ pub async fn build_orchestrator(
             ))
         })?;
 
-    // Build classifier based on provider
+    // Build classifier and template generator based on provider
+    let api_base_url = llm.base_url.clone().unwrap_or_else(|| match llm.provider {
+        LlmProvider::Anthropic => "https://api.anthropic.com/v1/messages".into(),
+        _ => "https://api.openai.com/v1/chat/completions".into(),
+    });
+    let api_key_for_generator = api_key.clone();
+
     let classifier: Box<dyn rigorix_engine::planning::domain::classification::Classifier> =
         match llm.provider {
             LlmProvider::Anthropic => Box::new(ClaudeClassifier::new(
-                api_key,
+                api_key.clone(),
                 Some(ClaudeClassifierConfig {
-                    api_url: "https://api.anthropic.com/v1/messages".into(),
+                    api_url: api_base_url,
                     model: llm.model.clone(),
                     max_tokens: llm.max_tokens,
                     temperature: llm.temperature,
@@ -163,7 +172,7 @@ pub async fn build_orchestrator(
             _ => Box::new(OpenaiClassifier::new(
                 api_key,
                 Some(OpenaiClassifierConfig {
-                    api_url: "https://api.openai.com/v1/chat/completions".into(),
+                    api_url: api_base_url,
                     model: llm.model.clone(),
                     max_tokens: llm.max_tokens,
                     temperature: llm.temperature,
@@ -177,8 +186,15 @@ pub async fn build_orchestrator(
 
     let template_service: Box<dyn TemplateEngineService> = Box::new(TemplateEngineImpl::new());
 
+    // Create template generator for LLM-based plan generation when no template matches
+    let generator: Option<Box<dyn TemplateGenerator>> =
+        Some(Box::new(ClaudeTemplateGenerator::new(
+            api_key_for_generator,
+            Some(ClaudeGeneratorConfig::default()),
+        )));
+
     let planning = PlanningPipelineFactoryImpl::new()
-        .create_default(classifier, extractor, template_service)
+        .create_custom(classifier, extractor, template_service, generator, None)
         .await
         .map_err(|e| CliError::General(format!("planning: {e}")))?;
 
