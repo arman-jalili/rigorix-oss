@@ -116,6 +116,18 @@ default_timeout_secs = 120
 [logging]
 level = "info"
 format = "text"
+
+[llm]
+# Set your provider: anthropic, openai, deepseek, lmstudio, or ollama
+provider = "anthropic"
+# Model ID — see ~/.rigorix/models.json for available models
+model = "claude-sonnet-4-6"
+# Base URL is auto-resolved from models.json if present
+# max_tokens and temperature override model defaults
+# max_tokens = 4096
+# temperature = 0.7
+
+# API key: set via RIGORIX__LLM__API_KEY or ANTHROPIC_API_KEY / OPENAI_API_KEY
 "#;
             let config_path = path.join("rigorix.toml");
             if let Err(e) = std::fs::write(&config_path, default_config) {
