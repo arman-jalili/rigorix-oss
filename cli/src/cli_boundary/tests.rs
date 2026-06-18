@@ -48,8 +48,7 @@ fn test_pretty_formatter_success() {
     let formatter = output::PrettyFormatter;
     let result = DispatchResult::success("test");
     let output = formatter.format_summary(&result);
-    assert!(output.contains("✓"));
-    assert!(output.contains("test"));
+    assert!(output.contains("test"), "expected summary text, got: {output:?}");
 }
 
 #[test]

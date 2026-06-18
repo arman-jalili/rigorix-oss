@@ -233,20 +233,47 @@ pub async fn dispatch(
                         let _ = tokio::fs::create_dir_all(&tpl_dir).await;
                         let _ = tokio::fs::write(&tpl_path, toml).await;
                     }
-                    let data = serde_json::json!({
-                        "execution_id": output.execution_id,
-                        "status": "completed",
-                    });
-                    DispatchResult::success_with_data(
-                        format!("Run completed: {}", output.execution_id),
-                        data,
-                    )
+
+                    let status = format!("{:?}", output.record.status);
+                    let task_results = &output.record.task_results;
+                    use rigorix_engine::orchestrator::domain::record::TaskStatus;
+                    let fail_count = task_results
+                        .iter()
+                        .filter(|t| matches!(t.status, TaskStatus::Failure))
+                        .count();
+                    let pass_count = task_results
+                        .iter()
+                        .filter(|t| matches!(t.status, TaskStatus::Success))
+                        .count();
+                    let skip_count = task_results
+                        .iter()
+                        .filter(|t| matches!(t.status, TaskStatus::Skipped))
+                        .count();
+
+                    let mut summary = format!(
+                        "Run: {} — {} failed, {} passed, {} skipped ({} total)\n",
+                        status, fail_count, pass_count, skip_count, task_results.len()
+                    );
+                    for task in task_results {
+                        let icon = match task.status {
+                            TaskStatus::Success => "  ✓",
+                            TaskStatus::Failure => "  ✗",
+                            _ => "  ○",
+                        };
+                        summary.push_str(&format!("\n{} {} — {:?}", icon, task.node_name, task.status));
+                        if let Some(ref err) = task.error {
+                            summary.push_str(&format!("\n     Error: {}", err));
+                        }
+                    }
+
+                    DispatchResult::success(summary)
                 }
                 Err(e) => DispatchResult::error(format!("Run failed: {e}"), 1),
             }
         }
 
         CliCommand::Plan { intent } => {
+            let intent_str = intent.clone();
             let orch = orch.expect("orchestrator built above");
             let input = rigorix_engine::orchestrator::application::dto::PlanOnlyInput {
                 intent,
@@ -265,10 +292,32 @@ pub async fn dispatch(
                         let _ = tokio::fs::create_dir_all(&tpl_dir).await;
                         let _ = tokio::fs::write(&tpl_path, toml).await;
                     }
-                    DispatchResult::success_with_data(
-                        "Plan generated",
-                        serde_json::json!({ "plan": output.plan, "graph": output.graph }),
-                    )
+
+                    let tpl_id = output.plan["template_id"].as_str().unwrap_or("?");
+                    let confidence = output.plan["confidence"].as_f64().unwrap_or(0.0);
+                    let params = output.plan["parameters"]
+                        .as_object()
+                        .map(|m| {
+                            m.iter()
+                                .map(|(k, v)| format!("    ├── {}: {}", k, v))
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        })
+                        .unwrap_or_else(|| "    (none)".to_string());
+                    let nodes = output.graph["nodes"]
+                        .as_array()
+                        .map(|a| a.len())
+                        .unwrap_or(0);
+                    let sealed = output.graph["sealed"]
+                        .as_bool()
+                        .unwrap_or(false);
+
+                    let summary = format!(
+                        "Plan: {} (confidence {:.0}%)\n  Template: {}\n  Parameters:\n{}\n  Graph: {} node(s), sealed={}",
+                        intent_str, confidence * 100.0, tpl_id, params, nodes, sealed
+                    );
+
+                    DispatchResult::success(summary)
                 }
                 Err(e) => DispatchResult::error(format!("Plan failed: {e}"), 1),
             }

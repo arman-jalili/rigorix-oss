@@ -41,7 +41,7 @@ pub struct PrettyFormatter;
 impl LogFormatter for PrettyFormatter {
     fn format_summary(&self, result: &DispatchResult) -> String {
         if result.is_success() {
-            format!("✓ {}", result.summary)
+            result.summary.clone()
         } else {
             format!("✗ {}", result.summary)
         }
@@ -179,11 +179,14 @@ pub fn formatter_for(format: Format) -> Box<dyn LogFormatter> {
 pub fn format_and_exit(result: DispatchResult) -> ! {
     let formatter = formatter_for(Format::Pretty);
     if result.is_success() {
-        println!("{}", formatter.format_summary(&result));
-        if let Some(ref data) = result.data
-            && !data.is_null()
-        {
-            println!("{}", formatter.format_item("Details", data));
+        let summary = formatter.format_summary(&result);
+        if result.data.is_some() && summary.is_empty() {
+            // Only show data if there's no summary
+            if let Some(ref data) = result.data {
+                println!("{}", formatter.format_item("Details", data));
+            }
+        } else {
+            println!("{}", summary);
         }
     } else {
         eprintln!("{}", formatter.format_error(&result));
