@@ -255,17 +255,15 @@ pub fn load_config() -> CliConfig {
         set_nested(&mut merged, &key, serde_json::Value::String(value));
     }
 
-    // 4. Try to deserialize into engine Config
-    let engine_config = match Config::deserialize(&merged) {
-        Ok(cfg) => Some(cfg),
-        Err(_) => {
-            // Partial config + defaults: merge with engine defaults
-            let defaults = serde_json::to_value(Config::default()).unwrap_or_default();
-            let mut combined = defaults;
-            deep_merge(&mut combined, merged);
-            Config::deserialize(&combined).ok()
-        }
-    };
+    // 4. Build the engine config with layered defaults.
+    // Strategy: start with Config::default(), serialize to JSON, then merge user
+    // overrides on top. This ensures all required fields are present even when
+    // the user provides a partial config (e.g. only [llm] section).
+    let mut engine_config_json = serde_json::to_value(Config::default())
+        .unwrap_or_else(|_| serde_json::json!({}));
+    deep_merge(&mut engine_config_json, merged);
+
+    let engine_config = Config::deserialize(&engine_config_json).ok();
 
     CliConfig {
         format: super::cli::Format::Pretty,
