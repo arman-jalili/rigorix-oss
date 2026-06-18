@@ -187,7 +187,6 @@ pub enum TemplateAction {
         /// Path to the file (may contain {{ param }} placeholders).
         path: String,
         /// Content to write (may contain {{ param }} placeholders).
-        #[serde(default)]
         content: String,
     },
 
@@ -196,7 +195,6 @@ pub enum TemplateAction {
         /// Path to the file.
         path: String,
         /// Content to append.
-        #[serde(default)]
         content: String,
     },
 
@@ -205,10 +203,8 @@ pub enum TemplateAction {
         /// Path to the file.
         path: String,
         /// Search string or pattern to locate the insertion point.
-        #[serde(default)]
         search: String,
         /// Content to insert.
-        #[serde(default)]
         insert: String,
         /// Whether to insert before the search match (default: after).
         #[serde(default)]

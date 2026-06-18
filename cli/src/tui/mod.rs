@@ -79,14 +79,38 @@ pub async fn run(
     let mut input_focus = InputFocus::CommandBar;
     let mut selected_node: Option<String> = None;
 
+    // Build orchestrator once at startup (same as CLI dispatch)
+    let repo_root = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let orch = match crate::cli_boundary::orchestrator::build_orchestrator(
+        config.clone(),
+        cancellation_token.clone(),
+        repo_root,
+    )
+    .await
+    {
+        Ok((o, _svc)) => {
+            let orch: std::sync::Arc<
+                dyn rigorix_engine::orchestrator::application::service::OrchestratorService,
+            > = o.into();
+            orch
+        },
+        Err(e) => {
+            restore_terminal();
+            eprintln!("Failed to build orchestrator: {e}");
+            return;
+        }
+    };
+
     let result = run_event_loop(
         &mut terminal,
         &mut vm,
         &mut command_bar,
         &mut input_focus,
         &mut selected_node,
+        orch,
         config,
-        cancellation_token,
         vm_tx,
         &mut vm_rx,
     )
@@ -114,8 +138,8 @@ async fn run_event_loop(
     command_bar: &mut CommandBarState,
     input_focus: &mut InputFocus,
     selected_node: &mut Option<String>,
+    orch: std::sync::Arc<dyn rigorix_engine::orchestrator::application::service::OrchestratorService>,
     config: crate::cli_boundary::config::CliConfig,
-    cancellation_token: tokio_util::sync::CancellationToken,
     vm_tx: tokio::sync::mpsc::Sender<VmCommand>,
     vm_rx: &mut tokio::sync::mpsc::Receiver<VmCommand>,
 ) -> Result<(), String> {
@@ -155,9 +179,8 @@ async fn run_event_loop(
                 selected_node,
                 key,
                 &vm_tx,
-                &config,
-                &cancellation_token,
-            ) {
+                &orch,
+            ).await {
                 break;
             }
         }
@@ -363,73 +386,55 @@ pub(crate) fn parse_graph_nodes(graph: &serde_json::Value) -> Vec<view_model::No
     nodes
 }
 
-/// Shared helper: spawn a background task that builds the orchestrator and
-/// calls `plan_only`, sending results back via `vm_tx`.
-fn spawn_plan_only_background(
-    vm_tx: &tokio::sync::mpsc::Sender<VmCommand>,
-    config: &crate::cli_boundary::config::CliConfig,
-    cancellation_token: &tokio_util::sync::CancellationToken,
+/// Run plan_only via the shared orchestrator and update the ViewModel directly.
+async fn run_plan(
+    vm: &mut TuiViewModel,
+    orch: &std::sync::Arc<dyn rigorix_engine::orchestrator::application::service::OrchestratorService>,
     intent: String,
 ) {
-    let tx = vm_tx.clone();
-    let cfg = config.clone();
-    let ct = cancellation_token.clone();
+    vm.phase = ExecutionPhase::Planning;
     let repo_root = std::env::current_dir()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
-    tokio::spawn(async move {
-        match crate::cli_boundary::orchestrator::build_orchestrator(cfg, ct, repo_root.clone()).await {
-            Ok((orch, _svc)) => {
-                let input = rigorix_engine::orchestrator::application::dto::PlanOnlyInput {
-                    intent,
-                    config: serde_json::Value::Null,
-                    repo_root: repo_root.clone(),
-                };
-                match orch.plan_only(input).await {
-                    Ok(output) => {
-                        let exec_id = output.plan["execution_id"]
-                            .as_str()
-                            .and_then(|s| s.parse().ok());
-                        if let Some(id) = exec_id {
-                            let _ = tx.send(VmCommand::ExecutionId(id)).await;
-                        }
-                        // Extract and save generated template
-                        if let Some(toml) = output.plan["generated_toml"].as_str() {
-                            let tid = output.plan["template_id"].as_str().unwrap_or("unknown");
-                            let tpl_dir = std::path::PathBuf::from(".rigorix/templates");
-                            let tpl_path = tpl_dir.join(format!("{tid}.toml"));
-                            let _ = tokio::fs::create_dir_all(&tpl_dir).await;
-                            let _ = tokio::fs::write(&tpl_path, toml).await;
-                            let _ = tx.send(VmCommand::TemplateId(tid.to_string())).await;
-                        }
-                        if let Some(calls) = output.plan["llm_calls_used"].as_u64() {
-                            let _ = tx.send(VmCommand::LlmCalls(calls)).await;
-                        }
-                        if let Some(tokens) = output.plan["llm_tokens_used"].as_u64() {
-                            let _ = tx.send(VmCommand::Tokens(tokens)).await;
-                        }
-                        let nodes = parse_graph_nodes(&output.graph);
-                        if !nodes.is_empty() {
-                            let _ = tx.send(VmCommand::SetNodes(nodes)).await;
-                        }
-                        let _ = tx.send(VmCommand::Phase(ExecutionPhase::Completed)).await;
-                    }
-                    Err(e) => {
-                        let _ = tx
-                            .send(VmCommand::Error(format!("Plan failed: {e}")))
-                            .await;
-                    }
+    let input = rigorix_engine::orchestrator::application::dto::PlanOnlyInput {
+        intent,
+        config: serde_json::Value::Null,
+        repo_root,
+    };
+    match orch.plan_only(input).await {
+        Ok(output) => {
+            if let Some(toml) = output.plan["generated_toml"].as_str() {
+                let tid = output.plan["template_id"].as_str().unwrap_or("unknown");
+                let tpl_dir = std::path::PathBuf::from(".rigorix/templates");
+                let tpl_path = tpl_dir.join(format!("{tid}.toml"));
+                let _ = std::fs::create_dir_all(&tpl_dir);
+                let _ = std::fs::write(&tpl_path, toml);
+                vm.template_id = Some(tid.to_string());
+            }
+            if let Some(calls) = output.plan["llm_calls_used"].as_u64() {
+                vm.metrics.llm_calls = calls;
+            }
+            if let Some(tokens) = output.plan["llm_tokens_used"].as_u64() {
+                vm.metrics.tokens = tokens;
+            }
+            let nodes = parse_graph_nodes(&output.graph);
+            if !nodes.is_empty() {
+                vm.nodes.clear();
+                for n in nodes {
+                    vm.nodes.insert(n.id.clone(), n);
                 }
             }
-            Err(e) => {
-                let _ = tx.send(VmCommand::Error(e.to_string())).await;
-            }
+            vm.phase = ExecutionPhase::Completed;
         }
-    });
+        Err(e) => {
+            vm.error = Some(format!("Plan failed: {e}"));
+            vm.phase = ExecutionPhase::Failed;
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
-fn handle_action(
+async fn handle_action(
     action: KeyAction,
     vm: &mut TuiViewModel,
     command_bar: &mut CommandBarState,
@@ -437,8 +442,7 @@ fn handle_action(
     selected_node: &mut Option<String>,
     key: event::KeyEvent,
     vm_tx: &tokio::sync::mpsc::Sender<VmCommand>,
-    config: &crate::cli_boundary::config::CliConfig,
-    cancellation_token: &tokio_util::sync::CancellationToken,
+    orch: &std::sync::Arc<dyn rigorix_engine::orchestrator::application::service::OrchestratorService>,
 ) -> bool {
     match action {
         KeyAction::Quit => return false,
@@ -463,14 +467,7 @@ fn handle_action(
                         vm.active_view = ActiveView::Plan;
                         *input_focus = InputFocus::PlanReview;
                         command_bar.focused = false;
-                        // Auto-trigger plan pipeline (same as CLI `plan` command)
-                        vm.phase = ExecutionPhase::Planning;
-                        spawn_plan_only_background(
-                            vm_tx,
-                            config,
-                            cancellation_token,
-                            intent,
-                        );
+                        run_plan(vm, orch, intent).await;
                     }
                     command_bar::CommandBarInput::SlashCommand(cmd) => match cmd.as_str() {
                         "history" => vm.active_view = ActiveView::History,
@@ -518,62 +515,40 @@ fn handle_action(
             vm.phase = ExecutionPhase::Executing;
             vm.active_view = ActiveView::Dashboard;
             *input_focus = InputFocus::Dashboard;
-            let tx = vm_tx.clone();
-            let cfg = config.clone();
-            let ct = cancellation_token.clone();
             let intent = vm.intent.clone().unwrap_or_default();
-            tokio::spawn(async move {
-                match crate::cli_boundary::orchestrator::build_orchestrator(cfg, ct, String::new())
-                    .await
-                {
-                    Ok((orch, _svc)) => {
-                        let input = rigorix_engine::orchestrator::application::dto::RunInput {
-                            intent,
-                            config: serde_json::Value::Null,
-                            repo_root: String::new(),
-                            enforcement_preset: None,
-                        };
-                        match orch.run(input).await {
-                            Ok(output) => {
-                                let _ = tx.send(VmCommand::ExecutionId(output.execution_id)).await;
-                                let _ = tx.send(VmCommand::Phase(ExecutionPhase::Completed)).await;
-                            }
-                            Err(e) => {
-                                let _ = tx.send(VmCommand::Error(format!("Run failed: {e}"))).await;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        let _ = tx.send(VmCommand::Error(e.to_string())).await;
-                    }
+            let repo_root = std::env::current_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let input = rigorix_engine::orchestrator::application::dto::RunInput {
+                intent,
+                config: serde_json::Value::Null,
+                repo_root,
+                enforcement_preset: None,
+            };
+            match orch.run(input).await {
+                Ok(output) => {
+                    vm.execution_id = Some(output.execution_id);
+                    vm.phase = ExecutionPhase::Completed;
                 }
-            });
+                Err(e) => {
+                    vm.error = Some(format!("Run failed: {e}"));
+                    vm.phase = ExecutionPhase::Failed;
+                }
+            }
         }
         KeyAction::PlanOnly => {
             vm.active_view = ActiveView::Plan;
             *input_focus = InputFocus::PlanReview;
-            // Only call plan_only() if we don't already have nodes (e.g. from a
-            // prior GenerateTemplate). Reuses the existing graph when available.
             if vm.nodes.is_empty() {
-                vm.phase = ExecutionPhase::Planning;
-                spawn_plan_only_background(
-                    vm_tx,
-                    config,
-                    cancellation_token,
-                    vm.intent.clone().unwrap_or_default(),
-                );
+                let intent = vm.intent.clone().unwrap_or_default();
+                Box::pin(run_plan(vm, orch, intent)).await;
             }
         }
         KeyAction::GenerateTemplate => {
-            vm.phase = ExecutionPhase::Planning;
             vm.active_view = ActiveView::Plan;
             *input_focus = InputFocus::PlanReview;
-            spawn_plan_only_background(
-                vm_tx,
-                config,
-                cancellation_token,
-                vm.intent.clone().unwrap_or_default(),
-            );
+            let intent = vm.intent.clone().unwrap_or_default();
+            Box::pin(run_plan(vm, orch, intent)).await;
         }
         KeyAction::SelectNext | KeyAction::SelectPrev => {
             let ids: Vec<String> = vm.nodes.keys().cloned().collect();
