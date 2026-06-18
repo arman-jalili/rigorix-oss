@@ -73,3 +73,6 @@ pub trait CodeGraphRepository: Send + Sync {
         limit: u32,
     ) -> Result<Vec<CodeGraph>, CodeGraphError>;
 }
+
+pub mod memory_repository;
+pub use memory_repository::InMemoryCodeGraphRepository;
