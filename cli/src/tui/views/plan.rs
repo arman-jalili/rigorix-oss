@@ -36,6 +36,26 @@ pub fn render(frame: &mut Frame<'_>, area: Rect, vm: &TuiViewModel) {
     if has_nodes {
         let intent = vm.intent.as_deref().unwrap_or("(no intent)");
         let template = vm.template_id.as_deref().unwrap_or("(pending)");
+
+        // Get confidence from the first node's risk_level (best proxy available)
+        let confidence_pct = vm
+            .nodes
+            .values()
+            .find_map(|n| n.risk_level.as_ref())
+            .and_then(|r| r.parse::<f64>().ok())
+            .map(|c| format!(" ({:.0}%)", c * 100.0))
+            .unwrap_or_default();
+
+        // Build parameters string from node names that look like params
+        let params_line = if vm.template_id.is_some() {
+            // Show first node's dep info as a dependency summary
+            let roots = vm.nodes.values().filter(|n| n.dependencies.is_empty()).count();
+            let leaves = vm.nodes.values().filter(|n| n.dependents.is_empty() && !n.dependencies.is_empty()).count();
+            format!("{} roots, {} leaves", roots, leaves)
+        } else {
+            String::new()
+        };
+
         let summary_lines = vec![
             Line::from(""),
             Line::from(vec![
@@ -44,14 +64,16 @@ pub fn render(frame: &mut Frame<'_>, area: Rect, vm: &TuiViewModel) {
             ]),
             Line::from(vec![
                 Span::styled(" Template: ", Style::default().bold()),
-                Span::raw(template),
+                Span::raw(format!("{}{}", template, confidence_pct)),
                 Span::raw("    "),
                 Span::styled("Nodes: ", Style::default().bold()),
                 Span::raw(vm.nodes.len().to_string()),
+                Span::raw("    "),
+                Span::raw(params_line),
             ]),
             Line::from(vec![
-                Span::styled(" LLM calls: ", Style::default().bold()),
-                Span::raw(vm.metrics.llm_calls.to_string()),
+                Span::styled(" LLM: ", Style::default().bold()),
+                Span::raw(format!("{} calls", vm.metrics.llm_calls)),
                 Span::raw("    "),
                 Span::styled("Tokens: ", Style::default().bold()),
                 Span::raw(vm.metrics.tokens.to_string()),

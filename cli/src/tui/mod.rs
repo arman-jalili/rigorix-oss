@@ -191,12 +191,24 @@ fn apply_vm_command(vm: &mut TuiViewModel, cmd: VmCommand) {
 /// Parse the graph JSON from a plan output into NodeViewModel items.
 pub(crate) fn parse_graph_nodes(graph: &serde_json::Value) -> Vec<view_model::NodeViewModel> {
     let mut nodes = Vec::new();
+    let mut name_to_id: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+
+    // First pass: parse raw nodes and build name→id map
     if let Some(raw_nodes) = graph.get("nodes").and_then(|n| n.as_array()) {
+        // If nodes have UUID ids, try to resolve dependency names
+        for raw in raw_nodes {
+            let id = raw["id"].as_str().unwrap_or("").to_string();
+            let name = raw["name"].as_str().unwrap_or(&id).to_string();
+            name_to_id.insert(name.clone(), id.clone());
+        }
+
         for raw in raw_nodes {
             let id = raw["id"].as_str().unwrap_or("").to_string();
             let name = raw["name"].as_str().unwrap_or(&id).to_string();
             let tool_name = raw["tool"].as_str().unwrap_or("").to_string();
-            let deps = raw["dependencies"]
+
+            // Resolve dependency UUIDs to names using the name→id map, reversed
+            let dep_ids: Vec<String> = raw["dependencies"]
                 .as_array()
                 .map(|arr| {
                     arr.iter()
@@ -204,12 +216,26 @@ pub(crate) fn parse_graph_nodes(graph: &serde_json::Value) -> Vec<view_model::No
                         .collect()
                 })
                 .unwrap_or_default();
+
+            // Resolve dep IDs to human-readable names
+            let dep_names: Vec<String> = dep_ids
+                .iter()
+                .map(|dep_id| {
+                    // Find the node name for this dependency ID
+                    name_to_id
+                        .iter()
+                        .find(|(_n, nid)| *nid == dep_id)
+                        .map(|(n, _)| n.clone())
+                        .unwrap_or_else(|| dep_id.clone())
+                })
+                .collect();
+
             nodes.push(view_model::NodeViewModel {
-                id,
+                id: id.clone(),
                 name,
                 tool_name,
                 status: view_model::NodeStatus::Pending,
-                dependencies: deps,
+                dependencies: dep_names.clone(),
                 dependents: Vec::new(),
                 timing_ms: None,
                 output_preview: None,
@@ -217,6 +243,20 @@ pub(crate) fn parse_graph_nodes(graph: &serde_json::Value) -> Vec<view_model::No
                 retry_count: 0,
                 risk_level: None,
             });
+        }
+
+        // Second pass: compute dependents (reverse of dependencies)
+        // Use indices to avoid simultaneous mutable borrows
+        for i in 0..nodes.len() {
+            let dep_names: Vec<String> = nodes[i].dependencies.clone();
+            let my_name = nodes[i].name.clone();
+            for dep_name in &dep_names {
+                if let Some(dep_node) = nodes.iter_mut().find(|dn| dn.name == *dep_name) {
+                    if !dep_node.dependents.contains(&my_name) {
+                        dep_node.dependents.push(my_name.clone());
+                    }
+                }
+            }
         }
     }
     nodes
