@@ -633,6 +633,7 @@ impl CodeGraphFormatter for CodeGraphFormatterImpl {
             OutputFormat::Tree => self.format_tree_inner(&input.graph)?,
             OutputFormat::Json => self.format_json_inner(&input.graph)?,
             OutputFormat::List => self.format_list_inner(&input.graph)?,
+            OutputFormat::Compact => self.format_compact_inner(&input.graph)?,
         };
 
         let output_size = output.len() as u64;
@@ -882,6 +883,50 @@ impl CodeGraphFormatterImpl {
             output.push('\n');
         }
 
+        Ok(output)
+    }
+
+    /// Format as compact citations: file → [dep1, dep2]
+    ///
+    /// Mirrors FastContext <final_answer> output — no full file dumps,
+    /// just file:name references with their direct dependencies.
+    fn format_compact_inner(&self, graph: &CodeGraph) -> Result<String, CodeGraphError> {
+        let mut output = String::new();
+        let mut deps_of: std::collections::HashMap<Uuid, Vec<String>> = std::collections::HashMap::new();
+        let node_names: std::collections::HashMap<Uuid, &str> = graph
+            .nodes.iter().map(|n| (n.id, n.name.as_str())).collect();
+        let node_paths: std::collections::HashMap<Uuid, &str> = graph
+            .nodes.iter().map(|n| (n.id, n.path.as_str())).collect();
+
+        for edge in &graph.edges {
+            deps_of.entry(edge.target_id).or_default().push(
+                node_names.get(&edge.source_id).copied().unwrap_or("unknown").to_string(),
+            );
+        }
+
+        let mut depended_on_by: std::collections::HashMap<Uuid, Vec<String>> = std::collections::HashMap::new();
+        for edge in &graph.edges {
+            depended_on_by.entry(edge.source_id).or_default().push(
+                node_names.get(&edge.target_id).copied().unwrap_or("unknown").to_string(),
+            );
+        }
+
+        for node in &graph.nodes {
+            let path = node_paths.get(&node.id).copied().unwrap_or("?");
+            let deps = deps_of.get(&node.id).cloned().unwrap_or_default();
+            let dependents = depended_on_by.get(&node.id).cloned().unwrap_or_default();
+            output.push_str(&format!("{} [{}]\n", path, node.kind.as_str()));
+            if !deps.is_empty() {
+                output.push_str(&format!("  imports: [{}]\n", deps.join(", ")));
+            }
+            if !dependents.is_empty() {
+                output.push_str(&format!("  imported-by: [{}]\n", dependents.join(", ")));
+            }
+            output.push('\n');
+        }
+        if output.is_empty() {
+            output.push_str("(no modules found)\n");
+        }
         Ok(output)
     }
 }
