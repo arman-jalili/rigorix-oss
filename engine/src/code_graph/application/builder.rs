@@ -8,7 +8,6 @@
 //! import/module relationships, and constructs a CodeGraph. Supports Rust and
 //! TypeScript/JavaScript parsing out of the box.
 
-use async_trait::async_trait;
 use chrono::Utc;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -16,7 +15,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::code_graph::domain::{
-    CodeGraphError, EdgeKind, GraphMetadata, NodeKind,
+    CodeGraphError, EdgeKind, NodeKind,
 };
 
 use super::dto::{
