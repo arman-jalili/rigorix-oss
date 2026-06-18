@@ -27,11 +27,12 @@ pub type ProgressCallback = Box<dyn Fn(ExecutionProgress) + Send + Sync>;
 use async_trait::async_trait;
 use chrono::Utc;
 use std::collections::HashMap;
-
+use std::sync::Arc;
 use std::sync::Mutex;
-
 use uuid::Uuid;
 
+use crate::event_system::application::EventBusService;
+use crate::event_system::domain::ExecutionEvent;
 use crate::execution_engine::domain::{
     BackoffStrategy, ExecutionError, ExecutionResult, FailureContext, NodeExecutionState,
     NodeStatus, ParallelExecutorConfig, RetryDecision, RetryPolicy, TaskResult,
@@ -88,6 +89,8 @@ pub struct ParallelExecutionServiceImpl {
     progress_callbacks: Mutex<Vec<ProgressCallback>>,
     /// The retry evaluation service for retry decisions.
     retry_service: Box<dyn RetryEvaluationService>,
+    /// Event bus for publishing node lifecycle events.
+    event_bus: Arc<dyn EventBusService>,
 }
 
 impl ParallelExecutionServiceImpl {
@@ -95,31 +98,33 @@ impl ParallelExecutionServiceImpl {
     pub fn new(
         config: ParallelExecutorConfig,
         retry_service: Box<dyn RetryEvaluationService>,
+        event_bus: Arc<dyn EventBusService>,
     ) -> Self {
         Self {
             sessions: Mutex::new(HashMap::new()),
             config,
             progress_callbacks: Mutex::new(Vec::new()),
             retry_service,
+            event_bus,
         }
     }
 
     /// Execute a single tool node and return the TaskResult.
-    fn execute_tool(
+    async fn execute_tool(
         &self,
         node: &crate::dag_engine::domain::TaskNode,
         node_id: Uuid,
         start: std::time::Instant,
     ) -> TaskResult {
         match node.tool.as_str() {
-            "run_command" => Self::exec_run_command(&node.intent, node_id, &node.name, start),
-            "file_read" => Self::exec_file_read(&node.intent, node_id, &node.name, start),
-            "file_write" => Self::exec_file_write(&node.intent, node_id, &node.name, start),
-            "file_append" => Self::exec_file_append(&node.intent, node_id, &node.name, start),
-            "file_patch" => Self::exec_file_patch(&node.intent, node_id, &node.name, start),
-            "git_read" => Self::exec_git_read(&node.intent, node_id, &node.name, start),
-            "git_stage" => Self::exec_git_stage(&node.intent, node_id, &node.name, start),
-            "git_commit" => Self::exec_git_commit(&node.intent, node_id, &node.name, start),
+            "run_command" => Self::exec_run_command(&node.intent, node_id, &node.name, start).await,
+            "file_read" => Self::exec_file_read(&node.intent, node_id, &node.name, start).await,
+            "file_write" => Self::exec_file_write(&node.intent, node_id, &node.name, start).await,
+            "file_append" => Self::exec_file_append(&node.intent, node_id, &node.name, start).await,
+            "file_patch" => Self::exec_file_patch(&node.intent, node_id, &node.name, start).await,
+            "git_read" => Self::exec_git_read(&node.intent, node_id, &node.name, start).await,
+            "git_stage" => Self::exec_git_stage(&node.intent, node_id, &node.name, start).await,
+            "git_commit" => Self::exec_git_commit(&node.intent, node_id, &node.name, start).await,
             _ => {
                 let duration_ms = start.elapsed().as_millis() as u64;
                 TaskResult::success(
@@ -136,16 +141,17 @@ impl ParallelExecutionServiceImpl {
         }
     }
 
-    fn exec_run_command(
+    async fn exec_run_command(
         intent: &str,
         node_id: Uuid,
         node_name: &str,
         start: std::time::Instant,
     ) -> TaskResult {
-        let output = std::process::Command::new("sh")
+        let output = tokio::process::Command::new("sh")
             .arg("-c")
             .arg(intent)
-            .output();
+            .output()
+            .await;
         match output {
             Ok(out) => {
                 let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -182,7 +188,7 @@ impl ParallelExecutionServiceImpl {
         }
     }
 
-    fn exec_file_read(
+    async fn exec_file_read(
         intent: &str,
         node_id: Uuid,
         node_name: &str,
@@ -206,7 +212,7 @@ impl ParallelExecutionServiceImpl {
         }
     }
 
-    fn exec_file_write(
+    async fn exec_file_write(
         intent: &str,
         node_id: Uuid,
         node_name: &str,
@@ -254,7 +260,7 @@ impl ParallelExecutionServiceImpl {
         }
     }
 
-    fn exec_file_append(
+    async fn exec_file_append(
         intent: &str,
         node_id: Uuid,
         node_name: &str,
@@ -277,7 +283,11 @@ impl ParallelExecutionServiceImpl {
         let path = parsed["path"].as_str().unwrap_or("");
         let content = parsed["content"].as_str().unwrap_or("");
         let duration_ms = start.elapsed().as_millis() as u64;
-        match std::fs::OpenOptions::new().append(true).create(true).open(path) {
+        match std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(path)
+        {
             Ok(mut file) => {
                 use std::io::Write;
                 match writeln!(file, "{}", content) {
@@ -309,7 +319,7 @@ impl ParallelExecutionServiceImpl {
         }
     }
 
-    fn exec_file_patch(
+    async fn exec_file_patch(
         intent: &str,
         node_id: Uuid,
         node_name: &str,
@@ -352,26 +362,20 @@ impl ParallelExecutionServiceImpl {
         // Simple text-based patch: find search string, insert before/after
         if let Some(pos) = content.find(search) {
             let new_content = if before {
-                format!(
-                    "{}{}{}",
-                    &content[..pos],
-                    insert,
-                    &content[pos..]
-                )
+                format!("{}{}{}", &content[..pos], insert, &content[pos..])
             } else {
                 let after = pos + search.len();
-                format!(
-                    "{}{}{}",
-                    &content[..after],
-                    insert,
-                    &content[after..]
-                )
+                format!("{}{}{}", &content[..after], insert, &content[after..])
             };
             match std::fs::write(path, &new_content) {
                 Ok(()) => TaskResult::success(
                     node_id,
                     node_name,
-                    Some(format!("Patched {} ({} bytes inserted)", path, insert.len())),
+                    Some(format!(
+                        "Patched {} ({} bytes inserted)",
+                        path,
+                        insert.len()
+                    )),
                     duration_ms,
                     0,
                 ),
@@ -396,7 +400,7 @@ impl ParallelExecutionServiceImpl {
         }
     }
 
-    fn exec_git_read(
+    async fn exec_git_read(
         intent: &str,
         node_id: Uuid,
         node_name: &str,
@@ -404,9 +408,12 @@ impl ParallelExecutionServiceImpl {
     ) -> TaskResult {
         let args: Vec<&str> = intent.split_whitespace().collect();
         let output = if args.is_empty() {
-            std::process::Command::new("git").output()
+            tokio::process::Command::new("git").output().await
         } else {
-            std::process::Command::new("git").args(&args).output()
+            tokio::process::Command::new("git")
+                .args(&args)
+                .output()
+                .await
         };
         let duration_ms = start.elapsed().as_millis() as u64;
         match output {
@@ -439,29 +446,24 @@ impl ParallelExecutionServiceImpl {
         }
     }
 
-    fn exec_git_stage(
+    async fn exec_git_stage(
         intent: &str,
         node_id: Uuid,
         node_name: &str,
         start: std::time::Instant,
     ) -> TaskResult {
         let path = intent;
-        let output = std::process::Command::new("git")
+        let output = tokio::process::Command::new("git")
             .args(["add", path])
-            .output();
+            .output()
+            .await;
         let duration_ms = start.elapsed().as_millis() as u64;
         match output {
             Ok(out) => {
                 let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
                 let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
                 if out.status.success() {
-                    TaskResult::success(
-                        node_id,
-                        node_name,
-                        Some(stdout),
-                        duration_ms,
-                        0,
-                    )
+                    TaskResult::success(node_id, node_name, Some(stdout), duration_ms, 0)
                 } else {
                     TaskResult::failure(
                         node_id,
@@ -484,7 +486,7 @@ impl ParallelExecutionServiceImpl {
         }
     }
 
-    fn exec_git_commit(
+    async fn exec_git_commit(
         intent: &str,
         node_id: Uuid,
         node_name: &str,
@@ -510,14 +512,16 @@ impl ParallelExecutionServiceImpl {
 
         // If auto_stage, stage all modified tracked files first
         if auto_stage {
-            let _ = std::process::Command::new("git")
+            let _ = tokio::process::Command::new("git")
                 .args(["add", "-u"])
-                .output();
+                .output()
+                .await;
         }
 
-        let output = std::process::Command::new("git")
+        let output = tokio::process::Command::new("git")
             .args(["commit", "-m", message])
-            .output();
+            .output()
+            .await;
         match output {
             Ok(out) => {
                 let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -740,11 +744,12 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
 
             // Mark running
             {
-                let mut sessions = self.sessions.lock().map_err(|e| {
-                    ExecutionError::InternalError {
-                        detail: format!("Lock error: {}", e),
-                    }
-                })?;
+                let mut sessions =
+                    self.sessions
+                        .lock()
+                        .map_err(|e| ExecutionError::InternalError {
+                            detail: format!("Lock error: {}", e),
+                        })?;
                 if let Some(session) = sessions.get_mut(&input.dag_id) {
                     if session.aborted {
                         drop(sessions);
@@ -758,8 +763,21 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
 
             let start = std::time::Instant::now();
 
+            // Emit NodeStarted
+            let _ = self
+                .event_bus
+                .publish(crate::event_system::application::dto::PublishEventInput {
+                    event: ExecutionEvent::NodeStarted {
+                        execution_id: input.dag_id,
+                        node_id: node_id.to_string(),
+                        node_name: node.name.clone(),
+                        timestamp: chrono::Utc::now(),
+                    },
+                })
+                .await;
+
             // Execute based on tool type
-            let task_result = self.execute_tool(&node, node_id, start);
+            let task_result = self.execute_tool(&node, node_id, start).await;
 
             let success = task_result.success;
             if success {
@@ -769,13 +787,28 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
             }
             node_results.insert(node_id, task_result.clone());
 
+            // Emit NodeCompleted
+            let _ = self
+                .event_bus
+                .publish(crate::event_system::application::dto::PublishEventInput {
+                    event: ExecutionEvent::NodeCompleted {
+                        execution_id: input.dag_id,
+                        node_id: node_id.to_string(),
+                        duration_ms: task_result.duration_ms,
+                        output: serde_json::json!(task_result.output.clone().unwrap_or_default()),
+                        timestamp: chrono::Utc::now(),
+                    },
+                })
+                .await;
+
             // Update session node state
             {
-                let mut sessions = self.sessions.lock().map_err(|e| {
-                    ExecutionError::InternalError {
-                        detail: format!("Lock error: {}", e),
-                    }
-                })?;
+                let mut sessions =
+                    self.sessions
+                        .lock()
+                        .map_err(|e| ExecutionError::InternalError {
+                            detail: format!("Lock error: {}", e),
+                        })?;
                 if let Some(session) = sessions.get_mut(&input.dag_id) {
                     if let Some(state) = session.node_states.get_mut(&node_id) {
                         if success {
@@ -839,11 +872,12 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
 
         // Update session with final result
         {
-            let mut sessions = self.sessions.lock().map_err(|e| {
-                ExecutionError::InternalError {
+            let mut sessions = self
+                .sessions
+                .lock()
+                .map_err(|e| ExecutionError::InternalError {
                     detail: format!("Lock error: {}", e),
-                }
-            })?;
+                })?;
             if let Some(session) = sessions.get_mut(&input.dag_id) {
                 session.result = final_result.clone();
                 session.node_states = node_states;
@@ -887,60 +921,82 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
 
             // --- Phase 1: Check skip conditions before execution ---
             if policy.has_skip_conditions()
-                && let Some(conditions) = &policy.skip_conditions {
-                    for condition in conditions {
-                        if condition == "always_skip" {
-                            let result = TaskResult::failure(
-                                node_id,
-                                format!("node-{}", node_id),
-                                format!("Skipped by condition: {}", condition),
-                                "skipped".to_string(),
-                                start.elapsed().as_millis() as u64,
-                                attempt,
-                            );
-                            return Ok(ExecuteNodeOutput {
-                                result,
-                                retry_decision: Some(RetryDecision::Skip {
-                                    reason: format!("Skip condition '{}' matched", condition),
-                                }),
-                            });
-                        }
+                && let Some(conditions) = &policy.skip_conditions
+            {
+                for condition in conditions {
+                    if condition == "always_skip" {
+                        let result = TaskResult::failure(
+                            node_id,
+                            format!("node-{}", node_id),
+                            format!("Skipped by condition: {}", condition),
+                            "skipped".to_string(),
+                            start.elapsed().as_millis() as u64,
+                            attempt,
+                        );
+                        return Ok(ExecuteNodeOutput {
+                            result,
+                            retry_decision: Some(RetryDecision::Skip {
+                                reason: format!("Skip condition '{}' matched", condition),
+                            }),
+                        });
                     }
                 }
+            }
 
             // --- Phase 2: Check cancellation (placeholder) ---
             // In production, checks CancellationToken here
 
             // --- Phase 3: Execute the node ---
             // Look up node from the session graph to dispatch the tool.
-            let (execution_successful, output_text, failure_type, error_message) = {
-                let sessions = self.sessions.lock().map_err(|e| {
-                    ExecutionError::InternalError {
+
+            // Emit NodeStarted
+            let _ = self
+                .event_bus
+                .publish(crate::event_system::application::dto::PublishEventInput {
+                    event: ExecutionEvent::NodeStarted {
+                        execution_id: input.dag_id,
+                        node_id: node_id.to_string(),
+                        node_name: format!("node-{}", node_id),
+                        timestamp: chrono::Utc::now(),
+                    },
+                })
+                .await;
+
+            // Extract node info from sessions WITHOUT holding the lock across .await
+            let node_info = {
+                let sessions = self
+                    .sessions
+                    .lock()
+                    .map_err(|e| ExecutionError::InternalError {
                         detail: format!("Lock error: {}", e),
-                    }
-                })?;
-                let node_info = sessions
+                    })?;
+                sessions
                     .get(&input.dag_id)
                     .and_then(|s| s.graph.as_ref())
-                    .and_then(|g| g.get_node(node_id).cloned());
+                    .and_then(|g| g.get_node(node_id).cloned())
+            };
 
-                drop(sessions);
-
+            let (execution_successful, output_text, failure_type, error_message, exec_duration_ms) =
                 if let Some(node) = node_info {
-                    let task_result = self.execute_tool(&node, node_id, start);
+                    let task_result = self.execute_tool(&node, node_id, start).await;
+                    let dur = task_result.duration_ms;
                     if task_result.success {
                         (
                             true,
                             task_result.output.unwrap_or_default(),
                             String::new(),
                             String::new(),
+                            dur,
                         )
                     } else {
                         (
                             false,
                             String::new(),
-                            task_result.failure_type.unwrap_or_else(|| "unknown".to_string()),
+                            task_result
+                                .failure_type
+                                .unwrap_or_else(|| "unknown".to_string()),
                             task_result.error.unwrap_or_default(),
+                            dur,
                         )
                     }
                 } else {
@@ -950,9 +1006,23 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                         "execution output placeholder".to_string(),
                         String::new(),
                         String::new(),
+                        0,
                     )
-                }
-            };
+                };
+
+            // Emit NodeCompleted
+            let _ = self
+                .event_bus
+                .publish(crate::event_system::application::dto::PublishEventInput {
+                    event: ExecutionEvent::NodeCompleted {
+                        execution_id: input.dag_id,
+                        node_id: node_id.to_string(),
+                        duration_ms: exec_duration_ms,
+                        output: serde_json::json!(output_text.clone()),
+                        timestamp: chrono::Utc::now(),
+                    },
+                })
+                .await;
 
             let duration_ms = start.elapsed().as_millis() as u64;
 
@@ -1145,12 +1215,11 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                 detail: format!("Lock error: {}", e),
             })?;
 
-        let session =
-            sessions
-                .get_mut(&input.dag_id)
-                .ok_or(ExecutionError::NodeNotFound {
-                    node_id: input.dag_id,
-                })?;
+        let session = sessions
+            .get_mut(&input.dag_id)
+            .ok_or(ExecutionError::NodeNotFound {
+                node_id: input.dag_id,
+            })?;
 
         if session.paused {
             return Err(ExecutionError::InvalidState {
@@ -1185,12 +1254,11 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                 detail: format!("Lock error: {}", e),
             })?;
 
-        let session =
-            sessions
-                .get_mut(&input.dag_id)
-                .ok_or(ExecutionError::NodeNotFound {
-                    node_id: input.dag_id,
-                })?;
+        let session = sessions
+            .get_mut(&input.dag_id)
+            .ok_or(ExecutionError::NodeNotFound {
+                node_id: input.dag_id,
+            })?;
 
         if !session.paused {
             return Err(ExecutionError::InvalidState {
@@ -1223,12 +1291,11 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                 detail: format!("Lock error: {}", e),
             })?;
 
-        let session =
-            sessions
-                .get_mut(&input.dag_id)
-                .ok_or(ExecutionError::NodeNotFound {
-                    node_id: input.dag_id,
-                })?;
+        let session = sessions
+            .get_mut(&input.dag_id)
+            .ok_or(ExecutionError::NodeNotFound {
+                node_id: input.dag_id,
+            })?;
 
         if session.aborted {
             return Err(ExecutionError::InvalidState {
@@ -1402,12 +1469,13 @@ impl RetryEvaluationService for RetryEvaluationServiceImpl {
             );
 
             if let Some(fallback_id) = fallback_node_id
-                && policy.enable_fallback {
-                    return RetryDecision::Fallback {
-                        fallback_node_id: fallback_id,
-                        reason: format!("{}. Executing fallback", reason),
-                    };
-                }
+                && policy.enable_fallback
+            {
+                return RetryDecision::Fallback {
+                    fallback_node_id: fallback_id,
+                    reason: format!("{}. Executing fallback", reason),
+                };
+            }
 
             if policy.skip_on_exhaustion {
                 return RetryDecision::Skip {

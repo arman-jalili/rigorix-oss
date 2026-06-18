@@ -48,7 +48,12 @@ impl ParallelExecutionFactory for ParallelExecutionFactoryImpl {
         config: ParallelExecutionFactoryConfig,
     ) -> Result<Box<dyn ParallelExecutionService>, ExecutionError> {
         let retry_service = Box::new(RetryEvaluationServiceImpl::new());
-        let executor = ParallelExecutionServiceImpl::new(config.executor_config, retry_service);
+        // Use a default event bus if none was provided
+        let event_bus = config
+            .event_bus
+            .unwrap_or_else(|| std::sync::Arc::new(crate::event_system::application::event_bus_service_impl::EventBusServiceImpl::default()));
+        let executor =
+            ParallelExecutionServiceImpl::new(config.executor_config, retry_service, event_bus);
         Ok(Box::new(executor))
     }
 }

@@ -26,12 +26,12 @@ use rigorix_engine::orchestrator::application::builder_impl::OrchestratorBuilder
 use rigorix_engine::orchestrator::application::service::OrchestratorService;
 use rigorix_engine::orchestrator::domain::OrchestratorConfig as OrchestratorDomainConfig;
 use rigorix_engine::planning::application::factory::PlanningPipelineFactory;
-use rigorix_engine::planning::infrastructure::llm_extractor::{
-    ExtractorProvider, LlmExtractorConfig, LlmParameterExtractor,
-};
 use rigorix_engine::planning::application::pipeline_factory_impl::PlanningPipelineFactoryImpl;
 use rigorix_engine::planning::infrastructure::claude_classifier::{
     ClaudeClassifier, ClaudeClassifierConfig,
+};
+use rigorix_engine::planning::infrastructure::llm_extractor::{
+    ExtractorProvider, LlmExtractorConfig, LlmParameterExtractor,
 };
 use rigorix_engine::planning::infrastructure::openai_classifier::{
     OpenaiClassifier, OpenaiClassifierConfig,
@@ -71,8 +71,12 @@ pub async fn build_cli_services(config: CliConfig) -> Result<CliServices, CliErr
     let repo_root = String::new(); // default to CWD
 
     let rigorix_dir = PathBuf::from(&repo_root).join(".rigorix");
-    tokio::fs::create_dir_all(rigorix_dir.join("state")).await.ok();
-    tokio::fs::create_dir_all(rigorix_dir.join("templates")).await.ok();
+    tokio::fs::create_dir_all(rigorix_dir.join("state"))
+        .await
+        .ok();
+    tokio::fs::create_dir_all(rigorix_dir.join("templates"))
+        .await
+        .ok();
 
     let state_manager = Arc::from(
         FileSystemStateManagerFactory
@@ -84,8 +88,7 @@ pub async fn build_cli_services(config: CliConfig) -> Result<CliServices, CliErr
             .map_err(|e| CliError::General(format!("state manager: {e}")))?,
     );
 
-    let cli_template_service: Arc<dyn TemplateEngineService> =
-        Arc::new(TemplateEngineImpl::new());
+    let cli_template_service: Arc<dyn TemplateEngineService> = Arc::new(TemplateEngineImpl::new());
 
     // Load existing templates from .rigorix/templates/
     let tpl_dir = PathBuf::from(&repo_root).join(".rigorix/templates");
@@ -166,10 +169,12 @@ pub async fn build_orchestrator(
         .map_err(|e| CliError::General(format!("cancellation: {e}")))?;
 
     // ── 2. EventBusService ─────────────────────────────────────────────
-    let event_bus = EventBusFactoryImpl
-        .create_default()
-        .await
-        .map_err(|e| CliError::General(format!("event bus: {e}")))?;
+    let event_bus: Arc<dyn rigorix_engine::event_system::application::EventBusService> = Arc::from(
+        EventBusFactoryImpl
+            .create_default()
+            .await
+            .map_err(|e| CliError::General(format!("event bus: {e}")))?,
+    );
 
     // ── 3. StateManagerService ─────────────────────────────────────────
     let state_manager = Arc::from(
@@ -204,6 +209,7 @@ pub async fn build_orchestrator(
             register_event_handlers: true,
             enable_progress_callbacks: true,
             event_channel_capacity: 1024,
+            event_bus: Some(Arc::clone(&event_bus)),
         })
         .await
         .map_err(|e| CliError::General(format!("execution: {e}")))?;
@@ -285,10 +291,10 @@ pub async fn build_orchestrator(
             temperature: llm.temperature,
             provider: extractor_provider,
         }),
-    )) as Box<dyn rigorix_engine::planning::domain::extractor::ParameterExtractor>;
+    ))
+        as Box<dyn rigorix_engine::planning::domain::extractor::ParameterExtractor>;
 
-    let template_service: Arc<dyn TemplateEngineService> =
-        Arc::new(TemplateEngineImpl::new());
+    let template_service: Arc<dyn TemplateEngineService> = Arc::new(TemplateEngineImpl::new());
 
     // Load existing templates from .rigorix/templates/ directory
     let tpl_dir = std::path::PathBuf::from(&repo_root).join(".rigorix/templates");
@@ -344,7 +350,13 @@ pub async fn build_orchestrator(
     };
 
     let planning = PlanningPipelineFactoryImpl::new()
-        .create_custom(classifier, extractor, Arc::clone(&template_service), generator, None)
+        .create_custom(
+            classifier,
+            extractor,
+            Arc::clone(&template_service),
+            generator,
+            None,
+        )
         .await
         .map_err(|e| CliError::General(format!("planning: {e}")))?;
 

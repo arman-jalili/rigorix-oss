@@ -7,6 +7,7 @@
 //! Comprehensive tests for the ParallelExecutionServiceImpl and
 //! RetryEvaluationServiceImpl implementations.
 
+use crate::event_system::application::event_bus_service_impl::EventBusServiceImpl;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -21,8 +22,8 @@ use crate::execution_engine::application::service_impl::{
     ParallelExecutionServiceImpl, RetryEvaluationServiceImpl,
 };
 use crate::execution_engine::domain::{
-    BackoffStrategy, FailureContext, NodeExecutionState,
-    ParallelExecutorConfig, RetryDecision, RetryPolicy, RetryStrategy,
+    BackoffStrategy, FailureContext, NodeExecutionState, ParallelExecutorConfig, RetryDecision,
+    RetryPolicy, RetryStrategy,
 };
 
 // ---------------------------------------------------------------------------
@@ -32,7 +33,8 @@ use crate::execution_engine::domain::{
 fn create_executor() -> ParallelExecutionServiceImpl {
     let config = ParallelExecutorConfig::default();
     let retry = RetryEvaluationServiceImpl::new();
-    ParallelExecutionServiceImpl::new(config, Box::new(retry))
+    let event_bus = Arc::new(EventBusServiceImpl::default());
+    ParallelExecutionServiceImpl::new(config, Box::new(retry), event_bus)
 }
 
 // ---------------------------------------------------------------------------
