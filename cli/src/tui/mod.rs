@@ -217,8 +217,19 @@ fn apply_vm_command(vm: &mut TuiViewModel, cmd: VmCommand) {
         VmCommand::CopyMessage(msg) => vm.copy_message = msg,
         VmCommand::SetNodes(nodes) => {
             for n in nodes {
+                // Try to find existing node by id first, then by name as fallback
+                let target_id = if vm.nodes.contains_key(&n.id) {
+                    n.id.clone()
+                } else if let Some((existing_id, _)) =
+                    vm.nodes.iter().find(|(_, v)| v.name == n.name && !n.name.is_empty())
+                {
+                    existing_id.clone()
+                } else {
+                    n.id.clone()
+                };
+
                 vm.nodes
-                    .entry(n.id.clone())
+                    .entry(target_id)
                     .and_modify(|existing| {
                         // Preserve existing name/tool/risk if incoming is empty
                         if !n.name.is_empty() {
