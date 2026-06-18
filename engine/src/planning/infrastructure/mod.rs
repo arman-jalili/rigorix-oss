@@ -12,9 +12,11 @@
 //! and loading planning results and their deterministic hashes.
 
 pub mod claude_classifier;
+pub mod llm_extractor;
 pub mod openai_classifier;
 pub mod repository;
 
 pub use claude_classifier::*;
+pub use llm_extractor::*;
 pub use openai_classifier::*;
 pub use repository::*;

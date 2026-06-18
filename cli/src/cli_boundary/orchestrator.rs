@@ -26,7 +26,9 @@ use rigorix_engine::orchestrator::application::builder_impl::OrchestratorBuilder
 use rigorix_engine::orchestrator::application::service::OrchestratorService;
 use rigorix_engine::orchestrator::domain::OrchestratorConfig as OrchestratorDomainConfig;
 use rigorix_engine::planning::application::factory::PlanningPipelineFactory;
-use rigorix_engine::planning::application::mock_extractor::MockParameterExtractor;
+use rigorix_engine::planning::infrastructure::llm_extractor::{
+    ExtractorProvider, LlmExtractorConfig, LlmParameterExtractor,
+};
 use rigorix_engine::planning::application::pipeline_factory_impl::PlanningPipelineFactoryImpl;
 use rigorix_engine::planning::infrastructure::claude_classifier::{
     ClaudeClassifier, ClaudeClassifierConfig,
@@ -264,8 +266,26 @@ pub async fn build_orchestrator(
             }
         };
 
-    let extractor = Box::new(MockParameterExtractor::new())
-        as Box<dyn rigorix_engine::planning::domain::extractor::ParameterExtractor>;
+    // Build LLM-based parameter extractor (replaces mock for real extraction)
+    let extractor_api_url = match llm.provider {
+        LlmProvider::Anthropic => format!("{}/messages", api_base_url.trim_end_matches('/')),
+        _ => format!("{}/chat/completions", api_base_url.trim_end_matches('/')),
+    };
+    let extractor_provider = match llm.provider {
+        LlmProvider::Anthropic => ExtractorProvider::Anthropic,
+        _ => ExtractorProvider::OpenAI,
+    };
+    let extractor = Box::new(LlmParameterExtractor::new(
+        api_key_for_generator.clone(),
+        Some(LlmExtractorConfig {
+            api_url: extractor_api_url,
+            model: llm.model.clone(),
+            max_tokens: llm.max_tokens,
+            timeout_secs: 120,
+            temperature: llm.temperature,
+            provider: extractor_provider,
+        }),
+    )) as Box<dyn rigorix_engine::planning::domain::extractor::ParameterExtractor>;
 
     let template_service: Arc<dyn TemplateEngineService> =
         Arc::new(TemplateEngineImpl::new());
