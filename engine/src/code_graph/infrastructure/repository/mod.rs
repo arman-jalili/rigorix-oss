@@ -74,5 +74,7 @@ pub trait CodeGraphRepository: Send + Sync {
     ) -> Result<Vec<CodeGraph>, CodeGraphError>;
 }
 
+pub mod filesystem_repository;
 pub mod memory_repository;
+pub use filesystem_repository::FilesystemCodeGraphRepository;
 pub use memory_repository::InMemoryCodeGraphRepository;
