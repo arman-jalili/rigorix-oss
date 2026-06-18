@@ -195,6 +195,28 @@ Output: {{"parameters": {{"project_root": ""}}, "reasoning": "The user didn't sp
             response_body
         };
 
+        /// Return a sensible default value for common parameter names
+        /// when the LLM cannot extract one from the intent.
+        fn default_param_value(name: &str) -> Option<String> {
+            match name {
+                // Path-like parameters — default to CWD
+                "project_path" | "repo_root" | "target_dir" | "workspace_path"
+                | "root_dir" | "base_path" => std::env::current_dir()
+                    .ok()
+                    .map(|p| p.to_string_lossy().to_string()),
+                // Level/severity — default to standard
+                "validation_level" | "check_level" | "strictness" | "severity" => {
+                    Some("standard".to_string())
+                }
+                // Optional features/flags — default to empty/none
+                "additional_features" | "extra_flags" | "options" | "features"
+                | "flags" => Some(String::new()),
+                // Mode/strategy — default to basic
+                "mode" | "strategy" | "approach" => Some("default".to_string()),
+                _ => None,
+            }
+        }
+
         #[derive(Deserialize)]
         struct ApiResponse {
             parameters: HashMap<String, String>,
@@ -223,8 +245,13 @@ Output: {{"parameters": {{"project_root": ""}}, "reasoning": "The user didn't sp
                     parameters.insert(name.clone(), val.clone());
                 }
                 _ => {
-                    // Value is empty or not found — mark as missing
-                    missing_parameters.push(name.clone());
+                    // Value not found — try sensible defaults before failing
+                    let fallback = default_param_value(name);
+                    if let Some(val) = fallback {
+                        parameters.insert(name.clone(), val);
+                    } else {
+                        missing_parameters.push(name.clone());
+                    }
                 }
             }
         }
