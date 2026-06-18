@@ -48,6 +48,13 @@ pub struct PlanInput {
     /// Repository root directory for building RepoContext.
     #[serde(default)]
     pub repo_root: String,
+
+    /// Pre-computed module dependency graph (CodeGraph formatted output).
+    /// Set by the orchestrator before passing to the pipeline.
+    /// When present, the pipeline injects this into RepoContext.module_deps
+    /// so the LLM sees module dependency relationships.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub module_deps: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -101,6 +108,11 @@ pub struct PlanWithGraphInput {
     /// Repository root directory for building RepoContext.
     #[serde(default)]
     pub repo_root: String,
+
+    /// Pre-computed module dependency graph (CodeGraph formatted output).
+    /// Set by the orchestrator before passing to the pipeline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub module_deps: Option<String>,
 }
 
 /// Output from the `plan_with_graph()` flow.

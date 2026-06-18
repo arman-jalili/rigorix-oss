@@ -34,6 +34,8 @@ use crate::cancellation::application as cancel_app;
 use crate::audit::application as audit_app;
 use crate::budget_tracking::application as budget_app;
 use crate::code_graph::application::CodeGraphService as CodeGraphServiceTrait;
+use crate::code_graph::application::service::CodeGraphFormatter as CodeGraphFormatterTrait;
+use crate::code_graph::application::service_impl::CodeGraphFormatterImpl;
 use crate::event_system::application as event_app;
 
 pub struct OrchestratorServiceImpl {
@@ -105,6 +107,51 @@ impl OrchestratorServiceImpl {
 
     fn gen_id(&self) -> Uuid {
         Uuid::new_v4()
+    }
+
+    /// Build a module dependency graph string from the repo root.
+    ///
+    /// Uses CodeGraphBuilder to scan the workspace and CodeGraphFormatter
+    /// to produce compact output. Returns None if CodeGraphService is not
+    /// configured or if any step fails (non-fatal — the pipeline continues
+    /// without module deps).
+    async fn build_module_deps(&self, repo_root: &str) -> Option<String> {
+        let code_graph_service = self.code_graph_service.as_ref()?.clone();
+        let root = std::path::PathBuf::from(repo_root);
+        if !root.exists() {
+            return None;
+        }
+
+        // 1. Use CodeGraphBuilder to scan the workspace
+        let extensions = vec![
+            "rs".to_string(),
+            "ts".to_string(),
+            "tsx".to_string(),
+            "js".to_string(),
+            "py".to_string(),
+        ];
+        let builder = crate::code_graph::application::builder::CodeGraphBuilder::new(
+            code_graph_service.clone(),
+            vec![root.clone()],
+            extensions,
+            false,
+        );
+        let build_out = builder.build().await.ok()?;
+
+        // 2. Format as compact citations (FastContext <final_answer> pattern)
+        let formatter = CodeGraphFormatterImpl::new();
+        let formatted = CodeGraphFormatterTrait::format(
+            &formatter,
+            crate::code_graph::application::dto::FormatGraphInput {
+                graph: build_out.graph,
+                format: crate::code_graph::application::dto::OutputFormat::Compact,
+                include_metadata: false,
+            },
+        )
+        .await
+        .ok()?;
+
+        Some(formatted.output)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -206,7 +253,10 @@ impl OrchestratorService for OrchestratorServiceImpl {
         // 1. Publish PlanningStarted
         let _ = self.event_bus.publish(Self::planning_started_event(execution_id, input.intent.clone())).await;
 
-        // 2. Run planning pipeline
+        // 2. Build module dependency graph if CodeGraphService is available
+        let module_deps = self.build_module_deps(&input.repo_root).await;
+
+        // 3. Run planning pipeline
         let plan_out = self.planning_pipeline
             .plan_with_graph(planning_dto::PlanWithGraphInput {
                 intent: crate::planning::domain::intent::UserIntent::new(input.intent.clone(), Some(execution_id)),
@@ -214,6 +264,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 enable_generator_fallback: true,
                 skip_validation: false,
                 repo_root: input.repo_root.clone(),
+                module_deps,
             })
             .await
             .map_err(|e| OrchestratorError::PlanningFailed {
@@ -334,6 +385,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 intent: crate::planning::domain::intent::UserIntent::new(input.intent, None),
                 execution_id: None, enable_generator_fallback: true, skip_validation: false,
                 repo_root: input.repo_root.clone(),
+                module_deps: None,
             })
             .await
             .map_err(|e| OrchestratorError::PlanningFailed { detail: e.to_string(), intent: String::new() })?;

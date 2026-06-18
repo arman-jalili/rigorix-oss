@@ -525,6 +525,11 @@ impl PlanningPipelineService for PlanningPipelineImpl {
                                         )
                                     });
 
+                            // Inject pre-computed module dependency graph if provided
+                            if let Some(ref deps) = input.module_deps {
+                                repo_context = repo_context.clone().with_module_deps(deps.clone());
+                            }
+
                             // Enrich with existing templates from the template engine
                             if let Ok(list_output) = self.template_service.list_templates().await {
                                 repo_context.existing_templates = list_output
@@ -601,6 +606,7 @@ impl PlanningPipelineService for PlanningPipelineImpl {
             enable_generator_fallback: input.enable_generator_fallback,
             skip_validation: input.skip_validation,
             repo_root: input.repo_root,
+            module_deps: input.module_deps,
         };
 
         let plan_output = self.plan(plan_input).await?;

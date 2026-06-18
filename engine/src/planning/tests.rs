@@ -599,6 +599,7 @@ async fn test_plan_high_confidence_returns_planning_result() {
         enable_generator_fallback: false,
         skip_validation: true,
         repo_root: String::new(),
+        module_deps: None,
     };
 
     let result = pipeline.plan(input).await;
@@ -626,6 +627,7 @@ async fn test_plan_tracks_llm_usage() {
         enable_generator_fallback: false,
         skip_validation: true,
         repo_root: String::new(),
+        module_deps: None,
     };
 
     let result = pipeline.plan(input).await.unwrap();
@@ -644,6 +646,7 @@ async fn test_plan_low_confidence_no_generator_returns_error() {
         enable_generator_fallback: false,
         skip_validation: true,
         repo_root: String::new(),
+        module_deps: None,
     };
 
     let result = pipeline.plan(input).await;
@@ -671,6 +674,7 @@ async fn test_plan_with_generator_fallback_attempts_generation() {
         enable_generator_fallback: true,
         skip_validation: true,
         repo_root: String::new(),
+        module_deps: None,
     };
 
     let result = pipeline.plan(input).await;
@@ -698,6 +702,7 @@ async fn test_plan_with_graph_returns_output() {
         enable_generator_fallback: false,
         skip_validation: true,
         repo_root: String::new(),
+        module_deps: None,
     };
 
     let result = pipeline.plan_with_graph(input).await;

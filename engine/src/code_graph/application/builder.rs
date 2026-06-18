@@ -12,6 +12,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::code_graph::domain::{
@@ -40,7 +41,7 @@ use super::service::CodeGraphService;
 /// - Skips `node_modules/`, `target/`, `.git/`, and hidden directories
 pub struct CodeGraphBuilder {
     /// The graph service to populate with built graphs.
-    graph_service: Box<dyn CodeGraphService>,
+    graph_service: Arc<dyn CodeGraphService>,
 
     /// Root directories to scan.
     scan_roots: Vec<PathBuf>,
@@ -55,7 +56,7 @@ pub struct CodeGraphBuilder {
 impl CodeGraphBuilder {
     /// Create a new CodeGraphBuilder.
     pub fn new(
-        graph_service: Box<dyn CodeGraphService>,
+        graph_service: Arc<dyn CodeGraphService>,
         scan_roots: Vec<PathBuf>,
         extensions: Vec<String>,
         include_external: bool,
@@ -481,7 +482,7 @@ mod tests {
     use tempfile::tempdir;
 
     fn create_builder(roots: Vec<PathBuf>) -> CodeGraphBuilder {
-        let service: Box<dyn CodeGraphService> = Box::new(CodeGraphServiceImpl::new());
+        let service: Arc<dyn CodeGraphService> = Arc::new(CodeGraphServiceImpl::new());
         CodeGraphBuilder::new(
             service,
             roots,
@@ -492,7 +493,7 @@ mod tests {
 
     #[test]
     fn test_parse_rust_imports() {
-        let service: Box<dyn CodeGraphService> = Box::new(CodeGraphServiceImpl::new());
+        let service: Arc<dyn CodeGraphService> = Arc::new(CodeGraphServiceImpl::new());
         let builder = CodeGraphBuilder::new(service, vec![], vec![], false);
 
         let content = r#"
@@ -512,7 +513,7 @@ fn main() {}
 
     #[test]
     fn test_parse_ts_imports() {
-        let service: Box<dyn CodeGraphService> = Box::new(CodeGraphServiceImpl::new());
+        let service: Arc<dyn CodeGraphService> = Arc::new(CodeGraphServiceImpl::new());
         let builder = CodeGraphBuilder::new(service, vec![], vec![], false);
 
         let content = r#"
@@ -531,7 +532,7 @@ const fs = require('fs');
 
     #[test]
     fn test_parse_python_imports() {
-        let service: Box<dyn CodeGraphService> = Box::new(CodeGraphServiceImpl::new());
+        let service: Arc<dyn CodeGraphService> = Arc::new(CodeGraphServiceImpl::new());
         let builder = CodeGraphBuilder::new(service, vec![], vec![], false);
 
         let content = r#"
@@ -563,7 +564,7 @@ from ..core import engine
         std::fs::create_dir(dir.path().join("utils")).unwrap();
         std::fs::write(dir.path().join("utils/helper.rs"), "pub fn help() {}").unwrap();
 
-        let service: Box<dyn CodeGraphService> = Box::new(CodeGraphServiceImpl::new());
+        let service: Arc<dyn CodeGraphService> = Arc::new(CodeGraphServiceImpl::new());
         let builder = CodeGraphBuilder::new(
             service,
             vec![dir.path().to_path_buf()],
@@ -591,7 +592,7 @@ from ..core import engine
         std::fs::write(dir.path().join("node_modules/pkg.rs"), "").unwrap();
         std::fs::write(dir.path().join("visible.rs"), "").unwrap();
 
-        let service: Box<dyn CodeGraphService> = Box::new(CodeGraphServiceImpl::new());
+        let service: Arc<dyn CodeGraphService> = Arc::new(CodeGraphServiceImpl::new());
         let builder = CodeGraphBuilder::new(
             service,
             vec![dir.path().to_path_buf()],
@@ -619,7 +620,7 @@ from ..core import engine
         .unwrap();
         std::fs::write(dir.path().join("utils.rs"), "pub fn help() {}\n").unwrap();
 
-        let service: Box<dyn CodeGraphService> = Box::new(CodeGraphServiceImpl::new());
+        let service: Arc<dyn CodeGraphService> = Arc::new(CodeGraphServiceImpl::new());
         let builder = CodeGraphBuilder::new(
             service,
             vec![dir.path().to_path_buf()],
