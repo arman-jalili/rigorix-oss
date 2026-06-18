@@ -17,6 +17,9 @@ pub fn map_key(event: KeyEvent, focus: InputFocus) -> KeyAction {
             return KeyAction::Quit;
         }
         F(1) => return KeyAction::ShowHelp,
+        Char('y') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+            return KeyAction::CopyToClipboard;
+        }
         Tab => return KeyAction::NextView,
         Esc => {
             return match focus {
@@ -29,6 +32,10 @@ pub fn map_key(event: KeyEvent, focus: InputFocus) -> KeyAction {
 
     // Ctrl+C handling (any focus)
     if event.code == Char('c') && event.modifiers.contains(KeyModifiers::CONTROL) {
+        return KeyAction::CancelGraceful;
+    }
+    if event.code == Char('y') && event.modifiers.contains(KeyModifiers::CONTROL) {
+        return KeyAction::CopyToClipboard;
         return KeyAction::CancelGraceful;
     }
 

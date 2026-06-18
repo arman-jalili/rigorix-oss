@@ -77,6 +77,8 @@ pub enum KeyAction {
     Search,
     /// Filter events by type (1-5).
     FilterEvents(u8),
+    /// Copy current view content to a temp file for easy inspection.
+    CopyToClipboard,
 }
 
 /// Keyboard event handler trait.

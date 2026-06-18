@@ -34,6 +34,15 @@ pub fn render(frame: &mut Frame<'_>, area: Rect, vm: &TuiViewModel) {
                 vm.nodes.len(),
                 vm.metrics.llm_calls
             )),
+            Span::raw("  "),
+            Span::styled(
+                vm.copy_message.as_deref().unwrap_or("[Ctrl+Y] copy"),
+                Style::default().fg(if vm.copy_message.is_some() {
+                    Color::Green
+                } else {
+                    Color::DarkGray
+                }),
+            ),
         ]))
         .block(Block::default().borders(Borders::ALL)),
         area,

@@ -23,7 +23,7 @@ use crate::cli_boundary::config::CliConfig;
 use self::command_bar::CommandBarState;
 use self::input::keymap;
 use self::input::{InputFocus, KeyAction};
-use self::view_model::{ActiveView, ExecutionPhase, TuiViewModel};
+use self::view_model::{ActiveView, ExecutionPhase, NodeStatus, NodeViewModel, TuiViewModel};
 use self::widgets::{LayoutMode, WidgetContext, cmd_bar, status_bar};
 
 /// Commands sent from the background orchestrator task to the TUI event loop.
@@ -44,6 +44,8 @@ pub(crate) enum VmCommand {
     SetNodes(Vec<view_model::NodeViewModel>),
     /// Set an error message and phase to Failed.
     Error(String),
+    /// Set or clear the copy-to-file message.
+    CopyMessage(Option<String>),
 }
 
 /// Run the interactive TUI.
@@ -175,6 +177,7 @@ fn apply_vm_command(vm: &mut TuiViewModel, cmd: VmCommand) {
         VmCommand::TemplateId(tid) => vm.template_id = Some(tid),
         VmCommand::LlmCalls(n) => vm.metrics.llm_calls = n,
         VmCommand::Tokens(n) => vm.metrics.tokens = n,
+        VmCommand::CopyMessage(msg) => vm.copy_message = msg,
         VmCommand::SetNodes(nodes) => {
             vm.nodes.clear();
             for n in nodes {
@@ -186,6 +189,73 @@ fn apply_vm_command(vm: &mut TuiViewModel, cmd: VmCommand) {
             vm.phase = ExecutionPhase::Failed;
         }
     }
+}
+
+/// Render the current view as plain text (for copy-to-file).
+pub(crate) fn render_view_as_text(vm: &TuiViewModel) -> String {
+    let mut out = String::new();
+    let phase = format!("{:?}", vm.phase);
+    out.push_str(&format!("Rigorix — View: {:?} | Phase: {}\n", vm.active_view, phase));
+    out.push_str(&format!("Execution: {} | Template: {}\n",
+        vm.execution_id.map(|id| id.to_string()).unwrap_or_else(|| "-".to_string()),
+        vm.template_id.as_deref().unwrap_or("-"),
+    ));
+    out.push_str(&format!("LLM: {} calls, {} tokens | Intent: {}\n",
+        vm.metrics.llm_calls, vm.metrics.tokens,
+        vm.intent.as_deref().unwrap_or("-"),
+    ));
+    if let Some(err) = &vm.error {
+        out.push_str(&format!("Error: {}\n", err));
+    }
+    out.push('\n');
+
+    let mut nodes: Vec<&NodeViewModel> = vm.nodes.values().collect();
+    nodes.sort_by(|a, b| {
+        let order = |s: NodeStatus| -> u8 {
+            match s {
+                NodeStatus::Failed => 0,
+                NodeStatus::InProgress => 1,
+                NodeStatus::Pending => 2,
+                _ => 3,
+            }
+        };
+        order(a.status).cmp(&order(b.status))
+    });
+
+    out.push_str(&format!("Nodes ({} total):\n", nodes.len()));
+    for n in &nodes {
+        let icon = match n.status {
+            NodeStatus::Completed => "✓",
+            NodeStatus::InProgress => "▶",
+            NodeStatus::Failed => "✗",
+            NodeStatus::Retrying => "↻",
+            NodeStatus::Pending => "·",
+            NodeStatus::Skipped => "–",
+        };
+        let deps = if n.dependencies.is_empty() {
+            "(root)".to_string()
+        } else {
+            format!("← [{}]", n.dependencies.join(", "))
+        };
+        out.push_str(&format!("  {} {} {} {}\n", icon, n.name, deps, n.tool_name));
+        if let Some(ms) = n.timing_ms {
+            out.push_str(&format!("     {}ms\n", ms));
+        }
+        if let Some(ref err) = n.error {
+            let truncated: String = err.lines().take(3).collect::<Vec<_>>().join("\n     ");
+            out.push_str(&format!("     Error: {}\n", truncated));
+        }
+    }
+
+    if !vm.event_log.is_empty() {
+        out.push_str(&format!("\nEvents ({}):\n", vm.event_log.len()));
+        for entry in &vm.event_log {
+            out.push_str(&format!("  {} [{}] {}\n",
+                entry.timestamp_ms, entry.event_type, entry.summary));
+        }
+    }
+
+    out
 }
 
 /// Parse the graph JSON from a plan output into NodeViewModel items.
@@ -489,6 +559,29 @@ fn handle_action(
         KeyAction::ShowDetail => {
             if selected_node.is_some() {
                 vm.active_view = ActiveView::Nodes;
+            }
+        }
+        KeyAction::CopyToClipboard => {
+            let content = render_view_as_text(&vm);
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let tmp = std::env::temp_dir().join(format!("rigorix-view-{}.txt", now));
+            match std::fs::write(&tmp, &content) {
+                Err(e) => {
+                    vm.error = Some(format!("copy failed: {}", e));
+                }
+                Ok(_) => {
+                    let path = tmp.to_string_lossy().to_string();
+                    vm.copy_message = Some(format!("Copied to {}", path));
+                    // Auto-clear after 2 seconds in the next render loop
+                    let clear_tx = vm_tx.clone();
+                    tokio::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                        let _ = clear_tx.send(VmCommand::CopyMessage(None)).await;
+                    });
+                }
             }
         }
         KeyAction::CancelGraceful | KeyAction::CancelImmediate => {

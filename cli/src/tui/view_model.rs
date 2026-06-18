@@ -68,6 +68,9 @@ pub struct TuiViewModel {
     pub active_view: ActiveView,
     pub error: Option<String>,
     pub command_bar_history: Vec<String>,
+    /// Transient message shown when view content is copied to a file.
+    #[serde(default)]
+    pub copy_message: Option<String>,
 }
 
 impl Default for TuiViewModel {
@@ -84,6 +87,7 @@ impl Default for TuiViewModel {
             active_view: ActiveView::Dashboard,
             error: None,
             command_bar_history: Vec::new(),
+            copy_message: None,
         }
     }
 }
@@ -163,6 +167,7 @@ pub enum ViewModelMutation {
     UpdateLlmBudget(LlmBudgetViewModel),
     SetActiveView(ActiveView),
     SetError(String),
+    SetCopyMessage(Option<String>),
     PushCommandHistory(String),
     Reset,
 }
@@ -189,6 +194,9 @@ pub fn apply_mutation(vm: &mut TuiViewModel, mutation: ViewModelMutation) {
         ViewModelMutation::SetError(err) => {
             vm.error = Some(err);
             vm.phase = ExecutionPhase::Failed;
+        }
+        ViewModelMutation::SetCopyMessage(msg) => {
+            vm.copy_message = msg;
         }
         ViewModelMutation::PushCommandHistory(cmd) => {
             vm.command_bar_history.push(cmd);
