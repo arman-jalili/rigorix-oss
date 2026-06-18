@@ -275,7 +275,7 @@ impl EventBridge for EventBridgeImpl {
 /// | ExecutionFailed | Error(msg), Phase(Failed) |
 /// | ExecutionCancelled | Phase(Cancelled) |
 /// | BudgetWarning | (no VmCommand equivalent) |
-fn event_to_vm_command(event: &ExecutionEvent) -> Option<VmCommand> {
+pub(crate) fn event_to_vm_command(event: &ExecutionEvent) -> Option<VmCommand> {
     match event {
         ExecutionEvent::PlanningStarted { .. } => Some(VmCommand::Phase(ExecutionPhase::Planning)),
         ExecutionEvent::PlanningCompleted {

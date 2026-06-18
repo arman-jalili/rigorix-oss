@@ -23,6 +23,7 @@ use crate::cli_boundary::config::CliConfig;
 use self::command_bar::CommandBarState;
 use self::input::keymap;
 use self::input::{InputFocus, KeyAction};
+use self::event_bridge::event_to_vm_command;
 use self::view_model::{ActiveView, ExecutionPhase, NodeStatus, NodeViewModel, TuiViewModel};
 use self::widgets::{LayoutMode, WidgetContext, cmd_bar, status_bar};
 
@@ -632,6 +633,30 @@ async fn handle_action(
             let repo_root = std::env::current_dir()
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();
+
+            // Subscribe to the event bus for real-time progress updates
+            let event_bus_rx = orch.event_bus().subscribe_receiver();
+
+            // Spawn the event bridge task: reads events -> sends VmCommands
+            let bridge_tx = tx.clone();
+            tokio::spawn(async move {
+                let mut rx = event_bus_rx;
+                loop {
+                    match rx.recv().await {
+                        Ok(event) => {
+                            if let Some(cmd) = event_to_vm_command(&event) {
+                                let _ = bridge_tx.send(cmd).await;
+                            }
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                            tracing::warn!(dropped = n, "EventBridge lagged");
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    }
+                }
+            });
+
+            // Spawn the run task
             tokio::spawn(async move {
                 let input = rigorix_engine::orchestrator::application::dto::RunInput {
                     intent,
