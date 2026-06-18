@@ -63,11 +63,7 @@ impl ImpactLevel {
 
     /// Returns the maximum of two impact levels.
     pub fn max(self, other: ImpactLevel) -> ImpactLevel {
-        if self > other {
-            self
-        } else {
-            other
-        }
+        if self > other { self } else { other }
     }
 }
 

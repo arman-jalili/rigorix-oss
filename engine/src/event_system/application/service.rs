@@ -17,8 +17,9 @@
 //! - No implementation — only contract signatures
 
 use async_trait::async_trait;
+use tokio::sync::broadcast;
 
-use crate::event_system::domain::EventSystemError;
+use crate::event_system::domain::{EventSystemError, ExecutionEvent};
 
 use super::dto::{
     DrainPersistedInput, DrainPersistedOutput, EventBusStatus, EventBusStatusInput,
@@ -86,4 +87,15 @@ pub trait EventBusService: Send + Sync {
 
     /// Get event count statistics.
     async fn event_count(&self) -> Result<EventCountOutput, EventSystemError>;
+
+    /// Subscribe to the event bus and receive a `broadcast::Receiver`.
+    ///
+    /// Returns a tokio broadcast receiver that delivers `ExecutionEvent`s in
+    /// real-time as they are published. Slow receivers that cannot keep up
+    /// will receive a `RecvError::Lagged`.
+    ///
+    /// This is the primary mechanism for external consumers (TUI, console
+    /// printers) to subscribe to live events. The named `subscribe()` method
+    /// is for diagnostics/registration only.
+    fn subscribe_receiver(&self) -> broadcast::Receiver<ExecutionEvent>;
 }

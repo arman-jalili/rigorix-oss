@@ -100,7 +100,7 @@ pub trait ExecutionRecordRepository: Send + Sync {
 
     /// Load an execution record by the associated execution ID.
     async fn load_by_execution_id(&self, execution_id: Uuid)
-        -> Result<ExecutionRecord, StateError>;
+    -> Result<ExecutionRecord, StateError>;
 
     /// Delete an execution record from storage.
     async fn delete_record(&self, record_id: Uuid) -> Result<(), StateError>;

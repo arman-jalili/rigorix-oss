@@ -14,7 +14,9 @@
 //! - No mutable state in factory implementations
 
 use async_trait::async_trait;
+use std::sync::Arc;
 
+use crate::event_system::application::EventBusService;
 use crate::execution_engine::domain::ExecutionError;
 
 use super::service::{ParallelExecutionService, RetryEvaluationService};
@@ -40,7 +42,7 @@ pub trait ParallelExecutionFactory: Send + Sync {
 }
 
 /// Configuration for creating a `ParallelExecutionService` instance.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ParallelExecutionFactoryConfig {
     /// The parallel executor configuration.
     pub executor_config: crate::execution_engine::domain::ParallelExecutorConfig,
@@ -53,6 +55,9 @@ pub struct ParallelExecutionFactoryConfig {
 
     /// Event bus channel capacity for execution events.
     pub event_channel_capacity: usize,
+
+    /// The event bus service for publishing execution lifecycle events.
+    pub event_bus: Option<Arc<dyn EventBusService>>,
 }
 
 impl Default for ParallelExecutionFactoryConfig {
@@ -62,6 +67,7 @@ impl Default for ParallelExecutionFactoryConfig {
             register_event_handlers: true,
             enable_progress_callbacks: true,
             event_channel_capacity: 1024,
+            event_bus: None,
         }
     }
 }

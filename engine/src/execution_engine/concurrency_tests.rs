@@ -9,7 +9,10 @@ mod tests {
     async fn test_node_state_lifecycle() {
         let node_id = Uuid::new_v4();
         let mut state = NodeExecutionState::new(node_id, "test-node");
-        assert_eq!(state.status, crate::execution_engine::domain::parallel_executor::NodeStatus::Pending);
+        assert_eq!(
+            state.status,
+            crate::execution_engine::domain::parallel_executor::NodeStatus::Pending
+        );
         assert!(!state.is_terminal());
 
         state.mark_ready();

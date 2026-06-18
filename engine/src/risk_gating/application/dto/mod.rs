@@ -15,8 +15,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::risk_gating::domain::risk_level::{GatingAction, RiskLevel};
 use crate::risk_gating::domain::RiskConfig;
+use crate::risk_gating::domain::risk_level::{GatingAction, RiskLevel};
 
 // ---------------------------------------------------------------------------
 // Evaluate Gate DTOs

@@ -19,15 +19,15 @@ pub fn render(frame: &mut Frame<'_>, area: Rect, vm: &TuiViewModel) {
 
     let chunks = if has_nodes {
         Layout::vertical([
-            Constraint::Length(5),  // summary
-            Constraint::Min(4),     // DAG tree
-            Constraint::Length(2),  // action hints
+            Constraint::Length(5), // summary
+            Constraint::Min(4),    // DAG tree
+            Constraint::Length(2), // action hints
         ])
         .split(area)
     } else {
         Layout::vertical([
-            Constraint::Min(1),     // status / hints (fill)
-            Constraint::Length(2),  // action hints
+            Constraint::Min(1),    // status / hints (fill)
+            Constraint::Length(2), // action hints
         ])
         .split(area)
     };
@@ -49,8 +49,16 @@ pub fn render(frame: &mut Frame<'_>, area: Rect, vm: &TuiViewModel) {
         // Build parameters string from node names that look like params
         let params_line = if vm.template_id.is_some() {
             // Show first node's dep info as a dependency summary
-            let roots = vm.nodes.values().filter(|n| n.dependencies.is_empty()).count();
-            let leaves = vm.nodes.values().filter(|n| n.dependents.is_empty() && !n.dependencies.is_empty()).count();
+            let roots = vm
+                .nodes
+                .values()
+                .filter(|n| n.dependencies.is_empty())
+                .count();
+            let leaves = vm
+                .nodes
+                .values()
+                .filter(|n| n.dependents.is_empty() && !n.dependencies.is_empty())
+                .count();
             format!("{} roots, {} leaves", roots, leaves)
         } else {
             String::new()
@@ -129,7 +137,9 @@ pub fn render(frame: &mut Frame<'_>, area: Rect, vm: &TuiViewModel) {
             Line::from(""),
             Line::from(vec![Span::styled(
                 "  Generating plan via LLM...",
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
             )]),
             Line::from(""),
             Line::from(vec![Span::raw(
@@ -157,9 +167,7 @@ pub fn render(frame: &mut Frame<'_>, area: Rect, vm: &TuiViewModel) {
                 Span::raw(intent),
             ]),
             Line::from(""),
-            Line::from(vec![Span::raw(
-                "  No plan generated yet.",
-            )]),
+            Line::from(vec![Span::raw("  No plan generated yet.")]),
             Line::from(vec![Span::styled(
                 "  Press [g] to generate a plan from this intent.",
                 Style::default().fg(Color::Blue),
@@ -195,9 +203,10 @@ pub fn render(frame: &mut Frame<'_>, area: Rect, vm: &TuiViewModel) {
             Span::styled("[Esc] Cancel", Style::default().fg(Color::Red)),
         ]
     } else if is_planning {
-        vec![
-            Span::styled(" [Esc] Cancel / Back", Style::default().fg(Color::Red)),
-        ]
+        vec![Span::styled(
+            " [Esc] Cancel / Back",
+            Style::default().fg(Color::Red),
+        )]
     } else {
         vec![
             Span::styled(" [g] Generate", Style::default().fg(Color::Blue)),

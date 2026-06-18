@@ -2,8 +2,8 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::audit::application::factory::CircuitBreakerFactory;
     use crate::audit::application::circuit_breaker_factory_impl::CircuitBreakerFactoryImpl;
+    use crate::audit::application::factory::CircuitBreakerFactory;
 
     #[tokio::test]
     async fn test_circuit_breaker_opens_after_threshold() {
@@ -42,17 +42,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_timeout_handling() {
-        let result = tokio::time::timeout(
-            std::time::Duration::from_millis(1),
-            async {
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                "done"
-            },
-        )
+        let result = tokio::time::timeout(std::time::Duration::from_millis(1), async {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            "done"
+        })
         .await;
 
         match result {
-            Ok(_) => {} // Operation completed (unlikely with 1ms timeout)
+            Ok(_) => {}  // Operation completed (unlikely with 1ms timeout)
             Err(_) => {} // Timed out as expected
         }
     }

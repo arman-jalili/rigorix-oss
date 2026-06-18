@@ -21,10 +21,10 @@
 pub mod application;
 pub mod domain;
 
-#[cfg(test)]
-pub mod property_tests;
 pub mod infrastructure;
 pub mod interfaces;
+#[cfg(test)]
+pub mod property_tests;
 
 #[cfg(test)]
 pub(crate) mod tests;

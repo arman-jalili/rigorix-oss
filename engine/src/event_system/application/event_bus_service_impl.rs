@@ -9,9 +9,9 @@
 //! persistence. Provides monotonic sequence numbers for exact replay ordering.
 
 use async_trait::async_trait;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use tokio::sync::{broadcast, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use tokio::sync::{Mutex, broadcast};
 
 use crate::event_system::domain::{EventSystemError, ExecutionEvent, PersistedEvent};
 
@@ -210,9 +210,10 @@ impl EventBusService for EventBusServiceImpl {
             .filter(|pe| {
                 // Filter by sequence
                 if let Some(after) = input.after_sequence
-                    && pe.sequence <= after {
-                        return false;
-                    }
+                    && pe.sequence <= after
+                {
+                    return false;
+                }
                 true
             })
             .filter(|pe| {
@@ -317,6 +318,10 @@ impl EventBusService for EventBusServiceImpl {
             persisted: buffer.len() as u64,
             drained: self.drained_count.load(Ordering::SeqCst),
         })
+    }
+
+    fn subscribe_receiver(&self) -> broadcast::Receiver<ExecutionEvent> {
+        self.sender.subscribe()
     }
 }
 

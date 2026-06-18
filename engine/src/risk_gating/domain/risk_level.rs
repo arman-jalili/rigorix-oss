@@ -94,7 +94,6 @@ pub enum GatingAction {
     DryRun,
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

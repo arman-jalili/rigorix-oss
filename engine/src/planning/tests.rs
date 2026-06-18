@@ -463,9 +463,11 @@ async fn test_extractor_missing_parameter() {
         .unwrap();
 
     assert!(!result.complete);
-    assert!(result
-        .missing_parameters
-        .contains(&"required_param".to_string()));
+    assert!(
+        result
+            .missing_parameters
+            .contains(&"required_param".to_string())
+    );
 }
 
 #[tokio::test]

@@ -142,9 +142,10 @@ impl StateManagerService for FileSystemStateManager {
 
                     // Apply status filter if specified
                     if let Some(ref filter) = input.status_filter
-                        && state.status != *filter {
-                            continue;
-                        }
+                        && state.status != *filter
+                    {
+                        continue;
+                    }
 
                     executions.push(summary);
                 }
@@ -315,10 +316,12 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(manager
-            .load_state(LoadStateInput { execution_id })
-            .await
-            .is_ok());
+        assert!(
+            manager
+                .load_state(LoadStateInput { execution_id })
+                .await
+                .is_ok()
+        );
 
         manager.delete_state(execution_id).await.unwrap();
 

@@ -34,8 +34,7 @@ use super::error::StateError;
 /// - `Completed`: All nodes completed successfully
 /// - `Failed`: Execution terminated with an unrecoverable error
 /// - `Cancelled`: Execution was cancelled (user-initiated or graceful shutdown)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum ExecutionStatus {
     /// Execution created but not yet started.
     #[default]
@@ -76,7 +75,6 @@ impl ExecutionStatus {
     }
 }
 
-
 // ---------------------------------------------------------------------------
 // Per-Node Status
 // ---------------------------------------------------------------------------
@@ -89,8 +87,7 @@ impl ExecutionStatus {
 /// - `Completed`: Node finished successfully
 /// - `Failed`: Node failed (may be retried depending on policy)
 /// - `Skipped`: Node was skipped (dependency failed or policy decision)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum NodeStatus {
     /// Node created but not yet started.
     #[default]
@@ -130,7 +127,6 @@ impl NodeStatus {
         }
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // ExecutionState — Root Aggregate
@@ -428,8 +424,7 @@ impl ExecutionState {
 }
 
 /// Summary of node status counts.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct NodeStatusSummary {
     /// Number of nodes still pending.
     pub pending: u32,
@@ -442,7 +437,6 @@ pub struct NodeStatusSummary {
     /// Number of nodes that were skipped.
     pub skipped: u32,
 }
-
 
 // ---------------------------------------------------------------------------
 // NodeState

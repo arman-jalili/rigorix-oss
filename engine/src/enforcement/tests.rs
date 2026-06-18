@@ -19,7 +19,10 @@ mod tests {
     async fn test_create_enforcer_from_default_config() {
         let factory = ExecutionEnforcerFactoryImpl;
         let enforcer = factory.create_default("test-exec-1").await;
-        assert!(enforcer.is_ok(), "Should create enforcer from default config");
+        assert!(
+            enforcer.is_ok(),
+            "Should create enforcer from default config"
+        );
     }
 
     #[tokio::test]

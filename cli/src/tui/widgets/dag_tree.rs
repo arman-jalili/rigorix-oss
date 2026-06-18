@@ -67,11 +67,7 @@ fn render_node_items<'a>(nodes: &[&'a NodeViewModel]) -> Vec<ListItem<'a>> {
             let dep_str = if n.dependencies.is_empty() {
                 String::new()
             } else {
-                let dep_names: Vec<&str> = n
-                    .dependencies
-                    .iter()
-                    .map(|d| d.as_str())
-                    .collect();
+                let dep_names: Vec<&str> = n.dependencies.iter().map(|d| d.as_str()).collect();
                 format!(" ← [{}]", dep_names.join(", "))
             };
 
@@ -80,20 +76,27 @@ fn render_node_items<'a>(nodes: &[&'a NodeViewModel]) -> Vec<ListItem<'a>> {
                 .map(|ms| format!(" {}ms", ms))
                 .unwrap_or_default();
 
-            let error_snippet = n.error.as_ref().map(|e| {
-                let first_line = e.lines().next().unwrap_or(e);
-                let truncated = if first_line.len() > 60 {
-                    format!("{}...", &first_line[..57])
-                } else {
-                    first_line.to_string()
-                };
-                format!(" ({})", truncated)
-            }).unwrap_or_default();
+            let error_snippet = n
+                .error
+                .as_ref()
+                .map(|e| {
+                    let first_line = e.lines().next().unwrap_or(e);
+                    let truncated = if first_line.len() > 60 {
+                        format!("{}...", &first_line[..57])
+                    } else {
+                        first_line.to_string()
+                    };
+                    format!(" ({})", truncated)
+                })
+                .unwrap_or_default();
 
             ListItem::new(Line::from(vec![
                 Span::styled(format!(" {} ", icon), s),
                 Span::raw(format!("{}{}", n.name, dep_str)),
-                Span::styled(format!(" {}", n.tool_name), Style::default().fg(Color::Blue)),
+                Span::styled(
+                    format!(" {}", n.tool_name),
+                    Style::default().fg(Color::Blue),
+                ),
                 Span::raw(timing),
                 Span::styled(error_snippet, Style::default().fg(Color::Red)),
             ]))

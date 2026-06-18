@@ -157,9 +157,7 @@ impl OrchestratorSpawner for OrchestratorSpawnerImpl {
                             let _ = tx.send(VmCommand::Phase(ExecutionPhase::Completed)).await;
                         }
                         Err(e) => {
-                            let _ = tx
-                                .send(VmCommand::Error(format!("Run failed: {e}")))
-                                .await;
+                            let _ = tx.send(VmCommand::Error(format!("Run failed: {e}"))).await;
                         }
                     }
                 }
@@ -200,8 +198,7 @@ impl OrchestratorSpawner for OrchestratorSpawnerImpl {
                                 let _ = tx.send(VmCommand::ExecutionId(id)).await;
                             }
                             if let Some(toml) = output.plan["generated_toml"].as_str() {
-                                let tid =
-                                    output.plan["template_id"].as_str().unwrap_or("unknown");
+                                let tid = output.plan["template_id"].as_str().unwrap_or("unknown");
                                 let tpl_dir = std::path::PathBuf::from(".rigorix/templates");
                                 let tpl_path = tpl_dir.join(format!("{tid}.toml"));
                                 let _ = tokio::fs::create_dir_all(&tpl_dir).await;
@@ -219,14 +216,10 @@ impl OrchestratorSpawner for OrchestratorSpawnerImpl {
                             if !nodes.is_empty() {
                                 let _ = tx.send(VmCommand::SetNodes(nodes)).await;
                             }
-                            let _ = tx
-                                .send(VmCommand::Phase(ExecutionPhase::Completed))
-                                .await;
+                            let _ = tx.send(VmCommand::Phase(ExecutionPhase::Completed)).await;
                         }
                         Err(e) => {
-                            let _ = tx
-                                .send(VmCommand::Error(format!("Plan failed: {e}")))
-                                .await;
+                            let _ = tx.send(VmCommand::Error(format!("Plan failed: {e}"))).await;
                         }
                     }
                 }
@@ -251,7 +244,10 @@ impl OrchestratorSpawner for OrchestratorSpawnerImpl {
     }
 
     fn task_state(&self) -> OrchestratorTaskState {
-        self.state.lock().map(|s| *s).unwrap_or(OrchestratorTaskState::Failed)
+        self.state
+            .lock()
+            .map(|s| *s)
+            .unwrap_or(OrchestratorTaskState::Failed)
     }
 
     fn command_sender(&self) -> Option<mpsc::Sender<TuiCommand>> {

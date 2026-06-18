@@ -29,7 +29,6 @@
 
 use std::fmt;
 
-
 use serde_json::Value as JsonValue;
 
 use crate::cli_boundary::cli::{CliCommand, ConfigAction};
@@ -266,7 +265,11 @@ pub async fn dispatch(
 
                     let mut summary = format!(
                         "Run: {} — {} failed, {} passed, {} skipped ({} total)\n",
-                        status, fail_count, pass_count, skip_count, task_results.len()
+                        status,
+                        fail_count,
+                        pass_count,
+                        skip_count,
+                        task_results.len()
                     );
                     summary.push_str(&format!(
                         "  Template: {} | LLM: {} calls, {} tokens\n",
@@ -279,7 +282,10 @@ pub async fn dispatch(
                             TaskStatus::Failure => "  ✗",
                             _ => "  ○",
                         };
-                        summary.push_str(&format!("\n{} {} — {:?}", icon, task.node_name, task.status));
+                        summary.push_str(&format!(
+                            "\n{} {} — {:?}",
+                            icon, task.node_name, task.status
+                        ));
                         if let Some(ref err) = task.error {
                             summary.push_str(&format!("\n     Error: {}", err));
                         }
@@ -342,7 +348,9 @@ pub async fn dispatch(
                                                     // Resolve dep names from IDs
                                                     a.iter().find_map(|n2| {
                                                         if n2["id"] == *d {
-                                                            n2["name"].as_str().map(|s| s.to_string())
+                                                            n2["name"]
+                                                                .as_str()
+                                                                .map(|s| s.to_string())
                                                         } else {
                                                             None
                                                         }
@@ -361,14 +369,19 @@ pub async fn dispatch(
                                 .join("\n")
                         })
                         .unwrap_or_default();
-                    let sealed = output.graph["sealed"]
-                        .as_bool()
-                        .unwrap_or(false);
+                    let sealed = output.graph["sealed"].as_bool().unwrap_or(false);
 
                     let summary = format!(
                         "Plan: {} (confidence {:.0}%)\n  Template: {} | LLM: {} calls, {} tokens\n  Parameters:\n{}\n  Graph: {} node(s), sealed={}\n{}",
-                        intent_str, confidence * 100.0, tpl_id, llm_calls, llm_tokens,
-                        params, node_count, sealed, node_lines
+                        intent_str,
+                        confidence * 100.0,
+                        tpl_id,
+                        llm_calls,
+                        llm_tokens,
+                        params,
+                        node_count,
+                        sealed,
+                        node_lines
                     );
 
                     DispatchResult::success(summary)
@@ -445,7 +458,9 @@ pub async fn dispatch(
                 Ok(output) => {
                     let summary = format!(
                         "Execution {}: {:?} — {} node(s)",
-                        execution_id, output.state.status, output.state.node_states.len()
+                        execution_id,
+                        output.state.status,
+                        output.state.node_states.len()
                     );
                     let data = serde_json::json!({ "state": output.state });
                     DispatchResult::success_with_data(summary, data)
@@ -454,12 +469,10 @@ pub async fn dispatch(
             }
         }
 
-        CliCommand::DiffPlan { id1: _, id2: _ } => {
-            DispatchResult::error(
-                "diff-plan: requires DagPlanningService (not yet exposed via CliServices)",
-                1,
-            )
-        }
+        CliCommand::DiffPlan { id1: _, id2: _ } => DispatchResult::error(
+            "diff-plan: requires DagPlanningService (not yet exposed via CliServices)",
+            1,
+        ),
 
         CliCommand::Generate { intent } => {
             let orch = orch.as_ref().expect("orchestrator built above");
@@ -501,7 +514,9 @@ pub async fn dispatch(
                     // before failing on graph generation (e.g. missing parameters).
                     let err_msg = e.to_string();
                     // Use the orchestrator's services — the template was registered there
-                    let svc = llm_services.as_ref().or(services.as_ref())
+                    let svc = llm_services
+                        .as_ref()
+                        .or(services.as_ref())
                         .expect("services built above");
                     if let Ok(list) = svc.template_service.list_templates().await {
                         if let Some(summary) = list.templates.first() {
@@ -542,22 +557,21 @@ pub async fn dispatch(
         }
 
         CliCommand::Template { action } => {
-            let svc = llm_services.as_ref().or(services.as_ref())
+            let svc = llm_services
+                .as_ref()
+                .or(services.as_ref())
                 .expect("services built above");
             match action {
                 crate::cli_boundary::cli::TemplateAction::List => {
                     match svc.template_service.list_templates().await {
                         Ok(output) => {
-                            let data =
-                                serde_json::json!({ "templates": output.templates });
+                            let data = serde_json::json!({ "templates": output.templates });
                             DispatchResult::success_with_data(
                                 format!("{} template(s)", output.templates.len()),
                                 data,
                             )
                         }
-                        Err(e) => {
-                            DispatchResult::error(format!("template list: {e}"), 1)
-                        }
+                        Err(e) => DispatchResult::error(format!("template list: {e}"), 1),
                     }
                 }
                 crate::cli_boundary::cli::TemplateAction::Show { id } => {
@@ -567,36 +581,24 @@ pub async fn dispatch(
                     match svc.template_service.get_template(input).await {
                         Ok(Some(summary)) => {
                             let data = serde_json::json!({ "template": summary });
-                            DispatchResult::success_with_data(
-                                format!("Template: {id}"),
-                                data,
-                            )
+                            DispatchResult::success_with_data(format!("Template: {id}"), data)
                         }
-                        Ok(None) => DispatchResult::error(
-                            format!("template not found: {id}"),
-                            1,
-                        ),
-                        Err(e) => {
-                            DispatchResult::error(format!("template show: {e}"), 1)
-                        }
+                        Ok(None) => DispatchResult::error(format!("template not found: {id}"), 1),
+                        Err(e) => DispatchResult::error(format!("template show: {e}"), 1),
                     }
                 }
             }
         }
 
-        CliCommand::Audit { action: _ } => {
-            DispatchResult::error(
-                "audit: AuditService does not yet expose list/show/diff queries",
-                1,
-            )
-        }
+        CliCommand::Audit { action: _ } => DispatchResult::error(
+            "audit: AuditService does not yet expose list/show/diff queries",
+            1,
+        ),
 
-        CliCommand::Logs { session_id: _ } => {
-            DispatchResult::error(
-                "logs: EventBusService not yet exposed via CliServices for log replay",
-                1,
-            )
-        }
+        CliCommand::Logs { session_id: _ } => DispatchResult::error(
+            "logs: EventBusService not yet exposed via CliServices for log replay",
+            1,
+        ),
 
         CliCommand::Config { action } => {
             let svc = services.as_ref().expect("services built above");
@@ -606,19 +608,15 @@ pub async fn dispatch(
                     let data = serde_json::json!({ "config": svc.config });
                     DispatchResult::success_with_data("Current configuration", data)
                 }
-                ConfigAction::Validate => {
-                    match svc.config.engine_config() {
-                        Ok(ec) => DispatchResult::success(format!(
-                            "Config valid: {} parallel tasks, LLM provider={:?}, model={}",
-                            ec.orchestrator.max_parallel_tasks,
-                            ec.llm.provider,
-                            ec.llm.model,
-                        )),
-                        Err(e) => DispatchResult::error(format!("config invalid: {e}"), 1),
-                    }
-                }
+                ConfigAction::Validate => match svc.config.engine_config() {
+                    Ok(ec) => DispatchResult::success(format!(
+                        "Config valid: {} parallel tasks, LLM provider={:?}, model={}",
+                        ec.orchestrator.max_parallel_tasks, ec.llm.provider, ec.llm.model,
+                    )),
+                    Err(e) => DispatchResult::error(format!("config invalid: {e}"), 1),
+                },
             }
-        },
+        }
 
         // ── Tier 3: CLI-Only ────────────────────────────────────
         CliCommand::Init => cmd_init(),

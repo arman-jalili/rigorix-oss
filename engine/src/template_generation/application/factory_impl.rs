@@ -6,11 +6,11 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use crate::template_generation::domain::{ClaudeGeneratorConfig, ClaudeTemplateGenerator};
-use crate::template_generation::application::generation_service_impl::TemplateGenerationServiceImpl;
 use crate::template_generation::application::factory::TemplateGenerationFactory;
+use crate::template_generation::application::generation_service_impl::TemplateGenerationServiceImpl;
 use crate::template_generation::application::service::TemplateGenerationService;
 use crate::template_generation::domain::GeneratorError;
+use crate::template_generation::domain::{ClaudeGeneratorConfig, ClaudeTemplateGenerator};
 
 /// Factory for creating TemplateGenerationService instances.
 pub struct TemplateGenerationFactoryImpl;

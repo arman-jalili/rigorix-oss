@@ -138,13 +138,15 @@ impl AuditEnvelopeRepository for LocalAuditEnvelopeRepository {
             if let Ok(envelope) = serde_json::from_str::<AuditEnvelope>(&content) {
                 // Apply date filters
                 if let Some(since) = since
-                    && envelope.timestamp < since {
-                        continue;
-                    }
+                    && envelope.timestamp < since
+                {
+                    continue;
+                }
                 if let Some(until) = until
-                    && envelope.timestamp > until {
-                        continue;
-                    }
+                    && envelope.timestamp > until
+                {
+                    continue;
+                }
                 envelopes.push(envelope);
             }
         }
@@ -196,10 +198,11 @@ impl AuditEnvelopeRepository for LocalAuditEnvelopeRepository {
             if path.extension().is_some_and(|ext| ext == "json") {
                 let content = tokio::fs::read_to_string(&path).await.unwrap_or_default();
                 if let Ok(envelope) = serde_json::from_str::<AuditEnvelope>(&content)
-                    && envelope.timestamp < older_than {
-                        tokio::fs::remove_file(&path).await.unwrap_or_default();
-                        deleted += 1;
-                    }
+                    && envelope.timestamp < older_than
+                {
+                    tokio::fs::remove_file(&path).await.unwrap_or_default();
+                    deleted += 1;
+                }
             }
         }
 

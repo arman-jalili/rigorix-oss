@@ -17,7 +17,9 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum PlanningError {
     /// The LLM budget was exhausted before planning could complete.
-    #[error("LLM budget exhausted: used {used_calls}/{max_calls} calls, {used_tokens}/{max_tokens} tokens")]
+    #[error(
+        "LLM budget exhausted: used {used_calls}/{max_calls} calls, {used_tokens}/{max_tokens} tokens"
+    )]
     BudgetExhausted {
         /// Number of LLM calls used.
         used_calls: u32,
@@ -39,9 +41,7 @@ pub enum PlanningError {
     },
 
     /// A required parameter is missing after extraction.
-    #[error(
-        "Missing required parameter '{parameter}' for template '{template_id}': {description}"
-    )]
+    #[error("Missing required parameter '{parameter}' for template '{template_id}': {description}")]
     MissingParameter {
         /// The template that requires this parameter.
         template_id: String,

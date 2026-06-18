@@ -48,13 +48,7 @@ fn test_taskgraph_serialized_size_grows_with_nodes() {
     for &size in &sizes {
         let mut graph = TaskGraph::new();
         for i in 0..size {
-            let node = TaskNode::new(
-                Uuid::new_v4(),
-                format!("n{}", i),
-                "cat",
-                vec![],
-                "read",
-            );
+            let node = TaskNode::new(Uuid::new_v4(), format!("n{}", i), "cat", vec![], "read");
             let _ = graph.add_unchecked(node);
         }
         let serialized = serde_json::to_string(&graph).unwrap();

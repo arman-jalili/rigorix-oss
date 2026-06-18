@@ -271,8 +271,8 @@ impl LlmConfigDto {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::configuration::infrastructure::config_factory_impl::ConfigFactoryImpl;
     use crate::configuration::domain::ConfigSource;
+    use crate::configuration::infrastructure::config_factory_impl::ConfigFactoryImpl;
     use crate::configuration::infrastructure::filesystem_config_repository::FilesystemConfigRepository;
     use std::path::PathBuf;
 
@@ -290,10 +290,7 @@ mod tests {
         async fn resolve_config_path(&self, _path: Option<&str>) -> Option<String> {
             None
         }
-        async fn read_env_vars(
-            &self,
-            _prefix: &str,
-        ) -> std::collections::HashMap<String, String> {
+        async fn read_env_vars(&self, _prefix: &str) -> std::collections::HashMap<String, String> {
             std::collections::HashMap::new()
         }
         async fn read_env_var(&self, _name: &str) -> Option<String> {
@@ -364,10 +361,12 @@ mod tests {
         };
         let output = service.validate(input).await.unwrap();
         assert!(!output.valid);
-        assert!(output
-            .errors
-            .iter()
-            .any(|e| e.field == "orchestrator.max_parallel_tasks"));
+        assert!(
+            output
+                .errors
+                .iter()
+                .any(|e| e.field == "orchestrator.max_parallel_tasks")
+        );
     }
 
     #[tokio::test]

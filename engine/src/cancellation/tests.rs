@@ -3,8 +3,8 @@
 #[cfg(test)]
 mod tests {
     use crate::cancellation::application::cancellation_manager_factory_impl::CancellationManagerFactoryImpl;
-    use crate::cancellation::application::factory::CancellationManagerFactory;
     use crate::cancellation::application::dto::CancelExecutionInput;
+    use crate::cancellation::application::factory::CancellationManagerFactory;
 
     fn cancel_input(execution_id: &str, reason: &str) -> CancelExecutionInput {
         CancelExecutionInput {
@@ -34,7 +34,9 @@ mod tests {
         let factory = CancellationManagerFactoryImpl::new();
         let service = factory.create_default().await.unwrap();
         let token = service.cancellation_token();
-        let result = service.request_graceful_shutdown(cancel_input("exec-1", "test")).await;
+        let result = service
+            .request_graceful_shutdown(cancel_input("exec-1", "test"))
+            .await;
         assert!(result.is_ok());
         assert!(token.is_cancelled());
     }
@@ -44,7 +46,9 @@ mod tests {
         let factory = CancellationManagerFactoryImpl::new();
         let service = factory.create_default().await.unwrap();
         let token = service.cancellation_token();
-        let result = service.request_immediate_abort(cancel_input("exec-2", "immediate")).await;
+        let result = service
+            .request_immediate_abort(cancel_input("exec-2", "immediate"))
+            .await;
         assert!(result.is_ok());
         assert!(token.is_cancelled());
     }
@@ -54,13 +58,17 @@ mod tests {
         let factory = CancellationManagerFactoryImpl::new();
         let service = factory.create_default().await.unwrap();
         // First call should succeed
-        let first = service.request_graceful_shutdown(cancel_input("exec-3", "first")).await;
+        let first = service
+            .request_graceful_shutdown(cancel_input("exec-3", "first"))
+            .await;
         // Second call may return AlreadyCancelling — that's also valid
-        let second = service.request_graceful_shutdown(cancel_input("exec-3", "second")).await;
+        let second = service
+            .request_graceful_shutdown(cancel_input("exec-3", "second"))
+            .await;
         // Either ok or AlreadyCancelling are acceptable
         match second {
-            Ok(_) => {},
-            Err(crate::cancellation::domain::CancellationError::AlreadyCancelling { .. }) => {},
+            Ok(_) => {}
+            Err(crate::cancellation::domain::CancellationError::AlreadyCancelling { .. }) => {}
             Err(e) => panic!("Unexpected error on second cancellation: {}", e),
         }
         // First should always succeed
@@ -72,7 +80,10 @@ mod tests {
         let factory = CancellationManagerFactoryImpl::new();
         let service = factory.create_default().await.unwrap();
         assert!(!service.is_cancelled());
-        service.request_graceful_shutdown(cancel_input("exec-4", "test")).await.unwrap();
+        service
+            .request_graceful_shutdown(cancel_input("exec-4", "test"))
+            .await
+            .unwrap();
         assert!(service.is_cancelled());
     }
 }

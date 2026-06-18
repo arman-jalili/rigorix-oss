@@ -293,10 +293,12 @@ mod tests {
 
         // "existing_fn" matches an existing symbol name — should be a warning
         assert_eq!(result.warning_count, 1);
-        assert!(result
-            .messages
-            .iter()
-            .any(|m| m.code == Some("NAME_CONFLICT".to_string())));
+        assert!(
+            result
+                .messages
+                .iter()
+                .any(|m| m.code == Some("NAME_CONFLICT".to_string()))
+        );
     }
 
     #[tokio::test]
@@ -315,10 +317,12 @@ mod tests {
 
         // Modification on a file with no symbols in graph = warning
         assert_eq!(result.warning_count, 1);
-        assert!(result
-            .messages
-            .iter()
-            .any(|m| m.code == Some("NO_SYMBOLS_IN_FILE".to_string())));
+        assert!(
+            result
+                .messages
+                .iter()
+                .any(|m| m.code == Some("NO_SYMBOLS_IN_FILE".to_string()))
+        );
     }
 
     #[tokio::test]
@@ -337,10 +341,12 @@ mod tests {
 
         assert!(!result.valid);
         assert_eq!(result.error_count, 1);
-        assert!(result
-            .messages
-            .iter()
-            .any(|m| m.code == Some("DELETION_NO_SYMBOLS".to_string())));
+        assert!(
+            result
+                .messages
+                .iter()
+                .any(|m| m.code == Some("DELETION_NO_SYMBOLS".to_string()))
+        );
     }
 
     #[tokio::test]

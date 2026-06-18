@@ -89,11 +89,12 @@ impl FilesystemCodeGraphRepository {
             }
         })?;
 
-        let mut file = fs::File::create(self.index_path())
-            .await
-            .map_err(|e| CodeGraphError::IoError {
-                detail: format!("Failed to create index file: {}", e),
-            })?;
+        let mut file =
+            fs::File::create(self.index_path())
+                .await
+                .map_err(|e| CodeGraphError::IoError {
+                    detail: format!("Failed to create index file: {}", e),
+                })?;
 
         file.write_all(content.as_bytes())
             .await
@@ -142,9 +143,12 @@ impl CodeGraphRepository for FilesystemCodeGraphRepository {
 
         // Update index
         let index_clone = {
-            let mut index = self.index.lock().map_err(|e| CodeGraphError::InternalError {
-                detail: format!("Lock error: {}", e),
-            })?;
+            let mut index = self
+                .index
+                .lock()
+                .map_err(|e| CodeGraphError::InternalError {
+                    detail: format!("Lock error: {}", e),
+                })?;
             index.insert(graph_id, path);
             index.clone()
         };
@@ -175,9 +179,12 @@ impl CodeGraphRepository for FilesystemCodeGraphRepository {
 
     async fn exists(&self, graph_id: Uuid) -> Result<bool, CodeGraphError> {
         let path = self.graph_path(graph_id);
-        let index = self.index.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let index = self
+            .index
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
         Ok(index.contains_key(&graph_id) || path.exists())
     }
 
@@ -189,9 +196,12 @@ impl CodeGraphRepository for FilesystemCodeGraphRepository {
 
         // Update index
         let index_clone = {
-            let mut index = self.index.lock().map_err(|e| CodeGraphError::InternalError {
-                detail: format!("Lock error: {}", e),
-            })?;
+            let mut index = self
+                .index
+                .lock()
+                .map_err(|e| CodeGraphError::InternalError {
+                    detail: format!("Lock error: {}", e),
+                })?;
             index.remove(&graph_id);
             index.clone()
         };
@@ -201,9 +211,12 @@ impl CodeGraphRepository for FilesystemCodeGraphRepository {
     }
 
     async fn list_ids(&self) -> Result<Vec<Uuid>, CodeGraphError> {
-        let index = self.index.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let index = self
+            .index
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
         let mut ids: Vec<Uuid> = index.keys().copied().collect();
         ids.sort();
         Ok(ids)
@@ -223,9 +236,12 @@ impl CodeGraphRepository for FilesystemCodeGraphRepository {
     }
 
     async fn count(&self) -> Result<u64, CodeGraphError> {
-        let index = self.index.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let index = self
+            .index
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
         Ok(index.len() as u64)
     }
 
@@ -241,7 +257,11 @@ impl CodeGraphRepository for FilesystemCodeGraphRepository {
             if let Ok(graph) = self.load(id).await {
                 if graph.metadata.name.to_lowercase().contains(&query_lower)
                     || graph.metadata.source.to_lowercase().contains(&query_lower)
-                    || graph.metadata.description.to_lowercase().contains(&query_lower)
+                    || graph
+                        .metadata
+                        .description
+                        .to_lowercase()
+                        .contains(&query_lower)
                 {
                     results.push(graph);
                 }

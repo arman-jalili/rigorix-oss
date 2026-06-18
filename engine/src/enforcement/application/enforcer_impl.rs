@@ -16,8 +16,8 @@
 
 use async_trait::async_trait;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use chrono::Utc;
 
@@ -186,20 +186,21 @@ impl ExecutionEnforcer for ExecutionEnforcerImpl {
 
         // 5. Check if budget is exceeded
         if let Some(ref snapshot) = budget_status
-            && snapshot.used >= snapshot.limit {
-                return Ok(EvaluateToolCallOutput {
-                    allowed: false,
-                    reason: Some(format!(
-                        "Resource budget '{}' exhausted (used {}, limit {})",
-                        snapshot.resource, snapshot.used, snapshot.limit
-                    )),
-                    risk_level: policy.risk_level,
-                    requires_confirmation: policy.requires_confirmation,
-                    dry_run: policy.dry_run,
-                    budget_status: None,
-                    active_warnings: state.warnings.keys().cloned().collect(),
-                });
-            }
+            && snapshot.used >= snapshot.limit
+        {
+            return Ok(EvaluateToolCallOutput {
+                allowed: false,
+                reason: Some(format!(
+                    "Resource budget '{}' exhausted (used {}, limit {})",
+                    snapshot.resource, snapshot.used, snapshot.limit
+                )),
+                risk_level: policy.risk_level,
+                requires_confirmation: policy.requires_confirmation,
+                dry_run: policy.dry_run,
+                budget_status: None,
+                active_warnings: state.warnings.keys().cloned().collect(),
+            });
+        }
 
         // 6. Check execution limits
         if state.tool_call_count >= state.config.execution_limits.max_tool_calls {
@@ -871,10 +872,12 @@ mod tests {
 
         assert!(result.has_reached_limit);
         assert!(result.should_terminate);
-        assert!(result
-            .limits_reached
-            .iter()
-            .any(|l| l.limit_type == "max_tool_calls"));
+        assert!(
+            result
+                .limits_reached
+                .iter()
+                .any(|l| l.limit_type == "max_tool_calls")
+        );
     }
 
     #[tokio::test]
@@ -899,10 +902,12 @@ mod tests {
             .unwrap();
 
         assert!(result.has_reached_limit);
-        assert!(result
-            .limits_reached
-            .iter()
-            .any(|l| l.limit_type == "max_tokens"));
+        assert!(
+            result
+                .limits_reached
+                .iter()
+                .any(|l| l.limit_type == "max_tokens")
+        );
     }
 
     // -----------------------------------------------------------------------

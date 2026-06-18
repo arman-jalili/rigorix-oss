@@ -90,10 +90,8 @@ pub trait CodeGraphService: Send + Sync {
     async fn get_node(&self, input: GetNodeInput) -> Result<GetNodeOutput, CodeGraphError>;
 
     /// List all available graphs with summary information.
-    async fn list_graphs(
-        &self,
-        input: ListGraphsInput,
-    ) -> Result<ListGraphsOutput, CodeGraphError>;
+    async fn list_graphs(&self, input: ListGraphsInput)
+    -> Result<ListGraphsOutput, CodeGraphError>;
 
     /// Persist a CodeGraph to storage.
     ///
@@ -153,10 +151,7 @@ pub trait CodeGraphAnalyzer: Send + Sync {
     ///
     /// Returns all distinct cycles found in the dependency graph.
     /// Each cycle is represented as a path of module names.
-    async fn detect_cycles(
-        &self,
-        graph_id: Uuid,
-    ) -> Result<Vec<Vec<String>>, CodeGraphError>;
+    async fn detect_cycles(&self, graph_id: Uuid) -> Result<Vec<Vec<String>>, CodeGraphError>;
 
     /// Check if a specific module has circular dependencies.
     async fn has_circular_dependencies(
@@ -214,10 +209,7 @@ pub trait CodeGraphImporter: Send + Sync {
     ///
     /// If no graph_id is provided, creates a new graph. If a graph_id
     /// is provided, appends to the existing open graph.
-    async fn import(
-        &self,
-        input: ImportInput,
-    ) -> Result<ImportOutput, CodeGraphError>;
+    async fn import(&self, input: ImportInput) -> Result<ImportOutput, CodeGraphError>;
 }
 
 /// Input for importing nodes and edges.

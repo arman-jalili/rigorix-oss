@@ -200,8 +200,8 @@ Output: {{"parameters": {{"project_root": ""}}, "reasoning": "The user didn't sp
         fn default_param_value(name: &str) -> Option<String> {
             match name {
                 // Path-like parameters — default to CWD
-                "project_path" | "repo_root" | "target_dir" | "workspace_path"
-                | "root_dir" | "base_path" => std::env::current_dir()
+                "project_path" | "repo_root" | "target_dir" | "workspace_path" | "root_dir"
+                | "base_path" => std::env::current_dir()
                     .ok()
                     .map(|p| p.to_string_lossy().to_string()),
                 // Level/severity — default to standard
@@ -209,8 +209,9 @@ Output: {{"parameters": {{"project_root": ""}}, "reasoning": "The user didn't sp
                     Some("standard".to_string())
                 }
                 // Optional features/flags — default to empty/none
-                "additional_features" | "extra_flags" | "options" | "features"
-                | "flags" => Some(String::new()),
+                "additional_features" | "extra_flags" | "options" | "features" | "flags" => {
+                    Some(String::new())
+                }
                 // Mode/strategy — default to basic
                 "mode" | "strategy" | "approach" => Some("default".to_string()),
                 _ => None,
@@ -224,15 +225,14 @@ Output: {{"parameters": {{"project_root": ""}}, "reasoning": "The user didn't sp
             reasoning: Option<String>,
         }
 
-        let parsed: ApiResponse = serde_json::from_str(json_str).map_err(|e| {
-            PlanningError::ExtractionError {
+        let parsed: ApiResponse =
+            serde_json::from_str(json_str).map_err(|e| PlanningError::ExtractionError {
                 detail: format!(
                     "Failed to parse LLM response: {} (raw: {})",
                     e,
                     response_body.chars().take(200).collect::<String>()
                 ),
-            }
-        })?;
+            })?;
 
         // Classify parameters
         let mut parameters = HashMap::new();
@@ -319,11 +319,10 @@ impl ParameterExtractor for LlmParameterExtractor {
                     ]
                 });
 
-                let body_bytes = serde_json::to_vec(&body).map_err(|e| {
-                    PlanningError::ExtractionError {
+                let body_bytes =
+                    serde_json::to_vec(&body).map_err(|e| PlanningError::ExtractionError {
                         detail: format!("Failed to serialize request: {}", e),
-                    }
-                })?;
+                    })?;
 
                 let response = self
                     .client
@@ -339,12 +338,13 @@ impl ParameterExtractor for LlmParameterExtractor {
                     })?;
 
                 let status = response.status();
-                let body_text = response
-                    .text()
-                    .await
-                    .map_err(|e| PlanningError::ExtractionError {
-                        detail: format!("Failed to read response body: {}", e),
-                    })?;
+                let body_text =
+                    response
+                        .text()
+                        .await
+                        .map_err(|e| PlanningError::ExtractionError {
+                            detail: format!("Failed to read response body: {}", e),
+                        })?;
 
                 if !status.is_success() {
                     return Err(PlanningError::ExtractionError {
@@ -374,12 +374,11 @@ impl ParameterExtractor for LlmParameterExtractor {
                     output_tokens: Option<u32>,
                 }
 
-                let parsed: AnthropicResponse =
-                    serde_json::from_str(&body_text).map_err(|e| {
-                        PlanningError::ExtractionError {
-                            detail: format!("Failed to parse API response: {}", e),
-                        }
-                    })?;
+                let parsed: AnthropicResponse = serde_json::from_str(&body_text).map_err(|e| {
+                    PlanningError::ExtractionError {
+                        detail: format!("Failed to parse API response: {}", e),
+                    }
+                })?;
 
                 let content = parsed
                     .content
@@ -409,11 +408,10 @@ impl ParameterExtractor for LlmParameterExtractor {
                     ]
                 });
 
-                let body_bytes = serde_json::to_vec(&body).map_err(|e| {
-                    PlanningError::ExtractionError {
+                let body_bytes =
+                    serde_json::to_vec(&body).map_err(|e| PlanningError::ExtractionError {
                         detail: format!("Failed to serialize request: {}", e),
-                    }
-                })?;
+                    })?;
 
                 let response = self
                     .client
@@ -428,12 +426,13 @@ impl ParameterExtractor for LlmParameterExtractor {
                     })?;
 
                 let status = response.status();
-                let body_text = response
-                    .text()
-                    .await
-                    .map_err(|e| PlanningError::ExtractionError {
-                        detail: format!("Failed to read response body: {}", e),
-                    })?;
+                let body_text =
+                    response
+                        .text()
+                        .await
+                        .map_err(|e| PlanningError::ExtractionError {
+                            detail: format!("Failed to read response body: {}", e),
+                        })?;
 
                 if !status.is_success() {
                     return Err(PlanningError::ExtractionError {
@@ -468,12 +467,11 @@ impl ParameterExtractor for LlmParameterExtractor {
                     completion_tokens: Option<u32>,
                 }
 
-                let parsed: OpenaiResponse =
-                    serde_json::from_str(&body_text).map_err(|e| {
-                        PlanningError::ExtractionError {
-                            detail: format!("Failed to parse API response: {}", e),
-                        }
-                    })?;
+                let parsed: OpenaiResponse = serde_json::from_str(&body_text).map_err(|e| {
+                    PlanningError::ExtractionError {
+                        detail: format!("Failed to parse API response: {}", e),
+                    }
+                })?;
 
                 let content = parsed
                     .choices
@@ -504,7 +502,11 @@ mod tests {
         let response = r#"{"parameters": {"file_path": "src/main.rs", "project_root": "."}, "reasoning": "Extracted from intent"}"#;
 
         let result = extractor
-            .parse_response(response, "test-template", &["file_path".into(), "project_root".into()])
+            .parse_response(
+                response,
+                "test-template",
+                &["file_path".into(), "project_root".into()],
+            )
             .unwrap();
 
         assert!(result.complete);
@@ -519,12 +521,20 @@ mod tests {
         let response = r#"{"parameters": {"file_path": "src/main.rs"}, "reasoning": "project_root not specified"}"#;
 
         let result = extractor
-            .parse_response(response, "test-template", &["file_path".into(), "project_root".into()])
+            .parse_response(
+                response,
+                "test-template",
+                &["file_path".into(), "project_root".into()],
+            )
             .unwrap();
 
         assert!(!result.complete);
         assert_eq!(result.parameters.get("file_path").unwrap(), "src/main.rs");
-        assert!(result.missing_parameters.contains(&"project_root".to_string()));
+        assert!(
+            result
+                .missing_parameters
+                .contains(&"project_root".to_string())
+        );
     }
 
     #[test]
@@ -543,7 +553,8 @@ mod tests {
     #[test]
     fn test_parse_response_markdown_fences() {
         let extractor = LlmParameterExtractor::new("test-key".into(), None);
-        let response = "```json\n{\"parameters\": {\"path\": \"./src\"}, \"reasoning\": \"ok\"}\n```";
+        let response =
+            "```json\n{\"parameters\": {\"path\": \"./src\"}, \"reasoning\": \"ok\"}\n```";
 
         let result = extractor
             .parse_response(response, "t", &["path".into()])

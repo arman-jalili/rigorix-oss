@@ -113,9 +113,7 @@ impl RetryPolicy {
 
     /// Returns true if the node should be checked for skip conditions.
     pub fn has_skip_conditions(&self) -> bool {
-        self.skip_conditions
-            .as_ref()
-            .is_some_and(|c| !c.is_empty())
+        self.skip_conditions.as_ref().is_some_and(|c| !c.is_empty())
     }
 }
 

@@ -444,8 +444,15 @@ mod tests {
         let mut record = ExecutionRecord::new(id, now);
         record.duration_ms = 1500;
         record.status = ExecutionStatus::PartialFailure;
-        record.task_results.push(TaskResult::success("1".into(), "t1".into(), 100));
-        record.task_results.push(TaskResult::failure("2".into(), "t2".into(), "err".into(), 50));
+        record
+            .task_results
+            .push(TaskResult::success("1".into(), "t1".into(), 100));
+        record.task_results.push(TaskResult::failure(
+            "2".into(),
+            "t2".into(),
+            "err".into(),
+            50,
+        ));
 
         let json = serde_json::to_string(&record).unwrap();
         let deserialized: ExecutionRecord = serde_json::from_str(&json).unwrap();

@@ -113,12 +113,10 @@ impl Tool for GitCommitTool {
         let result = ToolResult {
             output: stdout,
             exit_code: 0,
-            side_effects: vec![SideEffect::new(
-                "HEAD",
-                "git_commit",
-                format!("Committed: {}", message),
-            )
-            .with_previous_hash(commit_hash)],
+            side_effects: vec![
+                SideEffect::new("HEAD", "git_commit", format!("Committed: {}", message))
+                    .with_previous_hash(commit_hash),
+            ],
             duration_ms,
             dry_run: false,
         };
