@@ -258,6 +258,37 @@ pub(crate) fn render_view_as_text(vm: &TuiViewModel) -> String {
     out
 }
 
+/// Copy text to system clipboard using the platform's clipboard command.
+/// Returns true if the clipboard command succeeded.
+fn copy_to_clipboard(text: &str) -> bool {
+    // macOS: pbcopy, Linux: xclip or xsel, Windows: clip
+    let cmd = if cfg!(target_os = "macos") {
+        "pbcopy"
+    } else if cfg!(target_os = "linux") {
+        // Try xclip first, fall back to xsel
+        "xclip"
+    } else if cfg!(target_os = "windows") {
+        "clip"
+    } else {
+        return false;
+    };
+
+    std::process::Command::new(cmd)
+        .arg(if cmd == "xclip" { "-selection" } else { "" })
+        .arg(if cmd == "xclip" { "clipboard" } else { "" })
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin.write_all(text.as_bytes())?;
+            }
+            child.wait()?;
+            Ok(())
+        })
+        .is_ok()
+}
+
 /// Parse the graph JSON from a plan output into NodeViewModel items.
 pub(crate) fn parse_graph_nodes(graph: &serde_json::Value) -> Vec<view_model::NodeViewModel> {
     let mut nodes = Vec::new();
@@ -563,25 +594,34 @@ fn handle_action(
         }
         KeyAction::CopyToClipboard => {
             let content = render_view_as_text(&vm);
+            // Write to temp file AND pipe to system clipboard
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs();
             let tmp = std::env::temp_dir().join(format!("rigorix-view-{}.txt", now));
-            match std::fs::write(&tmp, &content) {
-                Err(e) => {
-                    vm.error = Some(format!("copy failed: {}", e));
-                }
-                Ok(_) => {
-                    let path = tmp.to_string_lossy().to_string();
-                    vm.copy_message = Some(format!("Copied to {}", path));
-                    // Auto-clear after 2 seconds in the next render loop
-                    let clear_tx = vm_tx.clone();
-                    tokio::spawn(async move {
-                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                        let _ = clear_tx.send(VmCommand::CopyMessage(None)).await;
-                    });
-                }
+            let path = tmp.to_string_lossy().to_string();
+
+            // Write to temp file (always works)
+            let write_ok = std::fs::write(&tmp, &content).is_ok();
+
+            // Try clipboard using system command (non-blocking)
+            let clipboard_ok = copy_to_clipboard(&content);
+
+            if write_ok {
+                let msg = if clipboard_ok {
+                    format!("Copied to clipboard (also at {})", path)
+                } else {
+                    format!("Copied to {}", path)
+                };
+                vm.copy_message = Some(msg);
+                let clear_tx = vm_tx.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    let _ = clear_tx.send(VmCommand::CopyMessage(None)).await;
+                });
+            } else {
+                vm.error = Some(format!("Failed to copy view content"));
             }
         }
         KeyAction::CancelGraceful | KeyAction::CancelImmediate => {
