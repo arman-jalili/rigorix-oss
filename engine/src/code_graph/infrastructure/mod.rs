@@ -9,3 +9,4 @@
 //! databases, or other backends.
 
 pub mod repository;
+pub use repository::*;
