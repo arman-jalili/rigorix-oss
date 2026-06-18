@@ -250,10 +250,19 @@ pub async fn dispatch(
                         .filter(|t| matches!(t.status, TaskStatus::Skipped))
                         .count();
 
+                    let llm_calls = output.record.planning.llm_calls;
+                    let llm_tokens = output.record.planning.total_tokens;
+                    let template_id = &output.record.planning.template_id;
+
                     let mut summary = format!(
                         "Run: {} — {} failed, {} passed, {} skipped ({} total)\n",
                         status, fail_count, pass_count, skip_count, task_results.len()
                     );
+                    summary.push_str(&format!(
+                        "  Template: {} | LLM: {} calls, {} tokens\n",
+                        template_id, llm_calls, llm_tokens
+                    ));
+
                     for task in task_results {
                         let icon = match task.status {
                             TaskStatus::Success => "  ✓",
@@ -295,6 +304,8 @@ pub async fn dispatch(
 
                     let tpl_id = output.plan["template_id"].as_str().unwrap_or("?");
                     let confidence = output.plan["confidence"].as_f64().unwrap_or(0.0);
+                    let llm_calls = output.plan["llm_calls_used"].as_u64().unwrap_or(0);
+                    let llm_tokens = output.plan["llm_tokens_used"].as_u64().unwrap_or(0);
                     let params = output.plan["parameters"]
                         .as_object()
                         .map(|m| {
@@ -304,17 +315,50 @@ pub async fn dispatch(
                                 .join("\n")
                         })
                         .unwrap_or_else(|| "    (none)".to_string());
-                    let nodes = output.graph["nodes"]
-                        .as_array()
-                        .map(|a| a.len())
-                        .unwrap_or(0);
+
+                    // Build node list from graph
+                    let nodes_arr = output.graph["nodes"].as_array();
+                    let node_count = nodes_arr.map(|a| a.len()).unwrap_or(0);
+                    let node_lines = nodes_arr
+                        .map(|a| {
+                            a.iter()
+                                .map(|n| {
+                                    let name = n["name"].as_str().unwrap_or("?");
+                                    let deps = n["dependencies"]
+                                        .as_array()
+                                        .map(|d| {
+                                            d.iter()
+                                                .filter_map(|d| {
+                                                    // Resolve dep names from IDs
+                                                    a.iter().find_map(|n2| {
+                                                        if n2["id"] == *d {
+                                                            n2["name"].as_str().map(|s| s.to_string())
+                                                        } else {
+                                                            None
+                                                        }
+                                                    })
+                                                })
+                                                .collect::<Vec<_>>()
+                                        })
+                                        .unwrap_or_default();
+                                    if deps.is_empty() {
+                                        format!("    · {} (root)", name)
+                                    } else {
+                                        format!("    · {} ← [{}]", name, deps.join(", "))
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        })
+                        .unwrap_or_default();
                     let sealed = output.graph["sealed"]
                         .as_bool()
                         .unwrap_or(false);
 
                     let summary = format!(
-                        "Plan: {} (confidence {:.0}%)\n  Template: {}\n  Parameters:\n{}\n  Graph: {} node(s), sealed={}",
-                        intent_str, confidence * 100.0, tpl_id, params, nodes, sealed
+                        "Plan: {} (confidence {:.0}%)\n  Template: {} | LLM: {} calls, {} tokens\n  Parameters:\n{}\n  Graph: {} node(s), sealed={}\n{}",
+                        intent_str, confidence * 100.0, tpl_id, llm_calls, llm_tokens,
+                        params, node_count, sealed, node_lines
                     );
 
                     DispatchResult::success(summary)
