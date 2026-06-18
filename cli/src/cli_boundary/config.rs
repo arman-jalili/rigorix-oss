@@ -234,20 +234,28 @@ pub fn load_config() -> CliConfig {
         deep_merge(&mut merged, cfg);
     }
 
-    // 2. Models.json resolution — look up provider/model for base_url + max_tokens
+    // 2. Models.json resolution — look up provider/model for base_url + max_tokens.
+    // Only fills in missing values; never overwrites explicit user config from TOML.
     if let Some(models_val) = find_models_json(cwd_path).and_then(|p| load_json(&p))
         && let Some(provider_str) = merged.pointer("/llm/provider").and_then(|v| v.as_str())
         && let Some(model_id) = merged.pointer("/llm/model").and_then(|v| v.as_str())
         && let Some((base_url, _api_key, max_tokens)) =
             resolve_model_settings(&models_val, provider_str, model_id)
     {
-        let model_defaults = serde_json::json!({
-            "llm": {
-                "base_url": base_url,
-                "max_tokens": max_tokens,
-            }
-        });
-        deep_merge(&mut merged, model_defaults);
+        let has_base_url = merged.pointer("/llm/base_url").and_then(|v| v.as_str()).is_some();
+        let has_max_tokens = merged.pointer("/llm/max_tokens").and_then(|v| v.as_u64()).is_some();
+        let mut model_defaults = serde_json::json!({});
+        if !has_base_url {
+            model_defaults["base_url"] = serde_json::Value::String(base_url);
+        }
+        if !has_max_tokens {
+            model_defaults["max_tokens"] = serde_json::Value::Number(max_tokens.into());
+        }
+        if !model_defaults.as_object().map(|o| o.is_empty()).unwrap_or(true) {
+            // Wrap in "llm" key for deep_merge
+            let wrapped = serde_json::json!({ "llm": model_defaults });
+            deep_merge(&mut merged, wrapped);
+        }
     }
 
     // 3. Environment variable overrides

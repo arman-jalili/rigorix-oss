@@ -1260,9 +1260,9 @@ of operations.
 1. ONLY use packages/crates/dependencies listed in EXISTING DEPENDENCIES. Do NOT invent new ones.
 2. ONLY use types, functions, and methods listed in PUBLIC API SURFACE.
 3. If a needed package or type doesn't exist, use `file_read` to inspect the codebase first.
-4. When writing to an existing source file with `file_write`, write the COMPLETE updated file content, not just the new code.
-5. Use `file_append` ONLY for: adding import statements, module declarations, or single-line config entries. NEVER for adding functions, methods, or classes.
-6. Use `file_patch` for: inserting methods/functions at specific anchor points in existing files. Provide a meaningful anchor string.
+4. **PREFERRED for editing existing files: `file_read` + `file_write`.** Read the file first, then write the COMPLETE updated file with your changes in the correct location. This is the most reliable approach — no search-string guessing.
+5. `file_append` is ONLY for: import statements, module declarations, single-line config — never for methods/functions/classes.
+6. `file_patch` is a LAST RESORT for inserting small snippets into LARGE files (500+ lines) where full-file writes are too expensive. It is brittle: the search string may match in the wrong place. Always prefer `file_read` + `file_write` instead.
 7. NEVER use `any` type in TypeScript code. ALWAYS use the exact type name from the PUBLIC API SURFACE.
 8. ALWAYS use the EXACT field names shown in the PUBLIC API SURFACE.
 9. When a path parameter like target_file holds a full path such as src/lib.rs, use the placeholder directly as the path value. Do NOT prepend an extra directory prefix.
@@ -1292,7 +1292,7 @@ VALID ACTION TYPES:
 - file_read: {{ type, path }}
 - file_write: {{ type, path, content_template (required) }} — OVERWRITES entire file with the given content
 - file_append: {{ type, path, content_template (required) }} — APPENDS to existing file (ONLY for: mod declarations, imports, single-line config)
-- file_patch: {{ type, path, content_template (required), anchor (optional) }} — inserts content into existing file at an anchor point
+- file_patch: {{ type, path, search (required), insert (required), before (optional) }} — inserts content into existing file at a search match point
 - run_command: {{ type, command, args (optional) }}
 - lsp_query: {{ type, query }}
 - git_read: {{ type, operation, count (optional) }}
