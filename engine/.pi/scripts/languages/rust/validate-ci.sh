@@ -4,6 +4,9 @@
 # ============================================================================
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PARENT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
 PASS_COUNT=0
 ERRORS=()
 WARNINGS=()
@@ -122,6 +125,22 @@ elif command -v cargo &>/dev/null && cargo deny --version &>/dev/null; then
     fi
 else
     warn "No Rust audit tools available (cargo audit / cargo deny), skipping vulnerability audit"
+fi
+
+# ---------------------------------------------------------------------------
+# Code-Graph Contract Validation
+# ---------------------------------------------------------------------------
+echo ""
+echo "--- Code-Graph Contract Validation ---"
+CG_SCRIPT="${PARENT_DIR}/validate-code-graph-contracts.sh"
+if [ -f "$CG_SCRIPT" ]; then
+    if bash "$CG_SCRIPT" 2>/dev/null; then
+        pass "All code-graph contracts have implementations"
+    else
+        fail "Some code-graph contracts missing implementations"
+    fi
+else
+    warn "code-graph contract validator not found at $CG_SCRIPT"
 fi
 
 # ---------------------------------------------------------------------------
