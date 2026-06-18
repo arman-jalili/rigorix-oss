@@ -457,11 +457,17 @@ fn handle_action(
                 match parsed {
                     command_bar::CommandBarInput::Intent(intent) => {
                         vm.intent = Some(intent.clone());
-                        // Don't set phase to Planning here — nothing is
-                        // generating yet. The user needs to press [g] first.
                         vm.active_view = ActiveView::Plan;
                         *input_focus = InputFocus::PlanReview;
                         command_bar.focused = false;
+                        // Auto-trigger plan pipeline (same as CLI `plan` command)
+                        vm.phase = ExecutionPhase::Planning;
+                        spawn_plan_only_background(
+                            vm_tx,
+                            config,
+                            cancellation_token,
+                            intent,
+                        );
                     }
                     command_bar::CommandBarInput::SlashCommand(cmd) => match cmd.as_str() {
                         "history" => vm.active_view = ActiveView::History,
