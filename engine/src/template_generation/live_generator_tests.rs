@@ -7,7 +7,9 @@
 mod tests {
     use crate::budget_tracking::domain::LlmBudget;
     use crate::planning::domain::intent::UserIntent;
-    use crate::template_generation::domain::{ClaudeGeneratorConfig, ClaudeTemplateGenerator, RepoContext, TemplateGenerator};
+    use crate::template_generation::domain::{
+        ClaudeGeneratorConfig, ClaudeTemplateGenerator, RepoContext, TemplateGenerator,
+    };
     use std::path::PathBuf;
 
     #[tokio::test]

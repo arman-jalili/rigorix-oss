@@ -4,8 +4,8 @@
 
 #![cfg(test)]
 
-use std::collections::HashMap;
 use crate::planning::application::pipeline_impl::compute_planning_hash;
+use std::collections::HashMap;
 
 fn hash(intent: &str, template_id: &str, params: &HashMap<String, String>) -> String {
     compute_planning_hash(template_id, params, intent).0
@@ -47,7 +47,10 @@ fn test_planning_hash_differs_with_different_templates() {
     let params: HashMap<String, String> = HashMap::new();
     let h1 = hash("read file", "template-a", &params);
     let h2 = hash("read file", "template-b", &params);
-    assert_ne!(h1, h2, "Different templates should produce different hashes");
+    assert_ne!(
+        h1, h2,
+        "Different templates should produce different hashes"
+    );
 }
 
 #[test]

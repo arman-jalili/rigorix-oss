@@ -119,25 +119,27 @@ impl ConfigBuilder {
         let mut errors = Vec::new();
 
         if let Some(max_calls) = policy.max_calls
-            && max_calls == 0 {
-                errors.push(ConfigValidationError {
-                    field: "tool_policy.max_calls".to_string(),
-                    message: "max_calls must be greater than 0 if set".to_string(),
-                    value: Some("0".to_string()),
-                });
-            }
+            && max_calls == 0
+        {
+            errors.push(ConfigValidationError {
+                field: "tool_policy.max_calls".to_string(),
+                message: "max_calls must be greater than 0 if set".to_string(),
+                value: Some("0".to_string()),
+            });
+        }
 
         if let Some(budget_key) = &policy.budget_key
-            && !config.budgets.contains_key(budget_key) {
-                errors.push(ConfigValidationError {
-                    field: "tool_policy.budget_key".to_string(),
-                    message: format!(
-                        "budget_key '{}' does not reference an existing budget",
-                        budget_key
-                    ),
-                    value: Some(budget_key.clone()),
-                });
-            }
+            && !config.budgets.contains_key(budget_key)
+        {
+            errors.push(ConfigValidationError {
+                field: "tool_policy.budget_key".to_string(),
+                message: format!(
+                    "budget_key '{}' does not reference an existing budget",
+                    budget_key
+                ),
+                value: Some(budget_key.clone()),
+            });
+        }
 
         if errors.is_empty() {
             Ok(())
@@ -348,9 +350,11 @@ mod tests {
             ..SafetyCaps::default()
         };
         let errors = config.validate(&caps);
-        assert!(errors
-            .iter()
-            .any(|e| e.field.contains("max_execution_time_secs")));
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.field.contains("max_execution_time_secs"))
+        );
     }
 
     #[test]
@@ -375,9 +379,11 @@ mod tests {
             .soft_warning_threshold = 1.5;
         let caps = SafetyCaps::default();
         let errors = config.validate(&caps);
-        assert!(errors
-            .iter()
-            .any(|e| e.field.contains("soft_warning_threshold")));
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.field.contains("soft_warning_threshold"))
+        );
     }
 
     #[test]

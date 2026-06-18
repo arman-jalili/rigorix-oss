@@ -26,9 +26,9 @@
 
 use std::collections::HashMap;
 
+use crate::risk_gating::domain::RiskConfig;
 use crate::risk_gating::domain::risk_classifier::{ClassificationResult, RiskClassifier};
 use crate::risk_gating::domain::risk_level::RiskLevel;
-use crate::risk_gating::domain::RiskConfig;
 
 /// A classifier that uses a combination of configured overrides and
 /// built-in default rules to determine tool risk levels.

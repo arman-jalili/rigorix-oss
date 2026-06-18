@@ -427,8 +427,15 @@ fn scan_public_api(root: &std::path::Path, project_type: &str) -> String {
                 let path = entry.path();
                 if path.is_dir() {
                     // Skip hidden and target/build dirs
-                    let name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
-                    if name.starts_with('.') || name == "target" || name == "node_modules" || name == "__pycache__" {
+                    let name = path
+                        .file_name()
+                        .map(|n| n.to_string_lossy())
+                        .unwrap_or_default();
+                    if name.starts_with('.')
+                        || name == "target"
+                        || name == "node_modules"
+                        || name == "__pycache__"
+                    {
                         continue;
                     }
                     dirs_to_visit.push(path);
@@ -477,7 +484,10 @@ fn extract_rust_public_api(content: &str, file_path: &str, symbols: &mut Vec<Str
         let trimmed = line.trim();
         // pub fn name(...) -> RetType
         if let Some(rest) = trimmed.strip_prefix("pub fn ") {
-            let name = rest.split(|c: char| c == '(' || c == '<').next().unwrap_or(rest);
+            let name = rest
+                .split(|c: char| c == '(' || c == '<')
+                .next()
+                .unwrap_or(rest);
             symbols.push(format!("{}: pub fn {}", file_path, name.trim()));
         }
         // pub struct Name, pub enum Name, pub trait Name
@@ -505,7 +515,10 @@ fn extract_rust_public_api(content: &str, file_path: &str, symbols: &mut Vec<Str
         }
         // pub type Name = ...;
         else if let Some(rest) = trimmed.strip_prefix("pub type ") {
-            let name = rest.split(|c: char| c == '=' || c == '<').next().unwrap_or(rest);
+            let name = rest
+                .split(|c: char| c == '=' || c == '<')
+                .next()
+                .unwrap_or(rest);
             symbols.push(format!("{}: pub type {}", file_path, name.trim()));
         }
         // pub const NAME: ... = ...;
@@ -547,7 +560,10 @@ fn extract_ts_public_api(content: &str, file_path: &str, symbols: &mut Vec<Strin
                     .unwrap_or(rest);
                 symbols.push(format!("{}: export type {}", file_path, name.trim()));
             } else if let Some(rest) = rest.strip_prefix("const ") {
-                let name = rest.split(|c: char| c == ':' || c == '=').next().unwrap_or(rest);
+                let name = rest
+                    .split(|c: char| c == ':' || c == '=')
+                    .next()
+                    .unwrap_or(rest);
                 symbols.push(format!("{}: export const {}", file_path, name.trim()));
             }
         }
@@ -591,20 +607,16 @@ fn read_architecture_docs(root: &std::path::Path) -> String {
         let path = root.join(rel);
         if path.exists() {
             if let Ok(content) = std::fs::read_to_string(&path) {
-                let truncated: String = content
-                    .lines()
-                    .take(200)
-                    .collect::<Vec<_>>()
-                    .join("\n");
+                let truncated: String = content.lines().take(200).collect::<Vec<_>>().join("\n");
                 let note = if content.lines().count() > 200 {
-                    format!("\n// ... (truncated from {} lines)", content.lines().count())
+                    format!(
+                        "\n// ... (truncated from {} lines)",
+                        content.lines().count()
+                    )
                 } else {
                     String::new()
                 };
-                sections.push(format!(
-                    "// === {} ===\n{}{}",
-                    rel, truncated, note
-                ));
+                sections.push(format!("// === {} ===\n{}{}", rel, truncated, note));
             }
         }
     }
@@ -772,7 +784,10 @@ fn scan_filtered_paths(root: &std::path::Path, filter: &str) -> Vec<String> {
                 }
                 let path = entry.path();
                 if path.is_dir() {
-                    let name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+                    let name = path
+                        .file_name()
+                        .map(|n| n.to_string_lossy())
+                        .unwrap_or_default();
                     if !name.starts_with('.') && name != "target" && name != "node_modules" {
                         dirs.push(path);
                     }
@@ -787,11 +802,7 @@ fn scan_filtered_paths(root: &std::path::Path, filter: &str) -> Vec<String> {
 }
 
 /// Scan public API symbols only from files under directories matching the filter.
-fn scan_public_api_filtered(
-    root: &std::path::Path,
-    project_type: &str,
-    filter: &str,
-) -> String {
+fn scan_public_api_filtered(root: &std::path::Path, project_type: &str, filter: &str) -> String {
     let filter_lower = filter.to_lowercase();
     let mut symbols = Vec::new();
     let max_symbols = 50; // Half the default limit since we're targeted
@@ -827,7 +838,10 @@ fn scan_public_api_filtered(
                 }
                 let path = entry.path();
                 if path.is_dir() {
-                    let name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+                    let name = path
+                        .file_name()
+                        .map(|n| n.to_string_lossy())
+                        .unwrap_or_default();
                     if !name.starts_with('.') && name != "target" && name != "node_modules" {
                         dirs.push(path);
                     }
@@ -911,7 +925,11 @@ fn build_dir_tree_recursive(
     for (i, entry) in entries.into_iter().enumerate() {
         let path = entry.path();
         let is_last_entry = i == len - 1;
-        let connector = if is_last_entry { "└── " } else { "├── " };
+        let connector = if is_last_entry {
+            "└── "
+        } else {
+            "├── "
+        };
         let name = entry.file_name().to_string_lossy().to_string();
 
         if path.is_dir() {
@@ -1064,8 +1082,7 @@ fn read_python_dependencies(root: &std::path::Path) -> Vec<String> {
                         break;
                     }
                     if in_deps && !trimmed.is_empty() && !trimmed.starts_with('#') {
-                        let dep =
-                            trimmed.trim_matches(|c: char| c == '"' || c == ',' || c == ' ');
+                        let dep = trimmed.trim_matches(|c: char| c == '"' || c == ',' || c == ' ');
                         if !dep.is_empty() {
                             deps.push(dep.to_string());
                         }
@@ -1114,10 +1131,7 @@ fn read_key_files(root: &std::path::Path) -> String {
             String::new()
         };
 
-        sections.push(format!(
-            "// === {} ===\n{}{}",
-            rel_path, truncated, note
-        ));
+        sections.push(format!("// === {} ===\n{}{}", rel_path, truncated, note));
     }
 
     sections.join("\n\n")
@@ -1213,10 +1227,7 @@ impl ClaudeTemplateGenerator {
         let arch_section = if ctx.architecture_overview.is_empty() {
             String::new()
         } else {
-            format!(
-                "\nARCHITECTURE OVERVIEW:\n{}\n",
-                ctx.architecture_overview
-            )
+            format!("\nARCHITECTURE OVERVIEW:\n{}\n", ctx.architecture_overview)
         };
 
         let bc_section = if ctx.bounded_context.is_empty() {
@@ -1407,9 +1418,7 @@ Respond with valid TOML only. Do NOT include markdown code fences or explanation
                 }
                 '}' if in_curly => {
                     let inner = buf.trim();
-                    if !inner.is_empty()
-                        && inner.chars().all(|c| c.is_alphanumeric() || c == '_')
-                    {
+                    if !inner.is_empty() && inner.chars().all(|c| c.is_alphanumeric() || c == '_') {
                         // Check if we're inside a quoted string by looking backward
                         // for an unclosed double-quote before an `=` sign.
                         let is_inside_quotes = Self::is_inside_toml_string(&result);
@@ -1585,7 +1594,8 @@ impl TemplateGenerator for ClaudeTemplateGenerator {
                 })?;
 
             let raw_toml = Self::parse_api_response(&response_text)?;
-            let toml_content = ClaudeTemplateGenerator::fix_toml_placeholders(&Self::strip_code_fences(&raw_toml));
+            let toml_content =
+                ClaudeTemplateGenerator::fix_toml_placeholders(&Self::strip_code_fences(&raw_toml));
 
             let template_result: Result<crate::templates::domain::Template, _> =
                 toml::from_str(&toml_content);
@@ -1642,7 +1652,11 @@ impl OpenaiTemplateGenerator {
             .timeout(Duration::from_secs(config.timeout_secs))
             .build()
             .expect("Failed to create HTTP client");
-        Self { api_key, config, client }
+        Self {
+            api_key,
+            config,
+            client,
+        }
     }
 
     fn build_system_prompt(&self, ctx: &RepoContext) -> String {
@@ -1713,7 +1727,10 @@ impl TemplateGenerator for OpenaiTemplateGenerator {
             let user_message = self.build_user_message(intent);
 
             let message_content = if attempt > 0 {
-                format!( "{}\n\n## Previous Attempt Failed\n\n{}", user_message, last_error )
+                format!(
+                    "{}\n\n## Previous Attempt Failed\n\n{}",
+                    user_message, last_error
+                )
             } else {
                 user_message.clone()
             };
@@ -1731,7 +1748,8 @@ impl TemplateGenerator for OpenaiTemplateGenerator {
 
             let body_bytes = serde_json::to_vec(&body).map_err(|e| GeneratorError::ApiError {
                 detail: format!("Failed to serialize request: {}", e),
-                status_code: None, retry_after: None,
+                status_code: None,
+                retry_after: None,
             })?;
 
             let response = self
@@ -1744,7 +1762,8 @@ impl TemplateGenerator for OpenaiTemplateGenerator {
                 .await
                 .map_err(|e| GeneratorError::ApiError {
                     detail: format!("HTTP request failed: {}", e),
-                    status_code: None, retry_after: None,
+                    status_code: None,
+                    retry_after: None,
                 })?;
 
             let status = response.status();
@@ -1774,13 +1793,18 @@ impl TemplateGenerator for OpenaiTemplateGenerator {
                 });
             }
 
-            let response_text = response.text().await.map_err(|e| GeneratorError::ApiError {
-                detail: format!("Failed to read response body: {}", e),
-                status_code: None, retry_after: None,
-            })?;
+            let response_text = response
+                .text()
+                .await
+                .map_err(|e| GeneratorError::ApiError {
+                    detail: format!("Failed to read response body: {}", e),
+                    status_code: None,
+                    retry_after: None,
+                })?;
 
             let raw_toml = Self::parse_api_response(&response_text)?;
-            let toml_content = ClaudeTemplateGenerator::fix_toml_placeholders(&Self::strip_code_fences(&raw_toml));
+            let toml_content =
+                ClaudeTemplateGenerator::fix_toml_placeholders(&Self::strip_code_fences(&raw_toml));
 
             let template_result: Result<crate::templates::domain::Template, _> =
                 toml::from_str(&toml_content);
@@ -1808,7 +1832,10 @@ impl TemplateGenerator for OpenaiTemplateGenerator {
         })
     }
 
-    fn estimate_cost(&self, _intent: &crate::planning::domain::UserIntent) -> GeneratedTemplateCost {
+    fn estimate_cost(
+        &self,
+        _intent: &crate::planning::domain::UserIntent,
+    ) -> GeneratedTemplateCost {
         GeneratedTemplateCost {
             estimated_calls: self.config.max_retries as u32,
             estimated_tokens: self.config.max_tokens,
@@ -1944,7 +1971,8 @@ mod tests {
         let result = ClaudeTemplateGenerator::fix_toml_placeholders(input);
         assert_eq!(result, "path = \"{{ target }}\"");
         // Must parse as valid TOML
-        toml::from_str::<toml::Value>(&result).expect("unquoted placeholder must produce valid TOML");
+        toml::from_str::<toml::Value>(&result)
+            .expect("unquoted placeholder must produce valid TOML");
     }
 
     #[test]
@@ -1962,7 +1990,8 @@ mod tests {
         let input = r#"command = "cargo test -p { pkg } --lib""#;
         let result = ClaudeTemplateGenerator::fix_toml_placeholders(input);
         assert_eq!(result, r#"command = "cargo test -p {{ pkg }} --lib""#);
-        toml::from_str::<toml::Value>(&result).expect("placeholder inside string must stay inside string");
+        toml::from_str::<toml::Value>(&result)
+            .expect("placeholder inside string must stay inside string");
     }
 
     #[test]
@@ -2039,30 +2068,52 @@ path = { target }"#;
         ctx.public_api = "pub fn run()".to_string();
         ctx.public_api_list = vec!["pub fn run()".to_string()];
         let prompt = generator.build_system_prompt(&ctx);
-        assert!(prompt.contains("rust"), "Prompt should mention project type: {prompt}");
-        assert!(prompt.contains("tokio"), "Prompt should mention dependencies: {prompt}");
+        assert!(
+            prompt.contains("rust"),
+            "Prompt should mention project type: {prompt}"
+        );
+        assert!(
+            prompt.contains("tokio"),
+            "Prompt should mention dependencies: {prompt}"
+        );
         assert!(
             prompt.contains("pub fn run()"),
             "Prompt should mention public API: {prompt}"
         );
         // Verify the new prompt has the critical rules
-        assert!(prompt.contains("CRITICAL RULES"), "Prompt should contain critical rules");
-        assert!(prompt.contains("file_read"), "Prompt should list action types");
-        assert!(prompt.contains("file_write"), "Prompt should list action types");
-        assert!(prompt.contains("EXISTING DEPENDENCIES"), "Prompt should have dependencies section");
-        assert!(prompt.contains("PUBLIC API SURFACE"), "Prompt should have API section");
+        assert!(
+            prompt.contains("CRITICAL RULES"),
+            "Prompt should contain critical rules"
+        );
+        assert!(
+            prompt.contains("file_read"),
+            "Prompt should list action types"
+        );
+        assert!(
+            prompt.contains("file_write"),
+            "Prompt should list action types"
+        );
+        assert!(
+            prompt.contains("EXISTING DEPENDENCIES"),
+            "Prompt should have dependencies section"
+        );
+        assert!(
+            prompt.contains("PUBLIC API SURFACE"),
+            "Prompt should have API section"
+        );
         // Should NOT tell the LLM to generate only 1 node
-        assert!(!prompt.contains("MINIMAL template with 1 node"), "Prompt should NOT restrict to 1 node");
+        assert!(
+            !prompt.contains("MINIMAL template with 1 node"),
+            "Prompt should NOT restrict to 1 node"
+        );
     }
 
     #[test]
     fn test_build_user_message_contains_intent() {
         let config = ClaudeGeneratorConfig::default();
         let generator = ClaudeTemplateGenerator::new("test-key".to_string(), Some(config));
-        let intent = crate::planning::domain::intent::UserIntent::new(
-            "read the file".to_string(),
-            None,
-        );
+        let intent =
+            crate::planning::domain::intent::UserIntent::new("read the file".to_string(), None);
         let message = generator.build_user_message(&intent);
         assert!(message.contains("read the file"));
     }

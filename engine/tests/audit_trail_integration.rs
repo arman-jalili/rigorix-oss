@@ -16,15 +16,13 @@ async fn test_audit_envelope_has_hmac_signature() {
         execution_id: uuid::Uuid::new_v4(),
         template_id: "test-template".to_string(),
         planning_prompt: "Read src/lib.rs".to_string(),
-        events: vec![
-            ExecutionEventRef {
-                event_type: "execution_started".to_string(),
-                summary: "Execution started".to_string(),
-                occurred_at: chrono::Utc::now(),
-                correlation_id: None,
-                status: rigorix_engine::audit::domain::envelope::EventStatus::Success,
-            },
-        ],
+        events: vec![ExecutionEventRef {
+            event_type: "execution_started".to_string(),
+            summary: "Execution started".to_string(),
+            occurred_at: chrono::Utc::now(),
+            correlation_id: None,
+            status: rigorix_engine::audit::domain::envelope::EventStatus::Success,
+        }],
         metadata: Some(HashMap::from([
             ("intent".to_string(), "test intent".to_string()),
             ("llm_calls".to_string(), "2".to_string()),
@@ -33,5 +31,8 @@ async fn test_audit_envelope_has_hmac_signature() {
     };
 
     let envelope = factory.build_envelope(input).await.unwrap();
-    assert!(envelope.signature.is_some(), "HMAC signature should be present");
+    assert!(
+        envelope.signature.is_some(),
+        "HMAC signature should be present"
+    );
 }

@@ -3,7 +3,7 @@
 //! Measures topological sort, graph seal, and ready queue performance
 //! across varying graph sizes.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use uuid::Uuid;
 
 use rigorix_engine::dag_engine::domain::graph::{TaskGraph, TaskNode};
@@ -15,12 +15,7 @@ fn build_graph(node_count: usize, edge_factor: usize) -> TaskGraph {
     for i in 0..node_count {
         let id = Uuid::new_v4();
         let deps: Vec<Uuid> = if edge_factor > 0 && !prev_nodes.is_empty() {
-            prev_nodes
-                .iter()
-                .rev()
-                .take(edge_factor)
-                .copied()
-                .collect()
+            prev_nodes.iter().rev().take(edge_factor).copied().collect()
         } else {
             vec![]
         };

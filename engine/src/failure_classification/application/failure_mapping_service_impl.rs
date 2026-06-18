@@ -153,20 +153,22 @@ impl FailureMappingService for FailureMappingServiceImpl {
                     ));
                 }
                 if let RetryStrategy::ExpandContext { level } = strategy
-                    && *level > 5 {
-                        errors.push(ValidationError {
-                            field: "custom_strategy_mappings".to_string(),
-                            message: format!("ExpandContext level {} exceeds maximum of 5", level),
-                            value: Some(level.to_string()),
-                        });
-                    }
+                    && *level > 5
+                {
+                    errors.push(ValidationError {
+                        field: "custom_strategy_mappings".to_string(),
+                        message: format!("ExpandContext level {} exceeds maximum of 5", level),
+                        value: Some(level.to_string()),
+                    });
+                }
                 if let RetryStrategy::PatchWithFeedback { feedback } = strategy
-                    && feedback.is_empty() {
-                        warnings.push(format!(
-                            "PatchWithFeedback for {:?} has empty feedback string",
-                            failure_type
-                        ));
-                    }
+                    && feedback.is_empty()
+                {
+                    warnings.push(format!(
+                        "PatchWithFeedback for {:?} has empty feedback string",
+                        failure_type
+                    ));
+                }
             }
         }
 

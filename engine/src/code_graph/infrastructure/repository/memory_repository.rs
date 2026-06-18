@@ -53,9 +53,12 @@ impl Default for InMemoryCodeGraphRepository {
 #[async_trait]
 impl CodeGraphRepository for InMemoryCodeGraphRepository {
     async fn save(&self, graph: &CodeGraph) -> Result<(), CodeGraphError> {
-        let mut store = self.store.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let mut store = self
+            .store
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
 
         // Find existing entry by comparing metadata timestamps, or generate new ID
         let id = Uuid::new_v4();
@@ -64,36 +67,49 @@ impl CodeGraphRepository for InMemoryCodeGraphRepository {
     }
 
     async fn load(&self, graph_id: Uuid) -> Result<CodeGraph, CodeGraphError> {
-        let store = self.store.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let store = self
+            .store
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
 
-        store.get(&graph_id).cloned().ok_or_else(|| {
-            CodeGraphError::InvalidOperation {
+        store
+            .get(&graph_id)
+            .cloned()
+            .ok_or_else(|| CodeGraphError::InvalidOperation {
                 reason: format!("Graph not found: {}", graph_id),
-            }
-        })
+            })
     }
 
     async fn exists(&self, graph_id: Uuid) -> Result<bool, CodeGraphError> {
-        let store = self.store.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let store = self
+            .store
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
         Ok(store.contains_key(&graph_id))
     }
 
     async fn delete(&self, graph_id: Uuid) -> Result<(), CodeGraphError> {
-        let mut store = self.store.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let mut store = self
+            .store
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
         store.remove(&graph_id);
         Ok(())
     }
 
     async fn list_ids(&self) -> Result<Vec<Uuid>, CodeGraphError> {
-        let store = self.store.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let store = self
+            .store
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
         Ok(store.keys().copied().collect())
     }
 
@@ -102,9 +118,12 @@ impl CodeGraphRepository for InMemoryCodeGraphRepository {
         limit: u32,
         offset: u32,
     ) -> Result<Vec<Uuid>, CodeGraphError> {
-        let store = self.store.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let store = self
+            .store
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
 
         let mut ids: Vec<Uuid> = store.keys().copied().collect();
         ids.sort();
@@ -116,16 +135,22 @@ impl CodeGraphRepository for InMemoryCodeGraphRepository {
     }
 
     async fn count(&self) -> Result<u64, CodeGraphError> {
-        let store = self.store.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let store = self
+            .store
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
         Ok(store.len() as u64)
     }
 
     async fn search(&self, query: &str, limit: u32) -> Result<Vec<CodeGraph>, CodeGraphError> {
-        let store = self.store.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let store = self
+            .store
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
 
         let query_lower = query.to_lowercase();
         let mut results: Vec<CodeGraph> = store

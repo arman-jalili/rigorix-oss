@@ -103,7 +103,7 @@ pub async fn run(
                 dyn rigorix_engine::orchestrator::application::service::OrchestratorService,
             > = o.into();
             orch
-        },
+        }
         Err(e) => {
             restore_terminal();
             eprintln!("Failed to build orchestrator: {e}");
@@ -146,7 +146,9 @@ async fn run_event_loop(
     command_bar: &mut CommandBarState,
     input_focus: &mut InputFocus,
     selected_node: &mut Option<String>,
-    orch: std::sync::Arc<dyn rigorix_engine::orchestrator::application::service::OrchestratorService>,
+    orch: std::sync::Arc<
+        dyn rigorix_engine::orchestrator::application::service::OrchestratorService,
+    >,
     _config: crate::cli_boundary::config::CliConfig,
     vm_tx: tokio::sync::mpsc::Sender<VmCommand>,
     vm_rx: &mut tokio::sync::mpsc::Receiver<VmCommand>,
@@ -193,7 +195,9 @@ async fn run_event_loop(
                 key,
                 &vm_tx,
                 &orch,
-            ).await {
+            )
+            .await
+            {
                 break;
             }
         }
@@ -280,7 +284,9 @@ fn apply_vm_command(vm: &mut TuiViewModel, cmd: VmCommand) {
             }
             // Update metrics
             vm.metrics.nodes_total = vm.nodes.len() as u32;
-            vm.metrics.nodes_completed = vm.nodes.values()
+            vm.metrics.nodes_completed = vm
+                .nodes
+                .values()
                 .filter(|n| n.status == view_model::NodeStatus::Completed)
                 .count() as u32;
             vm.phase = ExecutionPhase::Completed;
@@ -297,13 +303,21 @@ fn apply_vm_command(vm: &mut TuiViewModel, cmd: VmCommand) {
 pub(crate) fn render_view_as_text(vm: &TuiViewModel) -> String {
     let mut out = String::new();
     let phase = format!("{:?}", vm.phase);
-    out.push_str(&format!("Rigorix — View: {:?} | Phase: {}\n", vm.active_view, phase));
-    out.push_str(&format!("Execution: {} | Template: {}\n",
-        vm.execution_id.map(|id| id.to_string()).unwrap_or_else(|| "-".to_string()),
+    out.push_str(&format!(
+        "Rigorix — View: {:?} | Phase: {}\n",
+        vm.active_view, phase
+    ));
+    out.push_str(&format!(
+        "Execution: {} | Template: {}\n",
+        vm.execution_id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| "-".to_string()),
         vm.template_id.as_deref().unwrap_or("-"),
     ));
-    out.push_str(&format!("LLM: {} calls, {} tokens | Intent: {}\n",
-        vm.metrics.llm_calls, vm.metrics.tokens,
+    out.push_str(&format!(
+        "LLM: {} calls, {} tokens | Intent: {}\n",
+        vm.metrics.llm_calls,
+        vm.metrics.tokens,
         vm.intent.as_deref().unwrap_or("-"),
     ));
     if let Some(err) = &vm.error {
@@ -352,8 +366,10 @@ pub(crate) fn render_view_as_text(vm: &TuiViewModel) -> String {
     if !vm.event_log.is_empty() {
         out.push_str(&format!("\nEvents ({}):\n", vm.event_log.len()));
         for entry in &vm.event_log {
-            out.push_str(&format!("  {} [{}] {}\n",
-                entry.timestamp_ms, entry.event_type, entry.summary));
+            out.push_str(&format!(
+                "  {} [{}] {}\n",
+                entry.timestamp_ms, entry.event_type, entry.summary
+            ));
         }
     }
 
@@ -394,7 +410,8 @@ fn copy_to_clipboard(text: &str) -> bool {
 /// Parse the graph JSON from a plan output into NodeViewModel items.
 pub(crate) fn parse_graph_nodes(graph: &serde_json::Value) -> Vec<view_model::NodeViewModel> {
     let mut nodes = Vec::new();
-    let mut name_to_id: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut name_to_id: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
 
     // First pass: parse raw nodes and build name→id map
     if let Some(raw_nodes) = graph.get("nodes").and_then(|n| n.as_array()) {
@@ -474,7 +491,9 @@ async fn handle_action(
     selected_node: &mut Option<String>,
     key: event::KeyEvent,
     vm_tx: &tokio::sync::mpsc::Sender<VmCommand>,
-    orch: &std::sync::Arc<dyn rigorix_engine::orchestrator::application::service::OrchestratorService>,
+    orch: &std::sync::Arc<
+        dyn rigorix_engine::orchestrator::application::service::OrchestratorService,
+    >,
 ) -> bool {
     match action {
         KeyAction::Quit => return false,
@@ -507,14 +526,16 @@ async fn handle_action(
                             .map(|p| p.to_string_lossy().to_string())
                             .unwrap_or_default();
                         tokio::spawn(async move {
-                            let input = rigorix_engine::orchestrator::application::dto::PlanOnlyInput {
-                                intent: intent.clone(),
-                                config: serde_json::Value::Null,
-                                repo_root: repo_root.clone(),
-                            };
+                            let input =
+                                rigorix_engine::orchestrator::application::dto::PlanOnlyInput {
+                                    intent: intent.clone(),
+                                    config: serde_json::Value::Null,
+                                    repo_root: repo_root.clone(),
+                                };
                             match orch.plan_only(input).await {
                                 Ok(output) => {
-                                    let _ = tx.send(VmCommand::PlanCompleted(Box::new(output))).await;
+                                    let _ =
+                                        tx.send(VmCommand::PlanCompleted(Box::new(output))).await;
                                 }
                                 Err(e) => {
                                     let err_msg = e.to_string();
@@ -528,10 +549,18 @@ async fn handle_action(
                                         };
                                         match orch.plan_only(input2).await {
                                             Ok(output) => {
-                                                let _ = tx.send(VmCommand::PlanCompleted(Box::new(output))).await;
+                                                let _ = tx
+                                                    .send(VmCommand::PlanCompleted(Box::new(
+                                                        output,
+                                                    )))
+                                                    .await;
                                             }
                                             Err(e2) => {
-                                                let _ = tx.send(VmCommand::PlanFailed(format!("Retried; {e2}"))).await;
+                                                let _ = tx
+                                                    .send(VmCommand::PlanFailed(format!(
+                                                        "Retried; {e2}"
+                                                    )))
+                                                    .await;
                                             }
                                         }
                                     } else {
@@ -615,7 +644,9 @@ async fn handle_action(
                         let _ = tx.send(VmCommand::RunCompleted(Box::new(output))).await;
                     }
                     Err(e) => {
-                        let _ = tx.send(VmCommand::RunFailed(format!("Run failed: {e}"))).await;
+                        let _ = tx
+                            .send(VmCommand::RunFailed(format!("Run failed: {e}")))
+                            .await;
                     }
                 }
             });

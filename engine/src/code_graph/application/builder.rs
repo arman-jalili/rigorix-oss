@@ -14,13 +14,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::code_graph::domain::{
-    CodeGraphError, EdgeKind, NodeKind,
-};
+use crate::code_graph::domain::{CodeGraphError, EdgeKind, NodeKind};
 
-use super::dto::{
-    ConstructGraphInput, ConstructGraphOutput, SealGraphInput,
-};
+use super::dto::{ConstructGraphInput, ConstructGraphOutput, SealGraphInput};
 use super::service::CodeGraphService;
 
 /// Builds CodeGraph instances by scanning workspace directories.
@@ -113,10 +109,8 @@ impl CodeGraphBuilder {
         }
 
         // Create module names to paths mapping for resolution
-        let name_to_path: HashMap<String, &PathBuf> = all_modules
-            .iter()
-            .map(|(p, n)| (n.clone(), p))
-            .collect();
+        let name_to_path: HashMap<String, &PathBuf> =
+            all_modules.iter().map(|(p, n)| (n.clone(), p)).collect();
 
         // Build a map of path → node ID for creating edges
         let mut path_to_node_id: HashMap<PathBuf, Uuid> = HashMap::new();
@@ -148,7 +142,8 @@ impl CodeGraphBuilder {
 
             for import_name in import_names {
                 // Try to resolve the import to a local file
-                if let Some(target_path) = self.resolve_import(file_path, import_name, &name_to_path)
+                if let Some(target_path) =
+                    self.resolve_import(file_path, import_name, &name_to_path)
                 {
                     if let Some(target_id) = path_to_node_id.get(target_path) {
                         self.graph_service
@@ -213,10 +208,7 @@ impl CodeGraphBuilder {
 
             // Skip common non-source directories
             if path.is_dir() {
-                let dir_name = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("");
+                let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                 match dir_name {
                     "node_modules" | "target" | "dist" | "build" | ".git" | "__pycache__" => {
                         continue;
@@ -262,10 +254,7 @@ impl CodeGraphBuilder {
             detail: format!("Failed to read {}: {}", path.display(), e),
         })?;
 
-        let ext = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
         match ext {
             "rs" => Ok(self.parse_rust_imports(&content)),
@@ -358,7 +347,12 @@ impl CodeGraphBuilder {
             if trimmed.starts_with("import ") && !trimmed.contains(" from ") {
                 let path = trimmed
                     .strip_prefix("import ")
-                    .map(|s| s.trim().trim_matches('\'').trim_matches('"').trim_matches(';'))
+                    .map(|s| {
+                        s.trim()
+                            .trim_matches('\'')
+                            .trim_matches('"')
+                            .trim_matches(';')
+                    })
                     .map(|s| s.to_string());
                 if let Some(p) = path {
                     if p.starts_with('.') || p.starts_with('/') {
@@ -431,10 +425,7 @@ impl CodeGraphBuilder {
             .trim_start_matches('/');
 
         // Extract the last component (file name)
-        let base_name = clean_name
-            .split('/')
-            .last()
-            .unwrap_or(clean_name);
+        let base_name = clean_name.split('/').last().unwrap_or(clean_name);
 
         // Try exact match
         if let Some(path) = name_to_path.get(base_name) {

@@ -114,7 +114,7 @@ pub trait DagPlanningService: Send + Sync {
     /// The resulting PlanDiff is emitted as a DagEvent::PlanCompared
     /// for audit trail recording.
     async fn compare_plans(&self, input: ComparePlansInput)
-        -> Result<ComparePlansOutput, DagError>;
+    -> Result<ComparePlansOutput, DagError>;
 
     /// Compute the impact level of a set of proposed changes.
     ///

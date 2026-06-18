@@ -50,7 +50,9 @@ pub enum CancellationError {
     },
 
     /// Timeout reached while waiting for graceful shutdown to complete.
-    #[error("Graceful shutdown timed out after {timeout_secs}s with {pending_tasks} tasks still running")]
+    #[error(
+        "Graceful shutdown timed out after {timeout_secs}s with {pending_tasks} tasks still running"
+    )]
     ShutdownTimeout {
         /// Timeout duration in seconds.
         timeout_secs: u64,

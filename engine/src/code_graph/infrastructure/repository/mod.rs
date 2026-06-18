@@ -67,11 +67,7 @@ pub trait CodeGraphRepository: Send + Sync {
     async fn count(&self) -> Result<u64, CodeGraphError>;
 
     /// Search for graphs by name or source.
-    async fn search(
-        &self,
-        query: &str,
-        limit: u32,
-    ) -> Result<Vec<CodeGraph>, CodeGraphError>;
+    async fn search(&self, query: &str, limit: u32) -> Result<Vec<CodeGraph>, CodeGraphError>;
 }
 
 pub mod filesystem_repository;

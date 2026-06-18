@@ -19,19 +19,20 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::code_graph::application::dto::{
-    AddEdgeInput, AddNodeInput, ConstructGraphInput,
-    FormatGraphInput, GetGraphInput, GetNodeInput,
+    AddEdgeInput, AddNodeInput, ConstructGraphInput, FormatGraphInput, GetGraphInput, GetNodeInput,
     ListGraphsInput, OutputFormat, PersistGraphInput, SealGraphInput,
 };
-use crate::code_graph::application::service::{CodeGraphFormatter, CodeGraphImporter, CodeGraphService, ImportInput};
+use crate::code_graph::application::service::{
+    CodeGraphFormatter, CodeGraphImporter, CodeGraphService, ImportInput,
+};
 use crate::code_graph::application::service_impl::{
     CodeGraphFormatterImpl, CodeGraphImporterImpl, CodeGraphServiceImpl,
 };
 use crate::code_graph::domain::{
     CodeGraph, CodeGraphError, EdgeKind, GraphMetadata, ModuleEdge, ModuleNode, NodeKind,
 };
-use crate::code_graph::infrastructure::repository::memory_repository::InMemoryCodeGraphRepository;
 use crate::code_graph::infrastructure::repository::CodeGraphRepository;
+use crate::code_graph::infrastructure::repository::memory_repository::InMemoryCodeGraphRepository;
 
 // ---------------------------------------------------------------------------
 // Helper: Create a test graph with nodes and edges
@@ -224,7 +225,8 @@ fn test_module_node_with_metadata() {
     let mut meta = HashMap::new();
     meta.insert("language".to_string(), "rust".to_string());
     meta.insert("lines".to_string(), "500".to_string());
-    let node = ModuleNode::with_metadata(id, "parser", NodeKind::File, "src/parser.rs", meta.clone());
+    let node =
+        ModuleNode::with_metadata(id, "parser", NodeKind::File, "src/parser.rs", meta.clone());
     assert_eq!(node.metadata.get("language").unwrap(), "rust");
     assert_eq!(node.metadata.get("lines").unwrap(), "500");
 }
@@ -471,7 +473,10 @@ async fn test_service_list_graphs() {
         .unwrap();
 
     let list = service
-        .list_graphs(ListGraphsInput { limit: 10, offset: 0 })
+        .list_graphs(ListGraphsInput {
+            limit: 10,
+            offset: 0,
+        })
         .await
         .unwrap();
     assert_eq!(list.total_count, 2);
@@ -594,11 +599,17 @@ async fn test_analyze_dependencies() {
         .await
         .unwrap();
 
-    service.seal_graph(SealGraphInput { graph_id: gid }).await.unwrap();
+    service
+        .seal_graph(SealGraphInput { graph_id: gid })
+        .await
+        .unwrap();
 
     // Build the analyzer with the same graph store
     // We need to access the internal store - for now test via the public API
-    let get_result = service.get_graph(GetGraphInput { graph_id: gid }).await.unwrap();
+    let get_result = service
+        .get_graph(GetGraphInput { graph_id: gid })
+        .await
+        .unwrap();
     assert!(get_result.graph.sealed);
     // Root nodes = a (no incoming)
     // Leaf nodes = c (no outgoing)
@@ -620,9 +631,15 @@ async fn test_detect_cycles() {
     graph.add_node(c.clone()).unwrap();
 
     // a → b → c → a (cycle)
-    graph.add_edge(ModuleEdge::new(a.id, b.id, EdgeKind::Imports)).unwrap();
-    graph.add_edge(ModuleEdge::new(b.id, c.id, EdgeKind::Imports)).unwrap();
-    graph.add_edge(ModuleEdge::new(c.id, a.id, EdgeKind::Imports)).unwrap();
+    graph
+        .add_edge(ModuleEdge::new(a.id, b.id, EdgeKind::Imports))
+        .unwrap();
+    graph
+        .add_edge(ModuleEdge::new(b.id, c.id, EdgeKind::Imports))
+        .unwrap();
+    graph
+        .add_edge(ModuleEdge::new(c.id, a.id, EdgeKind::Imports))
+        .unwrap();
     graph.seal().unwrap();
 
     // Test that edges are valid between all nodes (graph has a cycle a→b→c→a)

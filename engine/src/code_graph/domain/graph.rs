@@ -150,9 +150,7 @@ impl CodeGraph {
         }
         // Check for duplicate edges
         if self.edges.iter().any(|e| {
-            e.source_id == edge.source_id
-                && e.target_id == edge.target_id
-                && e.kind == edge.kind
+            e.source_id == edge.source_id && e.target_id == edge.target_id && e.kind == edge.kind
         }) {
             return Err(CodeGraphError::DuplicateEdge {
                 source_id: edge.source_id,
@@ -310,12 +308,7 @@ pub struct ModuleNode {
 
 impl ModuleNode {
     /// Create a new ModuleNode.
-    pub fn new(
-        id: Uuid,
-        name: impl Into<String>,
-        kind: NodeKind,
-        path: impl Into<String>,
-    ) -> Self {
+    pub fn new(id: Uuid, name: impl Into<String>, kind: NodeKind, path: impl Into<String>) -> Self {
         Self {
             id,
             name: name.into(),

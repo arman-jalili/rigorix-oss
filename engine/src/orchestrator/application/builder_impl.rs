@@ -32,8 +32,10 @@ pub struct OrchestratorBuilderImpl {
 
     // Optional service overrides (for testing / DI)
     planning_pipeline: Option<Arc<dyn crate::planning::application::PlanningPipelineService>>,
-    execution_service: Option<Arc<dyn crate::execution_engine::application::service::ParallelExecutionService>>,
-    state_manager: Option<Arc<dyn crate::state_persistence::application::service::StateManagerService>>,
+    execution_service:
+        Option<Arc<dyn crate::execution_engine::application::service::ParallelExecutionService>>,
+    state_manager:
+        Option<Arc<dyn crate::state_persistence::application::service::StateManagerService>>,
     cancellation_service: Option<Arc<dyn crate::cancellation::application::CancellationService>>,
     event_bus: Option<Arc<dyn crate::event_system::application::EventBusService>>,
     audit_service: Option<Arc<dyn crate::audit::application::AuditService>>,
@@ -43,43 +45,64 @@ pub struct OrchestratorBuilderImpl {
 
 impl OrchestratorBuilderImpl {
     /// Override the planning pipeline service.
-    pub fn with_planning_pipeline(mut self, svc: Arc<dyn crate::planning::application::PlanningPipelineService>) -> Self {
+    pub fn with_planning_pipeline(
+        mut self,
+        svc: Arc<dyn crate::planning::application::PlanningPipelineService>,
+    ) -> Self {
         self.planning_pipeline = Some(svc);
         self
     }
 
     /// Override the parallel execution service.
-    pub fn with_execution_service(mut self, svc: Arc<dyn crate::execution_engine::application::service::ParallelExecutionService>) -> Self {
+    pub fn with_execution_service(
+        mut self,
+        svc: Arc<dyn crate::execution_engine::application::service::ParallelExecutionService>,
+    ) -> Self {
         self.execution_service = Some(svc);
         self
     }
 
     /// Override the state manager service.
-    pub fn with_state_manager(mut self, svc: Arc<dyn crate::state_persistence::application::service::StateManagerService>) -> Self {
+    pub fn with_state_manager(
+        mut self,
+        svc: Arc<dyn crate::state_persistence::application::service::StateManagerService>,
+    ) -> Self {
         self.state_manager = Some(svc);
         self
     }
 
     /// Override the cancellation service.
-    pub fn with_cancellation_service(mut self, svc: Arc<dyn crate::cancellation::application::CancellationService>) -> Self {
+    pub fn with_cancellation_service(
+        mut self,
+        svc: Arc<dyn crate::cancellation::application::CancellationService>,
+    ) -> Self {
         self.cancellation_service = Some(svc);
         self
     }
 
     /// Override the event bus service.
-    pub fn with_event_bus(mut self, svc: Arc<dyn crate::event_system::application::EventBusService>) -> Self {
+    pub fn with_event_bus(
+        mut self,
+        svc: Arc<dyn crate::event_system::application::EventBusService>,
+    ) -> Self {
         self.event_bus = Some(svc);
         self
     }
 
     /// Override the audit service.
-    pub fn with_audit_service(mut self, svc: Arc<dyn crate::audit::application::AuditService>) -> Self {
+    pub fn with_audit_service(
+        mut self,
+        svc: Arc<dyn crate::audit::application::AuditService>,
+    ) -> Self {
         self.audit_service = Some(svc);
         self
     }
 
     /// Override the budget service.
-    pub fn with_budget_service(mut self, svc: Arc<dyn crate::budget_tracking::application::LlmBudgetService>) -> Self {
+    pub fn with_budget_service(
+        mut self,
+        svc: Arc<dyn crate::budget_tracking::application::LlmBudgetService>,
+    ) -> Self {
         self.budget_service = Some(svc);
         self
     }
@@ -205,8 +228,8 @@ impl OrchestratorBuilder for OrchestratorBuilderImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::orchestrator::domain::OrchestratorConfig;
     use crate::orchestrator::application::orchestrator_impl::mocks;
+    use crate::orchestrator::domain::OrchestratorConfig;
 
     #[tokio::test]
     async fn test_builder_with_all_services_creates_service() {
@@ -220,7 +243,11 @@ mod tests {
             .with_budget_service(Arc::new(mocks::MockBudgetService))
             .build()
             .await;
-        assert!(result.is_ok(), "builder should create service: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "builder should create service: {:?}",
+            result.err()
+        );
     }
 
     #[tokio::test]
@@ -238,12 +265,14 @@ mod tests {
             .unwrap();
 
         use crate::orchestrator::application::dto::RunInput;
-        let result = orchestrator.run(RunInput {
-            intent: "test".into(),
-            config: serde_json::json!({}),
-            repo_root: "/tmp/test".into(),
-            enforcement_preset: None,
-        }).await;
+        let result = orchestrator
+            .run(RunInput {
+                intent: "test".into(),
+                config: serde_json::json!({}),
+                repo_root: "/tmp/test".into(),
+                enforcement_preset: None,
+            })
+            .await;
         assert!(result.is_ok(), "run should succeed: {:?}", result.err());
     }
 
@@ -253,9 +282,15 @@ mod tests {
             .with_repo_root("/tmp/test".into())
             .build()
             .await;
-        assert!(result.is_err(), "builder should fail without required services");
+        assert!(
+            result.is_err(),
+            "builder should fail without required services"
+        );
         if let Err(OrchestratorError::Internal { ref detail, .. }) = result {
-            assert!(detail.contains("planning_pipeline"), "error should mention missing service");
+            assert!(
+                detail.contains("planning_pipeline"),
+                "error should mention missing service"
+            );
         } else {
             panic!("expected Internal error, got error: {:?}", result.err());
         }
@@ -274,6 +309,10 @@ mod tests {
             .with_audit_service(Arc::new(mocks::MockAuditService::new()))
             .build()
             .await;
-        assert!(result.is_ok(), "builder with audit should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "builder with audit should succeed: {:?}",
+            result.err()
+        );
     }
 }

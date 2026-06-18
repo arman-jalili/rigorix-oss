@@ -28,10 +28,9 @@ use crate::code_graph::domain::{
 use super::dto::{
     AddEdgeInput, AddEdgeOutput, AddNodeInput, AddNodeOutput, AnalyzeDependenciesInput,
     AnalyzeDependenciesOutput, ConstructGraphInput, ConstructGraphOutput, FormatGraphInput,
-    FormatGraphOutput, GetGraphInput, GetGraphOutput, GetNodeInput, GetNodeOutput,
-    GraphSummary, ImpactAnalysisInput, ImpactAnalysisOutput, ImpactChain, ListGraphsInput,
-    ListGraphsOutput, OutputFormat, PersistGraphInput, PersistGraphOutput, SealGraphInput,
-    SealGraphOutput,
+    FormatGraphOutput, GetGraphInput, GetGraphOutput, GetNodeInput, GetNodeOutput, GraphSummary,
+    ImpactAnalysisInput, ImpactAnalysisOutput, ImpactChain, ListGraphsInput, ListGraphsOutput,
+    OutputFormat, PersistGraphInput, PersistGraphOutput, SealGraphInput, SealGraphOutput,
 };
 use super::service::{
     CodeGraphAnalyzer, CodeGraphFormatter, CodeGraphImporter, CodeGraphService, ImportInput,
@@ -60,26 +59,34 @@ impl CodeGraphServiceImpl {
 
     /// Get a graph by ID from the internal store.
     fn get_graph(&self, graph_id: Uuid) -> Result<CodeGraph, CodeGraphError> {
-        let graphs = self.graphs.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
-        graphs.get(&graph_id).cloned().ok_or_else(|| {
-            CodeGraphError::InvalidOperation {
+        let graphs = self
+            .graphs
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
+        graphs
+            .get(&graph_id)
+            .cloned()
+            .ok_or_else(|| CodeGraphError::InvalidOperation {
                 reason: format!("Graph not found: {}", graph_id),
-            }
-        })
+            })
     }
 
     /// Get a mutable graph handle for modification.
     fn get_graph_mut(&self, graph_id: Uuid) -> Result<CodeGraph, CodeGraphError> {
-        let graphs = self.graphs.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
-        graphs.get(&graph_id).cloned().ok_or_else(|| {
-            CodeGraphError::InvalidOperation {
+        let graphs = self
+            .graphs
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
+        graphs
+            .get(&graph_id)
+            .cloned()
+            .ok_or_else(|| CodeGraphError::InvalidOperation {
                 reason: format!("Graph not found: {}", graph_id),
-            }
-        })
+            })
     }
 }
 
@@ -109,9 +116,12 @@ impl CodeGraphService for CodeGraphServiceImpl {
 
         let graph = CodeGraph::new(metadata);
 
-        let mut graphs = self.graphs.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let mut graphs = self
+            .graphs
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
         graphs.insert(graph_id, graph.clone());
 
         Ok(ConstructGraphOutput {
@@ -125,20 +135,18 @@ impl CodeGraphService for CodeGraphServiceImpl {
         let mut graph = self.get_graph_mut(input.graph_id)?;
         let node_id = Uuid::new_v4();
 
-        let node = ModuleNode::with_metadata(
-            node_id,
-            input.name,
-            input.kind,
-            input.path,
-            input.metadata,
-        );
+        let node =
+            ModuleNode::with_metadata(node_id, input.name, input.kind, input.path, input.metadata);
 
         graph.add_node(node)?;
         let node_count = graph.node_count() as u32;
 
-        let mut graphs = self.graphs.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let mut graphs = self
+            .graphs
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
         graphs.insert(input.graph_id, graph);
 
         Ok(AddNodeOutput {
@@ -163,9 +171,12 @@ impl CodeGraphService for CodeGraphServiceImpl {
         graph.add_edge(edge)?;
         let edge_count = graph.edge_count() as u32;
 
-        let mut graphs = self.graphs.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let mut graphs = self
+            .graphs
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
         graphs.insert(input.graph_id, graph);
 
         Ok(AddEdgeOutput {
@@ -182,9 +193,12 @@ impl CodeGraphService for CodeGraphServiceImpl {
         graph.seal()?;
         let (node_count, edge_count) = (graph.node_count() as u32, graph.edge_count() as u32);
 
-        let mut graphs = self.graphs.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let mut graphs = self
+            .graphs
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
         let graph_clone = graph.clone();
         graphs.insert(input.graph_id, graph);
 
@@ -215,8 +229,16 @@ impl CodeGraphService for CodeGraphServiceImpl {
                 node_id: input.node_id,
             })?;
 
-        let incoming_edges = graph.incoming_edges(input.node_id).into_iter().cloned().collect();
-        let outgoing_edges = graph.outgoing_edges(input.node_id).into_iter().cloned().collect();
+        let incoming_edges = graph
+            .incoming_edges(input.node_id)
+            .into_iter()
+            .cloned()
+            .collect();
+        let outgoing_edges = graph
+            .outgoing_edges(input.node_id)
+            .into_iter()
+            .cloned()
+            .collect();
 
         Ok(GetNodeOutput {
             node,
@@ -230,9 +252,12 @@ impl CodeGraphService for CodeGraphServiceImpl {
         &self,
         input: ListGraphsInput,
     ) -> Result<ListGraphsOutput, CodeGraphError> {
-        let graphs = self.graphs.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let graphs = self
+            .graphs
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
 
         let mut summaries: Vec<GraphSummary> = graphs
             .iter()
@@ -259,21 +284,27 @@ impl CodeGraphService for CodeGraphServiceImpl {
         input: PersistGraphInput,
     ) -> Result<PersistGraphOutput, CodeGraphError> {
         let graph_id = Uuid::new_v4();
-        let serialized =
-            serde_json::to_string(&input.graph).map_err(|e| CodeGraphError::SerializationError {
+        let serialized = serde_json::to_string(&input.graph).map_err(|e| {
+            CodeGraphError::SerializationError {
                 detail: format!("JSON serialization failed: {}", e),
-            })?;
+            }
+        })?;
 
         let size_bytes = serialized.len() as u64;
 
-        let mut graphs = self.graphs.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let mut graphs = self
+            .graphs
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
         graphs.insert(graph_id, input.graph);
 
         Ok(PersistGraphOutput {
             graph_id,
-            storage_backend: input.storage_backend.unwrap_or_else(|| "memory".to_string()),
+            storage_backend: input
+                .storage_backend
+                .unwrap_or_else(|| "memory".to_string()),
             size_bytes,
             persisted_at: Utc::now(),
         })
@@ -289,9 +320,12 @@ impl CodeGraphService for CodeGraphServiceImpl {
     }
 
     async fn delete_graph(&self, graph_id: Uuid) -> Result<(), CodeGraphError> {
-        let mut graphs = self.graphs.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let mut graphs = self
+            .graphs
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
         graphs.remove(&graph_id);
         Ok(())
     }
@@ -325,15 +359,19 @@ impl CodeGraphAnalyzer for CodeGraphAnalyzerImpl {
         &self,
         input: AnalyzeDependenciesInput,
     ) -> Result<AnalyzeDependenciesOutput, CodeGraphError> {
-        let graphs = self.graphs.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let graphs = self
+            .graphs
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
 
-        let graph = graphs.get(&input.graph_id).ok_or_else(|| {
-            CodeGraphError::InvalidOperation {
-                reason: format!("Graph not found: {}", input.graph_id),
-            }
-        })?;
+        let graph =
+            graphs
+                .get(&input.graph_id)
+                .ok_or_else(|| CodeGraphError::InvalidOperation {
+                    reason: format!("Graph not found: {}", input.graph_id),
+                })?;
 
         if !graph.sealed {
             return Err(CodeGraphError::InvalidOperation {
@@ -388,15 +426,19 @@ impl CodeGraphAnalyzer for CodeGraphAnalyzerImpl {
         &self,
         input: ImpactAnalysisInput,
     ) -> Result<ImpactAnalysisOutput, CodeGraphError> {
-        let graphs = self.graphs.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+        let graphs = self
+            .graphs
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
 
-        let graph = graphs.get(&input.graph_id).ok_or_else(|| {
-            CodeGraphError::InvalidOperation {
-                reason: format!("Graph not found: {}", input.graph_id),
-            }
-        })?;
+        let graph =
+            graphs
+                .get(&input.graph_id)
+                .ok_or_else(|| CodeGraphError::InvalidOperation {
+                    reason: format!("Graph not found: {}", input.graph_id),
+                })?;
 
         if !graph.sealed {
             return Err(CodeGraphError::InvalidOperation {
@@ -404,12 +446,13 @@ impl CodeGraphAnalyzer for CodeGraphAnalyzerImpl {
             });
         }
 
-        let target_node = graph
-            .get_node(input.node_id)
-            .cloned()
-            .ok_or(CodeGraphError::NodeNotFound {
-                node_id: input.node_id,
-            })?;
+        let target_node =
+            graph
+                .get_node(input.node_id)
+                .cloned()
+                .ok_or(CodeGraphError::NodeNotFound {
+                    node_id: input.node_id,
+                })?;
 
         // BFS to find all transitive dependents
         let mut visited = HashSet::new();
@@ -453,9 +496,10 @@ impl CodeGraphAnalyzer for CodeGraphAnalyzerImpl {
 
         while let Some((current, depth, path)) = queue.pop_front() {
             if depth > 0 {
-                let affected_node = graph.get_node(current).cloned().ok_or_else(|| {
-                    CodeGraphError::NodeNotFound { node_id: current }
-                })?;
+                let affected_node = graph
+                    .get_node(current)
+                    .cloned()
+                    .ok_or_else(|| CodeGraphError::NodeNotFound { node_id: current })?;
                 impact_chains.push(ImpactChain {
                     affected_node,
                     depth,
@@ -490,19 +534,19 @@ impl CodeGraphAnalyzer for CodeGraphAnalyzerImpl {
         })
     }
 
-    async fn detect_cycles(
-        &self,
-        graph_id: Uuid,
-    ) -> Result<Vec<Vec<String>>, CodeGraphError> {
-        let graphs = self.graphs.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+    async fn detect_cycles(&self, graph_id: Uuid) -> Result<Vec<Vec<String>>, CodeGraphError> {
+        let graphs = self
+            .graphs
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
 
-        let graph = graphs.get(&graph_id).ok_or_else(|| {
-            CodeGraphError::InvalidOperation {
+        let graph = graphs
+            .get(&graph_id)
+            .ok_or_else(|| CodeGraphError::InvalidOperation {
                 reason: format!("Graph not found: {}", graph_id),
-            }
-        })?;
+            })?;
 
         self.detect_cycles_in_graph(graph)
     }
@@ -513,7 +557,9 @@ impl CodeGraphAnalyzer for CodeGraphAnalyzerImpl {
         node_id: Uuid,
     ) -> Result<bool, CodeGraphError> {
         let cycles = self.detect_cycles(graph_id).await?;
-        Ok(cycles.iter().any(|cycle| cycle.contains(&node_id.to_string())))
+        Ok(cycles
+            .iter()
+            .any(|cycle| cycle.contains(&node_id.to_string())))
     }
 }
 
@@ -706,10 +752,7 @@ impl CodeGraphFormatterImpl {
 
         // Add edge declarations
         for edge in &graph.edges {
-            let label = edge
-                .label
-                .as_deref()
-                .unwrap_or_else(|| edge.kind.as_str());
+            let label = edge.label.as_deref().unwrap_or_else(|| edge.kind.as_str());
             output.push_str(&format!(
                 "    {} -->|\"{}\"| {};\n",
                 edge.source_id, label, edge.target_id
@@ -723,10 +766,7 @@ impl CodeGraphFormatterImpl {
     fn format_dot_inner(&self, graph: &CodeGraph) -> Result<String, CodeGraphError> {
         let mut output = String::from("digraph CodeGraph {\n");
         output.push_str("    rankdir=LR;\n");
-        output.push_str(&format!(
-            "    label=\"{}\";\n",
-            graph.metadata.name
-        ));
+        output.push_str(&format!("    label=\"{}\";\n", graph.metadata.name));
         output.push_str("    node [shape=box, style=rounded];\n\n");
 
         for node in &graph.nodes {
@@ -742,10 +782,7 @@ impl CodeGraphFormatterImpl {
         output.push('\n');
 
         for edge in &graph.edges {
-            let label = edge
-                .label
-                .as_deref()
-                .unwrap_or_else(|| edge.kind.as_str());
+            let label = edge.label.as_deref().unwrap_or_else(|| edge.kind.as_str());
             output.push_str(&format!(
                 "    {} -> {} [label=\"{}\"];\n",
                 edge.source_id, edge.target_id, label
@@ -761,8 +798,7 @@ impl CodeGraphFormatterImpl {
         let mut output = String::new();
 
         // Find root nodes (no incoming edges)
-        let has_incoming: HashSet<Uuid> =
-            graph.edges.iter().map(|e| e.target_id).collect();
+        let has_incoming: HashSet<Uuid> = graph.edges.iter().map(|e| e.target_id).collect();
         let root_ids: Vec<&ModuleNode> = graph
             .nodes
             .iter()
@@ -892,22 +928,38 @@ impl CodeGraphFormatterImpl {
     /// just file:name references with their direct dependencies.
     fn format_compact_inner(&self, graph: &CodeGraph) -> Result<String, CodeGraphError> {
         let mut output = String::new();
-        let mut deps_of: std::collections::HashMap<Uuid, Vec<String>> = std::collections::HashMap::new();
+        let mut deps_of: std::collections::HashMap<Uuid, Vec<String>> =
+            std::collections::HashMap::new();
         let node_names: std::collections::HashMap<Uuid, &str> = graph
-            .nodes.iter().map(|n| (n.id, n.name.as_str())).collect();
+            .nodes
+            .iter()
+            .map(|n| (n.id, n.name.as_str()))
+            .collect();
         let node_paths: std::collections::HashMap<Uuid, &str> = graph
-            .nodes.iter().map(|n| (n.id, n.path.as_str())).collect();
+            .nodes
+            .iter()
+            .map(|n| (n.id, n.path.as_str()))
+            .collect();
 
         for edge in &graph.edges {
             deps_of.entry(edge.target_id).or_default().push(
-                node_names.get(&edge.source_id).copied().unwrap_or("unknown").to_string(),
+                node_names
+                    .get(&edge.source_id)
+                    .copied()
+                    .unwrap_or("unknown")
+                    .to_string(),
             );
         }
 
-        let mut depended_on_by: std::collections::HashMap<Uuid, Vec<String>> = std::collections::HashMap::new();
+        let mut depended_on_by: std::collections::HashMap<Uuid, Vec<String>> =
+            std::collections::HashMap::new();
         for edge in &graph.edges {
             depended_on_by.entry(edge.source_id).or_default().push(
-                node_names.get(&edge.target_id).copied().unwrap_or("unknown").to_string(),
+                node_names
+                    .get(&edge.target_id)
+                    .copied()
+                    .unwrap_or("unknown")
+                    .to_string(),
             );
         }
 
@@ -954,22 +1006,22 @@ impl CodeGraphImporterImpl {
 
 #[async_trait]
 impl CodeGraphImporter for CodeGraphImporterImpl {
-    async fn import(
-        &self,
-        input: ImportInput,
-    ) -> Result<ImportOutput, CodeGraphError> {
-        let mut graphs = self.graphs.lock().map_err(|e| CodeGraphError::InternalError {
-            detail: format!("Lock error: {}", e),
-        })?;
+    async fn import(&self, input: ImportInput) -> Result<ImportOutput, CodeGraphError> {
+        let mut graphs = self
+            .graphs
+            .lock()
+            .map_err(|e| CodeGraphError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
 
         let graph_id = match input.graph_id {
             Some(id) => {
                 // Validate graph exists and is not sealed
-                let graph = graphs.get(&id).ok_or_else(|| {
-                    CodeGraphError::InvalidOperation {
+                let graph = graphs
+                    .get(&id)
+                    .ok_or_else(|| CodeGraphError::InvalidOperation {
                         reason: format!("Graph not found: {}", id),
-                    }
-                })?;
+                    })?;
                 if graph.sealed {
                     return Err(CodeGraphError::GraphSealed {
                         operation: "import".to_string(),
@@ -994,11 +1046,11 @@ impl CodeGraphImporter for CodeGraphImporterImpl {
             }
         };
 
-        let graph = graphs.get_mut(&graph_id).ok_or_else(|| {
-            CodeGraphError::InvalidOperation {
+        let graph = graphs
+            .get_mut(&graph_id)
+            .ok_or_else(|| CodeGraphError::InvalidOperation {
                 reason: format!("Graph not found: {}", graph_id),
-            }
-        })?;
+            })?;
 
         let nodes_imported = input.nodes.len() as u32;
         let edges_imported = input.edges.len() as u32;

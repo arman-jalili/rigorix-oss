@@ -9,8 +9,8 @@
 //! filtered queries, drain operation, and capacity limits.
 
 use async_trait::async_trait;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use tokio::sync::Mutex;
 
 use crate::event_system::application::dto::{EventBusConfig, QueryEventsInput};
@@ -121,9 +121,10 @@ impl PersistedEventRepository for InMemoryEventRepository {
             })
             .filter(|pe| {
                 if let Some(after) = input.after_sequence
-                    && pe.sequence <= after {
-                        return false;
-                    }
+                    && pe.sequence <= after
+                {
+                    return false;
+                }
                 true
             })
             .filter(|pe| {
@@ -162,13 +163,15 @@ impl PersistedEventRepository for InMemoryEventRepository {
                     ExecutionEvent::BudgetWarning { timestamp, .. } => timestamp,
                 };
                 if let Some(after) = &input.after_timestamp
-                    && ts < after {
-                        return false;
-                    }
+                    && ts < after
+                {
+                    return false;
+                }
                 if let Some(before) = &input.before_timestamp
-                    && ts > before {
-                        return false;
-                    }
+                    && ts > before
+                {
+                    return false;
+                }
                 true
             })
             .cloned()

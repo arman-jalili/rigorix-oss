@@ -661,13 +661,10 @@ mod tests {
         assert!(ExecutionEvent::new_node_failed(eid, "n1".into(), "err".into(), 1).is_error());
         assert!(ExecutionEvent::new_execution_failed(eid, "err".into()).is_error());
         assert!(ExecutionEvent::new_budget_warning(eid, "tokens".into(), 80, 100).is_error());
-        assert!(!ExecutionEvent::new_node_completed(
-            eid,
-            "n1".into(),
-            100,
-            serde_json::Value::Null
-        )
-        .is_error());
+        assert!(
+            !ExecutionEvent::new_node_completed(eid, "n1".into(), 100, serde_json::Value::Null)
+                .is_error()
+        );
         assert!(!ExecutionEvent::new_planning_started(eid, "test".into()).is_error());
     }
 

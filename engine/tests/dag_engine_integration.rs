@@ -13,13 +13,7 @@ use rigorix_engine::dag_engine::domain::{
 
 /// Helper: create a simple node with no dependencies.
 fn node(name: &str, tool: &str) -> TaskNode {
-    TaskNode::new(
-        Uuid::new_v4(),
-        name,
-        tool,
-        vec![],
-        format!("Run {tool}"),
-    )
+    TaskNode::new(Uuid::new_v4(), name, tool, vec![], format!("Run {tool}"))
 }
 
 /// Helper: create a node that depends on other nodes.

@@ -506,7 +506,10 @@ fn test_validation_rule_as_str() {
 #[test]
 fn test_retry_strategy_as_str() {
     assert_eq!(RetryStrategy::SameOperation.as_str(), "same_operation");
-    assert_eq!(RetryStrategy::ExpandContext { level: 1 }.as_str(), "expand_context");
+    assert_eq!(
+        RetryStrategy::ExpandContext { level: 1 }.as_str(),
+        "expand_context"
+    );
     assert_eq!(RetryStrategy::SkipAndContinue.as_str(), "skip_and_continue");
 }
 

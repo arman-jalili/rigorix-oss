@@ -13,7 +13,10 @@ pub fn map_key(event: KeyEvent, focus: InputFocus) -> KeyAction {
 
     // ── Global bindings (work regardless of focus) ──────────────────
     match event.code {
-        Char('q') if !event.modifiers.contains(KeyModifiers::CONTROL) && focus != InputFocus::CommandBar => {
+        Char('q')
+            if !event.modifiers.contains(KeyModifiers::CONTROL)
+                && focus != InputFocus::CommandBar =>
+        {
             return KeyAction::Quit;
         }
         F(1) => return KeyAction::ShowHelp,

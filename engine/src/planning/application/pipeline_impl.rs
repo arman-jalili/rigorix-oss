@@ -61,7 +61,8 @@ pub struct PlanningPipelineImpl {
     extractor: Box<dyn ParameterExtractor>,
 
     /// Template engine for graph generation.
-    template_service: std::sync::Arc<dyn crate::templates::application::service::TemplateEngineService>,
+    template_service:
+        std::sync::Arc<dyn crate::templates::application::service::TemplateEngineService>,
 
     /// Optional template generator fallback.
     template_generator: Option<Box<dyn TemplateGenerator>>,
@@ -79,7 +80,9 @@ impl PlanningPipelineImpl {
         execution_id: Uuid,
         classifier: Box<dyn Classifier>,
         extractor: Box<dyn ParameterExtractor>,
-        template_service: std::sync::Arc<dyn crate::templates::application::service::TemplateEngineService>,
+        template_service: std::sync::Arc<
+            dyn crate::templates::application::service::TemplateEngineService,
+        >,
     ) -> Self {
         Self {
             execution_id,
@@ -221,22 +224,16 @@ impl PlanningPipelineImpl {
         let mut dep_map: HashMap<String, Vec<uuid::Uuid>> = HashMap::new();
         for (from_id, to_id) in &output.edges {
             if let Some(&to_uuid) = node_id_map.get(to_id) {
-                dep_map.entry(from_id.clone())
-                    .or_default()
-                    .push(to_uuid);
+                dep_map.entry(from_id.clone()).or_default().push(to_uuid);
             }
         }
 
         let mut graph = crate::dag_engine::domain::TaskGraph::new();
         for node in &output.nodes {
             let node_id = node_id_map[&node.id];
-            let deps: Vec<uuid::Uuid> = dep_map
-                .remove(&node.id)
-                .unwrap_or_default();
+            let deps: Vec<uuid::Uuid> = dep_map.remove(&node.id).unwrap_or_default();
             let (tool, intent) = match &node.action {
-                TemplateAction::RunCommand {
-                    command, ..
-                } => ("run_command", command.clone()),
+                TemplateAction::RunCommand { command, .. } => ("run_command", command.clone()),
                 TemplateAction::FileRead { path } => ("file_read", path.clone()),
                 TemplateAction::FileWrite { path, content } => {
                     let v = serde_json::json!({"path": path, "content": content});
@@ -258,23 +255,25 @@ impl PlanningPipelineImpl {
                 TemplateAction::GitRead { command, .. } => ("git_read", command.clone()),
                 TemplateAction::GitStage { path } => ("git_stage", path.clone()),
                 TemplateAction::GitCommit {
-                    message, auto_stage, ..
+                    message,
+                    auto_stage,
+                    ..
                 } => {
                     let v = serde_json::json!({"message": message, "auto_stage": auto_stage});
                     ("git_commit", v.to_string())
                 }
-                TemplateAction::LspQuery {
-                    query_type, ..
-                } => ("lsp_query", query_type.clone()),
+                TemplateAction::LspQuery { query_type, .. } => ("lsp_query", query_type.clone()),
             };
             // add_unchecked validates sealed state and duplicate IDs
-            graph.add_unchecked(crate::dag_engine::domain::TaskNode::new(
-                node_id,
-                &node.name,
-                tool.to_string(),
-                deps,
-                intent,
-            )).ok(); // safe: brand new graph, unique UUIDs
+            graph
+                .add_unchecked(crate::dag_engine::domain::TaskNode::new(
+                    node_id,
+                    &node.name,
+                    tool.to_string(),
+                    deps,
+                    intent,
+                ))
+                .ok(); // safe: brand new graph, unique UUIDs
         }
         // Seal the graph so it's ready for execution
         let _ = graph.seal();
@@ -479,7 +478,7 @@ impl PlanningPipelineService for PlanningPipelineImpl {
                             true,
                             total_llm_calls,
                             total_llm_tokens,
-                        generated_toml.clone(),
+                            generated_toml.clone(),
                         );
                         let completed_at = planning_result.planned_at;
 
@@ -517,18 +516,21 @@ impl PlanningPipelineService for PlanningPipelineImpl {
 
                             // Build RepoContext from actual filesystem
                             let repo_path = if input.repo_root.is_empty() {
-                                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+                                std::env::current_dir()
+                                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
                             } else {
                                 std::path::PathBuf::from(&input.repo_root)
                             };
                             let mut repo_context =
-                                crate::template_generation::domain::RepoContext::from_path(&repo_path)
-                                    .unwrap_or_else(|_| {
-                                        crate::template_generation::domain::RepoContext::new(
-                                            repo_path,
-                                            "unknown".to_string(),
-                                        )
-                                    });
+                                crate::template_generation::domain::RepoContext::from_path(
+                                    &repo_path,
+                                )
+                                .unwrap_or_else(|_| {
+                                    crate::template_generation::domain::RepoContext::new(
+                                        repo_path,
+                                        "unknown".to_string(),
+                                    )
+                                });
 
                             // Inject pre-computed module dependency graph if provided
                             if let Some(ref deps) = input.module_deps {

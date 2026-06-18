@@ -8,8 +8,8 @@
 
 use super::health_check::{HealthCheck, HealthReport, HealthStatus};
 use async_trait::async_trait;
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
 
 /// A simple health check that reports a component's status and key metric.
 pub struct SimpleHealthCheck {

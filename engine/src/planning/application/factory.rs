@@ -57,7 +57,9 @@ pub trait PlanningPipelineFactory: Send + Sync {
         &self,
         classifier: Box<dyn Classifier>,
         extractor: Box<dyn ParameterExtractor>,
-        template_service: std::sync::Arc<dyn crate::templates::application::service::TemplateEngineService>,
+        template_service: std::sync::Arc<
+            dyn crate::templates::application::service::TemplateEngineService,
+        >,
     ) -> Result<Box<dyn PlanningPipelineService>, PlanningError>;
 
     /// Create a planning pipeline with template generator fallback.
@@ -82,7 +84,9 @@ pub trait PlanningPipelineFactory: Send + Sync {
         &self,
         classifier: Box<dyn Classifier>,
         extractor: Box<dyn ParameterExtractor>,
-        template_service: std::sync::Arc<dyn crate::templates::application::service::TemplateEngineService>,
+        template_service: std::sync::Arc<
+            dyn crate::templates::application::service::TemplateEngineService,
+        >,
         template_generator: Box<dyn TemplateGenerator>,
     ) -> Result<Box<dyn PlanningPipelineService>, PlanningError>;
 
@@ -103,7 +107,9 @@ pub trait PlanningPipelineFactory: Send + Sync {
         &self,
         classifier: Box<dyn Classifier>,
         extractor: Box<dyn ParameterExtractor>,
-        template_service: std::sync::Arc<dyn crate::templates::application::service::TemplateEngineService>,
+        template_service: std::sync::Arc<
+            dyn crate::templates::application::service::TemplateEngineService,
+        >,
         template_generator: Option<Box<dyn TemplateGenerator>>,
         validator: Option<Box<dyn CompositeValidator>>,
     ) -> Result<Box<dyn PlanningPipelineService>, PlanningError>;

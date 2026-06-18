@@ -199,11 +199,12 @@ impl RiskGateService for RiskGateServiceImpl {
         {
             // Check if it was already resolved
             if let Some(gate) = self.gate_registry.get_gate(&input.gate_id)
-                && gate.resolved {
-                    return Err(RiskGatingError::InvalidState {
-                        detail: format!("Gate {} has already been resolved", input.gate_id),
-                    });
-                }
+                && gate.resolved
+            {
+                return Err(RiskGatingError::InvalidState {
+                    detail: format!("Gate {} has already been resolved", input.gate_id),
+                });
+            }
             return Err(RiskGatingError::InvalidState {
                 detail: format!("Gate {} not found", input.gate_id),
             });
@@ -307,7 +308,6 @@ impl RiskGateService for RiskGateServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
     #[tracing::instrument(skip_all)]
     fn create_service(execution_id: &str) -> RiskGateServiceImpl {

@@ -23,9 +23,10 @@ async fn test_budget_exhaustion_prevents_execution() {
             estimated_tokens: 100,
             call_label: Some(format!("test-call-{}", i)),
         };
-        let result = budget.reserve(input).await.unwrap_or_else(|_| {
-            panic!("Reservation {} should have succeeded", i)
-        });
+        let result = budget
+            .reserve(input)
+            .await
+            .unwrap_or_else(|_| panic!("Reservation {} should have succeeded", i));
 
         let commit = CommitReservationInput {
             execution_id,

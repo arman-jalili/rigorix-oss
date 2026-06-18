@@ -13,8 +13,8 @@
 //! - All methods are safe to call from multiple tasks
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::RwLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use chrono::Utc;
 
@@ -85,10 +85,11 @@ impl GateStateRegistry {
             .expect("GateStateRegistry lock poisoned");
 
         if let Some(exec_gates) = pending.get_mut(execution_id)
-            && let Some(gate) = exec_gates.get_mut(gate_id) {
-                gate.resolved = true;
-                return Some(gate.clone());
-            }
+            && let Some(gate) = exec_gates.get_mut(gate_id)
+        {
+            gate.resolved = true;
+            return Some(gate.clone());
+        }
         None
     }
 

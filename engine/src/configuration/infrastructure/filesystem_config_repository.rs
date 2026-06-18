@@ -11,8 +11,8 @@
 use async_trait::async_trait;
 use std::path::PathBuf;
 
-use crate::configuration::domain::error::ConfigSource;
 use crate::configuration::domain::ConfigurationError;
+use crate::configuration::domain::error::ConfigSource;
 
 use super::repository::ConfigRepository;
 
@@ -63,9 +63,10 @@ impl ConfigRepository for FilesystemConfigRepository {
     async fn resolve_config_path(&self, explicit_path: Option<&str>) -> Option<String> {
         // 1. Check explicit path
         if let Some(path) = explicit_path
-            && tokio::fs::try_exists(&path).await.unwrap_or(false) {
-                return Some(path.to_string());
-            }
+            && tokio::fs::try_exists(&path).await.unwrap_or(false)
+        {
+            return Some(path.to_string());
+        }
 
         // 2. Check CWD/rigorix.toml
         let cwd_path = self.cwd.join("rigorix.toml");

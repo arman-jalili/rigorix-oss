@@ -70,5 +70,8 @@ pub trait ExecutionRecordRepository: Send + Sync {
     /// Delete records older than the given timestamp.
     ///
     /// Returns the number of deleted records.
-    async fn prune(&self, older_than: chrono::DateTime<chrono::Utc>) -> Result<u64, OrchestratorError>;
+    async fn prune(
+        &self,
+        older_than: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64, OrchestratorError>;
 }

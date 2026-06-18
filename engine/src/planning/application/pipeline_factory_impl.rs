@@ -45,7 +45,9 @@ impl PlanningPipelineFactory for PlanningPipelineFactoryImpl {
         &self,
         classifier: Box<dyn Classifier>,
         extractor: Box<dyn ParameterExtractor>,
-        template_service: std::sync::Arc<dyn crate::templates::application::service::TemplateEngineService>,
+        template_service: std::sync::Arc<
+            dyn crate::templates::application::service::TemplateEngineService,
+        >,
     ) -> Result<Box<dyn PlanningPipelineService>, PlanningError> {
         let execution_id = Uuid::new_v4();
         let pipeline =
@@ -57,7 +59,9 @@ impl PlanningPipelineFactory for PlanningPipelineFactoryImpl {
         &self,
         classifier: Box<dyn Classifier>,
         extractor: Box<dyn ParameterExtractor>,
-        template_service: std::sync::Arc<dyn crate::templates::application::service::TemplateEngineService>,
+        template_service: std::sync::Arc<
+            dyn crate::templates::application::service::TemplateEngineService,
+        >,
         template_generator: Box<dyn TemplateGenerator>,
     ) -> Result<Box<dyn PlanningPipelineService>, PlanningError> {
         let execution_id = Uuid::new_v4();
@@ -71,7 +75,9 @@ impl PlanningPipelineFactory for PlanningPipelineFactoryImpl {
         &self,
         classifier: Box<dyn Classifier>,
         extractor: Box<dyn ParameterExtractor>,
-        template_service: std::sync::Arc<dyn crate::templates::application::service::TemplateEngineService>,
+        template_service: std::sync::Arc<
+            dyn crate::templates::application::service::TemplateEngineService,
+        >,
         template_generator: Option<Box<dyn TemplateGenerator>>,
         validator: Option<Box<dyn CompositeValidator>>,
     ) -> Result<Box<dyn PlanningPipelineService>, PlanningError> {

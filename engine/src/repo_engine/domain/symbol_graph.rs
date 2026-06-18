@@ -209,8 +209,7 @@ pub enum SourceLanguage {
 // ---------------------------------------------------------------------------
 
 /// Visibility/access level of a code symbol.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum SymbolVisibility {
     /// Public — accessible from outside the module.
     #[default]
@@ -222,7 +221,6 @@ pub enum SymbolVisibility {
     /// Crate-only access (pub(crate) in Rust).
     Crate,
 }
-
 
 // ---------------------------------------------------------------------------
 // SymbolGraph

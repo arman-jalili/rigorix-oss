@@ -34,8 +34,7 @@ mod tests {
         }
 
         let classifier = crate::planning::infrastructure::claude_classifier::ClaudeClassifier::new(
-            api_key,
-            None,
+            api_key, None,
         );
 
         let intent = UserIntent::new("read src/lib.rs".to_string(), None);
@@ -66,8 +65,7 @@ mod tests {
         }
 
         let classifier = crate::planning::infrastructure::openai_classifier::OpenaiClassifier::new(
-            api_key,
-            None,
+            api_key, None,
         );
 
         let intent = UserIntent::new("list all functions in src/lib.rs".to_string(), None);

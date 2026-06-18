@@ -8,8 +8,8 @@
 //! state machine. Uses tokio timers for half-open timeout management.
 
 use async_trait::async_trait;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use tokio::sync::RwLock;
 
 use crate::audit::domain::{AuditError, CircuitBreakerState};

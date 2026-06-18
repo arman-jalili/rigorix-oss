@@ -70,7 +70,10 @@ pub trait OrchestratorBuilder: Send + Sync {
     ///
     /// Optional — if omitted, no module dependency graph will be available
     /// for the template generation pipeline.
-    fn with_code_graph_service(self, svc: Arc<dyn crate::code_graph::application::CodeGraphService>) -> Self
+    fn with_code_graph_service(
+        self,
+        svc: Arc<dyn crate::code_graph::application::CodeGraphService>,
+    ) -> Self
     where
         Self: Sized;
 
@@ -78,7 +81,9 @@ pub trait OrchestratorBuilder: Send + Sync {
     ///
     /// Validates configuration and wires all dependencies.
     /// Returns an error if required fields are missing.
-    async fn build(self) -> Result<Box<dyn OrchestratorService>, crate::orchestrator::domain::OrchestratorError>
+    async fn build(
+        self,
+    ) -> Result<Box<dyn OrchestratorService>, crate::orchestrator::domain::OrchestratorError>
     where
         Self: Sized;
 }

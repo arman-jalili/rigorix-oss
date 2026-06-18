@@ -219,13 +219,14 @@ impl SymbolValidationService for SymbolValidationServiceImpl {
         // Also check parameter default values for type references
         for param in &template.parameters {
             if let Some(ref default_val) = param.default
-                && let Some(s) = default_val.as_str() {
-                    for word in s.split_whitespace() {
-                        if Self::looks_like_type(word) {
-                            refs.insert(word.to_string());
-                        }
+                && let Some(s) = default_val.as_str()
+            {
+                for word in s.split_whitespace() {
+                    if Self::looks_like_type(word) {
+                        refs.insert(word.to_string());
                     }
                 }
+            }
         }
 
         Ok(refs.into_iter().collect())
@@ -317,9 +318,9 @@ impl SymbolValidationServiceImpl {
                         || current_word.contains('.')
                         || current_word == "any"
                         || current_word == "Any")
-                    {
-                        refs.insert(current_word.clone());
-                    }
+                {
+                    refs.insert(current_word.clone());
+                }
                 current_word.clear();
             }
         }
@@ -328,8 +329,8 @@ impl SymbolValidationServiceImpl {
                 || current_word.contains('.')
                 || current_word == "any"
                 || current_word == "Any")
-            {
-                refs.insert(current_word);
-            }
+        {
+            refs.insert(current_word);
+        }
     }
 }

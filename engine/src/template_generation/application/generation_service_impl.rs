@@ -7,12 +7,10 @@ use async_trait::async_trait;
 
 use crate::budget_tracking::domain::LlmBudget;
 use crate::planning::domain::intent::UserIntent;
-use crate::template_generation::domain::TemplateGenerator;
-use crate::template_generation::application::dto::{
-    GenerateTemplateInput, GenerateTemplateOutput,
-};
+use crate::template_generation::application::dto::{GenerateTemplateInput, GenerateTemplateOutput};
 use crate::template_generation::application::service::TemplateGenerationService;
 use crate::template_generation::domain::GeneratorError;
+use crate::template_generation::domain::TemplateGenerator;
 use std::sync::Arc;
 
 /// Implementation of TemplateGenerationService using Claude.

@@ -224,10 +224,7 @@ impl CancellationService for CancellationManagerImpl {
 
         Ok(ShutdownOutput {
             execution_id: input.execution_id,
-            signal_used: (*self
-                .signal_rx
-                .borrow())
-                .unwrap_or(ShutdownSignal::Graceful),
+            signal_used: (*self.signal_rx.borrow()).unwrap_or(ShutdownSignal::Graceful),
             total_tasks: total_at_start + completed + cancelled,
             completed_tasks: completed,
             cancelled_tasks: cancelled,

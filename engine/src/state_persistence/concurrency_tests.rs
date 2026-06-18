@@ -13,10 +13,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_execution_state_creation() {
-        let state = ExecutionState::new(
-            Uuid::new_v4(),
-            "test-symbol-hash".to_string(),
-        );
+        let state = ExecutionState::new(Uuid::new_v4(), "test-symbol-hash".to_string());
         assert!(state.node_states.is_empty());
         assert!(state.completed_at.is_none());
     }

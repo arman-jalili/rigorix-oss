@@ -176,9 +176,10 @@ impl<R: TemplateRepository + Send + Sync> TemplateParserService for TemplatePars
         for id in &source_ids {
             // Apply category filter if specified
             if let Some(ref categories) = input.categories
-                && !categories.iter().any(|c| id.contains(c)) {
-                    continue;
-                }
+                && !categories.iter().any(|c| id.contains(c))
+            {
+                continue;
+            }
 
             if let Some(source) = self.repository.get_builtin_source(id).await {
                 match self
@@ -649,10 +650,12 @@ path = "b.txt"
             .unwrap();
 
         assert!(!validation.valid);
-        assert!(validation
-            .errors
-            .iter()
-            .any(|e| e.message.contains("Cycle")));
+        assert!(
+            validation
+                .errors
+                .iter()
+                .any(|e| e.message.contains("Cycle"))
+        );
     }
 
     #[tokio::test]
@@ -694,10 +697,12 @@ path = "{{ undefined_param }}"
             .unwrap();
 
         assert!(validation.valid); // Warning, not error
-        assert!(validation
-            .warnings
-            .iter()
-            .any(|w| w.contains("undefined_param")));
+        assert!(
+            validation
+                .warnings
+                .iter()
+                .any(|w| w.contains("undefined_param"))
+        );
     }
 
     #[tokio::test]

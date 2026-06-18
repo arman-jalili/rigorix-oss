@@ -145,20 +145,20 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
 
         let mut results: Vec<SymbolDefinition> = graph
             .search(&input.pattern)
-            .into_iter().filter(|&s| {
+            .into_iter()
+            .filter(|&s| {
                 let kind_ok = input.kind_filter.as_ref().is_none_or(|k| &s.kind == k);
                 let lang_ok = input
                     .language_filter
                     .as_ref()
                     .is_none_or(|l| &s.language == l);
                 kind_ok && lang_ok
-            }).cloned()
+            })
+            .cloned()
             .collect();
 
         let total_matches = results.len();
-        let truncated = input
-            .max_results
-            .is_some_and(|limit| total_matches > limit);
+        let truncated = input.max_results.is_some_and(|limit| total_matches > limit);
 
         if let Some(limit) = input.max_results {
             results.truncate(limit);
@@ -183,7 +183,8 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
         let symbols: Vec<SymbolDefinition> = graph
             .lookup_by_file(&input.file)
             .into_iter()
-            .filter(|s| input.kind_filter.as_ref().is_none_or(|k| &s.kind == k)).cloned()
+            .filter(|s| input.kind_filter.as_ref().is_none_or(|k| &s.kind == k))
+            .cloned()
             .collect();
 
         let total = symbols.len();
@@ -309,7 +310,9 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
         // This method is intentionally limited — the RwLock prevents returning
         // a reference to the inner graph. Implementations requiring direct access
         // should use SharedSymbolGraph or the domain SymbolGraph directly.
-        panic!("graph() returns a reference that cannot outlive the RwLock guard. Use the service methods instead.");
+        panic!(
+            "graph() returns a reference that cannot outlive the RwLock guard. Use the service methods instead."
+        );
     }
 }
 

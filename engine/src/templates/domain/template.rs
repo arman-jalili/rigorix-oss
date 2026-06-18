@@ -372,8 +372,7 @@ pub struct ParameterDef {
 // ---------------------------------------------------------------------------
 
 /// Expected type of a parameter value.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum ParamType {
     /// A file system path (relative or absolute).
     #[serde(rename = "path")]
@@ -398,7 +397,6 @@ pub enum ParamType {
     #[serde(rename = "json")]
     Json,
 }
-
 
 // ---------------------------------------------------------------------------
 // ParamConstraint
@@ -482,8 +480,7 @@ pub enum TemplateFailureType {
 }
 
 /// Strategy for retrying a failed node.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum RetryStrategy {
     /// Retry the same operation unchanged.
     #[serde(rename = "same_operation")]
@@ -499,7 +496,6 @@ pub enum RetryStrategy {
     #[serde(rename = "fallback")]
     Fallback,
 }
-
 
 // ---------------------------------------------------------------------------
 // ValidationRule

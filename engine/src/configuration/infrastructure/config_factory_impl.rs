@@ -157,13 +157,14 @@ fn merge_into_defaults(raw: serde_json::Value, mut defaults: ConfigDto) -> Confi
         }
 
         if let Some(enforcement) = obj.get("enforcement").and_then(|v| v.as_object())
-            && let Some(preset) = enforcement.get("preset").and_then(|v| v.as_str()) {
-                defaults.enforcement = match preset.to_lowercase().as_str() {
-                    "advanced" => EnforcementPreset::Advanced,
-                    "aggressive" => EnforcementPreset::Aggressive,
-                    _ => EnforcementPreset::Default,
-                };
-            }
+            && let Some(preset) = enforcement.get("preset").and_then(|v| v.as_str())
+        {
+            defaults.enforcement = match preset.to_lowercase().as_str() {
+                "advanced" => EnforcementPreset::Advanced,
+                "aggressive" => EnforcementPreset::Aggressive,
+                _ => EnforcementPreset::Default,
+            };
+        }
 
         if let Some(audit) = obj.get("audit").and_then(|v| v.as_object()) {
             if let Some(enabled) = audit.get("enabled").and_then(|v| v.as_bool()) {
@@ -199,30 +200,31 @@ fn merge_into_defaults(raw: serde_json::Value, mut defaults: ConfigDto) -> Confi
         }
 
         if let Some(tools) = obj.get("tools").and_then(|v| v.as_object())
-            && let Some(risk) = tools.get("risk").and_then(|v| v.as_object()) {
-                if let Some(auto) = risk.get("auto_confirm_low").and_then(|v| v.as_bool()) {
-                    defaults.tools.auto_confirm_low = auto;
-                }
-                if let Some(review) = risk.get("require_review_medium").and_then(|v| v.as_bool()) {
-                    defaults.tools.require_review_medium = review;
-                }
-                if let Some(dry) = risk.get("dry_run_high").and_then(|v| v.as_bool()) {
-                    defaults.tools.dry_run_high = dry;
-                }
-                if let Some(overrides) = risk.get("tool_overrides").and_then(|v| v.as_object()) {
-                    for (k, v) in overrides {
-                        if let Some(level) = v.as_str() {
-                            let risk_level = match level.to_lowercase().as_str() {
-                                "low" => RiskLevel::Low,
-                                "medium" => RiskLevel::Medium,
-                                "high" => RiskLevel::High,
-                                _ => continue,
-                            };
-                            defaults.tools.tool_overrides.insert(k.clone(), risk_level);
-                        }
+            && let Some(risk) = tools.get("risk").and_then(|v| v.as_object())
+        {
+            if let Some(auto) = risk.get("auto_confirm_low").and_then(|v| v.as_bool()) {
+                defaults.tools.auto_confirm_low = auto;
+            }
+            if let Some(review) = risk.get("require_review_medium").and_then(|v| v.as_bool()) {
+                defaults.tools.require_review_medium = review;
+            }
+            if let Some(dry) = risk.get("dry_run_high").and_then(|v| v.as_bool()) {
+                defaults.tools.dry_run_high = dry;
+            }
+            if let Some(overrides) = risk.get("tool_overrides").and_then(|v| v.as_object()) {
+                for (k, v) in overrides {
+                    if let Some(level) = v.as_str() {
+                        let risk_level = match level.to_lowercase().as_str() {
+                            "low" => RiskLevel::Low,
+                            "medium" => RiskLevel::Medium,
+                            "high" => RiskLevel::High,
+                            _ => continue,
+                        };
+                        defaults.tools.tool_overrides.insert(k.clone(), risk_level);
                     }
                 }
             }
+        }
     }
     defaults
 }

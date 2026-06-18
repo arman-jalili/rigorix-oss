@@ -183,9 +183,10 @@ impl ExecutionRecordRepository for FileSystemExecutionRecordRepository {
                 continue;
             }
             if let Some(stem) = file_name.strip_suffix(".record.json")
-                && let Ok(uuid) = Uuid::parse_str(stem) {
-                    ids.push(uuid);
-                }
+                && let Ok(uuid) = Uuid::parse_str(stem)
+            {
+                ids.push(uuid);
+            }
         }
 
         ids.sort();

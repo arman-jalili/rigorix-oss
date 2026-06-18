@@ -15,8 +15,8 @@
 //! - Snapshot methods provide point-in-time values
 
 use async_trait::async_trait;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use tokio_util::sync::CancellationToken;
 
 use crate::budget_tracking::domain::LlmBudgetError;
