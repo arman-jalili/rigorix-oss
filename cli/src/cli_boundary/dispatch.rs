@@ -253,6 +253,16 @@ pub async fn dispatch(
                     let llm_calls = output.record.planning.llm_calls;
                     let llm_tokens = output.record.planning.total_tokens;
                     let template_id = &output.record.planning.template_id;
+                    let node_order = &output.record.planning.node_order;
+
+                    // Sort task results by topological DAG order
+                    let mut indexed: Vec<_> = task_results.iter().collect();
+                    indexed.sort_by_key(|t| {
+                        node_order
+                            .iter()
+                            .position(|n| n == &t.node_name)
+                            .unwrap_or(usize::MAX)
+                    });
 
                     let mut summary = format!(
                         "Run: {} — {} failed, {} passed, {} skipped ({} total)\n",
@@ -263,7 +273,7 @@ pub async fn dispatch(
                         template_id, llm_calls, llm_tokens
                     ));
 
-                    for task in task_results {
+                    for task in &indexed {
                         let icon = match task.status {
                             TaskStatus::Success => "  ✓",
                             TaskStatus::Failure => "  ✗",

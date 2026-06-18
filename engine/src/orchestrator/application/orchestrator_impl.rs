@@ -171,7 +171,7 @@ impl OrchestratorServiceImpl {
         ExecutionRecord {
             execution_id,
             planning: planning_meta.unwrap_or(PlanningMetadata {
-                template_id: String::new(), confidence: 0.0, llm_calls: 0, total_tokens: 0, prompt_hash: String::new(), generated_toml: None,
+                template_id: String::new(), confidence: 0.0, llm_calls: 0, total_tokens: 0, prompt_hash: String::new(), generated_toml: None, node_order: vec![],
             }),
             task_results,
             events,
@@ -225,7 +225,25 @@ impl OrchestratorServiceImpl {
         }
     }
 
-    fn planning_meta(pr: &crate::planning::domain::result::PlanningResult) -> PlanningMetadata {
+    fn planning_meta(
+        pr: &crate::planning::domain::result::PlanningResult,
+        graph: Option<&crate::dag_engine::domain::TaskGraph>,
+    ) -> PlanningMetadata {
+        let node_order = match graph {
+            Some(g) => match g.topological_order() {
+                Some(order) => order
+                    .iter()
+                    .map(|id| {
+                        g.get_node(*id)
+                            .map(|n| n.name.clone())
+                            .unwrap_or_else(|| id.to_string())
+                    })
+                    .collect::<Vec<_>>(),
+                None => vec![],
+            },
+            None => vec![],
+        };
+
         PlanningMetadata {
             template_id: pr.template_id.clone(),
             confidence: pr.confidence,
@@ -233,6 +251,7 @@ impl OrchestratorServiceImpl {
             total_tokens: pr.llm_tokens_used,
             prompt_hash: pr.planning_hash.0.clone(),
             generated_toml: pr.generated_toml.clone(),
+            node_order,
         }
     }
 }
@@ -274,7 +293,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
         // 3. Publish PlanningCompleted
         let _ = self.event_bus.publish(Self::planning_completed_event(execution_id, &plan_out.planning_result)).await;
 
-        let pmeta = Self::planning_meta(&plan_out.planning_result);
+        let pmeta = Self::planning_meta(&plan_out.planning_result, Some(&plan_out.graph));
 
         // 4. Save initial state
         self.state_manager.save_state(Self::make_pending_state(execution_id)).await

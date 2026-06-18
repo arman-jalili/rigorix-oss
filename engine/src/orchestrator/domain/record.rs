@@ -72,6 +72,11 @@ pub struct PlanningMetadata {
     /// None when using a pre-existing template.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generated_toml: Option<String>,
+
+    /// Node names in topological (DAG execution) order.
+    /// Used by the CLI to display tasks in the correct sequence.
+    #[serde(default)]
+    pub node_order: Vec<String>,
 }
 
 /// Result of executing a single DAG node.
@@ -255,6 +260,7 @@ impl Default for PlanningMetadata {
             total_tokens: 0,
             prompt_hash: String::new(),
             generated_toml: None,
+            node_order: vec![],
         }
     }
 }
