@@ -13,11 +13,13 @@
 //! - DTOs are serializable and carry validation documentation
 //! - No implementation — only contracts
 
+pub mod builder;
 pub mod dto;
 pub mod factory;
 pub mod service;
 pub mod service_impl;
 
+pub use builder::*;
 pub use dto::*;
 pub use factory::*;
 pub use service::*;
