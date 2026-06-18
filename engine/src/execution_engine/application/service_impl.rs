@@ -794,6 +794,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                     event: ExecutionEvent::NodeCompleted {
                         execution_id: input.dag_id,
                         node_id: node_id.to_string(),
+                        node_name: node.name.clone(),
                         duration_ms: task_result.duration_ms,
                         output: serde_json::json!(task_result.output.clone().unwrap_or_default()),
                         timestamp: chrono::Utc::now(),
@@ -1017,6 +1018,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                     event: ExecutionEvent::NodeCompleted {
                         execution_id: input.dag_id,
                         node_id: node_id.to_string(),
+                        node_name: format!("node-{}", node_id),
                         duration_ms: exec_duration_ms,
                         output: serde_json::json!(output_text.clone()),
                         timestamp: chrono::Utc::now(),

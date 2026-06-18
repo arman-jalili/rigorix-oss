@@ -1,0 +1,45 @@
+id = "validate-project-workflow"
+name = "Validate Rust Project"
+description = "Validates a Rust project by running type checks, linting, and tests"
+version = "1.0.0"
+
+[[parameters]]
+name = "project_path"
+description = "Path to the Rust project directory"
+required = true
+param_type = "path"
+
+[[nodes]]
+id = "check-project-exists"
+name = "Check project directory exists"
+[nodes.action]
+type = "file_read"
+path = "{{ project_path }}/Cargo.toml"
+
+[[nodes]]
+id = "type-check"
+name = "Run cargo check"
+depends_on = ["check-project-exists"]
+[nodes.action]
+type = "run_command"
+command = "cargo"
+args = ["check", "--manifest-path", "{{ project_path }}/Cargo.toml"]
+
+[[nodes]]
+id = "lint"
+name = "Run cargo clippy"
+depends_on = ["check-project-exists"]
+[nodes.action]
+type = "run_command"
+command = "cargo"
+args = ["clippy", "--manifest-path", "{{ project_path }}/Cargo.toml", "--", "-D", "warnings"]
+
+[[nodes]]
+id = "test"
+name = "Run cargo test"
+depends_on = ["check-project-exists"]
+validation = "test_pass"
+[nodes.action]
+type = "run_command"
+command = "cargo"
+args = ["test", "--manifest-path", "{{ project_path }}/Cargo.toml"]

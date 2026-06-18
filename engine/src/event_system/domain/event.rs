@@ -91,6 +91,8 @@ pub enum ExecutionEvent {
         execution_id: uuid::Uuid,
         /// Identifier of the DAG node that completed.
         node_id: String,
+        /// Human-readable name of the node.
+        node_name: String,
         /// Duration of node execution in milliseconds.
         duration_ms: u64,
         /// Structured output produced by this node.
@@ -435,12 +437,14 @@ impl ExecutionEvent {
     pub fn new_node_completed(
         execution_id: uuid::Uuid,
         node_id: String,
+        node_name: String,
         duration_ms: u64,
         output: serde_json::Value,
     ) -> Self {
         ExecutionEvent::NodeCompleted {
             execution_id,
             node_id,
+            node_name,
             duration_ms,
             output,
             timestamp: Utc::now(),
@@ -575,7 +579,7 @@ mod tests {
             "node_started"
         );
         assert_eq!(
-            ExecutionEvent::new_node_completed(eid, "n1".into(), 100, serde_json::Value::Null)
+            ExecutionEvent::new_node_completed(eid, "n1".into(), "Node 1".into(), 100, serde_json::Value::Null)
                 .event_type_name(),
             "node_completed"
         );
@@ -637,7 +641,7 @@ mod tests {
         assert!(event.summary().contains("Planning started"));
 
         let event =
-            ExecutionEvent::new_node_completed(eid, "compile".into(), 500, serde_json::Value::Null);
+            ExecutionEvent::new_node_completed(eid, "compile".into(), "Compile".into(), 500, serde_json::Value::Null);
         assert!(event.summary().contains("compile"));
         assert!(event.summary().contains("500ms"));
 
@@ -662,7 +666,7 @@ mod tests {
         assert!(ExecutionEvent::new_execution_failed(eid, "err".into()).is_error());
         assert!(ExecutionEvent::new_budget_warning(eid, "tokens".into(), 80, 100).is_error());
         assert!(
-            !ExecutionEvent::new_node_completed(eid, "n1".into(), 100, serde_json::Value::Null)
+            !ExecutionEvent::new_node_completed(eid, "n1".into(), "Node 1".into(), 100, serde_json::Value::Null)
                 .is_error()
         );
         assert!(!ExecutionEvent::new_planning_started(eid, "test".into()).is_error());
@@ -735,7 +739,7 @@ mod tests {
     fn test_new_node_completed() {
         let eid = sample_eid();
         let output = serde_json::json!({"status": "ok"});
-        let event = ExecutionEvent::new_node_completed(eid, "node-1".into(), 250, output.clone());
+        let event = ExecutionEvent::new_node_completed(eid, "node-1".into(), "Node 1".into(), 250, output.clone());
         match &event {
             ExecutionEvent::NodeCompleted {
                 execution_id,
@@ -943,7 +947,7 @@ mod tests {
     fn test_serde_roundtrip_node_completed() {
         let eid = sample_eid();
         let event =
-            ExecutionEvent::new_node_completed(eid, "n1".into(), 250, serde_json::json!("done"));
+            ExecutionEvent::new_node_completed(eid, "n1".into(), "Node 1".into(), 250, serde_json::json!("done"));
         let json = serde_json::to_string(&event).unwrap();
         let deserialized: ExecutionEvent = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.event_type_name(), "node_completed");

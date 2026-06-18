@@ -217,8 +217,29 @@ fn apply_vm_command(vm: &mut TuiViewModel, cmd: VmCommand) {
         VmCommand::CopyMessage(msg) => vm.copy_message = msg,
         VmCommand::SetNodes(nodes) => {
             for n in nodes {
-                // Upsert: insert new nodes, update existing ones by id
-                vm.nodes.insert(n.id.clone(), n);
+                vm.nodes
+                    .entry(n.id.clone())
+                    .and_modify(|existing| {
+                        // Preserve existing name/tool/risk if incoming is empty
+                        if !n.name.is_empty() {
+                            existing.name = n.name.clone();
+                        }
+                        if !n.tool_name.is_empty() {
+                            existing.tool_name = n.tool_name.clone();
+                        }
+                        existing.status = n.status;
+                        if let Some(ms) = n.timing_ms {
+                            existing.timing_ms = Some(ms);
+                        }
+                        if n.output_preview.is_some() {
+                            existing.output_preview = n.output_preview.clone();
+                        }
+                        if n.error.is_some() {
+                            existing.error = n.error.clone();
+                        }
+                        existing.retry_count = n.retry_count;
+                    })
+                    .or_insert_with(|| n);
             }
         }
         VmCommand::Error(err) => {

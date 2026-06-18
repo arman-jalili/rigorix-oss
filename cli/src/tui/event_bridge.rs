@@ -306,6 +306,7 @@ pub(crate) fn event_to_vm_command(event: &ExecutionEvent) -> Option<VmCommand> {
         }
         ExecutionEvent::NodeCompleted {
             node_id,
+            node_name,
             duration_ms,
             output,
             ..
@@ -316,7 +317,7 @@ pub(crate) fn event_to_vm_command(event: &ExecutionEvent) -> Option<VmCommand> {
             });
             let nvm = NodeViewModel {
                 id: node_id.clone(),
-                name: String::new(),
+                name: node_name.clone(),
                 tool_name: String::new(),
                 status: NodeStatus::Completed,
                 dependencies: Vec::new(),
