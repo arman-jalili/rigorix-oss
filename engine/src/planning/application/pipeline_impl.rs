@@ -371,8 +371,13 @@ impl PlanningPipelineService for PlanningPipelineImpl {
 
             match top {
                 Some(template) if template.confidence >= 0.7 => {
-                    // High confidence: proceed to extraction
-                    let param_names = vec![]; // Would get from template
+                    // High confidence: get parameter names from the template
+                    let param_names: Vec<String> = self
+                        .template_service
+                        .get_template_full(&template.template_id)
+                        .await
+                        .map(|t| t.parameters.iter().map(|p| p.name.clone()).collect())
+                        .unwrap_or_default();
                     let extracted = self
                         .phase_extract(&intent, &template.template_id, &param_names)
                         .await?;
