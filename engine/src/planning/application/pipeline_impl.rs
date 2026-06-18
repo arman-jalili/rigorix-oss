@@ -61,7 +61,7 @@ pub struct PlanningPipelineImpl {
     extractor: Box<dyn ParameterExtractor>,
 
     /// Template engine for graph generation.
-    template_service: Box<dyn crate::templates::application::service::TemplateEngineService>,
+    template_service: std::sync::Arc<dyn crate::templates::application::service::TemplateEngineService>,
 
     /// Optional template generator fallback.
     template_generator: Option<Box<dyn TemplateGenerator>>,
@@ -79,7 +79,7 @@ impl PlanningPipelineImpl {
         execution_id: Uuid,
         classifier: Box<dyn Classifier>,
         extractor: Box<dyn ParameterExtractor>,
-        template_service: Box<dyn crate::templates::application::service::TemplateEngineService>,
+        template_service: std::sync::Arc<dyn crate::templates::application::service::TemplateEngineService>,
     ) -> Self {
         Self {
             execution_id,
@@ -193,10 +193,12 @@ impl PlanningPipelineImpl {
             }
         })?;
 
+        let graph = Self::build_task_graph(&output);
+        let sealed = graph.sealed;
         Ok(GenerateGraphOutput {
-            graph: Self::build_task_graph(&output),
+            graph,
             node_count: output.node_count as u32,
-            sealed: output.valid,
+            sealed,
             from_generator: false,
         })
     }
@@ -236,21 +238,46 @@ impl PlanningPipelineImpl {
                     command, ..
                 } => ("run_command", command.clone()),
                 TemplateAction::FileRead { path } => ("file_read", path.clone()),
-                TemplateAction::FileWrite { content, .. } => ("file_write", content.clone()),
-                TemplateAction::FileAppend { content, .. } => ("file_append", content.clone()),
+                TemplateAction::FileWrite { path, content } => {
+                    let v = serde_json::json!({"path": path, "content": content});
+                    ("file_write", v.to_string())
+                }
+                TemplateAction::FileAppend { path, content } => {
+                    let v = serde_json::json!({"path": path, "content": content});
+                    ("file_append", v.to_string())
+                }
+                TemplateAction::FilePatch {
+                    path,
+                    search,
+                    insert,
+                    before,
+                } => {
+                    let v = serde_json::json!({"path": path, "search": search, "insert": insert, "before": before});
+                    ("file_patch", v.to_string())
+                }
+                TemplateAction::GitRead { command, .. } => ("git_read", command.clone()),
+                TemplateAction::GitStage { path } => ("git_stage", path.clone()),
+                TemplateAction::GitCommit {
+                    message, auto_stage, ..
+                } => {
+                    let v = serde_json::json!({"message": message, "auto_stage": auto_stage});
+                    ("git_commit", v.to_string())
+                }
                 TemplateAction::LspQuery {
                     query_type, ..
                 } => ("lsp_query", query_type.clone()),
-                _ => ("unknown", String::new()),
             };
-            graph.nodes.push(crate::dag_engine::domain::TaskNode::new(
+            // add_unchecked validates sealed state and duplicate IDs
+            graph.add_unchecked(crate::dag_engine::domain::TaskNode::new(
                 node_id,
                 &node.name,
                 tool.to_string(),
                 deps,
                 intent,
-            ));
+            )).ok(); // safe: brand new graph, unique UUIDs
         }
+        // Seal the graph so it's ready for execution
+        let _ = graph.seal();
         graph
     }
 
@@ -483,16 +510,32 @@ impl PlanningPipelineService for PlanningPipelineImpl {
                                 label: "planning".to_string(),
                             };
 
-                            // Build a minimal RepoContext for the generator.
-                            // Full RepoContext building is handled by TemplateGenerationService.
-                            let repo_context = crate::template_generation::domain::RepoContext {
-                                root_dir: std::path::PathBuf::from("."),
-                                project_type: "unknown".to_string(),
-                                directory_tree: Vec::new(),
-                                dependencies: Vec::new(),
-                                public_api: Vec::new(),
-                                symbol_graph_snapshot: None,
+                            // Build RepoContext from actual filesystem
+                            let repo_path = if input.repo_root.is_empty() {
+                                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+                            } else {
+                                std::path::PathBuf::from(&input.repo_root)
                             };
+                            let mut repo_context =
+                                crate::template_generation::domain::RepoContext::from_path(&repo_path)
+                                    .unwrap_or_else(|_| {
+                                        crate::template_generation::domain::RepoContext::new(
+                                            repo_path,
+                                            "unknown".to_string(),
+                                        )
+                                    });
+
+                            // Enrich with existing templates from the template engine
+                            if let Ok(list_output) = self.template_service.list_templates().await {
+                                repo_context.existing_templates = list_output
+                                    .templates
+                                    .into_iter()
+                                    .map(|t| crate::template_generation::domain::TemplateSummary {
+                                        id: t.id,
+                                        description: t.description,
+                                    })
+                                    .collect();
+                            }
                             let generated =
                                 generator.generate(&intent, &repo_context, &budget).await?;
                             total_llm_calls += generated.llm_calls_used;
@@ -557,6 +600,7 @@ impl PlanningPipelineService for PlanningPipelineImpl {
             execution_id: input.execution_id,
             enable_generator_fallback: input.enable_generator_fallback,
             skip_validation: input.skip_validation,
+            repo_root: input.repo_root,
         };
 
         let plan_output = self.plan(plan_input).await?;

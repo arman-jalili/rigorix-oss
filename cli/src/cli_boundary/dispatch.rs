@@ -29,9 +29,10 @@
 
 use std::fmt;
 
+
 use serde_json::Value as JsonValue;
 
-use crate::cli_boundary::cli::{AuditAction, CliCommand, ConfigAction, TemplateAction};
+use crate::cli_boundary::cli::{CliCommand, ConfigAction};
 
 // ---------------------------------------------------------------------------
 // Dispatch result type
@@ -168,12 +169,26 @@ pub async fn dispatch(
     config: crate::cli_boundary::config::CliConfig,
     cancellation_token: crate::cli_boundary::signal::CancellationToken,
 ) -> DispatchResult {
-    // Build orchestrator for Tier 1 commands
-    let orch = match &command {
+    // Build CLI services for Tier 2 commands (cheap, no LLM key needed).
+    // Also used by Tier 3 (init, key).
+    let services = match crate::cli_boundary::orchestrator::build_cli_services(config.clone()).await
+    {
+        Ok(s) => Some(s),
+        Err(e) => {
+            let code = e.exit_code();
+            return DispatchResult::error(e.to_string(), code);
+        }
+    };
+
+    // Build full orchestrator for commands that need LLM (Tier 1 + generate + diff-plan).
+    // Also keep the services reference for template recovery on generate.
+    let (orch, llm_services): (Option<_>, Option<_>) = match &command {
         CliCommand::Run { .. }
         | CliCommand::Plan { .. }
         | CliCommand::Cancel { .. }
-        | CliCommand::Status => {
+        | CliCommand::Status
+        | CliCommand::Generate { .. }
+        | CliCommand::DiffPlan { .. } => {
             match crate::cli_boundary::orchestrator::build_orchestrator(
                 config,
                 cancellation_token,
@@ -181,14 +196,14 @@ pub async fn dispatch(
             )
             .await
             {
-                Ok(o) => Some(o),
+                Ok((o, svc)) => (Some(o), Some(svc)),
                 Err(e) => {
                     let code = e.exit_code();
                     return DispatchResult::error(e.to_string(), code);
                 }
             }
         }
-        _ => None,
+        _ => (None, None),
     };
 
     match command {
@@ -203,7 +218,9 @@ pub async fn dispatch(
             let input = rigorix_engine::orchestrator::application::dto::RunInput {
                 intent,
                 config: serde_json::Value::Null,
-                repo_root: String::new(),
+                repo_root: std::env::current_dir()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default(),
                 enforcement_preset: enforcement,
             };
             match orch.run(input).await {
@@ -234,7 +251,9 @@ pub async fn dispatch(
             let input = rigorix_engine::orchestrator::application::dto::PlanOnlyInput {
                 intent,
                 config: serde_json::Value::Null,
-                repo_root: String::new(),
+                repo_root: std::env::current_dir()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default(),
             };
             match orch.plan_only(input).await {
                 Ok(output) => {
@@ -289,72 +308,213 @@ pub async fn dispatch(
             }
         }
 
-        // ── Tier 2: Via Engine Services Directly ─────────────────────
-        // These are stubs that return NotImplemented until the engine
-        // services are wired into the CLI builder.
-        CliCommand::History { limit, status } => {
-            let _ = (limit, status);
-            DispatchResult::success_with_data(
-                "History (placeholder)",
-                serde_json::json!({ "executions": [] }),
-            )
+        // ── Tier 2: Via CliServices ───────────────────────────────────
+        CliCommand::History { limit, status: _ } => {
+            let svc = services.as_ref().expect("services built above");
+            let input = rigorix_engine::state_persistence::application::dto::ListExecutionsInput {
+                limit: limit.map(|n| n.min(100)),
+                ..Default::default()
+            };
+            match svc.state_manager.list_executions(input).await {
+                Ok(output) => {
+                    let data = serde_json::json!({
+                        "executions": output.executions,
+                        "total_count": output.total_count,
+                    });
+                    DispatchResult::success_with_data(
+                        format!("{} execution(s)", output.total_count),
+                        data,
+                    )
+                }
+                Err(e) => DispatchResult::error(format!("history: {e}"), 1),
+            }
         }
 
-        CliCommand::Explain { execution_id, diff } => {
-            let _ = (execution_id, diff);
-            DispatchResult::success_with_data(
-                "Explain (placeholder)",
-                serde_json::json!({ "execution_id": execution_id }),
-            )
+        CliCommand::Explain {
+            execution_id,
+            diff: _,
+        } => {
+            let svc = services.as_ref().expect("services built above");
+            let input = rigorix_engine::state_persistence::application::dto::LoadStateInput {
+                execution_id,
+            };
+            match svc.state_manager.load_state(input).await {
+                Ok(output) => {
+                    let summary = format!(
+                        "Execution {}: {:?} — {} node(s)",
+                        execution_id, output.state.status, output.state.node_states.len()
+                    );
+                    let data = serde_json::json!({ "state": output.state });
+                    DispatchResult::success_with_data(summary, data)
+                }
+                Err(e) => DispatchResult::error(format!("explain: {e}"), 1),
+            }
         }
 
-        CliCommand::DiffPlan { id1, id2 } => {
-            let _ = (id1, id2);
-            DispatchResult::success("Diff (placeholder)")
+        CliCommand::DiffPlan { id1: _, id2: _ } => {
+            DispatchResult::error(
+                "diff-plan: requires DagPlanningService (not yet exposed via CliServices)",
+                1,
+            )
         }
 
         CliCommand::Generate { intent } => {
-            let _ = intent;
-            DispatchResult::success("Generate (placeholder)")
+            let orch = orch.as_ref().expect("orchestrator built above");
+            let input = rigorix_engine::orchestrator::application::dto::PlanOnlyInput {
+                intent,
+                config: serde_json::Value::Null,
+                repo_root: std::env::current_dir()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default(),
+            };
+            match orch.plan_only(input).await {
+                Ok(output) => {
+                    let tpl_id = output.plan["template_id"].as_str().unwrap_or("generated");
+                    let toml_str = output.plan["generated_toml"].as_str().unwrap_or("");
+                    if toml_str.is_empty() {
+                        return DispatchResult::error(
+                            "generate: LLM did not produce a template. Try a more specific intent.",
+                            1,
+                        );
+                    }
+                    let tpl_dir = std::path::PathBuf::from(".rigorix/templates");
+                    let tpl_path = tpl_dir.join(format!("{tpl_id}.toml"));
+                    let _ = tokio::fs::create_dir_all(&tpl_dir).await;
+                    if let Err(e) = tokio::fs::write(&tpl_path, toml_str).await {
+                        return DispatchResult::error(format!("generate: save failed: {e}"), 1);
+                    }
+                    let data = serde_json::json!({
+                        "template_id": tpl_id,
+                        "saved_to": tpl_path.to_string_lossy(),
+                        "toml": toml_str,
+                    });
+                    DispatchResult::success_with_data(
+                        format!("Generated template '{tpl_id}' → {}", tpl_path.display()),
+                        data,
+                    )
+                }
+                Err(e) => {
+                    // The pipeline may have generated and registered a template
+                    // before failing on graph generation (e.g. missing parameters).
+                    let err_msg = e.to_string();
+                    // Use the orchestrator's services — the template was registered there
+                    let svc = llm_services.as_ref().or(services.as_ref())
+                        .expect("services built above");
+                    if let Ok(list) = svc.template_service.list_templates().await {
+                        if let Some(summary) = list.templates.first() {
+                            let tpl_id = summary.id.clone();
+                            let tpl_dir = std::path::PathBuf::from(".rigorix/templates");
+                            let tpl_path = tpl_dir.join(format!("{tpl_id}.toml"));
+                            let _ = tokio::fs::create_dir_all(&tpl_dir).await;
+
+                            // Try to get the full template and serialize to TOML
+                            if let Some(full_template) =
+                                svc.template_service.get_template_full(&tpl_id).await
+                            {
+                                if let Ok(toml_str) = toml::to_string_pretty(&full_template) {
+                                    let _ = tokio::fs::write(&tpl_path, &toml_str).await;
+                                }
+                            }
+
+                            let data = serde_json::json!({
+                                "template_id": summary.id,
+                                "name": summary.name,
+                                "description": summary.description,
+                                "param_count": summary.param_count,
+                                "saved_to": tpl_path.to_string_lossy(),
+                                "note": format!("graph generation incomplete: {err_msg}"),
+                            });
+                            return DispatchResult::success_with_data(
+                                format!(
+                                    "Generated template '{}' ({}) — {} param(s). Graph pending.",
+                                    summary.id, summary.name, summary.param_count,
+                                ),
+                                data,
+                            );
+                        }
+                    }
+                    DispatchResult::error(format!("generate: {err_msg}"), 1)
+                }
+            }
         }
 
-        CliCommand::Template { action } => match action {
-            TemplateAction::List => DispatchResult::success_with_data(
-                "Available templates",
-                serde_json::json!({ "templates": [] }),
-            ),
-            TemplateAction::Show { id } => {
-                DispatchResult::success(format!("Template: {id} (placeholder)"))
+        CliCommand::Template { action } => {
+            let svc = llm_services.as_ref().or(services.as_ref())
+                .expect("services built above");
+            match action {
+                crate::cli_boundary::cli::TemplateAction::List => {
+                    match svc.template_service.list_templates().await {
+                        Ok(output) => {
+                            let data =
+                                serde_json::json!({ "templates": output.templates });
+                            DispatchResult::success_with_data(
+                                format!("{} template(s)", output.templates.len()),
+                                data,
+                            )
+                        }
+                        Err(e) => {
+                            DispatchResult::error(format!("template list: {e}"), 1)
+                        }
+                    }
+                }
+                crate::cli_boundary::cli::TemplateAction::Show { id } => {
+                    let input = rigorix_engine::templates::application::dto::GetTemplateInput {
+                        template_id: id.clone(),
+                    };
+                    match svc.template_service.get_template(input).await {
+                        Ok(Some(summary)) => {
+                            let data = serde_json::json!({ "template": summary });
+                            DispatchResult::success_with_data(
+                                format!("Template: {id}"),
+                                data,
+                            )
+                        }
+                        Ok(None) => DispatchResult::error(
+                            format!("template not found: {id}"),
+                            1,
+                        ),
+                        Err(e) => {
+                            DispatchResult::error(format!("template show: {e}"), 1)
+                        }
+                    }
+                }
             }
-        },
-
-        CliCommand::Audit { action } => match action {
-            AuditAction::List { limit } => {
-                let _ = limit;
-                DispatchResult::success_with_data(
-                    "Audit trail",
-                    serde_json::json!({ "entries": [] }),
-                )
-            }
-            AuditAction::Show { id } => {
-                DispatchResult::success(format!("Audit: {id} (placeholder)"))
-            }
-            AuditAction::Diff { id1, id2 } => {
-                DispatchResult::success(format!("Audit diff: {id1} vs {id2} (placeholder)"))
-            }
-        },
-
-        CliCommand::Logs { session_id } => {
-            let _ = session_id;
-            DispatchResult::success("Logs (placeholder)")
         }
 
-        CliCommand::Config { action } => match action {
-            ConfigAction::Init => DispatchResult::success("Config init (placeholder)"),
-            ConfigAction::Show => {
-                DispatchResult::success_with_data("Configuration", serde_json::json!({}))
+        CliCommand::Audit { action: _ } => {
+            DispatchResult::error(
+                "audit: AuditService does not yet expose list/show/diff queries",
+                1,
+            )
+        }
+
+        CliCommand::Logs { session_id: _ } => {
+            DispatchResult::error(
+                "logs: EventBusService not yet exposed via CliServices for log replay",
+                1,
+            )
+        }
+
+        CliCommand::Config { action } => {
+            let svc = services.as_ref().expect("services built above");
+            match action {
+                ConfigAction::Init => cmd_init(),
+                ConfigAction::Show => {
+                    let data = serde_json::json!({ "config": svc.config });
+                    DispatchResult::success_with_data("Current configuration", data)
+                }
+                ConfigAction::Validate => {
+                    match svc.config.engine_config() {
+                        Ok(ec) => DispatchResult::success(format!(
+                            "Config valid: {} parallel tasks, LLM provider={:?}, model={}",
+                            ec.orchestrator.max_parallel_tasks,
+                            ec.llm.provider,
+                            ec.llm.model,
+                        )),
+                        Err(e) => DispatchResult::error(format!("config invalid: {e}"), 1),
+                    }
+                }
             }
-            ConfigAction::Validate => DispatchResult::success("Config valid"),
         },
 
         // ── Tier 3: CLI-Only ────────────────────────────────────

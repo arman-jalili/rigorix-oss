@@ -198,6 +198,14 @@ impl TemplateEngineService for TemplateEngineImpl {
             }))
     }
 
+    async fn get_template_full(
+        &self,
+        template_id: &str,
+    ) -> Option<crate::templates::domain::Template> {
+        let templates = self.templates.read().expect("lock poisoned");
+        templates.get(template_id).map(|entry| entry.template.clone())
+    }
+
     #[tracing::instrument(skip_all)]
     async fn list_templates(&self) -> Result<ListTemplatesOutput, TemplateError> {
         let templates = self.templates.read().expect("lock poisoned");

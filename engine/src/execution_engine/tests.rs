@@ -47,6 +47,7 @@ async fn test_execute_graph_creates_session() {
     let output = executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
+            graph: None,
             config_override: None,
         })
         .await
@@ -64,6 +65,7 @@ async fn test_execute_graph_rejects_duplicate() {
     executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
+            graph: None,
             config_override: None,
         })
         .await
@@ -72,6 +74,7 @@ async fn test_execute_graph_rejects_duplicate() {
     let err = executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
+            graph: None,
             config_override: None,
         })
         .await
@@ -93,6 +96,7 @@ async fn test_execute_graph_with_config_override() {
     let output = executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
+            graph: None,
             config_override: Some(custom_config),
         })
         .await
@@ -170,6 +174,7 @@ async fn test_pause_and_resume_execution() {
     executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
+            graph: None,
             config_override: None,
         })
         .await
@@ -212,6 +217,7 @@ async fn test_pause_already_paused_returns_error() {
     executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
+            graph: None,
             config_override: None,
         })
         .await
@@ -238,6 +244,7 @@ async fn test_resume_not_paused_returns_error() {
     executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
+            graph: None,
             config_override: None,
         })
         .await
@@ -259,6 +266,7 @@ async fn test_abort_execution() {
     executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
+            graph: None,
             config_override: None,
         })
         .await
@@ -284,6 +292,7 @@ async fn test_abort_twice_returns_error() {
     executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
+            graph: None,
             config_override: None,
         })
         .await
@@ -379,6 +388,7 @@ async fn test_execute_graph_with_custom_config_override_respected() {
     let output = executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
+            graph: None,
             config_override: Some(config),
         })
         .await
@@ -848,6 +858,7 @@ async fn test_parallel_execution_factory_creates_service() {
     let output = service
         .execute_graph(ExecuteGraphInput {
             dag_id,
+            graph: None,
             config_override: None,
         })
         .await
@@ -908,6 +919,7 @@ async fn test_factory_with_custom_config() {
     let output = service
         .execute_graph(ExecuteGraphInput {
             dag_id,
+            graph: None,
             config_override: None,
         })
         .await
@@ -991,6 +1003,7 @@ async fn test_execute_graph_creates_session_and_tracks_state() {
     executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
+            graph: None,
             config_override: None,
         })
         .await
@@ -1014,6 +1027,7 @@ async fn test_execute_graph_completes_without_cancellation() {
     let output = executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
+            graph: None,
             config_override: None,
         })
         .await
@@ -1031,6 +1045,7 @@ async fn test_abort_marks_execution_as_cancelled() {
     executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
+            graph: None,
             config_override: None,
         })
         .await
@@ -1173,6 +1188,7 @@ async fn test_progress_callback_fires() {
     executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
+            graph: None,
             config_override: None,
         })
         .await

@@ -26,8 +26,8 @@ use crate::risk_gating::infrastructure::repository::RiskConfigRepository;
 /// # Examples
 ///
 /// ```rust
-/// use rigorix::risk_gating::infrastructure::InMemoryConfigRepository;
-/// use rigorix::risk_gating::infrastructure::repository::RiskConfigRepository;
+/// use rigorix_engine::risk_gating::infrastructure::InMemoryConfigRepository;
+/// use rigorix_engine::risk_gating::infrastructure::repository::RiskConfigRepository;
 ///
 /// # async fn example() {
 /// let repo = InMemoryConfigRepository::new();

@@ -272,13 +272,39 @@ impl LlmConfigDto {
 mod tests {
     use super::*;
     use crate::configuration::infrastructure::config_factory_impl::ConfigFactoryImpl;
+    use crate::configuration::domain::ConfigSource;
     use crate::configuration::infrastructure::filesystem_config_repository::FilesystemConfigRepository;
     use std::path::PathBuf;
 
+    /// Hermetic test repository that finds no config file and no env vars.
+    struct NoopConfigRepository;
+
+    #[async_trait::async_trait]
+    impl ConfigRepository for NoopConfigRepository {
+        async fn read_toml_file(&self, _path: &str) -> Result<String, ConfigurationError> {
+            Err(ConfigurationError::NotFound {
+                path: _path.into(),
+                config_source: ConfigSource::CwdFile,
+            })
+        }
+        async fn resolve_config_path(&self, _path: Option<&str>) -> Option<String> {
+            None
+        }
+        async fn read_env_vars(
+            &self,
+            _prefix: &str,
+        ) -> std::collections::HashMap<String, String> {
+            std::collections::HashMap::new()
+        }
+        async fn read_env_var(&self, _name: &str) -> Option<String> {
+            None
+        }
+    }
+
     #[tracing::instrument(skip_all)]
     fn create_service() -> ConfigServiceImpl {
-        let cwd = PathBuf::from("/tmp");
-        let repo = Box::new(FilesystemConfigRepository::new(cwd));
+        // Use NoopConfigRepository so tests are hermetic — no ~/.rigorix/ leaks
+        let repo = Box::new(NoopConfigRepository);
         let factory = Box::new(ConfigFactoryImpl::new());
         ConfigServiceImpl::new(repo, factory)
     }

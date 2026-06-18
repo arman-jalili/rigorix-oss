@@ -66,6 +66,15 @@ pub struct GeneratedTemplateCost {
 // RepoContext — Repository snapshot for generation context
 // ---------------------------------------------------------------------------
 
+/// Summary of an existing template shown to the generator.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TemplateSummary {
+    /// Template ID
+    pub id: String,
+    /// Template description
+    pub description: String,
+}
+
 /// Snapshot of repository structure used as context for template generation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepoContext {
@@ -73,12 +82,26 @@ pub struct RepoContext {
     pub root_dir: PathBuf,
     /// Detected project type.
     pub project_type: String,
-    /// Flat list of relevant file paths.
+    /// Formatted directory tree (tree command output style).
+    pub dir_tree: String,
+    /// Flat list of relevant file paths (for backward compat).
     pub directory_tree: Vec<String>,
     /// External dependencies.
     pub dependencies: Vec<String>,
-    /// Public type, function, and trait names.
-    pub public_api: Vec<String>,
+    /// Public type, function, and trait names (formatted string for prompt).
+    pub public_api: String,
+    /// Public type, function, and trait names (list for backward compat).
+    pub public_api_list: Vec<String>,
+    /// Existing template IDs (to avoid duplicates).
+    pub existing_templates: Vec<TemplateSummary>,
+    /// Content of key entry-point files (src/lib.rs, src/main.rs, etc.).
+    pub key_file_contents: String,
+    /// Architecture overview from ARCHITECTURE.md or .pi/architecture/.
+    #[serde(default)]
+    pub architecture_overview: String,
+    /// Detected bounded context name (e.g. "dag-engine", "planning").
+    #[serde(default)]
+    pub bounded_context: String,
     /// Optional symbol graph subset for Phase 3 validation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub symbol_graph_snapshot: Option<serde_json::Value>,
@@ -90,21 +113,66 @@ impl RepoContext {
         Self {
             root_dir,
             project_type,
+            dir_tree: String::new(),
             directory_tree: Vec::new(),
             dependencies: Vec::new(),
-            public_api: Vec::new(),
+            public_api: String::new(),
+            public_api_list: Vec::new(),
+            existing_templates: Vec::new(),
+            key_file_contents: String::new(),
+            architecture_overview: String::new(),
+            bounded_context: String::new(),
             symbol_graph_snapshot: None,
         }
     }
 
+    /// Build a RepoContext from a working directory by scanning the filesystem.
+    pub fn from_path(dir: &std::path::Path) -> std::io::Result<Self> {
+        let dir_tree = build_dir_tree(dir, 5)?;
+        let project_type = detect_project_type(dir);
+        let dependencies = read_dependencies(dir, &project_type);
+
+        // Read key entry-point files
+        let key_file_contents = read_key_files(dir);
+
+        // Scan public API symbols from source files
+        let public_api = scan_public_api(dir, &project_type);
+
+        // Read architecture documentation
+        let architecture_overview = read_architecture_docs(dir);
+
+        // Detect bounded context from CWD
+        let bounded_context = detect_bounded_context(dir);
+
+        Ok(Self {
+            root_dir: dir.to_path_buf(),
+            project_type,
+            dir_tree,
+            directory_tree: Vec::new(),
+            dependencies,
+            public_api,
+            public_api_list: Vec::new(),
+            existing_templates: Vec::new(),
+            key_file_contents,
+            architecture_overview,
+            bounded_context,
+            symbol_graph_snapshot: None,
+        })
+    }
+
     /// Check if this context has any file entries.
     pub fn has_files(&self) -> bool {
-        !self.directory_tree.is_empty()
+        !self.directory_tree.is_empty() || !self.dir_tree.is_empty()
     }
 
     /// Check if this context has any public API entries.
     pub fn has_public_api(&self) -> bool {
-        !self.public_api.is_empty()
+        !self.public_api.is_empty() || !self.public_api_list.is_empty()
+    }
+
+    /// Create an empty RepoContext (for tests/mocks).
+    pub fn empty() -> Self {
+        Self::new(std::path::PathBuf::from("."), "unknown".to_string())
     }
 }
 
@@ -230,6 +298,560 @@ impl GeneratorError {
 }
 
 // ---------------------------------------------------------------------------
+// Filesystem scanning helpers for RepoContext::from_path()
+// ---------------------------------------------------------------------------
+
+/// Scan source files for public API symbols (pub fn, pub struct, pub trait, etc.).
+fn scan_public_api(root: &std::path::Path, project_type: &str) -> String {
+    let mut symbols = Vec::new();
+    let extensions: &[&str] = if project_type.contains("Rust") {
+        &["rs"]
+    } else if project_type.contains("TypeScript") {
+        &["ts"]
+    } else if project_type.contains("Python") {
+        &["py"]
+    } else {
+        &["rs", "ts", "py"]
+    };
+
+    let max_files = 50;
+    let max_symbols = 200;
+    let mut files_scanned = 0u32;
+    let mut dirs_to_visit = vec![root.to_path_buf()];
+
+    while let Some(dir) = dirs_to_visit.pop() {
+        if files_scanned >= max_files || symbols.len() >= max_symbols {
+            break;
+        }
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                if files_scanned >= max_files || symbols.len() >= max_symbols {
+                    break;
+                }
+                let path = entry.path();
+                if path.is_dir() {
+                    // Skip hidden and target/build dirs
+                    let name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+                    if name.starts_with('.') || name == "target" || name == "node_modules" || name == "__pycache__" {
+                        continue;
+                    }
+                    dirs_to_visit.push(path);
+                } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    if extensions.contains(&ext) {
+                        if let Ok(content) = std::fs::read_to_string(&path) {
+                            files_scanned += 1;
+                            let rel_path = path
+                                .strip_prefix(root)
+                                .map(|p| p.to_string_lossy())
+                                .unwrap_or_else(|_| path.to_string_lossy());
+                            extract_public_symbols(&content, &rel_path, &mut symbols, project_type);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if symbols.is_empty() {
+        String::new()
+    } else {
+        symbols.join("\n")
+    }
+}
+
+/// Extract public API symbols from source content.
+fn extract_public_symbols(
+    content: &str,
+    file_path: &str,
+    symbols: &mut Vec<String>,
+    project_type: &str,
+) {
+    if project_type.contains("Rust") {
+        extract_rust_public_api(content, file_path, symbols);
+    } else if project_type.contains("TypeScript") {
+        extract_ts_public_api(content, file_path, symbols);
+    } else if project_type.contains("Python") {
+        extract_python_public_api(content, file_path, symbols);
+    }
+}
+
+/// Extract Rust public API symbols.
+fn extract_rust_public_api(content: &str, file_path: &str, symbols: &mut Vec<String>) {
+    for line in content.lines() {
+        let trimmed = line.trim();
+        // pub fn name(...) -> RetType
+        if let Some(rest) = trimmed.strip_prefix("pub fn ") {
+            let name = rest.split(|c: char| c == '(' || c == '<').next().unwrap_or(rest);
+            symbols.push(format!("{}: pub fn {}", file_path, name.trim()));
+        }
+        // pub struct Name, pub enum Name, pub trait Name
+        else if let Some(rest) = trimmed.strip_prefix("pub struct ") {
+            let name = rest
+                .split(|c: char| c == '<' || c == '{' || c == '(' || c == ';')
+                .next()
+                .unwrap_or(rest);
+            symbols.push(format!("{}: pub struct {}", file_path, name.trim()));
+        } else if let Some(rest) = trimmed.strip_prefix("pub enum ") {
+            let name = rest
+                .split(|c: char| c == '<' || c == '{' || c == '(')
+                .next()
+                .unwrap_or(rest);
+            symbols.push(format!("{}: pub enum {}", file_path, name.trim()));
+        } else if let Some(rest) = trimmed.strip_prefix("pub trait ") {
+            let name = rest
+                .split(|c: char| c == '<' || c == '{' || c == '(')
+                .next()
+                .unwrap_or(rest);
+            symbols.push(format!("{}: pub trait {}", file_path, name.trim()));
+        } else if let Some(rest) = trimmed.strip_prefix("pub mod ") {
+            let name = rest.split(';').next().unwrap_or(rest);
+            symbols.push(format!("{}: pub mod {}", file_path, name.trim()));
+        }
+        // pub type Name = ...;
+        else if let Some(rest) = trimmed.strip_prefix("pub type ") {
+            let name = rest.split(|c: char| c == '=' || c == '<').next().unwrap_or(rest);
+            symbols.push(format!("{}: pub type {}", file_path, name.trim()));
+        }
+        // pub const NAME: ... = ...;
+        else if trimmed.starts_with("pub const ") {
+            let after = &trimmed[10..];
+            let name = after.split(':').next().unwrap_or(after);
+            symbols.push(format!("{}: pub const {}", file_path, name.trim()));
+        }
+    }
+}
+
+/// Extract TypeScript public API symbols.
+fn extract_ts_public_api(content: &str, file_path: &str, symbols: &mut Vec<String>) {
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("export ") {
+            // export function name, export class Name, export interface Name,
+            // export type Name, export const name
+            let rest = &trimmed[7..].trim();
+            if let Some(rest) = rest.strip_prefix("function ") {
+                let name = rest.split('(').next().unwrap_or(rest);
+                symbols.push(format!("{}: export function {}", file_path, name.trim()));
+            } else if let Some(rest) = rest.strip_prefix("class ") {
+                let name = rest
+                    .split(|c: char| c == '<' || c == '{')
+                    .next()
+                    .unwrap_or(rest);
+                symbols.push(format!("{}: export class {}", file_path, name.trim()));
+            } else if let Some(rest) = rest.strip_prefix("interface ") {
+                let name = rest
+                    .split(|c: char| c == '<' || c == '{')
+                    .next()
+                    .unwrap_or(rest);
+                symbols.push(format!("{}: export interface {}", file_path, name.trim()));
+            } else if let Some(rest) = rest.strip_prefix("type ") {
+                let name = rest
+                    .split(|c: char| c == '=' || c == '<')
+                    .next()
+                    .unwrap_or(rest);
+                symbols.push(format!("{}: export type {}", file_path, name.trim()));
+            } else if let Some(rest) = rest.strip_prefix("const ") {
+                let name = rest.split(|c: char| c == ':' || c == '=').next().unwrap_or(rest);
+                symbols.push(format!("{}: export const {}", file_path, name.trim()));
+            }
+        }
+    }
+}
+
+/// Extract Python public API symbols.
+fn extract_python_public_api(content: &str, file_path: &str, symbols: &mut Vec<String>) {
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("def ") && !trimmed.starts_with("def _") {
+            let rest = &trimmed[4..];
+            let name = rest.split('(').next().unwrap_or(rest);
+            symbols.push(format!("{}: def {}", file_path, name.trim()));
+        } else if trimmed.starts_with("class ") && !trimmed.starts_with("class _") {
+            let rest = &trimmed[6..];
+            let name = rest
+                .split(|c: char| c == '(' || c == ':')
+                .next()
+                .unwrap_or(rest);
+            symbols.push(format!("{}: class {}", file_path, name.trim()));
+        }
+        // __all__ = [...] exports
+        if trimmed.starts_with("__all__") {
+            symbols.push(format!("{}: __all__ (explicit exports)", file_path));
+        }
+    }
+}
+
+/// Read architecture documentation from common locations.
+fn read_architecture_docs(root: &std::path::Path) -> String {
+    let candidates = [
+        "ARCHITECTURE.md",
+        "docs/ARCHITECTURE.md",
+        ".pi/architecture/overview.md",
+        "docs/architecture.md",
+    ];
+
+    let mut sections = Vec::new();
+    for rel in &candidates {
+        let path = root.join(rel);
+        if path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                let truncated: String = content
+                    .lines()
+                    .take(200)
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let note = if content.lines().count() > 200 {
+                    format!("\n// ... (truncated from {} lines)", content.lines().count())
+                } else {
+                    String::new()
+                };
+                sections.push(format!(
+                    "// === {} ===\n{}{}",
+                    rel, truncated, note
+                ));
+            }
+        }
+    }
+
+    if sections.is_empty() {
+        String::new()
+    } else {
+        sections.join("\n\n")
+    }
+}
+
+/// Detect the bounded context name from the CWD relative to the project root.
+fn detect_bounded_context(root: &std::path::Path) -> String {
+    let cwd = match std::env::current_dir() {
+        Ok(d) => d,
+        Err(_) => return String::new(),
+    };
+
+    // Check if CWD is within the project root
+    let rel = match cwd.strip_prefix(root) {
+        Ok(r) => r,
+        Err(_) => {
+            // Not within root — return basename of CWD
+            return cwd
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+        }
+    };
+
+    // Detect bounded context from path components
+    // e.g. "engine/src/dag_engine" → "dag-engine"
+    // e.g. "cli" → "cli"
+    let components: Vec<_> = rel.components().collect();
+
+    if components.is_empty() {
+        return root
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+    }
+
+    // Try to find a bounded context dir: look for src/<name> or crates/<name>
+    for window in components.windows(2) {
+        if let (std::path::Component::Normal(a), std::path::Component::Normal(b)) =
+            (&window[0], &window[1])
+        {
+            let a_str = a.to_string_lossy();
+            if a_str == "src" || a_str == "crates" || a_str == "lib" {
+                return b.to_string_lossy().replace('_', "-");
+            }
+        }
+    }
+
+    // Fallback: last meaningful component
+    components
+        .last()
+        .and_then(|c| {
+            if let std::path::Component::Normal(s) = c {
+                Some(s.to_string_lossy().replace('_', "-"))
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default()
+}
+
+/// Build a shallow directory tree string (N levels deep, tree-command style).
+fn build_dir_tree(root: &std::path::Path, max_depth: usize) -> std::io::Result<String> {
+    let mut lines = Vec::new();
+    build_dir_tree_recursive(root, "", max_depth, &mut lines)?;
+    Ok(lines.join("\n"))
+}
+
+fn build_dir_tree_recursive(
+    dir: &std::path::Path,
+    prefix: &str,
+    remaining_depth: usize,
+    lines: &mut Vec<String>,
+) -> std::io::Result<()> {
+    let name = dir
+        .file_name()
+        .map(|n| n.to_string_lossy())
+        .unwrap_or_default();
+
+    if !prefix.is_empty() {
+        // We don't have is_last for root, simplified version
+        lines.push(format!("{}{}", prefix, name));
+    } else {
+        lines.push(name.to_string());
+    }
+
+    if remaining_depth == 0 {
+        return Ok(());
+    }
+
+    let new_prefix = format!("{}    ", prefix);
+
+    let mut entries: Vec<_> = match std::fs::read_dir(dir) {
+        Ok(rd) => rd.filter_map(|e| e.ok()).collect(),
+        Err(_) => return Ok(()),
+    };
+
+    // Sort: directories first, then files
+    entries.sort_by_key(|e| {
+        let is_dir = e.path().is_dir();
+        let name = e.file_name();
+        (is_dir, name)
+    });
+
+    // Filter out noise directories
+    let entries: Vec<_> = entries
+        .into_iter()
+        .filter(|e| {
+            if e.path().is_dir() {
+                let name_str = e.file_name().to_string_lossy().to_string();
+                !matches!(
+                    name_str.as_str(),
+                    ".git" | "target" | "node_modules" | "__pycache__" | ".venv" | ".rigorix"
+                )
+            } else {
+                true
+            }
+        })
+        .collect();
+
+    let len = entries.len();
+    for (i, entry) in entries.into_iter().enumerate() {
+        let path = entry.path();
+        let is_last_entry = i == len - 1;
+        let connector = if is_last_entry { "└── " } else { "├── " };
+        let name = entry.file_name().to_string_lossy().to_string();
+
+        if path.is_dir() {
+            lines.push(format!("{}{}{}", new_prefix, connector, name));
+            let child_prefix = format!(
+                "{}{}",
+                new_prefix,
+                if is_last_entry { "    " } else { "│   " }
+            );
+            build_dir_tree_recursive(&path, &child_prefix, remaining_depth - 1, lines)?;
+        } else {
+            lines.push(format!("{}{}{}", new_prefix, connector, name));
+        }
+    }
+
+    Ok(())
+}
+
+/// Detect the project type from key files in the root directory.
+fn detect_project_type(root: &std::path::Path) -> String {
+    let mut types = Vec::new();
+    if root.join("Cargo.toml").exists() {
+        types.push("Rust (Cargo)");
+    }
+    if root.join("package.json").exists() {
+        types.push("TypeScript/JavaScript (npm)");
+    }
+    if root.join("tsconfig.json").exists() {
+        types.push("TypeScript");
+    }
+    if root.join("pyproject.toml").exists() || root.join("setup.py").exists() {
+        types.push("Python");
+    }
+    if root.join("requirements.txt").exists() {
+        types.push("Python (requirements.txt)");
+    }
+    if root.join("go.mod").exists() {
+        types.push("Go");
+    }
+    if types.is_empty() {
+        "Unknown".to_string()
+    } else {
+        types.join(", ")
+    }
+}
+
+/// Read existing dependencies from the project's manifest file.
+fn read_dependencies(root: &std::path::Path, project_type: &str) -> Vec<String> {
+    if project_type.contains("Rust") {
+        return read_cargo_dependencies(root);
+    }
+    if project_type.contains("npm") || project_type.contains("TypeScript/JavaScript") {
+        return read_package_json_dependencies(root);
+    }
+    if project_type.contains("Python") {
+        return read_python_dependencies(root);
+    }
+    Vec::new()
+}
+
+/// Parse [dependencies] section from Cargo.toml.
+fn read_cargo_dependencies(root: &std::path::Path) -> Vec<String> {
+    let path = root.join("Cargo.toml");
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut deps = Vec::new();
+    let mut in_deps = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed == "[dependencies]" {
+            in_deps = true;
+            continue;
+        }
+        if trimmed.starts_with('[') && in_deps {
+            in_deps = false;
+            continue;
+        }
+        if in_deps && !trimmed.is_empty() && !trimmed.starts_with('#') {
+            if let Some(eq_pos) = trimmed.find('=') {
+                let name = trimmed[..eq_pos].trim().to_string();
+                let value = trimmed[eq_pos + 1..].trim().to_string();
+                let value = value.split('#').next().unwrap_or(&value).trim().to_string();
+                deps.push(format!("{name} = {value}"));
+            }
+        }
+    }
+
+    deps
+}
+
+/// Parse dependencies from package.json.
+fn read_package_json_dependencies(root: &std::path::Path) -> Vec<String> {
+    let path = root.join("package.json");
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) else {
+        return Vec::new();
+    };
+
+    let mut deps = Vec::new();
+    for key in ["dependencies", "devDependencies"] {
+        if let Some(obj) = json[key].as_object() {
+            for (name, version) in obj {
+                if let Some(v) = version.as_str() {
+                    deps.push(format!("{name} = {v}"));
+                }
+            }
+        }
+    }
+
+    deps
+}
+
+/// Parse Python dependencies.
+fn read_python_dependencies(root: &std::path::Path) -> Vec<String> {
+    let mut deps = Vec::new();
+
+    let req_path = root.join("requirements.txt");
+    if req_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&req_path) {
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('-') {
+                    continue;
+                }
+                deps.push(trimmed.to_string());
+            }
+        }
+    }
+
+    if deps.is_empty() {
+        let pyproject = root.join("pyproject.toml");
+        if pyproject.exists() {
+            if let Ok(content) = std::fs::read_to_string(&pyproject) {
+                let mut in_deps = false;
+                for line in content.lines() {
+                    let trimmed = line.trim();
+                    if trimmed == "[project.dependencies]" {
+                        in_deps = true;
+                        continue;
+                    }
+                    if trimmed.starts_with('[') && in_deps {
+                        break;
+                    }
+                    if in_deps && !trimmed.is_empty() && !trimmed.starts_with('#') {
+                        let dep =
+                            trimmed.trim_matches(|c: char| c == '"' || c == ',' || c == ' ');
+                        if !dep.is_empty() {
+                            deps.push(dep.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    deps
+}
+
+/// Read content of key entry-point files for the project type.
+fn read_key_files(root: &std::path::Path) -> String {
+    let mut sections = Vec::new();
+    let max_lines = 200;
+
+    let candidates: Vec<&str> = if root.join("Cargo.toml").exists() {
+        vec!["src/lib.rs", "src/main.rs"]
+    } else if root.join("tsconfig.json").exists() || root.join("package.json").exists() {
+        vec!["src/index.ts", "src/index.js", "index.ts", "index.js"]
+    } else {
+        vec!["src/__init__.py", "__init__.py", "main.py"]
+    };
+
+    for rel_path in candidates {
+        let full_path = root.join(rel_path);
+        if !full_path.exists() {
+            continue;
+        }
+
+        let content = match std::fs::read_to_string(&full_path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        let lines: Vec<&str> = content.lines().take(max_lines).collect();
+        let truncated: String = lines.join("\n");
+
+        let note = if content.lines().count() > max_lines {
+            format!(
+                "\n// ... (truncated from {} lines)",
+                content.lines().count()
+            )
+        } else {
+            String::new()
+        };
+
+        sections.push(format!(
+            "// === {} ===\n{}{}",
+            rel_path, truncated, note
+        ));
+    }
+
+    sections.join("\n\n")
+}
+
+// ---------------------------------------------------------------------------
 // ClaudeTemplateGenerator — Anthropic Messages API Implementation
 // ---------------------------------------------------------------------------
 
@@ -280,76 +902,160 @@ impl ClaudeTemplateGenerator {
     }
 
     /// Build the system prompt for template generation.
+    ///
+    /// Provides the LLM with 9 critical rules, full template schema documentation,
+    /// existing templates list, rich repo context (directory tree, dependencies,
+    /// public API surface, key source files), and structural guidance for generating
+    /// multi-node DAGs with appropriate tool types and dependency ordering.
     fn build_system_prompt(&self, ctx: &RepoContext) -> String {
-        let public_api_list = if ctx.public_api.is_empty() {
-            "(none available)".to_string()
-        } else {
-            ctx.public_api.join(", ")
-        };
-        let dependencies_list = if ctx.dependencies.is_empty() {
+        let template_list = if ctx.existing_templates.is_empty() {
             "(none)".to_string()
         } else {
-            ctx.dependencies.join(", ")
+            ctx.existing_templates
+                .iter()
+                .map(|t| format!("- {}: {}", t.id, t.description))
+                .collect::<Vec<_>>()
+                .join("\n")
         };
-        let file_tree = if ctx.directory_tree.is_empty() {
-            "(no files scanned)".to_string()
+
+        let deps_section = if ctx.dependencies.is_empty() {
+            "No existing dependencies found.".to_string()
         } else {
-            ctx.directory_tree.join("\n")
+            ctx.dependencies.join("\n")
         };
+
+        let api_section = if ctx.public_api.is_empty() && ctx.public_api_list.is_empty() {
+            "No public API symbols found.".to_string()
+        } else if !ctx.public_api.is_empty() {
+            ctx.public_api.clone()
+        } else {
+            ctx.public_api_list.join("\n")
+        };
+
+        let key_files_section = if ctx.key_file_contents.is_empty() {
+            "No key source files found.".to_string()
+        } else {
+            ctx.key_file_contents.clone()
+        };
+
+        let arch_section = if ctx.architecture_overview.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "\nARCHITECTURE OVERVIEW:\n{}\n",
+                ctx.architecture_overview
+            )
+        };
+
+        let bc_section = if ctx.bounded_context.is_empty() {
+            "project-root".to_string()
+        } else {
+            ctx.bounded_context.clone()
+        };
+
+        let dir_tree = if ctx.dir_tree.is_empty() {
+            if ctx.directory_tree.is_empty() {
+                "(no files scanned)".to_string()
+            } else {
+                ctx.directory_tree.join("\n")
+            }
+        } else {
+            ctx.dir_tree.clone()
+        };
+
         format!(
-            r##"You are a template generator for the Rigorix workflow engine. Your task is to
-create a valid TOML template definition that matches the user's intent.
+            r##"You are a template generator for Rigorix, a deterministic coding CLI.
+You produce TOML workflow templates that define directed acyclic graphs (DAGs)
+of operations.
 
-## Repository Context
+*** CRITICAL RULES ***
+1. ONLY use packages/crates/dependencies listed in EXISTING DEPENDENCIES. Do NOT invent new ones.
+2. ONLY use types, functions, and methods listed in PUBLIC API SURFACE.
+3. If a needed package or type doesn't exist, use `file_read` to inspect the codebase first.
+4. When writing to an existing source file with `file_write`, write the COMPLETE updated file content, not just the new code.
+5. Use `file_append` ONLY for: adding import statements, module declarations, or single-line config entries. NEVER for adding functions, methods, or classes.
+6. Use `file_patch` for: inserting methods/functions at specific anchor points in existing files. Provide a meaningful anchor string.
+7. NEVER use `any` type in TypeScript code. ALWAYS use the exact type name from the PUBLIC API SURFACE.
+8. ALWAYS use the EXACT field names shown in the PUBLIC API SURFACE.
+9. When a path parameter like target_file holds a full path such as src/lib.rs, use the placeholder directly as the path value. Do NOT prepend an extra directory prefix.
 
-**Project type:** {project_type}
-
-**File tree:**
-{file_tree}
-
-**Existing dependencies:** {dependencies_list}
-
-**PUBLIC API SURFACE (only use these):**
-{public_api_list}
-
-**IMPORTANT — Output a SIMPLE, VALID TOML template.**
-- Use DOUBLE curly braces: `{{ param_name }}` — NOT single braces `{{ param_name }}`
-- Use snake_case for all IDs
-- DO NOT wrap in markdown fences — output raw TOML only
-- Generate a MINIMAL template with 1 node (type = "run_command")
-- Use `type = "run_command"` with a `command` field only — it always works
-- The template id must be kebab-case, based on the intent
-- The [nodes.action] section must have EXACTLY: type = "run_command", command = "..."
-
-## ALWAYS Valid Template (copy this structure):
-
-```toml
-id = "the-intent-name"
-name = "The Intent Name"
-description = "Execute: intent description"
+TEMPLATE SCHEMA:
+id = "unique-kebab-case-id"
+name = "Human readable name"
+description = "What this template does"
 version = "1.0.0"
 
 [[parameters]]
-name = "command"
-description = "Command to run"
-required = false
-param_type = "string"
-default = "echo done"
+name = "param_name"
+description = "What this parameter controls"
+required = true
+param_type = "string"  # or "path", "boolean", "number"
 
 [[nodes]]
-id = "execute"
-name = "Execute"
-depends_on = []
+id = "node-id"
+name = "Node description"
+depends_on = ["other-node-id"]  # optional
+validation = "type_check"  # string field: lint_pass, test_pass, type_check, or custom("<cmd>")
 [nodes.action]
-type = "run_command"
-command = "{{ command }}"
-```
+type = "file_read"  # or "file_write", "run_command", "lsp_query", "git_read"
+path = "{{ param_name }}"  # use DOUBLE curly braces {{ }} for parameter substitution
 
-Now generate a template for the following user intent. Do NOT deviate from this structure."##,
+VALID ACTION TYPES:
+- file_read: {{ type, path }}
+- file_write: {{ type, path, content_template (optional) }} — OVERWRITES entire file
+- file_append: {{ type, path, content_template }} — APPENDS to existing file (ONLY for: mod declarations, imports, single-line config)
+- file_patch: {{ type, path, content_template, anchor (optional) }} — inserts content into existing file
+- run_command: {{ type, command, args (optional) }}
+- lsp_query: {{ type, query }}
+- git_read: {{ type, operation, count (optional) }}
+
+VALID VALIDATION RULES (use as a STRING on the node, e.g. validation = "type_check"):
+- lint_pass, test_pass, type_check, custom("<command>")
+
+COMMON VALIDATION COMMANDS BY LANGUAGE:
+- Rust: cargo check (type_check), cargo test (test_pass)
+- TypeScript: npx tsc --noEmit (type_check), npm test (test_pass)
+- Python: python -m py_compile (type_check), python -m pytest (test_pass)
+
+EXISTING TEMPLATES (do NOT duplicate these IDs):
+{template_list}
+
+REPO CONTEXT:
+Project type: {project_type}
+Bounded context: {bounded_context}
+Directory structure:
+{dir_tree}
+{arch}
+
+EXISTING DEPENDENCIES (ONLY use these — do NOT add new ones):
+{deps}
+
+PUBLIC API SURFACE (existing types, functions, methods you can use):
+{api}
+
+KEY SOURCE FILES (read these to understand the existing code before generating):
+{key_files}
+
+USER INTENT (see user message below for the specific intent to fulfill).
+
+Generate a TOML template that:
+1. Has a unique ID (kebab-case, not conflicting with existing templates)
+2. Defines 2-7 nodes with clear dependency ordering
+3. Uses parameter substitution ({{{{ param_name }}}}) for variable parts
+4. Includes validation on test/run nodes
+5. Follows the exact TOML schema shown above
+6. ONLY references packages/crates in EXISTING DEPENDENCIES
+7. ONLY references types/methods in PUBLIC API SURFACE
+
+Respond with valid TOML only. Do NOT include markdown code fences or explanations."##,
+            template_list = template_list,
+            dir_tree = dir_tree,
             project_type = ctx.project_type,
-            file_tree = file_tree,
-            dependencies_list = dependencies_list,
-            public_api_list = public_api_list,
+            bounded_context = bc_section,
+            arch = arch_section,
+            deps = deps_section,
+            api = api_section,
+            key_files = key_files_section,
         )
     }
 
@@ -362,7 +1068,8 @@ Now generate a template for the following user intent. Do NOT deviate from this 
                 msg.push_str(&format!("\n- Q: {}\n- A: {}", pair.question, pair.answer));
             }
         }
-        msg.push_str("\n\n## Response Format\n");
+        msg.push_str("\n\n## Instructions\n");
+        msg.push_str("Generate a TOML template that fulfills this intent using the schema and rules from the system prompt.\n");
         msg.push_str("Output ONLY valid TOML. No markdown fences. No explanations.");
         msg
     }
@@ -400,15 +1107,21 @@ Now generate a template for the following user intent. Do NOT deviate from this 
     ///
     /// DeepSeek and other models often output `{ param_name }` instead of
     /// `{{ param_name }}`. TOML parsers interpret single braces as inline table
-    /// definitions, causing parse errors. This converts them to double braces.
+    /// definitions, causing parse errors. This converts them to double braces
+    /// and ensures they are quoted so the TOML parser treats them as strings.
     pub(crate) fn fix_toml_placeholders(toml: &str) -> String {
-        // Match `{ identifier }` patterns in value positions (e.g. `= { import_line_number }`).
-        // DeepSeek and other models output single-brace placeholders like { param_name }
-        // which TOML parsers interpret as inline table definitions. Convert to {{ param_name }}.
-        let mut result = String::with_capacity(toml.len());
+        // Phase 1: Convert { identifier } → "{{ identifier }}" (always quoted).
+        // If the identifier was already inside a string (e.g. "...{ pkg }..."),
+        // we produce "...{{ pkg }}..." — still inside the string, still valid.
+        // If the identifier was unquoted (e.g. path = { target }),
+        // we produce path = "{{ target }}" — now a valid TOML string value.
+        let mut result = String::with_capacity(toml.len() + 64);
         let mut in_curly = false;
         let mut buf = String::new();
-        for ch in toml.chars() {
+        let mut i = 0;
+        let chars: Vec<char> = toml.chars().collect();
+        while i < chars.len() {
+            let ch = chars[i];
             match ch {
                 '{' if !in_curly => {
                     in_curly = true;
@@ -416,8 +1129,19 @@ Now generate a template for the following user intent. Do NOT deviate from this 
                 }
                 '}' if in_curly => {
                     let inner = buf.trim();
-                    if !inner.is_empty() && inner.chars().all(|c| c.is_alphanumeric() || c == '_') {
-                        result.push_str(&format!("{{{{ {} }}}}", inner));
+                    if !inner.is_empty()
+                        && inner.chars().all(|c| c.is_alphanumeric() || c == '_')
+                    {
+                        // Check if we're inside a quoted string by looking backward
+                        // for an unclosed double-quote before an `=` sign.
+                        let is_inside_quotes = Self::is_inside_toml_string(&result);
+                        if is_inside_quotes {
+                            // Already inside a string — just fix braces, no extra quotes
+                            result.push_str(&format!("{{{{ {} }}}}", inner));
+                        } else {
+                            // Unquoted value position — wrap in quotes for valid TOML
+                            result.push_str(&format!("\"{{{{ {} }}}}\"", inner));
+                        }
                     } else {
                         result.push('{');
                         result.push_str(&buf);
@@ -428,12 +1152,28 @@ Now generate a template for the following user intent. Do NOT deviate from this 
                 c if in_curly => buf.push(c),
                 c => result.push(c),
             }
+            i += 1;
         }
         if in_curly {
             result.push('{');
             result.push_str(&buf);
         }
         result
+    }
+
+    /// Check whether the current position in `result` is inside a TOML string.
+    /// Walks backward from the end of `result` to find the most recent unclosed `"`.
+    fn is_inside_toml_string(result: &str) -> bool {
+        let mut in_string = false;
+        let mut escaped = false;
+        for ch in result.chars() {
+            match ch {
+                '"' if !escaped => in_string = !in_string,
+                '\\' if !escaped => escaped = true,
+                _ => escaped = false,
+            }
+        }
+        in_string
     }
 
     /// Parse the Anthropic API response and extract the text content.
@@ -882,6 +1622,8 @@ mod tests {
         let ctx = RepoContext::new(PathBuf::from("/test"), "rust".to_string());
         assert_eq!(ctx.project_type, "rust");
         assert!(!ctx.has_files());
+        assert!(ctx.existing_templates.is_empty());
+        assert!(ctx.key_file_contents.is_empty());
     }
 
     #[test]
@@ -915,6 +1657,79 @@ mod tests {
         assert_eq!(result, "{\"name\": \"test\"}");
     }
 
+    // -- fix_toml_placeholders unit tests --
+
+    #[test]
+    fn test_fix_toml_placeholders_unquoted() {
+        // LLM outputs unquoted { target } — must produce valid TOML string
+        let input = "path = { target }";
+        let result = ClaudeTemplateGenerator::fix_toml_placeholders(input);
+        assert_eq!(result, "path = \"{{ target }}\"");
+        // Must parse as valid TOML
+        toml::from_str::<toml::Value>(&result).expect("unquoted placeholder must produce valid TOML");
+    }
+
+    #[test]
+    fn test_fix_toml_placeholders_quoted() {
+        // LLM outputs quoted "{ target }" inside a string
+        let input = r#"path = "{ target }""#;
+        let result = ClaudeTemplateGenerator::fix_toml_placeholders(input);
+        assert_eq!(result, r#"path = "{{ target }}""#);
+        toml::from_str::<toml::Value>(&result).expect("quoted placeholder must produce valid TOML");
+    }
+
+    #[test]
+    fn test_fix_toml_placeholders_inside_string() {
+        // Placeholder inside a larger string (e.g. command)
+        let input = r#"command = "cargo test -p { pkg } --lib""#;
+        let result = ClaudeTemplateGenerator::fix_toml_placeholders(input);
+        assert_eq!(result, r#"command = "cargo test -p {{ pkg }} --lib""#);
+        toml::from_str::<toml::Value>(&result).expect("placeholder inside string must stay inside string");
+    }
+
+    #[test]
+    fn test_fix_toml_placeholders_already_double_braced() {
+        // LLM already outputs {{ }} correctly — must be preserved
+        let input = r#"path = "{{ target }}""#;
+        let result = ClaudeTemplateGenerator::fix_toml_placeholders(input);
+        assert_eq!(result, r#"path = "{{ target }}""#);
+        toml::from_str::<toml::Value>(&result).expect("already double-braced must remain valid");
+    }
+
+    #[test]
+    fn test_fix_toml_placeholders_no_placeholders() {
+        // No placeholders at all — must be identity
+        let input = "id = \"test\"\nname = \"Test\"";
+        let result = ClaudeTemplateGenerator::fix_toml_placeholders(input);
+        assert_eq!(result, input);
+    }
+
+    #[test]
+    fn test_fix_toml_placeholders_full_template() {
+        // Full realistic template with unquoted placeholders
+        let input = r#"id = "test"
+name = "Test"
+description = "Test template"
+version = "1.0.0"
+
+[[parameters]]
+name = "target"
+description = "Target file"
+required = true
+param_type = "path"
+
+[[nodes]]
+id = "read"
+name = "Read file"
+depends_on = []
+[nodes.action]
+type = "file_read"
+path = { target }"#;
+        let result = ClaudeTemplateGenerator::fix_toml_placeholders(input);
+        toml::from_str::<toml::Value>(&result)
+            .expect("full template with unquoted placeholder must produce valid TOML");
+    }
+
     #[test]
     fn test_parse_api_response_valid_anthropic_format() {
         let input = r#"{"content": [{"type": "text", "text": "template: {\"name\": \"test\"}"}]}"#;
@@ -940,21 +1755,26 @@ mod tests {
     fn test_build_system_prompt_contains_context() {
         let config = ClaudeGeneratorConfig::default();
         let generator = ClaudeTemplateGenerator::new("test-key".to_string(), Some(config));
-        let ctx = RepoContext {
-            root_dir: std::path::PathBuf::from("/test"),
-            project_type: "rust".to_string(),
-            directory_tree: vec!["src/".to_string()],
-            dependencies: vec!["tokio".to_string()],
-            public_api: vec!["pub fn run()".to_string()],
-            symbol_graph_snapshot: None,
-        };
+        let mut ctx = RepoContext::new(std::path::PathBuf::from("/test"), "rust".to_string());
+        ctx.dir_tree = "src/\n└── main.rs".to_string();
+        ctx.dependencies = vec!["tokio = \"1\"".to_string()];
+        ctx.public_api = "pub fn run()".to_string();
+        ctx.public_api_list = vec!["pub fn run()".to_string()];
         let prompt = generator.build_system_prompt(&ctx);
-        assert!(prompt.contains("rust"), "Prompt should mention project type");
-        assert!(prompt.contains("tokio"), "Prompt should mention dependencies");
+        assert!(prompt.contains("rust"), "Prompt should mention project type: {prompt}");
+        assert!(prompt.contains("tokio"), "Prompt should mention dependencies: {prompt}");
         assert!(
             prompt.contains("pub fn run()"),
-            "Prompt should mention public API"
+            "Prompt should mention public API: {prompt}"
         );
+        // Verify the new prompt has the critical rules
+        assert!(prompt.contains("CRITICAL RULES"), "Prompt should contain critical rules");
+        assert!(prompt.contains("file_read"), "Prompt should list action types");
+        assert!(prompt.contains("file_write"), "Prompt should list action types");
+        assert!(prompt.contains("EXISTING DEPENDENCIES"), "Prompt should have dependencies section");
+        assert!(prompt.contains("PUBLIC API SURFACE"), "Prompt should have API section");
+        // Should NOT tell the LLM to generate only 1 node
+        assert!(!prompt.contains("MINIMAL template with 1 node"), "Prompt should NOT restrict to 1 node");
     }
 
     #[test]

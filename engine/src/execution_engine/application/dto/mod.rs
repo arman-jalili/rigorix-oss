@@ -32,6 +32,10 @@ use crate::execution_engine::domain::{
 pub struct ExecuteGraphInput {
     /// The ID of the sealed graph to execute.
     pub dag_id: Uuid,
+    /// The TaskGraph to execute (sealed and validated).
+    /// When None, executor produces a placeholder result.
+    #[serde(skip)]
+    pub graph: Option<crate::dag_engine::domain::TaskGraph>,
     /// Optional override for the executor configuration.
     pub config_override: Option<ParallelExecutorConfig>,
 }

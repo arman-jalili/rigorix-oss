@@ -126,6 +126,15 @@ pub trait TemplateEngineService: Send + Sync {
         input: GetTemplateInput,
     ) -> Result<Option<super::dto::TemplateSummary>, TemplateError>;
 
+    /// Look up the full template definition by ID.
+    ///
+    /// Returns the complete `Template` with all nodes, parameters, and actions.
+    /// Returns `None` if no template with that ID is registered.
+    async fn get_template_full(
+        &self,
+        template_id: &str,
+    ) -> Option<crate::templates::domain::Template>;
+
     /// List all registered templates with summary metadata.
     async fn list_templates(&self) -> Result<ListTemplatesOutput, TemplateError>;
 

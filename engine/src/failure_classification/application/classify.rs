@@ -42,8 +42,8 @@ use crate::failure_classification::domain::FailureType;
 /// # Examples
 ///
 /// ```
-/// use rigorix::failure_classification::application::classify::classify_failure;
-/// use rigorix::failure_classification::domain::FailureType;
+/// use rigorix_engine::failure_classification::application::classify::classify_failure;
+/// use rigorix_engine::failure_classification::domain::FailureType;
 ///
 /// assert_eq!(classify_failure("connection timed out"), FailureType::Transient);
 /// assert_eq!(classify_failure("tests failed with errors"), FailureType::TestFailure);

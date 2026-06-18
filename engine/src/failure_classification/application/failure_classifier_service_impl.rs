@@ -253,6 +253,11 @@ pub fn default_strategy_for(failure_type: &FailureType) -> RetryStrategy {
             feedback: String::new(),
         },
         FailureType::NonRetryable => RetryStrategy::SameOperation, // fallback, won't be used
+        FailureType::MissingDependency => RetryStrategy::SameOperation,
+        FailureType::PlanConflict => RetryStrategy::PatchWithFeedback {
+            feedback: String::new(),
+        },
+        FailureType::Unknown => RetryStrategy::SameOperation,
     }
 }
 

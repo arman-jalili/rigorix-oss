@@ -64,7 +64,7 @@ pub enum DagError {
         /// The ID of the failing node.
         node_id: Uuid,
         /// The classification of the failure.
-        failure_type: crate::dag_engine::domain::graph::FailureType,
+        failure_type: crate::failure_classification::domain::FailureType,
         /// Human-readable error message.
         message: String,
     },

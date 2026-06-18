@@ -44,6 +44,10 @@ pub struct PlanInput {
     /// Whether to skip validation (for development/debugging).
     #[serde(default)]
     pub skip_validation: bool,
+
+    /// Repository root directory for building RepoContext.
+    #[serde(default)]
+    pub repo_root: String,
 }
 
 fn default_true() -> bool {
@@ -93,6 +97,10 @@ pub struct PlanWithGraphInput {
     /// Whether to skip validation.
     #[serde(default)]
     pub skip_validation: bool,
+
+    /// Repository root directory for building RepoContext.
+    #[serde(default)]
+    pub repo_root: String,
 }
 
 /// Output from the `plan_with_graph()` flow.

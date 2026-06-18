@@ -26,9 +26,9 @@ use crate::dag_engine::application::service_impl::{
     DagGraphServiceImpl, DagPlanningServiceImpl, ExecutionPolicyServiceImpl,
 };
 use crate::dag_engine::domain::{
-    DagError, ExecutionPolicy, FailureType, ImpactLevel, PlanDiff, RetryStrategy, TaskGraph,
-    TaskNode, ValidationRule,
+    DagError, ExecutionPolicy, ImpactLevel, PlanDiff, TaskGraph, TaskNode, ValidationRule,
 };
+use crate::failure_classification::domain::{FailureType, RetryStrategy};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -476,14 +476,14 @@ fn test_execution_policy_defaults() {
 fn test_failure_type_as_str() {
     assert_eq!(FailureType::Transient.as_str(), "transient");
     assert_eq!(FailureType::LspConflict.as_str(), "lsp_conflict");
-    assert_eq!(FailureType::CompileError.as_str(), "compile_error");
+    assert_eq!(FailureType::BuildFailure.as_str(), "build_failure");
     assert_eq!(FailureType::TestFailure.as_str(), "test_failure");
     assert_eq!(
         FailureType::MissingDependency.as_str(),
         "missing_dependency"
     );
     assert_eq!(FailureType::PlanConflict.as_str(), "plan_conflict");
-    assert_eq!(FailureType::Permanent.as_str(), "permanent");
+    assert_eq!(FailureType::NonRetryable.as_str(), "non_retryable");
     assert_eq!(FailureType::Unknown.as_str(), "unknown");
 }
 
@@ -506,7 +506,7 @@ fn test_validation_rule_as_str() {
 #[test]
 fn test_retry_strategy_as_str() {
     assert_eq!(RetryStrategy::SameOperation.as_str(), "same_operation");
-    assert_eq!(RetryStrategy::ExpandContext.as_str(), "expand_context");
+    assert_eq!(RetryStrategy::ExpandContext { level: 1 }.as_str(), "expand_context");
     assert_eq!(RetryStrategy::SkipAndContinue.as_str(), "skip_and_continue");
 }
 
@@ -892,7 +892,7 @@ async fn test_should_retry_non_retriable_failure() {
     let decision = service
         .should_retry(ShouldRetryInput {
             policy,
-            failure_type: FailureType::Permanent,
+            failure_type: FailureType::NonRetryable,
             retries_attempted: 0,
         })
         .await

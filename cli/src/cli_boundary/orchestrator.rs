@@ -47,7 +47,81 @@ use rigorix_engine::templates::application::template_engine_impl::TemplateEngine
 use crate::cli_boundary::config::CliConfig;
 use crate::cli_boundary::error::CliError;
 
-/// Build a fully wired `OrchestratorService` from CLI configuration.
+/// Services available to the CLI for direct Tier 2 command dispatch.
+///
+/// Holds `Arc` references to engine services that Tier 2 commands
+/// (history, explain, template, config, etc.) need to call directly,
+/// bypassing the orchestrator lifecycle.
+pub struct CliServices {
+    pub state_manager:
+        Arc<dyn rigorix_engine::state_persistence::application::service::StateManagerService>,
+    pub template_service: Arc<dyn TemplateEngineService>,
+    pub config: CliConfig,
+}
+
+/// Build non-LLM CLI services for Tier 2 commands.
+///
+/// Builds state manager and template service from `CliConfig`.
+/// These services are cheap to construct and don't require an API key.
+/// Use this for commands like `history`, `template list`, `config show`.
+pub async fn build_cli_services(config: CliConfig) -> Result<CliServices, CliError> {
+    let engine_config = config.engine_config()?;
+    let repo_root = String::new(); // default to CWD
+
+    let rigorix_dir = PathBuf::from(&repo_root).join(".rigorix");
+    tokio::fs::create_dir_all(rigorix_dir.join("state")).await.ok();
+    tokio::fs::create_dir_all(rigorix_dir.join("templates")).await.ok();
+
+    let state_manager = Arc::from(
+        FileSystemStateManagerFactory
+            .create(
+                rigorix_dir.join("state"),
+                CreateStateManagerConfig::default(),
+            )
+            .await
+            .map_err(|e| CliError::General(format!("state manager: {e}")))?,
+    );
+
+    let cli_template_service: Arc<dyn TemplateEngineService> =
+        Arc::new(TemplateEngineImpl::new());
+
+    // Load existing templates from .rigorix/templates/
+    let tpl_dir = PathBuf::from(&repo_root).join(".rigorix/templates");
+    if tpl_dir.exists()
+        && let Ok(mut entries) = tokio::fs::read_dir(&tpl_dir).await
+    {
+        let mut files = Vec::new();
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("toml") {
+                files.push(path);
+            }
+        }
+        for path in files {
+            if let Ok(content) = tokio::fs::read_to_string(&path).await
+                && let Ok(template) =
+                    toml::from_str::<rigorix_engine::templates::domain::Template>(&content)
+            {
+                let input = rigorix_engine::templates::application::dto::RegisterInput {
+                    template,
+                    overwrite: true,
+                };
+                let _ = cli_template_service.register(input).await;
+            }
+        }
+    }
+
+    let _ = engine_config; // used only for validation above
+
+    Ok(CliServices {
+        state_manager,
+        template_service: cli_template_service,
+
+        config,
+    })
+}
+
+/// Build a fully wired `OrchestratorService` and exposed `CliServices`.
 ///
 /// Wires all 6 required engine sub-services + optional audit:
 /// 1. CancellationService  — via CancellationManagerFactoryImpl
@@ -63,7 +137,7 @@ pub async fn build_orchestrator(
     config: CliConfig,
     _cancellation_token: tokio_util::sync::CancellationToken,
     repo_root: String,
-) -> Result<Box<dyn OrchestratorService>, CliError> {
+) -> Result<(Box<dyn OrchestratorService>, CliServices), CliError> {
     let engine_config = config.engine_config()?;
 
     // Ensure runtime directories exist
@@ -96,13 +170,15 @@ pub async fn build_orchestrator(
         .map_err(|e| CliError::General(format!("event bus: {e}")))?;
 
     // ── 3. StateManagerService ─────────────────────────────────────────
-    let state_manager = FileSystemStateManagerFactory
-        .create(
-            rigorix_dir.join("state"),
-            CreateStateManagerConfig::default(),
-        )
-        .await
-        .map_err(|e| CliError::General(format!("state manager: {e}")))?;
+    let state_manager = Arc::from(
+        FileSystemStateManagerFactory
+            .create(
+                rigorix_dir.join("state"),
+                CreateStateManagerConfig::default(),
+            )
+            .await
+            .map_err(|e| CliError::General(format!("state manager: {e}")))?,
+    );
 
     // ── 4. LlmBudgetService ────────────────────────────────────────────
     let budget = LlmBudgetFactoryImpl
@@ -191,7 +267,8 @@ pub async fn build_orchestrator(
     let extractor = Box::new(MockParameterExtractor::new())
         as Box<dyn rigorix_engine::planning::domain::extractor::ParameterExtractor>;
 
-    let template_service: Box<dyn TemplateEngineService> = Box::new(TemplateEngineImpl::new());
+    let template_service: Arc<dyn TemplateEngineService> =
+        Arc::new(TemplateEngineImpl::new());
 
     // Load existing templates from .rigorix/templates/ directory
     let tpl_dir = std::path::PathBuf::from(&repo_root).join(".rigorix/templates");
@@ -237,17 +314,17 @@ pub async fn build_orchestrator(
     });
     let generator: Option<Box<dyn TemplateGenerator>> = match llm.provider {
         LlmProvider::Anthropic => Some(Box::new(ClaudeTemplateGenerator::new(
-            api_key_for_generator,
-            generator_config,
+            api_key_for_generator.clone(),
+            generator_config.clone(),
         ))),
         _ => Some(Box::new(OpenaiTemplateGenerator::new(
-            api_key_for_generator,
-            generator_config,
+            api_key_for_generator.clone(),
+            generator_config.clone(),
         ))),
     };
 
     let planning = PlanningPipelineFactoryImpl::new()
-        .create_custom(classifier, extractor, template_service, generator, None)
+        .create_custom(classifier, extractor, Arc::clone(&template_service), generator, None)
         .await
         .map_err(|e| CliError::General(format!("planning: {e}")))?;
 
@@ -269,7 +346,7 @@ pub async fn build_orchestrator(
         .with_repo_root(repo_root)
         .with_cancellation_service(Arc::from(cancellation))
         .with_event_bus(Arc::from(event_bus))
-        .with_state_manager(Arc::from(state_manager))
+        .with_state_manager(Arc::clone(&state_manager))
         .with_budget_service(Arc::from(budget))
         .with_execution_service(Arc::from(execution))
         .with_planning_pipeline(Arc::from(planning))
@@ -278,5 +355,11 @@ pub async fn build_orchestrator(
         .await
         .map_err(CliError::Engine)?;
 
-    Ok(orchestrator)
+    let services = CliServices {
+        state_manager,
+        template_service: Arc::clone(&template_service),
+        config,
+    };
+
+    Ok((orchestrator, services))
 }

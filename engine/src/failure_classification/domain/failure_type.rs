@@ -41,6 +41,15 @@ pub enum FailureType {
 
     /// Bad input, auth failure, invalid configuration — no retry possible.
     NonRetryable,
+
+    /// Missing dependency (crate, library, file) — retryable after resolution.
+    MissingDependency,
+
+    /// Plan-level conflict detected during execution — requires replanning.
+    PlanConflict,
+
+    /// Unclassified failure — subject to global policy.
+    Unknown,
 }
 
 impl FailureType {
@@ -57,15 +66,34 @@ impl FailureType {
     /// - TestFailure → `false` (requires replanning with feedback)
     /// - BuildFailure → `false` (requires patching with compiler output)
     /// - NonRetryable → `false` (fatal, no retry possible)
+    /// Returns the canonical snake_case name of this failure type.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FailureType::Transient => "transient",
+            FailureType::TestFailure => "test_failure",
+            FailureType::BuildFailure => "build_failure",
+            FailureType::LspConflict => "lsp_conflict",
+            FailureType::ResourceExhausted => "resource_exhausted",
+            FailureType::SystemError => "system_error",
+            FailureType::NonRetryable => "non_retryable",
+            FailureType::MissingDependency => "missing_dependency",
+            FailureType::PlanConflict => "plan_conflict",
+            FailureType::Unknown => "unknown",
+        }
+    }
+
     pub fn is_retryable(&self) -> bool {
         match self {
             FailureType::Transient
             | FailureType::LspConflict
             | FailureType::ResourceExhausted
-            | FailureType::SystemError => true,
-            FailureType::TestFailure | FailureType::BuildFailure | FailureType::NonRetryable => {
-                false
-            }
+            | FailureType::SystemError
+            | FailureType::MissingDependency => true,
+            FailureType::TestFailure
+            | FailureType::BuildFailure
+            | FailureType::NonRetryable
+            | FailureType::PlanConflict
+            | FailureType::Unknown => false,
         }
     }
 }
@@ -119,6 +147,9 @@ mod tests {
             FailureType::ResourceExhausted,
             FailureType::SystemError,
             FailureType::NonRetryable,
+            FailureType::MissingDependency,
+            FailureType::PlanConflict,
+            FailureType::Unknown,
         ] {
             let json = serde_json::to_string(variant).unwrap();
             let deserialized: FailureType = serde_json::from_str(&json).unwrap();
