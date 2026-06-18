@@ -216,8 +216,8 @@ fn apply_vm_command(vm: &mut TuiViewModel, cmd: VmCommand) {
         VmCommand::Tokens(n) => vm.metrics.tokens = n,
         VmCommand::CopyMessage(msg) => vm.copy_message = msg,
         VmCommand::SetNodes(nodes) => {
-            vm.nodes.clear();
             for n in nodes {
+                // Upsert: insert new nodes, update existing ones by id
                 vm.nodes.insert(n.id.clone(), n);
             }
         }
