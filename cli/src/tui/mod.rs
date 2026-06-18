@@ -386,79 +386,51 @@ pub(crate) fn parse_graph_nodes(graph: &serde_json::Value) -> Vec<view_model::No
     nodes
 }
 
-/// Spawn a background task that runs plan_only via the SHARED orchestrator.
-/// The event loop stays responsive; results arrive via VmCommand.
-fn spawn_plan_only(
-    vm_tx: &tokio::sync::mpsc::Sender<VmCommand>,
-    orch: std::sync::Arc<dyn rigorix_engine::orchestrator::application::service::OrchestratorService>,
+/// Run plan_only via the shared orchestrator and update the ViewModel directly.
+async fn run_plan(
+    vm: &mut TuiViewModel,
+    orch: &std::sync::Arc<dyn rigorix_engine::orchestrator::application::service::OrchestratorService>,
     intent: String,
 ) {
-    let tx = vm_tx.clone();
-    tokio::spawn(async move {
-        let repo_root = std::env::current_dir()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default();
-        let input = rigorix_engine::orchestrator::application::dto::PlanOnlyInput {
-            intent,
-            config: serde_json::Value::Null,
-            repo_root,
-        };
-        match orch.plan_only(input).await {
-            Ok(output) => {
-                if let Some(toml) = output.plan["generated_toml"].as_str() {
-                    let tid = output.plan["template_id"].as_str().unwrap_or("unknown");
-                    let tpl_dir = std::path::PathBuf::from(".rigorix/templates");
-                    let tpl_path = tpl_dir.join(format!("{tid}.toml"));
-                    let _ = tokio::fs::create_dir_all(&tpl_dir).await;
-                    let _ = tokio::fs::write(&tpl_path, toml).await;
-                    let _ = tx.send(VmCommand::TemplateId(tid.to_string())).await;
-                }
-                if let Some(calls) = output.plan["llm_calls_used"].as_u64() {
-                    let _ = tx.send(VmCommand::LlmCalls(calls)).await;
-                }
-                if let Some(tokens) = output.plan["llm_tokens_used"].as_u64() {
-                    let _ = tx.send(VmCommand::Tokens(tokens)).await;
-                }
-                let nodes = parse_graph_nodes(&output.graph);
-                if !nodes.is_empty() {
-                    let _ = tx.send(VmCommand::SetNodes(nodes)).await;
-                }
-                let _ = tx.send(VmCommand::Phase(ExecutionPhase::Completed)).await;
+    vm.phase = ExecutionPhase::Planning;
+    let repo_root = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let input = rigorix_engine::orchestrator::application::dto::PlanOnlyInput {
+        intent,
+        config: serde_json::Value::Null,
+        repo_root,
+    };
+    match orch.plan_only(input).await {
+        Ok(output) => {
+            if let Some(toml) = output.plan["generated_toml"].as_str() {
+                let tid = output.plan["template_id"].as_str().unwrap_or("unknown");
+                let tpl_dir = std::path::PathBuf::from(".rigorix/templates");
+                let tpl_path = tpl_dir.join(format!("{tid}.toml"));
+                let _ = std::fs::create_dir_all(&tpl_dir);
+                let _ = std::fs::write(&tpl_path, toml);
+                vm.template_id = Some(tid.to_string());
             }
-            Err(e) => {
-                let _ = tx.send(VmCommand::Error(format!("Plan failed: {e}"))).await;
+            if let Some(calls) = output.plan["llm_calls_used"].as_u64() {
+                vm.metrics.llm_calls = calls;
             }
+            if let Some(tokens) = output.plan["llm_tokens_used"].as_u64() {
+                vm.metrics.tokens = tokens;
+            }
+            let nodes = parse_graph_nodes(&output.graph);
+            if !nodes.is_empty() {
+                vm.nodes.clear();
+                for n in nodes {
+                    vm.nodes.insert(n.id.clone(), n);
+                }
+            }
+            vm.phase = ExecutionPhase::Completed;
         }
-    });
-}
-
-/// Spawn a background task that runs the DAG via the SHARED orchestrator.
-fn spawn_run(
-    vm_tx: &tokio::sync::mpsc::Sender<VmCommand>,
-    orch: std::sync::Arc<dyn rigorix_engine::orchestrator::application::service::OrchestratorService>,
-    intent: String,
-) {
-    let tx = vm_tx.clone();
-    tokio::spawn(async move {
-        let repo_root = std::env::current_dir()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default();
-        let input = rigorix_engine::orchestrator::application::dto::RunInput {
-            intent,
-            config: serde_json::Value::Null,
-            repo_root,
-            enforcement_preset: None,
-        };
-        match orch.run(input).await {
-            Ok(output) => {
-                let _ = tx.send(VmCommand::ExecutionId(output.execution_id)).await;
-                let _ = tx.send(VmCommand::Phase(ExecutionPhase::Completed)).await;
-            }
-            Err(e) => {
-                let _ = tx.send(VmCommand::Error(format!("Run failed: {e}"))).await;
-            }
+        Err(e) => {
+            vm.error = Some(format!("Plan failed: {e}"));
+            vm.phase = ExecutionPhase::Failed;
         }
-    });
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -495,8 +467,7 @@ async fn handle_action(
                         vm.active_view = ActiveView::Plan;
                         *input_focus = InputFocus::PlanReview;
                         command_bar.focused = false;
-                        vm.phase = ExecutionPhase::Planning;
-                        spawn_plan_only(vm_tx, orch.clone(), intent);
+                        run_plan(vm, orch, intent).await;
                     }
                     command_bar::CommandBarInput::SlashCommand(cmd) => match cmd.as_str() {
                         "history" => vm.active_view = ActiveView::History,
@@ -545,21 +516,39 @@ async fn handle_action(
             vm.active_view = ActiveView::Dashboard;
             *input_focus = InputFocus::Dashboard;
             let intent = vm.intent.clone().unwrap_or_default();
-            spawn_run(vm_tx, orch.clone(), intent);
+            let repo_root = std::env::current_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let input = rigorix_engine::orchestrator::application::dto::RunInput {
+                intent,
+                config: serde_json::Value::Null,
+                repo_root,
+                enforcement_preset: None,
+            };
+            match orch.run(input).await {
+                Ok(output) => {
+                    vm.execution_id = Some(output.execution_id);
+                    vm.phase = ExecutionPhase::Completed;
+                }
+                Err(e) => {
+                    vm.error = Some(format!("Run failed: {e}"));
+                    vm.phase = ExecutionPhase::Failed;
+                }
+            }
         }
         KeyAction::PlanOnly => {
             vm.active_view = ActiveView::Plan;
             *input_focus = InputFocus::PlanReview;
             if vm.nodes.is_empty() {
-                vm.phase = ExecutionPhase::Planning;
-                spawn_plan_only(vm_tx, orch.clone(), vm.intent.clone().unwrap_or_default());
+                let intent = vm.intent.clone().unwrap_or_default();
+                Box::pin(run_plan(vm, orch, intent)).await;
             }
         }
         KeyAction::GenerateTemplate => {
-            vm.phase = ExecutionPhase::Planning;
             vm.active_view = ActiveView::Plan;
             *input_focus = InputFocus::PlanReview;
-            spawn_plan_only(vm_tx, orch.clone(), vm.intent.clone().unwrap_or_default());
+            let intent = vm.intent.clone().unwrap_or_default();
+            Box::pin(run_plan(vm, orch, intent)).await;
         }
         KeyAction::SelectNext | KeyAction::SelectPrev => {
             let ids: Vec<String> = vm.nodes.keys().cloned().collect();
