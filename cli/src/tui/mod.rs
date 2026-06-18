@@ -374,13 +374,16 @@ fn spawn_plan_only_background(
     let tx = vm_tx.clone();
     let cfg = config.clone();
     let ct = cancellation_token.clone();
+    let repo_root = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
     tokio::spawn(async move {
-        match crate::cli_boundary::orchestrator::build_orchestrator(cfg, ct, String::new()).await {
+        match crate::cli_boundary::orchestrator::build_orchestrator(cfg, ct, repo_root.clone()).await {
             Ok((orch, _svc)) => {
                 let input = rigorix_engine::orchestrator::application::dto::PlanOnlyInput {
                     intent,
                     config: serde_json::Value::Null,
-                    repo_root: String::new(),
+                    repo_root: repo_root.clone(),
                 };
                 match orch.plan_only(input).await {
                     Ok(output) => {

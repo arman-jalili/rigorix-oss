@@ -205,8 +205,10 @@ pub enum TemplateAction {
         /// Path to the file.
         path: String,
         /// Search string or pattern to locate the insertion point.
+        #[serde(default)]
         search: String,
         /// Content to insert.
+        #[serde(default)]
         insert: String,
         /// Whether to insert before the search match (default: after).
         #[serde(default)]
