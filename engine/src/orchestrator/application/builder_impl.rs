@@ -14,6 +14,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
+use crate::code_graph::application::CodeGraphService;
 use crate::orchestrator::domain::OrchestratorConfig;
 use crate::orchestrator::domain::OrchestratorError;
 
@@ -37,6 +38,7 @@ pub struct OrchestratorBuilderImpl {
     event_bus: Option<Arc<dyn crate::event_system::application::EventBusService>>,
     audit_service: Option<Arc<dyn crate::audit::application::AuditService>>,
     budget_service: Option<Arc<dyn crate::budget_tracking::application::LlmBudgetService>>,
+    code_graph_service: Option<Arc<dyn CodeGraphService>>,
 }
 
 impl OrchestratorBuilderImpl {
@@ -79,6 +81,12 @@ impl OrchestratorBuilderImpl {
     /// Override the budget service.
     pub fn with_budget_service(mut self, svc: Arc<dyn crate::budget_tracking::application::LlmBudgetService>) -> Self {
         self.budget_service = Some(svc);
+        self
+    }
+
+    /// Override the code graph service.
+    pub fn with_code_graph_service(mut self, svc: Arc<dyn CodeGraphService>) -> Self {
+        self.code_graph_service = Some(svc);
         self
     }
 
@@ -140,6 +148,7 @@ impl OrchestratorBuilder for OrchestratorBuilderImpl {
             event_bus: None,
             audit_service: None,
             budget_service: None,
+            code_graph_service: None,
         }
     }
 
@@ -159,6 +168,11 @@ impl OrchestratorBuilder for OrchestratorBuilderImpl {
         self
     }
 
+    fn with_code_graph_service(mut self, svc: Arc<dyn CodeGraphService>) -> Self {
+        self.code_graph_service = Some(svc);
+        self
+    }
+
     async fn build(self) -> Result<Box<dyn OrchestratorService>, OrchestratorError> {
         self.check_ready()?;
 
@@ -170,6 +184,7 @@ impl OrchestratorBuilder for OrchestratorBuilderImpl {
         let event_bus = self.event_bus.unwrap();
         let audit_service = self.audit_service;
         let budget_service = self.budget_service.unwrap();
+        let code_graph_service = self.code_graph_service;
 
         let orchestrator = OrchestratorServiceImpl::new(
             config,
@@ -180,6 +195,7 @@ impl OrchestratorBuilder for OrchestratorBuilderImpl {
             event_bus,
             audit_service,
             budget_service,
+            code_graph_service,
         );
 
         Ok(Box::new(orchestrator))

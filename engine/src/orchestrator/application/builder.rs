@@ -26,6 +26,7 @@
 //! - Default behaviour when optional fields are omitted
 
 use async_trait::async_trait;
+use std::sync::Arc;
 
 use crate::orchestrator::domain::OrchestratorConfig;
 
@@ -62,6 +63,14 @@ pub trait OrchestratorBuilder: Send + Sync {
     ///
     /// Optional — defaults to unlimited.
     fn with_llm_budget(self, max_calls: u32, max_tokens: u64) -> Self
+    where
+        Self: Sized;
+
+    /// Inject a CodeGraphService for module-level dependency graph construction.
+    ///
+    /// Optional — if omitted, no module dependency graph will be available
+    /// for the template generation pipeline.
+    fn with_code_graph_service(self, svc: Arc<dyn crate::code_graph::application::CodeGraphService>) -> Self
     where
         Self: Sized;
 

@@ -33,6 +33,7 @@ use crate::state_persistence::application::{dto as state_dto, service as state_s
 use crate::cancellation::application as cancel_app;
 use crate::audit::application as audit_app;
 use crate::budget_tracking::application as budget_app;
+use crate::code_graph::application::CodeGraphService as CodeGraphServiceTrait;
 use crate::event_system::application as event_app;
 
 pub struct OrchestratorServiceImpl {
@@ -46,7 +47,9 @@ pub struct OrchestratorServiceImpl {
     audit_service: Option<Arc<dyn audit_app::AuditService>>,
     #[allow(dead_code)]
     budget_service: Arc<dyn budget_app::LlmBudgetService>,
-    current_execution: Arc<RwLock<Option<CurrentExecutionState>>>,
+    #[allow(dead_code)]
+    code_graph_service: Option<Arc<dyn CodeGraphServiceTrait>>,
+    current_execution: Arc<RwLock<Option<CurrentExecutionState>>>,    
 }
 
 #[derive(Debug, Clone)]
@@ -69,6 +72,7 @@ impl OrchestratorServiceImpl {
         event_bus: Arc<dyn event_app::EventBusService>,
         audit_service: Option<Arc<dyn audit_app::AuditService>>,
         budget_service: Arc<dyn budget_app::LlmBudgetService>,
+        code_graph_service: Option<Arc<dyn CodeGraphServiceTrait>>,
     ) -> Self {
         Self {
             config,
@@ -79,6 +83,7 @@ impl OrchestratorServiceImpl {
             event_bus,
             audit_service,
             budget_service,
+            code_graph_service,
             current_execution: Arc::new(RwLock::new(None)),
         }
     }
@@ -94,6 +99,7 @@ impl OrchestratorServiceImpl {
             Arc::new(mocks::MockEventBusService::new()),
             None,
             Arc::new(mocks::MockBudgetService),
+            None,
         )
     }
 
@@ -695,6 +701,7 @@ mod tests {
             Arc::new(mocks::MockEventBusService::new()),
             None,
             Arc::new(mocks::MockBudgetService),
+            None,
         );
         let e = orch.run(RunInput {
             intent: "test".into(), config: serde_json::json!({}), repo_root: "/tmp/t".into(), enforcement_preset: None,

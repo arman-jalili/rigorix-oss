@@ -105,6 +105,12 @@ pub struct RepoContext {
     /// Optional symbol graph subset for Phase 3 validation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub symbol_graph_snapshot: Option<serde_json::Value>,
+
+    /// Formatted module dependency graph (CodeGraph output) for the LLM prompt.
+    /// Populated by CodeGraphBuilder/Formatter at context construction time.
+    /// Uses Mermaid format by default — shows which modules import which.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub module_deps: Option<String>,
 }
 
 impl RepoContext {
@@ -123,6 +129,7 @@ impl RepoContext {
             architecture_overview: String::new(),
             bounded_context: String::new(),
             symbol_graph_snapshot: None,
+            module_deps: None,
         }
     }
 
@@ -157,12 +164,23 @@ impl RepoContext {
             architecture_overview,
             bounded_context,
             symbol_graph_snapshot: None,
+            module_deps: None,
         })
     }
 
     /// Check if this context has any file entries.
     pub fn has_files(&self) -> bool {
         !self.directory_tree.is_empty() || !self.dir_tree.is_empty()
+    }
+
+    /// Attach a module dependency graph (CodeGraph formatted output) to this context.
+    ///
+    /// Accepts the formatted output from CodeGraphFormatter (Mermaid, DOT, Tree, List).
+    /// This is injected into the LLM prompt to give the model awareness of module
+    /// dependency relationships.
+    pub fn with_module_deps(mut self, deps: String) -> Self {
+        self.module_deps = Some(deps);
+        self
     }
 
     /// Check if this context has any public API entries.
@@ -953,6 +971,11 @@ impl ClaudeTemplateGenerator {
             ctx.bounded_context.clone()
         };
 
+        let mod_deps_section = match &ctx.module_deps {
+            Some(deps) if !deps.is_empty() => format!("\nMODULE DEPENDENCY GRAPH:\n{}\n", deps),
+            _ => String::new(),
+        };
+
         let dir_tree = if ctx.dir_tree.is_empty() {
             if ctx.directory_tree.is_empty() {
                 "(no files scanned)".to_string()
@@ -1026,7 +1049,7 @@ Bounded context: {bounded_context}
 Directory structure:
 {dir_tree}
 {arch}
-
+{mod_deps}
 EXISTING DEPENDENCIES (ONLY use these — do NOT add new ones):
 {deps}
 
@@ -1053,6 +1076,7 @@ Respond with valid TOML only. Do NOT include markdown code fences or explanation
             project_type = ctx.project_type,
             bounded_context = bc_section,
             arch = arch_section,
+            mod_deps = mod_deps_section,
             deps = deps_section,
             api = api_section,
             key_files = key_files_section,
