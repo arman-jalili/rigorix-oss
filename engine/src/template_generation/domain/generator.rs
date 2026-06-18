@@ -1279,9 +1279,9 @@ path = "{{ param_name }}"  # use DOUBLE curly braces {{ }} for parameter substit
 
 VALID ACTION TYPES:
 - file_read: {{ type, path }}
-- file_write: {{ type, path, content_template (optional) }} — OVERWRITES entire file
-- file_append: {{ type, path, content_template }} — APPENDS to existing file (ONLY for: mod declarations, imports, single-line config)
-- file_patch: {{ type, path, content_template, anchor (optional) }} — inserts content into existing file
+- file_write: {{ type, path, content_template (required) }} — OVERWRITES entire file with the given content
+- file_append: {{ type, path, content_template (required) }} — APPENDS to existing file (ONLY for: mod declarations, imports, single-line config)
+- file_patch: {{ type, path, content_template (required), anchor (optional) }} — inserts content into existing file at an anchor point
 - run_command: {{ type, command, args (optional) }}
 - lsp_query: {{ type, query }}
 - git_read: {{ type, operation, count (optional) }}
