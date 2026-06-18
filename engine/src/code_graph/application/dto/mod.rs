@@ -357,6 +357,9 @@ pub enum OutputFormat {
     Json,
     /// Plain text adjacency list.
     List,
+    /// Compact citation format: file → [dependency1, dependency2]
+    /// Mirrors FastContext <final_answer> output — file:line references only.
+    Compact,
 }
 
 impl OutputFormat {
@@ -368,6 +371,7 @@ impl OutputFormat {
             OutputFormat::Tree => "tree",
             OutputFormat::Json => "json",
             OutputFormat::List => "list",
+            OutputFormat::Compact => "compact",
         }
     }
 }

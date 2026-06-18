@@ -730,6 +730,46 @@ async fn test_formatter_list() {
 }
 
 // ===========================================================================
+// Compact Format Tests (FastContext pattern)
+// ===========================================================================
+
+#[tokio::test]
+async fn test_formatter_compact() {
+    let (graph, _, _) = build_sample_graph();
+    let formatter = CodeGraphFormatterImpl::new();
+
+    let result = formatter
+        .format(FormatGraphInput {
+            graph,
+            format: OutputFormat::Compact,
+            include_metadata: false,
+        })
+        .await
+        .unwrap();
+
+    assert!(result.output.contains("src/a") || result.output.contains("module-a"));
+    assert!(result.output.contains("imports") || result.output.contains("file"));
+    assert!(result.output_size > 0);
+}
+
+#[tokio::test]
+async fn test_formatter_compact_empty_graph() {
+    let graph = CodeGraph::new(create_test_metadata("empty"));
+    let formatter = CodeGraphFormatterImpl::new();
+
+    let result = formatter
+        .format(FormatGraphInput {
+            graph,
+            format: OutputFormat::Compact,
+            include_metadata: false,
+        })
+        .await
+        .unwrap();
+
+    assert!(result.output.contains("no modules found"));
+}
+
+// ===========================================================================
 // CodeGraphImporter Tests
 // ===========================================================================
 

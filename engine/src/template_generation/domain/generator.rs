@@ -168,6 +168,71 @@ impl RepoContext {
         })
     }
 
+    /// Build a RepoContext targeted to a specific topic/bounded context.
+    ///
+    /// Instead of scanning the entire workspace (all source files for public API,
+    /// all key files for content), this method scopes the scan to only directories
+    /// and files relevant to the given topic filter. This is the "targeted over
+    /// comprehensive" pattern from FastContext — find relevant code, not all code.
+    ///
+    /// When `compact` is `true`, the output uses compact citation format
+    /// (file → [dependencies]) instead of full content dumps.
+    pub fn from_path_filtered(
+        dir: &std::path::Path,
+        topic_filter: &str,
+        compact: bool,
+    ) -> std::io::Result<Self> {
+        let project_type = detect_project_type(dir);
+
+        // 1. Build a scoped directory tree — only directories matching the topic
+        let dir_tree = if compact {
+            format!("(scoped to: {})", topic_filter)
+        } else {
+            build_dir_tree_scoped(dir, 3, topic_filter)?
+        };
+
+        // 2. Only read dependencies (cheap, always useful)
+        let dependencies = read_dependencies(dir, &project_type);
+
+        // 3. Key files: only detect the bounded context, skip full content
+        let bounded_context = if topic_filter.is_empty() {
+            detect_bounded_context(dir)
+        } else {
+            topic_filter.to_string()
+        };
+
+        // 4. Public API: only scan files within the topic's directory
+        let (public_api, public_api_list) = if compact {
+            // Compact mode: return file paths only
+            let filtered_paths = scan_filtered_paths(dir, topic_filter);
+            let api = filtered_paths.join("\n");
+            (api, filtered_paths)
+        } else {
+            let api = scan_public_api_filtered(dir, &project_type, topic_filter);
+            let list: Vec<String> = api.lines().map(|l| l.to_string()).collect();
+            (api, list)
+        };
+
+        // 5. Architecture docs: read regardless (cheap)
+        let architecture_overview = read_architecture_docs(dir);
+
+        Ok(Self {
+            root_dir: dir.to_path_buf(),
+            project_type,
+            dir_tree,
+            directory_tree: Vec::new(),
+            dependencies,
+            public_api,
+            public_api_list,
+            existing_templates: Vec::new(),
+            key_file_contents: String::new(),
+            architecture_overview,
+            bounded_context,
+            symbol_graph_snapshot: None,
+            module_deps: None,
+        })
+    }
+
     /// Check if this context has any file entries.
     pub fn has_files(&self) -> bool {
         !self.directory_tree.is_empty() || !self.dir_tree.is_empty()
@@ -181,6 +246,19 @@ impl RepoContext {
     pub fn with_module_deps(mut self, deps: String) -> Self {
         self.module_deps = Some(deps);
         self
+    }
+
+    /// Returns `true` if the classifier has already matched a template with
+    /// high enough confidence that deep context building (full API scan, key
+    /// file contents, CodeGraph construction) can be skipped.
+    ///
+    /// Implements the "skip-when-known" heuristic from FastContext:
+    /// "Skip fastcontext if PR already names the file" → "Skip deep context
+    /// building if bounded-context templates already match the intent"
+    pub fn is_fully_matched(&self) -> bool {
+        // If we have existing templates AND a bounded context is detected,
+        // the classifier likely already found a match — skip heavy context
+        !self.existing_templates.is_empty() && !self.bounded_context.is_empty()
     }
 
     /// Check if this context has any public API entries.
@@ -595,6 +673,182 @@ fn detect_bounded_context(root: &std::path::Path) -> String {
 }
 
 /// Build a shallow directory tree string (N levels deep, tree-command style).
+/// Build a directory tree scoped to directories/keywords matching a filter.
+/// Uses simple substring matching on directory names. Falls back to full tree
+/// if filter is empty.
+fn build_dir_tree_scoped(
+    root: &std::path::Path,
+    max_depth: usize,
+    filter: &str,
+) -> std::io::Result<String> {
+    if filter.is_empty() {
+        return build_dir_tree(root, max_depth);
+    }
+    let filter_lower = filter.to_lowercase();
+    let mut lines = Vec::new();
+    build_dir_tree_scoped_recursive(root, root, 0, max_depth, &filter_lower, &mut lines)?;
+    Ok(lines.join("\n"))
+}
+
+fn build_dir_tree_scoped_recursive(
+    root: &std::path::Path,
+    dir: &std::path::Path,
+    depth: usize,
+    max_depth: usize,
+    filter: &str,
+    lines: &mut Vec<String>,
+) -> std::io::Result<()> {
+    if depth > max_depth {
+        return Ok(());
+    }
+    let indent = "  ".repeat(depth);
+    let dir_name = dir
+        .file_name()
+        .map(|n| n.to_string_lossy())
+        .unwrap_or_default()
+        .to_string();
+
+    // Skip hidden dirs
+    if depth > 0 && dir_name.starts_with('.') {
+        return Ok(());
+    }
+
+    // Only include directories matching the filter
+    if depth == 0 || dir_name.to_lowercase().contains(filter) {
+        let prefix = if depth == 0 {
+            dir.file_name()
+                .map(|n| n.to_string_lossy())
+                .unwrap_or_default()
+                .to_string()
+        } else {
+            dir_name.clone()
+        };
+        if depth > 0 || !prefix.is_empty() {
+            lines.push(format!("{}{}/", indent, prefix));
+        }
+    }
+
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                build_dir_tree_scoped_recursive(root, &path, depth + 1, max_depth, filter, lines)?;
+            } else if depth == 0 || dir_name.to_lowercase().contains(filter) {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if !name.starts_with('.') {
+                        lines.push(format!("{}{}{}", indent, "  ", name));
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Scan only file paths under directories matching a topic filter.
+/// Returns a compact list of relative file paths.
+fn scan_filtered_paths(root: &std::path::Path, filter: &str) -> Vec<String> {
+    let filter_lower = filter.to_lowercase();
+    let mut paths = Vec::new();
+    let mut dirs = vec![root.to_path_buf()];
+    let max_files = 30;
+
+    while let Some(dir) = dirs.pop() {
+        if paths.len() >= max_files {
+            break;
+        }
+        let dir_name = dir
+            .file_name()
+            .map(|n| n.to_string_lossy())
+            .unwrap_or_default()
+            .to_string();
+        if dir != root && !dir_name.to_lowercase().contains(&filter_lower) {
+            continue;
+        }
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                if paths.len() >= max_files {
+                    break;
+                }
+                let path = entry.path();
+                if path.is_dir() {
+                    let name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+                    if !name.starts_with('.') && name != "target" && name != "node_modules" {
+                        dirs.push(path);
+                    }
+                } else if let Some(rel) = path.strip_prefix(root).ok() {
+                    paths.push(rel.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+    paths.sort();
+    paths
+}
+
+/// Scan public API symbols only from files under directories matching the filter.
+fn scan_public_api_filtered(
+    root: &std::path::Path,
+    project_type: &str,
+    filter: &str,
+) -> String {
+    let filter_lower = filter.to_lowercase();
+    let mut symbols = Vec::new();
+    let max_symbols = 50; // Half the default limit since we're targeted
+    let mut dirs = vec![root.to_path_buf()];
+
+    let extensions: &[&str] = if project_type.contains("Rust") {
+        &["rs"]
+    } else if project_type.contains("TypeScript") {
+        &["ts"]
+    } else if project_type.contains("Python") {
+        &["py"]
+    } else {
+        &["rs", "ts", "py"]
+    };
+
+    while let Some(dir) = dirs.pop() {
+        if symbols.len() >= max_symbols {
+            break;
+        }
+        let dir_name = dir
+            .file_name()
+            .map(|n| n.to_string_lossy())
+            .unwrap_or_default()
+            .to_string();
+        // Only descend into directories matching the filter
+        if dir != root && !dir_name.to_lowercase().contains(&filter_lower) {
+            continue;
+        }
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                if symbols.len() >= max_symbols {
+                    break;
+                }
+                let path = entry.path();
+                if path.is_dir() {
+                    let name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+                    if !name.starts_with('.') && name != "target" && name != "node_modules" {
+                        dirs.push(path);
+                    }
+                } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    if extensions.contains(&ext) {
+                        if let Ok(content) = std::fs::read_to_string(&path) {
+                            let rel_path = path
+                                .strip_prefix(root)
+                                .map(|p| p.to_string_lossy())
+                                .unwrap_or_else(|_| path.to_string_lossy());
+                            extract_public_symbols(&content, &rel_path, &mut symbols, project_type);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    symbols.join("\n")
+}
+
 fn build_dir_tree(root: &std::path::Path, max_depth: usize) -> std::io::Result<String> {
     let mut lines = Vec::new();
     build_dir_tree_recursive(root, "", max_depth, &mut lines)?;
