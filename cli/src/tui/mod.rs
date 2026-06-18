@@ -29,7 +29,7 @@ use self::widgets::{LayoutMode, WidgetContext, cmd_bar, status_bar};
 /// Commands sent from the background orchestrator task to the TUI event loop.
 #[allow(clippy::enum_variant_names, dead_code)]
 #[derive(Debug)]
-enum VmCommand {
+pub(crate) enum VmCommand {
     /// Set the execution phase.
     Phase(ExecutionPhase),
     /// Set execution ID.
@@ -189,7 +189,7 @@ fn apply_vm_command(vm: &mut TuiViewModel, cmd: VmCommand) {
 }
 
 /// Parse the graph JSON from a plan output into NodeViewModel items.
-fn parse_graph_nodes(graph: &serde_json::Value) -> Vec<view_model::NodeViewModel> {
+pub(crate) fn parse_graph_nodes(graph: &serde_json::Value) -> Vec<view_model::NodeViewModel> {
     let mut nodes = Vec::new();
     if let Some(raw_nodes) = graph.get("nodes").and_then(|n| n.as_array()) {
         for raw in raw_nodes {
@@ -222,6 +222,68 @@ fn parse_graph_nodes(graph: &serde_json::Value) -> Vec<view_model::NodeViewModel
     nodes
 }
 
+/// Shared helper: spawn a background task that builds the orchestrator and
+/// calls `plan_only`, sending results back via `vm_tx`.
+fn spawn_plan_only_background(
+    vm_tx: &tokio::sync::mpsc::Sender<VmCommand>,
+    config: &crate::cli_boundary::config::CliConfig,
+    cancellation_token: &tokio_util::sync::CancellationToken,
+    intent: String,
+) {
+    let tx = vm_tx.clone();
+    let cfg = config.clone();
+    let ct = cancellation_token.clone();
+    tokio::spawn(async move {
+        match crate::cli_boundary::orchestrator::build_orchestrator(cfg, ct, String::new()).await {
+            Ok((orch, _svc)) => {
+                let input = rigorix_engine::orchestrator::application::dto::PlanOnlyInput {
+                    intent,
+                    config: serde_json::Value::Null,
+                    repo_root: String::new(),
+                };
+                match orch.plan_only(input).await {
+                    Ok(output) => {
+                        let exec_id = output.plan["execution_id"]
+                            .as_str()
+                            .and_then(|s| s.parse().ok());
+                        if let Some(id) = exec_id {
+                            let _ = tx.send(VmCommand::ExecutionId(id)).await;
+                        }
+                        // Extract and save generated template
+                        if let Some(toml) = output.plan["generated_toml"].as_str() {
+                            let tid = output.plan["template_id"].as_str().unwrap_or("unknown");
+                            let tpl_dir = std::path::PathBuf::from(".rigorix/templates");
+                            let tpl_path = tpl_dir.join(format!("{tid}.toml"));
+                            let _ = tokio::fs::create_dir_all(&tpl_dir).await;
+                            let _ = tokio::fs::write(&tpl_path, toml).await;
+                            let _ = tx.send(VmCommand::TemplateId(tid.to_string())).await;
+                        }
+                        if let Some(calls) = output.plan["llm_calls_used"].as_u64() {
+                            let _ = tx.send(VmCommand::LlmCalls(calls)).await;
+                        }
+                        if let Some(tokens) = output.plan["llm_tokens_used"].as_u64() {
+                            let _ = tx.send(VmCommand::Tokens(tokens)).await;
+                        }
+                        let nodes = parse_graph_nodes(&output.graph);
+                        if !nodes.is_empty() {
+                            let _ = tx.send(VmCommand::SetNodes(nodes)).await;
+                        }
+                        let _ = tx.send(VmCommand::Phase(ExecutionPhase::Completed)).await;
+                    }
+                    Err(e) => {
+                        let _ = tx
+                            .send(VmCommand::Error(format!("Plan failed: {e}")))
+                            .await;
+                    }
+                }
+            }
+            Err(e) => {
+                let _ = tx.send(VmCommand::Error(e.to_string())).await;
+            }
+        }
+    });
+}
+
 #[allow(clippy::too_many_arguments)]
 fn handle_action(
     action: KeyAction,
@@ -241,15 +303,21 @@ fn handle_action(
             command_bar.focused = true;
         }
         KeyAction::BlurCommandBar => {
-            *input_focus = InputFocus::Dashboard;
             command_bar.focused = false;
+            *input_focus = match vm.active_view {
+                ActiveView::Dashboard => InputFocus::Dashboard,
+                ActiveView::Plan => InputFocus::PlanReview,
+                ActiveView::Events => InputFocus::Events,
+                _ => InputFocus::View(vm.active_view),
+            };
         }
         KeyAction::ExecuteCommand => {
             if let Some(parsed) = command_bar.parse() {
                 match parsed {
                     command_bar::CommandBarInput::Intent(intent) => {
                         vm.intent = Some(intent.clone());
-                        vm.phase = ExecutionPhase::Planning;
+                        // Don't set phase to Planning here — nothing is
+                        // generating yet. The user needs to press [g] first.
                         vm.active_view = ActiveView::Plan;
                         *input_focus = InputFocus::PlanReview;
                         command_bar.focused = false;
@@ -274,8 +342,10 @@ fn handle_action(
         KeyAction::NextView | KeyAction::PrevView => {
             let cycle = [
                 ActiveView::Dashboard,
+                ActiveView::Plan,
                 ActiveView::Nodes,
                 ActiveView::Events,
+                ActiveView::Templates,
                 ActiveView::History,
             ];
             let idx = cycle.iter().position(|v| *v == vm.active_view).unwrap_or(0);
@@ -286,10 +356,18 @@ fn handle_action(
                 -1
             };
             vm.active_view = cycle[((idx as i32 + dir + len as i32) as usize) % len];
+            // Sync input_focus to the new view
+            *input_focus = match vm.active_view {
+                ActiveView::Dashboard => InputFocus::Dashboard,
+                ActiveView::Plan => InputFocus::PlanReview,
+                ActiveView::Events => InputFocus::Events,
+                _ => InputFocus::View(vm.active_view),
+            };
         }
         KeyAction::RunPlan => {
             vm.phase = ExecutionPhase::Executing;
-            // Spawn the orchestrator in a background task
+            vm.active_view = ActiveView::Dashboard;
+            *input_focus = InputFocus::Dashboard;
             let tx = vm_tx.clone();
             let cfg = config.clone();
             let ct = cancellation_token.clone();
@@ -298,7 +376,7 @@ fn handle_action(
                 match crate::cli_boundary::orchestrator::build_orchestrator(cfg, ct, String::new())
                     .await
                 {
-                    Ok(orch) => {
+                    Ok((orch, _svc)) => {
                         let input = rigorix_engine::orchestrator::application::dto::RunInput {
                             intent,
                             config: serde_json::Value::Null,
@@ -322,130 +400,30 @@ fn handle_action(
             });
         }
         KeyAction::PlanOnly => {
-            vm.phase = ExecutionPhase::Planning;
-            let tx = vm_tx.clone();
-            let cfg = config.clone();
-            let ct = cancellation_token.clone();
-            let intent = vm.intent.clone().unwrap_or_default();
-            tokio::spawn(async move {
-                match crate::cli_boundary::orchestrator::build_orchestrator(cfg, ct, String::new())
-                    .await
-                {
-                    Ok(orch) => {
-                        let input = rigorix_engine::orchestrator::application::dto::PlanOnlyInput {
-                            intent,
-                            config: serde_json::Value::Null,
-                            repo_root: String::new(),
-                        };
-                        match orch.plan_only(input).await {
-                            Ok(output) => {
-                                // Extract execution_id from plan JSON
-                                let exec_id = output.plan["execution_id"]
-                                    .as_str()
-                                    .and_then(|s| s.parse().ok());
-                                if let Some(id) = exec_id {
-                                    let _ = tx.send(VmCommand::ExecutionId(id)).await;
-                                }
-                                // Extract and save generated template
-                                if let Some(toml) = output.plan["generated_toml"].as_str() {
-                                    let tid =
-                                        output.plan["template_id"].as_str().unwrap_or("unknown");
-                                    let tpl_dir = std::path::PathBuf::from(".rigorix/templates");
-                                    let tpl_path = tpl_dir.join(format!("{tid}.toml"));
-                                    let _ = tokio::fs::create_dir_all(&tpl_dir).await;
-                                    let _ = tokio::fs::write(&tpl_path, toml).await;
-                                    let _ = tx.send(VmCommand::TemplateId(tid.to_string())).await;
-                                }
-                                // Update LLM calls metric
-                                if let Some(calls) = output.plan["llm_calls_used"].as_u64() {
-                                    let _ = tx.send(VmCommand::LlmCalls(calls)).await;
-                                }
-                                // Update tokens metric
-                                if let Some(tokens) = output.plan["llm_tokens_used"].as_u64() {
-                                    let _ = tx.send(VmCommand::Tokens(tokens)).await;
-                                }
-                                // Parse graph nodes
-                                let nodes = parse_graph_nodes(&output.graph);
-                                if !nodes.is_empty() {
-                                    let _ = tx.send(VmCommand::SetNodes(nodes)).await;
-                                }
-                                let _ = tx.send(VmCommand::Phase(ExecutionPhase::Completed)).await;
-                            }
-                            Err(e) => {
-                                let _ =
-                                    tx.send(VmCommand::Error(format!("Plan failed: {e}"))).await;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        let _ = tx.send(VmCommand::Error(e.to_string())).await;
-                    }
-                }
-            });
-            vm.active_view = ActiveView::Dashboard;
+            vm.active_view = ActiveView::Plan;
+            *input_focus = InputFocus::PlanReview;
+            // Only call plan_only() if we don't already have nodes (e.g. from a
+            // prior GenerateTemplate). Reuses the existing graph when available.
+            if vm.nodes.is_empty() {
+                vm.phase = ExecutionPhase::Planning;
+                spawn_plan_only_background(
+                    vm_tx,
+                    config,
+                    cancellation_token,
+                    vm.intent.clone().unwrap_or_default(),
+                );
+            }
         }
         KeyAction::GenerateTemplate => {
             vm.phase = ExecutionPhase::Planning;
-            let tx = vm_tx.clone();
-            let cfg = config.clone();
-            let ct = cancellation_token.clone();
-            let intent = vm.intent.clone().unwrap_or_default();
-            tokio::spawn(async move {
-                match crate::cli_boundary::orchestrator::build_orchestrator(cfg, ct, String::new())
-                    .await
-                {
-                    Ok(orch) => {
-                        let input = rigorix_engine::orchestrator::application::dto::PlanOnlyInput {
-                            intent,
-                            config: serde_json::Value::Null,
-                            repo_root: String::new(),
-                        };
-                        match orch.plan_only(input).await {
-                            Ok(output) => {
-                                let exec_id = output.plan["execution_id"]
-                                    .as_str()
-                                    .and_then(|s| s.parse().ok());
-                                if let Some(id) = exec_id {
-                                    let _ = tx.send(VmCommand::ExecutionId(id)).await;
-                                }
-                                // Extract and save generated template
-                                if let Some(toml) = output.plan["generated_toml"].as_str() {
-                                    let tid =
-                                        output.plan["template_id"].as_str().unwrap_or("unknown");
-                                    let tpl_dir = std::path::PathBuf::from(".rigorix/templates");
-                                    let tpl_path = tpl_dir.join(format!("{tid}.toml"));
-                                    let _ = tokio::fs::create_dir_all(&tpl_dir).await;
-                                    let _ = tokio::fs::write(&tpl_path, toml).await;
-                                    let _ = tx.send(VmCommand::TemplateId(tid.to_string())).await;
-                                }
-                                // Update LLM calls metric
-                                if let Some(calls) = output.plan["llm_calls_used"].as_u64() {
-                                    let _ = tx.send(VmCommand::LlmCalls(calls)).await;
-                                }
-                                // Update tokens metric
-                                if let Some(tokens) = output.plan["llm_tokens_used"].as_u64() {
-                                    let _ = tx.send(VmCommand::Tokens(tokens)).await;
-                                }
-                                // Parse graph nodes
-                                let nodes = parse_graph_nodes(&output.graph);
-                                if !nodes.is_empty() {
-                                    let _ = tx.send(VmCommand::SetNodes(nodes)).await;
-                                }
-                                let _ = tx.send(VmCommand::Phase(ExecutionPhase::Completed)).await;
-                            }
-                            Err(e) => {
-                                let _ = tx
-                                    .send(VmCommand::Error(format!("Generate failed: {e}")))
-                                    .await;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        let _ = tx.send(VmCommand::Error(e.to_string())).await;
-                    }
-                }
-            });
-            vm.active_view = ActiveView::Templates;
+            vm.active_view = ActiveView::Plan;
+            *input_focus = InputFocus::PlanReview;
+            spawn_plan_only_background(
+                vm_tx,
+                config,
+                cancellation_token,
+                vm.intent.clone().unwrap_or_default(),
+            );
         }
         KeyAction::SelectNext | KeyAction::SelectPrev => {
             let ids: Vec<String> = vm.nodes.keys().cloned().collect();

@@ -9,6 +9,15 @@
 //! After a user types an intent, the plan preview shows the generated plan
 //! and asks for confirmation. Every intent shows the plan first (plan-first
 //! principle).
+//!
+//! # Implementation note
+//!
+//! The `PlanReviewState` struct below defines the contract schema. The
+//! active plan review state is currently stored in [`TuiViewModel`] fields
+//! (`intent`, `template_id`, `nodes`, `phase`) and rendered by
+//! [`views::plan::render`]. This avoids duplicating state between the
+//! ViewModel and a separate PlanReviewState struct while keeping the
+//! contract definition visible for reference.
 
 use serde::{Deserialize, Serialize};
 

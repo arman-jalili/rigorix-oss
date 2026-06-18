@@ -78,6 +78,13 @@ impl crate::templates::application::service::TemplateEngineService for MockTempl
         })
     }
 
+    async fn get_template_full(
+        &self,
+        _template_id: &str,
+    ) -> Option<crate::templates::domain::Template> {
+        None
+    }
+
     async fn get_template(
         &self,
         _input: crate::templates::application::dto::GetTemplateInput,
@@ -145,7 +152,7 @@ fn create_test_pipeline() -> PlanningPipelineImpl {
         execution_id,
         classifier,
         extractor,
-        Box::new(MockTemplateEngine::new()),
+        std::sync::Arc::new(MockTemplateEngine::new()),
     )
 }
 
@@ -591,6 +598,7 @@ async fn test_plan_high_confidence_returns_planning_result() {
         execution_id: None,
         enable_generator_fallback: false,
         skip_validation: true,
+        repo_root: String::new(),
     };
 
     let result = pipeline.plan(input).await;
@@ -617,6 +625,7 @@ async fn test_plan_tracks_llm_usage() {
         execution_id: None,
         enable_generator_fallback: false,
         skip_validation: true,
+        repo_root: String::new(),
     };
 
     let result = pipeline.plan(input).await.unwrap();
@@ -634,6 +643,7 @@ async fn test_plan_low_confidence_no_generator_returns_error() {
         execution_id: None,
         enable_generator_fallback: false,
         skip_validation: true,
+        repo_root: String::new(),
     };
 
     let result = pipeline.plan(input).await;
@@ -660,6 +670,7 @@ async fn test_plan_with_generator_fallback_attempts_generation() {
         execution_id: None,
         enable_generator_fallback: true,
         skip_validation: true,
+        repo_root: String::new(),
     };
 
     let result = pipeline.plan(input).await;
@@ -686,6 +697,7 @@ async fn test_plan_with_graph_returns_output() {
         execution_id: None,
         enable_generator_fallback: false,
         skip_validation: true,
+        repo_root: String::new(),
     };
 
     let result = pipeline.plan_with_graph(input).await;
@@ -1204,7 +1216,7 @@ fn test_repo_context_has_files() {
 fn test_repo_context_has_public_api() {
     let mut ctx = RepoContext::new(std::path::PathBuf::from("."), "typescript".to_string());
     assert!(!ctx.has_public_api());
-    ctx.public_api.push("fetchUser".to_string());
+    ctx.public_api = "fetchUser".to_string();
     assert!(ctx.has_public_api());
 }
 
@@ -1213,7 +1225,7 @@ fn test_repo_context_serialization_roundtrip() {
     let mut ctx = RepoContext::new(std::path::PathBuf::from("/repo"), "rust".to_string());
     ctx.directory_tree.push("src/lib.rs".to_string());
     ctx.dependencies.push("serde".to_string());
-    ctx.public_api.push("MyStruct".to_string());
+    ctx.public_api = "MyStruct".to_string();
     ctx.symbol_graph_snapshot = Some(serde_json::json!({"types": ["MyStruct"]}));
 
     let json = serde_json::to_string(&ctx).unwrap();

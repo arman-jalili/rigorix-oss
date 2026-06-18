@@ -207,6 +207,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 execution_id: Some(execution_id),
                 enable_generator_fallback: true,
                 skip_validation: false,
+                repo_root: input.repo_root.clone(),
             })
             .await
             .map_err(|e| OrchestratorError::PlanningFailed {
@@ -222,9 +223,13 @@ impl OrchestratorService for OrchestratorServiceImpl {
         self.state_manager.save_state(Self::make_pending_state(execution_id)).await
             .map_err(|e| OrchestratorError::StatePersistenceFailed { detail: e.to_string(), state: "Pending".into() })?;
 
-        // 5. Execute DAG
+        // 5. Execute DAG — pass the graph from planning
         let task_results = self.execution_service
-            .execute_graph(exec_dto::ExecuteGraphInput { dag_id: execution_id, config_override: None })
+            .execute_graph(exec_dto::ExecuteGraphInput {
+                dag_id: execution_id,
+                graph: Some(plan_out.graph),
+                config_override: None,
+            })
             .await
             .map_err(|e| OrchestratorError::ExecutionFailed { detail: e.to_string(), nodes_completed: 0, nodes_remaining: 0 })
             .map(|o| o.result.node_results.into_values().map(|nr| TaskResult {
@@ -322,6 +327,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
             .plan_with_graph(planning_dto::PlanWithGraphInput {
                 intent: crate::planning::domain::intent::UserIntent::new(input.intent, None),
                 execution_id: None, enable_generator_fallback: true, skip_validation: false,
+                repo_root: input.repo_root.clone(),
             })
             .await
             .map_err(|e| OrchestratorError::PlanningFailed { detail: e.to_string(), intent: String::new() })?;

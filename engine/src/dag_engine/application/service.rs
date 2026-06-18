@@ -194,7 +194,7 @@ pub struct ShouldRetryInput {
     /// The execution policy governing this node.
     pub policy: crate::dag_engine::domain::ExecutionPolicy,
     /// The type of failure that occurred.
-    pub failure_type: crate::dag_engine::domain::FailureType,
+    pub failure_type: crate::failure_classification::domain::FailureType,
     /// The number of retries already attempted.
     pub retries_attempted: u8,
 }
@@ -205,7 +205,7 @@ pub enum RetryDecision {
     /// Retry the node with the specified strategy.
     Retry {
         /// The retry strategy to apply.
-        strategy: crate::dag_engine::domain::RetryStrategy,
+        strategy: crate::failure_classification::domain::RetryStrategy,
         /// Next attempt number (1-indexed).
         attempt: u8,
         /// Reason for the retry decision.

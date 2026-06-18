@@ -22,6 +22,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use uuid::Uuid;
 
 use super::error::DagError;
+use crate::failure_classification::domain::{FailureType, RetryStrategy};
 
 // ---------------------------------------------------------------------------
 // TaskGraph — Core DAG Data Structure
@@ -48,6 +49,11 @@ use super::error::DagError;
 pub struct TaskGraph {
     /// The nodes in this DAG.
     pub nodes: Vec<TaskNode>,
+
+    /// O(1) UUID → position index. Rebuilt on deserialization.
+    /// Not serialized — derived from `nodes` on load.
+    #[serde(skip)]
+    node_index: HashMap<Uuid, usize>,
 
     /// Topological ordering of node IDs (populated by `seal()`).
     pub topological_order: Option<Vec<Uuid>>,
@@ -92,6 +98,7 @@ impl TaskGraph {
     pub fn new() -> Self {
         Self {
             nodes: Vec::new(),
+            node_index: HashMap::new(),
             topological_order: None,
             sealed: false,
             execution_state: ExecutionState::default(),
@@ -113,11 +120,27 @@ impl TaskGraph {
                 reason: "Cannot add nodes to a sealed graph".to_string(),
             });
         }
-        if self.nodes.iter().any(|n| n.id == node.id) {
+        if self.node_index.contains_key(&node.id) {
             return Err(DagError::DuplicateTaskId { id: node.id });
         }
+        let idx = self.nodes.len();
+        self.node_index.insert(node.id, idx);
         self.nodes.push(node);
         Ok(())
+    }
+
+    /// Rebuild the UUID → position index from the node list.
+    ///
+    /// Called automatically by `seal()` to restore the index after
+    /// deserialization (where `node_index` is `#[serde(skip)]`).
+    fn rebuild_index_if_needed(&mut self) {
+        if self.node_index.len() == self.nodes.len() && !self.nodes.is_empty() {
+            return; // Index is already in sync
+        }
+        self.node_index.clear();
+        for (i, node) in self.nodes.iter().enumerate() {
+            self.node_index.insert(node.id, i);
+        }
     }
 
     /// Seal the graph and run topological sort with cycle detection.
@@ -144,6 +167,9 @@ impl TaskGraph {
                 reason: "Cannot seal an empty graph".to_string(),
             });
         }
+
+        // Ensure the node index is populated (may be empty after deserialization)
+        self.rebuild_index_if_needed();
 
         // Validate all dependency references
         self.validate_dependencies()?;
@@ -232,8 +258,7 @@ impl TaskGraph {
             topo_order.push(node_id);
 
             if let Some(deps) = dependents.get(&node_id) {
-                let deps_clone = deps.clone();
-                for dep_id in &deps_clone {
+                for dep_id in deps {
                     if let Some(degree) = in_degree.get_mut(dep_id) {
                         *degree = degree.saturating_sub(1);
                         if *degree == 0 {
@@ -272,7 +297,7 @@ impl TaskGraph {
             });
         }
 
-        if !self.nodes.iter().any(|n| n.id == node_id) {
+        if !self.node_index.contains_key(&node_id) {
             return Err(DagError::TaskNotFound { id: node_id });
         }
 
@@ -320,12 +345,17 @@ impl TaskGraph {
 
     /// Get a node by its ID.
     pub fn get_node(&self, node_id: Uuid) -> Option<&TaskNode> {
-        self.nodes.iter().find(|n| n.id == node_id)
+        self.node_index
+            .get(&node_id)
+            .and_then(|&idx| self.nodes.get(idx))
     }
 
     /// Get a mutable reference to a node by its ID.
     pub fn get_node_mut(&mut self, node_id: Uuid) -> Option<&mut TaskNode> {
-        self.nodes.iter_mut().find(|n| n.id == node_id)
+        self.node_index
+            .get(&node_id)
+            .copied()
+            .and_then(|idx| self.nodes.get_mut(idx))
     }
 
     /// Return an iterator over all nodes in the graph.
@@ -529,95 +559,6 @@ impl Default for ExecutionPolicy {
             backoff_ms: 100,
             backoff_multiplier: 2.0,
             max_backoff_ms: 30_000,
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// FailureType — Classification of Node Failures
-// ---------------------------------------------------------------------------
-
-/// Classification of a node failure for retry decision-making.
-///
-/// Used by `ExecutionPolicy::retry_on` to determine which failures
-/// should trigger a retry attempt.
-///
-/// # Contract (Frozen)
-/// - `Transient`: Temporary failures (network, timeout) — always retriable
-/// - `LspConflict`: LSP/tool conflicts — retriable with conflict resolution
-/// - `CompileError`: Compilation failures — not normally retriable
-/// - `TestFailure`: Test assertion failures — not normally retriable
-/// - `MissingDependency`: Dependency resolution failures — retriable
-/// - `PlanConflict`: Plan-level conflicts detected during execution
-/// - `Permanent`: Non-recoverable failures — never retriable
-/// - `Unknown`: Unclassified failures — subject to global policy
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum FailureType {
-    /// Temporary failures (network, timeout) — always retriable.
-    Transient,
-    /// LSP/tool conflicts — retriable with conflict resolution.
-    LspConflict,
-    /// Compilation failures — not normally retriable.
-    CompileError,
-    /// Test assertion failures — not normally retriable.
-    TestFailure,
-    /// Dependency resolution failures — retriable.
-    MissingDependency,
-    /// Plan-level conflicts detected during execution.
-    PlanConflict,
-    /// Non-recoverable failures — never retriable.
-    Permanent,
-    /// Unclassified failures — subject to global policy.
-    Unknown,
-}
-
-impl FailureType {
-    /// Returns the canonical snake_case name of this failure type.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            FailureType::Transient => "transient",
-            FailureType::LspConflict => "lsp_conflict",
-            FailureType::CompileError => "compile_error",
-            FailureType::TestFailure => "test_failure",
-            FailureType::MissingDependency => "missing_dependency",
-            FailureType::PlanConflict => "plan_conflict",
-            FailureType::Permanent => "permanent",
-            FailureType::Unknown => "unknown",
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// RetryStrategy — Strategy for Retrying Failed Nodes
-// ---------------------------------------------------------------------------
-
-/// Strategy for retrying a failed node.
-///
-/// Determines how the engine should approach a retry after a node fails:
-/// - `SameOperation`: Retry the exact same operation (e.g., re-run the tool)
-/// - `ExpandContext`: Retry with expanded context (more dependencies, files)
-/// - `SkipAndContinue`: Skip the node and continue execution (no retry)
-///
-/// # Contract (Frozen)
-/// - `SameOperation` is the default strategy
-/// - Strategy affects how the executor re-queues the node
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum RetryStrategy {
-    /// Retry the exact same operation (re-run the tool).
-    SameOperation,
-    /// Retry with expanded context (more dependencies, files).
-    ExpandContext,
-    /// Skip the node and continue execution (no retry).
-    SkipAndContinue,
-}
-
-impl RetryStrategy {
-    /// Returns the canonical snake_case name of this strategy.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            RetryStrategy::SameOperation => "same_operation",
-            RetryStrategy::ExpandContext => "expand_context",
-            RetryStrategy::SkipAndContinue => "skip_and_continue",
         }
     }
 }

@@ -41,7 +41,7 @@ use crate::risk_gating::domain::RiskConfig;
 ///
 /// ```rust
 /// use std::collections::HashMap;
-/// use rigorix::risk_gating::domain::{
+/// use rigorix_engine::risk_gating::domain::{
 ///     RiskConfig, RiskLevel, RiskClassifier,
 ///     default_classifier::DefaultClassifier,
 /// };

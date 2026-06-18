@@ -43,9 +43,24 @@ pub enum RetryStrategy {
         /// Must be in range 0-5. Default is 1.
         level: u8,
     },
+
+    /// Skip the node and continue execution (marks node as Skipped, not Failed).
+    SkipAndContinue,
 }
 
 impl RetryStrategy {
+    /// Returns the canonical snake_case name of this strategy.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RetryStrategy::SameOperation => "same_operation",
+            RetryStrategy::ReExecute => "re_execute",
+            RetryStrategy::PatchWithFeedback { .. } => "patch_with_feedback",
+            RetryStrategy::Fallback => "fallback",
+            RetryStrategy::ExpandContext { .. } => "expand_context",
+            RetryStrategy::SkipAndContinue => "skip_and_continue",
+        }
+    }
+
     /// Returns a human-readable description of this strategy.
     ///
     /// Used for logging and event payloads.
@@ -56,6 +71,7 @@ impl RetryStrategy {
             RetryStrategy::PatchWithFeedback { .. } => "Retry with error feedback",
             RetryStrategy::Fallback => "Execute fallback task",
             RetryStrategy::ExpandContext { .. } => "Expand context and retry",
+            RetryStrategy::SkipAndContinue => "Skip node and continue execution",
         }
     }
 }
@@ -68,6 +84,7 @@ impl fmt::Display for RetryStrategy {
             RetryStrategy::PatchWithFeedback { .. } => write!(f, "PatchWithFeedback"),
             RetryStrategy::Fallback => write!(f, "Fallback"),
             RetryStrategy::ExpandContext { level } => write!(f, "ExpandContext({})", level),
+            RetryStrategy::SkipAndContinue => write!(f, "SkipAndContinue"),
         }
     }
 }
@@ -106,6 +123,14 @@ mod tests {
     }
 
     #[test]
+    fn test_display_skip_and_continue() {
+        assert_eq!(
+            RetryStrategy::SkipAndContinue.to_string(),
+            "SkipAndContinue"
+        );
+    }
+
+    #[test]
     fn test_description() {
         assert_eq!(
             RetryStrategy::SameOperation.description(),
@@ -131,6 +156,7 @@ mod tests {
             },
             RetryStrategy::Fallback,
             RetryStrategy::ExpandContext { level: 2 },
+            RetryStrategy::SkipAndContinue,
         ];
 
         for strategy in strategies {
