@@ -340,9 +340,7 @@ impl ParallelExecutionServiceImpl {
             }
         };
         let path = parsed["path"].as_str().unwrap_or("");
-        let search = parsed["search"].as_str().unwrap_or("");
         let insert = parsed["insert"].as_str().unwrap_or("");
-        let before = parsed["before"].as_bool().unwrap_or(false);
         let duration_ms = start.elapsed().as_millis() as u64;
 
         let content = match std::fs::read_to_string(path) {
@@ -359,12 +357,122 @@ impl ParallelExecutionServiceImpl {
             }
         };
 
-        // Simple text-based patch: find search string, insert before/after
-        if let Some(pos) = content.find(search) {
+        // Determine mode: anchor mode if anchor_type is provided
+        let anchor_type = parsed["anchor_type"]
+            .as_str()
+            .and_then(|s| if s.is_empty() { None } else { Some(s) });
+
+        if let Some(anchor_type) = anchor_type {
+            // --- Mode 1: Tree-sitter anchor mode ---
+            let anchor_name = parsed["anchor_name"].as_str().unwrap_or("");
+            let container = parsed["container"].as_str().filter(|s| !s.is_empty());
+            let position = parsed["position"].as_str().unwrap_or("after");
+
+            let params = crate::tools::infrastructure::tree_sitter_anchor::AnchorParams {
+                anchor_type: anchor_type.to_string(),
+                anchor_name: anchor_name.to_string(),
+                container: container.map(|s| s.to_string()),
+                position: position.to_string(),
+            };
+
+            match crate::tools::infrastructure::tree_sitter_anchor::TreeSitterAnchorFinder::find_anchor(
+                &content,
+                path,
+                &params,
+            ) {
+                Ok(anchor) => {
+                    let new_content = format!(
+                        "{}{}{}",
+                        &content[..anchor.insert_offset],
+                        insert,
+                        &content[anchor.insert_offset..]
+                    );
+                    match std::fs::write(path, &new_content) {
+                        Ok(()) => TaskResult::success(
+                            node_id,
+                            node_name,
+                            Some(format!(
+                                "Patched {} via anchor {} '{}' ({} bytes inserted)",
+                                path,
+                                anchor_type,
+                                anchor_name,
+                                insert.len()
+                            )),
+                            duration_ms,
+                            0,
+                        ),
+                        Err(e) => TaskResult::failure(
+                            node_id,
+                            node_name,
+                            e.to_string(),
+                            "file_patch_error".to_string(),
+                            duration_ms,
+                            0,
+                        ),
+                    }
+                }
+                Err(e) => TaskResult::failure(
+                    node_id,
+                    node_name,
+                    e.to_string(),
+                    "file_patch_error".to_string(),
+                    duration_ms,
+                    0,
+                ),
+            }
+        } else {
+            // --- Mode 2: Text search mode (backward compatible) ---
+            let search = parsed["search"].as_str().unwrap_or("");
+            let before = parsed["before"].as_bool().unwrap_or(false);
+
+            if search.is_empty() {
+                return TaskResult::failure(
+                    node_id,
+                    node_name,
+                    "Missing required parameter: search or anchor_type".to_string(),
+                    "file_patch_error".to_string(),
+                    duration_ms,
+                    0,
+                );
+            }
+
+            // Find all occurrences to check for ambiguity
+            let occurrences: Vec<_> = content.match_indices(search).collect();
+            if occurrences.is_empty() {
+                return TaskResult::failure(
+                    node_id,
+                    node_name,
+                    format!("Search string not found in {}", path),
+                    "file_patch_error".to_string(),
+                    duration_ms,
+                    0,
+                );
+            }
+            if occurrences.len() > 1 {
+                return TaskResult::failure(
+                    node_id,
+                    node_name,
+                    format!(
+                        "Search string found {} times in {}. Expected exactly one match.",
+                        occurrences.len(),
+                        path
+                    ),
+                    "file_patch_error".to_string(),
+                    duration_ms,
+                    0,
+                );
+            }
+
+            let (match_pos, _) = occurrences[0];
             let new_content = if before {
-                format!("{}{}{}", &content[..pos], insert, &content[pos..])
+                format!(
+                    "{}{}{}",
+                    &content[..match_pos],
+                    insert,
+                    &content[match_pos..]
+                )
             } else {
-                let after = pos + search.len();
+                let after = match_pos + search.len();
                 format!("{}{}{}", &content[..after], insert, &content[after..])
             };
             match std::fs::write(path, &new_content) {
@@ -388,15 +496,6 @@ impl ParallelExecutionServiceImpl {
                     0,
                 ),
             }
-        } else {
-            TaskResult::failure(
-                node_id,
-                node_name,
-                format!("Search string not found in {}", path),
-                "file_patch_error".to_string(),
-                duration_ms,
-                0,
-            )
         }
     }
 

@@ -198,17 +198,41 @@ pub enum TemplateAction {
         content: String,
     },
 
-    /// Apply an AST-aware patch to a file.
+    /// Apply an AST-aware patch to a file (supports two modes).
+    ///
+    /// ## Mode 1: Tree-sitter Anchor (preferred)
+    /// Uses `anchor_type`, `anchor_name`, optional `container`, and `position`
+    /// to find the exact AST node via tree-sitter parsing.
+    ///
+    /// ## Mode 2: Text Search (fallback)
+    /// Uses the traditional `search` string approach.
     FilePatch {
         /// Path to the file.
         path: String,
-        /// Search string or pattern to locate the insertion point.
-        search: String,
         /// Content to insert.
         insert: String,
+        /// Search string to locate the insertion point (fallback mode).
+        /// Not required if `anchor_type` is provided.
+        #[serde(default)]
+        search: Option<String>,
         /// Whether to insert before the search match (default: after).
+        /// Only used in search mode.
         #[serde(default)]
         before: bool,
+        /// Type of AST node to find: "class", "struct", "impl", "method",
+        /// "function", "interface", "end_of_file".
+        #[serde(default)]
+        anchor_type: Option<String>,
+        /// Name of the symbol to find (ignored for "end_of_file").
+        #[serde(default)]
+        anchor_name: Option<String>,
+        /// Optional parent scope to restrict the search
+        /// (e.g., class name, impl type).
+        #[serde(default)]
+        container: Option<String>,
+        /// Where to insert: "before" or "after" (default: "after").
+        #[serde(default)]
+        position: Option<String>,
     },
 
     /// Execute a shell command with allowlist enforcement.
@@ -294,8 +318,19 @@ impl TemplateAction {
                 path,
                 search,
                 insert,
+                anchor_type,
+                anchor_name,
+                container,
                 ..
-            } => format!("{} {} {}", path, search, insert),
+            } => format!(
+                "{} {} {} {} {} {}",
+                path,
+                search.as_deref().unwrap_or(""),
+                insert,
+                anchor_type.as_deref().unwrap_or(""),
+                anchor_name.as_deref().unwrap_or(""),
+                container.as_deref().unwrap_or("")
+            ),
             TemplateAction::RunCommand { command, .. } => command.clone(),
             TemplateAction::LspQuery { file, .. } => file.clone(),
             TemplateAction::GitRead { command, .. } => command.clone(),

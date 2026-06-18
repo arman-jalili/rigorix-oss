@@ -248,9 +248,44 @@ impl PlanningPipelineImpl {
                     search,
                     insert,
                     before,
+                    anchor_type,
+                    anchor_name,
+                    container,
+                    position,
                 } => {
-                    let v = serde_json::json!({"path": path, "search": search, "insert": insert, "before": before});
-                    ("file_patch", v.to_string())
+                    let mut obj = serde_json::json!({
+                        "path": path,
+                        "insert": insert,
+                    });
+                    if let Some(s) = search {
+                        obj.as_object_mut()
+                            .unwrap()
+                            .insert("search".to_string(), serde_json::json!(s));
+                        obj.as_object_mut()
+                            .unwrap()
+                            .insert("before".to_string(), serde_json::json!(before));
+                    }
+                    if let Some(at) = anchor_type {
+                        obj.as_object_mut()
+                            .unwrap()
+                            .insert("anchor_type".to_string(), serde_json::json!(at));
+                    }
+                    if let Some(an) = anchor_name {
+                        obj.as_object_mut()
+                            .unwrap()
+                            .insert("anchor_name".to_string(), serde_json::json!(an));
+                    }
+                    if let Some(c) = container {
+                        obj.as_object_mut()
+                            .unwrap()
+                            .insert("container".to_string(), serde_json::json!(c));
+                    }
+                    if let Some(p) = position {
+                        obj.as_object_mut()
+                            .unwrap()
+                            .insert("position".to_string(), serde_json::json!(p));
+                    }
+                    ("file_patch", obj.to_string())
                 }
                 TemplateAction::GitRead { command, .. } => ("git_read", command.clone()),
                 TemplateAction::GitStage { path } => ("git_stage", path.clone()),

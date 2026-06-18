@@ -23,6 +23,9 @@ reqwest = "0.13.4"
 indexmap = { version = "2", features = ["serde"] }
 rand = "0.10.1"
 tree-sitter = "0.25"
+tree-sitter-rust = "0.23"
+tree-sitter-typescript = "0.23"
+tree-sitter-python = "0.21"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = "0.2"

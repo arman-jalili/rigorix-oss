@@ -579,8 +579,14 @@ mod tests {
             "node_started"
         );
         assert_eq!(
-            ExecutionEvent::new_node_completed(eid, "n1".into(), "Node 1".into(), 100, serde_json::Value::Null)
-                .event_type_name(),
+            ExecutionEvent::new_node_completed(
+                eid,
+                "n1".into(),
+                "Node 1".into(),
+                100,
+                serde_json::Value::Null
+            )
+            .event_type_name(),
             "node_completed"
         );
         assert_eq!(
@@ -640,8 +646,13 @@ mod tests {
         let event = ExecutionEvent::new_planning_started(eid, "Build the project".into());
         assert!(event.summary().contains("Planning started"));
 
-        let event =
-            ExecutionEvent::new_node_completed(eid, "compile".into(), "Compile".into(), 500, serde_json::Value::Null);
+        let event = ExecutionEvent::new_node_completed(
+            eid,
+            "compile".into(),
+            "Compile".into(),
+            500,
+            serde_json::Value::Null,
+        );
         assert!(event.summary().contains("compile"));
         assert!(event.summary().contains("500ms"));
 
@@ -666,8 +677,14 @@ mod tests {
         assert!(ExecutionEvent::new_execution_failed(eid, "err".into()).is_error());
         assert!(ExecutionEvent::new_budget_warning(eid, "tokens".into(), 80, 100).is_error());
         assert!(
-            !ExecutionEvent::new_node_completed(eid, "n1".into(), "Node 1".into(), 100, serde_json::Value::Null)
-                .is_error()
+            !ExecutionEvent::new_node_completed(
+                eid,
+                "n1".into(),
+                "Node 1".into(),
+                100,
+                serde_json::Value::Null
+            )
+            .is_error()
         );
         assert!(!ExecutionEvent::new_planning_started(eid, "test".into()).is_error());
     }
@@ -739,7 +756,13 @@ mod tests {
     fn test_new_node_completed() {
         let eid = sample_eid();
         let output = serde_json::json!({"status": "ok"});
-        let event = ExecutionEvent::new_node_completed(eid, "node-1".into(), "Node 1".into(), 250, output.clone());
+        let event = ExecutionEvent::new_node_completed(
+            eid,
+            "node-1".into(),
+            "Node 1".into(),
+            250,
+            output.clone(),
+        );
         match &event {
             ExecutionEvent::NodeCompleted {
                 execution_id,
@@ -946,8 +969,13 @@ mod tests {
     #[test]
     fn test_serde_roundtrip_node_completed() {
         let eid = sample_eid();
-        let event =
-            ExecutionEvent::new_node_completed(eid, "n1".into(), "Node 1".into(), 250, serde_json::json!("done"));
+        let event = ExecutionEvent::new_node_completed(
+            eid,
+            "n1".into(),
+            "Node 1".into(),
+            250,
+            serde_json::json!("done"),
+        );
         let json = serde_json::to_string(&event).unwrap();
         let deserialized: ExecutionEvent = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.event_type_name(), "node_completed");

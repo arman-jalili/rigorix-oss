@@ -21,9 +21,9 @@ use tokio_util::sync::CancellationToken;
 use crate::cli_boundary::config::CliConfig;
 
 use self::command_bar::CommandBarState;
+use self::event_bridge::event_to_vm_command;
 use self::input::keymap;
 use self::input::{InputFocus, KeyAction};
-use self::event_bridge::event_to_vm_command;
 use self::view_model::{ActiveView, ExecutionPhase, NodeStatus, NodeViewModel, TuiViewModel};
 use self::widgets::{LayoutMode, WidgetContext, cmd_bar, status_bar};
 
@@ -220,8 +220,10 @@ fn apply_vm_command(vm: &mut TuiViewModel, cmd: VmCommand) {
                 // Try to find existing node by id first, then by name as fallback
                 let target_id = if vm.nodes.contains_key(&n.id) {
                     n.id.clone()
-                } else if let Some((existing_id, _)) =
-                    vm.nodes.iter().find(|(_, v)| v.name == n.name && !n.name.is_empty())
+                } else if let Some((existing_id, _)) = vm
+                    .nodes
+                    .iter()
+                    .find(|(_, v)| v.name == n.name && !n.name.is_empty())
                 {
                     existing_id.clone()
                 } else {

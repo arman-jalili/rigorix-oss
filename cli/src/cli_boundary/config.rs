@@ -242,8 +242,14 @@ pub fn load_config() -> CliConfig {
         && let Some((base_url, _api_key, max_tokens)) =
             resolve_model_settings(&models_val, provider_str, model_id)
     {
-        let has_base_url = merged.pointer("/llm/base_url").and_then(|v| v.as_str()).is_some();
-        let has_max_tokens = merged.pointer("/llm/max_tokens").and_then(|v| v.as_u64()).is_some();
+        let has_base_url = merged
+            .pointer("/llm/base_url")
+            .and_then(|v| v.as_str())
+            .is_some();
+        let has_max_tokens = merged
+            .pointer("/llm/max_tokens")
+            .and_then(|v| v.as_u64())
+            .is_some();
         let mut model_defaults = serde_json::json!({});
         if !has_base_url {
             model_defaults["base_url"] = serde_json::Value::String(base_url);
@@ -251,7 +257,11 @@ pub fn load_config() -> CliConfig {
         if !has_max_tokens {
             model_defaults["max_tokens"] = serde_json::Value::Number(max_tokens.into());
         }
-        if !model_defaults.as_object().map(|o| o.is_empty()).unwrap_or(true) {
+        if !model_defaults
+            .as_object()
+            .map(|o| o.is_empty())
+            .unwrap_or(true)
+        {
             // Wrap in "llm" key for deep_merge
             let wrapped = serde_json::json!({ "llm": model_defaults });
             deep_merge(&mut merged, wrapped);
@@ -267,8 +277,8 @@ pub fn load_config() -> CliConfig {
     // Strategy: start with Config::default(), serialize to JSON, then merge user
     // overrides on top. This ensures all required fields are present even when
     // the user provides a partial config (e.g. only [llm] section).
-    let mut engine_config_json = serde_json::to_value(Config::default())
-        .unwrap_or_else(|_| serde_json::json!({}));
+    let mut engine_config_json =
+        serde_json::to_value(Config::default()).unwrap_or_else(|_| serde_json::json!({}));
     deep_merge(&mut engine_config_json, merged);
 
     let engine_config = Config::deserialize(&engine_config_json).ok();

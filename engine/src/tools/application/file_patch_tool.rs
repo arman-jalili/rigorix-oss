@@ -1,31 +1,53 @@
-//! FilePatchTool — AST-aware file patching with search/replace.
+//! FilePatchTool — AST-aware file patching with tree-sitter anchors or search/replace.
 //!
 //! @canonical .pi/architecture/modules/tool-system.md#file-patch
-//! Implements: Tool trait — FilePatch concrete tool
-//! Issue: #125
+//! Implements: Tool trait — FilePatch concrete tool with tree-sitter anchor support
+//! Issue: #199
+//! Last Architecture Sync: 2026-06-18
 //!
-//! Finds a unique search string in a file and inserts content before or after it.
-//! Validates that the search string appears exactly once to prevent ambiguity.
-//! Validates that paths are within the workspace root.
+//! Supports two modes:
+//!
+//! ## Mode 1: Tree-sitter Anchor (deterministic, preferred)
+//! Uses `anchor_type`, `anchor_name`, optional `container`, and `position` to
+//! find the exact AST node via tree-sitter parsing. No whitespace dependence.
+//!
+//! ## Mode 2: Text Search (backward compatible, fallback)
+//! Uses the traditional `search` string approach. The search string must appear
+//! exactly once in the file to prevent ambiguity.
+//!
+//! # Risk Level
+//! Medium — modifies files on disk.
 
 use async_trait::async_trait;
 use std::path::Path;
 
 use crate::tools::application::dto::{SideEffect, ToolInput, ToolResult};
 use crate::tools::domain::{Tool, ToolError};
+use crate::tools::infrastructure::tree_sitter_anchor::{AnchorParams, TreeSitterAnchorFinder};
 
-/// Tool for AST-aware file patching with search/replace.
+/// Tool for AST-aware file patching with tree-sitter anchors or search/replace.
 ///
-/// # Input Parameters
+/// # Input Parameters (Mode 1 — Tree-sitter Anchor, preferred)
+/// - `path` (required, string): Path to the file to patch.
+/// - `anchor_type` (required, string): Type of AST node to find.
+///   One of: "class", "struct", "impl", "method", "function", "interface",
+///   "end_of_file".
+/// - `anchor_name` (required, string): Name of the symbol to find
+///   (ignored for "end_of_file").
+/// - `container` (optional, string): Parent scope to restrict the search
+///   (e.g., class name, impl type).
+/// - `position` (optional, string): Where to insert relative to the anchor.
+///   "before" or "after" (default: "after").
+/// - `insert` (required, string): Content to insert.
+///
+/// # Input Parameters (Mode 2 — Text Search, fallback)
 /// - `path` (required, string): Path to the file to patch.
 /// - `search` (required, string): Search string to locate the insertion point.
 /// - `insert` (required, string): Content to insert.
-/// - `before` (optional, bool): Insert before the search match (default: false, insert after).
+/// - `before` (optional, bool): Insert before the search match
+///   (default: false, insert after).
 ///
-/// # Risk Level
-/// Medium — modifies files on disk.
-///
-/// # Ambiguity Protection
+/// # Ambiguity Protection (Mode 2)
 /// The search string must appear exactly once in the file. If it appears
 /// zero or multiple times, an error is returned to prevent unintended edits.
 pub struct FilePatchTool {
@@ -88,26 +110,83 @@ impl FilePatchTool {
 
         Ok(canonical)
     }
-}
 
-#[async_trait]
-impl Tool for FilePatchTool {
-    fn name(&self) -> &str {
-        "file-patch"
+    /// Execute a patch using tree-sitter anchor mode.
+    async fn execute_anchor(
+        &self,
+        path_str: &str,
+        resolved: &std::path::PathBuf,
+        insert: &str,
+        input: &ToolInput,
+    ) -> Result<ToolResult, ToolError> {
+        let anchor_type = input.require_string("anchor_type")?;
+        let anchor_name = input.get_string("anchor_name").unwrap_or_default();
+        let container = input.get_string("container");
+        let position = input
+            .get_string("position")
+            .unwrap_or_else(|| "after".to_string());
+
+        let contents = tokio::fs::read_to_string(resolved).await.map_err(|e| {
+            ToolError::ExecutionFailed(format!("Failed to read file '{}': {}", path_str, e))
+        })?;
+
+        let params = AnchorParams {
+            anchor_type,
+            anchor_name,
+            container,
+            position,
+        };
+
+        let anchor = TreeSitterAnchorFinder::find_anchor(&contents, path_str, &params)?;
+
+        let new_contents = format!(
+            "{}{}{}",
+            &contents[..anchor.insert_offset],
+            insert,
+            &contents[anchor.insert_offset..]
+        );
+
+        tokio::fs::write(resolved, &new_contents)
+            .await
+            .map_err(|e| {
+                ToolError::ExecutionFailed(format!(
+                    "Failed to write patched file '{}': {}",
+                    path_str, e
+                ))
+            })?;
+
+        let patched_len = insert.len();
+        let result = ToolResult {
+            output: format!(
+                "Inserted {} bytes {} '{}' in '{}'",
+                patched_len, anchor.description, params.anchor_name, path_str
+            ),
+            exit_code: 0,
+            side_effects: vec![SideEffect::new(
+                path_str,
+                "file_patch",
+                format!(
+                    "Inserted {} bytes {} '{}' via anchor {}",
+                    patched_len, anchor.description, params.anchor_name, params.anchor_type
+                ),
+            )],
+            duration_ms: 0,
+            dry_run: false,
+        };
+
+        Ok(result)
     }
 
-    async fn execute(&self, input: &ToolInput) -> Result<ToolResult, ToolError> {
-        let path_str = input.require_string("path")?;
-        let search = input.require_string("search")?;
-        let insert = input.require_string("insert")?;
-        let before = input
-            .get_string("before")
-            .map(|s| s == "true")
-            .unwrap_or(false);
-
-        let resolved = self.resolve_path(&path_str)?;
-
-        let contents = tokio::fs::read_to_string(&resolved).await.map_err(|e| {
+    /// Execute a patch using text search fallback mode (original behavior).
+    async fn execute_search(
+        &self,
+        path_str: &str,
+        resolved: &std::path::PathBuf,
+        search: &str,
+        insert: &str,
+        before: bool,
+    ) -> Result<ToolResult, ToolError> {
+        let contents = tokio::fs::read_to_string(resolved).await.map_err(|e| {
             ToolError::ExecutionFailed(format!("Failed to read file '{}': {}", path_str, e))
         })?;
 
@@ -144,7 +223,7 @@ impl Tool for FilePatchTool {
             &contents[insert_pos..]
         );
 
-        tokio::fs::write(&resolved, &new_contents)
+        tokio::fs::write(resolved, &new_contents)
             .await
             .map_err(|e| {
                 ToolError::ExecutionFailed(format!(
@@ -164,7 +243,7 @@ impl Tool for FilePatchTool {
             ),
             exit_code: 0,
             side_effects: vec![SideEffect::new(
-                &path_str,
+                path_str,
                 "file_patch",
                 format!(
                     "Inserted {} bytes {} '{}'",
@@ -181,59 +260,73 @@ impl Tool for FilePatchTool {
     }
 }
 
+#[async_trait]
+impl Tool for FilePatchTool {
+    fn name(&self) -> &str {
+        "file-patch"
+    }
+
+    async fn execute(&self, input: &ToolInput) -> Result<ToolResult, ToolError> {
+        let path_str = input.require_string("path")?;
+        let insert = input.require_string("insert")?;
+        let resolved = self.resolve_path(&path_str)?;
+
+        // Determine mode: anchor_mode if anchor_type is provided, otherwise search mode
+        let has_anchor = input.get_string("anchor_type").is_some();
+
+        if has_anchor {
+            self.execute_anchor(&path_str, &resolved, &insert, input)
+                .await
+        } else {
+            let search = input.require_string("search")?;
+            let before = input
+                .get_string("before")
+                .map(|s| s == "true")
+                .unwrap_or(false);
+            self.execute_search(&path_str, &resolved, &search, &insert, before)
+                .await
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashMap;
     use tempfile::TempDir;
 
-    fn make_input(path: &str, search: &str, insert: &str) -> ToolInput {
+    // ------------------------------------------------------------------
+    // Helper: build ToolInput from key-value pairs
+    // ------------------------------------------------------------------
+
+    fn make_input(pairs: Vec<(&str, &str)>) -> ToolInput {
         let mut params = HashMap::new();
-        params.insert(
-            "path".to_string(),
-            serde_json::Value::String(path.to_string()),
-        );
-        params.insert(
-            "search".to_string(),
-            serde_json::Value::String(search.to_string()),
-        );
-        params.insert(
-            "insert".to_string(),
-            serde_json::Value::String(insert.to_string()),
-        );
+        for (key, value) in pairs {
+            params.insert(
+                key.to_string(),
+                serde_json::Value::String(value.to_string()),
+            );
+        }
         ToolInput::new(params)
     }
 
-    fn make_input_with_before(path: &str, search: &str, insert: &str, before: bool) -> ToolInput {
-        let mut params = HashMap::new();
-        params.insert(
-            "path".to_string(),
-            serde_json::Value::String(path.to_string()),
-        );
-        params.insert(
-            "search".to_string(),
-            serde_json::Value::String(search.to_string()),
-        );
-        params.insert(
-            "insert".to_string(),
-            serde_json::Value::String(insert.to_string()),
-        );
-        params.insert(
-            "before".to_string(),
-            serde_json::Value::String(before.to_string()),
-        );
-        ToolInput::new(params)
-    }
+    // ------------------------------------------------------------------
+    // Search mode tests (backward compatible)
+    // ------------------------------------------------------------------
 
     #[tokio::test]
-    async fn test_patch_insert_after() {
+    async fn test_search_insert_after() {
         let dir = TempDir::new().unwrap();
         let file_path = dir.path().join("test.rs");
         std::fs::write(&file_path, "fn main() {\n}").unwrap();
 
         let tool = FilePatchTool::new(dir.path().to_str().unwrap());
         let result = tool
-            .execute(&make_input("test.rs", "{\n", "    println!(\"hi\");\n"))
+            .execute(&make_input(vec![
+                ("path", "test.rs"),
+                ("search", "{\n"),
+                ("insert", "    println!(\"hi\");\n"),
+            ]))
             .await
             .unwrap();
 
@@ -244,19 +337,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_patch_insert_before() {
+    async fn test_search_insert_before() {
         let dir = TempDir::new().unwrap();
         let file_path = dir.path().join("test.rs");
         std::fs::write(&file_path, "println!(\"world\");").unwrap();
 
         let tool = FilePatchTool::new(dir.path().to_str().unwrap());
         let result = tool
-            .execute(&make_input_with_before(
-                "test.rs",
-                "println!(\"world\");",
-                "println!(\"hello \");",
-                true,
-            ))
+            .execute(&make_input(vec![
+                ("path", "test.rs"),
+                ("search", "println!(\"world\");"),
+                ("insert", "println!(\"hello \");"),
+                ("before", "true"),
+            ]))
             .await
             .unwrap();
 
@@ -266,14 +359,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_patch_search_not_found() {
+    async fn test_search_not_found() {
         let dir = TempDir::new().unwrap();
         let file_path = dir.path().join("test.rs");
         std::fs::write(&file_path, "fn main() {}").unwrap();
 
         let tool = FilePatchTool::new(dir.path().to_str().unwrap());
         let result = tool
-            .execute(&make_input("test.rs", "nonexistent", "content"))
+            .execute(&make_input(vec![
+                ("path", "test.rs"),
+                ("search", "nonexistent"),
+                ("insert", "content"),
+            ]))
             .await;
 
         assert!(result.is_err());
@@ -281,17 +378,286 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_patch_ambiguous_search() {
+    async fn test_search_ambiguous() {
         let dir = TempDir::new().unwrap();
         let file_path = dir.path().join("test.rs");
         std::fs::write(&file_path, "abc abc abc").unwrap();
 
         let tool = FilePatchTool::new(dir.path().to_str().unwrap());
-        let result = tool.execute(&make_input("test.rs", "abc", "xyz")).await;
+        let result = tool
+            .execute(&make_input(vec![
+                ("path", "test.rs"),
+                ("search", "abc"),
+                ("insert", "xyz"),
+            ]))
+            .await;
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), ToolError::ExecutionFailed(_)));
     }
+
+    // ------------------------------------------------------------------
+    // Anchor mode tests
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_anchor_rust_function_after() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("test.rs");
+        std::fs::write(
+            &file_path,
+            "fn existing() {\n    let x = 1;\n}\n\nfn other() {\n    let y = 2;\n}\n",
+        )
+        .unwrap();
+
+        let tool = FilePatchTool::new(dir.path().to_str().unwrap());
+        let result = tool
+            .execute(&make_input(vec![
+                ("path", "test.rs"),
+                ("anchor_type", "function"),
+                ("anchor_name", "existing"),
+                ("insert", "\nfn new_func() {\n    let z = 3;\n}\n"),
+                ("position", "after"),
+            ]))
+            .await
+            .unwrap();
+
+        assert!(result.is_success());
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("new_func"));
+        // new_func should appear after existing, before other
+        let existing_pos = content.find("fn existing").unwrap();
+        let new_func_pos = content.find("fn new_func").unwrap();
+        let other_pos = content.find("fn other").unwrap();
+        assert!(
+            existing_pos < new_func_pos,
+            "new_func should be after existing"
+        );
+        assert!(new_func_pos < other_pos, "new_func should be before other");
+    }
+
+    #[tokio::test]
+    async fn test_anchor_rust_function_before() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("test.rs");
+        std::fs::write(&file_path, "fn alpha() {}\n\nfn beta() {}\n").unwrap();
+
+        let tool = FilePatchTool::new(dir.path().to_str().unwrap());
+        let result = tool
+            .execute(&make_input(vec![
+                ("path", "test.rs"),
+                ("anchor_type", "function"),
+                ("anchor_name", "beta"),
+                ("insert", "fn between() {}\n\n"),
+                ("position", "before"),
+            ]))
+            .await
+            .unwrap();
+
+        assert!(result.is_success());
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        let alpha_pos = content.find("fn alpha").unwrap();
+        let between_pos = content.find("fn between").unwrap();
+        let beta_pos = content.find("fn beta").unwrap();
+        assert!(alpha_pos < between_pos, "between should be after alpha");
+        assert!(between_pos < beta_pos, "between should be before beta");
+    }
+
+    #[tokio::test]
+    async fn test_anchor_rust_method_in_container() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("test.rs");
+        std::fs::write(
+            &file_path,
+            "impl TaskList {\n    fn activeCount(&self) -> usize { 5 }\n\n    fn totalCount(&self) -> usize { 10 }\n}\n",
+        )
+        .unwrap();
+
+        let tool = FilePatchTool::new(dir.path().to_str().unwrap());
+        let result = tool
+            .execute(&make_input(vec![
+                ("path", "test.rs"),
+                ("anchor_type", "method"),
+                ("anchor_name", "activeCount"),
+                ("container", "TaskList"),
+                (
+                    "insert",
+                    "\n    fn getActiveTasks(&self) -> Vec<Task> { vec![] }\n",
+                ),
+                ("position", "after"),
+            ]))
+            .await
+            .unwrap();
+
+        assert!(result.is_success());
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("getActiveTasks"));
+        let active_pos = content.find("activeCount").unwrap();
+        let get_pos = content.find("getActiveTasks").unwrap();
+        let total_pos = content.find("totalCount").unwrap();
+        assert!(
+            active_pos < get_pos,
+            "getActiveTasks should be after activeCount"
+        );
+        assert!(
+            get_pos < total_pos,
+            "getActiveTasks should be before totalCount"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_anchor_rust_struct() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("test.rs");
+        std::fs::write(
+            &file_path,
+            "struct MyStruct {\n    field1: i32,\n}\n\nfn main() {}\n",
+        )
+        .unwrap();
+
+        let tool = FilePatchTool::new(dir.path().to_str().unwrap());
+        let result = tool
+            .execute(&make_input(vec![
+                ("path", "test.rs"),
+                ("anchor_type", "struct"),
+                ("anchor_name", "MyStruct"),
+                ("insert", "\nstruct OtherStruct {\n    data: String,\n}\n"),
+                ("position", "after"),
+            ]))
+            .await
+            .unwrap();
+
+        assert!(result.is_success());
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("OtherStruct"));
+    }
+
+    #[tokio::test]
+    async fn test_anchor_rust_impl() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("test.rs");
+        std::fs::write(
+            &file_path,
+            "impl MyStruct {\n    fn method1(&self) {}\n}\n\nfn main() {}\n",
+        )
+        .unwrap();
+
+        let tool = FilePatchTool::new(dir.path().to_str().unwrap());
+        let result = tool
+            .execute(&make_input(vec![
+                ("path", "test.rs"),
+                ("anchor_type", "impl"),
+                ("anchor_name", "MyStruct"),
+                ("insert", "\n    fn method2(&self) {}\n"),
+                ("position", "after"),
+            ]))
+            .await
+            .unwrap();
+
+        assert!(result.is_success());
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("method2"));
+    }
+
+    #[tokio::test]
+    async fn test_anchor_typescript_method_in_class() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("test.ts");
+        std::fs::write(
+            &file_path,
+            "class TaskList {\n    activeCount(): number {\n        return 0;\n    }\n}\n",
+        )
+        .unwrap();
+
+        let tool = FilePatchTool::new(dir.path().to_str().unwrap());
+        let result = tool
+            .execute(&make_input(vec![
+                ("path", "test.ts"),
+                ("anchor_type", "method"),
+                ("anchor_name", "activeCount"),
+                ("container", "TaskList"),
+                (
+                    "insert",
+                    "\n    getActiveTasks(): Task[] {\n        return [];\n    }\n",
+                ),
+                ("position", "after"),
+            ]))
+            .await
+            .unwrap();
+
+        assert!(result.is_success());
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("getActiveTasks"));
+    }
+
+    #[tokio::test]
+    async fn test_anchor_end_of_file() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("test.rs");
+        std::fs::write(&file_path, "fn main() {}\n").unwrap();
+
+        let tool = FilePatchTool::new(dir.path().to_str().unwrap());
+        let result = tool
+            .execute(&make_input(vec![
+                ("path", "test.rs"),
+                ("anchor_type", "end_of_file"),
+                ("insert", "\nfn new_fn() {}\n"),
+            ]))
+            .await
+            .unwrap();
+
+        assert!(result.is_success());
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert!(content.ends_with("fn main() {}\n\nfn new_fn() {}\n"));
+    }
+
+    #[tokio::test]
+    async fn test_anchor_not_found() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("test.rs");
+        std::fs::write(&file_path, "fn existing() {}").unwrap();
+
+        let tool = FilePatchTool::new(dir.path().to_str().unwrap());
+        let result = tool
+            .execute(&make_input(vec![
+                ("path", "test.rs"),
+                ("anchor_type", "function"),
+                ("anchor_name", "nonexistent"),
+                ("insert", "content"),
+            ]))
+            .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_anchor_unsupported_language() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("test.json");
+        std::fs::write(&file_path, "{}").unwrap();
+
+        let tool = FilePatchTool::new(dir.path().to_str().unwrap());
+        let result = tool
+            .execute(&make_input(vec![
+                ("path", "test.json"),
+                ("anchor_type", "function"),
+                ("anchor_name", "foo"),
+                ("insert", "{}"),
+            ]))
+            .await;
+
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("does not support AST-based anchoring")
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Common tests
+    // ------------------------------------------------------------------
 
     #[tokio::test]
     async fn test_patch_missing_parameters() {
@@ -315,7 +681,11 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let tool = FilePatchTool::new(dir.path().to_str().unwrap());
         let result = tool
-            .execute(&make_input("../outside.rs", "search", "insert"))
+            .execute(&make_input(vec![
+                ("path", "../outside.rs"),
+                ("search", "search"),
+                ("insert", "insert"),
+            ]))
             .await;
 
         assert!(result.is_err());
