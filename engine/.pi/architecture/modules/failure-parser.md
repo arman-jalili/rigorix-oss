@@ -351,9 +351,17 @@ Fed to PlanValidation → augments llm_generate prompt → retry
 ---
 
 *Last updated: 2026-06-19*
-*Module version: 1.0.0 (Planned)*
+*Module version: 1.0.0*
 
 ---
 
-**Status:** Planned
+**Status:** Implemented
+**Implementation:** [Issue #495 (Contract Freeze)](https://github.com/arman-jalili/rigorix-oss/issues/495), [Issue #496 (TemplateFailure)](https://github.com/arman-jalili/rigorix-oss/issues/496),
+[Issue #497 (FailureParserService)](https://github.com/arman-jalili/rigorix-oss/issues/497),
+[Issue #498 (TypeScript Parser)](https://github.com/arman-jalili/rigorix-oss/issues/498),
+[Issue #499 (Suggested Fix Generation)](https://github.com/arman-jalili/rigorix-oss/issues/499),
+[Issue #500 (Proofing & CI)](https://github.com/arman-jalili/rigorix-oss/issues/500),
+[Issue #501 (Architecture Readiness)](https://github.com/arman-jalili/rigorix-oss/issues/501)
 **Implementation priority:** P0 — bridges raw failures to self-correction
+**Epic:** [Issue #494 (failure-parser)](https://github.com/arman-jalili/rigorix-oss/issues/494)
+**Coverage:** 136+ tests (123 unit + 13 integration), 24 contract checks in CI
