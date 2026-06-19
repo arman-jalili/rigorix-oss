@@ -41,6 +41,7 @@ pub mod observability;
 pub mod orchestrator;
 pub mod recovery_recipes;
 pub mod planning;
+pub mod quality_gates;
 pub mod repo_engine;
 pub mod risk_gating;
 pub mod state_persistence;

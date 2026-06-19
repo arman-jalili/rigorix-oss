@@ -34,6 +34,7 @@ use crate::execution_engine::domain::ExecutionError;
 use crate::failure_classification::domain::FailureClassificationError;
 use crate::orchestrator::domain::OrchestratorError;
 use crate::planning::domain::PlanningError;
+use crate::quality_gates::domain::QualityGateError;
 use crate::repo_engine::domain::RepoEngineError;
 use crate::state_persistence::domain::StateError;
 use crate::recovery_recipes::domain::RecoveryError;
@@ -117,6 +118,10 @@ pub enum CoreOrchestratorError {
     #[error("Recovery error: {0}")]
     Recovery(#[from] RecoveryError),
 
+    /// Quality gates error — scope classification, contract evaluation.
+    #[error("Quality gate error: {0}")]
+    QualityGate(#[from] QualityGateError),
+
     /// Failure classification error — classification failures,
     /// missing strategies.
     #[error("Failure classification error: {0}")]
@@ -188,6 +193,7 @@ impl CoreOrchestratorError {
             CoreOrchestratorError::Template(e) => e.is_retriable(),
             CoreOrchestratorError::Orchestrator(e) => e.is_retriable(),
             CoreOrchestratorError::Recovery(e) => e.is_retriable(),
+            CoreOrchestratorError::QualityGate(e) => e.is_retriable(),
             CoreOrchestratorError::FailureClassification(e) => e.is_retriable(),
             // JSON deserialization errors are not retriable — the input is malformed
             CoreOrchestratorError::Json(_) => false,
@@ -214,6 +220,7 @@ impl CoreOrchestratorError {
             CoreOrchestratorError::Template(_) => "TEMPLATE_ERROR",
             CoreOrchestratorError::Orchestrator(_) => "ORCHESTRATOR_ERROR",
             CoreOrchestratorError::Recovery(_) => "RECOVERY_ERROR",
+            CoreOrchestratorError::QualityGate(_) => "QUALITY_GATE_ERROR",
             CoreOrchestratorError::FailureClassification(_) => "FAILURE_CLASSIFICATION_ERROR",
             CoreOrchestratorError::Io(_) => "IO_ERROR",
             CoreOrchestratorError::Json(_) => "JSON_ERROR",
@@ -240,6 +247,7 @@ impl CoreOrchestratorError {
             CoreOrchestratorError::Template(_) => 400,
             CoreOrchestratorError::Orchestrator(_) => 500,
             CoreOrchestratorError::Recovery(_) => 500,
+            CoreOrchestratorError::QualityGate(_) => 500,
             CoreOrchestratorError::FailureClassification(_) => 500,
             CoreOrchestratorError::Io(_) => 500,
             CoreOrchestratorError::Json(_) => 400,
@@ -368,6 +376,9 @@ mod tests {
             CoreOrchestratorError::Recovery(RecoveryError::NoRecipe(
                 crate::recovery_recipes::domain::FailureScenario::CompileError,
             )),
+            CoreOrchestratorError::QualityGate(QualityGateError::ScopeClassificationFailed {
+                reason: "test".to_string(),
+            }),
             CoreOrchestratorError::FailureClassification(
                 FailureClassificationError::ClassificationFailed {
                     message: "test".to_string(),
