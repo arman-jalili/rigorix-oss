@@ -299,6 +299,11 @@ run_stage "25" "execution-engine_proofing" \
 run_stage "26" "orchestrator_proofing" \
     "${SCRIPTS_DIR}/stage_orchestrator_proofing.sh" \
     "always"
+
+# Stage 27: Hooks Proofing
+run_stage "27" "hooks_proofing" \
+    "${SCRIPTS_DIR}/stage_hooks_proofing.sh" \
+    "always"
 # ── Summary ──
 
 echo ""
