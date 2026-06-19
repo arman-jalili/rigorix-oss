@@ -314,6 +314,11 @@ run_stage "28" "code-generation_proofing" \
 run_stage "29" "recovery-recipes_proofing" \
     "${SCRIPTS_DIR}/stage_recovery-recipes_proofing.sh" \
     "always"
+
+# Stage 30: Quality-Gates Proofing
+run_stage "30" "quality-gates_proofing" \
+    "${SCRIPTS_DIR}/stage_quality-gates_proofing.sh" \
+    "always"
 # ── Summary ──
 
 echo ""

@@ -9,5 +9,7 @@
 //! infrastructure module.
 
 pub mod repository;
+pub mod repository_impl;
 
 pub use repository::QualityGateConfigRepository;
+pub use repository_impl::InMemoryQualityGateRepository;

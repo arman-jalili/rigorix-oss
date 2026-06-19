@@ -16,6 +16,8 @@
 
 pub mod dto;
 pub mod service;
+pub mod service_impl;
 
 pub use dto::*;
 pub use service::QualityGateService;
+pub use service_impl::QualityGateServiceImpl;
