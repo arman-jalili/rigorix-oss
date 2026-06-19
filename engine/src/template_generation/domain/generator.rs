@@ -1262,7 +1262,10 @@ of operations.
 3. If a needed package or type doesn't exist, use `file_read` to inspect the codebase first.
 4. **For editing existing files: `file_read` + `file_patch` with anchor mode.** Read the file first to see the structure. Then use tree-sitter anchor fields to target the exact location. This is deterministic — no search-string guessing.
    - CRITICAL: After reading the file, HARDCODE the anchor_name from what you see. Do NOT make anchor_name a template parameter.
-   - CRITICAL: NEVER use the `search` field for method insertion. ALWAYS use `anchor_type` + `anchor_name`. The `search` field is only for inserting after a UNIQUE string (imports, config lines), never for code structures.
+   - CRITICAL: NEVER use the `search` field. Always use anchor mode (`anchor_type` + `anchor_name`). The `search` field is DEPRECATED and will produce wrong placement.
+     WRONG: `search = "export class TaskList {{"` — inserts after opening `{{`, content lands at START of class body.
+     RIGHT: `anchor_type = "class", anchor_name = "TaskList", position = "after"` — inserts before closing `}}`, content lands at END of class body.
+   - CRITICAL: For adding members to a class/struct/interface, ALWAYS use `anchor_type = "class"` (or "struct"/"interface"), `anchor_name = "<Name>"`, `position = "after"`. This inserts inside the body before the closing brace.
    
 5. `file_append` is ONLY for: import statements, module declarations, single-line config — never for methods/functions/classes.
 6. `file_write` is for creating NEW files or completely rewriting small files (<200 lines).
@@ -1281,6 +1284,7 @@ of operations.
 - Use `position = "after"` with `anchor_name` set to the last method's name.
 - NEVER insert before properties, constructor, or between fields — always after the last method.
 - If the class has no methods yet, anchor to the class itself: `anchor_type = "class"`, `anchor_name = "<ClassName>"`, `position = "after"`.
+- NEVER insert at the start of the class body (after `{{`). ALWAYS insert at the end (before `}}`).
 
 TEMPLATE SCHEMA:
 id = "unique-kebab-case-id"
@@ -1316,7 +1320,7 @@ VALID ACTION TYPES:
       anchor_type = "method", anchor_name = "activeCount", container = "TaskList",
       position = "after", insert = "  getActiveTasks(): Task[] {{ return []; }}\n"
     For appending to end of file: anchor_type = "end_of_file", no anchor_name needed
-- file_patch (search mode, fallback only for 500+ line files):
+- file_patch (search mode, DEPRECATED — only for files where no language grammar exists):
     {{ type, path, search, insert, before (optional) }}
 - run_command: {{ type, command, args (optional) }}
 - lsp_query: {{ type, query }}
