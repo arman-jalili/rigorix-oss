@@ -36,6 +36,13 @@ use crate::code_graph::application::service_impl::CodeGraphFormatterImpl;
 use crate::event_system::application as event_app;
 use crate::execution_engine::application::{dto as exec_dto, service as exec_svc};
 use crate::planning::application::dto as planning_dto;
+use crate::policy_engine::application::engine::PolicyEngineService;
+use crate::policy_engine::application::dto::EvaluatePolicyInput;
+use crate::policy_engine::domain::{LaneContext, LaneBlocker, ReviewStatus, DiffScope};
+use crate::quality_gates::application::dto::{
+    ClassifyTestScopeInput, EvaluateGateInput,
+};
+use crate::quality_gates::application::service::QualityGateService;
 use crate::state_persistence::application::{dto as state_dto, service as state_svc};
 
 pub struct OrchestratorServiceImpl {
@@ -51,6 +58,8 @@ pub struct OrchestratorServiceImpl {
     budget_service: Arc<dyn budget_app::LlmBudgetService>,
     #[allow(dead_code)]
     code_graph_service: Option<Arc<dyn CodeGraphServiceTrait>>,
+    quality_gate_service: Option<Arc<dyn QualityGateService>>,
+    policy_engine: Option<Arc<dyn PolicyEngineService>>,
     current_execution: Arc<RwLock<Option<CurrentExecutionState>>>,
 }
 
@@ -86,8 +95,22 @@ impl OrchestratorServiceImpl {
             audit_service,
             budget_service,
             code_graph_service,
+            quality_gate_service: None,
+            policy_engine: None,
             current_execution: Arc::new(RwLock::new(None)),
         }
+    }
+
+    /// Set the quality gate service for post-execution quality evaluation.
+    pub fn with_quality_gate_service(mut self, svc: Arc<dyn QualityGateService>) -> Self {
+        self.quality_gate_service = Some(svc);
+        self
+    }
+
+    /// Set the policy engine for post-execution policy evaluation.
+    pub fn with_policy_engine(mut self, engine: Arc<dyn PolicyEngineService>) -> Self {
+        self.policy_engine = Some(engine);
+        self
     }
 
     #[cfg(test)]
@@ -395,6 +418,62 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 detail: e.to_string(),
                 state: format!("{final_status:?}"),
             })?;
+
+        // 7a. Quality Gate evaluation
+        if let Some(ref quality_svc) = self.quality_gate_service {
+            let classify_input = ClassifyTestScopeInput {
+                targeted_tests_run: true,
+                package_tests_run: true,
+                workspace_tests_run: final_status != ExecutionStatus::Failed,
+                lint_passed: false,
+                format_passed: false,
+                audit_passed: false,
+            };
+            if let Ok(classify_out) = quality_svc.classify_test_scope(classify_input).await {
+                use crate::quality_gates::domain::GreenContract;
+                let eval_input = EvaluateGateInput {
+                    contract: GreenContract::default(),
+                    observed_level: Some(classify_out.level),
+                    task_id: Some(execution_id.to_string()),
+                };
+                if let Ok(eval_out) = quality_svc.evaluate_gate(eval_input).await {
+                    tracing::info!(
+                        execution_id = %execution_id,
+                        quality = %eval_out.summary,
+                        "Quality gate evaluated"
+                    );
+                }
+            }
+        }
+
+        // 7b. Policy Engine evaluation
+        if let Some(ref policy_svc) = self.policy_engine {
+            let green_level = if final_status == ExecutionStatus::Completed { 3u8 }
+                else if final_status == ExecutionStatus::PartialFailure { 1u8 }
+                else { 0u8 };
+
+            let context = LaneContext {
+                lane_id: execution_id.to_string(),
+                green_level,
+                branch_freshness_secs: 0,
+                blocker: LaneBlocker::None,
+                review_status: ReviewStatus::Pending,
+                diff_scope: DiffScope::Scoped,
+                completed: final_status == ExecutionStatus::Completed,
+                reconciled: false,
+            };
+
+            let eval_policy_input = EvaluatePolicyInput { context, rule_filter: None };
+            if let Ok(eval_policy_out) = policy_svc.evaluate(eval_policy_input).await {
+                for action in eval_policy_out.actions {
+                    tracing::info!(
+                        execution_id = %execution_id,
+                        action = ?action,
+                        "Policy action dispatched"
+                    );
+                }
+            }
+        }
 
         // 8. Drain events
         let events = self

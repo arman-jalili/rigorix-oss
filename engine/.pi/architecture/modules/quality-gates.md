@@ -2,7 +2,6 @@
 
 <!--
 Canonical Reference: .pi/architecture/modules/quality-gates.md
-Blueprint Source: claw-code-parity analysis (2026-06-19)
 Rationale: Formal escalation of test quality levels — targeted → package → workspace → merge-ready
 -->
 
@@ -241,10 +240,8 @@ required_level = "merge_ready"
 
 *Last updated: 2026-06-19*
 *Module version: 1.0.0 (Planned)*
-*Adopted from: claw-code-parity analysis — green_contract.rs (152 LOC)*
 
 ---
 
 **Status:** Planned  
-**Blueprint Source:** claw-code-parity pattern analysis  
 **Implementation priority:** P0 — structural quality enforcement

@@ -2,7 +2,6 @@
 
 <!--
 Canonical Reference: .pi/architecture/modules/policy-engine.md
-Blueprint Source: claw-code-parity analysis (2026-06-19)
 Rationale: Declarative, configurable policy rules with priority ordering — replaces hardcoded enforcement chains
 -->
 
@@ -314,12 +313,5 @@ priority = 15
 
 ---
 
-*Last updated: 2026-06-19*
-*Module version: 1.0.0 (Planned)*
-*Adopted from: claw-code-parity analysis — policy_engine.rs (581 LOC)*
-
----
-
 **Status:** Planned  
-**Blueprint Source:** claw-code-parity pattern analysis  
 **Implementation priority:** P1 — configurable enforcement

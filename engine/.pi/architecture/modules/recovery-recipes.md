@@ -2,7 +2,6 @@
 
 <!--
 Canonical Reference: .pi/architecture/modules/recovery-recipes.md
-Blueprint Source: claw-code-parity analysis (2026-06-19)
 Rationale: Automatic recovery before escalation — known failure modes auto-heal once before human intervention
 -->
 
@@ -384,10 +383,8 @@ pub enum RecoveryError {
 
 *Last updated: 2026-06-19*
 *Module version: 1.0.0 (Planned)*
-*Adopted from: claw-code-parity analysis — recovery_recipes.rs (630 LOC), lane_events.rs*
 
 ---
 
 **Status:** Planned  
-**Blueprint Source:** claw-code-parity pattern analysis  
 **Implementation priority:** P0 — extends failure_classification with automatic recovery

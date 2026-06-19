@@ -2,7 +2,6 @@
 
 <!--
 Canonical Reference: .pi/architecture/modules/code-generation.md
-Blueprint Source: claw-code-parity analysis (2026-06-19) + Rigorix tree-sitter enhancement
 Rationale: Reliable LLM → code insertion with exact-string anchoring, structured feedback, and syntax verification
 -->
 
@@ -14,7 +13,7 @@ The core innovation over naive "write this code" approaches is the **exact-strin
 
 ## Adoption Rationale
 
-Claw Code's `edit_file` tool with exact-string matching is the foundation of its reliable code generation. Rigorix currently has `FileWriteTool` (full replace) and `FilePatchTool` (AST-aware patching) but lacks the simple, battle-tested `old_string`/`new_string` pattern. Adopting this gives Rigorix:
+`edit_file` tool with exact-string matching is the foundation of reliable code generation. Rigorix currently has `FileWriteTool` (full replace) and `FilePatchTool` (AST-aware patching) but lacks the simple, battle-tested `old_string`/`new_string` pattern. Adopting this gives Rigorix:
 
 - **Position-anchored insertion**: `old_string` doubles as both the position marker and the correctness check
 - **Self-correcting feedback loop**: `EditFileResult` returns `original_file`, `updated_content`, and `unified_diff` so the LLM can verify its edit in the next turn
@@ -437,10 +436,8 @@ The LLM receives this tool definition in its system prompt:
 
 *Last updated: 2026-06-19*
 *Module version: 1.0.0 (Planned)*
-*Adopted from: claw-code-parity analysis — file_ops.rs (762 LOC), edit_file pattern*
 
 ---
 
 **Status:** Planned  
-**Blueprint Source:** claw-code-parity pattern analysis + Rigorix tree-sitter enhancement  
 **Implementation priority:** P0 — core code manipulation primitive

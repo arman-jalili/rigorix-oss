@@ -2,7 +2,6 @@
 
 <!--
 Canonical Reference: .pi/architecture/modules/hooks.md
-Blueprint Source: Adopted from claw-code-parity analysis (2026-06-19)
 Rationale: Extensible tool lifecycle interception without modifying engine code
 -->
 
@@ -12,7 +11,7 @@ The Hook System provides external script-based interception points around every 
 
 ## Adoption Rationale
 
-Claw Code's hook system (PreToolUse, PostToolUse, PostToolUseFailure) is one of its most powerful extensibility mechanisms. Rigorix currently has risk gating but no lifecycle hooks. Adding hooks enables:
+hook system (PreToolUse, PostToolUse, PostToolUseFailure) is one of most powerful extensibility mechanisms. Rigorix currently has risk gating but no lifecycle hooks. Adding hooks enables:
 
 - **Custom pre-flight validation per deployment**: corporate security policies, environment-specific constraints
 - **CI/CD integration**: block destructive tools in CI environments, enforce review gates
@@ -413,10 +412,8 @@ pub enum HookError {
 
 *Last updated: 2026-06-19*
 *Module version: 1.0.0 (Planned)*
-*Adopted from: claw-code-parity analysis — hooks.rs (987 LOC), conversation.rs hook integration*
 
 ---
 
 **Status:** Planned  
-**Blueprint Source:** claw-code-parity pattern analysis  
 **Implementation priority:** P0 — foundational extensibility mechanism

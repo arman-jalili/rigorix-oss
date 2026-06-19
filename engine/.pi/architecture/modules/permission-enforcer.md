@@ -2,7 +2,6 @@
 
 <!--
 Canonical Reference: .pi/architecture/modules/permission-enforcer.md
-Blueprint Source: claw-code-parity analysis (2026-06-19)
 Rationale: Three-tier permission mode hierarchy with workspace-boundary awareness and bash command classification
 -->
 
@@ -412,10 +411,8 @@ rigorix tui --permission-mode workspace-write
 
 *Last updated: 2026-06-19*
 *Module version: 1.0.0 (Planned)*
-*Adopted from: claw-code-parity analysis — permission_enforcer.rs (546 LOC), permissions.rs, bash_validation.rs (1004 LOC)*
 
 ---
 
 **Status:** Planned  
-**Blueprint Source:** claw-code-parity pattern analysis  
 **Implementation priority:** P1 — extends risk gating with mode hierarchy and bash classification
