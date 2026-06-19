@@ -21,6 +21,7 @@
 use async_trait::async_trait;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::path::Path;
 use uuid::Uuid;
 
 use crate::planning::application::dto::{
@@ -69,6 +70,9 @@ pub struct PlanningPipelineImpl {
 
     /// Optional composite validator.
     validator: Option<Box<dyn CompositeValidator>>,
+
+    /// Workspace root directory for reading source files during extraction.
+    workspace_root: Option<String>,
 }
 
 impl PlanningPipelineImpl {
@@ -91,6 +95,7 @@ impl PlanningPipelineImpl {
             template_service,
             template_generator: None,
             validator: None,
+            workspace_root: None,
         }
     }
 
@@ -104,6 +109,56 @@ impl PlanningPipelineImpl {
     pub fn with_validator(mut self, validator: Box<dyn CompositeValidator>) -> Self {
         self.validator = Some(validator);
         self
+    }
+
+    /// Set the workspace root for reading source files during parameter extraction.
+    pub fn with_workspace_root(mut self, root: String) -> Self {
+        self.workspace_root = Some(root);
+        self
+    }
+
+    /// Read source files from the workspace to provide context for LLM extraction.
+    /// Scans src/ directory for .ts, .rs, .py files and returns their content.
+    fn read_source_context(root: &str) -> String {
+        let root_path = Path::new(root);
+        let src_dir = root_path.join("src");
+        if !src_dir.is_dir() {
+            return String::new();
+        }
+        let mut sections = Vec::new();
+        let max_lines = 200;
+        let max_files = 20;
+        let mut count = 0;
+        if let Ok(entries) = std::fs::read_dir(&src_dir) {
+            for entry in entries.flatten() {
+                if count >= max_files {
+                    break;
+                }
+                let path = entry.path();
+                if !path.is_file() {
+                    continue;
+                }
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                if !matches!(ext, "ts" | "rs" | "py" | "js" | "tsx" | "jsx") {
+                    continue;
+                }
+                let content = match std::fs::read_to_string(&path) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                let rel = path.strip_prefix(root_path).unwrap_or(&path).to_string_lossy();
+                let lines: Vec<&str> = content.lines().take(max_lines).collect();
+                let truncated = lines.join("\n");
+                let note = if content.lines().count() > max_lines {
+                    format!("\n// ... (truncated from {} lines)", content.lines().count())
+                } else {
+                    String::new()
+                };
+                sections.push(format!("// === {} ===\n{}{}", rel, truncated, note));
+                count += 1;
+            }
+        }
+        sections.join("\n\n")
     }
 
     /// Phase 1: Budget pre-check.
@@ -412,8 +467,32 @@ impl PlanningPipelineService for PlanningPipelineImpl {
                         .await
                         .map(|t| t.parameters.iter().map(|p| p.name.clone()).collect())
                         .unwrap_or_default();
+
+                    // ── Inject source file context for test/content generation ──
+                    // Before extracting parameters that describe file content (test
+                    // files, method bodies, etc.), read the workspace source files
+                    // so the LLM can generate code that matches the actual API.
+                    let extraction_intent = if param_names.iter().any(|p| {
+                        p.contains("file") || p.contains("content") || p.contains("test")
+                    }) {
+                        let file_context = Self::read_source_context(
+                            self.workspace_root.as_deref().unwrap_or("."),
+                        );
+                        if !file_context.is_empty() {
+                            let augmented = format!(
+                                "{}\n\n=== ACTUAL SOURCE FILE CONTENT (read from disk) ===\n{}\n\nUse the EXACT signatures above. Do NOT invent API calls.",
+                                intent.input, file_context
+                            );
+                            UserIntent::new(augmented, intent.execution_id)
+                        } else {
+                            intent.clone()
+                        }
+                    } else {
+                        intent.clone()
+                    };
+
                     let extracted = self
-                        .phase_extract(&intent, &template.template_id, &param_names)
+                        .phase_extract(&extraction_intent, &template.template_id, &param_names)
                         .await?;
                     total_llm_calls += extracted.llm_calls_used;
                     total_llm_tokens += extracted.llm_tokens_used;
