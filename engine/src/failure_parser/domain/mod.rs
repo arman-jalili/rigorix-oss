@@ -24,6 +24,7 @@ pub mod failure;
 pub mod input;
 pub mod output;
 pub mod registry;
+pub mod template_service;
 
 pub use detail::*;
 pub use error::FailureParserError;
@@ -32,3 +33,4 @@ pub use failure::*;
 pub use input::*;
 pub use output::*;
 pub use registry::*;
+pub use template_service::TemplateFailureService;
