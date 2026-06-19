@@ -39,6 +39,7 @@ pub mod failure_classification;
 pub mod hooks;
 pub mod observability;
 pub mod orchestrator;
+pub mod permission;
 pub mod recovery_recipes;
 pub mod planning;
 pub mod repo_engine;
