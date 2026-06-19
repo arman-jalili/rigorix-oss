@@ -4,7 +4,8 @@ guardian_issue:
   epic: "TBD"
   component: "PermissionEnforcer"
   module: "permission-enforcer"
-  status: planned
+  status: done
+  closed_reason: "Implemented in PR #468"
   priority: high
   dependencies:
     - "none"

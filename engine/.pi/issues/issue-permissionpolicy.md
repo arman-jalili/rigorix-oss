@@ -4,7 +4,8 @@ guardian_issue:
   epic: "TBD"
   component: "PermissionPolicy"
   module: "permission-enforcer"
-  status: planned
+  status: done
+  closed_reason: "Implemented in contract freeze — PR #467"
   priority: high
   dependencies:
     - "none"
