@@ -1286,6 +1286,22 @@ of operations.
 - If the class has no methods yet, anchor to the class itself: `anchor_type = "class"`, `anchor_name = "<ClassName>"`, `position = "after"`.
 - NEVER insert at the start of the class body (after `{{`). ALWAYS insert at the end (before `}}`).
 
+**TESTING RULES (MANDATORY):**
+1. After inserting new code, ALWAYS add a `file_write` node that creates a test file for the new functionality.
+   - The test file should import/use the new code and verify it works correctly.
+   - Use the project's existing test framework (Jest for TypeScript, pytest for Python, `#[test]` for Rust).
+   - The test must actually exercise the new code (not be a placeholder).
+2. Add a `run_command` node (depends on both the patch step and test-writing step) that runs the tests:
+   - TypeScript: `npx jest --testPathPattern=<test-file>` or `npm test -- --testPathPattern=<test-file>`
+   - Python: `python -m pytest tests/<test-file>`
+   - Rust: `cargo test <test-name>`
+3. Add a validate/compile step between the code patch and the test run:
+   - TypeScript: `npx tsc --noEmit` (type_check)
+   - Python: `python -m py_compile <patched-file>`
+   - Rust: `cargo check`
+4. The test-run node should have `depends_on` pointing to both the code-patch node AND the test-write node.
+5. If tests fail, the run should fail (this is correct — prevents merging broken code).
+
 TEMPLATE SCHEMA:
 id = "unique-kebab-case-id"
 name = "Human readable name"
