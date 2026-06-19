@@ -9,6 +9,7 @@
 //! - `service`: Trait definitions for LLM step operations
 //! - `dto`: Input/output DTOs with validation and documentation
 //! - `factory`: Factory traits for constructing service instances
+//! - `service_impl`: Concrete implementations of service traits
 //!
 //! # Contract (Frozen)
 //! - Every use case has a corresponding trait method
@@ -18,4 +19,6 @@
 
 pub mod dto;
 pub mod factory;
+pub mod factory_impl;
 pub mod service;
+pub mod service_impl;
