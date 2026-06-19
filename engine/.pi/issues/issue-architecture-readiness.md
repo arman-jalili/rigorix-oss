@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-READINESS"
-  epic: ""code-generatio""
+  epic: ""llm-step""
   component: "Architecture Readiness"
-  module: "code-generation"
+  module: "llm-step"
   status: planned
   priority: critical
   dependencies: []
@@ -32,7 +32,7 @@ guardian_issue:
       - Verify proofing scripts + validators in CI
 
   canonical_references:
-    - module: ".pi/architecture/modules/code-generation.md"
+    - module: ".pi/architecture/modules/llm-step.md"
 
   acceptance_criteria:
     - "Runbook created and reviewed"
@@ -58,30 +58,30 @@ guardian_issue:
     and CI will catch regressions (proofing scripts + validators).
 
   file_changes:
-    - "create: docs/runbook-code-generation.md"
-    - "create: docs/dr-plan-code-generation.md"
+    - "create: docs/runbook-llm-step.md"
+    - "create: docs/dr-plan-llm-step.md"
     - "modify: .pi/architecture/CHANGELOG.md"
-    - "modify: .pi/architecture/modules/code-generation.md"
+    - "modify: .pi/architecture/modules/llm-step.md"
 ---
 
-# Architecture Readiness: code-generation
+# Architecture Readiness: llm-step
 
 ## Intent
 
-Make the code-generation module production-ready. This is the final issue in every epic
+Make the llm-step module production-ready. This is the final issue in every epic
 — it closes the loop between implementation and operability.
 
 ## Deliverables
 
 ### Runbook
-`docs/runbook-code-generation.md` covering:
+`docs/runbook-llm-step.md` covering:
 - Startup sequence and dependencies
 - Graceful shutdown procedure
 - Common failure modes and recovery
 - Configuration reference
 
 ### DR Plan
-`docs/dr-plan-code-generation.md` covering:
+`docs/dr-plan-llm-step.md` covering:
 - Backup strategy and schedule
 - Restore procedure
 - Failover plan

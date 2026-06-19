@@ -32,6 +32,7 @@ use crate::enforcement::domain::EnforcementError;
 use crate::event_system::domain::EventSystemError;
 use crate::execution_engine::domain::ExecutionError;
 use crate::failure_classification::domain::FailureClassificationError;
+use crate::llm_step::domain::LlmStepError;
 use crate::orchestrator::domain::OrchestratorError;
 use crate::planning::domain::PlanningError;
 use crate::quality_gates::domain::QualityGateError;
@@ -100,6 +101,10 @@ pub enum CoreOrchestratorError {
     /// Audit error — send failures, serialisation, queue full.
     #[error("Audit error: {0}")]
     Audit(#[from] AuditError),
+
+    /// LLM step error — LLM generation, context building, retries.
+    #[error("LLM step error: {0}")]
+    LlmStep(#[from] LlmStepError),
 
     /// State persistence error — save/load failures, corruption,
     /// lock errors.
@@ -192,6 +197,7 @@ impl CoreOrchestratorError {
             CoreOrchestratorError::State(e) => e.is_retriable(),
             CoreOrchestratorError::Template(e) => e.is_retriable(),
             CoreOrchestratorError::Orchestrator(e) => e.is_retriable(),
+            CoreOrchestratorError::LlmStep(e) => e.is_retriable(),
             CoreOrchestratorError::Recovery(e) => e.is_retriable(),
             CoreOrchestratorError::QualityGate(e) => e.is_retriable(),
             CoreOrchestratorError::FailureClassification(e) => e.is_retriable(),
@@ -219,6 +225,7 @@ impl CoreOrchestratorError {
             CoreOrchestratorError::State(_) => "STATE_ERROR",
             CoreOrchestratorError::Template(_) => "TEMPLATE_ERROR",
             CoreOrchestratorError::Orchestrator(_) => "ORCHESTRATOR_ERROR",
+            CoreOrchestratorError::LlmStep(_) => "LLM_STEP_ERROR",
             CoreOrchestratorError::Recovery(_) => "RECOVERY_ERROR",
             CoreOrchestratorError::QualityGate(_) => "QUALITY_GATE_ERROR",
             CoreOrchestratorError::FailureClassification(_) => "FAILURE_CLASSIFICATION_ERROR",
@@ -246,6 +253,7 @@ impl CoreOrchestratorError {
             CoreOrchestratorError::State(_) => 500,
             CoreOrchestratorError::Template(_) => 400,
             CoreOrchestratorError::Orchestrator(_) => 500,
+            CoreOrchestratorError::LlmStep(_) => 500,
             CoreOrchestratorError::Recovery(_) => 500,
             CoreOrchestratorError::QualityGate(_) => 500,
             CoreOrchestratorError::FailureClassification(_) => 500,
@@ -372,6 +380,10 @@ mod tests {
             CoreOrchestratorError::Orchestrator(OrchestratorError::PlanningFailed {
                 detail: "test".to_string(),
                 intent: "test".to_string(),
+            }),
+            CoreOrchestratorError::LlmStep(LlmStepError::TokenBudgetExceeded {
+                used: 100,
+                max: 500,
             }),
             CoreOrchestratorError::Recovery(RecoveryError::NoRecipe(
                 crate::recovery_recipes::domain::FailureScenario::CompileError,
