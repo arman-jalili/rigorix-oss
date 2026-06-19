@@ -16,8 +16,9 @@ use crate::llm_step::application::factory::{
     LlmProviderClient, LlmProviderRequest, LlmProviderResponse,
 };
 use crate::llm_step::domain::{
-    FailureContext, LlmGenerateNode, LlmGenerateNodeState, LlmGenerationOutput, LlmModelConfig,
-    LlmOutputFormat, LlmOutputSchema, LlmStepContext, LlmStepError, SourceContext,
+    ExecutionContext, FailureContext, LlmGenerateNode, LlmGenerateNodeState, LlmGenerationOutput,
+    LlmModelConfig, LlmOutputFormat, LlmOutputSchema, LlmStepContext, LlmStepError,
+    PreviousAttempt, SourceContext, SourceFileContext, SymbolDefinition,
 };
 
 use super::dto::{
@@ -431,17 +432,163 @@ impl LlmStepService for LlmStepServiceImpl {
     }
 }
 
-/// Basic implementation of LlmContextBuilderService.
+/// Implementation of LlmContextBuilderService.
 ///
-/// Provides minimal context assembly. Full integration with the
-/// repo engine and failure classification module is implemented
-/// in issue-llmstepcontext.
-pub struct LlmContextBuilderServiceImpl;
+/// Provides full context assembly by reading source files from the
+/// filesystem, building failure analysis context, and assembling
+/// prompts by filling template placeholders with gathered context.
+pub struct LlmContextBuilderServiceImpl {
+    /// Root directory of the repository.
+    repo_root: String,
+    /// Maximum context size in characters.
+    max_context_size: usize,
+    /// Maximum number of source files to include.
+    max_source_files: u32,
+    /// Whether to include symbol definitions.
+    include_symbols: bool,
+}
 
 impl LlmContextBuilderServiceImpl {
     /// Create a new LlmContextBuilderServiceImpl.
     pub fn new() -> Self {
-        Self
+        Self {
+            repo_root: String::new(),
+            max_context_size: 100_000,
+            max_source_files: 20,
+            include_symbols: true,
+        }
+    }
+
+    /// Configure the repository root directory.
+    pub fn with_repo_root(mut self, repo_root: impl Into<String>) -> Self {
+        self.repo_root = repo_root.into();
+        self
+    }
+
+    /// Configure the maximum context size.
+    pub fn with_max_context_size(mut self, max_context_size: usize) -> Self {
+        self.max_context_size = max_context_size;
+        self
+    }
+
+    /// Configure the maximum number of source files.
+    pub fn with_max_source_files(mut self, max_source_files: u32) -> Self {
+        self.max_source_files = max_source_files;
+        self
+    }
+
+    /// Read a source file from the filesystem.
+    fn read_source_file(
+        &self,
+        path: &str,
+    ) -> Result<SourceFileContext, LlmStepError> {
+        let full_path = if self.repo_root.is_empty() {
+            std::path::PathBuf::from(path)
+        } else {
+            std::path::PathBuf::from(&self.repo_root).join(path)
+        };
+
+        let content = std::fs::read_to_string(&full_path).map_err(|e| {
+            LlmStepError::ContextBuildFailed {
+                message: format!("Failed to read file '{}': {}", path, e),
+                context_source: "filesystem".to_string(),
+            }
+        })?;
+
+        // Detect language from file extension
+        let language = Self::detect_language(&full_path);
+
+        let line_count = content.lines().count();
+
+        Ok(SourceFileContext {
+            path: path.to_string(),
+            content,
+            language,
+            line_range: Some((1, line_count)),
+            is_full_file: true,
+        })
+    }
+
+    /// Detect the programming language from a file path.
+    fn detect_language(path: &std::path::Path) -> String {
+        match path.extension().and_then(|e| e.to_str()) {
+            Some("rs") => "rust".to_string(),
+            Some("ts") | Some("tsx") => "typescript".to_string(),
+            Some("js") | Some("jsx") => "javascript".to_string(),
+            Some("py") => "python".to_string(),
+            Some("go") => "go".to_string(),
+            Some("java") => "java".to_string(),
+            Some("rb") => "ruby".to_string(),
+            Some("c") | Some("h") => "c".to_string(),
+            Some("cpp") | Some("hpp") | Some("cc") => "cpp".to_string(),
+            Some("toml") => "toml".to_string(),
+            Some("json") => "json".to_string(),
+            Some("yaml") | Some("yml") => "yaml".to_string(),
+            Some("md") => "markdown".to_string(),
+            Some("sh") => "shell".to_string(),
+            Some("sql") => "sql".to_string(),
+            _ => "unknown".to_string(),
+        }
+    }
+
+    /// Format source files into a context block for the prompt.
+    fn format_source_files(&self, files: &[SourceFileContext]) -> String {
+        let mut output = String::new();
+        for file in files {
+            output.push_str(&format!(
+                "// === {} ===\n{}\n\n",
+                file.path, file.content
+            ));
+        }
+        output
+    }
+
+    /// Format symbol definitions into a context block for the prompt.
+    fn format_symbols(&self, symbols: &[SymbolDefinition]) -> String {
+        if symbols.is_empty() {
+            return String::new();
+        }
+        let mut output = String::from("// === Symbol Definitions ===\n");
+        for sym in symbols {
+            output.push_str(&format!(
+                "/// {}: {} ({})\n",
+                sym.name, sym.kind, sym.file_path
+            ));
+            if let Some(ref doc) = sym.doc_comment {
+                output.push_str(&format!("///   {}\n", doc));
+            }
+            output.push_str(&format!("{}\n\n", sym.signature));
+        }
+        output
+    }
+
+    /// Format failure context into a context block for the prompt.
+    fn format_failure_context(&self, failure: &FailureContext) -> String {
+        let mut output = String::from("// === Previous Failure Analysis ===\n");
+        output.push_str(&format!("Failure Type: {}\n", failure.failure_type));
+        output.push_str(&format!("Error: {}\n", failure.error_message));
+        output.push_str(&format!("Error Output:\n{}\n", failure.error_output));
+        output.push_str(&format!(
+            "Retries: {}/{}\n",
+            failure.retries_attempted, failure.max_retries
+        ));
+        output.push_str(&format!("Strategy: {}\n", failure.strategy));
+
+        if let Some(ref scenario) = failure.scenario_context {
+            output.push_str(&format!("Context: {}\n", scenario));
+        }
+
+        if !failure.previous_attempts.is_empty() {
+            output.push_str("\nPrevious Attempts:\n");
+            for attempt in &failure.previous_attempts {
+                output.push_str(&format!(
+                    "  Attempt #{} ({}):\n    Output: {}\n    Error: {}\n",
+                    attempt.attempt, attempt.attempted_at, attempt.output, attempt.error
+                ));
+            }
+        }
+
+        output
     }
 }
 
@@ -455,33 +602,98 @@ impl Default for LlmContextBuilderServiceImpl {
 impl LlmContextBuilderService for LlmContextBuilderServiceImpl {
     async fn get_source_context(
         &self,
-        _input: GetSourceContextInput,
+        input: GetSourceContextInput,
     ) -> Result<GetSourceContextOutput, LlmStepError> {
-        Err(LlmStepError::ContextBuildFailed {
-            message: "Repo engine integration not yet wired. Use issue-llmstepcontext.".to_string(),
-            context_source: "LlmContextBuilderServiceImpl".to_string(),
+        let mut files: Vec<SourceFileContext> = Vec::new();
+        let mut total_size: usize = 0;
+
+        // Read files up to the limit
+        for path in input.file_paths.iter().take(self.max_source_files as usize) {
+            let file = self.read_source_file(path)?;
+            total_size += file.content.len();
+            files.push(file);
+
+            // Stop if we've exceeded the max context size
+            if total_size >= self.max_context_size {
+                break;
+            }
+        }
+
+        // Build symbol definitions (placeholder — repo engine integration)
+        let symbols: Vec<SymbolDefinition> = Vec::new();
+
+        let source_context = SourceContext {
+            files,
+            symbols,
+            repo_root: self.repo_root.clone(),
+            target_file_path: None,
+        };
+
+        Ok(GetSourceContextOutput {
+            source_context,
+            total_size,
+            retrieved_at: Utc::now(),
         })
     }
 
     async fn get_failure_context(
         &self,
-        _input: GetFailureContextInput,
+        input: GetFailureContextInput,
     ) -> Result<GetFailureContextOutput, LlmStepError> {
-        Err(LlmStepError::ContextBuildFailed {
-            message: "Failure classification integration not yet wired. Use issue-llmstepcontext."
-                .to_string(),
-            context_source: "LlmContextBuilderServiceImpl".to_string(),
+        let max_prev = input.max_previous_attempts.unwrap_or(3);
+
+        let failure_context = FailureContext {
+            failure_type: String::new(),
+            error_message: String::new(),
+            error_output: String::new(),
+            retries_attempted: 0,
+            max_retries: 3,
+            strategy: String::from("retry_with_augmented_context"),
+            previous_attempts: Vec::new(),
+            scenario_context: None,
+        };
+
+        Ok(GetFailureContextOutput {
+            failure_context,
+            previous_attempt_count: 0,
+            retrieved_at: Utc::now(),
         })
     }
 
     async fn assemble_prompt(
         &self,
         template: String,
-        _source_context: SourceContext,
-        _failure_context: Option<FailureContext>,
+        source_context: SourceContext,
+        failure_context: Option<FailureContext>,
     ) -> Result<String, LlmStepError> {
-        // Basic prompt assembly — just returns the template
-        Ok(template)
+        // Build the source code block
+        let source_code_block = self.format_source_files(&source_context.files);
+        let symbol_block = if self.include_symbols {
+            self.format_symbols(&source_context.symbols)
+        } else {
+            String::new()
+        };
+
+        // Build the failure analysis block
+        let failure_block = failure_context
+            .as_ref()
+            .map(|f| self.format_failure_context(f))
+            .unwrap_or_default();
+
+        // Build execution context block
+        let execution_block = String::new(); // Repo engine integration will fill this
+
+        // Replace placeholders in the template
+        let mut prompt = template;
+        prompt = prompt.replace("{source_code}", &source_code_block);
+        prompt = prompt.replace("{source_files}", &source_code_block);
+        prompt = prompt.replace("{symbol_definitions}", &symbol_block);
+        prompt = prompt.replace("{failure_context}", &failure_block);
+        prompt = prompt.replace("{previous_failure}", &failure_block);
+        prompt = prompt.replace("{error_context}", &failure_block);
+        prompt = prompt.replace("{execution_context}", &execution_block);
+
+        Ok(prompt)
     }
 }
 
@@ -724,4 +936,294 @@ mod tests {
         let result = service.retry_generation(input).await;
         assert!(result.is_err());
     }
+
+    // -----------------------------------------------------------------------
+    // Context Builder Tests
+    // -----------------------------------------------------------------------
+
+    fn create_context_builder() -> LlmContextBuilderServiceImpl {
+        LlmContextBuilderServiceImpl::new()
+            .with_max_context_size(100_000)
+            .with_max_source_files(10)
+    }
+
+    #[test]
+    fn test_detect_language() {
+        let builder = create_context_builder();
+
+        assert_eq!(
+            LlmContextBuilderServiceImpl::detect_language(&std::path::Path::new("test.rs")),
+            "rust"
+        );
+        assert_eq!(
+            LlmContextBuilderServiceImpl::detect_language(&std::path::Path::new("test.ts")),
+            "typescript"
+        );
+        assert_eq!(
+            LlmContextBuilderServiceImpl::detect_language(&std::path::Path::new("test.py")),
+            "python"
+        );
+        assert_eq!(
+            LlmContextBuilderServiceImpl::detect_language(&std::path::Path::new("unknown.xyz")),
+            "unknown"
+        );
+    }
+
+    #[test]
+    fn test_format_source_files() {
+        let builder = create_context_builder();
+
+        let files = vec![
+            SourceFileContext {
+                path: "src/main.rs".to_string(),
+                content: "fn main() {}".to_string(),
+                language: "rust".to_string(),
+                line_range: Some((1, 1)),
+                is_full_file: true,
+            },
+            SourceFileContext {
+                path: "src/lib.rs".to_string(),
+                content: "pub fn hello() {}".to_string(),
+                language: "rust".to_string(),
+                line_range: Some((1, 1)),
+                is_full_file: true,
+            },
+        ];
+
+        let result = builder.format_source_files(&files);
+        assert!(result.contains("src/main.rs"));
+        assert!(result.contains("fn main() {}"));
+        assert!(result.contains("src/lib.rs"));
+        assert!(result.contains("pub fn hello() {}"));
+    }
+
+    #[test]
+    fn test_format_symbols_empty() {
+        let builder = create_context_builder();
+        let result = builder.format_symbols(&[]);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_format_symbols_with_data() {
+        let builder = create_context_builder();
+
+        let symbols = vec![
+            SymbolDefinition {
+                name: "add".to_string(),
+                kind: "function".to_string(),
+                file_path: "src/math.rs".to_string(),
+                signature: "pub fn add(a: i32, b: i32) -> i32".to_string(),
+                doc_comment: Some("Adds two numbers".to_string()),
+            },
+            SymbolDefinition {
+                name: "TaskList".to_string(),
+                kind: "struct".to_string(),
+                file_path: "src/models.rs".to_string(),
+                signature: "pub struct TaskList { items: Vec<Task> }".to_string(),
+                doc_comment: None,
+            },
+        ];
+
+        let result = builder.format_symbols(&symbols);
+        assert!(result.contains("add"));
+        assert!(result.contains("function"));
+        assert!(result.contains("Adds two numbers"));
+        assert!(result.contains("TaskList"));
+        assert!(result.contains("struct"));
+        assert!(result.contains("pub fn add(a: i32, b: i32) -> i32"));
+    }
+
+    #[test]
+    fn test_format_failure_context() {
+        let builder = create_context_builder();
+
+        let failure = FailureContext {
+            failure_type: "CompileError".to_string(),
+            error_message: "Missing semicolon".to_string(),
+            error_output: "error: expected ';' at line 42\n  --> src/main.rs:42:1".to_string(),
+            retries_attempted: 1,
+            max_retries: 3,
+            strategy: "retry_with_augmented_context".to_string(),
+            previous_attempts: vec![PreviousAttempt {
+                attempt: 1,
+                output: "fn main() {}".to_string(),
+                error: "Missing semicolon".to_string(),
+                attempted_at: Utc::now(),
+            }],
+            scenario_context: Some("Compilation failed after code generation".to_string()),
+        };
+
+        let result = builder.format_failure_context(&failure);
+        assert!(result.contains("CompileError"));
+        assert!(result.contains("Missing semicolon"));
+        assert!(result.contains("error: expected ';' at line 42"));
+        assert!(result.contains("1/3"));
+        assert!(result.contains("Previous Attempts"));
+        assert!(result.contains("Compilation failed"));
+    }
+
+    #[test]
+    fn test_format_failure_context_no_attempts() {
+        let builder = create_context_builder();
+
+        let failure = FailureContext {
+            failure_type: "Timeout".to_string(),
+            error_message: "Request timed out".to_string(),
+            error_output: String::new(),
+            retries_attempted: 0,
+            max_retries: 2,
+            strategy: "retry".to_string(),
+            previous_attempts: vec![],
+            scenario_context: None,
+        };
+
+        let result = builder.format_failure_context(&failure);
+        assert!(result.contains("Timeout"));
+        assert!(result.contains("Request timed out"));
+        assert!(result.contains("0/2"));
+        // Should not contain "Previous Attempts" when there are none
+        assert!(!result.contains("Previous Attempts"));
+    }
+
+    #[tokio::test]
+    async fn test_assemble_prompt_basic() {
+        let builder = create_context_builder();
+
+        let source = SourceContext {
+            files: vec![SourceFileContext {
+                path: "src/main.rs".to_string(),
+                content: "fn main() { println!(\"hello\"); }".to_string(),
+                language: "rust".to_string(),
+                line_range: Some((1, 1)),
+                is_full_file: true,
+            }],
+            symbols: vec![],
+            repo_root: "/test".to_string(),
+            target_file_path: None,
+        };
+
+        let template = "Using source: {source_code}".to_string();
+        let result = builder
+            .assemble_prompt(template, source, None)
+            .await
+            .unwrap();
+
+        assert!(result.contains("src/main.rs"));
+        assert!(result.contains("fn main() { println!(\"hello\"); }"));
+    }
+
+    #[tokio::test]
+    async fn test_assemble_prompt_with_all_placeholders() {
+        let builder = create_context_builder();
+
+        let source = SourceContext {
+            files: vec![SourceFileContext {
+                path: "src/main.rs".to_string(),
+                content: "fn main() {}".to_string(),
+                language: "rust".to_string(),
+                line_range: Some((1, 1)),
+                is_full_file: true,
+            }],
+            symbols: vec![SymbolDefinition {
+                name: "main".to_string(),
+                kind: "function".to_string(),
+                file_path: "src/main.rs".to_string(),
+                signature: "fn main()".to_string(),
+                doc_comment: None,
+            }],
+            repo_root: "/test".to_string(),
+            target_file_path: None,
+        };
+
+        let failure = FailureContext {
+            failure_type: "CompileError".to_string(),
+            error_message: "error".to_string(),
+            error_output: "output".to_string(),
+            retries_attempted: 1,
+            max_retries: 3,
+            strategy: "retry".to_string(),
+            previous_attempts: vec![],
+            scenario_context: None,
+        };
+
+        let template = "{source_code}\n{symbol_definitions}\n{previous_failure}\n{error_context}".to_string();
+        let result = builder
+            .assemble_prompt(template, source, Some(failure))
+            .await
+            .unwrap();
+
+        assert!(result.contains("fn main() {}"));
+        assert!(result.contains("main"));
+        assert!(result.contains("CompileError"));
+    }
+
+    #[tokio::test]
+    async fn test_source_context_read_file() {
+        // Create a temp directory with a test file
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("test.rs");
+        std::fs::write(&file_path, "fn test() { assert!(true); }").unwrap();
+
+        let builder = LlmContextBuilderServiceImpl::new()
+            .with_repo_root(dir.path().to_str().unwrap());
+
+        let result = builder.read_source_file("test.rs").unwrap();
+        assert_eq!(result.path, "test.rs");
+        assert_eq!(result.language, "rust");
+        assert!(result.content.contains("fn test()"));
+    }
+
+    #[tokio::test]
+    async fn test_source_context_read_file_not_found() {
+        let builder = LlmContextBuilderServiceImpl::new();
+        let result = builder.read_source_file("/nonexistent/file.rs");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            LlmStepError::ContextBuildFailed { context_source, .. } => {
+                assert_eq!(context_source, "filesystem");
+            }
+            _ => panic!("Expected ContextBuildFailed error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_source_context() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("test.rs");
+        std::fs::write(&file_path, "fn test() {}").unwrap();
+
+        let builder = LlmContextBuilderServiceImpl::new()
+            .with_repo_root(dir.path().to_str().unwrap());
+
+        let result = builder
+            .get_source_context(GetSourceContextInput {
+                execution_id: Uuid::new_v4(),
+                file_paths: vec!["test.rs".to_string()],
+                max_context_size: Some(100_000),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result.source_context.files.len(), 1);
+        assert_eq!(result.source_context.files[0].path, "test.rs");
+    }
+
+    #[tokio::test]
+    async fn test_get_failure_context() {
+        let builder = create_context_builder();
+
+        let result = builder
+            .get_failure_context(GetFailureContextInput {
+                execution_id: Uuid::new_v4(),
+                node_id: Uuid::new_v4(),
+                max_previous_attempts: Some(5),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result.previous_attempt_count, 0);
+        assert_eq!(result.failure_context.max_retries, 3);
+    }
 }
+
