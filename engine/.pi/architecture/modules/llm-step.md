@@ -309,9 +309,11 @@ PlanValidation loop:
 ---
 
 *Last updated: 2026-06-19*
-*Module version: 1.0.0 (Planned)*
+*Module version: 1.0.0 (Implemented)*
 
 ---
 
-**Status:** Planned
-**Implementation priority:** P0 — enables self-correcting templates
+**Status:** Implemented ✅
+**Implementation:** LlmStepService, LlmContextBuilderService, LlmGenerateNode — all 36 tests passing, 53 contract validations passed
+**Proofing:** CI stage 31 (llm-step_proofing) added to hardening pipeline
+**Docs:** runbook-llm-step.md, dr-plan-llm-step.md
