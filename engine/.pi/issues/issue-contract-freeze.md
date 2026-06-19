@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: ""orchestrator""
+  epic: ""code-generatio""
   component: "Contract Freeze"
-  module: "orchestrator"
+  module: "code-generation"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/orchestrator.md"
+    - module: ".pi/architecture/modules/code-generation.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -47,24 +47,27 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/orchestrator/contracts/"
-    - "create: src/orchestrator/contracts/dtos/"
-    - "create: src/orchestrator/contracts/events/"
+    - "create: src/code-generation/contracts/"
+    - "create: src/code-generation/contracts/dtos/"
+    - "create: src/code-generation/contracts/events/"
 ---
 
-# Contract Freeze: orchestrator
+# Contract Freeze: code-generation
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the orchestrator
+Define and freeze all public interfaces, contracts, and schemas for the code-generation
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- OrchestratorService
-- OrchestratorBuilder
-- ExecutionRecord
+- EditFileTool
+- EditFileInput
+- EditFileResult
+- StructuredPatchHunk
+- ReadFileTool
+- SyntaxGate
 
 ## What Must Be Frozen
 
