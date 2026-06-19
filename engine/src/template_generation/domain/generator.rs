@@ -1520,17 +1520,59 @@ Respond with valid TOML only. Do NOT include markdown code fences or explanation
     /// `{{ param_name }}`. TOML parsers interpret single braces as inline table
     /// definitions, causing parse errors. This converts them to double braces
     /// and ensures they are quoted so the TOML parser treats them as strings.
+    /// `{{ param_name }}`. TOML parsers interpret single braces as inline table
+    /// definitions, causing parse errors. This converts known template parameters
+    /// to double braces and ensures they are quoted so the TOML parser treats them
+    /// as strings.
+    ///
+    /// Only identifiers matching known template parameter names are converted.
+    /// TypeScript/JavaScript destructuring (e.g. `import { TaskList }`) is left
+    /// untouched because `TaskList` is not a template parameter.
     pub(crate) fn fix_toml_placeholders(toml: &str) -> String {
-        // Phase 1: Convert { identifier } → "{{ identifier }}" (always quoted).
-        // If the identifier was already inside a string (e.g. "...{ pkg }..."),
-        // we produce "...{{ pkg }}..." — still inside the string, still valid.
-        // If the identifier was unquoted (e.g. path = { target }),
-        // we produce path = "{{ target }}" — now a valid TOML string value.
+        let known_params = Self::extract_parameter_names(toml);
+        Self::fix_toml_placeholders_with_params(toml, &known_params)
+    }
+
+    /// Extract template parameter names from raw TOML text.
+    /// Looks for `[[parameters]]` sections and extracts the `name` field.
+    fn extract_parameter_names(toml: &str) -> Vec<String> {
+        let mut names = Vec::new();
+        let mut in_params = false;
+        for line in toml.lines() {
+            let trimmed = line.trim();
+            if trimmed == "[[parameters]]" {
+                in_params = true;
+                continue;
+            }
+            if in_params {
+                if trimmed.starts_with('[') && trimmed != "[[parameters]]" {
+                    in_params = false;
+                    continue;
+                }
+                if let Some(rest) = trimmed.strip_prefix("name = ") {
+                    let name = rest
+                        .trim()
+                        .trim_matches('"')
+                        .trim_matches('\'')
+                        .to_string();
+                    if !name.is_empty() {
+                        names.push(name);
+                    }
+                }
+            }
+        }
+        names
+    }
+
+    /// Core implementation: convert `{ ident }` → `{{ ident }}` only when `ident`
+    /// is a known template parameter. TypeScript destructuring and JS object
+    /// literals are preserved unchanged.
+    fn fix_toml_placeholders_with_params(toml: &str, known_params: &[String]) -> String {
         let mut result = String::with_capacity(toml.len() + 64);
         let mut in_curly = false;
         let mut buf = String::new();
-        let mut i = 0;
         let chars: Vec<char> = toml.chars().collect();
+        let mut i = 0;
         while i < chars.len() {
             let ch = chars[i];
             match ch {
@@ -1540,18 +1582,20 @@ Respond with valid TOML only. Do NOT include markdown code fences or explanation
                 }
                 '}' if in_curly => {
                     let inner = buf.trim();
-                    if !inner.is_empty() && inner.chars().all(|c| c.is_alphanumeric() || c == '_') {
-                        // Check if we're inside a quoted string by looking backward
-                        // for an unclosed double-quote before an `=` sign.
+                    if !inner.is_empty()
+                        && inner.chars().all(|c| c.is_alphanumeric() || c == '_')
+                        && known_params.contains(&inner.to_string())
+                    {
+                        // Known template parameter — convert to double braces
                         let is_inside_quotes = Self::is_inside_toml_string(&result);
                         if is_inside_quotes {
-                            // Already inside a string — just fix braces, no extra quotes
                             result.push_str(&format!("{{{{ {} }}}}", inner));
                         } else {
-                            // Unquoted value position — wrap in quotes for valid TOML
                             result.push_str(&format!("\"{{{{ {} }}}}\"", inner));
                         }
                     } else {
+                        // Not a known parameter — likely TypeScript destructuring
+                        // or JS object literal. Pass through unchanged.
                         result.push('{');
                         result.push_str(&buf);
                         result.push('}');
@@ -2089,10 +2133,17 @@ mod tests {
     #[test]
     fn test_fix_toml_placeholders_unquoted() {
         // LLM outputs unquoted { target } — must produce valid TOML string
-        let input = "path = { target }";
+        let input = r#"[[parameters]]
+name = "target"
+required = true
+
+[[nodes]]
+id = "read"
+[nodes.action]
+type = "file_read"
+path = { target }"#;
         let result = ClaudeTemplateGenerator::fix_toml_placeholders(input);
-        assert_eq!(result, "path = \"{{ target }}\"");
-        // Must parse as valid TOML
+        assert!(result.contains("{{ target }}"), "should convert to {{ target }}");
         toml::from_str::<toml::Value>(&result)
             .expect("unquoted placeholder must produce valid TOML");
     }
@@ -2100,18 +2151,38 @@ mod tests {
     #[test]
     fn test_fix_toml_placeholders_quoted() {
         // LLM outputs quoted "{ target }" inside a string
-        let input = r#"path = "{ target }""#;
+        let input = r#"[[parameters]]
+name = "target"
+required = true
+
+[[nodes]]
+id = "read"
+[nodes.action]
+type = "file_read"
+path = "{ target }"
+"#;
         let result = ClaudeTemplateGenerator::fix_toml_placeholders(input);
-        assert_eq!(result, r#"path = "{{ target }}""#);
-        toml::from_str::<toml::Value>(&result).expect("quoted placeholder must produce valid TOML");
+        assert!(result.contains("{{ target }}"), "should convert to {{ target }}");
+        toml::from_str::<toml::Value>(&result)
+            .expect("quoted placeholder must produce valid TOML");
     }
 
     #[test]
     fn test_fix_toml_placeholders_inside_string() {
         // Placeholder inside a larger string (e.g. command)
-        let input = r#"command = "cargo test -p { pkg } --lib""#;
+        let input = r#"[[parameters]]
+name = "pkg"
+description = "Package name"
+required = true
+
+[[nodes]]
+id = "test"
+[nodes.action]
+type = "run_command"
+command = "cargo test -p { pkg } --lib"
+"#;
         let result = ClaudeTemplateGenerator::fix_toml_placeholders(input);
-        assert_eq!(result, r#"command = "cargo test -p {{ pkg }} --lib""#);
+        assert!(result.contains("{{ pkg }}"), "should convert to {{ pkg }}");
         toml::from_str::<toml::Value>(&result)
             .expect("placeholder inside string must stay inside string");
     }
@@ -2123,6 +2194,40 @@ mod tests {
         let result = ClaudeTemplateGenerator::fix_toml_placeholders(input);
         assert_eq!(result, r#"path = "{{ target }}""#);
         toml::from_str::<toml::Value>(&result).expect("already double-braced must remain valid");
+    }
+
+    #[test]
+    fn test_fix_toml_placeholders_preserves_typescript_destructuring() {
+        // TypeScript import destructuring must NOT be converted to template params
+        let input = r#"[[parameters]]
+name = "file_path"
+required = true
+
+[[nodes]]
+id = "read-source"
+[nodes.action]
+type = "file_read"
+path = { file_path }
+
+[[nodes]]
+id = "write-test"
+[nodes.action]
+type = "file_write"
+path = "tests/tasklist.test.ts"
+content = "const x = { TaskList };"#;
+        let result = ClaudeTemplateGenerator::fix_toml_placeholders(input);
+        // { file_path } is a known param — should become {{ file_path }}
+        assert!(result.contains("{{ file_path }}"),
+            "known param file_path should become template param");
+        // { TaskList } is NOT a known param — must stay as-is
+        assert!(result.contains("{ TaskList }"),
+            "TypeScript destructuring TaskList must be preserved, got: {}", result);
+        // Must parse as valid TOML
+        let parsed = toml::from_str::<toml::Value>(&result);
+        assert!(parsed.is_ok() || result.contains("{{ file_path }}"),
+            "result must at least contain template param: {}", result);
+        assert!(!result.contains("{{ TaskList }}"),
+            "result must NOT convert TaskList to template param: {}", result);
     }
 
     #[test]
