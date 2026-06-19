@@ -38,6 +38,7 @@ pub mod execution_engine;
 pub mod failure_classification;
 pub mod hooks;
 pub mod observability;
+pub mod policy_engine;
 pub mod orchestrator;
 pub mod permission;
 pub mod recovery_recipes;
