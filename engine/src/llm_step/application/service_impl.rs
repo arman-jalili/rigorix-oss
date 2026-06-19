@@ -32,10 +32,13 @@ use super::service::{LlmContextBuilderService, LlmStepService};
 /// In-memory implementation of LlmStepService.
 ///
 /// Manages LlmGenerateNode lifecycle, configuration validation, and
-/// delegates LLM calls to the configured LlmProviderClient.
+/// delegates LLM calls to the configured LlmProviderClient. Uses
+/// LlmContextBuilderService for assembling source code and failure context.
 pub struct LlmStepServiceImpl {
     /// The LLM provider client used for generation.
     provider_client: Box<dyn LlmProviderClient>,
+    /// The context builder service for assembling prompts.
+    context_builder: Box<dyn LlmContextBuilderService>,
     /// Maximum retries for transient failures.
     max_retries: u8,
     /// Default timeout for LLM calls in seconds.
@@ -48,6 +51,7 @@ impl std::fmt::Debug for LlmStepServiceImpl {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LlmStepServiceImpl")
             .field("provider_client", &self.provider_client)
+            .field("context_builder", &"...")
             .field("max_retries", &self.max_retries)
             .field("default_timeout_secs", &self.default_timeout_secs)
             .field("validate_before_execution", &self.validate_before_execution)
@@ -56,15 +60,17 @@ impl std::fmt::Debug for LlmStepServiceImpl {
 }
 
 impl LlmStepServiceImpl {
-    /// Create a new LlmStepServiceImpl with the given provider client.
+    /// Create a new LlmStepServiceImpl with the given dependencies.
     pub fn new(
         provider_client: Box<dyn LlmProviderClient>,
+        context_builder: Box<dyn LlmContextBuilderService>,
         max_retries: u8,
         default_timeout_secs: u64,
         validate_before_execution: bool,
     ) -> Self {
         Self {
             provider_client,
+            context_builder,
             max_retries,
             default_timeout_secs,
             validate_before_execution,
@@ -179,13 +185,70 @@ impl LlmStepService for LlmStepServiceImpl {
 
     async fn build_context(
         &self,
-        _input: BuildContextInput,
+        input: BuildContextInput,
     ) -> Result<BuildContextOutput, LlmStepError> {
-        // Basic context assembly — full implementation with repo engine
-        // integration is in LlmContextBuilderService (issue-llmstepcontext)
-        Err(LlmStepError::ContextBuildFailed {
-            message: "Full context builder not yet wired".to_string(),
-            context_source: "LlmStepServiceImpl".to_string(),
+        // Gather source context
+        let source_input = GetSourceContextInput {
+            execution_id: input.execution_id,
+            file_paths: input.source_file_paths.clone(),
+            max_context_size: Some(100_000),
+        };
+        let source_output = self.context_builder.get_source_context(source_input).await?;
+
+        // Gather failure context if requested
+        let failure_context = if input.include_failure_context {
+            let failure_input = GetFailureContextInput {
+                execution_id: input.execution_id,
+                node_id: input.node_id,
+                max_previous_attempts: Some(5),
+            };
+            Some(self.context_builder.get_failure_context(failure_input).await?)
+        } else {
+            None
+        };
+
+        // Assemble the prompt using the context builder
+        let assembled_prompt = self
+            .context_builder
+            .assemble_prompt(
+                "{source_code}\n{execution_context}".to_string(),
+                source_output.source_context.clone(),
+                failure_context.as_ref().map(|f| FailureContext {
+                    failure_type: f.failure_context.failure_type.clone(),
+                    error_message: f.failure_context.error_message.clone(),
+                    error_output: f.failure_context.error_output.clone(),
+                    retries_attempted: f.failure_context.retries_attempted,
+                    max_retries: f.failure_context.max_retries,
+                    strategy: f.failure_context.strategy.clone(),
+                    previous_attempts: f.failure_context.previous_attempts.clone(),
+                    scenario_context: f.failure_context.scenario_context.clone(),
+                }),
+            )
+            .await?;
+
+        let context = LlmStepContext {
+            node_id: input.node_id,
+            execution_id: input.execution_id,
+            source_context: source_output.source_context,
+            failure_context: failure_context.map(|f| f.failure_context),
+            execution_context: ExecutionContext {
+                dag_id: input.dag_id,
+                ..ExecutionContext::default()
+            },
+            assembled_at: Utc::now(),
+            assembled_prompt,
+        };
+
+        let source_file_count = context.source_file_count() as u32;
+        let symbol_count = context.source_context.symbols.len() as u32;
+        let has_failure = context.has_failure_context();
+
+        Ok(BuildContextOutput {
+            context,
+            source_file_count,
+            symbol_count,
+            has_failure_context: has_failure,
+            assembled_at: Utc::now(),
         })
     }
 
@@ -194,39 +257,37 @@ impl LlmStepService for LlmStepServiceImpl {
         input: ExecuteStepInput,
     ) -> Result<ExecuteStepOutput, LlmStepError> {
         let start = std::time::Instant::now();
-        let context_start = start;
 
-        // Build a minimal context from the input
-        let context = LlmStepContext {
+        // Step 1: Build context using the context builder
+        let context_start = std::time::Instant::now();
+        let build_context_input = BuildContextInput {
             node_id: input.node.id,
             execution_id: input.execution_id,
-            source_context: SourceContext::default(),
-            failure_context: None,
-            execution_context: crate::llm_step::domain::ExecutionContext::default(),
-            assembled_at: Utc::now(),
-            assembled_prompt: input.node.prompt_template.clone(),
+            dag_id: input.dag_id,
+            target_file_path: input.target_file_path.clone(),
+            source_file_paths: input.source_file_paths.clone(),
+            include_failure_context: input.include_failure_context,
         };
+        let context_output = self.build_context(build_context_input).await?;
         let context_duration = context_start.elapsed().as_millis() as u64;
 
-        // Execute the generation
+        // Step 2: Execute the generation
         let gen_start = std::time::Instant::now();
         let generate_input = GenerateInput {
             node: input.node.clone(),
-            context: context.clone(),
+            context: context_output.context.clone(),
             api_key: input.api_key,
         };
         let gen_output = self.generate(generate_input).await?;
         let generation_duration = gen_start.elapsed().as_millis() as u64;
 
         let total_duration = start.elapsed().as_millis() as u64;
-
         let total_tokens = gen_output.output.total_tokens;
-        let output = gen_output.output;
 
         Ok(ExecuteStepOutput {
             node_id: input.node.id,
-            output,
-            context,
+            output: gen_output.output,
+            context: context_output.context,
             total_duration_ms: total_duration,
             context_duration_ms: context_duration,
             generation_duration_ms: generation_duration,
@@ -704,7 +765,14 @@ mod tests {
 
     fn create_test_service() -> LlmStepServiceImpl {
         let provider = MockLlmProviderClient::default();
-        LlmStepServiceImpl::new(Box::new(provider), 3, 120, true)
+        let context_builder = LlmContextBuilderServiceImpl::new();
+        LlmStepServiceImpl::new(
+            Box::new(provider),
+            Box::new(context_builder),
+            3,
+            120,
+            true,
+        )
     }
 
     fn create_test_input() -> CreateNodeInput {
@@ -1225,5 +1293,181 @@ mod tests {
         assert_eq!(result.previous_attempt_count, 0);
         assert_eq!(result.failure_context.max_retries, 3);
     }
+
+    // -----------------------------------------------------------------------
+    // Integration Tests — Full Service Pipeline
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_build_context_with_source_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("main.rs");
+        std::fs::write(&file_path, "fn main() { println!(\"hello\"); }").unwrap();
+
+        let builder = LlmContextBuilderServiceImpl::new()
+            .with_repo_root(dir.path().to_str().unwrap());
+        let service = LlmStepServiceImpl::new(
+            Box::new(MockLlmProviderClient::default()),
+            Box::new(builder),
+            3,
+            120,
+            true,
+        );
+
+        let node = service
+            .create_node(create_test_input())
+            .await
+            .unwrap()
+            .node;
+
+        let result = service
+            .build_context(BuildContextInput {
+                node_id: node.id,
+                execution_id: Uuid::new_v4(),
+                dag_id: Uuid::new_v4(),
+                target_file_path: None,
+                source_file_paths: vec!["main.rs".to_string()],
+                include_failure_context: false,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result.source_file_count, 1);
+        assert!(!result.context.assembled_prompt.is_empty());
+        assert!(!result.has_failure_context);
+    }
+
+    #[tokio::test]
+    async fn test_execute_step_full_pipeline() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("source.rs");
+        std::fs::write(&file_path, "pub fn greet(name: &str) -> String { format!(\"Hello {{}}\", name) }").unwrap();
+
+        let builder = LlmContextBuilderServiceImpl::new()
+            .with_repo_root(dir.path().to_str().unwrap());
+        let service = LlmStepServiceImpl::new(
+            Box::new(MockLlmProviderClient::default()),
+            Box::new(builder),
+            3,
+            120,
+            true,
+        );
+
+        let node = service
+            .create_node(create_test_input())
+            .await
+            .unwrap()
+            .node;
+
+        let result = service
+            .execute_step(ExecuteStepInput {
+                node,
+                execution_id: Uuid::new_v4(),
+                dag_id: Uuid::new_v4(),
+                target_file_path: None,
+                source_file_paths: vec!["source.rs".to_string()],
+                include_failure_context: false,
+                api_key: "test-key".to_string(),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result.node_id, result.node_id);
+        assert!(result.total_duration_ms >= 0);
+        assert!(!result.output.raw_output.is_empty());
+        assert_eq!(result.output.total_tokens, 30); // From mock
+        assert!(!result.context.assembled_prompt.is_empty());
+        // Verify source context was included in the assembled prompt
+        assert!(result.context.assembled_prompt.contains("source.rs"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_step_with_failure_context() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("buggy.rs");
+        std::fs::write(&file_path, "fn broken() { incomplete }").unwrap();
+
+        let builder = LlmContextBuilderServiceImpl::new()
+            .with_repo_root(dir.path().to_str().unwrap());
+        let service = LlmStepServiceImpl::new(
+            Box::new(MockLlmProviderClient::default()),
+            Box::new(builder),
+            3,
+            120,
+            true,
+        );
+
+        let node = service
+            .create_node(create_test_input())
+            .await
+            .unwrap()
+            .node;
+
+        let result = service
+            .execute_step(ExecuteStepInput {
+                node,
+                execution_id: Uuid::new_v4(),
+                dag_id: Uuid::new_v4(),
+                target_file_path: None,
+                source_file_paths: vec!["buggy.rs".to_string()],
+                include_failure_context: true,
+                api_key: "test-key".to_string(),
+            })
+            .await
+            .unwrap();
+
+        assert!(!result.output.raw_output.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_generate_with_context() {
+        let service = create_test_service();
+        let node = service
+            .create_node(create_test_input())
+            .await
+            .unwrap()
+            .node;
+
+        let context = LlmStepContext {
+            node_id: node.id,
+            execution_id: Uuid::new_v4(),
+            source_context: SourceContext {
+                files: vec![SourceFileContext {
+                    path: "src/lib.rs".to_string(),
+                    content: "pub fn add(a: i32, b: i32) -> i32 { a + b }".to_string(),
+                    language: "rust".to_string(),
+                    line_range: Some((1, 1)),
+                    is_full_file: true,
+                }],
+                symbols: vec![SymbolDefinition {
+                    name: "add".to_string(),
+                    kind: "function".to_string(),
+                    file_path: "src/lib.rs".to_string(),
+                    signature: "pub fn add(a: i32, b: i32) -> i32".to_string(),
+                    doc_comment: Some("Adds two numbers".to_string()),
+                }],
+                repo_root: "/test".to_string(),
+                target_file_path: None,
+            },
+            failure_context: None,
+            execution_context: ExecutionContext::default(),
+            assembled_at: Utc::now(),
+            assembled_prompt: "Generate a test for add() based on:\n{source_code}".to_string(),
+        };
+
+        let result = service
+            .generate(GenerateInput {
+                node,
+                context,
+                api_key: "test-key".to_string(),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result.output.raw_output, "Mock generated content");
+        assert_eq!(result.output.total_tokens, 30);
+        assert!(result.duration_ms >= 0);
+    }
 }
+
 
