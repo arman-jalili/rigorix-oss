@@ -8,6 +8,8 @@
 //! behind traits. Implementations are provided by the concrete
 //! infrastructure module.
 
+pub mod in_memory_repository;
 pub mod repository;
 
+pub use in_memory_repository::InMemoryRecipeRepository;
 pub use repository::RecoveryRecipeRepository;

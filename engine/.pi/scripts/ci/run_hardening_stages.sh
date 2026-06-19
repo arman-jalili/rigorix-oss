@@ -309,6 +309,11 @@ run_stage "27" "hooks_proofing" \
 run_stage "28" "code-generation_proofing" \
     "${SCRIPTS_DIR}/stage_code-generation_proofing.sh" \
     "always"
+
+# Stage 29: Recovery-Recipes Proofing
+run_stage "29" "recovery-recipes_proofing" \
+    "${SCRIPTS_DIR}/stage_recovery-recipes_proofing.sh" \
+    "always"
 # ── Summary ──
 
 echo ""

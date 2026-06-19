@@ -18,7 +18,9 @@
 pub mod context;
 pub mod dto;
 pub mod service;
+pub mod service_impl;
 
 pub use context::RecoveryContext;
 pub use dto::*;
 pub use service::RecoveryService;
+pub use service_impl::RecoveryServiceImpl;
