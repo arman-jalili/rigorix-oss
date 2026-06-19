@@ -13,12 +13,13 @@
 //! - All service methods are async (return `impl Future`)
 //! - All public methods return `Result<_, FailureParserError>`
 //! - DTOs include validation annotations/documentation
-//! - No implementation logic — only trait definitions
 
 pub mod dto;
 pub mod factory;
 pub mod service;
+pub mod service_impl;
 
 pub use dto::*;
 pub use factory::*;
 pub use service::*;
+pub use service_impl::*;
