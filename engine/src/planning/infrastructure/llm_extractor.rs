@@ -214,6 +214,13 @@ Output: {{"parameters": {{"project_root": ""}}, "reasoning": "The user didn't sp
                 }
                 // Mode/strategy — default to basic
                 "mode" | "strategy" | "approach" => Some("default".to_string()),
+                // Method/function/class names — provide sensible placeholder
+                _ if name.to_lowercase().contains("method")
+                    || name.to_lowercase().contains("function")
+                    || name.to_lowercase().contains("class") =>
+                {
+                    Some(format!("<{}>", name))
+                }
                 _ => None,
             }
         }

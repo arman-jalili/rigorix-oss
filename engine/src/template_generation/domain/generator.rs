@@ -1260,12 +1260,27 @@ of operations.
 1. ONLY use packages/crates/dependencies listed in EXISTING DEPENDENCIES. Do NOT invent new ones.
 2. ONLY use types, functions, and methods listed in PUBLIC API SURFACE.
 3. If a needed package or type doesn't exist, use `file_read` to inspect the codebase first.
-4. **PREFERRED for editing existing files: `file_read` + `file_write`.** Read the file first, then write the COMPLETE updated file with your changes in the correct location. This is the most reliable approach — no search-string guessing.
+4. **For editing existing files: `file_read` + `file_patch` with anchor mode.** Read the file first to see the structure. Then use tree-sitter anchor fields to target the exact location. This is deterministic — no search-string guessing.
+   - CRITICAL: After reading the file, HARDCODE the anchor_name from what you see. Do NOT make anchor_name a template parameter.
+   - CRITICAL: NEVER use the `search` field for method insertion. ALWAYS use `anchor_type` + `anchor_name`. The `search` field is only for inserting after a UNIQUE string (imports, config lines), never for code structures.
+   
 5. `file_append` is ONLY for: import statements, module declarations, single-line config — never for methods/functions/classes.
-6. `file_patch` is a LAST RESORT for inserting small snippets into LARGE files (500+ lines) where full-file writes are too expensive. It is brittle: the search string may match in the wrong place. Always prefer `file_read` + `file_write` instead.
+6. `file_write` is for creating NEW files or completely rewriting small files (<200 lines).
 7. NEVER use `any` type in TypeScript code. ALWAYS use the exact type name from the PUBLIC API SURFACE.
 8. ALWAYS use the EXACT field names shown in the PUBLIC API SURFACE.
 9. When a path parameter like target_file holds a full path such as src/lib.rs, use the placeholder directly as the path value. Do NOT prepend an extra directory prefix.
+
+**FORMATTING RULES for inserted code:**
+- Match the EXACT indentation of surrounding code (count spaces/tabs from adjacent lines).
+- Do NOT add leading or trailing blank lines around the insert — the tool inserts exactly what you provide.
+- For methods: include the method declaration line, opening brace, body, and closing brace in the insert.
+- For multi-line inserts: start each line with the correct indentation level.
+
+**PLACEMENT RULES for class methods:**
+- ALWAYS insert new methods at the END of the class body (after the LAST existing method).
+- Use `position = "after"` with `anchor_name` set to the last method's name.
+- NEVER insert before properties, constructor, or between fields — always after the last method.
+- If the class has no methods yet, anchor to the class itself: `anchor_type = "class"`, `anchor_name = "<ClassName>"`, `position = "after"`.
 
 TEMPLATE SCHEMA:
 id = "unique-kebab-case-id"
@@ -1290,9 +1305,19 @@ path = "{{ param_name }}"  # use DOUBLE curly braces {{ }} for parameter substit
 
 VALID ACTION TYPES:
 - file_read: {{ type, path }}
-- file_write: {{ type, path, content_template (required) }} — OVERWRITES entire file with the given content
-- file_append: {{ type, path, content_template (required) }} — APPENDS to existing file (ONLY for: mod declarations, imports, single-line config)
-- file_patch: {{ type, path, search (required), insert (required), before (optional) }} — inserts content into existing file at a search match point
+- file_write: {{ type, path, content_template (required) }} — OVERWRITES entire file
+- file_append: {{ type, path, content_template (required) }} — APPENDS (ONLY for imports/mod declarations)
+- file_patch (anchor mode, PREFERRED):
+    {{ type, path, anchor_type, anchor_name, container (optional), position, insert }}
+    anchor_type = "method" | "function" | "class" | "struct" | "impl" | "interface" | "end_of_file"
+    position = "after" | "before"  (use "after" for appending, "before" for prepending)
+    Example — add method after activeCount inside TaskList class:
+      type = "file_patch", path = "{{ file_path }}",
+      anchor_type = "method", anchor_name = "activeCount", container = "TaskList",
+      position = "after", insert = "  getActiveTasks(): Task[] {{ return []; }}\n"
+    For appending to end of file: anchor_type = "end_of_file", no anchor_name needed
+- file_patch (search mode, fallback only for 500+ line files):
+    {{ type, path, search, insert, before (optional) }}
 - run_command: {{ type, command, args (optional) }}
 - lsp_query: {{ type, query }}
 - git_read: {{ type, operation, count (optional) }}

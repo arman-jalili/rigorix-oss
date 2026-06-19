@@ -521,7 +521,7 @@ mod tests {
                 ("path", "test.rs"),
                 ("anchor_type", "struct"),
                 ("anchor_name", "MyStruct"),
-                ("insert", "\nstruct OtherStruct {\n    data: String,\n}\n"),
+                ("insert", "    pub new_field: String,\n"),
                 ("position", "after"),
             ]))
             .await
@@ -529,7 +529,22 @@ mod tests {
 
         assert!(result.is_success());
         let content = std::fs::read_to_string(&file_path).unwrap();
-        assert!(content.contains("OtherStruct"));
+        // Content should be inserted INSIDE the struct body, before closing brace
+        assert!(
+            content.contains("struct MyStruct {"),
+            "struct should still be present"
+        );
+        assert!(
+            content.contains("new_field"),
+            "new_field should be inserted"
+        );
+        // Verify new_field is INSIDE the struct body (before the closing brace)
+        let struct_close = content.rfind("}\n\nfn main").unwrap();
+        let new_field_pos = content.find("new_field").unwrap();
+        assert!(
+            new_field_pos < struct_close,
+            "new_field should be inside struct body, before closing brace"
+        );
     }
 
     #[tokio::test]
@@ -556,7 +571,18 @@ mod tests {
 
         assert!(result.is_success());
         let content = std::fs::read_to_string(&file_path).unwrap();
-        assert!(content.contains("method2"));
+        // Content should be inserted INSIDE the impl body, before closing }}
+        assert!(
+            content.contains("method2"),
+            "method2 should be inserted"
+        );
+        // Verify method2 is INSIDE the impl block
+        let impl_close = content.rfind("}\n\nfn main").unwrap();
+        let method2_pos = content.find("method2").unwrap();
+        assert!(
+            method2_pos < impl_close,
+            "method2 should be inside impl, before closing brace"
+        );
     }
 
     #[tokio::test]
@@ -588,6 +614,85 @@ mod tests {
         assert!(result.is_success());
         let content = std::fs::read_to_string(&file_path).unwrap();
         assert!(content.contains("getActiveTasks"));
+        // Verify getActiveTasks is INSIDE the class body (before class closing brace)
+        // The class source is: "class TaskList {\n    activeCount...\n}\n"
+        // The closing brace is at the end; find the last }}
+        let class_close = content.rfind('}').unwrap();
+        let get_pos = content.find("getActiveTasks").unwrap();
+        assert!(
+            get_pos < class_close,
+            "getActiveTasks should be inside class body"
+        );
+    }
+
+    /// Reproduces the exact bug scenario: inserting a method into a TypeScript
+    /// class using `anchor_type = "class"` + `position = "after"`.
+    /// Before the fix, this would insert AFTER the closing brace of the class.
+    /// After the fix, it inserts INSIDE the class body before the closing brace.
+    #[tokio::test]
+    async fn test_anchor_typescript_add_method_via_class() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("test.ts");
+        let source = r##"export class TaskList {
+  private tasks: Task[] = [];
+
+  add(title: string): Task {
+    const task = createTask(id, title);
+    this.tasks.push(task);
+    return task;
+  }
+
+  count(): number {
+    return this.tasks.length;
+  }
+
+  activeCount(): number {
+    return this.tasks.filter(isTaskActive).length;
+  }
+}
+"##;
+        std::fs::write(&file_path, source).unwrap();
+
+        let tool = FilePatchTool::new(dir.path().to_str().unwrap());
+        let insert_content = r##"  getActiveTasks(): Task[] {
+    return this.tasks.filter(isTaskActive);
+  }
+"##;
+        let result = tool
+            .execute(&make_input(vec![
+                ("path", "test.ts"),
+                ("anchor_type", "class"),
+                ("anchor_name", "TaskList"),
+                ("insert", insert_content),
+                ("position", "after"),
+            ]))
+            .await
+            .unwrap();
+
+        assert!(result.is_success());
+        let content = std::fs::read_to_string(&file_path).unwrap();
+
+        // The inserted method should be INSIDE the class body, before closing }}
+        let class_decl = content.find("export class TaskList {").unwrap();
+        let class_close = content.rfind("}").unwrap();
+        let method_pos = content.find("getActiveTasks").unwrap();
+
+        assert!(
+            method_pos > class_decl,
+            "getActiveTasks should be inside class body (after class declaration)"
+        );
+        assert!(
+            method_pos < class_close,
+            "getActiveTasks should be inside class body (before closing brace)"
+        );
+
+        // Also verify the method is before the export scope's closing brace
+        // (the file ends with the class, so the last }} is the class close)
+        assert!(
+            content.ends_with("}\n"),
+            "file should still end with class closing brace"
+        );
+        let _ = class_decl;
     }
 
     #[tokio::test]

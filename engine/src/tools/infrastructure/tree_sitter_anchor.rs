@@ -123,6 +123,55 @@ impl TreeSitterAnchorFinder {
     // Rust AST walking
     // ------------------------------------------------------------------
 
+    /// Resolve insert position for container types (class, struct, impl, interface).
+    ///
+    /// For container types, "after" means inside the body before the closing brace,
+    /// and "before" means inside the body after the opening brace.
+    /// This matches the intuitive expectation: "add a method to the class" = "insert
+    /// inside the class body at the end", not "append after the entire class."
+    fn resolve_container_position<'tree>(
+        target_node: tree_sitter::Node<'tree>,
+        anchor_type: &str,
+        position: &str,
+    ) -> Option<(usize, &'static str)> {
+        // These are container types that have a `body` child
+        let is_container = matches!(
+            anchor_type,
+            "class" | "struct" | "impl" | "interface"
+        );
+
+        if is_container {
+            if let Some(body) = target_node.child_by_field_name("body") {
+                let body_start = body.start_byte();
+                let body_end = body.end_byte();
+                // body spans from `{` to `}` inclusive
+                // end_byte is one past `}`, start_byte is at `{`
+                match position {
+                    "before" => {
+                        // Insert after opening brace (+ 1 to skip `{`)
+                        Some((body_start + 1, "inside body after opening brace"))
+                    }
+                    _ => {
+                        // Insert before closing brace (- 1 to be at `}`, insert before it)
+                        if body_end > body_start + 1 {
+                            Some((body_end - 1, "inside body before closing brace"))
+                        } else {
+                            // Empty body, insert after opening brace
+                            Some((body_start + 1, "inside empty body"))
+                        }
+                    }
+                }
+            } else {
+                None
+            }
+        } else {
+            match position {
+                "before" => Some((target_node.start_byte(), "before")),
+                _ => Some((target_node.end_byte(), "after")),
+            }
+        }
+    }
+
     fn find_in_rust(source: &str, params: &AnchorParams) -> Result<AnchorResult, ToolError> {
         let mut parser = tree_sitter::Parser::new();
         parser
@@ -167,10 +216,17 @@ impl TreeSitterAnchorFinder {
                 ))
             })?;
 
-        let (insert_offset, position_desc) = match params.position.as_str() {
-            "before" => (target_node.start_byte(), "before"),
-            _ => (target_node.end_byte(), "after"),
-        };
+        let (insert_offset, position_desc) = Self::resolve_container_position(
+            target_node,
+            &params.anchor_type,
+            &params.position,
+        )
+        .ok_or_else(|| {
+            ToolError::ExecutionFailed(format!(
+                "Cannot resolve position for {} '{}': body not found",
+                kind_name, params.anchor_name
+            ))
+        })?;
 
         Ok(AnchorResult {
             insert_offset,
@@ -342,10 +398,17 @@ impl TreeSitterAnchorFinder {
                 ))
             })?;
 
-        let (insert_offset, position_desc) = match params.position.as_str() {
-            "before" => (target_node.start_byte(), "before"),
-            _ => (target_node.end_byte(), "after"),
-        };
+        let (insert_offset, position_desc) = Self::resolve_container_position(
+            target_node,
+            &params.anchor_type,
+            &params.position,
+        )
+        .ok_or_else(|| {
+            ToolError::ExecutionFailed(format!(
+                "Cannot resolve position for {} '{}': body not found",
+                kind_name, params.anchor_name
+            ))
+        })?;
 
         Ok(AnchorResult {
             insert_offset,
@@ -469,10 +532,17 @@ impl TreeSitterAnchorFinder {
                 ))
             })?;
 
-        let (insert_offset, position_desc) = match params.position.as_str() {
-            "before" => (target_node.start_byte(), "before"),
-            _ => (target_node.end_byte(), "after"),
-        };
+        let (insert_offset, position_desc) = Self::resolve_container_position(
+            target_node,
+            &params.anchor_type,
+            &params.position,
+        )
+        .ok_or_else(|| {
+            ToolError::ExecutionFailed(format!(
+                "Cannot resolve position for {} '{}': body not found",
+                kind_name, params.anchor_name
+            ))
+        })?;
 
         Ok(AnchorResult {
             insert_offset,
