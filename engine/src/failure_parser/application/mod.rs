@@ -13,7 +13,6 @@
 //! - All service methods are async (return `impl Future`)
 //! - All public methods return `Result<_, FailureParserError>`
 //! - DTOs include validation annotations/documentation
-
 pub mod dto;
 pub mod factory;
 pub mod fix_suggestion_impl;
