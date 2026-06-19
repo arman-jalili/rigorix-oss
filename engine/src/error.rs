@@ -36,6 +36,7 @@ use crate::orchestrator::domain::OrchestratorError;
 use crate::planning::domain::PlanningError;
 use crate::repo_engine::domain::RepoEngineError;
 use crate::state_persistence::domain::StateError;
+use crate::recovery_recipes::domain::RecoveryError;
 use crate::templates::domain::TemplateError;
 use crate::tools::domain::ToolError;
 
@@ -112,6 +113,10 @@ pub enum CoreOrchestratorError {
     #[error("Orchestrator error: {0}")]
     Orchestrator(#[from] OrchestratorError),
 
+    /// Recovery recipes error — no recipe, max attempts, step failures.
+    #[error("Recovery error: {0}")]
+    Recovery(#[from] RecoveryError),
+
     /// Failure classification error — classification failures,
     /// missing strategies.
     #[error("Failure classification error: {0}")]
@@ -182,6 +187,7 @@ impl CoreOrchestratorError {
             CoreOrchestratorError::State(e) => e.is_retriable(),
             CoreOrchestratorError::Template(e) => e.is_retriable(),
             CoreOrchestratorError::Orchestrator(e) => e.is_retriable(),
+            CoreOrchestratorError::Recovery(e) => e.is_retriable(),
             CoreOrchestratorError::FailureClassification(e) => e.is_retriable(),
             // JSON deserialization errors are not retriable — the input is malformed
             CoreOrchestratorError::Json(_) => false,
@@ -207,6 +213,7 @@ impl CoreOrchestratorError {
             CoreOrchestratorError::State(_) => "STATE_ERROR",
             CoreOrchestratorError::Template(_) => "TEMPLATE_ERROR",
             CoreOrchestratorError::Orchestrator(_) => "ORCHESTRATOR_ERROR",
+            CoreOrchestratorError::Recovery(_) => "RECOVERY_ERROR",
             CoreOrchestratorError::FailureClassification(_) => "FAILURE_CLASSIFICATION_ERROR",
             CoreOrchestratorError::Io(_) => "IO_ERROR",
             CoreOrchestratorError::Json(_) => "JSON_ERROR",
@@ -232,6 +239,7 @@ impl CoreOrchestratorError {
             CoreOrchestratorError::State(_) => 500,
             CoreOrchestratorError::Template(_) => 400,
             CoreOrchestratorError::Orchestrator(_) => 500,
+            CoreOrchestratorError::Recovery(_) => 500,
             CoreOrchestratorError::FailureClassification(_) => 500,
             CoreOrchestratorError::Io(_) => 500,
             CoreOrchestratorError::Json(_) => 400,
@@ -357,6 +365,9 @@ mod tests {
                 detail: "test".to_string(),
                 intent: "test".to_string(),
             }),
+            CoreOrchestratorError::Recovery(RecoveryError::NoRecipe(
+                crate::recovery_recipes::domain::FailureScenario::CompileError,
+            )),
             CoreOrchestratorError::FailureClassification(
                 FailureClassificationError::ClassificationFailed {
                     message: "test".to_string(),
