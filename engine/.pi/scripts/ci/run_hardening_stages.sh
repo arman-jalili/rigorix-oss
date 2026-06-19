@@ -304,6 +304,11 @@ run_stage "26" "orchestrator_proofing" \
 run_stage "27" "hooks_proofing" \
     "${SCRIPTS_DIR}/stage_hooks_proofing.sh" \
     "always"
+
+# Stage 28: Code-Generation Proofing
+run_stage "28" "code-generation_proofing" \
+    "${SCRIPTS_DIR}/stage_code-generation_proofing.sh" \
+    "always"
 # ── Summary ──
 
 echo ""

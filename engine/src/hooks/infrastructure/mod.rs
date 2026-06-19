@@ -8,6 +8,8 @@
 //! behind traits. The primary repository is for hook command persistence
 //! and retrieval.
 
+pub mod filesystem_repository;
 pub mod repository;
 
+pub use filesystem_repository::*;
 pub use repository::*;

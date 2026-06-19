@@ -17,6 +17,7 @@
 
 pub mod dto;
 pub mod factory;
+pub mod file_edit_tool;
 pub mod file_patch_tool;
 pub mod file_read_tool;
 pub mod file_write_tool;
@@ -30,6 +31,7 @@ pub mod service;
 
 pub use dto::*;
 pub use factory::*;
+pub use file_edit_tool::EditFileTool;
 pub use file_patch_tool::FilePatchTool;
 pub use file_read_tool::FileReadTool;
 pub use file_write_tool::{FileAppendTool, FileWriteTool};
