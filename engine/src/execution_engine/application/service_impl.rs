@@ -464,17 +464,28 @@ impl ParallelExecutionServiceImpl {
             }
 
             let (match_pos, _) = occurrences[0];
-            let new_content = if before {
-                format!(
-                    "{}{}{}",
-                    &content[..match_pos],
-                    insert,
-                    &content[match_pos..]
-                )
-            } else {
-                let after = match_pos + search.len();
-                format!("{}{}{}", &content[..after], insert, &content[after..])
-            };
+            // Smart resolution: if search matched a container declaration,
+            // use tree-sitter to insert inside the body before closing brace.
+            let position_str = if before { "before" } else { "after" };
+            let resolved_pos = crate::tools::infrastructure::tree_sitter_anchor::TreeSitterAnchorFinder::resolve_search_to_container(
+                &content,
+                path,
+                match_pos,
+                position_str,
+            );
+            let insert_pos = resolved_pos.unwrap_or_else(|| {
+                if before {
+                    match_pos
+                } else {
+                    match_pos + search.len()
+                }
+            });
+            let new_content = format!(
+                "{}{}{}",
+                &content[..insert_pos],
+                insert,
+                &content[insert_pos..]
+            );
             match std::fs::write(path, &new_content) {
                 Ok(()) => TaskResult::success(
                     node_id,

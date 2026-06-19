@@ -210,11 +210,24 @@ impl FilePatchTool {
         }
 
         let (match_pos, _) = occurrences[0];
-        let insert_pos = if before {
-            match_pos
-        } else {
-            match_pos + search.len()
-        };
+        // Try to smart-resolve: if the search string matched a container declaration
+        // (class/struct/impl/interface), tree-sitter can correct the position to
+        // inside the body before the closing brace.
+        let position_str = if before { "before" } else { "after" };
+        let resolved_pos = crate::tools::infrastructure::tree_sitter_anchor::TreeSitterAnchorFinder::resolve_search_to_container(
+            &contents,
+            path_str,
+            match_pos,
+            position_str,
+        );
+        let insert_pos = resolved_pos.unwrap_or_else(|| {
+            if before {
+                match_pos
+            } else {
+                match_pos + search.len()
+            }
+        });
+        let used_smart = resolved_pos.is_some();
 
         let new_contents = format!(
             "{}{}{}",
@@ -233,13 +246,17 @@ impl FilePatchTool {
             })?;
 
         let patched_len = insert.len();
+        let position_label = if used_smart {
+            "inside container body"
+        } else if before {
+            "before"
+        } else {
+            "after"
+        };
         let result = ToolResult {
             output: format!(
                 "Inserted {} bytes {} '{}' in '{}'",
-                patched_len,
-                if before { "before" } else { "after" },
-                search,
-                path_str
+                patched_len, position_label, search, path_str
             ),
             exit_code: 0,
             side_effects: vec![SideEffect::new(
@@ -247,9 +264,7 @@ impl FilePatchTool {
                 "file_patch",
                 format!(
                     "Inserted {} bytes {} '{}'",
-                    patched_len,
-                    if before { "before" } else { "after" },
-                    search
+                    patched_len, position_label, search
                 ),
             )],
             duration_ms: 0,
@@ -782,6 +797,72 @@ mod tests {
             err.contains("constructor"),
             "Error should mention constructor: {}",
             err
+        );
+    }
+
+    /// Test that search mode smart-resolves class declarations: when search =
+    /// "class TaskList {", the tool should detect this is a class via tree-sitter
+    /// and insert inside the body before the closing brace, not after the opening `{{`.
+    /// This makes the behavior deterministic regardless of LLM prompt adherence.
+    #[tokio::test]
+    async fn test_search_smart_resolves_class_body() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("test.ts");
+        let source = r##"export class TaskList {
+  private tasks: Task[] = [];
+  private nextId: number = 0;
+
+  add(title: string): Task {
+    return createTask(0, title);
+  }
+
+  count(): number {
+    return this.tasks.length;
+  }
+
+  activeCount(): number {
+    return this.tasks.filter(isTaskActive).length;
+  }
+}
+"##;
+        std::fs::write(&file_path, source).unwrap();
+
+        let tool = FilePatchTool::new(dir.path().to_str().unwrap());
+        let insert_content = r##"  getActiveTasks(): Task[] {
+    return this.tasks.filter(task => isTaskActive(task));
+  }
+"##;
+        let result = tool
+            .execute(&make_input(vec![
+                ("path", "test.ts"),
+                ("search", "class TaskList {"),
+                ("insert", insert_content),
+            ]))
+            .await
+            .unwrap();
+
+        assert!(result.is_success());
+        let content = std::fs::read_to_string(&file_path).unwrap();
+
+        // The method should be at the END of the class body, before the closing brace
+        let class_open = content.find("class TaskList {").unwrap();
+        let class_close = content.rfind('}').unwrap();
+        let get_pos = content.find("getActiveTasks").unwrap();
+
+        assert!(
+            get_pos > class_open,
+            "getActiveTasks should be inside class body"
+        );
+        assert!(
+            get_pos < class_close,
+            "getActiveTasks should be BEFORE the closing brace (at end of body)"
+        );
+
+        // The last member (activeCount) should be before getActiveTasks
+        let active_count_pos = content.find("activeCount").unwrap();
+        assert!(
+            active_count_pos < get_pos,
+            "getActiveTasks should be AFTER activeCount (at end of body)"
         );
     }
 

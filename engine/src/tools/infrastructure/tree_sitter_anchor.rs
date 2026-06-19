@@ -119,6 +119,90 @@ impl TreeSitterAnchorFinder {
         }
     }
 
+    /// Try to resolve a text-search match position to a container body position.
+    ///
+    /// When a user searches for a class/struct/impl/interface declaration line
+    /// (e.g., `search = "class TaskList {"`), the text-based position lands after
+    /// the opening `{`, placing content at the START of the body. This function
+    /// detects such cases via tree-sitter and returns the END of the body
+    /// (before closing `}`), which is the correct position for adding members.
+    ///
+    /// This makes the `search` mode deterministic — regardless of what the LLM
+    /// generates, tool-side logic corrects the placement.
+    ///
+    /// # Arguments
+    /// * `source` — The full file content.
+    /// * `file_path` — Used for language detection via extension.
+    /// * `match_byte` — The byte position of the text match in `source`.
+    /// * `position` — "after" (default) or "before".
+    ///
+    /// # Returns
+    /// `Some(byte_offset)` — the corrected insert position inside the container body.
+    /// `None` — either the match doesn't land at a container, or language is unsupported.
+    pub fn resolve_search_to_container(
+        source: &str,
+        file_path: &str,
+        match_byte: usize,
+        position: &str,
+    ) -> Option<usize> {
+        let ext = Path::new(file_path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+
+        let language: tree_sitter::Language = match ext {
+            "rs" => tree_sitter_rust::LANGUAGE.into(),
+            "ts" | "tsx" => tree_sitter_typescript::LANGUAGE_TSX.into(),
+            "py" => tree_sitter_python::language(),
+            _ => return None,
+        };
+
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(&language).ok()?;
+        let tree = parser.parse(source, None)?;
+
+        let root = tree.root_node();
+        // Find the deepest node at the match position, then walk up for container
+        let leaf = root.descendant_for_byte_range(match_byte, match_byte)?;
+        let mut current = leaf;
+
+        loop {
+            let kind = current.kind();
+            // Check if this is a container type
+            let is_container = matches!(
+                kind,
+                "class_declaration"
+                    | "interface_declaration"
+                    | "struct_item"
+                    | "impl_item"
+                    | "trait_item"
+                    | "class_definition"
+            );
+
+            if is_container {
+                if let Some(body) = current.child_by_field_name("body") {
+                    let body_start = body.start_byte();
+                    let body_end = body.end_byte();
+                    let offset = match position {
+                        "before" if body_end > body_start + 1 => body_start + 1, // after opening `{`
+                        "before" => body_start + 1,
+                        _ if body_end > body_start + 1 => body_end - 1, // before closing `}`
+                        _ => body_start + 1,
+                    };
+                    return Some(offset);
+                }
+            }
+
+            // Walk up to parent
+            match current.parent() {
+                Some(p) => current = p,
+                None => break,
+            }
+        }
+
+        None
+    }
+
     // ------------------------------------------------------------------
     // Rust AST walking
     // ------------------------------------------------------------------
