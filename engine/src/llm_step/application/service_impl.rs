@@ -10,6 +10,7 @@
 
 use async_trait::async_trait;
 use chrono::Utc;
+use tracing::Instrument;
 use uuid::Uuid;
 
 use crate::llm_step::application::factory::{
@@ -149,6 +150,7 @@ impl LlmStepServiceImpl {
     }
 
     /// Execute the actual LLM call.
+    #[tracing::instrument(skip_all)]
     async fn do_generate(&self, request: LlmProviderRequest) -> Result<LlmProviderResponse, LlmStepError> {
         self.provider_client.generate(request).await
     }
@@ -511,6 +513,7 @@ pub struct LlmContextBuilderServiceImpl {
 
 impl LlmContextBuilderServiceImpl {
     /// Create a new LlmContextBuilderServiceImpl.
+    #[tracing::instrument(skip_all)]
     pub fn new() -> Self {
         Self {
             repo_root: String::new(),
@@ -593,6 +596,7 @@ impl LlmContextBuilderServiceImpl {
     }
 
     /// Format source files into a context block for the prompt.
+    #[tracing::instrument(skip_all)]
     fn format_source_files(&self, files: &[SourceFileContext]) -> String {
         let mut output = String::new();
         for file in files {
