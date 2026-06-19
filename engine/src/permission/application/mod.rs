@@ -17,8 +17,12 @@
 
 pub mod dto;
 pub mod enforcer;
+pub mod enforcer_factory_impl;
+pub mod enforcer_impl;
 pub mod factory;
 
 pub use dto::*;
 pub use enforcer::*;
+pub use enforcer_factory_impl::*;
+pub use enforcer_impl::*;
 pub use factory::*;
