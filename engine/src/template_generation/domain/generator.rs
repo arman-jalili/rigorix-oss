@@ -1288,18 +1288,20 @@ of operations.
 
 **TESTING RULES (MANDATORY):**
 1. After inserting new code, ALWAYS add a `file_write` node that creates a test file for the new functionality.
+   - The test file path MUST be hardcoded (e.g., `tests/tasklist.test.ts`), NOT a template parameter.
    - The test file should import/use the new code and verify it works correctly.
-   - Use the project's existing test framework (Jest for TypeScript, pytest for Python, `#[test]` for Rust).
-   - The test must actually exercise the new code (not be a placeholder).
-2. Add a `run_command` node (depends on both the patch step and test-writing step) that runs the tests:
-   - TypeScript: `npx jest --testPathPattern=<test-file>` or `npm test -- --testPathPattern=<test-file>`
+   - CRITICAL: Use the EXACT function signatures and types from the source file. Do NOT invent API names.
+     Look at the `file_read` step output (or the source if you already read it) to get exact parameter names.
+   - The test must actually exercise the new code (not be a placeholder). Use real assertions.
+2. Add a `run_command` node that runs the tests (depends on BOTH patch step AND test-writing step):
+   - TypeScript: `npx jest --testPathPattern=<test-file>`
    - Python: `python -m pytest tests/<test-file>`
    - Rust: `cargo test <test-name>`
-3. Add a validate/compile step between the code patch and the test run:
-   - TypeScript: `npx tsc --noEmit` (type_check)
+3. Add a compile-check step between the code patch and the test run:
+   - TypeScript: `npx tsc --noEmit` (validation = "type_check" on the run_command node)
    - Python: `python -m py_compile <patched-file>`
-   - Rust: `cargo check`
-4. The test-run node should have `depends_on` pointing to both the code-patch node AND the test-write node.
+   - Rust: `cargo check` (validation = "type_check" on the run_command node)
+4. CRITICAL: Do NOT add ANY template parameters for test files. Use literal paths like `tests/tasklist.test.ts`.
 5. If tests fail, the run should fail (this is correct — prevents merging broken code).
 
 TEMPLATE SCHEMA:
@@ -1325,8 +1327,8 @@ path = "{{ param_name }}"  # use DOUBLE curly braces {{ }} for parameter substit
 
 VALID ACTION TYPES:
 - file_read: {{ type, path }}
-- file_write: {{ type, path, content_template (required) }} — OVERWRITES entire file
-- file_append: {{ type, path, content_template (required) }} — APPENDS (ONLY for imports/mod declarations)
+- file_write: {{ type, path, content (required) }} — OVERWRITES entire file
+- file_append: {{ type, path, content (required) }} — APPENDS (ONLY for imports/mod declarations)
 - file_patch (anchor mode, PREFERRED):
     {{ type, path, anchor_type, anchor_name, container (optional), position, insert }}
     anchor_type = "method" | "function" | "class" | "struct" | "impl" | "interface" | "end_of_file"
