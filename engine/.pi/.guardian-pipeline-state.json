@@ -52,7 +52,7 @@
     }
   ],
   "currentItemIndex": 5,
-  "currentStepIndex": 3,
+  "currentStepIndex": 0,
   "status": "running",
   "retryCount": 0,
   "results": [
@@ -235,40 +235,9 @@
           "reason": ""
         }
       ]
-    },
-    {
-      "item": "issue-proofing",
-      "status": "in-progress",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
     }
   ],
   "mergeOnValid": true,
   "createdAt": "2026-06-19T18:53:34.644Z",
-  "updatedAt": "2026-06-19T19:27:13.993Z"
+  "updatedAt": "2026-06-19T19:25:38.897Z"
 }
