@@ -535,36 +535,80 @@ fn extract_ts_public_api(content: &str, file_path: &str, symbols: &mut Vec<Strin
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with("export ") {
-            // export function name, export class Name, export interface Name,
-            // export type Name, export const name
             let rest = &trimmed[7..].trim();
-            if let Some(rest) = rest.strip_prefix("function ") {
-                let name = rest.split('(').next().unwrap_or(rest);
-                symbols.push(format!("{}: export function {}", file_path, name.trim()));
+            if let Some(sig) = rest.strip_prefix("function ") {
+                // Include full signature up to opening brace or semicolon
+                let full_sig = sig.split(|c| c == '{' || c == ';').next().unwrap_or(sig).trim();
+                symbols.push(format!("{}: export function {}", file_path, full_sig));
             } else if let Some(rest) = rest.strip_prefix("class ") {
                 let name = rest
                     .split(|c: char| c == '<' || c == '{')
                     .next()
-                    .unwrap_or(rest);
-                symbols.push(format!("{}: export class {}", file_path, name.trim()));
+                    .unwrap_or(rest)
+                    .trim();
+                symbols.push(format!("{}: export class {}", file_path, name));
+                // Also extract method signatures inside the class
+                extract_ts_class_methods(content, line, file_path, symbols);
             } else if let Some(rest) = rest.strip_prefix("interface ") {
                 let name = rest
                     .split(|c: char| c == '<' || c == '{')
                     .next()
-                    .unwrap_or(rest);
-                symbols.push(format!("{}: export interface {}", file_path, name.trim()));
-            } else if let Some(rest) = rest.strip_prefix("type ") {
-                let name = rest
-                    .split(|c: char| c == '=' || c == '<')
-                    .next()
-                    .unwrap_or(rest);
-                symbols.push(format!("{}: export type {}", file_path, name.trim()));
-            } else if let Some(rest) = rest.strip_prefix("const ") {
-                let name = rest
-                    .split(|c: char| c == ':' || c == '=')
-                    .next()
-                    .unwrap_or(rest);
-                symbols.push(format!("{}: export const {}", file_path, name.trim()));
+                    .unwrap_or(rest)
+                    .trim();
+                symbols.push(format!("{}: export interface {}", file_path, name));
+            } else if let Some(sig) = rest.strip_prefix("type ") {
+                let full_sig = sig.split(|c| c == '=' || c == ';').next().unwrap_or(sig).trim();
+                symbols.push(format!("{}: export type {}", file_path, full_sig));
+            } else if let Some(sig) = rest.strip_prefix("const ") {
+                let full_sig = sig.split(|c| c == ':' || c == '=').next().unwrap_or(sig).trim();
+                symbols.push(format!("{}: export const {}", file_path, full_sig));
+            }
+        }
+    }
+}
+
+/// Extract method signatures from the class body following the class declaration line.
+fn extract_ts_class_methods(content: &str, class_line: &str, file_path: &str, symbols: &mut Vec<String>) {
+    // Find the line index of the class declaration
+    let mut lines: Vec<&str> = content.lines().collect();
+    let class_idx = lines.iter().position(|l| l.trim() == class_line.trim());
+    let Some(start) = class_idx else { return };
+
+    // Walk forward from class declaration to find methods
+    // Methods are lines like: methodName(args): ReturnType { ... }
+    let mut brace_depth = 0;
+    let mut in_class_body = false;
+    for line in &lines[start + 1..] {
+        let trimmed = line.trim();
+        if trimmed == "{" {
+            brace_depth += 1;
+            in_class_body = true;
+            continue;
+        }
+        if trimmed == "}" || trimmed == "};" {
+            if brace_depth <= 0 { break; }
+            brace_depth -= 1;
+            if brace_depth == 0 { break; } // end of class
+            continue;
+        }
+        if !in_class_body { continue; }
+
+        // Detect method or field declarations
+        // Matches: methodName(...) { or methodName(...): ReturnType {
+        let method_pattern = r"^\s*(public\s+|private\s+|protected\s+|static\s+|readonly\s|async\s)*(get\s+|set\s+)?\w+\s*\([^)]*\)\s*(:\s*[^{{]+)?\s*(\{{|;)";
+        if trimmed.len() > 2 && !trimmed.starts_with("//") && !trimmed.starts_with("/*") {
+            // Check if this line looks like a method declaration
+            let paren_open = trimmed.find('(');
+            let paren_close = trimmed.rfind(')');
+            if let (Some(open), Some(close)) = (paren_open, paren_close) {
+                if open > 0 && close > open {
+                    let sig_end = trimmed[close + 1..].find(|c| c == '{' || c == ';').map(|i| close + 1 + i).unwrap_or(trimmed.len());
+                    let sig = &trimmed[..=sig_end.min(trimmed.len()).max(close + 1)];
+                    // Skip if it looks like a lambda or constructor parameter destructuring
+                    if !sig.starts_with('(') && !sig.starts_with("...") && sig.contains('(') {
+                        symbols.push(format!("{}:   method {}", file_path, sig.trim()));
+                    }
+                }
             }
         }
     }
@@ -1108,30 +1152,57 @@ fn read_key_files(root: &std::path::Path) -> String {
         vec!["src/__init__.py", "__init__.py", "main.py"]
     };
 
-    for rel_path in candidates {
+    // Read standard entry-point candidates
+    for rel_path in &candidates {
         let full_path = root.join(rel_path);
         if !full_path.exists() {
             continue;
         }
-
         let content = match std::fs::read_to_string(&full_path) {
             Ok(c) => c,
             Err(_) => continue,
         };
-
         let lines: Vec<&str> = content.lines().take(max_lines).collect();
         let truncated: String = lines.join("\n");
-
         let note = if content.lines().count() > max_lines {
-            format!(
-                "\n// ... (truncated from {} lines)",
-                content.lines().count()
-            )
+            format!("\n// ... (truncated from {} lines)", content.lines().count())
         } else {
             String::new()
         };
-
         sections.push(format!("// === {} ===\n{}{}", rel_path, truncated, note));
+    }
+
+    // For TypeScript projects, also scan src/ for additional .ts files
+    // that contain exports (functions, classes likely needed by tests)
+    if root.join("tsconfig.json").exists() || root.join("package.json").exists() {
+        let src_dir = root.join("src");
+        if src_dir.is_dir() {
+            if let Ok(entries) = std::fs::read_dir(&src_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().map_or(true, |e| e != "ts") {
+                        continue;
+                    }
+                    let rel = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().to_string();
+                    // Skip files already read as candidates
+                    if candidates.iter().any(|c| **c == rel) {
+                        continue;
+                    }
+                    let content = match std::fs::read_to_string(&path) {
+                        Ok(c) => c,
+                        Err(_) => continue,
+                    };
+                    let lines: Vec<&str> = content.lines().take(max_lines).collect();
+                    let truncated: String = lines.join("\n");
+                    let note = if content.lines().count() > max_lines {
+                        format!("\n// ... (truncated from {} lines)", content.lines().count())
+                    } else {
+                        String::new()
+                    };
+                    sections.push(format!("// === {} ===\n{}{}", rel, truncated, note));
+                }
+            }
+        }
     }
 
     sections.join("\n\n")
@@ -1290,8 +1361,12 @@ of operations.
 1. After inserting new code, ALWAYS add a `file_write` node that creates a test file for the new functionality.
    - The test file path MUST be hardcoded (e.g., `tests/tasklist.test.ts`), NOT a template parameter.
    - The test file should import/use the new code and verify it works correctly.
-   - CRITICAL: Use the EXACT function signatures and types from the source file. Do NOT invent API names.
-     Look at the `file_read` step output (or the source if you already read it) to get exact parameter names.
+   - **CRITICAL — HALLUCINATION WARNING**: You MUST use the EXACT function signatures from the source file. Do NOT invent API names, do NOT guess parameter names, do NOT assume standard patterns.
+     - Look at the `PUBLIC API SURFACE` section above — it lists every export with its COMPLETE signature including parameter names and types.
+     - If the public API surface says `createTask(id: number, title: string)`, your test must call it as `createTask(0, "title")`, NOT `createTask("title")`.
+     - If the class has `add(title: string)` and NOT `addTask(task: Task)`, your test must call `list.add("some title")`, NOT `list.addTask(task)`.
+     - Never invent methods, constructor parameters, or return types. Only use what's listed in PUBLIC API SURFACE.
+     - Before writing any test code, scan the PUBLIC API SURFACE section and confirm every function/class/method call matches exactly.
    - The test must actually exercise the new code (not be a placeholder). Use real assertions.
 2. Add a `run_command` node that runs the tests (depends on BOTH patch step AND test-writing step):
    - TypeScript: `npx jest --testPathPattern=<test-file>`
