@@ -37,6 +37,12 @@ use crate::execution_engine::domain::{
     BackoffStrategy, ExecutionError, ExecutionResult, FailureContext, NodeExecutionState,
     NodeStatus, ParallelExecutorConfig, RetryDecision, RetryPolicy, TaskResult,
 };
+use crate::hooks::application::service::HookRunnerService;
+use crate::permission::application::enforcer::PermissionEnforcer;
+use crate::recovery_recipes::application::context::RecoveryContext;
+use crate::recovery_recipes::application::dto::{AttemptRecoveryInput, RecipeForInput};
+use crate::recovery_recipes::application::service::RecoveryService;
+use crate::recovery_recipes::domain::FailureScenario;
 
 use super::dto::{
     AbortExecutionInput, AbortExecutionOutput, EvaluateRetryInput, EvaluateRetryOutput,
@@ -91,6 +97,14 @@ pub struct ParallelExecutionServiceImpl {
     retry_service: Box<dyn RetryEvaluationService>,
     /// Event bus for publishing node lifecycle events.
     event_bus: Arc<dyn EventBusService>,
+    /// Hook runner for PreToolUse / PostToolUse / PostToolUseFailure hooks.
+    hook_runner: Option<Arc<dyn HookRunnerService>>,
+    /// Permission enforcer for mode-based tool gating.
+    permission_enforcer: Option<Arc<dyn PermissionEnforcer>>,
+    /// Recovery service for automatic failure recovery.
+    recovery_service: Option<Arc<dyn RecoveryService>>,
+    /// Recovery context per execution session (dag_id keyed).
+    recovery_contexts: Mutex<HashMap<Uuid, RecoveryContext>>,
 }
 
 impl ParallelExecutionServiceImpl {
@@ -106,25 +120,132 @@ impl ParallelExecutionServiceImpl {
             progress_callbacks: Mutex::new(Vec::new()),
             retry_service,
             event_bus,
+            hook_runner: None,
+            permission_enforcer: None,
+            recovery_service: None,
+            recovery_contexts: Mutex::new(HashMap::new()),
         }
     }
 
+    /// Set the hook runner for tool lifecycle hooks.
+    pub fn with_hook_runner(mut self, runner: Arc<dyn HookRunnerService>) -> Self {
+        self.hook_runner = Some(runner);
+        self
+    }
+
+    /// Set the permission enforcer for mode-based tool gating.
+    pub fn with_permission_enforcer(mut self, enforcer: Arc<dyn PermissionEnforcer>) -> Self {
+        self.permission_enforcer = Some(enforcer);
+        self
+    }
+
+    /// Set the recovery service for automatic failure recovery.
+    pub fn with_recovery_service(mut self, recovery: Arc<dyn RecoveryService>) -> Self {
+        self.recovery_service = Some(recovery);
+        self
+    }
+
     /// Execute a single tool node and return the TaskResult.
+    ///
+    /// Execution order: permission check → PreToolUse hooks → tool → PostToolUse hooks.
     async fn execute_tool(
         &self,
         node: &crate::dag_engine::domain::TaskNode,
         node_id: Uuid,
         start: std::time::Instant,
     ) -> TaskResult {
-        match node.tool.as_str() {
-            "run_command" => Self::exec_run_command(&node.intent, node_id, &node.name, start).await,
-            "file_read" => Self::exec_file_read(&node.intent, node_id, &node.name, start).await,
-            "file_write" => Self::exec_file_write(&node.intent, node_id, &node.name, start).await,
-            "file_append" => Self::exec_file_append(&node.intent, node_id, &node.name, start).await,
-            "file_patch" => Self::exec_file_patch(&node.intent, node_id, &node.name, start).await,
-            "git_read" => Self::exec_git_read(&node.intent, node_id, &node.name, start).await,
-            "git_stage" => Self::exec_git_stage(&node.intent, node_id, &node.name, start).await,
-            "git_commit" => Self::exec_git_commit(&node.intent, node_id, &node.name, start).await,
+        let tool_name = node.tool.as_str();
+        let tool_intent = &node.intent;
+
+        // ── Permission gating ──
+        if let Some(ref enforcer) = self.permission_enforcer {
+            let outcome = enforcer.check(tool_name, tool_intent, None).await;
+            match outcome {
+                crate::permission::domain::PermissionOutcome::Denied { reason, .. } => {
+                    let duration_ms = start.elapsed().as_millis() as u64;
+                    return TaskResult::failure(
+                        node_id, &node.name,
+                        reason,
+                        "permission_denied".to_string(), duration_ms, 0,
+                    );
+                }
+                _ => {}
+            }
+
+            // Additional checks for write tools
+            if tool_name == "file_write" || tool_name == "file_append" || tool_name == "edit_file" {
+                let parsed: serde_json::Value = serde_json::from_str(tool_intent).unwrap_or_default();
+                if let Some(path) = parsed["path"].as_str() {
+                    let write_outcome = enforcer.check_file_write(path, ".", None).await;
+                    match write_outcome {
+                        crate::permission::domain::PermissionOutcome::Denied { reason, .. } => {
+                            let duration_ms = start.elapsed().as_millis() as u64;
+                            return TaskResult::failure(
+                                node_id, &node.name,
+                                reason,
+                                "permission_denied".to_string(), duration_ms, 0,
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            // Additional check for bash commands
+            if tool_name == "run_command" {
+                let bash_outcome = enforcer.check_bash(tool_intent, None).await;
+                match bash_outcome {
+                    crate::permission::domain::PermissionOutcome::Denied { reason, .. } => {
+                        let duration_ms = start.elapsed().as_millis() as u64;
+                        return TaskResult::failure(
+                            node_id, &node.name,
+                            reason,
+                            "permission_denied".to_string(), duration_ms, 0,
+                        );
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // ── PreToolUse hooks ──
+        if let Some(ref hook_runner) = self.hook_runner {
+            let abort = crate::hooks::domain::HookAbortSignal::default();
+            let pre_input = crate::hooks::application::dto::RunPreToolUseInput {
+                tool_name: tool_name.to_string(),
+                tool_input: serde_json::Value::String(tool_intent.to_string()),
+                session_id: node_id.to_string(),
+                workspace_root: ".".to_string(),
+            };
+            if let Ok(pre_output) = hook_runner.run_pre_tool_use(pre_input, Some(&abort)) {
+                if pre_output.result.is_denied()
+                    || pre_output.result.is_failed()
+                    || pre_output.result.is_cancelled()
+                {
+                    let duration_ms = start.elapsed().as_millis() as u64;
+                    return TaskResult::failure(
+                        node_id, &node.name,
+                        format!(
+                            "Tool '{}' blocked by PreToolUse hook: {:?}",
+                            tool_name, pre_output.result.feedback_messages()
+                        ),
+                        "hook_blocked".to_string(), duration_ms, 0,
+                    );
+                }
+            }
+        }
+
+        // ── Execute the tool ──
+        let result = match tool_name {
+            "run_command" => Self::exec_run_command(tool_intent, node_id, &node.name, start).await,
+            "file_read" => Self::exec_file_read(tool_intent, node_id, &node.name, start).await,
+            "file_write" => Self::exec_file_write(tool_intent, node_id, &node.name, start).await,
+            "file_append" => Self::exec_file_append(tool_intent, node_id, &node.name, start).await,
+            "file_patch" => Self::exec_file_patch(tool_intent, node_id, &node.name, start).await,
+            "git_read" => Self::exec_git_read(tool_intent, node_id, &node.name, start).await,
+            "git_stage" => Self::exec_git_stage(tool_intent, node_id, &node.name, start).await,
+            "git_commit" => Self::exec_git_commit(tool_intent, node_id, &node.name, start).await,
+            "edit_file" => Self::exec_edit_file(tool_intent, node_id, &node.name, start).await,
             _ => {
                 let duration_ms = start.elapsed().as_millis() as u64;
                 TaskResult::success(
@@ -132,13 +253,31 @@ impl ParallelExecutionServiceImpl {
                     &node.name,
                     Some(format!(
                         "[PLACEHOLDER] Tool '{}' would execute: {}",
-                        node.tool, node.intent
+                        tool_name, tool_intent
                     )),
                     duration_ms,
                     0,
                 )
             }
+        };
+
+        // ── PostToolUse hooks ──
+        if let Some(ref hook_runner) = self.hook_runner {
+            let tool_output = result.output.clone().unwrap_or_default();
+            let abort = crate::hooks::domain::HookAbortSignal::default();
+            let post_input = crate::hooks::application::dto::RunPostToolUseInput {
+                tool_name: tool_name.to_string(),
+                tool_input: serde_json::Value::String(tool_intent.to_string()),
+                tool_output,
+                session_id: node_id.to_string(),
+                workspace_root: ".".to_string(),
+            };
+            if let Ok(_post_output) = hook_runner.run_post_tool_use(post_input, Some(&abort)) {
+                // Post-tool feedback is informational — no gating
+            }
         }
+
+        result
     }
 
     async fn exec_run_command(
@@ -507,6 +646,75 @@ impl ParallelExecutionServiceImpl {
                     0,
                 ),
             }
+        }
+    }
+
+    async fn exec_edit_file(
+        intent: &str,
+        node_id: Uuid,
+        node_name: &str,
+        start: std::time::Instant,
+    ) -> TaskResult {
+        let parsed: serde_json::Value = match serde_json::from_str(intent) {
+            Ok(v) => v,
+            Err(e) => {
+                let duration_ms = start.elapsed().as_millis() as u64;
+                return TaskResult::failure(
+                    node_id, node_name, e.to_string(),
+                    "parse_error".to_string(), duration_ms, 0,
+                );
+            }
+        };
+        let path = parsed["path"].as_str().unwrap_or("");
+        let old_string = parsed["old_string"].as_str().unwrap_or("");
+        let new_string = parsed["new_string"].as_str().unwrap_or("");
+        let replace_all = parsed["replace_all"].as_bool().unwrap_or(false);
+        let duration_ms = start.elapsed().as_millis() as u64;
+
+        let original = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(e) => {
+                return TaskResult::failure(
+                    node_id, node_name, e.to_string(),
+                    "edit_file_read_error".to_string(), duration_ms, 0,
+                );
+            }
+        };
+
+        // Identity check
+        if old_string == new_string {
+            return TaskResult::failure(
+                node_id, node_name,
+                "old_string and new_string must differ".to_string(),
+                "identity_edit".to_string(), duration_ms, 0,
+            );
+        }
+
+        // Existence check
+        if !original.contains(old_string) {
+            return TaskResult::failure(
+                node_id, node_name,
+                format!("old_string not found in {}", path),
+                "old_string_not_found".to_string(), duration_ms, 0,
+            );
+        }
+
+        let updated = if replace_all {
+            original.replace(old_string, new_string)
+        } else {
+            original.replacen(old_string, new_string, 1)
+        };
+
+        match std::fs::write(path, &updated) {
+            Ok(()) => TaskResult::success(
+                node_id, node_name,
+                Some(format!("Edit applied to {} — {}→{}", path, old_string.len(), new_string.len())),
+                duration_ms, 0,
+            ),
+            Err(e) => TaskResult::failure(
+                node_id, node_name, e.to_string(),
+                "edit_file_write_error".to_string(), duration_ms, 0,
+            ),
         }
     }
 
@@ -1154,6 +1362,88 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
 
             // Fall through to Phase 4 with actual error info
             let _ = output_text;
+
+            // --- Phase 3b: Attempt recovery before retry evaluation ---
+            if let Some(ref recovery_svc) = self.recovery_service {
+                let scenario_opt = if failure_type.contains("command_failed")
+                    || failure_type.contains("edit_file_read_error")
+                    || failure_type.contains("file_write_error")
+                {
+                    Some(FailureScenario::CompileError)
+                } else if failure_type.contains("file_read_error") {
+                    Some(FailureScenario::TestFailure)
+                } else if failure_type.contains("exec_error") {
+                    Some(FailureScenario::ToolConnectionError)
+                } else if failure_type.contains("parse_error") {
+                    Some(FailureScenario::ProviderFailure)
+                } else {
+                    None
+                };
+
+                if let Some(scenario) = scenario_opt {
+                    let recipe_input = RecipeForInput { scenario, custom_recipes: None };
+                    if let Ok(recipe_out) = recovery_svc.recipe_for(recipe_input).await {
+                        let (can_attempt, attempt_count) = {
+                            let mut ctx_guard = self.recovery_contexts.lock()
+                                .map_err(|e| ExecutionError::InternalError {
+                                    detail: format!("Recovery context lock error: {}", e),
+                                })?;
+                            let ctx = ctx_guard.entry(input.dag_id)
+                                .or_insert_with(RecoveryContext::new);
+                            let recipe_check = recipe_out.recipe.as_ref()
+                                .map(|r| ctx.can_attempt(scenario, r))
+                                .unwrap_or(false);
+                            let count = ctx.attempt_count(scenario);
+                            (recipe_check, count)
+                        };
+
+                        if let Some(ref recipe) = recipe_out.recipe {
+                            if can_attempt {
+                                let attempt = attempt_count + 1;
+                                let recovery_input = AttemptRecoveryInput {
+                                    scenario,
+                                    recipe: recipe.clone(),
+                                    attempt_number: attempt,
+                                    original_error: Some(error_message.clone()),
+                                    execution_id: Some(input.dag_id.to_string()),
+                                };
+                                if let Ok(recovery_out) = recovery_svc.attempt_recovery(recovery_input).await {
+                                    {
+                                        let mut ctx_guard = self.recovery_contexts.lock()
+                                            .map_err(|e| ExecutionError::InternalError {
+                                                detail: format!("Recovery context lock error: {}", e),
+                                            })?;
+                                        let ctx = ctx_guard.entry(input.dag_id)
+                                            .or_insert_with(RecoveryContext::new);
+                                        ctx.record_attempt(scenario);
+                                    }
+                                    tracing::info!(
+                                        dag_id = %input.dag_id,
+                                        node_id = %node_id,
+                                        scenario = %scenario.as_str(),
+                                        result = %recovery_out.result.summary(),
+                                        "Recovery attempted"
+                                    );
+
+                                        if recovery_out.result.is_recovered() {
+                                            // Recovery succeeded — re-add node to ready queue
+                                            let mut sessions = self.sessions.lock()
+                                                .map_err(|e| ExecutionError::InternalError {
+                                                    detail: format!("Session lock error: {}", e),
+                                                })?;
+                                            if let Some(session) = sessions.get_mut(&input.dag_id) {
+                                                if let Some(state) = session.node_states.get_mut(&node_id) {
+                                                    state.status = NodeStatus::Ready;
+                                                }
+                                            }
+                                            continue; // Re-enter the retry loop
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
             // --- Phase 4: Handle failure with retry evaluation ---
 
