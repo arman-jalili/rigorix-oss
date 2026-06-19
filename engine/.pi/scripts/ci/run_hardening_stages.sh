@@ -319,6 +319,11 @@ run_stage "29" "recovery-recipes_proofing" \
 run_stage "30" "quality-gates_proofing" \
     "${SCRIPTS_DIR}/stage_quality-gates_proofing.sh" \
     "always"
+
+# Stage 31: LLM-Step Proofing
+run_stage "31" "llm-step_proofing" \
+    "${SCRIPTS_DIR}/stage_llm-step_proofing.sh" \
+    "always"
 # ── Summary ──
 
 echo ""
