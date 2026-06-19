@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-READINESS"
-  epic: ""llm-step""
+  epic: ""failure-parser""
   component: "Architecture Readiness"
-  module: "llm-step"
+  module: "failure-parser"
   status: planned
   priority: critical
   dependencies: []
@@ -32,7 +32,7 @@ guardian_issue:
       - Verify proofing scripts + validators in CI
 
   canonical_references:
-    - module: ".pi/architecture/modules/llm-step.md"
+    - module: ".pi/architecture/modules/failure-parser.md"
 
   acceptance_criteria:
     - "Runbook created and reviewed"
@@ -58,30 +58,30 @@ guardian_issue:
     and CI will catch regressions (proofing scripts + validators).
 
   file_changes:
-    - "create: docs/runbook-llm-step.md"
-    - "create: docs/dr-plan-llm-step.md"
+    - "create: docs/runbook-failure-parser.md"
+    - "create: docs/dr-plan-failure-parser.md"
     - "modify: .pi/architecture/CHANGELOG.md"
-    - "modify: .pi/architecture/modules/llm-step.md"
+    - "modify: .pi/architecture/modules/failure-parser.md"
 ---
 
-# Architecture Readiness: llm-step
+# Architecture Readiness: failure-parser
 
 ## Intent
 
-Make the llm-step module production-ready. This is the final issue in every epic
+Make the failure-parser module production-ready. This is the final issue in every epic
 — it closes the loop between implementation and operability.
 
 ## Deliverables
 
 ### Runbook
-`docs/runbook-llm-step.md` covering:
+`docs/runbook-failure-parser.md` covering:
 - Startup sequence and dependencies
 - Graceful shutdown procedure
 - Common failure modes and recovery
 - Configuration reference
 
 ### DR Plan
-`docs/dr-plan-llm-step.md` covering:
+`docs/dr-plan-failure-parser.md` covering:
 - Backup strategy and schedule
 - Restore procedure
 - Failover plan

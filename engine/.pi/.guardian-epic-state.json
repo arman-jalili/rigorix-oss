@@ -1,31 +1,39 @@
 {
-  "name": "\"llm-step\"",
-  "trackingIssueId": "481",
+  "name": "\"failure-parser\"",
+  "trackingIssueId": "494",
   "epicId": null,
   "slices": [
     {
-      "module": "llm-step",
+      "module": "failure-parser",
       "components": [
         {
-          "name": "LlmGenerateNode",
+          "name": "TemplateFailure",
           "status": "planned",
-          "description": "The execution engine sees this as just another node type — but internally it calls the LLM",
+          "description": "Typed classification of template execution failures",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "LlmStepContext",
+          "name": "FailureParserService",
           "status": "planned",
-          "description": "Provides the LLM with source code context and previous failure analysis",
+          "description": "Parse raw output into structured failures with suggestions",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "LlmStepService",
+          "name": "TypeScript Parser",
           "status": "planned",
-          "description": "Application service for LLM generation during execution",
+          "description": "Parse `tsc --noEmit --pretty false` output into structured failures",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "Suggested Fix Generation",
+          "status": "planned",
+          "description": "**How suggestions are derived:**",
           "dependencies": [
             "none"
           ]
@@ -33,25 +41,33 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "LlmGenerateNode",
+          "name": "TemplateFailure",
           "status": "planned",
-          "description": "The execution engine sees this as just another node type — but internally it calls the LLM",
+          "description": "Typed classification of template execution failures",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "LlmStepContext",
+          "name": "FailureParserService",
           "status": "planned",
-          "description": "Provides the LLM with source code context and previous failure analysis",
+          "description": "Parse raw output into structured failures with suggestions",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "LlmStepService",
+          "name": "TypeScript Parser",
           "status": "planned",
-          "description": "Application service for LLM generation during execution",
+          "description": "Parse `tsc --noEmit --pretty false` output into structured failures",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "Suggested Fix Generation",
+          "status": "planned",
+          "description": "**How suggestions are derived:**",
           "dependencies": [
             "none"
           ]
@@ -64,40 +80,46 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "482"
+      "remoteIssueId": "495"
     },
     {
-      "id": "issue-llmgeneratenode",
-      "title": "LlmGenerateNode: The execution engine sees this as just another node type — but internally it cal",
+      "id": "issue-templatefailure",
+      "title": "TemplateFailure: Typed classification of template execution failures",
       "status": "planned",
-      "remoteIssueId": "483"
+      "remoteIssueId": "496"
     },
     {
-      "id": "issue-llmstepcontext",
-      "title": "LlmStepContext: Provides the LLM with source code context and previous failure analysis",
+      "id": "issue-failureparserservice",
+      "title": "FailureParserService: Parse raw output into structured failures with suggestions",
       "status": "planned",
-      "remoteIssueId": "484"
+      "remoteIssueId": "497"
     },
     {
-      "id": "issue-llmstepservice",
-      "title": "LlmStepService: Application service for LLM generation during execution",
+      "id": "issue-typescript-parser",
+      "title": "TypeScript Parser: Parse `tsc --noEmit --pretty false` output into structured failures",
       "status": "planned",
-      "remoteIssueId": "485"
+      "remoteIssueId": "498"
+    },
+    {
+      "id": "issue-suggested-fix-generation",
+      "title": "Suggested Fix Generation: **How suggestions are derived:**",
+      "status": "planned",
+      "remoteIssueId": "499"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "486"
+      "remoteIssueId": "500"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "487"
+      "remoteIssueId": "501"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-06-19T18:13:39.424Z"
+  "createdAt": "2026-06-19T18:53:34.616Z"
 }
