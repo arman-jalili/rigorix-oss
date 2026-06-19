@@ -324,6 +324,11 @@ run_stage "30" "quality-gates_proofing" \
 run_stage "31" "llm-step_proofing" \
     "${SCRIPTS_DIR}/stage_llm-step_proofing.sh" \
     "always"
+
+# Stage 32: Failure-Parser Proofing
+run_stage "32" "failure-parser_proofing" \
+    "${SCRIPTS_DIR}/stage_failure-parser_proofing.sh" \
+    "always"
 # ── Summary ──
 
 echo ""
