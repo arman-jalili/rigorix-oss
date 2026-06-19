@@ -44,6 +44,7 @@ pub mod policy_engine;
 pub mod orchestrator;
 pub mod permission;
 pub mod recovery_recipes;
+pub mod plan_validation;
 pub mod planning;
 pub mod quality_gates;
 pub mod repo_engine;
