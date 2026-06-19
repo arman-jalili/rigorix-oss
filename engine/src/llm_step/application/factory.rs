@@ -171,7 +171,7 @@ pub trait LlmProviderClientFactory: Send + Sync {
 /// Implementations handle provider-specific request formats, auth,
 /// and response parsing.
 #[async_trait]
-pub trait LlmProviderClient: Send + Sync {
+pub trait LlmProviderClient: Send + Sync + std::fmt::Debug {
     /// Send a generation request to the LLM provider.
     ///
     /// Returns the raw provider response. The caller is responsible

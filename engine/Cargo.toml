@@ -19,7 +19,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 sha2 = "0.11.0"
 hmac = "0.13.0"
-reqwest = "0.13.4"
+reqwest = { version = "0.13.4", features = ["json"] }
 indexmap = { version = "2", features = ["serde"] }
 rand = "0.10.1"
 tree-sitter = "0.25"

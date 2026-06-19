@@ -1,15 +1,16 @@
 //! Infrastructure layer for the LLM Step bounded context.
 //!
 //! @canonical .pi/architecture/modules/llm-step.md#infrastructure
-//! Implements: Contract Freeze — repository interfaces
-//! Issue: issue-contract-freeze
+//! Implements: LlmGenerateNode — repository and provider client implementations
+//! Issue: issue-llmgeneratenode
 //!
-//! This module defines the repository interfaces for LLM step persistence.
-//! Implementations may use filesystem, database, or in-memory storage.
+//! This module contains concrete implementations of repository interfaces
+//! and external service integrations for the LLM Step module.
 //!
 //! # Contract (Frozen)
-//! - All repository methods are async
-//! - All methods return domain error types
+//! - Repository implementations satisfy the repository interfaces
+//! - Provider client implementations satisfy the LlmProviderClient trait
 //! - No framework-specific annotations on trait definitions
 
+pub mod llm_provider_client_impl;
 pub mod repository;

@@ -16,6 +16,7 @@
 use thiserror::Error;
 
 /// Error type for all LLM Step operations.
+#[derive(Clone)]
 ///
 /// These errors are domain-specific. At the orchestration layer they
 /// are wrapped into `CoreOrchestratorError::LlmStep` for uniform

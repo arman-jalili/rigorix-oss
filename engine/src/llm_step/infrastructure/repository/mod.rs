@@ -1,7 +1,7 @@
-//! Repository interfaces for the LLM Step bounded context.
+//! Repository interfaces and implementations for the LLM Step bounded context.
 //!
 //! @canonical .pi/architecture/modules/llm-step.md
-//! Implements: Contract Freeze — LlmGenerateNodeRepository and LlmStepEventRepository traits
+//! Implements: Contract Freeze — LlmGenerateNodeRepository trait
 //! Issue: issue-contract-freeze
 //!
 //! LlmGenerateNode records are persisted for crash recovery and execution
@@ -12,6 +12,8 @@
 //! - All methods return domain error types
 //! - No framework-specific annotations on trait definitions
 
+pub mod node_repository_impl;
+
 use async_trait::async_trait;
 use uuid::Uuid;
 
@@ -19,8 +21,9 @@ use crate::llm_step::domain::{LlmGenerateNode, LlmStepError};
 
 /// Repository for CRUD operations on LlmGenerateNode records.
 ///
-/// The default implementation may use the local filesystem. Custom
-/// implementations may use a database, S3, or any other storage backend.
+/// The default implementation uses in-memory storage. Custom
+/// implementations may use a database, filesystem, or any other
+/// storage backend.
 ///
 /// # Contract (Frozen)
 /// - `save` persists an LlmGenerateNode for later retrieval
@@ -57,5 +60,8 @@ pub trait LlmGenerateNodeRepository: Send + Sync {
     /// Find nodes by execution ID.
     ///
     /// Returns all generation nodes associated with the given execution.
-    async fn find_by_execution(&self, execution_id: Uuid) -> Result<Vec<LlmGenerateNode>, LlmStepError>;
+    async fn find_by_execution(
+        &self,
+        execution_id: Uuid,
+    ) -> Result<Vec<LlmGenerateNode>, LlmStepError>;
 }
