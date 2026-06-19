@@ -50,8 +50,14 @@ impl LlmStepFactory for LlmStepFactoryImpl {
         // Create a provider client based on config
         let provider_client = create_provider_client(&config.default_provider)?;
 
+        // Create a default context builder
+        let context_builder = LlmContextBuilderFactoryImpl::new()
+            .create(LlmContextBuilderFactoryConfig::default())
+            .await?;
+
         let service = LlmStepServiceImpl::new(
             provider_client,
+            context_builder,
             config.max_retries,
             config.default_timeout_secs,
             config.validate_before_execution,
