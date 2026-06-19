@@ -12,11 +12,11 @@ use async_trait::async_trait;
 use std::sync::RwLock;
 
 use crate::policy_engine::application::dto::{
-    ActionOutput, EvaluatePolicyInput, EvaluatePolicyOutput, GetActiveRulesOutput,
+    EvaluatePolicyInput, EvaluatePolicyOutput, GetActiveRulesOutput,
     LoadRulesInput, LoadRulesOutput, ReloadRulesOutput, RuleSummary,
 };
 use crate::policy_engine::application::engine::{evaluate_rules, PolicyEngineService};
-use crate::policy_engine::domain::{PolicyConfig, PolicyEngineError, PolicyRule};
+use crate::policy_engine::domain::{PolicyEngineError, PolicyRule};
 
 /// In-memory implementation of the PolicyEngineService.
 ///
@@ -193,7 +193,7 @@ impl PolicyEngineService for PolicyEngineServiceImpl {
 mod tests {
     use super::*;
     use crate::policy_engine::domain::{
-        DiffScope, LaneBlocker, LaneContext, PolicyAction, PolicyCondition,
+        DiffScope, LaneBlocker, LaneContext, PolicyAction, PolicyCondition, PolicyConfig,
         PolicyRule, ReviewStatus,
     };
 

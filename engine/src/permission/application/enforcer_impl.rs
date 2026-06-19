@@ -34,6 +34,7 @@ pub struct PermissionEnforcerImpl {
     policy: RwLock<PermissionPolicy>,
 
     /// The workspace root path used for boundary checks.
+    #[allow(dead_code)]
     workspace_root: RwLock<String>,
 }
 

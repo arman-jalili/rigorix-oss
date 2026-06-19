@@ -16,7 +16,7 @@
 use crate::code_gen::domain::error::CodeGenError;
 
 use super::dto::{
-    CodeGenConfig, EditFileInput, EditFileOutput, ReadFileInput, ReadFileOutput,
+    EditFileInput, EditFileOutput, ReadFileInput, ReadFileOutput,
     SyntaxGateInput, SyntaxGateOutput,
 };
 

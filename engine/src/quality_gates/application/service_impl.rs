@@ -103,7 +103,7 @@ impl QualityGateService for QualityGateServiceImpl {
         input: GetContractInput,
     ) -> Result<GetContractOutput, QualityGateError> {
         // Check task-level override first
-        if let Some(ref task_id) = input.task_id {
+        if let Some(ref _task_id) = input.task_id {
             // In a full implementation, this would check per-task overrides.
             // For now, fall through to template/default.
         }
