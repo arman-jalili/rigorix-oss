@@ -14,7 +14,7 @@
 //! | Extension | Grammar | Anchor Types |
 //! |-----------|---------|-------------|
 //! | `.rs`     | Rust    | struct, impl, function, end_of_file |
-//! | `.ts`, `.tsx` | TypeScript | class, method, function, interface, end_of_file |
+//! | `.ts`, `.tsx` | TypeScript | class, constructor, method, function, interface, end_of_file |
 //! | `.py`     | Python  | class, function, end_of_file |
 //! | *         | (fallback) | end_of_file only (text search fallback) |
 //!
@@ -45,7 +45,7 @@ use crate::tools::domain::error::ToolError;
 #[derive(Debug, Clone, PartialEq)]
 pub struct AnchorParams {
     /// The type of AST node to locate: "class", "struct", "impl", "method",
-    /// "function", "interface", or "end_of_file".
+    /// "constructor", "function", "interface", or "end_of_file".
     pub anchor_type: String,
 
     /// The name of the symbol to find (ignored for "end_of_file").
@@ -455,6 +455,7 @@ impl TreeSitterAnchorFinder {
 
         let matched = match (anchor_kind, kind) {
             ("method", "method_definition")
+            | ("constructor", "method_definition")
             | ("function", "function_declaration")
             | ("function", "arrow_function")
             | ("class", "class_declaration")
@@ -470,7 +471,13 @@ impl TreeSitterAnchorFinder {
 
         if matched {
             let kind_name = match kind {
-                "method_definition" => "method",
+                "method_definition" => {
+                    if anchor_kind == "constructor" {
+                        "constructor"
+                    } else {
+                        "method"
+                    }
+                }
                 "function_declaration" | "arrow_function" => "function",
                 "class_declaration" => "class",
                 "interface_declaration" => "interface",

@@ -695,6 +695,96 @@ mod tests {
         let _ = class_decl;
     }
 
+    /// Test inserting a method after an explicit constructor using
+    /// anchor_type = "constructor".
+    #[tokio::test]
+    async fn test_anchor_typescript_after_constructor() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("test.ts");
+        let source = r##"class TaskList {
+  private tasks: Task[] = [];
+
+  constructor() {
+    // init
+  }
+
+  add(title: string): Task {
+    return createTask(0, title);
+  }
+}
+"##;
+        std::fs::write(&file_path, source).unwrap();
+
+        let tool = FilePatchTool::new(dir.path().to_str().unwrap());
+        let insert_content = r##"  getActiveTasks(): Task[] {
+    return [];
+  }
+"##;
+        let result = tool
+            .execute(&make_input(vec![
+                ("path", "test.ts"),
+                ("anchor_type", "constructor"),
+                ("anchor_name", "constructor"),
+                ("container", "TaskList"),
+                ("insert", insert_content),
+                ("position", "after"),
+            ]))
+            .await
+            .unwrap();
+
+        assert!(result.is_success());
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        // getActiveTasks should be after constructor, before add()
+        let ctor_pos = content.find("constructor()").unwrap();
+        let get_pos = content.find("getActiveTasks").unwrap();
+        let add_pos = content.find("add(title").unwrap();
+        assert!(
+            ctor_pos < get_pos,
+            "getActiveTasks should be after constructor"
+        );
+        assert!(
+            get_pos < add_pos,
+            "getActiveTasks should be before add()"
+        );
+    }
+
+    /// Test that anchor_type = "constructor" correctly fails with a clear
+    /// error when the class has no explicit constructor.
+    #[tokio::test]
+    async fn test_anchor_typescript_constructor_not_found() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("test.ts");
+        let source = r##"class TaskList {
+  private tasks: Task[] = [];
+
+  add(title: string): Task {
+    return createTask(0, title);
+  }
+}
+"##;
+        std::fs::write(&file_path, source).unwrap();
+
+        let tool = FilePatchTool::new(dir.path().to_str().unwrap());
+        let result = tool
+            .execute(&make_input(vec![
+                ("path", "test.ts"),
+                ("anchor_type", "constructor"),
+                ("anchor_name", "constructor"),
+                ("container", "TaskList"),
+                ("insert", "  newMethod() {}\n"),
+                ("position", "after"),
+            ]))
+            .await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("constructor"),
+            "Error should mention constructor: {}",
+            err
+        );
+    }
+
     #[tokio::test]
     async fn test_anchor_end_of_file() {
         let dir = TempDir::new().unwrap();

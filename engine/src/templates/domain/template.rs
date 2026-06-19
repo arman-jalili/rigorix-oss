@@ -220,7 +220,7 @@ pub enum TemplateAction {
         #[serde(default)]
         before: bool,
         /// Type of AST node to find: "class", "struct", "impl", "method",
-        /// "function", "interface", "end_of_file".
+        /// "constructor", "function", "interface", "end_of_file".
         #[serde(default)]
         anchor_type: Option<String>,
         /// Name of the symbol to find (ignored for "end_of_file").
