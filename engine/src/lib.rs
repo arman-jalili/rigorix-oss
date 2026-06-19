@@ -35,6 +35,7 @@ pub mod error;
 pub mod event_system;
 pub mod execution_engine;
 pub mod failure_classification;
+pub mod hooks;
 pub mod observability;
 pub mod orchestrator;
 pub mod planning;
