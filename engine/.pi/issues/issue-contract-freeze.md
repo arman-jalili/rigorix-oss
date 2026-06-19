@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: ""llm-step""
+  epic: ""failure-parser""
   component: "Contract Freeze"
-  module: "llm-step"
+  module: "failure-parser"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/llm-step.md"
+    - module: ".pi/architecture/modules/failure-parser.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -47,24 +47,25 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/llm-step/contracts/"
-    - "create: src/llm-step/contracts/dtos/"
-    - "create: src/llm-step/contracts/events/"
+    - "create: src/failure-parser/contracts/"
+    - "create: src/failure-parser/contracts/dtos/"
+    - "create: src/failure-parser/contracts/events/"
 ---
 
-# Contract Freeze: llm-step
+# Contract Freeze: failure-parser
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the llm-step
+Define and freeze all public interfaces, contracts, and schemas for the failure-parser
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- LlmGenerateNode
-- LlmStepContext
-- LlmStepService
+- TemplateFailure
+- FailureParserService
+- TypeScript Parser
+- Suggested Fix Generation
 
 ## What Must Be Frozen
 
