@@ -1,55 +1,31 @@
 {
-  "name": "\"code-generatio\"",
-  "trackingIssueId": "423",
+  "name": "\"llm-step\"",
+  "trackingIssueId": "481",
   "epicId": null,
   "slices": [
     {
-      "module": "code-generation",
+      "module": "llm-step",
       "components": [
         {
-          "name": "EditFileTool",
+          "name": "LlmGenerateNode",
           "status": "planned",
-          "description": "The primary code insertion mechanism. Replaces an exact text string in a file with new content. The `old_string` serves as both the position anchor and the correctness anchor.",
+          "description": "The execution engine sees this as just another node type — but internally it calls the LLM",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "EditFileInput",
+          "name": "LlmStepContext",
           "status": "planned",
-          "description": "The structured input the LLM provides to target an edit",
+          "description": "Provides the LLM with source code context and previous failure analysis",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "EditFileResult",
+          "name": "LlmStepService",
           "status": "planned",
-          "description": "Structured feedback returned to the LLM after every edit — enables self-verification",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "StructuredPatchHunk",
-          "status": "planned",
-          "description": "Individual diff hunk for structured diff output",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "ReadFileTool",
-          "status": "planned",
-          "description": "Read files with offset/limit paging and binary detection",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "SyntaxGate",
-          "status": "planned",
-          "description": "Post-edit tree-sitter syntax verification — uses Rigorix's existing `code_graph` module",
+          "description": "Application service for LLM generation during execution",
           "dependencies": [
             "none"
           ]
@@ -57,49 +33,25 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "EditFileTool",
+          "name": "LlmGenerateNode",
           "status": "planned",
-          "description": "The primary code insertion mechanism. Replaces an exact text string in a file with new content. The `old_string` serves as both the position anchor and the correctness anchor.",
+          "description": "The execution engine sees this as just another node type — but internally it calls the LLM",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "EditFileInput",
+          "name": "LlmStepContext",
           "status": "planned",
-          "description": "The structured input the LLM provides to target an edit",
+          "description": "Provides the LLM with source code context and previous failure analysis",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "EditFileResult",
+          "name": "LlmStepService",
           "status": "planned",
-          "description": "Structured feedback returned to the LLM after every edit — enables self-verification",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "StructuredPatchHunk",
-          "status": "planned",
-          "description": "Individual diff hunk for structured diff output",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "ReadFileTool",
-          "status": "planned",
-          "description": "Read files with offset/limit paging and binary detection",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "SyntaxGate",
-          "status": "planned",
-          "description": "Post-edit tree-sitter syntax verification — uses Rigorix's existing `code_graph` module",
+          "description": "Application service for LLM generation during execution",
           "dependencies": [
             "none"
           ]
@@ -112,58 +64,40 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "424"
+      "remoteIssueId": "482"
     },
     {
-      "id": "issue-editfiletool",
-      "title": "EditFileTool: The primary code insertion mechanism. Replaces an exact text string in a file wi",
+      "id": "issue-llmgeneratenode",
+      "title": "LlmGenerateNode: The execution engine sees this as just another node type — but internally it cal",
       "status": "planned",
-      "remoteIssueId": "425"
+      "remoteIssueId": "483"
     },
     {
-      "id": "issue-editfileinput",
-      "title": "EditFileInput: The structured input the LLM provides to target an edit",
+      "id": "issue-llmstepcontext",
+      "title": "LlmStepContext: Provides the LLM with source code context and previous failure analysis",
       "status": "planned",
-      "remoteIssueId": "426"
+      "remoteIssueId": "484"
     },
     {
-      "id": "issue-editfileresult",
-      "title": "EditFileResult: Structured feedback returned to the LLM after every edit — enables self-verifica",
+      "id": "issue-llmstepservice",
+      "title": "LlmStepService: Application service for LLM generation during execution",
       "status": "planned",
-      "remoteIssueId": "427"
-    },
-    {
-      "id": "issue-structuredpatchhunk",
-      "title": "StructuredPatchHunk: Individual diff hunk for structured diff output",
-      "status": "planned",
-      "remoteIssueId": "428"
-    },
-    {
-      "id": "issue-readfiletool",
-      "title": "ReadFileTool: Read files with offset/limit paging and binary detection",
-      "status": "planned",
-      "remoteIssueId": "429"
-    },
-    {
-      "id": "issue-syntaxgate",
-      "title": "SyntaxGate: Post-edit tree-sitter syntax verification — uses Rigorix's existing `code_graph`",
-      "status": "planned",
-      "remoteIssueId": "430"
+      "remoteIssueId": "485"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "431"
+      "remoteIssueId": "486"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "432"
+      "remoteIssueId": "487"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-06-19T12:44:20.101Z"
+  "createdAt": "2026-06-19T18:13:39.424Z"
 }

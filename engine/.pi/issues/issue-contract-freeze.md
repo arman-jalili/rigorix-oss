@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: ""code-generatio""
+  epic: ""llm-step""
   component: "Contract Freeze"
-  module: "code-generation"
+  module: "llm-step"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/code-generation.md"
+    - module: ".pi/architecture/modules/llm-step.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -47,27 +47,24 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/code-generation/contracts/"
-    - "create: src/code-generation/contracts/dtos/"
-    - "create: src/code-generation/contracts/events/"
+    - "create: src/llm-step/contracts/"
+    - "create: src/llm-step/contracts/dtos/"
+    - "create: src/llm-step/contracts/events/"
 ---
 
-# Contract Freeze: code-generation
+# Contract Freeze: llm-step
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the code-generation
+Define and freeze all public interfaces, contracts, and schemas for the llm-step
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- EditFileTool
-- EditFileInput
-- EditFileResult
-- StructuredPatchHunk
-- ReadFileTool
-- SyntaxGate
+- LlmGenerateNode
+- LlmStepContext
+- LlmStepService
 
 ## What Must Be Frozen
 
