@@ -26,6 +26,7 @@
 pub mod audit;
 pub mod budget_tracking;
 pub mod cancellation;
+pub mod code_gen;
 pub mod code_graph;
 pub mod common;
 pub mod configuration;
