@@ -1,31 +1,55 @@
 {
-  "name": "\"orchestrator\"",
-  "trackingIssueId": "337",
+  "name": "\"code-generatio\"",
+  "trackingIssueId": "423",
   "epicId": null,
   "slices": [
     {
-      "module": "orchestrator",
+      "module": "code-generation",
       "components": [
         {
-          "name": "OrchestratorService",
+          "name": "EditFileTool",
           "status": "planned",
-          "description": "Single entry point for executing a Rigorix run from intent to result.",
+          "description": "The primary code insertion mechanism. Replaces an exact text string in a file with new content. The `old_string` serves as both the position anchor and the correctness anchor.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "OrchestratorBuilder",
+          "name": "EditFileInput",
           "status": "planned",
-          "description": "Constructs an Orchestrator from a Config, wiring all internal dependencies.",
+          "description": "The structured input the LLM provides to target an edit",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ExecutionRecord",
+          "name": "EditFileResult",
           "status": "planned",
-          "description": "Complete output of a run, containing everything needed for audit, TUI, and persistence.",
+          "description": "Structured feedback returned to the LLM after every edit — enables self-verification",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "StructuredPatchHunk",
+          "status": "planned",
+          "description": "Individual diff hunk for structured diff output",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "ReadFileTool",
+          "status": "planned",
+          "description": "Read files with offset/limit paging and binary detection",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "SyntaxGate",
+          "status": "planned",
+          "description": "Post-edit tree-sitter syntax verification — uses Rigorix's existing `code_graph` module",
           "dependencies": [
             "none"
           ]
@@ -33,25 +57,49 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "OrchestratorService",
+          "name": "EditFileTool",
           "status": "planned",
-          "description": "Single entry point for executing a Rigorix run from intent to result.",
+          "description": "The primary code insertion mechanism. Replaces an exact text string in a file with new content. The `old_string` serves as both the position anchor and the correctness anchor.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "OrchestratorBuilder",
+          "name": "EditFileInput",
           "status": "planned",
-          "description": "Constructs an Orchestrator from a Config, wiring all internal dependencies.",
+          "description": "The structured input the LLM provides to target an edit",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ExecutionRecord",
+          "name": "EditFileResult",
           "status": "planned",
-          "description": "Complete output of a run, containing everything needed for audit, TUI, and persistence.",
+          "description": "Structured feedback returned to the LLM after every edit — enables self-verification",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "StructuredPatchHunk",
+          "status": "planned",
+          "description": "Individual diff hunk for structured diff output",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "ReadFileTool",
+          "status": "planned",
+          "description": "Read files with offset/limit paging and binary detection",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "SyntaxGate",
+          "status": "planned",
+          "description": "Post-edit tree-sitter syntax verification — uses Rigorix's existing `code_graph` module",
           "dependencies": [
             "none"
           ]
@@ -64,40 +112,58 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "338"
+      "remoteIssueId": "424"
     },
     {
-      "id": "issue-orchestratorservice",
-      "title": "OrchestratorService: Single entry point for executing a Rigorix run from intent to result.",
+      "id": "issue-editfiletool",
+      "title": "EditFileTool: The primary code insertion mechanism. Replaces an exact text string in a file wi",
       "status": "planned",
-      "remoteIssueId": "339"
+      "remoteIssueId": "425"
     },
     {
-      "id": "issue-orchestratorbuilder",
-      "title": "OrchestratorBuilder: Constructs an Orchestrator from a Config, wiring all internal dependencies.",
+      "id": "issue-editfileinput",
+      "title": "EditFileInput: The structured input the LLM provides to target an edit",
       "status": "planned",
-      "remoteIssueId": "340"
+      "remoteIssueId": "426"
     },
     {
-      "id": "issue-executionrecord",
-      "title": "ExecutionRecord: Complete output of a run, containing everything needed for audit, TUI, and persi",
+      "id": "issue-editfileresult",
+      "title": "EditFileResult: Structured feedback returned to the LLM after every edit — enables self-verifica",
       "status": "planned",
-      "remoteIssueId": "341"
+      "remoteIssueId": "427"
+    },
+    {
+      "id": "issue-structuredpatchhunk",
+      "title": "StructuredPatchHunk: Individual diff hunk for structured diff output",
+      "status": "planned",
+      "remoteIssueId": "428"
+    },
+    {
+      "id": "issue-readfiletool",
+      "title": "ReadFileTool: Read files with offset/limit paging and binary detection",
+      "status": "planned",
+      "remoteIssueId": "429"
+    },
+    {
+      "id": "issue-syntaxgate",
+      "title": "SyntaxGate: Post-edit tree-sitter syntax verification — uses Rigorix's existing `code_graph`",
+      "status": "planned",
+      "remoteIssueId": "430"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "342"
+      "remoteIssueId": "431"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "343"
+      "remoteIssueId": "432"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-06-16T20:26:13.479Z"
+  "createdAt": "2026-06-19T12:44:20.101Z"
 }
