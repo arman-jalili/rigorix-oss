@@ -51,7 +51,7 @@
       }
     }
   ],
-  "currentItemIndex": 1,
+  "currentItemIndex": 2,
   "currentStepIndex": 0,
   "status": "running",
   "retryCount": 0,
@@ -91,9 +91,45 @@
           "reason": ""
         }
       ]
+    },
+    {
+      "item": "issue-templatefailure",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
     }
   ],
   "mergeOnValid": true,
   "createdAt": "2026-06-19T18:53:34.644Z",
-  "updatedAt": "2026-06-19T19:01:37.744Z"
+  "updatedAt": "2026-06-19T19:06:15.485Z"
 }
