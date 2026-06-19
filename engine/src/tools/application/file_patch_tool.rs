@@ -131,13 +131,43 @@ impl FilePatchTool {
         })?;
 
         let params = AnchorParams {
-            anchor_type,
-            anchor_name,
-            container,
-            position,
+            anchor_type: anchor_type.clone(),
+            anchor_name: anchor_name.clone(),
+            container: container.clone(),
+            position: position.clone(),
         };
 
-        let anchor = TreeSitterAnchorFinder::find_anchor(&contents, path_str, &params)?;
+        // Try the primary anchor lookup. If it fails because the anchor type
+        // is a member (method/function) and a container is specified, fall back
+        // to inserting at the end of the container body. This handles LLM
+        // hallucination of method names (e.g., generated a method name that
+        // doesn't exist in the source).
+        let anchor = match TreeSitterAnchorFinder::find_anchor(&contents, path_str, &params) {
+            Ok(a) => a,
+            Err(e) => {
+                // Check if we can fall back to container-level insertion
+                let can_fallback = matches!(
+                    params.anchor_type.as_str(),
+                    "method" | "function" | "constructor"
+                ) && params.container.is_some();
+
+                if can_fallback {
+                    // Retry with the container name as anchor_name and class as anchor_type
+                    let fallback_params = AnchorParams {
+                        anchor_type: "class".to_string(),
+                        anchor_name: params.container.clone().unwrap(),
+                        container: None,
+                        position: "after".to_string(),
+                    };
+                    match TreeSitterAnchorFinder::find_anchor(&contents, path_str, &fallback_params) {
+                        Ok(fallback_anchor) => fallback_anchor,
+                        Err(_) => return Err(e), // Return original error if fallback also fails
+                    }
+                } else {
+                    return Err(e);
+                }
+            }
+        };
 
         let new_contents = format!(
             "{}{}{}",
@@ -763,10 +793,11 @@ mod tests {
         );
     }
 
-    /// Test that anchor_type = "constructor" correctly fails with a clear
-    /// error when the class has no explicit constructor.
+    /// Test that when anchor_type = "constructor" is not found (no explicit
+    /// constructor in the class), the tool falls back to inserting at the end
+    /// of the container body instead of failing.
     #[tokio::test]
-    async fn test_anchor_typescript_constructor_not_found() {
+    async fn test_anchor_typescript_constructor_not_found_falls_back() {
         let dir = TempDir::new().unwrap();
         let file_path = dir.path().join("test.ts");
         let source = r##"class TaskList {
@@ -775,28 +806,45 @@ mod tests {
   add(title: string): Task {
     return createTask(0, title);
   }
+
+  count(): number {
+    return this.tasks.length;
+  }
 }
 "##;
         std::fs::write(&file_path, source).unwrap();
 
         let tool = FilePatchTool::new(dir.path().to_str().unwrap());
+        let insert_content = r##"  newMethod(): void {}
+"##;
         let result = tool
             .execute(&make_input(vec![
                 ("path", "test.ts"),
                 ("anchor_type", "constructor"),
                 ("anchor_name", "constructor"),
                 ("container", "TaskList"),
-                ("insert", "  newMethod() {}\n"),
+                ("insert", insert_content),
                 ("position", "after"),
             ]))
-            .await;
+            .await
+            .unwrap();
 
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
+        // Fallback should succeed — inserts at end of class body
+        assert!(result.is_success());
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("newMethod"));
+        // newMethod should be at the END of the class body (before closing }}
+        let class_close = content.rfind('}').unwrap();
+        let new_method_pos = content.find("newMethod").unwrap();
         assert!(
-            err.contains("constructor"),
-            "Error should mention constructor: {}",
-            err
+            new_method_pos < class_close,
+            "newMethod should be inside class body (before closing brace)"
+        );
+        // newMethod should be after count() (last existing method)
+        let count_pos = content.find("count()").unwrap();
+        assert!(
+            count_pos < new_method_pos,
+            "newMethod should be after count() (at end of body)"
         );
     }
 
