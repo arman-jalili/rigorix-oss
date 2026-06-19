@@ -18,8 +18,10 @@ pub mod dto;
 pub mod factory;
 pub mod service;
 pub mod service_impl;
+pub mod ts_parser;
 
 pub use dto::*;
 pub use factory::*;
 pub use service::*;
 pub use service_impl::*;
+pub use ts_parser::TypeScriptParser;
