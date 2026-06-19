@@ -11,6 +11,8 @@
 //! The primary repository is `PolicyRepository` for loading and persisting
 //! policy rules from various sources (file, database, remote API).
 
+pub mod default_policy_repository;
 pub mod repository;
 
+pub use default_policy_repository::*;
 pub use repository::*;
