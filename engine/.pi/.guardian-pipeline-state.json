@@ -1,11 +1,14 @@
 {
-  "id": "PL-6721",
-  "name": "\"orchestrator\"",
+  "id": "PL-8868",
+  "name": "\"code-generatio\"",
   "items": [
     "issue-contract-freeze",
-    "issue-orchestratorservice",
-    "issue-orchestratorbuilder",
-    "issue-executionrecord",
+    "issue-editfiletool",
+    "issue-editfileinput",
+    "issue-editfileresult",
+    "issue-structuredpatchhunk",
+    "issue-readfiletool",
+    "issue-syntaxgate",
     "issue-proofing",
     "issue-architecture-readiness"
   ],
@@ -50,9 +53,9 @@
       }
     }
   ],
-  "currentItemIndex": 6,
+  "currentItemIndex": 5,
   "currentStepIndex": 0,
-  "status": "done",
+  "status": "running",
   "retryCount": 0,
   "results": [
     {
@@ -102,7 +105,7 @@
       ]
     },
     {
-      "item": "issue-orchestratorservice",
+      "item": "issue-editfiletool",
       "status": "done",
       "stepResults": [
         {
@@ -148,7 +151,7 @@
       ]
     },
     {
-      "item": "issue-orchestratorbuilder",
+      "item": "issue-editfileinput",
       "status": "done",
       "stepResults": [
         {
@@ -194,7 +197,7 @@
       ]
     },
     {
-      "item": "issue-executionrecord",
+      "item": "issue-editfileresult",
       "status": "done",
       "stepResults": [
         {
@@ -223,6 +226,11 @@
           "reason": ""
         },
         {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
           "step": "merge",
           "status": "passed",
           "reason": ""
@@ -235,7 +243,7 @@
       ]
     },
     {
-      "item": "issue-proofing",
+      "item": "issue-structuredpatchhunk",
       "status": "done",
       "stepResults": [
         {
@@ -260,37 +268,6 @@
         },
         {
           "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-architecture-readiness",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
           "status": "passed",
           "reason": ""
         },
@@ -313,6 +290,6 @@
     }
   ],
   "mergeOnValid": true,
-  "createdAt": "2026-06-16T20:26:13.517Z",
-  "updatedAt": "2026-06-16T20:59:31.759Z"
+  "createdAt": "2026-06-19T12:44:20.123Z",
+  "updatedAt": "2026-06-19T12:52:54.132Z"
 }
