@@ -227,6 +227,11 @@ run_stage "12" "security-config_proofing" \
     "${SCRIPTS_DIR}/stage_security-config_proofing.sh" \
     "always"
 
+# Stage 13: Action Output Proofing
+run_stage "13" "action-output_proofing" \
+    "${SCRIPTS_DIR}/stage_action-output_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""
