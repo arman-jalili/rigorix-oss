@@ -1,0 +1,63 @@
+{
+  "id": "PL-4814",
+  "name": "\"action-input\"",
+  "items": [
+    "issue-contract-freeze",
+    "issue-actioninputs",
+    "issue-inputparser",
+    "issue-commentparser",
+    "issue-cidetector",
+    "issue-configloader",
+    "issue-proofing",
+    "issue-architecture-readiness"
+  ],
+  "steps": [
+    {
+      "name": "implement",
+      "prompt": ".pi/prompts/issue-implementation-series.md",
+      "acceptance": {
+        "type": "validator",
+        "validators": [
+          "ci"
+        ]
+      }
+    },
+    {
+      "name": "validate",
+      "acceptance": {
+        "type": "validator",
+        "validators": [
+          "ci",
+          "tests",
+          "security"
+        ]
+      }
+    },
+    {
+      "name": "create-mr",
+      "prompt": ".pi/prompts/issue-closeout.md",
+      "acceptance": {
+        "type": "none"
+      }
+    },
+    {
+      "name": "merge",
+      "prompt": ".pi/prompts/issue-merge.md",
+      "acceptance": {
+        "type": "validator",
+        "validators": [
+          "ci",
+          "canonical"
+        ]
+      }
+    }
+  ],
+  "currentItemIndex": 0,
+  "currentStepIndex": 0,
+  "status": "running",
+  "retryCount": 0,
+  "results": [],
+  "mergeOnValid": true,
+  "createdAt": "2026-06-20T13:37:36.863Z",
+  "updatedAt": "2026-06-20T13:37:36.863Z"
+}

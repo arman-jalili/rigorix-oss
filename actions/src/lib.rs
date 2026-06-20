@@ -41,8 +41,8 @@
 // ── Phase 1: Scaffold + Shared ──
 pub mod shared;
 
-// ── Future modules (declared for reference, implemented in later phases) ──
-// pub mod action_input;       // Phase 1
+// ── Phase 1: Contract Freeze — interface-only declarations ──
+pub mod action_input;
 // pub mod security_config;    // Phase 2
 // pub mod diff_analyzer;      // Phase 3
 // pub mod policy_evaluator;   // Phase 3

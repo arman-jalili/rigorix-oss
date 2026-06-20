@@ -1,0 +1,147 @@
+{
+  "name": "\"action-input\"",
+  "trackingIssueId": "520",
+  "epicId": null,
+  "slices": [
+    {
+      "module": "action-input",
+      "components": [
+        {
+          "name": "ActionInputs",
+          "status": "planned",
+          "description": "Typed container of all GitHub Action inputs",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "InputParser",
+          "status": "planned",
+          "description": "Parse all GitHub Action inputs from environment variables",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "CommentParser",
+          "status": "planned",
+          "description": "Parse `/rigorix` slash commands from issue and PR comments",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "CiDetector",
+          "status": "planned",
+          "description": "Detects the CI environment and adjusts engine configuration",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "ConfigLoader",
+          "status": "planned",
+          "description": "Loads `action.yml` defaults and merges with environment overrides",
+          "dependencies": [
+            "none"
+          ]
+        }
+      ],
+      "nextLogicalSlice": [
+        {
+          "name": "ActionInputs",
+          "status": "planned",
+          "description": "Typed container of all GitHub Action inputs",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "InputParser",
+          "status": "planned",
+          "description": "Parse all GitHub Action inputs from environment variables",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "CommentParser",
+          "status": "planned",
+          "description": "Parse `/rigorix` slash commands from issue and PR comments",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "CiDetector",
+          "status": "planned",
+          "description": "Detects the CI environment and adjusts engine configuration",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "ConfigLoader",
+          "status": "planned",
+          "description": "Loads `action.yml` defaults and merges with environment overrides",
+          "dependencies": [
+            "none"
+          ]
+        }
+      ]
+    }
+  ],
+  "issues": [
+    {
+      "id": "issue-contract-freeze",
+      "title": "Contract Freeze: Define interfaces and contracts",
+      "status": "planned",
+      "remoteIssueId": "521"
+    },
+    {
+      "id": "issue-actioninputs",
+      "title": "ActionInputs: Typed container of all GitHub Action inputs",
+      "status": "planned",
+      "remoteIssueId": "522"
+    },
+    {
+      "id": "issue-inputparser",
+      "title": "InputParser: Parse all GitHub Action inputs from environment variables",
+      "status": "planned",
+      "remoteIssueId": "523"
+    },
+    {
+      "id": "issue-commentparser",
+      "title": "CommentParser: Parse `/rigorix` slash commands from issue and PR comments",
+      "status": "planned",
+      "remoteIssueId": "524"
+    },
+    {
+      "id": "issue-cidetector",
+      "title": "CiDetector: Detects the CI environment and adjusts engine configuration",
+      "status": "planned",
+      "remoteIssueId": "525"
+    },
+    {
+      "id": "issue-configloader",
+      "title": "ConfigLoader: Loads `action.yml` defaults and merges with environment overrides",
+      "status": "planned",
+      "remoteIssueId": "526"
+    },
+    {
+      "id": "issue-proofing",
+      "title": "Proofing: Validation scripts + CI integration",
+      "status": "planned",
+      "remoteIssueId": "527"
+    },
+    {
+      "id": "issue-architecture-readiness",
+      "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
+      "status": "planned",
+      "remoteIssueId": "528"
+    }
+  ],
+  "status": "planning",
+  "currentIssueIndex": 0,
+  "createdAt": "2026-06-20T13:37:36.843Z"
+}
