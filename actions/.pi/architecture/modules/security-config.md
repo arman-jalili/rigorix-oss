@@ -416,10 +416,31 @@ rotation_days = 90
 ---
 
 *Last updated: 2026-06-20*
-*Module version: 1.0.0 (Planned)*
+*Module version: 1.0.0 (Implemented)*
 *Ported from: original Rigorix docs/ARCHITECTURE_GITHUB_ACTIONS.md §2.7*
 
 ---
 
-**Status:** Planned
+**Status:** Implemented ✅
 **Engine modules reused:** hmac + sha2 (for signing), configuration (security.toml format)
+
+## Implementation Files
+
+| Component | Implementation | Tests |
+|-----------|---------------|-------|
+| ForkDetector | `application/fork_detector_impl.rs` :: `ForkDetectorImpl` | 19 unit |
+| SecretMasker | `application/secret_masker_impl.rs` :: `SecretMaskerImpl` | 14 unit |
+| TokenValidator | `application/token_validator_impl.rs` :: `TokenValidatorImpl` | 8 unit |
+| UrlAllowlist | `application/url_allowlist_impl.rs` :: `UrlAllowlistImpl` | 10 unit |
+| HmacSigner | `application/hmac_signer_impl.rs` :: `HmacSignerImpl` | 9 unit |
+
+## Related Issues
+
+- #538: Contract Freeze — interfaces defined
+- #539: ForkDetector — fork PR detection
+- #540: SecretMasker — log masking
+- #541: TokenValidator — token permissions
+- #542: UrlAllowlist — URL validation
+- #543: HmacSigner — HMAC signing
+- #544: Proofing — CI scripts
+- #545: Architecture Readiness — this doc
