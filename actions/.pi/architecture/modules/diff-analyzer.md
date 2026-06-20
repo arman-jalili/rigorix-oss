@@ -425,5 +425,9 @@ Structured PrDiff fed to PolicyEvaluator
 
 ---
 
-**Status:** Planned
+**Status:** Implemented (Phase 1 Complete)
 **Engine modules reused:** None (standalone diff parsing — engine doesn't do PR diff analysis)
+**Total tests:** 63 (all passing)
+**Proofing scripts:** check_diff-analyzer_contracts.sh, check_diff-analyzer_coverage.sh, stage_diff-analyzer_proofing.sh
+**Runbook:** docs/runbook-diff-analyzer.md
+**DR Plan:** docs/dr-plan-diff-analyzer.md

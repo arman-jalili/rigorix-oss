@@ -48,7 +48,42 @@ Each entry follows this structure:
 
 ## Entries
 
-<!-- Add new entries above this line -->
+## [2026-06-20] - diff-analyzer Epic Complete
+
+### Changed
+- Module: diff-analyzer
+  - All components: Contract freeze completed, implementations merged
+  - PrDiff: DiffParsingService implemented (raw diff → structured PrDiff)
+  - PathValidator: PathValidationService implemented (traversal/injection/absolute path checks)
+  - LimitEnforcer: LimitEnforcementService implemented (progressive degradation)
+  - RiskClassifier: RiskClassificationService implemented (Critical/High/Medium/Low)
+  - AiSignalDetector: AiSignalDetectionService implemented (heuristic AI pattern detection)
+  - Pipeline: DiffAnalysisPipelineService implemented (orchestrates all 5 steps)
+
+### Impact Analysis
+- Files created:
+  - src/diff_analyzer/ (13 interface files + 6 implementation files)
+  - docs/runbook-diff-analyzer.md (runbook)
+  - docs/dr-plan-diff-analyzer.md (DR plan)
+  - .pi/scripts/ci/check_diff-analyzer_contracts.sh
+  - .pi/scripts/ci/check_diff-analyzer_coverage.sh
+  - .pi/scripts/ci/stage_diff-analyzer_proofing.sh
+- Canonical refs to update:
+  - .pi/architecture/modules/diff-analyzer.md (all sections)
+- Validators required:
+  - ci, tests, security, architecture, canonical, operations
+
+### Migration Steps
+1. No migration needed — interface-only contracts frozen first, implementations added after
+2. Proofing scripts validate contract-implementation alignment
+3. Run validate-canonical.sh to verify references
+
+### Status
+- [x] Architecture doc updated
+- [x] CHANGELOG entry added
+- [x] Implementation updated
+- [x] Canonical refs updated
+- [x] Validators run
 
 ---
 
