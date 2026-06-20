@@ -217,6 +217,11 @@ run_stage "10" "release_readiness" \
     "${SCRIPTS_DIR}/stage_release_readiness.sh" \
     "always"
 
+# Stage 11: Action Input Proofing
+run_stage "11" "action-input_proofing" \
+    "${SCRIPTS_DIR}/stage_action-input_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""
