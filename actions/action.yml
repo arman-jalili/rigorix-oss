@@ -1,0 +1,121 @@
+# Rigorix GitHub Action
+# Mode A: Reactive governance — policy checks against PR diffs
+# Mode B: Active execution — AI code generation with validation loop
+
+name: 'Rigorix'
+description: 'AI code governance and execution — policy checks, code generation, self-correcting validation'
+author: 'Rigorix'
+
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  mode:
+    description: |
+      Execution mode:
+      - auto: Detect from event context (PR opened → Mode A, issue_comment → Mode B)
+      - governance: Mode A — policy checks on PR diffs
+      - run: Mode B — full plan → execute → persist
+      - validate: Mode B — run with self-correcting validation loop
+      - plan: Mode B — plan only, no execution
+      - status: Show current execution status
+    required: false
+    default: 'auto'
+
+  intent:
+    description: 'Natural-language intent for Mode B (run/validate/plan). What should Rigorix do?'
+    required: false
+
+  permission-mode:
+    description: |
+      Permission mode for engine tool execution:
+      - read_only: Only read operations
+      - workspace_write: Read + write within workspace (CI default)
+      - dangerous_full_access: No restrictions
+    required: false
+    default: 'workspace_write'
+
+  policy-file:
+    description: 'Path to policy.toml for Mode A governance. Loaded from BASE BRANCH to prevent tampering.'
+    required: false
+    default: '.rigorix/policy.toml'
+
+  fail-on-violation:
+    description: 'Mode A: Fail workflow on policy violations. Default false (warn-only for early adoption).'
+    required: false
+    default: 'false'
+
+  fail-on-action-error:
+    description: 'Fail workflow if the action itself encounters an error. Default false (fail-open).'
+    required: false
+    default: 'false'
+
+  max-llm-calls:
+    description: 'Maximum LLM API calls per execution'
+    required: false
+    default: '50'
+
+  max-llm-tokens:
+    description: 'Maximum LLM tokens per execution'
+    required: false
+    default: '50000'
+
+  max-validation-iterations:
+    description: 'Maximum validation loop iterations'
+    required: false
+    default: '3'
+
+  max-retries:
+    description: 'Maximum retries for transient API failures'
+    required: false
+    default: '3'
+
+  retry-delay-ms:
+    description: 'Base retry delay in milliseconds (exponential backoff with ±25% jitter)'
+    required: false
+    default: '1000'
+
+  post-pr-comment:
+    description: 'Post execution summary as a PR comment'
+    required: false
+    default: 'true'
+
+  profile:
+    description: 'Configuration profile to use'
+    required: false
+
+outputs:
+  execution_id:
+    description: 'UUID of the execution'
+
+  status:
+    description: 'Final execution status: completed, failed, partial_failure'
+
+  mode_used:
+    description: 'Which mode was used: governance, run, validate, plan'
+
+  iterations:
+    description: 'Number of validation loop iterations'
+
+  template_id:
+    description: 'ID of the generated or used template'
+
+  quality_level:
+    description: 'Achieved quality level: targeted_tests, package, workspace, merge_ready'
+
+  failure_count:
+    description: 'Number of failures (0 on success)'
+
+  cumulative_tokens:
+    description: 'Total LLM tokens consumed'
+
+  duration_ms:
+    description: 'Total execution duration in milliseconds'
+
+  violations_count:
+    description: 'Mode A: Number of policy violations detected'
+
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
