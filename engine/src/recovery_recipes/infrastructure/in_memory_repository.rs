@@ -77,22 +77,24 @@ impl RecoveryRecipeRepository for InMemoryRecipeRepository {
         &self,
         recipe: RecoveryRecipe,
     ) -> Result<Option<RecoveryRecipe>, RecoveryError> {
-        let mut recipes = self.recipes.write().map_err(|e| {
-            RecoveryError::DependencyUnavailable {
-                dependency: "InMemoryRecipeRepository".to_string(),
-                reason: format!("RwLock poisoned: {}", e),
-            }
-        })?;
+        let mut recipes =
+            self.recipes
+                .write()
+                .map_err(|e| RecoveryError::DependencyUnavailable {
+                    dependency: "InMemoryRecipeRepository".to_string(),
+                    reason: format!("RwLock poisoned: {}", e),
+                })?;
         Ok(recipes.insert(recipe.scenario, recipe))
     }
 
     async fn all_recipes(&self) -> Result<Vec<RecoveryRecipe>, RecoveryError> {
-        let custom = self.recipes.read().map_err(|e| {
-            RecoveryError::DependencyUnavailable {
+        let custom = self
+            .recipes
+            .read()
+            .map_err(|e| RecoveryError::DependencyUnavailable {
                 dependency: "InMemoryRecipeRepository".to_string(),
                 reason: format!("RwLock poisoned: {}", e),
-            }
-        })?;
+            })?;
 
         // Merge custom overrides with defaults
         let mut all = RecoveryRecipe::default_catalog();
@@ -106,26 +108,25 @@ impl RecoveryRecipeRepository for InMemoryRecipeRepository {
         Ok(all)
     }
 
-    async fn remove_recipe(
-        &self,
-        scenario: FailureScenario,
-    ) -> Result<bool, RecoveryError> {
-        let mut recipes = self.recipes.write().map_err(|e| {
-            RecoveryError::DependencyUnavailable {
-                dependency: "InMemoryRecipeRepository".to_string(),
-                reason: format!("RwLock poisoned: {}", e),
-            }
-        })?;
+    async fn remove_recipe(&self, scenario: FailureScenario) -> Result<bool, RecoveryError> {
+        let mut recipes =
+            self.recipes
+                .write()
+                .map_err(|e| RecoveryError::DependencyUnavailable {
+                    dependency: "InMemoryRecipeRepository".to_string(),
+                    reason: format!("RwLock poisoned: {}", e),
+                })?;
         Ok(recipes.remove(&scenario).is_some())
     }
 
     async fn clear_recipes(&self) -> Result<(), RecoveryError> {
-        let mut recipes = self.recipes.write().map_err(|e| {
-            RecoveryError::DependencyUnavailable {
-                dependency: "InMemoryRecipeRepository".to_string(),
-                reason: format!("RwLock poisoned: {}", e),
-            }
-        })?;
+        let mut recipes =
+            self.recipes
+                .write()
+                .map_err(|e| RecoveryError::DependencyUnavailable {
+                    dependency: "InMemoryRecipeRepository".to_string(),
+                    reason: format!("RwLock poisoned: {}", e),
+                })?;
         recipes.clear();
         Ok(())
     }
@@ -149,12 +150,12 @@ mod tests {
     #[tokio::test]
     async fn test_empty_repository_falls_back_to_default() {
         let repo = InMemoryRecipeRepository::new();
-        let recipe = repo.recipe_for(FailureScenario::CompileError).await.unwrap();
+        let recipe = repo
+            .recipe_for(FailureScenario::CompileError)
+            .await
+            .unwrap();
         assert!(recipe.is_some());
-        assert_eq!(
-            recipe.unwrap().scenario,
-            FailureScenario::CompileError
-        );
+        assert_eq!(recipe.unwrap().scenario, FailureScenario::CompileError);
     }
 
     #[tokio::test]
@@ -200,9 +201,17 @@ mod tests {
         let custom = sample_recipe();
         repo.store_recipe(custom).await.unwrap();
 
-        let removed = repo.remove_recipe(FailureScenario::CompileError).await.unwrap();
+        let removed = repo
+            .remove_recipe(FailureScenario::CompileError)
+            .await
+            .unwrap();
         assert!(removed);
-        assert!(!repo.remove_recipe(FailureScenario::CompileError).await.unwrap());
+        assert!(
+            !repo
+                .remove_recipe(FailureScenario::CompileError)
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
@@ -231,7 +240,10 @@ mod tests {
         let all = repo.all_recipes().await.unwrap();
         assert_eq!(all.len(), 7); // Same count because override replaces default
 
-        let stale = all.iter().find(|r| r.scenario == FailureScenario::StaleBranch).unwrap();
+        let stale = all
+            .iter()
+            .find(|r| r.scenario == FailureScenario::StaleBranch)
+            .unwrap();
         assert_eq!(stale.max_attempts, 2);
         assert_eq!(stale.escalation_policy, EscalationPolicy::Abort);
     }

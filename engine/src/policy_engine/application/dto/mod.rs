@@ -141,11 +141,11 @@ pub struct ReloadRulesOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::policy_engine::domain::config::RuleDefinition;
     use crate::policy_engine::domain::{
         DiffScope, LaneBlocker, LaneContext, PolicyAction, PolicyCondition, PolicyConfig,
         ReviewStatus,
     };
-    use crate::policy_engine::domain::config::RuleDefinition;
 
     #[test]
     fn test_evaluate_policy_input_serde() {
@@ -171,13 +171,11 @@ mod tests {
     fn test_evaluate_policy_output_serde() {
         let output = EvaluatePolicyOutput {
             lane_id: "lane-1".to_string(),
-            actions: vec![
-                ActionOutput {
-                    rule_name: "closeout".to_string(),
-                    priority: 10,
-                    action: PolicyAction::CloseoutLane,
-                },
-            ],
+            actions: vec![ActionOutput {
+                rule_name: "closeout".to_string(),
+                priority: 10,
+                action: PolicyAction::CloseoutLane,
+            }],
             matching_rule_count: 1,
             rules_evaluated: 5,
             matched: true,
@@ -208,14 +206,12 @@ mod tests {
     #[test]
     fn test_get_active_rules_output() {
         let output = GetActiveRulesOutput {
-            rules: vec![
-                RuleSummary {
-                    name: "rule-1".to_string(),
-                    priority: 10,
-                    condition_summary: "LaneCompleted".to_string(),
-                    action_summary: "CloseoutLane".to_string(),
-                },
-            ],
+            rules: vec![RuleSummary {
+                name: "rule-1".to_string(),
+                priority: 10,
+                condition_summary: "LaneCompleted".to_string(),
+                action_summary: "CloseoutLane".to_string(),
+            }],
             total_count: 1,
         };
         let json = serde_json::to_string(&output).unwrap();

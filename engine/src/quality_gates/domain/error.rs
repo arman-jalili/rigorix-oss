@@ -59,10 +59,7 @@ impl QualityGateError {
     /// Returns `true` if this error represents a transient condition
     /// that might succeed on retry.
     pub fn is_retriable(&self) -> bool {
-        matches!(
-            self,
-            QualityGateError::DependencyUnavailable { .. }
-        )
+        matches!(self, QualityGateError::DependencyUnavailable { .. })
     }
 }
 
@@ -104,10 +101,7 @@ mod tests {
         let err = QualityGateError::InvalidQualityLevel {
             value: "ultra".to_string(),
         };
-        assert_eq!(
-            err.to_string(),
-            "Invalid quality level: ultra"
-        );
+        assert_eq!(err.to_string(), "Invalid quality level: ultra");
     }
 
     #[test]

@@ -28,15 +28,14 @@ impl OrgPolicyMergingService for OrgPolicyMergingServiceImpl {
     ) -> Result<LoadOrgPolicyOutput, PolicyError> {
         // Org policy loading is not yet linked to a GitHub client implementation.
         // Return not-found with a warning by default.
-        let require = input.require_org_policy.unwrap_or(input.org_config.require_org_policy);
+        let require = input
+            .require_org_policy
+            .unwrap_or(input.org_config.require_org_policy);
         let source = input.org_config.org_policy_source.clone();
 
         if require {
             Err(PolicyError::OrgPolicyLoadError {
-                detail: format!(
-                    "Organization policy not found at source: {}",
-                    source
-                ),
+                detail: format!("Organization policy not found at source: {}", source),
             })
         } else {
             Ok(LoadOrgPolicyOutput {
@@ -69,7 +68,11 @@ impl OrgPolicyMergingService for OrgPolicyMergingServiceImpl {
         let strategy = &input.merge_strategy;
 
         let merged_deny = self
-            .merge_deny_rules(&input.repo_policy.rules.deny_rules, &org_policy.rules.deny_rules, strategy)
+            .merge_deny_rules(
+                &input.repo_policy.rules.deny_rules,
+                &org_policy.rules.deny_rules,
+                strategy,
+            )
             .await;
         let merged_review = self
             .merge_review_rules(
@@ -79,7 +82,11 @@ impl OrgPolicyMergingService for OrgPolicyMergingServiceImpl {
             )
             .await;
         let merged_flag = self
-            .merge_flag_rules(&input.repo_policy.rules.flag_rules, &org_policy.rules.flag_rules, strategy)
+            .merge_flag_rules(
+                &input.repo_policy.rules.flag_rules,
+                &org_policy.rules.flag_rules,
+                strategy,
+            )
             .await;
         let merged_limits = self
             .merge_limits(&input.repo_policy.limits, &org_policy.limits)
@@ -106,7 +113,8 @@ impl OrgPolicyMergingService for OrgPolicyMergingServiceImpl {
             org_deny_rules_added: org_deny_added,
             org_review_rules_added: org_review_added,
             org_flag_rules_added: org_flag_added,
-            limits_tightened: self.are_limits_tightened(&input.repo_policy.limits, &org_policy.limits),
+            limits_tightened: self
+                .are_limits_tightened(&input.repo_policy.limits, &org_policy.limits),
         })
     }
 
@@ -135,7 +143,8 @@ impl OrgPolicyMergingService for OrgPolicyMergingServiceImpl {
             // Check if a rule with the same name exists in repo
             if let Some(existing) = merged.iter_mut().find(|r| r.name == org_rule.name) {
                 // Take the higher reviewer count
-                existing.required_reviewers = existing.required_reviewers.max(org_rule.required_reviewers);
+                existing.required_reviewers =
+                    existing.required_reviewers.max(org_rule.required_reviewers);
             } else {
                 merged.push(org_rule.clone());
             }
@@ -195,9 +204,7 @@ impl OrgPolicyMergingServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::policy_evaluator::domain::{
-        AuditConfig, PolicyDocument, PolicyRules, Severity,
-    };
+    use crate::policy_evaluator::domain::{AuditConfig, PolicyDocument, PolicyRules, Severity};
 
     fn make_policy(rules: PolicyRules, limits: PolicyLimits) -> PolicyDocument {
         PolicyDocument {

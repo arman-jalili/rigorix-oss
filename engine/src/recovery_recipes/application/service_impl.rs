@@ -15,8 +15,8 @@ use crate::recovery_recipes::domain::{
 };
 
 use super::dto::{
-    AttemptRecoveryInput, AttemptRecoveryOutput, CanAttemptInput, CanAttemptOutput,
-    RecipeForInput, RecipeForOutput, RecipeSource, ValidateRecipeInput, ValidateRecipeOutput,
+    AttemptRecoveryInput, AttemptRecoveryOutput, CanAttemptInput, CanAttemptOutput, RecipeForInput,
+    RecipeForOutput, RecipeSource, ValidateRecipeInput, ValidateRecipeOutput,
 };
 use super::service::RecoveryService;
 
@@ -53,14 +53,11 @@ impl RecoveryServiceImpl {
 
     /// Find a recipe by scenario, checking custom recipes first.
     fn find_recipe(&self, scenario: FailureScenario) -> Option<RecoveryRecipe> {
-        self.custom_recipes
-            .get(&scenario)
-            .cloned()
-            .or_else(|| {
-                RecoveryRecipe::default_catalog()
-                    .into_iter()
-                    .find(|r| r.scenario == scenario)
-            })
+        self.custom_recipes.get(&scenario).cloned().or_else(|| {
+            RecoveryRecipe::default_catalog()
+                .into_iter()
+                .find(|r| r.scenario == scenario)
+        })
     }
 
     /// Execute a single recovery step.
@@ -149,8 +146,10 @@ impl RecoveryService for RecoveryServiceImpl {
                             },
                             last_step: Some(step.clone()),
                             is_final_attempt: input.attempt_number >= recipe.max_attempts,
-                            summary: format!("Partial recovery: {} succeeded, failed at {:?}: {}",
-                                steps_taken, step, reason),
+                            summary: format!(
+                                "Partial recovery: {} succeeded, failed at {:?}: {}",
+                                steps_taken, step, reason
+                            ),
                         });
                     }
 
@@ -175,10 +174,7 @@ impl RecoveryService for RecoveryServiceImpl {
         })
     }
 
-    async fn recipe_for(
-        &self,
-        input: RecipeForInput,
-    ) -> Result<RecipeForOutput, RecoveryError> {
+    async fn recipe_for(&self, input: RecipeForInput) -> Result<RecipeForOutput, RecoveryError> {
         // Check custom overrides first
         if let Some(custom_recipes) = &input.custom_recipes {
             if let Some(recipe) = custom_recipes.iter().find(|r| r.scenario == input.scenario) {
@@ -210,10 +206,7 @@ impl RecoveryService for RecoveryServiceImpl {
         }
     }
 
-    async fn can_attempt(
-        &self,
-        input: CanAttemptInput,
-    ) -> Result<CanAttemptOutput, RecoveryError> {
+    async fn can_attempt(&self, input: CanAttemptInput) -> Result<CanAttemptOutput, RecoveryError> {
         let max = input.recipe.max_attempts;
         // In a real implementation, this would check against RecoveryContext.
         // For now, we always allow the first attempt.
@@ -277,7 +270,9 @@ impl RecoveryService for RecoveryServiceImpl {
                 }
                 RecoveryStep::EscalateToHuman { reason } => {
                     if reason.trim().is_empty() {
-                        warnings.push("EscalateToHuman with empty reason provides no context".to_string());
+                        warnings.push(
+                            "EscalateToHuman with empty reason provides no context".to_string(),
+                        );
                     }
                 }
                 _ => {}
@@ -356,7 +351,10 @@ mod tests {
             .await;
 
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), RecoveryError::MaxAttemptsReached(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            RecoveryError::MaxAttemptsReached(_)
+        ));
     }
 
     #[tokio::test]
@@ -504,11 +502,15 @@ mod tests {
         let service = RecoveryServiceImpl::new();
 
         // Valid timeout
-        let result = service.execute_step(&RecoveryStep::RetryConnection { timeout_ms: 1000 }).await;
+        let result = service
+            .execute_step(&RecoveryStep::RetryConnection { timeout_ms: 1000 })
+            .await;
         assert!(result.is_ok());
 
         // Zero timeout
-        let result = service.execute_step(&RecoveryStep::RetryConnection { timeout_ms: 0 }).await;
+        let result = service
+            .execute_step(&RecoveryStep::RetryConnection { timeout_ms: 0 })
+            .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("must be > 0"));
     }
@@ -516,20 +518,36 @@ mod tests {
     #[tokio::test]
     async fn test_execute_step_restart_service_validates_name() {
         let service = RecoveryServiceImpl::new();
-        let result = service.execute_step(&RecoveryStep::RestartService { name: "lsp".to_string() }).await;
+        let result = service
+            .execute_step(&RecoveryStep::RestartService {
+                name: "lsp".to_string(),
+            })
+            .await;
         assert!(result.is_ok());
 
-        let result = service.execute_step(&RecoveryStep::RestartService { name: "".to_string() }).await;
+        let result = service
+            .execute_step(&RecoveryStep::RestartService {
+                name: "".to_string(),
+            })
+            .await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_execute_step_escalate_validates_reason() {
         let service = RecoveryServiceImpl::new();
-        let result = service.execute_step(&RecoveryStep::EscalateToHuman { reason: "test".to_string() }).await;
+        let result = service
+            .execute_step(&RecoveryStep::EscalateToHuman {
+                reason: "test".to_string(),
+            })
+            .await;
         assert!(result.is_ok());
 
-        let result = service.execute_step(&RecoveryStep::EscalateToHuman { reason: "".to_string() }).await;
+        let result = service
+            .execute_step(&RecoveryStep::EscalateToHuman {
+                reason: "".to_string(),
+            })
+            .await;
         assert!(result.is_err());
     }
 
@@ -543,7 +561,11 @@ mod tests {
             RecoveryStep::AcceptTrust,
             RecoveryStep::RestartWorker,
         ] {
-            assert!(service.execute_step(step).await.is_ok(), "Step {:?} should succeed", step);
+            assert!(
+                service.execute_step(step).await.is_ok(),
+                "Step {:?} should succeed",
+                step
+            );
         }
     }
 }

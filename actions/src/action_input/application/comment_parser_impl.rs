@@ -500,9 +500,7 @@ mod tests {
     #[tokio::test]
     async fn test_has_command_prefix_false() {
         let parser = make_parser();
-        assert!(!parser
-            .has_command_prefix("just a regular comment")
-            .await);
+        assert!(!parser.has_command_prefix("just a regular comment").await);
     }
 
     #[tokio::test]
@@ -539,26 +537,38 @@ mod tests {
     #[tokio::test]
     async fn test_validate_permission_status_always_allowed() {
         let parser = make_parser();
-        assert!(parser
-            .validate_permission("", &CommentCommand::Status)
-            .await
-            .unwrap());
+        assert!(
+            parser
+                .validate_permission("", &CommentCommand::Status)
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
     async fn test_validate_permission_run_requires_commenter() {
         let parser = make_parser();
-        assert!(!parser
-            .validate_permission("", &CommentCommand::Run {
-                intent: "test".to_string()
-            })
-            .await
-            .unwrap());
-        assert!(parser
-            .validate_permission("authorized-user", &CommentCommand::Run {
-                intent: "test".to_string()
-            })
-            .await
-            .unwrap());
+        assert!(
+            !parser
+                .validate_permission(
+                    "",
+                    &CommentCommand::Run {
+                        intent: "test".to_string()
+                    }
+                )
+                .await
+                .unwrap()
+        );
+        assert!(
+            parser
+                .validate_permission(
+                    "authorized-user",
+                    &CommentCommand::Run {
+                        intent: "test".to_string()
+                    }
+                )
+                .await
+                .unwrap()
+        );
     }
 }

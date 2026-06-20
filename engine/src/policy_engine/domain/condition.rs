@@ -117,15 +117,9 @@ impl PolicyCondition {
     /// Returns `true` if the condition matches the context.
     pub fn matches(&self, context: &super::context::LaneContext) -> bool {
         match self {
-            PolicyCondition::And { conditions } => {
-                conditions.iter().all(|c| c.matches(context))
-            }
-            PolicyCondition::Or { conditions } => {
-                conditions.iter().any(|c| c.matches(context))
-            }
-            PolicyCondition::GreenAt { level } => {
-                context.green_level >= *level
-            }
+            PolicyCondition::And { conditions } => conditions.iter().all(|c| c.matches(context)),
+            PolicyCondition::Or { conditions } => conditions.iter().any(|c| c.matches(context)),
+            PolicyCondition::GreenAt { level } => context.green_level >= *level,
             PolicyCondition::StaleBranch => {
                 // Staleness threshold is derived from the context's
                 // branch_freshness_secs. A branch is stale if its freshness
@@ -140,9 +134,7 @@ impl PolicyCondition {
             PolicyCondition::ReviewPassed => {
                 context.review_status == super::context::ReviewStatus::Approved
             }
-            PolicyCondition::ScopedDiff => {
-                context.diff_scope == super::context::DiffScope::Scoped
-            }
+            PolicyCondition::ScopedDiff => context.diff_scope == super::context::DiffScope::Scoped,
             PolicyCondition::TimedOut { duration_secs } => {
                 context.branch_freshness_secs >= *duration_secs
             }
@@ -153,8 +145,8 @@ impl PolicyCondition {
 #[cfg(test)]
 mod tests {
     use crate::policy_engine::domain::{
-        context::{DiffScope, LaneBlocker, LaneContext, ReviewStatus},
         PolicyCondition,
+        context::{DiffScope, LaneBlocker, LaneContext, ReviewStatus},
     };
 
     fn test_context() -> LaneContext {
@@ -200,10 +192,7 @@ mod tests {
     fn test_and_all_true() {
         let ctx = test_context();
         let condition = PolicyCondition::And {
-            conditions: vec![
-                PolicyCondition::LaneCompleted,
-                PolicyCondition::ScopedDiff,
-            ],
+            conditions: vec![PolicyCondition::LaneCompleted, PolicyCondition::ScopedDiff],
         };
         assert!(condition.matches(&ctx));
     }
@@ -212,10 +201,7 @@ mod tests {
     fn test_and_one_false() {
         let ctx = test_context();
         let condition = PolicyCondition::And {
-            conditions: vec![
-                PolicyCondition::LaneCompleted,
-                PolicyCondition::StaleBranch,
-            ],
+            conditions: vec![PolicyCondition::LaneCompleted, PolicyCondition::StaleBranch],
         };
         assert!(!condition.matches(&ctx));
     }
@@ -224,10 +210,7 @@ mod tests {
     fn test_or_one_true() {
         let ctx = test_context();
         let condition = PolicyCondition::Or {
-            conditions: vec![
-                PolicyCondition::StaleBranch,
-                PolicyCondition::LaneCompleted,
-            ],
+            conditions: vec![PolicyCondition::StaleBranch, PolicyCondition::LaneCompleted],
         };
         assert!(condition.matches(&ctx));
     }
@@ -237,10 +220,7 @@ mod tests {
         let mut ctx = test_context();
         ctx.completed = false;
         let condition = PolicyCondition::Or {
-            conditions: vec![
-                PolicyCondition::StaleBranch,
-                PolicyCondition::LaneCompleted,
-            ],
+            conditions: vec![PolicyCondition::StaleBranch, PolicyCondition::LaneCompleted],
         };
         assert!(!condition.matches(&ctx));
     }
@@ -263,7 +243,12 @@ mod tests {
     fn test_timed_out_matches() {
         let mut ctx = test_context();
         ctx.branch_freshness_secs = 3600;
-        assert!(PolicyCondition::TimedOut { duration_secs: 1800 }.matches(&ctx));
+        assert!(
+            PolicyCondition::TimedOut {
+                duration_secs: 1800
+            }
+            .matches(&ctx)
+        );
     }
 
     #[test]

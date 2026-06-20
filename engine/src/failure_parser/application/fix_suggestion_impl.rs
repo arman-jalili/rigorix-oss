@@ -12,8 +12,8 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 
 use crate::failure_parser::domain::{
-    failure::{SourceLocation, TemplateFailure},
     FailureParserError, SourceContext,
+    failure::{SourceLocation, TemplateFailure},
 };
 
 use super::service::FixSuggestionService;
@@ -253,9 +253,9 @@ impl FixSuggestionServiceImpl {
     ) -> Option<String> {
         // Check if the expected type exists in source context
         let file_symbols = source_context.symbols_in_file(&location.file);
-        let type_available = file_symbols.iter().any(|s| {
-            s == expected || s.to_lowercase() == expected.to_lowercase()
-        });
+        let type_available = file_symbols
+            .iter()
+            .any(|s| s == expected || s.to_lowercase() == expected.to_lowercase());
 
         let type_hint = if type_available {
             format!(" Type '{}' is defined in this file.", expected)
@@ -290,13 +290,25 @@ impl FixSuggestionServiceImpl {
     fn suggest_compile_error(code: &str, message: &str) -> Option<String> {
         // Specific guidance for common error codes
         let specific_help = match code {
-            "TS1005" => Some("Missing semicolon, comma, or bracket — check for syntax errors near this line."),
-            "TS1109" => Some("Expression expected — check for missing operands or incomplete statements."),
-            "TS2300" => Some("Duplicate identifier — check for name collisions in imports or declarations."),
-            "TS2307" => Some("Cannot find module — verify the import path or install the missing dependency."),
+            "TS1005" => Some(
+                "Missing semicolon, comma, or bracket — check for syntax errors near this line.",
+            ),
+            "TS1109" => {
+                Some("Expression expected — check for missing operands or incomplete statements.")
+            }
+            "TS2300" => {
+                Some("Duplicate identifier — check for name collisions in imports or declarations.")
+            }
+            "TS2307" => Some(
+                "Cannot find module — verify the import path or install the missing dependency.",
+            ),
             "TS2580" => Some("Cannot find name — ensure the variable/type is defined before use."),
-            "TS7006" => Some("Parameter implicitly has 'any' type — add a type annotation to the function parameter."),
-            "TS7031" => Some("Binding element implicitly has 'any' type — add a type annotation to the destructured parameter."),
+            "TS7006" => Some(
+                "Parameter implicitly has 'any' type — add a type annotation to the function parameter.",
+            ),
+            "TS7031" => Some(
+                "Binding element implicitly has 'any' type — add a type annotation to the destructured parameter.",
+            ),
             _ => None,
         };
 
@@ -709,16 +721,14 @@ mod tests {
     #[test]
     fn test_find_best_match_empty_list() {
         let candidates: Vec<String> = vec![];
-        let result =
-            FixSuggestionServiceImpl::find_best_match_in_list("anything", &candidates);
+        let result = FixSuggestionServiceImpl::find_best_match_in_list("anything", &candidates);
         assert!(result.is_none());
     }
 
     #[test]
     fn test_find_best_match_no_match() {
         let candidates = vec!["abc".to_string(), "def".to_string()];
-        let result =
-            FixSuggestionServiceImpl::find_best_match_in_list("xyz", &candidates);
+        let result = FixSuggestionServiceImpl::find_best_match_in_list("xyz", &candidates);
         // "xyz" and "abc" share 'x'≠'a' first letter diff, no substring match
         // But they share zero leading chars
         assert_eq!(result, None);

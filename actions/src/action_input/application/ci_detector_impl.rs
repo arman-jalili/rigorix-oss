@@ -70,7 +70,10 @@ impl CiDetectionService for CiDetectorImpl {
             };
 
             let actor = if let Some(ref env_override) = input.env_override {
-                env_override.get("GITHUB_ACTOR").cloned().unwrap_or_default()
+                env_override
+                    .get("GITHUB_ACTOR")
+                    .cloned()
+                    .unwrap_or_default()
             } else {
                 std::env::var("GITHUB_ACTOR").unwrap_or_default()
             };
@@ -84,15 +87,10 @@ impl CiDetectionService for CiDetectorImpl {
                 "workspace_write".to_string(),
             )
         } else {
-            (
-                CiEnvironment::Local,
-                "prompt".to_string(),
-            )
+            (CiEnvironment::Local, "prompt".to_string())
         };
 
-        let permission_mode = input
-            .permission_mode_override
-            .unwrap_or(default_mode);
+        let permission_mode = input.permission_mode_override.unwrap_or(default_mode);
 
         Ok(DetectCiOutput {
             environment,
@@ -270,7 +268,9 @@ mod tests {
     #[tokio::test]
     async fn test_workspace_root_fallback() {
         // SAFETY: test-only env manipulation
-        unsafe { std::env::remove_var("GITHUB_WORKSPACE"); }
+        unsafe {
+            std::env::remove_var("GITHUB_WORKSPACE");
+        }
         let detector = CiDetectorImpl::new();
         let result = detector.workspace_root().await.unwrap();
         assert!(!result.is_empty());

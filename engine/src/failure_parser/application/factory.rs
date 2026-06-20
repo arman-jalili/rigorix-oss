@@ -49,9 +49,7 @@ pub trait ParserFactory: Send + Sync {
     ///
     /// Returns a vector of (tool_name, parser) pairs that can be
     /// registered in the ParserRegistry.
-    async fn create_all_builtin(
-        &self,
-    ) -> Result<Vec<Box<dyn LanguageParser>>, FailureParserError>;
+    async fn create_all_builtin(&self) -> Result<Vec<Box<dyn LanguageParser>>, FailureParserError>;
 }
 
 /// Factory for constructing `FailureParserService` instances.

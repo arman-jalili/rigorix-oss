@@ -5,7 +5,9 @@
 
 use async_trait::async_trait;
 
-use crate::policy_evaluator::domain::{PolicyMetadata, PolicyResult, PolicyViolation, ViolationCounts};
+use crate::policy_evaluator::domain::{
+    PolicyMetadata, PolicyResult, PolicyViolation, ViolationCounts,
+};
 
 use super::factory::PolicyResultFactory;
 

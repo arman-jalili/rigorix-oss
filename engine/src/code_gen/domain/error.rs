@@ -109,7 +109,10 @@ impl CodeGenError {
 
     /// Returns true if this error is retriable (LLM can reissue the edit).
     pub fn is_retriable(&self) -> bool {
-        matches!(self, CodeGenError::OldStringNotFound { .. } | CodeGenError::IdentityEdit)
+        matches!(
+            self,
+            CodeGenError::OldStringNotFound { .. } | CodeGenError::IdentityEdit
+        )
     }
 
     /// Returns the file path associated with this error, if available.

@@ -8,7 +8,7 @@ Rationale: Format engine results as GitHub Actions-native outputs — annotation
 
 ## Overview
 
-The Action Output module formats `rigorix-engine` execution results as GitHub Actions-native outputs. It converts structured engine types (ExecutionRecord, ValidationReport, TemplateFailure) into GitHub workflow commands, step summaries, annotations, and output variables. No business logic — pure formatting.
+The Action Output module formats `rigorix-engine` execution results as GitHub Actions-native outputs. It converts structured engine types (ExecutionContext, WorkflowAnnotation) into GitHub workflow commands, step summaries, annotations, and output variables. No business logic — pure formatting. It converts structured engine types (ExecutionRecord, ValidationReport, TemplateFailure) into GitHub workflow commands, step summaries, annotations, and output variables. No business logic — pure formatting.
 
 ## Responsibilities
 
@@ -21,14 +21,14 @@ The Action Output module formats `rigorix-engine` execution results as GitHub Ac
 
 ## Components
 
-| Component | File Path | Purpose | Canonical Section |
-|-----------|-----------|---------|-------------------|
-| OutputFormatter | `actions/src/action_output/formatter.rs` | Formats engine results into GitHub Action outputs | #formatter |
-| StepSummaryWriter | `actions/src/action_output/summary.rs` | Writes GitHub step summaries (markdown) | #summary |
-| AnnotationWriter | `actions/src/action_output/annotations.rs` | Emits workflow annotations for failures | #annotations |
-| OutputVariableWriter | `actions/src/action_output/variables.rs` | Sets `$GITHUB_OUTPUT` variables | #variables |
-| PrCommentWriter | `actions/src/action_output/pr_comment.rs` | Posts PR comments via GitHub API | #pr-comment |
-| ActionOutput | `actions/src/action_output/types.rs` | Aggregated output container | #types |
+| Component | Interface | Implementation | Canonical Section |
+|-----------|-----------|----------------|-------------------|
+| OutputFormatter | `OutputFormattingService` (in `application/service.rs`) | `output_formatter_impl.rs` | #formatter |
+| AnnotationWriter | `AnnotationWritingService` (in `application/service.rs`) | `annotation_writer_impl.rs` | #annotations |
+| StepSummaryWriter | `StepSummaryWritingService` (in `application/service.rs`) | `step_summary_writer_impl.rs` | #summary |
+| OutputVariableWriter | `OutputVariableService` (in `application/service.rs`) | *(pending)* | #variables |
+| PrCommentWriter | `PrCommentService` (in `application/service.rs`) | *(pending)* | #pr-comment |
+| Infrastructure | `OutputRepository` / `EnvRepository` / `GitHubApiClient` | `infrastructure/repository/mod.rs` (interfaces) | #repository |
 
 ---
 
@@ -248,6 +248,30 @@ impl OutputVariableWriter {
 
 ---
 
+## Observability
+
+### Logging
+- Module uses `tracing` for structured logging with correlation IDs
+- Key events logged:
+  - `OutputWritten` — summary bytes, annotation count, variable count
+  - `StepSummaryWritten` — title, section count, bytes written
+  - `AnnotationEmitted` — level, file, line
+  - `OutputVariableSet` — variable name, value length
+  - `PrCommentPosted` — PR number, body length
+- Log levels: `info` (normal operations), `warn` (recoverable issues), `error` (failures)
+
+### Tracing Spans
+- Root span: `action_output` — wraps all output operations
+- Child spans: `write_run_output`, `write_validation_failure`, `format_summary`
+- Execution UUID propagated through all spans for correlation
+
+### Metrics (Planned)
+The module is stateless and short-lived. Future observability:
+- Annotation count per execution (counter)
+- Summary bytes written (histogram)
+- Output variable count (gauge)
+- Execution status distribution (success/failure counter)
+
 ## Security Considerations
 
 | Concern | Mitigation |
@@ -267,9 +291,12 @@ impl OutputVariableWriter {
 ---
 
 *Last updated: 2026-06-20*
-*Module version: 1.0.0 (Planned)*
+*Module version: 1.0.0 (Implemented)*
 
 ---
 
-**Status:** Planned
+**Status:** Implemented (3/5 components)
 **Engine modules reused:** orchestrator, failure_parser, plan_validation
+**Proofing scripts:** `check_action-output_contracts.sh`, `check_action-output_coverage.sh`
+**Runbook:** `docs/runbook-action-output.md`
+**DR Plan:** `docs/dr-plan-action-output.md`

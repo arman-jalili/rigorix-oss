@@ -146,11 +146,17 @@ impl PlanningPipelineImpl {
                     Ok(c) => c,
                     Err(_) => continue,
                 };
-                let rel = path.strip_prefix(root_path).unwrap_or(&path).to_string_lossy();
+                let rel = path
+                    .strip_prefix(root_path)
+                    .unwrap_or(&path)
+                    .to_string_lossy();
                 let lines: Vec<&str> = content.lines().take(max_lines).collect();
                 let truncated = lines.join("\n");
                 let note = if content.lines().count() > max_lines {
-                    format!("\n// ... (truncated from {} lines)", content.lines().count())
+                    format!(
+                        "\n// ... (truncated from {} lines)",
+                        content.lines().count()
+                    )
                 } else {
                     String::new()
                 };
@@ -472,9 +478,10 @@ impl PlanningPipelineService for PlanningPipelineImpl {
                     // Before extracting parameters that describe file content (test
                     // files, method bodies, etc.), read the workspace source files
                     // so the LLM can generate code that matches the actual API.
-                    let extraction_intent = if param_names.iter().any(|p| {
-                        p.contains("file") || p.contains("content") || p.contains("test")
-                    }) {
+                    let extraction_intent = if param_names
+                        .iter()
+                        .any(|p| p.contains("file") || p.contains("content") || p.contains("test"))
+                    {
                         let file_context = Self::read_source_context(
                             self.workspace_root.as_deref().unwrap_or("."),
                         );

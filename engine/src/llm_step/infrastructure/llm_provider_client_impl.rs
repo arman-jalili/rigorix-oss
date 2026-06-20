@@ -155,14 +155,15 @@ impl LlmProviderClient for AnthropicProviderClient {
             });
         }
 
-        let response_json: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| LlmStepError::ProviderError {
-                provider: "anthropic".to_string(),
-                status: 0,
-                message: format!("Failed to parse response: {}", e),
-            })?;
+        let response_json: serde_json::Value =
+            response
+                .json()
+                .await
+                .map_err(|e| LlmStepError::ProviderError {
+                    provider: "anthropic".to_string(),
+                    status: 0,
+                    message: format!("Failed to parse response: {}", e),
+                })?;
 
         // Extract content from Anthropic response format
         let content = response_json["content"]
@@ -306,14 +307,15 @@ impl LlmProviderClient for OpenAiProviderClient {
             });
         }
 
-        let response_json: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| LlmStepError::ProviderError {
-                provider: "openai".to_string(),
-                status: 0,
-                message: format!("Failed to parse response: {}", e),
-            })?;
+        let response_json: serde_json::Value =
+            response
+                .json()
+                .await
+                .map_err(|e| LlmStepError::ProviderError {
+                    provider: "openai".to_string(),
+                    status: 0,
+                    message: format!("Failed to parse response: {}", e),
+                })?;
 
         // Extract content from OpenAI response format
         let choice = &response_json["choices"][0];

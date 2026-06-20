@@ -65,7 +65,10 @@ pub struct SyntaxError {
 impl SyntaxGateResult {
     /// Returns true if the syntax check passed or was skipped.
     pub fn is_success(&self) -> bool {
-        matches!(self, SyntaxGateResult::Passed | SyntaxGateResult::Skipped { .. })
+        matches!(
+            self,
+            SyntaxGateResult::Passed | SyntaxGateResult::Skipped { .. }
+        )
     }
 
     /// Returns true if the syntax check failed.
@@ -109,7 +112,12 @@ impl SyntaxGateResult {
 
 impl SyntaxError {
     /// Create a new syntax error.
-    pub fn new(line: usize, column: usize, message: impl Into<String>, context: impl Into<String>) -> Self {
+    pub fn new(
+        line: usize,
+        column: usize,
+        message: impl Into<String>,
+        context: impl Into<String>,
+    ) -> Self {
         Self {
             line,
             column,
@@ -171,9 +179,8 @@ mod tests {
 
     #[test]
     fn test_serde_roundtrip_failed() {
-        let result = SyntaxGateResult::failed(vec![
-            SyntaxError::new(10, 3, "expected `)`", "if (true"),
-        ]);
+        let result =
+            SyntaxGateResult::failed(vec![SyntaxError::new(10, 3, "expected `)`", "if (true")]);
         let json = serde_json::to_string(&result).unwrap();
         let deserialized: SyntaxGateResult = serde_json::from_str(&json).unwrap();
         assert!(deserialized.is_failed());

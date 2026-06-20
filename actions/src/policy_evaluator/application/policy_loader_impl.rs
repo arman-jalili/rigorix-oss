@@ -6,9 +6,7 @@
 use async_trait::async_trait;
 use globset::Glob;
 
-use crate::policy_evaluator::domain::{
-    CompiledRules, PolicyDocument, PolicyError, PolicyLimits,
-};
+use crate::policy_evaluator::domain::{CompiledRules, PolicyDocument, PolicyError, PolicyLimits};
 
 use super::compiled_rules_factory_impl::CompiledRulesFactoryImpl;
 use super::dto::{LoadPolicyInput, LoadPolicyOutput};
@@ -65,7 +63,10 @@ impl PolicyLoadingService for PolicyLoadingServiceImpl {
         Ok(())
     }
 
-    async fn compile_patterns(&self, policy: &PolicyDocument) -> Result<CompiledRules, PolicyError> {
+    async fn compile_patterns(
+        &self,
+        policy: &PolicyDocument,
+    ) -> Result<CompiledRules, PolicyError> {
         let factory = CompiledRulesFactoryImpl;
         factory.build_from_policy(policy).await
     }

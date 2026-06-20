@@ -73,7 +73,10 @@ impl Default for PermissionConfig {
                 ("write_file".to_string(), PermissionMode::WorkspaceWrite),
                 ("edit_file".to_string(), PermissionMode::WorkspaceWrite),
                 ("create_file".to_string(), PermissionMode::WorkspaceWrite),
-                ("delete_file".to_string(), PermissionMode::DangerousFullAccess),
+                (
+                    "delete_file".to_string(),
+                    PermissionMode::DangerousFullAccess,
+                ),
                 ("bash".to_string(), PermissionMode::WorkspaceWrite),
                 ("git_commit".to_string(), PermissionMode::WorkspaceWrite),
                 ("git_push".to_string(), PermissionMode::DangerousFullAccess),
@@ -167,9 +170,10 @@ mod tests {
             allow: vec![],
             deny: vec!["curl".to_string()],
             ask: vec!["bash".to_string()],
-            tool_permissions: HashMap::from([
-                ("custom_tool".to_string(), PermissionMode::DangerousFullAccess),
-            ]),
+            tool_permissions: HashMap::from([(
+                "custom_tool".to_string(),
+                PermissionMode::DangerousFullAccess,
+            )]),
         };
         assert_eq!(
             config.tool_permissions.get("custom_tool"),

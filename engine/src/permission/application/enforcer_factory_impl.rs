@@ -12,7 +12,9 @@ use async_trait::async_trait;
 use crate::permission::application::enforcer::PermissionEnforcer;
 use crate::permission::application::enforcer_impl::PermissionEnforcerImpl;
 use crate::permission::application::factory::PermissionEnforcerFactory;
-use crate::permission::domain::{PermissionConfig, PermissionError, PermissionMode, PermissionPolicy};
+use crate::permission::domain::{
+    PermissionConfig, PermissionError, PermissionMode, PermissionPolicy,
+};
 
 /// Factory for creating `PermissionEnforcerImpl` instances.
 ///
@@ -56,27 +58,21 @@ impl PermissionEnforcerFactory for PermissionEnforcerFactoryImpl {
         Ok(Box::new(PermissionEnforcerImpl::new(policy, ".")))
     }
 
-    async fn create_default(
-        &self,
-    ) -> Result<Box<dyn PermissionEnforcer>, PermissionError> {
+    async fn create_default(&self) -> Result<Box<dyn PermissionEnforcer>, PermissionError> {
         let config = PermissionConfig::default();
         let mode = config.default_mode;
         let policy = Self::build_policy(&config, mode);
         Ok(Box::new(PermissionEnforcerImpl::new(policy, ".")))
     }
 
-    async fn create_permissive(
-        &self,
-    ) -> Result<Box<dyn PermissionEnforcer>, PermissionError> {
+    async fn create_permissive(&self) -> Result<Box<dyn PermissionEnforcer>, PermissionError> {
         let config = PermissionConfig::permissive();
         let mode = config.default_mode;
         let policy = Self::build_policy(&config, mode);
         Ok(Box::new(PermissionEnforcerImpl::new(policy, ".")))
     }
 
-    async fn create_read_only(
-        &self,
-    ) -> Result<Box<dyn PermissionEnforcer>, PermissionError> {
+    async fn create_read_only(&self) -> Result<Box<dyn PermissionEnforcer>, PermissionError> {
         let config = PermissionConfig::read_only();
         let mode = config.default_mode;
         let policy = Self::build_policy(&config, mode);
@@ -143,7 +139,10 @@ mod tests {
 
         // Verify the enforcer actually works
         assert!(
-            enforcer.check("read_file", "test.txt", None).await.is_allowed()
+            enforcer
+                .check("read_file", "test.txt", None)
+                .await
+                .is_allowed()
         );
         assert!(
             enforcer
@@ -159,7 +158,10 @@ mod tests {
         let enforcer = factory.create_read_only().await.unwrap();
 
         assert!(
-            enforcer.check("read_file", "test.txt", None).await.is_allowed()
+            enforcer
+                .check("read_file", "test.txt", None)
+                .await
+                .is_allowed()
         );
         assert!(
             enforcer

@@ -17,7 +17,7 @@
 use async_trait::async_trait;
 
 use crate::failure_parser::domain::{
-    TemplateFailure, SourceContext, FailureParserError, ParserRegistry,
+    FailureParserError, ParserRegistry, SourceContext, TemplateFailure,
 };
 
 use super::dto::{
@@ -48,10 +48,8 @@ pub trait FailureParserService: Send + Sync {
     /// * `tool` - The tool that produced the output (e.g., "tsc", "jest", "rustc", "pytest")
     /// * `output` - The raw stdout/stderr
     /// * `source_context` - Available symbols and source code for suggestion generation
-    async fn parse(
-        &self,
-        input: ParseOutputInput,
-    ) -> Result<ParseOutputResult, FailureParserError>;
+    async fn parse(&self, input: ParseOutputInput)
+    -> Result<ParseOutputResult, FailureParserError>;
 
     /// Generate a human-readable summary suitable for LLM context.
     ///

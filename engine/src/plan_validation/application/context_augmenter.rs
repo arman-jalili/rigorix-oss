@@ -21,9 +21,7 @@
 use crate::failure_parser::domain::TemplateFailure;
 use crate::planning::domain::intent::UserIntent;
 
-use super::dto::{
-    AugmentIntentInput, AugmentIntentOutput, CheckRepeatedFailureOutput,
-};
+use super::dto::{AugmentIntentInput, AugmentIntentOutput, CheckRepeatedFailureOutput};
 
 /// Transforms failure analysis into augmented planning context.
 ///
@@ -88,22 +86,14 @@ impl ContextAugmenter {
             ));
         }
 
-        augmented_text.push_str(
-            "\n\nGenerate corrected content. Do NOT repeat the same mistakes.",
-        );
+        augmented_text.push_str("\n\nGenerate corrected content. Do NOT repeat the same mistakes.");
 
-        let has_repeated = Self::check_repeated_failures(
-            &input.failures,
-            &input.failure_history,
-        );
+        let has_repeated = Self::check_repeated_failures(&input.failures, &input.failure_history);
 
         let unique_types = Self::count_unique_failure_types(&input.failures);
 
         // Preserve the original execution_id and session_id from the intent
-        let augmented_intent = UserIntent::new(
-            augmented_text,
-            input.intent.execution_id,
-        );
+        let augmented_intent = UserIntent::new(augmented_text, input.intent.execution_id);
 
         AugmentIntentOutput {
             augmented_intent,
@@ -162,19 +152,12 @@ impl ContextAugmenter {
                     Some(col) => format!("{}:{}:{}", location.file, location.line, col),
                     None => format!("{}:{}", location.file, location.line),
                 };
-                let mut msg = format!(
-                    "Missing symbol '{}' at {}",
-                    symbol,
-                    loc_str
-                );
+                let mut msg = format!("Missing symbol '{}' at {}", symbol, loc_str);
                 if let Some(sugg) = suggestion {
                     msg.push_str(&format!(". Suggested fix: {}", sugg));
                 }
                 if !available.is_empty() {
-                    msg.push_str(&format!(
-                        ". Available symbols: {}",
-                        available.join(", ")
-                    ));
+                    msg.push_str(&format!(". Available symbols: {}", available.join(", ")));
                 }
                 msg
             }
@@ -186,11 +169,7 @@ impl ContextAugmenter {
             } => {
                 format!(
                     "Wrong argument count for '{}' at {}:{}. Expected {}, got {}",
-                    function,
-                    location.file,
-                    location.line,
-                    expected,
-                    actual
+                    function, location.file, location.line, expected, actual
                 )
             }
             TemplateFailure::TypeMismatch {
@@ -204,9 +183,7 @@ impl ContextAugmenter {
                 };
                 format!(
                     "Type mismatch at {}. Expected '{}', got '{}'",
-                    loc_str,
-                    expected,
-                    actual
+                    loc_str, expected, actual
                 )
             }
             TemplateFailure::CompileError {
@@ -216,10 +193,7 @@ impl ContextAugmenter {
             } => {
                 format!(
                     "Compile error [{}] at {}:{}: {}",
-                    code,
-                    location.file,
-                    location.line,
-                    message
+                    code, location.file, location.line, message
                 )
             }
             TemplateFailure::AssertionFailure {
@@ -230,11 +204,7 @@ impl ContextAugmenter {
             } => {
                 format!(
                     "Assertion failure in '{}' at {}:{}: expected '{}', received '{}'",
-                    test_name,
-                    location.file,
-                    location.line,
-                    expected,
-                    received
+                    test_name, location.file, location.line, expected, received
                 )
             }
             TemplateFailure::TestFailure {
@@ -246,12 +216,7 @@ impl ContextAugmenter {
                     Some(loc) => format!(" at {}:{}", loc.file, loc.line),
                     None => String::new(),
                 };
-                format!(
-                    "Test failure '{}'{}: {}",
-                    test_name,
-                    loc_str,
-                    message
-                )
+                format!("Test failure '{}'{}: {}", test_name, loc_str, message)
             }
         }
     }
@@ -325,14 +290,18 @@ mod tests {
         });
 
         assert!(output.augmented_intent.input.contains("Original intent:"));
-        assert!(output
-            .augmented_intent
-            .input
-            .contains("PREVIOUS EXECUTION FAILED"));
-        assert!(output
-            .augmented_intent
-            .input
-            .contains("Missing symbol 'addTask'"));
+        assert!(
+            output
+                .augmented_intent
+                .input
+                .contains("PREVIOUS EXECUTION FAILED")
+        );
+        assert!(
+            output
+                .augmented_intent
+                .input
+                .contains("Missing symbol 'addTask'")
+        );
         assert!(output.augmented_intent.input.contains("test.ts:10"));
         assert!(!output.has_repeated_failures);
         assert_eq!(output.unique_failure_types, 1);
@@ -390,14 +359,18 @@ mod tests {
             max_iterations: 3,
         });
 
-        assert!(output
-            .augmented_intent
-            .input
-            .contains("Available symbols: add, remove"));
-        assert!(output
-            .augmented_intent
-            .input
-            .contains("Suggested fix: use 'add' instead of 'addTask'"));
+        assert!(
+            output
+                .augmented_intent
+                .input
+                .contains("Available symbols: add, remove")
+        );
+        assert!(
+            output
+                .augmented_intent
+                .input
+                .contains("Suggested fix: use 'add' instead of 'addTask'")
+        );
     }
 
     #[test]
@@ -413,14 +386,18 @@ mod tests {
             max_iterations: 3,
         });
 
-        assert!(output
-            .augmented_intent
-            .input
-            .contains("Assertion failure in 'should_add_task'"));
-        assert!(output
-            .augmented_intent
-            .input
-            .contains("expected '3', received '2'"));
+        assert!(
+            output
+                .augmented_intent
+                .input
+                .contains("Assertion failure in 'should_add_task'")
+        );
+        assert!(
+            output
+                .augmented_intent
+                .input
+                .contains("expected '3', received '2'")
+        );
     }
 
     #[test]
@@ -436,16 +413,18 @@ mod tests {
             max_iterations: 3,
         });
 
-        assert!(output.augmented_intent.input.contains("PREVIOUS EXECUTION FAILED"));
+        assert!(
+            output
+                .augmented_intent
+                .input
+                .contains("PREVIOUS EXECUTION FAILED")
+        );
         assert_eq!(output.unique_failure_types, 0);
     }
 
     #[test]
     fn test_check_repeated_failures_no_history() {
-        let result = ContextAugmenter::check_repeated_failures(
-            &[sample_missing_symbol()],
-            &[],
-        );
+        let result = ContextAugmenter::check_repeated_failures(&[sample_missing_symbol()], &[]);
         assert!(!result.is_repeated);
         assert!(result.first_seen_iteration.is_none());
         assert_eq!(result.repeat_count, 0);
@@ -499,10 +478,12 @@ mod tests {
             max_iterations: 3,
         });
 
-        assert!(output
-            .augmented_intent
-            .input
-            .contains("Wrong argument count for 'calculate'"));
+        assert!(
+            output
+                .augmented_intent
+                .input
+                .contains("Wrong argument count for 'calculate'")
+        );
         assert!(output.augmented_intent.input.contains("Expected 2, got 3"));
     }
 
@@ -523,10 +504,12 @@ mod tests {
         });
 
         assert!(output.augmented_intent.input.contains("Type mismatch"));
-        assert!(output
-            .augmented_intent
-            .input
-            .contains("Expected 'string', got 'number'"));
+        assert!(
+            output
+                .augmented_intent
+                .input
+                .contains("Expected 'string', got 'number'")
+        );
         assert!(output.augmented_intent.input.contains("types.ts:5:10"));
     }
 }

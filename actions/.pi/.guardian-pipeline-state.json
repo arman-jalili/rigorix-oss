@@ -1,13 +1,11 @@
 {
-  "id": "PL-5204",
-  "name": "\"diff-analyzer\"",
+  "id": "PL-2600",
+  "name": "\"action-output\"",
   "items": [
     "issue-contract-freeze",
-    "issue-prdiff",
-    "issue-pathvalidator",
-    "issue-limitenforcer",
-    "issue-riskclassifier",
-    "issue-aisignaldetector",
+    "issue-outputformatter",
+    "issue-annotationwriter",
+    "issue-stepsummarywriter",
     "issue-proofing",
     "issue-architecture-readiness"
   ],
@@ -52,7 +50,7 @@
       }
     }
   ],
-  "currentItemIndex": 8,
+  "currentItemIndex": 6,
   "currentStepIndex": 0,
   "status": "done",
   "retryCount": 0,
@@ -84,7 +82,7 @@
       ]
     },
     {
-      "item": "issue-prdiff",
+      "item": "issue-outputformatter",
       "status": "done",
       "stepResults": [
         {
@@ -110,7 +108,7 @@
       ]
     },
     {
-      "item": "issue-pathvalidator",
+      "item": "issue-annotationwriter",
       "status": "done",
       "stepResults": [
         {
@@ -136,59 +134,7 @@
       ]
     },
     {
-      "item": "issue-limitenforcer",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-riskclassifier",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-aisignaldetector",
+      "item": "issue-stepsummarywriter",
       "status": "done",
       "stepResults": [
         {
@@ -267,6 +213,6 @@
     }
   ],
   "mergeOnValid": true,
-  "createdAt": "2026-06-20T14:43:57.520Z",
-  "updatedAt": "2026-06-20T15:15:48.768Z"
+  "createdAt": "2026-06-20T16:49:31.359Z",
+  "updatedAt": "2026-06-20T17:25:06.928Z"
 }

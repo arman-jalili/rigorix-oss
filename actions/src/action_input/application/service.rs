@@ -122,10 +122,8 @@ pub trait CommentParsingService: Send + Sync {
     ///
     /// Scans the comment text for lines starting with `/rigorix`.
     /// Returns the parsed command or `None` if no command is found.
-    async fn parse(
-        &self,
-        input: ParseCommentInput,
-    ) -> Result<ParseCommentOutput, ActionInputError>;
+    async fn parse(&self, input: ParseCommentInput)
+    -> Result<ParseCommentOutput, ActionInputError>;
 
     /// Parse a command and validate its arguments.
     ///

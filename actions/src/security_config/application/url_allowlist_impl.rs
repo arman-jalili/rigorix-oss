@@ -77,10 +77,7 @@ impl Default for UrlAllowlistImpl {
 
 #[async_trait]
 impl UrlAllowlistService for UrlAllowlistImpl {
-    async fn validate(
-        &self,
-        input: ValidateUrlInput,
-    ) -> Result<ValidateUrlOutput, SecurityError> {
+    async fn validate(&self, input: ValidateUrlInput) -> Result<ValidateUrlOutput, SecurityError> {
         let allowlist = input
             .allowlist_override
             .unwrap_or_else(|| self.allowlist.clone());
@@ -99,10 +96,12 @@ impl UrlAllowlistService for UrlAllowlistImpl {
             return Err(SecurityError::InvalidUrl(input.url.clone()));
         }
 
-        let host = Self::extract_host(&input.url).ok_or_else(|| {
-            SecurityError::InvalidUrl(input.url.clone())
-        })?.to_lowercase();
-        let allowed = allowlist.iter().any(|a| host == *a || host.ends_with(&format!(".{}", a)));
+        let host = Self::extract_host(&input.url)
+            .ok_or_else(|| SecurityError::InvalidUrl(input.url.clone()))?
+            .to_lowercase();
+        let allowed = allowlist
+            .iter()
+            .any(|a| host == *a || host.ends_with(&format!(".{}", a)));
 
         if !allowed {
             return Err(SecurityError::UrlBlocked {
@@ -133,7 +132,10 @@ impl UrlAllowlistService for UrlAllowlistImpl {
 
     async fn is_host_allowed(&self, host: &str) -> Result<bool, SecurityError> {
         let host_lower = host.to_lowercase();
-        Ok(self.allowlist.iter().any(|a| host_lower == *a || host_lower.ends_with(&format!(".{}", a))))
+        Ok(self
+            .allowlist
+            .iter()
+            .any(|a| host_lower == *a || host_lower.ends_with(&format!(".{}", a))))
     }
 }
 
@@ -165,7 +167,10 @@ mod tests {
         };
         let result = allowlist.validate(input).await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), SecurityError::UrlBlocked { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            SecurityError::UrlBlocked { .. }
+        ));
     }
 
     #[tokio::test]

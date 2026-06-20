@@ -1,47 +1,31 @@
 {
-  "name": "\"diff-analyzer\"",
-  "trackingIssueId": "551",
+  "name": "\"action-output\"",
+  "trackingIssueId": "576",
   "epicId": null,
   "slices": [
     {
-      "module": "diff-analyzer",
+      "module": "action-output",
       "components": [
         {
-          "name": "PrDiff",
+          "name": "OutputFormatter",
           "status": "planned",
-          "description": "/// Structured representation of a Pull Request diff.",
+          "description": "Top-level formatter that orchestrates all output channels",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "PathValidator",
+          "name": "AnnotationWriter",
           "status": "planned",
-          "description": "/// Validates file paths for security and correctness.",
+          "description": "Emits GitHub workflow annotations for template failures",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "LimitEnforcer",
+          "name": "StepSummaryWriter",
           "status": "planned",
-          "description": "/// Enforces resource limits on PR diffs.",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "RiskClassifier",
-          "status": "planned",
-          "description": "/// Classifies changed files by risk level based on path patterns.",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "AiSignalDetector",
-          "status": "planned",
-          "description": "/// Detects AI-generated code signals in PR diffs.",
+          "description": "Writes GitHub Actions step summaries (markdown rendered in the Actions UI)",
           "dependencies": [
             "none"
           ]
@@ -49,41 +33,25 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "PrDiff",
+          "name": "OutputFormatter",
           "status": "planned",
-          "description": "/// Structured representation of a Pull Request diff.",
+          "description": "Top-level formatter that orchestrates all output channels",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "PathValidator",
+          "name": "AnnotationWriter",
           "status": "planned",
-          "description": "/// Validates file paths for security and correctness.",
+          "description": "Emits GitHub workflow annotations for template failures",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "LimitEnforcer",
+          "name": "StepSummaryWriter",
           "status": "planned",
-          "description": "/// Enforces resource limits on PR diffs.",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "RiskClassifier",
-          "status": "planned",
-          "description": "/// Classifies changed files by risk level based on path patterns.",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "AiSignalDetector",
-          "status": "planned",
-          "description": "/// Detects AI-generated code signals in PR diffs.",
+          "description": "Writes GitHub Actions step summaries (markdown rendered in the Actions UI)",
           "dependencies": [
             "none"
           ]
@@ -96,52 +64,40 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "552"
+      "remoteIssueId": "577"
     },
     {
-      "id": "issue-prdiff",
-      "title": "PrDiff: /// Structured representation of a Pull Request diff.",
+      "id": "issue-outputformatter",
+      "title": "OutputFormatter: Top-level formatter that orchestrates all output channels",
       "status": "planned",
-      "remoteIssueId": "553"
+      "remoteIssueId": "578"
     },
     {
-      "id": "issue-pathvalidator",
-      "title": "PathValidator: /// Validates file paths for security and correctness.",
+      "id": "issue-annotationwriter",
+      "title": "AnnotationWriter: Emits GitHub workflow annotations for template failures",
       "status": "planned",
-      "remoteIssueId": "554"
+      "remoteIssueId": "579"
     },
     {
-      "id": "issue-limitenforcer",
-      "title": "LimitEnforcer: /// Enforces resource limits on PR diffs.",
+      "id": "issue-stepsummarywriter",
+      "title": "StepSummaryWriter: Writes GitHub Actions step summaries (markdown rendered in the Actions UI)",
       "status": "planned",
-      "remoteIssueId": "555"
-    },
-    {
-      "id": "issue-riskclassifier",
-      "title": "RiskClassifier: /// Classifies changed files by risk level based on path patterns.",
-      "status": "planned",
-      "remoteIssueId": "556"
-    },
-    {
-      "id": "issue-aisignaldetector",
-      "title": "AiSignalDetector: /// Detects AI-generated code signals in PR diffs.",
-      "status": "planned",
-      "remoteIssueId": "557"
+      "remoteIssueId": "580"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "558"
+      "remoteIssueId": "581"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "559"
+      "remoteIssueId": "582"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-06-20T14:43:57.497Z"
+  "createdAt": "2026-06-20T16:49:31.323Z"
 }

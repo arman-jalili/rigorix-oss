@@ -19,8 +19,8 @@ use std::sync::RwLock;
 
 use crate::permission::application::enforcer::PermissionEnforcer;
 use crate::permission::domain::{
-    BashClassifier, PermissionContext, PermissionError, PermissionMode,
-    PermissionOutcome, PermissionPolicy,
+    BashClassifier, PermissionContext, PermissionError, PermissionMode, PermissionOutcome,
+    PermissionPolicy,
 };
 
 /// Concrete implementation of the `PermissionEnforcer` trait.
@@ -59,11 +59,7 @@ impl PermissionEnforcerImpl {
                 // resolve its parent directory
                 let parent = Path::new(path).parent();
                 match parent.and_then(|p| std::fs::canonicalize(p).ok()) {
-                    Some(par) => par.join(
-                        Path::new(path)
-                            .file_name()
-                            .unwrap_or_default(),
-                    ),
+                    Some(par) => par.join(Path::new(path).file_name().unwrap_or_default()),
                     None => Path::new(path).to_path_buf(),
                 }
             }
@@ -89,10 +85,8 @@ impl PermissionEnforcer for PermissionEnforcerImpl {
         let policy = self
             .policy
             .read()
-            .map_err(|e| {
-                PermissionError::InvalidState {
-                    detail: format!("Failed to read policy: {}", e),
-                }
+            .map_err(|e| PermissionError::InvalidState {
+                detail: format!("Failed to read policy: {}", e),
             });
 
         let policy = match policy {
@@ -119,10 +113,8 @@ impl PermissionEnforcer for PermissionEnforcerImpl {
         let policy = self
             .policy
             .read()
-            .map_err(|e| {
-                PermissionError::InvalidState {
-                    detail: format!("Failed to read policy: {}", e),
-                }
+            .map_err(|e| PermissionError::InvalidState {
+                detail: format!("Failed to read policy: {}", e),
             });
 
         let policy = match policy {
@@ -181,10 +173,8 @@ impl PermissionEnforcer for PermissionEnforcerImpl {
         let policy = self
             .policy
             .read()
-            .map_err(|e| {
-                PermissionError::InvalidState {
-                    detail: format!("Failed to read policy: {}", e),
-                }
+            .map_err(|e| PermissionError::InvalidState {
+                detail: format!("Failed to read policy: {}", e),
             });
 
         let policy = match policy {
@@ -259,11 +249,12 @@ impl PermissionEnforcer for PermissionEnforcerImpl {
             config.ask,
         );
 
-        let mut policy = self.policy.write().map_err(|e| {
-            PermissionError::InvalidState {
+        let mut policy = self
+            .policy
+            .write()
+            .map_err(|e| PermissionError::InvalidState {
                 detail: format!("Failed to write policy: {}", e),
-            }
-        })?;
+            })?;
         *policy = new_policy;
 
         Ok(())
@@ -274,7 +265,6 @@ impl PermissionEnforcer for PermissionEnforcerImpl {
 mod tests {
     use super::*;
     use crate::permission::domain::PermissionPolicy;
-    
 
     /// Helper: create a test enforcer with workspace_write mode.
     fn test_enforcer(workspace_root: &str) -> PermissionEnforcerImpl {
@@ -302,29 +292,42 @@ mod tests {
     async fn test_check_allows_read_file_in_workspace_write() {
         let enforcer = test_enforcer("/tmp");
         let outcome = enforcer.check("read_file", "test.txt", None).await;
-        assert!(outcome.is_allowed(), "read_file should be allowed in workspace_write");
+        assert!(
+            outcome.is_allowed(),
+            "read_file should be allowed in workspace_write"
+        );
     }
 
     #[tokio::test]
     async fn test_check_denies_write_file_in_read_only() {
         let enforcer = read_only_enforcer("/tmp");
         let outcome = enforcer.check("write_file", "/tmp/test.txt", None).await;
-        assert!(outcome.is_denied(), "write_file should be denied in read_only");
+        assert!(
+            outcome.is_denied(),
+            "write_file should be denied in read_only"
+        );
     }
 
     #[tokio::test]
     async fn test_check_allows_with_context_elevation() {
         let enforcer = read_only_enforcer("/tmp");
         let ctx = PermissionContext::elevate(PermissionMode::WorkspaceWrite, "Need to write");
-        let outcome = enforcer.check("write_file", "/tmp/test.txt", Some(&ctx)).await;
-        assert!(outcome.is_allowed(), "elevated context should allow write_file");
+        let outcome = enforcer
+            .check("write_file", "/tmp/test.txt", Some(&ctx))
+            .await;
+        assert!(
+            outcome.is_allowed(),
+            "elevated context should allow write_file"
+        );
     }
 
     #[tokio::test]
     async fn test_check_allows_with_context_bypass() {
         let enforcer = read_only_enforcer("/tmp");
         let ctx = PermissionContext::bypass("Emergency");
-        let outcome = enforcer.check("write_file", "/tmp/test.txt", Some(&ctx)).await;
+        let outcome = enforcer
+            .check("write_file", "/tmp/test.txt", Some(&ctx))
+            .await;
         assert!(outcome.is_allowed(), "bypass context should allow any tool");
     }
 
@@ -332,7 +335,10 @@ mod tests {
     async fn test_check_denies_delete_file_in_workspace_write() {
         let enforcer = test_enforcer("/tmp");
         let outcome = enforcer.check("delete_file", "/tmp/x", None).await;
-        assert!(outcome.is_denied(), "delete_file requires dangerous_full_access");
+        assert!(
+            outcome.is_denied(),
+            "delete_file requires dangerous_full_access"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -346,31 +352,43 @@ mod tests {
         let root = dir.to_str().unwrap_or("/tmp");
         let enforcer = test_enforcer(root);
         let outcome = enforcer.check_file_write(root, root, None).await;
-        assert!(outcome.is_allowed(), "write inside workspace should be allowed");
+        assert!(
+            outcome.is_allowed(),
+            "write inside workspace should be allowed"
+        );
     }
 
     #[tokio::test]
     async fn test_file_write_denied_in_read_only() {
         let enforcer = read_only_enforcer("/tmp");
-        let outcome = enforcer.check_file_write("/tmp/test.txt", "/tmp", None).await;
-        assert!(outcome.is_denied(), "file write should be denied in read_only");
+        let outcome = enforcer
+            .check_file_write("/tmp/test.txt", "/tmp", None)
+            .await;
+        assert!(
+            outcome.is_denied(),
+            "file write should be denied in read_only"
+        );
     }
 
     #[tokio::test]
     async fn test_file_write_allowed_in_dangerous() {
         let enforcer = dangerous_enforcer("/tmp");
         let outcome = enforcer.check_file_write("/etc/passwd", "/tmp", None).await;
-        assert!(outcome.is_allowed(), "file write should be allowed in dangerous_full_access");
+        assert!(
+            outcome.is_allowed(),
+            "file write should be allowed in dangerous_full_access"
+        );
     }
 
     #[tokio::test]
     async fn test_file_write_denied_outside_workspace() {
         let enforcer = test_enforcer("/tmp");
         // A path that's clearly outside /tmp
-        let outcome = enforcer
-            .check_file_write("/etc/passwd", "/tmp", None)
-            .await;
-        assert!(outcome.is_denied(), "write outside workspace should be denied");
+        let outcome = enforcer.check_file_write("/etc/passwd", "/tmp", None).await;
+        assert!(
+            outcome.is_denied(),
+            "write outside workspace should be denied"
+        );
         assert!(outcome.to_string().contains("outside workspace"));
     }
 
@@ -381,7 +399,10 @@ mod tests {
         let outcome = enforcer
             .check_file_write("/tmp/test.txt", "/tmp", Some(&ctx))
             .await;
-        assert!(outcome.is_allowed(), "elevated context should allow file write");
+        assert!(
+            outcome.is_allowed(),
+            "elevated context should allow file write"
+        );
     }
 
     #[tokio::test]
@@ -417,14 +438,20 @@ mod tests {
     async fn test_bash_workspace_write_allows_all() {
         let enforcer = test_enforcer("/tmp");
         let outcome = enforcer.check_bash("rm -rf /tmp", None).await;
-        assert!(outcome.is_allowed(), "bash should be allowed in workspace_write");
+        assert!(
+            outcome.is_allowed(),
+            "bash should be allowed in workspace_write"
+        );
     }
 
     #[tokio::test]
     async fn test_bash_dangerous_allows_all() {
         let enforcer = dangerous_enforcer("/tmp");
         let outcome = enforcer.check_bash("sudo rm -rf /", None).await;
-        assert!(outcome.is_allowed(), "bash should be allowed in dangerous_full_access");
+        assert!(
+            outcome.is_allowed(),
+            "bash should be allowed in dangerous_full_access"
+        );
     }
 
     #[tokio::test]
@@ -446,7 +473,10 @@ mod tests {
     async fn test_bash_read_only_denies_cargo_build() {
         let enforcer = read_only_enforcer("/tmp");
         let outcome = enforcer.check_bash("cargo build", None).await;
-        assert!(outcome.is_denied(), "cargo build should be denied in read_only");
+        assert!(
+            outcome.is_denied(),
+            "cargo build should be denied in read_only"
+        );
         assert!(outcome.to_string().contains("package_management"));
     }
 
@@ -513,14 +543,20 @@ mod tests {
     async fn test_file_write_root_as_workspace() {
         let enforcer = test_enforcer("/");
         let outcome = enforcer.check_file_write("/tmp/test.txt", "/", None).await;
-        assert!(outcome.is_allowed(), "write inside root workspace should be allowed");
+        assert!(
+            outcome.is_allowed(),
+            "write inside root workspace should be allowed"
+        );
     }
 
     #[tokio::test]
     async fn test_bash_empty_command() {
         let enforcer = read_only_enforcer("/tmp");
         let outcome = enforcer.check_bash("", None).await;
-        assert!(outcome.is_denied(), "empty command should be denied in read_only");
+        assert!(
+            outcome.is_denied(),
+            "empty command should be denied in read_only"
+        );
     }
 
     #[tokio::test]

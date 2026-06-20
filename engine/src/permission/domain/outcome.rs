@@ -75,7 +75,12 @@ impl fmt::Display for PermissionOutcome {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             PermissionOutcome::Allowed => write!(f, "Allowed"),
-            PermissionOutcome::Denied { tool, active_mode, required_mode, reason } => {
+            PermissionOutcome::Denied {
+                tool,
+                active_mode,
+                required_mode,
+                reason,
+            } => {
                 write!(
                     f,
                     "Denied[tool={}, active_mode={}, required_mode={}]: {}",
@@ -113,7 +118,10 @@ mod tests {
         };
         assert!(!outcome.is_allowed());
         assert!(outcome.is_denied());
-        assert_eq!(outcome.deny_reason(), Some("bash requires workspace_write mode"));
+        assert_eq!(
+            outcome.deny_reason(),
+            Some("bash requires workspace_write mode")
+        );
         assert_eq!(outcome.denied_tool(), Some("bash"));
     }
 

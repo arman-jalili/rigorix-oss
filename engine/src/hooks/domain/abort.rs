@@ -15,8 +15,8 @@
 //! - Default is unset (execution proceeds normally)
 //! - Once set, it cannot be unset
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// A shared, thread-safe abort signal for cooperative hook cancellation.
 ///

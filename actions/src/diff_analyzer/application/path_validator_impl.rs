@@ -15,7 +15,9 @@
 
 use async_trait::async_trait;
 
-use crate::diff_analyzer::application::dto::{PathValidationResult, ValidatePathsInput, ValidatePathsOutput};
+use crate::diff_analyzer::application::dto::{
+    PathValidationResult, ValidatePathsInput, ValidatePathsOutput,
+};
 use crate::diff_analyzer::application::service::PathValidationService;
 use crate::diff_analyzer::domain::DiffAnalyzerError;
 
@@ -42,7 +44,10 @@ impl Default for PathValidatorImpl {
 
 #[async_trait]
 impl PathValidationService for PathValidatorImpl {
-    async fn validate(&self, input: ValidatePathsInput) -> Result<ValidatePathsOutput, DiffAnalyzerError> {
+    async fn validate(
+        &self,
+        input: ValidatePathsInput,
+    ) -> Result<ValidatePathsOutput, DiffAnalyzerError> {
         let allow_symlinks = input.allow_symlinks.unwrap_or(false);
         let allow_patterns = input.allow_patterns.unwrap_or_default();
 
@@ -54,7 +59,9 @@ impl PathValidationService for PathValidatorImpl {
 
             let is_allowed = result.valid
                 || result.violation.is_none()
-                || self.matches_allowed_pattern(&file.path, &allow_patterns).await
+                || self
+                    .matches_allowed_pattern(&file.path, &allow_patterns)
+                    .await
                 || (allow_symlinks && result.violation.as_deref() == Some("symlink"));
 
             if !is_allowed {
@@ -64,8 +71,16 @@ impl PathValidationService for PathValidatorImpl {
             results.push(PathValidationResult {
                 path: file.path.clone(),
                 valid: is_allowed,
-                violation: if is_allowed { None } else { result.violation.clone() },
-                message: if is_allowed { None } else { result.message.clone() },
+                violation: if is_allowed {
+                    None
+                } else {
+                    result.violation.clone()
+                },
+                message: if is_allowed {
+                    None
+                } else {
+                    result.message.clone()
+                },
             });
         }
 
@@ -77,7 +92,10 @@ impl PathValidationService for PathValidatorImpl {
         })
     }
 
-    async fn validate_single_path(&self, path: &str) -> Result<PathValidationResult, DiffAnalyzerError> {
+    async fn validate_single_path(
+        &self,
+        path: &str,
+    ) -> Result<PathValidationResult, DiffAnalyzerError> {
         // Check for null bytes (injection)
         if path.contains('\0') {
             return Ok(PathValidationResult {
@@ -123,7 +141,8 @@ impl PathValidationService for PathValidatorImpl {
         }
 
         // Check for Windows drive letters (path injection)
-        if path.len() >= 2 && path.as_bytes()[1] == b':' && path.as_bytes()[0].is_ascii_alphabetic() {
+        if path.len() >= 2 && path.as_bytes()[1] == b':' && path.as_bytes()[0].is_ascii_alphabetic()
+        {
             return Ok(PathValidationResult {
                 path: path.to_string(),
                 valid: false,
@@ -168,22 +187,25 @@ impl PathValidationService for PathValidatorImpl {
 mod tests {
     use super::*;
     use crate::diff_analyzer::domain::ChangedFile;
-    use crate::diff_analyzer::domain::PrDiff;
-    use crate::diff_analyzer::domain::FileStatus;
     use crate::diff_analyzer::domain::FileRisk;
+    use crate::diff_analyzer::domain::FileStatus;
+    use crate::diff_analyzer::domain::PrDiff;
 
     fn make_diff(files: Vec<&str>) -> PrDiff {
         PrDiff {
-            files: files.into_iter().map(|p| ChangedFile {
-                path: p.to_string(),
-                status: FileStatus::Modified,
-                additions: 1,
-                deletions: 0,
-                is_binary: false,
-                hunks: Vec::new(),
-                risk: FileRisk::Medium,
-                raw_diff: None,
-            }).collect(),
+            files: files
+                .into_iter()
+                .map(|p| ChangedFile {
+                    path: p.to_string(),
+                    status: FileStatus::Modified,
+                    additions: 1,
+                    deletions: 0,
+                    is_binary: false,
+                    hunks: Vec::new(),
+                    risk: FileRisk::Medium,
+                    raw_diff: None,
+                })
+                .collect(),
             total_size_bytes: 0,
             excluded_files: Vec::new(),
             limits_exceeded: false,
@@ -249,7 +271,10 @@ mod tests {
         let result = validator.validate(input).await.unwrap();
         assert!(!result.all_valid);
         assert_eq!(result.violation_count, 1);
-        assert_eq!(result.results[0].violation.as_deref(), Some("path_injection"));
+        assert_eq!(
+            result.results[0].violation.as_deref(),
+            Some("path_injection")
+        );
     }
 
     #[tokio::test]
@@ -315,7 +340,10 @@ mod tests {
     #[tokio::test]
     async fn test_validate_single_path_traversal() {
         let validator = PathValidatorImpl::new();
-        let result = validator.validate_single_path("../secret.txt").await.unwrap();
+        let result = validator
+            .validate_single_path("../secret.txt")
+            .await
+            .unwrap();
         assert!(!result.valid);
         assert_eq!(result.violation.as_deref(), Some("path_traversal"));
     }
@@ -323,7 +351,10 @@ mod tests {
     #[tokio::test]
     async fn test_validate_single_path_injection() {
         let validator = PathValidatorImpl::new();
-        let result = validator.validate_single_path("src/main.rs\0").await.unwrap();
+        let result = validator
+            .validate_single_path("src/main.rs\0")
+            .await
+            .unwrap();
         assert!(!result.valid);
         assert_eq!(result.violation.as_deref(), Some("path_injection"));
     }
@@ -338,7 +369,9 @@ mod tests {
     #[tokio::test]
     async fn test_match_allowed_pattern_exact() {
         let validator = PathValidatorImpl::new();
-        let result = validator.matches_allowed_pattern("src/main.rs", &["src/main.rs".to_string()]).await;
+        let result = validator
+            .matches_allowed_pattern("src/main.rs", &["src/main.rs".to_string()])
+            .await;
         assert!(result);
     }
 

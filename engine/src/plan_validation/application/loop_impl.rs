@@ -27,8 +27,8 @@ use crate::failure_parser::domain::TemplateFailure;
 use crate::plan_validation::application::context_augmenter::ContextAugmenter;
 use crate::plan_validation::application::dto::{
     AugmentIntentInput, ClassifyNodesInput, ClassifyNodesOutput, EvaluateIterationInput,
-    EvaluateIterationOutput, RetryGenerativeNodesInput, RetryGenerativeNodesOutput,
-    ValidateInput, ValidateOutput,
+    EvaluateIterationOutput, RetryGenerativeNodesInput, RetryGenerativeNodesOutput, ValidateInput,
+    ValidateOutput,
 };
 use crate::plan_validation::application::service::{
     QualityGateEvaluationService, ValidationLoopService,
@@ -132,10 +132,7 @@ impl ValidationLoopImpl {
 
 #[async_trait]
 impl ValidationLoopService for ValidationLoopImpl {
-    async fn validate(
-        &self,
-        input: ValidateInput,
-    ) -> Result<ValidateOutput, ValidationLoopError> {
+    async fn validate(&self, input: ValidateInput) -> Result<ValidateOutput, ValidationLoopError> {
         let execution_id = input.execution_id.unwrap_or_else(Uuid::new_v4);
         let mut state = ValidationState::new(execution_id, input.intent);
         let start_time = std::time::Instant::now();
@@ -180,12 +177,8 @@ impl ValidationLoopService for ValidationLoopImpl {
 
             if iteration < self.config.max_iterations {
                 // Augment context and retry
-                self.retry_with_augmented_context(
-                    &mut state,
-                    eval.failures,
-                    eval.llm_tokens_used,
-                )
-                .await?;
+                self.retry_with_augmented_context(&mut state, eval.failures, eval.llm_tokens_used)
+                    .await?;
             }
         }
 

@@ -19,7 +19,10 @@ pub trait SyntaxGateFactory: Send + Sync {
     fn create_default(&self) -> Result<Box<dyn SyntaxGateService>, CodeGenError>;
 
     /// Create a SyntaxGateService with explicit configuration.
-    fn create(&self, config: super::dto::SyntaxGateConfig) -> Result<Box<dyn SyntaxGateService>, CodeGenError>;
+    fn create(
+        &self,
+        config: super::dto::SyntaxGateConfig,
+    ) -> Result<Box<dyn SyntaxGateService>, CodeGenError>;
 
     /// Create a SyntaxGateService with the given tree-sitter parsers.
     fn create_with_parsers(

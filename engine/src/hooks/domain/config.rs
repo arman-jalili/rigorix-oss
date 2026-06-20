@@ -116,9 +116,7 @@ impl HookConfig {
 
     /// Returns the total number of registered hook commands across all events.
     pub fn total_command_count(&self) -> usize {
-        self.pre_tool_use.len()
-            + self.post_tool_use.len()
-            + self.post_tool_use_failure.len()
+        self.pre_tool_use.len() + self.post_tool_use.len() + self.post_tool_use_failure.len()
     }
 }
 
@@ -143,10 +141,7 @@ mod tests {
             config.commands_for(HookEvent::PreToolUse),
             &["validate-path", "ci-guard"]
         );
-        assert_eq!(
-            config.commands_for(HookEvent::PostToolUse),
-            &["fmt-check"]
-        );
+        assert_eq!(config.commands_for(HookEvent::PostToolUse), &["fmt-check"]);
         assert_eq!(
             config.commands_for(HookEvent::PostToolUseFailure),
             &["notify"]
@@ -205,7 +200,11 @@ mod tests {
         let config = HookConfig::default();
         assert!(config.commands_for(HookEvent::PreToolUse).is_empty());
         assert!(config.commands_for(HookEvent::PostToolUse).is_empty());
-        assert!(config.commands_for(HookEvent::PostToolUseFailure).is_empty());
+        assert!(
+            config
+                .commands_for(HookEvent::PostToolUseFailure)
+                .is_empty()
+        );
     }
 
     #[test]

@@ -97,11 +97,7 @@ impl PolicyDocumentFactory for PolicyDocumentFactoryImpl {
         Ok(())
     }
 
-    async fn with_limits(
-        &self,
-        policy: &PolicyDocument,
-        limits: PolicyLimits,
-    ) -> PolicyDocument {
+    async fn with_limits(&self, policy: &PolicyDocument, limits: PolicyLimits) -> PolicyDocument {
         let mut p = policy.clone();
         p.limits = limits;
         p
@@ -136,7 +132,10 @@ mod tests {
         let factory = PolicyDocumentFactoryImpl;
         let result = factory.build_from_toml("not valid toml {{").await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), PolicyError::InvalidSyntax { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            PolicyError::InvalidSyntax { .. }
+        ));
     }
 
     #[tokio::test]
@@ -182,6 +181,9 @@ mod tests {
         "#;
         let result = factory.build_from_toml(toml).await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), PolicyError::DuplicateRuleName { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            PolicyError::DuplicateRuleName { .. }
+        ));
     }
 }

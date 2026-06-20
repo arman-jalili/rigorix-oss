@@ -108,7 +108,8 @@ mod tests {
 
     #[test]
     fn test_elevate_context() {
-        let ctx = PermissionContext::elevate(PermissionMode::DangerousFullAccess, "Need to install deps");
+        let ctx =
+            PermissionContext::elevate(PermissionMode::DangerousFullAccess, "Need to install deps");
         assert!(ctx.has_override());
         assert_eq!(ctx.elevated_mode, Some(PermissionMode::DangerousFullAccess));
         assert_eq!(ctx.reason.as_deref(), Some("Need to install deps"));

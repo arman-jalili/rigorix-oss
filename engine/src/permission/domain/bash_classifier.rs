@@ -79,9 +79,7 @@ impl CommandIntent {
     pub fn requires_full_access(&self) -> bool {
         matches!(
             self,
-            CommandIntent::Destructive
-                | CommandIntent::Network
-                | CommandIntent::ProcessManagement
+            CommandIntent::Destructive | CommandIntent::Network | CommandIntent::ProcessManagement
         )
     }
 }
@@ -114,12 +112,11 @@ pub struct BashClassifier;
 
 /// Commands that only read state without side effects.
 const READ_ONLY_COMMANDS: &[&str] = &[
-    "ls", "cat", "grep", "egrep", "fgrep", "find", "head", "tail", "wc",
-    "sort", "uniq", "diff", "file", "stat", "du", "df", "ps", "top", "htop",
-    "who", "whoami", "env", "echo", "printf", "which", "whereis", "type",
-    "printenv", "pwd", "date", "cal", "nproc", "free", "uptime", "lscpu",
-    "lsblk", "lspci", "lsusb", "getfacl", "bat", "less", "more", "xxd",
-    "hexdump", "od", "strings", "nm", "objdump", "readelf", "ldd",
+    "ls", "cat", "grep", "egrep", "fgrep", "find", "head", "tail", "wc", "sort", "uniq", "diff",
+    "file", "stat", "du", "df", "ps", "top", "htop", "who", "whoami", "env", "echo", "printf",
+    "which", "whereis", "type", "printenv", "pwd", "date", "cal", "nproc", "free", "uptime",
+    "lscpu", "lsblk", "lspci", "lsusb", "getfacl", "bat", "less", "more", "xxd", "hexdump", "od",
+    "strings", "nm", "objdump", "readelf", "ldd",
     "git", // git subcommands classified separately — see below
 ];
 
@@ -166,53 +163,140 @@ const GIT_WRITE_SUBCOMMANDS: &[&[&str]] = &[
 
 /// Commands that write/modify state (non-destructive).
 const WRITE_COMMANDS: &[&str] = &[
-    "cp", "mv", "mkdir", "rmdir", "touch", "ln", "tee", "install",
-    "test", "[",
+    "cp", "mv", "mkdir", "rmdir", "touch", "ln", "tee", "install", "test", "[",
 ];
 
 /// Commands that are destructive or hard to undo.
 const DESTRUCTIVE_COMMANDS: &[&str] = &[
-    "rm", "shred", "truncate", "mkfifo", "mknod", "dd", "fallocate",
-    "fstrim", "wipefs", "mkfs", "fdisk", "parted",
+    "rm",
+    "shred",
+    "truncate",
+    "mkfifo",
+    "mknod",
+    "dd",
+    "fallocate",
+    "fstrim",
+    "wipefs",
+    "mkfs",
+    "fdisk",
+    "parted",
 ];
 
 /// Commands that make network connections.
 const NETWORK_COMMANDS: &[&str] = &[
-    "curl", "wget", "ssh", "scp", "rsync", "nc", "ncat", "socat",
-    "ping", "traceroute", "tracepath", "mtr", "nslookup", "dig",
-    "host", "whois", "netstat", "ss", "ip", "ifconfig", "iwconfig",
-    "iw", "tcpdump", "nmap", "telnet", "ftp", "sftp",
+    "curl",
+    "wget",
+    "ssh",
+    "scp",
+    "rsync",
+    "nc",
+    "ncat",
+    "socat",
+    "ping",
+    "traceroute",
+    "tracepath",
+    "mtr",
+    "nslookup",
+    "dig",
+    "host",
+    "whois",
+    "netstat",
+    "ss",
+    "ip",
+    "ifconfig",
+    "iwconfig",
+    "iw",
+    "tcpdump",
+    "nmap",
+    "telnet",
+    "ftp",
+    "sftp",
 ];
 
 /// Commands that manage processes.
 const PROCESS_COMMANDS: &[&str] = &[
-    "kill", "pkill", "killall", "nice", "renice", "bg", "fg", "jobs",
-    "wait", "nohup", "disown", "timeout",
+    "kill", "pkill", "killall", "nice", "renice", "bg", "fg", "jobs", "wait", "nohup", "disown",
+    "timeout",
 ];
 
 /// Package and dependency managers.
 const PACKAGE_MANAGERS: &[&str] = &[
-    "apt", "apt-get", "apt-cache", "dpkg", "brew", "port", "pip",
-    "pip3", "pipx", "npm", "yarn", "pnpm", "bun", "cargo", "gem",
-    "rustup", "go", "dotnet", "nuget", "conda", "mamba", "flatpak",
-    "snap", "pacman", "yay", "paru", "zypper", "dnf", "yum", "rpm",
-    "nix", "guix", "choco", "scoop",
+    "apt",
+    "apt-get",
+    "apt-cache",
+    "dpkg",
+    "brew",
+    "port",
+    "pip",
+    "pip3",
+    "pipx",
+    "npm",
+    "yarn",
+    "pnpm",
+    "bun",
+    "cargo",
+    "gem",
+    "rustup",
+    "go",
+    "dotnet",
+    "nuget",
+    "conda",
+    "mamba",
+    "flatpak",
+    "snap",
+    "pacman",
+    "yay",
+    "paru",
+    "zypper",
+    "dnf",
+    "yum",
+    "rpm",
+    "nix",
+    "guix",
+    "choco",
+    "scoop",
 ];
 
 /// System administration commands.
 const SYSTEM_ADMIN_COMMANDS: &[&str] = &[
-    "sudo", "doas", "chmod", "chown", "chgrp", "mount", "umount",
-    "systemctl", "journalctl", "service", "docker", "podman", "kubectl",
-    "helm", "minikube", "systemd-run", "firewall-cmd", "ufw",
-    "iptables", "nft", "sysctl", "modprobe", "insmod", "rmmod",
-    "swapon", "swapoff", "crontab", "at", "batch", "logrotate",
-    "setfacl", "setcap",
+    "sudo",
+    "doas",
+    "chmod",
+    "chown",
+    "chgrp",
+    "mount",
+    "umount",
+    "systemctl",
+    "journalctl",
+    "service",
+    "docker",
+    "podman",
+    "kubectl",
+    "helm",
+    "minikube",
+    "systemd-run",
+    "firewall-cmd",
+    "ufw",
+    "iptables",
+    "nft",
+    "sysctl",
+    "modprobe",
+    "insmod",
+    "rmmod",
+    "swapon",
+    "swapoff",
+    "crontab",
+    "at",
+    "batch",
+    "logrotate",
+    "setfacl",
+    "setcap",
 ];
 
 /// Cargo subcommands that are compilation/build operations.
 const CARGO_BUILD_SUBCOMMANDS: &[&str] = &[
-    "build", "check", "test", "bench", "clippy", "fmt", "fix",
-    "doc", "run", "publish", "package", "update", "clean",
+    "build", "check", "test", "bench", "clippy", "fmt", "fix", "doc", "run", "publish", "package",
+    "update", "clean",
 ];
 
 impl BashClassifier {
@@ -320,7 +404,9 @@ impl BashClassifier {
     }
 
     /// Returns the minimum `PermissionMode` required for a given `CommandIntent`.
-    pub fn required_mode_for_intent(intent: CommandIntent) -> crate::permission::domain::PermissionMode {
+    pub fn required_mode_for_intent(
+        intent: CommandIntent,
+    ) -> crate::permission::domain::PermissionMode {
         use crate::permission::domain::PermissionMode;
         match intent {
             CommandIntent::ReadOnly => PermissionMode::ReadOnly,
@@ -355,7 +441,10 @@ mod tests {
 
     #[test]
     fn test_classify_cat() {
-        assert_eq!(BashClassifier::classify("cat file.txt"), CommandIntent::ReadOnly);
+        assert_eq!(
+            BashClassifier::classify("cat file.txt"),
+            CommandIntent::ReadOnly
+        );
         assert_eq!(
             BashClassifier::classify("cat /etc/passwd"),
             CommandIntent::ReadOnly
@@ -384,9 +473,18 @@ mod tests {
 
     #[test]
     fn test_classify_head_tail_wc() {
-        assert_eq!(BashClassifier::classify("head -n 10 file"), CommandIntent::ReadOnly);
-        assert_eq!(BashClassifier::classify("tail -f log"), CommandIntent::ReadOnly);
-        assert_eq!(BashClassifier::classify("wc -l file"), CommandIntent::ReadOnly);
+        assert_eq!(
+            BashClassifier::classify("head -n 10 file"),
+            CommandIntent::ReadOnly
+        );
+        assert_eq!(
+            BashClassifier::classify("tail -f log"),
+            CommandIntent::ReadOnly
+        );
+        assert_eq!(
+            BashClassifier::classify("wc -l file"),
+            CommandIntent::ReadOnly
+        );
     }
 
     #[test]
@@ -456,7 +554,10 @@ mod tests {
 
     #[test]
     fn test_classify_destructive() {
-        assert_eq!(BashClassifier::classify("rm file"), CommandIntent::Destructive);
+        assert_eq!(
+            BashClassifier::classify("rm file"),
+            CommandIntent::Destructive
+        );
         assert_eq!(
             BashClassifier::classify("rm -rf /tmp"),
             CommandIntent::Destructive
@@ -465,7 +566,10 @@ mod tests {
             BashClassifier::classify("shred file"),
             CommandIntent::Destructive
         );
-        assert_eq!(BashClassifier::classify("dd if=/dev/zero of=file"), CommandIntent::Destructive);
+        assert_eq!(
+            BashClassifier::classify("dd if=/dev/zero of=file"),
+            CommandIntent::Destructive
+        );
     }
 
     #[test]

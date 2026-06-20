@@ -87,7 +87,10 @@ impl PermissionPolicy {
                 ("write_file".to_string(), PermissionMode::WorkspaceWrite),
                 ("edit_file".to_string(), PermissionMode::WorkspaceWrite),
                 ("create_file".to_string(), PermissionMode::WorkspaceWrite),
-                ("delete_file".to_string(), PermissionMode::DangerousFullAccess),
+                (
+                    "delete_file".to_string(),
+                    PermissionMode::DangerousFullAccess,
+                ),
                 ("bash".to_string(), PermissionMode::WorkspaceWrite),
                 ("git_commit".to_string(), PermissionMode::WorkspaceWrite),
                 ("git_push".to_string(), PermissionMode::DangerousFullAccess),
@@ -159,9 +162,7 @@ impl PermissionPolicy {
             .and_then(|c| c.elevated_mode)
             .unwrap_or(self.active_mode);
 
-        let bypass = context
-            .map(|c| c.temporary_bypass)
-            .unwrap_or(false);
+        let bypass = context.map(|c| c.temporary_bypass).unwrap_or(false);
 
         if bypass {
             return PermissionOutcome::Allowed;
@@ -197,9 +198,7 @@ impl PermissionPolicy {
                 required_mode: required.as_str().to_string(),
                 reason: format!(
                     "'{}' requires '{}' mode, but active mode is '{}'",
-                    tool_name,
-                    required,
-                    effective_mode
+                    tool_name, required, effective_mode
                 ),
             };
         }
@@ -287,12 +286,24 @@ mod tests {
     #[test]
     fn test_dangerous_allows_everything() {
         let policy = dangerous_policy();
-        assert!(policy.authorize("write_file", "/tmp/x", None, None).is_allowed());
-        assert!(policy.authorize("delete_file", "/tmp/x", None, None).is_allowed());
+        assert!(
+            policy
+                .authorize("write_file", "/tmp/x", None, None)
+                .is_allowed()
+        );
+        assert!(
+            policy
+                .authorize("delete_file", "/tmp/x", None, None)
+                .is_allowed()
+        );
         // git_push is in ask rules so needs a prompter, but DangerousFullAccess
         // passes the mode check so it should be allowed if prompter approves
         let mut prompter = AllowAllPrompter::new();
-        assert!(policy.authorize("git_push", "origin main", None, Some(&mut prompter)).is_allowed());
+        assert!(
+            policy
+                .authorize("git_push", "origin main", None, Some(&mut prompter))
+                .is_allowed()
+        );
     }
 
     #[test]
@@ -392,10 +403,22 @@ mod tests {
     #[test]
     fn test_required_mode_for() {
         let policy = workspace_policy();
-        assert_eq!(policy.required_mode_for("read_file"), PermissionMode::ReadOnly);
-        assert_eq!(policy.required_mode_for("write_file"), PermissionMode::WorkspaceWrite);
-        assert_eq!(policy.required_mode_for("delete_file"), PermissionMode::DangerousFullAccess);
-        assert_eq!(policy.required_mode_for("unknown_tool"), PermissionMode::WorkspaceWrite);
+        assert_eq!(
+            policy.required_mode_for("read_file"),
+            PermissionMode::ReadOnly
+        );
+        assert_eq!(
+            policy.required_mode_for("write_file"),
+            PermissionMode::WorkspaceWrite
+        );
+        assert_eq!(
+            policy.required_mode_for("delete_file"),
+            PermissionMode::DangerousFullAccess
+        );
+        assert_eq!(
+            policy.required_mode_for("unknown_tool"),
+            PermissionMode::WorkspaceWrite
+        );
     }
 
     #[test]

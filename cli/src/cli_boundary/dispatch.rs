@@ -470,7 +470,8 @@ pub async fn dispatch(
         }
 
         CliCommand::DiffPlan { id1, id2 } => {
-            let sm1 = services.as_ref()
+            let sm1 = services
+                .as_ref()
                 .expect("services built above")
                 .state_manager
                 .clone();
@@ -515,24 +516,21 @@ pub async fn dispatch(
                                 common_nodes.push(id.to_string());
                             }
                         } else {
-                            removed_nodes.push(format!(
-                                "{} ({:?})", id, ns1.status
-                            ));
+                            removed_nodes.push(format!("{} ({:?})", id, ns1.status));
                         }
                     }
                     for id in s2.node_states.keys() {
                         if !s1.node_states.contains_key(id) {
-                            added_nodes.push(format!(
-                                "{} ({:?})", id,
-                                s2.node_states[id].status
-                            ));
+                            added_nodes.push(format!("{} ({:?})", id, s2.node_states[id].status));
                         }
                     }
 
                     let summary = format!(
                         "Plan diff: {} added, {} removed, {} modified, {} unchanged",
-                        added_nodes.len(), removed_nodes.len(),
-                        modified_nodes.len(), common_nodes.len(),
+                        added_nodes.len(),
+                        removed_nodes.len(),
+                        modified_nodes.len(),
+                        common_nodes.len(),
                     );
                     let data = serde_json::json!({
                         "added": added_nodes,
@@ -675,15 +673,18 @@ pub async fn dispatch(
                 crate::cli_boundary::cli::AuditAction::List { limit } => {
                     match svc.audit_repository.list(None, None, limit).await {
                         Ok(envelopes) => {
-                            let summaries: Vec<serde_json::Value> = envelopes.iter().map(|e| {
-                                serde_json::json!({
-                                    "execution_id": e.execution_id,
-                                    "template_id": e.template_id,
-                                    "timestamp": e.timestamp,
-                                    "event_count": e.events.len(),
-                                    "has_signature": e.signature.is_some(),
+                            let summaries: Vec<serde_json::Value> = envelopes
+                                .iter()
+                                .map(|e| {
+                                    serde_json::json!({
+                                        "execution_id": e.execution_id,
+                                        "template_id": e.template_id,
+                                        "timestamp": e.timestamp,
+                                        "event_count": e.events.len(),
+                                        "has_signature": e.signature.is_some(),
+                                    })
                                 })
-                            }).collect();
+                                .collect();
                             let data = serde_json::json!({
                                 "count": summaries.len(),
                                 "envelopes": summaries,
@@ -697,14 +698,20 @@ pub async fn dispatch(
                     }
                 }
                 crate::cli_boundary::cli::AuditAction::Show { id } => {
-                    match svc.audit_repository.find_by_execution_id(&id.parse().unwrap_or_default()).await {
+                    match svc
+                        .audit_repository
+                        .find_by_execution_id(&id.parse().unwrap_or_default())
+                        .await
+                    {
                         Ok(Some(envelope)) => {
                             let data = serde_json::json!({
                                 "envelope": envelope,
                             });
                             DispatchResult::success_with_data(format!("Audit entry: {id}"), data)
                         }
-                        Ok(None) => DispatchResult::error(format!("audit entry not found: {id}"), 1),
+                        Ok(None) => {
+                            DispatchResult::error(format!("audit entry not found: {id}"), 1)
+                        }
                         Err(e) => DispatchResult::error(format!("audit show: {e}"), 1),
                     }
                 }
@@ -747,15 +754,15 @@ pub async fn dispatch(
                                 data,
                             )
                         }
-                        (Ok(None), _) => DispatchResult::error(
-                            format!("audit entry not found: {id1}"), 1,
-                        ),
-                        (_, Ok(None)) => DispatchResult::error(
-                            format!("audit entry not found: {id2}"), 1,
-                        ),
-                        (Err(e), _) | (_, Err(e)) => DispatchResult::error(
-                            format!("audit diff: {e}"), 1,
-                        ),
+                        (Ok(None), _) => {
+                            DispatchResult::error(format!("audit entry not found: {id1}"), 1)
+                        }
+                        (_, Ok(None)) => {
+                            DispatchResult::error(format!("audit entry not found: {id2}"), 1)
+                        }
+                        (Err(e), _) | (_, Err(e)) => {
+                            DispatchResult::error(format!("audit diff: {e}"), 1)
+                        }
                     }
                 }
             }
@@ -773,15 +780,19 @@ pub async fn dispatch(
             };
             match svc.event_bus.query_events(input).await {
                 Ok(output) => {
-                    let events: Vec<serde_json::Value> = output.events.iter().map(|pe| {
-                        serde_json::json!({
-                            "sequence": pe.sequence,
-                            "event_type": pe.event.event_type_name(),
-                            "execution_id": pe.event.execution_id(),
-                            "timestamp": pe.event.timestamp(),
-                            "summary": pe.event.summary(),
+                    let events: Vec<serde_json::Value> = output
+                        .events
+                        .iter()
+                        .map(|pe| {
+                            serde_json::json!({
+                                "sequence": pe.sequence,
+                                "event_type": pe.event.event_type_name(),
+                                "execution_id": pe.event.execution_id(),
+                                "timestamp": pe.event.timestamp(),
+                                "summary": pe.event.summary(),
+                            })
                         })
-                    }).collect();
+                        .collect();
                     let summary = if let Some(sid) = session_id {
                         format!("{} event(s) for session {}", events.len(), sid)
                     } else {

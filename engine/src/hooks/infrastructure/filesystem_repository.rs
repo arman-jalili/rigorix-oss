@@ -8,8 +8,8 @@
 //! Uses the standard `.rigorix/hooks.toml` path by default.
 
 use async_trait::async_trait;
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 
 use crate::hooks::domain::config::HookConfig;
 use crate::hooks::domain::error::HookError;
@@ -65,7 +65,8 @@ impl FilesystemHookConfigRepository {
 #[async_trait]
 impl HookCommandRepository for FilesystemHookConfigRepository {
     async fn load(&self) -> Result<HookConfig, HookError> {
-        self.load_from(self.config_path.to_str().unwrap_or("")).await
+        self.load_from(self.config_path.to_str().unwrap_or(""))
+            .await
     }
 
     async fn load_from(&self, path: &str) -> Result<HookConfig, HookError> {
@@ -107,12 +108,20 @@ impl HookCommandRepository for FilesystemHookConfigRepository {
         // Ensure parent directory exists
         if let Some(parent) = self.config_path.parent() {
             fs::create_dir_all(parent).map_err(|e| HookError::Internal {
-                detail: format!("Failed to create config directory '{}': {}", parent.display(), e),
+                detail: format!(
+                    "Failed to create config directory '{}': {}",
+                    parent.display(),
+                    e
+                ),
             })?;
         }
 
         fs::write(&self.config_path, &toml_content).map_err(|e| HookError::Internal {
-            detail: format!("Failed to write hook config to '{}': {}", self.config_path.display(), e),
+            detail: format!(
+                "Failed to write hook config to '{}': {}",
+                self.config_path.display(),
+                e
+            ),
         })?;
 
         Ok(())
@@ -125,7 +134,11 @@ impl HookCommandRepository for FilesystemHookConfigRepository {
     async fn reset(&self) -> Result<(), HookError> {
         if self.config_path.exists() {
             fs::remove_file(&self.config_path).map_err(|e| HookError::Internal {
-                detail: format!("Failed to remove hook config '{}': {}", self.config_path.display(), e),
+                detail: format!(
+                    "Failed to remove hook config '{}': {}",
+                    self.config_path.display(),
+                    e
+                ),
             })?;
         }
         Ok(())
@@ -214,8 +227,10 @@ mod tests {
         let config_path = tmp.path().join(".rigorix").join("hooks.toml");
         let repo = FilesystemHookConfigRepository::with_path(&config_path);
 
-        assert!(repo.source_path().ends_with(".rigorix/hooks.toml")
-            || repo.source_path().contains("hooks.toml"));
+        assert!(
+            repo.source_path().ends_with(".rigorix/hooks.toml")
+                || repo.source_path().contains("hooks.toml")
+        );
     }
 
     #[tokio::test]

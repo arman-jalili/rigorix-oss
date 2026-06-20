@@ -74,21 +74,11 @@ impl FailureDetail {
     /// Returns a compact one-line representation for logging.
     pub fn to_log_line(&self) -> String {
         let loc = self.location();
-        let loc_str = loc
-            .as_ref()
-            .map(|l| l.to_compact())
-            .unwrap_or_default();
-        let fix = self
-            .suggested_fix
-            .as_deref()
-            .unwrap_or("no suggestion");
+        let loc_str = loc.as_ref().map(|l| l.to_compact()).unwrap_or_default();
+        let fix = self.suggested_fix.as_deref().unwrap_or("no suggestion");
         format!(
             "[{}] {} (severity={:?}, confidence={:.2}) — fix: {}",
-            self.source_tool,
-            loc_str,
-            self.severity,
-            self.confidence,
-            fix
+            self.source_tool, loc_str, self.severity, self.confidence, fix
         )
     }
 }

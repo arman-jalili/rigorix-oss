@@ -35,17 +35,15 @@ use crate::code_graph::application::service::CodeGraphFormatter as CodeGraphForm
 use crate::code_graph::application::service_impl::CodeGraphFormatterImpl;
 use crate::event_system::application as event_app;
 use crate::execution_engine::application::{dto as exec_dto, service as exec_svc};
-use crate::planning::application::dto as planning_dto;
-use crate::policy_engine::application::engine::PolicyEngineService;
-use crate::policy_engine::application::dto::EvaluatePolicyInput;
-use crate::policy_engine::domain::{LaneContext, LaneBlocker, ReviewStatus, DiffScope};
-use crate::quality_gates::application::dto::{
-    ClassifyTestScopeInput, EvaluateGateInput,
-};
-use crate::quality_gates::application::service::QualityGateService;
+use crate::plan_validation::application::dto::ValidateInput;
 use crate::plan_validation::application::service::ValidationLoopService;
 use crate::plan_validation::domain::loop_config::ValidationLoopConfig;
-use crate::plan_validation::application::dto::ValidateInput;
+use crate::planning::application::dto as planning_dto;
+use crate::policy_engine::application::dto::EvaluatePolicyInput;
+use crate::policy_engine::application::engine::PolicyEngineService;
+use crate::policy_engine::domain::{DiffScope, LaneBlocker, LaneContext, ReviewStatus};
+use crate::quality_gates::application::dto::{ClassifyTestScopeInput, EvaluateGateInput};
+use crate::quality_gates::application::service::QualityGateService;
 use crate::state_persistence::application::{dto as state_dto, service as state_svc};
 
 pub struct OrchestratorServiceImpl {
@@ -335,14 +333,13 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 config,
                 existing_template: None,
             };
-            let outcome = validation_svc
-                .validate(validate_input)
-                .await
-                .map_err(|e| OrchestratorError::ExecutionFailed {
+            let outcome = validation_svc.validate(validate_input).await.map_err(|e| {
+                OrchestratorError::ExecutionFailed {
                     detail: format!("Validation loop error: {e}"),
                     nodes_completed: 0,
                     nodes_remaining: 0,
-                })?;
+                }
+            })?;
 
             let record = ExecutionRecord::new(execution_id, started_at);
 
@@ -495,9 +492,13 @@ impl OrchestratorService for OrchestratorServiceImpl {
 
         // 7b. Policy Engine evaluation
         if let Some(ref policy_svc) = self.policy_engine {
-            let green_level = if final_status == ExecutionStatus::Completed { 3u8 }
-                else if final_status == ExecutionStatus::PartialFailure { 1u8 }
-                else { 0u8 };
+            let green_level = if final_status == ExecutionStatus::Completed {
+                3u8
+            } else if final_status == ExecutionStatus::PartialFailure {
+                1u8
+            } else {
+                0u8
+            };
 
             let context = LaneContext {
                 lane_id: execution_id.to_string(),
@@ -510,7 +511,10 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 reconciled: false,
             };
 
-            let eval_policy_input = EvaluatePolicyInput { context, rule_filter: None };
+            let eval_policy_input = EvaluatePolicyInput {
+                context,
+                rule_filter: None,
+            };
             if let Ok(eval_policy_out) = policy_svc.evaluate(eval_policy_input).await {
                 for action in eval_policy_out.actions {
                     tracing::info!(

@@ -137,9 +137,7 @@ impl TemplateFailure {
                     location.file, location.line, expected, actual
                 )
             }
-            TemplateFailure::CompileError {
-                code, message, ..
-            } => {
+            TemplateFailure::CompileError { code, message, .. } => {
                 format!("CompileError {}: {}", code, message)
             }
             TemplateFailure::AssertionFailure {

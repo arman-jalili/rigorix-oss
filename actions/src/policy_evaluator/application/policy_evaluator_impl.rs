@@ -133,12 +133,9 @@ impl PolicyEvaluationService for PolicyEvaluationServiceImpl {
         // Check flag rules
         for rule in &compiled_rules.flag {
             if self.matches_flag_rule(rule, file_path).await {
-                let message = rule
-                    .message
-                    .clone()
-                    .unwrap_or_else(|| {
-                        format!("File '{}' flagged by rule '{}'", file_path, rule.name)
-                    });
+                let message = rule.message.clone().unwrap_or_else(|| {
+                    format!("File '{}' flagged by rule '{}'", file_path, rule.name)
+                });
                 violations.push(PolicyViolation::Flag {
                     rule: rule.name.clone(),
                     description: rule.description.clone(),
@@ -166,26 +163,15 @@ impl PolicyEvaluationService for PolicyEvaluationServiceImpl {
         Self::glob_matches(&rule.pattern, file_path)
     }
 
-    async fn matches_review_rule(
-        &self,
-        rule: &CompiledReviewRule,
-        file_path: &str,
-    ) -> bool {
+    async fn matches_review_rule(&self, rule: &CompiledReviewRule, file_path: &str) -> bool {
         Self::glob_matches(&rule.pattern, file_path)
     }
 
-    async fn matches_flag_rule(
-        &self,
-        rule: &CompiledFlagRule,
-        file_path: &str,
-    ) -> bool {
+    async fn matches_flag_rule(&self, rule: &CompiledFlagRule, file_path: &str) -> bool {
         Self::glob_matches(&rule.pattern, file_path)
     }
 
-    async fn count_violations(
-        &self,
-        violations: &[PolicyViolation],
-    ) -> ViolationCounts {
+    async fn count_violations(&self, violations: &[PolicyViolation]) -> ViolationCounts {
         ViolationCounts {
             deny: violations
                 .iter()
@@ -210,12 +196,8 @@ impl PolicyEvaluationService for PolicyEvaluationServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diff_analyzer::domain::{
-        ChangedFile, FileRisk, FileStatus, PrDiff,
-    };
-    use crate::policy_evaluator::domain::{
-        AuditConfig, PolicyLimits, PolicyRules, Severity,
-    };
+    use crate::diff_analyzer::domain::{ChangedFile, FileRisk, FileStatus, PrDiff};
+    use crate::policy_evaluator::domain::{AuditConfig, PolicyLimits, PolicyRules, Severity};
 
     fn make_diff(files: Vec<(&str, FileStatus)>) -> PrDiff {
         PrDiff {
@@ -377,10 +359,22 @@ mod tests {
 
     #[tokio::test]
     async fn test_glob_match() {
-        assert!(PolicyEvaluationServiceImpl::glob_matches("*.sql", "db/migrate.sql"));
-        assert!(PolicyEvaluationServiceImpl::glob_matches("src/auth/**", "src/auth/login.rs"));
-        assert!(!PolicyEvaluationServiceImpl::glob_matches("*.sql", "src/main.rs"));
-        assert!(PolicyEvaluationServiceImpl::glob_matches("migrations/**/*.sql", "migrations/001.sql"));
+        assert!(PolicyEvaluationServiceImpl::glob_matches(
+            "*.sql",
+            "db/migrate.sql"
+        ));
+        assert!(PolicyEvaluationServiceImpl::glob_matches(
+            "src/auth/**",
+            "src/auth/login.rs"
+        ));
+        assert!(!PolicyEvaluationServiceImpl::glob_matches(
+            "*.sql",
+            "src/main.rs"
+        ));
+        assert!(PolicyEvaluationServiceImpl::glob_matches(
+            "migrations/**/*.sql",
+            "migrations/001.sql"
+        ));
     }
 
     #[tokio::test]
@@ -394,12 +388,16 @@ mod tests {
             pattern: "*.sql".to_string(),
         };
         // Admin user should be excluded
-        assert!(!evaluator
-            .matches_deny_rule(&rule, "db/migrate.sql", Some("admin"))
-            .await);
+        assert!(
+            !evaluator
+                .matches_deny_rule(&rule, "db/migrate.sql", Some("admin"))
+                .await
+        );
         // Other user should NOT be excluded
-        assert!(evaluator
-            .matches_deny_rule(&rule, "db/migrate.sql", Some("developer"))
-            .await);
+        assert!(
+            evaluator
+                .matches_deny_rule(&rule, "db/migrate.sql", Some("developer"))
+                .await
+        );
     }
 }

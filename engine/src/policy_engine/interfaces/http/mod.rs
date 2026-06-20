@@ -236,10 +236,8 @@ pub mod status_codes {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::policy_engine::domain::{
-        PolicyAction, PolicyCondition, PolicyConfig,
-    };
     use crate::policy_engine::domain::config::RuleDefinition;
+    use crate::policy_engine::domain::{PolicyAction, PolicyCondition, PolicyConfig};
 
     #[test]
     fn test_evaluate_policy_request_serde() {
@@ -265,13 +263,11 @@ mod tests {
     fn test_evaluate_policy_response_serde() {
         let response = EvaluatePolicyResponse {
             lane_id: "lane-1".to_string(),
-            actions: vec![
-                ActionOutput {
-                    rule_name: "closeout".to_string(),
-                    priority: 10,
-                    action: PolicyAction::CloseoutLane,
-                },
-            ],
+            actions: vec![ActionOutput {
+                rule_name: "closeout".to_string(),
+                priority: 10,
+                action: PolicyAction::CloseoutLane,
+            }],
             matching_rule_count: 1,
             rules_evaluated: 5,
             matched: true,

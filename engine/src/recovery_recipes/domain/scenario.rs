@@ -119,7 +119,10 @@ mod tests {
             FailureScenario::ToolConnectionError.as_str(),
             "tool_connection_error"
         );
-        assert_eq!(FailureScenario::ProviderFailure.as_str(), "provider_failure");
+        assert_eq!(
+            FailureScenario::ProviderFailure.as_str(),
+            "provider_failure"
+        );
         assert_eq!(
             FailureScenario::PartialInitialization.as_str(),
             "partial_initialization"
@@ -139,22 +142,25 @@ mod tests {
 
     #[test]
     fn test_from_failure_type_build_failure() {
-        let result =
-            FailureScenario::from_failure_type(&crate::failure_classification::domain::FailureType::BuildFailure);
+        let result = FailureScenario::from_failure_type(
+            &crate::failure_classification::domain::FailureType::BuildFailure,
+        );
         assert_eq!(result, Some(FailureScenario::CompileError));
     }
 
     #[test]
     fn test_from_failure_type_test_failure() {
-        let result =
-            FailureScenario::from_failure_type(&crate::failure_classification::domain::FailureType::TestFailure);
+        let result = FailureScenario::from_failure_type(
+            &crate::failure_classification::domain::FailureType::TestFailure,
+        );
         assert_eq!(result, Some(FailureScenario::TestFailure));
     }
 
     #[test]
     fn test_from_failure_type_unknown_returns_none() {
-        let result =
-            FailureScenario::from_failure_type(&crate::failure_classification::domain::FailureType::Transient);
+        let result = FailureScenario::from_failure_type(
+            &crate::failure_classification::domain::FailureType::Transient,
+        );
         assert_eq!(result, None);
     }
 

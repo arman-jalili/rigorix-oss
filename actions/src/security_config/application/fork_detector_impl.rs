@@ -55,7 +55,8 @@ impl Default for ForkDetectorImpl {
 impl ForkDetectionService for ForkDetectorImpl {
     async fn detect(&self, input: DetectForkInput) -> Result<DetectForkOutput, SecurityError> {
         // If env_override is provided, use it; otherwise read from real env
-        let (base_repo, head_repo, head_owner) = if let Some(ref override_map) = input.env_override {
+        let (base_repo, head_repo, head_owner) = if let Some(ref override_map) = input.env_override
+        {
             Self::detect_from_map(override_map)
         } else {
             self.detect_from_env().await?
@@ -92,10 +93,7 @@ impl ForkDetectionService for ForkDetectorImpl {
 impl ForkDetectorImpl {
     /// Detect fork from an env override map (for testing).
     fn detect_from_map(env: &HashMap<String, String>) -> (String, Option<String>, Option<String>) {
-        let base_repo = env
-            .get("GITHUB_REPOSITORY")
-            .cloned()
-            .unwrap_or_default();
+        let base_repo = env.get("GITHUB_REPOSITORY").cloned().unwrap_or_default();
         let head_repo = env
             .get("GITHUB_EVENT_PULL_REQUEST_HEAD_REPO_FULL_NAME")
             .filter(|v| !v.is_empty())
@@ -108,7 +106,9 @@ impl ForkDetectorImpl {
     }
 
     /// Detect fork from real environment variables.
-    async fn detect_from_env(&self) -> Result<(String, Option<String>, Option<String>), SecurityError> {
+    async fn detect_from_env(
+        &self,
+    ) -> Result<(String, Option<String>, Option<String>), SecurityError> {
         let base_repo = self.repository.base_repo().await?;
         let head_repo = self.repository.head_repo().await?;
         let head_owner = self.repository.head_repo_owner().await?;
@@ -139,10 +139,7 @@ mod tests {
     impl ForkRepository for MockForkRepository {
         async fn base_repo(&self) -> Result<String, SecurityError> {
             let env = self.env.lock().unwrap();
-            Ok(env
-                .get("GITHUB_REPOSITORY")
-                .cloned()
-                .unwrap_or_default())
+            Ok(env.get("GITHUB_REPOSITORY").cloned().unwrap_or_default())
         }
 
         async fn head_repo(&self) -> Result<Option<String>, SecurityError> {
@@ -182,10 +179,16 @@ mod tests {
         let mut map = HashMap::new();
         map.insert("GITHUB_REPOSITORY".to_string(), base.to_string());
         if let Some(h) = head {
-            map.insert("GITHUB_EVENT_PULL_REQUEST_HEAD_REPO_FULL_NAME".to_string(), h.to_string());
+            map.insert(
+                "GITHUB_EVENT_PULL_REQUEST_HEAD_REPO_FULL_NAME".to_string(),
+                h.to_string(),
+            );
         }
         if let Some(o) = owner {
-            map.insert("GITHUB_EVENT_PULL_REQUEST_HEAD_REPO_OWNER".to_string(), o.to_string());
+            map.insert(
+                "GITHUB_EVENT_PULL_REQUEST_HEAD_REPO_OWNER".to_string(),
+                o.to_string(),
+            );
         }
         map
     }
@@ -194,7 +197,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_detect_fork_pr() {
-        let env = make_env("org/main-repo", Some("fork-user/main-repo"), Some("fork-user"));
+        let env = make_env(
+            "org/main-repo",
+            Some("fork-user/main-repo"),
+            Some("fork-user"),
+        );
         let detector = make_detector(env);
         let input = DetectForkInput { env_override: None };
         let result = detector.detect(input).await.unwrap();
@@ -237,7 +244,10 @@ mod tests {
             "GITHUB_EVENT_PULL_REQUEST_HEAD_REPO_FULL_NAME".to_string(),
             "fork/main".to_string(),
         );
-        env.insert("GITHUB_EVENT_PULL_REQUEST_HEAD_REPO_OWNER".to_string(), "fork".to_string());
+        env.insert(
+            "GITHUB_EVENT_PULL_REQUEST_HEAD_REPO_OWNER".to_string(),
+            "fork".to_string(),
+        );
 
         let mut detector_env = HashMap::new();
         detector_env.insert("GITHUB_REPOSITORY".to_string(), "org/main".to_string());
@@ -299,7 +309,10 @@ mod tests {
     async fn test_detect_empty_head_repo() {
         let mut env = HashMap::new();
         env.insert("GITHUB_REPOSITORY".to_string(), "org/main".to_string());
-        env.insert("GITHUB_EVENT_PULL_REQUEST_HEAD_REPO_FULL_NAME".to_string(), "".to_string());
+        env.insert(
+            "GITHUB_EVENT_PULL_REQUEST_HEAD_REPO_FULL_NAME".to_string(),
+            "".to_string(),
+        );
         let detector = make_detector(env);
         let input = DetectForkInput { env_override: None };
         let result = detector.detect(input).await.unwrap();

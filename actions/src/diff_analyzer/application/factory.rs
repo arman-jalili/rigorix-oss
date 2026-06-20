@@ -30,10 +30,8 @@ pub trait DiffFactory: Send + Sync {
     ///
     /// Parses the raw unified diff output and constructs a fully
     /// structured `PrDiff` with all files, hunks, and metadata.
-    async fn build_from_raw_diff(
-        &self,
-        input: ParseDiffInput,
-    ) -> Result<PrDiff, DiffAnalyzerError>;
+    async fn build_from_raw_diff(&self, input: ParseDiffInput)
+    -> Result<PrDiff, DiffAnalyzerError>;
 
     /// Create an empty `PrDiff` with no files.
     fn empty_diff(&self) -> PrDiff;

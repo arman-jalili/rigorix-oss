@@ -115,10 +115,7 @@ impl SourceContext {
 
     /// Get symbols available in a specific file.
     pub fn symbols_in_file(&self, file: &str) -> Vec<String> {
-        self.symbols_by_file
-            .get(file)
-            .cloned()
-            .unwrap_or_default()
+        self.symbols_by_file.get(file).cloned().unwrap_or_default()
     }
 
     /// Get source content for a specific file.

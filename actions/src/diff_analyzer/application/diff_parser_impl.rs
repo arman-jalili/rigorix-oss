@@ -112,14 +112,15 @@ impl DiffParsingService for DiffParserImpl {
             }
         }
 
-        let metadata = input.pr_number.map(|pr_number| {
-            crate::diff_analyzer::domain::DiffMetadata {
-                pr_number,
-                base_branch: input.base_branch.clone().unwrap_or_default(),
-                head_branch: input.head_branch.clone().unwrap_or_default(),
-                head_sha: input.head_sha.clone().unwrap_or_default(),
-            }
-        });
+        let metadata =
+            input
+                .pr_number
+                .map(|pr_number| crate::diff_analyzer::domain::DiffMetadata {
+                    pr_number,
+                    base_branch: input.base_branch.clone().unwrap_or_default(),
+                    head_branch: input.head_branch.clone().unwrap_or_default(),
+                    head_sha: input.head_sha.clone().unwrap_or_default(),
+                });
 
         let files_parsed = files.len();
         let files_failed = errors.len();
@@ -144,10 +145,7 @@ impl DiffParsingService for DiffParserImpl {
         })
     }
 
-    async fn parse_file_section(
-        &self,
-        section: &str,
-    ) -> Result<ChangedFile, DiffAnalyzerError> {
+    async fn parse_file_section(&self, section: &str) -> Result<ChangedFile, DiffAnalyzerError> {
         let lines: Vec<&str> = section.lines().collect();
         if lines.is_empty() {
             return Err(DiffAnalyzerError::DiffParseError {
@@ -253,10 +251,12 @@ impl DiffParsingService for DiffParserImpl {
         // Extract the @@ ... @@ parts
         let hunk_parts = header_line
             .strip_prefix("@@")
-            .and_then(|s| s.strip_suffix("@@").or_else(|| {
-                // Try finding @@ at the end
-                s.rfind("@@").map(|i| &s[..i])
-            }))
+            .and_then(|s| {
+                s.strip_suffix("@@").or_else(|| {
+                    // Try finding @@ at the end
+                    s.rfind("@@").map(|i| &s[..i])
+                })
+            })
             .map(|s| s.trim())
             .unwrap_or("");
 
@@ -341,12 +341,12 @@ impl DiffParsingService for DiffParserImpl {
 
     async fn extract_paths(&self, header: &str) -> Result<(String, String), DiffAnalyzerError> {
         // Parse "diff --git a/<old> b/<new>"
-        let without_prefix = header
-            .strip_prefix("diff --git ")
-            .ok_or_else(|| DiffAnalyzerError::DiffParseError {
+        let without_prefix = header.strip_prefix("diff --git ").ok_or_else(|| {
+            DiffAnalyzerError::DiffParseError {
                 detail: format!("Invalid diff header format: {}", header),
                 line: None,
-            })?;
+            }
+        })?;
 
         let parts: Vec<&str> = without_prefix.splitn(2, ' ').collect();
         if parts.len() != 2 {

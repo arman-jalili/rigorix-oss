@@ -64,10 +64,7 @@ pub trait ConfigFactory: Send + Sync {
     /// All `Option` fields in `ActionInputs` are resolved:
     /// - If `Some(value)`, use the value
     /// - If `None`, use the default from `ActionConfig::default()`
-    async fn resolve_config(
-        &self,
-        inputs: ActionInputs,
-    ) -> Result<ActionConfig, ActionInputError>;
+    async fn resolve_config(&self, inputs: ActionInputs) -> Result<ActionConfig, ActionInputError>;
 
     /// Apply environment-specific overrides to a config.
     ///

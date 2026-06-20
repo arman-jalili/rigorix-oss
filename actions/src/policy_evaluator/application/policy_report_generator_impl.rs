@@ -7,9 +7,7 @@ use async_trait::async_trait;
 
 use crate::policy_evaluator::domain::{PolicyError, PolicyResult, PolicyViolation};
 
-use super::dto::{
-    GenerateReportInput, GenerateReportOutput, ViolationReportEntry,
-};
+use super::dto::{GenerateReportInput, GenerateReportOutput, ViolationReportEntry};
 use super::service::PolicyReportGenerationService;
 
 /// Default implementation of `PolicyReportGenerationService`.
@@ -41,7 +39,9 @@ impl PolicyReportGenerationService for PolicyReportGenerationServiceImpl {
                 message: match violation {
                     PolicyViolation::Deny { message, .. } => message.clone(),
                     PolicyViolation::Flag { message, .. } => message.clone(),
-                    PolicyViolation::RequireReview { description, file, .. } => {
+                    PolicyViolation::RequireReview {
+                        description, file, ..
+                    } => {
                         format!("File '{}' requires review: {}", file, description)
                     }
                 },
@@ -62,10 +62,7 @@ impl PolicyReportGenerationService for PolicyReportGenerationServiceImpl {
         })
     }
 
-    async fn format_annotation(
-        &self,
-        violation: &PolicyViolation,
-    ) -> String {
+    async fn format_annotation(&self, violation: &PolicyViolation) -> String {
         let (annotation_type, message) = violation.to_annotation();
         let file = violation.file();
         let escaped = self.escape_annotation(&message).await;
@@ -116,7 +113,8 @@ impl PolicyReportGenerationService for PolicyReportGenerationServiceImpl {
                         v.rule_name(),
                         v.file(),
                         match v {
-                            PolicyViolation::RequireReview { description, .. } => description.as_str(),
+                            PolicyViolation::RequireReview { description, .. } =>
+                                description.as_str(),
                             PolicyViolation::Flag { message, .. } => message.as_str(),
                             _ => "Warning",
                         }
@@ -215,9 +213,7 @@ mod tests {
     #[tokio::test]
     async fn test_escape_annotation() {
         let reporter = PolicyReportGenerationServiceImpl;
-        let escaped = reporter
-            .escape_annotation("100% done\nnew line\r")
-            .await;
+        let escaped = reporter.escape_annotation("100% done\nnew line\r").await;
         assert_eq!(escaped, "100%25 done%0Anew line%0D");
     }
 
@@ -270,6 +266,11 @@ mod tests {
                 flag_rule_count: 0,
             },
         );
-        assert!(reporter.format_status_line(&empty).await.contains("No violations"));
+        assert!(
+            reporter
+                .format_status_line(&empty)
+                .await
+                .contains("No violations")
+        );
     }
 }

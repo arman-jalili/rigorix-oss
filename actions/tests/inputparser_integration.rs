@@ -24,16 +24,16 @@ async fn test_inputparser_integration_env_override() {
     let parser = create_parser();
 
     let mut env = HashMap::new();
-    env.insert("INTENT".to_string(), "fix the integration tests".to_string());
+    env.insert(
+        "INTENT".to_string(),
+        "fix the integration tests".to_string(),
+    );
     env.insert("MODE".to_string(), "validate".to_string());
     env.insert("PERMISSION_MODE".to_string(), "read_only".to_string());
     env.insert("POLICY_FILE".to_string(), "custom/policy.toml".to_string());
     env.insert("MAX_LLM_CALLS".to_string(), "10".to_string());
     env.insert("MAX_LLM_TOKENS".to_string(), "25000".to_string());
-    env.insert(
-        "MAX_VALIDATION_ITERATIONS".to_string(),
-        "5".to_string(),
-    );
+    env.insert("MAX_VALIDATION_ITERATIONS".to_string(), "5".to_string());
     env.insert("MAX_RETRIES".to_string(), "2".to_string());
     env.insert("RETRY_DELAY_MS".to_string(), "500".to_string());
     env.insert("POST_PR_COMMENT".to_string(), "false".to_string());
@@ -101,10 +101,7 @@ async fn test_inputparser_integration_invalid_numeric_values() {
 
     let mut env = HashMap::new();
     env.insert("INTENT".to_string(), "run with bad numbers".to_string());
-    env.insert(
-        "MAX_LLM_CALLS".to_string(),
-        "not-a-number".to_string(),
-    );
+    env.insert("MAX_LLM_CALLS".to_string(), "not-a-number".to_string());
     env.insert(
         "MAX_LLM_TOKENS".to_string(),
         "also-not-a-number".to_string(),
@@ -165,10 +162,7 @@ async fn test_inputparser_integration_custom_prefix() {
 
     let result = parser.parse(input).await.unwrap();
 
-    assert_eq!(
-        result.inputs.intent,
-        Some("custom prefix test".to_string())
-    );
+    assert_eq!(result.inputs.intent, Some("custom prefix test".to_string()));
     assert_eq!(result.inputs.mode, Some("plan".to_string()));
     assert_eq!(result.populated_count, 2);
 }
@@ -234,9 +228,13 @@ async fn test_inputparser_integration_require_input() {
     let var = "INPUT_INTEGRATION_REQUIRE_TEST";
 
     // SAFETY: test-only env manipulation
-    unsafe { std::env::set_var(var, "required_value"); }
+    unsafe {
+        std::env::set_var(var, "required_value");
+    }
     let result = parser.require_input("INTEGRATION_REQUIRE_TEST").await;
-    unsafe { std::env::remove_var(var); }
+    unsafe {
+        std::env::remove_var(var);
+    }
 
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), "required_value");
@@ -246,7 +244,9 @@ async fn test_inputparser_integration_require_input() {
 async fn test_inputparser_integration_require_input_missing() {
     let parser = create_parser();
     let var = "INPUT_INTEGRATION_REQUIRE_MISSING";
-    unsafe { std::env::remove_var(var); }
+    unsafe {
+        std::env::remove_var(var);
+    }
 
     let result = parser.require_input("INTEGRATION_REQUIRE_MISSING").await;
     assert!(result.is_err());

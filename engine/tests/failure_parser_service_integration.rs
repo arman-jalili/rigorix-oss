@@ -11,6 +11,7 @@
 //! - Parser registry interaction
 //! - Empty/error input handling
 
+use async_trait::async_trait;
 use rigorix_engine::failure_parser::application::{
     FailureParserService, FailureParserServiceImpl, FormatForLlmInput, ParseOutputInput,
     RegisterParserInput, SuggestFixInput,
@@ -19,7 +20,6 @@ use rigorix_engine::failure_parser::domain::{
     FailureDetail, FailureParserError, FailureSeverity, LanguageParser, ParsedFailure,
     ParserRegistry, SourceContext, SourceLocation, TemplateFailure,
 };
-use async_trait::async_trait;
 
 // ---------------------------------------------------------------------------
 // Mock Parser — simulates TypeScript compiler output
@@ -198,7 +198,10 @@ async fn integration_parse_tsc_missing_symbol() {
     let result = service.parse(input).await.unwrap();
     assert!(result.success);
     assert_eq!(result.parsed.total_count, 1);
-    assert_eq!(result.parsed.failures[0].failure.variant_name(), "missing_symbol");
+    assert_eq!(
+        result.parsed.failures[0].failure.variant_name(),
+        "missing_symbol"
+    );
     assert_eq!(result.parsed.failures[0].source_tool, "tsc");
     assert!(result.llm_summary.contains("FAILURE ANALYSIS"));
 }
@@ -217,7 +220,10 @@ async fn integration_parse_tsc_wrong_arg_count() {
 
     let result = service.parse(input).await.unwrap();
     assert!(result.success);
-    assert_eq!(result.parsed.failures[0].failure.variant_name(), "wrong_arg_count");
+    assert_eq!(
+        result.parsed.failures[0].failure.variant_name(),
+        "wrong_arg_count"
+    );
 }
 
 #[tokio::test]
@@ -234,7 +240,10 @@ async fn integration_parse_tsc_type_mismatch() {
 
     let result = service.parse(input).await.unwrap();
     assert!(result.success);
-    assert_eq!(result.parsed.failures[0].failure.variant_name(), "type_mismatch");
+    assert_eq!(
+        result.parsed.failures[0].failure.variant_name(),
+        "type_mismatch"
+    );
 }
 
 #[tokio::test]
@@ -251,7 +260,10 @@ async fn integration_parse_tsc_compile_error() {
 
     let result = service.parse(input).await.unwrap();
     assert!(result.success);
-    assert_eq!(result.parsed.failures[0].failure.variant_name(), "compile_error");
+    assert_eq!(
+        result.parsed.failures[0].failure.variant_name(),
+        "compile_error"
+    );
     if let TemplateFailure::CompileError { code, .. } = &result.parsed.failures[0].failure {
         assert_eq!(code, "TS1005");
     } else {
@@ -273,7 +285,10 @@ async fn integration_parse_jest_assertion_failure() {
 
     let result = service.parse(input).await.unwrap();
     assert!(result.success);
-    assert_eq!(result.parsed.failures[0].failure.variant_name(), "assertion_failure");
+    assert_eq!(
+        result.parsed.failures[0].failure.variant_name(),
+        "assertion_failure"
+    );
     assert_eq!(result.parsed.failures[0].source_tool, "jest");
     assert_eq!(result.parsed.overall_severity, FailureSeverity::TestBlock);
 }
@@ -292,7 +307,10 @@ async fn integration_parse_jest_timeout() {
 
     let result = service.parse(input).await.unwrap();
     assert!(result.success);
-    assert_eq!(result.parsed.failures[0].failure.variant_name(), "test_failure");
+    assert_eq!(
+        result.parsed.failures[0].failure.variant_name(),
+        "test_failure"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -424,8 +442,10 @@ async fn integration_format_for_llm_multiple_failures() {
 async fn integration_suggest_fix_with_source_context_symbols() {
     let service = create_service();
     let mut ctx = SourceContext::empty();
-    ctx.symbols_by_file
-        .insert("src/tasklist.ts".into(), vec!["add".into(), "remove".into(), "list".into()]);
+    ctx.symbols_by_file.insert(
+        "src/tasklist.ts".into(),
+        vec!["add".into(), "remove".into(), "list".into()],
+    );
 
     let result = service
         .suggest_fix(SuggestFixInput {

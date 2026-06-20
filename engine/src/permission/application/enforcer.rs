@@ -17,7 +17,9 @@
 
 use async_trait::async_trait;
 
-use crate::permission::domain::{PermissionContext, PermissionError, PermissionMode, PermissionOutcome};
+use crate::permission::domain::{
+    PermissionContext, PermissionError, PermissionMode, PermissionOutcome,
+};
 
 /// Central permission enforcement service.
 ///

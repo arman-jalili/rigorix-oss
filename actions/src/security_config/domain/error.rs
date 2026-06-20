@@ -17,7 +17,9 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum SecurityError {
     /// The PR originates from a forked repository — secrets not available.
-    #[error("Fork PR detected: repository secrets are not available for pull requests from forks. Head repo '{head_repo}' differs from base repo '{base_repo}'.")]
+    #[error(
+        "Fork PR detected: repository secrets are not available for pull requests from forks. Head repo '{head_repo}' differs from base repo '{base_repo}'."
+    )]
     ForkDetected {
         /// The head repository full name (e.g., "user/repo").
         head_repo: String,
@@ -35,7 +37,9 @@ pub enum SecurityError {
     },
 
     /// Token is valid but lacks required permissions.
-    #[error("GitHub token has insufficient permissions. Required: {required:?}, available: {available:?}")]
+    #[error(
+        "GitHub token has insufficient permissions. Required: {required:?}, available: {available:?}"
+    )]
     TokenInsufficient {
         /// Permissions the token requires but does not have.
         required: Vec<String>,

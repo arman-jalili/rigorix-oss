@@ -62,8 +62,7 @@ pub struct CliServices {
         Arc<dyn rigorix_engine::audit::infrastructure::repository::AuditEnvelopeRepository>,
     pub dag_planning_service:
         Arc<dyn rigorix_engine::dag_engine::application::service::DagPlanningService>,
-    pub event_bus:
-        Arc<dyn rigorix_engine::event_system::application::EventBusService>,
+    pub event_bus: Arc<dyn rigorix_engine::event_system::application::EventBusService>,
     pub config: CliConfig,
 }
 
@@ -80,9 +79,7 @@ pub async fn build_cli_services(config: CliConfig) -> Result<CliServices, CliErr
 
     let rigorix_dir = PathBuf::from(&repo_root).join(".rigorix");
     for sub in &["state", "templates", "audit"] {
-        tokio::fs::create_dir_all(rigorix_dir.join(sub))
-            .await
-            .ok();
+        tokio::fs::create_dir_all(rigorix_dir.join(sub)).await.ok();
     }
 
     // ── State manager ──────────────────────────────────────────────────
@@ -134,7 +131,8 @@ pub async fn build_cli_services(config: CliConfig) -> Result<CliServices, CliErr
     // ── Dag planning service (stateless) ───────────────────────────────
     let dag_planning = Arc::new(
         rigorix_engine::dag_engine::application::service_impl::DagPlanningServiceImpl::new(),
-    ) as Arc<dyn rigorix_engine::dag_engine::application::service::DagPlanningService>;
+    )
+        as Arc<dyn rigorix_engine::dag_engine::application::service::DagPlanningService>;
 
     // ── Event bus (needed for log replay) ──────────────────────────────
     let event_bus: Arc<dyn rigorix_engine::event_system::application::EventBusService> = Arc::from(
@@ -426,7 +424,8 @@ pub async fn build_orchestrator(
 
     let dag_planning = Arc::new(
         rigorix_engine::dag_engine::application::service_impl::DagPlanningServiceImpl::new(),
-    ) as Arc<dyn rigorix_engine::dag_engine::application::service::DagPlanningService>;
+    )
+        as Arc<dyn rigorix_engine::dag_engine::application::service::DagPlanningService>;
 
     let services = CliServices {
         state_manager,

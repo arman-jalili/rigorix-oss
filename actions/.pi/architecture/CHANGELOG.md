@@ -48,6 +48,43 @@ Each entry follows this structure:
 
 ## Entries
 
+## [2026-06-20] - action-output Epic Complete
+
+### Changed
+- Module: action-output
+  - Contract Freeze: All public interfaces, DTOs, and API contracts defined
+  - OutputFormatter: OutputFormattingService implemented (top-level orchestrator)
+  - AnnotationWriter: AnnotationWritingService implemented (workflow annotations)
+  - StepSummaryWriter: StepSummaryWritingService implemented (markdown summaries)
+
+### Impact Analysis
+- Files created:
+  - src/action_output/ (14 interface files + 3 implementation files)
+  - docs/runbook-action-output.md (runbook)
+  - docs/dr-plan-action-output.md (DR plan)
+  - .pi/scripts/ci/check_action-output_contracts.sh
+  - .pi/scripts/ci/check_action-output_coverage.sh
+  - .pi/scripts/ci/stage_action-output_proofing.sh
+- Canonical refs to update:
+  - .pi/architecture/modules/action-output.md (status: Implemented, added Observability section)
+- Validators required:
+  - ci, tests, security, architecture, canonical, operations
+
+### Migration Steps
+1. No migration needed — interface-only contracts frozen first, implementations added after
+2. Proofing scripts validate contract-implementation alignment
+3. Run validate-canonical.sh to verify references
+4. CI stage 13 (action-output_proofing) runs on every build
+
+### Status
+- [x] Architecture doc updated
+- [x] CHANGELOG entry added
+- [x] Implementation updated
+- [x] Canonical refs updated
+- [x] Validators run
+
+---
+
 ## [2026-06-20] - diff-analyzer Epic Complete
 
 ### Changed

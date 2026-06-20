@@ -60,7 +60,10 @@ impl PermissionMode {
 
     /// Returns `true` if this mode allows write operations within workspace.
     pub fn can_write_within_workspace(&self) -> bool {
-        matches!(self, PermissionMode::WorkspaceWrite | PermissionMode::DangerousFullAccess)
+        matches!(
+            self,
+            PermissionMode::WorkspaceWrite | PermissionMode::DangerousFullAccess
+        )
     }
 
     /// Returns `true` if this mode allows write operations outside workspace.
@@ -75,7 +78,10 @@ impl PermissionMode {
 
     /// Returns `true` if this mode allows package management commands.
     pub fn can_manage_packages(&self) -> bool {
-        matches!(self, PermissionMode::WorkspaceWrite | PermissionMode::DangerousFullAccess)
+        matches!(
+            self,
+            PermissionMode::WorkspaceWrite | PermissionMode::DangerousFullAccess
+        )
     }
 
     /// Returns `true` if this mode allows network operations.
@@ -87,11 +93,9 @@ impl PermissionMode {
     pub fn required_for_capability(capability: &str) -> Self {
         match capability {
             "read" | "grep" | "query" => PermissionMode::ReadOnly,
-            "write_within_workspace"
-            | "edit"
-            | "build"
-            | "package_management"
-            | "git_commit" => PermissionMode::WorkspaceWrite,
+            "write_within_workspace" | "edit" | "build" | "package_management" | "git_commit" => {
+                PermissionMode::WorkspaceWrite
+            }
             "write_outside_workspace"
             | "destructive"
             | "network"

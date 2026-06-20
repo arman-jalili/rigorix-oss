@@ -58,14 +58,10 @@ impl QualityLevel {
     /// Returns a human-readable description of this level.
     pub fn description(&self) -> &'static str {
         match self {
-            QualityLevel::TargetedTests => {
-                "Only tests directly relevant to the change passed"
-            }
+            QualityLevel::TargetedTests => "Only tests directly relevant to the change passed",
             QualityLevel::Package => "All tests in the affected crate/package passed",
             QualityLevel::Workspace => "All tests across the entire workspace passed",
-            QualityLevel::MergeReady => {
-                "Workspace tests + lint, format, and audit all passed"
-            }
+            QualityLevel::MergeReady => "Workspace tests + lint, format, and audit all passed",
         }
     }
 

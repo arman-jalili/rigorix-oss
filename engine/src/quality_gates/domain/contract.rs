@@ -139,7 +139,9 @@ mod tests {
     #[test]
     fn test_evaluate_unsatisfied_gap() {
         let contract = GreenContract::new(QualityLevel::Workspace);
-        if let QualityGateOutcome::Unsatisfied { gap, .. } = contract.evaluate(Some(QualityLevel::TargetedTests)) {
+        if let QualityGateOutcome::Unsatisfied { gap, .. } =
+            contract.evaluate(Some(QualityLevel::TargetedTests))
+        {
             assert_eq!(gap, 2);
         } else {
             panic!("Expected Unsatisfied");
@@ -168,7 +170,10 @@ mod tests {
     fn test_evaluate_merge_ready_unsatisfied() {
         let contract = GreenContract::new(QualityLevel::MergeReady);
         let outcome = contract.evaluate(Some(QualityLevel::Workspace));
-        assert!(matches!(outcome, QualityGateOutcome::Unsatisfied { gap: 1, .. }));
+        assert!(matches!(
+            outcome,
+            QualityGateOutcome::Unsatisfied { gap: 1, .. }
+        ));
     }
 
     #[test]

@@ -21,11 +21,7 @@ use crate::failure_parser::application::dto::{
     RegisterParserResult, SuggestFixInput, SuggestFixOutput,
 };
 
-use crate::failure_parser::domain::{
-    FailureDetail,
-    TemplateFailure,
-    SourceContext,
-};
+use crate::failure_parser::domain::{FailureDetail, SourceContext, TemplateFailure};
 
 // ---------------------------------------------------------------------------
 // API Base Path
@@ -298,7 +294,9 @@ pub struct ClassifySeverityRequest {
 
 impl From<ClassifySeverityRequest> for ClassifySeverityInput {
     fn from(req: ClassifySeverityRequest) -> Self {
-        Self { failures: req.failures }
+        Self {
+            failures: req.failures,
+        }
     }
 }
 

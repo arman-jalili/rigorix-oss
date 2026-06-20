@@ -18,7 +18,10 @@ pub struct CompiledRulesFactoryImpl;
 
 #[async_trait]
 impl CompiledRulesFactory for CompiledRulesFactoryImpl {
-    async fn build_from_policy(&self, policy: &PolicyDocument) -> Result<CompiledRules, PolicyError> {
+    async fn build_from_policy(
+        &self,
+        policy: &PolicyDocument,
+    ) -> Result<CompiledRules, PolicyError> {
         let mut deny = Vec::with_capacity(policy.rules.deny_rules.len());
         for rule in &policy.rules.deny_rules {
             deny.push(self.compile_deny_rule(rule).await?);
@@ -37,10 +40,7 @@ impl CompiledRulesFactory for CompiledRulesFactoryImpl {
         Ok(CompiledRules { deny, review, flag })
     }
 
-    async fn compile_deny_rule(
-        &self,
-        rule: &DenyRule,
-    ) -> Result<CompiledDenyRule, PolicyError> {
+    async fn compile_deny_rule(&self, rule: &DenyRule) -> Result<CompiledDenyRule, PolicyError> {
         // Validate pattern compiles
         Glob::new(&rule.pattern).map_err(|e| PolicyError::InvalidGlobPattern {
             rule: rule.name.clone(),
@@ -75,10 +75,7 @@ impl CompiledRulesFactory for CompiledRulesFactoryImpl {
         })
     }
 
-    async fn compile_flag_rule(
-        &self,
-        rule: &FlagRule,
-    ) -> Result<CompiledFlagRule, PolicyError> {
+    async fn compile_flag_rule(&self, rule: &FlagRule) -> Result<CompiledFlagRule, PolicyError> {
         Glob::new(&rule.pattern).map_err(|e| PolicyError::InvalidGlobPattern {
             rule: rule.name.clone(),
             pattern: rule.pattern.clone(),
@@ -101,7 +98,9 @@ impl CompiledRulesFactory for CompiledRulesFactoryImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::policy_evaluator::domain::{AuditConfig, PolicyDocument, PolicyLimits, PolicyRules, Severity};
+    use crate::policy_evaluator::domain::{
+        AuditConfig, PolicyDocument, PolicyLimits, PolicyRules, Severity,
+    };
 
     #[tokio::test]
     async fn test_compile_empty_policy() {

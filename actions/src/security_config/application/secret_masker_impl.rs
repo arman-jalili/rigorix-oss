@@ -16,15 +16,15 @@ use crate::security_config::domain::SecurityError;
 
 /// Known secret patterns for log scrubbing detection.
 const SECRET_PATTERNS: &[&str] = &[
-    "sk-",       // OpenAI API keys
-    "ghp_",      // GitHub personal access tokens
-    "gho_",      // GitHub OAuth tokens
-    "ghu_",      // GitHub user tokens
-    "ghs_",      // GitHub app tokens
-    "ghr_",      // GitHub refresh tokens
-    "xoxb-",     // Slack bot tokens
-    "xoxp-",     // Slack user tokens
-    "AKIA",      // AWS access keys
+    "sk-",   // OpenAI API keys
+    "ghp_",  // GitHub personal access tokens
+    "gho_",  // GitHub OAuth tokens
+    "ghu_",  // GitHub user tokens
+    "ghs_",  // GitHub app tokens
+    "ghr_",  // GitHub refresh tokens
+    "xoxb-", // Slack bot tokens
+    "xoxp-", // Slack user tokens
+    "AKIA",  // AWS access keys
 ];
 
 /// Implementation of `SecretMaskingService`.

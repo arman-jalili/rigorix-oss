@@ -71,7 +71,10 @@ pub trait TokenRepository: Send + Sync {
 pub trait PolicyRepository: Send + Sync {
     /// Read the security policy file content.
     /// Searches CWD for `.rigorix/security.toml` by default.
-    async fn read_policy_file(&self, path_override: Option<&str>) -> Result<Option<String>, SecurityError>;
+    async fn read_policy_file(
+        &self,
+        path_override: Option<&str>,
+    ) -> Result<Option<String>, SecurityError>;
 
     /// Fetch an organization-level policy from a URL.
     async fn fetch_org_policy(&self, url: &str) -> Result<String, SecurityError>;

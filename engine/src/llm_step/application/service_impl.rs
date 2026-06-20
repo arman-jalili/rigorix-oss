@@ -17,8 +17,8 @@ use crate::llm_step::application::factory::{
 };
 use crate::llm_step::domain::{
     ExecutionContext, FailureContext, LlmGenerateNode, LlmGenerateNodeState, LlmGenerationOutput,
-    LlmModelConfig, LlmOutputFormat, LlmOutputSchema, LlmStepContext, LlmStepError,
-    SourceContext, SourceFileContext, SymbolDefinition,
+    LlmModelConfig, LlmOutputFormat, LlmOutputSchema, LlmStepContext, LlmStepError, SourceContext,
+    SourceFileContext, SymbolDefinition,
 };
 
 use super::dto::{
@@ -150,7 +150,10 @@ impl LlmStepServiceImpl {
 
     /// Execute the actual LLM call.
     #[tracing::instrument(skip_all)]
-    async fn do_generate(&self, request: LlmProviderRequest) -> Result<LlmProviderResponse, LlmStepError> {
+    async fn do_generate(
+        &self,
+        request: LlmProviderRequest,
+    ) -> Result<LlmProviderResponse, LlmStepError> {
         self.provider_client.generate(request).await
     }
 }
@@ -194,7 +197,10 @@ impl LlmStepService for LlmStepServiceImpl {
             file_paths: input.source_file_paths.clone(),
             max_context_size: Some(100_000),
         };
-        let source_output = self.context_builder.get_source_context(source_input).await?;
+        let source_output = self
+            .context_builder
+            .get_source_context(source_input)
+            .await?;
 
         // Gather failure context if requested
         let failure_context = if input.include_failure_context {
@@ -203,7 +209,11 @@ impl LlmStepService for LlmStepServiceImpl {
                 node_id: input.node_id,
                 max_previous_attempts: Some(5),
             };
-            Some(self.context_builder.get_failure_context(failure_input).await?)
+            Some(
+                self.context_builder
+                    .get_failure_context(failure_input)
+                    .await?,
+            )
         } else {
             None
         };
@@ -399,10 +409,7 @@ impl LlmStepService for LlmStepServiceImpl {
                 .unwrap_or_default()
         );
 
-        let augmented_prompt = format!(
-            "{}\n\n{}",
-            input.context.assembled_prompt, failure_info
-        );
+        let augmented_prompt = format!("{}\n\n{}", input.context.assembled_prompt, failure_info);
 
         let timeout = input
             .node
@@ -470,9 +477,7 @@ impl LlmStepService for LlmStepServiceImpl {
         if input.node.prompt_template.is_empty() {
             errors.push("Prompt template must not be empty".to_string());
         }
-        if !input.node.prompt_template.contains("{{")
-            && !input.node.prompt_template.contains('{')
-        {
+        if !input.node.prompt_template.contains("{{") && !input.node.prompt_template.contains('{') {
             warnings.push(
                 "Prompt template has no placeholders — context will not be injected".to_string(),
             );
@@ -541,22 +546,18 @@ impl LlmContextBuilderServiceImpl {
     }
 
     /// Read a source file from the filesystem.
-    fn read_source_file(
-        &self,
-        path: &str,
-    ) -> Result<SourceFileContext, LlmStepError> {
+    fn read_source_file(&self, path: &str) -> Result<SourceFileContext, LlmStepError> {
         let full_path = if self.repo_root.is_empty() {
             std::path::PathBuf::from(path)
         } else {
             std::path::PathBuf::from(&self.repo_root).join(path)
         };
 
-        let content = std::fs::read_to_string(&full_path).map_err(|e| {
-            LlmStepError::ContextBuildFailed {
+        let content =
+            std::fs::read_to_string(&full_path).map_err(|e| LlmStepError::ContextBuildFailed {
                 message: format!("Failed to read file '{}': {}", path, e),
                 context_source: "filesystem".to_string(),
-            }
-        })?;
+            })?;
 
         // Detect language from file extension
         let language = Self::detect_language(&full_path);
@@ -599,10 +600,7 @@ impl LlmContextBuilderServiceImpl {
     fn format_source_files(&self, files: &[SourceFileContext]) -> String {
         let mut output = String::new();
         for file in files {
-            output.push_str(&format!(
-                "// === {} ===\n{}\n\n",
-                file.path, file.content
-            ));
+            output.push_str(&format!("// === {} ===\n{}\n\n", file.path, file.content));
         }
         output
     }
@@ -770,13 +768,7 @@ mod tests {
     fn create_test_service() -> LlmStepServiceImpl {
         let provider = MockLlmProviderClient::default();
         let context_builder = LlmContextBuilderServiceImpl::new();
-        LlmStepServiceImpl::new(
-            Box::new(provider),
-            Box::new(context_builder),
-            3,
-            120,
-            true,
-        )
+        LlmStepServiceImpl::new(Box::new(provider), Box::new(context_builder), 3, 120, true)
     }
 
     fn create_test_input() -> CreateNodeInput {
@@ -848,11 +840,7 @@ mod tests {
     #[tokio::test]
     async fn test_generate_with_mock_provider() {
         let service = create_test_service();
-        let node = service
-            .create_node(create_test_input())
-            .await
-            .unwrap()
-            .node;
+        let node = service.create_node(create_test_input()).await.unwrap().node;
 
         let context = LlmStepContext {
             node_id: node.id,
@@ -878,11 +866,7 @@ mod tests {
     #[tokio::test]
     async fn test_validate_node_config_valid() {
         let service = create_test_service();
-        let node = service
-            .create_node(create_test_input())
-            .await
-            .unwrap()
-            .node;
+        let node = service.create_node(create_test_input()).await.unwrap().node;
 
         let result = service
             .validate_node_config(ValidateNodeConfigInput { node })
@@ -928,11 +912,7 @@ mod tests {
     #[tokio::test]
     async fn test_retry_generation() {
         let service = create_test_service();
-        let node = service
-            .create_node(create_test_input())
-            .await
-            .unwrap()
-            .node;
+        let node = service.create_node(create_test_input()).await.unwrap().node;
 
         let context = LlmStepContext {
             node_id: node.id,
@@ -970,11 +950,7 @@ mod tests {
     #[tokio::test]
     async fn test_retry_generation_exhausted() {
         let service = create_test_service();
-        let node = service
-            .create_node(create_test_input())
-            .await
-            .unwrap()
-            .node;
+        let node = service.create_node(create_test_input()).await.unwrap().node;
 
         let context = LlmStepContext {
             node_id: node.id,
@@ -1219,7 +1195,8 @@ mod tests {
             scenario_context: None,
         };
 
-        let template = "{source_code}\n{symbol_definitions}\n{previous_failure}\n{error_context}".to_string();
+        let template =
+            "{source_code}\n{symbol_definitions}\n{previous_failure}\n{error_context}".to_string();
         let result = builder
             .assemble_prompt(template, source, Some(failure))
             .await
@@ -1237,8 +1214,8 @@ mod tests {
         let file_path = dir.path().join("test.rs");
         std::fs::write(&file_path, "fn test() { assert!(true); }").unwrap();
 
-        let builder = LlmContextBuilderServiceImpl::new()
-            .with_repo_root(dir.path().to_str().unwrap());
+        let builder =
+            LlmContextBuilderServiceImpl::new().with_repo_root(dir.path().to_str().unwrap());
 
         let result = builder.read_source_file("test.rs").unwrap();
         assert_eq!(result.path, "test.rs");
@@ -1265,8 +1242,8 @@ mod tests {
         let file_path = dir.path().join("test.rs");
         std::fs::write(&file_path, "fn test() {}").unwrap();
 
-        let builder = LlmContextBuilderServiceImpl::new()
-            .with_repo_root(dir.path().to_str().unwrap());
+        let builder =
+            LlmContextBuilderServiceImpl::new().with_repo_root(dir.path().to_str().unwrap());
 
         let result = builder
             .get_source_context(GetSourceContextInput {
@@ -1308,8 +1285,8 @@ mod tests {
         let file_path = dir.path().join("main.rs");
         std::fs::write(&file_path, "fn main() { println!(\"hello\"); }").unwrap();
 
-        let builder = LlmContextBuilderServiceImpl::new()
-            .with_repo_root(dir.path().to_str().unwrap());
+        let builder =
+            LlmContextBuilderServiceImpl::new().with_repo_root(dir.path().to_str().unwrap());
         let service = LlmStepServiceImpl::new(
             Box::new(MockLlmProviderClient::default()),
             Box::new(builder),
@@ -1318,11 +1295,7 @@ mod tests {
             true,
         );
 
-        let node = service
-            .create_node(create_test_input())
-            .await
-            .unwrap()
-            .node;
+        let node = service.create_node(create_test_input()).await.unwrap().node;
 
         let result = service
             .build_context(BuildContextInput {
@@ -1345,10 +1318,14 @@ mod tests {
     async fn test_execute_step_full_pipeline() {
         let dir = tempfile::tempdir().unwrap();
         let file_path = dir.path().join("source.rs");
-        std::fs::write(&file_path, "pub fn greet(name: &str) -> String { format!(\"Hello {{}}\", name) }").unwrap();
+        std::fs::write(
+            &file_path,
+            "pub fn greet(name: &str) -> String { format!(\"Hello {{}}\", name) }",
+        )
+        .unwrap();
 
-        let builder = LlmContextBuilderServiceImpl::new()
-            .with_repo_root(dir.path().to_str().unwrap());
+        let builder =
+            LlmContextBuilderServiceImpl::new().with_repo_root(dir.path().to_str().unwrap());
         let service = LlmStepServiceImpl::new(
             Box::new(MockLlmProviderClient::default()),
             Box::new(builder),
@@ -1357,11 +1334,7 @@ mod tests {
             true,
         );
 
-        let node = service
-            .create_node(create_test_input())
-            .await
-            .unwrap()
-            .node;
+        let node = service.create_node(create_test_input()).await.unwrap().node;
 
         let result = service
             .execute_step(ExecuteStepInput {
@@ -1391,8 +1364,8 @@ mod tests {
         let file_path = dir.path().join("buggy.rs");
         std::fs::write(&file_path, "fn broken() { incomplete }").unwrap();
 
-        let builder = LlmContextBuilderServiceImpl::new()
-            .with_repo_root(dir.path().to_str().unwrap());
+        let builder =
+            LlmContextBuilderServiceImpl::new().with_repo_root(dir.path().to_str().unwrap());
         let service = LlmStepServiceImpl::new(
             Box::new(MockLlmProviderClient::default()),
             Box::new(builder),
@@ -1401,11 +1374,7 @@ mod tests {
             true,
         );
 
-        let node = service
-            .create_node(create_test_input())
-            .await
-            .unwrap()
-            .node;
+        let node = service.create_node(create_test_input()).await.unwrap().node;
 
         let result = service
             .execute_step(ExecuteStepInput {
@@ -1426,11 +1395,7 @@ mod tests {
     #[tokio::test]
     async fn test_generate_with_context() {
         let service = create_test_service();
-        let node = service
-            .create_node(create_test_input())
-            .await
-            .unwrap()
-            .node;
+        let node = service.create_node(create_test_input()).await.unwrap().node;
 
         let context = LlmStepContext {
             node_id: node.id,
@@ -1473,5 +1438,3 @@ mod tests {
         // duration_ms is u64, always >= 0
     }
 }
-
-

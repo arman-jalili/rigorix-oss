@@ -65,14 +65,16 @@ impl TokenValidationService for TokenValidatorImpl {
 
         let missing_scopes: Vec<String> = required_strs
             .into_iter()
-            .filter(|req| !available_scopes.iter().any(|avail| {
-                // Match if available scope covers the requirement
-                // e.g., "contents:write" satisfies "contents:read" requirement
-                let parts: Vec<&str> = req.splitn(2, ':').collect();
-                let req_perm = parts.first().copied().unwrap_or("");
-                let req_level = parts.get(1).copied().unwrap_or("");
-                avail.starts_with(req_perm) && Self::scope_sufficient(avail, req_level)
-            }))
+            .filter(|req| {
+                !available_scopes.iter().any(|avail| {
+                    // Match if available scope covers the requirement
+                    // e.g., "contents:write" satisfies "contents:read" requirement
+                    let parts: Vec<&str> = req.splitn(2, ':').collect();
+                    let req_perm = parts.first().copied().unwrap_or("");
+                    let req_level = parts.get(1).copied().unwrap_or("");
+                    avail.starts_with(req_perm) && Self::scope_sufficient(avail, req_level)
+                })
+            })
             .collect();
 
         let has_all = missing_scopes.is_empty();
@@ -114,9 +116,7 @@ impl TokenValidationService for TokenValidatorImpl {
                 ("pull-requests", "write"),
                 ("statuses", "write"),
             ],
-            ActionMode::Status | ActionMode::Auto => &[
-                ("contents", "read"),
-            ],
+            ActionMode::Status | ActionMode::Auto => &[("contents", "read")],
         }
     }
 }
@@ -173,23 +173,38 @@ mod tests {
 
     #[tokio::test]
     async fn test_scope_sufficient_write_covers_read() {
-        assert!(TokenValidatorImpl::scope_sufficient("contents:write", "read"));
+        assert!(TokenValidatorImpl::scope_sufficient(
+            "contents:write",
+            "read"
+        ));
     }
 
     #[tokio::test]
     async fn test_scope_sufficient_write_covers_write() {
-        assert!(TokenValidatorImpl::scope_sufficient("contents:write", "write"));
+        assert!(TokenValidatorImpl::scope_sufficient(
+            "contents:write",
+            "write"
+        ));
     }
 
     #[tokio::test]
     async fn test_scope_sufficient_admin_covers_all() {
-        assert!(TokenValidatorImpl::scope_sufficient("contents:admin", "write"));
-        assert!(TokenValidatorImpl::scope_sufficient("pull-requests:admin", "read"));
+        assert!(TokenValidatorImpl::scope_sufficient(
+            "contents:admin",
+            "write"
+        ));
+        assert!(TokenValidatorImpl::scope_sufficient(
+            "pull-requests:admin",
+            "read"
+        ));
     }
 
     #[tokio::test]
     async fn test_scope_sufficient_read_does_not_cover_write() {
-        assert!(!TokenValidatorImpl::scope_sufficient("contents:read", "write"));
+        assert!(!TokenValidatorImpl::scope_sufficient(
+            "contents:read",
+            "write"
+        ));
     }
 
     #[tokio::test]

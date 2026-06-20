@@ -48,9 +48,7 @@ impl InputRepository for EnvInputRepository {
     ) -> Result<HashMap<String, String>, ActionInputError> {
         let prefix_upper = prefix.to_uppercase();
         Ok(std::env::vars()
-            .filter(|(key, value)| {
-                key.starts_with(&prefix_upper) && !value.is_empty()
-            })
+            .filter(|(key, value)| key.starts_with(&prefix_upper) && !value.is_empty())
             .map(|(key, value)| {
                 let stripped = key[prefix_upper.len()..].to_string();
                 (stripped, value)
@@ -101,12 +99,16 @@ mod tests {
 
     fn set_env(key: &str, value: &str) {
         // SAFETY: test-only environment manipulation — no concurrent access
-        unsafe { std::env::set_var(key, value); }
+        unsafe {
+            std::env::set_var(key, value);
+        }
     }
 
     fn remove_env(key: &str) {
         // SAFETY: test-only environment manipulation — no concurrent access
-        unsafe { std::env::remove_var(key); }
+        unsafe {
+            std::env::remove_var(key);
+        }
     }
 
     #[tokio::test]
@@ -166,10 +168,12 @@ mod tests {
         let repo = EnvInputRepository::new();
         assert!(repo.has_env_var(var).await.unwrap());
         remove_env(var);
-        assert!(!repo
-            .has_env_var("RIGORIX_TEST_NONEXISTENT_HAS")
-            .await
-            .unwrap());
+        assert!(
+            !repo
+                .has_env_var("RIGORIX_TEST_NONEXISTENT_HAS")
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
@@ -201,7 +205,10 @@ mod tests {
         let var = "RIGORIX_TEST_EMPTY_PREFIX_VAR";
         set_env(var, "value");
         let repo = EnvInputRepository::new();
-        let result = repo.read_env_vars("RIGORIX_NONEXISTENT_PREFIX_").await.unwrap();
+        let result = repo
+            .read_env_vars("RIGORIX_NONEXISTENT_PREFIX_")
+            .await
+            .unwrap();
         assert!(result.is_empty());
         remove_env(var);
     }

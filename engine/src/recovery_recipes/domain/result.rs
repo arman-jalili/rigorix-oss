@@ -80,7 +80,10 @@ impl RecoveryResult {
             RecoveryResult::Recovered { steps_taken } => {
                 format!("Recovered after {} step(s)", steps_taken)
             }
-            RecoveryResult::PartialRecovery { recovered, remaining } => {
+            RecoveryResult::PartialRecovery {
+                recovered,
+                remaining,
+            } => {
                 format!(
                     "Partial recovery: {} succeeded, {} remaining",
                     recovered.len(),
