@@ -15,11 +15,13 @@
 //! - DTOs carry full documentation for each field
 //! - No implementation — only contract signatures
 
+pub mod annotation_writer_impl;
 pub mod dto;
 pub mod factory;
 pub mod output_formatter_impl;
 pub mod service;
 
+pub use annotation_writer_impl::*;
 pub use dto::*;
 pub use factory::*;
 pub use output_formatter_impl::*;
