@@ -429,10 +429,28 @@ max_lines_per_file = 2000
 ---
 
 *Last updated: 2026-06-20*
-*Module version: 1.0.0 (Planned)*
+*Module version: 1.0.0 (Implemented)*
 *Ported from: original Rigorix docs/ARCHITECTURE_GITHUB_ACTIONS.md §2.2*
 
 ---
 
-**Status:** Planned
+**Status:** Implemented
 **Engine modules reused:** configuration (policy.toml format), enforcement (rule patterns)
+
+## Verification
+
+| Check | Status |
+|-------|--------|
+| Build (`cargo build`) | ✅ |
+| Test suite (41 tests) | ✅ All pass |
+| Contract validation | ✅ 14/14 checks pass |
+| Clippy | ✅ Clean |
+| Format | ✅ Clean |
+
+## Related Documents
+
+- **Runbook:** `actions/docs/runbook-policy-evaluator.md`
+- **DR Plan:** `actions/docs/dr-plan-policy-evaluator.md`
+- **Contract Check:** `actions/.pi/scripts/ci/check_policy-evaluator_contracts.sh`
+- **Coverage Check:** `actions/.pi/scripts/ci/check_policy-evaluator_coverage.sh`
+- **Proofing Stage:** `actions/.pi/scripts/ci/stage_policy-evaluator_proofing.sh`
