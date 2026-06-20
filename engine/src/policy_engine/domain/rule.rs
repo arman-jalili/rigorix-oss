@@ -58,7 +58,12 @@ pub struct PolicyRule {
 
 impl PolicyRule {
     /// Create a new PolicyRule.
-    pub fn new(name: String, condition: PolicyCondition, action: PolicyAction, priority: u32) -> Self {
+    pub fn new(
+        name: String,
+        condition: PolicyCondition,
+        action: PolicyAction,
+        priority: u32,
+    ) -> Self {
         Self {
             name,
             condition,

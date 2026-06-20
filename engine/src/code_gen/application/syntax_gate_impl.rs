@@ -95,11 +95,7 @@ impl SyntaxGateImpl {
     }
 
     /// Recursively collect syntax errors from tree nodes.
-    fn collect_errors(
-        node: tree_sitter::Node,
-        content: &str,
-        errors: &mut Vec<SyntaxError>,
-    ) {
+    fn collect_errors(node: tree_sitter::Node, content: &str, errors: &mut Vec<SyntaxError>) {
         if node.is_error() || node.is_missing() {
             let start = node.start_position();
             let end = node.end_position();
@@ -207,11 +203,11 @@ impl SyntaxGateService for SyntaxGateImpl {
             }
         };
 
-        let tree = parser.parse(&input.content, None).ok_or_else(|| {
-            CodeGenError::Internal {
+        let tree = parser
+            .parse(&input.content, None)
+            .ok_or_else(|| CodeGenError::Internal {
                 detail: format!("tree-sitter parse failed for: {}", input.file_path),
-            }
-        })?;
+            })?;
 
         let duration_ms = start.elapsed().as_millis() as u64;
 
@@ -232,7 +228,10 @@ impl SyntaxGateService for SyntaxGateImpl {
         })
     }
 
-    fn verify_batch(&self, inputs: Vec<SyntaxGateInput>) -> Result<Vec<SyntaxGateOutput>, CodeGenError> {
+    fn verify_batch(
+        &self,
+        inputs: Vec<SyntaxGateInput>,
+    ) -> Result<Vec<SyntaxGateOutput>, CodeGenError> {
         inputs.into_iter().map(|input| self.verify(input)).collect()
     }
 
@@ -260,8 +259,14 @@ mod tests {
     #[test]
     fn test_detect_language() {
         assert_eq!(SyntaxGateImpl::detect_language("main.rs"), Some("rust"));
-        assert_eq!(SyntaxGateImpl::detect_language("lib.ts"), Some("typescript"));
-        assert_eq!(SyntaxGateImpl::detect_language("index.tsx"), Some("typescript"));
+        assert_eq!(
+            SyntaxGateImpl::detect_language("lib.ts"),
+            Some("typescript")
+        );
+        assert_eq!(
+            SyntaxGateImpl::detect_language("index.tsx"),
+            Some("typescript")
+        );
         assert_eq!(SyntaxGateImpl::detect_language("main.py"), Some("python"));
         assert_eq!(SyntaxGateImpl::detect_language("readme.md"), None);
         assert_eq!(SyntaxGateImpl::detect_language("Makefile"), None);

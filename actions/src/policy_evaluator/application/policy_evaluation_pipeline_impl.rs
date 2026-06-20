@@ -7,9 +7,10 @@ use async_trait::async_trait;
 
 use crate::policy_evaluator::domain::PolicyError;
 
+use super::dto::{DetectTamperInput, EvaluatePolicyInput, LoadPolicyInput, MergePoliciesInput};
 use super::dto::{
-    GenerateReportInput, GenerateReportOutput, RunPolicyEvaluationInput,
-    RunPolicyEvaluationOutput, PolicyPipelineSummary,
+    GenerateReportInput, GenerateReportOutput, PolicyPipelineSummary, RunPolicyEvaluationInput,
+    RunPolicyEvaluationOutput,
 };
 use super::org_policy_merger_impl::OrgPolicyMergingServiceImpl;
 use super::policy_evaluator_impl::PolicyEvaluationServiceImpl;
@@ -19,9 +20,6 @@ use super::policy_tamper_detector_impl::PolicyTamperDetectionServiceImpl;
 use super::service::{
     OrgPolicyMergingService, PolicyEvaluationPipelineService, PolicyEvaluationService,
     PolicyLoadingService, PolicyReportGenerationService, PolicyTamperDetectionService,
-};
-use super::dto::{
-    DetectTamperInput, EvaluatePolicyInput, LoadPolicyInput, MergePoliciesInput,
 };
 
 /// Default implementation of `PolicyEvaluationPipelineService`.

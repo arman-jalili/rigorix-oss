@@ -37,17 +37,11 @@ pub trait PermissionEnforcerFactory: Send + Sync {
     ) -> Result<Box<dyn PermissionEnforcer>, PermissionError>;
 
     /// Create a `PermissionEnforcer` using the default configuration.
-    async fn create_default(
-        &self,
-    ) -> Result<Box<dyn PermissionEnforcer>, PermissionError>;
+    async fn create_default(&self) -> Result<Box<dyn PermissionEnforcer>, PermissionError>;
 
     /// Create an extremely permissive `PermissionEnforcer` (for testing).
-    async fn create_permissive(
-        &self,
-    ) -> Result<Box<dyn PermissionEnforcer>, PermissionError>;
+    async fn create_permissive(&self) -> Result<Box<dyn PermissionEnforcer>, PermissionError>;
 
     /// Create a read-only `PermissionEnforcer`.
-    async fn create_read_only(
-        &self,
-    ) -> Result<Box<dyn PermissionEnforcer>, PermissionError>;
+    async fn create_read_only(&self) -> Result<Box<dyn PermissionEnforcer>, PermissionError>;
 }

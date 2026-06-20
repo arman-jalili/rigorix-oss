@@ -16,9 +16,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::failure_parser::domain::{
-    detail::FailureDetail,
-    failure::TemplateFailure,
-    ParsedFailure, SourceContext,
+    ParsedFailure, SourceContext, detail::FailureDetail, failure::TemplateFailure,
 };
 
 // ---------------------------------------------------------------------------

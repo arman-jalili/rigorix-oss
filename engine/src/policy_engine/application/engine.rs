@@ -60,7 +60,10 @@ pub trait PolicyEngineService: Send + Sync {
     /// Replaces all currently loaded rules with those from the provided
     /// configuration. Rules are validated during loading — duplicate names
     /// or invalid configurations return an error.
-    async fn load_rules(&self, config: super::dto::LoadRulesInput) -> Result<LoadRulesOutput, PolicyEngineError>;
+    async fn load_rules(
+        &self,
+        config: super::dto::LoadRulesInput,
+    ) -> Result<LoadRulesOutput, PolicyEngineError>;
 
     /// Get all currently active (loaded) rules.
     ///
@@ -92,7 +95,10 @@ pub trait PolicyEngineService: Send + Sync {
 ///
 /// This function does not panic. If no rules match, it returns an empty
 /// vector (callers should check for this condition).
-pub fn evaluate_rules(rules: &[PolicyRule], context: &LaneContext) -> Vec<super::dto::ActionOutput> {
+pub fn evaluate_rules(
+    rules: &[PolicyRule],
+    context: &LaneContext,
+) -> Vec<super::dto::ActionOutput> {
     let mut sorted_rules: Vec<&PolicyRule> = rules.iter().collect();
     sorted_rules.sort_by_key(|r| r.priority);
 
@@ -117,7 +123,7 @@ pub fn evaluate_rules(rules: &[PolicyRule], context: &LaneContext) -> Vec<super:
 mod tests {
     use super::*;
     use crate::policy_engine::domain::{
-        PolicyAction, PolicyCondition, PolicyRule, LaneBlocker, ReviewStatus, DiffScope,
+        DiffScope, LaneBlocker, PolicyAction, PolicyCondition, PolicyRule, ReviewStatus,
     };
 
     #[test]
@@ -126,7 +132,9 @@ mod tests {
             PolicyRule::new(
                 "low".to_string(),
                 PolicyCondition::LaneCompleted,
-                PolicyAction::Notify { channel: "slack".to_string() },
+                PolicyAction::Notify {
+                    channel: "slack".to_string(),
+                },
                 20,
             ),
             PolicyRule::new(

@@ -164,10 +164,7 @@ pub trait TokenValidationService: Send + Sync {
 #[async_trait]
 pub trait UrlAllowlistService: Send + Sync {
     /// Validate a URL against the configured allowlist.
-    async fn validate(
-        &self,
-        input: ValidateUrlInput,
-    ) -> Result<ValidateUrlOutput, SecurityError>;
+    async fn validate(&self, input: ValidateUrlInput) -> Result<ValidateUrlOutput, SecurityError>;
 
     /// Load the allowlist from the security policy.
     async fn load_allowlist(&self) -> Result<Vec<String>, SecurityError>;

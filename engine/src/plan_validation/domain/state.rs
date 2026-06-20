@@ -125,9 +125,7 @@ impl ValidationState {
 
     /// Check if there have been any failures recorded.
     pub fn has_failures(&self) -> bool {
-        self.failure_history
-            .iter()
-            .any(|v| !v.is_empty())
+        self.failure_history.iter().any(|v| !v.is_empty())
     }
 
     /// Update the current template being validated.

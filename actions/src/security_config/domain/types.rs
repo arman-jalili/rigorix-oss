@@ -157,9 +157,7 @@ impl ActionMode {
                 ("pull-requests", "write"),
                 ("statuses", "write"),
             ],
-            ActionMode::Status | ActionMode::Auto => &[
-                ("contents", "read"),
-            ],
+            ActionMode::Status | ActionMode::Auto => &[("contents", "read")],
         }
     }
 }

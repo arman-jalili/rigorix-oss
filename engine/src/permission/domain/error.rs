@@ -122,28 +122,36 @@ mod tests {
 
     #[test]
     fn test_all_errors_non_retriable() {
-        assert!(!PermissionError::PermissionDenied {
-            tool: "x".to_string(),
-            reason: "test".to_string(),
-            active_mode: "ro".to_string(),
-            required_mode: "ww".to_string(),
-        }
-        .is_retriable());
+        assert!(
+            !PermissionError::PermissionDenied {
+                tool: "x".to_string(),
+                reason: "test".to_string(),
+                active_mode: "ro".to_string(),
+                required_mode: "ww".to_string(),
+            }
+            .is_retriable()
+        );
 
-        assert!(!PermissionError::InvalidConfiguration {
-            detail: "test".to_string()
-        }
-        .is_retriable());
+        assert!(
+            !PermissionError::InvalidConfiguration {
+                detail: "test".to_string()
+            }
+            .is_retriable()
+        );
 
-        assert!(!PermissionError::PolicyNotFound {
-            tool: "x".to_string()
-        }
-        .is_retriable());
+        assert!(
+            !PermissionError::PolicyNotFound {
+                tool: "x".to_string()
+            }
+            .is_retriable()
+        );
 
-        assert!(!PermissionError::InvalidState {
-            detail: "test".to_string()
-        }
-        .is_retriable());
+        assert!(
+            !PermissionError::InvalidState {
+                detail: "test".to_string()
+            }
+            .is_retriable()
+        );
 
         assert!(!PermissionError::WorkspaceRootNotConfigured.is_retriable());
     }

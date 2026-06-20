@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: ""policy-evaluator""
+  epic: ""action-output""
   component: "Contract Freeze"
-  module: "policy-evaluator"
+  module: "action-output"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/policy-evaluator.md"
+    - module: ".pi/architecture/modules/action-output.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -47,26 +47,24 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/policy-evaluator/contracts/"
-    - "create: src/policy-evaluator/contracts/dtos/"
-    - "create: src/policy-evaluator/contracts/events/"
+    - "create: src/action-output/contracts/"
+    - "create: src/action-output/contracts/dtos/"
+    - "create: src/action-output/contracts/events/"
 ---
 
-# Contract Freeze: policy-evaluator
+# Contract Freeze: action-output
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the policy-evaluator
+Define and freeze all public interfaces, contracts, and schemas for the action-output
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- PolicyDocument
-- PolicyRule Types
-- PolicyLoader
-- PolicyEvaluator
-- OrgPolicyMerger
+- OutputFormatter
+- AnnotationWriter
+- StepSummaryWriter
 
 ## What Must Be Frozen
 

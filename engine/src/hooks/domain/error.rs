@@ -163,8 +163,16 @@ mod tests {
             raw_output: "{{{".into(),
         };
         assert!(!err.is_command_not_found());
-        assert!(err.to_string().contains("invalid JSON"), "Expected 'invalid JSON', got: {}", err.to_string());
-        assert!(err.to_string().contains("missing field"), "Expected 'missing field', got: {}", err.to_string());
+        assert!(
+            err.to_string().contains("invalid JSON"),
+            "Expected 'invalid JSON', got: {}",
+            err.to_string()
+        );
+        assert!(
+            err.to_string().contains("missing field"),
+            "Expected 'missing field', got: {}",
+            err.to_string()
+        );
         assert_eq!(err.command(), Some("bad-hook"));
     }
 

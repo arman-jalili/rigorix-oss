@@ -15,9 +15,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::code_gen::application::dto::{EditFileInput, EditFileOutput, ReadFileInput, ReadFileOutput};
-use crate::code_gen::domain::result::SyntaxGateResult;
 use crate::code_gen::application::dto::SyntaxGateConfig;
+use crate::code_gen::application::dto::{
+    EditFileInput, EditFileOutput, ReadFileInput, ReadFileOutput,
+};
+use crate::code_gen::domain::result::SyntaxGateResult;
 
 // ---------------------------------------------------------------------------
 // API Base Path

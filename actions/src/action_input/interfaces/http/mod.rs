@@ -21,7 +21,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::action_input::domain::{ActionConfig, ActionInputs, CiEnvironment, CommentCommand, GitHubEvent};
+use crate::action_input::domain::{
+    ActionConfig, ActionInputs, CiEnvironment, CommentCommand, GitHubEvent,
+};
 
 // ---------------------------------------------------------------------------
 // API Base Path

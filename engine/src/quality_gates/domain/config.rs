@@ -117,10 +117,7 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = QualityGateConfig::default();
-        assert_eq!(
-            config.default_required_level,
-            QualityLevel::Package
-        );
+        assert_eq!(config.default_required_level, QualityLevel::Package);
     }
 
     #[test]

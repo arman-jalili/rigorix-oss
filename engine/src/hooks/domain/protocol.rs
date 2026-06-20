@@ -403,7 +403,10 @@ mod tests {
         let deserialized: HookStdinPayload = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.event, HookEvent::PreToolUse);
         assert_eq!(deserialized.tool_name, "run_command");
-        assert_eq!(deserialized.environment_vars.get("PATH").unwrap(), "/usr/bin");
+        assert_eq!(
+            deserialized.environment_vars.get("PATH").unwrap(),
+            "/usr/bin"
+        );
     }
 
     // -----------------------------------------------------------------------

@@ -232,10 +232,7 @@ mod tests {
         for event in events {
             let json = serde_json::to_string(&event).unwrap();
             let deserialized: RecoveryEvent = serde_json::from_str(&json).unwrap();
-            assert_eq!(
-                format!("{:?}", event),
-                format!("{:?}", deserialized)
-            );
+            assert_eq!(format!("{:?}", event), format!("{:?}", deserialized));
         }
     }
 }

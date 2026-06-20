@@ -187,18 +187,22 @@ mod tests {
 
     #[test]
     fn test_is_safe_restart_service() {
-        assert!(!RecoveryStep::RestartService {
-            name: "test".to_string()
-        }
-        .is_safe());
+        assert!(
+            !RecoveryStep::RestartService {
+                name: "test".to_string()
+            }
+            .is_safe()
+        );
     }
 
     #[test]
     fn test_is_safe_escalate() {
-        assert!(!RecoveryStep::EscalateToHuman {
-            reason: "test".to_string()
-        }
-        .is_safe());
+        assert!(
+            !RecoveryStep::EscalateToHuman {
+                reason: "test".to_string()
+            }
+            .is_safe()
+        );
     }
 
     #[test]

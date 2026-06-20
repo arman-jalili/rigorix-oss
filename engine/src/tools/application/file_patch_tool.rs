@@ -159,7 +159,8 @@ impl FilePatchTool {
                         container: None,
                         position: "after".to_string(),
                     };
-                    match TreeSitterAnchorFinder::find_anchor(&contents, path_str, &fallback_params) {
+                    match TreeSitterAnchorFinder::find_anchor(&contents, path_str, &fallback_params)
+                    {
                         Ok(fallback_anchor) => fallback_anchor,
                         Err(_) => return Err(e), // Return original error if fallback also fails
                     }
@@ -617,10 +618,7 @@ mod tests {
         assert!(result.is_success());
         let content = std::fs::read_to_string(&file_path).unwrap();
         // Content should be inserted INSIDE the impl body, before closing }}
-        assert!(
-            content.contains("method2"),
-            "method2 should be inserted"
-        );
+        assert!(content.contains("method2"), "method2 should be inserted");
         // Verify method2 is INSIDE the impl block
         let impl_close = content.rfind("}\n\nfn main").unwrap();
         let method2_pos = content.find("method2").unwrap();
@@ -787,10 +785,7 @@ mod tests {
             ctor_pos < get_pos,
             "getActiveTasks should be after constructor"
         );
-        assert!(
-            get_pos < add_pos,
-            "getActiveTasks should be before add()"
-        );
+        assert!(get_pos < add_pos, "getActiveTasks should be before add()");
     }
 
     /// Test that when anchor_type = "constructor" is not found (no explicit

@@ -16,8 +16,8 @@
 //! as consumers would use it.
 
 use rigorix_engine::failure_parser::domain::{
-    FailureDetail, FailureSeverity, ParsedFailure, SourceContext,
-    SourceLocation, TemplateFailure, TemplateFailureService,
+    FailureDetail, FailureSeverity, ParsedFailure, SourceContext, SourceLocation, TemplateFailure,
+    TemplateFailureService,
 };
 
 // ---------------------------------------------------------------------------
@@ -107,9 +107,21 @@ fn integration_template_failure_all_variants() {
 fn integration_template_failure_summary_formats() {
     let f = sample_missing_symbol_failure();
     let s = f.summary();
-    assert!(s.contains("MissingSymbol"), "Summary should contain variant name: {}", s);
-    assert!(s.contains("addTask"), "Summary should contain symbol: {}", s);
-    assert!(s.contains("tests/tasklist.test.ts"), "Summary should contain file: {}", s);
+    assert!(
+        s.contains("MissingSymbol"),
+        "Summary should contain variant name: {}",
+        s
+    );
+    assert!(
+        s.contains("addTask"),
+        "Summary should contain symbol: {}",
+        s
+    );
+    assert!(
+        s.contains("tests/tasklist.test.ts"),
+        "Summary should contain file: {}",
+        s
+    );
 }
 
 #[test]
@@ -140,9 +152,19 @@ fn integration_serialization_json_roundtrip_all_variants() {
     for (i, variant) in variants.iter().enumerate() {
         let json = serde_json::to_string_pretty(variant)
             .unwrap_or_else(|e| panic!("Variant {}: serialization failed: {}", i, e));
-        let deserialized: TemplateFailure = serde_json::from_str(&json)
-            .unwrap_or_else(|e| panic!("Variant {}: deserialization failed: {} from JSON: {}", i, e, &json[..200]));
-        assert_eq!(*variant, deserialized, "Variant {}: roundtrip equality failed", i);
+        let deserialized: TemplateFailure = serde_json::from_str(&json).unwrap_or_else(|e| {
+            panic!(
+                "Variant {}: deserialization failed: {} from JSON: {}",
+                i,
+                e,
+                &json[..200]
+            )
+        });
+        assert_eq!(
+            *variant, deserialized,
+            "Variant {}: roundtrip equality failed",
+            i
+        );
     }
 }
 
@@ -224,8 +246,14 @@ fn integration_failure_detail_to_log_line() {
     );
     let log = detail.to_log_line();
     assert!(log.contains("tsc"), "Log should contain tool name");
-    assert!(log.contains("tests/tasklist.test.ts:3:10"), "Log should contain location");
-    assert!(log.contains("Use 'add'"), "Log should contain fix suggestion");
+    assert!(
+        log.contains("tests/tasklist.test.ts:3:10"),
+        "Log should contain location"
+    );
+    assert!(
+        log.contains("Use 'add'"),
+        "Log should contain fix suggestion"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -306,14 +334,19 @@ fn integration_source_context_with_multiple_files() {
         "src/tasklist.ts".to_string(),
         vec!["add".to_string(), "remove".to_string(), "list".to_string()],
     );
-    ctx.source_by_file
-        .insert("src/tasklist.ts".to_string(), "export class TaskList { ... }".to_string());
+    ctx.source_by_file.insert(
+        "src/tasklist.ts".to_string(),
+        "export class TaskList { ... }".to_string(),
+    );
 
     assert!(ctx.has_content());
     let symbols = ctx.symbols_in_file("src/tasklist.ts");
     assert_eq!(symbols.len(), 3);
     assert!(symbols.contains(&"add".to_string()));
-    assert_eq!(ctx.source_for_file("src/tasklist.ts"), Some("export class TaskList { ... }"));
+    assert_eq!(
+        ctx.source_for_file("src/tasklist.ts"),
+        Some("export class TaskList { ... }")
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -335,10 +368,7 @@ fn integration_service_group_by_variant() {
 
 #[test]
 fn integration_service_to_parsed_full_flow() {
-    let failures = vec![
-        sample_missing_symbol_failure(),
-        sample_test_failure(),
-    ];
+    let failures = vec![sample_missing_symbol_failure(), sample_test_failure()];
 
     let parsed = TemplateFailureService::to_parsed(failures, "tsc");
     assert_eq!(parsed.total_count, 2);
@@ -383,10 +413,7 @@ fn integration_service_error_codes() {
 
 #[test]
 fn integration_service_test_names() {
-    let failures = vec![
-        sample_assertion_failure(),
-        sample_test_failure(),
-    ];
+    let failures = vec![sample_assertion_failure(), sample_test_failure()];
     let names = TemplateFailureService::test_names(&failures);
     assert_eq!(names.len(), 2);
     assert!(names.contains("should add a new task"));

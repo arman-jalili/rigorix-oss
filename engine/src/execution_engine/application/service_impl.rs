@@ -164,9 +164,12 @@ impl ParallelExecutionServiceImpl {
                 crate::permission::domain::PermissionOutcome::Denied { reason, .. } => {
                     let duration_ms = start.elapsed().as_millis() as u64;
                     return TaskResult::failure(
-                        node_id, &node.name,
+                        node_id,
+                        &node.name,
                         reason,
-                        "permission_denied".to_string(), duration_ms, 0,
+                        "permission_denied".to_string(),
+                        duration_ms,
+                        0,
                     );
                 }
                 _ => {}
@@ -174,16 +177,20 @@ impl ParallelExecutionServiceImpl {
 
             // Additional checks for write tools
             if tool_name == "file_write" || tool_name == "file_append" || tool_name == "edit_file" {
-                let parsed: serde_json::Value = serde_json::from_str(tool_intent).unwrap_or_default();
+                let parsed: serde_json::Value =
+                    serde_json::from_str(tool_intent).unwrap_or_default();
                 if let Some(path) = parsed["path"].as_str() {
                     let write_outcome = enforcer.check_file_write(path, ".", None).await;
                     match write_outcome {
                         crate::permission::domain::PermissionOutcome::Denied { reason, .. } => {
                             let duration_ms = start.elapsed().as_millis() as u64;
                             return TaskResult::failure(
-                                node_id, &node.name,
+                                node_id,
+                                &node.name,
                                 reason,
-                                "permission_denied".to_string(), duration_ms, 0,
+                                "permission_denied".to_string(),
+                                duration_ms,
+                                0,
                             );
                         }
                         _ => {}
@@ -198,9 +205,12 @@ impl ParallelExecutionServiceImpl {
                     crate::permission::domain::PermissionOutcome::Denied { reason, .. } => {
                         let duration_ms = start.elapsed().as_millis() as u64;
                         return TaskResult::failure(
-                            node_id, &node.name,
+                            node_id,
+                            &node.name,
                             reason,
-                            "permission_denied".to_string(), duration_ms, 0,
+                            "permission_denied".to_string(),
+                            duration_ms,
+                            0,
                         );
                     }
                     _ => {}
@@ -224,12 +234,16 @@ impl ParallelExecutionServiceImpl {
                 {
                     let duration_ms = start.elapsed().as_millis() as u64;
                     return TaskResult::failure(
-                        node_id, &node.name,
+                        node_id,
+                        &node.name,
                         format!(
                             "Tool '{}' blocked by PreToolUse hook: {:?}",
-                            tool_name, pre_output.result.feedback_messages()
+                            tool_name,
+                            pre_output.result.feedback_messages()
                         ),
-                        "hook_blocked".to_string(), duration_ms, 0,
+                        "hook_blocked".to_string(),
+                        duration_ms,
+                        0,
                     );
                 }
             }
@@ -660,8 +674,12 @@ impl ParallelExecutionServiceImpl {
             Err(e) => {
                 let duration_ms = start.elapsed().as_millis() as u64;
                 return TaskResult::failure(
-                    node_id, node_name, e.to_string(),
-                    "parse_error".to_string(), duration_ms, 0,
+                    node_id,
+                    node_name,
+                    e.to_string(),
+                    "parse_error".to_string(),
+                    duration_ms,
+                    0,
                 );
             }
         };
@@ -675,8 +693,12 @@ impl ParallelExecutionServiceImpl {
             Ok(c) => c,
             Err(e) => {
                 return TaskResult::failure(
-                    node_id, node_name, e.to_string(),
-                    "edit_file_read_error".to_string(), duration_ms, 0,
+                    node_id,
+                    node_name,
+                    e.to_string(),
+                    "edit_file_read_error".to_string(),
+                    duration_ms,
+                    0,
                 );
             }
         };
@@ -684,18 +706,24 @@ impl ParallelExecutionServiceImpl {
         // Identity check
         if old_string == new_string {
             return TaskResult::failure(
-                node_id, node_name,
+                node_id,
+                node_name,
                 "old_string and new_string must differ".to_string(),
-                "identity_edit".to_string(), duration_ms, 0,
+                "identity_edit".to_string(),
+                duration_ms,
+                0,
             );
         }
 
         // Existence check
         if !original.contains(old_string) {
             return TaskResult::failure(
-                node_id, node_name,
+                node_id,
+                node_name,
                 format!("old_string not found in {}", path),
-                "old_string_not_found".to_string(), duration_ms, 0,
+                "old_string_not_found".to_string(),
+                duration_ms,
+                0,
             );
         }
 
@@ -707,13 +735,24 @@ impl ParallelExecutionServiceImpl {
 
         match std::fs::write(path, &updated) {
             Ok(()) => TaskResult::success(
-                node_id, node_name,
-                Some(format!("Edit applied to {} — {}→{}", path, old_string.len(), new_string.len())),
-                duration_ms, 0,
+                node_id,
+                node_name,
+                Some(format!(
+                    "Edit applied to {} — {}→{}",
+                    path,
+                    old_string.len(),
+                    new_string.len()
+                )),
+                duration_ms,
+                0,
             ),
             Err(e) => TaskResult::failure(
-                node_id, node_name, e.to_string(),
-                "edit_file_write_error".to_string(), duration_ms, 0,
+                node_id,
+                node_name,
+                e.to_string(),
+                "edit_file_write_error".to_string(),
+                duration_ms,
+                0,
             ),
         }
     }
@@ -1381,16 +1420,23 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                 };
 
                 if let Some(scenario) = scenario_opt {
-                    let recipe_input = RecipeForInput { scenario, custom_recipes: None };
+                    let recipe_input = RecipeForInput {
+                        scenario,
+                        custom_recipes: None,
+                    };
                     if let Ok(recipe_out) = recovery_svc.recipe_for(recipe_input).await {
                         let (can_attempt, attempt_count) = {
-                            let mut ctx_guard = self.recovery_contexts.lock()
-                                .map_err(|e| ExecutionError::InternalError {
+                            let mut ctx_guard = self.recovery_contexts.lock().map_err(|e| {
+                                ExecutionError::InternalError {
                                     detail: format!("Recovery context lock error: {}", e),
-                                })?;
-                            let ctx = ctx_guard.entry(input.dag_id)
+                                }
+                            })?;
+                            let ctx = ctx_guard
+                                .entry(input.dag_id)
                                 .or_insert_with(RecoveryContext::new);
-                            let recipe_check = recipe_out.recipe.as_ref()
+                            let recipe_check = recipe_out
+                                .recipe
+                                .as_ref()
                                 .map(|r| ctx.can_attempt(scenario, r))
                                 .unwrap_or(false);
                             let count = ctx.attempt_count(scenario);
@@ -1407,13 +1453,21 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                                     original_error: Some(error_message.clone()),
                                     execution_id: Some(input.dag_id.to_string()),
                                 };
-                                if let Ok(recovery_out) = recovery_svc.attempt_recovery(recovery_input).await {
+                                if let Ok(recovery_out) =
+                                    recovery_svc.attempt_recovery(recovery_input).await
+                                {
                                     {
-                                        let mut ctx_guard = self.recovery_contexts.lock()
-                                            .map_err(|e| ExecutionError::InternalError {
-                                                detail: format!("Recovery context lock error: {}", e),
+                                        let mut ctx_guard =
+                                            self.recovery_contexts.lock().map_err(|e| {
+                                                ExecutionError::InternalError {
+                                                    detail: format!(
+                                                        "Recovery context lock error: {}",
+                                                        e
+                                                    ),
+                                                }
                                             })?;
-                                        let ctx = ctx_guard.entry(input.dag_id)
+                                        let ctx = ctx_guard
+                                            .entry(input.dag_id)
                                             .or_insert_with(RecoveryContext::new);
                                         ctx.record_attempt(scenario);
                                     }
@@ -1425,25 +1479,28 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                                         "Recovery attempted"
                                     );
 
-                                        if recovery_out.result.is_recovered() {
-                                            // Recovery succeeded — re-add node to ready queue
-                                            let mut sessions = self.sessions.lock()
-                                                .map_err(|e| ExecutionError::InternalError {
-                                                    detail: format!("Session lock error: {}", e),
-                                                })?;
-                                            if let Some(session) = sessions.get_mut(&input.dag_id) {
-                                                if let Some(state) = session.node_states.get_mut(&node_id) {
-                                                    state.status = NodeStatus::Ready;
-                                                }
+                                    if recovery_out.result.is_recovered() {
+                                        // Recovery succeeded — re-add node to ready queue
+                                        let mut sessions = self.sessions.lock().map_err(|e| {
+                                            ExecutionError::InternalError {
+                                                detail: format!("Session lock error: {}", e),
                                             }
-                                            continue; // Re-enter the retry loop
+                                        })?;
+                                        if let Some(session) = sessions.get_mut(&input.dag_id) {
+                                            if let Some(state) =
+                                                session.node_states.get_mut(&node_id)
+                                            {
+                                                state.status = NodeStatus::Ready;
+                                            }
                                         }
+                                        continue; // Re-enter the retry loop
                                     }
                                 }
                             }
                         }
                     }
                 }
+            }
 
             // --- Phase 4: Handle failure with retry evaluation ---
 

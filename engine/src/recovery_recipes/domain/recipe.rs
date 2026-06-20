@@ -76,10 +76,7 @@ impl RecoveryRecipe {
         }
         if max_attempts == 0 {
             return Err(super::error::RecoveryError::InvalidConfiguration {
-                detail: format!(
-                    "Recipe for {:?} must have max_attempts >= 1",
-                    scenario
-                ),
+                detail: format!("Recipe for {:?} must have max_attempts >= 1", scenario),
             });
         }
         Ok(Self {

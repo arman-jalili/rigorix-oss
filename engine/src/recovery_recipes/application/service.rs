@@ -19,8 +19,8 @@ use async_trait::async_trait;
 use crate::recovery_recipes::domain::{RecoveryError, RecoveryRecipe};
 
 use super::dto::{
-    AttemptRecoveryInput, AttemptRecoveryOutput, CanAttemptInput, CanAttemptOutput,
-    RecipeForInput, RecipeForOutput, ValidateRecipeInput, ValidateRecipeOutput,
+    AttemptRecoveryInput, AttemptRecoveryOutput, CanAttemptInput, CanAttemptOutput, RecipeForInput,
+    RecipeForOutput, ValidateRecipeInput, ValidateRecipeOutput,
 };
 
 /// Application service for managing and executing recovery recipes.
@@ -54,19 +54,13 @@ pub trait RecoveryService: Send + Sync {
     /// Checks custom overrides first, then falls back to the default
     /// built-in catalog. Returns `None` if no recipe is configured for
     /// the scenario.
-    async fn recipe_for(
-        &self,
-        input: RecipeForInput,
-    ) -> Result<RecipeForOutput, RecoveryError>;
+    async fn recipe_for(&self, input: RecipeForInput) -> Result<RecipeForOutput, RecoveryError>;
 
     /// Check whether recovery can be attempted for a scenario.
     ///
     /// Considers the recipe's `max_attempts` and the current attempt
     /// count (tracked in `RecoveryContext`).
-    async fn can_attempt(
-        &self,
-        input: CanAttemptInput,
-    ) -> Result<CanAttemptOutput, RecoveryError>;
+    async fn can_attempt(&self, input: CanAttemptInput) -> Result<CanAttemptOutput, RecoveryError>;
 
     /// Validate a recipe configuration.
     ///

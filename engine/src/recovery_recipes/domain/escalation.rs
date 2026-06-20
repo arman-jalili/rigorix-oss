@@ -72,7 +72,10 @@ mod tests {
     #[test]
     fn test_as_str() {
         assert_eq!(EscalationPolicy::AlertHuman.as_str(), "alert_human");
-        assert_eq!(EscalationPolicy::LogAndContinue.as_str(), "log_and_continue");
+        assert_eq!(
+            EscalationPolicy::LogAndContinue.as_str(),
+            "log_and_continue"
+        );
         assert_eq!(EscalationPolicy::Abort.as_str(), "abort");
     }
 

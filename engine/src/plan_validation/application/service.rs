@@ -37,8 +37,7 @@ use crate::plan_validation::domain::error::ValidationLoopError;
 
 use super::dto::{
     ClassifyNodesInput, ClassifyNodesOutput, EvaluateIterationInput, EvaluateIterationOutput,
-    RetryGenerativeNodesInput, RetryGenerativeNodesOutput,
-    ValidateInput, ValidateOutput,
+    RetryGenerativeNodesInput, RetryGenerativeNodesOutput, ValidateInput, ValidateOutput,
 };
 
 /// Central validation loop service that orchestrates the self-correcting
@@ -93,10 +92,7 @@ pub trait ValidationLoopService: Send + Sync {
     ///
     /// Returns `ValidationLoopError` for infrastructure or system errors
     /// (not validation failures — those are captured in the outcome).
-    async fn validate(
-        &self,
-        input: ValidateInput,
-    ) -> Result<ValidateOutput, ValidationLoopError>;
+    async fn validate(&self, input: ValidateInput) -> Result<ValidateOutput, ValidationLoopError>;
 
     /// Classify template nodes into generative and deterministic categories.
     ///

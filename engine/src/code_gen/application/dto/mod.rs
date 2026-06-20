@@ -235,9 +235,15 @@ pub struct SyntaxGateConfig {
     pub supported_languages: Vec<String>,
 }
 
-fn default_enabled() -> bool { true }
-fn default_skip_unsupported() -> bool { true }
-fn default_max_verify_size() -> u64 { 1_048_576 } // 1 MB
+fn default_enabled() -> bool {
+    true
+}
+fn default_skip_unsupported() -> bool {
+    true
+}
+fn default_max_verify_size() -> u64 {
+    1_048_576
+} // 1 MB
 
 impl Default for SyntaxGateConfig {
     fn default() -> Self {
@@ -246,11 +252,7 @@ impl Default for SyntaxGateConfig {
             block_on_error: false,
             skip_unsupported: true,
             max_verify_size: 1_048_576,
-            supported_languages: vec![
-                "rust".into(),
-                "typescript".into(),
-                "python".into(),
-            ],
+            supported_languages: vec!["rust".into(), "typescript".into(), "python".into()],
         }
     }
 }
@@ -280,9 +282,15 @@ pub struct EditFileConfig {
     pub max_replacements: usize,
 }
 
-fn default_max_edit_size() -> u64 { 10_485_760 }
-fn default_identity_check() -> bool { true }
-fn default_max_replacements() -> usize { 1000 }
+fn default_max_edit_size() -> u64 {
+    10_485_760
+}
+fn default_identity_check() -> bool {
+    true
+}
+fn default_max_replacements() -> usize {
+    1000
+}
 
 impl Default for EditFileConfig {
     fn default() -> Self {

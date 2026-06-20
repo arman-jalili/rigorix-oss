@@ -273,8 +273,6 @@ mod tests {
     use super::*;
     use crate::configuration::domain::ConfigSource;
     use crate::configuration::infrastructure::config_factory_impl::ConfigFactoryImpl;
-    
-    
 
     /// Hermetic test repository that finds no config file and no env vars.
     struct NoopConfigRepository;

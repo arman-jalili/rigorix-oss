@@ -61,7 +61,8 @@ impl InputParserImpl {
 impl Default for InputParserImpl {
     fn default() -> Self {
         Self::new(Box::new(
-            crate::action_input::infrastructure::env_input_repository_impl::EnvInputRepository::new(),
+            crate::action_input::infrastructure::env_input_repository_impl::EnvInputRepository::new(
+            ),
         ))
     }
 }
@@ -265,7 +266,10 @@ mod tests {
             "INPUT_PERMISSION_MODE".to_string(),
             "workspace_write".to_string(),
         );
-        env.insert("INPUT_POLICY_FILE".to_string(), ".rigorix/policy.toml".to_string());
+        env.insert(
+            "INPUT_POLICY_FILE".to_string(),
+            ".rigorix/policy.toml".to_string(),
+        );
         env.insert("INPUT_MAX_LLM_CALLS".to_string(), "25".to_string());
         env.insert("INPUT_MAX_LLM_TOKENS".to_string(), "100000".to_string());
         env.insert(
@@ -277,7 +281,10 @@ mod tests {
         env.insert("INPUT_POST_PR_COMMENT".to_string(), "true".to_string());
         env.insert("INPUT_FAIL_ON_VIOLATION".to_string(), "true".to_string());
         env.insert("INPUT_FAIL_ON_ACTION_ERROR".to_string(), "true".to_string());
-        env.insert("INPUT_REQUIRED_QUALITY".to_string(), "merge_ready".to_string());
+        env.insert(
+            "INPUT_REQUIRED_QUALITY".to_string(),
+            "merge_ready".to_string(),
+        );
         env.insert("INPUT_PROFILE".to_string(), "strict".to_string());
 
         let parser = make_parser(env);
@@ -302,10 +309,7 @@ mod tests {
         assert_eq!(result.inputs.post_pr_comment, Some(true));
         assert_eq!(result.inputs.fail_on_violation, Some(true));
         assert_eq!(result.inputs.fail_on_action_error, Some(true));
-        assert_eq!(
-            result.inputs.profile,
-            Some("strict".to_string())
-        );
+        assert_eq!(result.inputs.profile, Some("strict".to_string()));
         assert_eq!(result.populated_count, 13);
         assert!(result.warnings.is_empty());
     }
@@ -347,10 +351,7 @@ mod tests {
     #[tokio::test]
     async fn test_parse_invalid_boolean() {
         let mut env = HashMap::new();
-        env.insert(
-            "INPUT_POST_PR_COMMENT".to_string(),
-            "maybe".to_string(),
-        );
+        env.insert("INPUT_POST_PR_COMMENT".to_string(), "maybe".to_string());
 
         let parser = make_parser(env);
         let input = ParseInputsInput::default();
@@ -383,10 +384,7 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("INPUT_POST_PR_COMMENT".to_string(), "false".to_string());
         env.insert("INPUT_FAIL_ON_VIOLATION".to_string(), "0".to_string());
-        env.insert(
-            "INPUT_FAIL_ON_ACTION_ERROR".to_string(),
-            "no".to_string(),
-        );
+        env.insert("INPUT_FAIL_ON_ACTION_ERROR".to_string(), "no".to_string());
 
         let parser = make_parser(env);
         let input = ParseInputsInput::default();
@@ -410,10 +408,7 @@ mod tests {
         };
         let result = parser.parse(input).await.unwrap();
 
-        assert_eq!(
-            result.inputs.intent,
-            Some("override intent".to_string())
-        );
+        assert_eq!(result.inputs.intent, Some("override intent".to_string()));
         assert_eq!(result.inputs.mode, Some("validate".to_string()));
         assert_eq!(result.populated_count, 2);
     }
@@ -430,10 +425,7 @@ mod tests {
         };
         let result = parser.parse(input).await.unwrap();
 
-        assert_eq!(
-            result.inputs.intent,
-            Some("custom prefix".to_string())
-        );
+        assert_eq!(result.inputs.intent, Some("custom prefix".to_string()));
     }
 
     #[tokio::test]
@@ -454,16 +446,14 @@ mod tests {
     #[tokio::test]
     async fn test_parse_field_valid() {
         let parser = make_parser(HashMap::new());
-        let result: Result<Option<u32>, ActionInputError> =
-            parser.parse_field("count", "42").await;
+        let result: Result<Option<u32>, ActionInputError> = parser.parse_field("count", "42").await;
         assert_eq!(result.unwrap(), Some(42));
     }
 
     #[tokio::test]
     async fn test_parse_field_empty() {
         let parser = make_parser(HashMap::new());
-        let result: Result<Option<u32>, ActionInputError> =
-            parser.parse_field("count", "").await;
+        let result: Result<Option<u32>, ActionInputError> = parser.parse_field("count", "").await;
         assert_eq!(result.unwrap(), None);
     }
 
@@ -480,10 +470,14 @@ mod tests {
         // require_input reads from real std::env, so we need to set it
         // Using unique name to avoid race with parallel tests
         let key = "INPUT_REQUIRE_PRESENT_TEST";
-        unsafe { std::env::set_var(key, "test_value"); }
+        unsafe {
+            std::env::set_var(key, "test_value");
+        }
         let parser = make_parser(HashMap::new());
         let result = parser.require_input("REQUIRE_PRESENT_TEST").await;
-        unsafe { std::env::remove_var(key); }
+        unsafe {
+            std::env::remove_var(key);
+        }
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "test_value");
     }
@@ -492,7 +486,9 @@ mod tests {
     async fn test_require_input_missing() {
         // Using a unique name that won't conflict
         let key = "INPUT_SHOULD_BE_MISSING_UNIQUE";
-        unsafe { std::env::remove_var(key); }
+        unsafe {
+            std::env::remove_var(key);
+        }
         let parser = make_parser(HashMap::new());
         let result = parser.require_input("SHOULD_BE_MISSING_UNIQUE").await;
         assert!(result.is_err());

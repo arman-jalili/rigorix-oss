@@ -76,7 +76,10 @@ impl RulesFactory for RulesFactoryImpl {
             other => Err(PolicyError::InvalidGlobPattern {
                 rule: "<unknown>".to_string(),
                 pattern: other.to_string(),
-                detail: format!("Unknown severity level: '{}'. Valid: critical, high, medium, low", other),
+                detail: format!(
+                    "Unknown severity level: '{}'. Valid: critical, high, medium, low",
+                    other
+                ),
             }),
         }
     }
@@ -127,7 +130,10 @@ mod tests {
             .build_deny_rule("bad", "Bad pattern", "[invalid", Severity::High, vec![])
             .await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), PolicyError::InvalidGlobPattern { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            PolicyError::InvalidGlobPattern { .. }
+        ));
     }
 
     #[tokio::test]
@@ -137,8 +143,14 @@ mod tests {
             factory.parse_severity("critical").await.unwrap(),
             Severity::Critical
         );
-        assert_eq!(factory.parse_severity("high").await.unwrap(), Severity::High);
-        assert_eq!(factory.parse_severity("medium").await.unwrap(), Severity::Medium);
+        assert_eq!(
+            factory.parse_severity("high").await.unwrap(),
+            Severity::High
+        );
+        assert_eq!(
+            factory.parse_severity("medium").await.unwrap(),
+            Severity::Medium
+        );
         assert_eq!(factory.parse_severity("low").await.unwrap(), Severity::Low);
         assert!(factory.parse_severity("unknown").await.is_err());
     }

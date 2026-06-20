@@ -144,7 +144,11 @@ mod tests {
             timestamp: Utc::now(),
         };
         match &event {
-            CodeGenEvent::EditFileCompleted { file_path, syntax_gate_passed, .. } => {
+            CodeGenEvent::EditFileCompleted {
+                file_path,
+                syntax_gate_passed,
+                ..
+            } => {
                 assert_eq!(file_path, "src/lib.rs");
                 assert!(*syntax_gate_passed);
             }
@@ -182,7 +186,11 @@ mod tests {
             timestamp: Utc::now(),
         };
         match &event {
-            CodeGenEvent::ReadFileCompleted { file_path, total_lines, .. } => {
+            CodeGenEvent::ReadFileCompleted {
+                file_path,
+                total_lines,
+                ..
+            } => {
                 assert_eq!(file_path, "Cargo.toml");
                 assert_eq!(*total_lines, 50);
             }
@@ -201,7 +209,11 @@ mod tests {
             timestamp: Utc::now(),
         };
         match &event {
-            CodeGenEvent::SyntaxGateApplied { outcome, error_count, .. } => {
+            CodeGenEvent::SyntaxGateApplied {
+                outcome,
+                error_count,
+                ..
+            } => {
                 assert_eq!(outcome, "passed");
                 assert_eq!(*error_count, 0);
             }

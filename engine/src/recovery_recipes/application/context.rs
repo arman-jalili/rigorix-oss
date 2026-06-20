@@ -14,9 +14,7 @@
 
 use std::collections::HashMap;
 
-use crate::recovery_recipes::domain::{
-    FailureScenario, RecoveryEvent, RecoveryRecipe,
-};
+use crate::recovery_recipes::domain::{FailureScenario, RecoveryEvent, RecoveryRecipe};
 
 /// Tracks per-scenario attempt counts and recovery events within an
 /// execution session. Constructed fresh for each execution session
@@ -83,7 +81,9 @@ impl RecoveryContext {
 
     /// Get the remaining attempts for a scenario given a recipe.
     pub fn remaining_attempts(&self, scenario: FailureScenario, recipe: &RecoveryRecipe) -> u32 {
-        recipe.max_attempts.saturating_sub(self.attempt_count(scenario))
+        recipe
+            .max_attempts
+            .saturating_sub(self.attempt_count(scenario))
     }
 
     /// Get all events for audit trail.
@@ -204,13 +204,25 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(ctx.remaining_attempts(FailureScenario::CompileError, &recipe), 3);
+        assert_eq!(
+            ctx.remaining_attempts(FailureScenario::CompileError, &recipe),
+            3
+        );
         ctx.record_attempt(FailureScenario::CompileError);
-        assert_eq!(ctx.remaining_attempts(FailureScenario::CompileError, &recipe), 2);
+        assert_eq!(
+            ctx.remaining_attempts(FailureScenario::CompileError, &recipe),
+            2
+        );
         ctx.record_attempt(FailureScenario::CompileError);
-        assert_eq!(ctx.remaining_attempts(FailureScenario::CompileError, &recipe), 1);
+        assert_eq!(
+            ctx.remaining_attempts(FailureScenario::CompileError, &recipe),
+            1
+        );
         ctx.record_attempt(FailureScenario::CompileError);
-        assert_eq!(ctx.remaining_attempts(FailureScenario::CompileError, &recipe), 0);
+        assert_eq!(
+            ctx.remaining_attempts(FailureScenario::CompileError, &recipe),
+            0
+        );
     }
 
     #[test]

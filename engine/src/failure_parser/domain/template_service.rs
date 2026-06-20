@@ -8,9 +8,7 @@
 //! grouping, filtering, summarizing, and severity analysis.
 
 use crate::failure_parser::domain::{
-    detail::FailureSeverity,
-    failure::TemplateFailure,
-    output::ParsedFailure,
+    detail::FailureSeverity, failure::TemplateFailure, output::ParsedFailure,
 };
 
 /// Domain service for TemplateFailure operations.
@@ -23,8 +21,11 @@ impl TemplateFailureService {
     /// Group failures by their variant type.
     ///
     /// Returns a map of variant name → list of failures.
-    pub fn group_by_variant(failures: &[TemplateFailure]) -> std::collections::HashMap<&'static str, Vec<&TemplateFailure>> {
-        let mut groups: std::collections::HashMap<&'static str, Vec<&TemplateFailure>> = std::collections::HashMap::new();
+    pub fn group_by_variant(
+        failures: &[TemplateFailure],
+    ) -> std::collections::HashMap<&'static str, Vec<&TemplateFailure>> {
+        let mut groups: std::collections::HashMap<&'static str, Vec<&TemplateFailure>> =
+            std::collections::HashMap::new();
         for f in failures {
             groups.entry(f.variant_name()).or_default().push(f);
         }
@@ -59,8 +60,9 @@ impl TemplateFailureService {
         // Test failures
         for f in failures {
             match f {
-                TemplateFailure::AssertionFailure { .. }
-                | TemplateFailure::TestFailure { .. } => return FailureSeverity::TestBlock,
+                TemplateFailure::AssertionFailure { .. } | TemplateFailure::TestFailure { .. } => {
+                    return FailureSeverity::TestBlock;
+                }
                 _ => {}
             }
         }
@@ -114,7 +116,10 @@ impl TemplateFailureService {
     }
 
     /// Create a ParsedFailure from a list of TemplateFailures and a source tool name.
-    pub fn to_parsed(failures: Vec<TemplateFailure>, source_tool: impl Into<String>) -> ParsedFailure {
+    pub fn to_parsed(
+        failures: Vec<TemplateFailure>,
+        source_tool: impl Into<String>,
+    ) -> ParsedFailure {
         let tool_str: String = source_tool.into();
         let details: Vec<_> = failures
             .into_iter()
@@ -239,10 +244,7 @@ mod tests {
 
     #[test]
     fn test_classify_severity_compile_block_wins() {
-        let failures = vec![
-            make_test_failure("t1"),
-            make_compile_error("E001"),
-        ];
+        let failures = vec![make_test_failure("t1"), make_compile_error("E001")];
         assert_eq!(
             TemplateFailureService::classify_severity(&failures),
             FailureSeverity::CompileBlock
@@ -251,10 +253,7 @@ mod tests {
 
     #[test]
     fn test_classify_severity_test_block() {
-        let failures = vec![
-            make_test_failure("t1"),
-            make_assertion_failure("t2"),
-        ];
+        let failures = vec![make_test_failure("t1"), make_assertion_failure("t2")];
         assert_eq!(
             TemplateFailureService::classify_severity(&failures),
             FailureSeverity::TestBlock
@@ -273,10 +272,7 @@ mod tests {
 
     #[test]
     fn test_classify_severity_compile_types() {
-        let failures = vec![
-            make_type_mismatch(),
-            make_wrong_arg_count(),
-        ];
+        let failures = vec![make_type_mismatch(), make_wrong_arg_count()];
         assert_eq!(
             TemplateFailureService::classify_severity(&failures),
             FailureSeverity::CompileBlock
@@ -339,10 +335,7 @@ mod tests {
 
     #[test]
     fn test_to_parsed() {
-        let failures = vec![
-            make_missing_symbol("x"),
-            make_test_failure("t1"),
-        ];
+        let failures = vec![make_missing_symbol("x"), make_test_failure("t1")];
         let parsed = TemplateFailureService::to_parsed(failures, "tsc");
         assert_eq!(parsed.total_count, 2);
         assert_eq!(parsed.source_tool, "tsc");

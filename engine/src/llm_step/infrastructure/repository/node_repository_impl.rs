@@ -44,69 +44,76 @@ impl Default for InMemoryNodeRepository {
 #[async_trait]
 impl LlmGenerateNodeRepository for InMemoryNodeRepository {
     async fn save(&self, node: &LlmGenerateNode) -> Result<(), LlmStepError> {
-        let mut nodes = self.nodes.lock().map_err(|_e| {
-            LlmStepError::MissingDependency {
+        let mut nodes = self
+            .nodes
+            .lock()
+            .map_err(|_e| LlmStepError::MissingDependency {
                 dependency: "InMemoryNodeRepository lock".to_string(),
                 resolution: Some("This is a fatal internal error".to_string()),
-            }
-        })?;
+            })?;
         nodes.insert(node.id, node.clone());
         Ok(())
     }
 
     async fn load(&self, node_id: Uuid) -> Result<LlmGenerateNode, LlmStepError> {
-        let nodes = self.nodes.lock().map_err(|_e| {
-            LlmStepError::MissingDependency {
+        let nodes = self
+            .nodes
+            .lock()
+            .map_err(|_e| LlmStepError::MissingDependency {
                 dependency: "InMemoryNodeRepository lock".to_string(),
                 resolution: Some("This is a fatal internal error".to_string()),
-            }
-        })?;
-        nodes.get(&node_id).cloned().ok_or_else(|| {
-            LlmStepError::MissingDependency {
+            })?;
+        nodes
+            .get(&node_id)
+            .cloned()
+            .ok_or_else(|| LlmStepError::MissingDependency {
                 dependency: format!("Node {}", node_id),
                 resolution: Some("Check that the node was created before loading".to_string()),
-            }
-        })
+            })
     }
 
     async fn exists(&self, node_id: Uuid) -> Result<bool, LlmStepError> {
-        let nodes = self.nodes.lock().map_err(|_e| {
-            LlmStepError::MissingDependency {
+        let nodes = self
+            .nodes
+            .lock()
+            .map_err(|_e| LlmStepError::MissingDependency {
                 dependency: "InMemoryNodeRepository lock".to_string(),
                 resolution: Some("This is a fatal internal error".to_string()),
-            }
-        })?;
+            })?;
         Ok(nodes.contains_key(&node_id))
     }
 
     async fn delete(&self, node_id: Uuid) -> Result<(), LlmStepError> {
-        let mut nodes = self.nodes.lock().map_err(|_e| {
-            LlmStepError::MissingDependency {
+        let mut nodes = self
+            .nodes
+            .lock()
+            .map_err(|_e| LlmStepError::MissingDependency {
                 dependency: "InMemoryNodeRepository lock".to_string(),
                 resolution: Some("This is a fatal internal error".to_string()),
-            }
-        })?;
+            })?;
         nodes.remove(&node_id);
         Ok(())
     }
 
     async fn list_ids(&self) -> Result<Vec<Uuid>, LlmStepError> {
-        let nodes = self.nodes.lock().map_err(|_e| {
-            LlmStepError::MissingDependency {
+        let nodes = self
+            .nodes
+            .lock()
+            .map_err(|_e| LlmStepError::MissingDependency {
                 dependency: "InMemoryNodeRepository lock".to_string(),
                 resolution: Some("This is a fatal internal error".to_string()),
-            }
-        })?;
+            })?;
         Ok(nodes.keys().copied().collect())
     }
 
     async fn count(&self) -> Result<u64, LlmStepError> {
-        let nodes = self.nodes.lock().map_err(|_e| {
-            LlmStepError::MissingDependency {
+        let nodes = self
+            .nodes
+            .lock()
+            .map_err(|_e| LlmStepError::MissingDependency {
                 dependency: "InMemoryNodeRepository lock".to_string(),
                 resolution: Some("This is a fatal internal error".to_string()),
-            }
-        })?;
+            })?;
         Ok(nodes.len() as u64)
     }
 
@@ -116,12 +123,13 @@ impl LlmGenerateNodeRepository for InMemoryNodeRepository {
     ) -> Result<Vec<LlmGenerateNode>, LlmStepError> {
         // In-memory implementation doesn't track execution associations
         // Return all nodes. A production implementation would index by execution_id.
-        let nodes = self.nodes.lock().map_err(|_e| {
-            LlmStepError::MissingDependency {
+        let nodes = self
+            .nodes
+            .lock()
+            .map_err(|_e| LlmStepError::MissingDependency {
                 dependency: "InMemoryNodeRepository lock".to_string(),
                 resolution: Some("This is a fatal internal error".to_string()),
-            }
-        })?;
+            })?;
         Ok(nodes.values().cloned().collect())
     }
 }

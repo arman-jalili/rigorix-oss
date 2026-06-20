@@ -23,8 +23,8 @@ use crate::hooks::domain::error::HookError;
 use crate::hooks::domain::result::HookRunResult;
 
 use super::dto::{
-    HookRunnerStatus, RunPostToolUseFailureInput, RunPostToolUseFailureOutput,
-    RunPostToolUseInput, RunPostToolUseOutput, RunPreToolUseInput, RunPreToolUseOutput,
+    HookRunnerStatus, RunPostToolUseFailureInput, RunPostToolUseFailureOutput, RunPostToolUseInput,
+    RunPostToolUseOutput, RunPreToolUseInput, RunPreToolUseOutput,
 };
 
 /// Service for executing hook commands across all lifecycle events.

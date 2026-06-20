@@ -15,7 +15,9 @@
 
 use async_trait::async_trait;
 
-use crate::diff_analyzer::application::dto::{EnforceLimitsInput, EnforceLimitsOutput, LimitCheckResult};
+use crate::diff_analyzer::application::dto::{
+    EnforceLimitsInput, EnforceLimitsOutput, LimitCheckResult,
+};
 use crate::diff_analyzer::application::service::LimitEnforcementService;
 use crate::diff_analyzer::domain::{DiffAnalyzerError, PolicyLimits, PrDiff};
 
@@ -40,7 +42,10 @@ impl Default for LimitEnforcerImpl {
 
 #[async_trait]
 impl LimitEnforcementService for LimitEnforcerImpl {
-    async fn enforce(&self, input: EnforceLimitsInput) -> Result<EnforceLimitsOutput, DiffAnalyzerError> {
+    async fn enforce(
+        &self,
+        input: EnforceLimitsInput,
+    ) -> Result<EnforceLimitsOutput, DiffAnalyzerError> {
         let mut diff = input.diff;
         let limits = input.limits;
         let progressive = input.progressive_degradation.unwrap_or(true);
@@ -56,7 +61,9 @@ impl LimitEnforcementService for LimitEnforcerImpl {
         checks.push(file_count_check);
 
         // 3. Check per-file line limits
-        let line_checks = self.check_per_file_line_limit(&diff, limits.max_lines_per_file).await?;
+        let line_checks = self
+            .check_per_file_line_limit(&diff, limits.max_lines_per_file)
+            .await?;
         checks.extend(line_checks);
 
         // Apply progressive degradation if any limit exceeded and enabled
@@ -65,17 +72,15 @@ impl LimitEnforcementService for LimitEnforcerImpl {
             let mut all_excluded = Vec::new();
 
             // Apply total size limit first
-            let size_excluded = self.apply_progressive_degradation(
-                &mut diff,
-                limits.max_diff_size,
-            ).await;
+            let size_excluded = self
+                .apply_progressive_degradation(&mut diff, limits.max_diff_size)
+                .await;
             all_excluded.extend(size_excluded);
 
             // Apply file count limit
-            let file_excluded = self.apply_file_count_limit(
-                &mut diff,
-                limits.max_files,
-            ).await;
+            let file_excluded = self
+                .apply_file_count_limit(&mut diff, limits.max_files)
+                .await;
             all_excluded.extend(file_excluded);
 
             // Flag limits exceeded
@@ -146,11 +151,7 @@ impl LimitEnforcementService for LimitEnforcerImpl {
         Ok(results)
     }
 
-    async fn apply_progressive_degradation(
-        &self,
-        diff: &mut PrDiff,
-        max_size: u64,
-    ) -> Vec<String> {
+    async fn apply_progressive_degradation(&self, diff: &mut PrDiff, max_size: u64) -> Vec<String> {
         if diff.total_size_bytes <= max_size {
             return Vec::new();
         }
@@ -270,7 +271,9 @@ mod tests {
     #[tokio::test]
     async fn test_enforce_file_count_limit() {
         let enforcer = LimitEnforcerImpl::new();
-        let files = (0..10).map(|i| make_file(&format!("file{}.rs", i), 10, 5)).collect();
+        let files = (0..10)
+            .map(|i| make_file(&format!("file{}.rs", i), 10, 5))
+            .collect();
         let diff = make_diff(files, 1000);
         let limits = PolicyLimits::new(10_000_000, 3, 5000);
 
@@ -299,7 +302,11 @@ mod tests {
             progressive_degradation: Some(true),
         };
         let result = enforcer.enforce(input).await.unwrap();
-        let line_checks: Vec<_> = result.checks.iter().filter(|c| c.limit_type.starts_with("per_file_lines")).collect();
+        let line_checks: Vec<_> = result
+            .checks
+            .iter()
+            .filter(|c| c.limit_type.starts_with("per_file_lines"))
+            .collect();
         assert!(line_checks.iter().any(|c| c.exceeded));
     }
 
@@ -343,7 +350,9 @@ mod tests {
     #[tokio::test]
     async fn test_check_file_count_limit() {
         let enforcer = LimitEnforcerImpl::new();
-        let files = (0..5).map(|i| make_file(&format!("f{}.rs", i), 1, 0)).collect();
+        let files = (0..5)
+            .map(|i| make_file(&format!("f{}.rs", i), 1, 0))
+            .collect();
         let diff = make_diff(files, 100);
 
         let result = enforcer.check_file_count_limit(&diff, 3).await.unwrap();

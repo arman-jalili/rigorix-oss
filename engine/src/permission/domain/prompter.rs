@@ -51,10 +51,7 @@ pub trait PermissionPrompter: Send {
     ///
     /// Each entry in the slice is a (tool_name, tool_input) pair.
     /// Returns outcomes in the same order.
-    fn prompt_many(
-        &mut self,
-        tools: &[(&str, &str)],
-    ) -> Vec<PermissionOutcome>;
+    fn prompt_many(&mut self, tools: &[(&str, &str)]) -> Vec<PermissionOutcome>;
 
     /// Returns `true` if this prompter is capable of interactive prompting.
     /// Returns `false` for headless/non-interactive environments.

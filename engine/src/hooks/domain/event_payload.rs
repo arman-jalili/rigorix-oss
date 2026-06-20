@@ -209,13 +209,12 @@ mod tests {
 
     #[test]
     fn test_serde_roundtrip_event_payload() {
-        let payload =
-            HookEventPayload::ExecutionAborted(HookExecutionAbortedPayload {
-                hook_execution_id: uuid::Uuid::new_v4(),
-                event: HookEvent::PreToolUse,
-                command: "timed-out".into(),
-                timestamp: Utc::now(),
-            });
+        let payload = HookEventPayload::ExecutionAborted(HookExecutionAbortedPayload {
+            hook_execution_id: uuid::Uuid::new_v4(),
+            event: HookEvent::PreToolUse,
+            command: "timed-out".into(),
+            timestamp: Utc::now(),
+        });
         let json = serde_json::to_string(&payload).unwrap();
         let deserialized: HookEventPayload = serde_json::from_str(&json).unwrap();
         match deserialized {
@@ -228,17 +227,19 @@ mod tests {
 
     #[test]
     fn test_serde_tagged_union() {
-        let payload =
-            HookEventPayload::ExecutionCompleted(HookExecutionCompletedPayload {
-                hook_execution_id: uuid::Uuid::new_v4(),
-                event: HookEvent::PostToolUse,
-                command: "hook-a".into(),
-                decision: HookDecision::AllowWithOverride,
-                duration_ms: 200,
-                message_count: 1,
-                timestamp: Utc::now(),
-            });
+        let payload = HookEventPayload::ExecutionCompleted(HookExecutionCompletedPayload {
+            hook_execution_id: uuid::Uuid::new_v4(),
+            event: HookEvent::PostToolUse,
+            command: "hook-a".into(),
+            decision: HookDecision::AllowWithOverride,
+            duration_ms: 200,
+            message_count: 1,
+            timestamp: Utc::now(),
+        });
         let json = serde_json::to_value(&payload).unwrap();
-        assert_eq!(json.get("type").and_then(|v| v.as_str()), Some("execution_completed"));
+        assert_eq!(
+            json.get("type").and_then(|v| v.as_str()),
+            Some("execution_completed")
+        );
     }
 }

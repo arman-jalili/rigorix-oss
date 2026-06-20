@@ -73,8 +73,7 @@ impl FailureParserError {
     pub fn is_retriable(&self) -> bool {
         matches!(
             self,
-            FailureParserError::ParseError { .. }
-                | FailureParserError::SourceContextError { .. }
+            FailureParserError::ParseError { .. } | FailureParserError::SourceContextError { .. }
         )
     }
 }

@@ -12,7 +12,9 @@ use async_trait::async_trait;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
-use crate::security_config::application::dto::{HmacSignInput, HmacSignOutput, HmacVerifyInput, HmacVerifyOutput};
+use crate::security_config::application::dto::{
+    HmacSignInput, HmacSignOutput, HmacVerifyInput, HmacVerifyOutput,
+};
 use crate::security_config::application::service::HmacSigningService;
 use crate::security_config::domain::{HmacKey, SecurityError};
 
@@ -48,21 +50,22 @@ impl HmacSigningService for HmacSignerImpl {
             active.key.clone()
         } else {
             return Err(SecurityError::HmacKeyMissing {
-                detail: "No HMAC key configured. Set RIGORIX_HMAC_KEY environment variable.".to_string(),
+                detail: "No HMAC key configured. Set RIGORIX_HMAC_KEY environment variable."
+                    .to_string(),
             });
         };
 
-        let mut mac = HmacSha256::new_from_slice(&key).map_err(|e| {
-            SecurityError::Internal {
-                detail: format!("Invalid HMAC key length: {}", e),
-            }
+        let mut mac = HmacSha256::new_from_slice(&key).map_err(|e| SecurityError::Internal {
+            detail: format!("Invalid HMAC key length: {}", e),
         })?;
 
         mac.update(&input.payload);
         let result = mac.finalize();
         let signature = hex::encode(result.into_bytes());
 
-        let key_id = self.active_key.as_ref()
+        let key_id = self
+            .active_key
+            .as_ref()
             .map(|k| k.key_id.clone())
             .unwrap_or_else(|| "default".to_string());
 
@@ -81,17 +84,18 @@ impl HmacSigningService for HmacSignerImpl {
         };
 
         let expected = {
-            let mut mac = HmacSha256::new_from_slice(&key).map_err(|e| {
-                SecurityError::Internal {
+            let mut mac =
+                HmacSha256::new_from_slice(&key).map_err(|e| SecurityError::Internal {
                     detail: format!("Invalid HMAC key length: {}", e),
-                }
-            })?;
+                })?;
             mac.update(&input.payload);
             let result = mac.finalize();
             hex::encode(result.into_bytes())
         };
 
-        let key_id = self.active_key.as_ref()
+        let key_id = self
+            .active_key
+            .as_ref()
             .map(|k| k.key_id.clone())
             .unwrap_or_else(|| "default".to_string());
 
@@ -105,7 +109,10 @@ impl HmacSigningService for HmacSignerImpl {
             });
         }
 
-        Ok(HmacVerifyOutput { valid: true, key_id })
+        Ok(HmacVerifyOutput {
+            valid: true,
+            key_id,
+        })
     }
 
     async fn generate_key(&self) -> Result<HmacKey, SecurityError> {
@@ -131,16 +138,13 @@ impl HmacSigningService for HmacSignerImpl {
             return Ok(key.clone());
         }
 
-        let env_var = std::env::var("RIGORIX_HMAC_KEY").map_err(|_| {
-            SecurityError::HmacKeyMissing {
+        let env_var =
+            std::env::var("RIGORIX_HMAC_KEY").map_err(|_| SecurityError::HmacKeyMissing {
                 detail: "RIGORIX_HMAC_KEY environment variable not set".to_string(),
-            }
-        })?;
+            })?;
 
-        let key_bytes = hex::decode(env_var).map_err(|_| {
-            SecurityError::HmacKeyMissing {
-                detail: "RIGORIX_HMAC_KEY must be a hex-encoded 32-byte key".to_string(),
-            }
+        let key_bytes = hex::decode(env_var).map_err(|_| SecurityError::HmacKeyMissing {
+            detail: "RIGORIX_HMAC_KEY must be a hex-encoded 32-byte key".to_string(),
         })?;
 
         Ok(HmacKey {
@@ -228,7 +232,10 @@ mod tests {
             .await;
 
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), SecurityError::HmacKeyMissing { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            SecurityError::HmacKeyMissing { .. }
+        ));
     }
 
     #[tokio::test]

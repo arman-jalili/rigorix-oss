@@ -41,7 +41,10 @@ impl Default for YamlConfigRepository {
 
 #[async_trait]
 impl ConfigRepository for YamlConfigRepository {
-    async fn read_action_yml(&self, path_override: Option<&str>) -> Result<Option<String>, ActionInputError> {
+    async fn read_action_yml(
+        &self,
+        path_override: Option<&str>,
+    ) -> Result<Option<String>, ActionInputError> {
         let path = if let Some(p) = path_override {
             std::path::PathBuf::from(p)
         } else {
@@ -73,11 +76,11 @@ impl ConfigRepository for YamlConfigRepository {
 
         let mut defaults = HashMap::new();
         for (name, config) in inputs {
-            let name_str = name.as_str().ok_or_else(|| {
-                ActionInputError::ActionYmlParseError {
+            let name_str = name
+                .as_str()
+                .ok_or_else(|| ActionInputError::ActionYmlParseError {
                     detail: "Non-string input name in action.yml".to_string(),
-                }
-            })?;
+                })?;
 
             // Store just the "default" sub-value if it exists
             if let Some(default) = config.get("default") {
@@ -256,15 +259,16 @@ impl ConfigLoadingService for ConfigLoaderImpl {
         self.merge_inputs(base, cli_inputs).await
     }
 
-    async fn resolve(
-        &self,
-        merged: ActionInputs,
-    ) -> Result<ActionConfig, ActionInputError> {
+    async fn resolve(&self, merged: ActionInputs) -> Result<ActionConfig, ActionInputError> {
         Ok(ActionConfig {
             intent: merged.intent,
             mode: merged.mode.unwrap_or_else(|| "auto".to_string()),
-            permission_mode: merged.permission_mode.unwrap_or_else(|| "workspace_write".to_string()),
-            policy_file: merged.policy_file.unwrap_or_else(|| ".rigorix/policy.toml".to_string()),
+            permission_mode: merged
+                .permission_mode
+                .unwrap_or_else(|| "workspace_write".to_string()),
+            policy_file: merged
+                .policy_file
+                .unwrap_or_else(|| ".rigorix/policy.toml".to_string()),
             fail_on_violation: merged.fail_on_violation.unwrap_or(false),
             fail_on_action_error: merged.fail_on_action_error.unwrap_or(false),
             max_llm_calls: merged.max_llm_calls.unwrap_or(50),
@@ -314,19 +318,13 @@ impl ConfigLoaderImpl {
                 "FAIL_ON_ACTION_ERROR" | "FAILONACTIONERROR" => {
                     inputs.fail_on_action_error = Some(value == "true")
                 }
-                "MAX_LLM_CALLS" | "MAXLLMCALLS" => {
-                    inputs.max_llm_calls = value.parse().ok()
-                }
-                "MAX_LLM_TOKENS" | "MAXLLMTOKENS" => {
-                    inputs.max_llm_tokens = value.parse().ok()
-                }
+                "MAX_LLM_CALLS" | "MAXLLMCALLS" => inputs.max_llm_calls = value.parse().ok(),
+                "MAX_LLM_TOKENS" | "MAXLLMTOKENS" => inputs.max_llm_tokens = value.parse().ok(),
                 "MAX_VALIDATION_ITERATIONS" | "MAXVALIDATIONITERATIONS" => {
                     inputs.max_validation_iterations = value.parse().ok()
                 }
                 "MAX_RETRIES" | "MAXRETRIES" => inputs.max_retries = value.parse().ok(),
-                "RETRY_DELAY_MS" | "RETRYDELAYMS" => {
-                    inputs.retry_delay_ms = value.parse().ok()
-                }
+                "RETRY_DELAY_MS" | "RETRYDELAYMS" => inputs.retry_delay_ms = value.parse().ok(),
                 "POST_PR_COMMENT" | "POSTPRCOMMENT" => {
                     inputs.post_pr_comment = Some(value == "true")
                 }
@@ -353,7 +351,9 @@ impl ConfigLoaderImpl {
             fail_on_action_error: overrides.fail_on_action_error.or(base.fail_on_action_error),
             max_llm_calls: overrides.max_llm_calls.or(base.max_llm_calls),
             max_llm_tokens: overrides.max_llm_tokens.or(base.max_llm_tokens),
-            max_validation_iterations: overrides.max_validation_iterations.or(base.max_validation_iterations),
+            max_validation_iterations: overrides
+                .max_validation_iterations
+                .or(base.max_validation_iterations),
             max_retries: overrides.max_retries.or(base.max_retries),
             retry_delay_ms: overrides.retry_delay_ms.or(base.retry_delay_ms),
             post_pr_comment: overrides.post_pr_comment.or(base.post_pr_comment),
@@ -387,7 +387,10 @@ mod tests {
 
     #[async_trait]
     impl ConfigRepository for MockConfigRepository {
-        async fn read_action_yml(&self, _path_override: Option<&str>) -> Result<Option<String>, ActionInputError> {
+        async fn read_action_yml(
+            &self,
+            _path_override: Option<&str>,
+        ) -> Result<Option<String>, ActionInputError> {
             Ok(self.yml_content.clone())
         }
 
@@ -415,10 +418,7 @@ mod tests {
         } else {
             Box::new(MockConfigRepository::empty()) as Box<dyn ConfigRepository>
         };
-        ConfigLoaderImpl::new(
-            InputParserImpl::default(),
-            mock_repo,
-        )
+        ConfigLoaderImpl::new(InputParserImpl::default(), mock_repo)
     }
 
     // ── Tests ──

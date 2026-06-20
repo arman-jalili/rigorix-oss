@@ -14,7 +14,7 @@
 //! - Token is never logged (Debug impl masks it)
 //! - Retry-After header is respected for 429 responses
 
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, USER_AGENT};
+use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::time::Duration;
@@ -148,17 +148,16 @@ impl GitHubClient {
         let mut headers = HeaderMap::new();
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", self.token))
-                .expect("token is valid ASCII"),
+            HeaderValue::from_str(&format!("Bearer {}", self.token)).expect("token is valid ASCII"),
         );
-        headers.insert(
-            USER_AGENT,
-            HeaderValue::from_static("rigorix-action/0.1.0"),
-        );
+        headers.insert(USER_AGENT, HeaderValue::from_static("rigorix-action/0.1.0"));
         headers
     }
 
-    async fn check_rate_limit(&self, response: &reqwest::Response) -> Result<(), GitHubClientError> {
+    async fn check_rate_limit(
+        &self,
+        response: &reqwest::Response,
+    ) -> Result<(), GitHubClientError> {
         if response.status() == 429 {
             let retry_after = response
                 .headers()
@@ -186,24 +185,29 @@ impl GitHubClient {
 
         if let Some(rem) = remaining {
             if rem < 10 {
-                tracing::warn!(
-                    remaining = rem,
-                    "GitHub API rate limit running low"
-                );
+                tracing::warn!(remaining = rem, "GitHub API rate limit running low");
             }
         }
 
         Ok(())
     }
 
-    async fn handle_response(&self, response: reqwest::Response) -> Result<String, GitHubClientError> {
+    async fn handle_response(
+        &self,
+        response: reqwest::Response,
+    ) -> Result<String, GitHubClientError> {
         self.check_rate_limit(&response).await?;
 
         let status = response.status();
         if status.is_success() {
-            response.text().await.map_err(GitHubClientError::NetworkError)
+            response
+                .text()
+                .await
+                .map_err(GitHubClientError::NetworkError)
         } else if status.as_u16() == 401 {
-            Err(GitHubClientError::AuthFailed("Invalid or expired token".into()))
+            Err(GitHubClientError::AuthFailed(
+                "Invalid or expired token".into(),
+            ))
         } else if status.as_u16() == 403 {
             Err(GitHubClientError::PermissionDenied(format!(
                 "HTTP 403: Insufficient permissions"

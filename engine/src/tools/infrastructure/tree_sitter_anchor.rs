@@ -219,10 +219,7 @@ impl TreeSitterAnchorFinder {
         position: &str,
     ) -> Option<(usize, &'static str)> {
         // These are container types that have a `body` child
-        let is_container = matches!(
-            anchor_type,
-            "class" | "struct" | "impl" | "interface"
-        );
+        let is_container = matches!(anchor_type, "class" | "struct" | "impl" | "interface");
 
         if is_container {
             if let Some(body) = target_node.child_by_field_name("body") {
@@ -300,17 +297,14 @@ impl TreeSitterAnchorFinder {
                 ))
             })?;
 
-        let (insert_offset, position_desc) = Self::resolve_container_position(
-            target_node,
-            &params.anchor_type,
-            &params.position,
-        )
-        .ok_or_else(|| {
-            ToolError::ExecutionFailed(format!(
-                "Cannot resolve position for {} '{}': body not found",
-                kind_name, params.anchor_name
-            ))
-        })?;
+        let (insert_offset, position_desc) =
+            Self::resolve_container_position(target_node, &params.anchor_type, &params.position)
+                .ok_or_else(|| {
+                    ToolError::ExecutionFailed(format!(
+                        "Cannot resolve position for {} '{}': body not found",
+                        kind_name, params.anchor_name
+                    ))
+                })?;
 
         Ok(AnchorResult {
             insert_offset,
@@ -482,17 +476,14 @@ impl TreeSitterAnchorFinder {
                 ))
             })?;
 
-        let (insert_offset, position_desc) = Self::resolve_container_position(
-            target_node,
-            &params.anchor_type,
-            &params.position,
-        )
-        .ok_or_else(|| {
-            ToolError::ExecutionFailed(format!(
-                "Cannot resolve position for {} '{}': body not found",
-                kind_name, params.anchor_name
-            ))
-        })?;
+        let (insert_offset, position_desc) =
+            Self::resolve_container_position(target_node, &params.anchor_type, &params.position)
+                .ok_or_else(|| {
+                    ToolError::ExecutionFailed(format!(
+                        "Cannot resolve position for {} '{}': body not found",
+                        kind_name, params.anchor_name
+                    ))
+                })?;
 
         Ok(AnchorResult {
             insert_offset,
@@ -623,17 +614,14 @@ impl TreeSitterAnchorFinder {
                 ))
             })?;
 
-        let (insert_offset, position_desc) = Self::resolve_container_position(
-            target_node,
-            &params.anchor_type,
-            &params.position,
-        )
-        .ok_or_else(|| {
-            ToolError::ExecutionFailed(format!(
-                "Cannot resolve position for {} '{}': body not found",
-                kind_name, params.anchor_name
-            ))
-        })?;
+        let (insert_offset, position_desc) =
+            Self::resolve_container_position(target_node, &params.anchor_type, &params.position)
+                .ok_or_else(|| {
+                    ToolError::ExecutionFailed(format!(
+                        "Cannot resolve position for {} '{}': body not found",
+                        kind_name, params.anchor_name
+                    ))
+                })?;
 
         Ok(AnchorResult {
             insert_offset,

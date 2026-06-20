@@ -145,10 +145,7 @@ impl ValidationReport {
 
     /// Get the total number of failures across all iterations.
     pub fn total_failures(&self) -> usize {
-        self.failure_history
-            .iter()
-            .map(|r| r.failures.len())
-            .sum()
+        self.failure_history.iter().map(|r| r.failures.len()).sum()
     }
 }
 
@@ -267,8 +264,7 @@ mod tests {
             .with_tokens(5000)
             .with_duration(800);
 
-        let report = ValidationReport::new(Uuid::new_v4())
-            .with_iteration(iter_report);
+        let report = ValidationReport::new(Uuid::new_v4()).with_iteration(iter_report);
 
         assert_eq!(report.failure_history.len(), 1);
         assert_eq!(report.total_failures(), 1);
@@ -285,8 +281,8 @@ mod tests {
 
     #[test]
     fn test_is_budget_exhausted() {
-        let report = ValidationReport::new(Uuid::new_v4())
-            .with_outcome(ValidationOutcome::BudgetExhausted);
+        let report =
+            ValidationReport::new(Uuid::new_v4()).with_outcome(ValidationOutcome::BudgetExhausted);
         assert!(report.is_budget_exhausted());
     }
 

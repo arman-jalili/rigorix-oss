@@ -226,7 +226,9 @@ impl AiSignalDetectionService for AiSignalDetectorImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diff_analyzer::domain::{ChangedFile, DiffHunk, DiffLine, DiffLineType, FileRisk, FileStatus};
+    use crate::diff_analyzer::domain::{
+        ChangedFile, DiffHunk, DiffLine, DiffLineType, FileRisk, FileStatus,
+    };
 
     fn make_hunk(lines: Vec<&str>, new_start: usize) -> DiffHunk {
         let diff_lines: Vec<DiffLine> = lines
@@ -259,8 +261,16 @@ mod tests {
     }
 
     fn make_file(path: &str, hunks: Vec<DiffHunk>) -> ChangedFile {
-        let additions = hunks.iter().flat_map(|h| h.lines.iter()).filter(|l| l.line_type == DiffLineType::Added).count();
-        let deletions = hunks.iter().flat_map(|h| h.lines.iter()).filter(|l| l.line_type == DiffLineType::Deleted).count();
+        let additions = hunks
+            .iter()
+            .flat_map(|h| h.lines.iter())
+            .filter(|l| l.line_type == DiffLineType::Added)
+            .count();
+        let deletions = hunks
+            .iter()
+            .flat_map(|h| h.lines.iter())
+            .filter(|l| l.line_type == DiffLineType::Deleted)
+            .count();
         ChangedFile {
             path: path.to_string(),
             status: FileStatus::Modified,
@@ -274,7 +284,10 @@ mod tests {
     }
 
     fn make_diff(files: Vec<ChangedFile>) -> PrDiff {
-        let total = files.iter().map(|f| f.additions + f.deletions).sum::<usize>() as u64;
+        let total = files
+            .iter()
+            .map(|f| f.additions + f.deletions)
+            .sum::<usize>() as u64;
         PrDiff {
             files,
             total_size_bytes: total,
@@ -306,13 +319,16 @@ mod tests {
     #[tokio::test]
     async fn test_detect_ai_comment_pattern() {
         let detector = AiSignalDetectorImpl::new();
-        let hunk = make_hunk(vec![
-            "+/// Here's the implementation of the feature",
-            "+fn new_feature() {",
-            "+     // This function handles the request",
-            "+     unimplemented!()",
-            "+}",
-        ], 1);
+        let hunk = make_hunk(
+            vec![
+                "+/// Here's the implementation of the feature",
+                "+fn new_feature() {",
+                "+     // This function handles the request",
+                "+     unimplemented!()",
+                "+}",
+            ],
+            1,
+        );
         let diff = make_diff(vec![make_file("src/new.rs", vec![hunk])]);
         let input = DetectAiSignalsInput {
             diff,
@@ -323,23 +339,31 @@ mod tests {
         };
         let result = detector.detect(input).await.unwrap();
         assert!(result.result.has_signals());
-        let comment_signals: Vec<_> = result.result.signals.iter().filter(|s| s.pattern == "ai_comment").collect();
+        let comment_signals: Vec<_> = result
+            .result
+            .signals
+            .iter()
+            .filter(|s| s.pattern == "ai_comment")
+            .collect();
         assert!(!comment_signals.is_empty());
     }
 
     #[tokio::test]
     async fn test_detect_uniform_indentation() {
         let detector = AiSignalDetectorImpl::new();
-        let hunk = make_hunk(vec![
-            "+fn new_function() {",
-            "+     let x = 1;",
-            "+     let y = 2;",
-            "+     let z = 3;",
-            "+     let w = 4;",
-            "+     let v = 5;",
-            "+     println!(\"done\");",
-            "+}",
-        ], 1);
+        let hunk = make_hunk(
+            vec![
+                "+fn new_function() {",
+                "+     let x = 1;",
+                "+     let y = 2;",
+                "+     let z = 3;",
+                "+     let w = 4;",
+                "+     let v = 5;",
+                "+     println!(\"done\");",
+                "+}",
+            ],
+            1,
+        );
         let diff = make_diff(vec![make_file("src/uniform.rs", vec![hunk])]);
         let input = DetectAiSignalsInput {
             diff,
@@ -349,17 +373,38 @@ mod tests {
             custom_patterns: None,
         };
         let result = detector.detect(input).await.unwrap();
-        let indent_signals: Vec<_> = result.result.signals.iter().filter(|s| s.pattern == "uniform_indentation").collect();
+        let indent_signals: Vec<_> = result
+            .result
+            .signals
+            .iter()
+            .filter(|s| s.pattern == "uniform_indentation")
+            .collect();
         assert!(!indent_signals.is_empty());
     }
 
     #[tokio::test]
     async fn test_has_ai_comment_pattern() {
         let detector = AiSignalDetectorImpl::new();
-        assert!(detector.has_ai_comment_pattern("Here's the implementation").await);
-        assert!(detector.has_ai_comment_pattern("This function does X").await);
-        assert!(detector.has_ai_comment_pattern("As requested, I've added").await);
-        assert!(!detector.has_ai_comment_pattern("fn ordinary_function()").await);
+        assert!(
+            detector
+                .has_ai_comment_pattern("Here's the implementation")
+                .await
+        );
+        assert!(
+            detector
+                .has_ai_comment_pattern("This function does X")
+                .await
+        );
+        assert!(
+            detector
+                .has_ai_comment_pattern("As requested, I've added")
+                .await
+        );
+        assert!(
+            !detector
+                .has_ai_comment_pattern("fn ordinary_function()")
+                .await
+        );
     }
 
     #[tokio::test]
@@ -420,17 +465,20 @@ fn main() {
     async fn test_multiple_signals_in_one_hunk() {
         let detector = AiSignalDetectorImpl::new();
         // A hunk with both AI comments and uniform indentation
-        let hunk = make_hunk(vec![
-            "+/// Here's the implementation",
-            "+fn process() {",
-            "+     let a = 1;",
-            "+     let b = 2;",
-            "+     let c = 3;",
-            "+     let d = 4;",
-            "+     let e = 5;",
-            "+     process(a, b);",
-            "+}",
-        ], 1);
+        let hunk = make_hunk(
+            vec![
+                "+/// Here's the implementation",
+                "+fn process() {",
+                "+     let a = 1;",
+                "+     let b = 2;",
+                "+     let c = 3;",
+                "+     let d = 4;",
+                "+     let e = 5;",
+                "+     process(a, b);",
+                "+}",
+            ],
+            1,
+        );
         let diff = make_diff(vec![make_file("src/process.rs", vec![hunk])]);
         let input = DetectAiSignalsInput {
             diff,
@@ -447,11 +495,7 @@ fn main() {
     #[tokio::test]
     async fn test_threshold_filtering() {
         let detector = AiSignalDetectorImpl::new();
-        let hunk = make_hunk(vec![
-            "+fn test() {",
-            "+     let x = 1;",
-            "+}",
-        ], 1);
+        let hunk = make_hunk(vec!["+fn test() {", "+     let x = 1;", "+}"], 1);
         let diff = make_diff(vec![make_file("src/test.rs", vec![hunk])]);
         let input = DetectAiSignalsInput {
             diff,

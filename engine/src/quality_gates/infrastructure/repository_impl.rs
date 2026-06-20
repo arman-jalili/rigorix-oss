@@ -58,12 +58,13 @@ impl QualityGateConfigRepository for InMemoryQualityGateRepository {
     }
 
     async fn store_config(&self, config: &QualityGateConfig) -> Result<(), QualityGateError> {
-        let mut c = self.config.write().map_err(|e| {
-            QualityGateError::DependencyUnavailable {
+        let mut c = self
+            .config
+            .write()
+            .map_err(|e| QualityGateError::DependencyUnavailable {
                 dependency: "InMemoryQualityGateRepository".to_string(),
                 reason: format!("RwLock poisoned: {}", e),
-            }
-        })?;
+            })?;
         *c = config.clone();
         Ok(())
     }
@@ -85,12 +86,13 @@ impl QualityGateConfigRepository for InMemoryQualityGateRepository {
     }
 
     async fn set_default_level(&self, level: QualityLevel) -> Result<(), QualityGateError> {
-        let mut config = self.config.write().map_err(|e| {
-            QualityGateError::DependencyUnavailable {
-                dependency: "InMemoryQualityGateRepository".to_string(),
-                reason: format!("RwLock poisoned: {}", e),
-            }
-        })?;
+        let mut config =
+            self.config
+                .write()
+                .map_err(|e| QualityGateError::DependencyUnavailable {
+                    dependency: "InMemoryQualityGateRepository".to_string(),
+                    reason: format!("RwLock poisoned: {}", e),
+                })?;
         config.default_required_level = level;
         Ok(())
     }
@@ -100,12 +102,13 @@ impl QualityGateConfigRepository for InMemoryQualityGateRepository {
         template_name: &str,
         level: QualityLevel,
     ) -> Result<(), QualityGateError> {
-        let mut config = self.config.write().map_err(|e| {
-            QualityGateError::DependencyUnavailable {
-                dependency: "InMemoryQualityGateRepository".to_string(),
-                reason: format!("RwLock poisoned: {}", e),
-            }
-        })?;
+        let mut config =
+            self.config
+                .write()
+                .map_err(|e| QualityGateError::DependencyUnavailable {
+                    dependency: "InMemoryQualityGateRepository".to_string(),
+                    reason: format!("RwLock poisoned: {}", e),
+                })?;
         config.add_override(template_name, level);
         Ok(())
     }
@@ -114,12 +117,13 @@ impl QualityGateConfigRepository for InMemoryQualityGateRepository {
         &self,
         template_name: &str,
     ) -> Result<Option<QualityLevel>, QualityGateError> {
-        let mut config = self.config.write().map_err(|e| {
-            QualityGateError::DependencyUnavailable {
-                dependency: "InMemoryQualityGateRepository".to_string(),
-                reason: format!("RwLock poisoned: {}", e),
-            }
-        })?;
+        let mut config =
+            self.config
+                .write()
+                .map_err(|e| QualityGateError::DependencyUnavailable {
+                    dependency: "InMemoryQualityGateRepository".to_string(),
+                    reason: format!("RwLock poisoned: {}", e),
+                })?;
         Ok(config.remove_override(template_name))
     }
 }
@@ -149,16 +153,15 @@ mod tests {
         let new_config = QualityGateConfig::new(QualityLevel::MergeReady);
         repo.store_config(&new_config).await.unwrap();
         let loaded = repo.load_config().await.unwrap();
-        assert_eq!(
-            loaded.default_required_level,
-            QualityLevel::MergeReady
-        );
+        assert_eq!(loaded.default_required_level, QualityLevel::MergeReady);
     }
 
     #[tokio::test]
     async fn test_set_default_level() {
         let repo = InMemoryQualityGateRepository::new_default();
-        repo.set_default_level(QualityLevel::Workspace).await.unwrap();
+        repo.set_default_level(QualityLevel::Workspace)
+            .await
+            .unwrap();
         let contract = repo.default_contract().await.unwrap();
         assert_eq!(contract.required_level, QualityLevel::Workspace);
     }
@@ -169,17 +172,11 @@ mod tests {
         config.add_override("hotfix", QualityLevel::MergeReady);
         let repo = InMemoryQualityGateRepository::new(config);
 
-        let contract = repo
-            .contract_for_template("hotfix")
-            .await
-            .unwrap();
+        let contract = repo.contract_for_template("hotfix").await.unwrap();
         assert_eq!(contract.required_level, QualityLevel::MergeReady);
 
         // Unknown template falls back to default
-        let contract = repo
-            .contract_for_template("unknown")
-            .await
-            .unwrap();
+        let contract = repo.contract_for_template("unknown").await.unwrap();
         assert_eq!(contract.required_level, QualityLevel::Package);
     }
 
@@ -199,16 +196,10 @@ mod tests {
         config.add_override("hotfix", QualityLevel::MergeReady);
         let repo = InMemoryQualityGateRepository::new(config);
 
-        let removed = repo
-            .remove_template_override("hotfix")
-            .await
-            .unwrap();
+        let removed = repo.remove_template_override("hotfix").await.unwrap();
         assert_eq!(removed, Some(QualityLevel::MergeReady));
 
-        let removed = repo
-            .remove_template_override("hotfix")
-            .await
-            .unwrap();
+        let removed = repo.remove_template_override("hotfix").await.unwrap();
         assert_eq!(removed, None);
     }
 }

@@ -10,8 +10,8 @@
 
 use std::io::Write;
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use crate::hooks::domain::abort::HookAbortSignal;
@@ -22,8 +22,8 @@ use crate::hooks::domain::protocol::{HookDecision, HookStdinPayload, HookStdoutR
 use crate::hooks::domain::result::HookRunResult;
 
 use super::dto::{
-    HookRunnerStatus, RunPostToolUseFailureInput, RunPostToolUseFailureOutput,
-    RunPostToolUseInput, RunPostToolUseOutput, RunPreToolUseInput, RunPreToolUseOutput,
+    HookRunnerStatus, RunPostToolUseFailureInput, RunPostToolUseFailureOutput, RunPostToolUseInput,
+    RunPostToolUseOutput, RunPreToolUseInput, RunPreToolUseOutput,
 };
 use super::service::{HookCommandExecutor, HookRunnerService};
 
@@ -67,9 +67,10 @@ impl HookRunnerImpl {
         // Check abort signal before spawning
         if let Some(signal) = abort_signal {
             if signal.is_aborted() {
-                return Ok(HookRunResult::cancelled(event, vec![format!(
-                    "Hook '{}' aborted before execution", command
-                )]));
+                return Ok(HookRunResult::cancelled(
+                    event,
+                    vec![format!("Hook '{}' aborted before execution", command)],
+                ));
             }
         }
 
@@ -112,18 +113,20 @@ impl HookRunnerImpl {
             if let Some(signal) = abort_signal {
                 if signal.is_aborted() {
                     let _ = child.kill();
-                    return Ok(HookRunResult::cancelled(event, vec![format!(
-                        "Hook '{}' aborted during execution", command
-                    )]));
+                    return Ok(HookRunResult::cancelled(
+                        event,
+                        vec![format!("Hook '{}' aborted during execution", command)],
+                    ));
                 }
             }
 
             match child.try_wait() {
                 Ok(Some(status)) => {
                     let elapsed = start.elapsed().as_millis() as u64;
-                    let output_result = child.wait_with_output().map_err(|e| HookError::Internal {
-                        detail: format!("Failed to read output from hook '{}': {}", command, e),
-                    })?;
+                    let output_result =
+                        child.wait_with_output().map_err(|e| HookError::Internal {
+                            detail: format!("Failed to read output from hook '{}': {}", command, e),
+                        })?;
 
                     let stdout = String::from_utf8_lossy(&output_result.stdout).to_string();
                     let stderr = String::from_utf8_lossy(&output_result.stderr).to_string();
@@ -175,11 +178,15 @@ impl HookRunnerImpl {
                     });
                 }
             }
-        };
+        }
     }
 
     /// Convert a HookStdoutResponse into a HookRunResult.
-    fn response_to_result(response: HookStdoutResponse, event: HookEvent, _duration_ms: u64) -> HookRunResult {
+    fn response_to_result(
+        response: HookStdoutResponse,
+        event: HookEvent,
+        _duration_ms: u64,
+    ) -> HookRunResult {
         let mut result = HookRunResult::new(event);
 
         match response.decision {
@@ -214,20 +221,21 @@ impl HookRunnerImpl {
         let mut aggregated = HookRunResult::new(payload.event);
         let stdin_value = serde_json::to_value(payload).unwrap_or_default();
 
-        let commands_iter: Box<dyn Iterator<Item = &String>> = if is_pre_tool_use && self.config.sequential_pre_tool_use {
-            Box::new(commands.iter())
-        } else {
-            Box::new(commands.iter())
-        };
+        let commands_iter: Box<dyn Iterator<Item = &String>> =
+            if is_pre_tool_use && self.config.sequential_pre_tool_use {
+                Box::new(commands.iter())
+            } else {
+                Box::new(commands.iter())
+            };
 
         for command in commands_iter {
             // Check abort before each hook
             if let Some(signal) = abort_signal {
                 if signal.is_aborted() {
                     aggregated.cancelled = true;
-                    aggregated.messages.push(format!(
-                        "Hook execution aborted before '{}'", command
-                    ));
+                    aggregated
+                        .messages
+                        .push(format!("Hook execution aborted before '{}'", command));
                     break;
                 }
             }
@@ -244,9 +252,9 @@ impl HookRunnerImpl {
                 }
                 Err(e) => {
                     aggregated.failed = true;
-                    aggregated.messages.push(format!(
-                        "Hook '{}' failed: {}", command, e
-                    ));
+                    aggregated
+                        .messages
+                        .push(format!("Hook '{}' failed: {}", command, e));
                     // For PreToolUse, a failed hook blocks the tool
                     if is_pre_tool_use && !e.is_recoverable() {
                         aggregated.denied = true;
@@ -284,12 +292,7 @@ impl HookRunnerService for HookRunnerImpl {
             &input.workspace_root,
         );
 
-        let result = self.execute_all_for_event(
-            commands,
-            &payload,
-            abort_signal,
-            true,
-        );
+        let result = self.execute_all_for_event(commands, &payload, abort_signal, true);
 
         self.running.store(false, Ordering::SeqCst);
         Ok(RunPreToolUseOutput { result })
@@ -318,12 +321,7 @@ impl HookRunnerService for HookRunnerImpl {
             &input.workspace_root,
         );
 
-        let result = self.execute_all_for_event(
-            commands,
-            &payload,
-            abort_signal,
-            false,
-        );
+        let result = self.execute_all_for_event(commands, &payload, abort_signal, false);
 
         self.running.store(false, Ordering::SeqCst);
         Ok(RunPostToolUseOutput { result })
@@ -352,12 +350,7 @@ impl HookRunnerService for HookRunnerImpl {
             &input.workspace_root,
         );
 
-        let result = self.execute_all_for_event(
-            commands,
-            &payload,
-            abort_signal,
-            false,
-        );
+        let result = self.execute_all_for_event(commands, &payload, abort_signal, false);
 
         self.running.store(false, Ordering::SeqCst);
         Ok(RunPostToolUseFailureOutput { result })
@@ -498,7 +491,9 @@ mod tests {
         let payload = serde_json::json!({"event":"pre_tool_use"});
         let result = runner.execute_command("nonexistent-command-xyz-99999", &payload, None);
         match result {
-            Err(HookError::ProcessError { command, exit_code, .. }) => {
+            Err(HookError::ProcessError {
+                command, exit_code, ..
+            }) => {
                 assert!(command.contains("nonexistent-command-xyz-99999"));
                 assert_ne!(exit_code, 0);
             }
@@ -542,7 +537,12 @@ mod tests {
         let response = HookStdoutResponse::deny("Blocked by policy");
         let result = HookRunnerImpl::response_to_result(response, HookEvent::PreToolUse, 100);
         assert!(result.is_denied());
-        assert!(result.messages.iter().any(|m| m.contains("Blocked by policy")));
+        assert!(
+            result
+                .messages
+                .iter()
+                .any(|m| m.contains("Blocked by policy"))
+        );
     }
 
     #[test]
@@ -554,7 +554,10 @@ mod tests {
         );
         let result = HookRunnerImpl::response_to_result(response, HookEvent::PreToolUse, 100);
         assert!(result.is_allowed());
-        assert_eq!(result.permission_override, Some(HookPermissionOverride::RequireConfirmation));
+        assert_eq!(
+            result.permission_override,
+            Some(HookPermissionOverride::RequireConfirmation)
+        );
     }
 
     #[test]

@@ -101,7 +101,10 @@ mod tests {
         };
         let json = serde_json::to_string(&event).unwrap();
         let deserialized: PolicyEvent = serde_json::from_str(&json).unwrap();
-        assert!(matches!(deserialized, PolicyEvent::ActionsDispatched { .. }));
+        assert!(matches!(
+            deserialized,
+            PolicyEvent::ActionsDispatched { .. }
+        ));
     }
 
     #[test]
@@ -127,7 +130,10 @@ mod tests {
         };
         let json = serde_json::to_string(&event).unwrap();
         let deserialized: PolicyEvent = serde_json::from_str(&json).unwrap();
-        assert!(matches!(deserialized, PolicyEvent::EvaluationPerformed { .. }));
+        assert!(matches!(
+            deserialized,
+            PolicyEvent::EvaluationPerformed { .. }
+        ));
     }
 
     #[test]

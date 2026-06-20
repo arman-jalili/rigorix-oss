@@ -51,50 +51,47 @@ impl PolicyRepository for DefaultPolicyRepository {
                     };
                 }
                 PolicyEngineError::RepositoryError {
-                    detail: format!("Failed to read policy file '{}': {}", self.config_path.display(), e),
+                    detail: format!(
+                        "Failed to read policy file '{}': {}",
+                        self.config_path.display(),
+                        e
+                    ),
                 }
             })?;
 
-        toml::from_str(&content).map_err(|e| {
-            PolicyEngineError::DeserializationError {
-                detail: format!(
-                    "Failed to parse policy file '{}': {}",
-                    self.config_path.display(),
-                    e
-                ),
-            }
+        toml::from_str(&content).map_err(|e| PolicyEngineError::DeserializationError {
+            detail: format!(
+                "Failed to parse policy file '{}': {}",
+                self.config_path.display(),
+                e
+            ),
         })
     }
 
     async fn save_config(&self, config: &PolicyConfig) -> Result<(), PolicyEngineError> {
-        let content = toml::to_string(config).map_err(|e| {
-            PolicyEngineError::DeserializationError {
+        let content =
+            toml::to_string(config).map_err(|e| PolicyEngineError::DeserializationError {
                 detail: format!("Failed to serialize policy config: {}", e),
-            }
-        })?;
+            })?;
 
         // Ensure parent directory exists
         if let Some(parent) = self.config_path.parent() {
             tokio::fs::create_dir_all(parent).await.map_err(|e| {
                 PolicyEngineError::RepositoryError {
-                    detail: format!(
-                        "Failed to create directory '{}': {}",
-                        parent.display(),
-                        e
-                    ),
+                    detail: format!("Failed to create directory '{}': {}", parent.display(), e),
                 }
             })?;
         }
 
-        tokio::fs::write(&self.config_path, &content).await.map_err(|e| {
-            PolicyEngineError::RepositoryError {
+        tokio::fs::write(&self.config_path, &content)
+            .await
+            .map_err(|e| PolicyEngineError::RepositoryError {
                 detail: format!(
                     "Failed to write policy file '{}': {}",
                     self.config_path.display(),
                     e
                 ),
-            }
-        })?;
+            })?;
 
         Ok(())
     }
@@ -121,14 +118,14 @@ impl PolicyRepository for DefaultPolicyRepository {
             existing_rule.action = rule.action.clone();
             existing_rule.priority = rule.priority;
         } else {
-            config.rules.push(
-                crate::policy_engine::domain::RuleDefinition {
+            config
+                .rules
+                .push(crate::policy_engine::domain::RuleDefinition {
                     name: rule.name.clone(),
                     condition: rule.condition.clone(),
                     action: rule.action.clone(),
                     priority: rule.priority,
-                },
-            );
+                });
         }
         self.save_config(&config).await
     }

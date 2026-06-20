@@ -1,4 +1,3 @@
-
 //! Integration tests for FixSuggestionServiceImpl — suggested fix generation.
 //!
 //! @canonical .pi/architecture/modules/failure-parser.md#suggested-fix-generation
@@ -34,7 +33,11 @@ fn ctx_with_multiple_files() -> SourceContext {
     );
     ctx.symbols_by_file.insert(
         "src/user.ts".to_string(),
-        vec!["User".to_string(), "createUser".to_string(), "deleteUser".to_string()],
+        vec![
+            "User".to_string(),
+            "createUser".to_string(),
+            "deleteUser".to_string(),
+        ],
     );
     ctx
 }
@@ -56,7 +59,10 @@ async fn integration_missing_symbol_substring_match() {
         .suggest_fix(&failure, &ctx)
         .await
         .unwrap();
-    assert!(suggestion.is_some(), "Should find 'add' via substring match");
+    assert!(
+        suggestion.is_some(),
+        "Should find 'add' via substring match"
+    );
     assert!(suggestion.unwrap().contains("add"));
 }
 
@@ -108,7 +114,11 @@ async fn integration_missing_symbol_available_symbols_listed() {
         .await
         .unwrap();
     let sug = suggestion.unwrap();
-    assert!(sug.contains("Available symbols"), "Should list available symbols, got: {}", sug);
+    assert!(
+        sug.contains("Available symbols"),
+        "Should list available symbols, got: {}",
+        sug
+    );
     assert!(sug.contains("knownFunc"));
 }
 

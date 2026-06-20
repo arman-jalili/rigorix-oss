@@ -17,7 +17,9 @@ pub struct PolicyTamperDetectionServiceImpl;
 #[async_trait]
 impl PolicyTamperDetectionService for PolicyTamperDetectionServiceImpl {
     async fn detect(&self, input: DetectTamperInput) -> Result<DetectTamperOutput, PolicyError> {
-        let status = self.get_change_status(&input.diff, &input.policy_path).await;
+        let status = self
+            .get_change_status(&input.diff, &input.policy_path)
+            .await;
         let tamper_detected = status.is_some();
 
         Ok(DetectTamperOutput {
@@ -45,7 +47,9 @@ impl PolicyTamperDetectionService for PolicyTamperDetectionServiceImpl {
                     crate::diff_analyzer::domain::FileStatus::Added => "added".to_string(),
                     crate::diff_analyzer::domain::FileStatus::Modified => "modified".to_string(),
                     crate::diff_analyzer::domain::FileStatus::Deleted => "deleted".to_string(),
-                    crate::diff_analyzer::domain::FileStatus::Renamed { .. } => "renamed".to_string(),
+                    crate::diff_analyzer::domain::FileStatus::Renamed { .. } => {
+                        "renamed".to_string()
+                    }
                 });
             }
         }
@@ -63,9 +67,7 @@ impl PolicyTamperDetectionService for PolicyTamperDetectionServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diff_analyzer::domain::{
-        ChangedFile, DiffHunk, FileStatus, PrDiff,
-    };
+    use crate::diff_analyzer::domain::{ChangedFile, DiffHunk, FileStatus, PrDiff};
 
     fn make_diff_with_file(file_path: &str, status: FileStatus) -> PrDiff {
         PrDiff {
@@ -117,9 +119,21 @@ mod tests {
     #[tokio::test]
     async fn test_tamper_with_path_normalization() {
         let detector = PolicyTamperDetectionServiceImpl;
-        assert!(detector.is_policy_file(".rigorix/policy.toml", ".rigorix/policy.toml").await);
-        assert!(detector.is_policy_file("./.rigorix/policy.toml", ".rigorix/policy.toml").await);
-        assert!(!detector.is_policy_file(".rigorix/other.toml", ".rigorix/policy.toml").await);
+        assert!(
+            detector
+                .is_policy_file(".rigorix/policy.toml", ".rigorix/policy.toml")
+                .await
+        );
+        assert!(
+            detector
+                .is_policy_file("./.rigorix/policy.toml", ".rigorix/policy.toml")
+                .await
+        );
+        assert!(
+            !detector
+                .is_policy_file(".rigorix/other.toml", ".rigorix/policy.toml")
+                .await
+        );
     }
 
     #[tokio::test]

@@ -36,9 +36,9 @@ use crate::llm_step::domain::LlmStepError;
 use crate::orchestrator::domain::OrchestratorError;
 use crate::planning::domain::PlanningError;
 use crate::quality_gates::domain::QualityGateError;
+use crate::recovery_recipes::domain::RecoveryError;
 use crate::repo_engine::domain::RepoEngineError;
 use crate::state_persistence::domain::StateError;
-use crate::recovery_recipes::domain::RecoveryError;
 use crate::templates::domain::TemplateError;
 use crate::tools::domain::ToolError;
 

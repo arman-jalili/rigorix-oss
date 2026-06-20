@@ -21,9 +21,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::security_config::domain::{
-    HmacKey, SecurityContext, SecurityLevel, SecurityPolicy,
-};
+use crate::security_config::domain::{HmacKey, SecurityContext, SecurityLevel, SecurityPolicy};
 
 use super::super::application::dto::{
     DetectForkOutput, HmacSignOutput, HmacVerifyOutput, MaskSecretsOutput, ValidateSecurityOutput,

@@ -538,7 +538,11 @@ fn extract_ts_public_api(content: &str, file_path: &str, symbols: &mut Vec<Strin
             let rest = &trimmed[7..].trim();
             if let Some(sig) = rest.strip_prefix("function ") {
                 // Include full signature up to opening brace or semicolon
-                let full_sig = sig.split(|c| c == '{' || c == ';').next().unwrap_or(sig).trim();
+                let full_sig = sig
+                    .split(|c| c == '{' || c == ';')
+                    .next()
+                    .unwrap_or(sig)
+                    .trim();
                 symbols.push(format!("{}: export function {}", file_path, full_sig));
             } else if let Some(rest) = rest.strip_prefix("class ") {
                 let name = rest
@@ -557,10 +561,18 @@ fn extract_ts_public_api(content: &str, file_path: &str, symbols: &mut Vec<Strin
                     .trim();
                 symbols.push(format!("{}: export interface {}", file_path, name));
             } else if let Some(sig) = rest.strip_prefix("type ") {
-                let full_sig = sig.split(|c| c == '=' || c == ';').next().unwrap_or(sig).trim();
+                let full_sig = sig
+                    .split(|c| c == '=' || c == ';')
+                    .next()
+                    .unwrap_or(sig)
+                    .trim();
                 symbols.push(format!("{}: export type {}", file_path, full_sig));
             } else if let Some(sig) = rest.strip_prefix("const ") {
-                let full_sig = sig.split(|c| c == ':' || c == '=').next().unwrap_or(sig).trim();
+                let full_sig = sig
+                    .split(|c| c == ':' || c == '=')
+                    .next()
+                    .unwrap_or(sig)
+                    .trim();
                 symbols.push(format!("{}: export const {}", file_path, full_sig));
             }
         }
@@ -568,7 +580,12 @@ fn extract_ts_public_api(content: &str, file_path: &str, symbols: &mut Vec<Strin
 }
 
 /// Extract method signatures from the class body following the class declaration line.
-fn extract_ts_class_methods(content: &str, class_line: &str, file_path: &str, symbols: &mut Vec<String>) {
+fn extract_ts_class_methods(
+    content: &str,
+    class_line: &str,
+    file_path: &str,
+    symbols: &mut Vec<String>,
+) {
     // Find the line index of the class declaration
     let lines: Vec<&str> = content.lines().collect();
     let class_idx = lines.iter().position(|l| l.trim() == class_line.trim());
@@ -586,12 +603,18 @@ fn extract_ts_class_methods(content: &str, class_line: &str, file_path: &str, sy
             continue;
         }
         if trimmed == "}" || trimmed == "};" {
-            if brace_depth <= 0 { break; }
+            if brace_depth <= 0 {
+                break;
+            }
             brace_depth -= 1;
-            if brace_depth == 0 { break; } // end of class
+            if brace_depth == 0 {
+                break;
+            } // end of class
             continue;
         }
-        if !in_class_body { continue; }
+        if !in_class_body {
+            continue;
+        }
 
         // Detect method or field declarations
         // Matches: methodName(...) { or methodName(...): ReturnType {
@@ -602,7 +625,10 @@ fn extract_ts_class_methods(content: &str, class_line: &str, file_path: &str, sy
             let paren_close = trimmed.rfind(')');
             if let (Some(open), Some(close)) = (paren_open, paren_close) {
                 if open > 0 && close > open {
-                    let sig_end = trimmed[close + 1..].find(|c| c == '{' || c == ';').map(|i| close + 1 + i).unwrap_or(trimmed.len());
+                    let sig_end = trimmed[close + 1..]
+                        .find(|c| c == '{' || c == ';')
+                        .map(|i| close + 1 + i)
+                        .unwrap_or(trimmed.len());
                     let sig = &trimmed[..=sig_end.min(trimmed.len()).max(close + 1)];
                     // Skip if it looks like a lambda or constructor parameter destructuring
                     if !sig.starts_with('(') && !sig.starts_with("...") && sig.contains('(') {
@@ -1165,7 +1191,10 @@ fn read_key_files(root: &std::path::Path) -> String {
         let lines: Vec<&str> = content.lines().take(max_lines).collect();
         let truncated: String = lines.join("\n");
         let note = if content.lines().count() > max_lines {
-            format!("\n// ... (truncated from {} lines)", content.lines().count())
+            format!(
+                "\n// ... (truncated from {} lines)",
+                content.lines().count()
+            )
         } else {
             String::new()
         };
@@ -1183,7 +1212,11 @@ fn read_key_files(root: &std::path::Path) -> String {
                     if path.extension().map_or(true, |e| e != "ts") {
                         continue;
                     }
-                    let rel = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().to_string();
+                    let rel = path
+                        .strip_prefix(root)
+                        .unwrap_or(&path)
+                        .to_string_lossy()
+                        .to_string();
                     // Skip files already read as candidates
                     if candidates.iter().any(|c| **c == rel) {
                         continue;
@@ -1195,7 +1228,10 @@ fn read_key_files(root: &std::path::Path) -> String {
                     let lines: Vec<&str> = content.lines().take(max_lines).collect();
                     let truncated: String = lines.join("\n");
                     let note = if content.lines().count() > max_lines {
-                        format!("\n// ... (truncated from {} lines)", content.lines().count())
+                        format!(
+                            "\n// ... (truncated from {} lines)",
+                            content.lines().count()
+                        )
                     } else {
                         String::new()
                     };
@@ -1550,11 +1586,7 @@ Respond with valid TOML only. Do NOT include markdown code fences or explanation
                     continue;
                 }
                 if let Some(rest) = trimmed.strip_prefix("name = ") {
-                    let name = rest
-                        .trim()
-                        .trim_matches('"')
-                        .trim_matches('\'')
-                        .to_string();
+                    let name = rest.trim().trim_matches('"').trim_matches('\'').to_string();
                     if !name.is_empty() {
                         names.push(name);
                     }
@@ -2143,7 +2175,10 @@ id = "read"
 type = "file_read"
 path = { target }"#;
         let result = ClaudeTemplateGenerator::fix_toml_placeholders(input);
-        assert!(result.contains("{{ target }}"), "should convert to {{ target }}");
+        assert!(
+            result.contains("{{ target }}"),
+            "should convert to {{ target }}"
+        );
         toml::from_str::<toml::Value>(&result)
             .expect("unquoted placeholder must produce valid TOML");
     }
@@ -2162,9 +2197,11 @@ type = "file_read"
 path = "{ target }"
 "#;
         let result = ClaudeTemplateGenerator::fix_toml_placeholders(input);
-        assert!(result.contains("{{ target }}"), "should convert to {{ target }}");
-        toml::from_str::<toml::Value>(&result)
-            .expect("quoted placeholder must produce valid TOML");
+        assert!(
+            result.contains("{{ target }}"),
+            "should convert to {{ target }}"
+        );
+        toml::from_str::<toml::Value>(&result).expect("quoted placeholder must produce valid TOML");
     }
 
     #[test]
@@ -2217,17 +2254,28 @@ path = "tests/tasklist.test.ts"
 content = "const x = { TaskList };"#;
         let result = ClaudeTemplateGenerator::fix_toml_placeholders(input);
         // { file_path } is a known param — should become {{ file_path }}
-        assert!(result.contains("{{ file_path }}"),
-            "known param file_path should become template param");
+        assert!(
+            result.contains("{{ file_path }}"),
+            "known param file_path should become template param"
+        );
         // { TaskList } is NOT a known param — must stay as-is
-        assert!(result.contains("{ TaskList }"),
-            "TypeScript destructuring TaskList must be preserved, got: {}", result);
+        assert!(
+            result.contains("{ TaskList }"),
+            "TypeScript destructuring TaskList must be preserved, got: {}",
+            result
+        );
         // Must parse as valid TOML
         let parsed = toml::from_str::<toml::Value>(&result);
-        assert!(parsed.is_ok() || result.contains("{{ file_path }}"),
-            "result must at least contain template param: {}", result);
-        assert!(!result.contains("{{ TaskList }}"),
-            "result must NOT convert TaskList to template param: {}", result);
+        assert!(
+            parsed.is_ok() || result.contains("{{ file_path }}"),
+            "result must at least contain template param: {}",
+            result
+        );
+        assert!(
+            !result.contains("{{ TaskList }}"),
+            "result must NOT convert TaskList to template param: {}",
+            result
+        );
     }
 
     #[test]

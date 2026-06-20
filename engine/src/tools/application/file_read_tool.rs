@@ -166,7 +166,11 @@ impl Tool for FileReadTool {
         let total_lines = contents.lines().count();
 
         // Parse optional offset/limit
-        let offset = input.get_u64("offset").map(|v| v as usize).unwrap_or(1).max(1);
+        let offset = input
+            .get_u64("offset")
+            .map(|v| v as usize)
+            .unwrap_or(1)
+            .max(1);
         let limit = input.get_u64("limit").map(|v| v as usize);
 
         // Apply offset/limit
@@ -209,13 +213,19 @@ mod tests {
 
     fn make_input(path: &str) -> ToolInput {
         let mut params = HashMap::new();
-        params.insert("path".to_string(), serde_json::Value::String(path.to_string()));
+        params.insert(
+            "path".to_string(),
+            serde_json::Value::String(path.to_string()),
+        );
         ToolInput::new(params)
     }
 
     fn make_input_with_opts(path: &str, offset: Option<u64>, limit: Option<u64>) -> ToolInput {
         let mut params = HashMap::new();
-        params.insert("path".to_string(), serde_json::Value::String(path.to_string()));
+        params.insert(
+            "path".to_string(),
+            serde_json::Value::String(path.to_string()),
+        );
         if let Some(o) = offset {
             params.insert("offset".to_string(), serde_json::json!(o));
         }
@@ -249,7 +259,10 @@ mod tests {
         std::fs::write(&file_path, "line1\nline2\nline3\nline4\nline5").unwrap();
 
         let tool = FileReadTool::new(dir.path().to_str().unwrap());
-        let result = tool.execute(&make_input_with_opts("test.txt", Some(3), None)).await.unwrap();
+        let result = tool
+            .execute(&make_input_with_opts("test.txt", Some(3), None))
+            .await
+            .unwrap();
 
         let output: ReadFileOutput = serde_json::from_str(&result.output).unwrap();
         assert_eq!(output.content, "line3\nline4\nline5");
@@ -264,7 +277,10 @@ mod tests {
         std::fs::write(&file_path, "line1\nline2\nline3\nline4\nline5").unwrap();
 
         let tool = FileReadTool::new(dir.path().to_str().unwrap());
-        let result = tool.execute(&make_input_with_opts("test.txt", Some(2), Some(2))).await.unwrap();
+        let result = tool
+            .execute(&make_input_with_opts("test.txt", Some(2), Some(2)))
+            .await
+            .unwrap();
 
         let output: ReadFileOutput = serde_json::from_str(&result.output).unwrap();
         assert_eq!(output.content, "line2\nline3");
@@ -278,7 +294,10 @@ mod tests {
         std::fs::write(&file_path, "line1\nline2").unwrap();
 
         let tool = FileReadTool::new(dir.path().to_str().unwrap());
-        let result = tool.execute(&make_input_with_opts("test.txt", Some(10), None)).await.unwrap();
+        let result = tool
+            .execute(&make_input_with_opts("test.txt", Some(10), None))
+            .await
+            .unwrap();
 
         let output: ReadFileOutput = serde_json::from_str(&result.output).unwrap();
         assert_eq!(output.content, "");

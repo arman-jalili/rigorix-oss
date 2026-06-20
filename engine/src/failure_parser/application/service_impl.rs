@@ -11,8 +11,7 @@ use async_trait::async_trait;
 use tokio::sync::Mutex;
 
 use crate::failure_parser::domain::{
-    failure::TemplateFailure,
-    FailureParserError, ParserRegistry, ParsedFailure, SourceContext,
+    FailureParserError, ParsedFailure, ParserRegistry, SourceContext, failure::TemplateFailure,
 };
 
 use super::dto::{
@@ -235,10 +234,7 @@ impl FailureParserServiceImpl {
                 let avail_str = if available.is_empty() {
                     String::new()
                 } else {
-                    format!(
-                        "\n    Available symbols: {}",
-                        available.join(", ")
-                    )
+                    format!("\n    Available symbols: {}", available.join(", "))
                 };
                 let sug_str = suggestion
                     .as_ref()
@@ -270,9 +266,7 @@ impl FailureParserServiceImpl {
                     location.file, location.line, expected, actual
                 )
             }
-            TemplateFailure::CompileError {
-                code, message, ..
-            } => {
+            TemplateFailure::CompileError { code, message, .. } => {
                 format!(" - {}: {} — {}", code, message, f.summary())
             }
             TemplateFailure::AssertionFailure {
@@ -289,10 +283,7 @@ impl FailureParserServiceImpl {
             TemplateFailure::TestFailure {
                 test_name, message, ..
             } => {
-                format!(
-                    " - TestFailure '{}': {}",
-                    test_name, message
-                )
+                format!(" - TestFailure '{}': {}", test_name, message)
             }
         }
     }
@@ -323,12 +314,13 @@ impl FailureParserService for FailureParserServiceImpl {
         };
 
         let _lock = self.registry_lock.lock().await;
-        let parser = self.registry
-            .get(&input.tool)
-            .ok_or_else(|| FailureParserError::UnsupportedTool {
-                tool: input.tool.clone(),
-                available: self.registry.available_tools(),
-            })?;
+        let parser =
+            self.registry
+                .get(&input.tool)
+                .ok_or_else(|| FailureParserError::UnsupportedTool {
+                    tool: input.tool.clone(),
+                    available: self.registry.available_tools(),
+                })?;
 
         // Parse with lock held (parsing is fast, no I/O)
         let mut parsed = parser.parse(&combined, &input.source_context).await?;
@@ -341,11 +333,7 @@ impl FailureParserService for FailureParserServiceImpl {
 
         let mut total_fixable = 0;
         for detail in &mut parsed.failures {
-            let fix = self.generate_fix(
-                &detail.failure,
-                &source_context,
-                0.5,
-            )?;
+            let fix = self.generate_fix(&detail.failure, &source_context, 0.5)?;
             let has_fix = fix.suggestion.is_some();
             detail.suggested_fix = fix.suggestion;
             detail.confidence = fix.confidence;
@@ -380,10 +368,7 @@ impl FailureParserService for FailureParserServiceImpl {
                 }
             }
             lines.push(String::new());
-            lines.push(format!(
-                "Overall severity: {:?}",
-                parsed.overall_severity
-            ));
+            lines.push(format!("Overall severity: {:?}", parsed.overall_severity));
         }
 
         Ok(ParseOutputResult {
@@ -478,8 +463,7 @@ impl FailureParserService for FailureParserServiceImpl {
 mod tests {
     use super::*;
     use crate::failure_parser::domain::{
-        detail::FailureDetail, failure::SourceLocation, FailureSeverity,
-        LanguageParser,
+        FailureSeverity, LanguageParser, detail::FailureDetail, failure::SourceLocation,
     };
     use async_trait::async_trait;
 

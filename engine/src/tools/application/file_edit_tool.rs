@@ -81,7 +81,11 @@ impl EditFileTool {
     }
 
     /// Run the syntax gate on the updated content, if configured.
-    fn run_syntax_gate(&self, file_path: &str, content: &str) -> Result<Option<crate::code_gen::domain::result::SyntaxGateResult>, ToolError> {
+    fn run_syntax_gate(
+        &self,
+        file_path: &str,
+        content: &str,
+    ) -> Result<Option<crate::code_gen::domain::result::SyntaxGateResult>, ToolError> {
         match &self.syntax_gate {
             Some(gate) => {
                 let input = SyntaxGateInput {
@@ -144,15 +148,20 @@ impl EditFileTool {
         })?;
 
         let mut buffer = vec![0u8; 8192];
-        let n = file.read(&mut buffer).map_err(|e| {
-            ToolError::ExecutionFailed(format!("Cannot read file: {}", e))
-        })?;
+        let n = file
+            .read(&mut buffer)
+            .map_err(|e| ToolError::ExecutionFailed(format!("Cannot read file: {}", e)))?;
 
         Ok(buffer[..n].contains(&0u8))
     }
 
     /// Compute a simple unified diff between original and updated content.
-    fn compute_diff(&self, original: &str, updated: &str, file_path: &str) -> (String, Vec<StructuredPatchHunk>) {
+    fn compute_diff(
+        &self,
+        original: &str,
+        updated: &str,
+        file_path: &str,
+    ) -> (String, Vec<StructuredPatchHunk>) {
         let original_lines: Vec<&str> = original.lines().collect();
         let updated_lines: Vec<&str> = updated.lines().collect();
 
@@ -187,10 +196,7 @@ impl EditFileTool {
 
         // Build unified diff string
         let mut diff = String::new();
-        diff.push_str(&format!(
-            "--- a/{}\n+++ b/{}\n",
-            file_path, file_path
-        ));
+        diff.push_str(&format!("--- a/{}\n+++ b/{}\n", file_path, file_path));
         diff.push_str(&format!(
             "@@ -{},{} +{},{} @@\n",
             display_start + 1,
@@ -242,29 +248,45 @@ impl EditFileTool {
     }
 
     /// Perform the actual edit logic (shared by execute and preview).
-    fn perform_edit(&self, params: &serde_json::Value, dry_run: bool) -> Result<EditFileOutput, ToolError> {
-        let path_str = params.get("path")
+    fn perform_edit(
+        &self,
+        params: &serde_json::Value,
+        dry_run: bool,
+    ) -> Result<EditFileOutput, ToolError> {
+        let path_str = params
+            .get("path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolError::InvalidInput("Missing required parameter: path".into()))?;
 
-        let old_string = params.get("old_string")
+        let old_string = params
+            .get("old_string")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolError::InvalidInput("Missing required parameter: old_string".into()))?;
+            .ok_or_else(|| {
+                ToolError::InvalidInput("Missing required parameter: old_string".into())
+            })?;
 
-        let new_string = params.get("new_string")
+        let new_string = params
+            .get("new_string")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolError::InvalidInput("Missing required parameter: new_string".into()))?;
+            .ok_or_else(|| {
+                ToolError::InvalidInput("Missing required parameter: new_string".into())
+            })?;
 
-        let replace_all = params.get("replace_all")
+        let replace_all = params
+            .get("replace_all")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
         // Validate inputs
         if old_string.is_empty() {
-            return Err(ToolError::InvalidInput("old_string must not be empty".into()));
+            return Err(ToolError::InvalidInput(
+                "old_string must not be empty".into(),
+            ));
         }
         if new_string.is_empty() {
-            return Err(ToolError::InvalidInput("new_string must not be empty".into()));
+            return Err(ToolError::InvalidInput(
+                "new_string must not be empty".into(),
+            ));
         }
 
         // Gate: Identity check
@@ -292,9 +314,8 @@ impl EditFileTool {
         }
 
         // Gate: File size check
-        let metadata = fs::metadata(&resolved).map_err(|e| {
-            ToolError::ExecutionFailed(format!("Cannot read file metadata: {}", e))
-        })?;
+        let metadata = fs::metadata(&resolved)
+            .map_err(|e| ToolError::ExecutionFailed(format!("Cannot read file metadata: {}", e)))?;
         if metadata.len() > self.max_file_size {
             return Err(ToolError::InvalidInput(format!(
                 "File too large: {} bytes (max {})",
@@ -304,9 +325,8 @@ impl EditFileTool {
         }
 
         // Read original content
-        let original = fs::read_to_string(&resolved).map_err(|e| {
-            ToolError::ExecutionFailed(format!("Cannot read file: {}", e))
-        })?;
+        let original = fs::read_to_string(&resolved)
+            .map_err(|e| ToolError::ExecutionFailed(format!("Cannot read file: {}", e)))?;
 
         // Gate: Existence check
         if !original.contains(old_string) {
@@ -351,7 +371,11 @@ impl EditFileTool {
             updated_content: updated,
             unified_diff,
             replace_all,
-            occurrences_replaced: if replace_all { occurrences } else { 1.min(occurrences) },
+            occurrences_replaced: if replace_all {
+                occurrences
+            } else {
+                1.min(occurrences)
+            },
             syntax_gate_result,
             patch_hunks,
         })
@@ -366,7 +390,10 @@ impl Tool for EditFileTool {
 
     async fn execute(&self, input: &ToolInput) -> Result<ToolResult, ToolError> {
         let params_value = serde_json::to_value(&input.params).unwrap_or_default();
-        let dry_run = params_value.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false);
+        let dry_run = params_value
+            .get("dry_run")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         let edit_output = self.perform_edit(&params_value, dry_run)?;
 
@@ -381,7 +408,8 @@ impl Tool for EditFileTool {
                 vec![SideEffect::new(
                     &edit_output.file_path,
                     "file_edit",
-                    &format!("Replaced {} occurrence(s) of '{}' with '{}'",
+                    &format!(
+                        "Replaced {} occurrence(s) of '{}' with '{}'",
                         edit_output.occurrences_replaced,
                         &edit_output.old_string[..edit_output.old_string.len().min(50)],
                         &edit_output.new_string[..edit_output.new_string.len().min(50)],
@@ -399,12 +427,17 @@ impl Tool for EditFileTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     use std::io::Write;
     use tempfile::TempDir;
 
     fn make_input(params: Vec<(&str, serde_json::Value)>) -> ToolInput {
-        ToolInput::new(params.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
+        ToolInput::new(
+            params
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect(),
+        )
     }
 
     fn create_test_file(dir: &TempDir, name: &str, content: &str) -> std::path::PathBuf {

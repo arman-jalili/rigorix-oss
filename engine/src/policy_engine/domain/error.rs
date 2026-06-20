@@ -88,10 +88,7 @@ mod tests {
             rule_name: "test-rule".to_string(),
         };
         assert!(!err.is_retriable());
-        assert_eq!(
-            err.to_string(),
-            "Policy rule not found: test-rule"
-        );
+        assert_eq!(err.to_string(), "Policy rule not found: test-rule");
     }
 
     #[test]

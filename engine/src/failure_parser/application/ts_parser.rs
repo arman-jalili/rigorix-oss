@@ -33,9 +33,9 @@ use async_trait::async_trait;
 use regex::Regex;
 
 use crate::failure_parser::domain::{
+    FailureParserError, FailureSeverity, LanguageParser, ParsedFailure, SourceContext,
     detail::FailureDetail,
     failure::{SourceLocation, TemplateFailure},
-    FailureParserError, FailureSeverity, LanguageParser, ParsedFailure, SourceContext,
 };
 
 /// Parses TypeScript compiler (tsc) output into structured TemplateFailure values.
@@ -59,9 +59,7 @@ impl TypeScriptParser {
 
     /// Format 1: file(line,col): error TSXXXX: message (standard tsc --pretty false)
     fn try_parse_format_1(line: &str, source_context: &SourceContext) -> Option<FailureDetail> {
-        let re = Regex::new(
-            r"^(.+?)\((\d+),(\d+)\):\s+error\s+(TS\d+):\s+(.+)"
-        ).ok()?;
+        let re = Regex::new(r"^(.+?)\((\d+),(\d+)\):\s+error\s+(TS\d+):\s+(.+)").ok()?;
         let caps = re.captures(line)?;
         let file = caps.get(1)?.as_str();
         let line_num: usize = caps.get(2)?.as_str().parse().ok()?;
@@ -83,9 +81,7 @@ impl TypeScriptParser {
 
     /// Format 2: file(line,col): error TSXXXX - message (dash separator, some tsc versions)
     fn try_parse_format_2(line: &str, source_context: &SourceContext) -> Option<FailureDetail> {
-        let re = Regex::new(
-            r"^(.+?)\((\d+),(\d+)\):\s+error\s+(TS\d+)\s+-\s+(.+)"
-        ).ok()?;
+        let re = Regex::new(r"^(.+?)\((\d+),(\d+)\):\s+error\s+(TS\d+)\s+-\s+(.+)").ok()?;
         let caps = re.captures(line)?;
         let file = caps.get(1)?.as_str();
         let line_num: usize = caps.get(2)?.as_str().parse().ok()?;
@@ -236,8 +232,7 @@ impl TypeScriptParser {
 
     /// Find suggestion based on "Did you mean..." in message.
     fn find_suggestion_from_message(message: &str, _available: &[String]) -> Option<String> {
-        Self::extract_did_you_mean(message)
-            .map(|s| format!("Did you mean '{}'?", s))
+        Self::extract_did_you_mean(message).map(|s| format!("Did you mean '{}'?", s))
     }
 
     /// Extract available symbols from "Did you mean..." context.
@@ -410,7 +405,10 @@ mod tests {
     #[tokio::test]
     async fn test_parse_ts2339_missing_symbol() {
         let output = "src/tasklist.ts(3,10): error TS2339: Property 'addTask' does not exist on type 'TaskList'.";
-        let result = TypeScriptParser.parse(output, &empty_context()).await.unwrap();
+        let result = TypeScriptParser
+            .parse(output, &empty_context())
+            .await
+            .unwrap();
         assert_eq!(result.total_count, 1);
         assert_eq!(result.failures[0].failure.variant_name(), "missing_symbol");
         if let TemplateFailure::MissingSymbol { symbol, .. } = &result.failures[0].failure {
@@ -424,7 +422,10 @@ mod tests {
     #[tokio::test]
     async fn test_parse_ts2339_with_did_you_mean() {
         let output = "src/tasklist.ts(5,10): error TS2339: Property 'addd' does not exist on type 'TaskList'. Did you mean 'add'?";
-        let result = TypeScriptParser.parse(output, &empty_context()).await.unwrap();
+        let result = TypeScriptParser
+            .parse(output, &empty_context())
+            .await
+            .unwrap();
         assert_eq!(result.total_count, 1);
         if let TemplateFailure::MissingSymbol { suggestion, .. } = &result.failures[0].failure {
             assert!(suggestion.as_deref().unwrap_or("").contains("add"));
@@ -436,11 +437,17 @@ mod tests {
     #[tokio::test]
     async fn test_parse_ts2554_wrong_arg_count() {
         let output = "src/tasklist.ts(15,3): error TS2554: Expected 2 arguments, but got 3.";
-        let result = TypeScriptParser.parse(output, &empty_context()).await.unwrap();
+        let result = TypeScriptParser
+            .parse(output, &empty_context())
+            .await
+            .unwrap();
         assert_eq!(result.total_count, 1);
         assert_eq!(result.failures[0].failure.variant_name(), "wrong_arg_count");
         if let TemplateFailure::WrongArgCount {
-            function: _, expected, actual, ..
+            function: _,
+            expected,
+            actual,
+            ..
         } = &result.failures[0].failure
         {
             // function is extracted as first quoted string = "2 arguments"
@@ -454,7 +461,10 @@ mod tests {
     #[tokio::test]
     async fn test_parse_ts2345_type_mismatch() {
         let output = "src/tasklist.ts(20,5): error TS2345: Argument of type 'string' is not assignable to parameter of type 'Task'.";
-        let result = TypeScriptParser.parse(output, &empty_context()).await.unwrap();
+        let result = TypeScriptParser
+            .parse(output, &empty_context())
+            .await
+            .unwrap();
         assert_eq!(result.total_count, 1);
         assert_eq!(result.failures[0].failure.variant_name(), "type_mismatch");
         if let TemplateFailure::TypeMismatch {
@@ -471,7 +481,10 @@ mod tests {
     #[tokio::test]
     async fn test_parse_ts1005_compile_error() {
         let output = "src/tasklist.ts(25,1): error TS1005: ';' expected.";
-        let result = TypeScriptParser.parse(output, &empty_context()).await.unwrap();
+        let result = TypeScriptParser
+            .parse(output, &empty_context())
+            .await
+            .unwrap();
         assert_eq!(result.total_count, 1);
         assert_eq!(result.failures[0].failure.variant_name(), "compile_error");
         if let TemplateFailure::CompileError { code, .. } = &result.failures[0].failure {
@@ -484,7 +497,10 @@ mod tests {
     #[tokio::test]
     async fn test_parse_ts2304_missing_symbol() {
         let output = "src/index.ts(1,1): error TS2304: Cannot find name 'myVar'.";
-        let result = TypeScriptParser.parse(output, &empty_context()).await.unwrap();
+        let result = TypeScriptParser
+            .parse(output, &empty_context())
+            .await
+            .unwrap();
         assert_eq!(result.total_count, 1);
         assert_eq!(result.failures[0].failure.variant_name(), "missing_symbol");
         if let TemplateFailure::MissingSymbol { symbol, .. } = &result.failures[0].failure {
@@ -497,11 +513,18 @@ mod tests {
     #[tokio::test]
     async fn test_parse_ts2551_missing_symbol() {
         let output = "src/tasklist.ts(3,10): error TS2551: Property 'addTask' does not exist on type 'TaskList'. Did you mean 'add'?";
-        let result = TypeScriptParser.parse(output, &empty_context()).await.unwrap();
+        let result = TypeScriptParser
+            .parse(output, &empty_context())
+            .await
+            .unwrap();
         assert_eq!(result.total_count, 1);
         assert_eq!(result.failures[0].failure.variant_name(), "missing_symbol");
         if let TemplateFailure::MissingSymbol { suggestion, .. } = &result.failures[0].failure {
-            assert!(suggestion.as_deref().unwrap_or("").contains("add"), "Expected suggestion to mention 'add', got: {:?}", suggestion);
+            assert!(
+                suggestion.as_deref().unwrap_or("").contains("add"),
+                "Expected suggestion to mention 'add', got: {:?}",
+                suggestion
+            );
         } else {
             panic!("Expected MissingSymbol with suggestion");
         }
@@ -510,7 +533,10 @@ mod tests {
     #[tokio::test]
     async fn test_parse_unknown_error_code() {
         let output = "src/file.ts(1,1): error TS9999: Some unknown error occurred.";
-        let result = TypeScriptParser.parse(output, &empty_context()).await.unwrap();
+        let result = TypeScriptParser
+            .parse(output, &empty_context())
+            .await
+            .unwrap();
         assert_eq!(result.total_count, 1);
         assert_eq!(result.failures[0].failure.variant_name(), "compile_error");
         if let TemplateFailure::CompileError { code, .. } = &result.failures[0].failure {
@@ -530,7 +556,10 @@ mod tests {
 src/file1.ts(1,1): error TS2339: Property 'x' does not exist.
 src/file2.ts(5,3): error TS2554: Expected 2 arguments, but got 3.
 src/file3.ts(10,1): error TS1005: ';' expected.";
-        let result = TypeScriptParser.parse(output, &empty_context()).await.unwrap();
+        let result = TypeScriptParser
+            .parse(output, &empty_context())
+            .await
+            .unwrap();
         assert_eq!(result.total_count, 3);
         assert_eq!(result.failures[0].failure.variant_name(), "missing_symbol");
         assert_eq!(result.failures[1].failure.variant_name(), "wrong_arg_count");
@@ -546,14 +575,20 @@ src/file3.ts(10,1): error TS1005: ';' expected.";
 
     #[tokio::test]
     async fn test_parse_whitespace_only_output() {
-        let result = TypeScriptParser.parse("  \n  \n  ", &empty_context()).await.unwrap();
+        let result = TypeScriptParser
+            .parse("  \n  \n  ", &empty_context())
+            .await
+            .unwrap();
         assert!(result.is_clean());
     }
 
     #[tokio::test]
     async fn test_parse_clean_output() {
         let output = "No errors found.";
-        let result = TypeScriptParser.parse(output, &empty_context()).await.unwrap();
+        let result = TypeScriptParser
+            .parse(output, &empty_context())
+            .await
+            .unwrap();
         assert!(result.is_clean());
     }
 
@@ -561,7 +596,10 @@ src/file3.ts(10,1): error TS1005: ';' expected.";
     async fn test_parse_output_with_error_but_no_parseable_lines() {
         // Does not contain "error TS", so returns empty parsed result
         let output = "Some error occurred but format is unrecognized";
-        let result = TypeScriptParser.parse(output, &empty_context()).await.unwrap();
+        let result = TypeScriptParser
+            .parse(output, &empty_context())
+            .await
+            .unwrap();
         assert!(result.is_clean());
     }
 
@@ -610,10 +648,7 @@ src/file3.ts(10,1): error TS1005: ';' expected.";
     #[test]
     fn test_extract_symbol_no_quotes() {
         let msg = "Some error without quotes";
-        assert_eq!(
-            TypeScriptParser::extract_symbol_from_message(msg),
-            None
-        );
+        assert_eq!(TypeScriptParser::extract_symbol_from_message(msg), None);
     }
 
     #[test]

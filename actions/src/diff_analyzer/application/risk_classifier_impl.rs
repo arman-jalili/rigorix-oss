@@ -17,7 +17,9 @@
 use async_trait::async_trait;
 use std::collections::HashMap;
 
-use crate::diff_analyzer::application::dto::{ClassifyRiskInput, ClassifyRiskOutput, FileClassificationResult};
+use crate::diff_analyzer::application::dto::{
+    ClassifyRiskInput, ClassifyRiskOutput, FileClassificationResult,
+};
 use crate::diff_analyzer::application::service::RiskClassificationService;
 use crate::diff_analyzer::domain::{DiffAnalyzerError, FileRisk, PrDiff};
 
@@ -159,12 +161,15 @@ impl RiskClassificationService for RiskClassifierImpl {
         // Medium: Source code (default for most source files)
         // Check by extension
         let source_extensions = [
-            "rs", "ts", "tsx", "js", "jsx", "py", "go", "kt", "java", "swift",
-            "c", "h", "cpp", "hpp", "cs", "rb", "php", "scala", "clj",
-            "ex", "exs", "erl", "hs", "elm", "vue", "svelte", "dart",
+            "rs", "ts", "tsx", "js", "jsx", "py", "go", "kt", "java", "swift", "c", "h", "cpp",
+            "hpp", "cs", "rb", "php", "scala", "clj", "ex", "exs", "erl", "hs", "elm", "vue",
+            "svelte", "dart",
         ];
 
-        if source_extensions.iter().any(|ext| path_lower.ends_with(&format!(".{}", ext))) {
+        if source_extensions
+            .iter()
+            .any(|ext| path_lower.ends_with(&format!(".{}", ext)))
+        {
             return Ok(FileClassificationResult {
                 path: path.to_string(),
                 risk: FileRisk::Medium,
@@ -213,16 +218,19 @@ mod tests {
 
     fn make_diff_with_paths(paths: Vec<&str>) -> PrDiff {
         PrDiff {
-            files: paths.into_iter().map(|p| ChangedFile {
-                path: p.to_string(),
-                status: FileStatus::Modified,
-                additions: 1,
-                deletions: 0,
-                is_binary: false,
-                hunks: Vec::new(),
-                risk: FileRisk::Medium,
-                raw_diff: None,
-            }).collect(),
+            files: paths
+                .into_iter()
+                .map(|p| ChangedFile {
+                    path: p.to_string(),
+                    status: FileStatus::Modified,
+                    additions: 1,
+                    deletions: 0,
+                    is_binary: false,
+                    hunks: Vec::new(),
+                    risk: FileRisk::Medium,
+                    raw_diff: None,
+                })
+                .collect(),
             total_size_bytes: 0,
             excluded_files: Vec::new(),
             limits_exceeded: false,
@@ -235,14 +243,27 @@ mod tests {
     #[tokio::test]
     async fn test_classify_low_risk() {
         let classifier = make_classifier();
-        let paths = vec!["README.md", "docs/guide.txt", "config.yaml", "package.json", "Cargo.toml"];
+        let paths = vec![
+            "README.md",
+            "docs/guide.txt",
+            "config.yaml",
+            "package.json",
+            "Cargo.toml",
+        ];
         let diff = make_diff_with_paths(paths);
         let input = ClassifyRiskInput {
             diff,
             custom_patterns: None,
         };
         let result = classifier.classify(input).await.unwrap();
-        assert_eq!(result.classifications.iter().filter(|c| c.risk == FileRisk::Low).count(), 5);
+        assert_eq!(
+            result
+                .classifications
+                .iter()
+                .filter(|c| c.risk == FileRisk::Low)
+                .count(),
+            5
+        );
     }
 
     #[tokio::test]
@@ -255,13 +276,24 @@ mod tests {
             custom_patterns: None,
         };
         let result = classifier.classify(input).await.unwrap();
-        assert_eq!(result.classifications.iter().filter(|c| c.risk == FileRisk::Medium).count(), 4);
+        assert_eq!(
+            result
+                .classifications
+                .iter()
+                .filter(|c| c.risk == FileRisk::Medium)
+                .count(),
+            4
+        );
     }
 
     #[tokio::test]
     async fn test_classify_high_risk() {
         let classifier = make_classifier();
-        let paths = vec!["db/migrations/001_init.sql", "infrastructure/main.tf", "docker/Dockerfile"];
+        let paths = vec![
+            "db/migrations/001_init.sql",
+            "infrastructure/main.tf",
+            "docker/Dockerfile",
+        ];
         let diff = make_diff_with_paths(paths);
         let input = ClassifyRiskInput {
             diff,
@@ -274,7 +306,11 @@ mod tests {
     #[tokio::test]
     async fn test_classify_critical_risk() {
         let classifier = make_classifier();
-        let paths = vec!["src/auth/login.rs", "security/policy.toml", "credentials/prod.env"];
+        let paths = vec![
+            "src/auth/login.rs",
+            "security/policy.toml",
+            "credentials/prod.env",
+        ];
         let diff = make_diff_with_paths(paths);
         let input = ClassifyRiskInput {
             diff,
@@ -287,28 +323,40 @@ mod tests {
     #[tokio::test]
     async fn test_classify_single_path_low() {
         let classifier = make_classifier();
-        let result = classifier.classify_path("README.md", &HashMap::new()).await.unwrap();
+        let result = classifier
+            .classify_path("README.md", &HashMap::new())
+            .await
+            .unwrap();
         assert_eq!(result.risk, FileRisk::Low);
     }
 
     #[tokio::test]
     async fn test_classify_single_path_medium() {
         let classifier = make_classifier();
-        let result = classifier.classify_path("src/main.rs", &HashMap::new()).await.unwrap();
+        let result = classifier
+            .classify_path("src/main.rs", &HashMap::new())
+            .await
+            .unwrap();
         assert_eq!(result.risk, FileRisk::Medium);
     }
 
     #[tokio::test]
     async fn test_classify_single_path_high() {
         let classifier = make_classifier();
-        let result = classifier.classify_path("db/migrations/001.sql", &HashMap::new()).await.unwrap();
+        let result = classifier
+            .classify_path("db/migrations/001.sql", &HashMap::new())
+            .await
+            .unwrap();
         assert_eq!(result.risk, FileRisk::High);
     }
 
     #[tokio::test]
     async fn test_classify_single_path_critical() {
         let classifier = make_classifier();
-        let result = classifier.classify_path("src/auth/login.rs", &HashMap::new()).await.unwrap();
+        let result = classifier
+            .classify_path("src/auth/login.rs", &HashMap::new())
+            .await
+            .unwrap();
         assert_eq!(result.risk, FileRisk::Critical);
     }
 
@@ -317,7 +365,10 @@ mod tests {
         let classifier = make_classifier();
         let mut custom = HashMap::new();
         custom.insert("test.custom".to_string(), FileRisk::Critical);
-        let result = classifier.classify_path("test.custom", &custom).await.unwrap();
+        let result = classifier
+            .classify_path("test.custom", &custom)
+            .await
+            .unwrap();
         assert_eq!(result.risk, FileRisk::Critical);
     }
 
@@ -344,7 +395,10 @@ mod tests {
     #[tokio::test]
     async fn test_unknown_extension_defaults_medium() {
         let classifier = make_classifier();
-        let result = classifier.classify_path("assets/weird.xyz", &HashMap::new()).await.unwrap();
+        let result = classifier
+            .classify_path("assets/weird.xyz", &HashMap::new())
+            .await
+            .unwrap();
         assert_eq!(result.risk, FileRisk::Medium);
         assert_eq!(result.matched_pattern.as_deref(), Some("default"));
     }

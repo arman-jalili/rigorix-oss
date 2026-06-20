@@ -57,10 +57,7 @@ pub trait RecoveryRecipeRepository: Send + Sync {
     /// Remove a custom recipe override for the given scenario.
     ///
     /// Returns `true` if a recipe existed and was removed, `false` otherwise.
-    async fn remove_recipe(
-        &self,
-        scenario: FailureScenario,
-    ) -> Result<bool, RecoveryError>;
+    async fn remove_recipe(&self, scenario: FailureScenario) -> Result<bool, RecoveryError>;
 
     /// Clear all custom recipe overrides, resetting to the default catalog.
     async fn clear_recipes(&self) -> Result<(), RecoveryError>;

@@ -12,10 +12,10 @@ use async_trait::async_trait;
 use std::sync::RwLock;
 
 use crate::policy_engine::application::dto::{
-    EvaluatePolicyInput, EvaluatePolicyOutput, GetActiveRulesOutput,
-    LoadRulesInput, LoadRulesOutput, ReloadRulesOutput, RuleSummary,
+    EvaluatePolicyInput, EvaluatePolicyOutput, GetActiveRulesOutput, LoadRulesInput,
+    LoadRulesOutput, ReloadRulesOutput, RuleSummary,
 };
-use crate::policy_engine::application::engine::{evaluate_rules, PolicyEngineService};
+use crate::policy_engine::application::engine::{PolicyEngineService, evaluate_rules};
 use crate::policy_engine::domain::{PolicyEngineError, PolicyRule};
 
 /// In-memory implementation of the PolicyEngineService.
@@ -51,11 +51,12 @@ impl PolicyEngineService for PolicyEngineServiceImpl {
         &self,
         input: EvaluatePolicyInput,
     ) -> Result<EvaluatePolicyOutput, PolicyEngineError> {
-        let rules = self.rules.read().map_err(|e| {
-            PolicyEngineError::InvalidState {
+        let rules = self
+            .rules
+            .read()
+            .map_err(|e| PolicyEngineError::InvalidState {
                 detail: format!("Failed to acquire read lock: {}", e),
-            }
-        })?;
+            })?;
 
         let rules_to_evaluate: Vec<&PolicyRule> = match &input.rule_filter {
             Some(filter) if !filter.is_empty() => {
@@ -95,11 +96,12 @@ impl PolicyEngineService for PolicyEngineServiceImpl {
         let names: Vec<String> = new_rules.iter().map(|r| r.name.clone()).collect();
         let count = new_rules.len() as u32;
 
-        let mut rules = self.rules.write().map_err(|e| {
-            PolicyEngineError::InvalidState {
+        let mut rules = self
+            .rules
+            .write()
+            .map_err(|e| PolicyEngineError::InvalidState {
                 detail: format!("Failed to acquire write lock: {}", e),
-            }
-        })?;
+            })?;
 
         if input.replace_all {
             *rules = new_rules;
@@ -134,11 +136,12 @@ impl PolicyEngineService for PolicyEngineServiceImpl {
     }
 
     async fn get_active_rules(&self) -> Result<GetActiveRulesOutput, PolicyEngineError> {
-        let rules = self.rules.read().map_err(|e| {
-            PolicyEngineError::InvalidState {
+        let rules = self
+            .rules
+            .read()
+            .map_err(|e| PolicyEngineError::InvalidState {
                 detail: format!("Failed to acquire read lock: {}", e),
-            }
-        })?;
+            })?;
 
         let mut sorted = rules.clone();
         sorted.sort_by_key(|r| r.priority);
@@ -162,15 +165,14 @@ impl PolicyEngineService for PolicyEngineServiceImpl {
     }
 
     async fn reload_rules(&self) -> Result<ReloadRulesOutput, PolicyEngineError> {
-        let source = self.last_config_source.read().map_err(|e| {
-            PolicyEngineError::InvalidState {
-                detail: format!("Failed to acquire read lock: {}", e),
-            }
-        })?;
+        let source =
+            self.last_config_source
+                .read()
+                .map_err(|e| PolicyEngineError::InvalidState {
+                    detail: format!("Failed to acquire read lock: {}", e),
+                })?;
 
-        let source_str = source
-            .clone()
-            .unwrap_or_else(|| "unknown".to_string());
+        let source_str = source.clone().unwrap_or_else(|| "unknown".to_string());
 
         Err(PolicyEngineError::InvalidState {
             detail: format!(
@@ -272,14 +274,12 @@ mod tests {
     #[tokio::test]
     async fn test_load_rules_replace_all() {
         let engine = PolicyEngineServiceImpl::empty();
-        let config = PolicyConfig::single(
-            crate::policy_engine::domain::RuleDefinition {
-                name: "test".to_string(),
-                condition: PolicyCondition::LaneCompleted,
-                action: PolicyAction::CloseoutLane,
-                priority: 10,
-            },
-        );
+        let config = PolicyConfig::single(crate::policy_engine::domain::RuleDefinition {
+            name: "test".to_string(),
+            condition: PolicyCondition::LaneCompleted,
+            action: PolicyAction::CloseoutLane,
+            priority: 10,
+        });
         let input = LoadRulesInput {
             config,
             replace_all: true,
@@ -295,16 +295,14 @@ mod tests {
         let engine = PolicyEngineServiceImpl::with_rules(sample_rules());
         assert_eq!(engine.rule_count(), 3);
 
-        let config = PolicyConfig::single(
-            crate::policy_engine::domain::RuleDefinition {
-                name: "new-rule".to_string(),
-                condition: PolicyCondition::ScopedDiff,
-                action: PolicyAction::Notify {
-                    channel: "slack".to_string(),
-                },
-                priority: 15,
+        let config = PolicyConfig::single(crate::policy_engine::domain::RuleDefinition {
+            name: "new-rule".to_string(),
+            condition: PolicyCondition::ScopedDiff,
+            action: PolicyAction::Notify {
+                channel: "slack".to_string(),
             },
-        );
+            priority: 15,
+        });
         let input = LoadRulesInput {
             config,
             replace_all: false,

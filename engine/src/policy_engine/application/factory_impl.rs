@@ -120,9 +120,7 @@ impl PolicyEngineFactory for PolicyEngineFactoryImpl {
 
     async fn create_with_repository(
         &self,
-        _repository: Box<
-            dyn crate::policy_engine::infrastructure::repository::PolicyRepository,
-        >,
+        _repository: Box<dyn crate::policy_engine::infrastructure::repository::PolicyRepository>,
     ) -> Result<Box<dyn PolicyEngineService>, PolicyEngineError> {
         // Load rules from repository and create engine
         let config = _repository.load_config().await?;
@@ -167,14 +165,12 @@ mod tests {
     #[tokio::test]
     async fn test_create_with_rules() {
         let factory = PolicyEngineFactoryImpl::new();
-        let defs = vec![
-            RuleDefinition {
-                name: "rule-1".to_string(),
-                condition: PolicyCondition::LaneCompleted,
-                action: PolicyAction::CloseoutLane,
-                priority: 10,
-            },
-        ];
+        let defs = vec![RuleDefinition {
+            name: "rule-1".to_string(),
+            condition: PolicyCondition::LaneCompleted,
+            action: PolicyAction::CloseoutLane,
+            priority: 10,
+        }];
         let engine = factory.create_with_rules(defs).await.unwrap();
         assert_eq!(engine.rule_count(), 1);
     }

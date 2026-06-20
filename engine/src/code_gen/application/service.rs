@@ -16,8 +16,7 @@
 use crate::code_gen::domain::error::CodeGenError;
 
 use super::dto::{
-    EditFileInput, EditFileOutput, ReadFileInput, ReadFileOutput,
-    SyntaxGateInput, SyntaxGateOutput,
+    EditFileInput, EditFileOutput, ReadFileInput, ReadFileOutput, SyntaxGateInput, SyntaxGateOutput,
 };
 
 /// Service for post-edit syntax verification using tree-sitter.
@@ -41,7 +40,10 @@ pub trait SyntaxGateService: Send + Sync {
     /// Verify multiple files in batch.
     ///
     /// Useful when multiple files were edited in a single turn.
-    fn verify_batch(&self, inputs: Vec<SyntaxGateInput>) -> Result<Vec<SyntaxGateOutput>, CodeGenError>;
+    fn verify_batch(
+        &self,
+        inputs: Vec<SyntaxGateInput>,
+    ) -> Result<Vec<SyntaxGateOutput>, CodeGenError>;
 
     /// Get the current configuration of the syntax gate.
     fn get_config(&self) -> super::dto::SyntaxGateConfig;

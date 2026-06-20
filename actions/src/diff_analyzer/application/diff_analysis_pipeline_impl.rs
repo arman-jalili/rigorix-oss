@@ -70,7 +70,10 @@ impl Default for DiffAnalysisPipelineImpl {
 
 #[async_trait]
 impl DiffAnalysisPipelineService for DiffAnalysisPipelineImpl {
-    async fn analyze(&self, input: AnalyzeDiffInput) -> Result<AnalyzeDiffOutput, DiffAnalyzerError> {
+    async fn analyze(
+        &self,
+        input: AnalyzeDiffInput,
+    ) -> Result<AnalyzeDiffOutput, DiffAnalyzerError> {
         let start = Instant::now();
 
         // Step 1: Parse the raw diff
@@ -133,7 +136,10 @@ impl DiffAnalysisPipelineService for DiffAnalysisPipelineImpl {
         })
     }
 
-    async fn analyze_default(&self, raw_diff: String) -> Result<AnalyzeDiffOutput, DiffAnalyzerError> {
+    async fn analyze_default(
+        &self,
+        raw_diff: String,
+    ) -> Result<AnalyzeDiffOutput, DiffAnalyzerError> {
         let input = AnalyzeDiffInput {
             raw_diff,
             limits: PolicyLimits::default(),
@@ -155,11 +161,11 @@ impl DiffAnalysisPipelineService for DiffAnalysisPipelineImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diff_analyzer::application::diff_parser_impl::DiffParserImpl;
-    use crate::diff_analyzer::application::path_validator_impl::PathValidatorImpl;
-    use crate::diff_analyzer::application::limit_enforcer_impl::LimitEnforcerImpl;
-    use crate::diff_analyzer::application::risk_classifier_impl::RiskClassifierImpl;
     use crate::diff_analyzer::application::ai_signal_detector_impl::AiSignalDetectorImpl;
+    use crate::diff_analyzer::application::diff_parser_impl::DiffParserImpl;
+    use crate::diff_analyzer::application::limit_enforcer_impl::LimitEnforcerImpl;
+    use crate::diff_analyzer::application::path_validator_impl::PathValidatorImpl;
+    use crate::diff_analyzer::application::risk_classifier_impl::RiskClassifierImpl;
     use crate::diff_analyzer::domain::FileRisk;
 
     fn make_pipeline() -> DiffAnalysisPipelineImpl {
@@ -189,7 +195,13 @@ index abc..def 100644
         assert_eq!(result.diff.files[0].path, "src/main.rs");
         assert!(result.path_validation.all_valid);
         assert!(!result.limit_enforcement.any_exceeded);
-        assert!(result.risk_classification.classifications.iter().any(|c| c.risk == FileRisk::Medium));
+        assert!(
+            result
+                .risk_classification
+                .classifications
+                .iter()
+                .any(|c| c.risk == FileRisk::Medium)
+        );
     }
 
     #[tokio::test]
@@ -270,7 +282,12 @@ index abc..def 100644
 ";
         let result = pipeline.analyze_default(diff.to_string()).await.unwrap();
         let critical_count = result.risk_classification.critical_files.len();
-        let low_count = result.risk_classification.classifications.iter().filter(|c| c.risk == FileRisk::Low).count();
+        let low_count = result
+            .risk_classification
+            .classifications
+            .iter()
+            .filter(|c| c.risk == FileRisk::Low)
+            .count();
         assert_eq!(critical_count, 1);
         assert_eq!(low_count, 1);
     }

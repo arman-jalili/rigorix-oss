@@ -56,9 +56,7 @@ impl PolicyConfig {
 
     /// Create a policy configuration with a single rule.
     pub fn single(rule: RuleDefinition) -> Self {
-        Self {
-            rules: vec![rule],
-        }
+        Self { rules: vec![rule] }
     }
 
     /// Convert this configuration into a list of `PolicyRule` domain entities.

@@ -75,8 +75,7 @@ impl ValidationLoopError {
     pub fn is_retriable(&self) -> bool {
         matches!(
             self,
-            ValidationLoopError::PlanningError { .. }
-                | ValidationLoopError::ExecutionError { .. }
+            ValidationLoopError::PlanningError { .. } | ValidationLoopError::ExecutionError { .. }
         )
     }
 }

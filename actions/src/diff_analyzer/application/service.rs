@@ -103,7 +103,10 @@ pub trait PathValidationService: Send + Sync {
     /// - Symlink components
     ///
     /// Returns individual results per path with violation details.
-    async fn validate(&self, input: ValidatePathsInput) -> Result<ValidatePathsOutput, DiffAnalyzerError>;
+    async fn validate(
+        &self,
+        input: ValidatePathsInput,
+    ) -> Result<ValidatePathsOutput, DiffAnalyzerError>;
 
     /// Validate a single file path.
     ///
@@ -149,7 +152,10 @@ pub trait LimitEnforcementService: Send + Sync {
     /// When a limit is exceeded with progressive degradation enabled,
     /// files that fit within the limit are kept and excess files are
     /// excluded (recorded in `PrDiff.excluded_files`).
-    async fn enforce(&self, input: EnforceLimitsInput) -> Result<EnforceLimitsOutput, DiffAnalyzerError>;
+    async fn enforce(
+        &self,
+        input: EnforceLimitsInput,
+    ) -> Result<EnforceLimitsOutput, DiffAnalyzerError>;
 
     /// Check total diff size against the configured limit.
     ///
@@ -177,11 +183,7 @@ pub trait LimitEnforcementService: Send + Sync {
     /// Apply progressive degradation to a diff that exceeds limits.
     ///
     /// Keeps files in order until the limit is reached, then excludes the rest.
-    async fn apply_progressive_degradation(
-        &self,
-        diff: &mut PrDiff,
-        max_size: u64,
-    ) -> Vec<String>;
+    async fn apply_progressive_degradation(&self, diff: &mut PrDiff, max_size: u64) -> Vec<String>;
 }
 
 /// Application service for classifying file changes by risk level.
@@ -207,7 +209,10 @@ pub trait RiskClassificationService: Send + Sync {
     /// - Paths ending in `.rs`, `.ts`, `.py`, `.js`, `.go` → Medium
     /// - Paths ending in `.md`, `.txt`, `.json`, `.yaml`, `.toml` → Low
     /// - Custom patterns override defaults
-    async fn classify(&self, input: ClassifyRiskInput) -> Result<ClassifyRiskOutput, DiffAnalyzerError>;
+    async fn classify(
+        &self,
+        input: ClassifyRiskInput,
+    ) -> Result<ClassifyRiskOutput, DiffAnalyzerError>;
 
     /// Classify a single file path by risk level.
     ///
@@ -311,11 +316,17 @@ pub trait DiffAnalysisPipelineService: Send + Sync {
     /// 5. Detect AI signals
     ///
     /// Each step's output is included in the result for full transparency.
-    async fn analyze(&self, input: AnalyzeDiffInput) -> Result<AnalyzeDiffOutput, DiffAnalyzerError>;
+    async fn analyze(
+        &self,
+        input: AnalyzeDiffInput,
+    ) -> Result<AnalyzeDiffOutput, DiffAnalyzerError>;
 
     /// Run analysis with default limits and configuration.
     ///
     /// Convenience method that uses `PolicyLimits::default()` and sensible
     /// defaults for AI detection thresholds.
-    async fn analyze_default(&self, raw_diff: String) -> Result<AnalyzeDiffOutput, DiffAnalyzerError>;
+    async fn analyze_default(
+        &self,
+        raw_diff: String,
+    ) -> Result<AnalyzeDiffOutput, DiffAnalyzerError>;
 }

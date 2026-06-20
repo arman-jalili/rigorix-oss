@@ -37,10 +37,7 @@ pub trait ParserConfigRepository: Send + Sync {
     /// Retrieve the parser type for a given tool.
     ///
     /// Returns `None` if no custom parser is configured for this tool.
-    async fn get_custom_parser(
-        &self,
-        tool: &str,
-    ) -> Result<Option<String>, FailureParserError>;
+    async fn get_custom_parser(&self, tool: &str) -> Result<Option<String>, FailureParserError>;
 
     /// Retrieve all custom parser registrations.
     ///

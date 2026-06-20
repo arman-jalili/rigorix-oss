@@ -187,10 +187,7 @@ mod tests {
 
     #[test]
     fn test_blocked_result() {
-        let result = HookRunResult::blocked(
-            "Policy violation".into(),
-            vec!["rm blocked".into()],
-        );
+        let result = HookRunResult::blocked("Policy violation".into(), vec!["rm blocked".into()]);
         assert!(result.is_denied());
         assert!(!result.is_allowed());
         assert_eq!(result.permission_reason, Some("Policy violation".into()));
@@ -310,10 +307,8 @@ mod tests {
 
     #[test]
     fn test_serde_roundtrip() {
-        let result = HookRunResult::blocked(
-            "Not allowed".into(),
-            vec!["Security violation".into()],
-        );
+        let result =
+            HookRunResult::blocked("Not allowed".into(), vec!["Security violation".into()]);
         let json = serde_json::to_string(&result).unwrap();
         let deserialized: HookRunResult = serde_json::from_str(&json).unwrap();
         assert_eq!(result, deserialized);
@@ -330,7 +325,10 @@ mod tests {
         result.permission_override = Some(HookPermissionOverride::BypassGates);
         result.messages.push("Feedback".into());
 
-        assert_eq!(result.modified_input(), Some(&serde_json::json!({"key": "value"})));
+        assert_eq!(
+            result.modified_input(),
+            Some(&serde_json::json!({"key": "value"}))
+        );
         assert_eq!(
             result.override_permission(),
             Some(HookPermissionOverride::BypassGates)

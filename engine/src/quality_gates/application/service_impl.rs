@@ -331,10 +331,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(
-            output.contract.required_level,
-            QualityLevel::Package
-        );
+        assert_eq!(output.contract.required_level, QualityLevel::Package);
         assert!(matches!(output.source, ContractSource::Default));
     }
 
@@ -349,13 +346,11 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(
-            output.contract.required_level,
-            QualityLevel::MergeReady
-        );
-        assert!(
-            matches!(output.source, ContractSource::TemplateOverride { .. })
-        );
+        assert_eq!(output.contract.required_level, QualityLevel::MergeReady);
+        assert!(matches!(
+            output.source,
+            ContractSource::TemplateOverride { .. }
+        ));
     }
 
     #[tokio::test]
@@ -369,10 +364,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(
-            output.contract.required_level,
-            QualityLevel::Package
-        ); // default
+        assert_eq!(output.contract.required_level, QualityLevel::Package); // default
     }
 
     #[tokio::test]

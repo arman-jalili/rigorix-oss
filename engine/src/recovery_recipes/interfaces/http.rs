@@ -16,11 +16,13 @@
 use serde::{Deserialize, Serialize};
 
 use crate::recovery_recipes::application::dto::{
-    AttemptRecoveryInput, AttemptRecoveryOutput, CanAttemptInput, CanAttemptOutput,
-    RecipeForInput, RecipeForOutput,
+    AttemptRecoveryInput, AttemptRecoveryOutput, CanAttemptInput, CanAttemptOutput, RecipeForInput,
+    RecipeForOutput,
 };
 
-use crate::recovery_recipes::domain::{FailureScenario, RecoveryRecipe, RecoveryResult, RecoveryStep};
+use crate::recovery_recipes::domain::{
+    FailureScenario, RecoveryRecipe, RecoveryResult, RecoveryStep,
+};
 
 // ---------------------------------------------------------------------------
 // API Base Path

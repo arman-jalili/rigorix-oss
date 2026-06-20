@@ -38,7 +38,10 @@ pub trait InputRepository: Send + Sync {
     ///
     /// Returns a map of variable names (without prefix) to values.
     /// E.g., prefix `INPUT_` with `INPUT_MODE=run` returns `{"MODE": "run"}`.
-    async fn read_env_vars(&self, prefix: &str) -> Result<std::collections::HashMap<String, String>, ActionInputError>;
+    async fn read_env_vars(
+        &self,
+        prefix: &str,
+    ) -> Result<std::collections::HashMap<String, String>, ActionInputError>;
 
     /// Check if an environment variable is set.
     async fn has_env_var(&self, name: &str) -> Result<bool, ActionInputError>;
@@ -52,7 +55,9 @@ pub trait InputRepository: Send + Sync {
     ///
     /// Returns variables like `GITHUB_ACTIONS`, `GITHUB_EVENT_NAME`,
     /// `GITHUB_EVENT_PATH`, `GITHUB_ACTOR`, etc.
-    async fn read_ci_env_vars(&self) -> Result<std::collections::HashMap<String, String>, ActionInputError>;
+    async fn read_ci_env_vars(
+        &self,
+    ) -> Result<std::collections::HashMap<String, String>, ActionInputError>;
 }
 
 /// Repository for reading action configuration sources.
@@ -69,7 +74,10 @@ pub trait ConfigRepository: Send + Sync {
     ///
     /// Searches CWD for `action.yml` by default.
     /// Returns `Ok(None)` if the file doesn't exist (non-fatal).
-    async fn read_action_yml(&self, path_override: Option<&str>) -> Result<Option<String>, ActionInputError>;
+    async fn read_action_yml(
+        &self,
+        path_override: Option<&str>,
+    ) -> Result<Option<String>, ActionInputError>;
 
     /// Parse default input values from `action.yml` content.
     ///
@@ -84,7 +92,9 @@ pub trait ConfigRepository: Send + Sync {
     ///
     /// Returns parsed CLI arguments as a flat map of name → value.
     /// Returns empty map if no CLI args are available.
-    async fn read_cli_args(&self) -> Result<std::collections::HashMap<String, String>, ActionInputError>;
+    async fn read_cli_args(
+        &self,
+    ) -> Result<std::collections::HashMap<String, String>, ActionInputError>;
 
     /// Resolve the full path to `action.yml`.
     ///

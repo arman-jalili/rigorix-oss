@@ -109,7 +109,10 @@ mod tests {
         };
         let json = serde_json::to_string(&event).unwrap();
         let deserialized: PermissionEvent = serde_json::from_str(&json).unwrap();
-        assert!(matches!(deserialized, PermissionEvent::ToolEvaluated { .. }));
+        assert!(matches!(
+            deserialized,
+            PermissionEvent::ToolEvaluated { .. }
+        ));
     }
 
     #[test]
