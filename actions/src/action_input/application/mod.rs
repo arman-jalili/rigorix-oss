@@ -17,6 +17,7 @@
 
 pub mod ci_detector_impl;
 pub mod comment_parser_impl;
+pub mod config_loader_impl;
 pub mod dto;
 pub mod factory;
 pub mod input_parser_impl;
