@@ -274,7 +274,7 @@ impl PermissionEnforcer for PermissionEnforcerImpl {
 mod tests {
     use super::*;
     use crate::permission::domain::PermissionPolicy;
-    use std::collections::HashMap;
+    
 
     /// Helper: create a test enforcer with workspace_write mode.
     fn test_enforcer(workspace_root: &str) -> PermissionEnforcerImpl {

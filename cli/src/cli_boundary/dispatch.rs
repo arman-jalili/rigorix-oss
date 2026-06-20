@@ -671,8 +671,6 @@ pub async fn dispatch(
 
         CliCommand::Audit { action } => {
             let svc = services.as_ref().expect("services built above");
-            use rigorix_engine::audit::infrastructure::repository::AuditEnvelopeRepository;
-
             match action {
                 crate::cli_boundary::cli::AuditAction::List { limit } => {
                     match svc.audit_repository.list(None, None, limit).await {

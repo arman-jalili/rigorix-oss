@@ -237,8 +237,7 @@ pub mod status_codes {
 mod tests {
     use super::*;
     use crate::policy_engine::domain::{
-        DiffScope, LaneBlocker, LaneContext, PolicyAction, PolicyCondition, PolicyConfig,
-        ReviewStatus,
+        PolicyAction, PolicyCondition, PolicyConfig,
     };
     use crate::policy_engine::domain::config::RuleDefinition;
 

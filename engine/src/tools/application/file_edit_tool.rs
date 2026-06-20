@@ -399,7 +399,7 @@ impl Tool for EditFileTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
+    
     use std::io::Write;
     use tempfile::TempDir;
 

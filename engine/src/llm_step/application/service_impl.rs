@@ -1021,7 +1021,7 @@ mod tests {
 
     #[test]
     fn test_detect_language() {
-        let builder = create_context_builder();
+        let _builder = create_context_builder();
 
         assert_eq!(
             LlmContextBuilderServiceImpl::detect_language(&std::path::Path::new("test.rs")),
@@ -1377,7 +1377,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.node_id, result.node_id);
-        assert!(result.total_duration_ms >= 0);
+        // total_duration_ms is u64, always >= 0
         assert!(!result.output.raw_output.is_empty());
         assert_eq!(result.output.total_tokens, 30); // From mock
         assert!(!result.context.assembled_prompt.is_empty());
@@ -1470,7 +1470,7 @@ mod tests {
 
         assert_eq!(result.output.raw_output, "Mock generated content");
         assert_eq!(result.output.total_tokens, 30);
-        assert!(result.duration_ms >= 0);
+        // duration_ms is u64, always >= 0
     }
 }
 

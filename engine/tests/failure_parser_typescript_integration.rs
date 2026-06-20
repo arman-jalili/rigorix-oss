@@ -8,7 +8,7 @@
 //! including multi-line output, mixed error types, and edge cases.
 
 use rigorix_engine::failure_parser::application::TypeScriptParser;
-use rigorix_engine::failure_parser::domain::{FailureParserError, LanguageParser, SourceContext, TemplateFailure};
+use rigorix_engine::failure_parser::domain::{LanguageParser, SourceContext, TemplateFailure};
 
 fn empty_context() -> SourceContext {
     SourceContext::empty()

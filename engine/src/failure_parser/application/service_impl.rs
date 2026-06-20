@@ -478,7 +478,7 @@ impl FailureParserService for FailureParserServiceImpl {
 mod tests {
     use super::*;
     use crate::failure_parser::domain::{
-        detail::FailureDetail, failure::SourceLocation, CompilerOutput, FailureSeverity,
+        detail::FailureDetail, failure::SourceLocation, FailureSeverity,
         LanguageParser,
     };
     use async_trait::async_trait;

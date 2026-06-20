@@ -471,6 +471,7 @@ mod tests {
     use crate::code_graph::application::service_impl::CodeGraphServiceImpl;
     use tempfile::tempdir;
 
+    #[allow(dead_code)]
     fn create_builder(roots: Vec<PathBuf>) -> CodeGraphBuilder {
         let service: Arc<dyn CodeGraphService> = Arc::new(CodeGraphServiceImpl::new());
         CodeGraphBuilder::new(

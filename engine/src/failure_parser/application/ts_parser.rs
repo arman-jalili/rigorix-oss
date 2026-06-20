@@ -440,7 +440,7 @@ mod tests {
         assert_eq!(result.total_count, 1);
         assert_eq!(result.failures[0].failure.variant_name(), "wrong_arg_count");
         if let TemplateFailure::WrongArgCount {
-            function, expected, actual, ..
+            function: _, expected, actual, ..
         } = &result.failures[0].failure
         {
             // function is extracted as first quoted string = "2 arguments"
