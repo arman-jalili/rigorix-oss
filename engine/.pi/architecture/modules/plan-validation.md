@@ -382,9 +382,10 @@ match validation_outcome {
 ---
 
 *Last updated: 2026-06-19*
-*Module version: 1.0.0 (Planned)*
+*Module version: 1.0.0*
 
 ---
 
-**Status:** Planned
-**Implementation priority:** P0 — the self-correcting loop that makes templates reliable
+**Status:** Implemented
+**Last verified:** 2026-06-19
+**Module version:** 1.0.0
