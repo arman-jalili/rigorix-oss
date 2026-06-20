@@ -15,6 +15,7 @@
 //! - DTOs carry full documentation for each field
 //! - No implementation — only contract signatures
 
+pub mod comment_parser_impl;
 pub mod dto;
 pub mod factory;
 pub mod input_parser_impl;
