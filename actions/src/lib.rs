@@ -44,8 +44,7 @@ pub mod shared;
 // ── Phase 1: Contract Freeze — interface-only declarations ──
 pub mod action_input;
 pub mod security_config;
-// pub mod security_config;    // Phase 2
-// pub mod diff_analyzer;      // Phase 3
+pub mod diff_analyzer;         // Phase 1: Contract Freeze (issue-contract-freeze)
 // pub mod policy_evaluator;   // Phase 3
 // pub mod action_output;      // Phase 3-4
 // pub mod ci_integration;     // Phase 4
