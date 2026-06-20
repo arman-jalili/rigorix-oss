@@ -222,6 +222,11 @@ run_stage "11" "action-input_proofing" \
     "${SCRIPTS_DIR}/stage_action-input_proofing.sh" \
     "always"
 
+# Stage 12: Security Config Proofing
+run_stage "12" "security-config_proofing" \
+    "${SCRIPTS_DIR}/stage_security-config_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""

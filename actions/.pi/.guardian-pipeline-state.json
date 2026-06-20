@@ -52,7 +52,7 @@
       }
     }
   ],
-  "currentItemIndex": 2,
+  "currentItemIndex": 6,
   "currentStepIndex": 0,
   "status": "running",
   "retryCount": 0,
@@ -108,9 +108,113 @@
           "reason": ""
         }
       ]
+    },
+    {
+      "item": "issue-secretmasker",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "issue-tokenvalidator",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "issue-urlallowlist",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "issue-hmacsigner",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
     }
   ],
   "mergeOnValid": true,
   "createdAt": "2026-06-20T14:18:46.302Z",
-  "updatedAt": "2026-06-20T14:25:13.316Z"
+  "updatedAt": "2026-06-20T14:28:33.306Z"
 }
