@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-READINESS"
-  epic: ""action-input""
+  epic: ""security-config""
   component: "Architecture Readiness"
-  module: "action-input"
+  module: "security-config"
   status: planned
   priority: critical
   dependencies: []
@@ -32,7 +32,7 @@ guardian_issue:
       - Verify proofing scripts + validators in CI
 
   canonical_references:
-    - module: ".pi/architecture/modules/action-input.md"
+    - module: ".pi/architecture/modules/security-config.md"
 
   acceptance_criteria:
     - "Runbook created and reviewed"
@@ -58,30 +58,30 @@ guardian_issue:
     and CI will catch regressions (proofing scripts + validators).
 
   file_changes:
-    - "create: docs/runbook-action-input.md"
-    - "create: docs/dr-plan-action-input.md"
+    - "create: docs/runbook-security-config.md"
+    - "create: docs/dr-plan-security-config.md"
     - "modify: .pi/architecture/CHANGELOG.md"
-    - "modify: .pi/architecture/modules/action-input.md"
+    - "modify: .pi/architecture/modules/security-config.md"
 ---
 
-# Architecture Readiness: action-input
+# Architecture Readiness: security-config
 
 ## Intent
 
-Make the action-input module production-ready. This is the final issue in every epic
+Make the security-config module production-ready. This is the final issue in every epic
 — it closes the loop between implementation and operability.
 
 ## Deliverables
 
 ### Runbook
-`docs/runbook-action-input.md` covering:
+`docs/runbook-security-config.md` covering:
 - Startup sequence and dependencies
 - Graceful shutdown procedure
 - Common failure modes and recovery
 - Configuration reference
 
 ### DR Plan
-`docs/dr-plan-action-input.md` covering:
+`docs/dr-plan-security-config.md` covering:
 - Backup strategy and schedule
 - Restore procedure
 - Failover plan

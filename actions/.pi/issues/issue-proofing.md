@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-PROOFING"
-  epic: ""action-input""
+  epic: ""security-config""
   component: "Proofing & CI Enforcement"
-  module: "action-input"
+  module: "security-config"
   status: planned
   priority: critical
   dependencies: []
@@ -26,7 +26,7 @@ guardian_issue:
       - Updated CI stage configuration
 
   canonical_references:
-    - module: ".pi/architecture/modules/action-input.md"
+    - module: ".pi/architecture/modules/security-config.md"
 
   acceptance_criteria:
     - "All proofing scripts created and executable"
@@ -47,12 +47,12 @@ guardian_issue:
     every build for zero token cost.
 
   file_changes:
-    - "create: .pi/scripts/ci/check_action-input_contracts.sh"
-    - "create: .pi/scripts/ci/check_action-input_coverage.sh"
+    - "create: .pi/scripts/ci/check_security-config_contracts.sh"
+    - "create: .pi/scripts/ci/check_security-config_coverage.sh"
     - "modify: .pi/scripts/ci/run_hardening_stages.sh"
 ---
 
-# Proofing & CI Enforcement: action-input
+# Proofing & CI Enforcement: security-config
 
 ## Intent
 
@@ -81,17 +81,17 @@ on every PR. No LLM cost. No human review. Just pass or fail.
 
 | Script | Purpose | Location |
 |--------|---------|----------|
-| check_action-input_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
-| check_action-input_coverage.sh | Enforce coverage thresholds | .pi/scripts/ci/ |
-| stage_action-input_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
+| check_security-config_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
+| check_security-config_coverage.sh | Enforce coverage thresholds | .pi/scripts/ci/ |
+| stage_security-config_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
 
 ## CI Pipeline Update
 
 Add the new stage to `run_hardening_stages.sh`:
 
 ```bash
-run_stage "11" "action-input_proofing" \
-    "${SCRIPTS_DIR}/stage_action-input_proofing.sh" \
+run_stage "11" "security-config_proofing" \
+    "${SCRIPTS_DIR}/stage_security-config_proofing.sh" \
     "always"
 ```
 

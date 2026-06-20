@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: ""action-input""
+  epic: ""security-config""
   component: "Contract Freeze"
-  module: "action-input"
+  module: "security-config"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/action-input.md"
+    - module: ".pi/architecture/modules/security-config.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -47,26 +47,26 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/action-input/contracts/"
-    - "create: src/action-input/contracts/dtos/"
-    - "create: src/action-input/contracts/events/"
+    - "create: src/security-config/contracts/"
+    - "create: src/security-config/contracts/dtos/"
+    - "create: src/security-config/contracts/events/"
 ---
 
-# Contract Freeze: action-input
+# Contract Freeze: security-config
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the action-input
+Define and freeze all public interfaces, contracts, and schemas for the security-config
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- ActionInputs
-- InputParser
-- CommentParser
-- CiDetector
-- ConfigLoader
+- ForkDetector
+- SecretMasker
+- TokenValidator
+- UrlAllowlist
+- HmacSigner
 
 ## What Must Be Frozen
 
