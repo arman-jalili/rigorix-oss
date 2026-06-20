@@ -17,6 +17,7 @@
 
 pub mod dto;
 pub mod factory;
+pub mod fork_detector_impl;
 pub mod service;
 
 pub use dto::*;
