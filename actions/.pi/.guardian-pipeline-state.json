@@ -1,13 +1,13 @@
 {
-  "id": "PL-5280",
-  "name": "\"security-config\"",
+  "id": "PL-5204",
+  "name": "\"diff-analyzer\"",
   "items": [
     "issue-contract-freeze",
-    "issue-forkdetector",
-    "issue-secretmasker",
-    "issue-tokenvalidator",
-    "issue-urlallowlist",
-    "issue-hmacsigner",
+    "issue-prdiff",
+    "issue-pathvalidator",
+    "issue-limitenforcer",
+    "issue-riskclassifier",
+    "issue-aisignaldetector",
     "issue-proofing",
     "issue-architecture-readiness"
   ],
@@ -52,7 +52,7 @@
       }
     }
   ],
-  "currentItemIndex": 7,
+  "currentItemIndex": 1,
   "currentStepIndex": 0,
   "status": "running",
   "retryCount": 0,
@@ -82,165 +82,9 @@
           "reason": ""
         }
       ]
-    },
-    {
-      "item": "issue-forkdetector",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-secretmasker",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-tokenvalidator",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-urlallowlist",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-hmacsigner",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-proofing",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
     }
   ],
   "mergeOnValid": true,
-  "createdAt": "2026-06-20T14:18:46.302Z",
-  "updatedAt": "2026-06-20T14:30:01.013Z"
+  "createdAt": "2026-06-20T14:43:57.520Z",
+  "updatedAt": "2026-06-20T14:52:30.512Z"
 }

@@ -1,47 +1,47 @@
 {
-  "name": "\"security-config\"",
-  "trackingIssueId": "537",
+  "name": "\"diff-analyzer\"",
+  "trackingIssueId": "551",
   "epicId": null,
   "slices": [
     {
-      "module": "security-config",
+      "module": "diff-analyzer",
       "components": [
         {
-          "name": "ForkDetector",
+          "name": "PrDiff",
           "status": "planned",
-          "description": "/// Detects whether a PR originates from a forked repository.",
+          "description": "/// Structured representation of a Pull Request diff.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "SecretMasker",
+          "name": "PathValidator",
           "status": "planned",
-          "description": "/// Masks sensitive values from GitHub Actions workflow logs.",
+          "description": "/// Validates file paths for security and correctness.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "TokenValidator",
+          "name": "LimitEnforcer",
           "status": "planned",
-          "description": "/// Validates that the GitHub token has the required permissions.",
+          "description": "/// Enforces resource limits on PR diffs.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "UrlAllowlist",
+          "name": "RiskClassifier",
           "status": "planned",
-          "description": "/// Validates backend URLs against a configured allowlist.",
+          "description": "/// Classifies changed files by risk level based on path patterns.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "HmacSigner",
+          "name": "AiSignalDetector",
           "status": "planned",
-          "description": "/// HMAC-SHA256 signing for audit record integrity.",
+          "description": "/// Detects AI-generated code signals in PR diffs.",
           "dependencies": [
             "none"
           ]
@@ -49,41 +49,41 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "ForkDetector",
+          "name": "PrDiff",
           "status": "planned",
-          "description": "/// Detects whether a PR originates from a forked repository.",
+          "description": "/// Structured representation of a Pull Request diff.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "SecretMasker",
+          "name": "PathValidator",
           "status": "planned",
-          "description": "/// Masks sensitive values from GitHub Actions workflow logs.",
+          "description": "/// Validates file paths for security and correctness.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "TokenValidator",
+          "name": "LimitEnforcer",
           "status": "planned",
-          "description": "/// Validates that the GitHub token has the required permissions.",
+          "description": "/// Enforces resource limits on PR diffs.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "UrlAllowlist",
+          "name": "RiskClassifier",
           "status": "planned",
-          "description": "/// Validates backend URLs against a configured allowlist.",
+          "description": "/// Classifies changed files by risk level based on path patterns.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "HmacSigner",
+          "name": "AiSignalDetector",
           "status": "planned",
-          "description": "/// HMAC-SHA256 signing for audit record integrity.",
+          "description": "/// Detects AI-generated code signals in PR diffs.",
           "dependencies": [
             "none"
           ]
@@ -96,52 +96,52 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "538"
+      "remoteIssueId": "552"
     },
     {
-      "id": "issue-forkdetector",
-      "title": "ForkDetector: /// Detects whether a PR originates from a forked repository.",
+      "id": "issue-prdiff",
+      "title": "PrDiff: /// Structured representation of a Pull Request diff.",
       "status": "planned",
-      "remoteIssueId": "539"
+      "remoteIssueId": "553"
     },
     {
-      "id": "issue-secretmasker",
-      "title": "SecretMasker: /// Masks sensitive values from GitHub Actions workflow logs.",
+      "id": "issue-pathvalidator",
+      "title": "PathValidator: /// Validates file paths for security and correctness.",
       "status": "planned",
-      "remoteIssueId": "540"
+      "remoteIssueId": "554"
     },
     {
-      "id": "issue-tokenvalidator",
-      "title": "TokenValidator: /// Validates that the GitHub token has the required permissions.",
+      "id": "issue-limitenforcer",
+      "title": "LimitEnforcer: /// Enforces resource limits on PR diffs.",
       "status": "planned",
-      "remoteIssueId": "541"
+      "remoteIssueId": "555"
     },
     {
-      "id": "issue-urlallowlist",
-      "title": "UrlAllowlist: /// Validates backend URLs against a configured allowlist.",
+      "id": "issue-riskclassifier",
+      "title": "RiskClassifier: /// Classifies changed files by risk level based on path patterns.",
       "status": "planned",
-      "remoteIssueId": "542"
+      "remoteIssueId": "556"
     },
     {
-      "id": "issue-hmacsigner",
-      "title": "HmacSigner: /// HMAC-SHA256 signing for audit record integrity.",
+      "id": "issue-aisignaldetector",
+      "title": "AiSignalDetector: /// Detects AI-generated code signals in PR diffs.",
       "status": "planned",
-      "remoteIssueId": "543"
+      "remoteIssueId": "557"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "544"
+      "remoteIssueId": "558"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "545"
+      "remoteIssueId": "559"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-06-20T14:18:46.277Z"
+  "createdAt": "2026-06-20T14:43:57.497Z"
 }

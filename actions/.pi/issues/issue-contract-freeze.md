@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: ""security-config""
+  epic: ""diff-analyzer""
   component: "Contract Freeze"
-  module: "security-config"
+  module: "diff-analyzer"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/security-config.md"
+    - module: ".pi/architecture/modules/diff-analyzer.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -47,26 +47,26 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/security-config/contracts/"
-    - "create: src/security-config/contracts/dtos/"
-    - "create: src/security-config/contracts/events/"
+    - "create: src/diff-analyzer/contracts/"
+    - "create: src/diff-analyzer/contracts/dtos/"
+    - "create: src/diff-analyzer/contracts/events/"
 ---
 
-# Contract Freeze: security-config
+# Contract Freeze: diff-analyzer
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the security-config
+Define and freeze all public interfaces, contracts, and schemas for the diff-analyzer
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- ForkDetector
-- SecretMasker
-- TokenValidator
-- UrlAllowlist
-- HmacSigner
+- PrDiff
+- PathValidator
+- LimitEnforcer
+- RiskClassifier
+- AiSignalDetector
 
 ## What Must Be Frozen
 
