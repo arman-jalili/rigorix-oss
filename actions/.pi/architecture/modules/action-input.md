@@ -411,9 +411,31 @@ ActionInputs + GitHubEvent + CiEnvironment
 ---
 
 *Last updated: 2026-06-20*
-*Module version: 1.0.0 (Planned)*
+*Module version: 1.0.0 (Implemented)*
 
 ---
 
-**Status:** Planned
+**Status:** Implemented ✅
 **Engine modules reused:** None (standalone input parsing)
+
+## Implementation Files
+
+| Component | Implementation | Tests |
+|-----------|---------------|-------|
+| ActionInputs | `application/input_parser_impl.rs` :: `InputParserImpl` | 14 unit + 9 integration |
+| InputParser | `application/input_parser_impl.rs` :: `InputParserImpl` | Uses ActionInputs tests |
+| CommentParser | `application/comment_parser_impl.rs` :: `CommentParserImpl` | 24 unit |
+| CiDetector | `application/ci_detector_impl.rs` :: `CiDetectorImpl` | 8 unit |
+| ConfigLoader | `application/config_loader_impl.rs` :: `ConfigLoaderImpl` | 10 unit |
+| EventPayloadParser | *(contracted, not yet implemented)* | — |
+
+## Related Issues
+
+- #521: Contract Freeze — interfaces defined
+- #522: ActionInputs — typed container
+- #523: InputParser — env var parsing
+- #524: CommentParser — slash commands
+- #525: CiDetector — CI detection
+- #526: ConfigLoader — config merging
+- #527: Proofing — CI scripts
+- #528: Architecture Readiness — this doc
