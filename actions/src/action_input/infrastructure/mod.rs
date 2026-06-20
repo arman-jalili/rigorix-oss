@@ -13,6 +13,8 @@
 //! - All methods return `Result<_, ActionInputError>`
 //! - No dependencies on external frameworks
 
+pub mod env_input_repository_impl;
 pub mod repository;
 
+pub use env_input_repository_impl::*;
 pub use repository::*;
