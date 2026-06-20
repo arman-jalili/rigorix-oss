@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-READINESS"
-  epic: ""diff-analyzer""
+  epic: ""policy-evaluator""
   component: "Architecture Readiness"
-  module: "diff-analyzer"
+  module: "policy-evaluator"
   status: planned
   priority: critical
   dependencies: []
@@ -32,7 +32,7 @@ guardian_issue:
       - Verify proofing scripts + validators in CI
 
   canonical_references:
-    - module: ".pi/architecture/modules/diff-analyzer.md"
+    - module: ".pi/architecture/modules/policy-evaluator.md"
 
   acceptance_criteria:
     - "Runbook created and reviewed"
@@ -58,30 +58,30 @@ guardian_issue:
     and CI will catch regressions (proofing scripts + validators).
 
   file_changes:
-    - "create: docs/runbook-diff-analyzer.md"
-    - "create: docs/dr-plan-diff-analyzer.md"
+    - "create: docs/runbook-policy-evaluator.md"
+    - "create: docs/dr-plan-policy-evaluator.md"
     - "modify: .pi/architecture/CHANGELOG.md"
-    - "modify: .pi/architecture/modules/diff-analyzer.md"
+    - "modify: .pi/architecture/modules/policy-evaluator.md"
 ---
 
-# Architecture Readiness: diff-analyzer
+# Architecture Readiness: policy-evaluator
 
 ## Intent
 
-Make the diff-analyzer module production-ready. This is the final issue in every epic
+Make the policy-evaluator module production-ready. This is the final issue in every epic
 — it closes the loop between implementation and operability.
 
 ## Deliverables
 
 ### Runbook
-`docs/runbook-diff-analyzer.md` covering:
+`docs/runbook-policy-evaluator.md` covering:
 - Startup sequence and dependencies
 - Graceful shutdown procedure
 - Common failure modes and recovery
 - Configuration reference
 
 ### DR Plan
-`docs/dr-plan-diff-analyzer.md` covering:
+`docs/dr-plan-policy-evaluator.md` covering:
 - Backup strategy and schedule
 - Restore procedure
 - Failover plan

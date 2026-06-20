@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: ""diff-analyzer""
+  epic: ""policy-evaluator""
   component: "Contract Freeze"
-  module: "diff-analyzer"
+  module: "policy-evaluator"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/diff-analyzer.md"
+    - module: ".pi/architecture/modules/policy-evaluator.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -47,26 +47,26 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/diff-analyzer/contracts/"
-    - "create: src/diff-analyzer/contracts/dtos/"
-    - "create: src/diff-analyzer/contracts/events/"
+    - "create: src/policy-evaluator/contracts/"
+    - "create: src/policy-evaluator/contracts/dtos/"
+    - "create: src/policy-evaluator/contracts/events/"
 ---
 
-# Contract Freeze: diff-analyzer
+# Contract Freeze: policy-evaluator
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the diff-analyzer
+Define and freeze all public interfaces, contracts, and schemas for the policy-evaluator
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- PrDiff
-- PathValidator
-- LimitEnforcer
-- RiskClassifier
-- AiSignalDetector
+- PolicyDocument
+- PolicyRule Types
+- PolicyLoader
+- PolicyEvaluator
+- OrgPolicyMerger
 
 ## What Must Be Frozen
 

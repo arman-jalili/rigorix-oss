@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-PROOFING"
-  epic: ""diff-analyzer""
+  epic: ""policy-evaluator""
   component: "Proofing & CI Enforcement"
-  module: "diff-analyzer"
+  module: "policy-evaluator"
   status: planned
   priority: critical
   dependencies: []
@@ -26,7 +26,7 @@ guardian_issue:
       - Updated CI stage configuration
 
   canonical_references:
-    - module: ".pi/architecture/modules/diff-analyzer.md"
+    - module: ".pi/architecture/modules/policy-evaluator.md"
 
   acceptance_criteria:
     - "All proofing scripts created and executable"
@@ -47,12 +47,12 @@ guardian_issue:
     every build for zero token cost.
 
   file_changes:
-    - "create: .pi/scripts/ci/check_diff-analyzer_contracts.sh"
-    - "create: .pi/scripts/ci/check_diff-analyzer_coverage.sh"
+    - "create: .pi/scripts/ci/check_policy-evaluator_contracts.sh"
+    - "create: .pi/scripts/ci/check_policy-evaluator_coverage.sh"
     - "modify: .pi/scripts/ci/run_hardening_stages.sh"
 ---
 
-# Proofing & CI Enforcement: diff-analyzer
+# Proofing & CI Enforcement: policy-evaluator
 
 ## Intent
 
@@ -81,17 +81,17 @@ on every PR. No LLM cost. No human review. Just pass or fail.
 
 | Script | Purpose | Location |
 |--------|---------|----------|
-| check_diff-analyzer_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
-| check_diff-analyzer_coverage.sh | Enforce coverage thresholds | .pi/scripts/ci/ |
-| stage_diff-analyzer_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
+| check_policy-evaluator_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
+| check_policy-evaluator_coverage.sh | Enforce coverage thresholds | .pi/scripts/ci/ |
+| stage_policy-evaluator_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
 
 ## CI Pipeline Update
 
 Add the new stage to `run_hardening_stages.sh`:
 
 ```bash
-run_stage "11" "diff-analyzer_proofing" \
-    "${SCRIPTS_DIR}/stage_diff-analyzer_proofing.sh" \
+run_stage "11" "policy-evaluator_proofing" \
+    "${SCRIPTS_DIR}/stage_policy-evaluator_proofing.sh" \
     "always"
 ```
 
