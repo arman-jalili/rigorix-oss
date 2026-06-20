@@ -1,12 +1,12 @@
 {
-  "id": "PL-5680",
-  "name": "\"failure-parser\"",
+  "id": "PL-9708",
+  "name": "\"plan-validation\"",
   "items": [
     "issue-contract-freeze",
-    "issue-templatefailure",
-    "issue-failureparserservice",
-    "issue-typescript-parser",
-    "issue-suggested-fix-generation",
+    "issue-validationloop-config",
+    "issue-validationstate",
+    "issue-validationloopservice",
+    "issue-contextaugmenter",
     "issue-proofing",
     "issue-architecture-readiness"
   ],
@@ -51,9 +51,9 @@
       }
     }
   ],
-  "currentItemIndex": 6,
+  "currentItemIndex": 7,
   "currentStepIndex": 0,
-  "status": "running",
+  "status": "done",
   "retryCount": 0,
   "results": [
     {
@@ -89,11 +89,16 @@
           "step": "merge",
           "status": "passed",
           "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
         }
       ]
     },
     {
-      "item": "issue-templatefailure",
+      "item": "issue-validationloop-config",
       "status": "done",
       "stepResults": [
         {
@@ -101,6 +106,83 @@
           "status": "passed",
           "reason": ""
         },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "issue-validationstate",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "issue-validationloopservice",
+      "status": "done",
+      "stepResults": [
         {
           "step": "implement",
           "status": "passed",
@@ -125,11 +207,16 @@
           "step": "merge",
           "status": "passed",
           "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
         }
       ]
     },
     {
-      "item": "issue-failureparserservice",
+      "item": "issue-contextaugmenter",
       "status": "done",
       "stepResults": [
         {
@@ -149,6 +236,11 @@
         },
         {
           "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
           "status": "passed",
           "reason": ""
         },
@@ -159,73 +251,6 @@
         },
         {
           "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-typescript-parser",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-suggested-fix-generation",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
           "status": "passed",
           "reason": ""
         },
@@ -241,7 +266,12 @@
       "status": "done",
       "stepResults": [
         {
-          "step": "merge",
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
           "status": "passed",
           "reason": ""
         },
@@ -259,11 +289,52 @@
           "step": "merge",
           "status": "passed",
           "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "issue-architecture-readiness",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
         }
       ]
     }
   ],
   "mergeOnValid": true,
-  "createdAt": "2026-06-19T18:53:34.644Z",
-  "updatedAt": "2026-06-19T19:27:57.676Z"
+  "createdAt": "2026-06-19T19:32:36.880Z",
+  "updatedAt": "2026-06-20T05:44:06.426Z"
 }

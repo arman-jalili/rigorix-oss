@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: ""failure-parser""
+  epic: ""plan-validation""
   component: "Contract Freeze"
-  module: "failure-parser"
+  module: "plan-validation"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/failure-parser.md"
+    - module: ".pi/architecture/modules/plan-validation.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -47,25 +47,25 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/failure-parser/contracts/"
-    - "create: src/failure-parser/contracts/dtos/"
-    - "create: src/failure-parser/contracts/events/"
+    - "create: src/plan-validation/contracts/"
+    - "create: src/plan-validation/contracts/dtos/"
+    - "create: src/plan-validation/contracts/events/"
 ---
 
-# Contract Freeze: failure-parser
+# Contract Freeze: plan-validation
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the failure-parser
+Define and freeze all public interfaces, contracts, and schemas for the plan-validation
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- TemplateFailure
-- FailureParserService
-- TypeScript Parser
-- Suggested Fix Generation
+- ValidationLoop Config
+- ValidationState
+- ValidationLoopService
+- ContextAugmenter
 
 ## What Must Be Frozen
 

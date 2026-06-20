@@ -1,39 +1,39 @@
 {
-  "name": "\"failure-parser\"",
-  "trackingIssueId": "494",
+  "name": "\"plan-validation\"",
+  "trackingIssueId": "509",
   "epicId": null,
   "slices": [
     {
-      "module": "failure-parser",
+      "module": "plan-validation",
       "components": [
         {
-          "name": "TemplateFailure",
+          "name": "ValidationLoop Config",
           "status": "planned",
-          "description": "Typed classification of template execution failures",
+          "description": "pub struct ValidationLoopConfig {",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "FailureParserService",
+          "name": "ValidationState",
           "status": "planned",
-          "description": "Parse raw output into structured failures with suggestions",
+          "description": "pub struct ValidationState {",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "TypeScript Parser",
+          "name": "ValidationLoopService",
           "status": "planned",
-          "description": "Parse `tsc --noEmit --pretty false` output into structured failures",
+          "description": "pub trait ValidationLoopService: Send + Sync {",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "Suggested Fix Generation",
+          "name": "ContextAugmenter",
           "status": "planned",
-          "description": "**How suggestions are derived:**",
+          "description": "/// Transforms failure analysis into augmented planning context.",
           "dependencies": [
             "none"
           ]
@@ -41,33 +41,33 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "TemplateFailure",
+          "name": "ValidationLoop Config",
           "status": "planned",
-          "description": "Typed classification of template execution failures",
+          "description": "pub struct ValidationLoopConfig {",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "FailureParserService",
+          "name": "ValidationState",
           "status": "planned",
-          "description": "Parse raw output into structured failures with suggestions",
+          "description": "pub struct ValidationState {",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "TypeScript Parser",
+          "name": "ValidationLoopService",
           "status": "planned",
-          "description": "Parse `tsc --noEmit --pretty false` output into structured failures",
+          "description": "pub trait ValidationLoopService: Send + Sync {",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "Suggested Fix Generation",
+          "name": "ContextAugmenter",
           "status": "planned",
-          "description": "**How suggestions are derived:**",
+          "description": "/// Transforms failure analysis into augmented planning context.",
           "dependencies": [
             "none"
           ]
@@ -80,46 +80,46 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "495"
+      "remoteIssueId": "510"
     },
     {
-      "id": "issue-templatefailure",
-      "title": "TemplateFailure: Typed classification of template execution failures",
+      "id": "issue-validationloop-config",
+      "title": "ValidationLoop Config: pub struct ValidationLoopConfig {",
       "status": "planned",
-      "remoteIssueId": "496"
+      "remoteIssueId": "511"
     },
     {
-      "id": "issue-failureparserservice",
-      "title": "FailureParserService: Parse raw output into structured failures with suggestions",
+      "id": "issue-validationstate",
+      "title": "ValidationState: pub struct ValidationState {",
       "status": "planned",
-      "remoteIssueId": "497"
+      "remoteIssueId": "512"
     },
     {
-      "id": "issue-typescript-parser",
-      "title": "TypeScript Parser: Parse `tsc --noEmit --pretty false` output into structured failures",
+      "id": "issue-validationloopservice",
+      "title": "ValidationLoopService: pub trait ValidationLoopService: Send + Sync {",
       "status": "planned",
-      "remoteIssueId": "498"
+      "remoteIssueId": "513"
     },
     {
-      "id": "issue-suggested-fix-generation",
-      "title": "Suggested Fix Generation: **How suggestions are derived:**",
+      "id": "issue-contextaugmenter",
+      "title": "ContextAugmenter: /// Transforms failure analysis into augmented planning context.",
       "status": "planned",
-      "remoteIssueId": "499"
+      "remoteIssueId": "514"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "500"
+      "remoteIssueId": "515"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "501"
+      "remoteIssueId": "516"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-06-19T18:53:34.616Z"
+  "createdAt": "2026-06-19T19:32:36.841Z"
 }

@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-READINESS"
-  epic: ""failure-parser""
+  epic: ""plan-validation""
   component: "Architecture Readiness"
-  module: "failure-parser"
+  module: "plan-validation"
   status: planned
   priority: critical
   dependencies: []
@@ -32,7 +32,7 @@ guardian_issue:
       - Verify proofing scripts + validators in CI
 
   canonical_references:
-    - module: ".pi/architecture/modules/failure-parser.md"
+    - module: ".pi/architecture/modules/plan-validation.md"
 
   acceptance_criteria:
     - "Runbook created and reviewed"
@@ -58,30 +58,30 @@ guardian_issue:
     and CI will catch regressions (proofing scripts + validators).
 
   file_changes:
-    - "create: docs/runbook-failure-parser.md"
-    - "create: docs/dr-plan-failure-parser.md"
+    - "create: docs/runbook-plan-validation.md"
+    - "create: docs/dr-plan-plan-validation.md"
     - "modify: .pi/architecture/CHANGELOG.md"
-    - "modify: .pi/architecture/modules/failure-parser.md"
+    - "modify: .pi/architecture/modules/plan-validation.md"
 ---
 
-# Architecture Readiness: failure-parser
+# Architecture Readiness: plan-validation
 
 ## Intent
 
-Make the failure-parser module production-ready. This is the final issue in every epic
+Make the plan-validation module production-ready. This is the final issue in every epic
 — it closes the loop between implementation and operability.
 
 ## Deliverables
 
 ### Runbook
-`docs/runbook-failure-parser.md` covering:
+`docs/runbook-plan-validation.md` covering:
 - Startup sequence and dependencies
 - Graceful shutdown procedure
 - Common failure modes and recovery
 - Configuration reference
 
 ### DR Plan
-`docs/dr-plan-failure-parser.md` covering:
+`docs/dr-plan-plan-validation.md` covering:
 - Backup strategy and schedule
 - Restore procedure
 - Failover plan

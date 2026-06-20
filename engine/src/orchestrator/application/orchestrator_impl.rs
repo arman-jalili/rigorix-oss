@@ -43,6 +43,9 @@ use crate::quality_gates::application::dto::{
     ClassifyTestScopeInput, EvaluateGateInput,
 };
 use crate::quality_gates::application::service::QualityGateService;
+use crate::plan_validation::application::service::ValidationLoopService;
+use crate::plan_validation::domain::loop_config::ValidationLoopConfig;
+use crate::plan_validation::application::dto::ValidateInput;
 use crate::state_persistence::application::{dto as state_dto, service as state_svc};
 
 pub struct OrchestratorServiceImpl {
@@ -60,6 +63,7 @@ pub struct OrchestratorServiceImpl {
     code_graph_service: Option<Arc<dyn CodeGraphServiceTrait>>,
     quality_gate_service: Option<Arc<dyn QualityGateService>>,
     policy_engine: Option<Arc<dyn PolicyEngineService>>,
+    validation_loop_service: Option<Arc<dyn ValidationLoopService>>,
     current_execution: Arc<RwLock<Option<CurrentExecutionState>>>,
 }
 
@@ -97,8 +101,15 @@ impl OrchestratorServiceImpl {
             code_graph_service,
             quality_gate_service: None,
             policy_engine: None,
+            validation_loop_service: None,
             current_execution: Arc::new(RwLock::new(None)),
         }
+    }
+
+    /// Set the validation loop service for self-correcting plan→execute→verify cycles.
+    pub fn with_validation_loop(mut self, svc: Arc<dyn ValidationLoopService>) -> Self {
+        self.validation_loop_service = Some(svc);
+        self
     }
 
     /// Set the quality gate service for post-execution quality evaluation.
@@ -307,6 +318,42 @@ impl OrchestratorService for OrchestratorServiceImpl {
             nodes: vec![],
             started_at,
         });
+
+        // ── Validation loop (if enabled, wraps plan→execute→verify) ──
+        if let Some(ref validation_svc) = self.validation_loop_service {
+            let config = ValidationLoopConfig {
+                max_iterations: 3,
+                max_cumulative_tokens: 50000,
+                ..ValidationLoopConfig::default()
+            };
+            let validate_input = ValidateInput {
+                intent: crate::planning::domain::intent::UserIntent::new(
+                    input.intent.clone(),
+                    Some(execution_id),
+                ),
+                execution_id: Some(execution_id),
+                config,
+                existing_template: None,
+            };
+            let outcome = validation_svc
+                .validate(validate_input)
+                .await
+                .map_err(|e| OrchestratorError::ExecutionFailed {
+                    detail: format!("Validation loop error: {e}"),
+                    nodes_completed: 0,
+                    nodes_remaining: 0,
+                })?;
+
+            let record = ExecutionRecord::new(execution_id, started_at);
+
+            tracing::info!(%execution_id, iterations = outcome.iterations, "Validation loop completed");
+            return Ok(RunOutput {
+                execution_id,
+                record,
+            });
+        }
+
+        // ── Legacy path (no validation loop) ──
 
         // 1. Publish PlanningStarted
         let _ = self
