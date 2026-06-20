@@ -20,9 +20,11 @@ pub mod dto;
 pub mod factory;
 pub mod output_formatter_impl;
 pub mod service;
+pub mod step_summary_writer_impl;
 
 pub use annotation_writer_impl::*;
 pub use dto::*;
 pub use factory::*;
 pub use output_formatter_impl::*;
 pub use service::*;
+pub use step_summary_writer_impl::*;
