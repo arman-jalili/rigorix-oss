@@ -469,10 +469,89 @@ pub async fn dispatch(
             }
         }
 
-        CliCommand::DiffPlan { id1: _, id2: _ } => DispatchResult::error(
-            "diff-plan: requires DagPlanningService (not yet exposed via CliServices)",
-            1,
-        ),
+        CliCommand::DiffPlan { id1, id2 } => {
+            let sm1 = services.as_ref()
+                .expect("services built above")
+                .state_manager
+                .clone();
+            let sm2 = sm1.clone();
+            let r1 = {
+                let input = rigorix_engine::state_persistence::application::dto::LoadStateInput {
+                    execution_id: id1,
+                };
+                sm1.load_state(input).await
+            };
+            let r2 = {
+                let input = rigorix_engine::state_persistence::application::dto::LoadStateInput {
+                    execution_id: id2,
+                };
+                sm2.load_state(input).await
+            };
+
+            match (r1, r2) {
+                (Ok(out1), Ok(out2)) => {
+                    let s1 = &out1.state;
+                    let s2 = &out2.state;
+
+                    // Compare node outcomes
+                    let mut added_nodes: Vec<String> = Vec::new();
+                    let mut removed_nodes: Vec<String> = Vec::new();
+                    let mut modified_nodes: Vec<serde_json::Value> = Vec::new();
+                    let mut common_nodes: Vec<String> = Vec::new();
+
+                    for (id, ns1) in &s1.node_states {
+                        if let Some(ns2) = s2.node_states.get(id) {
+                            if ns1.status != ns2.status || ns1.retries != ns2.retries {
+                                modified_nodes.push(serde_json::json!({
+                                    "node_id": id,
+                                    "left_status": format!("{:?}", ns1.status),
+                                    "right_status": format!("{:?}", ns2.status),
+                                    "left_retries": ns1.retries,
+                                    "right_retries": ns2.retries,
+                                    "left_duration_ms": ns1.duration_ms,
+                                    "right_duration_ms": ns2.duration_ms,
+                                }));
+                            } else {
+                                common_nodes.push(id.to_string());
+                            }
+                        } else {
+                            removed_nodes.push(format!(
+                                "{} ({:?})", id, ns1.status
+                            ));
+                        }
+                    }
+                    for id in s2.node_states.keys() {
+                        if !s1.node_states.contains_key(id) {
+                            added_nodes.push(format!(
+                                "{} ({:?})", id,
+                                s2.node_states[id].status
+                            ));
+                        }
+                    }
+
+                    let summary = format!(
+                        "Plan diff: {} added, {} removed, {} modified, {} unchanged",
+                        added_nodes.len(), removed_nodes.len(),
+                        modified_nodes.len(), common_nodes.len(),
+                    );
+                    let data = serde_json::json!({
+                        "added": added_nodes,
+                        "removed": removed_nodes,
+                        "modified": modified_nodes,
+                        "unchanged_count": common_nodes.len(),
+                        "left_execution_id": id1.to_string(),
+                        "right_execution_id": id2.to_string(),
+                        "left_status": format!("{:?}", s1.status),
+                        "right_status": format!("{:?}", s2.status),
+                    });
+                    DispatchResult::success_with_data(summary, data)
+                }
+                (Err(e), _) | (_, Err(e)) => DispatchResult::error(
+                    format!("diff-plan: could not load execution states: {e}"),
+                    1,
+                ),
+            }
+        }
 
         CliCommand::Generate { intent } => {
             let orch = orch.as_ref().expect("orchestrator built above");
@@ -590,15 +669,136 @@ pub async fn dispatch(
             }
         }
 
-        CliCommand::Audit { action: _ } => DispatchResult::error(
-            "audit: AuditService does not yet expose list/show/diff queries",
-            1,
-        ),
+        CliCommand::Audit { action } => {
+            let svc = services.as_ref().expect("services built above");
+            use rigorix_engine::audit::infrastructure::repository::AuditEnvelopeRepository;
 
-        CliCommand::Logs { session_id: _ } => DispatchResult::error(
-            "logs: EventBusService not yet exposed via CliServices for log replay",
-            1,
-        ),
+            match action {
+                crate::cli_boundary::cli::AuditAction::List { limit } => {
+                    match svc.audit_repository.list(None, None, limit).await {
+                        Ok(envelopes) => {
+                            let summaries: Vec<serde_json::Value> = envelopes.iter().map(|e| {
+                                serde_json::json!({
+                                    "execution_id": e.execution_id,
+                                    "template_id": e.template_id,
+                                    "timestamp": e.timestamp,
+                                    "event_count": e.events.len(),
+                                    "has_signature": e.signature.is_some(),
+                                })
+                            }).collect();
+                            let data = serde_json::json!({
+                                "count": summaries.len(),
+                                "envelopes": summaries,
+                            });
+                            DispatchResult::success_with_data(
+                                format!("{} audit envelope(s)", summaries.len()),
+                                data,
+                            )
+                        }
+                        Err(e) => DispatchResult::error(format!("audit list: {e}"), 1),
+                    }
+                }
+                crate::cli_boundary::cli::AuditAction::Show { id } => {
+                    match svc.audit_repository.find_by_execution_id(&id.parse().unwrap_or_default()).await {
+                        Ok(Some(envelope)) => {
+                            let data = serde_json::json!({
+                                "envelope": envelope,
+                            });
+                            DispatchResult::success_with_data(format!("Audit entry: {id}"), data)
+                        }
+                        Ok(None) => DispatchResult::error(format!("audit entry not found: {id}"), 1),
+                        Err(e) => DispatchResult::error(format!("audit show: {e}"), 1),
+                    }
+                }
+                crate::cli_boundary::cli::AuditAction::Diff { id1, id2 } => {
+                    let id1_parsed: uuid::Uuid = match id1.parse() {
+                        Ok(u) => u,
+                        Err(_) => return DispatchResult::error(format!("invalid UUID: {id1}"), 1),
+                    };
+                    let id2_parsed: uuid::Uuid = match id2.parse() {
+                        Ok(u) => u,
+                        Err(_) => return DispatchResult::error(format!("invalid UUID: {id2}"), 1),
+                    };
+                    match (
+                        svc.audit_repository.find_by_execution_id(&id1_parsed).await,
+                        svc.audit_repository.find_by_execution_id(&id2_parsed).await,
+                    ) {
+                        (Ok(Some(e1)), Ok(Some(e2))) => {
+                            // Simple diff: compare template IDs, event counts, timestamps
+                            let template_changed = e1.template_id != e2.template_id;
+                            let events_added = e2.events.len().saturating_sub(e1.events.len());
+                            let events_removed = e1.events.len().saturating_sub(e2.events.len());
+                            let signed_changed = e1.signature.is_some() != e2.signature.is_some();
+
+                            let data = serde_json::json!({
+                                "left_execution_id": e1.execution_id,
+                                "right_execution_id": e2.execution_id,
+                                "template_changed": template_changed,
+                                "events_added": events_added,
+                                "events_removed": events_removed,
+                                "signed_status_changed": signed_changed,
+                                "left_template": e1.template_id,
+                                "right_template": e2.template_id,
+                                "left_timestamp": e1.timestamp,
+                                "right_timestamp": e2.timestamp,
+                                "left_event_count": e1.events.len(),
+                                "right_event_count": e2.events.len(),
+                            });
+                            DispatchResult::success_with_data(
+                                format!("Audit diff: {id1} vs {id2}"),
+                                data,
+                            )
+                        }
+                        (Ok(None), _) => DispatchResult::error(
+                            format!("audit entry not found: {id1}"), 1,
+                        ),
+                        (_, Ok(None)) => DispatchResult::error(
+                            format!("audit entry not found: {id2}"), 1,
+                        ),
+                        (Err(e), _) | (_, Err(e)) => DispatchResult::error(
+                            format!("audit diff: {e}"), 1,
+                        ),
+                    }
+                }
+            }
+        }
+
+        CliCommand::Logs { session_id } => {
+            let svc = services.as_ref().expect("services built above");
+            let input = rigorix_engine::event_system::application::dto::QueryEventsInput {
+                execution_id: session_id,
+                event_type: None,
+                after_sequence: None,
+                limit: Some(100),
+                after_timestamp: None,
+                before_timestamp: None,
+            };
+            match svc.event_bus.query_events(input).await {
+                Ok(output) => {
+                    let events: Vec<serde_json::Value> = output.events.iter().map(|pe| {
+                        serde_json::json!({
+                            "sequence": pe.sequence,
+                            "event_type": pe.event.event_type_name(),
+                            "execution_id": pe.event.execution_id(),
+                            "timestamp": pe.event.timestamp(),
+                            "summary": pe.event.summary(),
+                        })
+                    }).collect();
+                    let summary = if let Some(sid) = session_id {
+                        format!("{} event(s) for session {}", events.len(), sid)
+                    } else {
+                        format!("{} event(s)", events.len())
+                    };
+                    let data = serde_json::json!({
+                        "total": output.total,
+                        "has_more": output.has_more,
+                        "events": events,
+                    });
+                    DispatchResult::success_with_data(summary, data)
+                }
+                Err(e) => DispatchResult::error(format!("logs: {e}"), 1),
+            }
+        }
 
         CliCommand::Config { action } => {
             let svc = services.as_ref().expect("services built above");

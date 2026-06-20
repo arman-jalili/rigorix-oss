@@ -52,32 +52,40 @@ use crate::cli_boundary::error::CliError;
 /// Services available to the CLI for direct Tier 2 command dispatch.
 ///
 /// Holds `Arc` references to engine services that Tier 2 commands
-/// (history, explain, template, config, etc.) need to call directly,
-/// bypassing the orchestrator lifecycle.
+/// (history, explain, template, config, audit, logs, diff-plan, etc.)
+/// need to call directly, bypassing the orchestrator lifecycle.
 pub struct CliServices {
     pub state_manager:
         Arc<dyn rigorix_engine::state_persistence::application::service::StateManagerService>,
     pub template_service: Arc<dyn TemplateEngineService>,
+    pub audit_repository:
+        Arc<dyn rigorix_engine::audit::infrastructure::repository::AuditEnvelopeRepository>,
+    pub dag_planning_service:
+        Arc<dyn rigorix_engine::dag_engine::application::service::DagPlanningService>,
+    pub event_bus:
+        Arc<dyn rigorix_engine::event_system::application::EventBusService>,
     pub config: CliConfig,
 }
 
 /// Build non-LLM CLI services for Tier 2 commands.
 ///
-/// Builds state manager and template service from `CliConfig`.
-/// These services are cheap to construct and don't require an API key.
-/// Use this for commands like `history`, `template list`, `config show`.
+/// Builds state manager, template service, audit repository, dag planning
+/// service, and event bus from `CliConfig`. These services are cheap to
+/// construct and don't require an API key (except dag planning which is
+/// stateless). Use this for commands like `history`, `template list`,
+/// `config show`, `audit`, `logs`, `diff-plan`.
 pub async fn build_cli_services(config: CliConfig) -> Result<CliServices, CliError> {
     let engine_config = config.engine_config()?;
     let repo_root = String::new(); // default to CWD
 
     let rigorix_dir = PathBuf::from(&repo_root).join(".rigorix");
-    tokio::fs::create_dir_all(rigorix_dir.join("state"))
-        .await
-        .ok();
-    tokio::fs::create_dir_all(rigorix_dir.join("templates"))
-        .await
-        .ok();
+    for sub in &["state", "templates", "audit"] {
+        tokio::fs::create_dir_all(rigorix_dir.join(sub))
+            .await
+            .ok();
+    }
 
+    // ── State manager ──────────────────────────────────────────────────
     let state_manager = Arc::from(
         FileSystemStateManagerFactory
             .create(
@@ -88,9 +96,9 @@ pub async fn build_cli_services(config: CliConfig) -> Result<CliServices, CliErr
             .map_err(|e| CliError::General(format!("state manager: {e}")))?,
     );
 
+    // ── Template service ───────────────────────────────────────────────
     let cli_template_service: Arc<dyn TemplateEngineService> = Arc::new(TemplateEngineImpl::new());
 
-    // Load existing templates from .rigorix/templates/
     let tpl_dir = PathBuf::from(&repo_root).join(".rigorix/templates");
     if tpl_dir.exists()
         && let Ok(mut entries) = tokio::fs::read_dir(&tpl_dir).await
@@ -116,12 +124,34 @@ pub async fn build_cli_services(config: CliConfig) -> Result<CliServices, CliErr
         }
     }
 
-    let _ = engine_config; // used only for validation above
+    // ── Audit repository (local filesystem) ────────────────────────────
+    let audit_repo = Arc::new(
+        rigorix_engine::audit::infrastructure::local_audit_repository::LocalAuditEnvelopeRepository::new(
+            rigorix_dir.join("audit"),
+        ),
+    ) as Arc<dyn rigorix_engine::audit::infrastructure::repository::AuditEnvelopeRepository>;
+
+    // ── Dag planning service (stateless) ───────────────────────────────
+    let dag_planning = Arc::new(
+        rigorix_engine::dag_engine::application::service_impl::DagPlanningServiceImpl::new(),
+    ) as Arc<dyn rigorix_engine::dag_engine::application::service::DagPlanningService>;
+
+    // ── Event bus (needed for log replay) ──────────────────────────────
+    let event_bus: Arc<dyn rigorix_engine::event_system::application::EventBusService> = Arc::from(
+        rigorix_engine::event_system::application::event_bus_factory_impl::EventBusFactoryImpl
+            .create_default()
+            .await
+            .map_err(|e| CliError::General(format!("event bus: {e}")))?,
+    );
+
+    let _ = engine_config;
 
     Ok(CliServices {
         state_manager,
         template_service: cli_template_service,
-
+        audit_repository: audit_repo,
+        dag_planning_service: dag_planning,
+        event_bus,
         config,
     })
 }
@@ -377,7 +407,7 @@ pub async fn build_orchestrator(
     let orchestrator = OrchestratorBuilderImpl::new(orch_domain_config)
         .with_repo_root(repo_root)
         .with_cancellation_service(Arc::from(cancellation))
-        .with_event_bus(Arc::from(event_bus))
+        .with_event_bus(Arc::clone(&event_bus))
         .with_state_manager(Arc::clone(&state_manager))
         .with_budget_service(Arc::from(budget))
         .with_execution_service(Arc::from(execution))
@@ -387,9 +417,23 @@ pub async fn build_orchestrator(
         .await
         .map_err(CliError::Engine)?;
 
+    // Build audit repository and dag planning service for CliServices
+    let audit_repo = Arc::new(
+        rigorix_engine::audit::infrastructure::local_audit_repository::LocalAuditEnvelopeRepository::new(
+            rigorix_dir.join("audit"),
+        ),
+    ) as Arc<dyn rigorix_engine::audit::infrastructure::repository::AuditEnvelopeRepository>;
+
+    let dag_planning = Arc::new(
+        rigorix_engine::dag_engine::application::service_impl::DagPlanningServiceImpl::new(),
+    ) as Arc<dyn rigorix_engine::dag_engine::application::service::DagPlanningService>;
+
     let services = CliServices {
         state_manager,
         template_service: Arc::clone(&template_service),
+        audit_repository: audit_repo,
+        dag_planning_service: dag_planning,
+        event_bus: event_bus.clone(),
         config,
     };
 
