@@ -198,28 +198,44 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_default_permission_mode_local() {
-        // SAFETY: test-only env manipulation
-        unsafe { std::env::remove_var("GITHUB_ACTIONS"); }
+    async fn test_default_permission_mode_no_ci() {
         let detector = CiDetectorImpl::new();
-        assert_eq!(detector.default_permission_mode().await, "prompt");
+        let result = detector
+            .detect(DetectCiInput {
+                env_override: Some(HashMap::new()),
+                permission_mode_override: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(result.permission_mode, "prompt");
     }
 
     #[tokio::test]
-    async fn test_is_ci_local() {
-        // SAFETY: test-only env manipulation
-        unsafe { std::env::remove_var("GITHUB_ACTIONS"); }
+    async fn test_is_ci_detected_via_override() {
         let detector = CiDetectorImpl::new();
-        assert!(!detector.is_ci().await);
+        let mut env = HashMap::new();
+        env.insert("GITHUB_ACTIONS".to_string(), "true".to_string());
+        let result = detector
+            .detect(DetectCiInput {
+                env_override: Some(env),
+                permission_mode_override: None,
+            })
+            .await
+            .unwrap();
+        assert!(result.is_ci);
     }
 
     #[tokio::test]
-    async fn test_is_ci_with_github_actions() {
-        // SAFETY: test-only env manipulation
-        unsafe { std::env::set_var("GITHUB_ACTIONS", "true"); }
+    async fn test_is_ci_not_detected_via_override() {
         let detector = CiDetectorImpl::new();
-        assert!(detector.is_ci().await);
-        unsafe { std::env::remove_var("GITHUB_ACTIONS"); }
+        let result = detector
+            .detect(DetectCiInput {
+                env_override: Some(HashMap::new()),
+                permission_mode_override: None,
+            })
+            .await
+            .unwrap();
+        assert!(!result.is_ci);
     }
 
     #[tokio::test]
