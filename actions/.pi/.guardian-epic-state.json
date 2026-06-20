@@ -1,47 +1,47 @@
 {
-  "name": "\"action-input\"",
-  "trackingIssueId": "520",
+  "name": "\"security-config\"",
+  "trackingIssueId": "537",
   "epicId": null,
   "slices": [
     {
-      "module": "action-input",
+      "module": "security-config",
       "components": [
         {
-          "name": "ActionInputs",
+          "name": "ForkDetector",
           "status": "planned",
-          "description": "Typed container of all GitHub Action inputs",
+          "description": "/// Detects whether a PR originates from a forked repository.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "InputParser",
+          "name": "SecretMasker",
           "status": "planned",
-          "description": "Parse all GitHub Action inputs from environment variables",
+          "description": "/// Masks sensitive values from GitHub Actions workflow logs.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "CommentParser",
+          "name": "TokenValidator",
           "status": "planned",
-          "description": "Parse `/rigorix` slash commands from issue and PR comments",
+          "description": "/// Validates that the GitHub token has the required permissions.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "CiDetector",
+          "name": "UrlAllowlist",
           "status": "planned",
-          "description": "Detects the CI environment and adjusts engine configuration",
+          "description": "/// Validates backend URLs against a configured allowlist.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ConfigLoader",
+          "name": "HmacSigner",
           "status": "planned",
-          "description": "Loads `action.yml` defaults and merges with environment overrides",
+          "description": "/// HMAC-SHA256 signing for audit record integrity.",
           "dependencies": [
             "none"
           ]
@@ -49,41 +49,41 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "ActionInputs",
+          "name": "ForkDetector",
           "status": "planned",
-          "description": "Typed container of all GitHub Action inputs",
+          "description": "/// Detects whether a PR originates from a forked repository.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "InputParser",
+          "name": "SecretMasker",
           "status": "planned",
-          "description": "Parse all GitHub Action inputs from environment variables",
+          "description": "/// Masks sensitive values from GitHub Actions workflow logs.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "CommentParser",
+          "name": "TokenValidator",
           "status": "planned",
-          "description": "Parse `/rigorix` slash commands from issue and PR comments",
+          "description": "/// Validates that the GitHub token has the required permissions.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "CiDetector",
+          "name": "UrlAllowlist",
           "status": "planned",
-          "description": "Detects the CI environment and adjusts engine configuration",
+          "description": "/// Validates backend URLs against a configured allowlist.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ConfigLoader",
+          "name": "HmacSigner",
           "status": "planned",
-          "description": "Loads `action.yml` defaults and merges with environment overrides",
+          "description": "/// HMAC-SHA256 signing for audit record integrity.",
           "dependencies": [
             "none"
           ]
@@ -96,52 +96,52 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "521"
+      "remoteIssueId": "538"
     },
     {
-      "id": "issue-actioninputs",
-      "title": "ActionInputs: Typed container of all GitHub Action inputs",
+      "id": "issue-forkdetector",
+      "title": "ForkDetector: /// Detects whether a PR originates from a forked repository.",
       "status": "planned",
-      "remoteIssueId": "522"
+      "remoteIssueId": "539"
     },
     {
-      "id": "issue-inputparser",
-      "title": "InputParser: Parse all GitHub Action inputs from environment variables",
+      "id": "issue-secretmasker",
+      "title": "SecretMasker: /// Masks sensitive values from GitHub Actions workflow logs.",
       "status": "planned",
-      "remoteIssueId": "523"
+      "remoteIssueId": "540"
     },
     {
-      "id": "issue-commentparser",
-      "title": "CommentParser: Parse `/rigorix` slash commands from issue and PR comments",
+      "id": "issue-tokenvalidator",
+      "title": "TokenValidator: /// Validates that the GitHub token has the required permissions.",
       "status": "planned",
-      "remoteIssueId": "524"
+      "remoteIssueId": "541"
     },
     {
-      "id": "issue-cidetector",
-      "title": "CiDetector: Detects the CI environment and adjusts engine configuration",
+      "id": "issue-urlallowlist",
+      "title": "UrlAllowlist: /// Validates backend URLs against a configured allowlist.",
       "status": "planned",
-      "remoteIssueId": "525"
+      "remoteIssueId": "542"
     },
     {
-      "id": "issue-configloader",
-      "title": "ConfigLoader: Loads `action.yml` defaults and merges with environment overrides",
+      "id": "issue-hmacsigner",
+      "title": "HmacSigner: /// HMAC-SHA256 signing for audit record integrity.",
       "status": "planned",
-      "remoteIssueId": "526"
+      "remoteIssueId": "543"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "527"
+      "remoteIssueId": "544"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "528"
+      "remoteIssueId": "545"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-06-20T13:37:36.843Z"
+  "createdAt": "2026-06-20T14:18:46.277Z"
 }
