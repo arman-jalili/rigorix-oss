@@ -52,7 +52,7 @@
       }
     }
   ],
-  "currentItemIndex": 5,
+  "currentItemIndex": 6,
   "currentStepIndex": 0,
   "status": "running",
   "retryCount": 0,
@@ -186,9 +186,35 @@
           "reason": ""
         }
       ]
+    },
+    {
+      "item": "issue-configloader",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
     }
   ],
   "mergeOnValid": true,
   "createdAt": "2026-06-20T13:37:36.863Z",
-  "updatedAt": "2026-06-20T13:56:14.749Z"
+  "updatedAt": "2026-06-20T13:59:05.922Z"
 }
