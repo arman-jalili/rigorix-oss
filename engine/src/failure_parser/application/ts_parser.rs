@@ -69,7 +69,7 @@ impl TypeScriptParser {
         let code = caps.get(4)?.as_str();
         let message = caps.get(5)?.as_str();
 
-        let location = SourceLocation::new(file, line_num, Some(col_num));
+        let _location = SourceLocation::new(file, line_num, Some(col_num));
         let failure = Self::classify_error(code, message, file, source_context);
         Some(FailureDetail::new(
             failure,
@@ -93,7 +93,7 @@ impl TypeScriptParser {
         let code = caps.get(4)?.as_str();
         let message = caps.get(5)?.as_str();
 
-        let location = SourceLocation::new(file, line_num, Some(col_num));
+        let _location = SourceLocation::new(file, line_num, Some(col_num));
         let failure = Self::classify_error(code, message, file, source_context);
         Some(FailureDetail::new(
             failure,

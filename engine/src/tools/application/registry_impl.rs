@@ -554,7 +554,10 @@ mod tests {
             .unwrap();
 
         assert!(result.is_success());
-        assert_eq!(result.output.trim(), "direct");
+        // FileReadTool returns JSON-serialized ReadFileOutput
+        let read_output: crate::code_gen::application::dto::ReadFileOutput =
+            serde_json::from_str(result.output.trim()).unwrap();
+        assert_eq!(read_output.content, "direct");
     }
 
     #[tokio::test]

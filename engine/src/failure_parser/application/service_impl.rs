@@ -11,9 +11,8 @@ use async_trait::async_trait;
 use tokio::sync::Mutex;
 
 use crate::failure_parser::domain::{
-    detail::FailureDetail,
-    failure::{SourceLocation, TemplateFailure},
-    FailureParserError, FailureSeverity, ParserRegistry, ParsedFailure, SourceContext,
+    failure::TemplateFailure,
+    FailureParserError, ParserRegistry, ParsedFailure, SourceContext,
 };
 
 use super::dto::{
@@ -479,7 +478,8 @@ impl FailureParserService for FailureParserServiceImpl {
 mod tests {
     use super::*;
     use crate::failure_parser::domain::{
-        CompilerOutput, LanguageParser,
+        detail::FailureDetail, failure::SourceLocation, CompilerOutput, FailureSeverity,
+        LanguageParser,
     };
     use async_trait::async_trait;
 

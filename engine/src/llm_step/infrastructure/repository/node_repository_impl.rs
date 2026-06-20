@@ -44,7 +44,7 @@ impl Default for InMemoryNodeRepository {
 #[async_trait]
 impl LlmGenerateNodeRepository for InMemoryNodeRepository {
     async fn save(&self, node: &LlmGenerateNode) -> Result<(), LlmStepError> {
-        let mut nodes = self.nodes.lock().map_err(|e| {
+        let mut nodes = self.nodes.lock().map_err(|_e| {
             LlmStepError::MissingDependency {
                 dependency: "InMemoryNodeRepository lock".to_string(),
                 resolution: Some("This is a fatal internal error".to_string()),
@@ -55,7 +55,7 @@ impl LlmGenerateNodeRepository for InMemoryNodeRepository {
     }
 
     async fn load(&self, node_id: Uuid) -> Result<LlmGenerateNode, LlmStepError> {
-        let nodes = self.nodes.lock().map_err(|e| {
+        let nodes = self.nodes.lock().map_err(|_e| {
             LlmStepError::MissingDependency {
                 dependency: "InMemoryNodeRepository lock".to_string(),
                 resolution: Some("This is a fatal internal error".to_string()),
@@ -70,7 +70,7 @@ impl LlmGenerateNodeRepository for InMemoryNodeRepository {
     }
 
     async fn exists(&self, node_id: Uuid) -> Result<bool, LlmStepError> {
-        let nodes = self.nodes.lock().map_err(|e| {
+        let nodes = self.nodes.lock().map_err(|_e| {
             LlmStepError::MissingDependency {
                 dependency: "InMemoryNodeRepository lock".to_string(),
                 resolution: Some("This is a fatal internal error".to_string()),
@@ -80,7 +80,7 @@ impl LlmGenerateNodeRepository for InMemoryNodeRepository {
     }
 
     async fn delete(&self, node_id: Uuid) -> Result<(), LlmStepError> {
-        let mut nodes = self.nodes.lock().map_err(|e| {
+        let mut nodes = self.nodes.lock().map_err(|_e| {
             LlmStepError::MissingDependency {
                 dependency: "InMemoryNodeRepository lock".to_string(),
                 resolution: Some("This is a fatal internal error".to_string()),
@@ -91,7 +91,7 @@ impl LlmGenerateNodeRepository for InMemoryNodeRepository {
     }
 
     async fn list_ids(&self) -> Result<Vec<Uuid>, LlmStepError> {
-        let nodes = self.nodes.lock().map_err(|e| {
+        let nodes = self.nodes.lock().map_err(|_e| {
             LlmStepError::MissingDependency {
                 dependency: "InMemoryNodeRepository lock".to_string(),
                 resolution: Some("This is a fatal internal error".to_string()),
@@ -101,7 +101,7 @@ impl LlmGenerateNodeRepository for InMemoryNodeRepository {
     }
 
     async fn count(&self) -> Result<u64, LlmStepError> {
-        let nodes = self.nodes.lock().map_err(|e| {
+        let nodes = self.nodes.lock().map_err(|_e| {
             LlmStepError::MissingDependency {
                 dependency: "InMemoryNodeRepository lock".to_string(),
                 resolution: Some("This is a fatal internal error".to_string()),
@@ -116,7 +116,7 @@ impl LlmGenerateNodeRepository for InMemoryNodeRepository {
     ) -> Result<Vec<LlmGenerateNode>, LlmStepError> {
         // In-memory implementation doesn't track execution associations
         // Return all nodes. A production implementation would index by execution_id.
-        let nodes = self.nodes.lock().map_err(|e| {
+        let nodes = self.nodes.lock().map_err(|_e| {
             LlmStepError::MissingDependency {
                 dependency: "InMemoryNodeRepository lock".to_string(),
                 resolution: Some("This is a fatal internal error".to_string()),

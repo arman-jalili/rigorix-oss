@@ -10,7 +10,6 @@
 
 use async_trait::async_trait;
 use chrono::Utc;
-use tracing::Instrument;
 use uuid::Uuid;
 
 use crate::llm_step::application::factory::{
@@ -19,7 +18,7 @@ use crate::llm_step::application::factory::{
 use crate::llm_step::domain::{
     ExecutionContext, FailureContext, LlmGenerateNode, LlmGenerateNodeState, LlmGenerationOutput,
     LlmModelConfig, LlmOutputFormat, LlmOutputSchema, LlmStepContext, LlmStepError,
-    PreviousAttempt, SourceContext, SourceFileContext, SymbolDefinition,
+    SourceContext, SourceFileContext, SymbolDefinition,
 };
 
 use super::dto::{
@@ -705,7 +704,7 @@ impl LlmContextBuilderService for LlmContextBuilderServiceImpl {
         &self,
         input: GetFailureContextInput,
     ) -> Result<GetFailureContextOutput, LlmStepError> {
-        let max_prev = input.max_previous_attempts.unwrap_or(3);
+        let _max_prev = input.max_previous_attempts.unwrap_or(3);
 
         let failure_context = FailureContext {
             failure_type: String::new(),
@@ -765,6 +764,7 @@ impl LlmContextBuilderService for LlmContextBuilderServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::llm_step::domain::PreviousAttempt;
     use crate::llm_step::infrastructure::llm_provider_client_impl::MockLlmProviderClient;
 
     fn create_test_service() -> LlmStepServiceImpl {

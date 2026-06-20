@@ -80,6 +80,7 @@ pub struct AnthropicProviderClient {
     /// The API key for authentication.
     api_key: String,
     /// Request timeout in seconds.
+    #[allow(dead_code)]
     timeout_secs: u64,
     /// HTTP client.
     client: reqwest::Client,
@@ -225,6 +226,7 @@ pub struct OpenAiProviderClient {
     /// The API key for authentication.
     api_key: String,
     /// Request timeout in seconds.
+    #[allow(dead_code)]
     timeout_secs: u64,
     /// HTTP client.
     client: reqwest::Client,

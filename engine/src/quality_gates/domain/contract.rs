@@ -26,7 +26,7 @@ use super::outcome::QualityGateOutcome;
 /// # Examples
 ///
 /// ```
-/// use quality_gates::domain::{GreenContract, QualityLevel, QualityGateOutcome};
+/// use rigorix_engine::quality_gates::domain::{GreenContract, QualityLevel, QualityGateOutcome};
 ///
 /// let contract = GreenContract::new(QualityLevel::Workspace);
 /// let outcome = contract.evaluate(Some(QualityLevel::Package));

@@ -16,9 +16,7 @@
 use async_trait::async_trait;
 
 use crate::failure_parser::application::service::FailureParserService;
-use crate::plan_validation::application::service::{
-    QualityGateEvaluationService, ValidationLoopService,
-};
+use crate::plan_validation::application::service::ValidationLoopService;
 use crate::plan_validation::domain::error::ValidationLoopError;
 use crate::plan_validation::domain::loop_config::ValidationLoopConfig;
 use crate::planning::application::service::PlanningPipelineService;

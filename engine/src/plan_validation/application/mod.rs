@@ -23,5 +23,6 @@
 pub mod context_augmenter;
 pub mod dto;
 pub mod factory;
+pub mod factory_impl;
 pub mod loop_impl;
 pub mod service;

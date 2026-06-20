@@ -36,9 +36,8 @@ use crate::plan_validation::application::service::{
 use crate::plan_validation::domain::error::ValidationLoopError;
 use crate::plan_validation::domain::loop_config::ValidationLoopConfig;
 use crate::plan_validation::domain::outcome::ValidationOutcome;
-use crate::plan_validation::domain::report::{ValidationIterationReport, ValidationReport};
+use crate::plan_validation::domain::report::ValidationIterationReport;
 use crate::plan_validation::domain::state::ValidationState;
-use crate::planning::domain::intent::UserIntent;
 use crate::templates::domain::Template;
 
 /// Concrete implementation of the ValidationLoopService.
@@ -139,14 +138,13 @@ impl ValidationLoopService for ValidationLoopImpl {
     ) -> Result<ValidateOutput, ValidationLoopError> {
         let execution_id = input.execution_id.unwrap_or_else(Uuid::new_v4);
         let mut state = ValidationState::new(execution_id, input.intent);
-        let mut report = ValidationReport::new(execution_id);
         let start_time = std::time::Instant::now();
 
         for iteration in 1..=self.config.max_iterations {
             // Execute this iteration
             let (template, eval) = self.execute_iteration(&state, iteration).await?;
 
-            let mut iter_report = ValidationIterationReport::new(iteration)
+            let _iter_report = ValidationIterationReport::new(iteration)
                 .with_failures(eval.failures.clone())
                 .with_tokens(eval.llm_tokens_used)
                 .with_duration(eval.duration_ms)
@@ -156,15 +154,6 @@ impl ValidationLoopService for ValidationLoopImpl {
                 // Validation passed
                 state.mark_succeeded();
                 state.set_template(template.clone());
-                let iter_report = iter_report.mark_passed();
-                report = report
-                    .with_outcome(ValidationOutcome::Validated)
-                    .with_iterations(iteration)
-                    .with_duration(start_time.elapsed().as_millis() as u64)
-                    .with_cumulative_tokens(state.cumulative_tokens)
-                    .with_iteration(iter_report)
-                    .with_validated_template(template.clone());
-
                 return Ok(ValidateOutput {
                     execution_id,
                     outcome: ValidationOutcome::Validated,
@@ -178,13 +167,6 @@ impl ValidationLoopService for ValidationLoopImpl {
 
             // Check budget
             if state.cumulative_tokens >= self.config.max_cumulative_tokens {
-                report = report
-                    .with_outcome(ValidationOutcome::BudgetExhausted)
-                    .with_iterations(iteration)
-                    .with_duration(start_time.elapsed().as_millis() as u64)
-                    .with_cumulative_tokens(state.cumulative_tokens)
-                    .with_iteration(iter_report);
-
                 return Ok(ValidateOutput {
                     execution_id,
                     outcome: ValidationOutcome::BudgetExhausted,
@@ -205,17 +187,9 @@ impl ValidationLoopService for ValidationLoopImpl {
                 )
                 .await?;
             }
-
-            report = report.with_iteration(iter_report);
         }
 
         // All retries exhausted
-        report = report
-            .with_outcome(ValidationOutcome::Failed)
-            .with_iterations(self.config.max_iterations)
-            .with_duration(start_time.elapsed().as_millis() as u64)
-            .with_cumulative_tokens(state.cumulative_tokens);
-
         Ok(ValidateOutput {
             execution_id,
             outcome: ValidationOutcome::Failed,
@@ -291,6 +265,7 @@ impl ValidationLoopService for ValidationLoopImpl {
 mod tests {
     use super::*;
     use crate::plan_validation::domain::loop_config::ValidationLoopConfig;
+    use crate::planning::domain::intent::UserIntent;
 
     struct MockQualityGate;
 

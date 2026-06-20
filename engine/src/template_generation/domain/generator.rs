@@ -570,7 +570,7 @@ fn extract_ts_public_api(content: &str, file_path: &str, symbols: &mut Vec<Strin
 /// Extract method signatures from the class body following the class declaration line.
 fn extract_ts_class_methods(content: &str, class_line: &str, file_path: &str, symbols: &mut Vec<String>) {
     // Find the line index of the class declaration
-    let mut lines: Vec<&str> = content.lines().collect();
+    let lines: Vec<&str> = content.lines().collect();
     let class_idx = lines.iter().position(|l| l.trim() == class_line.trim());
     let Some(start) = class_idx else { return };
 
@@ -595,7 +595,7 @@ fn extract_ts_class_methods(content: &str, class_line: &str, file_path: &str, sy
 
         // Detect method or field declarations
         // Matches: methodName(...) { or methodName(...): ReturnType {
-        let method_pattern = r"^\s*(public\s+|private\s+|protected\s+|static\s+|readonly\s|async\s)*(get\s+|set\s+)?\w+\s*\([^)]*\)\s*(:\s*[^{{]+)?\s*(\{{|;)";
+        let _method_pattern = r"^\s*(public\s+|private\s+|protected\s+|static\s+|readonly\s|async\s)*(get\s+|set\s+)?\w+\s*\([^)]*\)\s*(:\s*[^{{]+)?\s*(\{{|;)";
         if trimmed.len() > 2 && !trimmed.starts_with("//") && !trimmed.starts_with("/*") {
             // Check if this line looks like a method declaration
             let paren_open = trimmed.find('(');

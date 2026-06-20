@@ -26,7 +26,8 @@ use async_trait::async_trait;
 use std::fs;
 use std::path::Path;
 
-use crate::code_gen::application::dto::{EditFileOutput, StructuredPatchHunk};
+use crate::code_gen::application::dto::{EditFileOutput, StructuredPatchHunk, SyntaxGateInput};
+use crate::code_gen::application::service::SyntaxGateService;
 use crate::tools::application::dto::{SideEffect, ToolInput, ToolResult};
 use crate::tools::domain::{Tool, ToolError};
 
@@ -52,6 +53,9 @@ pub struct EditFileTool {
 
     /// Maximum file size in bytes (default: 10MB).
     max_file_size: u64,
+
+    /// Optional post-edit syntax verification gate.
+    syntax_gate: Option<Box<dyn SyntaxGateService>>,
 }
 
 impl EditFileTool {
@@ -60,13 +64,36 @@ impl EditFileTool {
         Self {
             workspace_root: workspace_root.into(),
             max_file_size: 10_485_760, // 10 MB
+            syntax_gate: None,
         }
+    }
+
+    /// Attach a syntax gate service for post-edit verification.
+    pub fn with_syntax_gate(mut self, gate: Box<dyn SyntaxGateService>) -> Self {
+        self.syntax_gate = Some(gate);
+        self
     }
 
     /// Set the maximum allowed file size.
     pub fn with_max_file_size(mut self, max_bytes: u64) -> Self {
         self.max_file_size = max_bytes;
         self
+    }
+
+    /// Run the syntax gate on the updated content, if configured.
+    fn run_syntax_gate(&self, file_path: &str, content: &str) -> Result<Option<crate::code_gen::domain::result::SyntaxGateResult>, ToolError> {
+        match &self.syntax_gate {
+            Some(gate) => {
+                let input = SyntaxGateInput {
+                    file_path: file_path.to_string(),
+                    content: content.to_string(),
+                };
+                gate.verify(input)
+                    .map(|output| Some(output.result))
+                    .map_err(|e| ToolError::ExecutionFailed(format!("Syntax gate error: {}", e)))
+            }
+            None => Ok(None),
+        }
     }
 
     /// Resolve and validate a file path against the workspace root.
@@ -313,6 +340,9 @@ impl EditFileTool {
             })?;
         }
 
+        // Run syntax gate BEFORE moving `updated`
+        let syntax_gate_result = self.run_syntax_gate(path_str, &updated).ok().flatten();
+
         Ok(EditFileOutput {
             file_path: path_str.to_string(),
             old_string: old_string.to_string(),
@@ -322,7 +352,7 @@ impl EditFileTool {
             unified_diff,
             replace_all,
             occurrences_replaced: if replace_all { occurrences } else { 1.min(occurrences) },
-            syntax_gate_result: None,
+            syntax_gate_result,
             patch_hunks,
         })
     }
