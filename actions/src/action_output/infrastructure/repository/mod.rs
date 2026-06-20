@@ -14,6 +14,14 @@
 //! - No framework-specific annotations on trait definitions
 //! - Implementations are hidden behind these interfaces
 
+pub mod env_repository_impl;
+pub mod github_api_client_impl;
+pub mod output_repository_impl;
+
+pub use env_repository_impl::*;
+pub use github_api_client_impl::*;
+pub use output_repository_impl::*;
+
 use async_trait::async_trait;
 
 use crate::action_output::domain::ActionOutputError;

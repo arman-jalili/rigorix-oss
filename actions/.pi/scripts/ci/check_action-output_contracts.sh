@@ -55,15 +55,23 @@ check_file "AnnotationWritingService → AnnotationWriterImpl" \
 check_file "StepSummaryWritingService → StepSummaryWriterImpl" \
     "$ACTION_OUTPUT_DIR/application/step_summary_writer_impl.rs" || ERRORS=$((ERRORS + 1))
 
-# Repository interfaces
-check_file "OutputRepository → (impl needed)" \
-    "$ACTION_OUTPUT_DIR/infrastructure/repository/mod.rs" || ERRORS=$((ERRORS + 1))
+# Output variable service
+check_file "OutputVariableService → OutputVariableServiceImpl" \
+    "$ACTION_OUTPUT_DIR/application/output_variable_impl.rs" || ERRORS=$((ERRORS + 1))
 
-check_file "EnvRepository → (impl needed)" \
-    "$ACTION_OUTPUT_DIR/infrastructure/repository/mod.rs" || ERRORS=$((ERRORS + 1))
+# PR comment service
+check_file "PrCommentService → PrCommentServiceImpl" \
+    "$ACTION_OUTPUT_DIR/application/pr_comment_impl.rs" || ERRORS=$((ERRORS + 1))
 
-check_file "GitHubApiClient → (impl needed)" \
-    "$ACTION_OUTPUT_DIR/infrastructure/repository/mod.rs" || ERRORS=$((ERRORS + 1))
+# Repository implementations
+check_file "OutputRepository → OutputRepositoryImpl" \
+    "$ACTION_OUTPUT_DIR/infrastructure/repository/output_repository_impl.rs" || ERRORS=$((ERRORS + 1))
+
+check_file "EnvRepository → EnvRepositoryImpl" \
+    "$ACTION_OUTPUT_DIR/infrastructure/repository/env_repository_impl.rs" || ERRORS=$((ERRORS + 1))
+
+check_file "GitHubApiClient → GitHubApiClientImpl" \
+    "$ACTION_OUTPUT_DIR/infrastructure/repository/github_api_client_impl.rs" || ERRORS=$((ERRORS + 1))
 
 # ── Check Domain Layer Structure ──
 check_file "Domain types module" \
@@ -100,15 +108,17 @@ if [[ $ERRORS -eq 0 ]]; then
     echo "✅ All action-output contracts have implementations ($ERRORS missing)"
     if $VERBOSE; then
         echo ""
-        echo "Service Implementations:"
+        echo "Service Implementations (6/6):"
         echo "  ✓ OutputFormattingService → output_formatter_impl.rs"
         echo "  ✓ AnnotationWritingService → annotation_writer_impl.rs"
         echo "  ✓ StepSummaryWritingService → step_summary_writer_impl.rs"
+        echo "  ✓ OutputVariableService → output_variable_impl.rs"
+        echo "  ✓ PrCommentService → pr_comment_impl.rs"
         echo ""
-        echo "Repository Interfaces:"
-        echo "  ✓ OutputRepository"
-        echo "  ✓ EnvRepository"
-        echo "  ✓ GitHubApiClient"
+        echo "Repository Implementations (3/3):"
+        echo "  ✓ OutputRepository → output_repository_impl.rs"
+        echo "  ✓ EnvRepository → env_repository_impl.rs"
+        echo "  ✓ GitHubApiClient → github_api_client_impl.rs"
         echo ""
         echo "Domain:"
         echo "  ✓ types.rs, error.rs, event/"
