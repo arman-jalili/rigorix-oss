@@ -15,8 +15,18 @@
 //! - DTOs carry full documentation for each field
 //! - No implementation — only contract signatures
 
+pub mod compiled_rules_factory_impl;
 pub mod dto;
 pub mod factory;
+pub mod org_policy_merger_impl;
+pub mod policy_document_factory_impl;
+pub mod policy_evaluation_pipeline_impl;
+pub mod policy_evaluator_impl;
+pub mod policy_loader_impl;
+pub mod policy_report_generator_impl;
+pub mod policy_result_factory_impl;
+pub mod policy_tamper_detector_impl;
+pub mod rules_factory_impl;
 pub mod service;
 
 pub use dto::*;
