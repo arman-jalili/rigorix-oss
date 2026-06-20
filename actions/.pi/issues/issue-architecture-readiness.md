@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-READINESS"
-  epic: ""security-config""
+  epic: ""diff-analyzer""
   component: "Architecture Readiness"
-  module: "security-config"
+  module: "diff-analyzer"
   status: planned
   priority: critical
   dependencies: []
@@ -32,7 +32,7 @@ guardian_issue:
       - Verify proofing scripts + validators in CI
 
   canonical_references:
-    - module: ".pi/architecture/modules/security-config.md"
+    - module: ".pi/architecture/modules/diff-analyzer.md"
 
   acceptance_criteria:
     - "Runbook created and reviewed"
@@ -58,30 +58,30 @@ guardian_issue:
     and CI will catch regressions (proofing scripts + validators).
 
   file_changes:
-    - "create: docs/runbook-security-config.md"
-    - "create: docs/dr-plan-security-config.md"
+    - "create: docs/runbook-diff-analyzer.md"
+    - "create: docs/dr-plan-diff-analyzer.md"
     - "modify: .pi/architecture/CHANGELOG.md"
-    - "modify: .pi/architecture/modules/security-config.md"
+    - "modify: .pi/architecture/modules/diff-analyzer.md"
 ---
 
-# Architecture Readiness: security-config
+# Architecture Readiness: diff-analyzer
 
 ## Intent
 
-Make the security-config module production-ready. This is the final issue in every epic
+Make the diff-analyzer module production-ready. This is the final issue in every epic
 — it closes the loop between implementation and operability.
 
 ## Deliverables
 
 ### Runbook
-`docs/runbook-security-config.md` covering:
+`docs/runbook-diff-analyzer.md` covering:
 - Startup sequence and dependencies
 - Graceful shutdown procedure
 - Common failure modes and recovery
 - Configuration reference
 
 ### DR Plan
-`docs/dr-plan-security-config.md` covering:
+`docs/dr-plan-diff-analyzer.md` covering:
 - Backup strategy and schedule
 - Restore procedure
 - Failover plan

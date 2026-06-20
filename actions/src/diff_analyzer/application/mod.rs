@@ -15,8 +15,14 @@
 //! - DTOs carry full documentation for each field
 //! - No implementation — only contract signatures
 
+pub mod ai_signal_detector_impl;
+pub mod diff_analysis_pipeline_impl;
+pub mod diff_parser_impl;
 pub mod dto;
 pub mod factory;
+pub mod limit_enforcer_impl;
+pub mod path_validator_impl;
+pub mod risk_classifier_impl;
 pub mod service;
 
 pub use dto::*;
