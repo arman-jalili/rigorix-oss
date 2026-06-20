@@ -10,6 +10,7 @@
 //! - The context must be fully resolved before calling
 
 use async_trait::async_trait;
+use tracing::{info, warn, Instrument, Span};
 
 use crate::action_output::domain::{
     ActionOutputError, ExecutionContext, ExecutionStatus, FormattedOutput, OutputVariable,
@@ -212,6 +213,12 @@ impl OutputFormattingService for OutputFormatterImpl {
         input: WriteRunOutputInput,
     ) -> Result<WriteRunOutputOutput, ActionOutputError> {
         let context = &input.context;
+        let _span = Span::current();
+        info!(
+            execution_id = %context.execution_id,
+            status = %context.status.as_str(),
+            "write_run_output: formatting execution results"
+        );
 
         // 1. Format and write step summary
         let summary = self.format_run_summary(context);
@@ -246,6 +253,13 @@ impl OutputFormattingService for OutputFormatterImpl {
             }
         }
 
+        info!(
+            summary_bytes = summary_result.bytes_written,
+            variable_count,
+            pr_comment_posted,
+            "write_run_output: completed"
+        );
+
         let output = FormattedOutput {
             summary: None, // already written
             annotations: vec![],
@@ -269,6 +283,11 @@ impl OutputFormattingService for OutputFormatterImpl {
         let context = &input.context;
         let failures = &input.failures;
         let execution_id = input.execution_id;
+        info!(
+            execution_id = %execution_id,
+            failure_count = failures.len(),
+            "write_validation_failure: formatting validation failure output"
+        );
 
         // 1. Write annotations for each failure
         if !failures.is_empty() {
@@ -343,6 +362,12 @@ impl OutputFormattingService for OutputFormatterImpl {
         }
 
         let annotation_count = failures.len() as u32;
+
+        info!(
+            annotation_count,
+            pr_comment_posted,
+            "write_validation_failure: completed"
+        );
 
         Ok(WriteValidationFailureOutput {
             summary,

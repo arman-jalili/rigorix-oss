@@ -10,6 +10,7 @@
 //! - Supports levels: error, warning, notice
 
 use async_trait::async_trait;
+use tracing::info;
 
 use crate::action_output::domain::{
     ActionOutputError, OutputLevel, WorkflowAnnotation,
@@ -119,6 +120,14 @@ impl AnnotationWritingService for AnnotationWriterImpl {
         let output = format!("{}\n", command);
         let bytes = self.output_repo.write_stdout(&output).await?;
 
+        info!(
+            level = ?input.annotation.level,
+            file = %input.annotation.file,
+            line = input.annotation.line,
+            bytes_written = bytes,
+            "annotation emitted"
+        );
+
         Ok(WriteAnnotationOutput { bytes_written: bytes })
     }
 
@@ -177,6 +186,7 @@ impl AnnotationWritingService for AnnotationWriterImpl {
             self.write_annotation(input).await?;
             count += 1;
         }
+        info!(count, "batch annotations written");
         Ok(count)
     }
 }

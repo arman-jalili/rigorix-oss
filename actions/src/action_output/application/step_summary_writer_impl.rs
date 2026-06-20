@@ -12,6 +12,7 @@
 //! - Large content wrapped in `<details>` HTML tags
 
 use async_trait::async_trait;
+use tracing::info;
 
 use crate::action_output::domain::{
     ActionOutputError, StepSummary, SummarySection,
@@ -113,11 +114,20 @@ impl StepSummaryWritingService for StepSummaryWriterImpl {
     ) -> Result<WriteSummaryOutput, ActionOutputError> {
         let markdown = self.render_markdown(&input.summary);
 
+        let mode = if input.append { "append" } else { "overwrite" };
         let bytes = if input.append {
             self.output_repo.append_summary(&markdown).await?
         } else {
             self.output_repo.overwrite_summary(&markdown).await?
         };
+
+        info!(
+            section_count = input.summary.sections.len(),
+            bytes_written = bytes,
+            mode = mode,
+            title = %input.summary.title,
+            "step summary written"
+        );
 
         Ok(WriteSummaryOutput {
             bytes_written: bytes,
