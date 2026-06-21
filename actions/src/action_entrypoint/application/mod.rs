@@ -18,11 +18,13 @@
 pub mod context_builder_impl;
 pub mod dto;
 pub mod factory;
+pub mod mode_resolver_impl;
 pub mod router_impl;
 pub mod service;
 
 pub use context_builder_impl::*;
 pub use dto::*;
 pub use factory::*;
+pub use mode_resolver_impl::*;
 pub use router_impl::*;
 pub use service::*;
