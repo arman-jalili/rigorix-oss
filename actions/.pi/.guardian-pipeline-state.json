@@ -1,11 +1,13 @@
 {
-  "id": "PL-6878",
-  "name": "\"action-entrypoint\"",
+  "id": "PL-4814",
+  "name": "\"action-input\"",
   "items": [
     "issue-contract-freeze",
-    "issue-actionrouter",
-    "issue-actioncontext",
-    "issue-actionmode",
+    "issue-actioninputs",
+    "issue-inputparser",
+    "issue-commentparser",
+    "issue-cidetector",
+    "issue-configloader",
     "issue-proofing",
     "issue-architecture-readiness"
   ],
@@ -50,7 +52,7 @@
       }
     }
   ],
-  "currentItemIndex": 3,
+  "currentItemIndex": 1,
   "currentStepIndex": 0,
   "status": "running",
   "retryCount": 0,
@@ -60,59 +62,7 @@
       "status": "done",
       "stepResults": [
         {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
           "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-actionrouter",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-actioncontext",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
           "status": "passed",
           "reason": ""
         },
@@ -135,6 +85,6 @@
     }
   ],
   "mergeOnValid": true,
-  "createdAt": "2026-06-21T17:44:31.739Z",
-  "updatedAt": "2026-06-21T18:47:55.090Z"
+  "createdAt": "2026-06-20T13:37:36.863Z",
+  "updatedAt": "2026-06-20T13:47:43.906Z"
 }

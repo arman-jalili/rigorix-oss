@@ -242,6 +242,11 @@ run_stage "15" "audit-posting_proofing" \
     "${SCRIPTS_DIR}/stage_audit-posting_proofing.sh" \
     "always"
 
+# Stage 16: Action Entrypoint Proofing
+run_stage "16" "action-entrypoint_proofing" \
+    "${SCRIPTS_DIR}/stage_action-entrypoint_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""
