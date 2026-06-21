@@ -58,17 +58,19 @@ impl GitHubApiClient for GitHubApiClientImpl {
                         status_code: 429,
                         response: format!("rate limited, retry after {}s", retry_after_secs),
                     }
-                },
+                }
                 GitHubClientError::NotFound(msg) => ActionOutputError::GitHubApiError {
                     endpoint: format!("issues/{}/comments", issue_number),
                     status_code: 404,
                     response: msg,
                 },
-                GitHubClientError::ApiError { status, message } => ActionOutputError::GitHubApiError {
-                    endpoint: format!("issues/{}/comments", issue_number),
-                    status_code: status,
-                    response: message,
-                },
+                GitHubClientError::ApiError { status, message } => {
+                    ActionOutputError::GitHubApiError {
+                        endpoint: format!("issues/{}/comments", issue_number),
+                        status_code: status,
+                        response: message,
+                    }
+                }
                 GitHubClientError::NetworkError(e) => ActionOutputError::Io(std::io::Error::new(
                     std::io::ErrorKind::Other,
                     e.to_string(),
@@ -77,7 +79,10 @@ impl GitHubApiClient for GitHubApiClientImpl {
             })?;
 
         let html_url = format!("https://github.com/{}/issues/{}", repo, issue_number);
-        let url = format!("https://api.github.com/repos/{}/issues/comments/{}", repo, comment.id);
+        let url = format!(
+            "https://api.github.com/repos/{}/issues/comments/{}",
+            repo, comment.id
+        );
 
         Ok(GitHubCommentResponse {
             id: comment.id,
@@ -102,7 +107,10 @@ impl GitHubApiClient for GitHubApiClientImpl {
         use crate::shared::github_client::GitHubClientError;
 
         let client = crate::shared::github_client::GitHubClient::new(token);
-        let url = format!("{}/user", crate::shared::github_client::GitHubClient::DEFAULT_API_URL);
+        let url = format!(
+            "{}/user",
+            crate::shared::github_client::GitHubClient::DEFAULT_API_URL
+        );
 
         // Use the shared client directly by calling validate and extracting user info
         // For simplicity, we make a raw request through the shared client mechanism
@@ -129,14 +137,15 @@ impl GitHubApiClient for GitHubApiClientImpl {
             });
         }
 
-        let body: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| ActionOutputError::GitHubApiError {
-                endpoint: "/user".to_string(),
-                status_code: 0,
-                response: e.to_string(),
-            })?;
+        let body: serde_json::Value =
+            response
+                .json()
+                .await
+                .map_err(|e| ActionOutputError::GitHubApiError {
+                    endpoint: "/user".to_string(),
+                    status_code: 0,
+                    response: e.to_string(),
+                })?;
 
         body.get("login")
             .and_then(|v| v.as_str())

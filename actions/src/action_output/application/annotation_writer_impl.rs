@@ -12,9 +12,7 @@
 use async_trait::async_trait;
 use tracing::info;
 
-use crate::action_output::domain::{
-    ActionOutputError, OutputLevel, WorkflowAnnotation,
-};
+use crate::action_output::domain::{ActionOutputError, OutputLevel, WorkflowAnnotation};
 
 use super::dto::{
     FormatAnnotationInput, FormatAnnotationOutput, WriteAnnotationInput, WriteAnnotationOutput,
@@ -128,7 +126,9 @@ impl AnnotationWritingService for AnnotationWriterImpl {
             "annotation emitted"
         );
 
-        Ok(WriteAnnotationOutput { bytes_written: bytes })
+        Ok(WriteAnnotationOutput {
+            bytes_written: bytes,
+        })
     }
 
     async fn format_annotation(
@@ -223,7 +223,11 @@ mod tests {
             Ok(content.len() as u64)
         }
 
-        async fn write_output_variable(&self, _name: &str, _value: &str) -> Result<u64, ActionOutputError> {
+        async fn write_output_variable(
+            &self,
+            _name: &str,
+            _value: &str,
+        ) -> Result<u64, ActionOutputError> {
             Ok(0)
         }
 
@@ -254,7 +258,9 @@ mod tests {
         AnnotationWriterImpl::new(Box::new(MockOutputRepository::new()))
     }
 
-    fn make_writer_with_repo(repo: MockOutputRepository) -> (AnnotationWriterImpl, MockOutputRepository) {
+    fn make_writer_with_repo(
+        repo: MockOutputRepository,
+    ) -> (AnnotationWriterImpl, MockOutputRepository) {
         let writer = AnnotationWriterImpl::new(Box::new(repo.clone()));
         (writer, repo)
     }
@@ -299,7 +305,8 @@ mod tests {
         let repo = MockOutputRepository::new();
         let (writer, repo) = make_writer_with_repo(repo);
 
-        let annotation = WorkflowAnnotation::notice("README.md", 1, "Consider adding documentation");
+        let annotation =
+            WorkflowAnnotation::notice("README.md", 1, "Consider adding documentation");
 
         let input = WriteAnnotationInput { annotation };
         let result = writer.write_annotation(input).await;
@@ -380,11 +387,7 @@ mod tests {
         let repo = MockOutputRepository::new();
         let (writer, repo) = make_writer_with_repo(repo);
 
-        let annotation = WorkflowAnnotation::error(
-            "src/main.rs",
-            1,
-            "100% done\nnew line\r",
-        );
+        let annotation = WorkflowAnnotation::error("src/main.rs", 1, "100% done\nnew line\r");
 
         let input = WriteAnnotationInput { annotation };
         writer.write_annotation(input).await.unwrap();
@@ -429,7 +432,11 @@ mod tests {
         assert_eq!(result.annotation.level, OutputLevel::Error);
         assert_eq!(result.annotation.file, "src/main.rs");
         assert_eq!(result.annotation.line, 42);
-        assert!(result.workflow_command.contains("::error file=src/main.rs,line=42::"));
+        assert!(
+            result
+                .workflow_command
+                .contains("::error file=src/main.rs,line=42::")
+        );
     }
 
     #[tokio::test]

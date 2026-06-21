@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-READINESS"
-  epic: ""action-output""
+  epic: ""ci-integration""
   component: "Architecture Readiness"
-  module: "action-output"
+  module: "ci-integration"
   status: planned
   priority: critical
   dependencies: []
@@ -32,7 +32,7 @@ guardian_issue:
       - Verify proofing scripts + validators in CI
 
   canonical_references:
-    - module: ".pi/architecture/modules/action-output.md"
+    - module: ".pi/architecture/modules/ci-integration.md"
 
   acceptance_criteria:
     - "Runbook created and reviewed"
@@ -58,30 +58,30 @@ guardian_issue:
     and CI will catch regressions (proofing scripts + validators).
 
   file_changes:
-    - "create: docs/runbook-action-output.md"
-    - "create: docs/dr-plan-action-output.md"
+    - "create: docs/runbook-ci-integration.md"
+    - "create: docs/dr-plan-ci-integration.md"
     - "modify: .pi/architecture/CHANGELOG.md"
-    - "modify: .pi/architecture/modules/action-output.md"
+    - "modify: .pi/architecture/modules/ci-integration.md"
 ---
 
-# Architecture Readiness: action-output
+# Architecture Readiness: ci-integration
 
 ## Intent
 
-Make the action-output module production-ready. This is the final issue in every epic
+Make the ci-integration module production-ready. This is the final issue in every epic
 — it closes the loop between implementation and operability.
 
 ## Deliverables
 
 ### Runbook
-`docs/runbook-action-output.md` covering:
+`docs/runbook-ci-integration.md` covering:
 - Startup sequence and dependencies
 - Graceful shutdown procedure
 - Common failure modes and recovery
 - Configuration reference
 
 ### DR Plan
-`docs/dr-plan-action-output.md` covering:
+`docs/dr-plan-ci-integration.md` covering:
 - Backup strategy and schedule
 - Restore procedure
 - Failover plan

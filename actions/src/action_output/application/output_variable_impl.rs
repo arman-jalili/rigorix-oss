@@ -49,7 +49,6 @@ impl OutputVariableServiceImpl {
             name_regex: Regex::new(r"^[a-z_][a-z0-9_]*$").unwrap(),
             max_value_length: 10_240, // 10KB default
         }
-
     }
 
     /// Validate a variable name against `[a-z_][a-z0-9_]*`.
@@ -64,9 +63,7 @@ impl OutputVariableServiceImpl {
 
     /// Sanitize a value: strip newlines, cap length.
     fn sanitize_value(&self, value: &str) -> String {
-        let sanitized: String = value.chars()
-            .filter(|&c| c != '\n' && c != '\r')
-            .collect();
+        let sanitized: String = value.chars().filter(|&c| c != '\n' && c != '\r').collect();
         if sanitized.len() > self.max_value_length {
             sanitized[..self.max_value_length].to_string()
         } else {
@@ -94,7 +91,8 @@ impl OutputVariableService for OutputVariableServiceImpl {
             });
         }
 
-        let bytes = self.output_repo
+        let bytes = self
+            .output_repo
             .write_output_variable(&input.name, &sanitized)
             .await?;
 
@@ -105,7 +103,9 @@ impl OutputVariableService for OutputVariableServiceImpl {
             "output variable set"
         );
 
-        Ok(SetVariableOutput { bytes_written: bytes })
+        Ok(SetVariableOutput {
+            bytes_written: bytes,
+        })
     }
 
     async fn set_from_context(
@@ -129,7 +129,8 @@ impl OutputVariableService for OutputVariableServiceImpl {
                 name: name.to_string(),
                 value: value.to_string(),
                 max_length: None,
-            }).await?;
+            })
+            .await?;
             names.push(name.to_string());
         }
 
@@ -138,7 +139,8 @@ impl OutputVariableService for OutputVariableServiceImpl {
                 name: "template_id".to_string(),
                 value: template_id.clone(),
                 max_length: None,
-            }).await?;
+            })
+            .await?;
             names.push("template_id".to_string());
         }
 
@@ -147,7 +149,8 @@ impl OutputVariableService for OutputVariableServiceImpl {
                 name: "quality_level".to_string(),
                 value: quality.clone(),
                 max_length: None,
-            }).await?;
+            })
+            .await?;
             names.push("quality_level".to_string());
         }
 
@@ -163,7 +166,12 @@ impl OutputVariableService for OutputVariableServiceImpl {
     }
 
     async fn is_available(&self) -> bool {
-        self.output_repo.get_output_path().await.ok().flatten().is_some()
+        self.output_repo
+            .get_output_path()
+            .await
+            .ok()
+            .flatten()
+            .is_some()
     }
 
     async fn get_output_path(&self) -> Result<String, ActionOutputError> {
@@ -207,16 +215,35 @@ mod tests {
 
     #[async_trait]
     impl OutputRepository for MockOutputRepo {
-        async fn write_stdout(&self, _content: &str) -> Result<u64, ActionOutputError> { Ok(0) }
-        async fn write_output_variable(&self, name: &str, value: &str) -> Result<u64, ActionOutputError> {
-            self.written.lock().unwrap().push((name.to_string(), value.to_string()));
+        async fn write_stdout(&self, _content: &str) -> Result<u64, ActionOutputError> {
+            Ok(0)
+        }
+        async fn write_output_variable(
+            &self,
+            name: &str,
+            value: &str,
+        ) -> Result<u64, ActionOutputError> {
+            self.written
+                .lock()
+                .unwrap()
+                .push((name.to_string(), value.to_string()));
             Ok((name.len() + 1 + value.len() + 1) as u64) // "name=value\n"
         }
-        async fn append_summary(&self, _markdown: &str) -> Result<u64, ActionOutputError> { Ok(0) }
-        async fn overwrite_summary(&self, _markdown: &str) -> Result<u64, ActionOutputError> { Ok(0) }
-        async fn get_output_path(&self) -> Result<Option<String>, ActionOutputError> { Ok(self.output_path.clone()) }
-        async fn get_summary_path(&self) -> Result<Option<String>, ActionOutputError> { Ok(None) }
-        async fn is_github_actions(&self) -> bool { true }
+        async fn append_summary(&self, _markdown: &str) -> Result<u64, ActionOutputError> {
+            Ok(0)
+        }
+        async fn overwrite_summary(&self, _markdown: &str) -> Result<u64, ActionOutputError> {
+            Ok(0)
+        }
+        async fn get_output_path(&self) -> Result<Option<String>, ActionOutputError> {
+            Ok(self.output_path.clone())
+        }
+        async fn get_summary_path(&self) -> Result<Option<String>, ActionOutputError> {
+            Ok(None)
+        }
+        async fn is_github_actions(&self) -> bool {
+            true
+        }
     }
 
     fn make_service(repo: MockOutputRepo) -> (OutputVariableServiceImpl, MockOutputRepo) {
@@ -227,11 +254,13 @@ mod tests {
     #[tokio::test]
     async fn test_set_variable() {
         let (svc, repo) = make_service(MockOutputRepo::new());
-        let result = svc.set_variable(SetVariableInput {
-            name: "execution_id".to_string(),
-            value: "abc-123".to_string(),
-            max_length: None,
-        }).await;
+        let result = svc
+            .set_variable(SetVariableInput {
+                name: "execution_id".to_string(),
+                value: "abc-123".to_string(),
+                max_length: None,
+            })
+            .await;
         assert!(result.is_ok());
 
         let written = repo.get_written();
@@ -243,25 +272,35 @@ mod tests {
     #[tokio::test]
     async fn test_set_variable_invalid_name() {
         let (svc, _repo) = make_service(MockOutputRepo::new());
-        let result = svc.set_variable(SetVariableInput {
-            name: "INVALID-NAME".to_string(),
-            value: "test".to_string(),
-            max_length: None,
-        }).await;
+        let result = svc
+            .set_variable(SetVariableInput {
+                name: "INVALID-NAME".to_string(),
+                value: "test".to_string(),
+                max_length: None,
+            })
+            .await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), ActionOutputError::InvalidVariableName { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            ActionOutputError::InvalidVariableName { .. }
+        ));
     }
 
     #[tokio::test]
     async fn test_set_variable_too_long() {
         let (svc, _repo) = make_service(MockOutputRepo::new());
-        let result = svc.set_variable(SetVariableInput {
-            name: "x".to_string(),
-            value: "a".repeat(20),
-            max_length: Some(10),
-        }).await;
+        let result = svc
+            .set_variable(SetVariableInput {
+                name: "x".to_string(),
+                value: "a".repeat(20),
+                max_length: Some(10),
+            })
+            .await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), ActionOutputError::VariableTooLong { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            ActionOutputError::VariableTooLong { .. }
+        ));
     }
 
     #[tokio::test]
@@ -271,7 +310,9 @@ mod tests {
             name: "key".to_string(),
             value: "line1\nline2\rline3".to_string(),
             max_length: None,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
 
         let written = repo.get_written();
         assert_eq!(written[0].1, "line1line2line3");
@@ -279,7 +320,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_set_from_context() {
-        use crate::action_output::domain::{ExecutionContext, ExecutionStatus, FileChange, FileChangeType, ExecutionStep};
+        use crate::action_output::domain::{
+            ExecutionContext, ExecutionStatus, ExecutionStep, FileChange, FileChangeType,
+        };
         use std::collections::HashMap;
         use uuid::Uuid;
 
@@ -299,7 +342,9 @@ mod tests {
             metadata: HashMap::new(),
         };
 
-        let result = svc.set_from_context(SetOutputVariablesInput { context }).await;
+        let result = svc
+            .set_from_context(SetOutputVariablesInput { context })
+            .await;
         assert!(result.is_ok());
         let output = result.unwrap();
         assert_eq!(output.variable_count, 8); // 6 base + template_id + quality_level

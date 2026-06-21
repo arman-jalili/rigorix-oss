@@ -10,13 +10,13 @@
 //! - The context must be fully resolved before calling
 
 use async_trait::async_trait;
-use tracing::{info, warn, Instrument, Span};
+use tracing::{Instrument, Span, info, warn};
 
+use crate::action_output::domain::output_variable_names;
 use crate::action_output::domain::{
     ActionOutputError, ExecutionContext, ExecutionStatus, FormattedOutput, OutputVariable,
     StepSummary, SummarySection,
 };
-use crate::action_output::domain::output_variable_names;
 
 use super::dto::{
     FormatSummaryInput, FormatSummaryOutput, RenderSummaryInput, RenderSummaryOutput,
@@ -24,8 +24,8 @@ use super::dto::{
     WriteSummaryInput, WriteValidationFailureInput, WriteValidationFailureOutput,
 };
 use super::service::{
-    AnnotationWritingService, OutputFormattingService, OutputVariableService,
-    PrCommentService, StepSummaryWritingService,
+    AnnotationWritingService, OutputFormattingService, OutputVariableService, PrCommentService,
+    StepSummaryWritingService,
 };
 
 /// Default implementation of `OutputFormattingService`.
@@ -69,10 +69,7 @@ impl OutputFormatterImpl {
 
     /// Format an execution context into a step summary.
     fn format_run_summary(&self, context: &ExecutionContext) -> StepSummary {
-        let mut summary = StepSummary::new(format!(
-            "Rigorix Execution #{}",
-            context.execution_id
-        ));
+        let mut summary = StepSummary::new(format!("Rigorix Execution #{}", context.execution_id));
 
         // Status header
         let status_icon = match context.status {
@@ -81,10 +78,7 @@ impl OutputFormatterImpl {
             ExecutionStatus::PartialFailure => "⚠️",
         };
         let duration_secs = context.duration_ms as f64 / 1000.0;
-        let quality = context
-            .quality_level
-            .as_deref()
-            .unwrap_or("unknown");
+        let quality = context.quality_level.as_deref().unwrap_or("unknown");
 
         let footer = format!(
             "**Status:** {} {} | **Duration:** {:.1}s | **Quality:** {}",
@@ -107,13 +101,13 @@ impl OutputFormatterImpl {
                         .as_ref()
                         .map(|e| format!(" — *{}*", e))
                         .unwrap_or_default();
-                    format!("{}. {} `{}` — {:.1}s{}", icon, step.id, step.description, duration, error_suffix)
+                    format!(
+                        "{}. {} `{}` — {:.1}s{}",
+                        icon, step.id, step.description, duration, error_suffix
+                    )
                 })
                 .collect();
-            summary.add_section(SummarySection::new(
-                "Execution Plan",
-                step_lines.join("\n"),
-            ));
+            summary.add_section(SummarySection::new("Execution Plan", step_lines.join("\n")));
         }
 
         // Validation section
@@ -165,10 +159,7 @@ impl OutputFormatterImpl {
                 .iter()
                 .map(|(k, v)| format!("- **{}**: {}", k, v))
                 .collect();
-            summary.add_section(SummarySection::new(
-                "Metadata",
-                meta_lines.join("\n"),
-            ));
+            summary.add_section(SummarySection::new("Metadata", meta_lines.join("\n")));
         }
 
         summary.set_footer(footer);
@@ -178,29 +169,43 @@ impl OutputFormatterImpl {
     /// Format output variables from an execution context.
     fn format_run_variables(&self, context: &ExecutionContext) -> Vec<OutputVariable> {
         vec![
-            OutputVariable::new(output_variable_names::EXECUTION_ID, context.execution_id.to_string()),
-            OutputVariable::new(output_variable_names::STATUS, context.status.as_str().to_string()),
-            OutputVariable::new(output_variable_names::ITERATIONS, context.iterations.to_string()),
-            OutputVariable::new(output_variable_names::FAILURE_COUNT, context.failure_count.to_string()),
-            OutputVariable::new(output_variable_names::CUMULATIVE_TOKENS, context.cumulative_tokens.to_string()),
-            OutputVariable::new(output_variable_names::DURATION_MS, context.duration_ms.to_string()),
+            OutputVariable::new(
+                output_variable_names::EXECUTION_ID,
+                context.execution_id.to_string(),
+            ),
+            OutputVariable::new(
+                output_variable_names::STATUS,
+                context.status.as_str().to_string(),
+            ),
+            OutputVariable::new(
+                output_variable_names::ITERATIONS,
+                context.iterations.to_string(),
+            ),
+            OutputVariable::new(
+                output_variable_names::FAILURE_COUNT,
+                context.failure_count.to_string(),
+            ),
+            OutputVariable::new(
+                output_variable_names::CUMULATIVE_TOKENS,
+                context.cumulative_tokens.to_string(),
+            ),
+            OutputVariable::new(
+                output_variable_names::DURATION_MS,
+                context.duration_ms.to_string(),
+            ),
         ]
         .into_iter()
         .chain(
             context
                 .template_id
                 .as_ref()
-                .map(|id| {
-                    OutputVariable::new(output_variable_names::TEMPLATE_ID, id.clone())
-                }),
+                .map(|id| OutputVariable::new(output_variable_names::TEMPLATE_ID, id.clone())),
         )
         .chain(
             context
                 .quality_level
                 .as_ref()
-                .map(|ql| {
-                    OutputVariable::new(output_variable_names::QUALITY_LEVEL, ql.clone())
-                }),
+                .map(|ql| OutputVariable::new(output_variable_names::QUALITY_LEVEL, ql.clone())),
         )
         .collect()
     }
@@ -255,9 +260,7 @@ impl OutputFormattingService for OutputFormatterImpl {
 
         info!(
             summary_bytes = summary_result.bytes_written,
-            variable_count,
-            pr_comment_posted,
-            "write_run_output: completed"
+            variable_count, pr_comment_posted, "write_run_output: completed"
         );
 
         let output = FormattedOutput {
@@ -291,16 +294,11 @@ impl OutputFormattingService for OutputFormatterImpl {
 
         // 1. Write annotations for each failure
         if !failures.is_empty() {
-            self.annotation_writer
-                .write_annotations(failures)
-                .await?;
+            self.annotation_writer.write_annotations(failures).await?;
         }
 
         // 2. Format and write detailed step summary
-        let mut summary = StepSummary::new(format!(
-            "Rigorix Validation Failure #{}",
-            execution_id
-        ));
+        let mut summary = StepSummary::new(format!("Rigorix Validation Failure #{}", execution_id));
 
         // Status header
         let duration_secs = context.duration_ms as f64 / 1000.0;
@@ -320,7 +318,12 @@ impl OutputFormattingService for OutputFormatterImpl {
                     } else {
                         format!("{}:{}", ann.file, ann.line)
                     };
-                    format!("- ❌ `{}` — {} ({})", loc, ann.message, ann.title.as_deref().unwrap_or("error"))
+                    format!(
+                        "- ❌ `{}` — {} ({})",
+                        loc,
+                        ann.message,
+                        ann.title.as_deref().unwrap_or("error")
+                    )
                 })
                 .collect();
             summary.add_section(SummarySection::new(
@@ -365,8 +368,7 @@ impl OutputFormattingService for OutputFormatterImpl {
 
         info!(
             annotation_count,
-            pr_comment_posted,
-            "write_validation_failure: completed"
+            pr_comment_posted, "write_validation_failure: completed"
         );
 
         Ok(WriteValidationFailureOutput {
@@ -381,9 +383,7 @@ impl OutputFormattingService for OutputFormatterImpl {
         input: FormatSummaryInput,
     ) -> Result<FormatSummaryOutput, ActionOutputError> {
         let summary = self.format_run_summary(&input.context);
-        let rendered = self.summary_writer
-            .render_markdown(&summary)
-            .await?;
+        let rendered = self.summary_writer.render_markdown(&summary).await?;
 
         // Truncate failure details if max_inline_failures is set
         let summary = if input.max_inline_failures.is_some() {
@@ -404,9 +404,7 @@ impl OutputFormattingService for OutputFormatterImpl {
         &self,
         input: RenderSummaryInput,
     ) -> Result<RenderSummaryOutput, ActionOutputError> {
-        let markdown = self.summary_writer
-            .render_markdown(&input.summary)
-            .await?;
+        let markdown = self.summary_writer.render_markdown(&input.summary).await?;
 
         Ok(RenderSummaryOutput {
             length: markdown.len() as u64,
@@ -441,10 +439,13 @@ impl OutputFormattingService for OutputFormatterImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action_output::domain::{ExecutionContext, ExecutionStatus, FileChange, FileChangeType, ExecutionStep, WorkflowAnnotation};
     use crate::action_output::application::dto::{
-        WriteAnnotationInput, WriteAnnotationOutput, SetVariableInput, SetVariableOutput,
-        PostPrCommentInput, PostPrCommentOutput, WriteSummaryOutput,
+        PostPrCommentInput, PostPrCommentOutput, SetVariableInput, SetVariableOutput,
+        WriteAnnotationInput, WriteAnnotationOutput, WriteSummaryOutput,
+    };
+    use crate::action_output::domain::{
+        ExecutionContext, ExecutionStatus, ExecutionStep, FileChange, FileChangeType,
+        WorkflowAnnotation,
     };
     use std::collections::HashMap;
     use uuid::Uuid;
@@ -458,18 +459,30 @@ mod tests {
 
     #[async_trait]
     impl StepSummaryWritingService for MockSummaryWriter {
-        async fn write_summary(&self, _input: WriteSummaryInput) -> Result<WriteSummaryOutput, ActionOutputError> {
+        async fn write_summary(
+            &self,
+            _input: WriteSummaryInput,
+        ) -> Result<WriteSummaryOutput, ActionOutputError> {
             Ok(WriteSummaryOutput {
                 bytes_written: 100,
                 section_count: 2,
             })
         }
 
-        async fn render_markdown(&self, summary: &StepSummary) -> Result<String, ActionOutputError> {
-            Ok(format!("# {}\n{} sections", summary.title, summary.sections.len()))
+        async fn render_markdown(
+            &self,
+            summary: &StepSummary,
+        ) -> Result<String, ActionOutputError> {
+            Ok(format!(
+                "# {}\n{} sections",
+                summary.title,
+                summary.sections.len()
+            ))
         }
 
-        async fn is_available(&self) -> bool { true }
+        async fn is_available(&self) -> bool {
+            true
+        }
         async fn get_summary_path(&self) -> Result<String, ActionOutputError> {
             Ok("/tmp/test-summary.md".to_string())
         }
@@ -477,36 +490,53 @@ mod tests {
 
     #[async_trait]
     impl AnnotationWritingService for MockAnnotationWriter {
-        async fn write_annotation(&self, _input: WriteAnnotationInput) -> Result<WriteAnnotationOutput, ActionOutputError> {
+        async fn write_annotation(
+            &self,
+            _input: WriteAnnotationInput,
+        ) -> Result<WriteAnnotationOutput, ActionOutputError> {
             Ok(WriteAnnotationOutput { bytes_written: 50 })
         }
 
-        async fn format_annotation(&self, input: super::super::dto::FormatAnnotationInput) -> Result<super::super::dto::FormatAnnotationOutput, ActionOutputError> {
+        async fn format_annotation(
+            &self,
+            input: super::super::dto::FormatAnnotationInput,
+        ) -> Result<super::super::dto::FormatAnnotationOutput, ActionOutputError> {
             Ok(super::super::dto::FormatAnnotationOutput {
                 annotation: WorkflowAnnotation::error("test.rs", 1, &input.context),
                 workflow_command: "::error file=test.rs,line=1::test".to_string(),
             })
         }
 
-        async fn write_annotations(&self, _annotations: &[WorkflowAnnotation]) -> Result<u32, ActionOutputError> {
+        async fn write_annotations(
+            &self,
+            _annotations: &[WorkflowAnnotation],
+        ) -> Result<u32, ActionOutputError> {
             Ok(_annotations.len() as u32)
         }
     }
 
     #[async_trait]
     impl OutputVariableService for MockVariableService {
-        async fn set_variable(&self, _input: SetVariableInput) -> Result<SetVariableOutput, ActionOutputError> {
+        async fn set_variable(
+            &self,
+            _input: SetVariableInput,
+        ) -> Result<SetVariableOutput, ActionOutputError> {
             Ok(SetVariableOutput { bytes_written: 20 })
         }
 
-        async fn set_from_context(&self, _input: SetOutputVariablesInput) -> Result<SetOutputVariablesOutput, ActionOutputError> {
+        async fn set_from_context(
+            &self,
+            _input: SetOutputVariablesInput,
+        ) -> Result<SetOutputVariablesOutput, ActionOutputError> {
             Ok(SetOutputVariablesOutput {
                 variable_count: 6,
                 variable_names: vec!["execution_id".to_string(), "status".to_string()],
             })
         }
 
-        async fn is_available(&self) -> bool { true }
+        async fn is_available(&self) -> bool {
+            true
+        }
         async fn get_output_path(&self) -> Result<String, ActionOutputError> {
             Ok("/tmp/test-output".to_string())
         }
@@ -514,22 +544,34 @@ mod tests {
 
     #[async_trait]
     impl PrCommentService for MockPrCommentService {
-        async fn post_comment(&self, _input: PostPrCommentInput) -> Result<PostPrCommentOutput, ActionOutputError> {
+        async fn post_comment(
+            &self,
+            _input: PostPrCommentInput,
+        ) -> Result<PostPrCommentOutput, ActionOutputError> {
             Ok(PostPrCommentOutput {
                 comment_id: 12345,
                 html_url: "https://github.com/owner/repo/issues/1#issuecomment-12345".to_string(),
             })
         }
 
-        async fn format_execution_summary(&self, _context: &ExecutionContext) -> Result<String, ActionOutputError> {
+        async fn format_execution_summary(
+            &self,
+            _context: &ExecutionContext,
+        ) -> Result<String, ActionOutputError> {
             Ok("Execution summary".to_string())
         }
 
-        async fn format_failure_summary(&self, _context: &ExecutionContext, _execution_id: &Uuid) -> Result<String, ActionOutputError> {
+        async fn format_failure_summary(
+            &self,
+            _context: &ExecutionContext,
+            _execution_id: &Uuid,
+        ) -> Result<String, ActionOutputError> {
             Ok("Failure summary".to_string())
         }
 
-        async fn is_api_accessible(&self, _token: &str) -> bool { true }
+        async fn is_api_accessible(&self, _token: &str) -> bool {
+            true
+        }
     }
 
     // ── Helpers ──
@@ -546,8 +588,14 @@ mod tests {
             template_id: Some("add-get-active-tasks".to_string()),
             failure_count: 0,
             file_changes: vec![
-                FileChange { path: "src/tasks.rs".to_string(), change_type: FileChangeType::Modified },
-                FileChange { path: "src/tasks_test.rs".to_string(), change_type: FileChangeType::Created },
+                FileChange {
+                    path: "src/tasks.rs".to_string(),
+                    change_type: FileChangeType::Modified,
+                },
+                FileChange {
+                    path: "src/tasks_test.rs".to_string(),
+                    change_type: FileChangeType::Created,
+                },
             ],
             execution_steps: vec![
                 ExecutionStep {
@@ -668,7 +716,10 @@ mod tests {
 
         let output = result.unwrap();
         assert!(output.rendered_length > 0);
-        assert_eq!(output.summary.title, "Rigorix Execution #e1852176-e586-4377-a8e8-d1cb4be89144");
+        assert_eq!(
+            output.summary.title,
+            "Rigorix Execution #e1852176-e586-4377-a8e8-d1cb4be89144"
+        );
     }
 
     #[tokio::test]
@@ -763,15 +814,13 @@ mod tests {
             template_id: None,
             failure_count: 3,
             file_changes: vec![],
-            execution_steps: vec![
-                ExecutionStep {
-                    id: "step-1".to_string(),
-                    description: "First step".to_string(),
-                    success: false,
-                    duration_ms: 1000,
-                    error: Some("Compile error".to_string()),
-                },
-            ],
+            execution_steps: vec![ExecutionStep {
+                id: "step-1".to_string(),
+                description: "First step".to_string(),
+                success: false,
+                duration_ms: 1000,
+                error: Some("Compile error".to_string()),
+            }],
             metadata: HashMap::new(),
         };
 
