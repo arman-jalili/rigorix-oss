@@ -349,9 +349,13 @@ jobs:
 
 ## Implementation Notes
 
-- File paths (`actions/src/ci_integration/`) are provisional until the `actions/` crate is scaffolded with `Cargo.toml` and `src/lib.rs`.
-- The `GitHubClient` wraps `reqwest` (already a dependency of `rigorix-engine`). No new HTTP client is needed.
+- All files are at `actions/src/ci_integration/` in the actions crate.
+- **StatusCheckService** implemented in `status_check_impl.rs` with `StatusCheckFactoryImpl` in `status_check_factory_impl.rs` and `StatusCheckRepositoryImpl` in `infrastructure/repository/status_check_repository_impl.rs`.
+- **PrCommentService** implemented in `pr_comment_impl.rs` with `PrCommentFactoryImpl` in `pr_comment_factory_impl.rs` and `PrCommentRepositoryImpl` in `infrastructure/repository/pr_comment_repository_impl.rs`.
+- The `GitHubClient` in `actions/src/shared/github_client.rs` wraps `reqwest`. No new HTTP client is needed.
 - Status check contexts use the prefix `rigorix/` (e.g., `rigorix/execution`, `rigorix/validation`).
+- Both services receive `owner` and `repo` via constructor injection for testability.
+- Proofing scripts in `.pi/scripts/ci/` validate contract-implementation alignment (stage 14 in hardening pipeline).
 
 ---
 
@@ -363,10 +367,54 @@ jobs:
 
 ---
 
-*Last updated: 2026-06-20*
-*Module version: 1.0.0 (Planned)*
+## Observability
+
+### Logging
+
+- All service methods log entry and exit via `tracing::info`
+- GitHub API errors are logged with structured context (status code, endpoint)
+- Correlation IDs: execution UUID flows through all operations
+
+### Health Check
+
+- `GET /api/v1/ci-integration/health` — returns module health status
+- Checks: module registered, GitHubClient configured
+
+### Metrics
+
+- Status checks created — `create_pending()` calls
+- Status checks updated — `update_status()` calls
+- PR comments upserted — `upsert()` calls
+- GitHub API errors — by error type (auth, rate limit, not found, etc.)
+
+### Tracing
+
+- Distributed tracing context propagated through the shared `GitHubClient`
+- Each execution has a unique UUID that appears in status check target URLs
+- PR comment updates carry the execution ID for correlation
 
 ---
 
-**Status:** Planned
+## CI Enforcement
+
+The following proofing scripts run automatically in the hardening pipeline (stage 14):
+
+| Script | Purpose |
+|--------|---------|
+| `check_ci-integration_contracts.sh` | Validates all 10 interfaces have implementations |
+| `check_ci-integration_coverage.sh` | Enforces coverage thresholds (45 unit tests) |
+| `stage_ci-integration_proofing.sh` | CI stage wrapper |
+
+These scripts exit 0 on pass, 1 on fail, and run on every build.
+
+---
+
+*Last updated: 2026-06-21*
+*Module version: 1.0.0 (Implemented)*
+
+---
+
+**Status:** Implemented
 **Engine modules reused:** plan_validation, failure_parser, action-output
+**Contracts frozen:** service.rs, factory.rs, dto/mod.rs, error.rs, repository/mod.rs
+**Proofing stage:** 14 - ci-integration_proofing
