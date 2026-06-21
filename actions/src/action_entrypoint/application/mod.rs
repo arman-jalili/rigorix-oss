@@ -17,8 +17,10 @@
 
 pub mod dto;
 pub mod factory;
+pub mod router_impl;
 pub mod service;
 
 pub use dto::*;
 pub use factory::*;
+pub use router_impl::*;
 pub use service::*;
