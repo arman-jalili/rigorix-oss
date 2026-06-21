@@ -8,6 +8,10 @@
 //! for the Audit Posting module. Implementations will post to remote HTTP
 //! backends, read/write to the local filesystem, and manage HMAC signing keys.
 
+pub mod filesystem_audit_backend;
+pub mod http_audit_backend;
 pub mod repository;
 
+pub use filesystem_audit_backend::*;
+pub use http_audit_backend::*;
 pub use repository::*;
