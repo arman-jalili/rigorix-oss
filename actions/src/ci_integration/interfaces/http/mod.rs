@@ -21,9 +21,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::ci_integration::domain::{
-    ExecutionSummary, GitHubStatus, PrComment, StatusCheckState,
-};
+use crate::ci_integration::domain::{ExecutionSummary, GitHubStatus, PrComment, StatusCheckState};
 
 // ---------------------------------------------------------------------------
 // API Base Path

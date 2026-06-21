@@ -12,9 +12,7 @@
 use async_trait::async_trait;
 use tracing::info;
 
-use crate::action_output::domain::{
-    ActionOutputError, ExecutionContext, ExecutionStatus,
-};
+use crate::action_output::domain::{ActionOutputError, ExecutionContext, ExecutionStatus};
 
 use super::dto::PostPrCommentInput;
 use super::dto::PostPrCommentOutput;
@@ -86,10 +84,7 @@ impl PrCommentServiceImpl {
                 "- Cumulative tokens: {}\n",
                 context.cumulative_tokens,
             ));
-            body.push_str(&format!(
-                "- File changes: {}\n",
-                context.file_changes.len(),
-            ));
+            body.push_str(&format!("- File changes: {}\n", context.file_changes.len(),));
             body.push('\n');
         }
 
@@ -97,13 +92,15 @@ impl PrCommentServiceImpl {
     }
 
     /// Render a failure summary as markdown for PR comments.
-    fn render_failure_summary(&self, context: &ExecutionContext, execution_id: &uuid::Uuid) -> String {
+    fn render_failure_summary(
+        &self,
+        context: &ExecutionContext,
+        execution_id: &uuid::Uuid,
+    ) -> String {
         let duration_secs = context.duration_ms as f64 / 1000.0;
 
         let mut body = String::new();
-        body.push_str(&format!(
-            "## Rigorix Validation Failed\n\n"
-        ));
+        body.push_str(&format!("## Rigorix Validation Failed\n\n"));
         body.push_str(&format!(
             "**Execution:** `{}` | **Duration:** {:.1}s | **Failures:** {}\n\n",
             execution_id, duration_secs, context.failure_count,
@@ -133,43 +130,45 @@ impl PrCommentService for PrCommentServiceImpl {
     ) -> Result<PostPrCommentOutput, ActionOutputError> {
         use crate::shared::github_client::GitHubClientError;
 
-        let comment = self.client
-            .create_issue_comment(&input.repo, input.pr_number, &input.body)
-            .await
-            .map_err(|e| match e {
-                GitHubClientError::AuthFailed(msg) => ActionOutputError::GitHubApiError {
-                    endpoint: format!("issues/{}/comments", input.pr_number),
-                    status_code: 401,
-                    response: msg,
-                },
-                GitHubClientError::PermissionDenied(msg) => ActionOutputError::GitHubApiError {
-                    endpoint: format!("issues/{}/comments", input.pr_number),
-                    status_code: 403,
-                    response: msg,
-                },
-                GitHubClientError::RateLimited { retry_after_secs } => {
-                    ActionOutputError::GitHubApiError {
+        let comment =
+            self.client
+                .create_issue_comment(&input.repo, input.pr_number, &input.body)
+                .await
+                .map_err(|e| match e {
+                    GitHubClientError::AuthFailed(msg) => ActionOutputError::GitHubApiError {
                         endpoint: format!("issues/{}/comments", input.pr_number),
-                        status_code: 429,
-                        response: format!("rate limited, retry after {}s", retry_after_secs),
+                        status_code: 401,
+                        response: msg,
+                    },
+                    GitHubClientError::PermissionDenied(msg) => ActionOutputError::GitHubApiError {
+                        endpoint: format!("issues/{}/comments", input.pr_number),
+                        status_code: 403,
+                        response: msg,
+                    },
+                    GitHubClientError::RateLimited { retry_after_secs } => {
+                        ActionOutputError::GitHubApiError {
+                            endpoint: format!("issues/{}/comments", input.pr_number),
+                            status_code: 429,
+                            response: format!("rate limited, retry after {}s", retry_after_secs),
+                        }
                     }
-                },
-                GitHubClientError::NotFound(msg) => ActionOutputError::GitHubApiError {
-                    endpoint: format!("issues/{}/comments", input.pr_number),
-                    status_code: 404,
-                    response: msg,
-                },
-                GitHubClientError::ApiError { status, message } => ActionOutputError::GitHubApiError {
-                    endpoint: format!("issues/{}/comments", input.pr_number),
-                    status_code: status,
-                    response: message,
-                },
-                GitHubClientError::NetworkError(e) => ActionOutputError::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    e.to_string(),
-                )),
-                GitHubClientError::Serialization(e) => ActionOutputError::Json(e),
-            })?;
+                    GitHubClientError::NotFound(msg) => ActionOutputError::GitHubApiError {
+                        endpoint: format!("issues/{}/comments", input.pr_number),
+                        status_code: 404,
+                        response: msg,
+                    },
+                    GitHubClientError::ApiError { status, message } => {
+                        ActionOutputError::GitHubApiError {
+                            endpoint: format!("issues/{}/comments", input.pr_number),
+                            status_code: status,
+                            response: message,
+                        }
+                    }
+                    GitHubClientError::NetworkError(e) => ActionOutputError::Io(
+                        std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+                    ),
+                    GitHubClientError::Serialization(e) => ActionOutputError::Json(e),
+                })?;
 
         info!(
             pr_number = input.pr_number,
@@ -177,7 +176,10 @@ impl PrCommentService for PrCommentServiceImpl {
             "PR comment posted"
         );
 
-        let html_url = format!("https://github.com/{}/issues/{}", input.repo, input.pr_number);
+        let html_url = format!(
+            "https://github.com/{}/issues/{}",
+            input.repo, input.pr_number
+        );
         Ok(PostPrCommentOutput {
             comment_id: comment.id,
             html_url,
@@ -263,7 +265,11 @@ mod tests {
 
         let body = result.unwrap();
         assert!(body.len() > 50, "Body too short: {:?}", body);
-        assert!(body.contains("Rigorix Validation Failed"), "Missing heading in: {:?}", body);
+        assert!(
+            body.contains("Rigorix Validation Failed"),
+            "Missing heading in: {:?}",
+            body
+        );
     }
 
     #[tokio::test]

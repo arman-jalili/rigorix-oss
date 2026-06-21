@@ -14,9 +14,7 @@
 use async_trait::async_trait;
 use tracing::info;
 
-use crate::action_output::domain::{
-    ActionOutputError, StepSummary, SummarySection,
-};
+use crate::action_output::domain::{ActionOutputError, StepSummary, SummarySection};
 
 use super::dto::{WriteSummaryInput, WriteSummaryOutput};
 use super::service::StepSummaryWritingService;
@@ -87,10 +85,7 @@ impl StepSummaryWriterImpl {
 
         if section.collapsible {
             // Collapsible section with <details> HTML tags
-            let label = section
-                .collapsible_label
-                .as_deref()
-                .unwrap_or("Details");
+            let label = section.collapsible_label.as_deref().unwrap_or("Details");
             parts.push(format!("<details>\n<summary>{}</summary>\n\n", label));
             parts.push(format!("### {}\n", section.heading));
             parts.push(section.body.clone());
@@ -135,10 +130,7 @@ impl StepSummaryWritingService for StepSummaryWriterImpl {
         })
     }
 
-    async fn render_markdown(
-        &self,
-        summary: &StepSummary,
-    ) -> Result<String, ActionOutputError> {
+    async fn render_markdown(&self, summary: &StepSummary) -> Result<String, ActionOutputError> {
         Ok(self.render_markdown(summary))
     }
 
@@ -193,19 +185,29 @@ mod tests {
             Ok(0)
         }
 
-        async fn write_output_variable(&self, _name: &str, _value: &str) -> Result<u64, ActionOutputError> {
+        async fn write_output_variable(
+            &self,
+            _name: &str,
+            _value: &str,
+        ) -> Result<u64, ActionOutputError> {
             Ok(0)
         }
 
         async fn append_summary(&self, markdown: &str) -> Result<u64, ActionOutputError> {
             let len = markdown.len() as u64;
-            self.written.lock().unwrap().push(format!("APPEND:{}", markdown));
+            self.written
+                .lock()
+                .unwrap()
+                .push(format!("APPEND:{}", markdown));
             Ok(len)
         }
 
         async fn overwrite_summary(&self, markdown: &str) -> Result<u64, ActionOutputError> {
             let len = markdown.len() as u64;
-            self.written.lock().unwrap().push(format!("OVERWRITE:{}", markdown));
+            self.written
+                .lock()
+                .unwrap()
+                .push(format!("OVERWRITE:{}", markdown));
             Ok(len)
         }
 
@@ -373,7 +375,10 @@ mod tests {
         let writer = StepSummaryWriterImpl::new(Box::new(repo));
         let result = writer.get_summary_path().await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), ActionOutputError::MissingEnv(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            ActionOutputError::MissingEnv(_)
+        ));
     }
 
     #[tokio::test]

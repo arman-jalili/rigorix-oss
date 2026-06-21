@@ -260,7 +260,10 @@ mod tests {
 
         unsafe { std::env::set_var("GITHUB_OUTPUT", "/tmp/test") };
         let repo = OutputRepositoryImpl::new();
-        assert_eq!(repo.get_output_path().await.unwrap(), Some("/tmp/test".to_string()));
+        assert_eq!(
+            repo.get_output_path().await.unwrap(),
+            Some("/tmp/test".to_string())
+        );
         unsafe { std::env::remove_var("GITHUB_OUTPUT") };
     }
 }

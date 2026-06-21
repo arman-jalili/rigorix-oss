@@ -15,7 +15,9 @@
 
 use async_trait::async_trait;
 
-use crate::ci_integration::domain::{CiIntegrationError, ExecutionSummary, GitHubStatus, StatusCheckState};
+use crate::ci_integration::domain::{
+    CiIntegrationError, ExecutionSummary, GitHubStatus, StatusCheckState,
+};
 
 /// Factory for constructing `GitHubStatus` payloads for commit status checks.
 ///
@@ -73,5 +75,8 @@ pub trait PrCommentFactory: Send + Sync {
     ///
     /// Includes the bot identifier marker and structured sections
     /// (status, plan, validation, follow-up).
-    async fn format_as_markdown(&self, summary: &ExecutionSummary) -> Result<String, CiIntegrationError>;
+    async fn format_as_markdown(
+        &self,
+        summary: &ExecutionSummary,
+    ) -> Result<String, CiIntegrationError>;
 }

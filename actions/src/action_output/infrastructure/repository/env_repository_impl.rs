@@ -55,9 +55,7 @@ impl crate::action_output::infrastructure::repository::EnvRepository for EnvRepo
         Ok(std::env::var("GITHUB_REPOSITORY").ok())
     }
 
-    async fn read_ci_context(
-        &self,
-    ) -> Result<HashMap<String, String>, ActionOutputError> {
+    async fn read_ci_context(&self) -> Result<HashMap<String, String>, ActionOutputError> {
         let mut ctx = HashMap::new();
         for var in &[
             "GITHUB_ACTIONS",

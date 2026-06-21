@@ -57,7 +57,10 @@ impl StatusCheckState {
 
     /// Returns `true` if the status represents a terminal (final) state.
     pub fn is_terminal(&self) -> bool {
-        matches!(self, StatusCheckState::Success | StatusCheckState::Failure | StatusCheckState::Error)
+        matches!(
+            self,
+            StatusCheckState::Success | StatusCheckState::Failure | StatusCheckState::Error
+        )
     }
 }
 
@@ -88,7 +91,11 @@ pub struct GitHubStatus {
 
 impl GitHubStatus {
     /// Create a new GitHub status check payload.
-    pub fn new(state: impl Into<String>, context: impl Into<String>, description: impl Into<String>) -> Self {
+    pub fn new(
+        state: impl Into<String>,
+        context: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
         Self {
             state: state.into(),
             target_url: None,

@@ -19,9 +19,8 @@ use async_trait::async_trait;
 use crate::ci_integration::domain::CiIntegrationError;
 
 use super::dto::{
-    CreatePendingStatusInput, CreatePendingStatusOutput, FindBotCommentInput,
-    FindBotCommentOutput, UpdateStatusInput, UpdateStatusOutput, UpsertCommentInput,
-    UpsertCommentOutput,
+    CreatePendingStatusInput, CreatePendingStatusOutput, FindBotCommentInput, FindBotCommentOutput,
+    UpdateStatusInput, UpdateStatusOutput, UpsertCommentInput, UpsertCommentOutput,
 };
 
 // ---------------------------------------------------------------------------

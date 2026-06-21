@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: ""action-output""
+  epic: ""ci-integration""
   component: "Contract Freeze"
-  module: "action-output"
+  module: "ci-integration"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/action-output.md"
+    - module: ".pi/architecture/modules/ci-integration.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -47,24 +47,23 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/action-output/contracts/"
-    - "create: src/action-output/contracts/dtos/"
-    - "create: src/action-output/contracts/events/"
+    - "create: src/ci-integration/contracts/"
+    - "create: src/ci-integration/contracts/dtos/"
+    - "create: src/ci-integration/contracts/events/"
 ---
 
-# Contract Freeze: action-output
+# Contract Freeze: ci-integration
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the action-output
+Define and freeze all public interfaces, contracts, and schemas for the ci-integration
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- OutputFormatter
-- AnnotationWriter
-- StepSummaryWriter
+- StatusCheckManager
+- PrCommentManager
 
 ## What Must Be Frozen
 

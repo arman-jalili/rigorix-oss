@@ -150,10 +150,7 @@ pub trait ExecutionTrackerRepository: Send + Sync {
     ) -> Result<bool, CiIntegrationError>;
 
     /// Get all recorded executions for a PR.
-    async fn get_executions(
-        &self,
-        pr_number: u64,
-    ) -> Result<Vec<Uuid>, CiIntegrationError>;
+    async fn get_executions(&self, pr_number: u64) -> Result<Vec<Uuid>, CiIntegrationError>;
 
     /// Clean up executions older than the retention period.
     ///
