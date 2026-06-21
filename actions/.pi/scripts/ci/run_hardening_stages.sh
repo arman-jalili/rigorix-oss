@@ -237,6 +237,11 @@ run_stage "14" "ci-integration_proofing" \
     "${SCRIPTS_DIR}/stage_ci-integration_proofing.sh" \
     "always"
 
+# Stage 15: Audit Posting Proofing
+run_stage "15" "audit-posting_proofing" \
+    "${SCRIPTS_DIR}/stage_audit-posting_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""
