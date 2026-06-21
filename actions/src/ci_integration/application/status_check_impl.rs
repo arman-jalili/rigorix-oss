@@ -12,6 +12,7 @@
 
 use async_trait::async_trait;
 use std::sync::Arc;
+use tracing::info;
 
 use crate::ci_integration::application::dto::{
     CreatePendingStatusInput, CreatePendingStatusOutput, ExecutionOutcomeDto, UpdateStatusInput,
@@ -90,6 +91,12 @@ impl StatusCheckService for StatusCheckServiceImpl {
             .create_status(&self.owner, &self.repo, &input.commit_sha, status)
             .await?;
 
+        info!(
+            commit_sha = %input.commit_sha,
+            execution_id = %input.execution_id,
+            "status_check: created pending"
+        );
+
         Ok(CreatePendingStatusOutput {
             context: "rigorix/execution".to_string(),
             state: StatusCheckState::Pending,
@@ -125,6 +132,14 @@ impl StatusCheckService for StatusCheckServiceImpl {
         self.repository
             .create_status(&self.owner, &self.repo, &input.commit_sha, status)
             .await?;
+
+        info!(
+            commit_sha = %input.commit_sha,
+            execution_id = %input.execution_id,
+            new_state = %state.as_github_state(),
+            iterations = input.outcome.iterations,
+            "status_check: updated"
+        );
 
         Ok(UpdateStatusOutput {
             github_state: state.as_github_state().to_string(),

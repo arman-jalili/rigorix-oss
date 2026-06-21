@@ -23,9 +23,9 @@ NC='\033[0m'
 PASS=0
 FAIL=0
 
-log_pass() { echo -e "  ${GREEN}✓ PASS${NC} $1"; ((PASS++)); }
-log_fail() { echo -e "  ${RED}✗ FAIL${NC} $1 — $2"; ((FAIL++)); }
-log_skip() { echo -e "  ${YELLOW}⊘ SKIP${NC} $1 — $2"; ((PASS++)); }
+log_pass() { echo -e "  ${GREEN}✓ PASS${NC} $1"; PASS=$((PASS + 1)); }
+log_fail() { echo -e "  ${RED}✗ FAIL${NC} $1 — $2"; FAIL=$((FAIL + 1)); }
+log_skip() { echo -e "  ${YELLOW}⊘ SKIP${NC} $1 — $2"; PASS=$((PASS + 1)); }
 
 echo "═══ Architecture Readiness Checks ═══"
 echo ""
@@ -34,7 +34,7 @@ echo ""
 echo "Checking runbook readiness..."
 if [[ -f "docs/runbook.md" || -f "docs/RUNBOOK.md" || -f "RUNBOOK.md" ]]; then
     # Check runbook has required sections
-    RUNBOOK=$(find . -name "runbook.md" -o -name "RUNBOOK.md" 2>/dev/null | head -1)
+    RUNBOOK=$(find . -name "runbook.md" -o -name "RUNBOOK.md" 2>/dev/null | head -1 || true)
     if grep -qiE "(incident|escalation|rollback|recovery|on.call)" "$RUNBOOK" 2>/dev/null; then
         log_pass "Runbook readiness (runbook exists with incident/rollback sections)"
     else
@@ -47,7 +47,7 @@ fi
 # 2. DR plan
 echo "Checking DR plan..."
 if [[ -f "docs/dr-plan.md" || -f "docs/disaster-recovery.md" || -f "docs/DR.md" ]]; then
-    DR_FILE=$(find . -name "dr-plan.md" -o -name "disaster-recovery.md" -o -name "DR.md" 2>/dev/null | head -1)
+    DR_FILE=$(find . -name "dr-plan.md" -o -name "disaster-recovery.md" -o -name "DR.md" 2>/dev/null | head -1 || true)
     if grep -qiE "(rto|rpo|backup|restore|failover|recovery)" "$DR_FILE" 2>/dev/null; then
         log_pass "DR plan readiness (DR plan exists with RTO/RPO sections)"
     else
@@ -98,10 +98,10 @@ HAS_TRACING=false
 HAS_METRICS=false
 HAS_LOGGING=false
 
-for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
-    grep -qiE "(opentelemetry|jaeger|zipkin|tracing\.)" "$f" 2>/dev/null && HAS_TRACING=true
-    grep -qiE "(prometheus|datadog|metrics\.|counter|histogram)" "$f" 2>/dev/null && HAS_METRICS=true
-    grep -qiE "(structured.log|json.log|log\.info|log\.error|logger\.)" "$f" 2>/dev/null && HAS_LOGGING=true
+for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30 || true); do
+    grep -qiE "(opentelemetry|jaeger|zipkin|tracing::|tracing\.|use tracing)" "$f" 2>/dev/null && HAS_TRACING=true
+    grep -qiE "(prometheus|datadog|metrics\b|counter|histogram)" "$f" 2>/dev/null && HAS_METRICS=true
+    grep -qiE "(structured.log|json.log|log\.info|log\.error|logger\.|tracing::info|tracing::warn|tracing::error)" "$f" 2>/dev/null && HAS_LOGGING=true
 done
 
 if [[ "$HAS_TRACING" == "true" ]]; then
