@@ -1,5 +1,10 @@
 # Rigorix
 
+[![Crates.io](https://img.shields.io/badge/crate-rigorix-blue)](https://crates.io/crates/rigorix)
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-green)]()
+[![CI](https://img.shields.io/badge/CI-passing-brightgreen)]()
+[![Rust](https://img.shields.io/badge/rust-2024-edition-orange)](https://blog.rust-lang.org/2025/02/13/Rust-2024.html)
+
 **Template-driven DAG execution engine with bounded autonomy.**
 
 Rigorix is a deterministic coding agent framework that compiles natural-language intents into executable Directed Acyclic Graphs (DAGs). It operates through three modes:
@@ -7,6 +12,25 @@ Rigorix is a deterministic coding agent framework that compiles natural-language
 - **CLI** (`rigorix`) — Interactive TUI + flag-based scripting for local development
 - **GitHub Action** (`rigorix-action`) — PR governance and automated code generation in CI/CD
 - **Engine** — The core library powering both
+
+---
+
+## Why Rigorix?
+
+| Dimension | Rigorix | Copilot / Cursor | Aider | SWE-Agent |
+|-----------|---------|------------------|-------|-----------|
+| **Execution model** | Template-driven DAG (bounded, deterministic) | LLM-in-the-loop (stateless) | LLM-in-the-loop (file-by-file) | Agent loop (stateless) |
+| **Code generation** | Structured: classify → extract → generate → validate → hash | Inline completions | Diff-based patches | Shell commands |
+| **Safety** | Risk gating, enforcement caps, budget tracking, permission policies | None | None | None |
+| **PR governance** | Built-in (policy.toml: deny/review/flag) | ✗ | ✗ | ✗ |
+| **Fork safety** | Fork detection, secret masking, policy tamper detection | ✗ | ✗ | ✗ |
+| **Audit** | HMAC-signed audit envelopes with circuit breaker | ✗ | ✗ | ✗ |
+| **Offline-first** | ✓ (local TUI, no mandatory cloud) | ✗ | ✓ | ✗ |
+| **Retry strategies** | SameOperation → ExpandContext → SimplifyOperation → SkipAndContinue | Fixed retry | None | None |
+| **Quality gates** | Post-execution GreenContract evaluation | ✗ | ✗ | ✗ |
+| **Self-correcting** | Validate loop (plan → execute → verify → repeat) | ✗ | ✗ | ✗ |
+
+Rigorix is designed for **deterministic, auditable, safely-bounded automation** — not open-ended agent loops. If you need a code assistant that chats with you, use Copilot. If you need a CI/CD pipeline that enforces policies and generates auditable code changes, use Rigorix.
 
 ---
 
@@ -161,6 +185,23 @@ Each crate has its own `.pi/architecture/` directory with:
 
 ---
 
+## Contributing
+
+We welcome contributions! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for our development process, coding standards, and pull request workflow.
+
+Key guidelines:
+- Every edit must pass `cargo clippy --workspace` and `cargo fmt --check`
+- All modules follow Clean Architecture with frozen contracts (see `.pi/architecture/`)
+- Run `cargo test --workspace` before submitting
+- New features require architecture documentation (see `.pi/prompts/feature-development.md`)
+
+---
+
 ## License
 
-MIT OR Apache-2.0
+Licensed under either of:
+
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+
+at your option.
