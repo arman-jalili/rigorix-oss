@@ -14,7 +14,7 @@ All contributors must adhere to the [Rust Code of Conduct](https://www.rust-lang
 
 ```bash
 # Clone the repo
-git clone https://github.com/rigorix/rigorix-oss.git
+git clone https://github.com/arman-jalili/rigorix-oss.git
 cd rigorix-oss
 
 # Build everything

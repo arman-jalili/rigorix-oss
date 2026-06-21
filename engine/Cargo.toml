@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "Template-driven DAG execution engine with bounded autonomy"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/rigorix/rigorix-oss"
+repository = "https://github.com/aarman-jalili/rigorix-oss"
 
 [features]
 live-tests = []

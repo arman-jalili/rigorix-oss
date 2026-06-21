@@ -1,0 +1,65 @@
+# ═════════════════════════════════════════════════════════════════════
+# Rigorix Preflight — Fast pre-merge validation (sub-3 min target)
+#
+# Runs on every PR change. Only the fastest/most critical checks.
+# Full pipeline runs in ci.yml (parallelizable, includes coverage/security/docs).
+#
+# Stages:
+#   1. setup  — Rust toolchain + cache
+#   2. check  — cargo check (all crates)
+#   3. fmt    — cargo fmt --check
+#   4. clippy — cargo clippy (all crates, -D warnings)
+#   5. test   — cargo test --lib (quick: no integration)
+# ═════════════════════════════════════════════════════════════════════
+
+name: Preflight
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+concurrency:
+  group: preflight-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    name: 🏃 Preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 🔧 Setup Rust
+        uses: ./.github/actions/setup
+        with:
+          cache-key: preflight
+
+      - name: 📐 Format check
+        run: cargo fmt --check
+
+      - name: ⚡ Clippy (workspace)
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: 🏗️ Check compilation (all crates)
+        run: cargo check --workspace
+
+      - name: 🧪 Quick tests (lib only, no integration)
+        run: cargo test --workspace --lib
+
+      - name: ✅ Summary
+        shell: bash
+        run: |
+          echo "## ✅ Preflight Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Formatting | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Clippy | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Compilation | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests | ✅ |" >> $GITHUB_STEP_SUMMARY

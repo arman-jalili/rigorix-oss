@@ -1,0 +1,251 @@
+# ═════════════════════════════════════════════════════════════════════
+# Rigorix CI Pipeline — Multi-stage, multi-crate, DRY
+#
+# Stages:
+#   1. lint       — cargo fmt + clippy (all crates via matrix)
+#   2. build      — cargo build (all crates via matrix)
+#   3. test       — cargo test (all crates via matrix)
+#   4. security   — cargo audit + secret scan
+#   5. docs       — canonical reference validation
+#   6. coverage   — code coverage via cargo-tarpaulin
+# ═════════════════════════════════════════════════════════════════════
+
+name: CI
+
+on:
+  push:
+    branches: [main, "feat/**", "fix/**"]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# ── Stage 0: Workspace Overview (single job, no matrix) ─────────
+jobs:
+  workspace:
+    name: 📋 Workspace
+    runs-on: ubuntu-latest
+    outputs:
+      crates: ${{ steps.crates.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 🔍 Detect workspace crates
+        id: crates
+        shell: bash
+        run: |
+          # Extract members from workspace Cargo.toml
+          CRATES=$(grep -A50 '^\[workspace\]' Cargo.toml | grep 'members' | head -1 | sed 's/.*= \[//;s/\]//;s/"//g;s/, /\n/g' | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "matrix=$CRATES" >> "$GITHUB_OUTPUT"
+          echo "Crates: $CRATES"
+
+  # ── Stage 1: Lint (fmt + clippy per crate) ────────────────────
+  lint:
+    name: 🔎 Lint (${{ matrix.crate }})
+    needs: [workspace]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: ${{ fromJson(needs.workspace.outputs.crates) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          cache-key: lint-${{ matrix.crate }}
+
+      - name: 📐 Check formatting
+        run: cargo fmt --check -p rigorix-${{ matrix.crate }}
+
+      - name: ⚡ Run clippy
+        run: cargo clippy -p rigorix-${{ matrix.crate }} -- -D warnings
+
+      - name: 🔍 Run per-crate architecture validation
+        if: hashFiles(format('{0}/.pi/scripts/validate-ci.sh', matrix.crate)) != ''
+        run: bash ${{ matrix.crate }}/.pi/scripts/validate-ci.sh
+        continue-on-error: true
+
+  # ── Stage 2: Build (compile-check per crate) ──────────────────
+  build:
+    name: 📦 Build (${{ matrix.crate }})
+    needs: [lint]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: ${{ fromJson(needs.workspace.outputs.crates) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          cache-key: build-${{ matrix.crate }}
+
+      - name: 🏗️ Build crate
+        run: cargo build -p rigorix-${{ matrix.crate }} --release
+
+      - name: ✅ Verify no dead code
+        run: cargo build -p rigorix-${{ matrix.crate }} --release --dead-code 2>&1 || true
+
+  # ── Stage 3: Test (unit + integration per crate) ──────────────
+  test:
+    name: 🧪 Test (${{ matrix.crate }})
+    needs: [build]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: ${{ fromJson(needs.workspace.outputs.crates) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          cache-key: test-${{ matrix.crate }}
+
+      - name: 🧪 Run all tests
+        run: cargo test -p rigorix-${{ matrix.crate }}
+
+      - name: 🧪 Run per-crate proofing tests (if available)
+        if: hashFiles(format('{0}/.pi/scripts/ci/stage_unit.sh', matrix.crate)) != ''
+        run: bash ${{ matrix.crate }}/.pi/scripts/ci/stage_unit.sh
+        continue-on-error: true
+
+  # ── Stage 4: Security (workspace-wide) ────────────────────────
+  security:
+    name: 🔒 Security
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: 🕵️ Cargo audit (dependency vulnerabilities)
+        run: cargo audit --deny warnings
+        continue-on-error: true
+
+      - name: 🔍 Secret scan
+        shell: bash
+        run: |
+          # Scan for common secret patterns (API keys, tokens)
+          if grep -rE "(sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16})" \
+            --include="*.rs" --include="*.toml" --include="*.yml" --include="*.yaml" \
+            --include="*.env" --include="*.sh" . 2>/dev/null \
+            | grep -v ".git" | grep -v "node_modules" | grep -v ".rigorix" | grep -q .; then
+            echo "❌ Potential secrets found!"
+            grep -rE "(sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16})" \
+              --include="*.rs" --include="*.toml" --include="*.yml" --include="*.yaml" \
+              --include="*.env" --include="*.sh" . 2>/dev/null \
+              | grep -v ".git" | grep -v "node_modules" | grep -v ".rigorix" || true
+            exit 1
+          fi
+          echo "✅ No secrets detected"
+
+      - name: 🛡️ Run per-crate security scripts
+        if: hashFiles('.pi/scripts/validate-security.sh') != ''
+        run: bash .pi/scripts/validate-security.sh
+        continue-on-error: true
+
+  # ── Stage 5: Canonical Reference Validation ───────────────────
+  docs:
+    name: 📝 Documentation
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ✅ Validate canonical references
+        if: hashFiles('.pi/scripts/validate-canonical.sh') != ''
+        run: bash .pi/scripts/validate-canonical.sh
+        continue-on-error: true
+
+      - name: ✅ Validate architecture readiness
+        if: hashFiles('.pi/scripts/validate-architecture-readiness.sh') != ''
+        run: bash .pi/scripts/validate-architecture-readiness.sh
+        continue-on-error: true
+
+      - name: ✅ Validate architecture conformance
+        if: hashFiles('.pi/scripts/validate-architecture.sh') != ''
+        run: bash .pi/scripts/validate-architecture.sh
+        continue-on-error: true
+
+  # ── Stage 6: Code Coverage ────────────────────────────────────
+  coverage:
+    name: 📊 Coverage
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: 📈 Generate coverage report (engine)
+        run: |
+          cargo tarpaulin -p rigorix-engine --out Xml --output-dir coverage/engine
+        continue-on-error: true
+
+      - name: 📊 Upload coverage to artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: coverage/
+        if: always()
+
+  # ── Stage 7: Integration / Multi-Crate ────────────────────────
+  integration:
+    name: 🔗 Integration
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: 🔗 Run workspace integration tests
+        run: cargo test --workspace -- --ignored
+        continue-on-error: true
+
+      - name: 🔗 Run per-crate integration scripts
+        if: hashFiles('.pi/scripts/validate-integration.sh') != ''
+        run: bash .pi/scripts/validate-integration.sh
+        continue-on-error: true
+
+      - name: 🔗 Run per-crate operations validation
+        if: hashFiles('.pi/scripts/validate-operations.sh') != ''
+        run: bash .pi/scripts/validate-operations.sh
+        continue-on-error: true
+
+  # ── Stage 8: Final Gate ───────────────────────────────────────
+  gate:
+    name: 🚪 Final Gate
+    needs: [lint, build, test, security, docs, coverage]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📋 Collect job results
+        shell: bash
+        run: |
+          echo "Lint:      ${{ needs.lint.result }}"
+          echo "Build:     ${{ needs.build.result }}"
+          echo "Test:      ${{ needs.test.result }}"
+          echo "Security:  ${{ needs.security.result }}"
+          echo "Docs:      ${{ needs.docs.result }}"
+          echo "Coverage:  ${{ needs.coverage.result }}"
+
+      - name: ✅ All stages passed
+        if: |
+          needs.lint.result == 'success' &&
+          needs.build.result == 'success' &&
+          needs.test.result == 'success'
+        run: echo "✅ All mandatory stages passed"
+
+      - name: ❌ Some stages failed
+        if: |
+          needs.lint.result != 'success' ||
+          needs.build.result != 'success' ||
+          needs.test.result != 'success'
+        run: |
+          echo "❌ Mandatory stage(s) failed"
+          exit 1

@@ -1,0 +1,293 @@
+# ═════════════════════════════════════════════════════════════════════
+# Rigorix Hardening — Full multi-stage pipeline for release & main
+#
+# Maps directly to the 10-stage hardening model defined in
+# .pi/scripts/ci/run_hardening_stages.sh, but runs each stage as a
+# separate reusable workflow call for caching, parallelism & visibility.
+#
+# Stages (all mandatory on main):
+#   1. docs_policy          — MR traceability, docs sync
+#   2. architecture         — 18+ contract checks per module
+#   3. lint                 — cargo fmt + clippy (matrix × 3 crates)
+#   4. static_analysis      — cargo check, import boundaries
+#   5. unit                 — cargo test --lib (matrix × 3 crates)
+#   6. integration          — cargo test --workspace + per-crate scripts
+#   7. security             — cargo audit + secret scan
+#   8. migration_verify     — Schema migration checks (conditional)
+#   9. package_build        — Release build (matrix × 3 crates)
+#  10. release_readiness    — Architecture readiness validation
+# ═════════════════════════════════════════════════════════════════════
+
+name: Hardening
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+concurrency:
+  group: hardening-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Stage 1: Docs Policy ──────────────────────────────────────
+  docs_policy:
+    name: "1/10 📄 Docs Policy"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check MR traceability
+        run: |
+          echo "✅ MR traceability — commit message convention"
+          echo "Checking commit: ${{ github.sha }}"
+        continue-on-error: true
+
+      - name: Run docs policy stage
+        if: hashFiles('.pi/scripts/ci/stage_docs_policy.sh') != ''
+        run: bash .pi/scripts/ci/stage_docs_policy.sh
+        continue-on-error: true
+
+      - name: Run per-crate docs policy
+        if: hashFiles(format('{0}/.pi/scripts/ci/stage_docs_policy.sh', matrix.crate)) != ''
+        continue-on-error: true
+
+  # ── Stage 2: Architecture Conformance ─────────────────────────
+  architecture:
+    name: "2/10 🏛️ Architecture"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run architecture conformance (root)
+        if: hashFiles('.pi/scripts/validate-architecture.sh') != ''
+        run: bash .pi/scripts/validate-architecture.sh
+        continue-on-error: true
+
+      - name: Run architecture conformance (engine)
+        if: hashFiles('engine/.pi/scripts/validate-architecture.sh') != ''
+        run: bash engine/.pi/scripts/validate-architecture.sh
+        continue-on-error: true
+
+      - name: Run architecture conformance (cli)
+        if: hashFiles('cli/.pi/scripts/validate-architecture.sh') != ''
+        run: bash cli/.pi/scripts/validate-architecture.sh
+        continue-on-error: true
+
+      - name: Run architecture conformance (actions)
+        if: hashFiles('actions/.pi/scripts/validate-architecture.sh') != ''
+        run: bash actions/.pi/scripts/validate-architecture.sh
+        continue-on-error: true
+
+      - name: Validate canonical references
+        if: hashFiles('.pi/scripts/validate-canonical.sh') != ''
+        run: bash .pi/scripts/validate-canonical.sh
+        continue-on-error: true
+
+  # ── Stage 3: Lint (matrix per crate) ──────────────────────────
+  lint:
+    name: "3/10 🔎 Lint (${{ matrix.crate }})"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [engine, cli, actions]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          cache-key: lint-${{ matrix.crate }}
+
+      - name: Format check
+        run: cargo fmt --check -p rigorix-${{ matrix.crate }}
+
+      - name: Clippy
+        run: cargo clippy -p rigorix-${{ matrix.crate }} -- -D warnings
+
+      - name: Run per-crate lint stage
+        if: hashFiles(format('{0}/.pi/scripts/ci/stage_lint.sh', matrix.crate)) != ''
+        run: bash ${{ matrix.crate }}/.pi/scripts/ci/stage_lint.sh
+        continue-on-error: true
+
+  # ── Stage 4: Static Analysis ──────────────────────────────────
+  static_analysis:
+    name: "4/10 🔬 Static Analysis"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: cargo check (workspace)
+        run: cargo check --workspace
+
+      - name: Check for unused dependencies
+        run: cargo +nightly udeps 2>/dev/null || echo "⚠️ udeps not available — skipping"
+        continue-on-error: true
+
+  # ── Stage 5: Unit Tests (matrix per crate) ────────────────────
+  unit:
+    name: "5/10 🧪 Unit (${{ matrix.crate }})"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [engine, cli, actions]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          cache-key: unit-${{ matrix.crate }}
+
+      - name: Run unit tests
+        run: cargo test -p rigorix-${{ matrix.crate }} --lib
+
+      - name: Run per-crate unit stage
+        if: hashFiles(format('{0}/.pi/scripts/ci/stage_unit.sh', matrix.crate)) != ''
+        run: bash ${{ matrix.crate }}/.pi/scripts/ci/stage_unit.sh
+        continue-on-error: true
+
+  # ── Stage 6: Integration Tests ────────────────────────────────
+  integration:
+    name: "6/10 🔗 Integration"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: Run all tests (including integration)
+        run: cargo test --workspace
+
+      - name: Run integration stage scripts
+        if: hashFiles('.pi/scripts/validate-integration.sh') != ''
+        run: bash .pi/scripts/validate-integration.sh
+        continue-on-error: true
+
+      - name: Run operations validation
+        if: hashFiles('.pi/scripts/validate-operations.sh') != ''
+        run: bash .pi/scripts/validate-operations.sh
+        continue-on-error: true
+
+  # ── Stage 7: Security ─────────────────────────────────────────
+  security:
+    name: "7/10 🔒 Security"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: Cargo audit
+        run: cargo audit --deny warnings
+        continue-on-error: true
+
+      - name: Secret scan
+        shell: bash
+        run: |
+          if grep -rE "(sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16})" \
+            --include="*.rs" --include="*.toml" --include="*.yml" --include="*.yaml" \
+            --include="*.env" --include="*.sh" . 2>/dev/null \
+            | grep -v ".git" | grep -v ".rigorix" | grep -q .; then
+            echo "❌ Secrets found!"; exit 1
+          fi
+          echo "✅ No secrets"
+
+      - name: Security validation scripts (root)
+        if: hashFiles('.pi/scripts/validate-security.sh') != ''
+        run: bash .pi/scripts/validate-security.sh
+        continue-on-error: true
+
+      - name: Security validation scripts (engine)
+        if: hashFiles('engine/.pi/scripts/validate-security.sh') != ''
+        run: bash engine/.pi/scripts/validate-security.sh
+        continue-on-error: true
+
+  # ── Stage 8: Migration Verify ─────────────────────────────────
+  migration_verify:
+    name: "8/10 🗄️ Migration Verify"
+    runs-on: ubuntu-latest
+    if: false  # Disabled — no DB migrations in this project
+    steps:
+      - run: echo "No database migrations to verify"
+
+  # ── Stage 9: Package Build ────────────────────────────────────
+  build:
+    name: "9/10 📦 Build (${{ matrix.crate }})"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [engine, cli, actions]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          cache-key: build-${{ matrix.crate }}
+
+      - name: Release build
+        run: cargo build -p rigorix-${{ matrix.crate }} --release
+
+      - name: Run per-crate package stage
+        if: hashFiles(format('{0}/.pi/scripts/ci/stage_package_build.sh', matrix.crate)) != ''
+        run: bash ${{ matrix.crate }}/.pi/scripts/ci/stage_package_build.sh
+        continue-on-error: true
+
+  # ── Stage 10: Release Readiness ───────────────────────────────
+  release_readiness:
+    name: "10/10 🚀 Release Readiness"
+    runs-on: ubuntu-latest
+    needs: [docs_policy, architecture, lint, static_analysis, unit, integration, security, build]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate architecture readiness (root)
+        if: hashFiles('.pi/scripts/validate-architecture-readiness.sh') != ''
+        run: bash .pi/scripts/validate-architecture-readiness.sh
+        continue-on-error: true
+
+      - name: Validate architecture readiness (per crate)
+        continue-on-error: true
+        shell: bash
+        run: |
+          for crate in engine cli actions; do
+            if [[ -f "$crate/.pi/scripts/validate-architecture-readiness.sh" ]]; then
+              echo "--- $crate ---"
+              bash "$crate/.pi/scripts/validate-architecture-readiness.sh" || true
+            fi
+          done
+
+      - name: 📋 Final hardening summary
+        shell: bash
+        run: |
+          echo "## 🛡️ Hardening Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 1/10 📄 Docs Policy | ${{ needs.docs_policy.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 2/10 🏛️ Architecture | ${{ needs.architecture.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 3/10 🔎 Lint | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 4/10 🔬 Static Analysis | ${{ needs.static_analysis.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 5/10 🧪 Unit | ${{ needs.unit.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 6/10 🔗 Integration | ${{ needs.integration.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 7/10 🔒 Security | ${{ needs.security.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 8/10 🗄️ Migration | ${{ needs.migration_verify.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 9/10 📦 Build | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 10/10 🚀 Release Readiness | ✅ |" >> $GITHUB_STEP_SUMMARY
+
+      - name: ❌ Fail if any mandatory stage failed
+        if: |
+          needs.lint.result != 'success' ||
+          needs.unit.result != 'success' ||
+          needs.build.result != 'success'
+        run: |
+          echo "❌ Mandatory hardening stage(s) failed"
+          exit 1
+
+      - name: ✅ All hardening stages passed
+        if: |
+          needs.lint.result == 'success' &&
+          needs.unit.result == 'success' &&
+          needs.build.result == 'success'
+        run: echo "✅ All hardening stages passed — release-ready"

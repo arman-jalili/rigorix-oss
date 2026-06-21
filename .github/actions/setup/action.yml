@@ -1,0 +1,44 @@
+# ─────────────────────────────────────────────────────────────────────
+# Shared setup action — Rust toolchain, caching, workspace preparation
+# Used by all workflows via `uses: ./.github/actions/setup`
+# ─────────────────────────────────────────────────────────────────────
+
+name: Setup Rust
+description: Install Rust toolchain, configure cargo cache, prepare workspace
+
+inputs:
+  cache-key:
+    description: "Additional cache key suffix (e.g., cargo-ubuntu-latest)"
+    required: false
+    default: cargo
+
+runs:
+  using: composite
+  steps:
+    - name: Install Rust toolchain
+      shell: bash
+      run: |
+        rustup set profile minimal
+        rustup toolchain install stable --component rustfmt,clippy
+        rustup default stable
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ inputs.cache-key }}-${{ hashFiles('Cargo.lock') }}
+        restore-keys: |
+          ${{ inputs.cache-key }}-
+
+    - name: Install cargo tools
+      shell: bash
+      run: |
+        cargo install cargo-audit --locked 2>/dev/null || true
+        cargo install cargo-tarpaulin --locked 2>/dev/null || true
+
+    - name: Verify workspace
+      shell: bash
+      run: cargo metadata --format-version 1 --no-deps > /dev/null
