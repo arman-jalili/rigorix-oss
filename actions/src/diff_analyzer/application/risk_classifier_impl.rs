@@ -21,7 +21,7 @@ use crate::diff_analyzer::application::dto::{
     ClassifyRiskInput, ClassifyRiskOutput, FileClassificationResult,
 };
 use crate::diff_analyzer::application::service::RiskClassificationService;
-use crate::diff_analyzer::domain::{DiffAnalyzerError, FileRisk, PrDiff};
+use crate::diff_analyzer::domain::{DiffAnalyzerError, FileRisk};
 
 /// Implementation of `RiskClassificationService`.
 ///
@@ -210,6 +210,7 @@ impl RiskClassificationService for RiskClassifierImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::diff_analyzer::domain::PrDiff;
     use crate::diff_analyzer::domain::{ChangedFile, FileStatus};
 
     fn make_classifier() -> RiskClassifierImpl {

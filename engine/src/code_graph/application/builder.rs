@@ -144,19 +144,18 @@ impl CodeGraphBuilder {
                 // Try to resolve the import to a local file
                 if let Some(target_path) =
                     self.resolve_import(file_path, import_name, &name_to_path)
+                    && let Some(target_id) = path_to_node_id.get(target_path)
                 {
-                    if let Some(target_id) = path_to_node_id.get(target_path) {
-                        self.graph_service
-                            .add_edge(super::dto::AddEdgeInput {
-                                graph_id: output.graph_id,
-                                source_id: *target_id,
-                                target_id: source_id,
-                                kind: EdgeKind::Imports,
-                                weight: 1,
-                                label: Some(import_name.clone()),
-                            })
-                            .await?;
-                    }
+                    self.graph_service
+                        .add_edge(super::dto::AddEdgeInput {
+                            graph_id: output.graph_id,
+                            source_id: *target_id,
+                            target_id: source_id,
+                            kind: EdgeKind::Imports,
+                            weight: 1,
+                            label: Some(import_name.clone()),
+                        })
+                        .await?;
                 }
             }
         }
@@ -218,10 +217,10 @@ impl CodeGraphBuilder {
                 self.scan_directory(&path, files)?;
             } else if path.is_file() {
                 // Check extension
-                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                    if self.extensions.is_empty() || self.extensions.iter().any(|e| e == ext) {
-                        files.push(path);
-                    }
+                if let Some(ext) = path.extension().and_then(|e| e.to_str())
+                    && (self.extensions.is_empty() || self.extensions.iter().any(|e| e == ext))
+                {
+                    files.push(path);
                 }
             }
         }
@@ -283,10 +282,11 @@ impl CodeGraphBuilder {
                     .strip_prefix("use ")
                     .and_then(|s| s.split("::").nth(1))
                     .map(|s| s.to_string());
-                if let Some(path) = use_path {
-                    if !path.starts_with('{') && !path.starts_with('*') {
-                        imports.push(path);
-                    }
+                if let Some(path) = use_path
+                    && !path.starts_with('{')
+                    && !path.starts_with('*')
+                {
+                    imports.push(path);
                 }
             }
 
@@ -296,11 +296,11 @@ impl CodeGraphBuilder {
                     .strip_prefix("mod ")
                     .and_then(|s| s.strip_suffix(';'))
                     .map(|s| s.trim().to_string());
-                if let Some(name) = mod_name {
-                    if !name.contains('{') {
-                        // Only simple `mod name;` declarations
-                        imports.push(name);
-                    }
+                if let Some(name) = mod_name
+                    && !name.contains('{')
+                {
+                    // Only simple `mod name;` declarations
+                    imports.push(name);
                 }
             }
         }
@@ -354,10 +354,10 @@ impl CodeGraphBuilder {
                             .trim_matches(';')
                     })
                     .map(|s| s.to_string());
-                if let Some(p) = path {
-                    if p.starts_with('.') || p.starts_with('/') {
-                        imports.push(p);
-                    }
+                if let Some(p) = path
+                    && (p.starts_with('.') || p.starts_with('/'))
+                {
+                    imports.push(p);
                 }
             }
         }
@@ -425,7 +425,7 @@ impl CodeGraphBuilder {
             .trim_start_matches('/');
 
         // Extract the last component (file name)
-        let base_name = clean_name.split('/').last().unwrap_or(clean_name);
+        let base_name = clean_name.split('/').next_back().unwrap_or(clean_name);
 
         // Try exact match
         if let Some(path) = name_to_path.get(base_name) {

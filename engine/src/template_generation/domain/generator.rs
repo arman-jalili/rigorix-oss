@@ -439,17 +439,16 @@ fn scan_public_api(root: &std::path::Path, project_type: &str) -> String {
                         continue;
                     }
                     dirs_to_visit.push(path);
-                } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                    if extensions.contains(&ext) {
-                        if let Ok(content) = std::fs::read_to_string(&path) {
-                            files_scanned += 1;
-                            let rel_path = path
-                                .strip_prefix(root)
-                                .map(|p| p.to_string_lossy())
-                                .unwrap_or_else(|_| path.to_string_lossy());
-                            extract_public_symbols(&content, &rel_path, &mut symbols, project_type);
-                        }
-                    }
+                } else if let Some(ext) = path.extension().and_then(|e| e.to_str())
+                    && extensions.contains(&ext)
+                    && let Ok(content) = std::fs::read_to_string(&path)
+                {
+                    files_scanned += 1;
+                    let rel_path = path
+                        .strip_prefix(root)
+                        .map(|p| p.to_string_lossy())
+                        .unwrap_or_else(|_| path.to_string_lossy());
+                    extract_public_symbols(&content, &rel_path, &mut symbols, project_type);
                 }
             }
         }
@@ -484,30 +483,18 @@ fn extract_rust_public_api(content: &str, file_path: &str, symbols: &mut Vec<Str
         let trimmed = line.trim();
         // pub fn name(...) -> RetType
         if let Some(rest) = trimmed.strip_prefix("pub fn ") {
-            let name = rest
-                .split(|c: char| c == '(' || c == '<')
-                .next()
-                .unwrap_or(rest);
+            let name = rest.split(['(', '<']).next().unwrap_or(rest);
             symbols.push(format!("{}: pub fn {}", file_path, name.trim()));
         }
         // pub struct Name, pub enum Name, pub trait Name
         else if let Some(rest) = trimmed.strip_prefix("pub struct ") {
-            let name = rest
-                .split(|c: char| c == '<' || c == '{' || c == '(' || c == ';')
-                .next()
-                .unwrap_or(rest);
+            let name = rest.split(['<', '{', '(', ';']).next().unwrap_or(rest);
             symbols.push(format!("{}: pub struct {}", file_path, name.trim()));
         } else if let Some(rest) = trimmed.strip_prefix("pub enum ") {
-            let name = rest
-                .split(|c: char| c == '<' || c == '{' || c == '(')
-                .next()
-                .unwrap_or(rest);
+            let name = rest.split(['<', '{', '(']).next().unwrap_or(rest);
             symbols.push(format!("{}: pub enum {}", file_path, name.trim()));
         } else if let Some(rest) = trimmed.strip_prefix("pub trait ") {
-            let name = rest
-                .split(|c: char| c == '<' || c == '{' || c == '(')
-                .next()
-                .unwrap_or(rest);
+            let name = rest.split(['<', '{', '(']).next().unwrap_or(rest);
             symbols.push(format!("{}: pub trait {}", file_path, name.trim()));
         } else if let Some(rest) = trimmed.strip_prefix("pub mod ") {
             let name = rest.split(';').next().unwrap_or(rest);
@@ -515,15 +502,11 @@ fn extract_rust_public_api(content: &str, file_path: &str, symbols: &mut Vec<Str
         }
         // pub type Name = ...;
         else if let Some(rest) = trimmed.strip_prefix("pub type ") {
-            let name = rest
-                .split(|c: char| c == '=' || c == '<')
-                .next()
-                .unwrap_or(rest);
+            let name = rest.split(['=', '<']).next().unwrap_or(rest);
             symbols.push(format!("{}: pub type {}", file_path, name.trim()));
         }
         // pub const NAME: ... = ...;
-        else if trimmed.starts_with("pub const ") {
-            let after = &trimmed[10..];
+        else if let Some(after) = trimmed.strip_prefix("pub const ") {
             let name = after.split(':').next().unwrap_or(after);
             symbols.push(format!("{}: pub const {}", file_path, name.trim()));
         }
@@ -535,44 +518,24 @@ fn extract_ts_public_api(content: &str, file_path: &str, symbols: &mut Vec<Strin
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with("export ") {
-            let rest = &trimmed[7..].trim();
+            let rest = trimmed.strip_prefix("export ").unwrap_or(trimmed).trim();
             if let Some(sig) = rest.strip_prefix("function ") {
                 // Include full signature up to opening brace or semicolon
-                let full_sig = sig
-                    .split(|c| c == '{' || c == ';')
-                    .next()
-                    .unwrap_or(sig)
-                    .trim();
+                let full_sig = sig.split(['{', ';']).next().unwrap_or(sig).trim();
                 symbols.push(format!("{}: export function {}", file_path, full_sig));
             } else if let Some(rest) = rest.strip_prefix("class ") {
-                let name = rest
-                    .split(|c: char| c == '<' || c == '{')
-                    .next()
-                    .unwrap_or(rest)
-                    .trim();
+                let name = rest.split(['<', '{']).next().unwrap_or(rest).trim();
                 symbols.push(format!("{}: export class {}", file_path, name));
                 // Also extract method signatures inside the class
                 extract_ts_class_methods(content, line, file_path, symbols);
             } else if let Some(rest) = rest.strip_prefix("interface ") {
-                let name = rest
-                    .split(|c: char| c == '<' || c == '{')
-                    .next()
-                    .unwrap_or(rest)
-                    .trim();
+                let name = rest.split(['<', '{']).next().unwrap_or(rest).trim();
                 symbols.push(format!("{}: export interface {}", file_path, name));
             } else if let Some(sig) = rest.strip_prefix("type ") {
-                let full_sig = sig
-                    .split(|c| c == '=' || c == ';')
-                    .next()
-                    .unwrap_or(sig)
-                    .trim();
+                let full_sig = sig.split(['=', ';']).next().unwrap_or(sig).trim();
                 symbols.push(format!("{}: export type {}", file_path, full_sig));
             } else if let Some(sig) = rest.strip_prefix("const ") {
-                let full_sig = sig
-                    .split(|c| c == ':' || c == '=')
-                    .next()
-                    .unwrap_or(sig)
-                    .trim();
+                let full_sig = sig.split([':', '=']).next().unwrap_or(sig).trim();
                 symbols.push(format!("{}: export const {}", file_path, full_sig));
             }
         }
@@ -623,17 +586,18 @@ fn extract_ts_class_methods(
             // Check if this line looks like a method declaration
             let paren_open = trimmed.find('(');
             let paren_close = trimmed.rfind(')');
-            if let (Some(open), Some(close)) = (paren_open, paren_close) {
-                if open > 0 && close > open {
-                    let sig_end = trimmed[close + 1..]
-                        .find(|c| c == '{' || c == ';')
-                        .map(|i| close + 1 + i)
-                        .unwrap_or(trimmed.len());
-                    let sig = &trimmed[..=sig_end.min(trimmed.len()).max(close + 1)];
-                    // Skip if it looks like a lambda or constructor parameter destructuring
-                    if !sig.starts_with('(') && !sig.starts_with("...") && sig.contains('(') {
-                        symbols.push(format!("{}:   method {}", file_path, sig.trim()));
-                    }
+            if let (Some(open), Some(close)) = (paren_open, paren_close)
+                && open > 0
+                && close > open
+            {
+                let sig_end = trimmed[close + 1..]
+                    .find(['{', ';'])
+                    .map(|i| close + 1 + i)
+                    .unwrap_or(trimmed.len());
+                let sig = &trimmed[..=sig_end.min(trimmed.len()).max(close + 1)];
+                // Skip if it looks like a lambda or constructor parameter destructuring
+                if !sig.starts_with('(') && !sig.starts_with("...") && sig.contains('(') {
+                    symbols.push(format!("{}:   method {}", file_path, sig.trim()));
                 }
             }
         }
@@ -650,10 +614,7 @@ fn extract_python_public_api(content: &str, file_path: &str, symbols: &mut Vec<S
             symbols.push(format!("{}: def {}", file_path, name.trim()));
         } else if trimmed.starts_with("class ") && !trimmed.starts_with("class _") {
             let rest = &trimmed[6..];
-            let name = rest
-                .split(|c: char| c == '(' || c == ':')
-                .next()
-                .unwrap_or(rest);
+            let name = rest.split(['(', ':']).next().unwrap_or(rest);
             symbols.push(format!("{}: class {}", file_path, name.trim()));
         }
         // __all__ = [...] exports
@@ -675,19 +636,19 @@ fn read_architecture_docs(root: &std::path::Path) -> String {
     let mut sections = Vec::new();
     for rel in &candidates {
         let path = root.join(rel);
-        if path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                let truncated: String = content.lines().take(200).collect::<Vec<_>>().join("\n");
-                let note = if content.lines().count() > 200 {
-                    format!(
-                        "\n// ... (truncated from {} lines)",
-                        content.lines().count()
-                    )
-                } else {
-                    String::new()
-                };
-                sections.push(format!("// === {} ===\n{}{}", rel, truncated, note));
-            }
+        if path.exists()
+            && let Ok(content) = std::fs::read_to_string(&path)
+        {
+            let truncated: String = content.lines().take(200).collect::<Vec<_>>().join("\n");
+            let note = if content.lines().count() > 200 {
+                format!(
+                    "\n// ... (truncated from {} lines)",
+                    content.lines().count()
+                )
+            } else {
+                String::new()
+            };
+            sections.push(format!("// === {} ===\n{}{}", rel, truncated, note));
         }
     }
 
@@ -772,6 +733,7 @@ fn build_dir_tree_scoped(
     Ok(lines.join("\n"))
 }
 
+#[allow(clippy::only_used_in_recursion)]
 fn build_dir_tree_scoped_recursive(
     root: &std::path::Path,
     dir: &std::path::Path,
@@ -815,12 +777,11 @@ fn build_dir_tree_scoped_recursive(
             let path = entry.path();
             if path.is_dir() {
                 build_dir_tree_scoped_recursive(root, &path, depth + 1, max_depth, filter, lines)?;
-            } else if depth == 0 || dir_name.to_lowercase().contains(filter) {
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if !name.starts_with('.') {
-                        lines.push(format!("{}{}{}", indent, "  ", name));
-                    }
-                }
+            } else if (depth == 0 || dir_name.to_lowercase().contains(filter))
+                && let Some(name) = path.file_name().and_then(|n| n.to_str())
+                && !name.starts_with('.')
+            {
+                lines.push(format!("{}{}{}", indent, "  ", name));
             }
         }
     }
@@ -861,7 +822,7 @@ fn scan_filtered_paths(root: &std::path::Path, filter: &str) -> Vec<String> {
                     if !name.starts_with('.') && name != "target" && name != "node_modules" {
                         dirs.push(path);
                     }
-                } else if let Some(rel) = path.strip_prefix(root).ok() {
+                } else if let Ok(rel) = path.strip_prefix(root) {
                     paths.push(rel.to_string_lossy().to_string());
                 }
             }
@@ -915,16 +876,15 @@ fn scan_public_api_filtered(root: &std::path::Path, project_type: &str, filter: 
                     if !name.starts_with('.') && name != "target" && name != "node_modules" {
                         dirs.push(path);
                     }
-                } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                    if extensions.contains(&ext) {
-                        if let Ok(content) = std::fs::read_to_string(&path) {
-                            let rel_path = path
-                                .strip_prefix(root)
-                                .map(|p| p.to_string_lossy())
-                                .unwrap_or_else(|_| path.to_string_lossy());
-                            extract_public_symbols(&content, &rel_path, &mut symbols, project_type);
-                        }
-                    }
+                } else if let Some(ext) = path.extension().and_then(|e| e.to_str())
+                    && extensions.contains(&ext)
+                    && let Ok(content) = std::fs::read_to_string(&path)
+                {
+                    let rel_path = path
+                        .strip_prefix(root)
+                        .map(|p| p.to_string_lossy())
+                        .unwrap_or_else(|_| path.to_string_lossy());
+                    extract_public_symbols(&content, &rel_path, &mut symbols, project_type);
                 }
             }
         }
@@ -1081,13 +1041,15 @@ fn read_cargo_dependencies(root: &std::path::Path) -> Vec<String> {
             in_deps = false;
             continue;
         }
-        if in_deps && !trimmed.is_empty() && !trimmed.starts_with('#') {
-            if let Some(eq_pos) = trimmed.find('=') {
-                let name = trimmed[..eq_pos].trim().to_string();
-                let value = trimmed[eq_pos + 1..].trim().to_string();
-                let value = value.split('#').next().unwrap_or(&value).trim().to_string();
-                deps.push(format!("{name} = {value}"));
-            }
+        if in_deps
+            && !trimmed.is_empty()
+            && !trimmed.starts_with('#')
+            && let Some(eq_pos) = trimmed.find('=')
+        {
+            let name = trimmed[..eq_pos].trim().to_string();
+            let value = trimmed[eq_pos + 1..].trim().to_string();
+            let value = value.split('#').next().unwrap_or(&value).trim().to_string();
+            deps.push(format!("{name} = {value}"));
         }
     }
 
@@ -1125,37 +1087,37 @@ fn read_python_dependencies(root: &std::path::Path) -> Vec<String> {
     let mut deps = Vec::new();
 
     let req_path = root.join("requirements.txt");
-    if req_path.exists() {
-        if let Ok(content) = std::fs::read_to_string(&req_path) {
-            for line in content.lines() {
-                let trimmed = line.trim();
-                if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('-') {
-                    continue;
-                }
-                deps.push(trimmed.to_string());
+    if req_path.exists()
+        && let Ok(content) = std::fs::read_to_string(&req_path)
+    {
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('-') {
+                continue;
             }
+            deps.push(trimmed.to_string());
         }
     }
 
     if deps.is_empty() {
         let pyproject = root.join("pyproject.toml");
-        if pyproject.exists() {
-            if let Ok(content) = std::fs::read_to_string(&pyproject) {
-                let mut in_deps = false;
-                for line in content.lines() {
-                    let trimmed = line.trim();
-                    if trimmed == "[project.dependencies]" {
-                        in_deps = true;
-                        continue;
-                    }
-                    if trimmed.starts_with('[') && in_deps {
-                        break;
-                    }
-                    if in_deps && !trimmed.is_empty() && !trimmed.starts_with('#') {
-                        let dep = trimmed.trim_matches(|c: char| c == '"' || c == ',' || c == ' ');
-                        if !dep.is_empty() {
-                            deps.push(dep.to_string());
-                        }
+        if pyproject.exists()
+            && let Ok(content) = std::fs::read_to_string(&pyproject)
+        {
+            let mut in_deps = false;
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if trimmed == "[project.dependencies]" {
+                    in_deps = true;
+                    continue;
+                }
+                if trimmed.starts_with('[') && in_deps {
+                    break;
+                }
+                if in_deps && !trimmed.is_empty() && !trimmed.starts_with('#') {
+                    let dep = trimmed.trim_matches(|c: char| c == '"' || c == ',' || c == ' ');
+                    if !dep.is_empty() {
+                        deps.push(dep.to_string());
                     }
                 }
             }
@@ -1205,38 +1167,38 @@ fn read_key_files(root: &std::path::Path) -> String {
     // that contain exports (functions, classes likely needed by tests)
     if root.join("tsconfig.json").exists() || root.join("package.json").exists() {
         let src_dir = root.join("src");
-        if src_dir.is_dir() {
-            if let Ok(entries) = std::fs::read_dir(&src_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.extension().map_or(true, |e| e != "ts") {
-                        continue;
-                    }
-                    let rel = path
-                        .strip_prefix(root)
-                        .unwrap_or(&path)
-                        .to_string_lossy()
-                        .to_string();
-                    // Skip files already read as candidates
-                    if candidates.iter().any(|c| **c == rel) {
-                        continue;
-                    }
-                    let content = match std::fs::read_to_string(&path) {
-                        Ok(c) => c,
-                        Err(_) => continue,
-                    };
-                    let lines: Vec<&str> = content.lines().take(max_lines).collect();
-                    let truncated: String = lines.join("\n");
-                    let note = if content.lines().count() > max_lines {
-                        format!(
-                            "\n// ... (truncated from {} lines)",
-                            content.lines().count()
-                        )
-                    } else {
-                        String::new()
-                    };
-                    sections.push(format!("// === {} ===\n{}{}", rel, truncated, note));
+        if src_dir.is_dir()
+            && let Ok(entries) = std::fs::read_dir(&src_dir)
+        {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_none_or(|e| e != "ts") {
+                    continue;
                 }
+                let rel = path
+                    .strip_prefix(root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .to_string();
+                // Skip files already read as candidates
+                if candidates.iter().any(|c| **c == rel) {
+                    continue;
+                }
+                let content = match std::fs::read_to_string(&path) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                let lines: Vec<&str> = content.lines().take(max_lines).collect();
+                let truncated: String = lines.join("\n");
+                let note = if content.lines().count() > max_lines {
+                    format!(
+                        "\n// ... (truncated from {} lines)",
+                        content.lines().count()
+                    )
+                } else {
+                    String::new()
+                };
+                sections.push(format!("// === {} ===\n{}{}", rel, truncated, note));
             }
         }
     }

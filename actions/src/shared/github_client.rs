@@ -183,10 +183,10 @@ impl GitHubClient {
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.parse::<u32>().ok());
 
-        if let Some(rem) = remaining {
-            if rem < 10 {
-                tracing::warn!(remaining = rem, "GitHub API rate limit running low");
-            }
+        if let Some(rem) = remaining
+            && rem < 10
+        {
+            tracing::warn!(remaining = rem, "GitHub API rate limit running low");
         }
 
         Ok(())
@@ -209,11 +209,13 @@ impl GitHubClient {
                 "Invalid or expired token".into(),
             ))
         } else if status.as_u16() == 403 {
-            Err(GitHubClientError::PermissionDenied(format!(
-                "HTTP 403: Insufficient permissions"
-            )))
+            Err(GitHubClientError::PermissionDenied(
+                "HTTP 403: Insufficient permissions".to_string(),
+            ))
         } else if status.as_u16() == 404 {
-            Err(GitHubClientError::NotFound(format!("Resource not found")))
+            Err(GitHubClientError::NotFound(
+                "Resource not found".to_string(),
+            ))
         } else {
             let body = response.text().await.unwrap_or_default();
             Err(GitHubClientError::ApiError {

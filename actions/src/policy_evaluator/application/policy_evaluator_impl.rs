@@ -6,10 +6,9 @@
 use async_trait::async_trait;
 use globset::Glob;
 
-use crate::diff_analyzer::domain::PrDiff;
 use crate::policy_evaluator::domain::{
-    CompiledDenyRule, CompiledFlagRule, CompiledReviewRule, CompiledRules, PolicyDocument,
-    PolicyError, PolicyViolation, ViolationCounts,
+    CompiledDenyRule, CompiledFlagRule, CompiledReviewRule, CompiledRules, PolicyError,
+    PolicyViolation, ViolationCounts,
 };
 use crate::policy_evaluator::domain::{PolicyMetadata, PolicyResult};
 
@@ -155,10 +154,10 @@ impl PolicyEvaluationService for PolicyEvaluationServiceImpl {
         username: Option<&str>,
     ) -> bool {
         // Check user exclusion
-        if let Some(user) = username {
-            if rule.exclude_users.iter().any(|u| u == user) {
-                return false;
-            }
+        if let Some(user) = username
+            && rule.exclude_users.iter().any(|u| u == user)
+        {
+            return false;
         }
         Self::glob_matches(&rule.pattern, file_path)
     }
@@ -197,7 +196,9 @@ impl PolicyEvaluationService for PolicyEvaluationServiceImpl {
 mod tests {
     use super::*;
     use crate::diff_analyzer::domain::{ChangedFile, FileRisk, FileStatus, PrDiff};
-    use crate::policy_evaluator::domain::{AuditConfig, PolicyLimits, PolicyRules, Severity};
+    use crate::policy_evaluator::domain::{
+        AuditConfig, PolicyDocument, PolicyLimits, PolicyRules, Severity,
+    };
 
     fn make_diff(files: Vec<(&str, FileStatus)>) -> PrDiff {
         PrDiff {

@@ -161,10 +161,9 @@ fn map_comment_error(err: GitHubClientError, issue_number: u64) -> CiIntegration
             issue_number,
             detail: format!("GitHub API error ({}): {}", status, message),
         },
-        GitHubClientError::NetworkError(e) => CiIntegrationError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            e.to_string(),
-        )),
+        GitHubClientError::NetworkError(e) => {
+            CiIntegrationError::Io(std::io::Error::other(e.to_string()))
+        }
         GitHubClientError::Serialization(e) => CiIntegrationError::Json(e),
     }
 }

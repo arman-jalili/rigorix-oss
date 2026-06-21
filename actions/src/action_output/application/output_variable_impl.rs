@@ -320,13 +320,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_set_from_context() {
-        use crate::action_output::domain::{
-            ExecutionContext, ExecutionStatus, ExecutionStep, FileChange, FileChangeType,
-        };
+        use crate::action_output::domain::{ExecutionContext, ExecutionStatus};
         use std::collections::HashMap;
         use uuid::Uuid;
 
-        let (svc, repo) = make_service(MockOutputRepo::new());
+        let (svc, _repo) = make_service(MockOutputRepo::new());
         let context = ExecutionContext {
             execution_id: Uuid::parse_str("e1852176-e586-4377-a8e8-d1cb4be89144").unwrap(),
             status: ExecutionStatus::Completed,

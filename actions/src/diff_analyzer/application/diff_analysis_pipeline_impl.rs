@@ -24,7 +24,7 @@ use crate::diff_analyzer::application::service::{
     AiSignalDetectionService, DiffAnalysisPipelineService, DiffParsingService,
     LimitEnforcementService, PathValidationService, RiskClassificationService,
 };
-use crate::diff_analyzer::domain::{DiffAnalyzerError, PolicyLimits, PrDiff};
+use crate::diff_analyzer::domain::{DiffAnalyzerError, PolicyLimits};
 
 /// Implementation of `DiffAnalysisPipelineService`.
 ///

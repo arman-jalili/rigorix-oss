@@ -185,8 +185,7 @@ mod tests {
 
     use crate::ci_integration::application::dto::ExecutionOutcomeDto;
     use crate::ci_integration::domain::{
-        ExecutionStatus, ExecutionStep, ExecutionSummary, PrComment, PrCommentType, StepStatus,
-        ValidationInfo,
+        ExecutionStatus, ExecutionSummary, PrComment, PrCommentType,
     };
     use crate::ci_integration::infrastructure::repository::PrCommentRepository;
 

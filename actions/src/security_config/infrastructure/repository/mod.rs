@@ -17,7 +17,7 @@
 
 use async_trait::async_trait;
 
-use crate::security_config::domain::{HmacKey, SecurityError, SecurityPolicy};
+use crate::security_config::domain::{HmacKey, SecurityError};
 
 /// Repository for reading GitHub environment variables related to fork detection.
 ///

@@ -64,7 +64,7 @@ pub struct LlmStepContext {
 ///
 /// Contains the relevant source files, symbol definitions, and code
 /// structure needed for LLM generation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SourceContext {
     /// The relevant source files with their contents.
     ///
@@ -219,17 +219,6 @@ impl LlmStepContext {
             .iter()
             .map(|f| f.content.len())
             .sum()
-    }
-}
-
-impl Default for SourceContext {
-    fn default() -> Self {
-        Self {
-            files: Vec::new(),
-            symbols: Vec::new(),
-            repo_root: String::new(),
-            target_file_path: None,
-        }
     }
 }
 

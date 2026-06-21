@@ -58,7 +58,7 @@ pub struct PolicyDocument {
 ///
 /// Rules are grouped by enforcement action: deny (blocking), require_review
 /// (must be reviewed before merge), and flag (warning only).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PolicyRules {
     /// Rules that block the PR (commit status: failure).
     #[serde(rename = "deny", default)]
@@ -71,16 +71,6 @@ pub struct PolicyRules {
     /// Rules that warn without blocking (commit status: success with annotations).
     #[serde(rename = "flag", default)]
     pub flag_rules: Vec<FlagRule>,
-}
-
-impl Default for PolicyRules {
-    fn default() -> Self {
-        Self {
-            deny_rules: Vec::new(),
-            require_review_rules: Vec::new(),
-            flag_rules: Vec::new(),
-        }
-    }
 }
 
 impl PolicyRules {
@@ -313,7 +303,7 @@ fn min_option<T: Ord>(a: Option<T>, b: Option<T>, f: fn(T, T) -> T) -> Option<T>
 ///
 /// When configured, policy evaluation results are signed with HMAC and
 /// posted to an external audit backend for compliance tracking.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AuditConfig {
     /// Path to the HMAC signing key file.
     #[serde(default)]
@@ -331,16 +321,6 @@ pub struct AuditConfig {
 
 fn default_include_diff() -> bool {
     false
-}
-
-impl Default for AuditConfig {
-    fn default() -> Self {
-        Self {
-            hmac_key_path: None,
-            backend_url: None,
-            include_diff: false,
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -648,17 +628,13 @@ fn default_merge_strategy() -> MergeStrategy {
 /// Strategy for merging organization and repository policies.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum MergeStrategy {
     /// The stricter/more restrictive rule wins. This is the default.
+    #[default]
     Restrictive,
     /// Repository policy takes precedence over org policy.
     RepoPreferred,
     /// Organization policy takes precedence over repo policy.
     OrgPreferred,
-}
-
-impl Default for MergeStrategy {
-    fn default() -> Self {
-        MergeStrategy::Restrictive
-    }
 }

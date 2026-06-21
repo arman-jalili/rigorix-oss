@@ -160,19 +160,16 @@ impl ParallelExecutionServiceImpl {
         // ── Permission gating ──
         if let Some(ref enforcer) = self.permission_enforcer {
             let outcome = enforcer.check(tool_name, tool_intent, None).await;
-            match outcome {
-                crate::permission::domain::PermissionOutcome::Denied { reason, .. } => {
-                    let duration_ms = start.elapsed().as_millis() as u64;
-                    return TaskResult::failure(
-                        node_id,
-                        &node.name,
-                        reason,
-                        "permission_denied".to_string(),
-                        duration_ms,
-                        0,
-                    );
-                }
-                _ => {}
+            if let crate::permission::domain::PermissionOutcome::Denied { reason, .. } = outcome {
+                let duration_ms = start.elapsed().as_millis() as u64;
+                return TaskResult::failure(
+                    node_id,
+                    &node.name,
+                    reason,
+                    "permission_denied".to_string(),
+                    duration_ms,
+                    0,
+                );
             }
 
             // Additional checks for write tools
@@ -181,28 +178,9 @@ impl ParallelExecutionServiceImpl {
                     serde_json::from_str(tool_intent).unwrap_or_default();
                 if let Some(path) = parsed["path"].as_str() {
                     let write_outcome = enforcer.check_file_write(path, ".", None).await;
-                    match write_outcome {
-                        crate::permission::domain::PermissionOutcome::Denied { reason, .. } => {
-                            let duration_ms = start.elapsed().as_millis() as u64;
-                            return TaskResult::failure(
-                                node_id,
-                                &node.name,
-                                reason,
-                                "permission_denied".to_string(),
-                                duration_ms,
-                                0,
-                            );
-                        }
-                        _ => {}
-                    }
-                }
-            }
-
-            // Additional check for bash commands
-            if tool_name == "run_command" {
-                let bash_outcome = enforcer.check_bash(tool_intent, None).await;
-                match bash_outcome {
-                    crate::permission::domain::PermissionOutcome::Denied { reason, .. } => {
+                    if let crate::permission::domain::PermissionOutcome::Denied { reason, .. } =
+                        write_outcome
+                    {
                         let duration_ms = start.elapsed().as_millis() as u64;
                         return TaskResult::failure(
                             node_id,
@@ -213,7 +191,24 @@ impl ParallelExecutionServiceImpl {
                             0,
                         );
                     }
-                    _ => {}
+                }
+            }
+
+            // Additional check for bash commands
+            if tool_name == "run_command" {
+                let bash_outcome = enforcer.check_bash(tool_intent, None).await;
+                if let crate::permission::domain::PermissionOutcome::Denied { reason, .. } =
+                    bash_outcome
+                {
+                    let duration_ms = start.elapsed().as_millis() as u64;
+                    return TaskResult::failure(
+                        node_id,
+                        &node.name,
+                        reason,
+                        "permission_denied".to_string(),
+                        duration_ms,
+                        0,
+                    );
                 }
             }
         }
@@ -227,25 +222,24 @@ impl ParallelExecutionServiceImpl {
                 session_id: node_id.to_string(),
                 workspace_root: ".".to_string(),
             };
-            if let Ok(pre_output) = hook_runner.run_pre_tool_use(pre_input, Some(&abort)) {
-                if pre_output.result.is_denied()
+            if let Ok(pre_output) = hook_runner.run_pre_tool_use(pre_input, Some(&abort))
+                && (pre_output.result.is_denied()
                     || pre_output.result.is_failed()
-                    || pre_output.result.is_cancelled()
-                {
-                    let duration_ms = start.elapsed().as_millis() as u64;
-                    return TaskResult::failure(
-                        node_id,
-                        &node.name,
-                        format!(
-                            "Tool '{}' blocked by PreToolUse hook: {:?}",
-                            tool_name,
-                            pre_output.result.feedback_messages()
-                        ),
-                        "hook_blocked".to_string(),
-                        duration_ms,
-                        0,
-                    );
-                }
+                    || pre_output.result.is_cancelled())
+            {
+                let duration_ms = start.elapsed().as_millis() as u64;
+                return TaskResult::failure(
+                    node_id,
+                    &node.name,
+                    format!(
+                        "Tool '{}' blocked by PreToolUse hook: {:?}",
+                        tool_name,
+                        pre_output.result.feedback_messages()
+                    ),
+                    "hook_blocked".to_string(),
+                    duration_ms,
+                    0,
+                );
             }
         }
 
@@ -389,10 +383,10 @@ impl ParallelExecutionServiceImpl {
         let content = parsed["content"].as_str().unwrap_or("");
         let duration_ms = start.elapsed().as_millis() as u64;
         // Ensure parent dir exists
-        if let Some(parent) = std::path::Path::new(path).parent() {
-            if !parent.as_os_str().is_empty() {
-                let _ = std::fs::create_dir_all(parent);
-            }
+        if let Some(parent) = std::path::Path::new(path).parent()
+            && !parent.as_os_str().is_empty()
+        {
+            let _ = std::fs::create_dir_all(parent);
         }
         match std::fs::write(path, content) {
             Ok(()) => TaskResult::success(
@@ -1443,58 +1437,56 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                             (recipe_check, count)
                         };
 
-                        if let Some(ref recipe) = recipe_out.recipe {
-                            if can_attempt {
-                                let attempt = attempt_count + 1;
-                                let recovery_input = AttemptRecoveryInput {
-                                    scenario,
-                                    recipe: recipe.clone(),
-                                    attempt_number: attempt,
-                                    original_error: Some(error_message.clone()),
-                                    execution_id: Some(input.dag_id.to_string()),
-                                };
-                                if let Ok(recovery_out) =
-                                    recovery_svc.attempt_recovery(recovery_input).await
+                        if let Some(ref recipe) = recipe_out.recipe
+                            && can_attempt
+                        {
+                            let attempt = attempt_count + 1;
+                            let recovery_input = AttemptRecoveryInput {
+                                scenario,
+                                recipe: recipe.clone(),
+                                attempt_number: attempt,
+                                original_error: Some(error_message.clone()),
+                                execution_id: Some(input.dag_id.to_string()),
+                            };
+                            if let Ok(recovery_out) =
+                                recovery_svc.attempt_recovery(recovery_input).await
+                            {
                                 {
-                                    {
-                                        let mut ctx_guard =
-                                            self.recovery_contexts.lock().map_err(|e| {
-                                                ExecutionError::InternalError {
-                                                    detail: format!(
-                                                        "Recovery context lock error: {}",
-                                                        e
-                                                    ),
-                                                }
-                                            })?;
-                                        let ctx = ctx_guard
-                                            .entry(input.dag_id)
-                                            .or_insert_with(RecoveryContext::new);
-                                        ctx.record_attempt(scenario);
-                                    }
-                                    tracing::info!(
-                                        dag_id = %input.dag_id,
-                                        node_id = %node_id,
-                                        scenario = %scenario.as_str(),
-                                        result = %recovery_out.result.summary(),
-                                        "Recovery attempted"
-                                    );
-
-                                    if recovery_out.result.is_recovered() {
-                                        // Recovery succeeded — re-add node to ready queue
-                                        let mut sessions = self.sessions.lock().map_err(|e| {
+                                    let mut ctx_guard =
+                                        self.recovery_contexts.lock().map_err(|e| {
                                             ExecutionError::InternalError {
-                                                detail: format!("Session lock error: {}", e),
+                                                detail: format!(
+                                                    "Recovery context lock error: {}",
+                                                    e
+                                                ),
                                             }
                                         })?;
-                                        if let Some(session) = sessions.get_mut(&input.dag_id) {
-                                            if let Some(state) =
-                                                session.node_states.get_mut(&node_id)
-                                            {
-                                                state.status = NodeStatus::Ready;
-                                            }
+                                    let ctx = ctx_guard
+                                        .entry(input.dag_id)
+                                        .or_insert_with(RecoveryContext::new);
+                                    ctx.record_attempt(scenario);
+                                }
+                                tracing::info!(
+                                    dag_id = %input.dag_id,
+                                    node_id = %node_id,
+                                    scenario = %scenario.as_str(),
+                                    result = %recovery_out.result.summary(),
+                                    "Recovery attempted"
+                                );
+
+                                if recovery_out.result.is_recovered() {
+                                    // Recovery succeeded — re-add node to ready queue
+                                    let mut sessions = self.sessions.lock().map_err(|e| {
+                                        ExecutionError::InternalError {
+                                            detail: format!("Session lock error: {}", e),
                                         }
-                                        continue; // Re-enter the retry loop
+                                    })?;
+                                    if let Some(session) = sessions.get_mut(&input.dag_id)
+                                        && let Some(state) = session.node_states.get_mut(&node_id)
+                                    {
+                                        state.status = NodeStatus::Ready;
                                     }
+                                    continue; // Re-enter the retry loop
                                 }
                             }
                         }

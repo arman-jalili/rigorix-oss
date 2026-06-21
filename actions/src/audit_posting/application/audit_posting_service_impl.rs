@@ -86,11 +86,9 @@ impl AuditPostingServiceImpl {
         record: &crate::audit_posting::domain::SignedAuditRecord,
         max_retries: u32,
     ) -> Result<(PostRecordOutput, u32), AuditPostingError> {
-        let mut attempts = 0u32;
         let mut last_error = None;
 
         for attempt in 1..=max_retries {
-            attempts = attempt;
             let input = PostRecordInput {
                 record: record.clone(),
                 backend_url: None,
@@ -98,7 +96,7 @@ impl AuditPostingServiceImpl {
             };
 
             match self.backend.post(input).await {
-                Ok(output) => return Ok((output, attempts)),
+                Ok(output) => return Ok((output, attempt)),
                 Err(e) => {
                     last_error = Some(e);
                     // Wait before next retry (exponential backoff)
@@ -184,7 +182,7 @@ impl AuditPostingService for AuditPostingServiceImpl {
             }
         };
 
-        let posted = post_result.as_ref().map_or(false, |r| r.success);
+        let posted = post_result.as_ref().is_some_and(|r| r.success);
 
         Ok(CreateRecordOutput {
             record,
@@ -242,59 +240,54 @@ impl AuditPostingService for AuditPostingServiceImpl {
         let mut dropped = 0u32;
         let mut still_pending = 0u32;
 
-        loop {
-            match self.queue.dequeue().await? {
-                Some(queued) => {
-                    let record = match queued.record {
-                        Some(r) => r,
-                        None => continue,
-                    };
+        while let Some(queued) = self.queue.dequeue().await? {
+            let record = match queued.record {
+                Some(r) => r,
+                None => continue,
+            };
 
-                    // Extract retry count from reason string (format: "Retry attempt N")
-                    let retry_count = queued
-                        .reason
-                        .as_ref()
-                        .and_then(|r| r.strip_prefix("Retry attempt "))
-                        .and_then(|n| n.parse::<u32>().ok())
-                        .unwrap_or(1);
+            // Extract retry count from reason string (format: "Retry attempt N")
+            let retry_count = queued
+                .reason
+                .as_ref()
+                .and_then(|r| r.strip_prefix("Retry attempt "))
+                .and_then(|n| n.parse::<u32>().ok())
+                .unwrap_or(1);
 
-                    if retry_count > 3 {
-                        dropped += 1;
-                        tracing::warn!(
-                            execution_id = %record.execution_id,
-                            retries = retry_count,
-                            "Record dropped after exhausting retries"
-                        );
-                        continue;
-                    }
+            if retry_count > 3 {
+                dropped += 1;
+                tracing::warn!(
+                    execution_id = %record.execution_id,
+                    retries = retry_count,
+                    "Record dropped after exhausting retries"
+                );
+                continue;
+            }
 
-                    match self
-                        .backend
-                        .post(PostRecordInput {
-                            record: record.clone(),
-                            backend_url: None,
-                            timeout_secs: Some(30),
-                        })
-                        .await
-                    {
-                        Ok(_output) => {
-                            delivered += 1;
-                        }
-                        Err(_) => {
-                            // Re-enqueue for another retry
-                            self.queue
-                                .enqueue(super::dto::QueueRecordInput {
-                                    record,
-                                    failure_reason: format!("Retry attempt {} failed", retry_count),
-                                    retry_count,
-                                    max_retries: 3,
-                                })
-                                .await?;
-                            still_pending += 1;
-                        }
-                    }
+            match self
+                .backend
+                .post(PostRecordInput {
+                    record: record.clone(),
+                    backend_url: None,
+                    timeout_secs: Some(30),
+                })
+                .await
+            {
+                Ok(_output) => {
+                    delivered += 1;
                 }
-                None => break,
+                Err(_) => {
+                    // Re-enqueue for another retry
+                    self.queue
+                        .enqueue(super::dto::QueueRecordInput {
+                            record,
+                            failure_reason: format!("Retry attempt {} failed", retry_count),
+                            retry_count,
+                            max_retries: 3,
+                        })
+                        .await?;
+                    still_pending += 1;
+                }
             }
         }
 

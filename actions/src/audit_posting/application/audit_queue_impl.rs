@@ -38,7 +38,7 @@ impl AuditRecordQueueImpl {
     }
 
     /// Create a new queue with the default capacity (100).
-    pub fn default() -> Self {
+    pub fn create_default() -> Self {
         Self::new(100)
     }
 }
@@ -261,7 +261,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_default_capacity() {
-        let queue = AuditRecordQueueImpl::default();
+        let queue = AuditRecordQueueImpl::create_default();
         assert!(queue.is_empty().await.unwrap());
     }
 }

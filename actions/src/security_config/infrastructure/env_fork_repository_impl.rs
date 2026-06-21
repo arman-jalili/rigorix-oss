@@ -75,11 +75,15 @@ mod tests {
     use super::*;
 
     unsafe fn set_env(key: &str, value: &str) {
-        std::env::set_var(key, value);
+        unsafe {
+            std::env::set_var(key, value);
+        }
     }
 
     unsafe fn remove_env(key: &str) {
-        std::env::remove_var(key);
+        unsafe {
+            std::env::remove_var(key);
+        }
     }
 
     #[tokio::test]

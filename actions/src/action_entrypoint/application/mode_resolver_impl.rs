@@ -108,22 +108,20 @@ impl ModeResolver for ModeResolverImpl {
 
         // Priority 2: Slash command in issue_comment event payload
         if input.event_name == "issue_comment" {
-            if let Some(ref payload) = input.event_payload {
-                if let Some(comment_body) =
+            if let Some(ref payload) = input.event_payload
+                && let Some(comment_body) =
                     payload.pointer("/comment/body").and_then(|v| v.as_str())
-                {
-                    if let Some((command, intent)) = Self::parse_slash_command(comment_body) {
-                        return self
-                            .resolve_from_command(&command, intent)
-                            .await
-                            .map(|mode| ResolveModeOutput {
-                                mode,
-                                source: "issue_comment_command".to_string(),
-                                unambiguous: true,
-                                warnings,
-                            });
-                    }
-                }
+                && let Some((command, intent)) = Self::parse_slash_command(comment_body)
+            {
+                return self
+                    .resolve_from_command(&command, intent)
+                    .await
+                    .map(|mode| ResolveModeOutput {
+                        mode,
+                        source: "issue_comment_command".to_string(),
+                        unambiguous: true,
+                        warnings,
+                    });
             }
             // No slash command found in issue_comment — fall through to event type
             warnings.push("No /rigorix command found in issue_comment".to_string());
@@ -201,7 +199,7 @@ impl ModeResolver for ModeResolverImpl {
                     intent: intent.unwrap_or_default(),
                 })
             }
-            "help" | _ => {
+            _ => {
                 // Unknown command — default to Status with a warning
                 Ok(ActionMode::Status)
             }
@@ -234,10 +232,9 @@ impl ModeResolver for ModeResolverImpl {
                 // Check for slash command in comment body
                 if let Some(comment_body) =
                     event_data.pointer("/comment/body").and_then(|v| v.as_str())
+                    && let Some((command, intent)) = Self::parse_slash_command(comment_body)
                 {
-                    if let Some((command, intent)) = Self::parse_slash_command(comment_body) {
-                        return self.resolve_from_command(&command, intent).await;
-                    }
+                    return self.resolve_from_command(&command, intent).await;
                 }
                 // No slash command: dispatch as Run
                 Ok(ActionMode::Run {

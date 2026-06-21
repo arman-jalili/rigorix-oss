@@ -308,7 +308,7 @@ impl Default for EditFileConfig {
 // ---------------------------------------------------------------------------
 
 /// Input for configuring the code generation pipeline.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CodeGenConfig {
     /// Configuration for the edit_file operation.
     #[serde(default)]
@@ -320,16 +320,6 @@ pub struct CodeGenConfig {
 
     /// Workspace root for path validation.
     pub workspace_root: Option<String>,
-}
-
-impl Default for CodeGenConfig {
-    fn default() -> Self {
-        Self {
-            edit_file: EditFileConfig::default(),
-            syntax_gate: SyntaxGateConfig::default(),
-            workspace_root: None,
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------

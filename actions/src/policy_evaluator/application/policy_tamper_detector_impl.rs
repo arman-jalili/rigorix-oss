@@ -67,7 +67,7 @@ impl PolicyTamperDetectionService for PolicyTamperDetectionServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diff_analyzer::domain::{ChangedFile, DiffHunk, FileStatus, PrDiff};
+    use crate::diff_analyzer::domain::{ChangedFile, FileStatus, PrDiff};
 
     fn make_diff_with_file(file_path: &str, status: FileStatus) -> PrDiff {
         PrDiff {

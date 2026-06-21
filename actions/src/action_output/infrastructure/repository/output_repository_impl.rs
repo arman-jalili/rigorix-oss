@@ -14,7 +14,6 @@
 use async_trait::async_trait;
 use std::io::Write;
 use std::path::Path;
-use tracing::info;
 
 use super::OutputRepository;
 use crate::action_output::domain::ActionOutputError;
@@ -29,6 +28,12 @@ use crate::action_output::domain::ActionOutputError;
 /// - File paths are validated against directory traversal
 /// - Written content is not logged (only metadata)
 pub struct OutputRepositoryImpl;
+
+impl Default for OutputRepositoryImpl {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl OutputRepositoryImpl {
     pub fn new() -> Self {

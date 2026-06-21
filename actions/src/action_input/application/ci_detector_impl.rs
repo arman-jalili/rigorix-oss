@@ -17,7 +17,6 @@
 //! | Workspace | GITHUB_WORKSPACE | CWD |
 
 use async_trait::async_trait;
-use std::collections::HashMap;
 
 use crate::action_input::application::dto::{DetectCiInput, DetectCiOutput};
 use crate::action_input::application::service::CiDetectionService;
@@ -125,6 +124,7 @@ impl CiDetectionService for CiDetectorImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[tokio::test]
     async fn test_detect_ci_with_override() {

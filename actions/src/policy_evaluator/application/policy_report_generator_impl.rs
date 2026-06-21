@@ -159,7 +159,7 @@ impl PolicyReportGenerationService for PolicyReportGenerationServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::policy_evaluator::domain::{PolicyMetadata, Severity, ViolationCounts};
+    use crate::policy_evaluator::domain::{PolicyMetadata, Severity};
 
     #[tokio::test]
     async fn test_format_no_violations() {

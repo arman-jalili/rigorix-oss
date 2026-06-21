@@ -27,7 +27,7 @@ use async_trait::async_trait;
 
 use crate::diff_analyzer::application::dto::{DetectAiSignalsInput, DetectAiSignalsOutput};
 use crate::diff_analyzer::application::service::AiSignalDetectionService;
-use crate::diff_analyzer::domain::{AiSignal, AiSignalResult, DiffAnalyzerError, PrDiff};
+use crate::diff_analyzer::domain::{AiSignal, AiSignalResult, DiffAnalyzerError};
 
 /// Default AI comment patterns to detect.
 const DEFAULT_AI_COMMENT_PATTERNS: &[&str] = &[
@@ -226,6 +226,7 @@ impl AiSignalDetectionService for AiSignalDetectorImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::diff_analyzer::domain::PrDiff;
     use crate::diff_analyzer::domain::{
         ChangedFile, DiffHunk, DiffLine, DiffLineType, FileRisk, FileStatus,
     };

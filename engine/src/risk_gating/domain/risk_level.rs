@@ -277,7 +277,7 @@ mod tests {
     #[test]
     fn test_risk_level_clone() {
         let level = RiskLevel::High;
-        let cloned = level.clone();
+        let cloned = level;
         assert_eq!(level, cloned);
     }
 

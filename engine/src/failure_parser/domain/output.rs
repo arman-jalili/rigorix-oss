@@ -81,11 +81,7 @@ impl ParsedFailure {
                 return FailureSeverity::TestBlock;
             }
         }
-        if failures.is_empty() {
-            FailureSeverity::Warning
-        } else {
-            FailureSeverity::Warning
-        }
+        FailureSeverity::Warning
     }
 }
 

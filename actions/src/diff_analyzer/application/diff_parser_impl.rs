@@ -275,16 +275,14 @@ impl DiffParsingService for DiffParserImpl {
 
         for line_ref in &lines[1..] {
             let line: &str = line_ref;
-            let (line_type, content) = if line.starts_with('+') {
-                let content = &line[1..];
+            let (line_type, content) = if let Some(content) = line.strip_prefix('+') {
                 let lt = if content == "\\ No newline at end of file" {
                     DiffLineType::NoNewline
                 } else {
                     DiffLineType::Added
                 };
                 (lt, content)
-            } else if line.starts_with('-') {
-                let content = &line[1..];
+            } else if let Some(content) = line.strip_prefix('-') {
                 let lt = if content == "\\ No newline at end of file" {
                     DiffLineType::NoNewline
                 } else {
@@ -292,7 +290,10 @@ impl DiffParsingService for DiffParserImpl {
                 };
                 (lt, content)
             } else if line.starts_with(' ') {
-                (DiffLineType::Context, &line[1..])
+                (
+                    DiffLineType::Context,
+                    line.strip_prefix(' ').unwrap_or(line),
+                )
             } else if line.starts_with('\\') {
                 (DiffLineType::NoNewline, line)
             } else {

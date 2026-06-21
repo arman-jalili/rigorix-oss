@@ -308,7 +308,7 @@ mod tests {
     async fn test_binary_file_rejected() {
         let dir = TempDir::new().unwrap();
         let file_path = dir.path().join("binary.bin");
-        std::fs::write(&file_path, &[0u8, 1, 2, 3]).unwrap();
+        std::fs::write(&file_path, [0u8, 1, 2, 3]).unwrap();
 
         let tool = FileReadTool::new(dir.path().to_str().unwrap());
         let result = tool.execute(&make_input("binary.bin")).await;

@@ -92,15 +92,15 @@ impl ContextRepository for ContextRepositoryImpl {
 
     async fn github_token(&self) -> Result<Option<String>, ActionError> {
         // Check GITHUB_TOKEN first, then INPUT_GITHUB_TOKEN
-        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-            if !token.is_empty() {
-                return Ok(Some(token));
-            }
+        if let Ok(token) = std::env::var("GITHUB_TOKEN")
+            && !token.is_empty()
+        {
+            return Ok(Some(token));
         }
-        if let Ok(token) = std::env::var("INPUT_GITHUB_TOKEN") {
-            if !token.is_empty() {
-                return Ok(Some(token));
-            }
+        if let Ok(token) = std::env::var("INPUT_GITHUB_TOKEN")
+            && !token.is_empty()
+        {
+            return Ok(Some(token));
         }
         Ok(None)
     }

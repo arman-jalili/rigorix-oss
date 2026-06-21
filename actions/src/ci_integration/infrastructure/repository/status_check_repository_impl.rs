@@ -64,7 +64,7 @@ impl StatusCheckRepository for StatusCheckRepositoryImpl {
         self.client
             .create_status(&full_repo, sha, &shared_status)
             .await
-            .map_err(|e| map_github_error(e))
+            .map_err(map_github_error)
     }
 
     async fn get_status(
@@ -114,10 +114,9 @@ fn map_github_error(err: GitHubClientError) -> CiIntegrationError {
         GitHubClientError::ApiError { status, message } => CiIntegrationError::Internal {
             detail: format!("GitHub API error ({}): {}", status, message),
         },
-        GitHubClientError::NetworkError(e) => CiIntegrationError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            e.to_string(),
-        )),
+        GitHubClientError::NetworkError(e) => {
+            CiIntegrationError::Io(std::io::Error::other(e.to_string()))
+        }
         GitHubClientError::Serialization(e) => CiIntegrationError::Json(e),
     }
 }

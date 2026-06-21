@@ -63,6 +63,7 @@ pub trait SecurityContextFactory: Send + Sync {
 /// Factory for constructing `HmacKey` values.
 ///
 /// Handles key generation, parsing, and expiration management.
+#[allow(clippy::wrong_self_convention)]
 #[async_trait]
 pub trait HmacKeyFactory: Send + Sync {
     /// Generate a new cryptographically random HMAC key.
@@ -81,6 +82,7 @@ pub trait HmacKeyFactory: Send + Sync {
 /// Factory for constructing `SecurityPolicy` from TOML configuration.
 ///
 /// Handles parsing and validation of the `.rigorix/security.toml` file.
+#[allow(clippy::wrong_self_convention)]
 #[async_trait]
 pub trait SecurityPolicyFactory: Send + Sync {
     /// Build a `SecurityPolicy` from raw TOML content.

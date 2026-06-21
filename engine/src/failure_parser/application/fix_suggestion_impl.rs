@@ -213,12 +213,11 @@ impl FixSuggestionServiceImpl {
 
         // Strategy C: First-letter match (common in TypeScript errors)
         for candidate in candidates {
-            if let Some(cand_first) = candidate.chars().next() {
-                if let Some(sym_first) = symbol.chars().next() {
-                    if cand_first.to_ascii_lowercase() == sym_first.to_ascii_lowercase() {
-                        return Some(candidate.as_str());
-                    }
-                }
+            if let Some(cand_first) = candidate.chars().next()
+                && let Some(sym_first) = symbol.chars().next()
+                && cand_first.eq_ignore_ascii_case(&sym_first)
+            {
+                return Some(candidate.as_str());
             }
         }
 

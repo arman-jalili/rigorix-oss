@@ -179,18 +179,16 @@ impl TreeSitterAnchorFinder {
                     | "class_definition"
             );
 
-            if is_container {
-                if let Some(body) = current.child_by_field_name("body") {
-                    let body_start = body.start_byte();
-                    let body_end = body.end_byte();
-                    let offset = match position {
-                        "before" if body_end > body_start + 1 => body_start + 1, // after opening `{`
-                        "before" => body_start + 1,
-                        _ if body_end > body_start + 1 => body_end - 1, // before closing `}`
-                        _ => body_start + 1,
-                    };
-                    return Some(offset);
-                }
+            if is_container && let Some(body) = current.child_by_field_name("body") {
+                let body_start = body.start_byte();
+                let body_end = body.end_byte();
+                let offset = match position {
+                    "before" if body_end > body_start + 1 => body_start + 1, // after opening `{`
+                    "before" => body_start + 1,
+                    _ if body_end > body_start + 1 => body_end - 1, // before closing `}`
+                    _ => body_start + 1,
+                };
+                return Some(offset);
             }
 
             // Walk up to parent

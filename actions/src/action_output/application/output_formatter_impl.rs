@@ -10,7 +10,7 @@
 //! - The context must be fully resolved before calling
 
 use async_trait::async_trait;
-use tracing::{Instrument, Span, info, warn};
+use tracing::{Span, info};
 
 use crate::action_output::domain::output_variable_names;
 use crate::action_output::domain::{
@@ -252,10 +252,8 @@ impl OutputFormattingService for OutputFormatterImpl {
 
         // 3. Post PR comment if configured
         let mut pr_comment_posted = false;
-        if input.post_pr_comment {
-            if self.pr_comment_service.is_some() {
-                pr_comment_posted = true;
-            }
+        if input.post_pr_comment && self.pr_comment_service.is_some() {
+            pr_comment_posted = true;
         }
 
         info!(
@@ -358,10 +356,8 @@ impl OutputFormattingService for OutputFormatterImpl {
 
         // 4. Post PR comment with failure summary if configured
         let mut pr_comment_posted = false;
-        if input.post_pr_comment {
-            if self.pr_comment_service.is_some() {
-                pr_comment_posted = true;
-            }
+        if input.post_pr_comment && self.pr_comment_service.is_some() {
+            pr_comment_posted = true;
         }
 
         let annotation_count = failures.len() as u32;

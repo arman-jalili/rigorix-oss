@@ -506,10 +506,10 @@ pub(crate) fn parse_graph_nodes(graph: &serde_json::Value) -> Vec<view_model::No
             let dep_names: Vec<String> = nodes[i].dependencies.clone();
             let my_name = nodes[i].name.clone();
             for dep_name in &dep_names {
-                if let Some(dep_node) = nodes.iter_mut().find(|dn| dn.name == *dep_name) {
-                    if !dep_node.dependents.contains(&my_name) {
-                        dep_node.dependents.push(my_name.clone());
-                    }
+                if let Some(dep_node) = nodes.iter_mut().find(|dn| dn.name == *dep_name)
+                    && !dep_node.dependents.contains(&my_name)
+                {
+                    dep_node.dependents.push(my_name.clone());
                 }
             }
         }
@@ -797,7 +797,7 @@ async fn handle_action(
             }
         }
         KeyAction::CopyToClipboard => {
-            let content = render_view_as_text(&vm);
+            let content = render_view_as_text(vm);
             // Write to temp file AND pipe to system clipboard
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -825,7 +825,7 @@ async fn handle_action(
                     let _ = clear_tx.send(VmCommand::CopyMessage(None)).await;
                 });
             } else {
-                vm.error = Some(format!("Failed to copy view content"));
+                vm.error = Some("Failed to copy view content".to_string());
             }
         }
         KeyAction::CancelGraceful | KeyAction::CancelImmediate => {

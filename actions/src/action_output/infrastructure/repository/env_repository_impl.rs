@@ -24,6 +24,12 @@ use crate::action_output::domain::ActionOutputError;
 /// - Callers are responsible for not logging values
 pub struct EnvRepositoryImpl;
 
+impl Default for EnvRepositoryImpl {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EnvRepositoryImpl {
     pub fn new() -> Self {
         Self

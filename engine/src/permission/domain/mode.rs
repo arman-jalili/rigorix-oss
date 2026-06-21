@@ -27,6 +27,7 @@ use std::fmt;
 /// The `Ord` derives from discriminant values: ReadOnly(0) < WorkspaceWrite(1) < DangerousFullAccess(2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum PermissionMode {
     /// Only read operations: file_read, grep, glob, git_log, lsp_query.
     /// Bash: only read-only commands (ls, cat, grep, find, etc.).
@@ -36,6 +37,7 @@ pub enum PermissionMode {
     /// Read + write operations within the workspace boundary.
     /// Bash: all commands allowed (subject to tool policy).
     #[serde(rename = "workspace_write")]
+    #[default]
     WorkspaceWrite = 1,
 
     /// No restrictions — full system access. Use with extreme caution.
@@ -110,12 +112,6 @@ impl PermissionMode {
 impl fmt::Display for PermissionMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.as_str())
-    }
-}
-
-impl Default for PermissionMode {
-    fn default() -> Self {
-        PermissionMode::WorkspaceWrite
     }
 }
 

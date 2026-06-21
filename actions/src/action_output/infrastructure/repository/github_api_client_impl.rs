@@ -20,6 +20,12 @@ use crate::action_output::infrastructure::repository::{GitHubApiClient, GitHubCo
 /// HTTP client is cheap to construct.
 pub struct GitHubApiClientImpl;
 
+impl Default for GitHubApiClientImpl {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GitHubApiClientImpl {
     pub fn new() -> Self {
         Self
@@ -71,10 +77,9 @@ impl GitHubApiClient for GitHubApiClientImpl {
                         response: message,
                     }
                 }
-                GitHubClientError::NetworkError(e) => ActionOutputError::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    e.to_string(),
-                )),
+                GitHubClientError::NetworkError(e) => {
+                    ActionOutputError::Io(std::io::Error::other(e.to_string()))
+                }
                 GitHubClientError::Serialization(e) => ActionOutputError::Json(e),
             })?;
 
@@ -104,9 +109,7 @@ impl GitHubApiClient for GitHubApiClientImpl {
     }
 
     async fn get_authenticated_user(&self, token: &str) -> Result<String, ActionOutputError> {
-        use crate::shared::github_client::GitHubClientError;
-
-        let client = crate::shared::github_client::GitHubClient::new(token);
+        let _client = crate::shared::github_client::GitHubClient::new(token);
         let url = format!(
             "{}/user",
             crate::shared::github_client::GitHubClient::DEFAULT_API_URL

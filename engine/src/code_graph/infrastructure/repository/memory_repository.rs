@@ -164,7 +164,7 @@ impl CodeGraphRepository for InMemoryCodeGraphRepository {
             .cloned()
             .collect();
 
-        results.sort_by(|a, b| b.metadata.created_at.cmp(&a.metadata.created_at));
+        results.sort_by_key(|b| std::cmp::Reverse(b.metadata.created_at));
         Ok(results)
     }
 }

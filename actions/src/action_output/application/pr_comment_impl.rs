@@ -100,7 +100,7 @@ impl PrCommentServiceImpl {
         let duration_secs = context.duration_ms as f64 / 1000.0;
 
         let mut body = String::new();
-        body.push_str(&format!("## Rigorix Validation Failed\n\n"));
+        body.push_str("## Rigorix Validation Failed\n\n");
         body.push_str(&format!(
             "**Execution:** `{}` | **Duration:** {:.1}s | **Failures:** {}\n\n",
             execution_id, duration_secs, context.failure_count,
@@ -130,45 +130,45 @@ impl PrCommentService for PrCommentServiceImpl {
     ) -> Result<PostPrCommentOutput, ActionOutputError> {
         use crate::shared::github_client::GitHubClientError;
 
-        let comment =
-            self.client
-                .create_issue_comment(&input.repo, input.pr_number, &input.body)
-                .await
-                .map_err(|e| match e {
-                    GitHubClientError::AuthFailed(msg) => ActionOutputError::GitHubApiError {
+        let comment = self
+            .client
+            .create_issue_comment(&input.repo, input.pr_number, &input.body)
+            .await
+            .map_err(|e| match e {
+                GitHubClientError::AuthFailed(msg) => ActionOutputError::GitHubApiError {
+                    endpoint: format!("issues/{}/comments", input.pr_number),
+                    status_code: 401,
+                    response: msg,
+                },
+                GitHubClientError::PermissionDenied(msg) => ActionOutputError::GitHubApiError {
+                    endpoint: format!("issues/{}/comments", input.pr_number),
+                    status_code: 403,
+                    response: msg,
+                },
+                GitHubClientError::RateLimited { retry_after_secs } => {
+                    ActionOutputError::GitHubApiError {
                         endpoint: format!("issues/{}/comments", input.pr_number),
-                        status_code: 401,
-                        response: msg,
-                    },
-                    GitHubClientError::PermissionDenied(msg) => ActionOutputError::GitHubApiError {
-                        endpoint: format!("issues/{}/comments", input.pr_number),
-                        status_code: 403,
-                        response: msg,
-                    },
-                    GitHubClientError::RateLimited { retry_after_secs } => {
-                        ActionOutputError::GitHubApiError {
-                            endpoint: format!("issues/{}/comments", input.pr_number),
-                            status_code: 429,
-                            response: format!("rate limited, retry after {}s", retry_after_secs),
-                        }
+                        status_code: 429,
+                        response: format!("rate limited, retry after {}s", retry_after_secs),
                     }
-                    GitHubClientError::NotFound(msg) => ActionOutputError::GitHubApiError {
+                }
+                GitHubClientError::NotFound(msg) => ActionOutputError::GitHubApiError {
+                    endpoint: format!("issues/{}/comments", input.pr_number),
+                    status_code: 404,
+                    response: msg,
+                },
+                GitHubClientError::ApiError { status, message } => {
+                    ActionOutputError::GitHubApiError {
                         endpoint: format!("issues/{}/comments", input.pr_number),
-                        status_code: 404,
-                        response: msg,
-                    },
-                    GitHubClientError::ApiError { status, message } => {
-                        ActionOutputError::GitHubApiError {
-                            endpoint: format!("issues/{}/comments", input.pr_number),
-                            status_code: status,
-                            response: message,
-                        }
+                        status_code: status,
+                        response: message,
                     }
-                    GitHubClientError::NetworkError(e) => ActionOutputError::Io(
-                        std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
-                    ),
-                    GitHubClientError::Serialization(e) => ActionOutputError::Json(e),
-                })?;
+                }
+                GitHubClientError::NetworkError(e) => {
+                    ActionOutputError::Io(std::io::Error::other(e.to_string()))
+                }
+                GitHubClientError::Serialization(e) => ActionOutputError::Json(e),
+            })?;
 
         info!(
             pr_number = input.pr_number,

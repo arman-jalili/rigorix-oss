@@ -145,6 +145,7 @@ pub trait CompiledRulesFactory: Send + Sync {
 ///
 /// Handles creation of evaluation results with computed
 /// aggregate statistics.
+#[allow(clippy::too_many_arguments)]
 #[async_trait]
 pub trait PolicyResultFactory: Send + Sync {
     /// Build a `PolicyResult` from a list of violations.

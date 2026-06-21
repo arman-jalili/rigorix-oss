@@ -206,34 +206,32 @@ impl EditFileTool {
         ));
 
         // Context before
-        for i in display_start..diff_start {
-            diff.push_str(&format!(" {}\n", original_lines[i]));
+        for line in original_lines[display_start..diff_start].iter() {
+            diff.push_str(&format!(" {}\n", line));
         }
 
         // Removed lines
-        for i in diff_start..diff_end_orig {
-            diff.push_str(&format!("-{}\n", original_lines[i]));
+        for line in original_lines[diff_start..diff_end_orig].iter() {
+            diff.push_str(&format!("-{}\n", line));
         }
 
         // Added lines
-        for i in diff_start..diff_end_upd {
-            diff.push_str(&format!("+{}\n", updated_lines[i]));
+        for line in updated_lines[diff_start..diff_end_upd].iter() {
+            diff.push_str(&format!("+{}\n", line));
         }
 
         // Context after
-        for i in diff_end_orig..display_end_orig {
-            if i < original_lines.len() {
-                diff.push_str(&format!(" {}\n", original_lines[i]));
-            }
+        for line in original_lines[diff_end_orig..display_end_orig].iter() {
+            diff.push_str(&format!(" {}\n", line));
         }
 
         // Build structured patch hunks
         let mut lines = Vec::new();
-        for i in diff_start..diff_end_orig {
-            lines.push(format!("-{}", original_lines[i]));
+        for line in original_lines[diff_start..diff_end_orig].iter() {
+            lines.push(format!("-{}", line));
         }
-        for i in diff_start..diff_end_upd {
-            lines.push(format!("+{}", updated_lines[i]));
+        for line in updated_lines[diff_start..diff_end_upd].iter() {
+            lines.push(format!("+{}", line));
         }
 
         let hunk = StructuredPatchHunk {
@@ -408,7 +406,7 @@ impl Tool for EditFileTool {
                 vec![SideEffect::new(
                     &edit_output.file_path,
                     "file_edit",
-                    &format!(
+                    format!(
                         "Replaced {} occurrence(s) of '{}' with '{}'",
                         edit_output.occurrences_replaced,
                         &edit_output.old_string[..edit_output.old_string.len().min(50)],

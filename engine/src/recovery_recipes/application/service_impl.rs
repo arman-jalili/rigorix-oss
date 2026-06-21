@@ -176,13 +176,13 @@ impl RecoveryService for RecoveryServiceImpl {
 
     async fn recipe_for(&self, input: RecipeForInput) -> Result<RecipeForOutput, RecoveryError> {
         // Check custom overrides first
-        if let Some(custom_recipes) = &input.custom_recipes {
-            if let Some(recipe) = custom_recipes.iter().find(|r| r.scenario == input.scenario) {
-                return Ok(RecipeForOutput {
-                    recipe: Some(recipe.clone()),
-                    source: RecipeSource::CustomOverride,
-                });
-            }
+        if let Some(custom_recipes) = &input.custom_recipes
+            && let Some(recipe) = custom_recipes.iter().find(|r| r.scenario == input.scenario)
+        {
+            return Ok(RecipeForOutput {
+                recipe: Some(recipe.clone()),
+                source: RecipeSource::CustomOverride,
+            });
         }
 
         // Check internal custom recipes
@@ -268,12 +268,9 @@ impl RecoveryService for RecoveryServiceImpl {
                         warnings.push("RestartService with empty name will fail".to_string());
                     }
                 }
-                RecoveryStep::EscalateToHuman { reason } => {
-                    if reason.trim().is_empty() {
-                        warnings.push(
-                            "EscalateToHuman with empty reason provides no context".to_string(),
-                        );
-                    }
+                RecoveryStep::EscalateToHuman { reason } if reason.trim().is_empty() => {
+                    warnings
+                        .push("EscalateToHuman with empty reason provides no context".to_string());
                 }
                 _ => {}
             }

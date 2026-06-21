@@ -66,7 +66,7 @@ impl FailureType {
     /// - TestFailure → `false` (requires replanning with feedback)
     /// - BuildFailure → `false` (requires patching with compiler output)
     /// - NonRetryable → `false` (fatal, no retry possible)
-    /// Returns the canonical snake_case name of this failure type.
+    ///   Returns the canonical snake_case name of this failure type.
     pub fn as_str(&self) -> &'static str {
         match self {
             FailureType::Transient => "transient",

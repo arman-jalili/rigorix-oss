@@ -49,7 +49,7 @@ impl ConfigRepository for YamlConfigRepository {
             std::path::PathBuf::from(p)
         } else {
             std::env::current_dir()
-                .map_err(|e| ActionInputError::Io(e))?
+                .map_err(ActionInputError::Io)?
                 .join("action.yml")
         };
 
@@ -99,7 +99,7 @@ impl ConfigRepository for YamlConfigRepository {
     }
 
     async fn resolve_action_yml_path(&self) -> Result<Option<String>, ActionInputError> {
-        let cwd = std::env::current_dir().map_err(|e| ActionInputError::Io(e))?;
+        let cwd = std::env::current_dir().map_err(ActionInputError::Io)?;
         let path = cwd.join("action.yml");
         if tokio::fs::try_exists(&path).await.unwrap_or(false) {
             Ok(Some(path.to_string_lossy().to_string()))
@@ -133,10 +133,7 @@ impl ConfigLoaderImpl {
 
 impl Default for ConfigLoaderImpl {
     fn default() -> Self {
-        Self::new(
-            InputParserImpl::default(),
-            Box::new(YamlConfigRepository::default()),
-        )
+        Self::new(InputParserImpl::default(), Box::new(YamlConfigRepository))
     }
 }
 

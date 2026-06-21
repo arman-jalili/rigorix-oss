@@ -4,9 +4,8 @@
 //! Issue: issue-policyloader
 
 use async_trait::async_trait;
-use globset::Glob;
 
-use crate::policy_evaluator::domain::{CompiledRules, PolicyDocument, PolicyError, PolicyLimits};
+use crate::policy_evaluator::domain::{CompiledRules, PolicyDocument, PolicyError};
 
 use super::compiled_rules_factory_impl::CompiledRulesFactoryImpl;
 use super::dto::{LoadPolicyInput, LoadPolicyOutput};
@@ -102,7 +101,7 @@ impl PolicyLoadingService for PolicyLoadingServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::policy_evaluator::domain::{AuditConfig, PolicyRules};
+    use crate::policy_evaluator::domain::{AuditConfig, PolicyLimits, PolicyRules};
 
     #[tokio::test]
     async fn test_validate_version() {

@@ -85,7 +85,7 @@ fn sample_test_failure() -> TemplateFailure {
 
 #[test]
 fn integration_template_failure_all_variants() {
-    let failures = vec![
+    let failures = [
         sample_missing_symbol_failure(),
         sample_wrong_arg_count_failure(),
         sample_type_mismatch_failure(),
@@ -140,7 +140,7 @@ fn integration_template_failure_fixable_categories() {
 
 #[test]
 fn integration_serialization_json_roundtrip_all_variants() {
-    let variants = vec![
+    let variants = [
         sample_missing_symbol_failure(),
         sample_wrong_arg_count_failure(),
         sample_type_mismatch_failure(),

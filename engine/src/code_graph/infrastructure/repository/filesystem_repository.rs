@@ -254,21 +254,20 @@ impl CodeGraphRepository for FilesystemCodeGraphRepository {
             if results.len() >= limit as usize {
                 break;
             }
-            if let Ok(graph) = self.load(id).await {
-                if graph.metadata.name.to_lowercase().contains(&query_lower)
+            if let Ok(graph) = self.load(id).await
+                && (graph.metadata.name.to_lowercase().contains(&query_lower)
                     || graph.metadata.source.to_lowercase().contains(&query_lower)
                     || graph
                         .metadata
                         .description
                         .to_lowercase()
-                        .contains(&query_lower)
-                {
-                    results.push(graph);
-                }
+                        .contains(&query_lower))
+            {
+                results.push(graph);
             }
         }
 
-        results.sort_by(|a, b| b.metadata.created_at.cmp(&a.metadata.created_at));
+        results.sort_by_key(|b| std::cmp::Reverse(b.metadata.created_at));
         Ok(results)
     }
 }

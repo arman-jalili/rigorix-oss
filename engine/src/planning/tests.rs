@@ -740,7 +740,7 @@ async fn test_request_clarification_generates_question() {
     let output = pipeline.request_clarification(input).await.unwrap();
     assert!(!output.question.is_empty(), "Should generate a question");
     assert!(
-        output.ambiguous_templates.len() >= 1,
+        !output.ambiguous_templates.is_empty(),
         "Should include ambiguous templates"
     );
 }

@@ -143,13 +143,13 @@ impl PolicyError {
 
     /// Whether the error should block the action from proceeding.
     pub fn is_blocking(&self) -> bool {
-        match self {
+        matches!(
+            self,
             PolicyError::FileNotFound { .. }
-            | PolicyError::InvalidSyntax { .. }
-            | PolicyError::UnsupportedVersion { .. }
-            | PolicyError::PolicyTamperDetected { .. }
-            | PolicyError::InvalidLimits { .. } => true,
-            _ => false,
-        }
+                | PolicyError::InvalidSyntax { .. }
+                | PolicyError::UnsupportedVersion { .. }
+                | PolicyError::PolicyTamperDetected { .. }
+                | PolicyError::InvalidLimits { .. }
+        )
     }
 }

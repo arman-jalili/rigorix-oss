@@ -109,15 +109,15 @@ impl QualityGateService for QualityGateServiceImpl {
         }
 
         // Check template-level override
-        if let Some(ref template_name) = input.template_name {
-            if let Some(level) = self.config.required_level_for_template(template_name) {
-                return Ok(GetContractOutput {
-                    contract: GreenContract::new(level),
-                    source: ContractSource::TemplateOverride {
-                        template_name: template_name.clone(),
-                    },
-                });
-            }
+        if let Some(ref template_name) = input.template_name
+            && let Some(level) = self.config.required_level_for_template(template_name)
+        {
+            return Ok(GetContractOutput {
+                contract: GreenContract::new(level),
+                source: ContractSource::TemplateOverride {
+                    template_name: template_name.clone(),
+                },
+            });
         }
 
         // Fall back to default

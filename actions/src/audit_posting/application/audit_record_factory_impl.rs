@@ -26,6 +26,7 @@ type HmacSha256 = Hmac<Sha256>;
 ///
 /// Uses the configured HMAC key (hex-encoded) to sign and verify
 /// audit records. The key is set at construction time.
+#[derive(Default)]
 pub struct AuditRecordFactoryImpl {
     /// HMAC signing key (raw bytes).
     signing_key: Option<Vec<u8>>,
@@ -97,15 +98,6 @@ impl AuditRecordFactoryImpl {
         let code_bytes = result.into_bytes();
 
         Ok(hex::encode(code_bytes))
-    }
-}
-
-impl Default for AuditRecordFactoryImpl {
-    fn default() -> Self {
-        Self {
-            signing_key: None,
-            key_id: None,
-        }
     }
 }
 
@@ -188,7 +180,7 @@ impl AuditRecordFactory for AuditRecordFactoryImpl {
 
         // Verify using constant-time comparison
         let stored_bytes =
-            hex::decode(&stored_signature).map_err(|e| AuditPostingError::SignatureMismatch {
+            hex::decode(&stored_signature).map_err(|_e| AuditPostingError::SignatureMismatch {
                 expected_prefix: stored_signature.chars().take(8).collect(),
                 received_prefix: "invalid hex".to_string(),
             })?;
@@ -389,7 +381,7 @@ mod tests {
         let record1 = factory.create_record(input.clone()).await.unwrap();
         let record2 = factory.create_record(input).await.unwrap();
 
-        let signed1 = factory
+        let _signed1 = factory
             .sign(SignRecordInput {
                 record: record1,
                 key_id: None,
@@ -397,7 +389,7 @@ mod tests {
             .await
             .unwrap();
 
-        let signed2 = factory
+        let _signed2 = factory
             .sign(SignRecordInput {
                 record: record2,
                 key_id: None,

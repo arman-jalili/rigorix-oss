@@ -65,13 +65,13 @@ impl HookRunnerImpl {
         abort_signal: Option<&HookAbortSignal>,
     ) -> Result<HookRunResult, HookError> {
         // Check abort signal before spawning
-        if let Some(signal) = abort_signal {
-            if signal.is_aborted() {
-                return Ok(HookRunResult::cancelled(
-                    event,
-                    vec![format!("Hook '{}' aborted before execution", command)],
-                ));
-            }
+        if let Some(signal) = abort_signal
+            && signal.is_aborted()
+        {
+            return Ok(HookRunResult::cancelled(
+                event,
+                vec![format!("Hook '{}' aborted before execution", command)],
+            ));
         }
 
         let timeout_ms = (self.config.timeout_secs.max(MIN_TIMEOUT_SECS)) * 1000;
@@ -98,26 +98,26 @@ impl HookRunnerImpl {
 
         // Write stdin payload
         let stdin_json = serde_json::to_string(stdin_payload).unwrap_or_default();
-        if let Some(mut stdin) = child.stdin.take() {
-            if let Err(e) = stdin.write_all(stdin_json.as_bytes()) {
-                let _ = child.kill();
-                return Err(HookError::Internal {
-                    detail: format!("Failed to write stdin to hook '{}': {}", command, e),
-                });
-            }
+        if let Some(mut stdin) = child.stdin.take()
+            && let Err(e) = stdin.write_all(stdin_json.as_bytes())
+        {
+            let _ = child.kill();
+            return Err(HookError::Internal {
+                detail: format!("Failed to write stdin to hook '{}': {}", command, e),
+            });
         }
 
         // Wait for the process with timeout
         let start = Instant::now();
         loop {
-            if let Some(signal) = abort_signal {
-                if signal.is_aborted() {
-                    let _ = child.kill();
-                    return Ok(HookRunResult::cancelled(
-                        event,
-                        vec![format!("Hook '{}' aborted during execution", command)],
-                    ));
-                }
+            if let Some(signal) = abort_signal
+                && signal.is_aborted()
+            {
+                let _ = child.kill();
+                return Ok(HookRunResult::cancelled(
+                    event,
+                    vec![format!("Hook '{}' aborted during execution", command)],
+                ));
             }
 
             match child.try_wait() {
@@ -221,33 +221,26 @@ impl HookRunnerImpl {
         let mut aggregated = HookRunResult::new(payload.event);
         let stdin_value = serde_json::to_value(payload).unwrap_or_default();
 
-        let commands_iter: Box<dyn Iterator<Item = &String>> =
-            if is_pre_tool_use && self.config.sequential_pre_tool_use {
-                Box::new(commands.iter())
-            } else {
-                Box::new(commands.iter())
-            };
+        let commands_iter: Box<dyn Iterator<Item = &String>> = Box::new(commands.iter());
 
         for command in commands_iter {
             // Check abort before each hook
-            if let Some(signal) = abort_signal {
-                if signal.is_aborted() {
-                    aggregated.cancelled = true;
-                    aggregated
-                        .messages
-                        .push(format!("Hook execution aborted before '{}'", command));
-                    break;
-                }
+            if let Some(signal) = abort_signal
+                && signal.is_aborted()
+            {
+                aggregated.cancelled = true;
+                aggregated
+                    .messages
+                    .push(format!("Hook execution aborted before '{}'", command));
+                break;
             }
 
             match self.execute_single_command(command, &stdin_value, payload.event, abort_signal) {
                 Ok(hook_result) => {
                     aggregated.merge(&hook_result);
                     // If denied or cancelled, stop executing more hooks
-                    if hook_result.is_denied() || hook_result.is_cancelled() {
-                        if is_pre_tool_use {
-                            break;
-                        }
+                    if (hook_result.is_denied() || hook_result.is_cancelled()) && is_pre_tool_use {
+                        break;
                     }
                 }
                 Err(e) => {

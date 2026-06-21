@@ -43,18 +43,18 @@ impl AuditBackendFactory for AuditBackendFactoryImpl {
         config: AuditBackendConfig,
     ) -> Result<Box<dyn AuditBackend>, AuditPostingError> {
         // HTTP backend takes precedence if both are configured
-        if let Some(url) = &config.backend_url {
-            if !url.is_empty() {
-                return Ok(Box::new(HttpAuditBackend::new(Some(url.clone()))));
-            }
+        if let Some(url) = &config.backend_url
+            && !url.is_empty()
+        {
+            return Ok(Box::new(HttpAuditBackend::new(Some(url.clone()))));
         }
 
-        if let Some(path) = &config.filesystem_path {
-            if !path.is_empty() {
-                return Ok(Box::new(FilesystemAuditBackendImpl::new(PathBuf::from(
-                    path,
-                ))));
-            }
+        if let Some(path) = &config.filesystem_path
+            && !path.is_empty()
+        {
+            return Ok(Box::new(FilesystemAuditBackendImpl::new(PathBuf::from(
+                path,
+            ))));
         }
 
         Err(AuditPostingError::NotConfigured {

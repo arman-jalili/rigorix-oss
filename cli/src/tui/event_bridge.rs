@@ -216,7 +216,7 @@ impl EventBridge for EventBridgeImpl {
                         }
                     }
                     Err(broadcast::error::RecvError::Lagged(n)) => {
-                        stats.events_dropped.fetch_add(n as u64, Ordering::SeqCst);
+                        stats.events_dropped.fetch_add(n, Ordering::SeqCst);
                         stats
                             .dropped_since_last_check
                             .fetch_add(n as u32, Ordering::SeqCst);

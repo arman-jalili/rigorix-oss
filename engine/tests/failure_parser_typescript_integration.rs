@@ -104,7 +104,7 @@ async fn integration_tsc_error_with_did_you_mean_suggestion() {
     assert_eq!(result.total_count, 1);
     if let TemplateFailure::MissingSymbol { suggestion, .. } = &result.failures[0].failure {
         assert!(
-            suggestion.as_ref().map_or(false, |s| s.contains("add")),
+            suggestion.as_ref().is_some_and(|s| s.contains("add")),
             "Expected suggestion mentioning 'add', got: {:?}",
             suggestion
         );

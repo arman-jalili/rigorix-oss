@@ -37,8 +37,7 @@ impl ContextBuilderImpl {
         event_name: &str,
         content: &str,
     ) -> Result<ParseEventOutput, ActionError> {
-        let json: serde_json::Value =
-            serde_json::from_str(content).map_err(|e| ActionError::Json(e))?;
+        let json: serde_json::Value = serde_json::from_str(content).map_err(ActionError::Json)?;
 
         let file_size = content.len() as u64;
 
@@ -239,7 +238,7 @@ impl ContextBuilder for ContextBuilderImpl {
         let mut warnings = Vec::new();
 
         // Helper: read env var from overrides or real env
-        let env_val = |name: &str| -> Option<String> {
+        let _env_val = |name: &str| -> Option<String> {
             if let Some(ref overrides) = input.env_override {
                 overrides.get(name).cloned()
             } else {

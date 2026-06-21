@@ -153,14 +153,14 @@ impl CommentParsingService for CommentParserImpl {
                         });
                     }
                 }
-                CommentCommand::Retry { execution_id } => {
-                    if Uuid::parse_str(execution_id).is_err() {
-                        return Ok(ParseCommentOutput {
-                            found: true,
-                            command: Some(CommentCommand::Help),
-                            command_type: Some("help".to_string()),
-                        });
-                    }
+                CommentCommand::Retry { execution_id }
+                    if Uuid::parse_str(execution_id).is_err() =>
+                {
+                    return Ok(ParseCommentOutput {
+                        found: true,
+                        command: Some(CommentCommand::Help),
+                        command_type: Some("help".to_string()),
+                    });
                 }
                 _ => {}
             }

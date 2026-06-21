@@ -350,18 +350,18 @@ impl LanguageParser for TypeScriptParser {
             }
 
             // Try alternative format without location
-            if trimmed.contains("error TS") {
-                if let Some(failure) = Self::parse_line_no_location(trimmed) {
-                    let detail = FailureDetail::new(
-                        failure,
-                        None,
-                        FailureSeverity::CompileBlock,
-                        trimmed.to_string(),
-                        "tsc",
-                        0.7,
-                    );
-                    details.push(detail);
-                }
+            if trimmed.contains("error TS")
+                && let Some(failure) = Self::parse_line_no_location(trimmed)
+            {
+                let detail = FailureDetail::new(
+                    failure,
+                    None,
+                    FailureSeverity::CompileBlock,
+                    trimmed.to_string(),
+                    "tsc",
+                    0.7,
+                );
+                details.push(detail);
             }
         }
 

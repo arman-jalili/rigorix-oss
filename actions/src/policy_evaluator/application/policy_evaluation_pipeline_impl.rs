@@ -81,19 +81,19 @@ impl PolicyEvaluationPipelineService for PolicyEvaluationPipelineServiceImpl {
                 require_org_policy: None,
             };
 
-            if let Ok(org_output) = merger.load_org_policy(org_load_input).await {
-                if let Some(org_policy) = org_output.org_policy {
-                    let merge_input = MergePoliciesInput {
-                        repo_policy: policy,
-                        org_policy: Some(org_policy),
-                        merge_strategy: "restrictive".to_string(),
-                    };
+            if let Ok(org_output) = merger.load_org_policy(org_load_input).await
+                && let Some(org_policy) = org_output.org_policy
+            {
+                let merge_input = MergePoliciesInput {
+                    repo_policy: policy,
+                    org_policy: Some(org_policy),
+                    merge_strategy: "restrictive".to_string(),
+                };
 
-                    let merge_output = merger.merge(merge_input).await?;
-                    policy = merge_output.merged_policy;
-                    compiled_rules = loader.compile_patterns(&policy).await?;
-                    org_policy_merged = merge_output.org_rules_added;
-                }
+                let merge_output = merger.merge(merge_input).await?;
+                policy = merge_output.merged_policy;
+                compiled_rules = loader.compile_patterns(&policy).await?;
+                org_policy_merged = merge_output.org_rules_added;
             }
         }
 

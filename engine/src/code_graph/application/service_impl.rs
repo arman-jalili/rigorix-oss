@@ -268,7 +268,7 @@ impl CodeGraphService for CodeGraphServiceImpl {
         let offset = input.offset as usize;
         let limit = input.limit as usize;
 
-        summaries.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        summaries.sort_by_key(|b| std::cmp::Reverse(b.created_at));
         summaries = summaries.into_iter().skip(offset).take(limit).collect();
 
         Ok(ListGraphsOutput {
@@ -499,7 +499,7 @@ impl CodeGraphAnalyzer for CodeGraphAnalyzerImpl {
                 let affected_node = graph
                     .get_node(current)
                     .cloned()
-                    .ok_or_else(|| CodeGraphError::NodeNotFound { node_id: current })?;
+                    .ok_or(CodeGraphError::NodeNotFound { node_id: current })?;
                 impact_chains.push(ImpactChain {
                     affected_node,
                     depth,
@@ -771,11 +771,7 @@ impl CodeGraphFormatterImpl {
 
         for node in &graph.nodes {
             let safe_name = node.name.replace('\"', "\\\"");
-            let label = if node.metadata.is_empty() {
-                format!("{}\n[{}]", safe_name, node.kind.as_str())
-            } else {
-                format!("{}\n[{}]", safe_name, node.kind.as_str())
-            };
+            let label = format!("{}\n[{}]", safe_name, node.kind.as_str());
             output.push_str(&format!("    {} [label=\"{}\"];\n", node.id, label));
         }
 

@@ -166,12 +166,12 @@ mod tests {
         assert!(
             err.to_string().contains("invalid JSON"),
             "Expected 'invalid JSON', got: {}",
-            err.to_string()
+            err
         );
         assert!(
             err.to_string().contains("missing field"),
             "Expected 'missing field', got: {}",
-            err.to_string()
+            err
         );
         assert_eq!(err.command(), Some("bad-hook"));
     }

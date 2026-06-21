@@ -1000,19 +1000,19 @@ mod tests {
         let _builder = create_context_builder();
 
         assert_eq!(
-            LlmContextBuilderServiceImpl::detect_language(&std::path::Path::new("test.rs")),
+            LlmContextBuilderServiceImpl::detect_language(std::path::Path::new("test.rs")),
             "rust"
         );
         assert_eq!(
-            LlmContextBuilderServiceImpl::detect_language(&std::path::Path::new("test.ts")),
+            LlmContextBuilderServiceImpl::detect_language(std::path::Path::new("test.ts")),
             "typescript"
         );
         assert_eq!(
-            LlmContextBuilderServiceImpl::detect_language(&std::path::Path::new("test.py")),
+            LlmContextBuilderServiceImpl::detect_language(std::path::Path::new("test.py")),
             "python"
         );
         assert_eq!(
-            LlmContextBuilderServiceImpl::detect_language(&std::path::Path::new("unknown.xyz")),
+            LlmContextBuilderServiceImpl::detect_language(std::path::Path::new("unknown.xyz")),
             "unknown"
         );
     }

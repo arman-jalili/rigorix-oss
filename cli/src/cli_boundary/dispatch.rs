@@ -595,38 +595,37 @@ pub async fn dispatch(
                         .as_ref()
                         .or(services.as_ref())
                         .expect("services built above");
-                    if let Ok(list) = svc.template_service.list_templates().await {
-                        if let Some(summary) = list.templates.first() {
-                            let tpl_id = summary.id.clone();
-                            let tpl_dir = std::path::PathBuf::from(".rigorix/templates");
-                            let tpl_path = tpl_dir.join(format!("{tpl_id}.toml"));
-                            let _ = tokio::fs::create_dir_all(&tpl_dir).await;
+                    if let Ok(list) = svc.template_service.list_templates().await
+                        && let Some(summary) = list.templates.first()
+                    {
+                        let tpl_id = summary.id.clone();
+                        let tpl_dir = std::path::PathBuf::from(".rigorix/templates");
+                        let tpl_path = tpl_dir.join(format!("{tpl_id}.toml"));
+                        let _ = tokio::fs::create_dir_all(&tpl_dir).await;
 
-                            // Try to get the full template and serialize to TOML
-                            if let Some(full_template) =
-                                svc.template_service.get_template_full(&tpl_id).await
-                            {
-                                if let Ok(toml_str) = toml::to_string_pretty(&full_template) {
-                                    let _ = tokio::fs::write(&tpl_path, &toml_str).await;
-                                }
-                            }
-
-                            let data = serde_json::json!({
-                                "template_id": summary.id,
-                                "name": summary.name,
-                                "description": summary.description,
-                                "param_count": summary.param_count,
-                                "saved_to": tpl_path.to_string_lossy(),
-                                "note": format!("graph generation incomplete: {err_msg}"),
-                            });
-                            return DispatchResult::success_with_data(
-                                format!(
-                                    "Generated template '{}' ({}) — {} param(s). Graph pending.",
-                                    summary.id, summary.name, summary.param_count,
-                                ),
-                                data,
-                            );
+                        // Try to get the full template and serialize to TOML
+                        if let Some(full_template) =
+                            svc.template_service.get_template_full(&tpl_id).await
+                            && let Ok(toml_str) = toml::to_string_pretty(&full_template)
+                        {
+                            let _ = tokio::fs::write(&tpl_path, &toml_str).await;
                         }
+
+                        let data = serde_json::json!({
+                            "template_id": summary.id,
+                            "name": summary.name,
+                            "description": summary.description,
+                            "param_count": summary.param_count,
+                            "saved_to": tpl_path.to_string_lossy(),
+                            "note": format!("graph generation incomplete: {err_msg}"),
+                        });
+                        return DispatchResult::success_with_data(
+                            format!(
+                                "Generated template '{}' ({}) — {} param(s). Graph pending.",
+                                summary.id, summary.name, summary.param_count,
+                            ),
+                            data,
+                        );
                     }
                     DispatchResult::error(format!("generate: {err_msg}"), 1)
                 }

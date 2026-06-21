@@ -15,7 +15,7 @@ use std::time::Instant;
 use async_trait::async_trait;
 use tokio::time::timeout;
 
-use crate::action_entrypoint::domain::{ActionError, ActionMode, ActionOutput, DispatchStatus};
+use crate::action_entrypoint::domain::{ActionError, ActionMode, ActionOutput};
 
 use super::dto::{DispatchInput, DispatchOutput};
 use super::service::ActionRouter;
@@ -252,7 +252,7 @@ impl ActionRouter for ActionRouterImpl {
                 success: true,
             }),
             Err(e) => {
-                let is_retriable = e.is_retriable();
+                let _is_retriable = e.is_retriable();
                 let annotation_level = e.annotation_level();
                 let error_output = ActionOutput::failure(format!("{e}")).with_annotation(
                     crate::action_entrypoint::domain::WorkflowAnnotation {
@@ -324,7 +324,9 @@ impl ActionRouter for ActionRouterImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action_entrypoint::domain::{ActionContext, ActionMode, GitHubEvent};
+    use crate::action_entrypoint::domain::{
+        ActionContext, ActionMode, DispatchStatus, GitHubEvent,
+    };
 
     // ── Mock OrchestratorService ──
 
@@ -767,7 +769,6 @@ mod tests {
 
         let result = router.dispatch(input).await.unwrap();
         // Duration is at least 0ms (may be 0 in extremely fast mock executions)
-        assert!(result.duration_ms >= 0);
         assert!(result.success);
     }
 }

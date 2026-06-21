@@ -19,7 +19,7 @@ use crate::diff_analyzer::application::dto::{
     EnforceLimitsInput, EnforceLimitsOutput, LimitCheckResult,
 };
 use crate::diff_analyzer::application::service::LimitEnforcementService;
-use crate::diff_analyzer::domain::{DiffAnalyzerError, PolicyLimits, PrDiff};
+use crate::diff_analyzer::domain::{DiffAnalyzerError, PrDiff};
 
 /// Implementation of `LimitEnforcementService`.
 ///
@@ -198,7 +198,7 @@ impl LimitEnforcerImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diff_analyzer::domain::{ChangedFile, DiffHunk, FileRisk, FileStatus};
+    use crate::diff_analyzer::domain::{ChangedFile, FileRisk, FileStatus, PolicyLimits};
 
     fn make_file(path: &str, additions: usize, deletions: usize) -> ChangedFile {
         ChangedFile {
