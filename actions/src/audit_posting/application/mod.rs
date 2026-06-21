@@ -16,11 +16,13 @@
 //! - No implementation — only contract signatures
 
 pub mod audit_backend_factory_impl;
+pub mod audit_record_factory_impl;
 pub mod dto;
 pub mod factory;
 pub mod service;
 
 pub use audit_backend_factory_impl::*;
+pub use audit_record_factory_impl::*;
 pub use dto::*;
 pub use factory::*;
 pub use service::*;
