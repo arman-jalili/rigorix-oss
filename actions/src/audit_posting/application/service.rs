@@ -18,9 +18,8 @@ use async_trait::async_trait;
 use crate::audit_posting::domain::AuditPostingError;
 
 use super::dto::{
-    CreateRecordInput, CreateRecordOutput, PostRecordInput,
-    PostRecordOutput, QueueRecordInput, QueueRecordOutput, SignRecordInput, SignRecordOutput,
-    VerifyRecordInput, VerifyRecordOutput,
+    CreateRecordInput, CreateRecordOutput, PostRecordInput, PostRecordOutput, QueueRecordInput,
+    QueueRecordOutput, SignRecordInput, SignRecordOutput, VerifyRecordInput, VerifyRecordOutput,
 };
 
 /// Central service for posting HMAC-signed audit records.
@@ -94,7 +93,10 @@ pub trait AuditRecordQueue: Send + Sync {
     /// Enqueue a failed record for later retry.
     ///
     /// Returns `QueueFull` error if the queue is at capacity.
-    async fn enqueue(&self, input: QueueRecordInput) -> Result<QueueRecordOutput, AuditPostingError>;
+    async fn enqueue(
+        &self,
+        input: QueueRecordInput,
+    ) -> Result<QueueRecordOutput, AuditPostingError>;
 
     /// Dequeue the next pending record (FIFO order).
     ///

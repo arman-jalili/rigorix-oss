@@ -1,23 +1,31 @@
 {
-  "name": "\"ci-integration\"",
-  "trackingIssueId": "589",
+  "name": "\"action-entrypoint\"",
+  "trackingIssueId": "612",
   "epicId": null,
   "slices": [
     {
-      "module": "ci-integration",
+      "module": "action-entrypoint",
       "components": [
         {
-          "name": "StatusCheckManager",
+          "name": "ActionRouter",
           "status": "planned",
-          "description": "Creates and updates GitHub commit status checks",
+          "description": "Map GitHub Action event types to engine service calls",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "PrCommentManager",
+          "name": "ActionContext",
           "status": "planned",
-          "description": "Posts structured PR review comments",
+          "description": "GitHub Actions environment parsed into a typed context",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "ActionMode",
+          "status": "planned",
+          "description": "Determines what the engine should do",
           "dependencies": [
             "none"
           ]
@@ -25,17 +33,25 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "StatusCheckManager",
+          "name": "ActionRouter",
           "status": "planned",
-          "description": "Creates and updates GitHub commit status checks",
+          "description": "Map GitHub Action event types to engine service calls",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "PrCommentManager",
+          "name": "ActionContext",
           "status": "planned",
-          "description": "Posts structured PR review comments",
+          "description": "GitHub Actions environment parsed into a typed context",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "ActionMode",
+          "status": "planned",
+          "description": "Determines what the engine should do",
           "dependencies": [
             "none"
           ]
@@ -48,34 +64,40 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "590"
+      "remoteIssueId": "613"
     },
     {
-      "id": "issue-statuscheckmanager",
-      "title": "StatusCheckManager: Creates and updates GitHub commit status checks",
+      "id": "issue-actionrouter",
+      "title": "ActionRouter: Map GitHub Action event types to engine service calls",
       "status": "planned",
-      "remoteIssueId": "591"
+      "remoteIssueId": "614"
     },
     {
-      "id": "issue-prcommentmanager",
-      "title": "PrCommentManager: Posts structured PR review comments",
+      "id": "issue-actioncontext",
+      "title": "ActionContext: GitHub Actions environment parsed into a typed context",
       "status": "planned",
-      "remoteIssueId": "592"
+      "remoteIssueId": "615"
+    },
+    {
+      "id": "issue-actionmode",
+      "title": "ActionMode: Determines what the engine should do",
+      "status": "planned",
+      "remoteIssueId": "616"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "593"
+      "remoteIssueId": "617"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "594"
+      "remoteIssueId": "618"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-06-21T15:02:36.649Z"
+  "createdAt": "2026-06-21T17:44:31.703Z"
 }

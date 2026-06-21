@@ -55,7 +55,9 @@ pub enum AuditPostingError {
     },
 
     /// HMAC signature verification failed on a retrieved record.
-    #[error("Audit record HMAC signature verification failed: expected {expected_prefix}, got {received_prefix}")]
+    #[error(
+        "Audit record HMAC signature verification failed: expected {expected_prefix}, got {received_prefix}"
+    )]
     SignatureMismatch {
         /// Expected signature prefix (truncated for display).
         expected_prefix: String,

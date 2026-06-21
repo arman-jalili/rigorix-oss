@@ -61,9 +61,9 @@ impl ActionMode {
     /// Get the intent string if this mode carries one.
     pub fn intent(&self) -> Option<&str> {
         match self {
-            ActionMode::Run { intent } | ActionMode::Plan { intent } | ActionMode::Validate { intent } => {
-                Some(intent.as_str())
-            }
+            ActionMode::Run { intent }
+            | ActionMode::Plan { intent }
+            | ActionMode::Validate { intent } => Some(intent.as_str()),
             ActionMode::Status => None,
         }
     }

@@ -25,7 +25,7 @@ use async_trait::async_trait;
 use crate::audit_posting::domain::{AuditPostingError, SignedAuditRecord};
 
 use crate::audit_posting::application::dto::{
-    PostRecordInput, PostRecordOutput, LoadRecordInput, LoadRecordOutput,
+    LoadRecordInput, LoadRecordOutput, PostRecordInput, PostRecordOutput,
 };
 
 // ---------------------------------------------------------------------------
@@ -95,7 +95,10 @@ pub trait AuditBackend: Send + Sync + std::fmt::Debug {
     /// Delete records older than the given timestamp.
     ///
     /// Returns the number of deleted records.
-    async fn prune(&self, older_than: chrono::DateTime<chrono::Utc>) -> Result<u64, AuditPostingError>;
+    async fn prune(
+        &self,
+        older_than: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64, AuditPostingError>;
 }
 
 // ---------------------------------------------------------------------------

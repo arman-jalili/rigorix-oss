@@ -12,9 +12,9 @@ use async_trait::async_trait;
 use std::path::PathBuf;
 
 use crate::audit_posting::domain::AuditPostingError;
-use crate::audit_posting::infrastructure::repository::AuditBackend;
 use crate::audit_posting::infrastructure::FilesystemAuditBackendImpl;
 use crate::audit_posting::infrastructure::HttpAuditBackend;
+use crate::audit_posting::infrastructure::repository::AuditBackend;
 
 use super::dto::AuditBackendConfig;
 use super::factory::AuditBackendFactory;
@@ -51,9 +51,9 @@ impl AuditBackendFactory for AuditBackendFactoryImpl {
 
         if let Some(path) = &config.filesystem_path {
             if !path.is_empty() {
-                return Ok(Box::new(FilesystemAuditBackendImpl::new(
-                    PathBuf::from(path),
-                )));
+                return Ok(Box::new(FilesystemAuditBackendImpl::new(PathBuf::from(
+                    path,
+                ))));
             }
         }
 
@@ -62,9 +62,7 @@ impl AuditBackendFactory for AuditBackendFactoryImpl {
         })
     }
 
-    async fn create_default(
-        &self,
-    ) -> Result<Box<dyn AuditBackend>, AuditPostingError> {
+    async fn create_default(&self) -> Result<Box<dyn AuditBackend>, AuditPostingError> {
         // Default to a `.rigorix/audit-records/` directory in the current working directory
         let default_path = PathBuf::from(".rigorix/audit-records");
         Ok(Box::new(FilesystemAuditBackendImpl::new(default_path)))

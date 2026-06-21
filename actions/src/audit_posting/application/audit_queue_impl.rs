@@ -46,7 +46,10 @@ impl AuditRecordQueueImpl {
 #[async_trait]
 impl AuditRecordQueue for AuditRecordQueueImpl {
     #[tracing::instrument(skip_all)]
-    async fn enqueue(&self, input: QueueRecordInput) -> Result<QueueRecordOutput, AuditPostingError> {
+    async fn enqueue(
+        &self,
+        input: QueueRecordInput,
+    ) -> Result<QueueRecordOutput, AuditPostingError> {
         let mut queue = self.queue.lock().await;
         if queue.len() >= self.capacity as usize {
             return Err(AuditPostingError::QueueFull {
