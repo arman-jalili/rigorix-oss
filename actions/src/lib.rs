@@ -48,5 +48,5 @@ pub mod ci_integration;
 pub mod diff_analyzer; // Phase 1: Contract Freeze (issue-contract-freeze)
 pub mod policy_evaluator;
 pub mod security_config; // Phase 1: Contract Freeze (issue-contract-freeze) // Phase 1: Contract Freeze (issue-contract-freeze) // Phase 1: Contract Freeze (issue-contract-freeze)
-// pub mod audit_posting;      // Phase 4
+pub mod audit_posting;      // Phase 1: Contract Freeze (issue-contract-freeze)
 // pub mod action_entrypoint;  // Phase 5
