@@ -48,6 +48,46 @@ Each entry follows this structure:
 
 ## Entries
 
+## [2026-06-21] - ci-integration Epic Complete
+
+### Changed
+- Module: ci-integration
+  - Contract Freeze (Issue #590): All public interfaces, DTOs, and API contracts defined
+  - StatusCheckManager (Issue #591): StatusCheckServiceImpl, StatusCheckFactoryImpl,
+    StatusCheckRepositoryImpl implemented (25 unit tests)
+  - PrCommentManager (Issue #592): PrCommentServiceImpl, PrCommentFactoryImpl,
+    PrCommentRepositoryImpl implemented (20 unit tests)
+  - Proofing & CI Enforcement (Issue #593): Contract and coverage validation scripts
+  - Architecture Readiness (Issue #594): Runbook, DR plan, observability docs
+
+### Impact Analysis
+- Files created:
+  - src/ci_integration/ (14 interface files + 6 implementation files)
+  - docs/runbook-ci-integration.md (runbook)
+  - docs/dr-plan-ci-integration.md (DR plan)
+  - .pi/scripts/ci/check_ci-integration_contracts.sh
+  - .pi/scripts/ci/check_ci-integration_coverage.sh
+  - .pi/scripts/ci/stage_ci-integration_proofing.sh
+- Canonical refs to update:
+  - .pi/architecture/modules/ci-integration.md (status: Implemented, added Observability section)
+- Validators required:
+  - ci, tests, security, architecture, canonical, operations
+
+### Migration Steps
+1. No migration needed — interface-only contracts frozen first, implementations added after
+2. Proofing scripts validate contract-implementation alignment (stage 14)
+3. Run validate-canonical.sh to verify references
+4. CI stage 14 (ci-integration_proofing) runs on every build
+
+### Status
+- [x] Architecture doc updated
+- [x] CHANGELOG entry added
+- [x] Implementation updated
+- [x] Canonical refs updated
+- [x] Validators run
+
+---
+
 ## [2026-06-20] - action-output Epic Complete
 
 ### Changed
@@ -142,9 +182,9 @@ Track which changes have been synced to implementation:
 
 | Date | Change | Module | Sync Status | Validator Status |
 |------|--------|--------|-------------|------------------|
-| [date] | [title] | [module] | [pending/complete] | [pass/fail] |
+| 2026-06-21 | ci-integration Epic Complete | ci-integration | ✅ complete | ✅ pass |
 
 ---
 
-*Last updated: [date]*
+*Last updated: 2026-06-21*
 *Framework version: 1.2.0*

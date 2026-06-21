@@ -10,6 +10,7 @@
 
 use async_trait::async_trait;
 use std::sync::Arc;
+use tracing::info;
 
 use crate::ci_integration::application::dto::{
     FindBotCommentInput, FindBotCommentOutput, UpsertCommentInput, UpsertCommentOutput,
@@ -67,12 +68,21 @@ impl PrCommentService for PrCommentServiceImpl {
         // Render the summary as markdown
         let markdown = self.factory.format_as_markdown(&input.summary).await?;
 
+        let execution_id = input.summary.execution_id;
+
         // Check if we have an existing comment ID to update
         if let Some(comment_id) = input.existing_comment_id {
             let comment = self
                 .repository
                 .update_comment(&self.owner, &self.repo, comment_id, &markdown)
                 .await?;
+
+            info!(
+                issue_number = input.issue_number,
+                comment_id = comment_id,
+                %execution_id,
+                "pr_comment: updated by explicit comment_id"
+            );
 
             return Ok(UpsertCommentOutput {
                 comment_id: comment.id,
@@ -94,6 +104,13 @@ impl PrCommentService for PrCommentServiceImpl {
                 .update_comment(&self.owner, &self.repo, bot_comment.id, &markdown)
                 .await?;
 
+            info!(
+                issue_number = input.issue_number,
+                comment_id = bot_comment.id,
+                %execution_id,
+                "pr_comment: updated existing bot comment"
+            );
+
             Ok(UpsertCommentOutput {
                 comment_id: comment.id,
                 created: false,
@@ -104,6 +121,13 @@ impl PrCommentService for PrCommentServiceImpl {
                 .repository
                 .create_comment(&self.owner, &self.repo, input.issue_number, &markdown)
                 .await?;
+
+            info!(
+                issue_number = input.issue_number,
+                comment_id = comment.id,
+                %execution_id,
+                "pr_comment: created new bot comment"
+            );
 
             Ok(UpsertCommentOutput {
                 comment_id: comment.id,
