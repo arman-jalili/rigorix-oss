@@ -49,12 +49,39 @@
       }
     }
   ],
-  "currentItemIndex": 0,
+  "currentItemIndex": 1,
   "currentStepIndex": 0,
   "status": "running",
   "retryCount": 0,
-  "results": [],
+  "results": [
+    {
+      "item": "issue-contract-freeze",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    }
+  ],
   "mergeOnValid": true,
   "createdAt": "2026-06-21T15:02:36.697Z",
-  "updatedAt": "2026-06-21T15:02:36.697Z"
+  "updatedAt": "2026-06-21T15:17:26.904Z"
 }
