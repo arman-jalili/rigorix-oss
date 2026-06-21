@@ -232,6 +232,11 @@ run_stage "13" "action-output_proofing" \
     "${SCRIPTS_DIR}/stage_action-output_proofing.sh" \
     "always"
 
+# Stage 14: CI Integration Proofing
+run_stage "14" "ci-integration_proofing" \
+    "${SCRIPTS_DIR}/stage_ci-integration_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""
