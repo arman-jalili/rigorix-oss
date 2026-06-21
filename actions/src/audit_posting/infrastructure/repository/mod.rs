@@ -50,7 +50,7 @@ use crate::audit_posting::application::dto::{
 /// The default OSS implementation is `FilesystemAuditBackend` which stores
 /// records as JSON files on the local filesystem with atomic writes.
 #[async_trait]
-pub trait AuditBackend: Send + Sync {
+pub trait AuditBackend: Send + Sync + std::fmt::Debug {
     /// Post a signed audit record to the backend.
     ///
     /// Persists the record to the backend storage. For the filesystem
