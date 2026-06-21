@@ -56,11 +56,10 @@ impl AuditRecordFactoryImpl {
     /// the actual data. Uses a consistent field order via serde.
     fn serialize_for_signing(record: &SignedAuditRecord) -> Result<Vec<u8>, AuditPostingError> {
         // Create a serialization without the signature field
-        let data = serde_json::to_value(record).map_err(|e| {
-            AuditPostingError::SerializationFailed {
+        let data =
+            serde_json::to_value(record).map_err(|e| AuditPostingError::SerializationFailed {
                 detail: e.to_string(),
-            }
-        })?;
+            })?;
 
         // Remove the signature field for canonical signing
         let mut data_map = match &data {
@@ -81,17 +80,17 @@ impl AuditRecordFactoryImpl {
 
     /// Compute HMAC-SHA256 signature for the given data.
     fn compute_signature(&self, data: &[u8]) -> Result<String, AuditPostingError> {
-        let key = self.signing_key.as_ref().ok_or(
-            AuditPostingError::KeyNotAvailable {
+        let key = self
+            .signing_key
+            .as_ref()
+            .ok_or(AuditPostingError::KeyNotAvailable {
                 detail: "No HMAC signing key configured".to_string(),
-            },
-        )?;
+            })?;
 
-        let mut mac = HmacSha256::new_from_slice(key).map_err(|e| {
-            AuditPostingError::SigningFailed {
+        let mut mac =
+            HmacSha256::new_from_slice(key).map_err(|e| AuditPostingError::SigningFailed {
                 detail: format!("Invalid HMAC key length: {e}"),
-            }
-        })?;
+            })?;
 
         mac.update(data);
         let result = mac.finalize();
@@ -158,10 +157,7 @@ impl AuditRecordFactory for AuditRecordFactoryImpl {
     }
 
     #[tracing::instrument(skip_all)]
-    async fn verify(
-        &self,
-        record: &SignedAuditRecord,
-    ) -> Result<bool, AuditPostingError> {
+    async fn verify(&self, record: &SignedAuditRecord) -> Result<bool, AuditPostingError> {
         let stored_signature = match &record.signature {
             Some(sig) => sig.clone(),
             None => {
@@ -176,27 +172,26 @@ impl AuditRecordFactory for AuditRecordFactoryImpl {
         let computed_signature = self.compute_signature(&data)?;
 
         // Use constant-time comparison
-        let key = self.signing_key.as_ref().ok_or(
-            AuditPostingError::KeyNotAvailable {
+        let key = self
+            .signing_key
+            .as_ref()
+            .ok_or(AuditPostingError::KeyNotAvailable {
                 detail: "No HMAC signing key configured for verification".to_string(),
-            },
-        )?;
+            })?;
 
-        let mut mac = HmacSha256::new_from_slice(key).map_err(|e| {
-            AuditPostingError::SigningFailed {
+        let mut mac =
+            HmacSha256::new_from_slice(key).map_err(|e| AuditPostingError::SigningFailed {
                 detail: format!("Invalid HMAC key length: {e}"),
-            }
-        })?;
+            })?;
 
         mac.update(&data);
 
         // Verify using constant-time comparison
-        let stored_bytes = hex::decode(&stored_signature).map_err(|e| {
-            AuditPostingError::SignatureMismatch {
+        let stored_bytes =
+            hex::decode(&stored_signature).map_err(|e| AuditPostingError::SignatureMismatch {
                 expected_prefix: stored_signature.chars().take(8).collect(),
                 received_prefix: "invalid hex".to_string(),
-            }
-        })?;
+            })?;
 
         let result = mac.verify_slice(&stored_bytes).is_ok();
 
@@ -357,7 +352,8 @@ mod tests {
 
         // Create another factory with a different key
         let wrong_key = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
-        let wrong_factory = AuditRecordFactoryImpl::new(Some(wrong_key), Some("wrong-key".to_string()));
+        let wrong_factory =
+            AuditRecordFactoryImpl::new(Some(wrong_key), Some("wrong-key".to_string()));
 
         let result = wrong_factory.verify(&sign_output.record).await;
         assert!(result.is_err());
@@ -378,7 +374,10 @@ mod tests {
         let data = AuditRecordFactoryImpl::serialize_for_signing(&record).unwrap();
         let json: serde_json::Value = serde_json::from_slice(&data).unwrap();
         let map = json.as_object().unwrap();
-        assert!(!map.contains_key("signature"), "signature field should be excluded");
+        assert!(
+            !map.contains_key("signature"),
+            "signature field should be excluded"
+        );
     }
 
     #[tokio::test]
@@ -390,31 +389,45 @@ mod tests {
         let record1 = factory.create_record(input.clone()).await.unwrap();
         let record2 = factory.create_record(input).await.unwrap();
 
-        let signed1 = factory.sign(SignRecordInput {
-            record: record1,
-            key_id: None,
-        }).await.unwrap();
+        let signed1 = factory
+            .sign(SignRecordInput {
+                record: record1,
+                key_id: None,
+            })
+            .await
+            .unwrap();
 
-        let signed2 = factory.sign(SignRecordInput {
-            record: record2,
-            key_id: None,
-        }).await.unwrap();
+        let signed2 = factory
+            .sign(SignRecordInput {
+                record: record2,
+                key_id: None,
+            })
+            .await
+            .unwrap();
 
         // Different execution_ids mean different records, so signatures differ
         // Test: same record should produce same signature
         let record3 = factory.create_record(sample_input()).await.unwrap();
-        let signed3 = factory.sign(SignRecordInput {
-            record: record3.clone(),
-            key_id: None,
-        }).await.unwrap();
+        let signed3 = factory
+            .sign(SignRecordInput {
+                record: record3.clone(),
+                key_id: None,
+            })
+            .await
+            .unwrap();
 
-        let signed3_again = factory.sign(SignRecordInput {
-            record: record3,
-            key_id: None,
-        }).await.unwrap();
+        let signed3_again = factory
+            .sign(SignRecordInput {
+                record: record3,
+                key_id: None,
+            })
+            .await
+            .unwrap();
 
-        assert_eq!(signed3.signature, signed3_again.signature,
-            "Same record signed twice should produce same signature");
+        assert_eq!(
+            signed3.signature, signed3_again.signature,
+            "Same record signed twice should produce same signature"
+        );
     }
 
     #[tokio::test]
@@ -422,10 +435,13 @@ mod tests {
         let factory = AuditRecordFactoryImpl::new(Some(test_key()), Some("my-key-1".to_string()));
         let record = factory.create_record(sample_input()).await.unwrap();
 
-        let output = factory.sign(SignRecordInput {
-            record,
-            key_id: None,
-        }).await.unwrap();
+        let output = factory
+            .sign(SignRecordInput {
+                record,
+                key_id: None,
+            })
+            .await
+            .unwrap();
 
         assert_eq!(output.key_id, "my-key-1");
     }
@@ -435,10 +451,13 @@ mod tests {
         let factory = AuditRecordFactoryImpl::new(Some(test_key()), None);
         let record = factory.create_record(sample_input()).await.unwrap();
 
-        let output = factory.sign(SignRecordInput {
-            record,
-            key_id: None,
-        }).await.unwrap();
+        let output = factory
+            .sign(SignRecordInput {
+                record,
+                key_id: None,
+            })
+            .await
+            .unwrap();
 
         assert_eq!(output.key_id, "default");
     }

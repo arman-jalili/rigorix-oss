@@ -98,10 +98,7 @@ pub trait OutputFactory: Send + Sync {
     ) -> Result<ActionOutput, ActionError>;
 
     /// Create a skipped output.
-    async fn skipped(
-        &self,
-        reason: &str,
-    ) -> Result<ActionOutput, ActionError>;
+    async fn skipped(&self, reason: &str) -> Result<ActionOutput, ActionError>;
 
     /// Create an output with annotations.
     async fn with_annotations(
@@ -111,10 +108,7 @@ pub trait OutputFactory: Send + Sync {
     ) -> Result<ActionOutput, ActionError>;
 
     /// Create an output from a mode mismatch (unsupported mode).
-    async fn unsupported_mode(
-        &self,
-        mode: &ActionMode,
-    ) -> Result<ActionOutput, ActionError>;
+    async fn unsupported_mode(&self, mode: &ActionMode) -> Result<ActionOutput, ActionError>;
 }
 
 /// Factory for constructing `ActionMode` values.

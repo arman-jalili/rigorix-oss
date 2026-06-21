@@ -160,5 +160,9 @@ pub trait ContextBuilder: Send + Sync {
     /// Parse the event payload from `GITHUB_EVENT_PATH`.
     ///
     /// Reads the JSON file and deserializes into a `GitHubEvent`.
-    async fn parse_event(&self, event_name: &str, event_path: &str) -> Result<super::dto::ParseEventOutput, ActionError>;
+    async fn parse_event(
+        &self,
+        event_name: &str,
+        event_path: &str,
+    ) -> Result<super::dto::ParseEventOutput, ActionError>;
 }

@@ -47,10 +47,7 @@ pub trait AuditRecordFactory: Send + Sync {
     ///
     /// Recomputes the signature and compares it to the stored signature.
     /// Returns `SignatureMismatch` if they don't match.
-    async fn verify(
-        &self,
-        record: &SignedAuditRecord,
-    ) -> Result<bool, AuditPostingError>;
+    async fn verify(&self, record: &SignedAuditRecord) -> Result<bool, AuditPostingError>;
 }
 
 /// Factory for constructing `AuditBackend` instances.
@@ -71,7 +68,5 @@ pub trait AuditBackendFactory: Send + Sync {
     /// Create the default filesystem-based audit backend.
     ///
     /// Uses the configured filesystem path or a sensible default.
-    async fn create_default(
-        &self,
-    ) -> Result<Box<dyn AuditBackend>, AuditPostingError>;
+    async fn create_default(&self) -> Result<Box<dyn AuditBackend>, AuditPostingError>;
 }

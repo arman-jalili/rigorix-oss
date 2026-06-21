@@ -30,7 +30,9 @@ pub struct ActionRouterImpl {
 
     /// Optional validation loop service for Validate mode dispatch.
     /// If `None`, Validate mode falls back to Run mode.
-    validation_loop: Option<Arc<dyn rigorix_engine::plan_validation::application::service::ValidationLoopService>>,
+    validation_loop: Option<
+        Arc<dyn rigorix_engine::plan_validation::application::service::ValidationLoopService>,
+    >,
 }
 
 impl ActionRouterImpl {
@@ -42,7 +44,9 @@ impl ActionRouterImpl {
     /// * `validation_loop` — Optional validation loop service (None = fallback to Run)
     pub fn new(
         orchestrator: Arc<dyn rigorix_engine::orchestrator::application::OrchestratorService>,
-        validation_loop: Option<Arc<dyn rigorix_engine::plan_validation::application::service::ValidationLoopService>>,
+        validation_loop: Option<
+            Arc<dyn rigorix_engine::plan_validation::application::service::ValidationLoopService>,
+        >,
     ) -> Self {
         Self {
             orchestrator,
@@ -51,8 +55,13 @@ impl ActionRouterImpl {
     }
 
     /// Dispatch to the engine's run mode.
-    async fn dispatch_run(&self, ctx: &crate::action_entrypoint::domain::ActionContext) -> Result<ActionOutput, ActionError> {
-        let intent = ctx.mode.intent()
+    async fn dispatch_run(
+        &self,
+        ctx: &crate::action_entrypoint::domain::ActionContext,
+    ) -> Result<ActionOutput, ActionError> {
+        let intent = ctx
+            .mode
+            .intent()
             .ok_or_else(|| ActionError::MissingContext {
                 detail: "Run mode requires an intent string".to_string(),
                 env_var: Some("INPUT_INTENT".to_string()),
@@ -65,12 +74,14 @@ impl ActionRouterImpl {
             enforcement_preset: None,
         };
 
-        let output = self.orchestrator.run(input).await.map_err(|e| {
-            ActionError::EngineError {
+        let output = self
+            .orchestrator
+            .run(input)
+            .await
+            .map_err(|e| ActionError::EngineError {
                 detail: format!("Orchestrator run failed: {e}"),
                 code: None,
-            }
-        })?;
+            })?;
 
         Ok(ActionOutput::success(
             format!("Execution completed: {}", output.execution_id),
@@ -79,8 +90,13 @@ impl ActionRouterImpl {
     }
 
     /// Dispatch to the engine's plan-only mode.
-    async fn dispatch_plan(&self, ctx: &crate::action_entrypoint::domain::ActionContext) -> Result<ActionOutput, ActionError> {
-        let intent = ctx.mode.intent()
+    async fn dispatch_plan(
+        &self,
+        ctx: &crate::action_entrypoint::domain::ActionContext,
+    ) -> Result<ActionOutput, ActionError> {
+        let intent = ctx
+            .mode
+            .intent()
             .ok_or_else(|| ActionError::MissingContext {
                 detail: "Plan mode requires an intent string".to_string(),
                 env_var: Some("INPUT_INTENT".to_string()),
@@ -92,20 +108,26 @@ impl ActionRouterImpl {
             config: ctx.to_engine_config(),
         };
 
-        let output = self.orchestrator.plan_only(input).await.map_err(|e| {
-            ActionError::EngineError {
-                detail: format!("Orchestrator plan_only failed: {e}"),
-                code: None,
-            }
-        })?;
+        let output =
+            self.orchestrator
+                .plan_only(input)
+                .await
+                .map_err(|e| ActionError::EngineError {
+                    detail: format!("Orchestrator plan_only failed: {e}"),
+                    code: None,
+                })?;
 
         // Extract summary from plan output
-        let summary = format!("Plan generated with {} nodes", 
-            output.graph.as_object()
+        let summary = format!(
+            "Plan generated with {} nodes",
+            output
+                .graph
+                .as_object()
                 .and_then(|m| m.get("nodes"))
                 .and_then(|v| v.as_array())
                 .map(|a| a.len())
-                .unwrap_or(0));
+                .unwrap_or(0)
+        );
 
         Ok(ActionOutput::success(summary, None)
             .with_variable("plan", output.plan.to_string())
@@ -113,8 +135,13 @@ impl ActionRouterImpl {
     }
 
     /// Dispatch to the engine's validate mode (with optional validation loop).
-    async fn dispatch_validate(&self, ctx: &crate::action_entrypoint::domain::ActionContext) -> Result<ActionOutput, ActionError> {
-        let intent = ctx.mode.intent()
+    async fn dispatch_validate(
+        &self,
+        ctx: &crate::action_entrypoint::domain::ActionContext,
+    ) -> Result<ActionOutput, ActionError> {
+        let intent = ctx
+            .mode
+            .intent()
             .ok_or_else(|| ActionError::MissingContext {
                 detail: "Validate mode requires an intent string".to_string(),
                 env_var: Some("INPUT_INTENT".to_string()),
@@ -122,55 +149,69 @@ impl ActionRouterImpl {
 
         // If we have a validation loop service, use it
         if let Some(ref svc) = self.validation_loop {
-            let user_intent = rigorix_engine::planning::domain::intent::UserIntent::new(
-                intent.to_string(),
-                None,
-            );
+            let user_intent =
+                rigorix_engine::planning::domain::intent::UserIntent::new(intent.to_string(), None);
 
             let input = rigorix_engine::plan_validation::application::dto::ValidateInput {
                 intent: user_intent,
                 execution_id: None,
-                config: rigorix_engine::plan_validation::domain::loop_config::ValidationLoopConfig {
-                    max_iterations: ctx.max_validation_iterations,
-                    ..Default::default()
-                },
+                config:
+                    rigorix_engine::plan_validation::domain::loop_config::ValidationLoopConfig {
+                        max_iterations: ctx.max_validation_iterations,
+                        ..Default::default()
+                    },
                 existing_template: None,
             };
 
-            let output = svc.validate(input).await.map_err(|e| {
-                ActionError::ValidationLoopError {
-                    detail: format!("Validation loop failed: {e}"),
-                    iterations_completed: None,
-                }
-            })?;
+            let output =
+                svc.validate(input)
+                    .await
+                    .map_err(|e| ActionError::ValidationLoopError {
+                        detail: format!("Validation loop failed: {e}"),
+                        iterations_completed: None,
+                    })?;
 
             let outcome_str = format!("{:?}", output.outcome);
             Ok(ActionOutput::success(
-                format!("Validation complete: {} ({} iterations, {} failures)",
-                    outcome_str, output.iterations, output.total_failures),
+                format!(
+                    "Validation complete: {} ({} iterations, {} failures)",
+                    outcome_str, output.iterations, output.total_failures
+                ),
                 Some(output.execution_id.to_string()),
             ))
         } else {
             // Fallback: run without validation loop
             tracing::warn!("No validation loop service available, falling back to Run mode");
-            let run_ctx = ctx.with_mode(ActionMode::Run { intent: intent.to_string() });
+            let run_ctx = ctx.with_mode(ActionMode::Run {
+                intent: intent.to_string(),
+            });
             self.dispatch_run(&run_ctx).await
         }
     }
 
     /// Dispatch to the engine's status mode.
-    async fn dispatch_status(&self, _ctx: &crate::action_entrypoint::domain::ActionContext) -> Result<ActionOutput, ActionError> {
-        let output = self.orchestrator.status().await.map_err(|e| {
-            ActionError::EngineError {
+    async fn dispatch_status(
+        &self,
+        _ctx: &crate::action_entrypoint::domain::ActionContext,
+    ) -> Result<ActionOutput, ActionError> {
+        let output = self
+            .orchestrator
+            .status()
+            .await
+            .map_err(|e| ActionError::EngineError {
                 detail: format!("Orchestrator status failed: {e}"),
                 code: None,
-            }
-        })?;
+            })?;
 
-        let summary = format!("Status: {:?} (execution: {})", output.status, output.execution_id);
-        Ok(ActionOutput::success(summary, Some(output.execution_id.to_string()))
-            .with_variable("execution_id", output.execution_id.to_string())
-            .with_variable("status", format!("{:?}", output.status)))
+        let summary = format!(
+            "Status: {:?} (execution: {})",
+            output.status, output.execution_id
+        );
+        Ok(
+            ActionOutput::success(summary, Some(output.execution_id.to_string()))
+                .with_variable("execution_id", output.execution_id.to_string())
+                .with_variable("status", format!("{:?}", output.status)),
+        )
     }
 }
 
@@ -213,8 +254,8 @@ impl ActionRouter for ActionRouterImpl {
             Err(e) => {
                 let is_retriable = e.is_retriable();
                 let annotation_level = e.annotation_level();
-                let error_output = ActionOutput::failure(format!("{e}"))
-                    .with_annotation(crate::action_entrypoint::domain::WorkflowAnnotation {
+                let error_output = ActionOutput::failure(format!("{e}")).with_annotation(
+                    crate::action_entrypoint::domain::WorkflowAnnotation {
                         level: if annotation_level == "error" {
                             crate::action_entrypoint::domain::AnnotationLevel::Error
                         } else {
@@ -225,7 +266,8 @@ impl ActionRouter for ActionRouterImpl {
                         line: None,
                         column: None,
                         title: Some(format!("{} dispatch failed", ctx.mode.as_str())),
-                    });
+                    },
+                );
 
                 Ok(DispatchOutput {
                     output: error_output,
@@ -254,14 +296,26 @@ impl ActionRouter for ActionRouterImpl {
     }
 
     async fn can_handle(&self, mode: &ActionMode) -> bool {
-        matches!(mode, ActionMode::Run { .. } | ActionMode::Plan { .. } | ActionMode::Validate { .. } | ActionMode::Status)
+        matches!(
+            mode,
+            ActionMode::Run { .. }
+                | ActionMode::Plan { .. }
+                | ActionMode::Validate { .. }
+                | ActionMode::Status
+        )
     }
 
     async fn supported_modes(&self) -> Vec<ActionMode> {
         vec![
-            ActionMode::Run { intent: String::new() },
-            ActionMode::Plan { intent: String::new() },
-            ActionMode::Validate { intent: String::new() },
+            ActionMode::Run {
+                intent: String::new(),
+            },
+            ActionMode::Plan {
+                intent: String::new(),
+            },
+            ActionMode::Validate {
+                intent: String::new(),
+            },
             ActionMode::Status,
         ]
     }
@@ -303,12 +357,17 @@ mod tests {
         async fn run(
             &self,
             _input: rigorix_engine::orchestrator::application::dto::RunInput,
-        ) -> Result<rigorix_engine::orchestrator::application::dto::RunOutput, rigorix_engine::orchestrator::domain::OrchestratorError> {
+        ) -> Result<
+            rigorix_engine::orchestrator::application::dto::RunOutput,
+            rigorix_engine::orchestrator::domain::OrchestratorError,
+        > {
             if self.run_should_fail {
-                return Err(rigorix_engine::orchestrator::domain::OrchestratorError::Internal {
-                    detail: "Mock run failure".to_string(),
-                    source_module: "mock_orchestrator".to_string(),
-                });
+                return Err(
+                    rigorix_engine::orchestrator::domain::OrchestratorError::Internal {
+                        detail: "Mock run failure".to_string(),
+                        source_module: "mock_orchestrator".to_string(),
+                    },
+                );
             }
             let exec_id = uuid::Uuid::new_v4();
             let now = chrono::Utc::now();
@@ -323,7 +382,8 @@ mod tests {
                     started_at: now,
                     completed_at: Some(now),
                     duration_ms: 100,
-                    status: rigorix_engine::orchestrator::domain::record::ExecutionStatus::Completed,
+                    status:
+                        rigorix_engine::orchestrator::domain::record::ExecutionStatus::Completed,
                 },
             })
         }
@@ -331,44 +391,64 @@ mod tests {
         async fn plan_only(
             &self,
             _input: rigorix_engine::orchestrator::application::dto::PlanOnlyInput,
-        ) -> Result<rigorix_engine::orchestrator::application::dto::PlanOnlyOutput, rigorix_engine::orchestrator::domain::OrchestratorError> {
+        ) -> Result<
+            rigorix_engine::orchestrator::application::dto::PlanOnlyOutput,
+            rigorix_engine::orchestrator::domain::OrchestratorError,
+        > {
             if self.plan_should_fail {
-                return Err(rigorix_engine::orchestrator::domain::OrchestratorError::Internal {
-                    detail: "Mock plan failure".to_string(),
-                    source_module: "mock_orchestrator".to_string(),
-                });
+                return Err(
+                    rigorix_engine::orchestrator::domain::OrchestratorError::Internal {
+                        detail: "Mock plan failure".to_string(),
+                        source_module: "mock_orchestrator".to_string(),
+                    },
+                );
             }
-            Ok(rigorix_engine::orchestrator::application::dto::PlanOnlyOutput {
-                plan: serde_json::json!({"steps": []}),
-                graph: serde_json::json!({"nodes": []}),
-            })
+            Ok(
+                rigorix_engine::orchestrator::application::dto::PlanOnlyOutput {
+                    plan: serde_json::json!({"steps": []}),
+                    graph: serde_json::json!({"nodes": []}),
+                },
+            )
         }
 
         async fn cancel(
             &self,
             _input: rigorix_engine::orchestrator::application::dto::CancelInput,
-        ) -> Result<rigorix_engine::orchestrator::application::dto::CancelOutput, rigorix_engine::orchestrator::domain::OrchestratorError> {
-            Ok(rigorix_engine::orchestrator::application::dto::CancelOutput {
-                execution_id: uuid::Uuid::new_v4(),
-                aborted: true,
-                nodes_cancelled: 0,
-            })
+        ) -> Result<
+            rigorix_engine::orchestrator::application::dto::CancelOutput,
+            rigorix_engine::orchestrator::domain::OrchestratorError,
+        > {
+            Ok(
+                rigorix_engine::orchestrator::application::dto::CancelOutput {
+                    execution_id: uuid::Uuid::new_v4(),
+                    aborted: true,
+                    nodes_cancelled: 0,
+                },
+            )
         }
 
         async fn status(
             &self,
-        ) -> Result<rigorix_engine::orchestrator::application::dto::StatusOutput, rigorix_engine::orchestrator::domain::OrchestratorError> {
+        ) -> Result<
+            rigorix_engine::orchestrator::application::dto::StatusOutput,
+            rigorix_engine::orchestrator::domain::OrchestratorError,
+        > {
             if self.status_should_fail {
-                return Err(rigorix_engine::orchestrator::domain::OrchestratorError::Internal {
-                    detail: "Mock status failure".to_string(),
-                    source_module: "mock_orchestrator".to_string(),
-                });
+                return Err(
+                    rigorix_engine::orchestrator::domain::OrchestratorError::Internal {
+                        detail: "Mock status failure".to_string(),
+                        source_module: "mock_orchestrator".to_string(),
+                    },
+                );
             }
-            Ok(rigorix_engine::orchestrator::application::dto::StatusOutput {
-                execution_id: uuid::Uuid::new_v4(),
-                status: rigorix_engine::orchestrator::domain::record::ExecutionStatus::Completed,
-                nodes: vec![],
-            })
+            Ok(
+                rigorix_engine::orchestrator::application::dto::StatusOutput {
+                    execution_id: uuid::Uuid::new_v4(),
+                    status:
+                        rigorix_engine::orchestrator::domain::record::ExecutionStatus::Completed,
+                    nodes: vec![],
+                },
+            )
         }
 
         fn event_bus(&self) -> &dyn rigorix_engine::event_system::application::EventBusService {
@@ -381,11 +461,16 @@ mod tests {
     struct MockValidationLoop;
 
     #[async_trait]
-    impl rigorix_engine::plan_validation::application::service::ValidationLoopService for MockValidationLoop {
+    impl rigorix_engine::plan_validation::application::service::ValidationLoopService
+        for MockValidationLoop
+    {
         async fn validate(
             &self,
             _input: rigorix_engine::plan_validation::application::dto::ValidateInput,
-        ) -> Result<rigorix_engine::plan_validation::application::dto::ValidateOutput, rigorix_engine::plan_validation::domain::error::ValidationLoopError> {
+        ) -> Result<
+            rigorix_engine::plan_validation::application::dto::ValidateOutput,
+            rigorix_engine::plan_validation::domain::error::ValidationLoopError,
+        > {
             Ok(rigorix_engine::plan_validation::application::dto::ValidateOutput {
                 execution_id: uuid::Uuid::new_v4(),
                 outcome: rigorix_engine::plan_validation::domain::outcome::ValidationOutcome::Validated,
@@ -400,23 +485,33 @@ mod tests {
         async fn classify_nodes(
             &self,
             _input: rigorix_engine::plan_validation::application::dto::ClassifyNodesInput,
-        ) -> Result<rigorix_engine::plan_validation::application::dto::ClassifyNodesOutput, rigorix_engine::plan_validation::domain::error::ValidationLoopError> {
-            Ok(rigorix_engine::plan_validation::application::dto::ClassifyNodesOutput {
-                generative: vec![],
-                deterministic: vec![],
-                total_nodes: 0,
-            })
+        ) -> Result<
+            rigorix_engine::plan_validation::application::dto::ClassifyNodesOutput,
+            rigorix_engine::plan_validation::domain::error::ValidationLoopError,
+        > {
+            Ok(
+                rigorix_engine::plan_validation::application::dto::ClassifyNodesOutput {
+                    generative: vec![],
+                    deterministic: vec![],
+                    total_nodes: 0,
+                },
+            )
         }
 
         async fn retry_generative_nodes(
             &self,
             _input: rigorix_engine::plan_validation::application::dto::RetryGenerativeNodesInput,
-        ) -> Result<rigorix_engine::plan_validation::application::dto::RetryGenerativeNodesOutput, rigorix_engine::plan_validation::domain::error::ValidationLoopError> {
-            Ok(rigorix_engine::plan_validation::application::dto::RetryGenerativeNodesOutput {
-                template: rigorix_engine::templates::domain::Template::default(),
-                retried_count: 0,
-                skipped_count: 0,
-            })
+        ) -> Result<
+            rigorix_engine::plan_validation::application::dto::RetryGenerativeNodesOutput,
+            rigorix_engine::plan_validation::domain::error::ValidationLoopError,
+        > {
+            Ok(
+                rigorix_engine::plan_validation::application::dto::RetryGenerativeNodesOutput {
+                    template: rigorix_engine::templates::domain::Template::default(),
+                    retried_count: 0,
+                    skipped_count: 0,
+                },
+            )
         }
     }
 
@@ -628,9 +723,27 @@ mod tests {
     async fn test_can_handle_all_modes() {
         let router = create_router();
 
-        assert!(router.can_handle(&ActionMode::Run { intent: "test".to_string() }).await);
-        assert!(router.can_handle(&ActionMode::Plan { intent: "test".to_string() }).await);
-        assert!(router.can_handle(&ActionMode::Validate { intent: "test".to_string() }).await);
+        assert!(
+            router
+                .can_handle(&ActionMode::Run {
+                    intent: "test".to_string()
+                })
+                .await
+        );
+        assert!(
+            router
+                .can_handle(&ActionMode::Plan {
+                    intent: "test".to_string()
+                })
+                .await
+        );
+        assert!(
+            router
+                .can_handle(&ActionMode::Validate {
+                    intent: "test".to_string()
+                })
+                .await
+        );
         assert!(router.can_handle(&ActionMode::Status).await);
     }
 

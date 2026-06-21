@@ -49,17 +49,13 @@ impl FilesystemAuditBackendImpl {
     /// Atomically write content to a file using write-rename pattern.
     fn atomic_write(path: &Path, content: &str) -> Result<(), AuditPostingError> {
         let temp_path = path.with_extension("tmp");
-        std::fs::write(&temp_path, content).map_err(|e| {
-            AuditPostingError::FilesystemError {
-                detail: format!("Failed to write temp file: {e}"),
-                os_error: e.raw_os_error(),
-            }
+        std::fs::write(&temp_path, content).map_err(|e| AuditPostingError::FilesystemError {
+            detail: format!("Failed to write temp file: {e}"),
+            os_error: e.raw_os_error(),
         })?;
-        std::fs::rename(&temp_path, path).map_err(|e| {
-            AuditPostingError::FilesystemError {
-                detail: format!("Failed to rename temp file: {e}"),
-                os_error: e.raw_os_error(),
-            }
+        std::fs::rename(&temp_path, path).map_err(|e| AuditPostingError::FilesystemError {
+            detail: format!("Failed to rename temp file: {e}"),
+            os_error: e.raw_os_error(),
         })?;
         Ok(())
     }
@@ -101,12 +97,12 @@ impl AuditBackend for FilesystemAuditBackendImpl {
             });
         }
 
-        let content = tokio::fs::read_to_string(&path)
-            .await
-            .map_err(|e| AuditPostingError::FilesystemError {
+        let content = tokio::fs::read_to_string(&path).await.map_err(|e| {
+            AuditPostingError::FilesystemError {
                 detail: format!("Failed to read record: {e}"),
                 os_error: e.raw_os_error(),
-            })?;
+            }
+        })?;
 
         let record: SignedAuditRecord =
             serde_json::from_str(&content).map_err(|e| AuditPostingError::SerializationFailed {
@@ -137,20 +133,22 @@ impl AuditBackend for FilesystemAuditBackendImpl {
         let mut records = Vec::new();
         let max = limit.unwrap_or(100) as usize;
 
-        let mut dir = tokio::fs::read_dir(&self.storage_dir)
-            .await
-            .map_err(|e| AuditPostingError::FilesystemError {
+        let mut dir = tokio::fs::read_dir(&self.storage_dir).await.map_err(|e| {
+            AuditPostingError::FilesystemError {
                 detail: format!("Failed to read directory: {e}"),
                 os_error: e.raw_os_error(),
-            })?;
+            }
+        })?;
 
         let mut sorted_entries: Vec<PathBuf> = Vec::new();
-        while let Some(entry) = dir.next_entry().await.map_err(|e| {
-            AuditPostingError::FilesystemError {
-                detail: format!("Failed to read directory entry: {e}"),
-                os_error: e.raw_os_error(),
-            }
-        })? {
+        while let Some(entry) =
+            dir.next_entry()
+                .await
+                .map_err(|e| AuditPostingError::FilesystemError {
+                    detail: format!("Failed to read directory entry: {e}"),
+                    os_error: e.raw_os_error(),
+                })?
+        {
             let path = entry.path();
             if path.extension().is_some_and(|ext| ext == "json") {
                 sorted_entries.push(path);
@@ -169,12 +167,12 @@ impl AuditBackend for FilesystemAuditBackendImpl {
                 break;
             }
 
-            let content = tokio::fs::read_to_string(&path)
-                .await
-                .map_err(|e| AuditPostingError::FilesystemError {
+            let content = tokio::fs::read_to_string(&path).await.map_err(|e| {
+                AuditPostingError::FilesystemError {
                     detail: format!("Failed to read record: {e}"),
                     os_error: e.raw_os_error(),
-                })?;
+                }
+            })?;
 
             if let Ok(record) = serde_json::from_str::<SignedAuditRecord>(&content) {
                 // Apply date filters
@@ -199,12 +197,12 @@ impl AuditBackend for FilesystemAuditBackendImpl {
     async fn delete(&self, execution_id: &uuid::Uuid) -> Result<(), AuditPostingError> {
         let path = self.record_path_internal(execution_id);
         if path.exists() {
-            tokio::fs::remove_file(&path)
-                .await
-                .map_err(|e| AuditPostingError::FilesystemError {
+            tokio::fs::remove_file(&path).await.map_err(|e| {
+                AuditPostingError::FilesystemError {
                     detail: format!("Failed to delete record: {e}"),
                     os_error: e.raw_os_error(),
-                })?;
+                }
+            })?;
         }
         Ok(())
     }
@@ -227,22 +225,27 @@ impl AuditBackend for FilesystemAuditBackendImpl {
     }
 
     #[tracing::instrument(skip_all)]
-    async fn prune(&self, older_than: chrono::DateTime<chrono::Utc>) -> Result<u64, AuditPostingError> {
+    async fn prune(
+        &self,
+        older_than: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64, AuditPostingError> {
         let mut deleted = 0u64;
 
-        let mut dir = tokio::fs::read_dir(&self.storage_dir)
-            .await
-            .map_err(|e| AuditPostingError::FilesystemError {
+        let mut dir = tokio::fs::read_dir(&self.storage_dir).await.map_err(|e| {
+            AuditPostingError::FilesystemError {
                 detail: format!("Failed to read directory: {e}"),
                 os_error: e.raw_os_error(),
-            })?;
-
-        while let Some(entry) = dir.next_entry().await.map_err(|e| {
-            AuditPostingError::FilesystemError {
-                detail: format!("Failed to read directory entry: {e}"),
-                os_error: e.raw_os_error(),
             }
-        })? {
+        })?;
+
+        while let Some(entry) =
+            dir.next_entry()
+                .await
+                .map_err(|e| AuditPostingError::FilesystemError {
+                    detail: format!("Failed to read directory entry: {e}"),
+                    os_error: e.raw_os_error(),
+                })?
+        {
             let path = entry.path();
             if path.extension().is_some_and(|ext| ext == "json") {
                 let content = tokio::fs::read_to_string(&path).await.unwrap_or_default();
@@ -272,18 +275,14 @@ impl FilesystemAuditBackend for FilesystemAuditBackendImpl {
     }
 
     fn serialize_record(&self, record: &SignedAuditRecord) -> Result<String, AuditPostingError> {
-        serde_json::to_string_pretty(record).map_err(|e| {
-            AuditPostingError::SerializationFailed {
-                detail: e.to_string(),
-            }
+        serde_json::to_string_pretty(record).map_err(|e| AuditPostingError::SerializationFailed {
+            detail: e.to_string(),
         })
     }
 
     fn deserialize_record(&self, json: &str) -> Result<SignedAuditRecord, AuditPostingError> {
-        serde_json::from_str(json).map_err(|e| {
-            AuditPostingError::SerializationFailed {
-                detail: e.to_string(),
-            }
+        serde_json::from_str(json).map_err(|e| AuditPostingError::SerializationFailed {
+            detail: e.to_string(),
         })
     }
 }
@@ -330,7 +329,10 @@ mod tests {
         };
         let load_output = backend.load(load_input).await.unwrap();
         assert!(load_output.record.is_some());
-        assert_eq!(load_output.record.unwrap().execution_id, record.execution_id);
+        assert_eq!(
+            load_output.record.unwrap().execution_id,
+            record.execution_id
+        );
     }
 
     #[tokio::test]

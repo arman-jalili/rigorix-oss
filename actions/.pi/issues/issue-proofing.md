@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-PROOFING"
-  epic: ""ci-integration""
+  epic: ""action-entrypoint""
   component: "Proofing & CI Enforcement"
-  module: "ci-integration"
+  module: "action-entrypoint"
   status: planned
   priority: critical
   dependencies: []
@@ -26,7 +26,7 @@ guardian_issue:
       - Updated CI stage configuration
 
   canonical_references:
-    - module: ".pi/architecture/modules/ci-integration.md"
+    - module: ".pi/architecture/modules/action-entrypoint.md"
 
   acceptance_criteria:
     - "All proofing scripts created and executable"
@@ -47,12 +47,12 @@ guardian_issue:
     every build for zero token cost.
 
   file_changes:
-    - "create: .pi/scripts/ci/check_ci-integration_contracts.sh"
-    - "create: .pi/scripts/ci/check_ci-integration_coverage.sh"
+    - "create: .pi/scripts/ci/check_action-entrypoint_contracts.sh"
+    - "create: .pi/scripts/ci/check_action-entrypoint_coverage.sh"
     - "modify: .pi/scripts/ci/run_hardening_stages.sh"
 ---
 
-# Proofing & CI Enforcement: ci-integration
+# Proofing & CI Enforcement: action-entrypoint
 
 ## Intent
 
@@ -81,17 +81,17 @@ on every PR. No LLM cost. No human review. Just pass or fail.
 
 | Script | Purpose | Location |
 |--------|---------|----------|
-| check_ci-integration_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
-| check_ci-integration_coverage.sh | Enforce coverage thresholds | .pi/scripts/ci/ |
-| stage_ci-integration_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
+| check_action-entrypoint_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
+| check_action-entrypoint_coverage.sh | Enforce coverage thresholds | .pi/scripts/ci/ |
+| stage_action-entrypoint_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
 
 ## CI Pipeline Update
 
 Add the new stage to `run_hardening_stages.sh`:
 
 ```bash
-run_stage "11" "ci-integration_proofing" \
-    "${SCRIPTS_DIR}/stage_ci-integration_proofing.sh" \
+run_stage "11" "action-entrypoint_proofing" \
+    "${SCRIPTS_DIR}/stage_action-entrypoint_proofing.sh" \
     "always"
 ```
 

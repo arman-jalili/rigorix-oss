@@ -21,7 +21,9 @@ use super::dto::{
     SignRecordOutput, VerifyRecordInput, VerifyRecordOutput,
 };
 use super::factory::AuditRecordFactory;
-use super::service::{AuditPostingService, AuditRecordQueue, PostingStatusOutput, RetryPendingOutput};
+use super::service::{
+    AuditPostingService, AuditRecordQueue, PostingStatusOutput, RetryPendingOutput,
+};
 
 use crate::audit_posting::infrastructure::repository::AuditBackend;
 
@@ -147,7 +149,11 @@ impl AuditPostingService for AuditPostingServiceImpl {
                     success: output.success,
                     http_status: output.http_status,
                     duration_ms: output.duration_ms,
-                    error_detail: if output.success { None } else { Some("Unknown error".to_string()) },
+                    error_detail: if output.success {
+                        None
+                    } else {
+                        Some("Unknown error".to_string())
+                    },
                     attempts: 1,
                 })
             }
@@ -213,7 +219,11 @@ impl AuditPostingService for AuditPostingServiceImpl {
             Ok(valid) => Ok(VerifyRecordOutput {
                 valid,
                 key_id: input.key_id,
-                detail: Some(if valid { "Signature valid".to_string() } else { "Signature invalid".to_string() }),
+                detail: Some(if valid {
+                    "Signature valid".to_string()
+                } else {
+                    "Signature invalid".to_string()
+                }),
             }),
             Err(e) => match e {
                 AuditPostingError::SignatureMismatch { .. } => Ok(VerifyRecordOutput {
@@ -241,7 +251,8 @@ impl AuditPostingService for AuditPostingServiceImpl {
                     };
 
                     // Extract retry count from reason string (format: "Retry attempt N")
-                    let retry_count = queued.reason
+                    let retry_count = queued
+                        .reason
                         .as_ref()
                         .and_then(|r| r.strip_prefix("Retry attempt "))
                         .and_then(|n| n.parse::<u32>().ok())
@@ -257,22 +268,28 @@ impl AuditPostingService for AuditPostingServiceImpl {
                         continue;
                     }
 
-                    match self.backend.post(PostRecordInput {
-                        record: record.clone(),
-                        backend_url: None,
-                        timeout_secs: Some(30),
-                    }).await {
+                    match self
+                        .backend
+                        .post(PostRecordInput {
+                            record: record.clone(),
+                            backend_url: None,
+                            timeout_secs: Some(30),
+                        })
+                        .await
+                    {
                         Ok(_output) => {
                             delivered += 1;
                         }
                         Err(_) => {
                             // Re-enqueue for another retry
-                            self.queue.enqueue(super::dto::QueueRecordInput {
-                                record,
-                                failure_reason: format!("Retry attempt {} failed", retry_count),
-                                retry_count,
-                                max_retries: 3,
-                            }).await?;
+                            self.queue
+                                .enqueue(super::dto::QueueRecordInput {
+                                    record,
+                                    failure_reason: format!("Retry attempt {} failed", retry_count),
+                                    retry_count,
+                                    max_retries: 3,
+                                })
+                                .await?;
                             still_pending += 1;
                         }
                     }
@@ -306,8 +323,8 @@ impl AuditPostingService for AuditPostingServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::audit_posting::application::audit_record_factory_impl::AuditRecordFactoryImpl;
     use crate::audit_posting::application::audit_queue_impl::AuditRecordQueueImpl;
+    use crate::audit_posting::application::audit_record_factory_impl::AuditRecordFactoryImpl;
     use crate::audit_posting::domain::SignedAuditRecord;
     use crate::audit_posting::infrastructure::FilesystemAuditBackendImpl;
     use tempfile::TempDir;

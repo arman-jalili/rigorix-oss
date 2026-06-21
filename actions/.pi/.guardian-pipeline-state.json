@@ -1,10 +1,11 @@
 {
-  "id": "PL-9898",
-  "name": "\"ci-integration\"",
+  "id": "PL-6878",
+  "name": "\"action-entrypoint\"",
   "items": [
     "issue-contract-freeze",
-    "issue-statuscheckmanager",
-    "issue-prcommentmanager",
+    "issue-actionrouter",
+    "issue-actioncontext",
+    "issue-actionmode",
     "issue-proofing",
     "issue-architecture-readiness"
   ],
@@ -49,8 +50,8 @@
       }
     }
   ],
-  "currentItemIndex": 4,
-  "currentStepIndex": 1,
+  "currentItemIndex": 2,
+  "currentStepIndex": 0,
   "status": "running",
   "retryCount": 0,
   "results": [
@@ -81,7 +82,7 @@
       ]
     },
     {
-      "item": "issue-statuscheckmanager",
+      "item": "issue-actionrouter",
       "status": "done",
       "stepResults": [
         {
@@ -101,69 +102,6 @@
         },
         {
           "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-prcommentmanager",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-proofing",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-architecture-readiness",
-      "status": "in-progress",
-      "stepResults": [
-        {
-          "step": "implement",
           "status": "passed",
           "reason": ""
         }
@@ -171,6 +109,6 @@
     }
   ],
   "mergeOnValid": true,
-  "createdAt": "2026-06-21T15:02:36.697Z",
-  "updatedAt": "2026-06-21T15:35:34.423Z"
+  "createdAt": "2026-06-21T17:44:31.739Z",
+  "updatedAt": "2026-06-21T18:43:48.833Z"
 }

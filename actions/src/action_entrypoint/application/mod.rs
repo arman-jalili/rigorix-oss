@@ -15,11 +15,13 @@
 //! - DTOs carry full documentation for each field
 //! - No implementation — only contract signatures
 
+pub mod context_builder_impl;
 pub mod dto;
 pub mod factory;
 pub mod router_impl;
 pub mod service;
 
+pub use context_builder_impl::*;
 pub use dto::*;
 pub use factory::*;
 pub use router_impl::*;

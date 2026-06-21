@@ -135,8 +135,7 @@ impl ActionError {
             | ActionError::MissingContext { .. }
             | ActionError::InvalidWorkspaceRoot { .. }
             | ActionError::Internal { .. } => "error",
-            ActionError::UnsupportedEvent { .. }
-            | ActionError::OutputError { .. } => "warning",
+            ActionError::UnsupportedEvent { .. } | ActionError::OutputError { .. } => "warning",
             ActionError::EngineError { .. }
             | ActionError::ValidationLoopError { .. }
             | ActionError::ContextRepositoryError { .. }

@@ -51,10 +51,7 @@ impl HttpAuditBackend {
     }
 
     /// Create a new HTTP audit backend with a custom timeout.
-    pub fn with_timeout(
-        default_backend_url: Option<String>,
-        default_timeout_secs: u64,
-    ) -> Self {
+    pub fn with_timeout(default_backend_url: Option<String>, default_timeout_secs: u64) -> Self {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(default_timeout_secs))
             .build()
