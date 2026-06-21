@@ -17,12 +17,16 @@
 
 pub mod dto;
 pub mod factory;
+pub mod pr_comment_factory_impl;
+pub mod pr_comment_impl;
 pub mod service;
 pub mod status_check_factory_impl;
 pub mod status_check_impl;
 
 pub use dto::*;
 pub use factory::*;
+pub use pr_comment_factory_impl::*;
+pub use pr_comment_impl::*;
 pub use service::*;
 pub use status_check_factory_impl::*;
 pub use status_check_impl::*;

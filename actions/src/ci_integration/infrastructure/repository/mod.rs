@@ -15,8 +15,10 @@
 //! - No framework-specific annotations on trait definitions
 //! - Implementations are hidden behind these interfaces
 
+pub mod pr_comment_repository_impl;
 pub mod status_check_repository_impl;
 
+pub use pr_comment_repository_impl::*;
 pub use status_check_repository_impl::*;
 
 use async_trait::async_trait;
