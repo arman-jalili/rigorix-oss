@@ -1,0 +1,973 @@
+{
+  "schemaVersion": "0.1",
+  "frameworkVersion": "0.1.0",
+  "source": "pi",
+  "tools": [
+    "pi"
+  ],
+  "language": "rust",
+  "repoTool": "gh",
+  "archMode": "strict",
+  "groupId": "com.rigorix-oss",
+  "validators": [
+    "ci",
+    "tests",
+    "security",
+    "operations",
+    "integration",
+    "architecture",
+    "canonical"
+  ],
+  "workflows": [
+    "feature-development",
+    "bug-fix",
+    "hotfix",
+    "refactoring",
+    "issue-implementation-series",
+    "epic-plan",
+    "issue-draft",
+    "git-issues",
+    "issue-closeout",
+    "issue-merge",
+    "plan-to-issues",
+    "blueprint-validate",
+    "sync-check",
+    "context-refresh",
+    "scope-analyzer",
+    "pattern-extract",
+    "blueprint-update"
+  ],
+  "files": {
+    ".pi/context/checklists.md": {
+      "category": "framework",
+      "originalHash": "sha256:8f3e52628b0d1abe439d84f3b29848c4141110c485e2d42dd7ae0fb0fd234806",
+      "status": "unchanged"
+    },
+    ".pi/context/domain-workflow.md": {
+      "category": "framework",
+      "originalHash": "sha256:f92b43bdc715fd5cd8d3ab292c236e705e1ad155e58cb343efe4c6605eacd717",
+      "status": "unchanged"
+    },
+    ".pi/context/project.md": {
+      "category": "user",
+      "originalHash": "sha256:2dd4ff55bd49f0524108fbcbb344acfce74eb7d66772a212261b505880b1b019",
+      "status": "unchanged"
+    },
+    ".pi/context/patterns.md": {
+      "category": "user",
+      "originalHash": "sha256:51a1ffa9ad2fc4631fa3b15d60da3a66414d1457ccd523c1a0866592bb373c30",
+      "status": "unchanged"
+    },
+    ".pi/context/output-formats.md": {
+      "category": "framework",
+      "originalHash": "sha256:57700883af3a4bac040a49c7a00e34040ef64fe66fe45502fa44dd6a49dada1f",
+      "status": "unchanged"
+    },
+    ".pi/context/patterns-base.md": {
+      "category": "framework",
+      "originalHash": "sha256:8d9bf4d5c7ab81f060b0fadf8138cbb615b26119860988215f2ebd405c42bd1e",
+      "status": "unchanged"
+    },
+    ".pi/workpad.md": {
+      "category": "framework",
+      "originalHash": "sha256:c15373fbf3ad0317a1281066c7605a9f2c0823c1a3c5e946e0620b808c6bf67b",
+      "status": "unchanged"
+    },
+    ".pi/agents/issue-factory.md": {
+      "category": "framework",
+      "originalHash": "sha256:8e1d2a8211e7634736c51f6fe5af2ae48d3263a39d54ddc7cb23c9183537ae06",
+      "status": "unchanged"
+    },
+    ".pi/agents/architecture-coordinator.md": {
+      "category": "framework",
+      "originalHash": "sha256:0449f8b3d33b1d479e0699303eea0e6c6d512f38972e99cb1b8c0da0f7b37f8c",
+      "status": "unchanged"
+    },
+    ".pi/agents/bootstrap-implementer.md": {
+      "category": "framework",
+      "originalHash": "sha256:77662fa88c70fe139f7ff526c8763a3226d7dff6c249081a7a63d02e1ac72041",
+      "status": "unchanged"
+    },
+    ".pi/agents/operations-validator.md": {
+      "category": "framework",
+      "originalHash": "sha256:e64c119a9f0fc7c9fcebf813f47bd43b091c8049a6fd32a2789da69ec1c1fbde",
+      "status": "unchanged"
+    },
+    ".pi/agents/security-validator.md": {
+      "category": "framework",
+      "originalHash": "sha256:6cd0cd853582cb8f60d27c7bb9e339977928a07f3b4fb8fb66bf894bd6fad728",
+      "status": "unchanged"
+    },
+    ".pi/agents/architecture-validator.md": {
+      "category": "framework",
+      "originalHash": "sha256:3fbae65130cbb256e5be0c0e3b784de9fd681a9a54629bb270617e29886fcc9c",
+      "status": "unchanged"
+    },
+    ".pi/agent/AGENTS.md": {
+      "category": "user",
+      "originalHash": "sha256:240369371efe62367c638e1e094896657de40d09b80303ce953878345c517968",
+      "status": "unchanged"
+    },
+    ".pi/extensions/curator.ts": {
+      "category": "framework",
+      "originalHash": "sha256:7cebd53167de7c68d0b776be1ed878808f04035104125ebb8222e15367708f83",
+      "status": "unchanged"
+    },
+    ".pi/extensions/session-persistence.ts": {
+      "category": "framework",
+      "originalHash": "sha256:8994200dabf4502b4c315278cb995b9195f5060bfd7f416ba0eb1ed74008d66e",
+      "status": "unchanged"
+    },
+    ".pi/extensions/domain-explorer.ts": {
+      "category": "framework",
+      "originalHash": "sha256:cf02dd7d2a9f6a79aadf0e4ad21f65eaa8630b966620c52f1f0b99e5657a4e22",
+      "status": "unchanged"
+    },
+    ".pi/extensions/kanban.ts": {
+      "category": "framework",
+      "originalHash": "sha256:ae324cea4192f38295469343d1c841e7b4cfa33a4887cde176c873c128c7a605",
+      "status": "unchanged"
+    },
+    ".pi/extensions/project-scaffolder.ts": {
+      "category": "framework",
+      "originalHash": "sha256:a30e79c81a5f373401a038fdd87d313761d3ce933cb5dee6789e0e2842ecaa74",
+      "status": "unchanged"
+    },
+    ".pi/extensions/snippets.ts": {
+      "category": "framework",
+      "originalHash": "sha256:30d157510a72a2f5dd0ebbbe706ebfa780131eb397e2d1091c88f1b7f067ec68",
+      "status": "unchanged"
+    },
+    ".pi/extensions/read-only-mode.ts": {
+      "category": "framework",
+      "originalHash": "sha256:a579d34865fee1d53fec4d7218e905cfc3b1e08c8fafa1492a2532140f910f1e",
+      "status": "unchanged"
+    },
+    ".pi/extensions/slash-commands.ts": {
+      "category": "framework",
+      "originalHash": "sha256:e60a12667b22dd287b2da0969df554f3d8e40a7be12e85c122232310057f075f",
+      "status": "unchanged"
+    },
+    ".pi/extensions/config-reload.ts": {
+      "category": "framework",
+      "originalHash": "sha256:702c33e12f62867cadce1eeb8e94c98a491cc8b048bd88c6031daee514b957c7",
+      "status": "unchanged"
+    },
+    ".pi/extensions/pipeline.ts": {
+      "category": "framework",
+      "originalHash": "sha256:0b77763e1c78aed36fcd3710edeafb9fa8ea6ae6e101ef16a0510e32f0789982",
+      "status": "unchanged"
+    },
+    ".pi/extensions/bash-guard.ts": {
+      "category": "framework",
+      "originalHash": "sha256:0af4981f5c6235b2182f2d2aff6b7b0f1377835e6c8a7ff33a93d346b1a693c6",
+      "status": "unchanged"
+    },
+    ".pi/extensions/validation-runner.ts": {
+      "category": "framework",
+      "originalHash": "sha256:c0352feda293f89c0b1757a592c0a8341ce30274666876474ffe804d46214793",
+      "status": "unchanged"
+    },
+    ".pi/extensions/architect.ts": {
+      "category": "framework",
+      "originalHash": "sha256:e7b6d379a62c61b108341c1c0b792f90c01b9fed22e00fa27723ecc31fda55f0",
+      "status": "unchanged"
+    },
+    ".pi/extensions/architect-lib/helpers.ts": {
+      "category": "framework",
+      "originalHash": "sha256:ca513317f5bb7427f627752185df3c912cff8e2bd714ebc9dccb26535524f94a",
+      "status": "unchanged"
+    },
+    ".pi/extensions/architect-lib/generators.ts": {
+      "category": "framework",
+      "originalHash": "sha256:942c1b7061dfbfb0443484cb853b7f38641bdf4acf6f414a358d2d15ff03fe96",
+      "status": "unchanged"
+    },
+    ".pi/extensions/architect-lib/types.ts": {
+      "category": "framework",
+      "originalHash": "sha256:d4c9206f10fd179d7e312039ee3a7b4b51363d90d7a6f9c1b9898a306082f535",
+      "status": "unchanged"
+    },
+    ".pi/extensions/ask-user-question.ts": {
+      "category": "framework",
+      "originalHash": "sha256:983057f59aa40647f11c0703f1b9393e780900e23c67be0e579881d1c6729edb",
+      "status": "unchanged"
+    },
+    ".pi/extensions/filechanges.ts": {
+      "category": "framework",
+      "originalHash": "sha256:411094739728d704423b287f54dd4d265c5aab3346bb90f7f638b856aaebe244",
+      "status": "unchanged"
+    },
+    ".pi/extensions/hooks.ts": {
+      "category": "framework",
+      "originalHash": "sha256:46fa45dd6b3d7db55208fdf5e28001fd2d5e6a53570f38d78eee57537b96bf48",
+      "status": "unchanged"
+    },
+    ".pi/extensions/coordinator.ts": {
+      "category": "framework",
+      "originalHash": "sha256:070df0ef9fdb429cd284d8c7a6f3fbe1ba7f92927bf0128a941bf6d6a0f10d6e",
+      "status": "unchanged"
+    },
+    ".pi/extensions/goal-loop.ts": {
+      "category": "framework",
+      "originalHash": "sha256:6ed7949769ef9a36a7c0e023779279d8407b7a16867445c01b1102d13213688f",
+      "status": "unchanged"
+    },
+    ".pi/extensions/redaction.ts": {
+      "category": "framework",
+      "originalHash": "sha256:9f69807463e1bf305cd981e2ca18c432446ba67ffb83e8b5f518d9fdb1c691f2",
+      "status": "unchanged"
+    },
+    ".pi/extensions/plan-mode.ts": {
+      "category": "framework",
+      "originalHash": "sha256:6d0b1a68ec3c64127421b5eea7b3385790d870b69de291b24e6c967354e743d4",
+      "status": "unchanged"
+    },
+    ".pi/types.ts": {
+      "category": "framework",
+      "originalHash": "sha256:017a07fae90a46fca800dcb6b3ef19050570677c8a4a9672f85b238183f72ee4",
+      "status": "unchanged"
+    },
+    ".pi/architecture/CHANGELOG.md": {
+      "category": "framework",
+      "originalHash": "sha256:653bed6d8499cbf4b96598d1c3c6e0537989018b08654fc9422d50c85a8f20d6",
+      "status": "unchanged"
+    },
+    ".pi/architecture/diagrams/system-overview.md": {
+      "category": "framework",
+      "originalHash": "sha256:162cb1fa10bc933370390c9b37d64dcb4dad333e4ecef4e73c3d48e9d8ae91d3",
+      "status": "unchanged"
+    },
+    ".pi/architecture/decisions/ADR-template.md": {
+      "category": "framework",
+      "originalHash": "sha256:18e171fa061c7f8abd07b3b90a7d02f619bf1545124969203225f4bdd4b41531",
+      "status": "unchanged"
+    },
+    ".pi/architecture/modules/module-template.md": {
+      "category": "framework",
+      "originalHash": "sha256:4790f7bde099ad6ee10f11602ecfc281c6de4e775c7739500eb1260afc1fa849",
+      "status": "unchanged"
+    },
+    ".pi/github/instructions/architecture.instructions.md": {
+      "category": "framework",
+      "originalHash": "sha256:9f26ff4819db738887c1cdb9745537dadc43fc05ad788684b38dbc7a6dad17d5",
+      "status": "unchanged"
+    },
+    ".pi/github/instructions/validation.instructions.md": {
+      "category": "framework",
+      "originalHash": "sha256:934d64609f1275887a5c2795ce41d7d31fa5e8cf77cac35612d1b8685a44d28b",
+      "status": "unchanged"
+    },
+    ".pi/github/copilot/settings.json": {
+      "category": "framework",
+      "originalHash": "sha256:9e21c730edefe4080fee1014a02fbb96118aa300ea0f93563a53f9c6d9c4f2a1",
+      "status": "unchanged"
+    },
+    ".pi/github/workflows/01-planning-workflow.md": {
+      "category": "framework",
+      "originalHash": "sha256:b7c13edf0d75fe2cc2a8784461637ec91a2bc894682768b6b208795f60a5d404",
+      "status": "unchanged"
+    },
+    ".pi/github/workflows/03-implementation-workflow.md": {
+      "category": "framework",
+      "originalHash": "sha256:3b067bd1df93bb8de1eb26873825f2d5a330c46c619cb3209db127d33fde3ebb",
+      "status": "unchanged"
+    },
+    ".pi/github/workflows/04-validation-workflow.md": {
+      "category": "framework",
+      "originalHash": "sha256:513bb31dd54f5961e221f71e5216fd1acde8ad0158f5523985bdad97a2bff8c8",
+      "status": "unchanged"
+    },
+    ".pi/github/workflows/02-issue-generation-workflow.md": {
+      "category": "framework",
+      "originalHash": "sha256:41205400814e6d4b77ddbcf351d8e1f0701d11c618225eabf6ed3d3b630d56dd",
+      "status": "unchanged"
+    },
+    ".pi/github/agents/architecture-validator.agent.md": {
+      "category": "framework",
+      "originalHash": "sha256:04e7cb86758e135b55abc556b9d043d6f68cd5566dd5b0a882cedc615fbde065",
+      "status": "unchanged"
+    },
+    ".pi/github/agents/issue-factory.agent.md": {
+      "category": "framework",
+      "originalHash": "sha256:ef97de04d6f99a3b2edd04182ab8cf73a7da564b99d091f5c3d2056175fd686b",
+      "status": "unchanged"
+    },
+    ".pi/github/agents/architecture-coordinator.agent.md": {
+      "category": "framework",
+      "originalHash": "sha256:9e376f5ba69f3fc30672b83e9792bb2cb961abc61d6fddda057a5df2ce398e0e",
+      "status": "unchanged"
+    },
+    ".pi/github/agents/epic-planner.agent.md": {
+      "category": "framework",
+      "originalHash": "sha256:859599d908d8d1a5bc41d82eaea9414f147a1a16b8d37a99630f3d700f37c0ca",
+      "status": "unchanged"
+    },
+    ".pi/github/agents/bootstrap-implementer.agent.md": {
+      "category": "framework",
+      "originalHash": "sha256:2a0b8f2d37ab6c9112d0fa0101429ad5afe3d2c39328b3d132eee1eeb454a3ee",
+      "status": "unchanged"
+    },
+    ".pi/github/agents/security-validator.agent.md": {
+      "category": "framework",
+      "originalHash": "sha256:e9081be418d7f432fbd9b4a63d8181b44e797c93a8b6065ec330e2a5fa4b6109",
+      "status": "unchanged"
+    },
+    ".pi/github/agents/operations-validator.agent.md": {
+      "category": "framework",
+      "originalHash": "sha256:464860fa7eabcad393471c8dc434268d2f55e72eda0889386abee02f88315ec3",
+      "status": "unchanged"
+    },
+    ".pi/github/copilot-instructions.md": {
+      "category": "framework",
+      "originalHash": "sha256:f82b95c50d87175e42851487b9c9f8891cfc1b5d74d784fdcbc2c4a221ddd19f",
+      "status": "unchanged"
+    },
+    ".pi/INDEX.md": {
+      "category": "framework",
+      "originalHash": "sha256:e166bc3e698236cbe4ef3fcca2f866c8ac2a28cd4ea293ca74c598a0dfea44ed",
+      "status": "unchanged"
+    },
+    ".pi/scripts/validate-operations.sh": {
+      "category": "generated",
+      "originalHash": "sha256:4fb994c9056b90f565fe536633795586da3197a2a2b8f745baea9af8db4440d5",
+      "status": "unchanged"
+    },
+    ".pi/scripts/create-feature-branch.sh": {
+      "category": "framework",
+      "originalHash": "sha256:33ff4c76faba418025dbe88a998f2a04a6cafd282d11fc644a50de014cc580d0",
+      "status": "unchanged"
+    },
+    ".pi/scripts/validate-architecture.sh": {
+      "category": "generated",
+      "originalHash": "sha256:241df1a4517e0a04aff9cfc4efddbdcb4b3859e65bd35cb8c558a172dfe7cf4d",
+      "status": "unchanged"
+    },
+    ".pi/scripts/validate-ubiquitous-language.sh": {
+      "category": "framework",
+      "originalHash": "sha256:fdae16e0bf2030b87c9bb5263eceb73cd5510066bbe85d7925a35dd92a2a13f8",
+      "status": "unchanged"
+    },
+    ".pi/scripts/ci/stage_security.sh": {
+      "category": "framework",
+      "originalHash": "sha256:1ebac9c09ebfebc1e9cffdfa474c792f28bbe386a923ca49a0695bddee93df40",
+      "status": "unchanged"
+    },
+    ".pi/scripts/ci/run_hardening_stages.sh": {
+      "category": "framework",
+      "originalHash": "sha256:8a67c21f7154e1cd4987f6e5e56dbbd476f3bf6d7846d4c167289008979d4a65",
+      "status": "unchanged"
+    },
+    ".pi/scripts/ci/stage_remaining.sh": {
+      "category": "framework",
+      "originalHash": "sha256:396b75ec9fb00224781e9eca66ac51a9ec7f05876d5175f80070560fdf629fe5",
+      "status": "unchanged"
+    },
+    ".pi/scripts/ci/check_planning_packet.py": {
+      "category": "framework",
+      "originalHash": "sha256:214e1ce18ed2226f344f25687fde9dd586b061f1af8efd6f54c27bd09dabae67",
+      "status": "unchanged"
+    },
+    ".pi/scripts/ci/stage_package_build.sh": {
+      "category": "framework",
+      "originalHash": "sha256:67b0f705398369fb171c993c1e673f8cce16e4016cd6c1ca72c8996ce3bda7c4",
+      "status": "unchanged"
+    },
+    ".pi/scripts/ci/validate_agent_output.py": {
+      "category": "framework",
+      "originalHash": "sha256:51cbdbed1921620608a25c2f4db67dbfd088a3d43cb96a03ec425c181d6ce4c9",
+      "status": "unchanged"
+    },
+    ".pi/scripts/ci/run_preflight.sh": {
+      "category": "framework",
+      "originalHash": "sha256:137294de31aebfa339ae28ba878cb85720bdbe1b4298a2dd19ca184754bd67c4",
+      "status": "unchanged"
+    },
+    ".pi/scripts/ci/stage_migration_verify.sh": {
+      "category": "framework",
+      "originalHash": "sha256:d25a4de5ddcb3946fca19e82828dd03f726d2084c71dbe4ecf0e222d1da1b67b",
+      "status": "unchanged"
+    },
+    ".pi/scripts/ci/stage_unit.sh": {
+      "category": "framework",
+      "originalHash": "sha256:64c8b8a4c6266725962b238a1c9814ea110c0f067e90ca9d38287a40074a5f19",
+      "status": "unchanged"
+    },
+    ".pi/scripts/ci/stage_release_readiness.sh": {
+      "category": "framework",
+      "originalHash": "sha256:0d62822ea089f0469e66561d501bf03cd5e9bb0dbedb199e0ca39286c3ffaa7c",
+      "status": "unchanged"
+    },
+    ".pi/scripts/ci/stage_docs_policy.sh": {
+      "category": "framework",
+      "originalHash": "sha256:8b13849d612e4dde20a43e3e2ef23c9279869c14683e29506213749e4f2e29ec",
+      "status": "unchanged"
+    },
+    ".pi/scripts/ci/validate_agent_output.sh": {
+      "category": "framework",
+      "originalHash": "sha256:26816f935433df71266651dfe393c9ff3b7c3975426e05a93b7308c6fc3b80bf",
+      "status": "unchanged"
+    },
+    ".pi/scripts/ci/stage_integration.sh": {
+      "category": "framework",
+      "originalHash": "sha256:a9617cd791ef4ebc72a519ca5169c287f94ba128e14c19f75a6db24267cf42ec",
+      "status": "unchanged"
+    },
+    ".pi/scripts/ci/run_stage.sh": {
+      "category": "framework",
+      "originalHash": "sha256:ade2b65032142b6f03fc08ed99828964c0bf6a7121d82969871ac963dac14fe1",
+      "status": "unchanged"
+    },
+    ".pi/scripts/ci/stage_lint.sh": {
+      "category": "framework",
+      "originalHash": "sha256:b5ce9794af4d271f7e04a82f6a35fe7e254d64ff4e71518cf201e4210c1b6560",
+      "status": "unchanged"
+    },
+    ".pi/scripts/ci/check_architecture_conformance.sh": {
+      "category": "framework",
+      "originalHash": "sha256:eaee494fb728fdc422fa9d83b4c8abdbe52041bd31e53fa8ba85f91196ea765d",
+      "status": "unchanged"
+    },
+    ".pi/scripts/ci/stage_static_analysis.sh": {
+      "category": "framework",
+      "originalHash": "sha256:5d40980d65b39245bb3db064f0ae60b977b33cb0e7f86b0d211020cb894bafa7",
+      "status": "unchanged"
+    },
+    ".pi/scripts/merge-mr.sh": {
+      "category": "framework",
+      "originalHash": "sha256:726ff4212cf5097de646668bb2a48c0ff63de02cb0132686474f6dc91e047afb",
+      "status": "unchanged"
+    },
+    ".pi/scripts/validate-architecture-readiness.sh": {
+      "category": "framework",
+      "originalHash": "sha256:d460c6ccd94a3382d3fde7fff1e9d9f7c10abba76a3f6a3e41238283e81354d5",
+      "status": "unchanged"
+    },
+    ".pi/scripts/fetch-issues.sh": {
+      "category": "framework",
+      "originalHash": "sha256:e9b6c563b9d242e925de55bb120e667e69ed2e6d544a248828b6cc2d0cf514fe",
+      "status": "unchanged"
+    },
+    ".pi/scripts/categorize-issues.sh": {
+      "category": "framework",
+      "originalHash": "sha256:172e09a69b56e3b502d184f740c447f570647893f4658e2dd91451595f77dc93",
+      "status": "unchanged"
+    },
+    ".pi/scripts/create-mr.sh": {
+      "category": "framework",
+      "originalHash": "sha256:6670010595a85cbf518fb02d760c417922e480b27979351e418ec4bcd0571b29",
+      "status": "unchanged"
+    },
+    ".pi/scripts/validation-cache.sh": {
+      "category": "generated",
+      "originalHash": "sha256:5fea93087bcd9852532ce8119f47ecdb61a46fd857b336e2955b087ed61aa3bd",
+      "status": "unchanged"
+    },
+    ".pi/scripts/languages/rust/validate-operations.sh": {
+      "category": "framework",
+      "originalHash": "sha256:ab89729ca059bf5c51693c30dc088ea396c9e3cec282926eb20e0927d7c01c42",
+      "status": "unchanged"
+    },
+    ".pi/scripts/languages/rust/validate-architecture.sh": {
+      "category": "framework",
+      "originalHash": "sha256:250210026e0e228def1481a26f9bfc85c032734edc867d1aa153ee5ea4b09e6d",
+      "status": "unchanged"
+    },
+    ".pi/scripts/languages/rust/validate-security.sh": {
+      "category": "framework",
+      "originalHash": "sha256:ce3a057d27fbdcffb0e8043aece29acceea9e9eb69e61dae276f6a7205bdbb8e",
+      "status": "unchanged"
+    },
+    ".pi/scripts/languages/rust/validate-canonical.sh": {
+      "category": "framework",
+      "originalHash": "sha256:c0e145a8e1c16024062bf928945c2cd45c4d1c0a78c942e547a7f3f4ededc80b",
+      "status": "unchanged"
+    },
+    ".pi/scripts/languages/rust/validate-ci.sh": {
+      "category": "framework",
+      "originalHash": "sha256:d27898b08963a4ddfa0a62227ded3e91e61e81ecd4859c1549c3660abc09ec51",
+      "status": "unchanged"
+    },
+    ".pi/scripts/languages/rust/validate-integration.sh": {
+      "category": "framework",
+      "originalHash": "sha256:11a8b41544e1bd36379f724cd4fefc6ef4c608aca5f093d1db22b840d04d133f",
+      "status": "unchanged"
+    },
+    ".pi/scripts/languages/rust/validate-tests.sh": {
+      "category": "framework",
+      "originalHash": "sha256:7538f07f8a432ba2c25ca1f53fc2778a3cbe1f811d77f26eff7015915b3471c9",
+      "status": "unchanged"
+    },
+    ".pi/scripts/validate-security.sh": {
+      "category": "generated",
+      "originalHash": "sha256:0a9453d133e9b8e86cd767cec2f130bd6dc74db93d2169d2e43858af81438630",
+      "status": "unchanged"
+    },
+    ".pi/scripts/validate-canonical.sh": {
+      "category": "generated",
+      "originalHash": "sha256:66d2e6887f040d7179e811f79f8c9f367066c6fd6a100c462ddb330556d54228",
+      "status": "unchanged"
+    },
+    ".pi/scripts/generate-architecture.sh": {
+      "category": "framework",
+      "originalHash": "sha256:d4e48b44eacf98df17eab6ad97fb67c58f2569a2200481632ca4cf348ec1daf7",
+      "status": "unchanged"
+    },
+    ".pi/scripts/mr-validation.sh": {
+      "category": "framework",
+      "originalHash": "sha256:4ff040e1c2cda028d317740d0c6f0dc5b8536a3986dcd79b7f90c70e1f16a0d3",
+      "status": "unchanged"
+    },
+    ".pi/scripts/validate-ci.sh": {
+      "category": "generated",
+      "originalHash": "sha256:d5ae9a470c0e738063a103f8cedd9bb08ebc38dabd35883c6d16874228d08c45",
+      "status": "unchanged"
+    },
+    ".pi/scripts/validate-integration.sh": {
+      "category": "generated",
+      "originalHash": "sha256:01c0dc34f6a94dcb46428049e4a090c89756c67755f0f16068dcfcb0b4df2ea0",
+      "status": "unchanged"
+    },
+    ".pi/scripts/validate-tests.sh": {
+      "category": "generated",
+      "originalHash": "sha256:ff7840a569b1571782ae8c4174a6b871345c6a354c65ff4ca5784b898ba15466",
+      "status": "unchanged"
+    },
+    ".pi/scripts/git/close-epic.sh": {
+      "category": "framework",
+      "originalHash": "sha256:fade48608d4bfc267ec7bae6b374c6fb2a40b709a2d226ec06c36ede853f5c2a",
+      "status": "unchanged"
+    },
+    ".pi/scripts/git/close-issue.sh": {
+      "category": "framework",
+      "originalHash": "sha256:8984749dc0957659553108265bb16463166ade0f6e7acd8742be003bf92f990e",
+      "status": "unchanged"
+    },
+    ".pi/scripts/git/update-tracking-issue.sh": {
+      "category": "framework",
+      "originalHash": "sha256:4701dc3b3afca2884071db20a4b4a2665d12e6af5498b349a75b598da0fe7cbe",
+      "status": "unchanged"
+    },
+    ".pi/scripts/git/link-issue-to-epic.sh": {
+      "category": "framework",
+      "originalHash": "sha256:a1dd8606544bba38b0e4a90bce111c6c0d0d578bf63e6a752b6aaede54a6d7e3",
+      "status": "unchanged"
+    },
+    ".pi/scripts/git/create-tracking-issue.sh": {
+      "category": "framework",
+      "originalHash": "sha256:3b221bb26e7c0fcb9b073de037c382db8031eb6b8b921d27f4f5e76cd2ddfec5",
+      "status": "unchanged"
+    },
+    ".pi/prompts/blueprint-validate.md": {
+      "category": "framework",
+      "originalHash": "sha256:b73c83cb10e9afbb6b462063cd0a1ad588f301ade22735c2fb03272696d396e6",
+      "status": "unchanged"
+    },
+    ".pi/prompts/bug-fix.md": {
+      "category": "framework",
+      "originalHash": "sha256:0af6405b22d77066427d69b2486f13de2b5d7ceb00a69af78778bdb5bfeb011a",
+      "status": "unchanged"
+    },
+    ".pi/prompts/issue-implementation-series.md": {
+      "category": "framework",
+      "originalHash": "sha256:983e2b90b70424403a9223b7ed30840878fe7cf4d10b39f8fcf547a4ae0fd1cd",
+      "status": "unchanged"
+    },
+    ".pi/prompts/pattern-extract.md": {
+      "category": "framework",
+      "originalHash": "sha256:3433fa6188bf8717c4aa8a052c4f3b9c6aaa7ed3e01dc8b816ffc1e0cb7f475a",
+      "status": "unchanged"
+    },
+    ".pi/prompts/issue-draft.md": {
+      "category": "framework",
+      "originalHash": "sha256:e50f0fb5a7d49d0316259e05e798ac44797b156394c8f7e22407907941309c14",
+      "status": "unchanged"
+    },
+    ".pi/prompts/epic-plan.md": {
+      "category": "framework",
+      "originalHash": "sha256:3633e445bb94ecdd41567490c3c31086784d6597e99ef3e86677628e00feb4b6",
+      "status": "unchanged"
+    },
+    ".pi/prompts/sync-check.md": {
+      "category": "framework",
+      "originalHash": "sha256:06c09fefa4521254c0c0e43b587985d809749a4fa0f9e462fc85f33e8182b382",
+      "status": "unchanged"
+    },
+    ".pi/prompts/blueprint-update.md": {
+      "category": "framework",
+      "originalHash": "sha256:e56adc41911876bbca89fa2d5947c7a76e5ebb4af423f8749d61e700fe4a95f4",
+      "status": "unchanged"
+    },
+    ".pi/prompts/hotfix.md": {
+      "category": "framework",
+      "originalHash": "sha256:ce1c5a45625d678c57094d2d3f7b80d05bb8d19c12afe7e6bf12c1d50ec43f6e",
+      "status": "unchanged"
+    },
+    ".pi/prompts/issue-template.md": {
+      "category": "framework",
+      "originalHash": "sha256:0171d092bd362617327b5ef14e3b58b06052482ddd338338da3ccfb404ee0e93",
+      "status": "unchanged"
+    },
+    ".pi/prompts/epic-template.md": {
+      "category": "framework",
+      "originalHash": "sha256:cdc5b784ed287871d651ebcedeacddd74091b4c1ac3b7e696890d78353b94afc",
+      "status": "unchanged"
+    },
+    ".pi/prompts/issue-closeout.md": {
+      "category": "framework",
+      "originalHash": "sha256:a2c88df36dd87fec9e87f2efcc0ff0ab694b75b5952090763c7081f9bcde5681",
+      "status": "unchanged"
+    },
+    ".pi/prompts/scope-analyzer.md": {
+      "category": "framework",
+      "originalHash": "sha256:be1d74366bbe8e5f7dd5949d45e9adb89b17b6015dc471921e32b6fc2e110633",
+      "status": "unchanged"
+    },
+    ".pi/prompts/ci-blueprint.md": {
+      "category": "framework",
+      "originalHash": "sha256:b2847a4ec3b26f3a77e6c06d8ebe2595032703ec2d8c1529a8f76204bc03c58f",
+      "status": "unchanged"
+    },
+    ".pi/prompts/issue-template-set.md": {
+      "category": "framework",
+      "originalHash": "sha256:cf6e8b0f1db914475264e6c153cd1945bffc537210501f898c6d01661c9dc027",
+      "status": "unchanged"
+    },
+    ".pi/prompts/issue-merge.md": {
+      "category": "framework",
+      "originalHash": "sha256:adfc1e0dd785efe556945f74e4f84c1a8f1efbd33d6ad68e50514cacf0b5511c",
+      "status": "unchanged"
+    },
+    ".pi/prompts/context-refresh.md": {
+      "category": "framework",
+      "originalHash": "sha256:09fdc06700827a1aec1906c6710c6c9b2a7419cc984359edcae9339c53114e47",
+      "status": "unchanged"
+    },
+    ".pi/prompts/git-issues.md": {
+      "category": "framework",
+      "originalHash": "sha256:000effa78e9a2bdbe06307eb4de3c879051e59ec728687b20df39db21a69f34c",
+      "status": "unchanged"
+    },
+    ".pi/prompts/feature-development.md": {
+      "category": "framework",
+      "originalHash": "sha256:f388ede538c684a91f3fd59bbac710be8f027a7e5214717f83caeb4325289909",
+      "status": "unchanged"
+    },
+    ".pi/prompts/plan-to-issues.md": {
+      "category": "framework",
+      "originalHash": "sha256:1cc665bad7a5aa45a8b769d22a8dbc5c7288ccaa2e8e017935b9ce7f6fd13fe8",
+      "status": "unchanged"
+    },
+    ".pi/prompts/refactoring.md": {
+      "category": "framework",
+      "originalHash": "sha256:fb65f0efee082ea47aa893bde7ac6f4d6014512e3dec3f9b820d86f1bcf6037a",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/slash-commands.md": {
+      "category": "framework",
+      "originalHash": "sha256:d9783d8d481ae7a02c2c91db52f8600c7fb6821418dcbd5f589ca37f314b6a1b",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/pipeline.md": {
+      "category": "framework",
+      "originalHash": "sha256:c458c79492c2b97fac0dedb343bfe5f688e0c0f41f3b945db0b4bd766aae179a",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/debug.md": {
+      "category": "framework",
+      "originalHash": "sha256:65368b250d343f208d3ad07d63b23fee8a178f3e9a3a65079d1b05ccb954b7ed",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/issue-factory.md": {
+      "category": "framework",
+      "originalHash": "sha256:078e16f2b69c44ea7bc3d356dc3b8a3bf861b220a3ce3fc4c2a0dd2e949848ac",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/architecture-coordinator.md": {
+      "category": "framework",
+      "originalHash": "sha256:87877ea4cc689c98f6ab8d661d85b0d0af8debe06f6840ab62c891370ba112f7",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/snippets.md": {
+      "category": "framework",
+      "originalHash": "sha256:4bf69877925a542de4d6f84f0205654ae2c53ac56ba740674eb849f1a7d1ce95",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/architecture-generator.md": {
+      "category": "framework",
+      "originalHash": "sha256:6b2763ece59b22d86a95e1d1712b118cbb700e0cce5d941435604b4acca3fd4b",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/land.md": {
+      "category": "framework",
+      "originalHash": "sha256:099bedd22bfd99ac6d061d376f0c5d0314bd7ddd351166d2816122d9ae210207",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/push.md": {
+      "category": "framework",
+      "originalHash": "sha256:93a9a3f3e154743e342ccc75f3780cca9efd2738d90545bd43bdc5518a2b310d",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/curator.md": {
+      "category": "framework",
+      "originalHash": "sha256:3a6ef64758000d80c5a126356afb1b7539e76b83f9a2dd6a42da2f99ebb435d3",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/kanban.md": {
+      "category": "framework",
+      "originalHash": "sha256:e82cc278ab29c86e93a0bdb222717f36088a3c0c02f5fa4e86b2fe28be723dab",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/ci-mr-validator.md": {
+      "category": "framework",
+      "originalHash": "sha256:ad5ae29d0043ac16c3a082488932e79f9f21132142616977d00aaf1f8bf26767",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/session-persistence.md": {
+      "category": "framework",
+      "originalHash": "sha256:3bdcb4d1008894d807773b28cc8a2c4ff3c933a5ecd296930a2bb1559b867d73",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/subagent-registry.md": {
+      "category": "framework",
+      "originalHash": "sha256:4b89ea68c8fca289a90a232ef86ff0b1b37c096482cbeb2a8450d28f2fb68a86",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/pull.md": {
+      "category": "framework",
+      "originalHash": "sha256:4d837457b90163de6b0a59ab425855f23e8efd0bf5cd7e945fa7ba4adead65d4",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/operations-validator.md": {
+      "category": "framework",
+      "originalHash": "sha256:86ee49c63e881afc18c5a0438d614d3918cb18c468720c9bb4d1f7ab5f37c298",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/issue-creator.md": {
+      "category": "framework",
+      "originalHash": "sha256:78e72f5e3ecb7e8737449c96ae17ac4b5c48bb31ed2a1e2fc929277462a02648",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/plan-mode.md": {
+      "category": "framework",
+      "originalHash": "sha256:7a37581c5005995fc0afa0fb77c1991de3384fa0dd2326610207927d28a6032c",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/hooks.md": {
+      "category": "framework",
+      "originalHash": "sha256:5ffafef4d3861be81760dd5bc7792ec865de37d6e668cde9636e607fd851c95b",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/security-validator.md": {
+      "category": "framework",
+      "originalHash": "sha256:1f5ab8b7f01f5dc0342c5c90dcf745f81b8f00858fd0d8283a979ee22e91581b",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/integration-validator.md": {
+      "category": "framework",
+      "originalHash": "sha256:c3894b281c5d79473002a9d8d5f81fbfe2909705c65e756415175972a6ebb62d",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/goal-loop.md": {
+      "category": "framework",
+      "originalHash": "sha256:5aacf58ec91fa18ec7b2a19dc511607a57c8a89974fdc864fa13f1e85bc53bca",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/documentation-maintainer.md": {
+      "category": "framework",
+      "originalHash": "sha256:dea9a6b86b2de03a78f1e042649f6a54a1729286ffbea8fb943a9ec61baa281a",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/commit.md": {
+      "category": "framework",
+      "originalHash": "sha256:e137745830577995cfc2a8ff26ed4ffcbd6da49e56065a755b06ce8725765916",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/architecture-validator.md": {
+      "category": "framework",
+      "originalHash": "sha256:fc468492fe93b5b4c2d460195a9b379f79b58913db59443ff1c25f54ae1b1310",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/code-developer.md": {
+      "category": "framework",
+      "originalHash": "sha256:3d7c29308ff76af77c5c098e1b326ca7b95b5e96ff3acd70440ff9228c974bd1",
+      "status": "unchanged"
+    },
+    ".pi/skills/agents/test-validator.md": {
+      "category": "framework",
+      "originalHash": "sha256:37557feb88715946a1d3e11cdaa67ab2395e785b0c13866f7038cc97c798f825",
+      "status": "unchanged"
+    },
+    ".pi/skills/validators/security-guards.md": {
+      "category": "framework",
+      "originalHash": "sha256:df4d2135c38aeea2cc781e6acd3fad5caac5ceb226c58dd14a7a0dfae51402b9",
+      "status": "unchanged"
+    },
+    ".pi/skills/validators/context-compaction.md": {
+      "category": "framework",
+      "originalHash": "sha256:2f238359167f08f4acee8cc76945a572e1203fb61027b93bcdc722e079591445",
+      "status": "unchanged"
+    },
+    ".pi/skills/validators/operations-validator.md": {
+      "category": "framework",
+      "originalHash": "sha256:363b53637cf49af6268f59bf53e70bec2e0f81366c9db192e771a1c2fb2bf7cc",
+      "status": "unchanged"
+    },
+    ".pi/skills/validators/model-registry.md": {
+      "category": "framework",
+      "originalHash": "sha256:82b1604c59f2b38e7ecb3b9a99ddca40ff2a886f559af2f8b8b2f1d6fa1262c2",
+      "status": "unchanged"
+    },
+    ".pi/skills/validators/security-validator.md": {
+      "category": "framework",
+      "originalHash": "sha256:34a70bb93cb256f30463519967601ce2f4e44c7dc0284d5f034a7120a79ef4ec",
+      "status": "unchanged"
+    },
+    ".pi/skills/validators/integration-validator.md": {
+      "category": "framework",
+      "originalHash": "sha256:10d21f097ff8e86312318538cf342ad56a0de18a56ddbeb80c44c98cd1ee00c0",
+      "status": "unchanged"
+    },
+    ".pi/skills/validators/system-prompt-tiers.md": {
+      "category": "framework",
+      "originalHash": "sha256:e4977fe1ad0c2ce8248deb136031a3aba59f6fed75f52850fc5e306027277aeb",
+      "status": "unchanged"
+    },
+    ".pi/skills/validators/architecture-validator.md": {
+      "category": "framework",
+      "originalHash": "sha256:7ef93c32dfffb458b6c1301ebf621bada00f4cf5573f5d030c552327579551bd",
+      "status": "unchanged"
+    },
+    ".pi/skills/validators/test-validator.md": {
+      "category": "framework",
+      "originalHash": "sha256:3709ea4476727c6e7db56a40dd3be5902140cfaf76ab990cb94b52847d4a92bb",
+      "status": "unchanged"
+    },
+    ".pi/skills/validators/ci-validator.md": {
+      "category": "framework",
+      "originalHash": "sha256:9abee72b24b7322a0130bb91da5ff20d39064cb75abddd25d2c589f442a22839",
+      "status": "unchanged"
+    },
+    ".pi/validators/default.toml": {
+      "category": "framework",
+      "originalHash": "sha256:b9fea586ef6035733f7873cab8ba3399426a6ea67de10f5ebb4f8110620436d4",
+      "status": "unchanged"
+    },
+    ".pi/validators/README.md": {
+      "category": "framework",
+      "originalHash": "sha256:ae67775d2cd23d35a28f8850161f88666fbf5a9bc2b62e91bf3de31d5c3a0ace",
+      "status": "unchanged"
+    },
+    ".pi/validators/spring.toml": {
+      "category": "framework",
+      "originalHash": "sha256:afc0f8b49b5228869f296a7683b1d8a5f6ffc72f366f889a4ab7f5a8a4cc2b1e",
+      "status": "unchanged"
+    },
+    ".pi/preflight_report.json": {
+      "category": "framework",
+      "originalHash": "sha256:c739bbb27fde3d3d9ea1e47a453b8d07d46a04d42674854cf7472d5a5d406148",
+      "status": "unchanged"
+    },
+    ".pi/domain/ubiquitous-language.md": {
+      "category": "user",
+      "originalHash": "sha256:b047dbd6d32bfcf6c220c3319642c79b4f97787c67e58ac03c5fc18f57ba62cb",
+      "status": "unchanged"
+    },
+    ".pi/domain/exploration.md": {
+      "category": "user",
+      "originalHash": "sha256:1c60d932c58be0ce9488bdf9891c991e6c0ca5b0ccc87361bdb11d8c8e8f7005",
+      "status": "unchanged"
+    },
+    ".pi/skills/architecture-coordinator/SKILL.md": {
+      "category": "generated",
+      "originalHash": "sha256:98a2fdd6e6588fb6b0cc4f1cd13ce954ade4280b5db170f2967e7b3333cecc22",
+      "status": "unchanged"
+    },
+    ".pi/skills/architecture-validator/SKILL.md": {
+      "category": "generated",
+      "originalHash": "sha256:12aedbe88bcbf3576378e47a4b6e3cbd2908675d6083e55807e36da86daf02fc",
+      "status": "unchanged"
+    },
+    ".pi/skills/security-validator/SKILL.md": {
+      "category": "generated",
+      "originalHash": "sha256:0a20c5c2d7178008060a051d925c552fe993e6baa9a4e47eb50c9348b876756a",
+      "status": "unchanged"
+    },
+    ".pi/skills/operations-validator/SKILL.md": {
+      "category": "generated",
+      "originalHash": "sha256:f292f919da546d46a13b99fedc11fb57a75516b597ae053e5492d512e5738cbc",
+      "status": "unchanged"
+    },
+    ".pi/skills/test-validator/SKILL.md": {
+      "category": "generated",
+      "originalHash": "sha256:989c4b8d638b7c498a5d2e1f9ece1c748a325d0dacbb42d0efa081303a131798",
+      "status": "unchanged"
+    },
+    ".pi/skills/integration-validator/SKILL.md": {
+      "category": "generated",
+      "originalHash": "sha256:ce4b4c95976acc8cc8ea81f3fdec452458242faea65fb3122f286aa0734eed69",
+      "status": "unchanged"
+    },
+    ".pi/skills/ci-mr-validator/SKILL.md": {
+      "category": "generated",
+      "originalHash": "sha256:d37d67939d4b097daff2a51d50caa84144b31bf73296e623258a826ece8f1253",
+      "status": "unchanged"
+    },
+    ".pi/skills/code-developer/SKILL.md": {
+      "category": "generated",
+      "originalHash": "sha256:847fb9679ebc65c116614fcb0770659146a9392927bbb40626dc242285e82c42",
+      "status": "unchanged"
+    },
+    ".pi/skills/issue-creator/SKILL.md": {
+      "category": "generated",
+      "originalHash": "sha256:fb7d392fd8f8b18624b033de00c698933729d88bdace5bff044aace063930557",
+      "status": "unchanged"
+    },
+    ".pi/skills/documentation-maintainer/SKILL.md": {
+      "category": "generated",
+      "originalHash": "sha256:82dcfa15c741e4c3ae02a1f9577af7ac575742ea3ca1c668a86cfef44d579b41",
+      "status": "unchanged"
+    },
+    ".pi/README.md": {
+      "category": "generated",
+      "originalHash": "sha256:46adb3cb48b79ee5e26595b06cdd22992cb3252f643ded3ec7a6f7f8677b0ca1",
+      "status": "unchanged"
+    },
+    ".gitignore": {
+      "category": "framework",
+      "originalHash": "sha256:b071663b414d6bf1004373057662f2b2809fd42367e53d2484c27e54c1ab5fb7",
+      "status": "unchanged"
+    },
+    "WORKFLOW.md": {
+      "category": "framework",
+      "originalHash": "sha256:9808142326406a2f271bb22491fe4f1355dda06c59c2f5267012b75bbde62d57",
+      "status": "unchanged"
+    }
+  },
+  "exports": {},
+  "templateContext": {
+    "projectName": "rigorix-oss",
+    "projectVersion": "0.1.0",
+    "language": "rust",
+    "repository": "arman-jalili/rigorix-oss",
+    "repoTool": "gh",
+    "groupId": "com.rigorix-oss",
+    "buildCommand": "cargo build",
+    "testCommand": "cargo test --all",
+    "lintCommand": "cargo clippy -- -D warnings",
+    "formatCommand": "cargo fmt",
+    "formatCheckCommand": "cargo fmt --check",
+    "securityAuditCommand": "cargo audit",
+    "errorHandlingPattern": "Result<T, E> pattern",
+    "tracingPattern": "tracing crate with structured spans",
+    "cancellationPattern": "CancellationToken pattern",
+    "atomicWritePattern": "tempfile + rename pattern",
+    "keyFile1": "src/index.ts",
+    "keyFile1Purpose": "Main entry point",
+    "keyFile2": "src/lib/core.ts",
+    "keyFile2Purpose": "Core library functions",
+    "domainDescription": "main rigorix project, parent for engine, cli and github actions"
+  },
+  "scaffoldedAt": "2026-06-21T19:05:41.403Z",
+  "lastUpdatedAt": "2026-06-21T19:05:41.492Z"
+}

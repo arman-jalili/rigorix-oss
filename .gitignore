@@ -1,36 +1,18 @@
 # ============================================================
-# Rigorix .gitignore — comprehensive
+# Guardian-managed .gitignore — extend as needed
 # ============================================================
-
-# --- Build output ---
-target/
-dist/
-build/
-out/
-bin/
-*.class
-*.jar
-*.war
-*.o
-*.so
-*.dylib
-*.exe
-*.dll
-*.lib
-*.a
 
 # --- Dependencies ---
 node_modules/
-.venv/
-venv/
-__pycache__/
-*.pyc
-*.pyo
 
-# --- Graphify knowledge graph output ---
-graphify-out/
-.graphify_*
-!graphify-out/.gitkeep
+# --- Build output ---
+dist/
+build/
+target/
+out/
+*.class
+*.jar
+*.war
 
 # --- Environment & secrets ---
 .env
@@ -40,13 +22,12 @@ graphify-out/
 *.key
 credentials.json
 secrets.yaml
-*.secret
 
 # --- Logs ---
 *.log
 logs/
 
-# --- IDE / editors ---
+# --- IDE ---
 .idea/
 .vscode/
 .settings/
@@ -58,16 +39,9 @@ logs/
 *.swp
 *.swo
 *~
-.nyc_output/
-.netlify/
 
 # --- OS ---
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 Desktop.ini
 
@@ -75,48 +49,29 @@ Desktop.ini
 coverage/
 .nyc_output/
 jacoco.exec
-*.lcov
-*.cov
 
 # --- Temporary ---
 *.tmp
 *.temp
 *.bak
 .cache/
-.pytest_cache/
+
+# --- Guardian runtime ---
 .guardian/
-
-# --- Rust ---
-# target/ covered above
-
-# --- Agent / AI ---
-# CLAUDE.md and AGENTS.md are project config — keep tracked
-# .claude/ is per-developer cache — ignore
-.claude/
-
-# --- GitNexus index (rebuildable) ---
-.gitnexus/
-
-# --- Python ---
-*.egg-info/
-*.egg
-dist/
-build/
-pip-wheel-metadata/
-
-# --- Node / JS ---
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# --- Docker ---
-.docker/
-
-# --- Terraform ---
-*.tfstate
-*.tfstate.*
-.terraform/
-
-# --- Specific project ignores ---
+.pi/.guardian-kanban.json
 guardian-sessions.json
-.rigorix/
+
+# --- Graphify ---
+graphify-out/
+
+# --- Optional: Python ---
+# __pycache__/
+# *.pyc
+# .venv/
+# venv/
+
+# --- Optional: Rust ---
+# target/ (already covered above)
+
+# --- Optional: Go ---
+# vendor/
