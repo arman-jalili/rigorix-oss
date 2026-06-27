@@ -234,19 +234,30 @@ impl LlmBudgetService for LlmBudgetImpl {
         input: CommitReservationInput,
     ) -> Result<CommitReservationOutput, LlmBudgetError> {
         let actual_tokens = input.actual_tokens;
+        let reserved_tokens = input.reserved_tokens;
 
-        // Adjust token count: the reserve already added estimated_tokens.
-        // We need to adjust to the actual value. A reservation object holds
-        // the original estimate; here we adjust by the delta.
-        //
-        // Note: In the actual implementation, the reservation guard adjusts
-        // the token counter. This commit method would be called by the guard
-        // after adjusting the token counter to the actual value.
-        //
-        // For the simple case: we already incremented by estimated during reserve.
-        // If actual < estimated, we need to subtract the difference.
-        // If actual > estimated, we already have enough.
-        // The reservation guard handles this delta.
+        // Adjust token counter: reserve() already added reserved_tokens to
+        // used_tokens. We need to reconcile to actual consumption.
+        if actual_tokens > reserved_tokens {
+            let extra = actual_tokens - reserved_tokens;
+            let current_used = self.state.used_tokens.load(Ordering::Acquire);
+            if current_used.saturating_add(extra) > self.state.max_tokens {
+                return Err(LlmBudgetError::MaxTokensExceeded {
+                    used: current_used,
+                    max: self.state.max_tokens,
+                    requested: actual_tokens,
+                });
+            }
+            self.state.used_tokens.fetch_add(extra, Ordering::AcqRel);
+        } else if actual_tokens < reserved_tokens {
+            let refund = reserved_tokens - actual_tokens;
+            self.state
+                .used_tokens
+                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |v| {
+                    Some(v.saturating_sub(refund))
+                })
+                .ok();
+        }
 
         let calls_used = self.state.used_calls.load(Ordering::Acquire);
         let tokens_used = self.state.used_tokens.load(Ordering::Acquire);
@@ -267,7 +278,7 @@ impl LlmBudgetService for LlmBudgetImpl {
         Ok(CommitReservationOutput {
             reservation: crate::budget_tracking::domain::LlmBudgetReservationState::new(
                 input.call_id,
-                actual_tokens,
+                reserved_tokens,
             )
             .with_commit(actual_tokens),
             remaining_calls: self.state.max_calls.saturating_sub(calls_used),
@@ -346,13 +357,7 @@ impl LlmBudgetService for LlmBudgetImpl {
 /// Concrete implementation of the `LlmBudgetReservation` RAII guard.
 ///
 /// Holds a reference to the budget and auto-rollbacks on Drop if not committed.
-///
-/// # Dead code note
-/// This is the RAII guard implementation for future integration with `reserve()`.
-/// Currently tested in isolation — the live `reserve()` path uses
-/// `LlmBudgetReservationState` instead. Keeping this ready for the
-/// next optimization pass.
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) struct LlmBudgetReservationImpl {
     /// Shared reference to the budget state.
     budget: Arc<BudgetState>,
@@ -366,15 +371,12 @@ pub(crate) struct LlmBudgetReservationImpl {
     rolled_back: AtomicBool,
 }
 
+#[cfg(test)]
 impl LlmBudgetReservationImpl {
     /// Create a new reservation guard.
     ///
     /// This is called by `LlmBudgetImpl` during `reserve()`.
     /// The counters have already been incremented by the budget.
-    ///
-    /// # Dead code note
-    /// Used in tests. Reserved for future integration with the live `reserve()` path.
-    #[allow(dead_code)]
     pub(crate) fn new(budget: Arc<BudgetState>, call_id: u32, reserved_tokens: u32) -> Self {
         Self {
             budget,
@@ -386,6 +388,7 @@ impl LlmBudgetReservationImpl {
     }
 }
 
+#[cfg(test)]
 impl Drop for LlmBudgetReservationImpl {
     #[tracing::instrument(skip_all)]
     fn drop(&mut self) {
@@ -413,6 +416,7 @@ impl Drop for LlmBudgetReservationImpl {
     }
 }
 
+#[cfg(test)]
 #[async_trait]
 impl super::service::LlmBudgetReservation for LlmBudgetReservationImpl {
     #[tracing::instrument(skip_all)]
@@ -813,5 +817,172 @@ mod tests {
         // Counters should remain at 1 and 500
         assert_eq!(budget.calls_used(), 1);
         assert_eq!(budget.tokens_used(), 500);
+    }
+
+    // -----------------------------------------------------------------------
+    // Service-level commit() delta adjustment tests (GAP-004)
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_commit_refunds_excess_tokens() {
+        let budget = LlmBudgetImpl::new(5, 10_000, "test".to_string());
+
+        // Reserve 100 tokens
+        let output = budget
+            .reserve(ReserveBudgetInput {
+                execution_id: sample_execution_id(),
+                estimated_tokens: 100,
+                call_label: None,
+            })
+            .await
+            .unwrap();
+
+        // After reserve, 100 tokens are held
+        assert_eq!(budget.tokens_used(), 100);
+
+        // Commit with actual = 80 (less than reserved)
+        budget
+            .commit(CommitReservationInput {
+                execution_id: sample_execution_id(),
+                call_id: output.reservation.call_id,
+                reserved_tokens: output.reservation.reserved_tokens,
+                actual_tokens: 80,
+            })
+            .await
+            .unwrap();
+
+        // 20 tokens should be refunded: 100 - 20 = 80
+        assert_eq!(
+            budget.tokens_used(),
+            80,
+            "Expected 80 tokens after refund of 20"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_commit_deducts_extra_tokens() {
+        let budget = LlmBudgetImpl::new(5, 10_000, "test".to_string());
+
+        // Reserve 100 tokens
+        let output = budget
+            .reserve(ReserveBudgetInput {
+                execution_id: sample_execution_id(),
+                estimated_tokens: 100,
+                call_label: None,
+            })
+            .await
+            .unwrap();
+
+        // After reserve, 100 tokens are held
+        assert_eq!(budget.tokens_used(), 100);
+
+        // Commit with actual = 120 (more than reserved)
+        budget
+            .commit(CommitReservationInput {
+                execution_id: sample_execution_id(),
+                call_id: output.reservation.call_id,
+                reserved_tokens: output.reservation.reserved_tokens,
+                actual_tokens: 120,
+            })
+            .await
+            .unwrap();
+
+        // 20 extra tokens should be deducted: 100 + 20 = 120
+        assert_eq!(
+            budget.tokens_used(),
+            120,
+            "Expected 120 tokens after extra 20 deducted"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_commit_exact_tokens_no_adjustment() {
+        let budget = LlmBudgetImpl::new(5, 10_000, "test".to_string());
+
+        let output = budget
+            .reserve(ReserveBudgetInput {
+                execution_id: sample_execution_id(),
+                estimated_tokens: 100,
+                call_label: None,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(budget.tokens_used(), 100);
+
+        // Commit with actual = reserved = 100 (no delta)
+        budget
+            .commit(CommitReservationInput {
+                execution_id: sample_execution_id(),
+                call_id: output.reservation.call_id,
+                reserved_tokens: output.reservation.reserved_tokens,
+                actual_tokens: 100,
+            })
+            .await
+            .unwrap();
+
+        // No adjustment needed
+        assert_eq!(budget.tokens_used(), 100);
+    }
+
+    #[tokio::test]
+    async fn test_budget_exhaustion_after_commits() {
+        let budget = LlmBudgetImpl::new(2, 200, "test".to_string());
+
+        // First call: reserve 100, commit 80
+        let out1 = budget
+            .reserve(ReserveBudgetInput {
+                execution_id: sample_execution_id(),
+                estimated_tokens: 100,
+                call_label: None,
+            })
+            .await
+            .unwrap();
+        budget
+            .commit(CommitReservationInput {
+                execution_id: sample_execution_id(),
+                call_id: out1.reservation.call_id,
+                reserved_tokens: out1.reservation.reserved_tokens,
+                actual_tokens: 80,
+            })
+            .await
+            .unwrap();
+
+        // After first call: 80 tokens used, 1 call used
+        assert_eq!(budget.tokens_used(), 80);
+        assert_eq!(budget.calls_used(), 1);
+
+        // Second call: reserve 100, commit 80
+        let out2 = budget
+            .reserve(ReserveBudgetInput {
+                execution_id: sample_execution_id(),
+                estimated_tokens: 100,
+                call_label: None,
+            })
+            .await
+            .unwrap();
+        budget
+            .commit(CommitReservationInput {
+                execution_id: sample_execution_id(),
+                call_id: out2.reservation.call_id,
+                reserved_tokens: out2.reservation.reserved_tokens,
+                actual_tokens: 80,
+            })
+            .await
+            .unwrap();
+
+        // After second call: 160 tokens used, 2 calls used
+        assert_eq!(budget.tokens_used(), 160);
+        assert_eq!(budget.calls_used(), 2);
+
+        // Third reservation should fail — max calls exceeded
+        let result = budget
+            .reserve(ReserveBudgetInput {
+                execution_id: sample_execution_id(),
+                estimated_tokens: 50,
+                call_label: None,
+            })
+            .await;
+        assert!(result.is_err(), "Expected budget exhaustion on 3rd call");
     }
 }

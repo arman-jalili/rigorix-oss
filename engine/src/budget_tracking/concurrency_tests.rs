@@ -46,6 +46,7 @@ mod tests {
                 let commit = CommitReservationInput {
                     execution_id,
                     call_id: result.reservation.call_id,
+                    reserved_tokens: result.reservation.reserved_tokens,
                     actual_tokens: 90,
                 };
                 budget.commit(commit).await.unwrap();
@@ -94,6 +95,7 @@ mod tests {
                         let commit = CommitReservationInput {
                             execution_id,
                             call_id: result.reservation.call_id,
+                            reserved_tokens: result.reservation.reserved_tokens,
                             actual_tokens: 90,
                         };
                         budget.commit(commit).await.unwrap();

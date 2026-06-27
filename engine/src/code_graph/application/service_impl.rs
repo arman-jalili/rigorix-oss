@@ -585,7 +585,7 @@ impl CodeGraphAnalyzerImpl {
 
         for node in &graph.nodes {
             if !visited.contains(&node.id) {
-                self.dfs_cycle_detect(
+                Self::dfs_cycle_detect(
                     node.id,
                     &adj,
                     &mut visited,
@@ -602,7 +602,6 @@ impl CodeGraphAnalyzerImpl {
 
     #[allow(clippy::too_many_arguments)]
     fn dfs_cycle_detect(
-        &self,
         node_id: Uuid,
         adj: &HashMap<Uuid, Vec<Uuid>>,
         visited: &mut HashSet<Uuid>,
@@ -622,7 +621,7 @@ impl CodeGraphAnalyzerImpl {
                     continue;
                 }
                 if !visited.contains(&neighbor) {
-                    self.dfs_cycle_detect(neighbor, adj, visited, rec_stack, path, graph, cycles);
+                    Self::dfs_cycle_detect(neighbor, adj, visited, rec_stack, path, graph, cycles);
                 } else if rec_stack.contains(&neighbor) {
                     // Found a cycle — reconstruct path
                     let cycle_start = path.iter().position(|&id| id == neighbor).unwrap_or(0);
@@ -815,14 +814,13 @@ impl CodeGraphFormatterImpl {
         let mut visited = HashSet::new();
 
         for root in &root_ids {
-            self.write_tree_node(graph, root.id, &children, 0, &mut visited, &mut output);
+            Self::write_tree_node(graph, root.id, &children, 0, &mut visited, &mut output);
         }
 
         Ok(output)
     }
 
     fn write_tree_node(
-        &self,
         graph: &CodeGraph,
         node_id: Uuid,
         children: &HashMap<Uuid, Vec<Uuid>>,
@@ -847,7 +845,7 @@ impl CodeGraphFormatterImpl {
 
         if let Some(child_ids) = children.get(&node_id) {
             for child_id in child_ids {
-                self.write_tree_node(graph, *child_id, children, depth + 1, visited, output);
+                Self::write_tree_node(graph, *child_id, children, depth + 1, visited, output);
             }
         }
     }

@@ -200,13 +200,25 @@ impl OrchestratorBuilder for OrchestratorBuilderImpl {
         self.check_ready()?;
 
         let config = self.config;
-        let planning_pipeline = self.planning_pipeline.unwrap();
-        let execution_service = self.execution_service.unwrap();
-        let state_manager = self.state_manager.unwrap();
-        let cancellation_service = self.cancellation_service.unwrap();
-        let event_bus = self.event_bus.unwrap();
+        let planning_pipeline = self
+            .planning_pipeline
+            .expect("check_ready verified planning_pipeline is Some");
+        let execution_service = self
+            .execution_service
+            .expect("check_ready verified execution_service is Some");
+        let state_manager = self
+            .state_manager
+            .expect("check_ready verified state_manager is Some");
+        let cancellation_service = self
+            .cancellation_service
+            .expect("check_ready verified cancellation_service is Some");
+        let event_bus = self
+            .event_bus
+            .expect("check_ready verified event_bus is Some");
         let audit_service = self.audit_service;
-        let budget_service = self.budget_service.unwrap();
+        let budget_service = self
+            .budget_service
+            .expect("check_ready verified budget_service is Some");
         let code_graph_service = self.code_graph_service;
 
         let orchestrator = OrchestratorServiceImpl::new(
@@ -228,19 +240,19 @@ impl OrchestratorBuilder for OrchestratorBuilderImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::orchestrator::application::orchestrator_impl::mocks;
+    use crate::orchestrator::application::orchestrator_mocks;
     use crate::orchestrator::domain::OrchestratorConfig;
 
     #[tokio::test]
     async fn test_builder_with_all_services_creates_service() {
         let result = OrchestratorBuilderImpl::new(OrchestratorConfig::default())
             .with_repo_root("/tmp/test".into())
-            .with_planning_pipeline(Arc::new(mocks::MockPlanningService::new()))
-            .with_execution_service(Arc::new(mocks::MockExecutionService))
-            .with_state_manager(Arc::new(mocks::MockStateService::new()))
-            .with_cancellation_service(Arc::new(mocks::MockCancellationService))
-            .with_event_bus(Arc::new(mocks::MockEventBusService::new()))
-            .with_budget_service(Arc::new(mocks::MockBudgetService))
+            .with_planning_pipeline(Arc::new(orchestrator_mocks::MockPlanningService::new()))
+            .with_execution_service(Arc::new(orchestrator_mocks::MockExecutionService))
+            .with_state_manager(Arc::new(orchestrator_mocks::MockStateService::new()))
+            .with_cancellation_service(Arc::new(orchestrator_mocks::MockCancellationService))
+            .with_event_bus(Arc::new(orchestrator_mocks::MockEventBusService::new()))
+            .with_budget_service(Arc::new(orchestrator_mocks::MockBudgetService))
             .build()
             .await;
         assert!(
@@ -254,12 +266,12 @@ mod tests {
     async fn test_builder_service_can_run() {
         let orchestrator = OrchestratorBuilderImpl::new(OrchestratorConfig::default())
             .with_repo_root("/tmp/test".into())
-            .with_planning_pipeline(Arc::new(mocks::MockPlanningService::new()))
-            .with_execution_service(Arc::new(mocks::MockExecutionService))
-            .with_state_manager(Arc::new(mocks::MockStateService::new()))
-            .with_cancellation_service(Arc::new(mocks::MockCancellationService))
-            .with_event_bus(Arc::new(mocks::MockEventBusService::new()))
-            .with_budget_service(Arc::new(mocks::MockBudgetService))
+            .with_planning_pipeline(Arc::new(orchestrator_mocks::MockPlanningService::new()))
+            .with_execution_service(Arc::new(orchestrator_mocks::MockExecutionService))
+            .with_state_manager(Arc::new(orchestrator_mocks::MockStateService::new()))
+            .with_cancellation_service(Arc::new(orchestrator_mocks::MockCancellationService))
+            .with_event_bus(Arc::new(orchestrator_mocks::MockEventBusService::new()))
+            .with_budget_service(Arc::new(orchestrator_mocks::MockBudgetService))
             .build()
             .await
             .unwrap();
@@ -300,13 +312,13 @@ mod tests {
     async fn test_builder_with_audit_service() {
         let result = OrchestratorBuilderImpl::new(OrchestratorConfig::default())
             .with_repo_root("/tmp/test".into())
-            .with_planning_pipeline(Arc::new(mocks::MockPlanningService::new()))
-            .with_execution_service(Arc::new(mocks::MockExecutionService))
-            .with_state_manager(Arc::new(mocks::MockStateService::new()))
-            .with_cancellation_service(Arc::new(mocks::MockCancellationService))
-            .with_event_bus(Arc::new(mocks::MockEventBusService::new()))
-            .with_budget_service(Arc::new(mocks::MockBudgetService))
-            .with_audit_service(Arc::new(mocks::MockAuditService::new()))
+            .with_planning_pipeline(Arc::new(orchestrator_mocks::MockPlanningService::new()))
+            .with_execution_service(Arc::new(orchestrator_mocks::MockExecutionService))
+            .with_state_manager(Arc::new(orchestrator_mocks::MockStateService::new()))
+            .with_cancellation_service(Arc::new(orchestrator_mocks::MockCancellationService))
+            .with_event_bus(Arc::new(orchestrator_mocks::MockEventBusService::new()))
+            .with_budget_service(Arc::new(orchestrator_mocks::MockBudgetService))
+            .with_audit_service(Arc::new(orchestrator_mocks::MockAuditService::new()))
             .build()
             .await;
         assert!(

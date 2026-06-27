@@ -113,6 +113,9 @@ pub struct CommitReservationRequest {
     /// The call identifier from the reservation.
     pub call_id: u32,
 
+    /// Number of tokens reserved during reserve().
+    pub reserved_tokens: u32,
+
     /// Actual number of tokens consumed by the LLM call.
     pub actual_tokens: u32,
 }
@@ -122,6 +125,7 @@ impl From<CommitReservationRequest> for CommitReservationInput {
         Self {
             execution_id: req.execution_id,
             call_id: req.call_id,
+            reserved_tokens: req.reserved_tokens,
             actual_tokens: req.actual_tokens,
         }
     }

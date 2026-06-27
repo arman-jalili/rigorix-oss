@@ -69,6 +69,13 @@ pub struct CommitReservationInput {
     /// The call identifier from the reservation.
     pub call_id: u32,
 
+    /// Number of tokens that were reserved during `reserve()`.
+    ///
+    /// Used to compute the delta between estimated and actual consumption.
+    /// If actual < reserved, the difference is refunded. If actual > reserved,
+    /// the extra is deducted.
+    pub reserved_tokens: u32,
+
     /// Actual number of tokens consumed by the LLM call.
     ///
     /// This is the total tokens (input + output) reported by the LLM provider.

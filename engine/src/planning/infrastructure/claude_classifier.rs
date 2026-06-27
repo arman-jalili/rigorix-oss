@@ -48,6 +48,9 @@ pub struct ClaudeClassifierConfig {
 
     /// Temperature for classification (lower = more deterministic).
     pub temperature: f64,
+
+    /// Maximum requests per second (0 = unlimited). Default: 10.
+    pub requests_per_second: u32,
 }
 
 impl Default for ClaudeClassifierConfig {
@@ -58,6 +61,7 @@ impl Default for ClaudeClassifierConfig {
             max_tokens: 1024,
             timeout_secs: 30,
             temperature: 0.1,
+            requests_per_second: 10,
         }
     }
 }
@@ -82,6 +86,9 @@ pub struct ClaudeClassifier {
 
     /// HTTP client for API calls.
     client: reqwest::Client,
+
+    /// Last request timestamp for rate limiting.
+    last_request: tokio::sync::Mutex<std::time::Instant>,
 }
 
 impl ClaudeClassifier {
@@ -102,6 +109,7 @@ impl ClaudeClassifier {
             api_key,
             config,
             client,
+            last_request: tokio::sync::Mutex::new(std::time::Instant::now()),
         }
     }
 
@@ -245,6 +253,19 @@ impl Classifier for ClaudeClassifier {
             serde_json::to_vec(&body).map_err(|e| PlanningError::ClassificationError {
                 detail: format!("Failed to serialize request: {}", e),
             })?;
+
+        // Rate limiting: enforce minimum interval between requests
+        if self.config.requests_per_second > 0 {
+            let min_interval =
+                std::time::Duration::from_secs_f64(1.0 / self.config.requests_per_second as f64);
+            let mut last = self.last_request.lock().await;
+            let elapsed = last.elapsed();
+            if elapsed < min_interval {
+                let wait = min_interval - elapsed;
+                tokio::time::sleep(wait).await;
+            }
+            *last = std::time::Instant::now();
+        }
 
         let response = self
             .client

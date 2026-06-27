@@ -52,6 +52,7 @@ use crate::risk_gating::domain::risk_level::RiskLevel;
 /// let result = classifier.classify("file_read", None);
 /// assert_eq!(result.risk_level, RiskLevel::Low);
 /// ```
+#[derive(Clone)]
 pub struct DefaultClassifier {
     /// The risk configuration with tool overrides and gating flags.
     config: RiskConfig,

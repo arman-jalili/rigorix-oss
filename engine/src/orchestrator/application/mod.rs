@@ -19,6 +19,8 @@ pub mod builder;
 pub mod builder_impl;
 pub mod dto;
 pub mod orchestrator_impl;
+#[cfg(test)]
+pub mod orchestrator_mocks;
 pub mod service;
 
 pub use builder::*;

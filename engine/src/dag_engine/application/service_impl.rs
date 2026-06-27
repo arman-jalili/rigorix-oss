@@ -77,11 +77,12 @@ impl DagGraphService for DagGraphServiceImpl {
         let mut graphs = self.graphs.lock().map_err(|e| DagError::InternalError {
             detail: format!("Lock error: {}", e),
         })?;
+        let graph_clone = graph.clone();
         graphs.insert(dag_id, graph);
 
         Ok(ConstructGraphOutput {
             dag_id,
-            graph: graphs.get(&dag_id).unwrap().clone(),
+            graph: graph_clone,
             node_count,
             constructed_at,
         })

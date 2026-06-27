@@ -53,6 +53,214 @@ use super::dto::{
 use super::service::{ExecutionProgress, ParallelExecutionService, RetryEvaluationService};
 
 // ---------------------------------------------------------------------------
+// Parallel execution helpers
+// ---------------------------------------------------------------------------
+
+/// Spawn a single DAG node as a concurrent task in the JoinSet.
+///
+/// Handles marking the node as running, emitting NodeStarted, performing
+/// permission checks, executing the tool, emitting NodeCompleted, and
+/// collecting the result. Designed to be called from both the initial
+/// dispatch phase and the post-completion replenishment phase.
+#[allow(clippy::too_many_arguments)]
+async fn spawn_concurrent_node(
+    join_set: &mut tokio::task::JoinSet<(Uuid, TaskResult)>,
+    graph: &mut crate::dag_engine::domain::TaskGraph,
+    event_bus: &Arc<dyn EventBusService>,
+    sessions: &Mutex<HashMap<Uuid, ExecutionSession>>,
+    dag_id: Uuid,
+    node_id: Uuid,
+    permission_enforcer: &Option<Arc<dyn PermissionEnforcer>>,
+    _hook_runner: &Option<Arc<dyn HookRunnerService>>,
+) -> Result<(), ExecutionError> {
+    let node = match graph.get_node(node_id).cloned() {
+        Some(n) => n,
+        None => return Ok(()),
+    };
+
+    // Mark running in session
+    {
+        let mut s = sessions.lock().map_err(|e| ExecutionError::InternalError {
+            detail: format!("Lock error: {e}"),
+        })?;
+        if let Some(session) = s.get_mut(&dag_id)
+            && let Some(state) = session.node_states.get_mut(&node_id)
+        {
+            state.mark_running();
+        }
+    }
+
+    let start = std::time::Instant::now();
+    let node_name = node.name.clone();
+    let node_tool = node.tool.clone();
+    let node_intent = node.intent.clone();
+
+    // Emit NodeStarted event
+    let _ = event_bus
+        .publish(crate::event_system::application::dto::PublishEventInput {
+            event: ExecutionEvent::NodeStarted {
+                execution_id: dag_id,
+                node_id: node_id.to_string(),
+                node_name: node_name.clone(),
+                timestamp: chrono::Utc::now(),
+            },
+        })
+        .await;
+
+    let eb = Arc::clone(event_bus);
+    let exec_id = dag_id;
+    let permission = permission_enforcer.clone();
+
+    join_set.spawn(async move {
+        // Permission check (gate before execution)
+        if let Some(ref enforcer) = permission {
+            let outcome = enforcer.check(&node_tool, &node_intent, None).await;
+            if let crate::permission::domain::PermissionOutcome::Denied { ref reason, .. } = outcome
+            {
+                let dur = start.elapsed().as_millis() as u64;
+                let result = TaskResult::failure(
+                    node_id,
+                    &node_name,
+                    reason.clone(),
+                    "permission_denied".to_string(),
+                    dur,
+                    0,
+                );
+                let _ = eb
+                    .publish(crate::event_system::application::dto::PublishEventInput {
+                        event: ExecutionEvent::NodeCompleted {
+                            execution_id: exec_id,
+                            node_id: node_id.to_string(),
+                            node_name,
+                            duration_ms: dur,
+                            output: serde_json::json!(null),
+                            timestamp: chrono::Utc::now(),
+                        },
+                    })
+                    .await;
+                return (node_id, result);
+            }
+        }
+
+        // Tool execution — dispatch to the appropriate exec_* static method
+        // All exec_* methods are on ParallelExecutionServiceImpl (same module) and take
+        // (intent: &str, node_id: Uuid, node_name: &str, start: Instant) -> TaskResult
+        let result = match node_tool.as_str() {
+            "run_command" => {
+                ParallelExecutionServiceImpl::exec_run_command(
+                    &node_intent,
+                    node_id,
+                    &node_name,
+                    start,
+                )
+                .await
+            }
+            "file_read" => {
+                ParallelExecutionServiceImpl::exec_file_read(
+                    &node_intent,
+                    node_id,
+                    &node_name,
+                    start,
+                )
+                .await
+            }
+            "file_write" => {
+                ParallelExecutionServiceImpl::exec_file_write(
+                    &node_intent,
+                    node_id,
+                    &node_name,
+                    start,
+                )
+                .await
+            }
+            "file_append" => {
+                ParallelExecutionServiceImpl::exec_file_append(
+                    &node_intent,
+                    node_id,
+                    &node_name,
+                    start,
+                )
+                .await
+            }
+            "file_patch" => {
+                ParallelExecutionServiceImpl::exec_file_patch(
+                    &node_intent,
+                    node_id,
+                    &node_name,
+                    start,
+                )
+                .await
+            }
+            "edit_file" => {
+                ParallelExecutionServiceImpl::exec_edit_file(
+                    &node_intent,
+                    node_id,
+                    &node_name,
+                    start,
+                )
+                .await
+            }
+            "git_read" => {
+                ParallelExecutionServiceImpl::exec_git_read(
+                    &node_intent,
+                    node_id,
+                    &node_name,
+                    start,
+                )
+                .await
+            }
+            "git_stage" => {
+                ParallelExecutionServiceImpl::exec_git_stage(
+                    &node_intent,
+                    node_id,
+                    &node_name,
+                    start,
+                )
+                .await
+            }
+            "git_commit" => {
+                ParallelExecutionServiceImpl::exec_git_commit(
+                    &node_intent,
+                    node_id,
+                    &node_name,
+                    start,
+                )
+                .await
+            }
+            other => {
+                // Unknown tool — return minimal placeholder
+                let dur = start.elapsed().as_millis() as u64;
+                TaskResult::success(
+                    node_id,
+                    &node_name,
+                    Some(format!("Unknown tool '{}', intent: {}", other, node_intent)),
+                    dur,
+                    0,
+                )
+            }
+        };
+
+        // Emit NodeCompleted
+        let _ = eb
+            .publish(crate::event_system::application::dto::PublishEventInput {
+                event: ExecutionEvent::NodeCompleted {
+                    execution_id: exec_id,
+                    node_id: node_id.to_string(),
+                    node_name,
+                    duration_ms: result.duration_ms,
+                    output: serde_json::json!(result.output.clone().unwrap_or_default()),
+                    timestamp: chrono::Utc::now(),
+                },
+            })
+            .await;
+
+        (node_id, result)
+    });
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Internal Execution State
 // ---------------------------------------------------------------------------
 
@@ -68,10 +276,7 @@ struct ExecutionSession {
     paused: bool,
     /// Whether execution has been aborted.
     aborted: bool,
-    /// Total retries across all nodes in this session.
-    /// Reserved for metrics/observability reporting.
-    #[allow(dead_code)]
-    total_retries: u32,
+
     /// ISO 8601 timestamp when execution started.
     started_at: chrono::DateTime<chrono::Utc>,
     /// The TaskGraph being executed (stored for node lookup in execute_node).
@@ -528,10 +733,39 @@ impl ParallelExecutionServiceImpl {
                 &params,
             ) {
                 Ok(anchor) => {
+                    // Idempotency: skip if the insert content already exists.
+                    let sig_line = insert.lines().find(|l| !l.trim().is_empty());
+                    let already_present = sig_line
+                        .map(|sig| content.lines().any(|l| l.trim() == sig.trim()))
+                        .unwrap_or(false);
+                    if already_present {
+                        let dur = start.elapsed().as_millis() as u64;
+                        return TaskResult::success(
+                            node_id,
+                            node_name,
+                            Some(format!(
+                                "Skipped patch of {} via anchor {} '{}' — content already present",
+                                path, anchor_type, anchor_name
+                            )),
+                            dur,
+                            0,
+                        );
+                    }
+
+                    // Normalize newlines when inserting after an anchor.
+                    let normalized_insert = if position == "after" && !insert.starts_with('\n') {
+                        let mut s = String::with_capacity(insert.len() + 2);
+                        s.push('\n');
+                        s.push('\n');
+                        s.push_str(insert);
+                        s
+                    } else {
+                        insert.to_string()
+    };
                     let new_content = format!(
                         "{}{}{}",
                         &content[..anchor.insert_offset],
-                        insert,
+                        normalized_insert,
                         &content[anchor.insert_offset..]
                     );
                     match std::fs::write(path, &new_content) {
@@ -908,23 +1142,26 @@ impl ParallelExecutionServiceImpl {
     }
 
     /// Notify progress callbacks about a state change.
-    /// Reserved for TUI progress reporting integration.
-    #[allow(dead_code)]
-    fn notify_progress(
+    /// Used for TUI progress reporting integration.
+    pub(crate) fn notify_progress(
         &self,
         dag_id: Uuid,
         node_id: Uuid,
         state: &NodeExecutionState,
         total_nodes: u32,
     ) {
-        let callbacks = self.progress_callbacks.lock().unwrap();
+        let Ok(callbacks) = self.progress_callbacks.lock() else {
+            return;
+        };
         if callbacks.is_empty() {
             return;
         }
 
         // Compute aggregate counts from session state
         let (completed, failed, skipped) = {
-            let sessions = self.sessions.lock().unwrap();
+            let Ok(sessions) = self.sessions.lock() else {
+                return;
+            };
             if let Some(session) = sessions.get(&dag_id) {
                 let c = session
                     .node_states
@@ -997,7 +1234,6 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                     result: ExecutionResult::new(input.dag_id),
                     paused: false,
                     aborted: false,
-                    total_retries: 0,
                     started_at: Utc::now(),
                     graph: None,
                 },
@@ -1075,60 +1311,55 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                     result: ExecutionResult::new(input.dag_id),
                     paused: false,
                     aborted: false,
-                    total_retries: 0,
                     started_at,
                     graph: Some(graph.clone()),
                 },
             );
         }
 
-        // ── Sequential dispatch loop ─────────────────────────────────
+        // ── Parallel dispatch loop ────────────────────────────────────
+        // Uses tokio JoinSet to execute independent nodes concurrently.
+        // When multiple DAG nodes have no dependencies, they execute
+        // concurrently via spawned tasks. The max_concurrent_executions
+        // config limits how many tasks run simultaneously.
+        //
+        // The loop follows a producer-consumer pattern:
+        // 1. Initial dispatch: spawn all initially ready nodes (up to limit)
+        // 2. Wait for one to complete via JoinSet
+        // 3. Process result, mark completed in graph
+        // 4. Spawn newly ready nodes (dependencies now satisfied)
+        // 5. Repeat until all nodes processed
+        let mut join_set: tokio::task::JoinSet<(Uuid, TaskResult)> = tokio::task::JoinSet::new();
         let mut completed_count: u32 = 0;
         let mut failed_count: u32 = 0;
         let mut node_results: HashMap<Uuid, TaskResult> = HashMap::new();
+        let max_concurrent = self.config.max_concurrent_executions.max(1) as usize;
+        let dag_id = input.dag_id;
+        let event_bus = &self.event_bus;
 
-        while let Some(node_id) = graph.pop_ready_node() {
-            let node = match graph.get_node(node_id).cloned() {
-                Some(n) => n,
-                None => continue,
+        // Phase 1: Initial dispatch — fill the pipeline up to max_concurrent
+        while join_set.len() < max_concurrent {
+            let Some(node_id) = graph.pop_ready_node() else {
+                break;
             };
+            spawn_concurrent_node(
+                &mut join_set,
+                &mut graph,
+                event_bus,
+                &self.sessions,
+                dag_id,
+                node_id,
+                &self.permission_enforcer,
+                &self.hook_runner,
+            )
+            .await?;
+        }
 
-            // Mark running
-            {
-                let mut sessions =
-                    self.sessions
-                        .lock()
-                        .map_err(|e| ExecutionError::InternalError {
-                            detail: format!("Lock error: {}", e),
-                        })?;
-                if let Some(session) = sessions.get_mut(&input.dag_id) {
-                    if session.aborted {
-                        drop(sessions);
-                        break;
-                    }
-                    if let Some(state) = session.node_states.get_mut(&node_id) {
-                        state.mark_running();
-                    }
-                }
-            }
-
-            let start = std::time::Instant::now();
-
-            // Emit NodeStarted
-            let _ = self
-                .event_bus
-                .publish(crate::event_system::application::dto::PublishEventInput {
-                    event: ExecutionEvent::NodeStarted {
-                        execution_id: input.dag_id,
-                        node_id: node_id.to_string(),
-                        node_name: node.name.clone(),
-                        timestamp: chrono::Utc::now(),
-                    },
-                })
-                .await;
-
-            // Execute based on tool type
-            let task_result = self.execute_tool(&node, node_id, start).await;
+        // Phase 2: Consume completions, dispatch new nodes as slots open
+        while let Some(joined) = join_set.join_next().await {
+            let (node_id, task_result) = joined.map_err(|e| ExecutionError::InternalError {
+                detail: format!("Task panicked: {e}"),
+            })?;
 
             let success = task_result.success;
             if success {
@@ -1138,46 +1369,65 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
             }
             node_results.insert(node_id, task_result.clone());
 
-            // Emit NodeCompleted
-            let _ = self
-                .event_bus
-                .publish(crate::event_system::application::dto::PublishEventInput {
-                    event: ExecutionEvent::NodeCompleted {
-                        execution_id: input.dag_id,
-                        node_id: node_id.to_string(),
-                        node_name: node.name.clone(),
-                        duration_ms: task_result.duration_ms,
-                        output: serde_json::json!(task_result.output.clone().unwrap_or_default()),
-                        timestamp: chrono::Utc::now(),
-                    },
-                })
-                .await;
-
             // Update session node state
             {
                 let mut sessions =
                     self.sessions
                         .lock()
                         .map_err(|e| ExecutionError::InternalError {
-                            detail: format!("Lock error: {}", e),
+                            detail: format!("Lock error: {e}"),
                         })?;
-                if let Some(session) = sessions.get_mut(&input.dag_id) {
-                    if let Some(state) = session.node_states.get_mut(&node_id) {
-                        if success {
-                            state.mark_completed(task_result.duration_ms);
-                        } else {
-                            state.mark_failed(
-                                task_result
-                                    .failure_type
-                                    .clone()
-                                    .unwrap_or_else(|| "unknown".to_string()),
-                                task_result.error.clone().unwrap_or_default(),
-                            );
-                        }
+                if let Some(session) = sessions.get_mut(&dag_id)
+                    && let Some(state) = session.node_states.get_mut(&node_id)
+                {
+                    if success {
+                        state.mark_completed(task_result.duration_ms);
+                    } else {
+                        state.mark_failed(
+                            task_result
+                                .failure_type
+                                .clone()
+                                .unwrap_or_else(|| "unknown".to_string()),
+                            task_result.error.clone().unwrap_or_default(),
+                        );
                     }
-                    // Update aggregate result incrementally
+                    // Notify progress callbacks
+                    self.notify_progress(dag_id, node_id, state, total_nodes);
+                }
+            }
+
+            // Mark completed in graph to release dependents
+            let _ = graph.mark_completed(node_id);
+
+            // Phase 3: Dispatch newly ready nodes (a slot just opened)
+            while join_set.len() < max_concurrent {
+                let Some(next_id) = graph.pop_ready_node() else {
+                    break;
+                };
+                spawn_concurrent_node(
+                    &mut join_set,
+                    &mut graph,
+                    event_bus,
+                    &self.sessions,
+                    dag_id,
+                    next_id,
+                    &self.permission_enforcer,
+                    &self.hook_runner,
+                )
+                .await?;
+            }
+
+            // Update aggregate result in session
+            {
+                let mut sessions =
+                    self.sessions
+                        .lock()
+                        .map_err(|e| ExecutionError::InternalError {
+                            detail: format!("Lock error: {e}"),
+                        })?;
+                if let Some(session) = sessions.get_mut(&dag_id) {
                     session.result = ExecutionResult {
-                        dag_id: input.dag_id,
+                        dag_id,
                         node_results: node_results.clone(),
                         execution_states: session.node_states.clone(),
                         completed_count,
@@ -1188,7 +1438,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                             .signed_duration_since(started_at)
                             .num_milliseconds()
                             .max(0) as u64,
-                        total_retries: 0,
+                        total_retries: node_results.values().map(|r| r.retry_attempts as u32).sum(),
                         started_at,
                         completed_at: Utc::now(),
                         cancelled: false,
@@ -1196,13 +1446,11 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                     };
                 }
             }
-
-            // Mark completed in graph to release dependents
-            let _ = graph.mark_completed(node_id);
         }
 
         // Build final result
         let completed_at = Utc::now();
+        let total_retries: u32 = node_results.values().map(|r| r.retry_attempts as u32).sum();
         let final_result = ExecutionResult {
             dag_id: input.dag_id,
             node_results,
@@ -1215,7 +1463,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                 .signed_duration_since(started_at)
                 .num_milliseconds()
                 .max(0) as u64,
-            total_retries: 0,
+            total_retries,
             started_at,
             completed_at,
             cancelled: false,

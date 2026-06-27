@@ -1,7 +1,7 @@
 //! Budget tracking error types.
 //!
 //! @canonical .pi/architecture/modules/budget-tracking.md#errors
-//! @canonical .pi/architecture/decisions/ADR-XXX-error-handling.md
+//! @canonical .pi/architecture/decisions/ADR-009-error-handling.md
 //! Implements: Contract Freeze — LlmBudgetError enum
 //! Issue: #68
 //!

@@ -28,22 +28,18 @@ use crate::risk_gating::domain::{
     RiskGatingError, RiskLevel,
 };
 
-/// Thread-safe wrapper for mutable classifier state.
-struct ClassifierState {
-    classifier: DefaultClassifier,
-}
-
 /// Implementation of the RiskGateService.
 ///
 /// Stores the classifier and config behind `RwLock` for thread-safe access.
-/// The `classifier()` and `config()` accessor methods use raw pointers that
-/// are initialized after the service is placed behind a `Box` (stable address).
+/// The `classifier()` and `config()` accessor methods clone the underlying
+/// data under the read lock and return owned values, avoiding unsafe lifetime
+/// extension.
 pub struct RiskGateServiceImpl {
     /// The execution ID this service instance is bound to.
     execution_id: String,
 
     /// Thread-safe classifier state (allows config reloads).
-    classifier: RwLock<ClassifierState>,
+    classifier: RwLock<DefaultClassifier>,
 
     /// Shared gate state registry (across executions).
     gate_registry: Arc<GateStateRegistry>,
@@ -62,7 +58,7 @@ impl RiskGateServiceImpl {
         let classifier = DefaultClassifier::new(config.clone());
         Self {
             execution_id,
-            classifier: RwLock::new(ClassifierState { classifier }),
+            classifier: RwLock::new(classifier),
             gate_registry,
             config: RwLock::new(config),
         }
@@ -133,9 +129,7 @@ impl RiskGateService for RiskGateServiceImpl {
         let classifier = self.classifier.read().expect("Classifier lock poisoned");
         let config = self.config.read().expect("Config lock poisoned");
 
-        let classification = classifier
-            .classifier
-            .classify(&input.tool, input.parameters.as_ref());
+        let classification = classifier.classify(&input.tool, input.parameters.as_ref());
 
         let (gating_action, allowed, policy_reason) =
             Self::evaluate_gating_policy(classification.risk_level, &config);
@@ -177,9 +171,7 @@ impl RiskGateService for RiskGateServiceImpl {
         input: ClassifyToolInput,
     ) -> Result<ClassifyToolOutput, RiskGatingError> {
         let classifier = self.classifier.read().expect("Classifier lock poisoned");
-        let classification = classifier
-            .classifier
-            .classify(&input.tool, input.parameters.as_ref());
+        let classification = classifier.classify(&input.tool, input.parameters.as_ref());
 
         Ok(ClassifyToolOutput {
             risk_level: classification.risk_level,
@@ -246,7 +238,7 @@ impl RiskGateService for RiskGateServiceImpl {
 
         // Update the classifier's config as well
         if let Ok(mut cs) = self.classifier.write() {
-            cs.classifier.set_config(config.clone());
+            cs.set_config(config.clone());
         }
 
         Ok(OverrideToolOutput {
@@ -274,34 +266,15 @@ impl RiskGateService for RiskGateServiceImpl {
     }
 
     #[tracing::instrument(skip_all)]
-    fn classifier(&self) -> &dyn RiskClassifier {
-        // Return the classifier through the RwLock guard.
-        // The trait requires `&dyn RiskClassifier` with the lifetime of `&self`,
-        // so we must return a reference that lives as long as the struct.
-        // Since `DefaultClassifier` implements `RiskClassifier` and is stored
-        // behind an `RwLock` owned by the struct, we use `unsafe` to extend
-        // the lifetime of the reference past the guard drop.
-        //
-        // SAFETY: The `DefaultClassifier` behind the `RwLock` lives as long as
-        // `self` (the struct). The `RwLock` ensures the data is never moved.
-        // We only read, never mutate. The returned reference is valid for the
-        // lifetime of `&self`, which is guaranteed by the caller.
+    fn classifier(&self) -> Box<dyn RiskClassifier> {
         let guard = self.classifier.read().expect("Classifier lock poisoned");
-        let ptr: *const DefaultClassifier = &guard.classifier;
-        let reference: &DefaultClassifier = unsafe { &*ptr };
-        // Extend the lifetime: the classifier lives as long as self
-        let extended: &DefaultClassifier = unsafe { std::mem::transmute(reference) };
-        extended as &dyn RiskClassifier
+        Box::new(guard.clone())
     }
 
     #[tracing::instrument(skip_all)]
-    fn config(&self) -> &RiskConfig {
-        // SAFETY: Same reasoning as `classifier()` — the `RiskConfig` behind
-        // the `RwLock` lives as long as `self`.
+    fn config(&self) -> RiskConfig {
         let guard = self.config.read().expect("Config lock poisoned");
-        let ptr: *const RiskConfig = &*guard;
-        let reference: &RiskConfig = unsafe { &*ptr };
-        unsafe { std::mem::transmute(reference) }
+        guard.clone()
     }
 }
 

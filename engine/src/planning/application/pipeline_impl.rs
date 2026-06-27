@@ -320,30 +320,30 @@ impl PlanningPipelineImpl {
                     });
                     if let Some(s) = search {
                         obj.as_object_mut()
-                            .unwrap()
+                            .expect("obj is json!({...})")
                             .insert("search".to_string(), serde_json::json!(s));
                         obj.as_object_mut()
-                            .unwrap()
+                            .expect("obj is json!({...})")
                             .insert("before".to_string(), serde_json::json!(before));
                     }
                     if let Some(at) = anchor_type {
                         obj.as_object_mut()
-                            .unwrap()
+                            .expect("obj is json!({...})")
                             .insert("anchor_type".to_string(), serde_json::json!(at));
                     }
                     if let Some(an) = anchor_name {
                         obj.as_object_mut()
-                            .unwrap()
+                            .expect("obj is json!({...})")
                             .insert("anchor_name".to_string(), serde_json::json!(an));
                     }
                     if let Some(c) = container {
                         obj.as_object_mut()
-                            .unwrap()
+                            .expect("obj is json!({...})")
                             .insert("container".to_string(), serde_json::json!(c));
                     }
                     if let Some(p) = position {
                         obj.as_object_mut()
-                            .unwrap()
+                            .expect("obj is json!({...})")
                             .insert("position".to_string(), serde_json::json!(p));
                     }
                     ("file_patch", obj.to_string())

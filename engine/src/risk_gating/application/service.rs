@@ -92,12 +92,12 @@ pub trait RiskGateService: Send + Sync {
     /// (e.g., file, environment) and applies any changes.
     async fn reload_config(&self) -> Result<ReloadConfigOutput, RiskGatingError>;
 
-    /// Get a reference to the underlying RiskClassifier.
+    /// Get a clone of the underlying RiskClassifier.
     ///
     /// Provides access to the classifier for direct queries
     /// (e.g., listing all classification rules).
-    fn classifier(&self) -> &dyn RiskClassifier;
+    fn classifier(&self) -> Box<dyn RiskClassifier>;
 
-    /// Get a reference to the underlying RiskConfig.
-    fn config(&self) -> &RiskConfig;
+    /// Get a clone of the underlying RiskConfig.
+    fn config(&self) -> RiskConfig;
 }
