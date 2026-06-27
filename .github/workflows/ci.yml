@@ -74,7 +74,7 @@ jobs:
   # ── Stage 2: Build (compile-check per crate) ──────────────────
   build:
     name: 📦 Build (${{ matrix.crate }})
-    needs: [lint]
+    needs: [workspace, lint]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -95,7 +95,7 @@ jobs:
   # ── Stage 3: Test (unit + integration per crate) ──────────────
   test:
     name: 🧪 Test (${{ matrix.crate }})
-    needs: [build]
+    needs: [workspace, build]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
