@@ -126,7 +126,6 @@ jobs:
 
       - name: 🕵️ Cargo audit (dependency vulnerabilities)
         run: cargo audit --deny warnings
-        continue-on-error: true
 
       - name: 🔍 Secret scan
         shell: bash
@@ -148,7 +147,6 @@ jobs:
       - name: 🛡️ Run per-crate security scripts
         if: hashFiles('.pi/scripts/validate-security.sh') != ''
         run: bash .pi/scripts/validate-security.sh
-        continue-on-error: true
 
   # ── Stage 5: Canonical Reference Validation ───────────────────
   docs:
@@ -161,17 +159,14 @@ jobs:
       - name: ✅ Validate canonical references
         if: hashFiles('.pi/scripts/validate-canonical.sh') != ''
         run: bash .pi/scripts/validate-canonical.sh
-        continue-on-error: true
 
       - name: ✅ Validate architecture readiness
         if: hashFiles('.pi/scripts/validate-architecture-readiness.sh') != ''
         run: bash .pi/scripts/validate-architecture-readiness.sh
-        continue-on-error: true
 
       - name: ✅ Validate architecture conformance
         if: hashFiles('.pi/scripts/validate-architecture.sh') != ''
         run: bash .pi/scripts/validate-architecture.sh
-        continue-on-error: true
 
   # ── Stage 6: Code Coverage ────────────────────────────────────
   coverage:
@@ -185,7 +180,6 @@ jobs:
       - name: 📈 Generate coverage report (engine)
         run: |
           cargo tarpaulin -p rigorix-engine --out Xml --output-dir coverage/engine
-        continue-on-error: true
 
       - name: 📊 Upload coverage to artifacts
         uses: actions/upload-artifact@v4
@@ -205,47 +199,49 @@ jobs:
 
       - name: 🔗 Run workspace integration tests
         run: cargo test --workspace -- --ignored
-        continue-on-error: true
 
       - name: 🔗 Run per-crate integration scripts
         if: hashFiles('.pi/scripts/validate-integration.sh') != ''
         run: bash .pi/scripts/validate-integration.sh
-        continue-on-error: true
 
       - name: 🔗 Run per-crate operations validation
         if: hashFiles('.pi/scripts/validate-operations.sh') != ''
         run: bash .pi/scripts/validate-operations.sh
-        continue-on-error: true
 
   # ── Stage 8: Final Gate ───────────────────────────────────────
   gate:
     name: 🚪 Final Gate
-    needs: [lint, build, test, security, docs, coverage]
+    needs: [lint, build, test, security, docs, coverage, integration]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: 📋 Collect job results
         shell: bash
         run: |
-          echo "Lint:      ${{ needs.lint.result }}"
-          echo "Build:     ${{ needs.build.result }}"
-          echo "Test:      ${{ needs.test.result }}"
-          echo "Security:  ${{ needs.security.result }}"
-          echo "Docs:      ${{ needs.docs.result }}"
-          echo "Coverage:  ${{ needs.coverage.result }}"
+          echo "Lint:        ${{ needs.lint.result }}"
+          echo "Build:       ${{ needs.build.result }}"
+          echo "Test:        ${{ needs.test.result }}"
+          echo "Security:    ${{ needs.security.result }}"
+          echo "Docs:        ${{ needs.docs.result }}"
+          echo "Coverage:    ${{ needs.coverage.result }}"
+          echo "Integration: ${{ needs.integration.result }}"
 
       - name: ✅ All stages passed
         if: |
           needs.lint.result == 'success' &&
           needs.build.result == 'success' &&
-          needs.test.result == 'success'
+          needs.test.result == 'success' &&
+          needs.security.result == 'success' &&
+          needs.docs.result == 'success'
         run: echo "✅ All mandatory stages passed"
 
       - name: ❌ Some stages failed
         if: |
           needs.lint.result != 'success' ||
           needs.build.result != 'success' ||
-          needs.test.result != 'success'
+          needs.test.result != 'success' ||
+          needs.security.result != 'success' ||
+          needs.docs.result != 'success'
         run: |
           echo "❌ Mandatory stage(s) failed"
           exit 1
