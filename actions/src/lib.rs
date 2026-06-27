@@ -1,6 +1,6 @@
 //! Rigorix GitHub Actions — thin adapter over `rigorix-engine`.
 //!
-//! @canonical .pi/architecture/modules/
+//! @canonical actions/.pi/architecture/modules/action-entrypoint.md
 //! Blueprint: actions/.pi/ROADMAP.md (2026-06-20)
 //!
 //! # Architecture

@@ -83,15 +83,10 @@ impl HmacSigningService for HmacSignerImpl {
             });
         };
 
-        let expected = {
-            let mut mac =
-                HmacSha256::new_from_slice(&key).map_err(|e| SecurityError::Internal {
-                    detail: format!("Invalid HMAC key length: {}", e),
-                })?;
-            mac.update(&input.payload);
-            let result = mac.finalize();
-            hex::encode(result.into_bytes())
-        };
+        let mut mac = HmacSha256::new_from_slice(&key).map_err(|e| SecurityError::Internal {
+            detail: format!("Invalid HMAC key length: {}", e),
+        })?;
+        mac.update(&input.payload);
 
         let key_id = self
             .active_key
@@ -99,12 +94,21 @@ impl HmacSigningService for HmacSignerImpl {
             .map(|k| k.key_id.clone())
             .unwrap_or_else(|| "default".to_string());
 
-        // Constant-time comparison to prevent timing attacks
-        let valid = expected.as_bytes() == input.signature.as_bytes();
+        // Decode the provided signature from hex to raw bytes
+        let provided_bytes = match hex::decode(&input.signature) {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                return Err(SecurityError::HmacVerificationFailed {
+                    expected: String::new(),
+                    actual: input.signature,
+                });
+            }
+        };
 
-        if !valid {
+        // Constant-time comparison via verify_slice to prevent timing attacks
+        if mac.verify_slice(&provided_bytes).is_err() {
             return Err(SecurityError::HmacVerificationFailed {
-                expected,
+                expected: String::new(),
                 actual: input.signature,
             });
         }

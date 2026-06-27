@@ -171,6 +171,17 @@ pub async fn build_orchestrator(
     _cancellation_token: tokio_util::sync::CancellationToken,
     repo_root: String,
 ) -> Result<(Box<dyn OrchestratorService>, CliServices), CliError> {
+    build_orchestrator_with_budget(config, _cancellation_token, repo_root, None, None).await
+}
+
+/// Like `build_orchestrator` but with explicit CLI budget overrides.
+pub async fn build_orchestrator_with_budget(
+    config: CliConfig,
+    _cancellation_token: tokio_util::sync::CancellationToken,
+    repo_root: String,
+    max_llm_calls: Option<u32>,
+    max_llm_tokens: Option<u64>,
+) -> Result<(Box<dyn OrchestratorService>, CliServices), CliError> {
     let engine_config = config.engine_config()?;
 
     // Ensure runtime directories exist
@@ -216,10 +227,21 @@ pub async fn build_orchestrator(
     );
 
     // ── 4. LlmBudgetService ────────────────────────────────────────────
-    let budget = LlmBudgetFactoryImpl
-        .create_default()
-        .await
-        .map_err(|e| CliError::General(format!("budget: {e}")))?;
+    let budget = if let (Some(calls), Some(tokens)) = (max_llm_calls, max_llm_tokens) {
+        LlmBudgetFactoryImpl
+            .create_custom(
+                calls,
+                tokens.min(u32::MAX as u64) as u32,
+                "cli-run".to_string(),
+            )
+            .await
+            .map_err(|e| CliError::General(format!("budget: {e}")))?
+    } else {
+        LlmBudgetFactoryImpl
+            .create_default()
+            .await
+            .map_err(|e| CliError::General(format!("budget: {e}")))?
+    };
 
     // ── 5. ParallelExecutionService ────────────────────────────────────
     let execution = ParallelExecutionFactoryImpl
@@ -282,6 +304,7 @@ pub async fn build_orchestrator(
                         max_tokens: llm.max_tokens,
                         temperature: llm.temperature,
                         timeout_secs: 120,
+                        requests_per_second: 10,
                     }),
                 ))
             }
@@ -295,6 +318,7 @@ pub async fn build_orchestrator(
                         max_tokens: llm.max_tokens,
                         temperature: llm.temperature,
                         timeout_secs: 120,
+                        requests_per_second: 10,
                     }),
                 ))
             }

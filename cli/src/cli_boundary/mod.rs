@@ -10,7 +10,7 @@
 //! # Contract (Frozen)
 //!
 //! The public API of this module is:
-//! - `cli::parse_args()` → `CliCommand`
+//! - `cli::parse_args()` → `(CliCommand, Format)`
 //! - `dispatch::dispatch(command, config, cancellation_token)` → `DispatchResult`
 //! - `orchestrator::build_orchestrator(config, cancellation_token)` → `Box<dyn OrchestratorService>`
 //! - `config::load_config()` → `Config`

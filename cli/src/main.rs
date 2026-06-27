@@ -22,10 +22,10 @@ async fn main() {
     cli_boundary::tracing::init_tracing();
 
     // 2. Parse CLI arguments
-    let command = cli_boundary::cli::parse_args();
+    let (command, format) = cli_boundary::cli::parse_args();
 
     // 3. Extract format and verbosity for later use
-    // (These are stored in CliConfig after config loading)
+    // (Format is now threaded to format_and_exit)
 
     // 4. Load configuration
     let config = cli_boundary::config::load_config();
@@ -41,7 +41,7 @@ async fn main() {
         _ => {
             let result =
                 cli_boundary::dispatch::dispatch(command, config, cancellation_token).await;
-            cli_boundary::output::format_and_exit(result);
+            cli_boundary::output::format_and_exit(result, format);
         }
     }
 }

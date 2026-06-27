@@ -21,7 +21,7 @@
 //!
 //! - `CliCommand` — enum of all 14+1 command variants
 //! - `Format` — output format selection (Pretty, Json, Markdown, Quiet)
-//! - `parse_args()` — parse command-line arguments and return the resolved `CliCommand`
+//! - `parse_args()` — parse command-line arguments and return the resolved `(CliCommand, Format)`
 
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
@@ -274,36 +274,38 @@ pub struct CliArgs {
 ///   equivalent command variants.
 /// - No subcommand and no shortcut → `CliCommand::Tui` (interactive default).
 /// - `--format` and `-v` are consumed before command resolution.
-pub fn parse_args() -> CliCommand {
+///   Returns the resolved command and the format parsed from `--format`.
+pub fn parse_args() -> (CliCommand, Format) {
     let args = CliArgs::parse();
+    let format = args.format;
 
-    // Check shortcut flags first (they take priority over subcommands)
-    if let Some(intent) = args.run {
-        return CliCommand::Run {
-            intent,
-            enforcement: None,
-            max_llm_calls: None,
-            max_llm_tokens: None,
-        };
-    }
+    let command = {
+        // Check shortcut flags first (they take priority over subcommands)
+        if let Some(intent) = args.run {
+            CliCommand::Run {
+                intent,
+                enforcement: None,
+                max_llm_calls: None,
+                max_llm_tokens: None,
+            }
+        } else if let Some(exec_str) = args.exec {
+            let exec = exec_str.parse().ok();
+            CliCommand::Tui { exec, run: None }
+        } else if args.history {
+            CliCommand::History {
+                limit: None,
+                status: None,
+            }
+        } else {
+            // Resolve subcommand or default to TUI
+            args.command.unwrap_or(CliCommand::Tui {
+                exec: None,
+                run: None,
+            })
+        }
+    };
 
-    if let Some(exec_str) = args.exec {
-        let exec = exec_str.parse().ok();
-        return CliCommand::Tui { exec, run: None };
-    }
-
-    if args.history {
-        return CliCommand::History {
-            limit: None,
-            status: None,
-        };
-    }
-
-    // Resolve subcommand or default to TUI
-    args.command.unwrap_or(CliCommand::Tui {
-        exec: None,
-        run: None,
-    })
+    (command, format)
 }
 
 #[cfg(test)]

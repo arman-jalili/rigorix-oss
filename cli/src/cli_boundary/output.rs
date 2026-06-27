@@ -176,8 +176,8 @@ pub fn formatter_for(format: Format) -> Box<dyn LogFormatter> {
 /// # Panics
 ///
 /// This function never returns — it always calls `process::exit()`.
-pub fn format_and_exit(result: DispatchResult) -> ! {
-    let formatter = formatter_for(Format::Pretty);
+pub fn format_and_exit(result: DispatchResult, format: Format) -> ! {
+    let formatter = formatter_for(format);
     if result.is_success() {
         let summary = formatter.format_summary(&result);
         if result.data.is_some() && summary.is_empty() {
