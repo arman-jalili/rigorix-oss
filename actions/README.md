@@ -179,16 +179,18 @@ cargo test -p rigorix-actions --features mock-server
 
 ## Development Status
 
-| Phase | Module | Status |
-|-------|--------|--------|
-| 0 | security_config | ✅ Contract frozen, interface-only |
-| 1 | action_input | ✅ Contract frozen, interface-only |
-| 3 | diff_analyzer | ✅ Contract frozen, interface-only |
-| 3 | policy_evaluator | ✅ Contract frozen, interface-only |
-| 3-4 | action_output | ✅ Contract frozen, interface-only |
-| 4 | ci_integration | ✅ Contract frozen, interface-only |
-| 4 | audit_posting | ✅ Contract frozen, interface-only |
-| 5 | action_entrypoint | ✅ Contract frozen, interface-only |
+All modules have concrete implementations with tests. The table below shows what exists per module.
+
+| Phase | Module | Services | Infrastructure | Tests | Status |
+|-------|--------|----------|---------------|-------|--------|
+| 0 | security_config | 5 impl files (fork, HMAC, masking, token, URL) | 1 repo impl | ✅ 6 test anno | ✅ **Implemented** |
+| 1 | action_input | 4 impl files (CI, comment, config, parser) | 1 repo impl | ✅ 5 test anno | ✅ **Implemented** |
+| 3 | diff_analyzer | 6 impl files (diff, pipeline, parser, limits, paths, risk) | — | ✅ 6 test anno | ✅ **Implemented** |
+| 3 | policy_evaluator | 10 impl files (rules, merge, docs, pipeline, eval, loader, reports, results, tamper) | — | ✅ 10 test anno | ✅ **Implemented** |
+| 3-4 | action_output | 5 impl files (annotations, format, vars, comments, summaries) | 3 repo impls | ✅ 8 test anno | ✅ **Implemented** |
+| 4 | ci_integration | 4 impl files (comments, status) | 2 repo impls | ✅ 25 test anno | ✅ **Implemented** |
+| 4 | audit_posting | 4 impl files (backend factory, posting, queue, record factory) | 2 backends (filesystem, HTTP) | ✅ 6 test anno | ✅ **Implemented** |
+| 5 | action_entrypoint | 3 impl files (context, mode, router) | 1 repo impl | ✅ 10 test anno | ✅ **Implemented** |
 
 ---
 

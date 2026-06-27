@@ -152,4 +152,4 @@ Each crate has its own `.pi/architecture/` directory:
 
 ## Questions?
 
-Open a [GitHub Discussion](https://github.com/rigorix/rigorix-oss/discussions) or reach out to the maintainers.
+Open a [GitHub Discussion](https://github.com/arman-jalili/rigorix-oss/discussions) or reach out to the maintainers.

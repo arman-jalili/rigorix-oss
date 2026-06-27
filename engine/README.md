@@ -2,7 +2,7 @@
 
 **Template-driven DAG execution engine — all business logic lives here.**
 
-The engine is the core library containing **28 bounded-context modules** organized in Clean Architecture. It has zero CLI or GitHub-specific code; both the CLI and GitHub Action consume it as a library.
+The engine is the core library containing **30 modules** — 27 full Clean Architecture bounded contexts plus 3 cross-cutting modules. It has zero CLI or GitHub-specific code; both the CLI and GitHub Action consume it as a library.
 
 ---
 
@@ -33,6 +33,7 @@ module/
 | `audit` | HMAC-signed audit envelopes with circuit breaker | `AuditEnvelope`, `CircuitBreakerState` |
 | `execution_engine` | Parallel DAG execution with retry logic | `ParallelExecutor`, `ExecutionResult`, `RetryPolicy` |
 | `failure_classification` | Failure type categorization + retry strategy selection | `FailureType`, `RetryStrategy`, `BackoffStrategy` |
+| `failure_parser` | Parse failure output with tree-sitter, extract diagnostics, suggest fixes | `ParsedFailure`, `FixSuggestion`, `SourceLocation` |
 | `error` | Root error type aggregating all 18 sub-errors | `CoreOrchestratorError` |
 
 #### Phase 1 — Planning
@@ -45,6 +46,7 @@ module/
 | `dag_engine` | DAG construction (add_unchecked → seal), topo sort, cycle detection | `TaskGraph`, `TaskNode`, `PlanDiff`, `ImpactLevel` |
 | `plan_validation` | Self-correcting validate loop: plan → execute → verify → repeat | `ValidationLoopService`, `ValidationState` |
 | `llm_step` | LLM generation nodes in the DAG | `LlmGenerateNode`, `LlmStepContext` |
+| `orchestrator` | Top-level entry point wiring planning → execution → persistence → audit | `OrchestratorService`, `ExecutionRecord`, `OrchestratorConfig` |
 
 #### Phase 2 — Execution & Tools
 
@@ -64,6 +66,7 @@ module/
 | `permission` | Path-based permission enforcer for tool access | `PermissionEnforcer`, `BashClassifier`, `Policy` |
 | `hooks` | Pre/post execution hooks with filesystem repository | `HookRunner`, `HookConfig`, `HookResult` |
 | `recovery_recipes` | Scenario-based recovery with escalation | `RecoveryRecipe`, `FailureScenario`, `EscalationPath` |
+| `code_gen` | Code generation result domain for DAG node outputs | `CodeGenResult`, `SyntaxGate`, `ValidationOutcome` |
 
 #### Phase 4 — Infrastructure
 
@@ -74,6 +77,12 @@ module/
 | `observability` | Prometheus metrics, health checks, tracing | `MetricsRegistry`, `HealthService`, `TracingConfig` |
 | `code_graph` | Symbol graph builder using tree-sitter (Rust/TS/Python) | `CodeGraph`, `SymbolNode`, `GraphMetadata` |
 | `repo_engine` | Workspace-level symbol graph + validation | `SymbolGraph`, `SymbolWorkspace` |
+
+#### Cross-Cutting
+
+| Module | Purpose | Key Types |
+|--------|---------|-----------|
+| `common` | Shared validation helpers and utility functions | `ValidationResult`, `ValidationError` |
 
 ---
 
@@ -137,16 +146,16 @@ cargo bench -p rigorix-engine
 
 ## Key Design Decisions
 
-| ADR | Decision |
-|-----|----------|
-| ADR-001 | Clean Architecture with bounded contexts |
-| ADR-002 | TOML template format for DAG definitions |
-| ADR-003 | Async trait-based LLM provider abstraction |
-| ADR-004 | Autonomy presets (Default, Advanced, Aggressive) |
-| ADR-005 | Event bus with broadcast + drain persistence |
-| ADR-006 | Atomic write-rename for state persistence |
-| ADR-007 | Risk gating with Low/Medium/High classification |
-| ADR-008 | RAII-style budget reservation for LLM calls |
+| ADR | Decision | Link |
+|-----|----------|------|
+| ADR-001 | Clean Architecture with bounded contexts | [Read](.pi/architecture/decisions/ADR-001-architecture-pattern.md) |
+| ADR-002 | TOML template format for DAG definitions | [Read](.pi/architecture/decisions/ADR-002-toml-template-format.md) |
+| ADR-003 | Async trait-based LLM provider abstraction | [Read](.pi/architecture/decisions/ADR-003-llm-provider-traits.md) |
+| ADR-004 | Autonomy presets (Default, Advanced, Aggressive) | [Read](.pi/architecture/decisions/ADR-004-autonomy-presets.md) |
+| ADR-005 | Event bus with broadcast + drain persistence | [Read](.pi/architecture/decisions/ADR-005-event-bus-persistence.md) |
+| ADR-006 | Atomic write-rename for state persistence | [Read](.pi/architecture/decisions/ADR-006-atomic-write-rename.md) |
+| ADR-007 | Risk gating with Low/Medium/High classification | [Read](.pi/architecture/decisions/ADR-007-risk-gating-model.md) |
+| ADR-008 | RAII-style budget reservation for LLM calls | [Read](.pi/architecture/decisions/ADR-008-raii-budget-reservation.md) |
 
 ---
 
