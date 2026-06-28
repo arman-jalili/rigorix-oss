@@ -43,8 +43,8 @@ echo "═══ Recovery Recipes Coverage Check ═══"
 echo ""
 
 # Count test functions in the module
-TEST_COUNT=$(grep -r '#\[tokio::test\]' "$PROJECT_DIR/src/recovery_recipes/" 2>/dev/null | wc -l)
-UNIT_COUNT=$(grep -r '#\[tokio::test\]' "$PROJECT_DIR/src/recovery_recipes/" 2>/dev/null | wc -l)
+TEST_COUNT=$(grep -rE '#[tokio::test]|#[test]' "$PROJECT_DIR/src/recovery_recipes/" 2>/dev/null | wc -l)
+UNIT_COUNT=$(grep -rE '#[tokio::test]|#[test]' "$PROJECT_DIR/src/recovery_recipes/" 2>/dev/null | wc -l)
 echo "  Test functions found: $TEST_COUNT"
 
 if [ "$TEST_COUNT" -ge "$MIN_TOTAL" ]; then

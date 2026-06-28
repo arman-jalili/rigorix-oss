@@ -193,3 +193,132 @@ pub enum ExecutionEngineEvent {
         timestamp: DateTime<Utc>,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    #[test]
+    fn test_execution_engine_event_execution_started() {
+        let dag_id = Uuid::new_v4();
+        let event = ExecutionEngineEvent::ExecutionStarted {
+            dag_id,
+            total_nodes: 5,
+            timestamp: Utc::now(),
+        };
+        match event {
+            ExecutionEngineEvent::ExecutionStarted {
+                dag_id: id,
+                total_nodes,
+                ..
+            } => {
+                assert_eq!(id, dag_id);
+                assert_eq!(total_nodes, 5);
+            }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_execution_engine_event_node_execution_started() {
+        let dag_id = Uuid::new_v4();
+        let node_id = Uuid::new_v4();
+        let event = ExecutionEngineEvent::NodeExecutionStarted {
+            dag_id,
+            node_id,
+            node_name: "test-node".into(),
+            attempt: 0,
+            timestamp: Utc::now(),
+        };
+        match event {
+            ExecutionEngineEvent::NodeExecutionStarted { node_name, .. } => {
+                assert_eq!(node_name, "test-node");
+            }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_execution_engine_event_node_completed() {
+        let event = ExecutionEngineEvent::NodeExecutionCompleted {
+            dag_id: Uuid::new_v4(),
+            node_id: Uuid::new_v4(),
+            node_name: "done".into(),
+            duration_ms: 42,
+            timestamp: Utc::now(),
+        };
+        match event {
+            ExecutionEngineEvent::NodeExecutionCompleted {
+                node_name,
+                duration_ms,
+                ..
+            } => {
+                assert_eq!(node_name, "done");
+                assert_eq!(duration_ms, 42);
+            }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_execution_engine_event_node_failed() {
+        let event = ExecutionEngineEvent::NodeExecutionFailed {
+            dag_id: Uuid::new_v4(),
+            node_id: Uuid::new_v4(),
+            node_name: "fail".into(),
+            error_message: "timeout".into(),
+            failure_type: "Transient".into(),
+            retries_remaining: 3,
+            timestamp: Utc::now(),
+        };
+        match event {
+            ExecutionEngineEvent::NodeExecutionFailed { error_message, .. } => {
+                assert_eq!(error_message, "timeout");
+            }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_execution_engine_event_execution_completed() {
+        let event = ExecutionEngineEvent::ExecutionCompleted {
+            dag_id: Uuid::new_v4(),
+            total_nodes: 10,
+            completed_count: 8,
+            failed_count: 1,
+            skipped_count: 1,
+            total_duration_ms: 1000,
+            timestamp: Utc::now(),
+        };
+        match event {
+            ExecutionEngineEvent::ExecutionCompleted {
+                total_nodes,
+                completed_count,
+                ..
+            } => {
+                assert_eq!(total_nodes, 10);
+                assert_eq!(completed_count, 8);
+            }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_execution_engine_event_serialization() {
+        let event = ExecutionEngineEvent::ExecutionStarted {
+            dag_id: Uuid::new_v4(),
+            total_nodes: 3,
+            timestamp: Utc::now(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("execution_started"));
+        let deserialized: ExecutionEngineEvent = serde_json::from_str(&json).unwrap();
+        match deserialized {
+            ExecutionEngineEvent::ExecutionStarted { total_nodes, .. } => {
+                assert_eq!(total_nodes, 3);
+            }
+            _ => panic!("Wrong variant after deserialization"),
+        }
+    }
+}

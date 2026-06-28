@@ -132,7 +132,7 @@ fi
 echo ""
 echo "--- Standalone Function ---"
 
-if grep -q 'pub fn classify_failure' "$SRC_DIR/failure_classification/classify.rs" 2>/dev/null; then
+if grep -q 'pub fn classify_failure' "$SRC_DIR/failure_classification/application/classify.rs" 2>/dev/null; then
     log_pass "classify_failure() free function exists"
 else
     log_fail "classify_failure() free function not found"

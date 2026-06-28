@@ -86,19 +86,19 @@ echo "--- Domain Trait Contracts ---"
 if grep -q 'pub trait Classifier' "$SRC/domain/classification.rs" 2>/dev/null; then
     log_pass "Classifier trait defined"
 
-    if grep -q 'impl Classifier for MockClassifier' "$SRC/domain/mock_classifier.rs" 2>/dev/null; then
+    if grep -q 'impl Classifier for MockClassifier' "$SRC/application/mock_classifier.rs" 2>/dev/null; then
         log_pass "Classifier → MockClassifier implementation"
     else
         log_fail "MockClassifier implementation not found"
     fi
 
-    if grep -q 'impl Classifier for ClaudeClassifier' "$SRC/domain/claude_classifier.rs" 2>/dev/null; then
+    if grep -q 'impl Classifier for ClaudeClassifier' "$SRC/infrastructure/claude_classifier.rs" 2>/dev/null; then
         log_pass "Classifier → ClaudeClassifier implementation"
     else
         log_fail "ClaudeClassifier implementation not found"
     fi
 
-    if grep -q 'impl Classifier for OpenaiClassifier' "$SRC/domain/openai_classifier.rs" 2>/dev/null; then
+    if grep -q 'impl Classifier for OpenaiClassifier' "$SRC/infrastructure/openai_classifier.rs" 2>/dev/null; then
         log_pass "Classifier → OpenaiClassifier implementation"
     else
         log_fail "OpenaiClassifier implementation not found"
@@ -110,7 +110,7 @@ fi
 if grep -q 'pub trait ParameterExtractor' "$SRC/domain/extractor.rs" 2>/dev/null; then
     log_pass "ParameterExtractor trait defined"
 
-    if grep -q 'impl ParameterExtractor for MockParameterExtractor' "$SRC/domain/mock_extractor.rs" 2>/dev/null; then
+    if grep -q 'impl ParameterExtractor for MockParameterExtractor' "$SRC/application/mock_extractor.rs" 2>/dev/null; then
         log_pass "ParameterExtractor → MockParameterExtractor implementation"
     else
         log_fail "MockParameterExtractor implementation not found"
@@ -119,7 +119,7 @@ else
     log_fail "ParameterExtractor trait not found"
 fi
 
-if grep -q 'pub trait TemplateGenerator' "$SRC/domain/generator.rs" 2>/dev/null; then
+if grep -q 'pub trait TemplateGenerator' "$SRC_DIR/template_generation/domain/generator.rs" 2>/dev/null; then
     log_pass "TemplateGenerator trait defined"
 else
     log_fail "TemplateGenerator trait not found"
@@ -167,7 +167,7 @@ else
     log_fail "ExtractedParameters struct not found"
 fi
 
-if grep -q 'pub struct GeneratedTemplate' "$SRC/domain/generator.rs" 2>/dev/null; then
+if grep -q 'pub struct GeneratedTemplate' "$SRC_DIR/template_generation/domain/generator.rs" 2>/dev/null; then
     log_pass "GeneratedTemplate struct exists"
 else
     log_fail "GeneratedTemplate struct not found"

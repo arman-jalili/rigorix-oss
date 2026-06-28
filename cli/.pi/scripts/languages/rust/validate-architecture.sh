@@ -57,14 +57,14 @@ else
         # Check per-module layers (e.g. src/{module}/domain/)
     MODULE_LAYERS=0
     for layer_pattern in domain application infrastructure; do
-        count=$(find src -maxdepth 2 -type d -name "$layer_pattern" 2/dev/null | wc -l | tr -d ' ' || true)
+        count=$(find src -maxdepth 2 -type d -name "$layer_pattern" 2>/dev/null | wc -l | tr -d ' ' || true)
         MODULE_LAYERS=$((MODULE_LAYERS + count))
     done
     if [ "$MODULE_LAYERS" -gt 0 ]; then
         pass "Module-level clean architecture layers found ($MODULE_LAYERS layers — valid nested structure)"
     else
         # One more check: does the crate have any source files at all?
-        rs_count=$(find src -name "*.rs" 2/dev/null | wc -l || true)
+        rs_count=$(find src -name "*.rs" 2>/dev/null | wc -l || true)
         if [ "$rs_count" -gt 0 ]; then
             pass "Source files found in flat structure ($rs_count files — acceptable for thin crate)"
         else

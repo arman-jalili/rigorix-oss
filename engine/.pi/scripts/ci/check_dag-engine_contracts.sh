@@ -138,14 +138,15 @@ else
     log_fail "ExecutionPolicy struct not found"
 fi
 
-if grep -q 'pub enum FailureType' "$DOMAIN_DIR/graph.rs" 2>/dev/null; then
-    log_pass "FailureType enum exists"
+# FailureType and RetryStrategy are defined in failure_classification module, imported by dag_engine
+if grep -q 'FailureType' "$DOMAIN_DIR/graph.rs" 2>/dev/null || grep -q 'pub enum FailureType' "$SRC_DIR/$MODULE/../failure_classification/domain/failure_type.rs" 2>/dev/null; then
+    log_pass "FailureType enum exists (imported from failure_classification)"
 else
     log_fail "FailureType enum not found"
 fi
 
-if grep -q 'pub enum RetryStrategy' "$DOMAIN_DIR/graph.rs" 2>/dev/null; then
-    log_pass "RetryStrategy enum exists"
+if grep -q 'RetryStrategy' "$DOMAIN_DIR/graph.rs" 2>/dev/null || grep -q 'pub enum RetryStrategy' "$SRC_DIR/$MODULE/../failure_classification/domain/retry_strategy.rs" 2>/dev/null; then
+    log_pass "RetryStrategy enum exists (imported from failure_classification)"
 else
     log_fail "RetryStrategy enum not found"
 fi

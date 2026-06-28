@@ -455,3 +455,106 @@ impl std::fmt::Display for ExecutionResult {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    #[test]
+    fn test_node_status_variants() {
+        assert_eq!(NodeStatus::Pending as u8, 0);
+        assert_eq!(NodeStatus::Ready as u8, 1);
+        assert_eq!(NodeStatus::Running as u8, 2);
+        assert_eq!(NodeStatus::Completed as u8, 3);
+        assert_eq!(NodeStatus::Failed as u8, 4);
+        assert_eq!(NodeStatus::Skipped as u8, 5);
+    }
+
+    #[test]
+    fn test_node_status_is_terminal() {
+        assert!(!NodeStatus::Pending.is_terminal());
+        assert!(!NodeStatus::Ready.is_terminal());
+        assert!(!NodeStatus::Running.is_terminal());
+        assert!(NodeStatus::Completed.is_terminal());
+        assert!(NodeStatus::Failed.is_terminal());
+        assert!(NodeStatus::Skipped.is_terminal());
+    }
+
+    #[test]
+    fn test_node_status_can_execute() {
+        assert!(!NodeStatus::Pending.can_execute());
+        assert!(NodeStatus::Ready.can_execute());
+        assert!(!NodeStatus::Running.can_execute());
+        assert!(!NodeStatus::Completed.can_execute());
+        assert!(!NodeStatus::Failed.can_execute());
+        assert!(!NodeStatus::Skipped.can_execute());
+    }
+
+    #[test]
+    fn test_node_status_as_str() {
+        assert_eq!(NodeStatus::Pending.as_str(), "pending");
+        assert_eq!(NodeStatus::Ready.as_str(), "ready");
+        assert_eq!(NodeStatus::Running.as_str(), "running");
+        assert_eq!(NodeStatus::Completed.as_str(), "completed");
+        assert_eq!(NodeStatus::Failed.as_str(), "failed");
+        assert_eq!(NodeStatus::Skipped.as_str(), "skipped");
+    }
+
+    #[test]
+    fn test_task_result_success() {
+        let node_id = Uuid::new_v4();
+        let result = TaskResult::success(node_id, "test-node", Some("output".into()), 100, 0);
+        assert!(result.success);
+        assert_eq!(result.node_id, node_id);
+        assert_eq!(result.node_name, "test-node");
+        assert_eq!(result.output, Some("output".into()));
+        assert_eq!(result.duration_ms, 100);
+        assert_eq!(result.retry_attempts, 0);
+        assert!(result.error.is_none());
+    }
+
+    #[test]
+    fn test_task_result_failure() {
+        let node_id = Uuid::new_v4();
+        let result = TaskResult::failure(
+            node_id,
+            "test-node",
+            "error msg".into(),
+            "Transient".into(),
+            50,
+            2,
+        );
+        assert!(!result.success);
+        assert_eq!(result.node_id, node_id);
+        assert_eq!(result.error, Some("error msg".into()));
+        assert_eq!(result.failure_type, Some("Transient".into()));
+        assert_eq!(result.duration_ms, 50);
+        assert_eq!(result.retry_attempts, 2);
+    }
+
+    #[test]
+    fn test_execution_result_new() {
+        let dag_id = Uuid::new_v4();
+        let result = ExecutionResult::new(dag_id);
+        assert_eq!(result.dag_id, dag_id);
+        assert_eq!(result.completed_count, 0);
+        assert_eq!(result.failed_count, 0);
+        assert_eq!(result.skipped_count, 0);
+        assert_eq!(result.total_nodes, 0);
+        assert!(!result.cancelled);
+        assert!(result.cancellation_reason.is_none());
+        assert!(!result.has_failures());
+        assert!(!result.has_issues());
+    }
+
+    #[test]
+    fn test_execution_result_display() {
+        let dag_id = Uuid::new_v4();
+        let result = ExecutionResult::new(dag_id);
+        let display = format!("{}", result);
+        assert!(display.contains("completed=0"));
+        assert!(display.contains("failed=0"));
+        assert!(display.contains("dag="));
+    }
+}

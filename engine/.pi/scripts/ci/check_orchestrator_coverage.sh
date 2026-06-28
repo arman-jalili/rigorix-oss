@@ -34,7 +34,8 @@ echo ""
 # Check if orchestrator tests exist and compile
 echo "--- Test Existence ---"
 
-TEST_COUNT=$(grep -c "#\[tokio::test\]\|#\[test\]" "$ENGINE_DIR/src/orchestrator/application/orchestrator_impl.rs" "$ENGINE_DIR/src/orchestrator/domain/record.rs" "$ENGINE_DIR/src/orchestrator/application/builder_impl.rs" 2>/dev/null || echo 0)
+# Count all test annotations properly (grep -c with multiple files gives per-file counts)
+TEST_COUNT=$(grep -rn "#\[tokio::test\]\|#\[test\]" "$ENGINE_DIR/src/orchestrator/" 2>/dev/null | wc -l || echo 0)
 if [ "$TEST_COUNT" -gt 0 ]; then
     log_pass "Found $TEST_COUNT tests in orchestrator module"
 else

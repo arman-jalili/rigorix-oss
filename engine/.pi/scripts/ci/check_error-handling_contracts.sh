@@ -118,7 +118,7 @@ fi
 echo ""
 echo "--- ExecutionError Contract ---"
 
-EXEC_ERROR_FILE="$SRC_DIR/execution/domain/error.rs"
+EXEC_ERROR_FILE="$SRC_DIR/execution_engine/domain/error.rs"
 if [ -f "$EXEC_ERROR_FILE" ]; then
     log_pass "ExecutionError file exists at src/execution/domain/error.rs"
 
@@ -128,8 +128,8 @@ if [ -f "$EXEC_ERROR_FILE" ]; then
         log_fail "ExecutionError enum not found"
     fi
 
-    for variant in "TaskFailed" "Timeout" "NotInitialized" "AlreadyRunning" \
-                   "RequiresReplan" "FallbackRequired"; do
+    for variant in "NodeNotFound" "GraphNotSealed" "NodeExecutionFailed" \
+                   "RetryLimitExhausted" "FallbackFailed" "ExecutionCancelled"; do
         if grep -q "$variant" "$EXEC_ERROR_FILE" 2>/dev/null; then
             log_pass "ExecutionError has $variant variant"
         else
