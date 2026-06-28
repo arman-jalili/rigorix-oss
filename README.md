@@ -178,24 +178,24 @@ rigorix-oss/
 - Rust 2024 edition (stable toolchain)
 - LLM API key (set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`)
 
-### Quality Checks
+### CI as Continuous Verification
+
+Rigorix treats CI as continuous verification rather than compilation and testing. Beyond formatting, linting, unit tests, and security scanning, every architectural capability is validated through proofing scripts that verify contracts, architecture readiness, documentation consistency, policy enforcement, and execution guarantees.
+
+```
+📦 86 automated verification steps
+
+  Lint (12)     — formatting, clippy, CI validation × 3 crates
+  Build (9)     — release build, static analysis, package × 3 crates
+  Test (53)     — cargo test, unit/integration stages, 30 module proofing scripts
+  Security (7)  — cargo audit, secret scan, stage security, security validation
+  Docs (13)     — canonical, architecture, readiness, ubiquitous language × all crates
+  Integration (2) — integration and operations validation
+```
 
 ```bash
-# Build everything
-cargo build --workspace
-
-# Lint
-cargo clippy --workspace
-
-# Format
-cargo fmt --check
-
-# Test
-cargo test --workspace
-
-# Security audit
-cargo audit
-```
+# On failure, the report ends with a summary of exactly which steps failed
+# and why — no scrolling through 2 minutes of output to find the error.
 
 ---
 
