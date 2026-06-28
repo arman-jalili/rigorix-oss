@@ -39,8 +39,8 @@ echo ""
 echo "═══ Quality Gates Coverage Check ═══"
 echo ""
 
-TEST_COUNT=$(grep -rE '#[tokio::test]|#[test]' "$PROJECT_DIR/src/quality_gates/" 2>/dev/null | wc -l)
-UNIT_COUNT=$(grep -rE '#[tokio::test]|#[test]' "$PROJECT_DIR/src/quality_gates/" 2>/dev/null | wc -l)
+TEST_COUNT=$(grep -rE '#\[tokio::test\]|#\[test\]' "$PROJECT_DIR/src/quality_gates/" 2>/dev/null | wc -l)
+UNIT_COUNT=$(grep -rE '#\[tokio::test\]|#\[test\]' "$PROJECT_DIR/src/quality_gates/" 2>/dev/null | wc -l)
 echo "  Test functions found: $TEST_COUNT"
 
 if [ "$TEST_COUNT" -ge "$MIN_TOTAL" ]; then
