@@ -131,9 +131,6 @@ The example below shows the generated execution graph before anything is modifie
 
 *🎥 Demo: Rigorix planning and executing a TypeScript refactor — reading code, generating a patch, type-checking, and running tests.*
 
-<details>
-<summary>📋 CLI output (what the TUI shows step by step)</summary>
-
 ````
 $ rigorix-cli plan  "Add a method to TaskList class in src/task.ts that returns only active tasks"
 Plan: Add a method to TaskList class in src/task.ts that returns only active tasks (confidence 100%)
@@ -159,8 +156,6 @@ Run: Completed — 0 failed, 5 passed, 0 skipped (5 total)
   ✓ Type-check with tsc — Success
   ✓ Run extended task list tests — Success
 ````
-
-</details>
 
 Rigorix currently supports Rust, TypeScript, Python, and Go as target codebases. TypeScript is the most mature integration today (it has a working failure-compiler step); the others are functional but earlier-stage.
 
