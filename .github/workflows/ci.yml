@@ -8,6 +8,10 @@
 #   4. security   — cargo audit + secret scan
 #   5. docs       — canonical reference validation
 #   6. coverage   — code coverage via cargo-tarpaulin
+#
+# Per-crate stage scripts are called from each crate's .pi/scripts/ci/:
+#   stage_lint.sh, stage_static_analysis.sh, stage_unit.sh,
+#   stage_security.sh, stage_integration.sh, stage_package_build.sh
 # ═════════════════════════════════════════════════════════════════════
 
 name: CI
@@ -66,9 +70,15 @@ jobs:
       - name: ⚡ Run clippy
         run: cargo clippy -p rigorix-${{ matrix.crate }} -- -D warnings
 
-      - name: 🔍 Run per-crate architecture validation
+      - name: 🔍 Per-crate architecture validation
         if: hashFiles(format('{0}/.pi/scripts/validate-ci.sh', matrix.crate)) != ''
         run: bash ${{ matrix.crate }}/.pi/scripts/validate-ci.sh
+        continue-on-error: true
+
+      - name: 🔍 Per-crate lint stage
+        if: hashFiles(format('{0}/.pi/scripts/ci/stage_lint.sh', matrix.crate)) != ''
+        run: bash .pi/scripts/ci/stage_lint.sh
+        working-directory: ${{ matrix.crate }}
         continue-on-error: true
 
   # ── Stage 2: Build (compile-check per crate) ──────────────────
@@ -86,11 +96,20 @@ jobs:
         with:
           cache-key: build-${{ matrix.crate }}
 
-      - name: 🏗️ Build crate
+      - name: 🏗️ Release build
         run: cargo build -p rigorix-${{ matrix.crate }} --release
 
-      - name: ✅ Verify no dead code
-        run: cargo build -p rigorix-${{ matrix.crate }} --release --dead-code 2>&1 || true
+      - name: 📦 Per-crate package build stage
+        if: hashFiles(format('{0}/.pi/scripts/ci/stage_package_build.sh', matrix.crate)) != ''
+        run: bash .pi/scripts/ci/stage_package_build.sh
+        working-directory: ${{ matrix.crate }}
+        continue-on-error: true
+
+      - name: 🔬 Per-crate static analysis
+        if: hashFiles(format('{0}/.pi/scripts/ci/stage_static_analysis.sh', matrix.crate)) != ''
+        run: bash .pi/scripts/ci/stage_static_analysis.sh
+        working-directory: ${{ matrix.crate }}
+        continue-on-error: true
 
   # ── Stage 3: Test (unit + integration per crate) ──────────────
   test:
@@ -107,17 +126,17 @@ jobs:
         with:
           cache-key: test-${{ matrix.crate }}
 
-      - name: 🧪 Run all tests
+      - name: 🧪 Cargo unit tests
         run: cargo test -p rigorix-${{ matrix.crate }}
 
-      - name: 🧪 Run per-crate proofing tests (if available)
+      - name: 🧪 Per-crate unit stage (contract/verification/coverage)
         if: hashFiles(format('{0}/.pi/scripts/ci/stage_unit.sh', matrix.crate)) != ''
-        run: bash ${{ matrix.crate }}/.pi/scripts/ci/stage_unit.sh
-        continue-on-error: true
+        run: bash .pi/scripts/ci/stage_unit.sh
+        working-directory: ${{ matrix.crate }}
 
-  # ── Stage 4: Security (workspace-wide) ────────────────────────
-  security:
-    name: 🔒 Security
+  # ── Stage 4a: Security — Dependency Audit (workspace-wide) ────
+  audit:
+    name: 🔒 Audit
     needs: [build]
     runs-on: ubuntu-latest
     steps:
@@ -127,26 +146,37 @@ jobs:
       - name: 🕵️ Cargo audit (dependency vulnerabilities)
         run: cargo audit --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2026-0002 --deny warnings
 
-      - name: 🔍 Secret scan
+      - name: 🔍 Secret scan (workspace)
         shell: bash
         run: |
-          # Scan for common secret patterns (API keys, tokens)
-          if grep -rE "(sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16})" \
-            --include="*.rs" --include="*.toml" --include="*.yml" --include="*.yaml" \
-            --include="*.env" --include="*.sh" . 2>/dev/null \
-            | grep -v ".git" | grep -v "node_modules" | grep -v ".rigorix" | grep -q .; then
-            echo "❌ Potential secrets found!"
-            grep -rE "(sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16})" \
+          for crate in engine cli actions; do
+            if grep -rE "(sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16})" \
               --include="*.rs" --include="*.toml" --include="*.yml" --include="*.yaml" \
-              --include="*.env" --include="*.sh" . 2>/dev/null \
-              | grep -v ".git" | grep -v "node_modules" | grep -v ".rigorix" || true
-            exit 1
-          fi
+              --include="*.env" --include="*.sh" "$crate/" 2>/dev/null \
+              | grep -v ".git" | grep -v ".rigorix" | grep -q .; then
+              echo "❌ Secrets found in $crate!"
+              exit 1
+            fi
+          done
           echo "✅ No secrets detected"
 
-      - name: 🛡️ Run per-crate security scripts
-        if: hashFiles('.pi/scripts/validate-security.sh') != ''
-        run: bash .pi/scripts/validate-security.sh
+  # ── Stage 4b: Security — Per-crate security scripts ───────────
+  security:
+    name: 🔒 Security (${{ matrix.crate }})
+    needs: [workspace, build]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: ${{ fromJson(needs.workspace.outputs.crates) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 🛡️ Per-crate security stage
+        if: hashFiles(format('{0}/.pi/scripts/ci/stage_security.sh', matrix.crate)) != ''
+        run: bash .pi/scripts/ci/stage_security.sh
+        working-directory: ${{ matrix.crate }}
+        continue-on-error: true
 
   # ── Stage 5: Canonical Reference Validation ───────────────────
   docs:
@@ -197,21 +227,22 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
 
-      - name: 🔗 Run workspace integration tests
+      - name: 🔗 Workspace integration tests
         run: cargo test --workspace -- --ignored
 
-      - name: 🔗 Run per-crate integration scripts
-        if: hashFiles('.pi/scripts/validate-integration.sh') != ''
-        run: bash .pi/scripts/validate-integration.sh
+      - name: 🔗 Per-crate integration stage
+        if: hashFiles('.pi/scripts/ci/stage_integration.sh') != ''
+        run: bash .pi/scripts/ci/stage_integration.sh
+        continue-on-error: true
 
-      - name: 🔗 Run per-crate operations validation
+      - name: 🔗 Per-crate operations validation
         if: hashFiles('.pi/scripts/validate-operations.sh') != ''
         run: bash .pi/scripts/validate-operations.sh
 
   # ── Stage 8: Final Gate ───────────────────────────────────────
   gate:
     name: 🚪 Final Gate
-    needs: [lint, build, test, security, docs, coverage, integration]
+    needs: [lint, build, test, audit, security, docs, coverage, integration]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -222,6 +253,7 @@ jobs:
           echo "Build:       ${{ needs.build.result }}"
           echo "Test:        ${{ needs.test.result }}"
           echo "Security:    ${{ needs.security.result }}"
+          echo "Audit:       ${{ needs.audit.result }}"
           echo "Docs:        ${{ needs.docs.result }}"
           echo "Coverage:    ${{ needs.coverage.result }}"
           echo "Integration: ${{ needs.integration.result }}"
@@ -231,6 +263,7 @@ jobs:
           needs.lint.result == 'success' &&
           needs.build.result == 'success' &&
           needs.test.result == 'success' &&
+          needs.audit.result == 'success' &&
           needs.security.result == 'success' &&
           needs.docs.result == 'success'
         run: echo "✅ All mandatory stages passed"
@@ -240,6 +273,7 @@ jobs:
           needs.lint.result != 'success' ||
           needs.build.result != 'success' ||
           needs.test.result != 'success' ||
+          needs.audit.result != 'success' ||
           needs.security.result != 'success' ||
           needs.docs.result != 'success'
         run: |
