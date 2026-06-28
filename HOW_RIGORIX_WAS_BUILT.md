@@ -1,6 +1,6 @@
 # How Rigorix Was Built
 
-**146,058 lines of Rust — 3 crates — 30 modules — 10 active days — 1 developer**
+**146,312 lines of Rust — 3 crates — 30 modules — 11 active days — 1 developer**
 
 ---
 
@@ -8,24 +8,26 @@
 
 | Metric | Value |
 |--------|-------|
-| **Timeline** | June 13 → June 27, 2026 (10 active days, 4-day gap Jun 22–26) |
-| **Total commits** | 546 (54.6 commits/active day) |
+| **Timeline** | June 13 → June 28, 2026 (11 active days, 4-day gap Jun 22–26) |
+| **Commits (all branches)** | 580 (52.7 commits/active day) |
+| **Commits (main branch)** | 398 |
 | **Contributors** | 1 (arman / Arman Wolkensteiner-Jalili) |
-| **Rust source files** | 723 across all crates |
-| **Lines of Rust code** | 146,058 (engine: bulk, cli + actions: remainder) |
+| **Rust source files** | 733 across all crates |
+| **Lines of Rust code** | 146,312 (engine: bulk, cli + actions: remainder) |
 | **Module count** | 30 (29 in `engine/src/`, plus CLI and Actions crates) |
-| **Test functions** | 301 (`#[test]` / `#[tokio::test]`) |
+| **Test annotations** | 2,295 (`#[test]` × 1,079 + `#[tokio::test]` × 1,216) |
 | **Integration test files** | 30 (9 dedicated `tests/` + 21 `*_tests.rs` in src) |
+| **CI verification steps** | 86 (6 stages, 193 total script files across all crates) |
 | **Benchmarks** | 1 (criterion, DAG engine performance) |
 | **Dependencies** | 69 across 3 crates (27 engine, 18 cli, 24 actions) |
 | **Architecture documents** | 614 files across `.pi/` directories |
-| **Module specs** | 42 (engine modules + CLI boundary + actions modules) |
-| **ADRs** | 8 Architecture Decision Records |
+| **Module specs** | 38 (engine modules + CLI boundary + actions modules) |
+| **ADRs** | 18 Architecture Decision Records |
 | **Issue drafts** | 44 (across epics) |
-| **Feature branches** | 120+ |
+| **Feature branches** | 160+ |
 
 
-## Timeline: Active Days (10 of 14 calendar days)
+## Timeline: Active Days (11 of 16 calendar days)
 
 ```
 Active   Date    Commits  What was built
@@ -68,9 +70,18 @@ Active   Date    Commits  What was built
                          ─────────────────────────────────────
                            June 22–26: no commits (gap)
                          ─────────────────────────────────────
- 10    Jun 27       7    Final polish: CI pipeline workflows,
+ 10    Jun 27      23    Final polish: CI pipeline workflows,
                           demo video, contract-freeze refactoring,
                           dependency alignment, README finalization
+                         ─────────────────────────────────────
+                           June 22–26: no commits (gap)
+                         ─────────────────────────────────────
+ 11    Jun 28      34    CI fix marathon: 37→0 failures across 86
+                          steps — ((PASS++)) root cause in 47 scripts,
+                          contract checker path drift, coverage checker
+                          bugs, flaky env-var tests, architecture
+                          readiness docs, local CI tooling, README
+                          rewrite with templates + comparison + CI
 ```
 
 **Build sprints by volume:**
@@ -80,7 +91,7 @@ Active   Date    Commits  What was built
 | Engine foundation (modules 1–25) | 3 (Jun 13–15) | 192 | DAG, planning, execution, templates, observability, state, audit, batch improvements |
 | CLI + TUI | 3 (Jun 16–18) | 185 | CLI boundary, ratatui-based TUI, flag-based scripting, tree-sitter tools |
 | GitHub Actions + failure parser | 2 (Jun 19–20) | 128 | 10 action modules, failure parser, policy engine, diff-analyzer |
-| CI, docs, hardening, polish | 2 (Jun 21 + 27) | 41 | Multi-stage workflows, docs, licenses, comparison table, demo video |
+| CI, docs, hardening, polish | 3 (Jun 21 + 27 + 28) | 98 | Multi-stage workflows, docs, licenses, CI fix marathon, local CI tooling, README rewrite |
 
 
 ## Architecture at a Glance
@@ -173,7 +184,57 @@ Three CI workflows enforce quality at different stages:
 
 All three workflows run on **cached Rust builds** via a shared setup action, using hash-based cargo registry and target caching.
 
-### 4. Validation Scripts
+### 4. Local CI Tooling
+
+The same checks run locally through `bash .pi/scripts/local-ci.sh`, which discovers and executes all 86 verification steps across all three crates. A single command validates the full pipeline without pushing to GitHub:
+
+```bash
+# Full CI simulation (86 steps, ~2 min)
+bash .pi/scripts/local-ci.sh
+
+# Run one stage or crate
+bash .pi/scripts/local-ci.sh --stage=lint       # format + clippy only
+bash .pi/scripts/local-ci.sh --crate=engine     # engine only
+
+# Faster iteration
+bash .pi/scripts/local-ci.sh --quick            # skip release builds
+
+# Save report for debugging
+bash .pi/scripts/local-ci.sh --save
+```
+
+On failure, the report ends with a summary of exactly which steps failed and why. The `--list` flag enumerates all 193 discoverable CI script files across the workspace.
+
+#### Proofing Scripts: Per-Epic Validation
+
+Every epic had to pass its own **proofing scripts** before the corresponding feature branch could merge. These are not generic linters — each module has dedicated `check_*_contracts.sh` and `check_*_coverage.sh` scripts that validate:
+
+- **Contract implementation** — every documented trait, struct, and DTO in the module spec has a concrete implementation in source
+- **Coverage threshold** — the module meets minimum test counts (50 per module, enforced per-component)
+- **Architecture readiness** — runbook, DR plan, canonical doc sync, observability integration
+
+These proofing scripts are organized per crate:
+
+```
+engine/.pi/scripts/ci/check_dag-engine_contracts.sh
+engine/.pi/scripts/ci/check_dag-engine_coverage.sh
+engine/.pi/scripts/ci/stage_dag-engine_proofing.sh
+actions/.pi/scripts/ci/check_action-entrypoint_contracts.sh
+actions/.pi/scripts/ci/check_action-entrypoint_coverage.sh
+... 30+ module-level proofing scripts
+```
+
+The proofing pipeline worked in practice as a **hardening gate**: every epic branch that passed proofing also passed CI on merge. When proofing revealed drift (e.g., renamed interfaces, relocated files), the fix was always to either update the contract checker or align the code — never to disable the check.
+
+For future development, this structure scales linearly: new modules need only:
+  1. Define the module spec in `.pi/architecture/modules/`
+  2. Add check_contracts and check_coverage scripts in `.pi/scripts/ci/`
+  3. Wire into the existing stage proofing template
+  4. Run `bash .pi/scripts/local-ci.sh --save` to verify
+
+The local CI runner discovers scripts via glob pattern (`*_proofing.sh`, `validate-*.sh`), so new scripts are picked up automatically — no pipeline configuration changes needed.
+
+### 5. Validation Scripts
 
 Seven self-contained bash validators enforce policy without external dependencies:
 
@@ -187,7 +248,7 @@ Seven self-contained bash validators enforce policy without external dependencie
 | Canonical | `.pi/scripts/validate-canonical.sh` | Doc-to-code synchronization |
 | Integration | `.pi/scripts/validate-integration.sh` | Cross-component integration |
 
-### 5. Architectural Governance
+### 6. Architectural Governance
 
 Every architectural decision is documented in **ADR format** (8 decisions):
 
@@ -204,7 +265,7 @@ Every architectural decision is documented in **ADR format** (8 decisions):
 
 A **gap ledger** tracks resolved and outstanding architecture gaps. The **canonical reference system** ensures docs don't drift: every generated doc references its source, and `validate-canonical.sh` enforces sync.
 
-### 6. Merge Flow
+### 7. Merge Flow
 
 ```
 feature branch → PR (gh CLI) → CI runs → squash merge → branch deleted
@@ -212,7 +273,7 @@ feature branch → PR (gh CLI) → CI runs → squash merge → branch deleted
 
 Every merge uses `gh pr merge --squash --delete-branch`, keeping `main` linear and clean. The MR validation script checks CI status, merge conflicts, architecture conformance, and test coverage before allowing merge.
 
-### 7. Release Flow
+### 8. Release Flow
 
 ```
 git tag v*.*.* ⟶ cargo publish (engine → cli → actions) ⟶ GitHub Release
@@ -239,30 +300,39 @@ git tag v*.*.* ⟶ cargo publish (engine → cli → actions) ⟶ GitHub Release
 ## Repository Snapshot
 
 ```
-$ git log --oneline | wc -l
-     546
+$ git rev-list --count HEAD
+     398 (main branch)
+
+$ git log --all --oneline | wc -l
+     580 (all branches)
 
 $ git shortlog -sn
-   309  arman
+   343  arman
    237  Arman Wolkensteiner-Jalili
 
 $ find . -name '*.rs' -not -path './target/*' | wc -l
-    1347 (all Rust files including build scripts, examples, nested benches)
+     733 (all Rust files including build scripts, examples, nested benches)
 
 $ find engine/src -name 'mod.rs' | wc -l
-    237  (237 clean-architecture modules with mod.rs entry points)
+     237 (237 clean-architecture modules with mod.rs entry points)
 
 $ find . -name '*.md' -not -path './target/*' -not -path './.git/*' -not -path './node_modules/*' | wc -l
-     789 documents
+     ~800 documents
 
 $ find .pi engine/.pi cli/.pi actions/.pi -name '*.md' 2>/dev/null | wc -l
      614 architecture documents
+
+$ find .pi/architecture/modules engine/.pi/architecture/modules cli/.pi/architecture/modules actions/.pi/architecture/modules -name '*.md' -not -name '*template*' 2>/dev/null | wc -l
+      38 module specs
+
+$ find .pi/architecture/decisions engine/.pi/architecture/decisions cli/.pi/architecture/decisions actions/.pi/architecture/decisions -name '*.md' 2>/dev/null | wc -l
+      18 ADRs
 
 $ git log --all --format="%ai" | sort | head -1
   2026-06-13 07:32:12 +0200
 
 $ git log --all --format="%ai" | sort | tail -1
-  2026-06-27 21:14:21 +0200
+  2026-06-28 14:44:49 +0200
 ```
 
 
@@ -291,4 +361,4 @@ $ git log --all --format="%ai" | sort | tail -1
 
 ---
 
-*Built June 13–27, 2026 — 10 active days (4-day gap Jun 22–26) — 146,058 LOC — 30 modules — 301 tests — 546 commits — 1 developer — with assistance from AI-augmented tooling (GitNexus code graph, Guardian pipeline, pi agent harness).*
+*Built June 13–28, 2026 — 11 active days (4-day gap Jun 22–26) — 146,312 LOC — 30 modules — 2,295 tests — 580 commits across all branches — 1 developer — with assistance from AI-augmented tooling (GitNexus code graph, Guardian pipeline, pi agent harness).*
