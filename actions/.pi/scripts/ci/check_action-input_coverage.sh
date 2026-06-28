@@ -38,9 +38,9 @@ else
     ERRORS=$((ERRORS + 1))
 fi
 
-# ── Check 2: Unit tests pass ──
+# ── Check 2: Unit tests pass (single-threaded to avoid env var races) ──
 echo -n "  Running unit tests... "
-if output=$(cargo test --lib -p rigorix-actions 2>&1); then
+if output=$(cargo test --lib -p rigorix-actions -- --test-threads=1 2>&1); then
     echo "✅"
     if $VERBOSE; then
         echo "$output" | tail -5

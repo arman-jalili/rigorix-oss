@@ -36,7 +36,7 @@ echo ""
 
 # ── Check 1: Unit tests pass ──
 echo "--- Unit Tests ---"
-if cargo test -p rigorix-actions --lib ci_integration --quiet 2>/dev/null; then
+if cargo test -p rigorix-actions --lib ci_integration -- --test-threads=1 --quiet 2>/dev/null; then
     echo "  ✅ ci_integration unit tests passed"
 else
     echo "  ❌ ci_integration unit tests failed"
