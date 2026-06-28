@@ -102,6 +102,15 @@ impl FilesystemCodeGraphRepository {
                 detail: format!("Failed to write index file: {}", e),
             })?;
 
+        // Sync to disk to ensure durability (avoids race on reload)
+        file.flush().await.map_err(|e| CodeGraphError::IoError {
+            detail: format!("Failed to flush index file: {}", e),
+        })?;
+
+        if let Err(e) = file.sync_all().await {
+            tracing::warn!("Failed to sync index file: {}", e);
+        }
+
         Ok(())
     }
 }
