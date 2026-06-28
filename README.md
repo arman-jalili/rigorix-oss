@@ -61,6 +61,37 @@ Rigorix is designed for **deterministic, auditable, safely-bounded automation** 
 
 *🎥 Demo: Rigorix planning and executing a TypeScript refactor — reading code, generating a patch, type-checking, and running tests.*
 
+<details>
+<summary>📋 CLI output (what the TUI shows step by step)</summary>
+
+````
+$ rigorix-cli plan "Add a method to TaskList class in src/task.ts that returns only active tasks"
+Plan: Add a method to TaskList class in src/task.ts that returns only active tasks (confidence 100%)
+  Template: add-get-active-tasks-method | LLM: 2 calls, 1120 tokens
+  Parameters:
+    ├── file_path: "src/task.ts"
+  Graph: 5 node(s), sealed=true
+    · Read current task.ts file (root)
+    · Insert getActiveTasks method after activeCount ← [Read current task.ts file]
+    · Write extended task list test file ← [Read current task.ts file]
+    · Type-check with tsc ← [Insert getActiveTasks method after activeCount, Write extended task list test file]
+    · Run extended task list tests ← [Type-check with tsc, Write extended task list test file]
+
+Run this plan now? [y/N]: y
+2026-06-24T09:39:50.388314Z  INFO run: rigorix_engine::orchestrator::application::orchestrator_impl: Starting orchestrator run …
+2026-06-24T09:39:58.392877Z  INFO run: rigorix_engine::orchestrator::application::orchestrator_impl: Orchestrator run completed … status=Completed
+Run: Completed — 0 failed, 5 passed, 0 skipped (5 total)
+  Template: add-get-active-tasks-method | LLM: 2 calls, 1089 tokens
+
+  ✓ Read current task.ts file — Success
+  ✓ Insert getActiveTasks method after activeCount — Success
+  ✓ Write extended task list test file — Success
+  ✓ Type-check with tsc — Success
+  ✓ Run extended task list tests — Success
+````
+
+</details>
+
 ---
 
 ## Quickstart
