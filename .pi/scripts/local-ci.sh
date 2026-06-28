@@ -8,6 +8,7 @@ CYAN='\033[0;36m'; BLUE='\033[0;34m'; NC='\033[0m'
 
 QUICK=false; STAGE=""; CRATE_FILTER=""; LIST_ONLY=false; SAVE_OUTPUT=false
 FAILED=0; PASSED=0; SKIPPED=0; START_TIME=$(date +%s)
+FAILURES=()
 CRATES=("engine" "cli" "actions")
 REPORT_DIR=".pi/output"
 
@@ -27,7 +28,13 @@ if [[ "$SAVE_OUTPUT" == "true" ]]; then
 fi
 
 pass()   { echo -e "  ${GREEN}✅ PASS${NC} $1"; PASSED=$((PASSED + 1)); }
-fail()   { echo -e "  ${RED}❌ FAIL${NC} $1"; FAILED=$((FAILED + 1)); }
+fail()   {
+    local label="$1"
+    local details="${2:-}"
+    echo -e "  ${RED}❌ FAIL${NC} $label"
+    FAILED=$((FAILED + 1))
+    FAILURES+=("$label${details:+ — $details}")
+}
 skip()   { echo -e "  ${YELLOW}⏭  SKIP${NC} $1"; SKIPPED=$((SKIPPED + 1)); }
 info()   { echo -e "  ${BLUE}ℹ️  ${NC} $1"; }
 header() { echo -e "\n${CYAN}══════════════════════════════════════════════════════════\n  $1\n${CYAN}══════════════════════════════════════════════════════════${NC}"; }
@@ -40,7 +47,9 @@ run_cmd() {
     out="$("$@" 2>&1)" && exit_code=0 || exit_code=$?
     if [[ $exit_code -eq 0 ]]; then pass "$label"
     else
-        fail "$label (exit: ${exit_code})"
+        local details
+        details="$(echo "$out" | tail -5 | tr '\n' '; ' | head -c 200)"
+        fail "$label (exit: ${exit_code})" "$details"
         echo "$out" | tail -15 | sed 's/^/      /'
     fi
 }
@@ -55,7 +64,9 @@ run_script() {
     out="$(cd "$crate" && bash "$script_rel" 2>&1)" && exit_code=0 || exit_code=$?
     if [[ $exit_code -eq 0 ]]; then pass "$label"
     else
-        fail "$label (exit: ${exit_code})"
+        local details
+        details="$(echo "$out" | tail -5 | tr '\n' '; ' | head -c 200)"
+        fail "$label (exit: ${exit_code})" "$details"
         echo "$out" | tail -15 | sed 's/^/      /'
     fi
 }
@@ -247,9 +258,22 @@ echo "  Total steps:  $((PASSED + FAILED + SKIPPED))"
 echo "  Time:    ${MINS}m ${SECS}s"
 echo ""
 if [[ $FAILED -gt 0 ]]; then
+    echo ""
+    echo -e "${RED}═══════════════ Failed Steps ═══════════════${NC}"
+    for f in "${FAILURES[@]}"; do
+        label="${f%% — *}"
+        detail="${f#* — }"
+        if [[ "$detail" == "$label" ]]; then
+            echo -e "  ${RED}❌${NC} $label"
+        else
+            echo -e "  ${RED}❌${NC} $label"
+            echo "      ${detail}"
+        fi
+    done
+    echo ""
     echo -e "${RED}❌ CI SIMULATION FAILED — ${FAILED} check(s) failed${NC}"
-    echo "  Debug: bash .pi/scripts/local-ci.sh --stage=lint"
-    echo "         bash .pi/scripts/local-ci.sh --crate=engine"
+    echo "  Debug a single stage: bash .pi/scripts/local-ci.sh --stage=<stage>"
+    echo "  Debug a single crate: bash .pi/scripts/local-ci.sh --crate=<crate>"
     exit 1
 else
     echo -e "${GREEN}✅ CI SIMULATION PASSED — all ${PASSED} checks passed${NC}"
