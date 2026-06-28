@@ -54,7 +54,7 @@ fi
 
 # ── Check 3: All lib tests pass ──
 echo -n "  Running all lib tests... "
-if output=$(cargo test --lib -p rigorix-actions -- --test-threads=1 2>cargo test --lib -p rigorix-actions 2>&11); then
+if output=$(cargo test --lib -p rigorix-actions -- --test-threads=1 2>&1); then
     echo "✅"
     if $VERBOSE; then
         echo "$output" | tail -5

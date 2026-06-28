@@ -56,7 +56,7 @@ fi
 
 # ── Check 3: All library tests pass ──
 echo -n "  Running all unit tests... "
-if output=$(cargo test --lib -p rigorix-actions 2>&1); then
+if output=$(cargo test --lib -p rigorix-actions -- --test-threads=1 2>&1); then
     TOTAL=$(echo "$output" | grep "^test result" | sed -n 's/.*\([0-9]\+\) passed;.*/\1/p')
     echo "✅ ($TOTAL total)"
     if $VERBOSE; then

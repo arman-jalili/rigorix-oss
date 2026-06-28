@@ -24,7 +24,7 @@ echo -n "  cargo build... "
 cargo build -p rigorix-actions 2>&1 && echo "✅" || { echo "❌"; ERRORS=$((ERRORS + 1)); }
 
 echo -n "  unit tests... "
-cargo test --lib -p rigorix-actions 2>&1 && echo "✅" || { echo "❌"; ERRORS=$((ERRORS + 1)); }
+cargo test --lib -p rigorix-actions -- --test-threads=1 2>&1 && echo "✅" || { echo "❌"; ERRORS=$((ERRORS + 1)); }
 
 echo -n "  integration tests... "
 compgen -G "actions/tests/*.rs" >/dev/null 2>&1 && { cargo test -p rigorix-actions --test '*' 2>&1 && echo "✅" || { echo "❌"; ERRORS=$((ERRORS + 1)); }; } || echo "⊘"
