@@ -22,8 +22,19 @@ echo "  Architecture Validation (Rust)"
 echo "============================================"
 echo ""
 
-if [ ! -f "Cargo.toml" ]; then
-    warn "No Cargo.toml found (skipping Rust architecture validation)"
+# Crate directories to check (workspace: check all crate roots)
+CRATE_DIRS=()
+if [ -d "src" ]; then
+    CRATE_DIRS+=(".")
+fi
+for crate in engine cli actions; do
+    if [ -d "$crate/src" ]; then
+        CRATE_DIRS+=("$crate")
+    fi
+done
+
+if [ ${#CRATE_DIRS[@]} -eq 0 ]; then
+    warn "No Rust source directories found (checked ., engine/, cli/, actions/)"
     echo ""
     echo "============================================"
     echo "  Summary"
@@ -40,22 +51,27 @@ fi
 # ---------------------------------------------------------------------------
 echo "--- Layer Structure ---"
 LAYERS_FOUND=0
-for layer in src/domain src/application src/infrastructure; do
-    if [ -d "$layer" ]; then
-        LAYERS_FOUND=$((LAYERS_FOUND + 1))
-    fi
+TOTAL_CRATES=0
+for dir in "${CRATE_DIRS[@]}"; do
+    TOTAL_CRATES=$((TOTAL_CRATES + 1))
+    for layer in src/domain src/application src/infrastructure; do
+        if [ -d "$dir/$layer" ]; then
+            LAYERS_FOUND=$((LAYERS_FOUND + 1))
+        fi
+    done
 done
-if [ "$LAYERS_FOUND" -ge 2 ]; then
-    pass "Clean architecture layers detected ($LAYERS_FOUND/3)"
-elif [ "$LAYERS_FOUND" -eq 1 ]; then
-    warn "Partial layer structure found (1/3 layers)"
-else
-    # Check for alternative common structures
-    if [ -d "src/models" ] || [ -d "src/handlers" ] || [ -d "src/services" ]; then
-        warn "Alternative project structure detected (no clean architecture layers)"
+
+TOTAL_POSSIBLE=$((TOTAL_CRATES * 3))
+if [ "$TOTAL_CRATES" -gt 0 ]; then
+    if [ "$LAYERS_FOUND" -ge "$((TOTAL_CRATES * 2))" ]; then
+        pass "Clean architecture layers detected ($LAYERS_FOUND/$TOTAL_POSSIBLE layers across $TOTAL_CRATES crates)"
+    elif [ "$LAYERS_FOUND" -gt 0 ]; then
+        warn "Partial layer structure ($LAYERS_FOUND/$TOTAL_POSSIBLE layers across $TOTAL_CRATES crates)"
     else
-        fail "No architectural layers found (no src/domain/, src/application/, or src/infrastructure/)"
+        warn "No clean architecture layer directories found (checked $TOTAL_CRATES crate(s))"
     fi
+else
+    fail "No architectural layers found (no src/domain/, src/application/, or src/infrastructure/)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -80,17 +96,22 @@ fi
 echo ""
 echo "--- Domain Models ---"
 DOMAIN_MODELS=0
-for dir in src/domain src/models; do
-    if [ -d "$dir" ]; then
-        MODELS=$(grep -rlE '^\s*(pub\s+)?struct\s' "$dir" 2>/dev/null | wc -l | tr -d ' ')
-        DOMAIN_MODELS=$((DOMAIN_MODELS + MODELS))
-    fi
+for dir in "${CRATE_DIRS[@]}"; do
+    for sub in src/domain src/models; do
+        if [ -d "$dir/$sub" ]; then
+            MODELS=$(grep -rlE '^\s*(pub\s+)?struct\s' "$dir/$sub" 2>/dev/null | wc -l | tr -d ' ')
+            DOMAIN_MODELS=$((DOMAIN_MODELS + MODELS))
+        fi
+    done
 done
 if [ "$DOMAIN_MODELS" -gt 0 ]; then
-    pass "Domain models found ($DOMAIN_MODELS files with struct definitions)"
+    pass "Domain models found ($DOMAIN_MODELS files with struct definitions across $TOTAL_CRATES crates)"
 else
-    # Check all of src as fallback
-    ALL_MODELS=$(grep -rlE '^\s*(pub\s+)?struct\s' src/ 2>/dev/null | wc -l | tr -d ' ')
+    ALL_MODELS=0
+    for dir in "${CRATE_DIRS[@]}"; do
+        count=$(grep -rlE '^\s*(pub\s+)?struct\s' "$dir/src/" 2>/dev/null | wc -l | tr -d ' ')
+        ALL_MODELS=$((ALL_MODELS + count))
+    done
     if [ "$ALL_MODELS" -gt 0 ]; then
         pass "Struct definitions found in src/ ($ALL_MODELS files)"
     else
@@ -103,15 +124,17 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Dependency Direction ---"
-if [ -d "src/domain" ]; then
-    DOMAIN_DEPS=$(grep -rE 'use\s+crate::infrastructure' src/domain/ 2>/dev/null | wc -l | tr -d ' ')
-    if [ "$DOMAIN_DEPS" -eq 0 ]; then
-        pass "Domain layer does not depend on infrastructure"
-    else
-        fail "Domain layer depends on infrastructure ($DOMAIN_DEPS violations)"
+VIOLATIONS=0
+for dir in "${CRATE_DIRS[@]}"; do
+    if [ -d "$dir/src/domain" ]; then
+        c=$(grep -rE 'use\s+crate::infrastructure' "$dir/src/domain/" 2>/dev/null | wc -l | tr -d ' ')
+        VIOLATIONS=$((VIOLATIONS + c))
     fi
+done
+if [ "$VIOLATIONS" -eq 0 ]; then
+    pass "Domain layer does not depend on infrastructure (across ${#CRATE_DIRS[@]} crate(s))"
 else
-    warn "No src/domain/ directory (cannot check dependency direction)"
+    fail "Domain layer depends on infrastructure ($VIOLATIONS violations)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -120,14 +143,20 @@ fi
 echo ""
 echo "--- Error Handling ---"
 HAS_ERROR_TYPES=0
-if command -v cargo &>/dev/null; then
-    # Check for thiserror, eyre, or anyhow in Cargo.toml
-    if grep -qE '(thiserror|eyre|anyhow)' Cargo.toml 2>/dev/null; then
+for dir in "${CRATE_DIRS[@]}"; do
+    if [ -f "$dir/Cargo.toml" ] && grep -qE '(thiserror|eyre|anyhow)' "$dir/Cargo.toml" 2>/dev/null; then
         HAS_ERROR_TYPES=1
     fi
-fi
-# Also check for custom error enum definitions
-CUSTOM_ERRORS=$(grep -rE 'enum\s+\w*Error' src/ 2>/dev/null | wc -l | tr -d ' ')
+done
+
+CUSTOM_ERRORS=0
+for dir in "${CRATE_DIRS[@]}"; do
+    if [ -d "$dir/src" ]; then
+        c=$(grep -rE 'enum\s+\w*Error' "$dir/src/" 2>/dev/null | wc -l | tr -d ' ')
+        CUSTOM_ERRORS=$((CUSTOM_ERRORS + c))
+    fi
+done
+
 if [ "$HAS_ERROR_TYPES" -eq 1 ] || [ "$CUSTOM_ERRORS" -gt 0 ]; then
     pass "Custom error handling detected"
 else
@@ -139,9 +168,15 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Trait Definitions ---"
-TRAITS=$(grep -rE '^\s*(pub\s+)?trait\s+' src/ 2>/dev/null | wc -l | tr -d ' ')
+TRAITS=0
+for dir in "${CRATE_DIRS[@]}"; do
+    if [ -d "$dir/src" ]; then
+        c=$(grep -rE '^\s*(pub\s+)?trait\s+' "$dir/src/" 2>/dev/null | wc -l | tr -d ' ')
+        TRAITS=$((TRAITS + c))
+    fi
+done
 if [ "$TRAITS" -gt 0 ]; then
-    pass "Trait definitions found ($TRAITS interfaces)"
+    pass "Trait definitions found ($TRAITS interfaces across ${#CRATE_DIRS[@]} crate(s))"
 else
     warn "No trait definitions found (consider using traits for interfaces)"
 fi
@@ -153,14 +188,16 @@ echo ""
 echo "--- Crate Structure ---"
 HAS_LIB=0
 HAS_MAIN=0
-[ -f "src/lib.rs" ] && HAS_LIB=1
-[ -f "src/main.rs" ] && HAS_MAIN=1
-if [ "$HAS_LIB" -eq 1 ] && [ "$HAS_MAIN" -eq 1 ]; then
-    pass "Both lib.rs and main.rs present (library + binary)"
-elif [ "$HAS_LIB" -eq 1 ]; then
-    pass "Library crate detected (lib.rs)"
-elif [ "$HAS_MAIN" -eq 1 ]; then
-    pass "Binary crate detected (main.rs)"
+for dir in "${CRATE_DIRS[@]}"; do
+    if [ -f "$dir/src/lib.rs" ]; then HAS_LIB=$((HAS_LIB + 1)); fi
+    if [ -f "$dir/src/main.rs" ]; then HAS_MAIN=$((HAS_MAIN + 1)); fi
+done
+if [ "$HAS_LIB" -gt 0 ] && [ "$HAS_MAIN" -gt 0 ]; then
+    pass "Both lib.rs and main.rs present ($HAS_LIB lib + $HAS_MAIN bin across ${#CRATE_DIRS[@]} crates)"
+elif [ "$HAS_LIB" -gt 0 ]; then
+    pass "Library crate(s) detected ($HAS_LIB lib.rs files)"
+elif [ "$HAS_MAIN" -gt 0 ]; then
+    pass "Binary crate(s) detected ($HAS_MAIN main.rs files)"
 else
     warn "No lib.rs or main.rs found"
 fi

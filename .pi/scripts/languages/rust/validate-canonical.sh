@@ -78,17 +78,35 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Module-to-Implementation Mapping ---"
-if [ -d ".pi/architecture/modules" ]; then
-    MODULE_FILES=$(find .pi/architecture/modules -name "*.md" 2>/dev/null)
-    MAPPED=0
-    TOTAL_MODULES=0
-    for mf in $MODULE_FILES; do
-        MODULE_NAME=$(basename "$mf" .md)
-        # Skip template files
-        if [[ "$MODULE_NAME" == *template* ]] || [[ "$MODULE_NAME" == *template* ]]; then
-            continue
-        fi
-        TOTAL_MODULES=$((TOTAL_MODULES + 1))
+MAPPED=0
+TOTAL_MODULES=0
+# Check module dirs at root and per-crate
+MODULE_DIRS=""
+for d in .pi engine/.pi cli/.pi actions/.pi; do
+    if [ -d "$d/architecture/modules" ]; then
+        MODULE_DIRS="$MODULE_DIRS $d/architecture/modules"
+    fi
+done
+
+if [ -n "$MODULE_DIRS" ]; then
+    for mdir in $MODULE_DIRS; do
+        MODULE_FILES=$(find "$mdir" -name "*.md" -not -name "*template*" 2>/dev/null)
+        for mf in $MODULE_FILES; do
+            TOTAL_MODULES=$((TOTAL_MODULES + 1))
+            MODULE_NAME=$(basename "$mf" .md)
+            # Check in all source directories
+            MODULE_FOUND=false
+            for d in $SRC_DIRS; do
+                if find "$d" -name "*${MODULE_NAME}*" -name "*.rs" 2>/dev/null | grep -q .; then
+                    MODULE_FOUND=true
+                    break
+                fi
+            done
+            if [ "$MODULE_FOUND" = true ]; then
+                MAPPED=$((MAPPED + 1))
+            fi
+        done
+    done
         # Check if a matching Rust file exists (exact match or containing module name)
         # Check in all possible source directories
         MODULE_FOUND=false
@@ -139,8 +157,20 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- ADR Linkage ---"
-if [ -d ".pi/architecture/decisions" ]; then
-    ADR_FILES=$(find .pi/architecture/decisions -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
+# Check ADR dirs at root and per-crate
+ADR_DIRS=""
+for d in .pi engine/.pi cli/.pi actions/.pi; do
+    if [ -d "$d/architecture/decisions" ]; then
+        ADR_DIRS="$ADR_DIRS $d/architecture/decisions"
+    fi
+done
+
+if [ -n "$ADR_DIRS" ]; then
+    ADR_FILES=0
+    for adir in $ADR_DIRS; do
+        count=$(find "$adir" -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
+        ADR_FILES=$((ADR_FILES + count))
+    done
     if [ "$ADR_FILES" -gt 0 ]; then
         ADR_REFS=0
         for d in $SRC_DIRS; do
@@ -148,15 +178,15 @@ if [ -d ".pi/architecture/decisions" ]; then
             ADR_REFS=$((ADR_REFS + count))
         done
         if [ "$ADR_REFS" -gt 0 ]; then
-            pass "ADR references found in code ($ADR_REFS references)"
+            pass "ADR references found in code ($ADR_REFS references across $ADR_FILES ADRs)"
         else
             warn "No ADR references in code (consider adding /// ADR-NNN comments)"
         fi
     else
-        warn "No ADR files found in .pi/architecture/decisions/"
+        warn "No ADR files found"
     fi
 else
-    warn "No .pi/architecture/decisions/ directory (no ADRs to link)"
+    warn "No architecture/decisions/ directories found"
 fi
 
 # ---------------------------------------------------------------------------

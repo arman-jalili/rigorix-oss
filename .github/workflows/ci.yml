@@ -150,11 +150,16 @@ jobs:
         shell: bash
         run: |
           for crate in engine cli actions; do
-            if grep -rE "(sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16})" \
+            # Exclude test fixtures, test code with known fake secrets, and SecretMasker test assertions
+            results=$(grep -rE "(sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16})" \
               --include="*.rs" --include="*.toml" --include="*.yml" --include="*.yaml" \
               --include="*.env" --include="*.sh" "$crate/" 2>/dev/null \
-              | grep -v ".git" | grep -v ".rigorix" | grep -q .; then
-              echo "❌ Secrets found in $crate!"
+              | grep -v ".git" | grep -v ".rigorix" | grep -v "node_modules" \
+              | grep -v "ghp_secret12345" \
+              || true)
+            if [[ -n "$results" ]]; then
+              echo "❌ Secrets found in $crate:"
+              echo "$results"
               exit 1
             fi
           done
