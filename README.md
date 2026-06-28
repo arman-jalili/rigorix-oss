@@ -57,6 +57,51 @@ Rigorix is designed for **deterministic, auditable, safely-bounded automation** 
 
 ---
 
+## Templates
+
+Templates encode repeatable engineering workflows. Instead of asking the model to rediscover how to perform a common task each time, Rigorix selects an appropriate template, extracts parameters, builds an execution graph, and lets the LLM focus on generating code within that structure.
+
+A template defines:
+
+- **What** files to read and what to generate from them
+- **Which** commands to run for verification (type-check, test, lint)
+- **How** to handle dependencies between steps
+- **Where** the output goes (new files, patches, test results)
+
+Here is a minimal template — it reads a file, runs a regex filter, and writes the result:
+
+```yaml
+name: extract-function-docs
+description: Extract JSDoc comments from a TypeScript file
+parameters:
+  - name: file_path
+    type: string
+    description: Path to the TypeScript file
+nodes:
+  - id: read_file
+    action: file_read
+    params:
+      path: "{{ file_path }}"
+  - id: extract_docs
+    action: llm_generate
+    depends_on: [read_file]
+    params:
+      prompt: >-
+        Extract all JSDoc comments from the file below.
+        Return them as a markdown list.
+      input: "{{ read_file.output }}"
+  - id: write_output
+    action: file_write
+    depends_on: [extract_docs]
+    params:
+      path: "docs/{{ file_path | basename }}.md"
+      content: "{{ extract_docs.output }}"
+```
+
+When a user runs `rigorix plan "Extract docs from src/api.ts"`, Rigorix classifies the intent, maps it to this template, prompts the LLM to fill `file_path`, and builds the 3-node DAG. The LLM generates the doc content; the template controls the flow.
+
+---
+
 The example below shows the generated execution graph before anything is modified. The user can inspect the plan and choose whether to execute it.
 
 <video src="rigorix-demo.mov" controls width="720"></video>
