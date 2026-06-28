@@ -61,7 +61,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-        with: { cache-key: lint-${{ matrix.crate }} }
+        with:
+          cache-key: lint-${{ matrix.crate }}
       - run: cargo fmt --check -p rigorix-${{ matrix.crate }}
       - run: cargo clippy -p rigorix-${{ matrix.crate }} -- -D warnings
       - name: Per-crate lint scripts
@@ -84,7 +85,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-        with: { cache-key: build-${{ matrix.crate }} }
+        with:
+          cache-key: build-${{ matrix.crate }}
       - run: cargo build -p rigorix-${{ matrix.crate }} --release
       - name: Per-crate build scripts
         continue-on-error: true
@@ -106,7 +108,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-        with: { cache-key: test-${{ matrix.crate }} }
+        with:
+          cache-key: test-${{ matrix.crate }}
       - run: cargo test -p rigorix-${{ matrix.crate }}
       - name: Per-crate test scripts
         continue-on-error: true
@@ -170,7 +173,9 @@ jobs:
       - uses: ./.github/actions/setup
       - run: cargo tarpaulin -p rigorix-engine --out Xml --output-dir coverage/engine || true
       - uses: actions/upload-artifact@v4
-        with: { name: coverage-reports, path: coverage/ }
+        with:
+          name: coverage-reports
+          path: coverage/
         if: always()
 
   # ── Stage 7: Integration ──────────────────────────────────────
