@@ -227,8 +227,34 @@ Rigorix treats CI as continuous verification rather than compilation and testing
 ```
 
 ```bash
+# Run the full CI suite (86 steps, ~2 min)
+bash .pi/scripts/local-ci.sh
+
+# Run a specific stage
+bash .pi/scripts/local-ci.sh --stage=lint      # lint only
+bash .pi/scripts/local-ci.sh --stage=build     # build only
+bash .pi/scripts/local-ci.sh --stage=test      # test only
+bash .pi/scripts/local-ci.sh --stage=security  # security only
+bash .pi/scripts/local-ci.sh --stage=docs      # documentation only
+bash .pi/scripts/local-ci.sh --stage=integration  # integration only
+
+# Run a specific crate
+bash .pi/scripts/local-ci.sh --crate=engine
+bash .pi/scripts/local-ci.sh --crate=cli
+bash .pi/scripts/local-ci.sh --crate=actions
+
+# Quick mode — skip release builds, use cargo check instead
+bash .pi/scripts/local-ci.sh --quick
+
+# Save report to a file (auto-gitignored under .pi/output/)
+bash .pi/scripts/local-ci.sh --save
+
+# List all 193 discoverable CI scripts across all crates
+bash .pi/scripts/local-ci.sh --list
+
 # On failure, the report ends with a summary of exactly which steps failed
 # and why — no scrolling through 2 minutes of output to find the error.
+```
 
 ---
 
