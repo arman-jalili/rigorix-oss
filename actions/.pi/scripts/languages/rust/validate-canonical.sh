@@ -107,10 +107,10 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- ADR Linkage ---"
-if [ -d ".pi/architecture/decisions" ]; then
+if [ -d ".pi/architecture/decisions" ] || [ -d "../.pi/architecture/decisions" ]; then
     ADR_FILES=$(find .pi/architecture/decisions -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
     if [ "$ADR_FILES" -gt 0 ]; then
-        ADR_REFS=$(grep -rE '///\s*ADR-' src/ 2>/dev/null | wc -l | tr -d ' ')
+        ADR_REFS=$(grep -rE '///\s*ADR-' src/ 2>/dev/null | wc -l | tr -d ' ' || true)
         if [ "$ADR_REFS" -gt 0 ]; then
             pass "ADR references found in code ($ADR_REFS references)"
         else

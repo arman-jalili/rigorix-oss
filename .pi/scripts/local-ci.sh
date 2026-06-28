@@ -181,7 +181,7 @@ if should_run "security"; then
         done < <(grep -rE "(sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16})" \
             --include="*.rs" --include="*.toml" --include="*.yml" --include="*.yaml" \
             --include="*.env" --include="*.sh" "$crate/" 2>/dev/null \
-            | grep -v ".git" | grep -v ".rigorix" | grep -v "ghp_secret12345" || true)
+            | grep -v ".git" | grep -v ".rigorix" | grep -v "ghp_secret12345" | grep -v "AKIAIOSFODNN7EXAMPLE" || true)
     done
     if [[ "$secrets_found" == "false" ]]; then pass "secret scan"; else fail "secret scan"; fi
     # Per-crate security scripts

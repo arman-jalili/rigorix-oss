@@ -161,7 +161,7 @@ if [ -n "$ADR_DIRS" ]; then
     if [ "$ADR_FILES" -gt 0 ]; then
         ADR_REFS=0
         for d in $SRC_DIRS; do
-            count=$(grep -rE '///\s*ADR-' "$d" 2>/dev/null | wc -l | tr -d ' ')
+            count=$(grep -rE '///\s*ADR-' "$d" 2>/dev/null | wc -l | tr -d ' ' || true)
             ADR_REFS=$((ADR_REFS + count))
         done
         if [ "$ADR_REFS" -gt 0 ]; then

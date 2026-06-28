@@ -62,8 +62,10 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Module-to-Implementation Mapping ---"
-if [ -d ".pi/architecture/modules" ]; then
-    MODULE_FILES=$(find .pi/architecture/modules -name "*.md" 2>/dev/null)
+if [ -d ".pi/architecture/modules" ] || [ -d "../.pi/architecture/modules" ]; then
+    MODULES_DIR=".pi/architecture/modules"
+    [ ! -d "$MODULES_DIR" ] && MODULES_DIR="../.pi/architecture/modules"
+    MODULE_FILES=$(find "$MODULES_DIR" -name "*.md" 2>/dev/null)
     MAPPED=0
     TOTAL_MODULES=0
     for mf in $MODULE_FILES; do
@@ -107,10 +109,10 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- ADR Linkage ---"
-if [ -d ".pi/architecture/decisions" ]; then
+if [ -d ".pi/architecture/decisions" ] || [ -d "../.pi/architecture/decisions" ]; then
     ADR_FILES=$(find .pi/architecture/decisions -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
     if [ "$ADR_FILES" -gt 0 ]; then
-        ADR_REFS=$(grep -rE '///\s*ADR-' src/ 2>/dev/null | wc -l | tr -d ' ')
+        ADR_REFS=$(grep -rE '///\s*ADR-' src/ 2>/dev/null | wc -l | tr -d ' ' || true)
         if [ "$ADR_REFS" -gt 0 ]; then
             pass "ADR references found in code ($ADR_REFS references)"
         else
