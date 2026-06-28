@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Feature request or bug report
+    url: https://github.com/arman-jalili/rigorix-oss/discussions/new?category=ideas
+    about: Start a discussion to propose a feature or report a bug. The maintainers will convert it to an issue using the Guardian issue template (.pi/prompts/issue-template.md) once scoped.
+  - name: Architecture proposal
+    url: https://github.com/arman-jalili/rigorix-oss/discussions/new?category=architecture
+    about: Propose an architecture change. See .pi/architecture/CHANGELOG.md for the change process.
+  - name: Security vulnerability
+    about: Report a security vulnerability privately (do not open a public issue). See SECURITY.md.
+    url: https://github.com/arman-jalili/rigorix-oss/security/advisories/new

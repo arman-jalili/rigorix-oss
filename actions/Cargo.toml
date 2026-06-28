@@ -5,6 +5,7 @@ edition = "2024"
 description = "GitHub Actions integration for Rigorix — thin adapter over rigorix-engine"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/arman-jalili/rigorix-oss"
+documentation = "https://docs.rs/rigorix-actions"
 
 [[bin]]
 name = "rigorix-action"

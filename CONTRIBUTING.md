@@ -48,15 +48,30 @@ All modules follow **Clean Architecture** with frozen contracts:
 
 ### 2. Create an Issue
 
-For any non-trivial change, create a GitHub issue first. Use the issue template:
+For any non-trivial change, start a [GitHub Discussion](https://github.com/arman-jalili/rigorix-oss/discussions) in the Ideas or Architecture category. The maintainers will scope it using the Guardian issue template (`.pi/prompts/issue-template.md`) and convert it to a tracked issue.
 
-```bash
-# Run the issue drafting workflow (see .pi/prompts/issue-draft.md)
-```
+For a deeper understanding of how issues are structured, see:
+- [Issue template](.pi/prompts/issue-template.md) — Guardian contract format
+- [Issue drafting workflow](.pi/prompts/issue-draft.md) — Full drafting process
 
 ### 3. Code Quality Standards
 
 All code must pass before merging:
+
+```bash
+# Full local CI (86 checks — lint, build, test, security, docs, integration)
+bash .pi/scripts/local-ci.sh
+
+# Or run specific stages
+bash .pi/scripts/local-ci.sh --stage=lint      # formatting + clippy
+bash .pi/scripts/local-ci.sh --stage=test      # cargo test + proofing scripts
+bash .pi/scripts/local-ci.sh --stage=security  # audit + secret scan
+
+# Quick mode (skip release builds)
+bash .pi/scripts/local-ci.sh --quick
+```
+
+Individual checks:
 
 ```bash
 # Lint — zero warnings required
@@ -88,6 +103,8 @@ Examples:
 
 ### 5. Feature Development
 
+Every feature must be implemented through the **Guardian framework** for consistency. Guardian enforces architecture-first development: canonical module specs drive epics, epics drive scoped issues, and issues drive validated implementations. This ensures every change is traceable back to architecture and verified by proof scripts before merge.
+
 For complex features, follow the [Feature Development Workflow](.pi/prompts/feature-development.md):
 
 1. **Coordinator** — Classifies scope, spawns validators
@@ -96,6 +113,31 @@ For complex features, follow the [Feature Development Workflow](.pi/prompts/feat
 4. **Developer** — Implements against approved plan
 5. **Post-Code Checks** — Automated validation scripts
 6. **CI/MR** — Creates merge request
+
+### 6. Pull Request Requirements
+
+Every PR must include **proof scripts** that verify the feature is implemented correctly and is acceptable for merge. Proof scripts are automated validation stages that run as part of CI/CD and `local-ci.sh`.
+
+#### Proof script requirements
+
+| Requirement | What it means |
+|-------------|---------------|
+| **Proof scripts exist** | Each affected bounded context must have a proofing script at `<crate>/.pi/scripts/ci/stage_<context>_proofing.sh` |
+| **Proof scripts pass** | All proofing scripts must pass in `local-ci.sh --stage=test` and in CI/CD |
+| **Issue proofing doc** | Each issue references its proofing strategy in `<crate>/.pi/issues/issue-proofing.md` |
+| **Architecture traceability** | Implementation references canonical module specs and ADRs, verified by `validate-canonical.sh` |
+
+#### Merge gate checklist
+
+Before marking a PR as ready for review, confirm:
+
+- [ ] `bash .pi/scripts/local-ci.sh` passes locally (all stages)
+- [ ] CI/CD pipeline is green on the PR branch
+- [ ] Proof scripts exist for every bounded context touched by the change
+- [ ] Proof scripts pass and produce clear pass/fail output
+- [ ] Architecture conformance verified (`validate-canonical.sh`, `validate-architecture.sh`)
+- [ ] Security scan passes (`cargo audit` + secret scan)
+- [ ] No hardcoded secrets, API keys, or tokens in any file
 
 ---
 

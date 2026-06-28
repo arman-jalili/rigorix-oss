@@ -1,8 +1,8 @@
 # Rigorix
 
 [![Crates.io](https://img.shields.io/badge/crate-rigorix-blue)](https://crates.io/crates/rigorix)
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-green)]()
-[![CI](https://img.shields.io/badge/CI-passing-brightgreen)]()
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-green)](LICENSE-MIT)
+[![CI](https://github.com/arman-jalili/rigorix-oss/actions/workflows/ci.yml/badge.svg)](https://github.com/arman-jalili/rigorix-oss/actions/workflows/ci.yml)
 [![Rust](https://img.shields.io/static/v1?label=rust&message=2024%20edition&color=orange)](https://doc.rust-lang.org/edition-guide/rust-2024/index.html)
 
 **A deterministic coding-agent runtime for repeatable, auditable AI software engineering.**

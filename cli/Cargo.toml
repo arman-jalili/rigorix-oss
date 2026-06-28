@@ -5,6 +5,7 @@ edition = "2024"
 description = "Template-driven DAG execution CLI — thin wrapper around rigorix-engine"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/arman-jalili/rigorix-oss"
+documentation = "https://docs.rs/rigorix-cli"
 
 [lib]
 name = "rigorix"
