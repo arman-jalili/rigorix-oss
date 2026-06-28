@@ -57,6 +57,8 @@ Rigorix is designed for **deterministic, auditable, safely-bounded automation** 
 
 ---
 
+The example below shows the generated execution graph before anything is modified. The user can inspect the plan and choose whether to execute it.
+
 <video src="rigorix-demo.mov" controls width="720"></video>
 
 *🎥 Demo: Rigorix planning and executing a TypeScript refactor — reading code, generating a patch, type-checking, and running tests.*
