@@ -42,11 +42,27 @@ echo "--- Architecture Reference Tracing ---"
 CANONICAL_REFS=0
 TOTAL_RS=0
 
-# Count all Rust source files
-TOTAL_RS=$(find src -name "*.rs" 2>/dev/null | wc -l | tr -d ' ')
+# Count all Rust source files (workspace: check src/, engine/src/, cli/src/, actions/src/)
+SRC_DIRS=""
+for d in src engine/src cli/src actions/src; do
+    if [ -d "$d" ]; then
+        SRC_DIRS="$SRC_DIRS $d"
+    fi
+done
+
+TOTAL_RS=0
+for d in $SRC_DIRS; do
+    count=$(find "$d" -name "*.rs" 2>/dev/null | wc -l | tr -d ' ')
+    TOTAL_RS=$((TOTAL_RS + count))
+done
+
 if [ "$TOTAL_RS" -gt 0 ]; then
     # Look for canonical reference patterns in doc comments
-    CANONICAL_REFS=$(grep -rE '(///\s*Canonical:|//!\s*@canonical|///\s*Reference:)' src/ 2>/dev/null | wc -l | tr -d ' ')
+    CANONICAL_REFS=0
+    for d in $SRC_DIRS; do
+        count=$(grep -rE '(///\s*Canonical:|//!\s*@canonical|///\s*Reference:)' "$d" 2>/dev/null | wc -l | tr -d ' ')
+        CANONICAL_REFS=$((CANONICAL_REFS + count))
+    done
     if [ "$CANONICAL_REFS" -gt 0 ]; then
         PCT=$((CANONICAL_REFS * 100 / TOTAL_RS))
         pass "Canonical references found: ${CANONICAL_REFS} files (${PCT}% of ${TOTAL_RS} Rust files)"
@@ -67,10 +83,22 @@ if [ -d ".pi/architecture/modules" ]; then
     MAPPED=0
     TOTAL_MODULES=0
     for mf in $MODULE_FILES; do
-        TOTAL_MODULES=$((TOTAL_MODULES + 1))
         MODULE_NAME=$(basename "$mf" .md)
+        # Skip template files
+        if [[ "$MODULE_NAME" == *template* ]] || [[ "$MODULE_NAME" == *template* ]]; then
+            continue
+        fi
+        TOTAL_MODULES=$((TOTAL_MODULES + 1))
         # Check if a matching Rust file exists (exact match or containing module name)
-        if find src -name "*${MODULE_NAME}*" -name "*.rs" 2>/dev/null | grep -q .; then
+        # Check in all possible source directories
+        MODULE_FOUND=false
+        for d in $SRC_DIRS; do
+            if find "$d" -name "*${MODULE_NAME}*" -name "*.rs" 2>/dev/null | grep -q .; then
+                MODULE_FOUND=true
+                break
+            fi
+        done
+        if [ "$MODULE_FOUND" = true ]; then
             MAPPED=$((MAPPED + 1))
         fi
     done
@@ -91,7 +119,11 @@ fi
 echo ""
 echo "--- Module Documentation ---"
 if [ "$TOTAL_RS" -gt 0 ]; then
-    MOD_DOCS=$(grep -rlE '^//!\s' src/ 2>/dev/null | wc -l | tr -d ' ')
+    MOD_DOCS=0
+    for d in $SRC_DIRS; do
+        count=$(grep -rlE '^//!\s' "$d" 2>/dev/null | wc -l | tr -d ' ')
+        MOD_DOCS=$((MOD_DOCS + count))
+    done
     if [ "$MOD_DOCS" -gt 0 ]; then
         PCT=$((MOD_DOCS * 100 / TOTAL_RS))
         pass "Module documentation found in ${MOD_DOCS}/${TOTAL_RS} files (${PCT}%)"
@@ -110,7 +142,11 @@ echo "--- ADR Linkage ---"
 if [ -d ".pi/architecture/decisions" ]; then
     ADR_FILES=$(find .pi/architecture/decisions -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
     if [ "$ADR_FILES" -gt 0 ]; then
-        ADR_REFS=$(grep -rE '///\s*ADR-' src/ 2>/dev/null | wc -l | tr -d ' ')
+        ADR_REFS=0
+        for d in $SRC_DIRS; do
+            count=$(grep -rE '///\s*ADR-' "$d" 2>/dev/null | wc -l | tr -d ' ')
+            ADR_REFS=$((ADR_REFS + count))
+        done
         if [ "$ADR_REFS" -gt 0 ]; then
             pass "ADR references found in code ($ADR_REFS references)"
         else
