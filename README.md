@@ -236,7 +236,7 @@ rigorix plan "Add error handling to the parser"
 ```
 rigorix-oss/
 ├── engine/              # Core library — all business logic
-│   ├── src/             # 30 modules (27 Clean Architecture bounded contexts)
+│   ├── src/             # Core engine (planning, execution, tools, governance)
 │   └── .pi/             # Architecture docs, ADRs, diagrams
 ├── cli/                 # CLI binary — thin wrapper over engine
 │   ├── src/cli_boundary/# Flag-based CLI (Clap, dispatch, config)
