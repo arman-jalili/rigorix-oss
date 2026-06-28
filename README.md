@@ -100,6 +100,8 @@ nodes:
 
 When a user runs `rigorix plan "Extract docs from src/api.ts"`, Rigorix classifies the intent, maps it to this template, prompts the LLM to fill `file_path`, and builds the 3-node DAG. The LLM generates the doc content; the template controls the flow.
 
+When no existing template matches the intent — or confidence is low — Rigorix prompts the LLM to generate a new template dynamically. The new template is cached and available for future runs, so the system learns from each novel request without requiring manual template authoring.
+
 ---
 
 The example below shows the generated execution graph before anything is modified. The user can inspect the plan and choose whether to execute it.
