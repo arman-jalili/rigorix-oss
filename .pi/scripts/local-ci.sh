@@ -243,7 +243,7 @@ echo -e "╚══════════════════════�
 echo "  ✅ Passed:  $PASSED"
 echo "  ❌ Failed:  $FAILED"
 echo "  ⏭  Skipped: $SKIPPED"
-echo "  Total:   $((PASSED + FAILED + SKIPPED))"
+echo "  Steps:   $((PASSED + FAILED + SKIPPED))"
 echo "  Time:    ${MINS}m ${SECS}s"
 echo ""
 if [[ $FAILED -gt 0 ]]; then
