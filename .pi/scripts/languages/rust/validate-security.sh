@@ -63,7 +63,7 @@ echo "--- SQL Injection ---"
 SQL_INJECT=0
 if grep -qE 'sqlx' Cargo.toml 2>/dev/null; then
     # Check for unsafe query patterns: format! inside query! or query()
-    SQL_INJECT=$(grep -rE 'query\s*\(\s*(format!|format_args!)' src/ --include="*.rs" 2>/dev/null | wc -l | tr -d ' ')
+    SQL_INJECT=$(grep -rE 'query\s*\(\s*(format!|format_args!)' src/ --include="*.rs" 2>/dev/null | wc -l | tr -d ' ') || true
 fi
 if [ "$SQL_INJECT" -gt 0 ]; then
     fail "Potential SQL injection patterns found ($SQL_INJECT occurrences — avoid format! inside query)"
@@ -98,7 +98,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Unsafe Code ---"
-UNSAFE_BLOCKS=$(grep -rE 'unsafe\s*\{' --include="*.rs" src/ 2>/dev/null | wc -l | tr -d ' ')
+UNSAFE_BLOCKS=$(grep -rE 'unsafe\s*\{' --include="*.rs" src/ 2>/dev/null | wc -l | tr -d ' ') || true
 if [ "$UNSAFE_BLOCKS" -gt 0 ]; then
     warn "Unsafe code blocks found ($UNSAFE_BLOCKS occurrences — recommend manual audit)"
 else

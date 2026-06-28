@@ -112,11 +112,11 @@ for pair in "${COMPONENTS[@]}"; do
     FULL_PATH="$PV_TEST_DIR/domain/$FILE"
     APP_PATH="$PV_TEST_DIR/application/$FILE"
 
-    if [ -f "$FULL_PATH" ] && grep -q "#\[test\]" "$FULL_PATH" 2>/dev/null; then
-        FILE_TEST_COUNT=$(grep -c "#\[test\]" "$FULL_PATH" 2>/dev/null || echo 0)
+    if [ -f "$FULL_PATH" ] && grep -qE "#\[test\]|#\[tokio::test\]" "$FULL_PATH" 2>/dev/null; then
+        FILE_TEST_COUNT=$(grep -cE "#\[test\]|#\[tokio::test\]" "$FULL_PATH" 2>/dev/null || echo 0)
         log_pass "$NAME tests in domain/$FILE ($FILE_TEST_COUNT tests)"
-    elif [ -f "$APP_PATH" ] && grep -q "#\[test\]" "$APP_PATH" 2>/dev/null; then
-        FILE_TEST_COUNT=$(grep -c "#\[test\]" "$APP_PATH" 2>/dev/null || echo 0)
+    elif [ -f "$APP_PATH" ] && grep -qE "#\[test\]|#\[tokio::test\]" "$APP_PATH" 2>/dev/null; then
+        FILE_TEST_COUNT=$(grep -cE "#\[test\]|#\[tokio::test\]" "$APP_PATH" 2>/dev/null || echo 0)
         log_pass "$NAME tests in application/$FILE ($FILE_TEST_COUNT tests)"
     else
         log_fail "$NAME has no tests"

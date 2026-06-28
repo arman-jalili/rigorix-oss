@@ -77,9 +77,10 @@ for entity in "ParallelExecutorConfig" "NodeExecutionState" "NodeStatus" "TaskRe
               "RetryPolicy" "RetryStrategy" "BackoffStrategy" "RetryDecision" "FailureContext" \
               "ExecutionError" "ExecutionEngineEvent"; do
     ((entities_total++))
-    # Check both direct reference and import via use statements
+    # Check across all files in the module (inline #[cfg(test)] mod tests blocks)
     if grep -q "$entity" "$test_file" 2>/dev/null || \
-       grep -q "$entity" "$MODULE_DIR/tests.rs" 2>/dev/null; then
+       grep -q "$entity" "$MODULE_DIR/tests.rs" 2>/dev/null || \
+       grep -r "$entity" "$MODULE_DIR/" --include="*.rs" 2>/dev/null | grep -q "#\[cfg(test)\]\|#\[test\]\|#\[tokio::test\]" 2>/dev/null; then
         ((entities_tested++))
         log_pass "$entity is covered in tests"
     else
