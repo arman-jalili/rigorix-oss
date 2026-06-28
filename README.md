@@ -135,9 +135,9 @@ The example below shows the generated execution graph before anything is modifie
 <summary>📋 CLI output (what the TUI shows step by step)</summary>
 
 ````
-$ rigorix-cli plan "Add a method to TaskList class in src/task.ts that returns only active tasks"
+$ rigorix-cli plan  "Add a method to TaskList class in src/task.ts that returns only active tasks"
 Plan: Add a method to TaskList class in src/task.ts that returns only active tasks (confidence 100%)
-  Template: add-get-active-tasks-method | LLM: 2 calls, 1120 tokens
+  Template: add-get-active-tasks-method | LLM: 2 calls, 1141 tokens
   Parameters:
     ├── file_path: "src/task.ts"
   Graph: 5 node(s), sealed=true
@@ -148,10 +148,10 @@ Plan: Add a method to TaskList class in src/task.ts that returns only active tas
     · Run extended task list tests ← [Type-check with tsc, Write extended task list test file]
 
 Run this plan now? [y/N]: y
-2026-06-24T09:39:50.388314Z  INFO run: rigorix_engine::orchestrator::application::orchestrator_impl: Starting orchestrator run …
-2026-06-24T09:39:58.392877Z  INFO run: rigorix_engine::orchestrator::application::orchestrator_impl: Orchestrator run completed … status=Completed
+2026-06-28T16:40:38.139935Z  INFO run: rigorix_engine::orchestrator::application::orchestrator_impl: Starting orchestrator run execution_id=019f0f1a-bbfb-7722-8c43-e3232eb88f9b
+2026-06-28T16:40:46.026763Z  INFO run: rigorix_engine::orchestrator::application::orchestrator_impl: Orchestrator run completed execution_id=019f0f1a-bbfb-7722-8c43-e3232eb88f9b status=Completed
 Run: Completed — 0 failed, 5 passed, 0 skipped (5 total)
-  Template: add-get-active-tasks-method | LLM: 2 calls, 1089 tokens
+  Template: add-get-active-tasks-method | LLM: 2 calls, 1210 tokens
 
   ✓ Read current task.ts file — Success
   ✓ Insert getActiveTasks method after activeCount — Success
@@ -161,6 +161,8 @@ Run: Completed — 0 failed, 5 passed, 0 skipped (5 total)
 ````
 
 </details>
+
+Rigorix currently supports Rust, TypeScript, Python, and Go as target codebases. TypeScript is the most mature integration today (it has a working failure-compiler step); the others are functional but earlier-stage.
 
 ---
 
