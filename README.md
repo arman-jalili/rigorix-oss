@@ -131,6 +131,8 @@ The example below shows the generated execution graph before anything is modifie
 
 *🎥 Demo: Rigorix planning and executing a TypeScript refactor — reading code, generating a patch, type-checking, and running tests.*
 
+CLI output from the same DAG shown in the TUI above:
+
 ````
 $ rigorix-cli plan  "Add a method to TaskList class in src/task.ts that returns only active tasks"
 Plan: Add a method to TaskList class in src/task.ts that returns only active tasks (confidence 100%)
