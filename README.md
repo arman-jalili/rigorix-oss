@@ -9,6 +9,8 @@
 
 Rigorix compiles natural-language development tasks into executable Directed Acyclic Graphs (DAGs). Instead of relying on an open-ended agent loop, it separates planning from execution: the execution plan is generated, validated, and then executed within configurable policy, permission, and budget constraints. The result is AI-assisted software engineering that is repeatable, inspectable, and suitable for automated environments such as CI/CD.
 
+The LLM generates code; Rigorix governs execution.
+
 Rigorix operates through three modes:
 
 - **CLI** (`rigorix`) — Interactive TUI + flag-based scripting for local development
@@ -39,21 +41,23 @@ This approach makes tradeoffs. Rigorix is not as flexible as a free-form agent l
 
 **Rigorix achieves this through bounded autonomy:** every execution is constrained by configurable risk policies, permission rules, execution budgets, and quality gates. The model is intentionally restrictive: the LLM decides what to generate within the execution graph, while Rigorix determines what is allowed to happen.
 
----
-
-## How It Compares
-
-| Dimension | Rigorix | Claude Code | Copilot / Cursor | Aider | SWE-Agent |
-|-----------|---------|-------------|------------------|-------|-----------|
-| **Execution model** | Template-driven DAG (bounded, deterministic) | Stateful agent loop| Agent loop (Cursor) / inline completions (Copilot) | Agent loop (file-by-file, git context) | Agent loop (stateless per instance) |
-| **Code generation** | Structured: classify → extract → generate → validate → hash | LLM edits files + runs shell commands | Inline completions + agentic edits (Cursor) | Diff-based patches via LLM | Shell commands from agent |
-| **Safety** | Risk gating, enforcement caps, budget tracking, permission policies | Permission prompts, `--mode` (auto/plan/ask), project-level settings.json | Cursor: permission prompts for agent mode. Copilot: GitHub code scanning | Git auto-commits for rollback, `--lint` integration, read-only file designation | Docker sandbox for execution isolation |
-| **PR governance** | Built-in (policy.toml: deny/review/flag) | External CI required | ✗ (Copilot Review has code-review suggestions, not governance) | ✗ | ✗ |
-| **Audit** | HMAC-signed audit envelopes with circuit breaker | ✗ (conversation history only) | ✗ (conversation history only) | ✗ (git log only) | ✗ (ephemeral containers) |
-| **Quality gates** | Post-execution GreenContract evaluation | ✗ (implicit — retries on error) | ✗ | ✗ (lint-then-fix is a gating step, but ad-hoc) | ✗ |
-| **Self-correcting** | Validate loop (plan → execute → verify → repeat) | Agent loop retries on compilation/runtime errors | ✗ (Cursor) / Copilot code scanning alerts | Lint-then-fix loop (error → fix → re-lint) | Agent loop retries on errors |
-
-Rigorix is designed for **deterministic, auditable, safely-bounded automation** — not open-ended agent loops. If you need a code assistant that chats with you, use Claude Code or Aider. If you need a CI/CD pipeline that enforces policies and generates auditable code changes, use Rigorix.
+```
+ Natural language task
+        ↓
+ Classifier — maps intent to a template
+        ↓
+ Template — defines the execution structure
+        ↓
+ Parameters — extracted from the task
+        ↓
+ DAG — deterministic execution graph
+        ↓
+ Execution — tools, retry, recovery
+        ↓
+ Validation — quality gates, policies
+        ↓
+ Audit — signed, timestamped record
+```
 
 ---
 
@@ -100,9 +104,24 @@ nodes:
       content: "{{ extract_docs.output }}"
 ```
 
-When a user runs `rigorix plan "Extract docs from src/api.ts"`, Rigorix classifies the intent, maps it to this template, prompts the LLM to fill `file_path`, and builds the 3-node DAG. The LLM generates the doc content; the template controls the flow.
+When a user runs `rigorix plan "Extract docs from src/api.ts"`, Rigorix classifies the intent, maps it to this template, prompts the LLM to fill `file_path`, and builds the 3-node DAG. **The LLM generates the doc content; the template controls the flow.**
 
-When no existing template matches the intent — or confidence is low — Rigorix prompts the LLM to generate a new template dynamically. The new template is cached and available for future runs, so the system learns from each novel request without requiring manual template authoring.
+When no existing template matches the intent — or confidence is low — Rigorix prompts the LLM to generate a new template dynamically. Generated templates can be cached and reused for future executions, reducing the need to regenerate common workflows.
+
+---
+
+## How Rigorix Compares
+
+| Dimension | Rigorix | Claude Code | Copilot / Cursor | Aider | SWE-Agent |
+|-----------|---------|-------------|------------------|-------|-----------|
+| **Execution** | Template-driven DAG | Agent loop | Agent loop | Agent loop | Agent loop |
+| **Safety** | Risk gating, budgets, permissions | Permission prompts | Permission prompts (Cursor) | Git auto-commit | Docker sandbox |
+| **PR governance** | Built-in policy.toml | External CI | ✗ | ✗ | ✗ |
+| **Audit** | HMAC-signed envelopes | Conversation history | Conversation history | Git log | Ephemeral containers |
+| **Quality gates** | Post-execution validation | ✗ | ✗ | ✗ | ✗ |
+| **Self-correcting** | Validate loop (plan → verify → fix) | Retry loop | ✗ | Lint-then-fix loop | Retry loop |
+
+Rigorix is designed for **deterministic, auditable, safely-bounded automation** — not open-ended agent loops. If you need a code assistant that chats with you, use Claude Code or Aider. If you need a CI/CD pipeline that enforces policies and generates auditable code changes, use Rigorix.
 
 ---
 
@@ -298,7 +317,7 @@ bash .pi/scripts/local-ci.sh --quick
 # Save report to a file (auto-gitignored under .pi/output/)
 bash .pi/scripts/local-ci.sh --save
 
-# List all 193 discoverable CI scripts across all crates
+# List all available CI validation scripts
 bash .pi/scripts/local-ci.sh --list
 
 # On failure, the report ends with a summary of exactly which steps failed
