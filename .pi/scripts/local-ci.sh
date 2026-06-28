@@ -125,10 +125,10 @@ if [[ "$LIST_ONLY" == "true" ]]; then
     done
     echo ""
     info "Total crates: ${#CRATES[@]}"
-    info "Root scripts: $(find .pi/scripts -name '*.sh' -not -path '*/languages/*' | wc -l)"
+    info "Root scripts: $(find .pi/scripts -name '*.sh' -not -path '*/languages/*' | wc -l | tr -d ' ')"
     for crate in engine cli actions; do
-        local count=$(find "$crate/.pi/scripts/ci" -name "*.sh" 2>/dev/null | wc -l | tr -d ' ')
-        info "${crate} CI scripts: ${count}"
+        count=$(find "$crate/.pi/scripts/ci" -name "*.sh" 2>/dev/null | wc -l | tr -d ' ')
+        info "${crate} CI scripts: ${count:-0}"
     done
     exit 0
 fi
@@ -226,9 +226,8 @@ if should_run "security"; then
     fi
 
     subheader "Secret Scan"
-    local secrets_found=false
+    secrets_found=false
     for crate in "${CRATES[@]}"; do
-        local results
         results=$(grep -rE "(sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16})" \
             --include="*.rs" --include="*.toml" --include="*.yml" --include="*.yaml" \
             --include="*.env" --include="*.sh" "$crate/" 2>/dev/null \

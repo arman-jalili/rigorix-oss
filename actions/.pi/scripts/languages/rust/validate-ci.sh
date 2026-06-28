@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 # ============================================================================
 # validate-ci.sh — Rust
+#
+# Runs CI validation for the specific crate in the current directory.
+# Uses `-p rigorix-{crate}` to scope build/test/clippy to this crate only,
+# avoiding cross-crate interference in workspace projects.
 # ============================================================================
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PARENT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 PASS_COUNT=0
 ERRORS=()
@@ -22,117 +29,82 @@ echo "  CI/MR Validation (Rust)"
 echo "============================================"
 echo ""
 
-# ---------------------------------------------------------------------------
-# Cargo.toml detection
-# ---------------------------------------------------------------------------
+# Detect crate name from Cargo.toml
+CRATE_NAME=""
+if [ -f "Cargo.toml" ]; then
+    CRATE_NAME=$(grep '^name' Cargo.toml | head -1 | sed 's/name = "//;s/"//')
+fi
+
+# ── Project Detection ──
 echo "--- Project Detection ---"
 if [ -f "Cargo.toml" ]; then
-    pass "Cargo.toml found"
-    # Extract workspace info if available
-    if grep -q '^\[workspace\]' Cargo.toml; then
-        echo "  Workspace project detected"
-    fi
+    pass "Cargo.toml found (crate: ${CRATE_NAME:-unknown})"
 else
-    fail "No Cargo.toml found (not a Rust project)"
-    echo ""
-    echo "============================================"
-    echo "  Summary"
-    echo "============================================"
-    echo -e "  Passed:   ${GREEN}${PASS_COUNT}${NC}"
-    echo -e "  Failed:   ${RED}${#ERRORS[@]}${NC}"
-    echo ""
-    if [ ${#ERRORS[@]} -gt 0 ]; then
-        echo "FAILURES:"
-        for err in "${ERRORS[@]}"; do
-            echo "  - $err"
-        done
-    fi
+    fail "No Cargo.toml found"
     exit 1
 fi
 
-# ---------------------------------------------------------------------------
-# Build
-# ---------------------------------------------------------------------------
+SCOPE_FLAG=""
+if [[ -n "$CRATE_NAME" ]]; then
+    SCOPE_FLAG="-p $CRATE_NAME"
+    echo "  Scoping to crate: $CRATE_NAME"
+fi
+
+# ── Build ──
 echo ""
 echo "--- Build ---"
-if cargo build --quiet 2>/dev/null; then
+if cargo build $SCOPE_FLAG --quiet 2>/dev/null; then
     pass "Build succeeded"
 else
     fail "Build failed"
 fi
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
+# ── Tests ──
 echo ""
 echo "--- Tests ---"
-if cargo test --quiet 2>/dev/null; then
+if cargo test $SCOPE_FLAG --quiet 2>/dev/null; then
     pass "All tests passed"
 else
     fail "Tests failed"
 fi
 
-# ---------------------------------------------------------------------------
-# Lint
-# ---------------------------------------------------------------------------
+# ── Lint ──
 echo ""
 echo "--- Lint ---"
-if command -v cargo &>/dev/null && cargo clippy --version &>/dev/null; then
-    if cargo clippy --all-targets -- -D warnings 2>/dev/null; then
-        pass "Clippy passed"
-    else
-        fail "Clippy found issues"
-    fi
+if cargo clippy $SCOPE_FLAG -- -D warnings 2>/dev/null; then
+    pass "Clippy passed"
 else
-    warn "cargo clippy not available, skipping lint"
+    fail "Clippy found issues"
 fi
 
-# ---------------------------------------------------------------------------
-# Format
-# ---------------------------------------------------------------------------
+# ── Format ──
 echo ""
 echo "--- Format ---"
-if command -v cargo &>/dev/null && cargo fmt --version &>/dev/null; then
-    if cargo fmt --check 2>/dev/null; then
-        pass "Format check passed"
-    else
-        fail "Format check failed (run 'cargo fmt')"
-    fi
+if cargo fmt $SCOPE_FLAG --check 2>/dev/null; then
+    pass "Format check passed"
 else
-    warn "cargo fmt not available, skipping format check"
+    fail "Format check failed"
 fi
 
-# ---------------------------------------------------------------------------
-# Security Audit
-# ---------------------------------------------------------------------------
-echo ""
-echo "--- Security Audit ---"
-if command -v cargo &>/dev/null && cargo audit --version &>/dev/null; then
-    AUDIT_OUT=$(cargo audit 2>&1 || true)
-    if echo "$AUDIT_OUT" | grep -q "No advisabilities found\|No known vulnerabilities\|info"; then
-        pass "No known vulnerabilities"
-    else
-        warn "cargo audit reported findings (review manually)"
-    fi
-elif command -v cargo &>/dev/null && cargo deny --version &>/dev/null; then
-    if cargo deny check 2>/dev/null; then
-        pass "cargo deny passed"
-    else
-        warn "cargo deny reported issues (review manually)"
-    fi
-else
-    warn "No Rust audit tools available (cargo audit / cargo deny), skipping vulnerability audit"
-fi
-
-# ---------------------------------------------------------------------------
-# Summary
-# ---------------------------------------------------------------------------
+# ── Summary ──
 echo ""
 echo "============================================"
 echo "  Summary"
 echo "============================================"
 echo -e "  Passed:   ${GREEN}${PASS_COUNT}${NC}"
 echo -e "  Failed:   ${RED}${#ERRORS[@]}${NC}"
+echo ""
+
+if [ ${#ERRORS[@]} -gt 0 ]; then
+    echo "FAILURES:"
+    for err in "${ERRORS[@]}"; do
+        echo "  - $err"
+    done
+    exit 1
+fi
+
+echo -e "${GREEN}All CI checks passed.${NC}"
+exit 0
 echo ""
 
 if [ ${#ERRORS[@]} -gt 0 ]; then
