@@ -53,7 +53,7 @@ fi
 # ── Build ──
 echo ""
 echo "--- Build ---"
-if cargo build $SCOPE_FLAG --quiet 2>/dev/null; then
+if cargo build $SCOPE_FLAG 2>/dev/null; then
     pass "Build succeeded"
 else
     fail "Build failed"
@@ -62,7 +62,7 @@ fi
 # ── Tests ──
 echo ""
 echo "--- Tests ---"
-if cargo test $SCOPE_FLAG --quiet 2>/dev/null; then
+if cargo test $SCOPE_FLAG 2>/dev/null; then
     pass "All tests passed"
 else
     fail "Tests failed"
