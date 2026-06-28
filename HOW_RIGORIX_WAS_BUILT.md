@@ -73,9 +73,6 @@ Active   Date    Commits  What was built
  10    Jun 27      23    Final polish: CI pipeline workflows,
                           demo video, contract-freeze refactoring,
                           dependency alignment, README finalization
-                         ─────────────────────────────────────
-                           June 22–26: no commits (gap)
-                         ─────────────────────────────────────
  11    Jun 28      34    CI fix marathon: 37→0 failures across 86
                           steps — ((PASS++)) root cause in 47 scripts,
                           contract checker path drift, coverage checker
@@ -250,7 +247,7 @@ Seven self-contained bash validators enforce policy without external dependencie
 
 ### 6. Architectural Governance
 
-Every architectural decision is documented in **ADR format** (8 decisions):
+Every architectural decision is documented in **ADR format** (18 decisions):
 
 | ADR | Decision |
 |-----|----------|
@@ -347,8 +344,8 @@ $ git log --all --format="%ai" | sort | tail -1
 | Preflight | `.github/workflows/preflight.yml` | <3 min, runs on every PR |
 | Hardening | `.github/workflows/hardening.yml` | 10 stages, runs on main |
 | Release | `.github/workflows/release.yml` | Tag-based crates.io + GitHub release |
-| ADRs | `.pi/architecture/decisions/` | 8 decisions documented |
-| Module specs | `.pi/architecture/modules/` | 42 module contracts |
+| ADRs | `.pi/architecture/decisions/` | 18 decisions documented |
+| Module specs | `.pi/architecture/modules/` | 38 module contracts |
 | Validation scripts | `.pi/scripts/validate-*.sh` | 7 standalone validators |
 | Merge script | `.pi/scripts/merge-mr.sh` | Squash merge via gh CLI |
 | MR validation | `.pi/scripts/mr-validation.sh` | Pre-merge gate |
