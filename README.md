@@ -61,6 +61,8 @@ Rigorix is designed for **deterministic, auditable, safely-bounded automation** 
 
 Templates encode repeatable engineering workflows. Instead of asking the model to rediscover how to perform a common task each time, Rigorix selects an appropriate template, extracts parameters, builds an execution graph, and lets the LLM focus on generating code within that structure.
 
+Repeatable means the same intent produces the same execution structure under the same templates and policies. The generated code may differ, but the workflow, validation steps, and governance remain consistent.
+
 A template defines:
 
 - **What** files to read and what to generate from them
