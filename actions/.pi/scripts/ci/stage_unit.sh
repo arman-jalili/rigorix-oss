@@ -14,8 +14,8 @@ FAIL=0
 PASS=0
 COVERAGE_PCT=0
 
-log_pass() { echo "  ✓ PASS: $1"; ((PASS++)); }
-log_fail() { echo "  ✗ FAIL: $1 — $2"; ((FAIL++)); }
+log_pass() { echo "  ✓ PASS: $1"; PASS=$((PASS + 1)); }
+log_fail() { echo "  ✗ FAIL: $1 — $2"; FAIL=$((FAIL + 1)); }
 
 echo "  Running unit tests..."
 
@@ -78,7 +78,7 @@ if command -v pytest &>/dev/null; then
         if [[ -f "$coverage_file" ]]; then
             COVERAGE_PCT=$(grep -oP 'line-rate="[^"]*"' "$coverage_file" 2>/dev/null | head -1 | cut -d'"' -f2 || echo "0")
             threshold="${COVERAGE_THRESHOLD:-80}"
-            COVERAGE_INT=$(echo "$COVERAGE_PCT * 100" | bc 2>/dev/null || echo "0")
+            COVERAGE_INT=$(echo "$COVERAGE_PCT * 100" | bc 2>/dev/null || echo "0") || true
             if [[ $COVERAGE_INT -ge $threshold ]]; then
                 log_pass "coverage threshold (${COVERAGE_PCT} >= ${threshold}%)"
             else

@@ -16,8 +16,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FAIL=0
 PASS=0
 
-log_pass() { echo "  ✓ PASS: $1"; ((PASS++)); }
-log_fail() { echo "  ✗ FAIL: $1"; ((FAIL++)); }
+log_pass() { echo "  ✓ PASS: $1"; PASS=$((PASS + 1)); }
+log_fail() { echo "  ✗ FAIL: $1"; FAIL=$((FAIL + 1)); }
 
 echo ""
 echo "═══ Stage 20: Template-System Proofing ═══"

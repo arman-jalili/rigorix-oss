@@ -18,8 +18,8 @@ PASS=0
 FAIL=0
 ERRORS=()
 
-log_pass() { echo "  ✓ PASS: $1"; ((PASS++)); }
-log_fail() { echo "  ✗ FAIL: $1"; ERRORS+=("$1"); ((FAIL++)); }
+log_pass() { echo "  ✓ PASS: $1"; PASS=$((PASS + 1)); }
+log_fail() { echo "  ✗ FAIL: $1"; ERRORS+=("$1"); FAIL=$((FAIL + 1)); }
 
 echo ""
 echo "═══ Repo-Engine Coverage Threshold Check ═══"

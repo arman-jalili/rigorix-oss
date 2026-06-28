@@ -13,8 +13,8 @@ ARCH_DIR="${PI_DIR}/architecture"
 PASS=0
 FAIL=0
 
-log_pass() { echo "  ✓ PASS: $1"; ((PASS++)); }
-log_fail() { echo "  ✗ FAIL: $1 — $2"; ((FAIL++)); }
+log_pass() { echo "  ✓ PASS: $1"; PASS=$((PASS + 1)); }
+log_fail() { echo "  ✗ FAIL: $1 — $2"; FAIL=$((FAIL + 1)); }
 
 echo "  Checking MR traceability..."
 

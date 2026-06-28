@@ -23,9 +23,9 @@ NC='\033[0m'
 PASS=0
 FAIL=0
 
-log_pass() { echo -e "  ${GREEN}✓ PASS${NC} $1"; ((PASS++)); }
-log_fail() { echo -e "  ${RED}✗ FAIL${NC} $1 — $2"; ((FAIL++)); }
-log_skip() { echo -e "  ${YELLOW}⊘ SKIP${NC} $1 — $2"; ((PASS++)); }
+log_pass() { echo -e "  ${GREEN}✓ PASS${NC} $1"; PASS=$((PASS + 1)); }
+log_fail() { echo -e "  ${RED}✗ FAIL${NC} $1 — $2"; FAIL=$((FAIL + 1)); }
+log_skip() { echo -e "  ${YELLOW}⊘ SKIP${NC} $1 — $2"; PASS=$((PASS + 1)); }
 
 echo "═══ Architecture Readiness Checks ═══"
 echo ""
