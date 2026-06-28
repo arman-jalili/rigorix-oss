@@ -260,6 +260,8 @@ Every architectural decision is documented in **ADR format** (18 decisions):
 | ADR-007 | Risk gating with Low/Medium/High classification |
 | ADR-008 | RAII-style budget reservation for LLM calls |
 
+The architecture wasn't generated from a one-line prompt — it came from an earlier version of this project, built over months of design work. What changed in these 11 days is that Guardian enforced that architecture couldn't drift during the rewrite.
+
 A **gap ledger** tracks resolved and outstanding architecture gaps. The **canonical reference system** ensures docs don't drift: every generated doc references its source, and `validate-canonical.sh` enforces sync.
 
 ### 7. Merge Flow
