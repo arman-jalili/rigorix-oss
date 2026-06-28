@@ -81,11 +81,19 @@ if [[ "$LIST_ONLY" == "true" ]]; then
     for crate in engine cli actions; do
         echo "── $crate CI scripts ──"
         count=0
+        # First list ci/ scripts
         for f in "$crate/.pi/scripts/ci/"*.sh; do
-            [[ -f "$f" ]] && count=$((count + 1))
+            if [[ -f "$f" ]]; then
+                echo "  $(basename "$f")"
+                count=$((count + 1))
+            fi
         done
+        # Then list validate-* scripts (at $crate/.pi/scripts/ level)
         for f in "$crate/.pi/scripts/"validate-*.sh; do
-            [[ -f "$f" ]] && echo "  $(basename "$f")" && count=$((count + 1))
+            if [[ -f "$f" ]]; then
+                echo "  $(basename "$f")"
+                count=$((count + 1))
+            fi
         done
         echo "  → $count scripts"
         echo ""
@@ -94,8 +102,11 @@ if [[ "$LIST_ONLY" == "true" ]]; then
     info "Total crates: ${#CRATES[@]}"
     info "Root scripts: $root_count"
     for crate in engine cli actions; do
-        ccount=$(find "$crate/.pi/scripts/ci" -name "*.sh" 2>/dev/null | wc -l | tr -d ' ')
-        info "$crate CI scripts: $ccount"
+        # Count both ci/ scripts and validate-* scripts for consistency
+        ccount=$(find "$crate/.pi/scripts/ci" -maxdepth 1 -name "*.sh" 2>/dev/null | wc -l | tr -d ' ')
+        vcount=$(find "$crate/.pi/scripts" -maxdepth 1 -name "validate-*.sh" 2>/dev/null | wc -l | tr -d ' ')
+        total=$((ccount + vcount))
+        info "$crate CI scripts: $total (${ccount} ci/ + ${vcount} validate)"
     done
     exit 0
 fi
