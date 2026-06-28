@@ -107,19 +107,6 @@ if [ -n "$MODULE_DIRS" ]; then
             fi
         done
     done
-        # Check if a matching Rust file exists (exact match or containing module name)
-        # Check in all possible source directories
-        MODULE_FOUND=false
-        for d in $SRC_DIRS; do
-            if find "$d" -name "*${MODULE_NAME}*" -name "*.rs" 2>/dev/null | grep -q .; then
-                MODULE_FOUND=true
-                break
-            fi
-        done
-        if [ "$MODULE_FOUND" = true ]; then
-            MAPPED=$((MAPPED + 1))
-        fi
-    done
     if [ "$TOTAL_MODULES" -gt 0 ] && [ "$MAPPED" -eq "$TOTAL_MODULES" ]; then
         pass "All $TOTAL_MODULES architecture modules mapped to implementation"
     elif [ "$MAPPED" -gt 0 ]; then

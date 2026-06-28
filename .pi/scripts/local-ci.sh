@@ -6,16 +6,25 @@ set -euo pipefail
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BLUE='\033[0;34m'; NC='\033[0m'
 
-QUICK=false; STAGE=""; CRATE_FILTER=""; LIST_ONLY=false
+QUICK=false; STAGE=""; CRATE_FILTER=""; LIST_ONLY=false; SAVE_OUTPUT=false
 FAILED=0; PASSED=0; SKIPPED=0; START_TIME=$(date +%s)
+CRATES=("engine" "cli" "actions")
+REPORT_DIR=".pi/output"
 
 while [[ $# -gt 0 ]]; do
-    case $1 in --quick) QUICK=true;; --stage=*) STAGE="${1#*=}";; --crate=*) CRATE_FILTER="${1#*=}";; --list) LIST_ONLY=true;; esac
+    case $1 in --quick) QUICK=true;; --stage=*) STAGE="${1#*=}";; --crate=*) CRATE_FILTER="${1#*=}";; --list) LIST_ONLY=true;; --save) SAVE_OUTPUT=true;; esac
     shift
 done
 
-CRATES=("engine" "cli" "actions")
 [[ -n "$CRATE_FILTER" ]] && CRATES=("$CRATE_FILTER")
+mkdir -p "$REPORT_DIR"
+REPORT_FILE="$REPORT_DIR/ci-report-$(date +%Y%m%d-%H%M%S).txt"
+
+# If --save, redirect all output to both stdout and file
+if [[ "$SAVE_OUTPUT" == "true" ]]; then
+    exec &> >(tee "$REPORT_FILE")
+    echo "Saving report to: $REPORT_FILE"
+fi
 
 pass()   { echo -e "  ${GREEN}✅ PASS${NC} $1"; PASSED=$((PASSED + 1)); }
 fail()   { echo -e "  ${RED}❌ FAIL${NC} $1"; FAILED=$((FAILED + 1)); }
@@ -61,25 +70,33 @@ should_run() { [[ -z "$STAGE" || "$STAGE" == "$1" ]]; }
 # ── List Mode ───────────────────────────────────────────────────
 if [[ "$LIST_ONLY" == "true" ]]; then
     echo -e "${CYAN}All discoverable CI scripts:\n${NC}"
+    echo "── Root scripts ──"
+    root_count=0
+    for f in .pi/scripts/*.sh; do
+        [[ -f "$f" ]] && echo "  $(basename "$f")" && root_count=$((root_count + 1))
+    done
+    echo "  → $root_count scripts"
+    echo ""
+
     for crate in engine cli actions; do
-        echo "── $crate/ ──"
+        echo "── $crate CI scripts ──"
         count=0
         for f in "$crate/.pi/scripts/ci/"*.sh; do
-            [[ -f "$f" ]] && echo "  $(basename "$f")" && count=$((count + 1))
+            [[ -f "$f" ]] && count=$((count + 1))
         done
         for f in "$crate/.pi/scripts/"validate-*.sh; do
             [[ -f "$f" ]] && echo "  $(basename "$f")" && count=$((count + 1))
         done
-        echo "  → $count scripts"; echo ""
+        echo "  → $count scripts"
+        echo ""
     done
-    echo "── root scripts ──"
-    count=0
-    for f in .pi/scripts/*.sh; do
-        [[ -f "$f" ]] && echo "  $(basename "$f")" && count=$((count + 1))
+
+    info "Total crates: ${#CRATES[@]}"
+    info "Root scripts: $root_count"
+    for crate in engine cli actions; do
+        ccount=$(find "$crate/.pi/scripts/ci" -name "*.sh" 2>/dev/null | wc -l | tr -d ' ')
+        info "$crate CI scripts: $ccount"
     done
-    echo "  → $count scripts"; echo ""
-    total=$(find . -path "*/target" -prune -o -name "*.sh" -path "*/.pi/scripts*" -print | wc -l | tr -d ' ')
-    info "Total: $total scripts across root + engine + cli + actions"
     exit 0
 fi
 

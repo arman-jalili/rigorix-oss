@@ -23,7 +23,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 GLOSSARY_FILE="${PROJECT_ROOT}/.pi/domain/ubiquitous-language.md"
-SRC_DIR="${1:-${PROJECT_ROOT}/src}"
+SRC_DIR="${1:-}"
+# Default: check all crate src directories for Rust projects
+if [ -z "$SRC_DIR" ]; then
+    for d in "$PROJECT_ROOT/engine/src" "$PROJECT_ROOT/cli/src" "$PROJECT_ROOT/actions/src"; do
+        if [ -d "$d" ]; then
+            SRC_DIR="$d"
+            break
+        fi
+    done
+fi
+# Fall back to PROJECT_ROOT/src
+[ -z "$SRC_DIR" ] && SRC_DIR="${PROJECT_ROOT}/src"
 
 PASS_COUNT=0; ERROR_COUNT=0; WARN_COUNT=0; DRIFT_FOUND=0
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'

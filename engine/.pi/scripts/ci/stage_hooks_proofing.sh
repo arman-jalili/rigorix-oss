@@ -66,7 +66,7 @@ echo ""
 
 if [ ${#ERRORS[@]} -gt 0 ]; then
     echo "FAILURES:"
-    for err in "${ERRORS[@]}"; then
+    for err in "${ERRORS[@]}"; do
         echo "  - $err"
     done
     echo ""

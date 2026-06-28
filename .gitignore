@@ -75,3 +75,6 @@ graphify-out/
 
 # --- Optional: Go ---
 # vendor/
+
+# Local CI reports
+.pi/output/
