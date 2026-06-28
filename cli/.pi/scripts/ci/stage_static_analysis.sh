@@ -64,7 +64,7 @@ else
                 ((violations++))
                 log_fail "import boundary" "$(basename "$file") imports from infrastructure/api"
             fi
-        done < <(find app/domain -name "*.py" 2>/dev/null)
+        done < <(find app/domain -name "*.py" 2>/dev/null || true)
     fi
     if [[ $violations -eq 0 ]]; then
         log_pass "import boundary check (no cross-layer violations)"
