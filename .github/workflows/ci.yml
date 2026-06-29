@@ -79,7 +79,7 @@ jobs:
           for script in .pi/scripts/ci/check_*.sh .pi/scripts/ci/run_*.sh \
                        .pi/scripts/ci/stage_*.sh .pi/scripts/ci/validate_*.sh \
                        .pi/scripts/validate-*.sh; do
-            [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
+            [ -f "$script" ] && [[ "$script" != *_coverage.sh ]] && echo "--- $script ---" && bash "$script" || true
           done
         working-directory: ${{ matrix.crate }}
 
@@ -105,7 +105,7 @@ jobs:
           for script in .pi/scripts/ci/check_*.sh .pi/scripts/ci/run_*.sh \
                        .pi/scripts/ci/stage_*.sh .pi/scripts/ci/validate_*.sh \
                        .pi/scripts/validate-*.sh; do
-            [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
+            [ -f "$script" ] && [[ "$script" != *_coverage.sh ]] && echo "--- $script ---" && bash "$script" || true
           done
         working-directory: ${{ matrix.crate }}
 
@@ -131,7 +131,7 @@ jobs:
           for script in .pi/scripts/ci/check_*.sh .pi/scripts/ci/run_*.sh \
                        .pi/scripts/ci/stage_*.sh .pi/scripts/ci/validate_*.sh \
                        .pi/scripts/validate-*.sh; do
-            [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
+            [ -f "$script" ] && [[ "$script" != *_coverage.sh ]] && echo "--- $script ---" && bash "$script" || true
           done
         working-directory: ${{ matrix.crate }}
 
@@ -169,7 +169,7 @@ jobs:
                        */.pi/scripts/ci/check_*.sh */.pi/scripts/ci/run_*.sh \
                        */.pi/scripts/ci/stage_*.sh */.pi/scripts/ci/validate_*.sh \
                        */.pi/scripts/validate-*.sh; do
-            [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
+            [ -f "$script" ] && [[ "$script" != *_coverage.sh ]] && echo "--- $script ---" && bash "$script" || true
           done
 
   # ── Stage 5: Documentation + Architecture ─────────────────────
@@ -190,7 +190,7 @@ jobs:
                        */.pi/scripts/ci/check_*.sh */.pi/scripts/ci/run_*.sh \
                        */.pi/scripts/ci/stage_*.sh */.pi/scripts/ci/validate_*.sh \
                        */.pi/scripts/validate-*.sh; do
-            [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
+            [ -f "$script" ] && [[ "$script" != *_coverage.sh ]] && echo "--- $script ---" && bash "$script" || true
           done
 
   # ── Stage 6: Integration ──────────────────────────────────────
@@ -213,7 +213,7 @@ jobs:
                        */.pi/scripts/ci/check_*.sh */.pi/scripts/ci/run_*.sh \
                        */.pi/scripts/ci/stage_*.sh */.pi/scripts/ci/validate_*.sh \
                        */.pi/scripts/validate-*.sh; do
-            [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
+            [ -f "$script" ] && [[ "$script" != *_coverage.sh ]] && echo "--- $script ---" && bash "$script" || true
           done
 
   # ── Stage 7: Final Gate ───────────────────────────────────────

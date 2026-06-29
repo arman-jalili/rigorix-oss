@@ -42,7 +42,7 @@ echo "Minimum coverage: ${MIN_COVERAGE}%"
 echo ""
 
 # Try llvm-cov first, then tarpaulin
-if [[ "${RIGORIX_COVERAGE:-}" == "1" ]] && command -v cargo-llvm-cov &>/dev/null; then
+if command -v cargo-llvm-cov &>/dev/null; then
     echo "Using cargo-llvm-cov for coverage..."
     cd "$PROJECT_ROOT"
 
@@ -61,7 +61,7 @@ if [[ "${RIGORIX_COVERAGE:-}" == "1" ]] && command -v cargo-llvm-cov &>/dev/null
     fi
 
     cd ..
-elif [[ "${RIGORIX_COVERAGE:-}" == "1" ]] && command -v cargo-tarpaulin &>/dev/null; then
+elif command -v cargo-tarpaulin &>/dev/null; then
     echo "Using cargo-tarpaulin for coverage (fallback)..."
     cd "$PROJECT_ROOT"
 
@@ -91,7 +91,7 @@ elif [[ "${RIGORIX_COVERAGE:-}" == "1" ]] && command -v cargo-tarpaulin &>/dev/n
 
     cd ..
 else
-    echo "Instrumented coverage skipped (set RIGORIX_COVERAGE=1 to enable)."
+    echo "No coverage tool found (cargo-tarpaulin or cargo-llvm-cov)."
     echo "Falling back to test count verification..."
 
     # Count tests in planning module
