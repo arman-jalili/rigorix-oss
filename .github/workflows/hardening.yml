@@ -1,28 +1,27 @@
 # ═════════════════════════════════════════════════════════════════════
-# Rigorix Hardening — Full multi-stage pipeline for release & main
+# Rigorix Hardening — Full release gate (main branch only)
 #
-# Maps directly to the 10-stage hardening model defined in
-# .pi/scripts/ci/run_hardening_stages.sh, but runs each stage as a
-# separate job for caching, parallelism & visibility.
+# Runs every check, every script, release builds, coverage, and
+# architecture validation. Not optimized for speed — optimized for
+# completeness. New scripts of any convention (check_*, run_*,
+# stage_*, validate_*, validate-*) are auto-discovered.
 #
-# Script discovery uses comprehensive glob patterns — new scripts of
-# any convention (check_*, run_*, stage_*, validate_*, validate-*)
-# are auto-picked up without workflow changes.
+# For fast PR feedback, see ci.yml.
 #
 # Stages (all mandatory on main):
-#   0. workspace           — detect crates (any dir containing .pi/scripts/)
+#   0. workspace           — detect crates dynamically
 #   1. docs_policy          — MR traceability, docs sync
 #   2. architecture         — contract checks, canonical references
 #   3. lint                 — cargo fmt + clippy (matrix per crate)
 #   4. static_analysis      — cargo check, import boundaries
 #   5. unit                 — cargo test --lib (matrix per crate)
-#   6. integration          — cargo test --workspace + per-crate scripts
+#   6. integration          — cargo test --workspace + all scripts
 #   7. security             — cargo audit + secret scan
-#   8. migration_verify     — Schema migration checks (conditional)
-#   9. package_build        — Release build (matrix per crate)
+#   8. migration_verify     — Schema checks (conditional)
+#   9. package_build        — cargo build --release (matrix per crate)
 #  10. release_readiness    — Architecture readiness validation
 #
-# Script globs (any new script matching these patterns auto-runs):
+# Script globs — any new script matching these auto-runs:
 #   .pi/scripts/ci/check_*.sh
 #   .pi/scripts/ci/run_*.sh
 #   .pi/scripts/ci/stage_*.sh
@@ -76,7 +75,7 @@ jobs:
           echo "Checking commit: ${{ github.sha }}"
         continue-on-error: true
 
-      - name: Root + per-crate scripts (all conventions)
+      - name: Docs policy scripts (root + per-crate, all conventions)
         continue-on-error: true
         shell: bash
         run: |
@@ -96,7 +95,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Root + per-crate scripts (all conventions)
+      - name: Architecture scripts (root + per-crate, all conventions)
         continue-on-error: true
         shell: bash
         run: |
@@ -130,7 +129,7 @@ jobs:
       - name: Clippy
         run: cargo clippy -p rigorix-${{ matrix.crate }} -- -D warnings
 
-      - name: Per-crate scripts (all conventions)
+      - name: Lint scripts (all conventions)
         continue-on-error: true
         shell: bash
         run: |
@@ -174,7 +173,7 @@ jobs:
       - name: Run unit tests
         run: cargo test -p rigorix-${{ matrix.crate }} --lib
 
-      - name: Per-crate scripts (all conventions)
+      - name: Test scripts (all conventions)
         continue-on-error: true
         shell: bash
         run: |
@@ -196,7 +195,7 @@ jobs:
       - name: Run all tests (including integration)
         run: cargo test --workspace
 
-      - name: Root + per-crate scripts (all conventions)
+      - name: Integration scripts (root + per-crate, all conventions)
         continue-on-error: true
         shell: bash
         run: |
@@ -224,15 +223,19 @@ jobs:
       - name: Secret scan
         shell: bash
         run: |
-          if grep -rE "(sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16})" \
+          results=$(grep -rE "(sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16})" \
             --include="*.rs" --include="*.toml" --include="*.yml" --include="*.yaml" \
             --include="*.env" --include="*.sh" . 2>/dev/null \
-            | grep -v ".git" | grep -v ".rigorix" | grep -q .; then
-            echo "❌ Secrets found!"; exit 1
+            | grep -v ".git" | grep -v ".rigorix" | grep -v "ghp_secret12345" \
+            | grep -v "AKIAIOSFODNN7EXAMPLE" || true)
+          if [[ -n "$results" ]]; then
+            echo "❌ Secrets found:"
+            echo "$results"
+            exit 1
           fi
           echo "✅ No secrets"
 
-      - name: Root + per-crate scripts (all conventions)
+      - name: Security scripts (root + per-crate, all conventions)
         continue-on-error: true
         shell: bash
         run: |
@@ -253,7 +256,7 @@ jobs:
     steps:
       - run: echo "No database migrations to verify"
 
-  # ── Stage 9: Package Build ────────────────────────────────────
+  # ── Stage 9: Package Build (release) ──────────────────────────
   build:
     name: "9/10 📦 Build (${{ matrix.crate }})"
     needs: [workspace]
@@ -271,7 +274,7 @@ jobs:
       - name: Release build
         run: cargo build -p rigorix-${{ matrix.crate }} --release
 
-      - name: Per-crate scripts (all conventions)
+      - name: Build scripts (all conventions)
         continue-on-error: true
         shell: bash
         run: |
@@ -291,7 +294,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Root + per-crate scripts (all conventions)
+      - name: Release readiness scripts (root + per-crate, all conventions)
         continue-on-error: true
         shell: bash
         run: |

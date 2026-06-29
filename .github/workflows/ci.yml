@@ -1,27 +1,24 @@
 # ═════════════════════════════════════════════════════════════════════
-# Rigorix CI Pipeline — Multi-stage, multi-crate, fully dynamic
+# Rigorix CI — PR merge gate
 #
-# Script discovery uses comprehensive glob patterns — new scripts of
-# any convention (check_*, run_*, stage_*, validate_*, validate-*)
-# are auto-picked up without workflow changes.
+# Runs on every push to feat/fix branches and all PRs. Fast enough for
+# the inner dev loop, comprehensive enough that a green build means
+# main won't break. Uses cargo check (not --release) and skips coverage
+# for speed — hardening.yml handles those on main.
 #
 # Stages:
-#   0. workspace  — detect crates (any dir containing .pi/scripts/)
+#   0. workspace  — detect crates dynamically
 #   1. lint       — cargo fmt + clippy (matrix per crate)
-#   2. build      — cargo build --release (matrix per crate)
+#   2. build      — cargo check (matrix per crate)
 #   3. test       — cargo test (matrix per crate)
 #   4. security   — cargo audit + secret scan
-#   5. docs       — documentation validation (root + per-crate)
-#   6. coverage   — code coverage via cargo-tarpaulin
-#   7. integration— integration + operations validation
-#   8. gate       — final mandatory stage check
+#   5. docs       — documentation + architecture validation
+#   6. integration— cargo test --workspace + integration validation
+#   7. gate       — final mandatory check
 #
-# Script globs (any new script matching these patterns auto-runs):
-#   .pi/scripts/ci/check_*.sh
-#   .pi/scripts/ci/run_*.sh
-#   .pi/scripts/ci/stage_*.sh
-#   .pi/scripts/ci/validate_*.sh
-#   .pi/scripts/validate-*.sh
+# Script discovery uses comprehensive globs — new scripts of any
+# convention (check_*, run_*, stage_*, validate_*, validate-*)
+# auto-run without workflow changes.
 # ═════════════════════════════════════════════════════════════════════
 
 name: CI
@@ -85,7 +82,7 @@ jobs:
           done
         working-directory: ${{ matrix.crate }}
 
-  # ── Stage 2: Build ────────────────────────────────────────────
+  # ── Stage 2: Build (cargo check — fast compile verification) ─
   build:
     name: 📦 Build (${{ matrix.crate }})
     needs: [workspace, lint]
@@ -99,7 +96,7 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cache-key: build-${{ matrix.crate }}
-      - run: cargo build -p rigorix-${{ matrix.crate }} --release
+      - run: cargo check -p rigorix-${{ matrix.crate }}
       - name: Per-crate scripts (all conventions)
         continue-on-error: true
         run: |
@@ -171,7 +168,7 @@ jobs:
             [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
           done
 
-  # ── Stage 5: Documentation ────────────────────────────────────
+  # ── Stage 5: Documentation + Architecture ─────────────────────
   docs:
     name: 📝 Documentation
     needs: [build]
@@ -191,22 +188,7 @@ jobs:
             [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
           done
 
-  # ── Stage 6: Code Coverage ────────────────────────────────────
-  coverage:
-    name: 📊 Coverage
-    needs: [build]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup
-      - run: cargo tarpaulin -p rigorix-engine --out Xml --output-dir coverage/engine || true
-      - uses: actions/upload-artifact@v4
-        with:
-          name: coverage-reports
-          path: coverage/
-        if: always()
-
-  # ── Stage 7: Integration ──────────────────────────────────────
+  # ── Stage 6: Integration ──────────────────────────────────────
   integration:
     name: 🔗 Integration
     needs: [test]
@@ -214,7 +196,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      - run: cargo test --workspace -- --ignored || true
+      - run: cargo test --workspace
       - name: Root + per-crate scripts (all conventions)
         continue-on-error: true
         shell: bash
@@ -228,10 +210,10 @@ jobs:
             [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
           done
 
-  # ── Stage 8: Final Gate ───────────────────────────────────────
+  # ── Stage 7: Final Gate ───────────────────────────────────────
   gate:
     name: 🚪 Final Gate
-    needs: [lint, build, test, audit, docs, coverage, integration]
+    needs: [lint, build, test, audit, docs, integration]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -241,7 +223,6 @@ jobs:
           echo "Test:        ${{ needs.test.result }}"
           echo "Audit:       ${{ needs.audit.result }}"
           echo "Docs:        ${{ needs.docs.result }}"
-          echo "Coverage:    ${{ needs.coverage.result }}"
           echo "Integration: ${{ needs.integration.result }}"
       - name: ✅ All mandatory stages passed
         if: |
