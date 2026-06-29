@@ -1,19 +1,27 @@
 # ═════════════════════════════════════════════════════════════════════
-# Rigorix CI Pipeline — Multi-stage, multi-crate, DRY
+# Rigorix CI Pipeline — Multi-stage, multi-crate, fully dynamic
+#
+# Script discovery uses comprehensive glob patterns — new scripts of
+# any convention (check_*, run_*, stage_*, validate_*, validate-*)
+# are auto-picked up without workflow changes.
 #
 # Stages:
-#   1. lint       — cargo fmt + clippy (all crates via matrix)
-#   2. build      — cargo build (all crates via matrix)
-#   3. test       — cargo test (all crates via matrix)
+#   0. workspace  — detect crates (any dir containing .pi/scripts/)
+#   1. lint       — cargo fmt + clippy (matrix per crate)
+#   2. build      — cargo build --release (matrix per crate)
+#   3. test       — cargo test (matrix per crate)
 #   4. security   — cargo audit + secret scan
-#   5. docs       — canonical reference validation
+#   5. docs       — documentation validation (root + per-crate)
 #   6. coverage   — code coverage via cargo-tarpaulin
+#   7. integration— integration + operations validation
+#   8. gate       — final mandatory stage check
 #
-# Per-crate stage scripts are discovered dynamically from
-#   $crate/.pi/scripts/ci/stage_*.sh
-#   $crate/.pi/scripts/validate-*.sh
-# Non-core scripts use continue-on-error to avoid blocking on
-# legacy coverage thresholds and generated contract checkers.
+# Script globs (any new script matching these patterns auto-runs):
+#   .pi/scripts/ci/check_*.sh
+#   .pi/scripts/ci/run_*.sh
+#   .pi/scripts/ci/stage_*.sh
+#   .pi/scripts/ci/validate_*.sh
+#   .pi/scripts/validate-*.sh
 # ═════════════════════════════════════════════════════════════════════
 
 name: CI
@@ -45,7 +53,9 @@ jobs:
         id: crates
         shell: bash
         run: |
-          CRATES=$(grep -A50 '^\[workspace\]' Cargo.toml | grep 'members' | head -1 | sed 's/.*= \[//;s/\]//;s/"//g;s/, /\n/g' | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          CRATES=$(for d in */; do
+            [ -d "${d}.pi/scripts" ] && echo "${d%/}"
+          done | jq -R -s -c 'split("\n") | map(select(length > 0))')
           echo "matrix=$CRATES" >> "$GITHUB_OUTPUT"
           echo "Crates: $CRATES"
 
@@ -65,10 +75,12 @@ jobs:
           cache-key: lint-${{ matrix.crate }}
       - run: cargo fmt --check -p rigorix-${{ matrix.crate }}
       - run: cargo clippy -p rigorix-${{ matrix.crate }} -- -D warnings
-      - name: Per-crate lint scripts
+      - name: Per-crate scripts (all conventions)
         continue-on-error: true
         run: |
-          for script in .pi/scripts/ci/stage_lint.sh .pi/scripts/validate-ci.sh; do
+          for script in .pi/scripts/ci/check_*.sh .pi/scripts/ci/run_*.sh \
+                       .pi/scripts/ci/stage_*.sh .pi/scripts/ci/validate_*.sh \
+                       .pi/scripts/validate-*.sh; do
             [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
           done
         working-directory: ${{ matrix.crate }}
@@ -88,10 +100,12 @@ jobs:
         with:
           cache-key: build-${{ matrix.crate }}
       - run: cargo build -p rigorix-${{ matrix.crate }} --release
-      - name: Per-crate build scripts
+      - name: Per-crate scripts (all conventions)
         continue-on-error: true
         run: |
-          for script in .pi/scripts/ci/stage_static_analysis.sh .pi/scripts/ci/stage_package_build.sh; do
+          for script in .pi/scripts/ci/check_*.sh .pi/scripts/ci/run_*.sh \
+                       .pi/scripts/ci/stage_*.sh .pi/scripts/ci/validate_*.sh \
+                       .pi/scripts/validate-*.sh; do
             [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
           done
         working-directory: ${{ matrix.crate }}
@@ -111,14 +125,12 @@ jobs:
         with:
           cache-key: test-${{ matrix.crate }}
       - run: cargo test -p rigorix-${{ matrix.crate }}
-      - name: Per-crate test scripts
+      - name: Per-crate scripts (all conventions)
         continue-on-error: true
         run: |
-          for script in .pi/scripts/ci/stage_unit.sh .pi/scripts/ci/stage_integration.sh; do
-            [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
-          done
-          # Run all proofing scripts
-          for script in .pi/scripts/ci/*_proofing.sh; do
+          for script in .pi/scripts/ci/check_*.sh .pi/scripts/ci/run_*.sh \
+                       .pi/scripts/ci/stage_*.sh .pi/scripts/ci/validate_*.sh \
+                       .pi/scripts/validate-*.sh; do
             [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
           done
         working-directory: ${{ matrix.crate }}
@@ -135,19 +147,29 @@ jobs:
       - name: Secret scan
         shell: bash
         run: |
-          for crate in engine cli actions; do
-            results=$(grep -rE "(sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16})" \
-              --include="*.rs" --include="*.toml" --include="*.yml" --include="*.yaml" \
-              --include="*.env" --include="*.sh" "$crate/" 2>/dev/null \
-              | grep -v ".git" | grep -v ".rigorix" | grep -v "ghp_secret12345" \
-              | grep -v "AKIAIOSFODNN7EXAMPLE" || true)
-            if [[ -n "$results" ]]; then
-              echo "❌ Secrets found in $crate:"
-              echo "$results"
-              exit 1
-            fi
-          done
+          results=$(grep -rE "(sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16})" \
+            --include="*.rs" --include="*.toml" --include="*.yml" --include="*.yaml" \
+            --include="*.env" --include="*.sh" . 2>/dev/null \
+            | grep -v ".git" | grep -v ".rigorix" | grep -v "ghp_secret12345" \
+            | grep -v "AKIAIOSFODNN7EXAMPLE" || true)
+          if [[ -n "$results" ]]; then
+            echo "❌ Secrets found:"
+            echo "$results"
+            exit 1
+          fi
           echo "✅ No secrets detected"
+      - name: Root + per-crate scripts (all conventions)
+        continue-on-error: true
+        shell: bash
+        run: |
+          for script in .pi/scripts/ci/check_*.sh .pi/scripts/ci/run_*.sh \
+                       .pi/scripts/ci/stage_*.sh .pi/scripts/ci/validate_*.sh \
+                       .pi/scripts/validate-*.sh \
+                       */.pi/scripts/ci/check_*.sh */.pi/scripts/ci/run_*.sh \
+                       */.pi/scripts/ci/stage_*.sh */.pi/scripts/ci/validate_*.sh \
+                       */.pi/scripts/validate-*.sh; do
+            [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
+          done
 
   # ── Stage 5: Documentation ────────────────────────────────────
   docs:
@@ -156,10 +178,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - continue-on-error: true
+      - name: Root + per-crate scripts (all conventions)
+        continue-on-error: true
+        shell: bash
         run: |
-          for script in .pi/scripts/validate-canonical.sh .pi/scripts/validate-architecture.sh \
-                       .pi/scripts/validate-architecture-readiness.sh; do
+          for script in .pi/scripts/ci/check_*.sh .pi/scripts/ci/run_*.sh \
+                       .pi/scripts/ci/stage_*.sh .pi/scripts/ci/validate_*.sh \
+                       .pi/scripts/validate-*.sh \
+                       */.pi/scripts/ci/check_*.sh */.pi/scripts/ci/run_*.sh \
+                       */.pi/scripts/ci/stage_*.sh */.pi/scripts/ci/validate_*.sh \
+                       */.pi/scripts/validate-*.sh; do
             [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
           done
 
@@ -187,9 +215,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - run: cargo test --workspace -- --ignored || true
-      - continue-on-error: true
+      - name: Root + per-crate scripts (all conventions)
+        continue-on-error: true
+        shell: bash
         run: |
-          for script in .pi/scripts/validate-integration.sh .pi/scripts/validate-operations.sh; do
+          for script in .pi/scripts/ci/check_*.sh .pi/scripts/ci/run_*.sh \
+                       .pi/scripts/ci/stage_*.sh .pi/scripts/ci/validate_*.sh \
+                       .pi/scripts/validate-*.sh \
+                       */.pi/scripts/ci/check_*.sh */.pi/scripts/ci/run_*.sh \
+                       */.pi/scripts/ci/stage_*.sh */.pi/scripts/ci/validate_*.sh \
+                       */.pi/scripts/validate-*.sh; do
             [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
           done
 

@@ -83,11 +83,15 @@ mod tests {
     }
 
     unsafe fn set_env(key: &str, value: &str) {
-        std::env::set_var(key, value);
+        // SAFETY: ENV_LOCK mutex is held by the caller, ensuring no other test
+        // can concurrently mutate the environment.
+        unsafe { std::env::set_var(key, value) };
     }
 
     unsafe fn remove_env(key: &str) {
-        std::env::remove_var(key);
+        // SAFETY: ENV_LOCK mutex is held by the caller, ensuring no other test
+        // can concurrently mutate the environment.
+        unsafe { std::env::remove_var(key) };
     }
 
     #[tokio::test]
