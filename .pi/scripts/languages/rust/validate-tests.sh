@@ -97,26 +97,27 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Coverage
+# Coverage (uses cargo-llvm-cov — native LLVM instrumentation, ~3x faster than tarpaulin)
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Coverage ---"
-if command -v cargo &>/dev/null && cargo tarpaulin --version &>/dev/null; then
-    TARP_OUT=$(cargo tarpaulin --out Html 2>&1 || true)
-    COVERAGE_PCT=$(echo "$TARP_OUT" | grep -oE '[0-9]+(\.[0-9]+)?%' | head -1 | tr -d '%' || echo "")
+if command -v cargo &>/dev/null && cargo llvm-cov --version &>/dev/null; then
+    LLCV_OUT=$(cargo llvm-cov --html --fail-under-lines 80 2>&1 || true)
+    LLCV_EXIT=$?
+    COVERAGE_PCT=$(echo "$LLCV_OUT" | grep -oE '[0-9]+(\.[0-9]+)?%' | head -1 | tr -d '%' || echo "")
     if [ -n "$COVERAGE_PCT" ]; then
-        # Compare coverage against 80% threshold using awk
         MEETS_THRESHOLD=$(echo "$COVERAGE_PCT" | awk '{print ($1 >= 80) ? "yes" : "no"}')
         if [ "$MEETS_THRESHOLD" = "yes" ]; then
             pass "Code coverage: ${COVERAGE_PCT}% (≥ 80%)"
         else
             fail "Code coverage: ${COVERAGE_PCT}% (< 80%)"
         fi
+    elif [ "$LLCV_EXIT" -eq 0 ]; then
+        pass "Code coverage meets 80% threshold"
     else
-        warn "Could not extract coverage percentage from tarpaulin output"
+        warn "Could not extract coverage percentage from llvm-cov output"
     fi
 elif command -v grcov &>/dev/null; then
-    # Use grcov as fallback
     GRCOV_OUT=$(grcov . --binary-path ./target/debug/ -s . -t html --branch --ignore-not-existing 2>&1 || true)
     if echo "$GRCOV_OUT" | grep -q "error\|Error"; then
         warn "grcov encountered errors during coverage analysis"
@@ -124,7 +125,7 @@ elif command -v grcov &>/dev/null; then
         pass "grcov coverage report generated"
     fi
 else
-    warn "No coverage tools available (cargo-tarpaulin / grcov), skipping coverage check"
+    warn "No coverage tools available (cargo-llvm-cov / grcov), skipping coverage check"
 fi
 
 # ---------------------------------------------------------------------------

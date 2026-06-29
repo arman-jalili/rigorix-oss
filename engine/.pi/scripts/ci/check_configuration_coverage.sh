@@ -3,7 +3,7 @@
 # check_configuration_coverage.sh
 #
 # Enforces minimum code coverage thresholds for the configuration module.
-# Uses cargo-tarpaulin or llvm-cov to measure line coverage.
+# Uses cargo-llvm-cov or tarpaulin to measure line coverage.
 #
 # Usage: bash .pi/scripts/ci/check_configuration_coverage.sh [--help]
 #
@@ -42,9 +42,30 @@ echo "Project: $PROJECT_ROOT"
 echo "Minimum coverage: ${MIN_COVERAGE}%"
 echo ""
 
-# Try tarpaulin first, then llvm-cov
-if command -v cargo-tarpaulin &>/dev/null; then
-    echo "Using cargo-tarpaulin for coverage..."
+# Try llvm-cov first, then tarpaulin
+if command -v cargo-llvm-cov &>/dev/null; then
+    echo "Using cargo-llvm-cov for coverage..."
+
+    COVERAGE_OUTPUT=$(cargo llvm-cov --workspace --lcov --output-path coverage/lcov.info 2>&1 || true)
+    # Parse lcov for line coverage
+    if [ -f "coverage/lcov.info" ]; then
+        TOTAL_LINES=$(grep -c '^DA:' coverage/lcov.info || true)
+        HIT_LINES=$(grep '^DA:.*,[1-9][0-9]*$' coverage/lcov.info | wc -l | tr -d ' ')
+        if [ "$TOTAL_LINES" -gt 0 ]; then
+            COVERAGE_PCT=$((HIT_LINES * 100 / TOTAL_LINES))
+            if [ "$COVERAGE_PCT" -ge "$MIN_COVERAGE" ]; then
+                log_pass "Coverage: ${COVERAGE_PCT}% (threshold: ${MIN_COVERAGE}%)"
+            else
+                log_fail "Coverage: ${COVERAGE_PCT}% is below threshold of ${MIN_COVERAGE}%"
+            fi
+        else
+            log_fail "No coverage data found"
+        fi
+    else
+        log_fail "No lcov.info generated"
+    fi
+elif command -v cargo-tarpaulin &>/dev/null; then
+    echo "Using cargo-tarpaulin for coverage (fallback)..."
     cd "$PROJECT_ROOT"
 
     COVERAGE_OUTPUT=$(cargo tarpaulin --out Xml --output-dir ../coverage 2>&1 || true)
@@ -67,27 +88,6 @@ if command -v cargo-tarpaulin &>/dev/null; then
 
     cd ..
 
-elif command -v cargo-llvm-cov &>/dev/null; then
-    echo "Using cargo-llvm-cov for coverage..."
-
-    COVERAGE_OUTPUT=$(cargo llvm-cov --workspace --lcov --output-path coverage/lcov.info 2>&1 || true)
-    # Parse lcov for line coverage
-    if [ -f "coverage/lcov.info" ]; then
-        TOTAL_LINES=$(grep -c '^DA:' coverage/lcov.info || true)
-        HIT_LINES=$(grep '^DA:.*,[1-9][0-9]*$' coverage/lcov.info | wc -l | tr -d ' ')
-        if [ "$TOTAL_LINES" -gt 0 ]; then
-            COVERAGE_PCT=$((HIT_LINES * 100 / TOTAL_LINES))
-            if [ "$COVERAGE_PCT" -ge "$MIN_COVERAGE" ]; then
-                log_pass "Coverage: ${COVERAGE_PCT}% (threshold: ${MIN_COVERAGE}%)"
-            else
-                log_fail "Coverage: ${COVERAGE_PCT}% is below threshold of ${MIN_COVERAGE}%"
-            fi
-        else
-            log_fail "No coverage data found"
-        fi
-    else
-        log_fail "No lcov.info generated"
-    fi
 else
     echo "No coverage tool found (cargo-tarpaulin or cargo-llvm-cov)."
     echo "Counting test files as a fallback metric..."

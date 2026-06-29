@@ -37,7 +37,8 @@ runs:
       shell: bash
       run: |
         cargo install cargo-audit --locked 2>/dev/null || true
-        cargo install cargo-tarpaulin --locked 2>/dev/null || true
+        cargo install cargo-llvm-cov --locked 2>/dev/null || true
+        rustup component add llvm-tools-preview 2>/dev/null || true
 
     - name: Verify workspace
       shell: bash
