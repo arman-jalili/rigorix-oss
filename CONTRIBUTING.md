@@ -103,7 +103,7 @@ Examples:
 
 ### 5. Feature Development
 
-Every feature must be implemented through the **Guardian framework** for consistency. Guardian enforces architecture-first development: canonical module specs drive epics, epics drive scoped issues, and issues drive validated implementations. This ensures every change is traceable back to architecture and verified by proof scripts before merge.
+Every feature must be implemented through the **[Guardian Framework](https://github.com/arman-jalili/guardian-framework)** for consistency — **an architecture enforcement framework for AI-assisted development.** Guardian enforces architecture-first development: canonical module specs drive epics, epics drive scoped issues, and issues drive validated implementations. This ensures every change is traceable back to architecture and verified by proof scripts before merge.
 
 For complex features, follow the [Feature Development Workflow](.pi/prompts/feature-development.md):
 
