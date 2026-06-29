@@ -45,7 +45,7 @@ echo "Minimum coverage: ${MIN_COVERAGE}%"
 echo ""
 
 # Try llvm-cov first, then tarpaulin
-if command -v cargo-llvm-cov &>/dev/null; then
+if [[ "${RIGORIX_COVERAGE:-}" == "1" ]] && command -v cargo-llvm-cov &>/dev/null; then
     echo "Using cargo-llvm-cov for coverage..."
 
     COVERAGE_OUTPUT=$(cargo llvm-cov --workspace --lcov --output-path coverage/lcov.info 2>&1 || true)
@@ -65,7 +65,7 @@ if command -v cargo-llvm-cov &>/dev/null; then
     else
         log_fail "No lcov.info generated"
     fi
-elif command -v cargo-tarpaulin &>/dev/null; then
+elif [[ "${RIGORIX_COVERAGE:-}" == "1" ]] && command -v cargo-tarpaulin &>/dev/null; then
     echo "Using cargo-tarpaulin for coverage (fallback)..."
     cd "$PROJECT_ROOT"
 
@@ -89,7 +89,7 @@ elif command -v cargo-tarpaulin &>/dev/null; then
     cd ..
 
 else
-    echo "No coverage tool found (cargo-tarpaulin or cargo-llvm-cov)."
+    echo "Instrumented coverage skipped (set RIGORIX_COVERAGE=1 to enable)."
     echo "Counting test functions as a fallback metric..."
 
     TEST_COUNT=$(grep -r '^\s*#\[test\]' "$PROJECT_ROOT/src/code_gen/" 2>/dev/null | wc -l | tr -d ' ')

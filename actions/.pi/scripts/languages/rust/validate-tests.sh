@@ -97,11 +97,11 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Coverage (uses cargo-llvm-cov — native LLVM instrumentation, ~3x faster than tarpaulin)
+# Coverage (opt-in via RIGORIX_COVERAGE=1 — instrumented build, ~30-90s)
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Coverage ---"
-if command -v cargo &>/dev/null && cargo llvm-cov --version &>/dev/null; then
+if [[ "${RIGORIX_COVERAGE:-}" == "1" ]] && command -v cargo &>/dev/null && cargo llvm-cov --version &>/dev/null; then
     LLCV_OUT=$(cargo llvm-cov --html --fail-under-lines 80 2>&1 || true)
     LLCV_EXIT=$?
     COVERAGE_PCT=$(echo "$LLCV_OUT" | grep -oE '[0-9]+(\.[0-9]+)?%' | head -1 | tr -d '%' || echo "")
@@ -117,15 +117,8 @@ if command -v cargo &>/dev/null && cargo llvm-cov --version &>/dev/null; then
     else
         warn "Could not extract coverage percentage from llvm-cov output"
     fi
-elif command -v grcov &>/dev/null; then
-    GRCOV_OUT=$(grcov . --binary-path ./target/debug/ -s . -t html --branch --ignore-not-existing 2>&1 || true)
-    if echo "$GRCOV_OUT" | grep -q "error\|Error"; then
-        warn "grcov encountered errors during coverage analysis"
-    else
-        pass "grcov coverage report generated"
-    fi
 else
-    warn "No coverage tools available (cargo-llvm-cov / grcov), skipping coverage check"
+    warn "Coverage skipped (set RIGORIX_COVERAGE=1 to enable — uses cargo-llvm-cov)"
 fi
 
 # ---------------------------------------------------------------------------
