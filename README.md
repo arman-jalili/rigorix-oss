@@ -18,6 +18,8 @@ Rigorix operates through three modes:
 - **GitHub Action** (`rigorix-action`) — PR governance and automated code generation in CI/CD
 - **Engine** — The core library powering both
 
+Rigorix is built with the [Guardian Framework](https://github.com/arman-jalili/guardian-framework) — **an architecture enforcement framework for AI-assisted development.** Guardian ensures every change is traceable to canonical architecture specs, validated by proof scripts, and governed by frozen module contracts.
+
 ---
 
 ## Why Rigorix Exists
@@ -339,7 +341,6 @@ Each crate has its own `.pi/architecture/` directory with:
 
 We welcome contributions! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for our development process, coding standards, and pull request workflow.
 
-Rigorix is built with the [Guardian Framework](https://github.com/arman-jalili/guardian-framework) — **an architecture enforcement framework for AI-assisted development.** Guardian ensures every change is traceable to canonical architecture specs, validated by proof scripts, and governed by frozen module contracts.
 
 Key guidelines:
 - Every edit must pass `cargo clippy --workspace` and `cargo fmt --check`

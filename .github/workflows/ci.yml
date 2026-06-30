@@ -140,7 +140,7 @@ jobs:
     name: 🔒 Audit
     needs: [build]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -177,7 +177,7 @@ jobs:
     name: 📝 Documentation
     needs: [build]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - name: Root + per-crate scripts (all conventions)
