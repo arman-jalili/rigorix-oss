@@ -30,6 +30,8 @@ pub struct AuditSenderImpl {
     client: reqwest::Client,
     /// Default request timeout in seconds.
     default_timeout_secs: u64,
+    /// Optional API key for enterprise authentication.
+    api_key: Option<String>,
 }
 
 impl AuditSenderImpl {
@@ -48,6 +50,7 @@ impl AuditSenderImpl {
             default_backend_url,
             client,
             default_timeout_secs: 30,
+            api_key: None,
         }
     }
 
@@ -67,7 +70,14 @@ impl AuditSenderImpl {
             default_backend_url,
             client,
             default_timeout_secs,
+            api_key: None,
         }
+    }
+
+    /// Set the API key for enterprise authentication.
+    pub fn with_api_key(mut self, api_key: Option<String>) -> Self {
+        self.api_key = api_key;
+        self
     }
 
     /// Compute the next backoff delay with jitter.
@@ -108,15 +118,19 @@ impl AuditSender for AuditSenderImpl {
             }
         })?;
 
-        // Send HTTP POST
-        let response = self
+        // Send HTTP POST (with optional Authorization header)
+        let mut request = self
             .client
             .post(backend_url)
             .header("Content-Type", "application/json")
             .body(body)
-            .timeout(std::time::Duration::from_secs(timeout_secs))
-            .send()
-            .await;
+            .timeout(std::time::Duration::from_secs(timeout_secs));
+
+        if let Some(ref api_key) = self.api_key {
+            request = request.header("Authorization", format!("Bearer {api_key}"));
+        }
+
+        let response = request.send().await;
 
         let duration_ms = start.elapsed().as_millis() as u64;
 

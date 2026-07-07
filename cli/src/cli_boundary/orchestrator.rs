@@ -191,9 +191,14 @@ pub async fn build_orchestrator_with_budget(
     }
 
     // ── 0. Convert config → orchestrator domain config ────────────────
+    let audit_enabled = engine_config
+        .enterprise
+        .as_ref()
+        .map(|e| e.post_audit)
+        .unwrap_or(false);
     let orch_domain_config = OrchestratorDomainConfig {
         event_buffer_capacity: 10_000,
-        audit_enabled: false,
+        audit_enabled,
         execution_timeout_secs: engine_config.orchestrator.default_timeout_secs.max(60),
         planning_timeout_secs: 60,
         state_persistence_timeout_secs: 10,
@@ -416,7 +421,18 @@ pub async fn build_orchestrator_with_budget(
     let envelope_factory: Box<
         dyn rigorix_engine::audit::application::factory::AuditEnvelopeFactory,
     > = Box::new(AuditEnvelopeFactoryImpl::new(None));
-    let sender: Arc<dyn AuditSender> = Arc::new(AuditSenderImpl::new(None, None));
+    let enterprise_backend_url = engine_config
+        .enterprise
+        .as_ref()
+        .map(|e| e.api_url.clone());
+    let enterprise_api_key = engine_config
+        .enterprise
+        .as_ref()
+        .map(|e| e.api_key.clone());
+    let sender: Arc<dyn AuditSender> = Arc::new(
+        AuditSenderImpl::new(None, enterprise_backend_url)
+            .with_api_key(enterprise_api_key),
+    );
     let queue: Box<dyn AuditQueue> = Box::new(AuditQueueImpl::default());
     let audit = Arc::new(AuditServiceImpl::new(
         envelope_factory,
