@@ -19,6 +19,7 @@ use std::collections::HashMap;
 use crate::configuration::domain::{
     AuditConfig, EnforcementPreset, LoggingConfig, OrchestratorConfig, RiskLevel, Secret,
 };
+use crate::enterprise::domain::EnterpriseConfig;
 
 // ---------------------------------------------------------------------------
 // Config Load DTOs
@@ -67,6 +68,8 @@ pub struct ConfigDto {
     pub enforcement: EnforcementPreset,
     pub audit: AuditConfig,
     pub llm: LlmConfigDto,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enterprise: Option<EnterpriseConfig>,
 }
 
 /// Tools sub-configuration DTO.

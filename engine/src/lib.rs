@@ -30,6 +30,7 @@ pub mod code_gen;
 pub mod code_graph;
 pub mod common;
 pub mod configuration;
+pub mod enterprise;
 pub mod dag_engine;
 pub mod enforcement;
 pub mod error;

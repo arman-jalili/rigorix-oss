@@ -46,7 +46,11 @@ impl AuditBackendFactory for AuditBackendFactoryImpl {
         if let Some(url) = &config.backend_url
             && !url.is_empty()
         {
-            return Ok(Box::new(HttpAuditBackend::new(Some(url.clone()))));
+            let mut backend = HttpAuditBackend::new(Some(url.clone()));
+            if let Some(ref api_key) = config.api_key {
+                backend = backend.with_api_key(Some(api_key.clone()));
+            }
+            return Ok(Box::new(backend));
         }
 
         if let Some(path) = &config.filesystem_path
@@ -79,6 +83,7 @@ mod tests {
         let config = AuditBackendConfig {
             backend_url: Some("https://audit.example.com".to_string()),
             filesystem_path: None,
+            api_key: None,
             signing_key: None,
             key_id: None,
             max_retries: 3,
@@ -91,11 +96,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_create_http_with_api_key() {
+        let factory = AuditBackendFactoryImpl::new();
+        let config = AuditBackendConfig {
+            backend_url: Some("https://audit.example.com".to_string()),
+            filesystem_path: None,
+            api_key: Some("enterprise-key-123".to_string()),
+            signing_key: None,
+            key_id: None,
+            max_retries: 3,
+            retry_delay_secs: 1,
+            queue_capacity: 100,
+        };
+        let backend = factory.create(config).await;
+        assert!(backend.is_ok());
+        // Health check will return false (no real server), but construction should succeed
+        assert!(!backend.unwrap().health_check().await.unwrap());
+    }
+
+    #[tokio::test]
     async fn test_create_filesystem_backend() {
         let factory = AuditBackendFactoryImpl::new();
         let config = AuditBackendConfig {
             backend_url: None,
             filesystem_path: Some("/tmp/test-audit".to_string()),
+            api_key: None,
             signing_key: None,
             key_id: None,
             max_retries: 3,
@@ -114,6 +139,7 @@ mod tests {
         let config = AuditBackendConfig {
             backend_url: Some("https://audit.example.com".to_string()),
             filesystem_path: Some("/tmp/test-audit".to_string()),
+            api_key: None,
             signing_key: None,
             key_id: None,
             max_retries: 3,
@@ -131,6 +157,7 @@ mod tests {
         let config = AuditBackendConfig {
             backend_url: None,
             filesystem_path: None,
+            api_key: None,
             signing_key: None,
             key_id: None,
             max_retries: 3,

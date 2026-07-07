@@ -27,7 +27,8 @@ use rigorix_actions::action_entrypoint::application::{
     service::{ActionRouter, ContextBuilder, ModeResolver},
 };
 use rigorix_actions::action_entrypoint::domain::{
-    ActionContext, ActionMode, AnnotationLevel, DispatchStatus, GitHubEvent, WorkflowAnnotation,
+    ActionContext, ActionMode, AnnotationLevel, DispatchStatus, EnterpriseActionConfig,
+    GitHubEvent, WorkflowAnnotation,
 };
 use rigorix_engine::audit::application::audit_queue_impl::AuditQueueImpl;
 use rigorix_engine::audit::application::audit_sender_impl::AuditSenderImpl;
@@ -545,6 +546,15 @@ async fn main() {
         .map(|v| v == "true")
         .unwrap_or(true);
     let _profile = read_input("profile");
+
+    // Enterprise integration inputs
+    let enterprise_api_key = read_input("enterprise-api-key");
+    let enterprise_api_url = read_input("enterprise-api-url");
+    let enterprise_team_id = read_input("enterprise-team-id");
+    let enterprise_fail_on_violation = read_input("fail-on-violation")
+        .map(|v| v == "true")
+        .unwrap_or(false);
+
     let repo_root = read_workspace();
     let event_name = read_event_name();
 
@@ -634,6 +644,20 @@ async fn main() {
                 ActionMode::Status,
                 read_github_token(),
             )
+        }
+    };
+
+    // Attach enterprise config if inputs are present
+    let context = {
+        let ent_config = EnterpriseActionConfig::from_inputs(
+            enterprise_api_key,
+            enterprise_api_url,
+            enterprise_team_id,
+            enterprise_fail_on_violation,
+        );
+        ActionContext {
+            enterprise_config: ent_config,
+            ..context
         }
     };
 

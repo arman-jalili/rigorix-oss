@@ -240,6 +240,8 @@ pub struct AuditBackendConfig {
     pub backend_url: Option<String>,
     /// Directory path for filesystem backend.
     pub filesystem_path: Option<String>,
+    /// API key for enterprise backend authentication.
+    pub api_key: Option<String>,
     /// HMAC signing key hex string.
     pub signing_key: Option<String>,
     /// HMAC signing key identifier.

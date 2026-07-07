@@ -16,6 +16,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::enterprise::domain::EnterpriseConfig;
+
 /// Top-level configuration aggregate.
 ///
 /// Loaded at startup and shared across all components via the orchestrator.
@@ -40,6 +42,10 @@ pub struct Config {
 
     /// LLM provider settings.
     pub llm: LlmConfig,
+
+    /// Enterprise integration configuration (optional).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enterprise: Option<EnterpriseConfig>,
 }
 
 /// Orchestrator execution parameters.

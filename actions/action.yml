@@ -85,6 +85,17 @@ inputs:
     description: 'Configuration profile to use'
     required: false
 
+  # Enterprise integration inputs
+  enterprise-api-key:
+    description: 'API key for Rigorix Enterprise'
+    required: false
+  enterprise-api-url:
+    description: 'Rigorix Enterprise API URL (e.g. https://rigorix.example.com/api/v1)'
+    required: false
+  enterprise-team-id:
+    description: 'Team UUID in Rigorix Enterprise'
+    required: false
+
 outputs:
   execution_id:
     description: 'UUID of the execution'

@@ -413,6 +413,7 @@ impl ContextBuilder for ContextBuilderImpl {
             max_llm_tokens,
             profile,
             permission_mode,
+            enterprise_config: None,
         };
 
         Ok(BuildContextOutput {

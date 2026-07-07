@@ -1889,6 +1889,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "criterion",
+ "hex",
  "hmac 0.13.0",
  "indexmap",
  "prometheus",
@@ -1911,6 +1912,7 @@ dependencies = [
  "tree-sitter-rust",
  "tree-sitter-typescript",
  "uuid",
+ "wiremock",
 ]
 
 [[package]]
