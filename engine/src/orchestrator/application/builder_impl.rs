@@ -283,6 +283,8 @@ mod tests {
                 config: serde_json::json!({}),
                 repo_root: "/tmp/test".into(),
                 enforcement_preset: None,
+                repository: None,
+                author: None,
             })
             .await;
         assert!(result.is_ok(), "run should succeed: {:?}", result.err());

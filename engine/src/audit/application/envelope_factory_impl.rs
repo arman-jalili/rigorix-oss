@@ -84,6 +84,8 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
             timestamp: chrono::Utc::now(),
             template_id: input.template_id,
             planning_hash,
+            repository: input.repository,
+            author: input.author,
             events: input.events,
             signature: None,
         };
@@ -143,6 +145,8 @@ mod tests {
             }],
             metadata: None,
             sign: false,
+            repository: None,
+            author: None,
         }
     }
 

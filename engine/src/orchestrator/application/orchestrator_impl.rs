@@ -641,6 +641,8 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     events: aref,
                     metadata: None,
                     sign: false,
+                    repository: input.repository.clone(),
+                    author: input.author.clone(),
                 })
                 .await;
         }

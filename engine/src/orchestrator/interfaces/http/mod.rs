@@ -55,6 +55,12 @@ pub struct RunRequest {
 
     /// Optional enforcement preset.
     pub enforcement_preset: Option<String>,
+
+    /// Repository name for audit (e.g. "my-org/my-repo").
+    pub repository: Option<String>,
+
+    /// Author identity for audit.
+    pub author: Option<String>,
 }
 
 impl From<RunRequest> for RunInput {
@@ -64,6 +70,8 @@ impl From<RunRequest> for RunInput {
             config: req.config,
             repo_root: req.repo_root,
             enforcement_preset: req.enforcement_preset,
+            repository: req.repository,
+            author: req.author,
         }
     }
 }

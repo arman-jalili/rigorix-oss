@@ -36,6 +36,12 @@ pub struct AuditEnvelope {
     /// Allows verifying that the same input produces the same plan.
     pub planning_hash: String,
 
+    /// Repository the execution ran against (e.g. "my-org/my-repo").
+    pub repository: Option<String>,
+
+    /// Identity of the user or bot that triggered the execution.
+    pub author: Option<String>,
+
     /// The ordered list of execution events captured during this run.
     pub events: Vec<ExecutionEventRef>,
 

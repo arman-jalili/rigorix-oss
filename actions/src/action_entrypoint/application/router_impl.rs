@@ -72,6 +72,8 @@ impl ActionRouterImpl {
             repo_root: ctx.workspace_root.clone(),
             config: ctx.to_engine_config(),
             enforcement_preset: None,
+            repository: None,
+            author: None,
         };
 
         let output = self

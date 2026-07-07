@@ -65,6 +65,12 @@ pub struct BuildEnvelopeRequest {
 
     /// Whether to immediately send the envelope after building.
     pub send_immediately: Option<bool>,
+
+    /// Repository the execution ran against.
+    pub repository: Option<String>,
+
+    /// Identity of the user or bot that triggered the execution.
+    pub author: Option<String>,
 }
 
 impl From<BuildEnvelopeRequest> for BuildEnvelopeInput {
@@ -76,6 +82,8 @@ impl From<BuildEnvelopeRequest> for BuildEnvelopeInput {
             events: req.events.into_iter().map(Into::into).collect(),
             metadata: req.metadata,
             sign: req.sign.unwrap_or(false),
+            repository: req.repository,
+            author: req.author,
         }
     }
 }

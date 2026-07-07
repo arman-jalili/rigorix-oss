@@ -148,6 +148,8 @@ mod tests {
                 status: EventStatus::Success,
             }],
             signature: None,
+            repository: None,
+            author: None,
         }
     }
 

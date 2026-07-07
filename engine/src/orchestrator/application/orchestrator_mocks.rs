@@ -470,6 +470,8 @@ impl crate::audit::application::AuditService for MockAuditService {
                 planning_hash: "hash".into(),
                 events: vec![],
                 signature: None,
+                repository: None,
+                author: None,
             },
             signed: false,
             event_count: 0,

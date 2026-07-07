@@ -33,6 +33,12 @@ pub struct RunInput {
     /// Repository root path.
     pub repo_root: String,
 
+    /// Repository name for audit (e.g. "my-org/my-repo").
+    pub repository: Option<String>,
+
+    /// Author identity for audit (e.g. email or username).
+    pub author: Option<String>,
+
     /// Optional enforcement preset override.
     pub enforcement_preset: Option<String>,
 }

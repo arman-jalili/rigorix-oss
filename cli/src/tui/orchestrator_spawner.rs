@@ -150,6 +150,8 @@ impl OrchestratorSpawner for OrchestratorSpawnerImpl {
                         config: serde_json::Value::Null,
                         repo_root,
                         enforcement_preset: None,
+                        repository: None,
+                        author: None,
                     };
                     match orch.run(input).await {
                         Ok(output) => {

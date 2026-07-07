@@ -28,6 +28,8 @@ async fn test_audit_envelope_has_hmac_signature() {
             ("llm_calls".to_string(), "2".to_string()),
         ])),
         sign: true,
+        repository: None,
+        author: None,
     };
 
     let envelope = factory.build_envelope(input).await.unwrap();

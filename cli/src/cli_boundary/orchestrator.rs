@@ -424,21 +424,32 @@ pub async fn build_orchestrator_with_budget(
     let enterprise_backend_url = engine_config
         .enterprise
         .as_ref()
-        .map(|e| e.api_url.clone());
+        .map(|e| format!("{}/audit/cli", e.api_url.trim_end_matches('/')));
     let enterprise_api_key = engine_config
         .enterprise
         .as_ref()
         .map(|e| e.api_key.clone());
-    let sender: Arc<dyn AuditSender> = Arc::new(
-        AuditSenderImpl::new(None, enterprise_backend_url)
-            .with_api_key(enterprise_api_key),
-    );
+    let enterprise_team_id = engine_config
+        .enterprise
+        .as_ref()
+        .map(|e| e.team_id);
+    let mut sender = AuditSenderImpl::new(None, enterprise_backend_url)
+        .with_api_key(enterprise_api_key);
+    if let Some(tid) = enterprise_team_id {
+        sender = sender.with_team_id(tid);
+    }
+    let sender: Arc<dyn AuditSender> = Arc::new(sender);
     let queue: Box<dyn AuditQueue> = Box::new(AuditQueueImpl::default());
+    let audit_enabled = engine_config
+        .enterprise
+        .as_ref()
+        .map(|e| e.post_audit)
+        .unwrap_or(false);
     let audit = Arc::new(AuditServiceImpl::new(
         envelope_factory,
         sender,
         queue,
-        false,
+        audit_enabled,
     )) as Arc<dyn rigorix_engine::audit::application::service::AuditService>;
 
     // ── Wire everything ────────────────────────────────────────────────

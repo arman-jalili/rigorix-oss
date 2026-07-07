@@ -140,6 +140,8 @@ async fn handle_run(
         repo_root: std::env::current_dir()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default(),
+        repository: detect_git_repository(),
+        author: detect_git_author(),
         enforcement_preset: enforcement,
     };
     match orch.run(input).await {
@@ -210,6 +212,75 @@ async fn handle_run(
             DispatchResult::success(summary)
         }
         Err(e) => DispatchResult::error(format!("Run failed: {e}"), 1),
+    }
+}
+
+/// Detect git repository in "owner/repo" format from the origin remote.
+fn detect_git_repository() -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .output()
+        .ok()?;
+    if output.status.success() {
+        let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        parse_repo_from_url(&url)
+    } else {
+        None
+    }
+}
+
+/// Detect git author email from local config.
+fn detect_git_author() -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["config", "user.email"])
+        .output()
+        .ok()?;
+    if output.status.success() {
+        let email = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if email.is_empty() { None } else { Some(email) }
+    } else {
+        None
+    }
+}
+
+/// Parse "owner/repo" from common git URL formats.
+///
+/// Handles: https://github.com/owner/repo.git, git@github.com:owner/repo.git,
+/// ssh://git@github.com/owner/repo.git
+fn parse_repo_from_url(url: &str) -> Option<String> {
+    // Strip protocol prefix if present (https://, ssh://, etc.)
+    let stripped = url
+        .trim()
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+        .or_else(|| url.strip_prefix("ssh://"))
+        .unwrap_or(url);
+
+    // Handle git@github.com:owner/repo.git format
+    let path = if let Some(at_pos) = stripped.find('@') {
+        // git@host:owner/repo.git → owner/repo.git
+        if let Some(colon_pos) = stripped[at_pos..].find(':') {
+            &stripped[at_pos + colon_pos + 1..]
+        } else {
+            stripped
+        }
+    } else {
+        // Remove host portion: github.com/owner/repo.git → owner/repo.git
+        if let Some(slash_pos) = stripped.find('/') {
+            &stripped[slash_pos + 1..]
+        } else {
+            stripped
+        }
+    };
+
+    // Strip trailing .git
+    let path = path.strip_suffix(".git").unwrap_or(path);
+
+    // Must contain exactly one slash: owner/repo
+    if path.split('/').count() == 2 && !path.is_empty() && !path.starts_with('/') {
+        Some(path.to_string())
+    } else {
+        None
     }
 }
 

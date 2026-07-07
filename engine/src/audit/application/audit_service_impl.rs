@@ -227,6 +227,8 @@ mod tests {
             }],
             metadata: None,
             sign: false,
+            repository: None,
+            author: None,
         }
     }
 

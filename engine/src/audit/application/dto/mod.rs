@@ -38,6 +38,12 @@ pub struct BuildEnvelopeInput {
     /// Ordered list of execution event references to include in the envelope.
     pub events: Vec<ExecutionEventRef>,
 
+    /// Repository the execution ran against (e.g. "my-org/my-repo").
+    pub repository: Option<String>,
+
+    /// Identity of the user or bot that triggered the execution.
+    pub author: Option<String>,
+
     /// Optional execution metadata key-value pairs.
     pub metadata: Option<HashMap<String, String>>,
 
