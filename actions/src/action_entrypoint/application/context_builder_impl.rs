@@ -403,6 +403,18 @@ impl ContextBuilder for ContextBuilderImpl {
                 .await?
         };
 
+        // 9. Repository and author for audit trail (from GitHub CI env vars)
+        let repository = if let Some(overrides) = &input.env_override {
+            overrides.get("GITHUB_REPOSITORY").cloned()
+        } else {
+            self.repository.read_env_var("GITHUB_REPOSITORY").await?
+        };
+        let author = if let Some(overrides) = &input.env_override {
+            overrides.get("GITHUB_ACTOR").cloned()
+        } else {
+            self.repository.read_env_var("GITHUB_ACTOR").await?
+        };
+
         let context = ActionContext {
             workspace_root,
             event,
@@ -414,6 +426,8 @@ impl ContextBuilder for ContextBuilderImpl {
             profile,
             permission_mode,
             enterprise_config: None,
+            repository,
+            author,
         };
 
         Ok(BuildContextOutput {

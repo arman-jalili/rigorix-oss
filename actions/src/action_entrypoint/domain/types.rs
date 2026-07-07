@@ -252,6 +252,12 @@ pub struct ActionContext {
 
     /// Enterprise integration configuration (optional).
     pub enterprise_config: Option<EnterpriseActionConfig>,
+
+    /// Repository name for audit trail (e.g. "owner/repo" from GITHUB_REPOSITORY).
+    pub repository: Option<String>,
+
+    /// Actor that triggered the workflow (from GITHUB_ACTOR).
+    pub author: Option<String>,
 }
 
 impl ActionContext {
@@ -273,6 +279,8 @@ impl ActionContext {
             profile: None,
             permission_mode: None,
             enterprise_config: None,
+            repository: None,
+            author: None,
         }
     }
 
@@ -303,6 +311,8 @@ impl ActionContext {
             profile: self.profile.clone(),
             permission_mode: self.permission_mode.clone(),
             enterprise_config: self.enterprise_config.clone(),
+            repository: self.repository.clone(),
+            author: self.author.clone(),
         }
     }
 }
