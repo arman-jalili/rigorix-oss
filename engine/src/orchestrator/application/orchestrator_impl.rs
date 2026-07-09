@@ -762,6 +762,8 @@ mod tests {
                 intent: "test".into(),
                 config: serde_json::json!({}),
                 repo_root: "/tmp/t".into(),
+                author: None,
+                repository: None,
                 enforcement_preset: None,
             })
             .await
@@ -779,6 +781,8 @@ mod tests {
                 intent: "test".into(),
                 config: serde_json::json!({}),
                 repo_root: "/tmp/t".into(),
+                author: None,
+                repository: None,
                 enforcement_preset: None,
             })
             .await
@@ -795,6 +799,8 @@ mod tests {
                 intent: "test".into(),
                 config: serde_json::json!({}),
                 repo_root: "/tmp/t".into(),
+                author: None,
+                repository: None,
                 enforcement_preset: None,
             })
             .await
@@ -810,6 +816,8 @@ mod tests {
                 intent: "test".into(),
                 config: serde_json::json!({}),
                 repo_root: "/tmp/repo".into(),
+                author: None,
+                repository: None,
                 enforcement_preset: None,
             })
             .await
@@ -852,6 +860,8 @@ mod tests {
                 intent: "test".into(),
                 config: serde_json::json!({}),
                 repo_root: "/tmp/t".into(),
+                author: None,
+                repository: None,
                 enforcement_preset: None,
             })
             .await
@@ -961,6 +971,8 @@ mod tests {
                 intent: "test".into(),
                 config: serde_json::json!({}),
                 repo_root: "/tmp/t".into(),
+                author: None,
+                repository: None,
                 enforcement_preset: None,
             })
             .await

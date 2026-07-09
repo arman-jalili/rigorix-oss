@@ -81,6 +81,15 @@ impl ModeResolver for ModeResolverImpl {
                         warnings,
                     });
                 }
+                "governance" => {
+                    let intent = input.input_intent.unwrap_or_default();
+                    return Ok(ResolveModeOutput {
+                        mode: ActionMode::Validate { intent },
+                        source: "input".to_string(),
+                        unambiguous: true,
+                        warnings,
+                    });
+                }
                 "status" => {
                     return Ok(ResolveModeOutput {
                         mode: ActionMode::Status,
@@ -97,7 +106,7 @@ impl ModeResolver for ModeResolverImpl {
                 _ => {
                     return Err(ActionError::ModeResolutionError {
                         detail: format!(
-                            "Unknown INPUT_MODE value: '{mode_str}'. Valid values: run, plan, validate, status, auto"
+                            "Unknown INPUT_MODE value: '{mode_str}'. Valid values: run, plan, validate, governance, status, auto"
                         ),
                         input_mode: Some(mode_str.clone()),
                         event_name: Some(input.event_name.clone()),
@@ -168,7 +177,7 @@ impl ModeResolver for ModeResolverImpl {
             "plan" => Some(ActionMode::Plan {
                 intent: String::new(),
             }),
-            "validate" => Some(ActionMode::Validate {
+            "validate" | "governance" => Some(ActionMode::Validate {
                 intent: String::new(),
             }),
             "status" => Some(ActionMode::Status),

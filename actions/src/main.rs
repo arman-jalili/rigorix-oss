@@ -191,9 +191,21 @@ async fn build_action_orchestrator(
         tokio::fs::create_dir_all(rigorix_dir.join(sub)).await.ok();
     }
 
+    // Read enterprise audit config from env (set by GitHub Actions as INPUT_ENTERPRISE_*)
+    let enterprise_api_key = read_input("enterprise-api-key");
+    let enterprise_api_url = read_input("enterprise-api-url");
+    let enterprise_team_id = read_input("enterprise-team-id");
+    let has_enterprise = enterprise_api_key.is_some()
+        && enterprise_api_url.is_some()
+        && enterprise_team_id.is_some();
+
+    if has_enterprise {
+        tracing::info!("Enterprise audit configured — audit posting enabled");
+    }
+
     let orch_domain_config = OrchestratorDomainConfig {
         event_buffer_capacity: 10_000,
-        audit_enabled: false,
+        audit_enabled: has_enterprise,
         execution_timeout_secs: 600, // 10 minutes for CI
         planning_timeout_secs: 120,
         state_persistence_timeout_secs: 10,
@@ -453,17 +465,51 @@ async fn build_action_orchestrator(
         .await
         .map_err(|e| format!("planning: {e}"))?;
 
-    // ── 7. AuditService (optional) ─────────────────────────────────────
+    // ── 7. AuditService (enterprise-aware) ─────────────────────────────
     let envelope_factory: Box<
         dyn rigorix_engine::audit::application::factory::AuditEnvelopeFactory,
     > = Box::new(AuditEnvelopeFactoryImpl::new(None));
-    let sender: Arc<dyn AuditSender> = Arc::new(AuditSenderImpl::new(None, None));
     let queue: Box<dyn AuditQueue> = Box::new(AuditQueueImpl::default());
+
+    let (sender, audit_enabled): (Arc<dyn AuditSender>, bool) =
+        if let (Some(api_key), Some(api_url), Some(team_id_str)) =
+            (&enterprise_api_key, &enterprise_api_url, &enterprise_team_id)
+        {
+            let audit_url = format!(
+                "{}/api/v1/audit/github-pr",
+                api_url.trim_end_matches('/')
+            );
+            let team_uuid = uuid::Uuid::parse_str(team_id_str).unwrap_or_else(|e| {
+                tracing::warn!(
+                    "Invalid enterprise team_id UUID '{}': {e}. Using nil UUID.",
+                    team_id_str
+                );
+                uuid::Uuid::nil()
+            });
+            tracing::info!(
+                "Enterprise audit configured: posting to {} with team_id={}",
+                audit_url,
+                team_id_str
+            );
+            let sender = Arc::new(
+                AuditSenderImpl::new(None, Some(audit_url))
+                    .with_api_key(Some(api_key.clone()))
+                    .with_team_id(team_uuid)
+                    .with_source_type("github_action"),
+            ) as Arc<dyn AuditSender>;
+            (sender, true)
+        } else {
+            (
+                Arc::new(AuditSenderImpl::new(None, None)) as Arc<dyn AuditSender>,
+                false,
+            )
+        };
+
     let audit = Arc::new(AuditServiceImpl::new(
         envelope_factory,
         sender,
         queue,
-        false,
+        audit_enabled,
     )) as Arc<dyn rigorix_engine::audit::application::service::AuditService>;
 
     // ── Wire everything ────────────────────────────────────────────────

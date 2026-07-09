@@ -44,6 +44,8 @@ pub struct AuditSenderImpl {
     api_key: Option<String>,
     /// Enterprise team ID — required when posting to enterprise.
     team_id: Option<Uuid>,
+    /// Source type for enterprise posting (e.g. "rigorix_cli", "github_action").
+    source_type: String,
 }
 
 impl AuditSenderImpl {
@@ -64,6 +66,7 @@ impl AuditSenderImpl {
             default_timeout_secs: 30,
             api_key: None,
             team_id: None,
+            source_type: "rigorix_cli".to_string(),
         }
     }
 
@@ -85,6 +88,7 @@ impl AuditSenderImpl {
             default_timeout_secs,
             api_key: None,
             team_id: None,
+            source_type: "rigorix_cli".to_string(),
         }
     }
 
@@ -97,6 +101,12 @@ impl AuditSenderImpl {
     /// Set the enterprise team ID.
     pub fn with_team_id(mut self, team_id: Uuid) -> Self {
         self.team_id = Some(team_id);
+        self
+    }
+
+    /// Set the source type for enterprise posting (e.g. "rigorix_cli", "github_action").
+    pub fn with_source_type(mut self, source_type: impl Into<String>) -> Self {
+        self.source_type = source_type.into();
         self
     }
 
@@ -133,7 +143,7 @@ impl AuditSenderImpl {
 
         Ok(serde_json::json!({
             "execution_id": envelope.execution_id,
-            "source_type": "rigorix_cli",
+            "source_type": &self.source_type,
             "team_id": team_id,
             "repository": envelope.repository,
             "author": envelope.author,
