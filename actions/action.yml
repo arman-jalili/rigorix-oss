@@ -126,4 +126,4 @@ outputs:
 
 runs:
   using: 'docker'
-  image: 'Dockerfile'
+  image: 'docker://ghcr.io/arman-jalili/rigorix-oss/actions:latest'
