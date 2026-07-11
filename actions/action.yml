@@ -86,6 +86,10 @@ inputs:
     required: false
 
   # LLM provider inputs
+  provider:
+    description: 'LLM provider (anthropic, openai, deepseek, custom)'
+    required: false
+    default: 'anthropic'
   api-base-url:
     description: 'LLM API base URL (e.g. https://api.deepseek.com/v1 for DeepSeek, https://api.openai.com/v1 for OpenAI)'
     required: false
