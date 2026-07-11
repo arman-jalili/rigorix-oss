@@ -332,7 +332,7 @@ async fn build_action_orchestrator(
     let model = std::env::var("INPUT_MODEL").unwrap_or_else(|_| match provider {
         LlmProvider::Anthropic => "claude-sonnet-4-20250514".into(),
         LlmProvider::OpenAI => "gpt-4o".into(),
-        LlmProvider::DeepSeek => "deepseek-chat".into(),
+        LlmProvider::DeepSeek => "deepseek-v4-flash".into(),
         LlmProvider::Custom => "gpt-4o-mini".into(),
     });
 
