@@ -22,6 +22,7 @@ COPY actions/Cargo.toml actions/
 
 # Copy source code
 COPY engine/src engine/src/
+COPY engine/benches engine/benches/
 COPY cli/src cli/src/
 COPY actions/src actions/src/
 
