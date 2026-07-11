@@ -7,7 +7,7 @@ please report it privately before disclosing it publicly.
 
 **Do not report security vulnerabilities through public GitHub issues.**
 
-Instead, please report via email to **security@rigorix.dev** (or the
+Instead, please report via email to **security@example.com** (or the
 maintainer's email in the commit history). You should receive a response
 within 48 hours.
 

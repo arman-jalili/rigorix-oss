@@ -197,7 +197,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_validate_invalid_url() {
-        let allowlist = make_allowlist(vec!["rigorix.io"]);
+        let allowlist = make_allowlist(vec!["example.com"]);
         let input = ValidateUrlInput {
             url: "not-a-valid-url".to_string(),
             allowlist_override: None,
@@ -227,8 +227,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_from_csv() {
-        let allowlist = UrlAllowlistImpl::from_csv("rigorix.io,github.com,api.test.com");
-        assert!(allowlist.is_host_allowed("rigorix.io").await.unwrap());
+        let allowlist = UrlAllowlistImpl::from_csv("example.com,github.com,api.test.com");
+        assert!(allowlist.is_host_allowed("example.com").await.unwrap());
         assert!(allowlist.is_host_allowed("github.com").await.unwrap());
         assert!(!allowlist.is_host_allowed("other.com").await.unwrap());
     }
