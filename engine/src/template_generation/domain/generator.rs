@@ -1410,6 +1410,8 @@ VALID ACTION TYPES:
       type = "file_patch", path = "{{ file_path }}",
       anchor_type = "method", anchor_name = "activeCount", container = "TaskList",
       position = "after", insert = "  getActiveTasks(): Task[] {{ return []; }}\n"
+    IMPORTANT: In the insert value, you MUST escape double quotes as \" if the inserted code contains string literals.
+    Example — code with a string literal: insert = "  let name = \"hello\";\n"
     For appending to end of file: anchor_type = "end_of_file", no anchor_name needed
 - file_patch (search mode, DEPRECATED — only for files where no language grammar exists):
     {{ type, path, search, insert, before (optional) }}

@@ -188,6 +188,14 @@ impl ContextBuilderImpl {
                 "status" => {
                     return Ok((ActionMode::Status, "input".to_string()));
                 }
+                "governance" => {
+                    return Ok((
+                        ActionMode::Validate {
+                            intent: String::new(),
+                        },
+                        "input".to_string(),
+                    ));
+                }
                 "auto" => { /* fall through to event-based resolution */ }
                 _ => {
                     return Err(ActionError::ModeResolutionError {
