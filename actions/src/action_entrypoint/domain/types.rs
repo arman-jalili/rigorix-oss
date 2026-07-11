@@ -163,50 +163,6 @@ impl GitHubEvent {
     }
 }
 
-// ---------------------------------------------------------------------------
-// EnterpriseActionConfig
-// ---------------------------------------------------------------------------
-
-/// Enterprise integration configuration from action inputs.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EnterpriseActionConfig {
-    /// API key for Rigorix Enterprise.
-    pub api_key: String,
-
-    /// Rigorix Enterprise API URL.
-    pub api_url: String,
-
-    /// Team UUID string in Rigorix Enterprise.
-    pub team_id: String,
-
-    /// Whether to fail the workflow on enterprise policy violations.
-    pub fail_on_violation: bool,
-}
-
-impl EnterpriseActionConfig {
-    /// Build an `EnterpriseActionConfig` from action inputs, returning None
-    /// if required fields (api_key, api_url, team_id) are not all present.
-    pub fn from_inputs(
-        api_key: Option<String>,
-        api_url: Option<String>,
-        team_id: Option<String>,
-        fail_on_violation: bool,
-    ) -> Option<Self> {
-        match (api_key, api_url, team_id) {
-            (Some(api_key), Some(api_url), Some(team_id))
-                if !api_key.is_empty() && !api_url.is_empty() && !team_id.is_empty() =>
-            {
-                Some(Self {
-                    api_key,
-                    api_url,
-                    team_id,
-                    fail_on_violation,
-                })
-            }
-            _ => None,
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // ActionContext
@@ -250,9 +206,6 @@ pub struct ActionContext {
     /// Permission mode for engine tool execution.
     pub permission_mode: Option<String>,
 
-    /// Enterprise integration configuration (optional).
-    pub enterprise_config: Option<EnterpriseActionConfig>,
-
     /// Repository name for audit trail (e.g. "owner/repo" from GITHUB_REPOSITORY).
     pub repository: Option<String>,
 
@@ -278,7 +231,6 @@ impl ActionContext {
             max_llm_tokens: None,
             profile: None,
             permission_mode: None,
-            enterprise_config: None,
             repository: None,
             author: None,
         }
@@ -310,7 +262,6 @@ impl ActionContext {
             max_llm_tokens: self.max_llm_tokens,
             profile: self.profile.clone(),
             permission_mode: self.permission_mode.clone(),
-            enterprise_config: self.enterprise_config.clone(),
             repository: self.repository.clone(),
             author: self.author.clone(),
         }

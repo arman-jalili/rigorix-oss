@@ -375,8 +375,8 @@ version = "1.0.0"
 [backend]
 # Allowed API backend hosts (prefix matching)
 allowed_hosts = [
-    "api.rigorix.io",
-    "staging.rigorix.io",
+    "api.example.com",
+    "staging.example.com",
 ]
 
 [org_policy]

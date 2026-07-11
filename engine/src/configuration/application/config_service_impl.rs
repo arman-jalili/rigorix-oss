@@ -250,7 +250,10 @@ impl ConfigDto {
             enforcement: EnforcementPreset::Default,
             audit: AuditConfig::default(),
             llm: LlmConfigDto::default_for_comparison(),
-            enterprise: None,
+            enforcement_backend_url: None,
+            enforcement_backend_key: None,
+            audit_backend_url: None,
+            audit_backend_key: None,
         }
     }
 }

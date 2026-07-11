@@ -104,7 +104,10 @@ impl ConfigFactory for ConfigFactoryImpl {
                 temperature: 0.7,
                 api_key: Secret::new(""),
             },
-            enterprise: None,
+            enforcement_backend_url: None,
+            enforcement_backend_key: None,
+            audit_backend_url: None,
+            audit_backend_key: None,
         }
     }
 }
@@ -227,25 +230,19 @@ fn merge_into_defaults(raw: serde_json::Value, mut defaults: ConfigDto) -> Confi
             }
         }
 
-        // Parse [enterprise] section from TOML
-        if let Some(ent) = obj.get("enterprise").and_then(|v| v.as_object()) {
-            let api_url = ent.get("api_url").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let api_key = ent.get("api_key").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let team_id = ent.get("team_id")
-                .and_then(|v| v.as_str())
-                .and_then(|s| uuid::Uuid::parse_str(s).ok())
-                .unwrap_or(uuid::Uuid::nil());
-
-            if !api_url.is_empty() && !api_key.is_empty() {
-                defaults.enterprise = Some(crate::enterprise::domain::EnterpriseConfig {
-                    api_url,
-                    api_key,
-                    team_id,
-                    fetch_policies: ent.get("fetch_policies").and_then(|v| v.as_bool()).unwrap_or(true),
-                    enforce_policies: ent.get("enforce_policies").and_then(|v| v.as_bool()).unwrap_or(true),
-                    post_audit: ent.get("post_audit").and_then(|v| v.as_bool()).unwrap_or(true),
-                    policy_cache_ttl_secs: ent.get("policy_cache_ttl_secs").and_then(|v| v.as_u64()).unwrap_or(300),
-                });
+        // Parse [backend] section from TOML (enforcement + audit)
+        if let Some(backend) = obj.get("backend").and_then(|v| v.as_object()) {
+            if let Some(url) = backend.get("enforcement_url").and_then(|v| v.as_str()) {
+                defaults.enforcement_backend_url = Some(url.to_string());
+            }
+            if let Some(key) = backend.get("enforcement_key").and_then(|v| v.as_str()) {
+                defaults.enforcement_backend_key = Some(key.to_string());
+            }
+            if let Some(url) = backend.get("audit_url").and_then(|v| v.as_str()) {
+                defaults.audit_backend_url = Some(url.to_string());
+            }
+            if let Some(key) = backend.get("audit_key").and_then(|v| v.as_str()) {
+                defaults.audit_backend_key = Some(key.to_string());
             }
         }
     }
@@ -332,26 +329,12 @@ fn apply_deep_override(config: &mut ConfigDto, key: &str, value: &str) {
             }
             _ => {}
         },
-        ["enterprise", field] => {
-            let ent = config.enterprise.get_or_insert_with(crate::enterprise::domain::EnterpriseConfig::default);
-            match *field {
-                "api_url" => ent.api_url = value.to_string(),
-                "api_key" => ent.api_key = value.to_string(),
-                "team_id" => {
-                    if let Ok(id) = uuid::Uuid::parse_str(value) {
-                        ent.team_id = id;
-                    }
-                }
-                "fetch_policies" => ent.fetch_policies = value.eq_ignore_ascii_case("true"),
-                "enforce_policies" => ent.enforce_policies = value.eq_ignore_ascii_case("true"),
-                "post_audit" => ent.post_audit = value.eq_ignore_ascii_case("true"),
-                "policy_cache_ttl_secs" => {
-                    if let Ok(v) = value.parse::<u64>() {
-                        ent.policy_cache_ttl_secs = v;
-                    }
-                }
-                _ => {}
-            }
+        ["backend", field] => match *field {
+            "enforcement_url" => config.enforcement_backend_url = Some(value.to_string()),
+            "enforcement_key" => config.enforcement_backend_key = Some(value.to_string()),
+            "audit_url" => config.audit_backend_url = Some(value.to_string()),
+            "audit_key" => config.audit_backend_key = Some(value.to_string()),
+            _ => {}
         }
         _ => {}
     }

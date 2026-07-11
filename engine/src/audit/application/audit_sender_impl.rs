@@ -8,16 +8,13 @@
 //! logic, exponential backoff with jitter, and circuit breaker integration
 //! for resilience.
 //!
-//! When an enterprise API key and team_id are configured, envelopes are
-//! transformed into the enterprise `IngestEnvelopeRequest` format with an
-//! HMAC-SHA256 signature over the `record` field, and an `Authorization: Bearer`
-//! header is included.
+//! An optional backend URL and API key can be set for authentication.
+//! If the API key is set, it is sent as a `Bearer` token in the
+//! `Authorization` header. No HMAC signing is performed here — the
+//! backend handles that internally.
 
 use async_trait::async_trait;
-use hmac::{Hmac, KeyInit, Mac};
-use sha2::Sha256;
 use std::sync::Arc;
-use uuid::Uuid;
 
 use crate::audit::domain::AuditError;
 
@@ -26,11 +23,11 @@ use super::dto::{
 };
 use super::service::{AuditSender, CircuitBreaker};
 
-type HmacSha256 = Hmac<Sha256>;
-
 /// Implementation of `AuditSender` with HTTP delivery and circuit breaker.
 ///
 /// Uses reqwest for HTTP calls with configurable timeouts and retry logic.
+/// Sends a plain JSON `AuditEnvelope` with an optional `Authorization: Bearer`
+/// header if an API key is configured.
 pub struct AuditSenderImpl {
     /// Circuit breaker for backend resilience.
     circuit_breaker: Option<Arc<dyn CircuitBreaker>>,
@@ -40,12 +37,8 @@ pub struct AuditSenderImpl {
     client: reqwest::Client,
     /// Default request timeout in seconds.
     default_timeout_secs: u64,
-    /// Optional API key for enterprise authentication + HMAC signing.
+    /// Optional API key for Bearer token authentication.
     api_key: Option<String>,
-    /// Enterprise team ID — required when posting to enterprise.
-    team_id: Option<Uuid>,
-    /// Source type for enterprise posting (e.g. "rigorix_cli", "github_action").
-    source_type: String,
 }
 
 impl AuditSenderImpl {
@@ -65,8 +58,6 @@ impl AuditSenderImpl {
             client,
             default_timeout_secs: 30,
             api_key: None,
-            team_id: None,
-            source_type: "rigorix_cli".to_string(),
         }
     }
 
@@ -87,90 +78,24 @@ impl AuditSenderImpl {
             client,
             default_timeout_secs,
             api_key: None,
-            team_id: None,
-            source_type: "rigorix_cli".to_string(),
         }
     }
 
-    /// Set the API key for enterprise authentication and HMAC signing.
+    /// Set the API key for Bearer token authentication.
     pub fn with_api_key(mut self, api_key: Option<String>) -> Self {
         self.api_key = api_key;
         self
     }
 
-    /// Set the enterprise team ID.
-    pub fn with_team_id(mut self, team_id: Uuid) -> Self {
-        self.team_id = Some(team_id);
-        self
-    }
-
-    /// Set the source type for enterprise posting (e.g. "rigorix_cli", "github_action").
-    pub fn with_source_type(mut self, source_type: impl Into<String>) -> Self {
-        self.source_type = source_type.into();
-        self
-    }
-
-    /// Whether enterprise posting is fully configured.
-    fn is_enterprise_mode(&self) -> bool {
-        self.api_key.is_some() && self.team_id.is_some()
-    }
-
-    /// Build the enterprise `IngestEnvelopeRequest` body from an `AuditEnvelope`.
-    fn build_enterprise_body(
-        &self,
-        envelope: &crate::audit::domain::AuditEnvelope,
-    ) -> Result<serde_json::Value, AuditError> {
-        let team_id = self.team_id.ok_or(AuditError::NotConfigured {
-            missing_field: "team_id".to_string(),
-        })?;
-        let api_key = self.api_key.as_deref().ok_or(AuditError::NotConfigured {
-            missing_field: "api_key".to_string(),
-        })?;
-
-        let record = serde_json::to_value(envelope).map_err(|e| {
-            AuditError::SerializationFailed {
-                detail: format!("Failed to serialize envelope as record: {e}"),
-            }
-        })?;
-
-        // HMAC-SHA256 over canonical JSON of the record
-        let record_json = serde_json::to_string(&record).map_err(|e| {
-            AuditError::SerializationFailed {
-                detail: format!("Failed to canonicalize record for HMAC: {e}"),
-            }
-        })?;
-        let hmac_signature = compute_hmac(api_key.as_bytes(), record_json.as_bytes());
-
-        Ok(serde_json::json!({
-            "execution_id": envelope.execution_id,
-            "source_type": &self.source_type,
-            "team_id": team_id,
-            "repository": envelope.repository,
-            "author": envelope.author,
-            "template": envelope.template_id,
-            "plan_hash": envelope.planning_hash,
-            "record": record,
-            "hmac_signature": format!("sha256={hmac_signature}"),
-        }))
-    }
-
     /// Compute the next backoff delay with jitter.
     #[tracing::instrument(skip_all)]
     fn backoff_delay(attempt: u32, base_secs: u64, max_secs: u64) -> tokio::time::Duration {
-
         let base = base_secs * 2u64.pow(attempt.saturating_sub(1));
         let delay = base.min(max_secs);
         // Add jitter: up to 25% of the delay
         let jitter = rand::random::<f64>() * (delay as f64 * 0.25);
         tokio::time::Duration::from_secs_f64(delay as f64 + jitter)
     }
-}
-
-/// Compute HMAC-SHA256 and return the hex-encoded digest.
-fn compute_hmac(key: &[u8], data: &[u8]) -> String {
-    let mut mac = HmacSha256::new_from_slice(key).expect("HMAC key length is valid");
-    mac.update(data);
-    hex::encode(mac.finalize().into_bytes())
 }
 
 #[async_trait]
@@ -193,20 +118,12 @@ impl AuditSender for AuditSenderImpl {
         let timeout_secs = input.timeout_secs.unwrap_or(self.default_timeout_secs);
         let start = std::time::Instant::now();
 
-        // Build the request body — enterprise mode uses HMAC-signed envelope format
-        let body = if self.is_enterprise_mode() {
-            serde_json::to_string(&self.build_enterprise_body(&input.envelope)?).map_err(|e| {
-                AuditError::SerializationFailed {
-                    detail: e.to_string(),
-                }
-            })?
-        } else {
-            serde_json::to_string(&input.envelope).map_err(|e| {
-                AuditError::SerializationFailed {
-                    detail: e.to_string(),
-                }
-            })?
-        };
+        // Serialize the envelope as JSON
+        let body = serde_json::to_string(&input.envelope).map_err(|e| {
+            AuditError::SerializationFailed {
+                detail: e.to_string(),
+            }
+        })?;
 
         // Send HTTP POST (with optional Authorization header)
         let mut request = self

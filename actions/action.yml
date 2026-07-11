@@ -85,15 +85,12 @@ inputs:
     description: 'Configuration profile to use'
     required: false
 
-  # Enterprise integration inputs
-  enterprise-api-key:
-    description: 'API key for Rigorix Enterprise'
+  # Backend integration inputs
+  backend-api-key:
+    description: 'API key for the audit/enforcement backend'
     required: false
-  enterprise-api-url:
-    description: 'Rigorix Enterprise API URL (e.g. https://rigorix.example.com/api/v1)'
-    required: false
-  enterprise-team-id:
-    description: 'Team UUID in Rigorix Enterprise'
+  backend-audit-url:
+    description: 'URL for posting audit records (e.g. https://backend.example.com/audit)'
     required: false
 
 outputs:

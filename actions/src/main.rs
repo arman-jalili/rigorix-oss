@@ -27,7 +27,7 @@ use rigorix_actions::action_entrypoint::application::{
     service::{ActionRouter, ContextBuilder, ModeResolver},
 };
 use rigorix_actions::action_entrypoint::domain::{
-    ActionContext, ActionMode, AnnotationLevel, DispatchStatus, EnterpriseActionConfig,
+    ActionContext, ActionMode, AnnotationLevel, DispatchStatus,
     GitHubEvent, WorkflowAnnotation,
 };
 use rigorix_engine::audit::application::audit_queue_impl::AuditQueueImpl;
@@ -191,21 +191,18 @@ async fn build_action_orchestrator(
         tokio::fs::create_dir_all(rigorix_dir.join(sub)).await.ok();
     }
 
-    // Read enterprise audit config from env (set by GitHub Actions as INPUT_ENTERPRISE_*)
-    let enterprise_api_key = read_input("enterprise-api-key");
-    let enterprise_api_url = read_input("enterprise-api-url");
-    let enterprise_team_id = read_input("enterprise-team-id");
-    let has_enterprise = enterprise_api_key.is_some()
-        && enterprise_api_url.is_some()
-        && enterprise_team_id.is_some();
+    // Read backend audit config from env (set by GitHub Actions as INPUT_BACKEND_*)
+    let backend_audit_url = read_input("backend-audit-url");
+    let backend_api_key = read_input("backend-api-key");
+    let has_backend = backend_audit_url.is_some();
 
-    if has_enterprise {
-        tracing::info!("Enterprise audit configured — audit posting enabled");
+    if has_backend {
+        tracing::info!("Backend audit configured — audit posting enabled");
     }
 
     let orch_domain_config = OrchestratorDomainConfig {
         event_buffer_capacity: 10_000,
-        audit_enabled: has_enterprise,
+        audit_enabled: has_backend,
         execution_timeout_secs: 600, // 10 minutes for CI
         planning_timeout_secs: 120,
         state_persistence_timeout_secs: 10,
@@ -465,37 +462,18 @@ async fn build_action_orchestrator(
         .await
         .map_err(|e| format!("planning: {e}"))?;
 
-    // ── 7. AuditService (enterprise-aware) ─────────────────────────────
+    // ── 7. AuditService (optional) ─────────────────────────────────────
     let envelope_factory: Box<
         dyn rigorix_engine::audit::application::factory::AuditEnvelopeFactory,
     > = Box::new(AuditEnvelopeFactoryImpl::new(None));
     let queue: Box<dyn AuditQueue> = Box::new(AuditQueueImpl::default());
 
     let (sender, audit_enabled): (Arc<dyn AuditSender>, bool) =
-        if let (Some(api_key), Some(api_url), Some(team_id_str)) =
-            (&enterprise_api_key, &enterprise_api_url, &enterprise_team_id)
-        {
-            let audit_url = format!(
-                "{}/api/v1/audit/github-pr",
-                api_url.trim_end_matches('/')
-            );
-            let team_uuid = uuid::Uuid::parse_str(team_id_str).unwrap_or_else(|e| {
-                tracing::warn!(
-                    "Invalid enterprise team_id UUID '{}': {e}. Using nil UUID.",
-                    team_id_str
-                );
-                uuid::Uuid::nil()
-            });
-            tracing::info!(
-                "Enterprise audit configured: posting to {} with team_id={}",
-                audit_url,
-                team_id_str
-            );
+        if let Some(audit_url) = &backend_audit_url {
+            tracing::info!("Backend audit configured: posting to {}", audit_url);
             let sender = Arc::new(
-                AuditSenderImpl::new(None, Some(audit_url))
-                    .with_api_key(Some(api_key.clone()))
-                    .with_team_id(team_uuid)
-                    .with_source_type("github_action"),
+                AuditSenderImpl::new(None, Some(audit_url.clone()))
+                    .with_api_key(backend_api_key.clone()),
             ) as Arc<dyn AuditSender>;
             (sender, true)
         } else {
@@ -593,13 +571,9 @@ async fn main() {
         .unwrap_or(true);
     let _profile = read_input("profile");
 
-    // Enterprise integration inputs
-    let enterprise_api_key = read_input("enterprise-api-key");
-    let enterprise_api_url = read_input("enterprise-api-url");
-    let enterprise_team_id = read_input("enterprise-team-id");
-    let enterprise_fail_on_violation = read_input("fail-on-violation")
-        .map(|v| v == "true")
-        .unwrap_or(false);
+    // Backend integration inputs (used by build_action_orchestrator which reads env directly)
+    let _backend_audit_url = read_input("backend-audit-url");
+    let _backend_api_key = read_input("backend-api-key");
 
     let repo_root = read_workspace();
     let event_name = read_event_name();
@@ -693,19 +667,8 @@ async fn main() {
         }
     };
 
-    // Attach enterprise config if inputs are present
-    let context = {
-        let ent_config = EnterpriseActionConfig::from_inputs(
-            enterprise_api_key,
-            enterprise_api_url,
-            enterprise_team_id,
-            enterprise_fail_on_violation,
-        );
-        ActionContext {
-            enterprise_config: ent_config,
-            ..context
-        }
-    };
+    // The context is used as-is (backend config is read directly in build_action_orchestrator)
+    let context = context;
 
     // 6. Resolve execution mode
     let mode_resolver = ModeResolverImpl;

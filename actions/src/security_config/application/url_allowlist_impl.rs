@@ -149,9 +149,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_validate_allowed_url() {
-        let allowlist = make_allowlist(vec!["api.rigorix.io"]);
+        let allowlist = make_allowlist(vec!["backend.example.com"]);
         let input = ValidateUrlInput {
-            url: "https://api.rigorix.io/v1/audit".to_string(),
+            url: "https://backend.example.com/v1/audit".to_string(),
             allowlist_override: None,
         };
         let result = allowlist.validate(input).await.unwrap();
@@ -160,7 +160,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_validate_blocked_url() {
-        let allowlist = make_allowlist(vec!["api.rigorix.io"]);
+        let allowlist = make_allowlist(vec!["backend.example.com"]);
         let input = ValidateUrlInput {
             url: "https://evil.com/exfiltrate".to_string(),
             allowlist_override: None,
@@ -186,9 +186,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_validate_subdomain_match() {
-        let allowlist = make_allowlist(vec!["rigorix.io"]);
+        let allowlist = make_allowlist(vec!["example.com"]);
         let input = ValidateUrlInput {
-            url: "https://api.rigorix.io/endpoint".to_string(),
+            url: "https://api.example.com/endpoint".to_string(),
             allowlist_override: None,
         };
         let result = allowlist.validate(input).await.unwrap();
@@ -210,8 +210,8 @@ mod tests {
     async fn test_validate_with_override() {
         let allowlist = make_allowlist(vec![]); // empty by default
         let input = ValidateUrlInput {
-            url: "https://api.rigorix.io".to_string(),
-            allowlist_override: Some(vec!["api.rigorix.io".to_string()]),
+            url: "https://backend.example.com".to_string(),
+            allowlist_override: Some(vec!["backend.example.com".to_string()]),
         };
         let result = allowlist.validate(input).await.unwrap();
         assert!(result.allowed);
@@ -219,9 +219,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_is_host_allowed() {
-        let allowlist = make_allowlist(vec!["rigorix.io", "github.com"]);
-        assert!(allowlist.is_host_allowed("rigorix.io").await.unwrap());
-        assert!(allowlist.is_host_allowed("api.rigorix.io").await.unwrap());
+        let allowlist = make_allowlist(vec!["example.com", "github.com"]);
+        assert!(allowlist.is_host_allowed("example.com").await.unwrap());
+        assert!(allowlist.is_host_allowed("api.example.com").await.unwrap());
         assert!(!allowlist.is_host_allowed("evil.com").await.unwrap());
     }
 
@@ -235,9 +235,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_case_insensitive_match() {
-        let allowlist = make_allowlist(vec!["Api.Rigorix.Io"]);
+        let allowlist = make_allowlist(vec!["Api.Example.Com"]);
         let input = ValidateUrlInput {
-            url: "https://api.rigorix.io".to_string(),
+            url: "https://api.example.com".to_string(),
             allowlist_override: None,
         };
         let result = allowlist.validate(input).await.unwrap();

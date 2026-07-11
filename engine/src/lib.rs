@@ -24,13 +24,13 @@
 //! - `interfaces/` — API contracts (HTTP, events)
 
 pub mod audit;
+pub mod backend;
 pub mod budget_tracking;
 pub mod cancellation;
 pub mod code_gen;
 pub mod code_graph;
 pub mod common;
 pub mod configuration;
-pub mod enterprise;
 pub mod dag_engine;
 pub mod enforcement;
 pub mod error;

@@ -16,8 +16,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::enterprise::domain::EnterpriseConfig;
-
 /// Top-level configuration aggregate.
 ///
 /// Loaded at startup and shared across all components via the orchestrator.
@@ -43,9 +41,22 @@ pub struct Config {
     /// LLM provider settings.
     pub llm: LlmConfig,
 
-    /// Enterprise integration configuration (optional).
+    /// Enforcement backend URL (optional).
+    /// When set, the engine fetches augmented EnforcementConfig from here.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub enterprise: Option<EnterpriseConfig>,
+    pub enforcement_backend_url: Option<String>,
+
+    /// Enforcement backend API key (optional).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enforcement_backend_key: Option<String>,
+
+    /// Audit backend URL (optional).
+    /// When set, audit records are posted here.
+    pub audit_backend_url: Option<String>,
+
+    /// Audit backend API key (optional).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audit_backend_key: Option<String>,
 }
 
 /// Orchestrator execution parameters.
