@@ -85,6 +85,22 @@ inputs:
     description: 'Configuration profile to use'
     required: false
 
+  # LLM provider inputs
+  api-base-url:
+    description: 'LLM API base URL (e.g. https://api.deepseek.com/v1 for DeepSeek, https://api.openai.com/v1 for OpenAI)'
+    required: false
+  model:
+    description: 'LLM model name (e.g. deepseek-chat, gpt-4o, claude-sonnet-4-20250514)'
+    required: false
+  max-tokens:
+    description: 'Maximum tokens per LLM call'
+    required: false
+    default: '4096'
+  temperature:
+    description: 'LLM temperature (0.0-1.0)'
+    required: false
+    default: '0.3'
+
   # Backend integration inputs
   backend-api-key:
     description: 'API key for the audit/enforcement backend'
