@@ -191,9 +191,7 @@ pub async fn build_orchestrator_with_budget(
     }
 
     // ── 0. Convert config → orchestrator domain config ────────────────
-    let audit_enabled = engine_config
-        .audit_backend_url
-        .is_some();
+    let audit_enabled = engine_config.audit_backend_url.is_some();
     let orch_domain_config = OrchestratorDomainConfig {
         event_buffer_capacity: 10_000,
         audit_enabled,
@@ -421,10 +419,8 @@ pub async fn build_orchestrator_with_budget(
     > = Box::new(AuditEnvelopeFactoryImpl::new(None));
     let audit_backend_url = engine_config.audit_backend_url.clone();
     let audit_backend_key = engine_config.audit_backend_key.clone();
-    let sender: Arc<dyn AuditSender> = Arc::new(
-        AuditSenderImpl::new(None, audit_backend_url)
-            .with_api_key(audit_backend_key),
-    );
+    let sender: Arc<dyn AuditSender> =
+        Arc::new(AuditSenderImpl::new(None, audit_backend_url).with_api_key(audit_backend_key));
     let queue: Box<dyn AuditQueue> = Box::new(AuditQueueImpl::default());
     let audit = Arc::new(AuditServiceImpl::new(
         envelope_factory,

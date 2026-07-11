@@ -335,7 +335,7 @@ fn apply_deep_override(config: &mut ConfigDto, key: &str, value: &str) {
             "audit_url" => config.audit_backend_url = Some(value.to_string()),
             "audit_key" => config.audit_backend_key = Some(value.to_string()),
             _ => {}
-        }
+        },
         _ => {}
     }
 }

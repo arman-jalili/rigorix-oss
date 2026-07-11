@@ -27,8 +27,7 @@ use rigorix_actions::action_entrypoint::application::{
     service::{ActionRouter, ContextBuilder, ModeResolver},
 };
 use rigorix_actions::action_entrypoint::domain::{
-    ActionContext, ActionMode, AnnotationLevel, DispatchStatus,
-    GitHubEvent, WorkflowAnnotation,
+    ActionContext, ActionMode, AnnotationLevel, DispatchStatus, GitHubEvent, WorkflowAnnotation,
 };
 use rigorix_engine::audit::application::audit_queue_impl::AuditQueueImpl;
 use rigorix_engine::audit::application::audit_sender_impl::AuditSenderImpl;
@@ -666,9 +665,6 @@ async fn main() {
             )
         }
     };
-
-    // The context is used as-is (backend config is read directly in build_action_orchestrator)
-    let context = context;
 
     // 6. Resolve execution mode
     let mode_resolver = ModeResolverImpl;
