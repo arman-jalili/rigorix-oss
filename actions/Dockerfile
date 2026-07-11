@@ -38,10 +38,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash rigorix
-USER rigorix
-WORKDIR /home/rigorix
+# Run as root — GitHub Actions mounts the workspace as root-owned.
+# In CI, root is safe; the container is ephemeral and isolated.
+WORKDIR /github/workspace
 
 # Copy binary from builder
 COPY --from=builder /app/target/release/rigorix-action /usr/local/bin/rigorix-action
