@@ -612,7 +612,11 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 symbol_graph_hash: None,
                 git_commit: None,
                 git_branch: None,
-                environment: "cli".into(),
+                environment: if std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true") {
+                    "rigorix_action".into()
+                } else {
+                    "rigorix_cli".into()
+                },
                 metadata: HashMap::new(),
             },
             events,
