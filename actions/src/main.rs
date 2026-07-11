@@ -778,7 +778,9 @@ async fn main() {
                 "# ❌ Rigorix — Error\n\n**Dispatch failed**: {e}\n\n---\nCheck workflow logs for details."
             );
             write_step_summary(&summary).await;
+            set_github_output("execution_id", "").await;
             set_github_output("status", "error").await;
+            set_github_output("mode_used", resolved_mode.mode.as_str()).await;
 
             if fail_on_action_error {
                 std::process::exit(1);
