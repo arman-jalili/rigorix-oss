@@ -362,6 +362,9 @@ async fn build_real_engine(repo_root: &str) -> Result<SharedEngineFacade, Box<dy
     let execution_id = uuid::Uuid::new_v4().to_string();
     let classifier = Box::new(
         rigorix_engine::planning::application::MockClassifier::default()
+            // Catch-all: empty string matches any intent input
+            .with_match("", "default", 0.1)
+            // Specific matches take priority (higher confidence)
             .with_match("e2e-test-plan", "e2e-test-plan", 1.0)
             .with_match("default", "default", 0.9),
     );
@@ -376,7 +379,20 @@ async fn build_real_engine(repo_root: &str) -> Result<SharedEngineFacade, Box<dy
                 description: "Default catch-all template".into(),
                 version: "1.0.0".into(),
                 parameters: vec![],
-                nodes: vec![],
+                nodes: vec![
+                    rigorix_engine::templates::domain::template::TemplateNode {
+                        id: "step-1".into(),
+                        name: "default-step".into(),
+                        depends_on: vec![],
+                        action: rigorix_engine::templates::domain::template::TemplateAction::FileRead {
+                            path: "/dev/null".into(),
+                        },
+                        description: Some("Default execution step".into()),
+                        retry: Default::default(),
+                        validate: vec![],
+                        intent: None,
+                    },
+                ],
                 tags: vec![],
                 category: None,
                 author: None,
@@ -392,7 +408,20 @@ async fn build_real_engine(repo_root: &str) -> Result<SharedEngineFacade, Box<dy
                 description: "E2E test template".into(),
                 version: "1.0.0".into(),
                 parameters: vec![],
-                nodes: vec![],
+                nodes: vec![
+                    rigorix_engine::templates::domain::template::TemplateNode {
+                        id: "step-1".into(),
+                        name: "e2e-step".into(),
+                        depends_on: vec![],
+                        action: rigorix_engine::templates::domain::template::TemplateAction::FileRead {
+                            path: "/dev/null".into(),
+                        },
+                        description: Some("E2E test step".into()),
+                        retry: Default::default(),
+                        validate: vec![],
+                        intent: None,
+                    },
+                ],
                 tags: vec![],
                 category: None,
                 author: None,

@@ -91,9 +91,6 @@ fn send_rpc(input: &str, stdin: &mut impl Write, stdout: &mut impl std::io::Read
 }
 
 #[test]
-#[ignore]
-/// Known issue: real engine requires DAG templates with proper nodes.
-/// Tracked in: https://github.com/arman-jalili/rigorix-oss/issues/673
 fn test_e2e_execute_to_audit_cycle() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_rigorix-mcp"))
         .stdin(Stdio::piped())
