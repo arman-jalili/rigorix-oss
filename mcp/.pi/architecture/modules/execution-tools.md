@@ -2,8 +2,12 @@
 
 ## Module Status
 
-**Status:** Planned
+**Status:** Implemented ✅
 **Last reviewed:** 2026-07-12
+**Last updated:** 2026-07-12
+**Implemented:** Phase 1 complete — all contracts implemented and tested
+**Test coverage:** 23 unit tests, 0 failures
+**Proofing:** CI scripts validate contracts and coverage
 **Source session:** d19b7a21-8f4c-4b3e-9a1d-5e6f7c8b9a0d
 
 ## Description
@@ -413,12 +417,12 @@ Terms specific to this context from `.pi/domain/ubiquitous-language.md`:
 
 ## Implementation Sequence
 
-1. **Phase 1.1 — EngineFacade Contract**: Define `EngineFacade` trait, `PlanTemplate` value object, `StepDefinition`, execution result types
-2. **Phase 1.2 — EngineFacade Implementation**: Implement `EngineFacadeImpl` wrapping rigorix-engine APIs
-3. **Phase 1.3 — ExecuteHandler**: Implement `rigorix_execute` handler with input validation, timeout enforcement, result formatting
-4. **Phase 1.4 — ValidatePlanHandler**: Implement `rigorix_validate_plan` handler delegating to engine validation
-5. **Phase 1.5 — CheckEnforcementHandler**: Implement `rigorix_check_enforcement` handler for budget/status queries
-6. **Phase 1.6 — MCP Schema Registration**: Register tool schemas in ToolRegistry, wire handlers via RequestRouter
-7. **Phase 1.7 — SSE Progress Notifications**: Add streaming progress updates for long-running `rigorix_execute` calls (SSE only)
+1. ✅ **Phase 1.1 — EngineFacade Contract**: `EngineFacade` trait, `PlanTemplate` value object, `StepDefinition`, execution result types — **merged**
+2. ✅ **Phase 1.2 — EngineFacade Implementation**: `EngineFacadeImpl` wrapping rigorix-engine OrchestratorService and ExecutionEnforcer — **merged**
+3. ✅ **Phase 1.3 — ExecuteHandler**: `ExecuteHandlerImpl` with input validation, timeout enforcement, result formatting — **merged**
+4. ✅ **Phase 1.4 — ValidatePlanHandler**: `ValidatePlanHandlerImpl` delegating to engine validation — **merged**
+5. ✅ **Phase 1.5 — CheckEnforcementHandler**: `CheckEnforcementHandlerImpl` for budget/status queries — **merged**
+6. **Phase 1.6 — MCP Schema Registration**: Register tool schemas in ToolRegistry, wire handlers via RequestRouter — _pending_
+7. **Phase 1.7 — SSE Progress Notifications**: Streaming progress updates for long-running `rigorix_execute` calls (SSE only) — _future_
 
 **depends:** MCP Server (Phase 0)
