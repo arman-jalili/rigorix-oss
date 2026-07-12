@@ -34,7 +34,6 @@ use rigorix_mcp::audit_tools::application::service_impl::{
 };
 use rigorix_mcp::audit_tools::domain::entity::{AuditFormatter, SharedAuditQueryService};
 use rigorix_mcp::audit_tools::domain::formatter_impl::AuditFormatterImpl;
-use rigorix_mcp::audit_tools::infrastructure::InMemoryAuditQueryService;
 
 use rigorix_mcp::execution_tools::application::service::{
     CheckEnforcementHandler, ExecuteHandler, ValidatePlanHandler,
@@ -87,6 +86,10 @@ struct AppState {
     get_template_handler: Box<dyn GetTemplateHandler>,
     create_template_handler: Box<dyn CreateTemplateHandler>,
     validate_template_handler: Box<dyn ValidateTemplateHandler>,
+
+    // Direct access to concrete audit service for storing execution results
+    audit_storage:
+        std::sync::Arc<rigorix_mcp::audit_tools::infrastructure::InMemoryAuditQueryService>,
 }
 
 impl AppState {
@@ -98,7 +101,10 @@ impl AppState {
             Arc::new(InMemoryExecutionRepository::new());
 
         // ── Audit service (in-memory) ──
-        let audit_query: SharedAuditQueryService = Arc::new(InMemoryAuditQueryService::new());
+        let audit_storage = std::sync::Arc::new(
+            rigorix_mcp::audit_tools::infrastructure::InMemoryAuditQueryService::new(),
+        );
+        let audit_query: SharedAuditQueryService = audit_storage.clone();
         let formatter: Arc<dyn AuditFormatter> = Arc::new(AuditFormatterImpl::new());
 
         // ── Template repository (filesystem, default path) ──
@@ -130,6 +136,7 @@ impl AppState {
             get_template_handler: Box::new(GetTemplateHandlerImpl::new(template_repo.clone())),
             create_template_handler: Box::new(CreateTemplateHandlerImpl::new(template_repo)),
             validate_template_handler: Box::new(ValidateTemplateHandlerImpl::new()),
+            audit_storage,
         }
     }
 
@@ -142,14 +149,36 @@ impl AppState {
         match tool_name {
             // Execution tools
             "rigorix_execute" => {
-                let input = serde_json::from_value(params.clone())
-                    .map_err(|e| serde_json::json!({"error": format!("Invalid input: {}", e)}))?;
+                let input: rigorix_mcp::execution_tools::application::dto::ExecuteInput =
+                    serde_json::from_value(params.clone()).map_err(
+                        |e| serde_json::json!({"error": format!("Invalid input: {}", e)}),
+                    )?;
+                let template_name = input.plan.name().to_string();
                 let result = self
                     .execute_handler
                     .handle(input)
                     .await
                     .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
-                Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
+                let json_result: serde_json::Value =
+                    serde_json::from_str(&result.content[0].text).unwrap_or_default();
+
+                // Store an audit record for the read_audit cycle
+                if let Some(execution_id_str) = json_result["execution_id"].as_str()
+                    && let Ok(exec_id) = uuid::Uuid::parse_str(execution_id_str)
+                {
+                    let now = chrono::Utc::now();
+                    let envelope =
+                            rigorix_mcp::audit_tools::infrastructure::InMemoryAuditQueryService::create_sample(
+                                exec_id,
+                                ExecutionStatus::Completed,
+                                Some(template_name.clone()),
+                                now,
+                                100,
+                            );
+                    let _ = self.audit_storage.store(envelope);
+                }
+
+                Ok(json_result)
             }
             "rigorix_validate_plan" => {
                 let input = serde_json::from_value(params.clone())
@@ -252,14 +281,13 @@ impl AppState {
 }
 
 // =========================================================================
-// Stub EngineFacade — returns canned responses for development
+// StubEngineFacade — returns canned responses for development
 // =========================================================================
 
 /// Development stub for the rigorix-engine facade.
 ///
 /// Returns deterministic canned responses for all operations.
-/// Replace with `EngineFacadeImpl` when rigorix-engine is available
-/// at runtime.
+/// The composition root stores audit records separately via AppState.
 struct StubEngineFacade;
 
 #[async_trait]
@@ -436,7 +464,8 @@ async fn handle_call_tool(id: &RequestId, params: &serde_json::Value) -> JsonRpc
                         "type": "text",
                         "text": serde_json::to_string(&result).unwrap_or_default()
                     }
-                ]
+                ],
+                "isError": false
             });
             JsonRpcMessage::success(id.clone(), response)
         }
