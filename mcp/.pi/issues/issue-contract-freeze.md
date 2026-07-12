@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: "mcp-server"
+  epic: "execution-tools"
   component: "Contract Freeze"
-  module: "mcp-server"
+  module: "execution-tools"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/mcp-server.md"
+    - module: ".pi/architecture/modules/execution-tools.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -48,24 +48,26 @@ guardian_issue:
     
 
   file_changes:
-    - "create: src/mcp-server/domain/"
-    - "create: src/mcp-server/application/"
-    - "create: src/mcp-server/infrastructure/"
-    - "create: src/mcp-server/interfaces/"
+    - "create: src/execution-tools/domain/"
+    - "create: src/execution-tools/application/"
+    - "create: src/execution-tools/infrastructure/"
+    - "create: src/execution-tools/interfaces/"
 ---
 
-# Contract Freeze: mcp-server
+# Contract Freeze: execution-tools
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the mcp-server
+Define and freeze all public interfaces, contracts, and schemas for the execution-tools
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- McpServer
-- ToolRegistry
+- EngineFacade (Aggregate Root)
+- ExecuteHandler (Domain Service)
+- ValidatePlanHandler (Domain Service)
+- CheckEnforcementHandler (Domain Service)
 
 ## What Must Be Frozen
 

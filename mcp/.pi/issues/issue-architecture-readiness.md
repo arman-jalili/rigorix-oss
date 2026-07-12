@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-READINESS"
-  epic: "mcp-server"
+  epic: "execution-tools"
   component: "Architecture Readiness"
-  module: "mcp-server"
+  module: "execution-tools"
   status: planned
   priority: critical
   dependencies: []
@@ -32,7 +32,7 @@ guardian_issue:
       - Verify proofing scripts + validators in CI
 
   canonical_references:
-    - module: ".pi/architecture/modules/mcp-server.md"
+    - module: ".pi/architecture/modules/execution-tools.md"
 
   acceptance_criteria:
     - "Runbook created and reviewed"
@@ -58,30 +58,30 @@ guardian_issue:
     and CI will catch regressions (proofing scripts + validators).
 
   file_changes:
-    - "create: docs/runbook-mcp-server.md"
-    - "create: docs/dr-plan-mcp-server.md"
+    - "create: docs/runbook-execution-tools.md"
+    - "create: docs/dr-plan-execution-tools.md"
     - "modify: .pi/architecture/CHANGELOG.md"
-    - "modify: .pi/architecture/modules/mcp-server.md"
+    - "modify: .pi/architecture/modules/execution-tools.md"
 ---
 
-# Architecture Readiness: mcp-server
+# Architecture Readiness: execution-tools
 
 ## Intent
 
-Make the mcp-server module production-ready. This is the final issue in every epic
+Make the execution-tools module production-ready. This is the final issue in every epic
 — it closes the loop between implementation and operability.
 
 ## Deliverables
 
 ### Runbook
-`docs/runbook-mcp-server.md` covering:
+`docs/runbook-execution-tools.md` covering:
 - Startup sequence and dependencies
 - Graceful shutdown procedure
 - Common failure modes and recovery
 - Configuration reference
 
 ### DR Plan
-`docs/dr-plan-mcp-server.md` covering:
+`docs/dr-plan-execution-tools.md` covering:
 - Backup strategy and schedule
 - Restore procedure
 - Failover plan

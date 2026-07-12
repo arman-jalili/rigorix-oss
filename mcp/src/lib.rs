@@ -44,4 +44,5 @@
 //! - Repository interfaces abstract all persistence concerns
 //! - MCP protocol handler contracts are framework-agnostic
 
+pub mod execution_tools;
 pub mod mcp_server;

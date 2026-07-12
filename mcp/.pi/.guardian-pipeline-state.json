@@ -1,10 +1,12 @@
 {
-  "id": "PL-9287",
-  "name": "mcp-server",
+  "id": "PL-4770",
+  "name": "execution-tools",
   "items": [
     "issue-contract-freeze",
-    "issue-mcpserver",
-    "issue-toolregistry",
+    "issue-enginefacade-aggregate-root-",
+    "issue-executehandler-domain-service-",
+    "issue-validateplanhandler-domain-service-",
+    "issue-checkenforcementhandler-domain-service-",
     "issue-proofing",
     "issue-architecture-readiness"
   ],
@@ -53,66 +55,8 @@
   "currentStepIndex": 0,
   "status": "running",
   "retryCount": 0,
-  "results": [
-    {
-      "item": "issue-contract-freeze",
-      "status": "failed",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "failed",
-          "reason": "Acceptance failed: ci: ; tests: ; security: "
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "failed",
-          "reason": "Acceptance failed: ci: ; tests: ; security: "
-        },
-        {
-          "step": "validate",
-          "status": "failed",
-          "reason": "Validation runners fail with infrastructure error (TypeError: Cannot read properties of undefined reading 'execute') — not a code issue. Code compiles clean, all 8 tests pass, DDD check passes, lint passes."
-        },
-        {
-          "step": "create-mr",
-          "status": "failed",
-          "reason": "skipped due to prior failure"
-        },
-        {
-          "step": "merge",
-          "status": "failed",
-          "reason": "skipped due to prior failure"
-        }
-      ]
-    },
-    {
-      "item": "issue-architecture-readiness",
-      "status": "in-progress",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": "reconciled"
-        }
-      ]
-    }
-  ],
+  "results": [],
   "mergeOnValid": true,
-  "createdAt": "2026-07-12T08:21:29.163Z",
-  "updatedAt": "2026-07-12T10:48:31.880Z"
+  "createdAt": "2026-07-12T11:22:06.547Z",
+  "updatedAt": "2026-07-12T11:22:06.547Z"
 }
