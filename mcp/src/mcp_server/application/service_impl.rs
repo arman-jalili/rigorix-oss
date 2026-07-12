@@ -23,9 +23,9 @@ use crate::mcp_server::infrastructure::{
 use super::dto::{
     CallToolInput, CallToolOutput, EndSessionInput, GetPromptInput, GetPromptOutput,
     InitializeInput, InitializeOutput, ListPromptsOutput, ListResourcesOutput, ListSessionsOutput,
-    ListToolsInput, ListToolsOutput, ReadResourceInput,
-    ReadResourceOutput, RegisterToolInput, RegisterToolOutput, ServerStatusInfo, SessionInfo,
-    StartServerInput, StartServerOutput, UnregisterToolInput, UnregisterToolOutput,
+    ListToolsInput, ListToolsOutput, ReadResourceInput, ReadResourceOutput, RegisterToolInput,
+    RegisterToolOutput, ServerStatusInfo, SessionInfo, StartServerInput, StartServerOutput,
+    UnregisterToolInput, UnregisterToolOutput,
 };
 use super::service::{McpServerEvent, McpServerService, SessionService, ToolRegistryService};
 
@@ -40,6 +40,7 @@ use super::service::{McpServerEvent, McpServerService, SessionService, ToolRegis
 pub struct McpServerServiceImpl {
     server_repo: InMemoryMcpServerRepository,
     registry_repo: InMemoryToolRegistryRepository,
+    #[allow(dead_code)]
     session_repo: InMemorySessionRepository,
 }
 
@@ -114,7 +115,7 @@ impl McpServerService for McpServerServiceImpl {
             session_id: SessionId::new(),
             client_name: client_info.name.clone(),
             client_version: client_info.version.clone(),
-            protocol_version: protocol_version,
+            protocol_version,
             timestamp: chrono::Utc::now(),
         }];
 
@@ -162,13 +163,11 @@ impl McpServerService for McpServerServiceImpl {
 
     async fn list_prompts(&self) -> Result<ListPromptsOutput, McpServerError> {
         Ok(ListPromptsOutput {
-            prompts: vec![
-                crate::mcp_server::domain::value::PromptSchema::new(
-                    "rigorix_introduction",
-                    "Introduction to Rigorix tool usage",
-                    vec![],
-                ),
-            ],
+            prompts: vec![crate::mcp_server::domain::value::PromptSchema::new(
+                "rigorix_introduction",
+                "Introduction to Rigorix tool usage",
+                vec![],
+            )],
         })
     }
 
@@ -253,8 +252,7 @@ impl McpServerService for McpServerServiceWithRepos {
         Ok((output, events))
     }
 
-    async fn list_tools(&self, input: ListToolsInput) -> Result<ListToolsOutput, McpServerError> {
-        // In production, load registry from repo and list schemas
+    async fn list_tools(&self, _input: ListToolsInput) -> Result<ListToolsOutput, McpServerError> {
         Ok(ListToolsOutput { tools: Vec::new() })
     }
 
@@ -267,14 +265,12 @@ impl McpServerService for McpServerServiceWithRepos {
 
     async fn list_resources(&self) -> Result<ListResourcesOutput, McpServerError> {
         Ok(ListResourcesOutput {
-            resources: vec![
-                crate::mcp_server::domain::value::ResourceSchema::new(
-                    "rigorix://audit/{id}",
-                    "Audit Trail",
-                    "Read an audit trail by execution ID",
-                    "text/plain",
-                ),
-            ],
+            resources: vec![crate::mcp_server::domain::value::ResourceSchema::new(
+                "rigorix://audit/{id}",
+                "Audit Trail",
+                "Read an audit trail by execution ID",
+                "text/plain",
+            )],
         })
     }
 
@@ -324,6 +320,7 @@ impl McpServerService for McpServerServiceWithRepos {
 
 /// Concrete implementation of ToolRegistryService.
 pub struct ToolRegistryServiceImpl {
+    #[allow(dead_code)]
     registry_repo: InMemoryToolRegistryRepository,
     handlers: Arc<std::sync::RwLock<HashMap<String, Arc<dyn ToolHandler>>>>,
 }
@@ -400,10 +397,7 @@ impl ToolRegistryService for ToolRegistryServiceImpl {
         Ok(Vec::new())
     }
 
-    async fn find_tool(
-        &self,
-        name: &str,
-    ) -> Result<Option<Arc<dyn ToolHandler>>, McpServerError> {
+    async fn find_tool(&self, name: &str) -> Result<Option<Arc<dyn ToolHandler>>, McpServerError> {
         let guard = self
             .handlers
             .read()

@@ -76,10 +76,7 @@ pub trait McpServerService: Send + Sync {
     /// List available tools.
     ///
     /// Returns all registered tool schemas matching the optional filter.
-    async fn list_tools(
-        &self,
-        input: ListToolsInput,
-    ) -> Result<ListToolsOutput, McpServerError>;
+    async fn list_tools(&self, input: ListToolsInput) -> Result<ListToolsOutput, McpServerError>;
 
     /// Call/execute a tool.
     ///
@@ -164,10 +161,7 @@ pub trait ToolRegistryService: Send + Sync {
     async fn list_tool_schemas(&self) -> Result<Vec<ToolSchema>, McpServerError>;
 
     /// Find a registered tool by name.
-    async fn find_tool(
-        &self,
-        name: &str,
-    ) -> Result<Option<Arc<dyn ToolHandler>>, McpServerError>;
+    async fn find_tool(&self, name: &str) -> Result<Option<Arc<dyn ToolHandler>>, McpServerError>;
 
     /// Check if a tool name is registered.
     async fn is_tool_registered(&self, name: &str) -> bool;
@@ -201,10 +195,7 @@ pub trait SessionService: Send + Sync {
     ///
     /// Returns an error if the session doesn't exist, has ended,
     /// or hasn't completed the initialize handshake.
-    async fn validate_session(
-        &self,
-        session_id: &SessionId,
-    ) -> Result<(), McpServerError>;
+    async fn validate_session(&self, session_id: &SessionId) -> Result<(), McpServerError>;
 
     /// Evict expired sessions.
     async fn evict_expired(&self) -> Result<usize, McpServerError>;

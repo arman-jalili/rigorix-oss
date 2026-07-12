@@ -20,7 +20,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-
 // ---------------------------------------------------------------------------
 // SessionId — strongly-typed identifier for MCP sessions
 // ---------------------------------------------------------------------------
@@ -382,9 +381,7 @@ pub enum ContentItem {
 impl ContentItem {
     /// Create a text content item.
     pub fn text(text: impl Into<String>) -> Self {
-        Self::Text {
-            text: text.into(),
-        }
+        Self::Text { text: text.into() }
     }
 }
 
@@ -626,9 +623,7 @@ pub enum PromptMessageContent {
 impl PromptMessageContent {
     /// Create a text prompt message content.
     pub fn text(text: impl Into<String>) -> Self {
-        Self::Text {
-            text: text.into(),
-        }
+        Self::Text { text: text.into() }
     }
 }
 

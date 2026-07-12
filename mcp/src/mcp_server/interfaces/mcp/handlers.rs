@@ -10,18 +10,16 @@
 use async_trait::async_trait;
 use serde_json::json;
 
-use crate::mcp_server::application::dto::{
-    CallToolInput, GetPromptInput, InitializeInput, ListToolsInput, ReadResourceInput,
-};
-use crate::mcp_server::application::service::McpServerService;
-use crate::mcp_server::domain::value::{
-    ClientCapabilities, ClientInfo, JsonRpcError, SessionId,
-};
 use super::{
     CallToolHandler, CancelledHandler, GetPromptHandler, InitializeHandler, InitializedHandler,
     ListPromptsHandler, ListResourcesHandler, ListToolsHandler, ReadResourceHandler,
     TransportHandle,
 };
+use crate::mcp_server::application::dto::{
+    CallToolInput, GetPromptInput, InitializeInput, ListToolsInput, ReadResourceInput,
+};
+use crate::mcp_server::application::service::McpServerService;
+use crate::mcp_server::domain::value::{ClientCapabilities, ClientInfo, JsonRpcError, SessionId};
 
 // ---------------------------------------------------------------------------
 // InitializeHandlerImpl
@@ -171,9 +169,7 @@ impl CallToolHandler for CallToolHandlerImpl {
         let name = params
             .get("name")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                JsonRpcError::invalid_params("Missing required field: name")
-            })?;
+            .ok_or_else(|| JsonRpcError::invalid_params("Missing required field: name"))?;
 
         let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
         let session_id = SessionId::new();
@@ -276,9 +272,10 @@ impl ReadResourceHandler for ReadResourceHandlerImpl {
         &self,
         params: serde_json::Value,
     ) -> Result<serde_json::Value, JsonRpcError> {
-        let uri = params.get("uri").and_then(|v| v.as_str()).ok_or_else(|| {
-            JsonRpcError::invalid_params("Missing required field: uri")
-        })?;
+        let uri = params
+            .get("uri")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| JsonRpcError::invalid_params("Missing required field: uri"))?;
 
         let output = self
             .service
@@ -369,9 +366,10 @@ impl GetPromptHandler for GetPromptHandlerImpl {
         &self,
         params: serde_json::Value,
     ) -> Result<serde_json::Value, JsonRpcError> {
-        let name = params.get("name").and_then(|v| v.as_str()).ok_or_else(|| {
-            JsonRpcError::invalid_params("Missing required field: name")
-        })?;
+        let name = params
+            .get("name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| JsonRpcError::invalid_params("Missing required field: name"))?;
 
         let output = self
             .service
@@ -410,10 +408,7 @@ pub struct CancelledHandlerImpl;
 
 #[async_trait]
 impl CancelledHandler for CancelledHandlerImpl {
-    async fn handle_cancelled(
-        &self,
-        _params: serde_json::Value,
-    ) -> Result<(), JsonRpcError> {
+    async fn handle_cancelled(&self, _params: serde_json::Value) -> Result<(), JsonRpcError> {
         Ok(())
     }
 }

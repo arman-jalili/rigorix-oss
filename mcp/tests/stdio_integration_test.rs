@@ -24,7 +24,7 @@ fn send_rpc(input: &str, stdin: &mut impl Write, stdout: &mut impl std::io::Read
     loop {
         let mut byte = [0u8; 1];
         match stdout.read(&mut byte) {
-            Ok(0) => break,  // EOF
+            Ok(0) => break, // EOF
             Ok(_) => {
                 let c = byte[0] as char;
                 if c == '{' {
@@ -36,7 +36,7 @@ fn send_rpc(input: &str, stdin: &mut impl Write, stdout: &mut impl std::io::Read
                 if in_json {
                     response.push(c);
                     if depth == 0 && in_json {
-                        break;  // Complete JSON object read
+                        break; // Complete JSON object read
                     }
                 }
             }
@@ -78,8 +78,7 @@ fn test_stdio_initialize_handshake() {
 
     // Verify protocol version
     assert_eq!(
-        parsed["result"]["protocolVersion"],
-        "2025-03-26",
+        parsed["result"]["protocolVersion"], "2025-03-26",
         "Should return negotiated protocol version"
     );
 
@@ -91,13 +90,11 @@ fn test_stdio_initialize_handshake() {
 
     // Verify server info
     assert_eq!(
-        parsed["result"]["serverInfo"]["name"],
-        "Rigorix MCP Gateway",
+        parsed["result"]["serverInfo"]["name"], "Rigorix MCP Gateway",
         "Should return server name"
     );
     assert_eq!(
-        parsed["result"]["serverInfo"]["version"],
-        "0.1.0",
+        parsed["result"]["serverInfo"]["version"], "0.1.0",
         "Should return server version"
     );
 
@@ -178,10 +175,7 @@ fn test_stdio_list_resources() {
         .as_array()
         .expect("resources should be an array");
 
-    let uris: Vec<&str> = resources
-        .iter()
-        .filter_map(|r| r["uri"].as_str())
-        .collect();
+    let uris: Vec<&str> = resources.iter().filter_map(|r| r["uri"].as_str()).collect();
 
     assert!(
         uris.contains(&"rigorix://audit/{id}"),
@@ -228,10 +222,7 @@ fn test_stdio_list_prompts() {
         .as_array()
         .expect("prompts should be an array");
 
-    let names: Vec<&str> = prompts
-        .iter()
-        .filter_map(|p| p["name"].as_str())
-        .collect();
+    let names: Vec<&str> = prompts.iter().filter_map(|p| p["name"].as_str()).collect();
 
     assert!(
         names.contains(&"rigorix_introduction"),
@@ -298,11 +289,7 @@ fn test_stdio_parse_error() {
     std::thread::sleep(Duration::from_millis(100));
 
     // Send malformed JSON
-    let response = send_rpc(
-        r#"this is not json"#,
-        &mut stdin,
-        &mut stdout,
-    );
+    let response = send_rpc(r#"this is not json"#, &mut stdin, &mut stdout);
 
     let parsed: serde_json::Value =
         serde_json::from_str(&response).expect("Response should be valid JSON");

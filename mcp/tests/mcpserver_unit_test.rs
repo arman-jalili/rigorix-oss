@@ -79,7 +79,9 @@ fn test_mcpserver_interacts_with_tool_registry() {
     let mut registry = ToolRegistry::default();
     let schema = ToolSchema::new("rigorix_test", "Test", serde_json::json!({}));
     let handler: Arc<dyn rigorix_mcp::mcp_server::domain::value::ToolHandler> =
-        Arc::new(DummyHandler { schema: schema.clone() });
+        Arc::new(DummyHandler {
+            schema: schema.clone(),
+        });
 
     assert!(registry.register(schema, handler).is_ok());
     assert_eq!(registry.tool_count(), 1);
@@ -92,6 +94,6 @@ fn test_mcpserver_shutdown_flow() {
     server.on_transport_opened(TransportMode::Stdio).unwrap();
     assert_eq!(server.status(), McpServerStatus::Running);
 
-    let events = server.shutdown().expect("Shutdown should work");
+    let _events = server.shutdown().expect("Shutdown should work");
     assert_eq!(server.status(), McpServerStatus::Stopped);
 }

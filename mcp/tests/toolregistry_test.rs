@@ -55,7 +55,11 @@ fn test_toolregistry_rejects_duplicate() {
     let schema1 = ToolSchema::new("rigorix_dup", "First", serde_json::json!({}));
     let schema2 = ToolSchema::new("rigorix_dup", "Second", serde_json::json!({}));
 
-    assert!(registry.register(schema1, make_handler("rigorix_dup")).is_ok());
+    assert!(
+        registry
+            .register(schema1, make_handler("rigorix_dup"))
+            .is_ok()
+    );
     assert!(matches!(
         registry.register(schema2, make_handler("rigorix_dup")),
         Err(RegistrationError::AlreadyRegistered(_))
@@ -80,9 +84,11 @@ fn test_toolregistry_enterprise_registration() {
         "Enterprise tool",
         serde_json::json!({}),
     );
-    assert!(registry
-        .register_enterprise(schema, make_handler("rigorix_enterprise_custom"))
-        .is_ok());
+    assert!(
+        registry
+            .register_enterprise(schema, make_handler("rigorix_enterprise_custom"))
+            .is_ok()
+    );
     assert!(registry.has_enterprise_tools());
     assert_eq!(registry.oss_tool_count(), 0);
 }

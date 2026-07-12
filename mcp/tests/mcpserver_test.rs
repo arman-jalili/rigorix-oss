@@ -83,16 +83,22 @@ fn test_mcpserver_tool_registration() {
     }
 
     let mut registry = ToolRegistry::default();
-    let schema = ToolSchema::new("rigorix_execute", "Execute a plan", serde_json::json!({
-        "type": "object",
-        "properties": {
-            "plan": { "type": "string", "description": "Plan to execute" }
-        },
-        "required": ["plan"]
-    }));
+    let schema = ToolSchema::new(
+        "rigorix_execute",
+        "Execute a plan",
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "plan": { "type": "string", "description": "Plan to execute" }
+            },
+            "required": ["plan"]
+        }),
+    );
 
     let handler: Arc<dyn rigorix_mcp::mcp_server::domain::value::ToolHandler> =
-        Arc::new(DummyHandler { schema: schema.clone() });
+        Arc::new(DummyHandler {
+            schema: schema.clone(),
+        });
     let events = registry.register(schema, handler).expect("Should register");
     assert_eq!(registry.tool_count(), 1);
     assert!(!registry.has_enterprise_tools());
@@ -105,6 +111,6 @@ fn test_mcpserver_shutdown() {
     server.start().unwrap();
     server.on_transport_opened(TransportMode::Stdio).unwrap();
 
-    let events = server.shutdown().expect("Shutdown should succeed");
+    let _events = server.shutdown().expect("Shutdown should succeed");
     assert_eq!(server.status(), McpServerStatus::Stopped);
 }

@@ -135,11 +135,7 @@ pub trait RequestRouter: Send + Sync {
     ///
     /// * `Some(JsonRpcMessage)` - A JSON-RPC response for requests
     /// * `None` - For notifications (no response expected) or parse errors
-    async fn route(
-        &self,
-        message: JsonRpcMessage,
-        session_id: &str,
-    ) -> Option<JsonRpcMessage>;
+    async fn route(&self, message: JsonRpcMessage, session_id: &str) -> Option<JsonRpcMessage>;
 
     /// Check if a handler is registered for the given method.
     fn has_handler(&self, method: &str) -> bool;
@@ -249,10 +245,7 @@ pub trait CancelledHandler: Send + Sync {
     /// Handle a cancelled notification.
     ///
     /// Input params: `{ requestId }`
-    async fn handle_cancelled(
-        &self,
-        params: serde_json::Value,
-    ) -> Result<(), JsonRpcError>;
+    async fn handle_cancelled(&self, params: serde_json::Value) -> Result<(), JsonRpcError>;
 }
 
 // ---------------------------------------------------------------------------

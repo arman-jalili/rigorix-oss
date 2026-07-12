@@ -32,8 +32,8 @@ use uuid::Uuid;
 use super::error::{McpServerError, RegistrationError, SessionError};
 use super::event::McpServerEvent;
 use super::value::{
-    ClientCapabilities, ClientInfo, ServerCapabilities, ServerConfig,
-    SessionId, SessionMetadata, SessionStatus, ToolHandler, ToolSchema, TransportMode,
+    ClientCapabilities, ClientInfo, ServerCapabilities, ServerConfig, SessionId, SessionMetadata,
+    SessionStatus, ToolHandler, ToolSchema, TransportMode,
 };
 
 // ---------------------------------------------------------------------------
@@ -173,16 +173,14 @@ impl McpServer {
                 let events: Vec<McpServerEvent> = self
                     .sessions
                     .drain()
-                    .map(|(session_id, session)| {
-                        McpServerEvent::McpSessionEnded {
-                            session_id,
-                            reason: "server_shutdown".to_string(),
-                            duration_ms: session
-                                .started_at
-                                .map(|t| (Utc::now() - t).num_milliseconds() as u64)
-                                .unwrap_or(0),
-                            timestamp: Utc::now(),
-                        }
+                    .map(|(session_id, session)| McpServerEvent::McpSessionEnded {
+                        session_id,
+                        reason: "server_shutdown".to_string(),
+                        duration_ms: session
+                            .started_at
+                            .map(|t| (Utc::now() - t).num_milliseconds() as u64)
+                            .unwrap_or(0),
+                        timestamp: Utc::now(),
                     })
                     .collect();
                 self.status = McpServerStatus::Stopped;
@@ -238,10 +236,9 @@ impl McpServer {
         session_id: SessionId,
         reason: impl Into<String>,
     ) -> Result<Vec<McpServerEvent>, McpServerError> {
-        let session = self
-            .sessions
-            .remove(&session_id)
-            .ok_or_else(|| McpServerError::Session(SessionError::NotFound(session_id.to_string())))?;
+        let session = self.sessions.remove(&session_id).ok_or_else(|| {
+            McpServerError::Session(SessionError::NotFound(session_id.to_string()))
+        })?;
 
         let duration_ms = session
             .started_at
@@ -387,9 +384,7 @@ impl Session {
             ));
         }
         if self.status.is_terminal() {
-            return Err(SessionError::InvalidState(
-                "Session has ended".to_string(),
-            ));
+            return Err(SessionError::InvalidState("Session has ended".to_string()));
         }
         self.initialized = true;
         self.status = SessionStatus::Active;
@@ -552,7 +547,9 @@ impl ToolRegistry {
 
         // Validate name
         if name.is_empty() {
-            return Err(RegistrationError::InvalidName("Tool name cannot be empty".to_string()));
+            return Err(RegistrationError::InvalidName(
+                "Tool name cannot be empty".to_string(),
+            ));
         }
 
         // Check prefix conventions
@@ -608,22 +605,16 @@ impl ToolRegistry {
     }
 
     /// Unregister a tool by name.
-    pub fn unregister(
-        &mut self,
-        name: &str,
-    ) -> Result<Vec<McpServerEvent>, RegistrationError> {
+    pub fn unregister(&mut self, name: &str) -> Result<Vec<McpServerEvent>, RegistrationError> {
         if !self.tools.contains_key(name) {
             return Err(RegistrationError::NotFound(name.to_string()));
         }
 
         let removed = self.tools.remove(name);
-        if let Some(proxy) = removed {
-            if proxy.is_enterprise {
-                self.has_enterprise_tools = self
-                    .tools
-                    .values()
-                    .any(|p| p.is_enterprise);
-            }
+        if let Some(proxy) = removed
+            && proxy.is_enterprise
+        {
+            self.has_enterprise_tools = self.tools.values().any(|p| p.is_enterprise);
         }
 
         Ok(vec![McpServerEvent::ToolRegistered {
@@ -653,10 +644,7 @@ impl ToolRegistry {
 
     /// Return the number of OSS (non-enterprise) tools.
     pub fn oss_tool_count(&self) -> usize {
-        self.tools
-            .values()
-            .filter(|p| !p.is_enterprise)
-            .count()
+        self.tools.values().filter(|p| !p.is_enterprise).count()
     }
 }
 
@@ -680,7 +668,13 @@ mod tests {
     }
 
     impl ToolHandler for TestHandler {
-        fn handle(&self, _params: serde_json::Value) -> Result<crate::mcp_server::domain::value::ToolResult, crate::mcp_server::domain::value::JsonRpcError> {
+        fn handle(
+            &self,
+            _params: serde_json::Value,
+        ) -> Result<
+            crate::mcp_server::domain::value::ToolResult,
+            crate::mcp_server::domain::value::JsonRpcError,
+        > {
             Ok(crate::mcp_server::domain::value::ToolResult::text("ok"))
         }
 

@@ -68,9 +68,7 @@ impl McpServerError {
     pub fn is_retriable(&self) -> bool {
         matches!(
             self,
-            McpServerError::Timeout(_)
-                | McpServerError::Transport(_)
-                | McpServerError::Internal(_)
+            McpServerError::Timeout(_) | McpServerError::Transport(_) | McpServerError::Internal(_)
         )
     }
 
@@ -140,7 +138,10 @@ pub enum SessionError {
 impl SessionError {
     /// Returns true if the error is retriable.
     pub fn is_retriable(&self) -> bool {
-        matches!(self, SessionError::Timeout(_) | SessionError::TransportError(_))
+        matches!(
+            self,
+            SessionError::Timeout(_) | SessionError::TransportError(_)
+        )
     }
 
     /// Get a machine-readable error code.
@@ -191,7 +192,9 @@ impl RegistrationError {
             RegistrationError::AlreadyRegistered(_) => "TOOL_ALREADY_REGISTERED",
             RegistrationError::InvalidName(_) => "TOOL_INVALID_NAME",
             RegistrationError::NotFound(_) => "TOOL_NOT_FOUND",
-            RegistrationError::EnterpriseRegistrationForbidden => "ENTERPRISE_REGISTRATION_FORBIDDEN",
+            RegistrationError::EnterpriseRegistrationForbidden => {
+                "ENTERPRISE_REGISTRATION_FORBIDDEN"
+            }
             RegistrationError::MaxToolsReached(_) => "MAX_TOOLS_REACHED",
         }
     }

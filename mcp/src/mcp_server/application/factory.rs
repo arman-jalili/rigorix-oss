@@ -17,7 +17,7 @@
 use async_trait::async_trait;
 
 use crate::mcp_server::domain::value::{
-    PromptContent, PromptMessage, PromptMessageContent, PromptRole, PromptSchema, PromptArgument,
+    PromptArgument, PromptContent, PromptMessage, PromptMessageContent, PromptRole, PromptSchema,
     ResourceSchema, ServerCapabilities, ServerConfig, ToolSchema,
 };
 

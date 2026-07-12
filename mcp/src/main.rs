@@ -25,9 +25,7 @@ use tokio_util::sync::CancellationToken;
 /// Dispatch an incoming JSON-RPC message to the appropriate handler.
 ///
 /// Returns a JSON-RPC response message, or None for notifications.
-async fn dispatch_message(
-    msg: JsonRpcMessage,
-) -> Option<JsonRpcMessage> {
+async fn dispatch_message(msg: JsonRpcMessage) -> Option<JsonRpcMessage> {
     let method = msg.method.as_deref()?;
     let id = msg.id.clone()?;
     let params = msg.params.unwrap_or(serde_json::Value::Null);
@@ -87,10 +85,7 @@ async fn handle_call_tool(id: &RequestId, params: &serde_json::Value) -> JsonRpc
 
     JsonRpcMessage::error(
         id.clone(),
-        JsonRpcError::tool_execution_failed(
-            name,
-            "Tool not implemented in this phase",
-        ),
+        JsonRpcError::tool_execution_failed(name, "Tool not implemented in this phase"),
     )
 }
 
