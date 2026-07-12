@@ -95,7 +95,9 @@ impl EnterpriseProxyImpl {
 #[async_trait]
 impl EnterpriseProxy for EnterpriseProxyImpl {
     fn is_enabled(&self) -> bool {
-        self.initialized.lock().map(|g| *g).unwrap_or(false)
+        // Proxy is enabled when config was successfully parsed.
+        // Schema fetch may still be pending or have failed.
+        true
     }
 
     fn available_tools(&self) -> Vec<ToolSchema> {
@@ -318,10 +320,11 @@ mod tests {
     }
 
     #[test]
-    fn test_enterprise_proxy_not_enabled_by_default() {
+    fn test_enterprise_proxy_enabled_on_construction() {
         let config = test_config();
         let proxy = EnterpriseProxyImpl::new(config).unwrap();
-        assert!(!proxy.is_enabled());
+        assert!(proxy.is_enabled());
+        // Available tools are empty until schema fetch
         assert!(proxy.available_tools().is_empty());
         assert!(proxy.metadata().is_none());
     }

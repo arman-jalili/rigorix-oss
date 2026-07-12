@@ -60,6 +60,13 @@ use rigorix_mcp::template_tools::application::service_impl::{
 use rigorix_mcp::template_tools::domain::entity::SharedTemplateRepository;
 use rigorix_mcp::template_tools::infrastructure::FilesystemTemplateRepository;
 
+
+use rigorix_mcp::enterprise_proxy::domain::entity::SharedEnterpriseProxy;
+use rigorix_mcp::enterprise_proxy::domain::value::ProxyConfig;
+use rigorix_mcp::enterprise_proxy::infrastructure::EnterpriseProxyImpl;
+
+use rigorix_mcp::enterprise_proxy::interfaces::mcp::ENTERPRISE_TOOL_PREFIX;
+
 use rigorix_mcp::mcp_server::domain::value::{JsonRpcError, JsonRpcMessage, RequestId};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::signal;
@@ -71,6 +78,9 @@ use tokio_util::sync::CancellationToken;
 
 /// Shared application state wired from bounded contexts.
 struct AppState {
+    // Enterprise proxy (optional)
+    enterprise_proxy: Option<SharedEnterpriseProxy>,
+
     // Execution tools
     execute_handler: Box<dyn ExecuteHandler>,
     validate_plan_handler: Box<dyn ValidatePlanHandler>,
@@ -93,6 +103,49 @@ struct AppState {
 }
 
 impl AppState {
+    /// Try to initialize the enterprise proxy from environment variables.
+    fn try_init_enterprise_proxy() -> Option<SharedEnterpriseProxy> {
+        let api_url = std::env::var("ENTERPRISE_API_URL").ok()?;
+        let api_key = std::env::var("ENTERPRISE_API_KEY").ok()?;
+
+        let timeout = std::env::var("ENTERPRISE_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok());
+        let tls_verify = std::env::var("ENTERPRISE_TLS_VERIFY")
+            .ok()
+            .and_then(|v| match v.as_str() {
+                "false" | "0" | "no" => Some(false),
+                _ => Some(true),
+            });
+        let schema_ttl = std::env::var("ENTERPRISE_SCHEMA_TTL_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok());
+
+        let config = ProxyConfig::new(
+            api_url,
+            api_key,
+            timeout,
+            tls_verify,
+            None, // max_retries uses default
+            schema_ttl,
+        )
+        .ok()?;
+
+        let proxy = EnterpriseProxyImpl::new(config).ok()?;
+        let shared: SharedEnterpriseProxy = Arc::new(proxy);
+
+        // Initialize (fetch schemas) — best-effort
+        let init_shared = shared.clone();
+        tokio::spawn(async move {
+            match init_shared.initialize().await {
+                Ok(()) => tracing::info!("Enterprise proxy initialized successfully"),
+                Err(e) => tracing::warn!("Enterprise proxy init failed (will retry): {}", e),
+            }
+        });
+
+        Some(shared)
+    }
+
     /// Build the composition root with in-memory development services.
     fn new() -> Self {
         // ── EngineFacade (stub for development) ──
@@ -111,8 +164,16 @@ impl AppState {
         let template_repo: SharedTemplateRepository =
             Arc::new(FilesystemTemplateRepository::new(".rigorix/templates"));
 
+        // ── Enterprise proxy (optional) ──
+        let enterprise_proxy = Self::try_init_enterprise_proxy();
+        if enterprise_proxy.is_some() {
+            tracing::info!("Enterprise proxy enabled");
+        } else {
+            tracing::info!("Enterprise proxy disabled (no config)");
+        }
+
         Self {
-            // Execution handlers
+            enterprise_proxy,
             execute_handler: Box::new(ExecuteHandlerImpl::new(
                 engine.clone(),
                 Duration::from_secs(300),
@@ -383,6 +444,20 @@ fn all_tool_descriptors() -> Vec<serde_json::Value> {
 // JSON-RPC Handler Functions
 // =========================================================================
 
+/// Map a ProxyError to a short error type name for diagnostic formatting.
+fn error_type_name(e: &rigorix_mcp::enterprise_proxy::domain::error::ProxyError) -> &'static str {
+    match e {
+        rigorix_mcp::enterprise_proxy::domain::error::ProxyError::Configuration(_) => "configuration",
+        rigorix_mcp::enterprise_proxy::domain::error::ProxyError::Transport(_) => "network_error",
+        rigorix_mcp::enterprise_proxy::domain::error::ProxyError::ApiError { status, .. } if *status == 401 || *status == 403 => "auth_failure",
+        rigorix_mcp::enterprise_proxy::domain::error::ProxyError::ApiError { .. } => "api_error",
+        rigorix_mcp::enterprise_proxy::domain::error::ProxyError::Timeout { .. } => "timeout",
+        rigorix_mcp::enterprise_proxy::domain::error::ProxyError::Authentication(_) => "auth_failure",
+        rigorix_mcp::enterprise_proxy::domain::error::ProxyError::NotEnabled => "not_enabled",
+        _ => "internal_error",
+    }
+}
+
 static APP_STATE: std::sync::LazyLock<AppState> = std::sync::LazyLock::new(AppState::new);
 
 /// Dispatch an incoming JSON-RPC message to the appropriate handler.
@@ -432,11 +507,31 @@ async fn handle_initialize(id: &RequestId, _params: &serde_json::Value) -> JsonR
 }
 
 // ---------------------------------------------------------------------------
-// tools/list — returns all 10 registered OSS tool descriptors
+// tools/list — returns all OSS + enterprise tool descriptors
 // ---------------------------------------------------------------------------
 
 async fn handle_list_tools(id: &RequestId) -> JsonRpcMessage {
-    let tools = all_tool_descriptors();
+    let mut tools = all_tool_descriptors();
+
+    // Append enterprise tools if proxy is enabled
+    if let Some(proxy) = APP_STATE.enterprise_proxy.as_ref() {
+        // Static tools: always available when proxy is configured
+        tools.push(
+            rigorix_mcp::enterprise_proxy::interfaces::mcp::rigorix_enterprise_call_tool_descriptor(),
+        );
+        tools.push(
+            rigorix_mcp::enterprise_proxy::interfaces::mcp::rigorix_enterprise_health_tool_descriptor(),
+        );
+        // Dynamic tools: populated from schema cache (if init succeeded)
+        for schema in proxy.available_tools() {
+            tools.push(serde_json::json!({
+                "name": schema.name,
+                "description": schema.description,
+                "inputSchema": schema.input_schema
+            }));
+        }
+    }
+
     let result = serde_json::json!({ "tools": tools });
     JsonRpcMessage::success(id.clone(), result)
 }
@@ -455,6 +550,39 @@ async fn handle_call_tool(id: &RequestId, params: &serde_json::Value) -> JsonRpc
         .get("arguments")
         .cloned()
         .unwrap_or(serde_json::Value::Null);
+
+    // Route rigorix_enterprise_* calls to the enterprise proxy
+    if tool_name.starts_with(ENTERPRISE_TOOL_PREFIX) {
+        match &APP_STATE.enterprise_proxy {
+            Some(proxy) => match proxy.handle(tool_name, arguments.clone()).await {
+                Ok(result) => {
+                    let response = serde_json::json!({
+                        "content": [{"type": "text", "text": serde_json::to_string(&result).unwrap_or_default()}],
+                        "isError": false
+                    });
+                    return JsonRpcMessage::success(id.clone(), response);
+                }
+                Err(e) => {
+                    let diagnostic = rigorix_mcp::enterprise_proxy::interfaces::mcp::format_enterprise_error(
+                        &error_type_name(&e),
+                        &e.to_string(),
+                    );
+                    let response = serde_json::json!({
+                        "content": [{"type": "text", "text": serde_json::to_string(&diagnostic).unwrap_or_default()}],
+                        "isError": true
+                    });
+                    return JsonRpcMessage::success(id.clone(), response);
+                }
+            },
+            None => {
+                let response = serde_json::json!({
+                    "content": [{"type": "text", "text": "Enterprise proxy is not configured. Set ENTERPRISE_API_URL and ENTERPRISE_API_KEY."}],
+                    "isError": true
+                });
+                return JsonRpcMessage::success(id.clone(), response);
+            }
+        }
+    }
 
     match APP_STATE.handle_tool_call(tool_name, &arguments).await {
         Ok(result) => {
