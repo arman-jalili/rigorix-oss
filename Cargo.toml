@@ -1,5 +1,5 @@
 [workspace]
-members = ["engine", "cli", "actions"]
+members = ["engine", "cli", "actions", "mcp"]
 resolver = "3"
 
 [workspace.package]
