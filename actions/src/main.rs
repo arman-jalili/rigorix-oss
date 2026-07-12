@@ -106,18 +106,16 @@ fn write_annotation(level: &str, annotation: &WorkflowAnnotation) {
 /// Set a GitHub Actions output variable by writing to GITHUB_OUTPUT.
 async fn set_github_output(key: &str, value: &str) {
     if let Ok(path) = std::env::var("GITHUB_OUTPUT") {
-        let _ = tokio::fs::OpenOptions::new()
+        use tokio::io::AsyncWriteExt;
+        if let Ok(mut f) = tokio::fs::OpenOptions::new()
             .append(true)
             .open(&path)
             .await
-            .map(|mut f| {
-                use tokio::io::AsyncWriteExt;
-                let sanitized = value.replace('\n', "\\n");
-                let line = format!("{key}={sanitized}\n");
-                async move {
-                    let _ = f.write_all(line.as_bytes()).await;
-                }
-            });
+        {
+            let sanitized = value.replace('\n', "\\n");
+            let line = format!("{key}={sanitized}\n");
+            let _ = f.write_all(line.as_bytes()).await;
+        }
     }
 }
 
