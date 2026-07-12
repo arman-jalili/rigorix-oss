@@ -36,6 +36,10 @@ pub struct AuditEnvelope {
     /// Allows verifying that the same input produces the same plan.
     pub planning_hash: String,
 
+    /// Source/environment that triggered this execution
+    /// (e.g. "rigorix_action", "rigorix_cli").
+    pub source: Option<String>,
+
     /// Repository the execution ran against (e.g. "my-org/my-repo").
     pub repository: Option<String>,
 

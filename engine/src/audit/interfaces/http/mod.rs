@@ -80,6 +80,7 @@ impl From<BuildEnvelopeRequest> for BuildEnvelopeInput {
             template_id: req.template_id,
             planning_prompt: req.planning_prompt,
             events: req.events.into_iter().map(Into::into).collect(),
+            source: None,
             metadata: req.metadata,
             sign: req.sign.unwrap_or(false),
             repository: req.repository,

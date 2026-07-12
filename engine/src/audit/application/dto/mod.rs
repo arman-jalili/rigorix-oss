@@ -38,6 +38,10 @@ pub struct BuildEnvelopeInput {
     /// Ordered list of execution event references to include in the envelope.
     pub events: Vec<ExecutionEventRef>,
 
+    /// Source/environment that triggered this execution
+    /// (e.g. "rigorix_action", "rigorix_cli").
+    pub source: Option<String>,
+
     /// Repository the execution ran against (e.g. "my-org/my-repo").
     pub repository: Option<String>,
 

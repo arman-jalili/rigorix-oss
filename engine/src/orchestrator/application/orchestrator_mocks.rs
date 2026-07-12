@@ -468,6 +468,7 @@ impl crate::audit::application::AuditService for MockAuditService {
                 timestamp: chrono::Utc::now(),
                 template_id: "mock".into(),
                 planning_hash: "hash".into(),
+                source: None,
                 events: vec![],
                 signature: None,
                 repository: None,

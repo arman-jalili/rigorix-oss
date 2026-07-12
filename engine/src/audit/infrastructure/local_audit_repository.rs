@@ -229,6 +229,7 @@ mod tests {
                 correlation_id: None,
                 status: EventStatus::Success,
             }],
+            source: None,
             signature: None,
             repository: None,
             author: None,

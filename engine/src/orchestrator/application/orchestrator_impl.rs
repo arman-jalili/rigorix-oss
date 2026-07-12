@@ -643,6 +643,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     template_id: record.planning.template_id.clone(),
                     planning_prompt: record.planning.prompt_hash.clone(),
                     events: aref,
+                    source: Some(record.context.environment.clone()),
                     metadata: None,
                     sign: false,
                     repository: input.repository.clone(),

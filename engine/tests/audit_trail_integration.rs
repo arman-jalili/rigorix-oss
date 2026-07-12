@@ -27,6 +27,7 @@ async fn test_audit_envelope_has_hmac_signature() {
             ("intent".to_string(), "test intent".to_string()),
             ("llm_calls".to_string(), "2".to_string()),
         ])),
+        source: None,
         sign: true,
         repository: None,
         author: None,
