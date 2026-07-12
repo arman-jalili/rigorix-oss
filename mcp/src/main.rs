@@ -60,7 +60,6 @@ use rigorix_mcp::template_tools::application::service_impl::{
 use rigorix_mcp::template_tools::domain::entity::SharedTemplateRepository;
 use rigorix_mcp::template_tools::infrastructure::FilesystemTemplateRepository;
 
-
 use rigorix_mcp::enterprise_proxy::domain::entity::SharedEnterpriseProxy;
 use rigorix_mcp::enterprise_proxy::domain::value::ProxyConfig;
 use rigorix_mcp::enterprise_proxy::infrastructure::EnterpriseProxyImpl;
@@ -113,20 +112,13 @@ impl AppState {
             .and_then(|v| v.parse().ok());
         let tls_verify = std::env::var("ENTERPRISE_TLS_VERIFY")
             .ok()
-            .and_then(|v| match v.as_str() {
-                "false" | "0" | "no" => Some(false),
-                _ => Some(true),
-            });
+            .map(|v| !matches!(v.as_str(), "false" | "0" | "no"));
         let schema_ttl = std::env::var("ENTERPRISE_SCHEMA_TTL_SECS")
             .ok()
             .and_then(|v| v.parse().ok());
 
         let config = ProxyConfig::new(
-            api_url,
-            api_key,
-            timeout,
-            tls_verify,
-            None, // max_retries uses default
+            api_url, api_key, timeout, tls_verify, None, // max_retries uses default
             schema_ttl,
         )
         .ok()?;
@@ -447,12 +439,20 @@ fn all_tool_descriptors() -> Vec<serde_json::Value> {
 /// Map a ProxyError to a short error type name for diagnostic formatting.
 fn error_type_name(e: &rigorix_mcp::enterprise_proxy::domain::error::ProxyError) -> &'static str {
     match e {
-        rigorix_mcp::enterprise_proxy::domain::error::ProxyError::Configuration(_) => "configuration",
+        rigorix_mcp::enterprise_proxy::domain::error::ProxyError::Configuration(_) => {
+            "configuration"
+        }
         rigorix_mcp::enterprise_proxy::domain::error::ProxyError::Transport(_) => "network_error",
-        rigorix_mcp::enterprise_proxy::domain::error::ProxyError::ApiError { status, .. } if *status == 401 || *status == 403 => "auth_failure",
+        rigorix_mcp::enterprise_proxy::domain::error::ProxyError::ApiError { status, .. }
+            if *status == 401 || *status == 403 =>
+        {
+            "auth_failure"
+        }
         rigorix_mcp::enterprise_proxy::domain::error::ProxyError::ApiError { .. } => "api_error",
         rigorix_mcp::enterprise_proxy::domain::error::ProxyError::Timeout { .. } => "timeout",
-        rigorix_mcp::enterprise_proxy::domain::error::ProxyError::Authentication(_) => "auth_failure",
+        rigorix_mcp::enterprise_proxy::domain::error::ProxyError::Authentication(_) => {
+            "auth_failure"
+        }
         rigorix_mcp::enterprise_proxy::domain::error::ProxyError::NotEnabled => "not_enabled",
         _ => "internal_error",
     }
@@ -517,7 +517,8 @@ async fn handle_list_tools(id: &RequestId) -> JsonRpcMessage {
     if let Some(proxy) = APP_STATE.enterprise_proxy.as_ref() {
         // Static tools: always available when proxy is configured
         tools.push(
-            rigorix_mcp::enterprise_proxy::interfaces::mcp::rigorix_enterprise_call_tool_descriptor(),
+            rigorix_mcp::enterprise_proxy::interfaces::mcp::rigorix_enterprise_call_tool_descriptor(
+            ),
         );
         tools.push(
             rigorix_mcp::enterprise_proxy::interfaces::mcp::rigorix_enterprise_health_tool_descriptor(),
@@ -563,10 +564,11 @@ async fn handle_call_tool(id: &RequestId, params: &serde_json::Value) -> JsonRpc
                     return JsonRpcMessage::success(id.clone(), response);
                 }
                 Err(e) => {
-                    let diagnostic = rigorix_mcp::enterprise_proxy::interfaces::mcp::format_enterprise_error(
-                        &error_type_name(&e),
-                        &e.to_string(),
-                    );
+                    let diagnostic =
+                        rigorix_mcp::enterprise_proxy::interfaces::mcp::format_enterprise_error(
+                            error_type_name(&e),
+                            &e.to_string(),
+                        );
                     let response = serde_json::json!({
                         "content": [{"type": "text", "text": serde_json::to_string(&diagnostic).unwrap_or_default()}],
                         "isError": true

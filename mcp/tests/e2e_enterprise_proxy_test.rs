@@ -131,10 +131,19 @@ fn test_without_enterprise_config_no_enterprise_tools() {
     let tool_names = get_tool_names(&list_resp);
 
     // Exactly 10 OSS tools, no enterprise tools
-    assert_eq!(tool_names.len(), 10,
-        "expected 10 OSS tools, got {}: {:?}", tool_names.len(), tool_names);
-    assert!(!tool_names.iter().any(|n| n.starts_with("rigorix_enterprise_")),
-        "enterprise tools should not appear without config");
+    assert_eq!(
+        tool_names.len(),
+        10,
+        "expected 10 OSS tools, got {}: {:?}",
+        tool_names.len(),
+        tool_names
+    );
+    assert!(
+        !tool_names
+            .iter()
+            .any(|n| n.starts_with("rigorix_enterprise_")),
+        "enterprise tools should not appear without config"
+    );
 }
 
 #[test]
@@ -156,9 +165,14 @@ fn test_without_enterprise_config_enterprise_call_returns_clear_error() {
 
     let is_error = call_resp["result"]["isError"].as_bool().unwrap_or(false);
     assert!(is_error, "enterprise call without config should error");
-    let text = call_resp["result"]["content"][0]["text"].as_str().unwrap_or("");
-    assert!(text.contains("not configured") || text.contains("not enabled"),
-        "error should mention config, got: {}", text);
+    let text = call_resp["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or("");
+    assert!(
+        text.contains("not configured") || text.contains("not enabled"),
+        "error should mention config, got: {}",
+        text
+    );
 }
 
 #[test]
@@ -184,10 +198,17 @@ fn test_with_enterprise_config_tools_appear() {
     let tool_names = get_tool_names(&list_resp);
 
     // Should have 10 OSS + at least the static enterprise tool
-    assert!(tool_names.len() >= 11,
-        "expected 11+ tools with enterprise config, got {}: {:?}", tool_names.len(), tool_names);
-    assert!(tool_names.iter().any(|n| n == "rigorix_enterprise_call"),
-        "expected rigorix_enterprise_call, got: {:?}", tool_names);
+    assert!(
+        tool_names.len() >= 11,
+        "expected 11+ tools with enterprise config, got {}: {:?}",
+        tool_names.len(),
+        tool_names
+    );
+    assert!(
+        tool_names.iter().any(|n| n == "rigorix_enterprise_call"),
+        "expected rigorix_enterprise_call, got: {:?}",
+        tool_names
+    );
 }
 
 #[test]
@@ -215,12 +236,24 @@ fn test_with_enterprise_config_call_returns_diagnostic_error() {
     let call_resp = send_one_request(env, &call_req.to_string(), 10).unwrap();
 
     let is_error = call_resp["result"]["isError"].as_bool().unwrap_or(true);
-    let text = call_resp["result"]["content"][0]["text"].as_str().unwrap_or("");
+    let text = call_resp["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or("");
 
-    assert!(is_error, "enterprise call to fake server should error, got: {}", text);
+    assert!(
+        is_error,
+        "enterprise call to fake server should error, got: {}",
+        text
+    );
     assert!(!text.is_empty(), "error should have content");
     // Should be a structured diagnostic, not a raw Rust error dump
-    assert!(text.contains("error") || text.contains("timeout") || text.contains("unreachable")
-        || text.contains("resolution_hint") || text.contains("Configuration"),
-        "should be a clear diagnostic: {}", text);
+    assert!(
+        text.contains("error")
+            || text.contains("timeout")
+            || text.contains("unreachable")
+            || text.contains("resolution_hint")
+            || text.contains("Configuration"),
+        "should be a clear diagnostic: {}",
+        text
+    );
 }
