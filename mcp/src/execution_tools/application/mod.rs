@@ -18,6 +18,7 @@
 pub mod dto;
 pub mod factory;
 pub mod service;
+pub mod service_impl;
 
 pub use dto::*;
 pub use factory::*;

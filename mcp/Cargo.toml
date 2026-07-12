@@ -17,6 +17,9 @@ chrono = { workspace = true }
 thiserror = { workspace = true }
 async-trait = { workspace = true }
 
+# rigorix-engine for execution orchestration
+rigorix-engine = { path = "../engine" }
+
 # Axum for SSE transport
 axum = { version = "0.8", features = ["macros"], optional = true }
 
@@ -26,3 +29,4 @@ sse = ["dep:axum"]
 
 [dev-dependencies]
 tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
