@@ -11,8 +11,8 @@ detect_language() {
     else echo "unknown"; fi
 }
 
-LANG=$(detect_language)
-LANG_SCRIPT="${SCRIPT_DIR}/languages/${LANG}/validate-security.sh"
+LANG_DETECTED=$(detect_language)
+LANG_SCRIPT="${SCRIPT_DIR}/languages/${LANG_DETECTED}/validate-security.sh"
 
 if [ -f "$LANG_SCRIPT" ]; then
     exec bash "$LANG_SCRIPT" "$@"

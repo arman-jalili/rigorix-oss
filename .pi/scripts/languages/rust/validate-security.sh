@@ -4,6 +4,9 @@
 # ============================================================================
 set -euo pipefail
 
+# Scope to mcp/ package
+cd "$(git rev-parse --show-toplevel 2>/dev/null || echo ".")"/mcp 2>/dev/null || true
+
 PASS_COUNT=0
 ERRORS=()
 WARNINGS=()

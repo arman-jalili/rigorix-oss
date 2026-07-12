@@ -8,6 +8,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PI_SCRIPT_DIR="$(cd "$(dirname "$0")/../../.pi/scripts" && pwd)"
 
 detect_language() {
     if [ -f "poetry.lock" ]; then
@@ -25,8 +26,8 @@ detect_language() {
     fi
 }
 
-LANG=$(detect_language)
-LANG_SCRIPT="${SCRIPT_DIR}/languages/${LANG}/validate-ci.sh"
+LANG_DETECTED=$(detect_language)
+LANG_SCRIPT="${PI_SCRIPT_DIR}/languages/${LANG_DETECTED}/validate-ci.sh"
 
 if [ -f "$LANG_SCRIPT" ]; then
     exec bash "$LANG_SCRIPT" "$@"
