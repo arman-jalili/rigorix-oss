@@ -1,12 +1,13 @@
 {
-  "id": "PL-4770",
-  "name": "execution-tools",
+  "id": "PL-7000",
+  "name": "audit-tools",
   "items": [
     "issue-contract-freeze",
-    "issue-enginefacade-aggregate-root-",
-    "issue-executehandler-domain-service-",
-    "issue-validateplanhandler-domain-service-",
-    "issue-checkenforcementhandler-domain-service-",
+    "issue-auditqueryservice-aggregate-root-",
+    "issue-readaudithandler-domain-service-",
+    "issue-listauditshandler-domain-service-",
+    "issue-auditsummaryhandler-domain-service-",
+    "issue-auditformatter-domain-service-",
     "issue-proofing",
     "issue-architecture-readiness"
   ],
@@ -51,12 +52,59 @@
       }
     }
   ],
-  "currentItemIndex": 0,
+  "currentItemIndex": 1,
   "currentStepIndex": 0,
   "status": "running",
   "retryCount": 0,
-  "results": [],
+  "results": [
+    {
+      "item": "issue-contract-freeze",
+      "status": "failed",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "failed",
+          "reason": "Acceptance failed: ci: ; tests: ; security: "
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "failed",
+          "reason": "Acceptance failed: ci: ; tests: ; security: "
+        },
+        {
+          "step": "validate",
+          "status": "failed",
+          "reason": "Pre-existing workspace-level CI failures in engine/actions crates; contract freeze complete — all audit-tools interface-only files created and passing mcp crate checks"
+        },
+        {
+          "step": "create-mr",
+          "status": "failed",
+          "reason": "skipped due to prior failure"
+        },
+        {
+          "step": "merge",
+          "status": "failed",
+          "reason": "skipped due to prior failure"
+        }
+      ]
+    }
+  ],
   "mergeOnValid": true,
-  "createdAt": "2026-07-12T11:22:06.547Z",
-  "updatedAt": "2026-07-12T11:22:06.547Z"
+  "createdAt": "2026-07-12T12:05:16.575Z",
+  "updatedAt": "2026-07-12T12:18:28.564Z"
 }

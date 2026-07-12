@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-READINESS"
-  epic: "execution-tools"
+  epic: "audit-tools"
   component: "Architecture Readiness"
-  module: "execution-tools"
+  module: "audit-tools"
   status: planned
   priority: critical
   dependencies: []
@@ -32,7 +32,7 @@ guardian_issue:
       - Verify proofing scripts + validators in CI
 
   canonical_references:
-    - module: ".pi/architecture/modules/execution-tools.md"
+    - module: ".pi/architecture/modules/audit-tools.md"
 
   acceptance_criteria:
     - "Runbook created and reviewed"
@@ -58,30 +58,30 @@ guardian_issue:
     and CI will catch regressions (proofing scripts + validators).
 
   file_changes:
-    - "create: docs/runbook-execution-tools.md"
-    - "create: docs/dr-plan-execution-tools.md"
+    - "create: docs/runbook-audit-tools.md"
+    - "create: docs/dr-plan-audit-tools.md"
     - "modify: .pi/architecture/CHANGELOG.md"
-    - "modify: .pi/architecture/modules/execution-tools.md"
+    - "modify: .pi/architecture/modules/audit-tools.md"
 ---
 
-# Architecture Readiness: execution-tools
+# Architecture Readiness: audit-tools
 
 ## Intent
 
-Make the execution-tools module production-ready. This is the final issue in every epic
+Make the audit-tools module production-ready. This is the final issue in every epic
 — it closes the loop between implementation and operability.
 
 ## Deliverables
 
 ### Runbook
-`docs/runbook-execution-tools.md` covering:
+`docs/runbook-audit-tools.md` covering:
 - Startup sequence and dependencies
 - Graceful shutdown procedure
 - Common failure modes and recovery
 - Configuration reference
 
 ### DR Plan
-`docs/dr-plan-execution-tools.md` covering:
+`docs/dr-plan-audit-tools.md` covering:
 - Backup strategy and schedule
 - Restore procedure
 - Failover plan

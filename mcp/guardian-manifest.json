@@ -1,6 +1,6 @@
 {
   "schemaVersion": "0.1",
-  "frameworkVersion": "0.1.61",
+  "frameworkVersion": "0.1.67",
   "source": "pi",
   "tools": [
     "pi"
@@ -371,7 +371,7 @@
     ".pi/scripts/ci/run_hardening_stages.sh": {
       "category": "framework",
       "originalHash": "sha256:8a67c21f7154e1cd4987f6e5e56dbbd476f3bf6d7846d4c167289008979d4a65",
-      "status": "unchanged"
+      "status": "modified"
     },
     ".pi/scripts/ci/stage_remaining.sh": {
       "category": "framework",
@@ -970,7 +970,7 @@
     },
     ".pi/preflight_report.json": {
       "category": "framework",
-      "originalHash": "sha256:3128783f68547937bf87609fa64af784eca10b8a06422e83a05cf07ac89880a1",
+      "originalHash": "sha256:caea8f7070c6f3eb9ae81c84881fd3035a8e71ef5c3743a17674b77752c9c7bd",
       "status": "unchanged"
     },
     ".pi/domain/ubiquitous-language.md": {
@@ -1224,5 +1224,5 @@
     "domainDescription": "mcp server for rigorix cli"
   },
   "scaffoldedAt": "2026-07-12T07:44:41.001Z",
-  "lastUpdatedAt": "2026-07-12T07:44:41.094Z"
+  "lastUpdatedAt": "2026-07-12T12:03:30.443Z"
 }

@@ -42,7 +42,13 @@ impl TddMockEngine {
             execute_result: Some(Ok(ExecutionResult::new(
                 uuid::Uuid::nil(),
                 ExecutionStatus::Completed,
-                vec![StepResult::new("step1".into(), true, None, serde_json::json!({}), 50)],
+                vec![StepResult::new(
+                    "step1".into(),
+                    true,
+                    None,
+                    serde_json::json!({}),
+                    50,
+                )],
                 100,
                 Some(50),
                 "rigorix://audit/test".into(),
@@ -66,28 +72,33 @@ impl TddMockEngine {
 #[async_trait]
 impl EngineFacade for TddMockEngine {
     async fn execute(&self, _plan: PlanTemplate) -> Result<ExecutionResult, EngineFacadeError> {
-        self.execute_result.clone().unwrap_or_else(|| {
-            Err(EngineFacadeError::EngineNotAvailable("mock".into()))
-        })
+        self.execute_result
+            .clone()
+            .unwrap_or_else(|| Err(EngineFacadeError::EngineNotAvailable("mock".into())))
     }
 
-    async fn validate_plan(&self, _plan: PlanTemplate) -> Result<ValidationResult, EngineFacadeError> {
-        self.validate_result.clone().unwrap_or_else(|| {
-            Ok(ValidationResult::new(true, vec![], vec![], None))
-        })
+    async fn validate_plan(
+        &self,
+        _plan: PlanTemplate,
+    ) -> Result<ValidationResult, EngineFacadeError> {
+        self.validate_result
+            .clone()
+            .unwrap_or_else(|| Ok(ValidationResult::new(true, vec![], vec![], None)))
     }
 
     async fn check_enforcement(&self) -> Result<EnforcementStatus, EngineFacadeError> {
-        self.enforcement_status.clone().ok_or_else(|| {
-            EngineFacadeError::EngineNotAvailable("mock".into())
-        })
+        self.enforcement_status
+            .clone()
+            .ok_or_else(|| EngineFacadeError::EngineNotAvailable("mock".into()))
     }
 
     async fn get_execution_cost(
         &self,
         execution_id: &ExecutionId,
     ) -> Result<rigorix_mcp::execution_tools::domain::value::CostBreakdown, EngineFacadeError> {
-        Err(EngineFacadeError::ExecutionNotFound(*execution_id.as_uuid()))
+        Err(EngineFacadeError::ExecutionNotFound(
+            *execution_id.as_uuid(),
+        ))
     }
 }
 
@@ -195,11 +206,7 @@ async fn test_validateplanhandler_handles_validation() {
     let engine: SharedEngineFacade = Arc::new(TddMockEngine::with_defaults());
     let handler = ValidatePlanHandlerImpl::new(engine);
 
-    let result = handler
-        .handle(ValidateInput {
-            plan: make_plan(),
-        })
-        .await;
+    let result = handler.handle(ValidateInput { plan: make_plan() }).await;
 
     assert!(result.is_ok());
     let tc = result.unwrap();

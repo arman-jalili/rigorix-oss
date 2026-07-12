@@ -20,17 +20,35 @@ struct MockEngineForEnforcer;
 #[async_trait]
 impl EngineFacade for MockEngineForEnforcer {
     async fn execute(&self, _plan: PlanTemplate) -> Result<ExecutionResult, EngineFacadeError> {
-        Ok(ExecutionResult::new(uuid::Uuid::nil(), ExecutionStatus::Completed, vec![], 0, None, String::new()))
+        Ok(ExecutionResult::new(
+            uuid::Uuid::nil(),
+            ExecutionStatus::Completed,
+            vec![],
+            0,
+            None,
+            String::new(),
+        ))
     }
     async fn validate_plan(&self, _p: PlanTemplate) -> Result<ValidationResult, EngineFacadeError> {
         Ok(ValidationResult::new(true, vec![], vec![], None))
     }
     async fn check_enforcement(&self) -> Result<EnforcementStatus, EngineFacadeError> {
-        Ok(EnforcementStatus::new(true, "strict".into(), BudgetStatus {
-            tool_calls_total: 100, tool_calls_remaining: 50, tokens_total: 10000, tokens_remaining: 5000,
-        }, vec![]))
+        Ok(EnforcementStatus::new(
+            true,
+            "strict".into(),
+            BudgetStatus {
+                tool_calls_total: 100,
+                tool_calls_remaining: 50,
+                tokens_total: 10000,
+                tokens_remaining: 5000,
+            },
+            vec![],
+        ))
     }
-    async fn get_execution_cost(&self, _id: &ExecutionId) -> Result<CostBreakdown, EngineFacadeError> {
+    async fn get_execution_cost(
+        &self,
+        _id: &ExecutionId,
+    ) -> Result<CostBreakdown, EngineFacadeError> {
         Err(EngineFacadeError::ExecutionNotFound(uuid::Uuid::nil()))
     }
 }

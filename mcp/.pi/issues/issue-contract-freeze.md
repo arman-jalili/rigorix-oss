@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: "execution-tools"
+  epic: "audit-tools"
   component: "Contract Freeze"
-  module: "execution-tools"
+  module: "audit-tools"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/execution-tools.md"
+    - module: ".pi/architecture/modules/audit-tools.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -48,26 +48,27 @@ guardian_issue:
     
 
   file_changes:
-    - "create: src/execution-tools/domain/"
-    - "create: src/execution-tools/application/"
-    - "create: src/execution-tools/infrastructure/"
-    - "create: src/execution-tools/interfaces/"
+    - "create: src/audit-tools/domain/"
+    - "create: src/audit-tools/application/"
+    - "create: src/audit-tools/infrastructure/"
+    - "create: src/audit-tools/interfaces/"
 ---
 
-# Contract Freeze: execution-tools
+# Contract Freeze: audit-tools
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the execution-tools
+Define and freeze all public interfaces, contracts, and schemas for the audit-tools
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- EngineFacade (Aggregate Root)
-- ExecuteHandler (Domain Service)
-- ValidatePlanHandler (Domain Service)
-- CheckEnforcementHandler (Domain Service)
+- AuditQueryService (Aggregate Root)
+- ReadAuditHandler (Domain Service)
+- ListAuditsHandler (Domain Service)
+- AuditSummaryHandler (Domain Service)
+- AuditFormatter (Domain Service)
 
 ## What Must Be Frozen
 
