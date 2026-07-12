@@ -7,6 +7,10 @@
 //! JSON-RPC messages from stdin and writes responses to stdout. Supports
 //! graceful shutdown via SIGINT/SIGTERM.
 //!
+//! This composition root wires together all 10 OSS MCP tools across
+//! three bounded contexts (execution, audit, template) with shared
+//! in-memory services for development and testing.
+//!
 //! # Usage
 //!
 //! ```bash
@@ -17,14 +21,343 @@
 //! rigorix-mcp --sse --bind 127.0.0.1:3001
 //! ```
 
+use std::sync::Arc;
+use std::time::Duration;
+
+use async_trait::async_trait;
+
+use rigorix_mcp::audit_tools::application::service::{
+    AuditSummaryHandler, ListAuditsHandler, ReadAuditHandler,
+};
+use rigorix_mcp::audit_tools::application::service_impl::{
+    AuditSummaryHandlerImpl, ListAuditsHandlerImpl, ReadAuditHandlerImpl,
+};
+use rigorix_mcp::audit_tools::domain::entity::{AuditFormatter, SharedAuditQueryService};
+use rigorix_mcp::audit_tools::domain::formatter_impl::AuditFormatterImpl;
+use rigorix_mcp::audit_tools::infrastructure::InMemoryAuditQueryService;
+
+use rigorix_mcp::execution_tools::application::service::{
+    CheckEnforcementHandler, ExecuteHandler, ValidatePlanHandler,
+};
+use rigorix_mcp::execution_tools::application::service_impl::{
+    CheckEnforcementHandlerImpl, ExecuteHandlerImpl, ValidatePlanHandlerImpl,
+};
+use rigorix_mcp::execution_tools::domain::entity::{EngineFacade, SharedEngineFacade};
+use rigorix_mcp::execution_tools::domain::error::EngineFacadeError;
+use rigorix_mcp::execution_tools::domain::value::{
+    BudgetStatus, CostBreakdown, EnforcementStatus, ExecutionResult, ExecutionStatus, PlanTemplate,
+    StepResult, ValidationResult,
+};
+use rigorix_mcp::execution_tools::infrastructure::InMemoryExecutionRepository;
+use rigorix_mcp::execution_tools::infrastructure::repository::ExecutionRepository;
+
+use rigorix_mcp::template_tools::application::service::{
+    CreateTemplateHandler, GetTemplateHandler, ListTemplatesHandler, ValidateTemplateHandler,
+};
+use rigorix_mcp::template_tools::application::service_impl::{
+    CreateTemplateHandlerImpl, GetTemplateHandlerImpl, ListTemplatesHandlerImpl,
+    ValidateTemplateHandlerImpl,
+};
+use rigorix_mcp::template_tools::domain::entity::SharedTemplateRepository;
+use rigorix_mcp::template_tools::infrastructure::FilesystemTemplateRepository;
+
 use rigorix_mcp::mcp_server::domain::value::{JsonRpcError, JsonRpcMessage, RequestId};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::signal;
 use tokio_util::sync::CancellationToken;
 
-/// Dispatch an incoming JSON-RPC message to the appropriate handler.
+// =========================================================================
+// Composition Root — shared application state
+// =========================================================================
+
+/// Shared application state wired from bounded contexts.
+struct AppState {
+    // Execution tools
+    execute_handler: Box<dyn ExecuteHandler>,
+    validate_plan_handler: Box<dyn ValidatePlanHandler>,
+    check_enforcement_handler: Box<dyn CheckEnforcementHandler>,
+
+    // Audit tools
+    read_audit_handler: Box<dyn ReadAuditHandler>,
+    list_audits_handler: Box<dyn ListAuditsHandler>,
+    audit_summary_handler: Box<dyn AuditSummaryHandler>,
+
+    // Template tools
+    list_templates_handler: Box<dyn ListTemplatesHandler>,
+    get_template_handler: Box<dyn GetTemplateHandler>,
+    create_template_handler: Box<dyn CreateTemplateHandler>,
+    validate_template_handler: Box<dyn ValidateTemplateHandler>,
+}
+
+impl AppState {
+    /// Build the composition root with in-memory development services.
+    fn new() -> Self {
+        // ── EngineFacade (stub for development) ──
+        let engine: SharedEngineFacade = Arc::new(StubEngineFacade);
+        let _execution_repo: Arc<dyn ExecutionRepository> =
+            Arc::new(InMemoryExecutionRepository::new());
+
+        // ── Audit service (in-memory) ──
+        let audit_query: SharedAuditQueryService = Arc::new(InMemoryAuditQueryService::new());
+        let formatter: Arc<dyn AuditFormatter> = Arc::new(AuditFormatterImpl::new());
+
+        // ── Template repository (filesystem, default path) ──
+        let template_repo: SharedTemplateRepository =
+            Arc::new(FilesystemTemplateRepository::new(".rigorix/templates"));
+
+        Self {
+            // Execution handlers
+            execute_handler: Box::new(ExecuteHandlerImpl::new(
+                engine.clone(),
+                Duration::from_secs(300),
+            )),
+            validate_plan_handler: Box::new(ValidatePlanHandlerImpl::new(engine.clone())),
+            check_enforcement_handler: Box::new(CheckEnforcementHandlerImpl::new(engine)),
+
+            // Audit handlers
+            read_audit_handler: Box::new(ReadAuditHandlerImpl::new(
+                audit_query.clone(),
+                formatter.clone(),
+            )),
+            list_audits_handler: Box::new(ListAuditsHandlerImpl::new(
+                audit_query.clone(),
+                formatter.clone(),
+            )),
+            audit_summary_handler: Box::new(AuditSummaryHandlerImpl::new(audit_query, formatter)),
+
+            // Template handlers
+            list_templates_handler: Box::new(ListTemplatesHandlerImpl::new(template_repo.clone())),
+            get_template_handler: Box::new(GetTemplateHandlerImpl::new(template_repo.clone())),
+            create_template_handler: Box::new(CreateTemplateHandlerImpl::new(template_repo)),
+            validate_template_handler: Box::new(ValidateTemplateHandlerImpl::new()),
+        }
+    }
+
+    /// Route a tool call by name to the appropriate handler.
+    async fn handle_tool_call(
+        &self,
+        tool_name: &str,
+        params: &serde_json::Value,
+    ) -> Result<serde_json::Value, serde_json::Value> {
+        match tool_name {
+            // Execution tools
+            "rigorix_execute" => {
+                let input = serde_json::from_value(params.clone())
+                    .map_err(|e| serde_json::json!({"error": format!("Invalid input: {}", e)}))?;
+                let result = self
+                    .execute_handler
+                    .handle(input)
+                    .await
+                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
+            }
+            "rigorix_validate_plan" => {
+                let input = serde_json::from_value(params.clone())
+                    .map_err(|e| serde_json::json!({"error": format!("Invalid input: {}", e)}))?;
+                let result = self
+                    .validate_plan_handler
+                    .handle(input)
+                    .await
+                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
+            }
+            "rigorix_check_enforcement" => {
+                let result = self
+                    .check_enforcement_handler
+                    .handle()
+                    .await
+                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
+            }
+
+            // Audit tools
+            "rigorix_read_audit" => {
+                let input = serde_json::from_value(params.clone())
+                    .map_err(|e| serde_json::json!({"error": format!("Invalid input: {}", e)}))?;
+                let result = self
+                    .read_audit_handler
+                    .handle(input)
+                    .await
+                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
+            }
+            "rigorix_list_audits" => {
+                let input = serde_json::from_value(params.clone())
+                    .map_err(|e| serde_json::json!({"error": format!("Invalid input: {}", e)}))?;
+                let result = self
+                    .list_audits_handler
+                    .handle(input)
+                    .await
+                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
+            }
+            "rigorix_audit_summary" => {
+                let input = serde_json::from_value(params.clone())
+                    .map_err(|e| serde_json::json!({"error": format!("Invalid input: {}", e)}))?;
+                let result = self
+                    .audit_summary_handler
+                    .handle(input)
+                    .await
+                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
+            }
+
+            // Template tools
+            "rigorix_list_templates" => {
+                let filter = serde_json::from_value(params.clone())
+                    .map_err(|e| serde_json::json!({"error": format!("Invalid input: {}", e)}))?;
+                let result = self
+                    .list_templates_handler
+                    .handle(&filter)
+                    .await
+                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
+            }
+            "rigorix_get_template" => {
+                let input = serde_json::from_value(params.clone())
+                    .map_err(|e| serde_json::json!({"error": format!("Invalid input: {}", e)}))?;
+                let result = self
+                    .get_template_handler
+                    .handle(&input)
+                    .await
+                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
+            }
+            "rigorix_create_template" => {
+                let input = serde_json::from_value(params.clone())
+                    .map_err(|e| serde_json::json!({"error": format!("Invalid input: {}", e)}))?;
+                let result = self
+                    .create_template_handler
+                    .handle(&input)
+                    .await
+                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
+            }
+            "rigorix_validate_template" => {
+                let input = serde_json::from_value(params.clone())
+                    .map_err(|e| serde_json::json!({"error": format!("Invalid input: {}", e)}))?;
+                let result = self
+                    .validate_template_handler
+                    .handle(&input)
+                    .await
+                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
+            }
+
+            _ => Err(serde_json::json!({
+                "error": format!("Unknown tool: {}", tool_name)
+            })),
+        }
+    }
+}
+
+// =========================================================================
+// Stub EngineFacade — returns canned responses for development
+// =========================================================================
+
+/// Development stub for the rigorix-engine facade.
 ///
-/// Returns a JSON-RPC response message, or None for notifications.
+/// Returns deterministic canned responses for all operations.
+/// Replace with `EngineFacadeImpl` when rigorix-engine is available
+/// at runtime.
+struct StubEngineFacade;
+
+#[async_trait]
+impl EngineFacade for StubEngineFacade {
+    async fn execute(&self, plan: PlanTemplate) -> Result<ExecutionResult, EngineFacadeError> {
+        let step_count = plan.steps().len();
+        let steps: Vec<StepResult> = plan
+            .steps()
+            .iter()
+            .map(|s| {
+                StepResult::new(
+                    s.name().to_string(),
+                    true,
+                    None,
+                    serde_json::json!({"status": "completed"}),
+                    100,
+                )
+            })
+            .collect();
+
+        let duration = step_count as u64 * 100;
+        let tokens = step_count as u64 * 50;
+
+        Ok(ExecutionResult::new(
+            uuid::Uuid::new_v4(),
+            ExecutionStatus::Completed,
+            steps,
+            duration,
+            Some(tokens),
+            format!("rigorix://audit/{}", uuid::Uuid::new_v4()),
+        ))
+    }
+
+    async fn validate_plan(
+        &self,
+        _plan: PlanTemplate,
+    ) -> Result<ValidationResult, EngineFacadeError> {
+        Ok(ValidationResult::new(true, vec![], vec![], None))
+    }
+
+    async fn check_enforcement(&self) -> Result<EnforcementStatus, EngineFacadeError> {
+        Ok(EnforcementStatus::new(
+            true,
+            "default".into(),
+            BudgetStatus {
+                tool_calls_total: 1000,
+                tool_calls_remaining: 750,
+                tokens_total: 100000,
+                tokens_remaining: 75000,
+            },
+            vec![],
+        ))
+    }
+
+    async fn get_execution_cost(
+        &self,
+        _execution_id: &rigorix_mcp::execution_tools::domain::value::ExecutionId,
+    ) -> Result<CostBreakdown, EngineFacadeError> {
+        Ok(CostBreakdown::new(
+            uuid::Uuid::new_v4(),
+            vec![],
+            500,
+            10,
+            None,
+        ))
+    }
+}
+
+// =========================================================================
+// Tool descriptors — all 10 OSS tools
+// =========================================================================
+
+/// Returns the list of all registered OSS MCP tool descriptors.
+fn all_tool_descriptors() -> Vec<serde_json::Value> {
+    vec![
+        // Execution tools (3)
+        rigorix_mcp::execution_tools::interfaces::mcp::rigorix_execute_tool_descriptor(),
+        rigorix_mcp::execution_tools::interfaces::mcp::rigorix_validate_plan_tool_descriptor(),
+        rigorix_mcp::execution_tools::interfaces::mcp::rigorix_check_enforcement_tool_descriptor(),
+        // Audit tools (3)
+        rigorix_mcp::audit_tools::interfaces::mcp::rigorix_read_audit_tool_descriptor(),
+        rigorix_mcp::audit_tools::interfaces::mcp::rigorix_list_audits_tool_descriptor(),
+        rigorix_mcp::audit_tools::interfaces::mcp::rigorix_audit_summary_tool_descriptor(),
+        // Template tools (4)
+        rigorix_mcp::template_tools::interfaces::mcp::rigorix_list_templates_tool_descriptor(),
+        rigorix_mcp::template_tools::interfaces::mcp::rigorix_get_template_tool_descriptor(),
+        rigorix_mcp::template_tools::interfaces::mcp::rigorix_create_template_tool_descriptor(),
+        rigorix_mcp::template_tools::interfaces::mcp::rigorix_validate_template_tool_descriptor(),
+    ]
+}
+
+// =========================================================================
+// JSON-RPC Handler Functions
+// =========================================================================
+
+static APP_STATE: std::sync::LazyLock<AppState> = std::sync::LazyLock::new(AppState::new);
+
+/// Dispatch an incoming JSON-RPC message to the appropriate handler.
 async fn dispatch_message(msg: JsonRpcMessage) -> Option<JsonRpcMessage> {
     let method = msg.method.as_deref()?;
     let id = msg.id.clone()?;
@@ -33,7 +366,6 @@ async fn dispatch_message(msg: JsonRpcMessage) -> Option<JsonRpcMessage> {
     let response = match method {
         "initialize" => handle_initialize(&id, &params).await,
         "initialized" => {
-            // Notification — no response needed
             return None;
         }
         "tools/list" => handle_list_tools(&id).await,
@@ -43,7 +375,6 @@ async fn dispatch_message(msg: JsonRpcMessage) -> Option<JsonRpcMessage> {
         "prompts/list" => handle_list_prompts(&id).await,
         "prompts/get" => handle_get_prompt(&id, &params).await,
         "notifications/cancelled" => {
-            // Notification — no response needed
             return None;
         }
         _ => JsonRpcMessage::error(id, JsonRpcError::method_not_found(method)),
@@ -53,7 +384,7 @@ async fn dispatch_message(msg: JsonRpcMessage) -> Option<JsonRpcMessage> {
 }
 
 // ---------------------------------------------------------------------------
-// Handlers
+// initialize handler
 // ---------------------------------------------------------------------------
 
 async fn handle_initialize(id: &RequestId, _params: &serde_json::Value) -> JsonRpcMessage {
@@ -72,22 +403,61 @@ async fn handle_initialize(id: &RequestId, _params: &serde_json::Value) -> JsonR
     JsonRpcMessage::success(id.clone(), result)
 }
 
+// ---------------------------------------------------------------------------
+// tools/list — returns all 10 registered OSS tool descriptors
+// ---------------------------------------------------------------------------
+
 async fn handle_list_tools(id: &RequestId) -> JsonRpcMessage {
-    let result = serde_json::json!({ "tools": [] });
+    let tools = all_tool_descriptors();
+    let result = serde_json::json!({ "tools": tools });
     JsonRpcMessage::success(id.clone(), result)
 }
 
+// ---------------------------------------------------------------------------
+// tools/call — dispatches to the correct handler
+// ---------------------------------------------------------------------------
+
 async fn handle_call_tool(id: &RequestId, params: &serde_json::Value) -> JsonRpcMessage {
-    let name = params
+    let tool_name = params
         .get("name")
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
 
-    JsonRpcMessage::error(
-        id.clone(),
-        JsonRpcError::tool_execution_failed(name, "Tool not implemented in this phase"),
-    )
+    let arguments = params
+        .get("arguments")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+
+    match APP_STATE.handle_tool_call(tool_name, &arguments).await {
+        Ok(result) => {
+            let response = serde_json::json!({
+                "content": [
+                    {
+                        "type": "text",
+                        "text": serde_json::to_string(&result).unwrap_or_default()
+                    }
+                ]
+            });
+            JsonRpcMessage::success(id.clone(), response)
+        }
+        Err(error) => {
+            let response = serde_json::json!({
+                "content": [
+                    {
+                        "type": "text",
+                        "text": error["error"].as_str().unwrap_or("Unknown error")
+                    }
+                ],
+                "isError": true
+            });
+            JsonRpcMessage::success(id.clone(), response)
+        }
+    }
 }
+
+// ---------------------------------------------------------------------------
+// resources/list
+// ---------------------------------------------------------------------------
 
 async fn handle_list_resources(id: &RequestId) -> JsonRpcMessage {
     let result = serde_json::json!({
@@ -109,6 +479,10 @@ async fn handle_list_resources(id: &RequestId) -> JsonRpcMessage {
     JsonRpcMessage::success(id.clone(), result)
 }
 
+// ---------------------------------------------------------------------------
+// resources/read
+// ---------------------------------------------------------------------------
+
 async fn handle_read_resource(id: &RequestId, params: &serde_json::Value) -> JsonRpcMessage {
     let uri = params
         .get("uri")
@@ -120,6 +494,10 @@ async fn handle_read_resource(id: &RequestId, params: &serde_json::Value) -> Jso
         JsonRpcError::internal_error(format!("Resource '{}' not implemented", uri)),
     )
 }
+
+// ---------------------------------------------------------------------------
+// prompts/list
+// ---------------------------------------------------------------------------
 
 async fn handle_list_prompts(id: &RequestId) -> JsonRpcMessage {
     let result = serde_json::json!({
@@ -134,6 +512,10 @@ async fn handle_list_prompts(id: &RequestId) -> JsonRpcMessage {
     JsonRpcMessage::success(id.clone(), result)
 }
 
+// ---------------------------------------------------------------------------
+// prompts/get
+// ---------------------------------------------------------------------------
+
 async fn handle_get_prompt(id: &RequestId, params: &serde_json::Value) -> JsonRpcMessage {
     let name = params
         .get("name")
@@ -147,7 +529,7 @@ async fn handle_get_prompt(id: &RequestId, params: &serde_json::Value) -> JsonRp
 }
 
 // ---------------------------------------------------------------------------
-// Stdio Server — reads JSON-RPC from stdin, writes responses to stdout
+// Stdio Server
 // ---------------------------------------------------------------------------
 
 async fn run_stdio_server(cancel: CancellationToken) {
@@ -182,7 +564,6 @@ async fn run_stdio_server(cancel: CancellationToken) {
                                 }
                             }
                             Err(e) => {
-                                // Send parse error
                                 let err = JsonRpcError::parse_error();
                                 let error_msg = serde_json::json!({
                                     "jsonrpc": "2.0",
@@ -267,7 +648,6 @@ async fn main() {
 
     if use_sse {
         tracing::info!("Starting MCP Server in SSE mode on {}", bind_addr);
-        // SSE mode would use Axum here (future phase)
         tracing::warn!("SSE mode is not fully implemented in this phase");
     } else {
         tracing::info!("Starting MCP Server in stdio mode");
