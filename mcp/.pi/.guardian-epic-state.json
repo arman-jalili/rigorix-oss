@@ -1,47 +1,55 @@
 {
-  "name": "audit-tools",
-  "trackingIssueId": "642",
+  "name": "template-tools",
+  "trackingIssueId": "652",
   "epicId": null,
   "slices": [
     {
-      "module": "audit-tools",
+      "module": "template-tools",
       "components": [
         {
-          "name": "AuditQueryService (Aggregate Root)",
+          "name": "TemplateRepository (Aggregate Root)",
           "status": "planned",
-          "description": "Service that queries audit records from rigorix-engine and formats them for MCP.",
+          "description": "Filesystem-backed repository for plan templates stored as TOML files in `.rigorix/templates/`.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ReadAuditHandler (Domain Service)",
+          "name": "ListTemplatesHandler (Domain Service)",
           "status": "planned",
-          "description": "Handles `rigorix_read_audit` tool calls: retrieves audit by execution ID.",
+          "description": "Handles `rigorix_list_templates` tool calls: discovers templates from filesystem.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ListAuditsHandler (Domain Service)",
+          "name": "GetTemplateHandler (Domain Service)",
           "status": "planned",
-          "description": "Handles `rigorix_list_audits` tool calls: lists recent executions with filtering.",
+          "description": "Handles `rigorix_get_template` tool calls: reads and returns a specific template.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "AuditSummaryHandler (Domain Service)",
+          "name": "CreateTemplateHandler (Domain Service)",
           "status": "planned",
-          "description": "Handles `rigorix_audit_summary` tool calls: generates aggregate statistics.",
+          "description": "Handles `rigorix_create_template` tool calls: validates and saves a new template.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "AuditFormatter (Domain Service)",
+          "name": "ValidateTemplateHandler (Domain Service)",
           "status": "planned",
-          "description": "Formats audit data for MCP consumption: human-readable markdown or structured JSON.",
+          "description": "Handles `rigorix_validate_template` tool calls: validates template structure.",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "TemplateConverter (Domain Service)",
+          "status": "planned",
+          "description": "Converts between TOML (filesystem storage) and JSON (MCP transport) template formats.",
           "dependencies": [
             "none"
           ]
@@ -49,41 +57,49 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "AuditQueryService (Aggregate Root)",
+          "name": "TemplateRepository (Aggregate Root)",
           "status": "planned",
-          "description": "Service that queries audit records from rigorix-engine and formats them for MCP.",
+          "description": "Filesystem-backed repository for plan templates stored as TOML files in `.rigorix/templates/`.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ReadAuditHandler (Domain Service)",
+          "name": "ListTemplatesHandler (Domain Service)",
           "status": "planned",
-          "description": "Handles `rigorix_read_audit` tool calls: retrieves audit by execution ID.",
+          "description": "Handles `rigorix_list_templates` tool calls: discovers templates from filesystem.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ListAuditsHandler (Domain Service)",
+          "name": "GetTemplateHandler (Domain Service)",
           "status": "planned",
-          "description": "Handles `rigorix_list_audits` tool calls: lists recent executions with filtering.",
+          "description": "Handles `rigorix_get_template` tool calls: reads and returns a specific template.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "AuditSummaryHandler (Domain Service)",
+          "name": "CreateTemplateHandler (Domain Service)",
           "status": "planned",
-          "description": "Handles `rigorix_audit_summary` tool calls: generates aggregate statistics.",
+          "description": "Handles `rigorix_create_template` tool calls: validates and saves a new template.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "AuditFormatter (Domain Service)",
+          "name": "ValidateTemplateHandler (Domain Service)",
           "status": "planned",
-          "description": "Formats audit data for MCP consumption: human-readable markdown or structured JSON.",
+          "description": "Handles `rigorix_validate_template` tool calls: validates template structure.",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "TemplateConverter (Domain Service)",
+          "status": "planned",
+          "description": "Converts between TOML (filesystem storage) and JSON (MCP transport) template formats.",
           "dependencies": [
             "none"
           ]
@@ -96,52 +112,58 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "643"
+      "remoteIssueId": "653"
     },
     {
-      "id": "issue-auditqueryservice-aggregate-root-",
-      "title": "AuditQueryService (Aggregate Root): Service that queries audit records from rigorix-engine and formats them for MCP.",
+      "id": "issue-templaterepository-aggregate-root-",
+      "title": "TemplateRepository (Aggregate Root): Filesystem-backed repository for plan templates stored as TOML files in `.rigori",
       "status": "planned",
-      "remoteIssueId": "644"
+      "remoteIssueId": "654"
     },
     {
-      "id": "issue-readaudithandler-domain-service-",
-      "title": "ReadAuditHandler (Domain Service): Handles `rigorix_read_audit` tool calls: retrieves audit by execution ID.",
+      "id": "issue-listtemplateshandler-domain-service-",
+      "title": "ListTemplatesHandler (Domain Service): Handles `rigorix_list_templates` tool calls: discovers templates from filesystem",
       "status": "planned",
-      "remoteIssueId": "645"
+      "remoteIssueId": "655"
     },
     {
-      "id": "issue-listauditshandler-domain-service-",
-      "title": "ListAuditsHandler (Domain Service): Handles `rigorix_list_audits` tool calls: lists recent executions with filtering",
+      "id": "issue-gettemplatehandler-domain-service-",
+      "title": "GetTemplateHandler (Domain Service): Handles `rigorix_get_template` tool calls: reads and returns a specific template",
       "status": "planned",
-      "remoteIssueId": "646"
+      "remoteIssueId": "656"
     },
     {
-      "id": "issue-auditsummaryhandler-domain-service-",
-      "title": "AuditSummaryHandler (Domain Service): Handles `rigorix_audit_summary` tool calls: generates aggregate statistics.",
+      "id": "issue-createtemplatehandler-domain-service-",
+      "title": "CreateTemplateHandler (Domain Service): Handles `rigorix_create_template` tool calls: validates and saves a new template",
       "status": "planned",
-      "remoteIssueId": "647"
+      "remoteIssueId": "657"
     },
     {
-      "id": "issue-auditformatter-domain-service-",
-      "title": "AuditFormatter (Domain Service): Formats audit data for MCP consumption: human-readable markdown or structured JS",
+      "id": "issue-validatetemplatehandler-domain-service-",
+      "title": "ValidateTemplateHandler (Domain Service): Handles `rigorix_validate_template` tool calls: validates template structure.",
       "status": "planned",
-      "remoteIssueId": "648"
+      "remoteIssueId": "658"
+    },
+    {
+      "id": "issue-templateconverter-domain-service-",
+      "title": "TemplateConverter (Domain Service): Converts between TOML (filesystem storage) and JSON (MCP transport) template for",
+      "status": "planned",
+      "remoteIssueId": "659"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "649"
+      "remoteIssueId": "660"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "650"
+      "remoteIssueId": "661"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-07-12T12:05:16.543Z"
+  "createdAt": "2026-07-12T12:56:50.705Z"
 }

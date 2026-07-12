@@ -222,6 +222,11 @@ run_stage "11" "execution-tools_proofing" \
     "${SCRIPTS_DIR}/stage_execution-tools_proofing.sh" \
     "always"
 
+# Stage 12: template-tools Proofing
+run_stage "12" "template-tools_proofing" \
+    "${SCRIPTS_DIR}/stage_template-tools_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""

@@ -47,3 +47,4 @@
 pub mod audit_tools;
 pub mod execution_tools;
 pub mod mcp_server;
+pub mod template_tools;
