@@ -1,0 +1,20 @@
+---
+description: Convert approved planning packets into independently-reviewable issues
+model: gpt-5.4
+preflight: scripts/ci/run_preflight.sh
+---
+
+# issue factory Agent
+
+**This is a platform wrapper.** Core content in `.pi/agents/issue-factory.md`.
+
+## GitHub Models-Specific Notes
+
+- Output validated by `scripts/ci/validate_agent_output.py`
+- Integrate with preflight engine: `./scripts/ci/run_preflight.sh`
+
+## Execution Flow
+
+1. Read `.pi/agents/issue-factory.md` for role definition
+2. Follow the relevant workflow for your execution phase
+3. Run deterministic validation before handing off

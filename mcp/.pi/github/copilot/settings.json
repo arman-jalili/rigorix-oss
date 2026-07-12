@@ -1,0 +1,16 @@
+{
+	"$schema": "https://raw.githubusercontent.com/github/copilot-cli/main/schemas/settings.json",
+	"mergeStrategy": "squash",
+	"disabledSkills": [],
+	"extraKnownMarketplaces": [],
+	"customInstructions": {
+		"enabled": true,
+		"paths": [".github/copilot-instructions.md", ".github/instructions/*.instructions.md"]
+	},
+	"agents": {
+		"paths": [".github/agents/*.agent.md"]
+	},
+	"workflows": {
+		"paths": [".github/workflows/*.md"]
+	}
+}
