@@ -1,55 +1,31 @@
 {
-  "name": "template-tools",
-  "trackingIssueId": "652",
+  "name": "enterprise-proxy",
+  "trackingIssueId": "665",
   "epicId": null,
   "slices": [
     {
-      "module": "template-tools",
+      "module": "enterprise-proxy",
       "components": [
         {
-          "name": "TemplateRepository (Aggregate Root)",
+          "name": "EnterpriseProxy (Aggregate Root)",
           "status": "planned",
-          "description": "Filesystem-backed repository for plan templates stored as TOML files in `.rigorix/templates/`.",
+          "description": "Proxies `rigorix_enterprise_*` tool calls to the enterprise API.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ListTemplatesHandler (Domain Service)",
-          "status": "planned",
-          "description": "Handles `rigorix_list_templates` tool calls: discovers templates from filesystem.",
+          "name": "ProxyClient (Domain Service)",
+          "status": "status.as_u16(),",
+          "description": "HTTP client for JSON-RPC communication with enterprise API.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "GetTemplateHandler (Domain Service)",
+          "name": "SchemaCache (Domain Service)",
           "status": "planned",
-          "description": "Handles `rigorix_get_template` tool calls: reads and returns a specific template.",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "CreateTemplateHandler (Domain Service)",
-          "status": "planned",
-          "description": "Handles `rigorix_create_template` tool calls: validates and saves a new template.",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "ValidateTemplateHandler (Domain Service)",
-          "status": "planned",
-          "description": "Handles `rigorix_validate_template` tool calls: validates template structure.",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "TemplateConverter (Domain Service)",
-          "status": "planned",
-          "description": "Converts between TOML (filesystem storage) and JSON (MCP transport) template formats.",
+          "description": "Caches enterprise tool schemas for capability negotiation during MCP initialization.",
           "dependencies": [
             "none"
           ]
@@ -57,49 +33,17 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "TemplateRepository (Aggregate Root)",
+          "name": "EnterpriseProxy (Aggregate Root)",
           "status": "planned",
-          "description": "Filesystem-backed repository for plan templates stored as TOML files in `.rigorix/templates/`.",
+          "description": "Proxies `rigorix_enterprise_*` tool calls to the enterprise API.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ListTemplatesHandler (Domain Service)",
+          "name": "SchemaCache (Domain Service)",
           "status": "planned",
-          "description": "Handles `rigorix_list_templates` tool calls: discovers templates from filesystem.",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "GetTemplateHandler (Domain Service)",
-          "status": "planned",
-          "description": "Handles `rigorix_get_template` tool calls: reads and returns a specific template.",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "CreateTemplateHandler (Domain Service)",
-          "status": "planned",
-          "description": "Handles `rigorix_create_template` tool calls: validates and saves a new template.",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "ValidateTemplateHandler (Domain Service)",
-          "status": "planned",
-          "description": "Handles `rigorix_validate_template` tool calls: validates template structure.",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "TemplateConverter (Domain Service)",
-          "status": "planned",
-          "description": "Converts between TOML (filesystem storage) and JSON (MCP transport) template formats.",
+          "description": "Caches enterprise tool schemas for capability negotiation during MCP initialization.",
           "dependencies": [
             "none"
           ]
@@ -112,58 +56,34 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "653"
+      "remoteIssueId": "666"
     },
     {
-      "id": "issue-templaterepository-aggregate-root-",
-      "title": "TemplateRepository (Aggregate Root): Filesystem-backed repository for plan templates stored as TOML files in `.rigori",
+      "id": "issue-enterpriseproxy-aggregate-root-",
+      "title": "EnterpriseProxy (Aggregate Root): Proxies `rigorix_enterprise_*` tool calls to the enterprise API.",
       "status": "planned",
-      "remoteIssueId": "654"
+      "remoteIssueId": "667"
     },
     {
-      "id": "issue-listtemplateshandler-domain-service-",
-      "title": "ListTemplatesHandler (Domain Service): Handles `rigorix_list_templates` tool calls: discovers templates from filesystem",
+      "id": "issue-schemacache-domain-service-",
+      "title": "SchemaCache (Domain Service): Caches enterprise tool schemas for capability negotiation during MCP initializat",
       "status": "planned",
-      "remoteIssueId": "655"
-    },
-    {
-      "id": "issue-gettemplatehandler-domain-service-",
-      "title": "GetTemplateHandler (Domain Service): Handles `rigorix_get_template` tool calls: reads and returns a specific template",
-      "status": "planned",
-      "remoteIssueId": "656"
-    },
-    {
-      "id": "issue-createtemplatehandler-domain-service-",
-      "title": "CreateTemplateHandler (Domain Service): Handles `rigorix_create_template` tool calls: validates and saves a new template",
-      "status": "planned",
-      "remoteIssueId": "657"
-    },
-    {
-      "id": "issue-validatetemplatehandler-domain-service-",
-      "title": "ValidateTemplateHandler (Domain Service): Handles `rigorix_validate_template` tool calls: validates template structure.",
-      "status": "planned",
-      "remoteIssueId": "658"
-    },
-    {
-      "id": "issue-templateconverter-domain-service-",
-      "title": "TemplateConverter (Domain Service): Converts between TOML (filesystem storage) and JSON (MCP transport) template for",
-      "status": "planned",
-      "remoteIssueId": "659"
+      "remoteIssueId": "668"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "660"
+      "remoteIssueId": "669"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "661"
+      "remoteIssueId": "670"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-07-12T12:56:50.705Z"
+  "createdAt": "2026-07-12T15:30:35.140Z"
 }

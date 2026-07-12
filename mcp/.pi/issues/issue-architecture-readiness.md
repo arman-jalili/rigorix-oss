@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-READINESS"
-  epic: "template-tools"
+  epic: "enterprise-proxy"
   component: "Architecture Readiness"
-  module: "template-tools"
+  module: "enterprise-proxy"
   status: planned
   priority: critical
   dependencies: []
@@ -32,7 +32,7 @@ guardian_issue:
       - Verify proofing scripts + validators in CI
 
   canonical_references:
-    - module: ".pi/architecture/modules/template-tools.md"
+    - module: ".pi/architecture/modules/enterprise-proxy.md"
 
   acceptance_criteria:
     - "Runbook created and reviewed"
@@ -58,30 +58,30 @@ guardian_issue:
     and CI will catch regressions (proofing scripts + validators).
 
   file_changes:
-    - "create: docs/runbook-template-tools.md"
-    - "create: docs/dr-plan-template-tools.md"
+    - "create: docs/runbook-enterprise-proxy.md"
+    - "create: docs/dr-plan-enterprise-proxy.md"
     - "modify: .pi/architecture/CHANGELOG.md"
-    - "modify: .pi/architecture/modules/template-tools.md"
+    - "modify: .pi/architecture/modules/enterprise-proxy.md"
 ---
 
-# Architecture Readiness: template-tools
+# Architecture Readiness: enterprise-proxy
 
 ## Intent
 
-Make the template-tools module production-ready. This is the final issue in every epic
+Make the enterprise-proxy module production-ready. This is the final issue in every epic
 — it closes the loop between implementation and operability.
 
 ## Deliverables
 
 ### Runbook
-`docs/runbook-template-tools.md` covering:
+`docs/runbook-enterprise-proxy.md` covering:
 - Startup sequence and dependencies
 - Graceful shutdown procedure
 - Common failure modes and recovery
 - Configuration reference
 
 ### DR Plan
-`docs/dr-plan-template-tools.md` covering:
+`docs/dr-plan-enterprise-proxy.md` covering:
 - Backup strategy and schedule
 - Restore procedure
 - Failover plan
