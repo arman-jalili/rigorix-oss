@@ -21,6 +21,9 @@ toml = { workspace = true }
 # rigorix-engine for execution orchestration
 rigorix-engine = { path = "../engine" }
 
+# HTTP client for enterprise proxy
+reqwest = { workspace = true }
+
 # Axum for SSE transport
 axum = { version = "0.8", features = ["macros"], optional = true }
 
