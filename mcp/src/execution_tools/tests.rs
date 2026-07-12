@@ -4,6 +4,7 @@
 //! Implements: EngineFacadeImpl, handler, and repository tests
 
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;

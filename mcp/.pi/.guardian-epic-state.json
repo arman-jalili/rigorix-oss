@@ -1,39 +1,47 @@
 {
-  "name": "execution-tools",
-  "trackingIssueId": "631",
+  "name": "audit-tools",
+  "trackingIssueId": "642",
   "epicId": null,
   "slices": [
     {
-      "module": "execution-tools",
+      "module": "audit-tools",
       "components": [
         {
-          "name": "EngineFacade (Aggregate Root)",
+          "name": "AuditQueryService (Aggregate Root)",
           "status": "planned",
-          "description": "Thin async facade over rigorix-engine that all execution/audit/template tools call through.",
+          "description": "Service that queries audit records from rigorix-engine and formats them for MCP.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ExecuteHandler (Domain Service)",
+          "name": "ReadAuditHandler (Domain Service)",
           "status": "planned",
-          "description": "Handles `rigorix_execute` tool calls: validates input, delegates to engine, formats result.",
+          "description": "Handles `rigorix_read_audit` tool calls: retrieves audit by execution ID.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ValidatePlanHandler (Domain Service)",
+          "name": "ListAuditsHandler (Domain Service)",
           "status": "planned",
-          "description": "Handles `rigorix_validate_plan` tool calls: checks plan against enforcement policies.",
+          "description": "Handles `rigorix_list_audits` tool calls: lists recent executions with filtering.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "CheckEnforcementHandler (Domain Service)",
+          "name": "AuditSummaryHandler (Domain Service)",
           "status": "planned",
-          "description": "Handles `rigorix_check_enforcement` tool calls: queries engine for current budget/limits.",
+          "description": "Handles `rigorix_audit_summary` tool calls: generates aggregate statistics.",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "AuditFormatter (Domain Service)",
+          "status": "planned",
+          "description": "Formats audit data for MCP consumption: human-readable markdown or structured JSON.",
           "dependencies": [
             "none"
           ]
@@ -41,33 +49,41 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "EngineFacade (Aggregate Root)",
+          "name": "AuditQueryService (Aggregate Root)",
           "status": "planned",
-          "description": "Thin async facade over rigorix-engine that all execution/audit/template tools call through.",
+          "description": "Service that queries audit records from rigorix-engine and formats them for MCP.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ExecuteHandler (Domain Service)",
+          "name": "ReadAuditHandler (Domain Service)",
           "status": "planned",
-          "description": "Handles `rigorix_execute` tool calls: validates input, delegates to engine, formats result.",
+          "description": "Handles `rigorix_read_audit` tool calls: retrieves audit by execution ID.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ValidatePlanHandler (Domain Service)",
+          "name": "ListAuditsHandler (Domain Service)",
           "status": "planned",
-          "description": "Handles `rigorix_validate_plan` tool calls: checks plan against enforcement policies.",
+          "description": "Handles `rigorix_list_audits` tool calls: lists recent executions with filtering.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "CheckEnforcementHandler (Domain Service)",
+          "name": "AuditSummaryHandler (Domain Service)",
           "status": "planned",
-          "description": "Handles `rigorix_check_enforcement` tool calls: queries engine for current budget/limits.",
+          "description": "Handles `rigorix_audit_summary` tool calls: generates aggregate statistics.",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "AuditFormatter (Domain Service)",
+          "status": "planned",
+          "description": "Formats audit data for MCP consumption: human-readable markdown or structured JSON.",
           "dependencies": [
             "none"
           ]
@@ -80,46 +96,52 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "632"
+      "remoteIssueId": "643"
     },
     {
-      "id": "issue-enginefacade-aggregate-root-",
-      "title": "EngineFacade (Aggregate Root): Thin async facade over rigorix-engine that all execution/audit/template tools ca",
+      "id": "issue-auditqueryservice-aggregate-root-",
+      "title": "AuditQueryService (Aggregate Root): Service that queries audit records from rigorix-engine and formats them for MCP.",
       "status": "planned",
-      "remoteIssueId": "633"
+      "remoteIssueId": "644"
     },
     {
-      "id": "issue-executehandler-domain-service-",
-      "title": "ExecuteHandler (Domain Service): Handles `rigorix_execute` tool calls: validates input, delegates to engine, form",
+      "id": "issue-readaudithandler-domain-service-",
+      "title": "ReadAuditHandler (Domain Service): Handles `rigorix_read_audit` tool calls: retrieves audit by execution ID.",
       "status": "planned",
-      "remoteIssueId": "634"
+      "remoteIssueId": "645"
     },
     {
-      "id": "issue-validateplanhandler-domain-service-",
-      "title": "ValidatePlanHandler (Domain Service): Handles `rigorix_validate_plan` tool calls: checks plan against enforcement poli",
+      "id": "issue-listauditshandler-domain-service-",
+      "title": "ListAuditsHandler (Domain Service): Handles `rigorix_list_audits` tool calls: lists recent executions with filtering",
       "status": "planned",
-      "remoteIssueId": "635"
+      "remoteIssueId": "646"
     },
     {
-      "id": "issue-checkenforcementhandler-domain-service-",
-      "title": "CheckEnforcementHandler (Domain Service): Handles `rigorix_check_enforcement` tool calls: queries engine for current budge",
+      "id": "issue-auditsummaryhandler-domain-service-",
+      "title": "AuditSummaryHandler (Domain Service): Handles `rigorix_audit_summary` tool calls: generates aggregate statistics.",
       "status": "planned",
-      "remoteIssueId": "636"
+      "remoteIssueId": "647"
+    },
+    {
+      "id": "issue-auditformatter-domain-service-",
+      "title": "AuditFormatter (Domain Service): Formats audit data for MCP consumption: human-readable markdown or structured JS",
+      "status": "planned",
+      "remoteIssueId": "648"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "637"
+      "remoteIssueId": "649"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "638"
+      "remoteIssueId": "650"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-07-12T11:22:06.503Z"
+  "createdAt": "2026-07-12T12:05:16.543Z"
 }

@@ -2,6 +2,8 @@
 // From: ExecuteHandler (Domain Service) (execution-tools module)
 // TDD Contract: ExecuteHandler trait with handle(ExecuteInput) and timeout_duration()
 
+#![allow(unused_imports)]
+
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -27,8 +29,16 @@ impl EngineFacade for MockEngineForHandler {
         Ok(ExecutionResult::new(
             uuid::Uuid::nil(),
             ExecutionStatus::Completed,
-            vec![StepResult::new("s1".into(), true, None, serde_json::json!({}), 50)],
-            100, Some(50), "rigorix://audit/test".into(),
+            vec![StepResult::new(
+                "s1".into(),
+                true,
+                None,
+                serde_json::json!({}),
+                50,
+            )],
+            100,
+            Some(50),
+            "rigorix://audit/test".into(),
         ))
     }
     async fn validate_plan(&self, _p: PlanTemplate) -> Result<ValidationResult, EngineFacadeError> {
@@ -37,7 +47,10 @@ impl EngineFacade for MockEngineForHandler {
     async fn check_enforcement(&self) -> Result<EnforcementStatus, EngineFacadeError> {
         Err(EngineFacadeError::EngineNotAvailable("mock".into()))
     }
-    async fn get_execution_cost(&self, _id: &ExecutionId) -> Result<CostBreakdown, EngineFacadeError> {
+    async fn get_execution_cost(
+        &self,
+        _id: &ExecutionId,
+    ) -> Result<CostBreakdown, EngineFacadeError> {
         Err(EngineFacadeError::ExecutionNotFound(uuid::Uuid::nil()))
     }
 }
@@ -61,10 +74,26 @@ fn test_executehandler_handles_execution() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let engine: Arc<dyn EngineFacade> = Arc::new(MockEngineForHandler);
     let handler = ExecuteHandlerImpl::new(engine, Duration::from_secs(60));
-    let plan = PlanTemplate::new("t".into(), "d".into(), vec![
-        StepDefinition::new("s1".into(), "tool".into(), serde_json::json!({}), false, "d".into(), None)
-    ], None, HashMap::new()).unwrap();
-    let result = rt.block_on(handler.handle(ExecuteInput { plan, template_name: None, execution_id: None }));
+    let plan = PlanTemplate::new(
+        "t".into(),
+        "d".into(),
+        vec![StepDefinition::new(
+            "s1".into(),
+            "tool".into(),
+            serde_json::json!({}),
+            false,
+            "d".into(),
+            None,
+        )],
+        None,
+        HashMap::new(),
+    )
+    .unwrap();
+    let result = rt.block_on(handler.handle(ExecuteInput {
+        plan,
+        template_name: None,
+        execution_id: None,
+    }));
     assert!(result.is_ok());
     assert!(!result.unwrap().is_error);
 }

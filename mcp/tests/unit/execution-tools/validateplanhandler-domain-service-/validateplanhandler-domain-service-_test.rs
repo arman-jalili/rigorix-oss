@@ -2,6 +2,8 @@
 // From: ValidatePlanHandler (Domain Service) (execution-tools module)
 // TDD Contract: ValidatePlanHandler trait with handle(ValidateInput)
 
+#![allow(unused_imports)]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -22,7 +24,14 @@ struct MockEngineForValidator;
 #[async_trait]
 impl EngineFacade for MockEngineForValidator {
     async fn execute(&self, _plan: PlanTemplate) -> Result<ExecutionResult, EngineFacadeError> {
-        Ok(ExecutionResult::new(uuid::Uuid::nil(), ExecutionStatus::Completed, vec![], 0, None, String::new()))
+        Ok(ExecutionResult::new(
+            uuid::Uuid::nil(),
+            ExecutionStatus::Completed,
+            vec![],
+            0,
+            None,
+            String::new(),
+        ))
     }
     async fn validate_plan(&self, _p: PlanTemplate) -> Result<ValidationResult, EngineFacadeError> {
         Ok(ValidationResult::new(true, vec![], vec![], None))
@@ -30,7 +39,10 @@ impl EngineFacade for MockEngineForValidator {
     async fn check_enforcement(&self) -> Result<EnforcementStatus, EngineFacadeError> {
         Err(EngineFacadeError::EngineNotAvailable("mock".into()))
     }
-    async fn get_execution_cost(&self, _id: &ExecutionId) -> Result<CostBreakdown, EngineFacadeError> {
+    async fn get_execution_cost(
+        &self,
+        _id: &ExecutionId,
+    ) -> Result<CostBreakdown, EngineFacadeError> {
         Err(EngineFacadeError::ExecutionNotFound(uuid::Uuid::nil()))
     }
 }
@@ -46,9 +58,21 @@ fn test_validateplanhandler_validates_plan() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let engine: Arc<dyn EngineFacade> = Arc::new(MockEngineForValidator);
     let handler = ValidatePlanHandlerImpl::new(engine);
-    let plan = PlanTemplate::new("t".into(), "d".into(), vec![
-        StepDefinition::new("s1".into(), "tool".into(), serde_json::json!({}), false, "d".into(), None)
-    ], None, HashMap::new()).unwrap();
+    let plan = PlanTemplate::new(
+        "t".into(),
+        "d".into(),
+        vec![StepDefinition::new(
+            "s1".into(),
+            "tool".into(),
+            serde_json::json!({}),
+            false,
+            "d".into(),
+            None,
+        )],
+        None,
+        HashMap::new(),
+    )
+    .unwrap();
     let result = rt.block_on(handler.handle(ValidateInput { plan }));
     assert!(result.is_ok());
 }

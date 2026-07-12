@@ -2,6 +2,8 @@
 // From: EngineFacade (Aggregate Root) (execution-tools module)
 // TDD Contract: EngineFacade trait with execute, validate_plan, check_enforcement, get_execution_cost
 
+#![allow(unused_imports)]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -22,14 +24,23 @@ impl EngineFacade for EngineFacadeTddContract {
         Ok(ExecutionResult::new(
             uuid::Uuid::nil(),
             ExecutionStatus::Completed,
-            vec![StepResult::new("step1".into(), true, None, serde_json::json!({}), 50)],
+            vec![StepResult::new(
+                "step1".into(),
+                true,
+                None,
+                serde_json::json!({}),
+                50,
+            )],
             100,
             Some(50),
             "rigorix://audit/test".into(),
         ))
     }
 
-    async fn validate_plan(&self, _plan: PlanTemplate) -> Result<ValidationResult, EngineFacadeError> {
+    async fn validate_plan(
+        &self,
+        _plan: PlanTemplate,
+    ) -> Result<ValidationResult, EngineFacadeError> {
         Ok(ValidationResult::new(true, vec![], vec![], None))
     }
 
@@ -37,12 +48,20 @@ impl EngineFacade for EngineFacadeTddContract {
         Ok(EnforcementStatus::new(
             true,
             "default".into(),
-            BudgetStatus { tool_calls_total: 1000, tool_calls_remaining: 750, tokens_total: 100000, tokens_remaining: 75000 },
+            BudgetStatus {
+                tool_calls_total: 1000,
+                tool_calls_remaining: 750,
+                tokens_total: 100000,
+                tokens_remaining: 75000,
+            },
             vec![],
         ))
     }
 
-    async fn get_execution_cost(&self, _id: &ExecutionId) -> Result<CostBreakdown, EngineFacadeError> {
+    async fn get_execution_cost(
+        &self,
+        _id: &ExecutionId,
+    ) -> Result<CostBreakdown, EngineFacadeError> {
         Err(EngineFacadeError::ExecutionNotFound(uuid::Uuid::nil()))
     }
 }
@@ -58,9 +77,21 @@ fn test_enginefacade_is_defined() {
 fn test_enginefacade_executes_plan() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let engine = EngineFacadeTddContract;
-    let plan = PlanTemplate::new("test".into(), "desc".into(), vec![
-        StepDefinition::new("s1".into(), "tool".into(), serde_json::json!({}), false, "desc".into(), None)
-    ], None, HashMap::new()).unwrap();
+    let plan = PlanTemplate::new(
+        "test".into(),
+        "desc".into(),
+        vec![StepDefinition::new(
+            "s1".into(),
+            "tool".into(),
+            serde_json::json!({}),
+            false,
+            "desc".into(),
+            None,
+        )],
+        None,
+        HashMap::new(),
+    )
+    .unwrap();
     let result = rt.block_on(engine.execute(plan));
     assert!(result.is_ok());
     assert_eq!(*result.unwrap().status(), ExecutionStatus::Completed);
@@ -70,9 +101,21 @@ fn test_enginefacade_executes_plan() {
 fn test_enginefacade_validates_plan() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let engine = EngineFacadeTddContract;
-    let plan = PlanTemplate::new("test".into(), "desc".into(), vec![
-        StepDefinition::new("s1".into(), "tool".into(), serde_json::json!({}), false, "desc".into(), None)
-    ], None, HashMap::new()).unwrap();
+    let plan = PlanTemplate::new(
+        "test".into(),
+        "desc".into(),
+        vec![StepDefinition::new(
+            "s1".into(),
+            "tool".into(),
+            serde_json::json!({}),
+            false,
+            "desc".into(),
+            None,
+        )],
+        None,
+        HashMap::new(),
+    )
+    .unwrap();
     let result = rt.block_on(engine.validate_plan(plan));
     assert!(result.is_ok());
     assert!(result.unwrap().is_valid());
