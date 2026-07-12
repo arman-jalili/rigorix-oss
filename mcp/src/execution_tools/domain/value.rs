@@ -47,9 +47,11 @@ pub struct PlanTemplate {
     steps: Vec<StepDefinition>,
 
     /// Optional enforcement constraints.
+    #[serde(default)]
     constraints: Option<Constraints>,
 
     /// Extensible metadata (e.g., source, session context).
+    #[serde(default)]
     metadata: HashMap<String, String>,
 }
 
@@ -146,6 +148,7 @@ pub struct StepDefinition {
     description: String,
 
     /// Optional timeout in seconds for this step.
+    #[serde(default)]
     timeout_secs: Option<u64>,
 }
 
@@ -255,9 +258,11 @@ pub struct ExecutionResult {
     duration_ms: u64,
 
     /// Optional token usage count.
+    #[serde(default)]
     tokens_used: Option<u64>,
 
     /// URI to the persistent audit record.
+    #[serde(default)]
     audit_uri: String,
 }
 
@@ -348,12 +353,15 @@ pub struct StepResult {
     success: bool,
 
     /// Optional error message if step failed.
+    #[serde(default)]
     error: Option<String>,
 
     /// Step output data (tool-specific).
+    #[serde(default)]
     output: serde_json::Value,
 
     /// Duration of this step in milliseconds.
+    #[serde(default)]
     duration_ms: u64,
 }
 
@@ -421,6 +429,7 @@ pub struct ValidationResult {
     errors: Vec<String>,
 
     /// Optional estimated cost of execution.
+    #[serde(default)]
     estimated_cost: Option<CostEstimate>,
 }
 
