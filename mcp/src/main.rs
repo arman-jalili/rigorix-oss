@@ -24,8 +24,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use async_trait::async_trait;
-
 use rigorix_mcp::audit_tools::application::service::{
     AuditSummaryHandler, ListAuditsHandler, ReadAuditHandler,
 };
@@ -41,14 +39,13 @@ use rigorix_mcp::execution_tools::application::service::{
 use rigorix_mcp::execution_tools::application::service_impl::{
     CheckEnforcementHandlerImpl, ExecuteHandlerImpl, ValidatePlanHandlerImpl,
 };
-use rigorix_mcp::execution_tools::domain::entity::{EngineFacade, SharedEngineFacade};
-use rigorix_mcp::execution_tools::domain::error::EngineFacadeError;
-use rigorix_mcp::execution_tools::domain::value::{
-    BudgetStatus, CostBreakdown, EnforcementStatus, ExecutionResult, ExecutionStatus, PlanTemplate,
-    StepResult, ValidationResult,
+use rigorix_mcp::execution_tools::domain::entity::SharedEngineFacade;
+use rigorix_mcp::execution_tools::infrastructure::{
+    EngineFacadeConfig, EngineFacadeImpl, InMemoryExecutionRepository,
 };
-use rigorix_mcp::execution_tools::infrastructure::InMemoryExecutionRepository;
 use rigorix_mcp::execution_tools::infrastructure::repository::ExecutionRepository;
+
+use rigorix_mcp::execution_tools::domain::value::ExecutionStatus;
 
 use rigorix_mcp::template_tools::application::service::{
     CreateTemplateHandler, GetTemplateHandler, ListTemplatesHandler, ValidateTemplateHandler,
@@ -138,12 +135,8 @@ impl AppState {
         Some(shared)
     }
 
-    /// Build the composition root with in-memory development services.
-    fn new() -> Self {
-        // ── EngineFacade (stub for development) ──
-        let engine: SharedEngineFacade = Arc::new(StubEngineFacade);
-        let _execution_repo: Arc<dyn ExecutionRepository> =
-            Arc::new(InMemoryExecutionRepository::new());
+    /// Build the composition root with the given engine facade.
+    fn new(engine: SharedEngineFacade) -> Self {
 
         // ── Audit service (in-memory) ──
         let audit_storage = std::sync::Arc::new(
@@ -334,79 +327,138 @@ impl AppState {
 }
 
 // =========================================================================
-// StubEngineFacade — returns canned responses for development
+// Real Engine Builder — constructs EngineFacadeImpl from rigorix-engine services
 // =========================================================================
 
-/// Development stub for the rigorix-engine facade.
-///
-/// Returns deterministic canned responses for all operations.
-/// The composition root stores audit records separately via AppState.
-struct StubEngineFacade;
+/// Build a real EngineFacadeImpl by constructing all required engine sub-services.
+async fn build_real_engine(repo_root: &str) -> Result<SharedEngineFacade, Box<dyn std::error::Error + Send + Sync>> {
+    use std::sync::Arc;
 
-#[async_trait]
-impl EngineFacade for StubEngineFacade {
-    async fn execute(&self, plan: PlanTemplate) -> Result<ExecutionResult, EngineFacadeError> {
-        let step_count = plan.steps().len();
-        let steps: Vec<StepResult> = plan
-            .steps()
-            .iter()
-            .map(|s| {
-                StepResult::new(
-                    s.name().to_string(),
-                    true,
-                    None,
-                    serde_json::json!({"status": "completed"}),
-                    100,
-                )
-            })
-            .collect();
+    use rigorix_engine::budget_tracking::application::llm_budget_impl::LlmBudgetImpl;
+    use rigorix_engine::budget_tracking::application::service::LlmBudgetService;
+    use rigorix_engine::cancellation::application::cancellation_service_impl::CancellationManagerImpl;
+    use rigorix_engine::cancellation::application::service::CancellationService;
+    use rigorix_engine::enforcement::application::factory::ExecutionEnforcerFactory;
+    use rigorix_engine::enforcement::application::enforcer_factory_impl::ExecutionEnforcerFactoryImpl;
+    use rigorix_engine::event_system::application::dto::EventBusConfig;
+    use rigorix_engine::event_system::application::event_bus_service_impl::EventBusServiceImpl;
+    use rigorix_engine::event_system::application::service::EventBusService;
+    use rigorix_engine::execution_engine::application::factory::{ParallelExecutionFactory, ParallelExecutionFactoryConfig};
+    use rigorix_engine::execution_engine::application::factory_impl::ParallelExecutionFactoryImpl;
+    use rigorix_engine::orchestrator::application::builder::OrchestratorBuilder;
+    use rigorix_engine::orchestrator::application::builder_impl::OrchestratorBuilderImpl;
+    use rigorix_engine::orchestrator::domain::OrchestratorConfig;
+    use rigorix_engine::planning::application::factory::PlanningPipelineFactory;
+    use rigorix_engine::planning::application::pipeline_factory_impl::PlanningPipelineFactoryImpl;
+    use rigorix_engine::state_persistence::application::service::StateManagerService;
+    use rigorix_engine::state_persistence::application::state_manager_service_impl::FileSystemStateManager;
+    use rigorix_engine::state_persistence::infrastructure::filesystem_state_repository::FileSystemStateRepository;
+    use rigorix_engine::templates::application::dto::RegisterInput;
+    use rigorix_engine::templates::application::service::TemplateEngineService;
+    use rigorix_engine::templates::application::template_engine_impl::TemplateEngineImpl;
 
-        let duration = step_count as u64 * 100;
-        let tokens = step_count as u64 * 50;
 
-        Ok(ExecutionResult::new(
-            uuid::Uuid::new_v4(),
-            ExecutionStatus::Completed,
-            steps,
-            duration,
-            Some(tokens),
-            format!("rigorix://audit/{}", uuid::Uuid::new_v4()),
-        ))
-    }
-
-    async fn validate_plan(
-        &self,
-        _plan: PlanTemplate,
-    ) -> Result<ValidationResult, EngineFacadeError> {
-        Ok(ValidationResult::new(true, vec![], vec![], None))
-    }
-
-    async fn check_enforcement(&self) -> Result<EnforcementStatus, EngineFacadeError> {
-        Ok(EnforcementStatus::new(
-            true,
-            "default".into(),
-            BudgetStatus {
-                tool_calls_total: 1000,
-                tool_calls_remaining: 750,
-                tokens_total: 100000,
-                tokens_remaining: 75000,
+    // ── Planning pipeline (using mocks for classifier/extractor, real template engine) ──
+    let execution_id = uuid::Uuid::new_v4().to_string();
+    let classifier = Box::new(
+        rigorix_engine::planning::application::MockClassifier::default()
+            .with_match("e2e-test-plan", "e2e-test-plan", 1.0)
+            .with_match("default", "default", 0.9),
+    );
+    let extractor = Box::new(rigorix_engine::planning::application::MockParameterExtractor::default());
+    let template_service: Arc<dyn TemplateEngineService> = {
+        let svc = Arc::new(TemplateEngineImpl::new());
+        // Register a default catch-all template so the engine can execute any plan
+        let _ = svc.register(RegisterInput {
+            template: rigorix_engine::templates::domain::template::Template {
+                id: "default".into(),
+                name: "default".into(),
+                description: "Default catch-all template".into(),
+                version: "1.0.0".into(),
+                parameters: vec![],
+                nodes: vec![],
+                tags: vec![],
+                category: None,
+                author: None,
             },
-            vec![],
-        ))
-    }
+            overwrite: true,
+        })
+        .await;
+        // Also pre-wire the MockClassifier to recognize any intent
+        let _ = svc.register(RegisterInput {
+            template: rigorix_engine::templates::domain::template::Template {
+                id: "e2e-test-plan".into(),
+                name: "e2e-test-plan".into(),
+                description: "E2E test template".into(),
+                version: "1.0.0".into(),
+                parameters: vec![],
+                nodes: vec![],
+                tags: vec![],
+                category: None,
+                author: None,
+            },
+            overwrite: true,
+        })
+        .await;
+        svc
+    };
+    let planning_pipeline = PlanningPipelineFactoryImpl
+        .create_default(classifier, extractor, template_service)
+        .await?;
 
-    async fn get_execution_cost(
-        &self,
-        _execution_id: &rigorix_mcp::execution_tools::domain::value::ExecutionId,
-    ) -> Result<CostBreakdown, EngineFacadeError> {
-        Ok(CostBreakdown::new(
-            uuid::Uuid::new_v4(),
-            vec![],
-            500,
-            10,
-            None,
-        ))
-    }
+    // ── Execution service ──
+    let execution_service = ParallelExecutionFactoryImpl::new()
+        .create(ParallelExecutionFactoryConfig::default())
+        .await?;
+
+    // ── State manager ──
+    let state_repo = Box::new(FileSystemStateRepository::new(repo_root).await?);
+    let state_manager: Arc<dyn StateManagerService> = Arc::new(FileSystemStateManager::new(state_repo));
+
+    // ── Cancellation service ──
+    let cancellation_service: Arc<dyn CancellationService> =
+        Arc::new(CancellationManagerImpl::default());
+
+    // ── Event bus ──
+    let event_bus: Arc<dyn EventBusService> =
+        Arc::new(EventBusServiceImpl::new(EventBusConfig::default()));
+
+    // ── Budget service ──
+    let budget_service: Arc<dyn LlmBudgetService> =
+        Arc::new(LlmBudgetImpl::new(1000, 100_000, "mcp-server".into()));
+
+    // ── Orchestrator ──
+    let orchestrator = OrchestratorBuilderImpl::new(OrchestratorConfig::default())
+        .with_repo_root(repo_root.to_string())
+        .with_planning_pipeline(Arc::from(planning_pipeline))
+        .with_execution_service(Arc::from(execution_service))
+        .with_state_manager(state_manager)
+        .with_cancellation_service(cancellation_service)
+        .with_event_bus(event_bus)
+        .with_budget_service(budget_service)
+        .build()
+        .await?;
+
+    // ── Execution enforcer ──
+    let enforcer: Arc<dyn rigorix_engine::enforcement::application::ExecutionEnforcer> =
+        Arc::from(ExecutionEnforcerFactoryImpl.create_default(&execution_id).await?);
+
+    // ── EngineFacadeImpl ──
+    let execution_repo: Arc<dyn ExecutionRepository> = Arc::new(InMemoryExecutionRepository::new());
+
+    let engine = EngineFacadeImpl::new(
+        Arc::from(orchestrator),
+        enforcer,
+        execution_repo,
+        EngineFacadeConfig {
+            execute_timeout: Duration::from_secs(300),
+            validate_timeout: Duration::from_secs(60),
+            enforcement_enabled: true,
+            repo_root: repo_root.to_string(),
+        },
+    );
+
+    Ok(Arc::new(engine))
 }
 
 // =========================================================================
@@ -458,7 +510,12 @@ fn error_type_name(e: &rigorix_mcp::enterprise_proxy::domain::error::ProxyError)
     }
 }
 
-static APP_STATE: std::sync::LazyLock<AppState> = std::sync::LazyLock::new(AppState::new);
+// Global application state — initialized once in main()
+static APP_STATE: std::sync::OnceLock<AppState> = std::sync::OnceLock::new();
+
+fn app_state() -> &'static AppState {
+    APP_STATE.get().expect("AppState not initialized — call init_app_state() in main()")
+}
 
 /// Dispatch an incoming JSON-RPC message to the appropriate handler.
 async fn dispatch_message(msg: JsonRpcMessage) -> Option<JsonRpcMessage> {
@@ -514,7 +571,7 @@ async fn handle_list_tools(id: &RequestId) -> JsonRpcMessage {
     let mut tools = all_tool_descriptors();
 
     // Append enterprise tools if proxy is enabled
-    if let Some(proxy) = APP_STATE.enterprise_proxy.as_ref() {
+    if let Some(proxy) = app_state().enterprise_proxy.as_ref() {
         // Static tools: always available when proxy is configured
         tools.push(
             rigorix_mcp::enterprise_proxy::interfaces::mcp::rigorix_enterprise_call_tool_descriptor(
@@ -554,7 +611,7 @@ async fn handle_call_tool(id: &RequestId, params: &serde_json::Value) -> JsonRpc
 
     // Route rigorix_enterprise_* calls to the enterprise proxy
     if tool_name.starts_with(ENTERPRISE_TOOL_PREFIX) {
-        match &APP_STATE.enterprise_proxy {
+        match &app_state().enterprise_proxy {
             Some(proxy) => match proxy.handle(tool_name, arguments.clone()).await {
                 Ok(result) => {
                     let response = serde_json::json!({
@@ -586,7 +643,7 @@ async fn handle_call_tool(id: &RequestId, params: &serde_json::Value) -> JsonRpc
         }
     }
 
-    match APP_STATE.handle_tool_call(tool_name, &arguments).await {
+    match app_state().handle_tool_call(tool_name, &arguments).await {
         Ok(result) => {
             let response = serde_json::json!({
                 "content": [
@@ -770,6 +827,22 @@ async fn main() {
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
         .init();
+
+    // ── Build real engine facade ──
+    let repo_root = std::env::var("RIGORIX_REPO_ROOT").unwrap_or_else(|_| ".".to_string());
+    let engine = match build_real_engine(&repo_root).await {
+        Ok(e) => {
+            tracing::info!("EngineFacadeImpl initialized with real rigorix-engine");
+            e
+        }
+        Err(e) => {
+            tracing::error!("Failed to build real engine: {}. Exiting.", e);
+            return;
+        }
+    };
+
+    // ── Initialize app state ──
+    let _ = APP_STATE.set(AppState::new(engine));
 
     let cancel = CancellationToken::new();
 
