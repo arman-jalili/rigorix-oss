@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: "audit-tools"
+  epic: "template-tools"
   component: "Contract Freeze"
-  module: "audit-tools"
+  module: "template-tools"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/audit-tools.md"
+    - module: ".pi/architecture/modules/template-tools.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -48,27 +48,28 @@ guardian_issue:
     
 
   file_changes:
-    - "create: src/audit-tools/domain/"
-    - "create: src/audit-tools/application/"
-    - "create: src/audit-tools/infrastructure/"
-    - "create: src/audit-tools/interfaces/"
+    - "create: src/template-tools/domain/"
+    - "create: src/template-tools/application/"
+    - "create: src/template-tools/infrastructure/"
+    - "create: src/template-tools/interfaces/"
 ---
 
-# Contract Freeze: audit-tools
+# Contract Freeze: template-tools
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the audit-tools
+Define and freeze all public interfaces, contracts, and schemas for the template-tools
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- AuditQueryService (Aggregate Root)
-- ReadAuditHandler (Domain Service)
-- ListAuditsHandler (Domain Service)
-- AuditSummaryHandler (Domain Service)
-- AuditFormatter (Domain Service)
+- TemplateRepository (Aggregate Root)
+- ListTemplatesHandler (Domain Service)
+- GetTemplateHandler (Domain Service)
+- CreateTemplateHandler (Domain Service)
+- ValidateTemplateHandler (Domain Service)
+- TemplateConverter (Domain Service)
 
 ## What Must Be Frozen
 
