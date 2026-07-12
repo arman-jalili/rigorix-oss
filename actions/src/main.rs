@@ -437,7 +437,7 @@ async fn build_action_orchestrator(
         max_tokens,
         timeout_secs: 120,
         temperature,
-        max_retries: 1,
+        max_retries: 3,
     });
     let generator: Option<Box<dyn TemplateGenerator>> = match provider {
         LlmProvider::Anthropic => Some(Box::new(ClaudeTemplateGenerator::new(
