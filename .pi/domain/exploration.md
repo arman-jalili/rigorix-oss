@@ -1,12 +1,19 @@
-# Domain Exploration
+---
+session_id: bc844c73-c6d1-41b2-aee7-1613e0eb65e4
+created: 2026-07-12
+business_context: "this is mcp layer of rigorix-oss , check other crates ~/project/rigorix-oss : engine , cli and actions , read @mcp/.pi/domain/business-intent.md for domain exploration"
+status: draft
+---
 
-> **Status:** awaiting-analysis — Run `/domain --explore "business context"` to begin.
+# Domain Exploration: bc844c73-c6d1-41b2-aee7-1613e0eb65e4
+
+> **Status:** draft — agent needs to fill in the analysis below.
 
 ---
 
 ## Business Context
 
-main rigorix project, parent for engine, cli and github actions
+this is mcp layer of rigorix-oss , check other crates ~/project/rigorix-oss : engine , cli and actions , read @mcp/.pi/domain/business-intent.md for domain exploration
 
 ---
 
@@ -14,7 +21,7 @@ main rigorix project, parent for engine, cli and github actions
 
 | Actor | Description | Interactions |
 |-------|-------------|-------------|
-| <!-- Agents fill this after --explore --> | | |
+| | | |
 
 ---
 
@@ -22,6 +29,7 @@ main rigorix project, parent for engine, cli and github actions
 
 | ID | Requirement | Priority | Bounded Context |
 |----|-------------|----------|----------------|
+| | | | |
 
 ---
 
@@ -29,6 +37,7 @@ main rigorix project, parent for engine, cli and github actions
 
 | ID | Requirement | Category | Target |
 |----|-------------|----------|--------|
+| | | | |
 
 ---
 
@@ -36,6 +45,7 @@ main rigorix project, parent for engine, cli and github actions
 
 | Assumption | Impact if Wrong | Mitigation |
 |------------|----------------|-----------|
+| | | |
 
 ---
 
@@ -43,6 +53,7 @@ main rigorix project, parent for engine, cli and github actions
 
 | Context | Description | Entities |
 |---------|-------------|----------|
+| | | |
 
 ---
 
@@ -50,6 +61,7 @@ main rigorix project, parent for engine, cli and github actions
 
 | Entity | Context | Type | Description |
 |--------|---------|------|-------------|
+| | | | |
 
 ---
 
@@ -57,6 +69,7 @@ main rigorix project, parent for engine, cli and github actions
 
 | Event | Context | Description | Triggered By |
 |-------|---------|-------------|-------------|
+| | | | |
 
 ---
 
@@ -64,15 +77,14 @@ main rigorix project, parent for engine, cli and github actions
 
 | Term | Definition | Bounded Context | Aliases/Synonyms |
 |------|-----------|----------------|-----------------|
+| | | | |
 
 ---
 
 ## Open Questions
 
-_None identified yet._
 
 ---
 
 ## Aggregate Roots
 
-_None identified yet._
