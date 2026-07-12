@@ -1379,27 +1379,47 @@ of operations.
 6. CRITICAL: Only include a `[[parameters]]` section if the intent EXPLICITLY asks for user-provided values (e.g., "use my API key", "allow specifying a file path"). For read-only analysis intents, generate templates with ZERO parameters and ZERO parameters sections.
 
 TEMPLATE SCHEMA (example — adapt as needed):
-id = "unique-kebab-case-id"
-name = "Human readable name"
-description = "What this template does"
+
+=== EXAMPLE 1: Read-only analysis (lint, review, audit) — NO parameters, NO test steps ===
+id = "analyze-code-quality"
+name = "Analyze Code Quality"
+description = "Run linters and static analysis on the codebase"
 version = "1.0.0"
 
-# [[parameters]] section is OPTIONAL. Only include when intent requires user-provided values.
-# For read-only intents (analyze, review, audit): do NOT include any [[parameters]] sections.
-#[[parameters]]
-#name = "param_name"
-#description = "What this parameter controls"
-#required = true
-#param_type = "string"  # valid values: "path", "string", "int", "float", "bool", "enum", "json"
+[[nodes]]
+id = "read-files"
+name = "Read source files"
+[nodes.action]
+type = "file_read"
+path = "src/tasklist.ts"
 
 [[nodes]]
-id = "node-id"
-name = "Node description"
-depends_on = ["other-node-id"]  # optional
-validation = "type_check"  # string field: lint_pass, test_pass, type_check, or custom("<cmd>")
+id = "run-linter"
+name = "Run ESLint"
+depends_on = ["read-files"]
+validation = "lint_pass"
 [nodes.action]
-type = "file_read"  # or "file_write", "run_command", "lsp_query", "git_read"
-path = "{{ param_name }}"  # use DOUBLE curly braces {{ }} for parameter substitution
+type = "run_command"
+command = "npx eslint src/ --format=compact"
+
+=== EXAMPLE 2: Code-writing template (WITH parameters) ===
+id = "add-method"
+name = "Add Method"
+description = "Add a method to an existing class"
+version = "1.0.0"
+
+[[parameters]]
+name = "file_path"
+description = "File to modify"
+required = true
+param_type = "path"
+
+[[nodes]]
+id = "read-file"
+name = "Read file"
+[nodes.action]
+type = "file_read"
+path = "{{ file_path }}"
 
 VALID ACTION TYPES:
 - file_read: {{ type, path }}
