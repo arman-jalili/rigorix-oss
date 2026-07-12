@@ -34,6 +34,8 @@ import {
 	generateIssueMarkdown,
 	generateProofingMarkdown,
 } from "./architect-lib/generators";
+import { generateEpicTestFiles, isTddSupported } from "./architect-lib/tdd-generator.ts";
+import { readLanguage } from "./architect-lib/helpers";
 
 // ── Helpers ──
 
@@ -339,7 +341,7 @@ export default function (pi: ExtensionAPI) {
 			const tokens = raw ? parseArgs(raw) : [];
 			if (tokens.length === 0) {
 				ctx.ui.notify(
-					"Usage: /architect [--epic Name] [--tracking-issue N] | --roadmap | --phase \"Phase 1\" | --phase-status | --phase-done <N> | --phase-module-done <N> \"Module\" | status | next-epic | abort",
+					"Usage: /architect [--epic Name] [--tracking-issue N] [--tdd] | --roadmap | --phase \"Phase 1\" | --phase-status | --phase-done <N> | --phase-module-done <N> \"Module\" | status | next-epic | abort",
 					"info",
 				);
 				return;
@@ -368,6 +370,9 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify(`Next epic: ${slice.module} (${slice.nextLogicalSlice.length} components planned)`, "info");
 				return;
 			}
+
+			// ── Top-level flags (hoisted for all command flows) ──
+			const tddEnabled = tokens.includes("--tdd");
 
 			// ── Roadmap commands ──
 			if (tokens[0] === "--roadmap" || action === "roadmap") {
@@ -532,6 +537,25 @@ export default function (pi: ExtensionAPI) {
 							results.push(`⚠️ ${mod.name} — no architecture components found`);
 							continue;
 						}
+						const slice = state.slices[0];
+						const components = slice.nextLogicalSlice || [];
+
+						// Generate TDD test files if --tdd flag is set
+						if (tddEnabled && components.length > 0) {
+							const language = readLanguage(ctx.cwd);
+							if (isTddSupported(language)) {
+								const tddFiles = generateEpicTestFiles({
+									components,
+									moduleId: slice.module,
+									cwd: ctx.cwd,
+									language,
+								});
+								if (tddFiles.length > 0) {
+									results.push(`🧪 ${mod.name} — ${tddFiles.length} TDD test files generated`);
+								}
+							}
+						}
+
 						const items = (state.issues || []).map((i: { id: string }) => i.id);
 						// Create pipeline state for this epic
 						const pipelineId = `PL-${String(Math.floor(Math.random() * 10000)).padStart(4, "0")}`;
@@ -723,6 +747,20 @@ export default function (pi: ExtensionAPI) {
 				const slice = state.slices[0];
 				const components = slice.nextLogicalSlice || [];
 
+				// Generate TDD test files if --tdd flag is set
+				let tddTestFiles: string[] = [];
+				if (tddEnabled) {
+					const language = readLanguage(ctx.cwd);
+					if (isTddSupported(language)) {
+						tddTestFiles = generateEpicTestFiles({
+							components,
+							moduleId: slice.module,
+							cwd: ctx.cwd,
+							language,
+						});
+					}
+				}
+
 				if (components.length === 0) {
 					ctx.ui.notify("No planned components found in architecture module.", "error");
 					return;
@@ -792,8 +830,12 @@ export default function (pi: ExtensionAPI) {
 					}
 				} catch { /* ignore */ }
 
+				const tddInfo = tddTestFiles.length > 0
+					? `\n**TDD:** ${tddTestFiles.length} failing test file(s) generated in \`tests/unit/\` — implement components to make them green!`
+					: "";
+
 				const instructions = [
-					`Epic "${epicName}" started with ${items.length} issues across ${components.length} components.${trackingUrl}`,
+					`Epic "${epicName}" started with ${items.length} issues across ${components.length} components.${trackingUrl}${tddInfo}`,
 					"",
 					`Pipeline \`${pipelineId}\` created: ${items.length} items × 4 steps (implement → validate → create-mr → merge)`,
 					`**Current:** Item "${firstItem}" → Step: implement`,

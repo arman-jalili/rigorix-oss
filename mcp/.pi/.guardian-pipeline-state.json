@@ -1,0 +1,118 @@
+{
+  "id": "PL-9287",
+  "name": "mcp-server",
+  "items": [
+    "issue-contract-freeze",
+    "issue-mcpserver",
+    "issue-toolregistry",
+    "issue-proofing",
+    "issue-architecture-readiness"
+  ],
+  "steps": [
+    {
+      "name": "implement",
+      "prompt": ".pi/prompts/issue-implementation-series.md",
+      "acceptance": {
+        "type": "validator",
+        "validators": [
+          "ci"
+        ]
+      }
+    },
+    {
+      "name": "validate",
+      "acceptance": {
+        "type": "validator",
+        "validators": [
+          "ci",
+          "tests",
+          "security"
+        ]
+      }
+    },
+    {
+      "name": "create-mr",
+      "prompt": ".pi/prompts/issue-closeout.md",
+      "acceptance": {
+        "type": "none"
+      }
+    },
+    {
+      "name": "merge",
+      "prompt": ".pi/prompts/issue-merge.md",
+      "acceptance": {
+        "type": "validator",
+        "validators": [
+          "ci",
+          "canonical"
+        ]
+      }
+    }
+  ],
+  "currentItemIndex": 0,
+  "currentStepIndex": 0,
+  "status": "running",
+  "retryCount": 0,
+  "results": [
+    {
+      "item": "issue-contract-freeze",
+      "status": "failed",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "failed",
+          "reason": "Acceptance failed: ci: ; tests: ; security: "
+        },
+        {
+          "step": "validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "validate",
+          "status": "failed",
+          "reason": "Acceptance failed: ci: ; tests: ; security: "
+        },
+        {
+          "step": "validate",
+          "status": "failed",
+          "reason": "Validation runners fail with infrastructure error (TypeError: Cannot read properties of undefined reading 'execute') — not a code issue. Code compiles clean, all 8 tests pass, DDD check passes, lint passes."
+        },
+        {
+          "step": "create-mr",
+          "status": "failed",
+          "reason": "skipped due to prior failure"
+        },
+        {
+          "step": "merge",
+          "status": "failed",
+          "reason": "skipped due to prior failure"
+        }
+      ]
+    },
+    {
+      "item": "issue-architecture-readiness",
+      "status": "in-progress",
+      "stepResults": [
+        {
+          "step": "implement",
+          "status": "passed",
+          "reason": "reconciled"
+        }
+      ]
+    }
+  ],
+  "mergeOnValid": true,
+  "createdAt": "2026-07-12T08:21:29.163Z",
+  "updatedAt": "2026-07-12T10:48:31.880Z"
+}

@@ -5,6 +5,7 @@ import type { ExtensionContext, EpicState, ModuleComponent, ArchitectureSlice, R
 import {
 	readRepoTool as adapterReadRepoTool,
 	readRepository as adapterReadRepository,
+	readLanguage as adapterReadLanguage,
 	getGitBaseUrl as adapterGetGitBaseUrl,
 	commandExists as adapterCommandExists,
 	runScript as adapterRunScript,
@@ -30,6 +31,7 @@ export function log(ctx: ExtensionContext, message: string, level = "info") {
 export const runScript = adapterRunScript;
 export const readRepoTool = adapterReadRepoTool;
 export const readRepository = adapterReadRepository;
+export const readLanguage = adapterReadLanguage;
 export const getGitBaseUrl = adapterGetGitBaseUrl;
 export const commandExists = adapterCommandExists;
 

@@ -33,6 +33,23 @@ export function readRepoTool(cwd: string): string {
 }
 
 /**
+ * Read language from guardian-manifest.json (defaults to "typescript")
+ */
+export function readLanguage(cwd: string): string {
+	try {
+		const manifestPath = join(cwd, "guardian-manifest.json");
+		if (existsSync(manifestPath)) {
+			const raw = readFileSync(manifestPath, "utf-8");
+			const manifest = JSON.parse(raw) as { language?: string };
+			if (manifest.language) return manifest.language;
+		}
+	} catch {
+		// fall through to default
+	}
+	return "typescript";
+}
+
+/**
  * Read repository slug from guardian-manifest.json
  */
 export function readRepository(cwd: string): string | null {
