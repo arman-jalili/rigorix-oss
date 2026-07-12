@@ -1367,15 +1367,15 @@ of operations.
      - Before writing any test code, scan the PUBLIC API SURFACE section and confirm every function/class/method call matches exactly.
    - The test must actually exercise the new code (not be a placeholder). Use real assertions.
 2. Add a `run_command` node that runs the tests (depends on BOTH patch step AND test-writing step):
-   - TypeScript: `npx jest --testPathPattern=<test-file>`
-   - Python: `python -m pytest tests/<test-file>`
-   - Rust: `cargo test <test-name>`
-3. Add a compile-check step between the code patch and the test run:
+   - TypeScript: `npx jest --testPathPattern tests/tasklist.test.ts`
+   - Python: `python -m pytest tests/test_tasklist.py`
+   - Rust: `cargo test test_name`
+3. Add a compile-check step between the code patch and the test run (if intent involves code changes):
    - TypeScript: `npx tsc --noEmit` (validation = "type_check" on the run_command node)
-   - Python: `python -m py_compile <patched-file>`
+   - Python: `python -m py_compile tests/test_file.py`
    - Rust: `cargo check` (validation = "type_check" on the run_command node)
-4. CRITICAL: Do NOT add ANY template parameters for test files. Use literal paths like `tests/tasklist.test.ts`.
-5. If tests fail, the run should fail (this is correct — prevents merging broken code).
+4. CRITICAL: Do NOT add ANY template parameters. Use ONLY hardcoded paths in all commands. The intent already contains all necessary context.
+5. IMPORTANT: Test/compile steps are ONLY needed when the intent explicitly requires code changes. For read-only intents (review, analyze, audit, compliance check), omit all test and compile steps entirely. Use `file_read` and `run_command` nodes with lint/formatting tools instead.
 
 TEMPLATE SCHEMA:
 id = "unique-kebab-case-id"
