@@ -130,14 +130,31 @@ fn test_stdio_list_tools() {
     assert_eq!(parsed["jsonrpc"], "2.0");
     assert_eq!(parsed["id"], 2);
 
-    // Verify tools is an empty array (no handlers registered yet)
+    // Verify tools returns all 10 registered OSS tool descriptors
     let tools = parsed["result"]["tools"]
         .as_array()
         .expect("tools should be an array");
-    assert!(
-        tools.is_empty(),
-        "tools/list should return empty array (no handlers registered yet)"
+    assert_eq!(
+        tools.len(),
+        10,
+        "tools/list should return 10 registered tool descriptors, got {}",
+        tools.len()
     );
+
+    // Verify tool names are correct
+    let names: Vec<&str> = tools.iter()
+        .filter_map(|t| t["name"].as_str())
+        .collect();
+    assert!(names.contains(&"rigorix_execute"), "Missing rigorix_execute");
+    assert!(names.contains(&"rigorix_validate_plan"), "Missing rigorix_validate_plan");
+    assert!(names.contains(&"rigorix_check_enforcement"), "Missing rigorix_check_enforcement");
+    assert!(names.contains(&"rigorix_read_audit"), "Missing rigorix_read_audit");
+    assert!(names.contains(&"rigorix_list_audits"), "Missing rigorix_list_audits");
+    assert!(names.contains(&"rigorix_audit_summary"), "Missing rigorix_audit_summary");
+    assert!(names.contains(&"rigorix_list_templates"), "Missing rigorix_list_templates");
+    assert!(names.contains(&"rigorix_get_template"), "Missing rigorix_get_template");
+    assert!(names.contains(&"rigorix_create_template"), "Missing rigorix_create_template");
+    assert!(names.contains(&"rigorix_validate_template"), "Missing rigorix_validate_template");
 
     drop(stdin);
     let _ = child.wait();
