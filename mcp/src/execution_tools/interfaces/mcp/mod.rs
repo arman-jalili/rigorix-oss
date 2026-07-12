@@ -1,0 +1,210 @@
+//! MCP protocol handler contracts for Execution Tools.
+//!
+//! @canonical .pi/architecture/modules/execution-tools.md#mcp-handlers
+//! Implements: Contract Freeze — rigorix_execute, rigorix_validate_plan,
+//! rigorix_check_enforcement tool handler contracts
+//!
+//! These contracts define the MCP tool schema registrations for the
+//! execution tools. Each handler defines:
+//! - Tool name (as registered in ToolRegistry)
+//! - Input JSON schema
+//! - Output format
+//! - Error conditions
+//!
+//! # Contract (Frozen)
+//!
+//! - Tool names are frozen (rigorix_execute, rigorix_validate_plan, rigorix_check_enforcement)
+//! - Input schemas are documented but not enforced by types here
+//! - Output format follows MCP ToolResult specification
+//! - Error format follows HandlerError type
+//!
+//! # API Endpoints
+//!
+//! | Method | Tool Name | Handler | Description |
+//! |--------|-----------|---------|-------------|
+//! | tools/call | `rigorix_execute` | ExecuteHandler | Execute a plan through rigorix-engine |
+//! | tools/call | `rigorix_validate_plan` | ValidatePlanHandler | Validate a plan against policies |
+//! | tools/call | `rigorix_check_enforcement` | CheckEnforcementHandler | Check enforcement status |
+
+use serde_json::json;
+
+use crate::execution_tools::application::dto::{
+    CheckEnforcementOutput, ExecuteOutput, ValidateOutput,
+};
+
+// ---------------------------------------------------------------------------
+// Tool Schema Definitions
+// ---------------------------------------------------------------------------
+
+/// JSON Schema for the `rigorix_execute` tool input.
+pub const RIGORIX_EXECUTE_INPUT_SCHEMA: &str = r#"{
+    "type": "object",
+    "properties": {
+        "plan": {
+            "type": "object",
+            "description": "The plan to execute with steps, constraints, and metadata",
+            "properties": {
+                "name": { "type": "string", "description": "Plan name" },
+                "description": { "type": "string", "description": "Plan description" },
+                "steps": {
+                    "type": "array",
+                    "description": "Ordered list of steps to execute",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": { "type": "string" },
+                            "tool": { "type": "string" },
+                            "parameters": { "type": "object" },
+                            "requires_approval": { "type": "boolean" },
+                            "description": { "type": "string" },
+                            "timeout_secs": { "type": "integer" }
+                        },
+                        "required": ["name", "tool", "parameters"]
+                    },
+                    "minItems": 1
+                },
+                "constraints": {
+                    "type": "object",
+                    "description": "Optional enforcement constraints",
+                    "properties": {
+                        "max_tool_calls": { "type": "integer" },
+                        "max_tokens": { "type": "integer" },
+                        "max_duration_secs": { "type": "integer" }
+                    }
+                }
+            },
+            "required": ["name", "description", "steps"]
+        },
+        "template_name": {
+            "type": "string",
+            "description": "Optional template name for audit trail enrichment"
+        },
+        "execution_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Optional pre-generated execution ID for idempotency"
+        }
+    },
+    "required": ["plan"]
+}"#;
+
+/// JSON Schema for the `rigorix_validate_plan` tool input.
+pub const RIGORIX_VALIDATE_INPUT_SCHEMA: &str = r#"{
+    "type": "object",
+    "properties": {
+        "plan": {
+            "type": "object",
+            "description": "The plan to validate against enforcement policies",
+            "properties": {
+                "name": { "type": "string" },
+                "description": { "type": "string" },
+                "steps": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": { "type": "string" },
+                            "tool": { "type": "string" },
+                            "parameters": { "type": "object" },
+                            "requires_approval": { "type": "boolean" },
+                            "description": { "type": "string" },
+                            "timeout_secs": { "type": "integer" }
+                        },
+                        "required": ["name", "tool", "parameters"]
+                    },
+                    "minItems": 1
+                }
+            },
+            "required": ["name", "description", "steps"]
+        }
+    },
+    "required": ["plan"]
+}"#;
+
+/// JSON Schema for the `rigorix_check_enforcement` tool input.
+pub const RIGORIX_CHECK_ENFORCEMENT_INPUT_SCHEMA: &str = r#"{
+    "type": "object",
+    "properties": {},
+    "description": "No input parameters required"
+}"#;
+
+// ---------------------------------------------------------------------------
+// MCP Tool Descriptors
+// ---------------------------------------------------------------------------
+
+/// Descriptor for the `rigorix_execute` tool.
+///
+/// Used for registering the tool schema in ToolRegistry.
+pub fn rigorix_execute_tool_descriptor() -> serde_json::Value {
+    json!({
+        "name": "rigorix_execute",
+        "description": "Execute a structured plan through the rigorix engine. Validates the plan against enforcement policies, executes each step in order, and returns execution results with audit trail.",
+        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_EXECUTE_INPUT_SCHEMA).unwrap()
+    })
+}
+
+/// Descriptor for the `rigorix_validate_plan` tool.
+pub fn rigorix_validate_plan_tool_descriptor() -> serde_json::Value {
+    json!({
+        "name": "rigorix_validate_plan",
+        "description": "Validate a plan against enforcement policies without executing it. Returns validation warnings, blocking errors, and estimated cost.",
+        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_VALIDATE_INPUT_SCHEMA).unwrap()
+    })
+}
+
+/// Descriptor for the `rigorix_check_enforcement` tool.
+pub fn rigorix_check_enforcement_tool_descriptor() -> serde_json::Value {
+    json!({
+        "name": "rigorix_check_enforcement",
+        "description": "Check current enforcement status including active preset, remaining budget (tool calls and tokens), and circuit breaker states.",
+        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_CHECK_ENFORCEMENT_INPUT_SCHEMA).unwrap()
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Example output formats
+// ---------------------------------------------------------------------------
+
+/// Example successful execution output.
+pub fn example_execute_output() -> ExecuteOutput {
+    ExecuteOutput {
+        execution_id: uuid::Uuid::nil(),
+        status: "completed".into(),
+        steps: vec![],
+        duration_ms: 0,
+        tokens_used: None,
+        audit_uri: "rigorix://audit/00000000-0000-0000-0000-000000000000".into(),
+    }
+}
+
+/// Example validation output.
+pub fn example_validate_output() -> ValidateOutput {
+    ValidateOutput {
+        valid: true,
+        warnings: vec![],
+        errors: vec![],
+        estimated_cost: None,
+    }
+}
+
+/// Example enforcement check output.
+pub fn example_check_enforcement_output() -> CheckEnforcementOutput {
+    CheckEnforcementOutput {
+        active: true,
+        preset: "default".into(),
+        budget: crate::execution_tools::application::dto::BudgetDto {
+            tool_calls_total: 1000,
+            tool_calls_remaining: 750,
+            tokens_total: 100000,
+            tokens_remaining: 75000,
+        },
+        circuit_breakers: vec![],
+    }
+}
+
+/// List of all registered execution tool names.
+pub const EXECUTION_TOOL_NAMES: &[&str] = &[
+    "rigorix_execute",
+    "rigorix_validate_plan",
+    "rigorix_check_enforcement",
+];

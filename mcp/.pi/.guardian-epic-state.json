@@ -1,23 +1,39 @@
 {
-  "name": "mcp-server",
-  "trackingIssueId": "624",
+  "name": "execution-tools",
+  "trackingIssueId": "631",
   "epicId": null,
   "slices": [
     {
-      "module": "mcp-server",
+      "module": "execution-tools",
       "components": [
         {
-          "name": "McpServer",
+          "name": "EngineFacade (Aggregate Root)",
           "status": "planned",
-          "description": "The core server orchestrating transport, session, tool registry, and routing.",
+          "description": "Thin async facade over rigorix-engine that all execution/audit/template tools call through.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ToolRegistry",
+          "name": "ExecuteHandler (Domain Service)",
           "status": "planned",
-          "description": "Central registry of all registered tools with their schemas and handlers.",
+          "description": "Handles `rigorix_execute` tool calls: validates input, delegates to engine, formats result.",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "ValidatePlanHandler (Domain Service)",
+          "status": "planned",
+          "description": "Handles `rigorix_validate_plan` tool calls: checks plan against enforcement policies.",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "CheckEnforcementHandler (Domain Service)",
+          "status": "planned",
+          "description": "Handles `rigorix_check_enforcement` tool calls: queries engine for current budget/limits.",
           "dependencies": [
             "none"
           ]
@@ -25,17 +41,33 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "McpServer",
+          "name": "EngineFacade (Aggregate Root)",
           "status": "planned",
-          "description": "The core server orchestrating transport, session, tool registry, and routing.",
+          "description": "Thin async facade over rigorix-engine that all execution/audit/template tools call through.",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ToolRegistry",
+          "name": "ExecuteHandler (Domain Service)",
           "status": "planned",
-          "description": "Central registry of all registered tools with their schemas and handlers.",
+          "description": "Handles `rigorix_execute` tool calls: validates input, delegates to engine, formats result.",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "ValidatePlanHandler (Domain Service)",
+          "status": "planned",
+          "description": "Handles `rigorix_validate_plan` tool calls: checks plan against enforcement policies.",
+          "dependencies": [
+            "none"
+          ]
+        },
+        {
+          "name": "CheckEnforcementHandler (Domain Service)",
+          "status": "planned",
+          "description": "Handles `rigorix_check_enforcement` tool calls: queries engine for current budget/limits.",
           "dependencies": [
             "none"
           ]
@@ -48,34 +80,46 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "625"
+      "remoteIssueId": "632"
     },
     {
-      "id": "issue-mcpserver",
-      "title": "McpServer: The core server orchestrating transport, session, tool registry, and routing.",
+      "id": "issue-enginefacade-aggregate-root-",
+      "title": "EngineFacade (Aggregate Root): Thin async facade over rigorix-engine that all execution/audit/template tools ca",
       "status": "planned",
-      "remoteIssueId": "626"
+      "remoteIssueId": "633"
     },
     {
-      "id": "issue-toolregistry",
-      "title": "ToolRegistry: Central registry of all registered tools with their schemas and handlers.",
+      "id": "issue-executehandler-domain-service-",
+      "title": "ExecuteHandler (Domain Service): Handles `rigorix_execute` tool calls: validates input, delegates to engine, form",
       "status": "planned",
-      "remoteIssueId": "627"
+      "remoteIssueId": "634"
+    },
+    {
+      "id": "issue-validateplanhandler-domain-service-",
+      "title": "ValidatePlanHandler (Domain Service): Handles `rigorix_validate_plan` tool calls: checks plan against enforcement poli",
+      "status": "planned",
+      "remoteIssueId": "635"
+    },
+    {
+      "id": "issue-checkenforcementhandler-domain-service-",
+      "title": "CheckEnforcementHandler (Domain Service): Handles `rigorix_check_enforcement` tool calls: queries engine for current budge",
+      "status": "planned",
+      "remoteIssueId": "636"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "628"
+      "remoteIssueId": "637"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "629"
+      "remoteIssueId": "638"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-07-12T08:21:29.142Z"
+  "createdAt": "2026-07-12T11:22:06.503Z"
 }

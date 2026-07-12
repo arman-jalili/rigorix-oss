@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-PROOFING"
-  epic: "mcp-server"
+  epic: "execution-tools"
   component: "Proofing & CI Enforcement"
-  module: "mcp-server"
+  module: "execution-tools"
   status: planned
   priority: critical
   dependencies: []
@@ -26,7 +26,7 @@ guardian_issue:
       - Updated CI stage configuration
 
   canonical_references:
-    - module: ".pi/architecture/modules/mcp-server.md"
+    - module: ".pi/architecture/modules/execution-tools.md"
 
   acceptance_criteria:
     - "All proofing scripts created and executable"
@@ -47,12 +47,12 @@ guardian_issue:
     every build for zero token cost.
 
   file_changes:
-    - "create: .pi/scripts/ci/check_mcp-server_contracts.sh"
-    - "create: .pi/scripts/ci/check_mcp-server_coverage.sh"
+    - "create: .pi/scripts/ci/check_execution-tools_contracts.sh"
+    - "create: .pi/scripts/ci/check_execution-tools_coverage.sh"
     - "modify: .pi/scripts/ci/run_hardening_stages.sh"
 ---
 
-# Proofing & CI Enforcement: mcp-server
+# Proofing & CI Enforcement: execution-tools
 
 ## Intent
 
@@ -81,17 +81,17 @@ on every PR. No LLM cost. No human review. Just pass or fail.
 
 | Script | Purpose | Location |
 |--------|---------|----------|
-| check_mcp-server_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
-| check_mcp-server_coverage.sh | Enforce coverage thresholds | .pi/scripts/ci/ |
-| stage_mcp-server_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
+| check_execution-tools_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
+| check_execution-tools_coverage.sh | Enforce coverage thresholds | .pi/scripts/ci/ |
+| stage_execution-tools_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
 
 ## CI Pipeline Update
 
 Add the new stage to `run_hardening_stages.sh`:
 
 ```bash
-run_stage "11" "mcp-server_proofing" \
-    "${SCRIPTS_DIR}/stage_mcp-server_proofing.sh" \
+run_stage "11" "execution-tools_proofing" \
+    "${SCRIPTS_DIR}/stage_execution-tools_proofing.sh" \
     "always"
 ```
 
