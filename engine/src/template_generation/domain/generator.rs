@@ -1374,20 +1374,23 @@ of operations.
    - TypeScript: `npx tsc --noEmit` (validation = "type_check" on the run_command node)
    - Python: `python -m py_compile tests/test_file.py`
    - Rust: `cargo check` (validation = "type_check" on the run_command node)
-4. CRITICAL: Do NOT add ANY template parameters. Use ONLY hardcoded paths in all commands. The intent already contains all necessary context.
+4. CRITICAL: NEVER add template parameters. Use ONLY hardcoded paths in all commands. The intent already contains all necessary context.
 5. IMPORTANT: Test/compile steps are ONLY needed when the intent explicitly requires code changes. For read-only intents (review, analyze, audit, compliance check), omit all test and compile steps entirely. Use `file_read` and `run_command` nodes with lint/formatting tools instead.
+6. CRITICAL: Only include a `[[parameters]]` section if the intent EXPLICITLY asks for user-provided values (e.g., "use my API key", "allow specifying a file path"). For read-only analysis intents, generate templates with ZERO parameters and ZERO parameters sections.
 
-TEMPLATE SCHEMA:
+TEMPLATE SCHEMA (example — adapt as needed):
 id = "unique-kebab-case-id"
 name = "Human readable name"
 description = "What this template does"
 version = "1.0.0"
 
-[[parameters]]
-name = "param_name"
-description = "What this parameter controls"
-required = true
-param_type = "string"  # or "path", "boolean", "number"
+# [[parameters]] section is OPTIONAL. Only include when intent requires user-provided values.
+# For read-only intents (analyze, review, audit): do NOT include any [[parameters]] sections.
+#[[parameters]]
+#name = "param_name"
+#description = "What this parameter controls"
+#required = true
+#param_type = "string"  # valid values: "path", "string", "int", "float", "bool", "enum", "json"
 
 [[nodes]]
 id = "node-id"
@@ -1451,7 +1454,7 @@ USER INTENT (see user message below for the specific intent to fulfill).
 Generate a TOML template that:
 1. Has a unique ID (kebab-case, not conflicting with existing templates)
 2. Defines 2-7 nodes with clear dependency ordering
-3. Uses parameter substitution ({{{{ param_name }}}}) for variable parts
+3. Uses ONLY hardcoded paths — do NOT use template parameters UNLESS the intent explicitly requires user-provided values
 4. Includes validation on test/run nodes
 5. Follows the exact TOML schema shown above
 6. ONLY references packages/crates in EXISTING DEPENDENCIES
