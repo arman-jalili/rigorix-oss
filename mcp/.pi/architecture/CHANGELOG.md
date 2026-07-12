@@ -48,6 +48,43 @@ Each entry follows this structure:
 
 ## Entries
 
+### 2026-07-12 — Execution Tools Implementation
+
+#### Changed
+- **Module: Execution Tools**
+  - **EngineFacade**: Implemented `EngineFacadeImpl` wrapping rigorix-engine OrchestratorService and ExecutionEnforcer
+  - **ExecuteHandler**: Implemented `ExecuteHandlerImpl` with timeout enforcement and MCP result formatting
+  - **ValidatePlanHandler**: Implemented `ValidatePlanHandlerImpl` delegating to engine validation
+  - **CheckEnforcementHandler**: Implemented `CheckEnforcementHandlerImpl` with budget/circuit breaker status
+  - **ExecutionRepository**: Implemented `InMemoryExecutionRepository` with thread-safe storage
+  - **Tests**: 23 unit tests with mocked engine facade
+  - **CI Proofing**: Created contract check, coverage check, and CI stage scripts
+
+#### Added
+- `src/execution_tools/infrastructure/engine_facade_impl.rs` — EngineFacadeImpl
+- `src/execution_tools/infrastructure/in_memory_repository.rs` — InMemoryExecutionRepository
+- `src/execution_tools/application/service_impl.rs` — Handler implementations
+- `src/execution_tools/tests.rs` — 23 unit tests
+- `.pi/scripts/ci/check_execution-tools_contracts.sh` — Contract validation
+- `.pi/scripts/ci/check_execution-tools_coverage.sh` — Coverage check
+- `.pi/scripts/ci/stage_execution-tools_proofing.sh` — CI stage wrapper
+- `docs/runbook-execution-tools.md` — Operations runbook
+- `docs/dr-plan-execution-tools.md` — Disaster recovery plan
+
+#### Updated
+- `.pi/scripts/ci/run_hardening_stages.sh` — Added stage 11 for execution-tools proofing
+- `.pi/architecture/modules/execution-tools.md` — Status updated to Implemented, phases marked complete
+- `Cargo.toml` — Added rigorix-engine dependency
+
+### Status
+- [x] Architecture doc updated
+- [x] CHANGELOG entry added
+- [x] Implementation updated
+- [x] Canonical refs updated
+- [x] Validators run
+
+---
+
 ### 2026-07-12 — Full Architecture Enrichment
 
 #### Changed
@@ -155,6 +192,7 @@ When making architecture changes:
 | 2026-07-12 | Full architecture enrichment — ADRs, diagrams, components, roadmap | Audit Tools | ✅ Complete | 🔲 Pending |
 | 2026-07-12 | Full architecture enrichment — ADRs, diagrams, components, roadmap | Template Tools | ✅ Complete | 🔲 Pending |
 | 2026-07-12 | Full architecture enrichment — ADRs, diagrams, components, roadmap | Enterprise Proxy | ✅ Complete | 🔲 Pending |
+| 2026-07-12 | Implementation: EngineFacade, handlers, repository, tests | Execution Tools | ✅ Complete | ✅ All pass |
 
 ---
 

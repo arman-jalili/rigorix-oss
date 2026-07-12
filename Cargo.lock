@@ -1998,6 +1998,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "rigorix-engine",
  "serde",
  "serde_json",
  "tempfile",
