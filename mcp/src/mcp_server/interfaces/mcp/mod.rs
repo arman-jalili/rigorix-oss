@@ -21,13 +21,9 @@
 //! | prompts/get | GetPromptHandler | Get a prompt template |
 //! | notifications/cancelled | CancelledHandler | Handle cancellation |
 //!
-//! # Contract (Frozen)
-//!
-//! - Each handler handles exactly one MCP method
-//! - Handlers are stateless — all state lives in the domain aggregates
-//! - Handlers return JSON-RPC result or error
-//! - No framework-specific dependencies
-//! - Handlers are thread-safe (Send + Sync)
+pub mod handlers;
+
+pub use handlers::*;
 
 use async_trait::async_trait;
 
