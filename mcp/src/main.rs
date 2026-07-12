@@ -345,6 +345,7 @@ async fn build_real_engine(repo_root: &str) -> Result<SharedEngineFacade, Box<dy
     use rigorix_engine::event_system::application::service::EventBusService;
     use rigorix_engine::execution_engine::application::factory::{ParallelExecutionFactory, ParallelExecutionFactoryConfig};
     use rigorix_engine::execution_engine::application::factory_impl::ParallelExecutionFactoryImpl;
+    use rigorix_engine::execution_engine::application::service::ParallelExecutionService;
     use rigorix_engine::orchestrator::application::builder::OrchestratorBuilder;
     use rigorix_engine::orchestrator::application::builder_impl::OrchestratorBuilderImpl;
     use rigorix_engine::orchestrator::domain::OrchestratorConfig;
@@ -436,9 +437,11 @@ async fn build_real_engine(repo_root: &str) -> Result<SharedEngineFacade, Box<dy
         .await?;
 
     // ── Execution service ──
-    let execution_service = ParallelExecutionFactoryImpl::new()
-        .create(ParallelExecutionFactoryConfig::default())
-        .await?;
+    let execution_service: Arc<dyn ParallelExecutionService> = Arc::from(
+        ParallelExecutionFactoryImpl::new()
+            .create(ParallelExecutionFactoryConfig::default())
+            .await?,
+    );
 
     // ── State manager ──
     let state_repo = Box::new(FileSystemStateRepository::new(repo_root).await?);
@@ -460,7 +463,7 @@ async fn build_real_engine(repo_root: &str) -> Result<SharedEngineFacade, Box<dy
     let orchestrator = OrchestratorBuilderImpl::new(OrchestratorConfig::default())
         .with_repo_root(repo_root.to_string())
         .with_planning_pipeline(Arc::from(planning_pipeline))
-        .with_execution_service(Arc::from(execution_service))
+        .with_execution_service(Arc::clone(&execution_service))
         .with_state_manager(state_manager)
         .with_cancellation_service(cancellation_service)
         .with_event_bus(event_bus)
@@ -477,6 +480,7 @@ async fn build_real_engine(repo_root: &str) -> Result<SharedEngineFacade, Box<dy
 
     let engine = EngineFacadeImpl::new(
         Arc::from(orchestrator),
+        execution_service,
         enforcer,
         execution_repo,
         EngineFacadeConfig {

@@ -3,8 +3,9 @@
 //! @canonical .pi/architecture/modules/execution-tools.md#enginefacade-impl
 //! Implements: EngineFacade trait — wraps rigorix-engine for execution, validation, enforcement
 //!
-//! The EngineFacadeImpl is a thin async facade over rigorix-engine's OrchestratorService,
-//! ExecutionEnforcer, and audit infrastructure.
+//! The EngineFacadeImpl is a thin async facade over rigorix-engine's ParallelExecutionService
+//! (for executing plans directly from steps, bypassing intent classification), OrchestratorService
+//! (for validate_plan), and ExecutionEnforcer (for budget checks).
 
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -14,10 +15,11 @@ use uuid::Uuid;
 
 use rigorix_engine::enforcement::application::dto::GetBudgetStatusInput;
 use rigorix_engine::enforcement::domain::EnforcementError;
+use rigorix_engine::execution_engine::application::dto::ExecuteGraphInput;
+use rigorix_engine::execution_engine::application::service::ParallelExecutionService;
 use rigorix_engine::orchestrator::application::OrchestratorService;
-use rigorix_engine::orchestrator::application::dto::{PlanOnlyInput, RunInput};
+use rigorix_engine::orchestrator::application::dto::PlanOnlyInput;
 use rigorix_engine::orchestrator::domain::OrchestratorError;
-use rigorix_engine::orchestrator::domain::record::ExecutionStatus as EngineStatus;
 
 use crate::execution_tools::domain::entity::EngineFacade;
 use crate::execution_tools::domain::error::EngineFacadeError;
@@ -49,8 +51,13 @@ impl Default for EngineFacadeConfig {
 }
 
 /// Concrete EngineFacade that wraps rigorix-engine services.
+///
+/// Execute() bypasses the orchestrator's planning pipeline (intent → classify
+/// → match template → generate DAG) because the plan already has concrete steps.
+/// Instead it builds TaskGraph nodes directly from PlanTemplate steps.
 pub struct EngineFacadeImpl {
     orchestrator: Arc<dyn OrchestratorService>,
+    execution_engine: Arc<dyn ParallelExecutionService>,
     enforcer: Arc<dyn rigorix_engine::enforcement::application::ExecutionEnforcer>,
     repository: Arc<dyn ExecutionRepository>,
     config: EngineFacadeConfig,
@@ -60,12 +67,14 @@ pub struct EngineFacadeImpl {
 impl EngineFacadeImpl {
     pub fn new(
         orchestrator: Arc<dyn OrchestratorService>,
+        execution_engine: Arc<dyn ParallelExecutionService>,
         enforcer: Arc<dyn rigorix_engine::enforcement::application::ExecutionEnforcer>,
         repository: Arc<dyn ExecutionRepository>,
         config: EngineFacadeConfig,
     ) -> Self {
         Self {
             orchestrator,
+            execution_engine,
             enforcer,
             repository,
             config,
@@ -77,11 +86,13 @@ impl EngineFacadeImpl {
     #[allow(dead_code)]
     pub fn test_instance(
         orchestrator: Arc<dyn OrchestratorService>,
+        execution_engine: Arc<dyn ParallelExecutionService>,
         enforcer: Arc<dyn rigorix_engine::enforcement::application::ExecutionEnforcer>,
     ) -> Self {
         use super::in_memory_repository::InMemoryExecutionRepository;
         Self::new(
             orchestrator,
+            execution_engine,
             enforcer,
             Arc::new(InMemoryExecutionRepository::new()),
             EngineFacadeConfig::default(),
@@ -104,56 +115,76 @@ impl EngineFacade for EngineFacadeImpl {
                 .map_err(map_enforcement_error)?;
         }
 
-        let input = RunInput {
-            intent: serde_json::to_string(&serde_json::json!({
-                "name": plan.name(),
-                "description": plan.description(),
-                "steps": plan.steps().iter().map(|s| s.name()).collect::<Vec<_>>(),
-            }))
-            .unwrap_or_default(),
-            config: serde_json::json!({
-                "plan_name": plan.name(),
-                "step_count": plan.steps().len(),
-            }),
-            repo_root: self.config.repo_root.clone(),
-            repository: None,
-            author: None,
-            enforcement_preset: None,
-        };
+        // Build DAG nodes directly from plan steps (bypass intent classification)
+        let dag_id = Uuid::new_v4();
+        let mut graph = rigorix_engine::dag_engine::domain::TaskGraph::new();
 
-        let output = timeout(self.config.execute_timeout, self.orchestrator.run(input))
-            .await
-            .map_err(|_| EngineFacadeError::Timeout {
-                operation: "execute".into(),
-                duration_secs: self.config.execute_timeout.as_secs(),
-            })?
-            .map_err(|e| map_orchestrator_error("execute", &e))?;
+        for step in plan.steps() {
+            let node_id = Uuid::new_v4();
+            let node = rigorix_engine::dag_engine::domain::TaskNode::new(
+                node_id,
+                step.name().to_string(),
+                step.tool().to_string(),
+                vec![], // no cross-node deps (sequential or single-step)
+                step.description().to_string(),
+            );
+            graph.add_unchecked(node).map_err(|e| {
+                EngineFacadeError::Internal(format!("Failed to add graph node: {e}"))
+            })?;
+        }
 
-        let record = &output.record;
-        let steps: Vec<StepResult> = record
-            .task_results
-            .iter()
-            .map(|t| {
+        graph.seal().map_err(|e| {
+            EngineFacadeError::Internal(format!("Failed to seal execution graph: {e}"))
+        })?;
+
+        let exec_output = timeout(
+            self.config.execute_timeout,
+            self.execution_engine
+                .execute_graph(ExecuteGraphInput {
+                    dag_id,
+                    graph: Some(graph),
+                    config_override: None,
+                }),
+        )
+        .await
+        .map_err(|_| EngineFacadeError::Timeout {
+            operation: "execute".into(),
+            duration_secs: self.config.execute_timeout.as_secs(),
+        })?
+        .map_err(|e| EngineFacadeError::EngineError(e.to_string()))?;
+
+        // Convert execution engine results to MCP StepResult list
+        let engine_results = &exec_output.result;
+        let steps: Vec<StepResult> = engine_results
+            .node_results
+            .values()
+            .map(|tr| {
                 StepResult::new(
-                    t.node_name.clone(),
-                    t.status == rigorix_engine::orchestrator::domain::record::TaskStatus::Success,
-                    t.error.clone(),
-                    t.output
+                    tr.node_name.clone(),
+                    tr.success,
+                    tr.error.clone(),
+                    tr.output
                         .as_ref()
                         .and_then(|o| serde_json::from_str(o).ok())
                         .unwrap_or(serde_json::Value::Null),
-                    t.duration_ms,
+                    tr.duration_ms,
                 )
             })
             .collect();
 
+        let status = if engine_results.failed_count == 0 && !engine_results.cancelled {
+            ExecutionStatus::Completed
+        } else {
+            ExecutionStatus::Failed
+        };
+
         let result = ExecutionResult::new(
-            record.execution_id,
-            map_execution_status(record.status),
+            dag_id,
+            status,
             steps,
-            record.duration_ms,
-            Some(record.planning.total_tokens as u64),
-            format!("rigorix://audit/{}", record.execution_id),
+            engine_results.total_duration_ms,
+            None,
+            format!("rigorix://audit/{dag_id}"),
         );
 
         self.repository.save_execution(&result).await?;
@@ -292,11 +323,3 @@ fn map_enforcement_error(err: EnforcementError) -> EngineFacadeError {
     }
 }
 
-fn map_execution_status(status: EngineStatus) -> ExecutionStatus {
-    match status {
-        EngineStatus::Completed => ExecutionStatus::Completed,
-        EngineStatus::Failed => ExecutionStatus::Failed,
-        EngineStatus::Cancelled => ExecutionStatus::Cancelled,
-        EngineStatus::PartialFailure => ExecutionStatus::PartialFailed,
-    }
-}
