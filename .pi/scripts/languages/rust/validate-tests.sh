@@ -4,6 +4,9 @@
 # ============================================================================
 set -euo pipefail
 
+# Scope to mcp/ package
+cd "$(git rev-parse --show-toplevel 2>/dev/null || echo ".")"/mcp 2>/dev/null || true
+
 PASS_COUNT=0
 ERRORS=()
 WARNINGS=()
@@ -56,25 +59,16 @@ fi
 echo ""
 echo "--- Integration Tests ---"
 if [ -d "tests" ]; then
-    # Try named integration test first, then all tests in tests/
-    if [ -f "tests/integration.rs" ] || ls tests/*integration* 1>/dev/null 2>&1; then
-        if cargo test --test integration --quiet 2>/dev/null; then
-            pass "Integration tests passed"
+    TEST_COUNT=$(find tests -name "*.rs" 2>/dev/null | wc -l 2>/dev/null || echo 0)
+    TEST_COUNT=$(echo "$TEST_COUNT" | tr -d ' ')
+    if [ "${TEST_COUNT:-0}" -gt 0 ]; then
+        if cargo test --quiet 2>/dev/null; then
+            pass "Integration tests passed ($TEST_COUNT test files)"
         else
             fail "Integration tests failed"
         fi
     else
-        # Run all integration test files
-        TEST_COUNT=$(find tests -name "*.rs" 2>/dev/null | wc -l | tr -d ' ')
-        if [ "$TEST_COUNT" -gt 0 ]; then
-            if cargo test --test '*' --quiet 2>/dev/null; then
-                pass "Integration tests passed"
-            else
-                fail "Integration tests failed"
-            fi
-        else
-            pass "Integration test files found but empty or skipped"
-        fi
+        pass "No integration test files found"
     fi
 else
     pass "No tests/ directory (no integration tests to run)"
@@ -88,7 +82,8 @@ echo "--- Doctests ---"
 if cargo test --doc --quiet 2>/dev/null; then
     pass "Doctests passed"
 else
-    DOCS=$(grep -rl '//!\|///' src/ 2>/dev/null | wc -l | tr -d ' ')
+    DOCS=$(grep -rl '//!\|///' src/ 2>/dev/null | wc -l 2>/dev/null || echo 0)
+    DOCS=$(echo "$DOCS" | tr -d ' ')
     if [ "$DOCS" -eq 0 ]; then
         pass "No doc comments found (no doctests to run)"
     else

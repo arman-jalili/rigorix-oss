@@ -227,6 +227,11 @@ run_stage "12" "template-tools_proofing" \
     "${SCRIPTS_DIR}/stage_template-tools_proofing.sh" \
     "always"
 
+# Stage 13: enterprise-proxy Proofing
+run_stage "13" "enterprise-proxy_proofing" \
+    "${SCRIPTS_DIR}/stage_enterprise-proxy_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""

@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: "template-tools"
+  epic: "enterprise-proxy"
   component: "Contract Freeze"
-  module: "template-tools"
+  module: "enterprise-proxy"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/template-tools.md"
+    - module: ".pi/architecture/modules/enterprise-proxy.md"
 
   acceptance_criteria:
     - "All component interfaces defined as interfaces/types"
@@ -48,28 +48,24 @@ guardian_issue:
     
 
   file_changes:
-    - "create: src/template-tools/domain/"
-    - "create: src/template-tools/application/"
-    - "create: src/template-tools/infrastructure/"
-    - "create: src/template-tools/interfaces/"
+    - "create: src/enterprise-proxy/domain/"
+    - "create: src/enterprise-proxy/application/"
+    - "create: src/enterprise-proxy/infrastructure/"
+    - "create: src/enterprise-proxy/interfaces/"
 ---
 
-# Contract Freeze: template-tools
+# Contract Freeze: enterprise-proxy
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the template-tools
+Define and freeze all public interfaces, contracts, and schemas for the enterprise-proxy
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- TemplateRepository (Aggregate Root)
-- ListTemplatesHandler (Domain Service)
-- GetTemplateHandler (Domain Service)
-- CreateTemplateHandler (Domain Service)
-- ValidateTemplateHandler (Domain Service)
-- TemplateConverter (Domain Service)
+- EnterpriseProxy (Aggregate Root)
+- SchemaCache (Domain Service)
 
 ## What Must Be Frozen
 

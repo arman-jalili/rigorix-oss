@@ -4,6 +4,11 @@
 # ============================================================================
 set -euo pipefail
 
+# Change to MCP subdirectory if running from workspace root and src/mcp is not directly accessible
+if [ ! -d "src/mcp_server" ] && [ -d "mcp" ] && [ -f "mcp/Cargo.toml" ]; then
+    cd mcp
+fi
+
 PASS_COUNT=0
 ERRORS=()
 WARNINGS=()

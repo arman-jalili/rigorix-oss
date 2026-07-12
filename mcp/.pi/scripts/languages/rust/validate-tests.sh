@@ -4,6 +4,11 @@
 # ============================================================================
 set -euo pipefail
 
+# Change to MCP subdirectory if running from workspace root and src/mcp is not directly accessible
+if [ ! -d "src/mcp_server" ] && [ -d "mcp" ] && [ -f "mcp/Cargo.toml" ]; then
+    cd mcp
+fi
+
 PASS_COUNT=0
 ERRORS=()
 WARNINGS=()
@@ -56,25 +61,17 @@ fi
 echo ""
 echo "--- Integration Tests ---"
 if [ -d "tests" ]; then
-    # Try named integration test first, then all tests in tests/
-    if [ -f "tests/integration.rs" ] || ls tests/*integration* 1>/dev/null 2>&1; then
-        if cargo test --test integration --quiet 2>/dev/null; then
-            pass "Integration tests passed"
+    # Count test files
+    TEST_COUNT=$(find tests -name "*.rs" 2>/dev/null | wc -l 2>/dev/null | tr -d '[:space:]' || echo 0)
+    if [ "${TEST_COUNT:-0}" -gt 0 ]; then
+        # Run all tests — this includes integration tests in tests/
+        if cargo test --quiet 2>/dev/null; then
+            pass "Integration tests passed ($TEST_COUNT test files)"
         else
             fail "Integration tests failed"
         fi
     else
-        # Run all integration test files
-        TEST_COUNT=$(find tests -name "*.rs" 2>/dev/null | wc -l | tr -d ' ')
-        if [ "$TEST_COUNT" -gt 0 ]; then
-            if cargo test --test '*' --quiet 2>/dev/null; then
-                pass "Integration tests passed"
-            else
-                fail "Integration tests failed"
-            fi
-        else
-            pass "Integration test files found but empty or skipped"
-        fi
+        pass "No integration test files found"
     fi
 else
     pass "No tests/ directory (no integration tests to run)"

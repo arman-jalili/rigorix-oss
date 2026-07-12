@@ -179,8 +179,8 @@ export default function (pi: ExtensionAPI) {
 
 				const scriptPath = VALIDATORS[validator];
 				try {
-					const result = await ctx.shell.execute(`bash ${scriptPath}`, { signal });
-					results[validator] = { passed: result.exitCode === 0, output: result.stdout };
+					const result = await pi.exec("bash", [scriptPath], { signal });
+					results[validator] = { passed: result.code === 0, output: result.stdout ?? "" };
 				} catch (error) {
 					results[validator] = { passed: false, output: `Error: ${error}` };
 				}
