@@ -8,7 +8,7 @@ author: 'Rigorix'
 
 branding:
   icon: 'shield'
-  color: 'blue'
+  color: 'green'
 
 inputs:
   mode:
