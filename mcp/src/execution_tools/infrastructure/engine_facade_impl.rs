@@ -121,12 +121,16 @@ impl EngineFacade for EngineFacadeImpl {
 
         for step in plan.steps() {
             let node_id = Uuid::new_v4();
+            // Format the intent from step.parameters() in the format each exec_* expects:
+            //   Plain-string tools (file_read, run_command, git_stage): extract a key from parameters
+            //   JSON-string tools (file_write, edit_file, git_commit): serialize parameters to string
+            let intent = format_step_intent(step.tool(), step.parameters());
             let node = rigorix_engine::dag_engine::domain::TaskNode::new(
                 node_id,
                 step.name().to_string(),
                 step.tool().to_string(),
                 vec![], // no cross-node deps (sequential or single-step)
-                step.description().to_string(),
+                intent,
             );
             graph.add_unchecked(node).map_err(|e| {
                 EngineFacadeError::Internal(format!("Failed to add graph node: {e}"))
@@ -270,6 +274,46 @@ impl EngineFacade for EngineFacadeImpl {
             .find_cost_breakdown(execution_id)
             .await?
             .ok_or_else(|| EngineFacadeError::ExecutionNotFound(*execution_id.as_uuid()))
+    }
+}
+
+/// Format the `intent` field for a TaskNode from a step's tool name and parameters.
+///
+/// Each exec_* function in rigorix-engine's ParallelExecutionServiceImpl interprets
+/// the intent string differently:
+///
+/// | Tool | intent format | Source |
+/// |------|--------------|--------|
+/// | `run_command` | plain string (shell command) | `parameters["command"]` |
+/// | `file_read` | plain string (file path) | `parameters["path"]` |
+/// | `git_stage` | plain string (file path) | `parameters["path"]` |
+/// | `git_read` | plain string (git args) | `parameters["args"]` |
+/// | `file_write` | JSON string | serialize parameters |
+/// | `file_append` | JSON string | serialize parameters |
+/// | `file_patch` | JSON string | serialize parameters |
+/// | `edit_file` | JSON string | serialize parameters |
+/// | `git_commit` | JSON string | serialize parameters |
+fn format_step_intent(tool: &str, params: &serde_json::Value) -> String {
+    // Plain-string tools: extract a specific key from parameters
+    match tool {
+        "run_command" => params["command"]
+            .as_str()
+            .unwrap_or("")
+            .to_string(),
+        "file_read" => params["path"]
+            .as_str()
+            .unwrap_or("")
+            .to_string(),
+        "git_stage" => params["path"]
+            .as_str()
+            .unwrap_or("")
+            .to_string(),
+        "git_read" => params["args"]
+            .as_str()
+            .unwrap_or("")
+            .to_string(),
+        // JSON-string tools: serialize the entire parameters object
+        _ => serde_json::to_string(params).unwrap_or_default(),
     }
 }
 
