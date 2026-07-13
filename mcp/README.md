@@ -7,7 +7,7 @@
 
 **Model Context Protocol (MCP) gateway server for the Rigorix engine.**
 
-`rigorix-mcp` bridges AI coding assistants (Claude Code, Cursor, Aider, and any MCP-compatible client) with the Rigorix engine. It exposes 10 built-in OSS tools for plan execution, template management, and audit queries — plus optional enterprise proxy tools for API gateway integration.
+`rigorix-mcp` bridges AI coding assistants (Claude Code, Cursor, Aider, and any MCP-compatible client) with the Rigorix engine. It exposes 12 built-in OSS tools for plan execution, template management, and audit queries — plus optional enterprise proxy tools for API gateway integration.
 
 ---
 
@@ -49,8 +49,9 @@ The server reads newline-delimited JSON-RPC messages from stdin (stdio mode) or 
 │                    │        Tool Handlers     │          │   │
 │                    │                          ▼          │   │
 │                    │  ┌─────────────────────────────┐   │   │
-│                    │  │  Execution Tools (3)         │   │   │
+│                    │  │  Execution Tools (5)         │   │   │
 │                    │  │  rigorix_execute             │   │   │
+│                    │  │  rigorix_run                 │   │   │
 │                    │  │  rigorix_plan                │   │   │
 │                    │  │  rigorix_validate_plan       │   │   │
 │                    │  │  rigorix_check_enforcement   │   │   │
@@ -93,11 +94,11 @@ The crate follows Domain-Driven Design with Clean Architecture layers inside eac
 | Context | Responsibility | Tools |
 |---------|---------------|-------|
 | **MCP Server** | Transport, sessions, tool registry, request routing | Foundation layer |
-| **Execution Tools** | Plan execution, validation, enforcement checking | 4 tools |
+| **Execution Tools** | Plan execution, validation, enforcement checking | 5 tools |
 | **Template Tools** | Template CRUD (TOML files on disk) | 4 tools |
 | **Audit Tools** | Read-only audit querying and formatting | 3 tools |
 | **Usage Guide** | Self-documenting tool list and workflow patterns | 1 tool |
-| **Enterprise Proxy** | Conditional enterprise API gateway (optional) | Dynamic |
+| **Enterprise Proxy** | Conditional enterprise API gateway (optional) | 2 tools |
 
 ---
 
@@ -108,7 +109,8 @@ The crate follows Domain-Driven Design with Clean Architecture layers inside eac
 | Tool | Description |
 |------|-------------|
 | `rigorix_execute` | Execute a plan (DAG) through the Rigorix engine |
-| `rigorix_plan` | Generate an execution plan from a template |
+| `rigorix_run` | Load a template and execute its DAG through the engine |
+| `rigorix_plan` | Load a template and display the planned DAG without execution |
 | `rigorix_validate_plan` | Validate a plan against enforcement policies |
 | `rigorix_check_enforcement` | Check if any enforcement policies are active |
 
@@ -173,6 +175,7 @@ rigorix-mcp --sse --bind 127.0.0.1:3001
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `RIGORIX_REPO_ROOT` | `.` (CWD) | Repository root path for template/config discovery |
 | `ENTERPRISE_API_URL` | — | Enterprise API base URL (enables proxy) |
 | `ENTERPRISE_API_KEY` | — | Enterprise API authentication key |
 | `ENTERPRISE_TIMEOUT_SECS` | 30 | Enterprise request timeout |
@@ -185,18 +188,53 @@ rigorix-mcp --sse --bind 127.0.0.1:3001
 `rigorix.toml` in the repo root:
 
 ```toml
-[enterprise]
-api_url = "https://enterprise.rigorix.dev"
-api_key = "sk-..."
-timeout_secs = 30
-tls_verify = true
-max_retries = 3
-schema_ttl_secs = 3600
+# Audit backend (optional — audit envelopes sent via HTTP)
+audit_backend_url = "https://<backend-url>
+audit_backend_key = "rgx_live_sk_..."
 
-[audit]
-backend_url = "https://audit.rigorix.dev"
-backend_key = "ak-..."
+# Optional sections with defaults — all keys are optional
+[orchestrator]
+# control parallelism, retries, timeouts
+
 ```
+
+Audit config is loaded from `rigorix.toml`. Enterprise proxy is configured via environment variables only.
+
+### Claude Code Configuration
+
+Add to `.mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "rigorix-mcp": {
+      "command": "rigorix-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
+```
+
+Or with a full path to the binary:
+
+```json
+{
+  "mcpServers": {
+    "rigorix-mcp": {
+      "command": "/Users/<you>/.cargo/bin/rigorix-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
+```
+
+No environment variables are required — the binary reads `rigorix.toml` from the current working directory for audit config, and auto-derives `repository` (from `git remote get-url origin`) and `author` (from `git config user.email`) at execution time.
+
+### Other MCP Clients
+
+Cursor, Aider, and other MCP-compatible clients use a similar JSON config. Refer to each client's documentation for the exact config file location and format.
 
 ---
 
