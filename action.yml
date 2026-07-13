@@ -3,7 +3,7 @@
 # Mode B: Active execution — AI code generation with validation loop
 
 name: 'Rigorix'
-description: 'AI code governance and execution — policy checks, code generation, self-correcting validation'
+description: 'EU AI Act compliance & audit — AI code governance with policy enforcement, audit trails, code generation, self-correcting validation'
 author: 'Rigorix'
 
 branding:
