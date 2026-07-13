@@ -49,3 +49,4 @@ pub mod enterprise_proxy;
 pub mod execution_tools;
 pub mod mcp_server;
 pub mod template_tools;
+pub mod usage_guide;

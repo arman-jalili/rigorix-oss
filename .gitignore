@@ -79,3 +79,8 @@ graphify-out/
 # Local CI reports
 .pi/output/
 .mcp.json\nmcp/019*.json\nmcp/.rigorix/
+
+# Test artifacts
+.mcp.json
+mcp/019f*.json
+mcp/.rigorix/

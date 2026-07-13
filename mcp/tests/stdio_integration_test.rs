@@ -130,14 +130,14 @@ fn test_stdio_list_tools() {
     assert_eq!(parsed["jsonrpc"], "2.0");
     assert_eq!(parsed["id"], 2);
 
-    // Verify tools returns all 10 registered OSS tool descriptors
+    // Verify tools returns all 11 registered OSS tool descriptors
     let tools = parsed["result"]["tools"]
         .as_array()
         .expect("tools should be an array");
     assert_eq!(
         tools.len(),
-        10,
-        "tools/list should return 10 registered tool descriptors, got {}",
+        11,
+        "tools/list should return 11 registered tool descriptors, got {}",
         tools.len()
     );
 

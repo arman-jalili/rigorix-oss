@@ -316,6 +316,7 @@ fn test_e2e_tools_list_contains_all_tools() {
         "rigorix_get_template",
         "rigorix_create_template",
         "rigorix_validate_template",
+        "rigorix_get_usage_guide",
     ];
 
     for tool in expected {
@@ -329,8 +330,8 @@ fn test_e2e_tools_list_contains_all_tools() {
 
     assert_eq!(
         names.len(),
-        10,
-        "Should have exactly 10 tools, got {}",
+        11,
+        "Should have exactly 11 tools, got {}",
         names.len()
     );
 

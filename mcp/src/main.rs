@@ -319,6 +319,11 @@ impl AppState {
                 Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
             }
 
+            // Usage guide tool
+            "rigorix_get_usage_guide" => {
+                Ok(rigorix_mcp::usage_guide::interfaces::mcp::handle_get_usage_guide())
+            }
+
             _ => Err(serde_json::json!({
                 "error": format!("Unknown tool: {}", tool_name)
             })),
@@ -514,6 +519,8 @@ fn all_tool_descriptors() -> Vec<serde_json::Value> {
         rigorix_mcp::template_tools::interfaces::mcp::rigorix_get_template_tool_descriptor(),
         rigorix_mcp::template_tools::interfaces::mcp::rigorix_create_template_tool_descriptor(),
         rigorix_mcp::template_tools::interfaces::mcp::rigorix_validate_template_tool_descriptor(),
+        // Usage guide (1)
+        rigorix_mcp::usage_guide::interfaces::mcp::rigorix_get_usage_guide_tool_descriptor(),
     ]
 }
 
