@@ -12,7 +12,7 @@ name = "rigorix-action"
 path = "src/main.rs"
 
 [dependencies]
-rigorix-engine = { path = "../engine" }
+rigorix-engine = { path = "../engine", version = "0.1.0" }
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml = "0.9"
