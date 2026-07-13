@@ -21,7 +21,6 @@ use rigorix_engine::orchestrator::application::OrchestratorService;
 use rigorix_engine::orchestrator::application::dto::PlanOnlyInput;
 use rigorix_engine::orchestrator::domain::OrchestratorError;
 
-use crate::execution_tools::application::intent_formatter::IntentFormatter;
 use crate::execution_tools::domain::entity::EngineFacade;
 use crate::execution_tools::domain::error::EngineFacadeError;
 use crate::execution_tools::domain::value::{
@@ -62,7 +61,6 @@ pub struct EngineFacadeImpl {
     enforcer: Arc<dyn rigorix_engine::enforcement::application::ExecutionEnforcer>,
     repository: Arc<dyn ExecutionRepository>,
     config: EngineFacadeConfig,
-    intent_formatter: Arc<dyn IntentFormatter>,
     instance_id: Uuid,
 }
 
@@ -73,7 +71,6 @@ impl EngineFacadeImpl {
         enforcer: Arc<dyn rigorix_engine::enforcement::application::ExecutionEnforcer>,
         repository: Arc<dyn ExecutionRepository>,
         config: EngineFacadeConfig,
-        intent_formatter: Arc<dyn IntentFormatter>,
     ) -> Self {
         Self {
             orchestrator,
@@ -81,7 +78,6 @@ impl EngineFacadeImpl {
             enforcer,
             repository,
             config,
-            intent_formatter,
             instance_id: Uuid::new_v4(),
         }
     }
@@ -94,14 +90,12 @@ impl EngineFacadeImpl {
         enforcer: Arc<dyn rigorix_engine::enforcement::application::ExecutionEnforcer>,
     ) -> Self {
         use super::in_memory_repository::InMemoryExecutionRepository;
-        use super::json_intent_formatter::JsonIntentFormatter;
         Self::new(
             orchestrator,
             execution_engine,
             enforcer,
             Arc::new(InMemoryExecutionRepository::new()),
             EngineFacadeConfig::default(),
-            Arc::new(JsonIntentFormatter),
         )
     }
 }
@@ -122,19 +116,16 @@ impl EngineFacade for EngineFacadeImpl {
         }
 
         // Build DAG nodes directly from plan steps (bypass intent classification)
+        // Claude, guided by rigorix_get_usage_guide, formats parameters correctly.
+        // We pass them through as-is — rigorix owns execution, not intent translation.
         let dag_id = Uuid::new_v4();
         let mut graph = rigorix_engine::dag_engine::domain::TaskGraph::new();
 
         for step in plan.steps() {
             let node_id = Uuid::new_v4();
-            // Use the intent formatter to convert the step's tool + parameters
-            // into the exact intent string each exec_* function expects.
-            // The LLM-based formatter can handle arbitrary parameter shapes from Claude;
-            // the JSON fallback serializes parameters for JSON-expecting tools.
-            let intent = self
-                .intent_formatter
-                .format_intent(step.tool(), step.parameters(), step.description())
-                .await?;
+            // Serialize step parameters directly as the intent string.
+            // Claude ensures the correct format per tool type.
+            let intent = serde_json::to_string(step.parameters()).unwrap_or_default();
             let node = rigorix_engine::dag_engine::domain::TaskNode::new(
                 node_id,
                 step.name().to_string(),
