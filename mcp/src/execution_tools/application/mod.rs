@@ -17,9 +17,11 @@
 
 pub mod dto;
 pub mod factory;
+pub mod intent_formatter;
 pub mod service;
 pub mod service_impl;
 
 pub use dto::*;
 pub use factory::*;
+pub use intent_formatter::*;
 pub use service::*;

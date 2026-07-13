@@ -16,6 +16,8 @@
 
 pub mod engine_facade_impl;
 pub mod in_memory_repository;
+pub mod json_intent_formatter;
+pub mod llm_intent_formatter;
 pub mod repository;
 
 pub use engine_facade_impl::{EngineFacadeConfig, EngineFacadeImpl};

@@ -21,6 +21,7 @@ use rigorix_engine::orchestrator::application::OrchestratorService;
 use rigorix_engine::orchestrator::application::dto::PlanOnlyInput;
 use rigorix_engine::orchestrator::domain::OrchestratorError;
 
+use crate::execution_tools::application::intent_formatter::IntentFormatter;
 use crate::execution_tools::domain::entity::EngineFacade;
 use crate::execution_tools::domain::error::EngineFacadeError;
 use crate::execution_tools::domain::value::{
@@ -61,6 +62,7 @@ pub struct EngineFacadeImpl {
     enforcer: Arc<dyn rigorix_engine::enforcement::application::ExecutionEnforcer>,
     repository: Arc<dyn ExecutionRepository>,
     config: EngineFacadeConfig,
+    intent_formatter: Arc<dyn IntentFormatter>,
     instance_id: Uuid,
 }
 
@@ -71,6 +73,7 @@ impl EngineFacadeImpl {
         enforcer: Arc<dyn rigorix_engine::enforcement::application::ExecutionEnforcer>,
         repository: Arc<dyn ExecutionRepository>,
         config: EngineFacadeConfig,
+        intent_formatter: Arc<dyn IntentFormatter>,
     ) -> Self {
         Self {
             orchestrator,
@@ -78,6 +81,7 @@ impl EngineFacadeImpl {
             enforcer,
             repository,
             config,
+            intent_formatter,
             instance_id: Uuid::new_v4(),
         }
     }
@@ -90,12 +94,14 @@ impl EngineFacadeImpl {
         enforcer: Arc<dyn rigorix_engine::enforcement::application::ExecutionEnforcer>,
     ) -> Self {
         use super::in_memory_repository::InMemoryExecutionRepository;
+        use super::json_intent_formatter::JsonIntentFormatter;
         Self::new(
             orchestrator,
             execution_engine,
             enforcer,
             Arc::new(InMemoryExecutionRepository::new()),
             EngineFacadeConfig::default(),
+            Arc::new(JsonIntentFormatter),
         )
     }
 }
@@ -121,10 +127,14 @@ impl EngineFacade for EngineFacadeImpl {
 
         for step in plan.steps() {
             let node_id = Uuid::new_v4();
-            // Format the intent from step.parameters() in the format each exec_* expects:
-            //   Plain-string tools (file_read, run_command, git_stage): extract a key from parameters
-            //   JSON-string tools (file_write, edit_file, git_commit): serialize parameters to string
-            let intent = format_step_intent(step.tool(), step.parameters());
+            // Use the intent formatter to convert the step's tool + parameters
+            // into the exact intent string each exec_* function expects.
+            // The LLM-based formatter can handle arbitrary parameter shapes from Claude;
+            // the JSON fallback serializes parameters for JSON-expecting tools.
+            let intent = self
+                .intent_formatter
+                .format_intent(step.tool(), step.parameters(), step.description())
+                .await?;
             let node = rigorix_engine::dag_engine::domain::TaskNode::new(
                 node_id,
                 step.name().to_string(),
@@ -274,46 +284,6 @@ impl EngineFacade for EngineFacadeImpl {
             .find_cost_breakdown(execution_id)
             .await?
             .ok_or_else(|| EngineFacadeError::ExecutionNotFound(*execution_id.as_uuid()))
-    }
-}
-
-/// Format the `intent` field for a TaskNode from a step's tool name and parameters.
-///
-/// Each exec_* function in rigorix-engine's ParallelExecutionServiceImpl interprets
-/// the intent string differently:
-///
-/// | Tool | intent format | Source |
-/// |------|--------------|--------|
-/// | `run_command` | plain string (shell command) | `parameters["command"]` |
-/// | `file_read` | plain string (file path) | `parameters["path"]` |
-/// | `git_stage` | plain string (file path) | `parameters["path"]` |
-/// | `git_read` | plain string (git args) | `parameters["args"]` |
-/// | `file_write` | JSON string | serialize parameters |
-/// | `file_append` | JSON string | serialize parameters |
-/// | `file_patch` | JSON string | serialize parameters |
-/// | `edit_file` | JSON string | serialize parameters |
-/// | `git_commit` | JSON string | serialize parameters |
-fn format_step_intent(tool: &str, params: &serde_json::Value) -> String {
-    // Plain-string tools: extract a specific key from parameters
-    match tool {
-        "run_command" => params["command"]
-            .as_str()
-            .unwrap_or("")
-            .to_string(),
-        "file_read" => params["path"]
-            .as_str()
-            .unwrap_or("")
-            .to_string(),
-        "git_stage" => params["path"]
-            .as_str()
-            .unwrap_or("")
-            .to_string(),
-        "git_read" => params["args"]
-            .as_str()
-            .unwrap_or("")
-            .to_string(),
-        // JSON-string tools: serialize the entire parameters object
-        _ => serde_json::to_string(params).unwrap_or_default(),
     }
 }
 

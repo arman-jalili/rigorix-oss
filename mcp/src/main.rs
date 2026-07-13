@@ -33,6 +33,7 @@ use rigorix_mcp::audit_tools::application::service_impl::{
 use rigorix_mcp::audit_tools::domain::entity::{AuditFormatter, SharedAuditQueryService};
 use rigorix_mcp::audit_tools::domain::formatter_impl::AuditFormatterImpl;
 
+use rigorix_mcp::execution_tools::application::IntentFormatter;
 use rigorix_mcp::execution_tools::application::service::{
     CheckEnforcementHandler, ExecuteHandler, ValidatePlanHandler,
 };
@@ -483,6 +484,9 @@ async fn build_real_engine(repo_root: &str) -> Result<SharedEngineFacade, Box<dy
     // ── EngineFacadeImpl ──
     let execution_repo: Arc<dyn ExecutionRepository> = Arc::new(InMemoryExecutionRepository::new());
 
+    // ── Intent formatter: use LLM when provider env vars are set, otherwise JSON fallback ──
+    let intent_formatter: Arc<dyn IntentFormatter> = build_intent_formatter().await?;
+
     let engine = EngineFacadeImpl::new(
         Arc::from(orchestrator),
         execution_service,
@@ -494,9 +498,66 @@ async fn build_real_engine(repo_root: &str) -> Result<SharedEngineFacade, Box<dy
             enforcement_enabled: true,
             repo_root: repo_root.to_string(),
         },
+        intent_formatter,
     );
 
     Ok(Arc::new(engine))
+}
+
+/// Build the intent formatter — LLM-based when provider env vars are set,
+/// JSON fallback otherwise.
+async fn build_intent_formatter() -> Result<Arc<dyn IntentFormatter>, Box<dyn std::error::Error + Send + Sync>> {
+    use rigorix_engine::llm_step::application::factory::LlmProviderClientFactory;
+    // Try LLM-based formatter when ANTHROPIC_API_KEY is configured
+    let api_key = std::env::var("ANTHROPIC_API_KEY")
+        .or_else(|_| std::env::var("OPENAI_API_KEY"))
+        .ok();
+
+    let llm_formatter = if let Some(_api_key) = api_key {
+        let provider = if std::env::var("ANTHROPIC_API_KEY").is_ok() {
+            ("anthropic", std::env::var("ANTHROPIC_MODEL").unwrap_or_else(|_| "claude-sonnet-4-20250514".into()))
+        } else {
+            ("openai", std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-4o".into()))
+        };
+
+        let config = rigorix_engine::llm_step::application::factory::LlmProviderConfig {
+            provider_name: provider.0.to_string(),
+            default_model: provider.1.to_string(),
+            api_url: std::env::var("LLM_API_URL").unwrap_or_else(|_| "https://api.anthropic.com/v1/messages".into()),
+            max_tokens: 1000,
+            temperature: 0.1,
+        };
+
+        // The API key must be injected into the client; currently LlmProviderClientFactory
+        // doesn't receive API key from config — it creates the client with empty key.
+        // In practice, the LLM client picks up ANTHROPIC_API_KEY from the environment.
+        match rigorix_engine::llm_step::application::factory_impl::LlmProviderClientFactoryImpl::default()
+            .create_client(config)
+            .await
+        {
+            Ok(client) => {
+                tracing::info!("LLM intent formatter enabled (provider: {}, model: {})", provider.0, provider.1);
+                let formatter: Arc<dyn IntentFormatter> = Arc::new(
+                    rigorix_mcp::execution_tools::infrastructure::llm_intent_formatter::LlmIntentFormatter::new(
+                        Arc::from(client),
+                        provider.1.to_string(),
+                    )
+                );
+                Some(formatter)
+            }
+            Err(e) => {
+                tracing::warn!("Failed to create LLM client for intent formatting: {}. Falling back to JSON formatter.", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    Ok(llm_formatter.unwrap_or_else(|| -> Arc<dyn IntentFormatter> {
+        tracing::info!("JSON intent formatter enabled (no LLM provider configured)");
+        Arc::new(rigorix_mcp::execution_tools::infrastructure::json_intent_formatter::JsonIntentFormatter)
+    }))
 }
 
 // =========================================================================
