@@ -16,6 +16,7 @@ name: Build Action Image
 on:
   push:
     branches: [main]
+    tags: ["v*.*.*"]
     paths:
       - 'actions/**'
       - 'engine/**'
@@ -56,6 +57,7 @@ jobs:
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern=v{{version}}
             type=sha,format=short
 
       - name: Build and push

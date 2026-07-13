@@ -46,6 +46,6 @@ WORKDIR /github/workspace
 COPY --from=builder /app/target/release/rigorix-action /usr/local/bin/rigorix-action
 
 # Copy action metadata
-COPY actions/action.yml /action.yml
+COPY action.yml /action.yml
 
 ENTRYPOINT ["/usr/local/bin/rigorix-action"]
