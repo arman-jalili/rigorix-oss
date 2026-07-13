@@ -455,6 +455,47 @@ mod tests {
             )
         }
 
+        async fn run_from_template(
+            &self,
+            _input: rigorix_engine::orchestrator::application::dto::RunFromTemplateInput,
+        ) -> Result<
+            rigorix_engine::orchestrator::application::dto::RunOutput,
+            rigorix_engine::orchestrator::domain::OrchestratorError,
+        > {
+            let exec_id = uuid::Uuid::new_v4();
+            let now = chrono::Utc::now();
+            Ok(rigorix_engine::orchestrator::application::dto::RunOutput {
+                execution_id: exec_id,
+                record: rigorix_engine::orchestrator::domain::record::ExecutionRecord {
+                    execution_id: exec_id,
+                    planning: Default::default(),
+                    task_results: vec![],
+                    events: vec![],
+                    context: Default::default(),
+                    started_at: now,
+                    completed_at: Some(now),
+                    duration_ms: 100,
+                    status:
+                        rigorix_engine::orchestrator::domain::record::ExecutionStatus::Completed,
+                },
+            })
+        }
+
+        async fn plan_from_template(
+            &self,
+            _input: rigorix_engine::orchestrator::application::dto::PlanFromTemplateInput,
+        ) -> Result<
+            rigorix_engine::orchestrator::application::dto::PlanOnlyOutput,
+            rigorix_engine::orchestrator::domain::OrchestratorError,
+        > {
+            Ok(
+                rigorix_engine::orchestrator::application::dto::PlanOnlyOutput {
+                    plan: serde_json::json!({"mode": "from_template"}),
+                    graph: serde_json::json!({"nodes": []}),
+                },
+            )
+        }
+
         fn event_bus(&self) -> &dyn rigorix_engine::event_system::application::EventBusService {
             unimplemented!("event_bus not needed in tests")
         }

@@ -493,15 +493,26 @@ impl ParallelExecutionServiceImpl {
         result
     }
 
+    /// Try to extract a named field from a JSON intent string.
+    /// Falls back to using the intent as-is if it's not valid JSON
+    /// or doesn't contain the expected field.
+    fn resolve_json_field(intent: &str, field: &str) -> String {
+        serde_json::from_str::<serde_json::Value>(intent)
+            .ok()
+            .and_then(|v| v.get(field).and_then(|v| v.as_str().map(String::from)))
+            .unwrap_or_else(|| intent.to_string())
+    }
+
     async fn exec_run_command(
         intent: &str,
         node_id: Uuid,
         node_name: &str,
         start: std::time::Instant,
     ) -> TaskResult {
+        let command = Self::resolve_json_field(intent, "command");
         let output = tokio::process::Command::new("sh")
             .arg("-c")
-            .arg(intent)
+            .arg(&command)
             .output()
             .await;
         match output {
@@ -546,9 +557,9 @@ impl ParallelExecutionServiceImpl {
         node_name: &str,
         start: std::time::Instant,
     ) -> TaskResult {
-        let path = intent;
+        let path = Self::resolve_json_field(intent, "path");
         let duration_ms = start.elapsed().as_millis() as u64;
-        match std::fs::read_to_string(path) {
+        match std::fs::read_to_string(&path) {
             Ok(content) => {
                 let truncated: String = content.chars().take(4096).collect();
                 TaskResult::success(node_id, node_name, Some(truncated), duration_ms, 0)
@@ -991,7 +1002,8 @@ impl ParallelExecutionServiceImpl {
         node_name: &str,
         start: std::time::Instant,
     ) -> TaskResult {
-        let args: Vec<&str> = intent.split_whitespace().collect();
+        let args_str = Self::resolve_json_field(intent, "args");
+        let args: Vec<&str> = args_str.split_whitespace().collect();
         let output = if args.is_empty() {
             tokio::process::Command::new("git").output().await
         } else {
@@ -1037,9 +1049,9 @@ impl ParallelExecutionServiceImpl {
         node_name: &str,
         start: std::time::Instant,
     ) -> TaskResult {
-        let path = intent;
+        let path = Self::resolve_json_field(intent, "path");
         let output = tokio::process::Command::new("git")
-            .args(["add", path])
+            .args(["add", path.as_str()])
             .output()
             .await;
         let duration_ms = start.elapsed().as_millis() as u64;

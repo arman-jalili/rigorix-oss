@@ -109,3 +109,36 @@ pub trait CheckEnforcementHandler: Send + Sync {
     /// - `HandlerError::EngineError` if EngineFacade returns an error
     async fn handle(&self) -> Result<ToolCallResult, HandlerError>;
 }
+
+// ---------------------------------------------------------------------------
+// PlanHandler — Domain Service
+// ---------------------------------------------------------------------------
+
+/// Domain service that handles `rigorix_plan` tool calls.
+///
+/// Loads a template from the repository, converts it to an execution plan,
+/// validates against enforcement policies, and returns a structured DAG
+/// plan without executing.
+///
+/// # Contract (Frozen)
+///
+/// - Takes the rich template type (with version, tags, timestamps)
+/// - Validates enforcement pre-flight via EngineFacade
+/// - Returns structured PlanOutput with graph nodes and enforcement status
+/// - Never executes — read-only preview
+#[async_trait]
+pub trait PlanHandler: Send + Sync {
+    /// Handle a `rigorix_plan` tool call.
+    ///
+    /// 1. Converts template_tools::PlanTemplate to execution_tools::PlanTemplate
+    /// 2. Validates the plan against enforcement policies via EngineFacade
+    /// 3. Builds structured plan output with DAG nodes, constraints, enforcement info
+    ///
+    /// # Errors
+    /// - `HandlerError::InvalidArguments` if template conversion fails
+    /// - `HandlerError::EngineError` if EngineFacade validation errors
+    async fn handle(
+        &self,
+        template: &crate::template_tools::domain::value::PlanTemplate,
+    ) -> Result<ToolCallResult, HandlerError>;
+}

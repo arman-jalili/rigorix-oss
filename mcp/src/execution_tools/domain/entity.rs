@@ -46,7 +46,12 @@ pub trait EngineFacade: Send + Sync {
     /// - `EngineFacadeError::Timeout` if execution exceeds configured duration
     /// - `EngineFacadeError::BudgetExceeded` if enforcement budget is exhausted
     /// - `EngineFacadeError::EnforcementBlocked` if policy blocks execution
-    async fn execute(&self, plan: PlanTemplate) -> Result<ExecutionResult, EngineFacadeError>;
+    async fn execute(
+        &self,
+        plan: PlanTemplate,
+        repository: Option<String>,
+        author: Option<String>,
+    ) -> Result<ExecutionResult, EngineFacadeError>;
 
     /// Validate a plan against enforcement policies.
     ///

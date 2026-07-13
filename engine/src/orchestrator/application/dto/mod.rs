@@ -81,6 +81,67 @@ pub struct PlanOnlyOutput {
 }
 
 // ---------------------------------------------------------------------------
+// Run/Plan From Template DTOs — pre-resolved templates, skip intent→plan pipeline
+// ---------------------------------------------------------------------------
+
+/// A single step from a pre-resolved plan template.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TemplateStepDef {
+    pub name: String,
+    pub tool: String,
+    pub description: String,
+    pub parameters: serde_json::Value,
+    pub requires_approval: bool,
+    pub timeout_secs: Option<u64>,
+}
+
+/// Input for a full orchestrator run from a pre-resolved template.
+///
+/// Skips the planning pipeline (intent→classify→match→generate) because
+/// the steps are already concrete. Everything else — state persistence,
+/// DAG execution, quality gates, policy engine, audit dispatch — is
+/// identical to a normal `run()`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunFromTemplateInput {
+    /// Pre-resolved steps to execute.
+    pub steps: Vec<TemplateStepDef>,
+
+    /// Repository root path.
+    pub repo_root: String,
+
+    /// Optional execution ID (generated if not provided).
+    pub execution_id: Option<uuid::Uuid>,
+
+    /// Template name for audit and record metadata.
+    pub template_name: String,
+
+    /// Repository name for audit (e.g. "my-org/my-repo").
+    pub repository: Option<String>,
+
+    /// Author identity for audit (e.g. email or username).
+    pub author: Option<String>,
+
+    /// Optional enforcement preset override.
+    pub enforcement_preset: Option<String>,
+}
+
+/// Input for a plan-from-template operation (no execution).
+///
+/// Builds a TaskGraph from pre-resolved steps and returns the graph
+/// structure without executing anything. Used for preview/validation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlanFromTemplateInput {
+    /// Pre-resolved steps.
+    pub steps: Vec<TemplateStepDef>,
+
+    /// Repository root path.
+    pub repo_root: String,
+
+    /// Template name for metadata.
+    pub template_name: String,
+}
+
+// ---------------------------------------------------------------------------
 // Cancel DTOs
 // ---------------------------------------------------------------------------
 

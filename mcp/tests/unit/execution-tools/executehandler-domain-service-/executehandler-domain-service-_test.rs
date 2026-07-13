@@ -25,7 +25,12 @@ struct MockEngineForHandler;
 
 #[async_trait]
 impl EngineFacade for MockEngineForHandler {
-    async fn execute(&self, _plan: PlanTemplate) -> Result<ExecutionResult, EngineFacadeError> {
+    async fn execute(
+        &self,
+        _plan: PlanTemplate,
+        _repository: Option<String>,
+        _author: Option<String>,
+    ) -> Result<ExecutionResult, EngineFacadeError> {
         Ok(ExecutionResult::new(
             uuid::Uuid::nil(),
             ExecutionStatus::Completed,
@@ -90,9 +95,11 @@ fn test_executehandler_handles_execution() {
     )
     .unwrap();
     let result = rt.block_on(handler.handle(ExecuteInput {
-        plan,
+        plan: Some(plan),
         template_name: None,
         execution_id: None,
+        repository: None,
+        author: None,
     }));
     assert!(result.is_ok());
     assert!(!result.unwrap().is_error);

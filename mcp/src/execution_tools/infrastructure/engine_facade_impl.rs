@@ -3,9 +3,10 @@
 //! @canonical .pi/architecture/modules/execution-tools.md#enginefacade-impl
 //! Implements: EngineFacade trait — wraps rigorix-engine for execution, validation, enforcement
 //!
-//! The EngineFacadeImpl is a thin async facade over rigorix-engine's ParallelExecutionService
-//! (for executing plans directly from steps, bypassing intent classification), OrchestratorService
-//! (for validate_plan), and ExecutionEnforcer (for budget checks).
+//! The EngineFacadeImpl delegates execution and plan validation to the
+//! OrchestratorService (from-template path), which handles state persistence,
+//! DAG execution, quality gates, policy engine, and audit dispatch.
+//! Enforcement checks remain direct for check_enforcement().
 
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -15,10 +16,10 @@ use uuid::Uuid;
 
 use rigorix_engine::enforcement::application::dto::GetBudgetStatusInput;
 use rigorix_engine::enforcement::domain::EnforcementError;
-use rigorix_engine::execution_engine::application::dto::ExecuteGraphInput;
-use rigorix_engine::execution_engine::application::service::ParallelExecutionService;
-use rigorix_engine::orchestrator::application::OrchestratorService;
-use rigorix_engine::orchestrator::application::dto::PlanOnlyInput;
+use rigorix_engine::orchestrator::application::dto::{
+    PlanFromTemplateInput, RunFromTemplateInput, TemplateStepDef,
+};
+use rigorix_engine::orchestrator::application::service::OrchestratorService;
 use rigorix_engine::orchestrator::domain::OrchestratorError;
 
 use crate::execution_tools::domain::entity::EngineFacade;
@@ -50,14 +51,13 @@ impl Default for EngineFacadeConfig {
     }
 }
 
-/// Concrete EngineFacade that wraps rigorix-engine services.
+/// Concrete EngineFacade that wraps rigorix-engine's OrchestratorService.
 ///
-/// Execute() bypasses the orchestrator's planning pipeline (intent → classify
-/// → match template → generate DAG) because the plan already has concrete steps.
-/// Instead it builds TaskGraph nodes directly from PlanTemplate steps.
+/// Execute() and validate_plan() delegate to the orchestrator's from-template
+/// path, which handles the full lifecycle: state persistence, DAG execution,
+/// quality gates, policy engine, and audit dispatch.
 pub struct EngineFacadeImpl {
     orchestrator: Arc<dyn OrchestratorService>,
-    execution_engine: Arc<dyn ParallelExecutionService>,
     enforcer: Arc<dyn rigorix_engine::enforcement::application::ExecutionEnforcer>,
     repository: Arc<dyn ExecutionRepository>,
     config: EngineFacadeConfig,
@@ -67,14 +67,12 @@ pub struct EngineFacadeImpl {
 impl EngineFacadeImpl {
     pub fn new(
         orchestrator: Arc<dyn OrchestratorService>,
-        execution_engine: Arc<dyn ParallelExecutionService>,
         enforcer: Arc<dyn rigorix_engine::enforcement::application::ExecutionEnforcer>,
         repository: Arc<dyn ExecutionRepository>,
         config: EngineFacadeConfig,
     ) -> Self {
         Self {
             orchestrator,
-            execution_engine,
             enforcer,
             repository,
             config,
@@ -86,13 +84,11 @@ impl EngineFacadeImpl {
     #[allow(dead_code)]
     pub fn test_instance(
         orchestrator: Arc<dyn OrchestratorService>,
-        execution_engine: Arc<dyn ParallelExecutionService>,
         enforcer: Arc<dyn rigorix_engine::enforcement::application::ExecutionEnforcer>,
     ) -> Self {
         use super::in_memory_repository::InMemoryExecutionRepository;
         Self::new(
             orchestrator,
-            execution_engine,
             enforcer,
             Arc::new(InMemoryExecutionRepository::new()),
             EngineFacadeConfig::default(),
@@ -100,10 +96,160 @@ impl EngineFacadeImpl {
     }
 }
 
+// ── Helpers ──────────────────────────────────────────────────────────────
+
+/// Convert an MCP PlanTemplate to engine TemplateStepDefs.
+fn plan_to_step_defs(plan: &PlanTemplate) -> Vec<TemplateStepDef> {
+    plan.steps()
+        .iter()
+        .map(|s| TemplateStepDef {
+            name: s.name().to_string(),
+            tool: s.tool().to_string(),
+            description: s.description().to_string(),
+            parameters: s.parameters().clone(),
+            requires_approval: false,
+            timeout_secs: None,
+        })
+        .collect()
+}
+
+/// Convert engine TaskResult list to MCP StepResult list.
+///
+/// Non-JSON output (e.g. file contents) is wrapped as a JSON string
+/// instead of being silently dropped.
+fn task_results_to_steps(
+    results: &[rigorix_engine::orchestrator::domain::record::TaskResult],
+) -> Vec<StepResult> {
+    results
+        .iter()
+        .map(|tr| {
+            let output = tr.output.as_ref().map(|o| {
+                // Try to parse as JSON first; if it fails, wrap as string.
+                serde_json::from_str(o)
+                    .ok()
+                    .unwrap_or_else(|| serde_json::Value::String(o.clone()))
+            });
+            StepResult::new(
+                tr.node_name.clone(),
+                tr.status == rigorix_engine::orchestrator::domain::record::TaskStatus::Success,
+                tr.error.clone(),
+                output.unwrap_or(serde_json::Value::Null),
+                tr.duration_ms,
+            )
+        })
+        .collect()
+}
+
+/// Derive "owner/repo" from `git remote get-url origin` in the given repo root.
+fn derive_repository(repo_root: &str) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["-C", repo_root, "remote", "get-url", "origin"])
+        .output()
+        .ok()?;
+    if output.status.success() {
+        let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        parse_repo_from_url(&url)
+    } else {
+        None
+    }
+}
+
+/// Derive author email from `git config user.email` in the given repo root.
+fn derive_author(repo_root: &str) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["-C", repo_root, "config", "user.email"])
+        .output()
+        .ok()?;
+    if output.status.success() {
+        let email = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if email.is_empty() { None } else { Some(email) }
+    } else {
+        None
+    }
+}
+
+/// Normalize common git remote URL formats to "owner/repo".
+fn parse_repo_from_url(url: &str) -> Option<String> {
+    let stripped = url
+        .trim()
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+        .or_else(|| url.strip_prefix("ssh://"))
+        .unwrap_or(url);
+
+    let path = if let Some(at_pos) = stripped.find('@') {
+        if let Some(colon_pos) = stripped[at_pos..].find(':') {
+            &stripped[at_pos + colon_pos + 1..]
+        } else {
+            stripped
+        }
+    } else if let Some(slash_pos) = stripped.find('/') {
+        &stripped[slash_pos + 1..]
+    } else {
+        stripped
+    };
+
+    let path = path.strip_suffix(".git").unwrap_or(path);
+
+    if path.split('/').count() == 2 && !path.is_empty() && !path.starts_with('/') {
+        Some(path.to_string())
+    } else {
+        None
+    }
+}
+
+fn map_orchestrator_error(err: OrchestratorError) -> EngineFacadeError {
+    match &err {
+        OrchestratorError::ExecutionFailed { detail, .. } => {
+            EngineFacadeError::EngineError(detail.clone())
+        }
+        OrchestratorError::PlanningFailed { detail, .. } => {
+            EngineFacadeError::Internal(format!("Planning failed: {detail}"))
+        }
+        _ => EngineFacadeError::Internal(err.to_string()),
+    }
+}
+
+fn map_enforcement_error(err: EnforcementError) -> EngineFacadeError {
+    match err {
+        EnforcementError::BudgetExceeded {
+            resource,
+            used,
+            limit,
+        } => {
+            let tool_calls_remaining = if resource == "tool_calls" {
+                limit.saturating_sub(used)
+            } else {
+                0
+            };
+            let tokens_remaining = if resource == "tokens" {
+                limit.saturating_sub(used)
+            } else {
+                0
+            };
+            EngineFacadeError::BudgetExceeded {
+                tool_calls_remaining,
+                tokens_remaining,
+            }
+        }
+        EnforcementError::ToolBlocked { tool, .. } => {
+            EngineFacadeError::EnforcementBlocked(format!("Tool blocked: {}", tool))
+        }
+        _ => EngineFacadeError::EnforcementBlocked(err.to_string()),
+    }
+}
+
+// ── EngineFacade impl ────────────────────────────────────────────────────
+
 #[async_trait]
 impl EngineFacade for EngineFacadeImpl {
-    async fn execute(&self, plan: PlanTemplate) -> Result<ExecutionResult, EngineFacadeError> {
-        // Optional enforcement check
+    async fn execute(
+        &self,
+        plan: PlanTemplate,
+        repository: Option<String>,
+        author: Option<String>,
+    ) -> Result<ExecutionResult, EngineFacadeError> {
+        // Optional enforcement pre-check
         if self.config.enforcement_enabled {
             let _enforcement = self
                 .enforcer
@@ -115,81 +261,57 @@ impl EngineFacade for EngineFacadeImpl {
                 .map_err(map_enforcement_error)?;
         }
 
-        // Build DAG nodes directly from plan steps (bypass intent classification)
-        // Claude, guided by rigorix_get_usage_guide, formats parameters correctly.
-        // We pass them through as-is — rigorix owns execution, not intent translation.
-        let dag_id = Uuid::new_v4();
-        let mut graph = rigorix_engine::dag_engine::domain::TaskGraph::new();
+        // Auto-derive repository and author from git if not provided
+        let repository = repository.or_else(|| derive_repository(&self.config.repo_root));
+        let author = author.or_else(|| derive_author(&self.config.repo_root));
 
-        for step in plan.steps() {
-            let node_id = Uuid::new_v4();
-            // Serialize step parameters directly as the intent string.
-            // Claude ensures the correct format per tool type.
-            let intent = serde_json::to_string(step.parameters()).unwrap_or_default();
-            let node = rigorix_engine::dag_engine::domain::TaskNode::new(
-                node_id,
-                step.name().to_string(),
-                step.tool().to_string(),
-                vec![], // no cross-node deps (sequential or single-step)
-                intent,
-            );
-            graph.add_unchecked(node).map_err(|e| {
-                EngineFacadeError::Internal(format!("Failed to add graph node: {e}"))
-            })?;
-        }
+        let steps_def = plan_to_step_defs(&plan);
+        let template_name = plan.name().to_string();
 
-        graph.seal().map_err(|e| {
-            EngineFacadeError::Internal(format!("Failed to seal execution graph: {e}"))
-        })?;
+        let input = RunFromTemplateInput {
+            steps: steps_def,
+            repo_root: self.config.repo_root.clone(),
+            execution_id: None, // orchestrator generates UUIDv7
+            template_name,
+            repository,
+            author,
+            enforcement_preset: None,
+        };
 
-        let exec_output = timeout(
+        let run_output = timeout(
             self.config.execute_timeout,
-            self.execution_engine
-                .execute_graph(ExecuteGraphInput {
-                    dag_id,
-                    graph: Some(graph),
-                    config_override: None,
-                }),
+            self.orchestrator.run_from_template(input),
         )
         .await
         .map_err(|_| EngineFacadeError::Timeout {
             operation: "execute".into(),
             duration_secs: self.config.execute_timeout.as_secs(),
         })?
-        .map_err(|e| EngineFacadeError::EngineError(e.to_string()))?;
+        .map_err(map_orchestrator_error)?;
 
-        // Convert execution engine results to MCP StepResult list
-        let engine_results = &exec_output.result;
-        let steps: Vec<StepResult> = engine_results
-            .node_results
-            .values()
-            .map(|tr| {
-                StepResult::new(
-                    tr.node_name.clone(),
-                    tr.success,
-                    tr.error.clone(),
-                    tr.output
-                        .as_ref()
-                        .and_then(|o| serde_json::from_str(o).ok())
-                        .unwrap_or(serde_json::Value::Null),
-                    tr.duration_ms,
-                )
-            })
-            .collect();
+        let record = &run_output.record;
+        let steps = task_results_to_steps(&record.task_results);
 
-        let status = if engine_results.failed_count == 0 && !engine_results.cancelled {
-            ExecutionStatus::Completed
-        } else {
-            ExecutionStatus::Failed
+        let status = match record.status {
+            rigorix_engine::orchestrator::domain::record::ExecutionStatus::Completed => {
+                ExecutionStatus::Completed
+            }
+            rigorix_engine::orchestrator::domain::record::ExecutionStatus::Failed
+            | rigorix_engine::orchestrator::domain::record::ExecutionStatus::PartialFailure => {
+                ExecutionStatus::Failed
+            }
+            rigorix_engine::orchestrator::domain::record::ExecutionStatus::Cancelled => {
+                ExecutionStatus::Failed
+            }
         };
 
         let result = ExecutionResult::new(
-            dag_id,
+            run_output.execution_id,
             status,
             steps,
-            engine_results.total_duration_ms,
+            record.duration_ms,
             None,
-            format!("rigorix://audit/{dag_id}"),
+            format!("rigorix://audit/{}", run_output.execution_id),
         );
 
         self.repository.save_execution(&result).await?;
@@ -200,34 +322,27 @@ impl EngineFacade for EngineFacadeImpl {
         &self,
         plan: PlanTemplate,
     ) -> Result<ValidationResult, EngineFacadeError> {
-        let input = PlanOnlyInput {
-            intent: serde_json::to_string(&serde_json::json!({
-                "name": plan.name(),
-                "step_count": plan.steps().len(),
-            }))
-            .unwrap_or_default(),
-            config: serde_json::json!({ "dry_run": true }),
+        let steps_def = plan_to_step_defs(&plan);
+        let template_name = plan.name().to_string();
+
+        let input = PlanFromTemplateInput {
+            steps: steps_def,
             repo_root: self.config.repo_root.clone(),
+            template_name,
         };
 
-        let output = timeout(
+        let _plan_output = timeout(
             self.config.validate_timeout,
-            self.orchestrator.plan_only(input),
+            self.orchestrator.plan_from_template(input),
         )
         .await
         .map_err(|_| EngineFacadeError::Timeout {
             operation: "validate_plan".into(),
             duration_secs: self.config.validate_timeout.as_secs(),
         })?
-        .map_err(|e| map_orchestrator_error("validate_plan", &e))?;
+        .map_err(map_orchestrator_error)?;
 
-        let valid = output
-            .plan
-            .get("valid")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
-
-        Ok(ValidationResult::new(valid, vec![], vec![], None))
+        Ok(ValidationResult::new(true, vec![], vec![], None))
     }
 
     async fn check_enforcement(&self) -> Result<EnforcementStatus, EngineFacadeError> {
@@ -240,7 +355,6 @@ impl EngineFacade for EngineFacadeImpl {
             .await
             .map_err(map_enforcement_error)?;
 
-        // Extract tool_calls and tokens budgets from the budgets vec
         let tool_budget = budget_status
             .budgets
             .iter()
@@ -277,54 +391,3 @@ impl EngineFacade for EngineFacadeImpl {
             .ok_or_else(|| EngineFacadeError::ExecutionNotFound(*execution_id.as_uuid()))
     }
 }
-
-fn map_orchestrator_error(_operation: &str, err: &OrchestratorError) -> EngineFacadeError {
-    match err {
-        OrchestratorError::PlanningFailed { detail, .. } => {
-            EngineFacadeError::PlanValidationFailed(detail.clone())
-        }
-        OrchestratorError::ExecutionFailed { detail, .. } => {
-            EngineFacadeError::EngineError(detail.clone())
-        }
-        OrchestratorError::StatePersistenceFailed { detail, .. } => {
-            EngineFacadeError::Internal(detail.clone())
-        }
-        OrchestratorError::CancellationFailed { detail } => {
-            EngineFacadeError::Internal(detail.clone())
-        }
-        OrchestratorError::AuditFailed { detail, .. } => {
-            EngineFacadeError::Internal(format!("Audit: {}", detail))
-        }
-        OrchestratorError::Internal { detail, .. } => EngineFacadeError::Internal(detail.clone()),
-    }
-}
-
-fn map_enforcement_error(err: EnforcementError) -> EngineFacadeError {
-    match err {
-        EnforcementError::BudgetExceeded {
-            resource,
-            used,
-            limit,
-        } => {
-            let tool_calls_remaining = if resource == "tool_calls" {
-                limit.saturating_sub(used)
-            } else {
-                0
-            };
-            let tokens_remaining = if resource == "tokens" {
-                limit.saturating_sub(used)
-            } else {
-                0
-            };
-            EngineFacadeError::BudgetExceeded {
-                tool_calls_remaining,
-                tokens_remaining,
-            }
-        }
-        EnforcementError::ToolBlocked { tool, .. } => {
-            EngineFacadeError::EnforcementBlocked(format!("Tool blocked: {}", tool))
-        }
-        _ => EngineFacadeError::EnforcementBlocked(err.to_string()),
-    }
-}
-

@@ -79,6 +79,9 @@ pub struct AuditEnvelope {
     pub timestamp: DateTime<Utc>,
     pub template_id: String,
     pub planning_hash: String,    // SHA-256 of planning prompt
+    pub source: Option<String>,   // Source environment (e.g. "rigorix_cli", "rigorix_action")
+    pub repository: Option<String>, // Repository name (e.g. "my-org/my-repo")
+    pub author: Option<String>,   // Author identity (email or username)
     pub events: Vec<ExecutionEventRef>,
     pub signature: Option<String>, // HMAC-SHA256 signature for integrity
 }
@@ -228,11 +231,11 @@ See `.pi/architecture/CHANGELOG.md` for architecture change history.
 
 ---
 
-Last updated: 2026-06-15
-*Module version: 2.0.0*
+Last updated: 2026-07-13
+*Module version: 2.1.0*
 
 ---
 
-**Status:** Implemented  
-**Last verified:** 2026-06-15  
-**Module version:** 1.0.0
+**Status:** Implemented
+**Last verified:** 2026-07-13
+**Module version:** 2.1.0

@@ -99,6 +99,18 @@ pub trait OrchestratorService: Send + Sync {
     /// Full lifecycle: plan → execute → persist → emit → return record.
     async fn run(&self, input: RunInput) -> Result<RunOutput, OrchestratorError>;
 
+    /// Execute from a pre-resolved template (bypasses planning pipeline).
+    async fn run_from_template(
+        &self,
+        input: RunFromTemplateInput,
+    ) -> Result<RunOutput, OrchestratorError>;
+
+    /// Plan only from template (no execution). Returns the plan for preview.
+    async fn plan_from_template(
+        &self,
+        input: PlanFromTemplateInput,
+    ) -> Result<PlanOutput, OrchestratorError>;
+
     /// Plan only (no execution). Returns the plan for preview.
     async fn plan_only(&self, input: PlanOnlyInput) -> Result<PlanOnlyOutput, OrchestratorError>;
 
@@ -154,8 +166,10 @@ let result = orchestrator.run(RunInput { intent }).await?;
 
 | DTO | Input/Output | Fields |
 |-----|:-----------:|--------|
-| RunInput | Input | intent: UserIntent, config: Config, repo_root: PathBuf |
+| RunInput | Input | intent: String, config: Config, repo_root: String, repository: Option\<String\>, author: Option\<String\>, enforcement_preset: Option\<String\> |
+| RunFromTemplateInput | Input | steps: Vec\<TemplateStepDef\>, repo_root: String, execution_id: Option\<Uuid\>, template_name: String, repository: Option\<String\>, author: Option\<String\>, enforcement_preset: Option\<String\> |
 | RunOutput | Output | execution_id, record: ExecutionRecord |
+| PlanFromTemplateInput | Input | steps: Vec\<TemplateStepDef\>, repo_root: String, template_name: String |
 | PlanOnlyInput | Input | intent: UserIntent, config: Config, repo_root: PathBuf |
 | PlanOnlyOutput | Output | plan: PlanningResult, graph: TaskGraph |
 | CancelInput | Input | execution_id: Uuid, reason: Option\<String\> |
@@ -234,6 +248,7 @@ let result = orchestrator.run(RunInput { intent }).await?;
 
 | Date | Change | Section | Status |
 |------|--------|---------|--------|
+| 2026-07-13 | Added `repository`/`author` to RunInput and RunFromTemplateInput, added `run_from_template`/`plan_from_template` to trait | dtos, trait | done |
 | 2026-06-16 | Initial architecture definition | all | done |
 | 2026-06-16 | Contract freeze — all interfaces, DTOs, events, API contracts | interfaces, DTOs, events | done |
 | 2026-06-16 | OrchestratorService implementation (#339) | orchestrator-impl | done |

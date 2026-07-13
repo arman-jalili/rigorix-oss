@@ -71,7 +71,12 @@ impl TddMockEngine {
 
 #[async_trait]
 impl EngineFacade for TddMockEngine {
-    async fn execute(&self, _plan: PlanTemplate) -> Result<ExecutionResult, EngineFacadeError> {
+    async fn execute(
+        &self,
+        _plan: PlanTemplate,
+        _repository: Option<String>,
+        _author: Option<String>,
+    ) -> Result<ExecutionResult, EngineFacadeError> {
         self.execute_result
             .clone()
             .unwrap_or_else(|| Err(EngineFacadeError::EngineNotAvailable("mock".into())))
@@ -135,7 +140,7 @@ fn test_enginefacade_is_defined() {
 #[tokio::test]
 async fn test_enginefacade_executes_plan() {
     let engine = Arc::new(TddMockEngine::with_defaults());
-    let result = engine.execute(make_plan()).await;
+    let result = engine.execute(make_plan(), None, None).await;
     assert!(result.is_ok(), "EngineFacade should execute a plan");
     let exec = result.unwrap();
     assert_eq!(*exec.status(), ExecutionStatus::Completed);
@@ -178,9 +183,11 @@ async fn test_executehandler_handles_execution() {
 
     let result = handler
         .handle(ExecuteInput {
-            plan: make_plan(),
+            plan: Some(make_plan()),
             template_name: None,
             execution_id: None,
+            repository: None,
+            author: None,
         })
         .await;
 

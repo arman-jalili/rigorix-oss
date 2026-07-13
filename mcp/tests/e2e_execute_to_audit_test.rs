@@ -330,8 +330,8 @@ fn test_e2e_tools_list_contains_all_tools() {
 
     assert_eq!(
         names.len(),
-        11,
-        "Should have exactly 11 tools, got {}",
+        13,
+        "Should have exactly 13 tools, got {}",
         names.len()
     );
 

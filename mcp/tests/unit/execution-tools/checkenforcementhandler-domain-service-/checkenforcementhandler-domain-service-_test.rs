@@ -19,7 +19,12 @@ struct MockEngineForEnforcer;
 
 #[async_trait]
 impl EngineFacade for MockEngineForEnforcer {
-    async fn execute(&self, _plan: PlanTemplate) -> Result<ExecutionResult, EngineFacadeError> {
+    async fn execute(
+        &self,
+        _plan: PlanTemplate,
+        _repository: Option<String>,
+        _author: Option<String>,
+    ) -> Result<ExecutionResult, EngineFacadeError> {
         Ok(ExecutionResult::new(
             uuid::Uuid::nil(),
             ExecutionStatus::Completed,

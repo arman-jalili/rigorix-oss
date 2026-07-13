@@ -20,7 +20,12 @@ struct EngineFacadeTddContract;
 
 #[async_trait]
 impl EngineFacade for EngineFacadeTddContract {
-    async fn execute(&self, _plan: PlanTemplate) -> Result<ExecutionResult, EngineFacadeError> {
+    async fn execute(
+        &self,
+        _plan: PlanTemplate,
+        _repository: Option<String>,
+        _author: Option<String>,
+    ) -> Result<ExecutionResult, EngineFacadeError> {
         Ok(ExecutionResult::new(
             uuid::Uuid::nil(),
             ExecutionStatus::Completed,
@@ -92,7 +97,7 @@ fn test_enginefacade_executes_plan() {
         HashMap::new(),
     )
     .unwrap();
-    let result = rt.block_on(engine.execute(plan));
+    let result = rt.block_on(engine.execute(plan, None, None));
     assert!(result.is_ok());
     assert_eq!(*result.unwrap().status(), ExecutionStatus::Completed);
 }

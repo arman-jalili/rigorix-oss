@@ -4,7 +4,7 @@
 //! workflow patterns, and plan JSON structure. Self-documenting — Claude can
 //! call this at runtime to understand how to use rigorix correctly.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 // ---------------------------------------------------------------------------
 // Tool Schema
@@ -62,18 +62,18 @@ fn build_guide() -> Value {
             "steps": [
                 {
                     "step": 1,
-                    "action": "rigorix_create_template",
-                    "description": "Create a template with action nodes (file_read, run_command, etc.). This defines what will be executed."
+                    "action": "claude_writes_template",
+                    "description": "Claude writes a .rigorix/templates/<name>.toml file directly using the Write tool. This defines the steps and their dependencies."
                 },
                 {
                     "step": 2,
-                    "action": "rigorix_validate_plan",
-                    "description": "Validate a plan against enforcement policies before executing. Catches errors early."
+                    "action": "rigorix_plan",
+                    "description": "Load the template and display the planned DAG without executing. Shows graph nodes, dependencies, enforcement status, and estimated cost."
                 },
                 {
                     "step": 3,
-                    "action": "rigorix_execute",
-                    "description": "Execute the plan through rigorix-engine. Returns execution results with audit trail."
+                    "action": "rigorix_run",
+                    "description": "Execute the template's DAG through rigorix-engine. Returns per-step results with audit trail for compliance."
                 },
                 {
                     "step": 4,
@@ -103,14 +103,41 @@ fn build_guide() -> Value {
                 }
             },
             {
-                "type": "file_edit",
+                "type": "file_append",
+                "description": "Append content to a file (creates if it doesn't exist)",
+                "intent_format": "Append <content> to <path>",
+                "intent_example": "Append 'new line' to src/main.rs",
+                "parameters": {
+                    "path": "string — Path to the file",
+                    "content": "string — Content to append"
+                }
+            },
+            {
+                "type": "edit_file",
                 "description": "Edit an existing file with old/new text replacement",
                 "intent_format": "Replace <old> with <new> in <path>",
                 "intent_example": "Replace 'foo' with 'bar' in src/lib.rs",
                 "parameters": {
                     "path": "string — Path to the file",
                     "old_string": "string — Exact text to replace",
-                    "new_string": "string — Replacement text"
+                    "new_string": "string — Replacement text",
+                    "replace_all": "boolean (optional) — Replace all occurrences (default: false)"
+                }
+            },
+            {
+                "type": "file_patch",
+                "description": "Insert or patch content in a file using search or tree-sitter anchors",
+                "intent_format": "Patch <path> with <insert> at <search>",
+                "intent_example": "Patch src/lib.rs inserting a new function after 'fn main()'",
+                "parameters": {
+                    "path": "string — Path to the file",
+                    "insert": "string — Content to insert",
+                    "search": "string (optional) — Search text to locate insertion point",
+                    "before": "boolean (optional) — Insert before search match (default: after)",
+                    "anchor_type": "string (optional) — Tree-sitter node type for anchor-based insertion",
+                    "anchor_name": "string (optional) — Tree-sitter node name for anchor-based insertion",
+                    "container": "string (optional) — Container name to narrow anchor search",
+                    "position": "string (optional) — 'before' or 'after' anchor (default: 'after')"
                 }
             },
             {
@@ -119,65 +146,35 @@ fn build_guide() -> Value {
                 "intent_format": "Run <command>",
                 "intent_example": "Run cargo test",
                 "parameters": {
-                    "command": "string — Shell command to execute",
-                    "working_dir": "string (optional) — Working directory",
-                    "timeout_secs": "integer (optional) — Timeout in seconds"
+                    "command": "string — Shell command to execute"
                 }
             },
             {
-                "type": "llm_step",
-                "description": "Run an LLM query with system prompt and user prompt",
-                "intent_format": "Answer <question> using <context>",
-                "intent_example": "Explain the architecture using src/main.rs",
+                "type": "git_read",
+                "description": "Run a read-only git command and capture output",
+                "intent_format": "Run git <args>",
+                "intent_example": "Run git diff --stat",
                 "parameters": {
-                    "system_prompt": "string — System prompt for the LLM",
-                    "user_prompt": "string — User query",
-                    "model": "string (optional) — Model override",
-                    "temperature": "number (optional) — Temperature (0.0 to 1.0)"
+                    "args": "string — Git command arguments (e.g. 'diff', 'log --oneline', 'status')"
                 }
             },
             {
-                "type": "search_code",
-                "description": "Search codebase for a pattern",
-                "intent_format": "Search for <pattern> in <scope>",
-                "intent_example": "Search for EngineFacade in src/",
+                "type": "git_stage",
+                "description": "Stage a file with git add",
+                "intent_format": "Stage <path>",
+                "intent_example": "Stage src/main.rs",
                 "parameters": {
-                    "pattern": "string — Search pattern (regex)",
-                    "path": "string (optional) — Directory scope",
-                    "max_results": "integer (optional) — Max results (default: 50)"
+                    "path": "string — Path to the file to stage"
                 }
             },
             {
-                "type": "http_request",
-                "description": "Make an HTTP/HTTPS request",
-                "intent_format": "GET <url>",
-                "intent_example": "GET https://api.example.com/health",
+                "type": "git_commit",
+                "description": "Create a git commit with staged changes",
+                "intent_format": "Commit <message>",
+                "intent_example": "Commit 'Add new feature with tests'",
                 "parameters": {
-                    "method": "string — HTTP method (GET, POST, PUT, DELETE, etc.)",
-                    "url": "string — Request URL",
-                    "headers": "object (optional) — Request headers",
-                    "body": "string (optional) — Request body"
-                }
-            },
-            {
-                "type": "wait_for_approval",
-                "description": "Pause execution and wait for human approval. An approval prompt with reasoning is shown to the user",
-                "intent_format": "Request approval to <action> because <reason>",
-                "intent_example": "Request approval to deploy to production because staging tests passed",
-                "parameters": {
-                    "reason": "string — Explanation for why approval is needed",
-                    "timeout_secs": "integer (optional) — Approval timeout"
-                }
-            },
-            {
-                "type": "condition",
-                "description": "Evaluate a condition and branch execution",
-                "intent_format": "If <condition> then <action> else <fallback>",
-                "intent_example": "If cargo test passes then deploy else report failure",
-                "parameters": {
-                    "condition": "string — Expression to evaluate (e.g. 'previous_step.status == \"success\"')",
-                    "on_true": "string — Node ID to route to if condition is true",
-                    "on_false": "string — Node ID to route to if condition is false"
+                    "message": "string — Commit message",
+                    "auto_stage": "boolean (optional) — Stage all changes before commit (default: false)"
                 }
             }
         ],
@@ -253,7 +250,9 @@ description = "Read the specified file"
         "available_tools": {
             "description": "All registered MCP tools and their purposes:",
             "execution_tools": [
-                "rigorix_execute — Execute a structured plan through rigorix-engine",
+                "rigorix_plan — Load a template and display the planned DAG without execution",
+                "rigorix_run — Load a template and execute its DAG through rigorix-engine",
+                "rigorix_execute — Execute a plan or template through rigorix-engine (legacy, prefer plan+run)",
                 "rigorix_validate_plan — Validate a plan against enforcement policies",
                 "rigorix_check_enforcement — Check current enforcement status and budget"
             ],

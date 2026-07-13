@@ -24,21 +24,27 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Config {
     /// Execution parameters (parallelism, retries, timeouts).
+    #[serde(default)]
     pub orchestrator: OrchestratorConfig,
 
     /// Logging configuration (level, format, destination).
+    #[serde(default)]
     pub logging: LoggingConfig,
 
     /// Tool settings including risk configuration.
+    #[serde(default)]
     pub tools: ToolsConfig,
 
     /// Enforcement preset selection.
+    #[serde(default)]
     pub enforcement: EnforcementPreset,
 
     /// Audit backend configuration.
+    #[serde(default)]
     pub audit: AuditConfig,
 
     /// LLM provider settings.
+    #[serde(default)]
     pub llm: LlmConfig,
 
     /// Enforcement backend URL (optional).
@@ -52,6 +58,7 @@ pub struct Config {
 
     /// Audit backend URL (optional).
     /// When set, audit records are posted here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audit_backend_url: Option<String>,
 
     /// Audit backend API key (optional).
@@ -216,6 +223,7 @@ impl Default for AuditConfig {
 
 /// LLM provider configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct LlmConfig {
     /// Provider name (e.g. "anthropic", "openai", "deepseek").
     pub provider: LlmProvider,

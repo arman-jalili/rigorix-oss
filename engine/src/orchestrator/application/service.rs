@@ -18,7 +18,8 @@ use async_trait::async_trait;
 use crate::orchestrator::domain::OrchestratorError;
 
 use super::dto::{
-    CancelInput, CancelOutput, PlanOnlyInput, PlanOnlyOutput, RunInput, RunOutput, StatusOutput,
+    CancelInput, CancelOutput, PlanFromTemplateInput, PlanOnlyInput, PlanOnlyOutput,
+    RunFromTemplateInput, RunInput, RunOutput, StatusOutput,
 };
 
 /// Single entry point for executing a Rigorix run from intent to result.
@@ -69,6 +70,27 @@ pub trait OrchestratorService: Send + Sync {
     /// Returns the status of the current or most recent execution, including
     /// which DAG nodes have been completed, are running, or are pending.
     async fn status(&self) -> Result<StatusOutput, OrchestratorError>;
+
+    /// Full lifecycle from a pre-resolved template (no intent→plan pipeline).
+    ///
+    /// Builds a TaskGraph directly from concrete steps, then executes with
+    /// the same state persistence, quality gates, policy engine, and audit
+    /// dispatch as `run()`. Used when the caller has already resolved the
+    /// template (e.g. MCP server loads a .toml file from disk).
+    async fn run_from_template(
+        &self,
+        input: RunFromTemplateInput,
+    ) -> Result<RunOutput, OrchestratorError>;
+
+    /// Plan from a pre-resolved template (no execution).
+    ///
+    /// Builds a TaskGraph from concrete steps and returns it for preview.
+    /// Unlike `plan_only()`, this skips intent classification and template
+    /// matching — the steps are already concrete.
+    async fn plan_from_template(
+        &self,
+        input: PlanFromTemplateInput,
+    ) -> Result<PlanOnlyOutput, OrchestratorError>;
 
     /// Access the EventBus for subscriber registration (TUI, logs).
     ///

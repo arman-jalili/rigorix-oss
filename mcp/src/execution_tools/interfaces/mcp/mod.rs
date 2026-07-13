@@ -42,7 +42,7 @@ pub const RIGORIX_EXECUTE_INPUT_SCHEMA: &str = r#"{
     "properties": {
         "plan": {
             "type": "object",
-            "description": "The plan to execute with steps, constraints, and metadata",
+            "description": "The plan to execute with steps, constraints, and metadata. Omit if template_name is provided.",
             "properties": {
                 "name": { "type": "string", "description": "Plan name" },
                 "description": { "type": "string", "description": "Plan description" },
@@ -77,15 +77,22 @@ pub const RIGORIX_EXECUTE_INPUT_SCHEMA: &str = r#"{
         },
         "template_name": {
             "type": "string",
-            "description": "Optional template name for audit trail enrichment"
+            "description": "Name of an existing template to load and execute (created via rigorix_create_template). Use this instead of plan to execute a previously registered template."
         },
         "execution_id": {
             "type": "string",
             "format": "uuid",
             "description": "Optional pre-generated execution ID for idempotency"
+        },
+        "repository": {
+            "type": "string",
+            "description": "Repository name for audit (e.g. 'my-org/my-repo')"
+        },
+        "author": {
+            "type": "string",
+            "description": "Author identity for audit (e.g. email or username)"
         }
-    },
-    "required": ["plan"]
+    }
 }"#;
 
 /// JSON Schema for the `rigorix_validate_plan` tool input.
@@ -128,6 +135,43 @@ pub const RIGORIX_CHECK_ENFORCEMENT_INPUT_SCHEMA: &str = r#"{
     "description": "No input parameters required"
 }"#;
 
+/// JSON Schema for the `rigorix_plan` tool input.
+pub const RIGORIX_PLAN_INPUT_SCHEMA: &str = r#"{
+    "type": "object",
+    "properties": {
+        "template_name": {
+            "type": "string",
+            "description": "Name of the template to plan. The template must exist in .rigorix/templates/. Returns the planned DAG with enforcement validation without executing."
+        }
+    },
+    "required": ["template_name"]
+}"#;
+
+/// JSON Schema for the `rigorix_run` tool input.
+pub const RIGORIX_RUN_INPUT_SCHEMA: &str = r#"{
+    "type": "object",
+    "properties": {
+        "template_name": {
+            "type": "string",
+            "description": "Name of the template to execute. The template must exist in .rigorix/templates/. Executes the template's DAG and returns results with audit trail."
+        },
+        "execution_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Optional pre-generated execution ID for idempotency"
+        },
+        "repository": {
+            "type": "string",
+            "description": "Repository name for audit (e.g. 'my-org/my-repo')"
+        },
+        "author": {
+            "type": "string",
+            "description": "Author identity for audit (e.g. email or username)"
+        }
+    },
+    "required": ["template_name"]
+}"#;
+
 // ---------------------------------------------------------------------------
 // MCP Tool Descriptors
 // ---------------------------------------------------------------------------
@@ -158,6 +202,24 @@ pub fn rigorix_check_enforcement_tool_descriptor() -> serde_json::Value {
         "name": "rigorix_check_enforcement",
         "description": "Check current enforcement status including active preset, remaining budget (tool calls and tokens), and circuit breaker states.",
         "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_CHECK_ENFORCEMENT_INPUT_SCHEMA).unwrap()
+    })
+}
+
+/// Descriptor for the `rigorix_plan` tool.
+pub fn rigorix_plan_tool_descriptor() -> serde_json::Value {
+    json!({
+        "name": "rigorix_plan",
+        "description": "Resolve a template from .rigorix/templates/ and display the planned DAG without execution. Validates the plan against enforcement policies and shows the step graph, constraints, and enforcement status. Use this before rigorix_run to preview what will execute.",
+        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_PLAN_INPUT_SCHEMA).unwrap()
+    })
+}
+
+/// Descriptor for the `rigorix_run` tool.
+pub fn rigorix_run_tool_descriptor() -> serde_json::Value {
+    json!({
+        "name": "rigorix_run",
+        "description": "Load a template from .rigorix/templates/ and execute its DAG through rigorix-engine. Returns execution results with per-step status, duration, and audit URI.",
+        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_RUN_INPUT_SCHEMA).unwrap()
     })
 }
 
@@ -205,6 +267,8 @@ pub fn example_check_enforcement_output() -> CheckEnforcementOutput {
 /// List of all registered execution tool names.
 pub const EXECUTION_TOOL_NAMES: &[&str] = &[
     "rigorix_execute",
+    "rigorix_plan",
+    "rigorix_run",
     "rigorix_validate_plan",
     "rigorix_check_enforcement",
 ];

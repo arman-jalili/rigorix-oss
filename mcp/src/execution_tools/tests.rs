@@ -14,10 +14,10 @@ mod tests {
 
     use crate::execution_tools::application::dto::{ExecuteInput, ValidateInput};
     use crate::execution_tools::application::service::{
-        CheckEnforcementHandler, ExecuteHandler, ValidatePlanHandler,
+        CheckEnforcementHandler, ExecuteHandler, PlanHandler, ValidatePlanHandler,
     };
     use crate::execution_tools::application::service_impl::{
-        CheckEnforcementHandlerImpl, ExecuteHandlerImpl, ValidatePlanHandlerImpl,
+        CheckEnforcementHandlerImpl, ExecuteHandlerImpl, PlanHandlerImpl, ValidatePlanHandlerImpl,
     };
     use crate::execution_tools::domain::entity::{EngineFacade, SharedEngineFacade};
     use crate::execution_tools::domain::error::EngineFacadeError;
@@ -112,7 +112,12 @@ mod tests {
 
     #[async_trait]
     impl EngineFacade for MockEngineFacade {
-        async fn execute(&self, _plan: PlanTemplate) -> Result<ExecutionResult, EngineFacadeError> {
+        async fn execute(
+            &self,
+            _plan: PlanTemplate,
+            _repository: Option<String>,
+            _author: Option<String>,
+        ) -> Result<ExecutionResult, EngineFacadeError> {
             self.execute_result
                 .clone()
                 .unwrap_or_else(|| Err(EngineFacadeError::EngineNotAvailable("mock".into())))
@@ -172,7 +177,7 @@ mod tests {
     #[tokio::test]
     async fn test_enginefacade_execute_success() {
         let mock = Arc::new(MockEngineFacade::new().with_execute_ok());
-        let result = mock.execute(make_test_plan()).await;
+        let result = mock.execute(make_test_plan(), None, None).await;
         assert!(result.is_ok());
         let exec = result.unwrap();
         assert_eq!(*exec.status(), ExecutionStatus::Completed);
@@ -182,7 +187,7 @@ mod tests {
     #[tokio::test]
     async fn test_enginefacade_execute_budget_exceeded() {
         let mock = Arc::new(MockEngineFacade::new().with_execute_err());
-        let result = mock.execute(make_test_plan()).await;
+        let result = mock.execute(make_test_plan(), None, None).await;
         assert!(result.is_err());
         match result.unwrap_err() {
             EngineFacadeError::BudgetExceeded { .. } => {}
@@ -262,9 +267,11 @@ mod tests {
         let handler = ExecuteHandlerImpl::new(engine, Duration::from_secs(60));
 
         let input = ExecuteInput {
-            plan: make_test_plan(),
+            plan: Some(make_test_plan()),
             template_name: None,
             execution_id: None,
+            repository: None,
+            author: None,
         };
 
         let result = handler.handle(input).await;
@@ -396,5 +403,55 @@ mod tests {
         assert_eq!(step.tool(), "read");
         assert!(step.requires_approval());
         assert_eq!(step.timeout_secs(), Some(30));
+    }
+
+    // -------------------------------------------------------------------
+    // PlanHandler tests
+    // -------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_plan_handler_returns_dag() {
+        let engine: SharedEngineFacade = Arc::new(MockEngineFacade::new().with_validate_ok());
+        let handler = PlanHandlerImpl::new(engine);
+
+        // Build a template_tools::PlanTemplate
+        let now = chrono::Utc::now();
+        let step = crate::template_tools::domain::value::StepDefinition::new(
+            "read-file".into(),
+            "file_read".into(),
+            serde_json::json!({"path": "src/main.rs"}),
+            false,
+            "Read main.rs".into(),
+            None,
+        );
+        let template = crate::template_tools::domain::value::PlanTemplate::new(
+            "test-template".into(),
+            "A test plan".into(),
+            "1.0.0".into(),
+            vec!["test".into()],
+            vec![step],
+            None,
+            HashMap::new(),
+            now,
+            now,
+        )
+        .unwrap();
+
+        let result = handler.handle(&template).await;
+        assert!(result.is_ok());
+        let tc = result.unwrap();
+        assert!(!tc.is_error);
+
+        // Parse the JSON output
+        let output: serde_json::Value =
+            serde_json::from_str(&tc.content[0].text).expect("valid JSON");
+        assert_eq!(output["template_name"], "test-template");
+        assert_eq!(output["description"], "A test plan");
+        assert_eq!(output["version"], "1.0.0");
+        assert_eq!(output["graph"]["sealed"], true);
+        assert_eq!(output["graph"]["node_count"], 1);
+        assert_eq!(output["graph"]["nodes"][0]["name"], "read-file");
+        assert_eq!(output["graph"]["nodes"][0]["tool"], "file_read");
+        assert_eq!(output["enforcement"]["valid"], true);
     }
 }

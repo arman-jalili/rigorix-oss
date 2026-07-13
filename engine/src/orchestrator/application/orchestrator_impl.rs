@@ -21,8 +21,8 @@ use crate::orchestrator::domain::record::TaskStatus;
 use crate::orchestrator::domain::{OrchestratorConfig, OrchestratorError};
 
 use super::dto::{
-    CancelInput, CancelOutput, NodeState, PlanOnlyInput, PlanOnlyOutput, RunInput, RunOutput,
-    StatusOutput,
+    CancelInput, CancelOutput, NodeState, PlanFromTemplateInput, PlanOnlyInput, PlanOnlyOutput,
+    RunFromTemplateInput, RunInput, RunOutput, StatusOutput,
 };
 use super::service::OrchestratorService;
 
@@ -104,6 +104,12 @@ impl OrchestratorServiceImpl {
     /// Set the validation loop service for self-correcting plan→execute→verify cycles.
     pub fn with_validation_loop(mut self, svc: Arc<dyn ValidationLoopService>) -> Self {
         self.validation_loop_service = Some(svc);
+        self
+    }
+
+    /// Set the audit service for sending execution audit envelopes.
+    pub fn with_audit_service(mut self, audit: Arc<dyn audit_app::AuditService>) -> Self {
+        self.audit_service = Some(audit);
         self
     }
 
@@ -265,6 +271,40 @@ impl OrchestratorServiceImpl {
                 timestamp: chrono::Utc::now(),
             },
         }
+    }
+
+    /// Build a sealed TaskGraph directly from pre-resolved template steps.
+    ///
+    /// Each step becomes a TaskNode with no cross-node dependencies (sequential
+    /// or single-step execution). The step's parameters are serialized as the
+    /// node's intent string.
+    fn build_graph_from_steps(
+        &self,
+        steps: &[super::dto::TemplateStepDef],
+    ) -> Result<crate::dag_engine::domain::TaskGraph, OrchestratorError> {
+        let mut graph = crate::dag_engine::domain::TaskGraph::new();
+        for step in steps {
+            let node_id = Uuid::new_v4();
+            let intent = serde_json::to_string(&step.parameters).unwrap_or_default();
+            let node = crate::dag_engine::domain::TaskNode::new(
+                node_id,
+                step.name.clone(),
+                step.tool.clone(),
+                vec![],
+                intent,
+            );
+            graph
+                .add_unchecked(node)
+                .map_err(|e| OrchestratorError::Internal {
+                    detail: format!("Failed to add graph node: {e}"),
+                    source_module: "orchestrator".into(),
+                })?;
+        }
+        graph.seal().map_err(|e| OrchestratorError::Internal {
+            detail: format!("Failed to seal graph: {e}"),
+            source_module: "orchestrator".into(),
+        })?;
+        Ok(graph)
     }
 
     fn planning_meta(
@@ -744,6 +784,304 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 nodes: vec![],
             }),
         }
+    }
+
+    // ── From-template methods (skip intent→plan pipeline) ────────────
+
+    async fn run_from_template(
+        &self,
+        input: RunFromTemplateInput,
+    ) -> Result<RunOutput, OrchestratorError> {
+        let execution_id = input.execution_id.unwrap_or_else(|| self.gen_id());
+        let started_at = chrono::Utc::now();
+        tracing::info!(%execution_id, template=%input.template_name, "run_from_template");
+
+        // Init current execution state
+        *self.current_execution.write().await = Some(CurrentExecutionState {
+            execution_id,
+            status: ExecutionStatus::Failed,
+            nodes: vec![],
+            started_at,
+        });
+
+        // 1. Build DAG directly from pre-resolved steps
+        let graph = self.build_graph_from_steps(&input.steps)?;
+        let node_order: Vec<String> = graph.nodes().map(|n| n.name.clone()).collect();
+
+        let pmeta = PlanningMetadata {
+            template_id: input.template_name.clone(),
+            confidence: 1.0,
+            llm_calls: 0,
+            total_tokens: 0,
+            prompt_hash: String::new(),
+            generated_toml: None,
+            node_order,
+        };
+
+        // 2. Save initial state
+        self.state_manager
+            .save_state(Self::make_pending_state(execution_id))
+            .await
+            .map_err(|e| OrchestratorError::StatePersistenceFailed {
+                detail: e.to_string(),
+                state: "Pending".into(),
+            })?;
+
+        // 3. Execute DAG
+        let task_results = self
+            .execution_service
+            .execute_graph(exec_dto::ExecuteGraphInput {
+                dag_id: execution_id,
+                graph: Some(graph),
+                config_override: None,
+            })
+            .await
+            .map_err(|e| OrchestratorError::ExecutionFailed {
+                detail: e.to_string(),
+                nodes_completed: 0,
+                nodes_remaining: 0,
+            })
+            .map(|o| {
+                o.result
+                    .node_results
+                    .into_values()
+                    .map(|nr| TaskResult {
+                        node_id: nr.node_id.to_string(),
+                        node_name: nr.node_name,
+                        status: if nr.success {
+                            TaskStatus::Success
+                        } else {
+                            TaskStatus::Failure
+                        },
+                        duration_ms: nr.duration_ms,
+                        output: nr.output,
+                        error: nr.error,
+                        retry_attempts: nr.retry_attempts as u32,
+                        tool_used: None,
+                    })
+                    .collect::<Vec<_>>()
+            })?;
+
+        // 4. Determine final status
+        let final_status = if task_results.is_empty() {
+            ExecutionStatus::Completed
+        } else {
+            let f = task_results.iter().any(|t| t.status == TaskStatus::Failure);
+            let s = task_results.iter().any(|t| t.status == TaskStatus::Success);
+            if f && s {
+                ExecutionStatus::PartialFailure
+            } else if f {
+                ExecutionStatus::Failed
+            } else {
+                ExecutionStatus::Completed
+            }
+        };
+
+        // 5. Save final state
+        self.state_manager
+            .save_state(Self::make_final_state(execution_id, final_status))
+            .await
+            .map_err(|e| OrchestratorError::StatePersistenceFailed {
+                detail: e.to_string(),
+                state: format!("{final_status:?}"),
+            })?;
+
+        // 6. Quality Gate evaluation
+        if let Some(ref quality_svc) = self.quality_gate_service {
+            let classify_input = ClassifyTestScopeInput {
+                targeted_tests_run: true,
+                package_tests_run: true,
+                workspace_tests_run: final_status != ExecutionStatus::Failed,
+                lint_passed: false,
+                format_passed: false,
+                audit_passed: false,
+            };
+            if let Ok(classify_out) = quality_svc.classify_test_scope(classify_input).await {
+                use crate::quality_gates::domain::GreenContract;
+                let eval_input = EvaluateGateInput {
+                    contract: GreenContract::default(),
+                    observed_level: Some(classify_out.level),
+                    task_id: Some(execution_id.to_string()),
+                };
+                if let Ok(eval_out) = quality_svc.evaluate_gate(eval_input).await {
+                    tracing::info!(%execution_id, quality=%eval_out.summary, "Quality gate evaluated");
+                }
+            }
+        }
+
+        // 7. Policy Engine evaluation
+        if let Some(ref policy_svc) = self.policy_engine {
+            let green_level = if final_status == ExecutionStatus::Completed {
+                3u8
+            } else if final_status == ExecutionStatus::PartialFailure {
+                1u8
+            } else {
+                0u8
+            };
+            let context = LaneContext {
+                lane_id: execution_id.to_string(),
+                green_level,
+                branch_freshness_secs: 0,
+                blocker: LaneBlocker::None,
+                review_status: ReviewStatus::Pending,
+                diff_scope: DiffScope::Scoped,
+                completed: final_status == ExecutionStatus::Completed,
+                reconciled: false,
+            };
+            let eval_policy_input = EvaluatePolicyInput {
+                context,
+                rule_filter: None,
+            };
+            if let Ok(eval_policy_out) = policy_svc.evaluate(eval_policy_input).await {
+                for action in eval_policy_out.actions {
+                    tracing::info!(%execution_id, ?action, "Policy action dispatched");
+                }
+            }
+        }
+
+        // 8. Drain events
+        let events = self
+            .event_bus
+            .drain_persisted(event_app::DrainPersistedInput { clear: true })
+            .await
+            .map(|o| {
+                o.events
+                    .into_iter()
+                    .map(|pe| {
+                        let ts = match &pe.event {
+                            crate::event_system::domain::ExecutionEvent::PlanningStarted {
+                                timestamp,
+                                ..
+                            } => *timestamp,
+                            crate::event_system::domain::ExecutionEvent::PlanningCompleted {
+                                timestamp,
+                                ..
+                            } => *timestamp,
+                            crate::event_system::domain::ExecutionEvent::NodeStarted {
+                                timestamp,
+                                ..
+                            } => *timestamp,
+                            crate::event_system::domain::ExecutionEvent::NodeCompleted {
+                                timestamp,
+                                ..
+                            } => *timestamp,
+                            crate::event_system::domain::ExecutionEvent::NodeFailed {
+                                timestamp,
+                                ..
+                            } => *timestamp,
+                            crate::event_system::domain::ExecutionEvent::NodeRetrying {
+                                timestamp,
+                                ..
+                            } => *timestamp,
+                            crate::event_system::domain::ExecutionEvent::ToolExecuted {
+                                timestamp,
+                                ..
+                            } => *timestamp,
+                            crate::event_system::domain::ExecutionEvent::ExecutionCompleted {
+                                timestamp,
+                                ..
+                            } => *timestamp,
+                            crate::event_system::domain::ExecutionEvent::ExecutionFailed {
+                                timestamp,
+                                ..
+                            } => *timestamp,
+                            crate::event_system::domain::ExecutionEvent::ExecutionCancelled {
+                                timestamp,
+                                ..
+                            } => *timestamp,
+                            crate::event_system::domain::ExecutionEvent::BudgetWarning {
+                                timestamp,
+                                ..
+                            } => *timestamp,
+                        };
+                        ExecutionEventInfo {
+                            event_type: pe.event.event_type_name().to_string(),
+                            summary: pe.event.event_type_name().to_string(),
+                            occurred_at: ts,
+                            correlation_id: None,
+                            payload: None,
+                            status: EventInfoStatus::Info,
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // 9. Build record
+        let record = self.build_record(
+            execution_id,
+            started_at,
+            final_status,
+            Some(pmeta),
+            task_results,
+            ExecutionContext {
+                repo_root: input.repo_root,
+                symbol_graph_hash: None,
+                git_commit: None,
+                git_branch: None,
+                environment: std::env::var("RIGORIX_MCP_SERVER")
+                    .map(|_| "rigorix_mcp".to_string())
+                    .unwrap_or_else(|_| "rigorix_mcp".to_string()),
+                metadata: HashMap::new(),
+            },
+            events,
+        );
+
+        // 10. Optional audit (best-effort)
+        if let Some(ref audit) = self.audit_service
+            && self.config.audit_enabled
+        {
+            let aref: Vec<crate::audit::domain::ExecutionEventRef> = record
+                .events
+                .iter()
+                .map(|e| crate::audit::domain::ExecutionEventRef {
+                    event_type: e.event_type.clone(),
+                    summary: e.summary.clone(),
+                    occurred_at: e.occurred_at,
+                    correlation_id: e.correlation_id,
+                    status: crate::audit::domain::EventStatus::Success,
+                })
+                .collect();
+            let _ = audit
+                .build_and_send(audit_app::BuildEnvelopeInput {
+                    execution_id: record.execution_id,
+                    template_id: record.planning.template_id.clone(),
+                    planning_prompt: record.planning.prompt_hash.clone(),
+                    events: aref,
+                    source: Some(record.context.environment.clone()),
+                    metadata: None,
+                    sign: false,
+                    repository: input.repository.clone(),
+                    author: input.author.clone(),
+                })
+                .await;
+        }
+
+        // Update state
+        if let Some(ref mut s) = *self.current_execution.write().await {
+            s.status = final_status;
+        }
+
+        tracing::info!(%execution_id, status=?final_status, "run_from_template completed");
+        Ok(RunOutput {
+            execution_id,
+            record,
+        })
+    }
+
+    async fn plan_from_template(
+        &self,
+        input: PlanFromTemplateInput,
+    ) -> Result<PlanOnlyOutput, OrchestratorError> {
+        let graph = self.build_graph_from_steps(&input.steps)?;
+        Ok(PlanOnlyOutput {
+            plan: serde_json::json!({
+                "template_name": input.template_name,
+                "step_count": input.steps.len(),
+                "mode": "from_template",
+            }),
+            graph: serde_json::to_value(&graph).unwrap_or_default(),
+        })
     }
 
     fn event_bus(&self) -> &dyn event_app::EventBusService {
