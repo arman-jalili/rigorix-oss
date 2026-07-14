@@ -21,6 +21,7 @@ on:
       - 'actions/**'
       - 'engine/**'
       - 'cli/**'
+      - 'mcp/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
   workflow_dispatch:

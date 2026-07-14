@@ -19,12 +19,14 @@ COPY Cargo.toml Cargo.lock ./
 COPY engine/Cargo.toml engine/
 COPY cli/Cargo.toml cli/
 COPY actions/Cargo.toml actions/
+COPY mcp/Cargo.toml mcp/
 
 # Copy source code
 COPY engine/src engine/src/
 COPY engine/benches engine/benches/
 COPY cli/src cli/src/
 COPY actions/src actions/src/
+COPY mcp/src mcp/src/
 
 # Build release binary
 RUN cargo build --release -p rigorix-actions --bin rigorix-action

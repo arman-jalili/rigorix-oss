@@ -1907,7 +1907,7 @@ dependencies = [
 
 [[package]]
 name = "rigorix-actions"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1936,7 +1936,7 @@ dependencies = [
 
 [[package]]
 name = "rigorix-cli"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1960,7 +1960,7 @@ dependencies = [
 
 [[package]]
 name = "rigorix-engine"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1993,7 +1993,7 @@ dependencies = [
 
 [[package]]
 name = "rigorix-mcp"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "async-trait",
  "axum",
