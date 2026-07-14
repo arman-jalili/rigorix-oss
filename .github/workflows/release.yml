@@ -52,7 +52,7 @@ jobs:
       - name: Publish rigorix-engine (skip if exists)
         run: |
           VERSION=$(grep '^version' engine/Cargo.toml | head -1 | sed 's/version = "//;s/"//')
-          if curl -sf "https://crates.io/api/v1/crates/rigorix-engine/$VERSION" > /dev/null 2>&1; then
+          if cargo search rigorix-engine 2>/dev/null | grep -q "^rigorix-engine = \"$VERSION\""; then
             echo "⏭️ rigorix-engine v$VERSION already published, skipping"
           else
             cargo publish -p rigorix-engine --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -69,7 +69,7 @@ jobs:
       - name: Publish rigorix-cli (skip if exists)
         run: |
           VERSION=$(grep '^version' cli/Cargo.toml | head -1 | sed 's/version = "//;s/"//')
-          if curl -sf "https://crates.io/api/v1/crates/rigorix-cli/$VERSION" > /dev/null 2>&1; then
+          if cargo search rigorix-cli 2>/dev/null | grep -q "^rigorix-cli = \"$VERSION\""; then
             echo "⏭️ rigorix-cli v$VERSION already published, skipping"
           else
             cargo publish -p rigorix-cli --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -86,7 +86,7 @@ jobs:
       - name: Publish rigorix-mcp (skip if exists)
         run: |
           VERSION=$(grep '^version' mcp/Cargo.toml | head -1 | sed 's/version = "//;s/"//')
-          if curl -sf "https://crates.io/api/v1/crates/rigorix-mcp/$VERSION" > /dev/null 2>&1; then
+          if cargo search rigorix-mcp 2>/dev/null | grep -q "^rigorix-mcp = \"$VERSION\""; then
             echo "⏭️ rigorix-mcp v$VERSION already published, skipping"
           else
             cargo publish -p rigorix-mcp --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -103,7 +103,7 @@ jobs:
       - name: Publish rigorix-actions (skip if exists)
         run: |
           VERSION=$(grep '^version' actions/Cargo.toml | head -1 | sed 's/version = "//;s/"//')
-          if curl -sf "https://crates.io/api/v1/crates/rigorix-actions/$VERSION" > /dev/null 2>&1; then
+          if cargo search rigorix-actions 2>/dev/null | grep -q "^rigorix-actions = \"$VERSION\""; then
             echo "⏭️ rigorix-actions v$VERSION already published, skipping"
           else
             cargo publish -p rigorix-actions --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
