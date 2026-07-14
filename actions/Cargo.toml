@@ -1,6 +1,6 @@
 [package]
 name = "rigorix-actions"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 description = "GitHub Actions integration for Rigorix — thin adapter over rigorix-engine"
 license = "MIT OR Apache-2.0"
@@ -12,7 +12,7 @@ name = "rigorix-action"
 path = "src/main.rs"
 
 [dependencies]
-rigorix-engine = { path = "../engine", version = "0.1.0" }
+rigorix-engine = { path = "../engine", version = "1.0.0" }
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml = "0.9"

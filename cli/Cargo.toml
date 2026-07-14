@@ -1,6 +1,6 @@
 [package]
 name = "rigorix-cli"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 description = "Template-driven DAG execution CLI — thin wrapper around rigorix-engine"
 license = "MIT OR Apache-2.0"
@@ -11,7 +11,7 @@ documentation = "https://docs.rs/rigorix-cli"
 name = "rigorix"
 
 [dependencies]
-rigorix-engine = { path = "../engine", version = "0.1.0" }
+rigorix-engine = { path = "../engine", version = "1.0.0" }
 serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true

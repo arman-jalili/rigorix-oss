@@ -1,6 +1,6 @@
 [package]
 name = "rigorix-mcp"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 description = "MCP Gateway server for Rigorix — protocol types, transports, session management, tool routing, resource/prompt providers"
 license = "MIT OR Apache-2.0"
@@ -23,7 +23,7 @@ async-trait = { workspace = true }
 toml = { workspace = true }
 
 # rigorix-engine for execution orchestration
-rigorix-engine = { path = "../engine", version = "0.1.0" }
+rigorix-engine = { path = "../engine", version = "1.0.0" }
 
 # HTTP client for enterprise proxy
 reqwest = { workspace = true }
