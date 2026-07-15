@@ -46,6 +46,43 @@ pub struct AuditEnvelope {
     /// Identity of the user or bot that triggered the execution.
     pub author: Option<String>,
 
+    /// Total number of LLM tokens consumed during this execution.
+    ///
+    /// Used for cost estimation and AI ROI analytics in the Enterprise dashboard.
+    pub total_tokens: u32,
+
+    /// Total wall-clock duration of the execution in milliseconds.
+    ///
+    /// Used for performance analytics and time-based cost estimation.
+    pub duration_ms: u64,
+
+    /// Git commit hash of the repository at the time of execution.
+    ///
+    /// Used for compliance provenance chains.
+    pub git_commit: Option<String>,
+
+    /// Git branch name at the time of execution.
+    ///
+    /// Used for compliance provenance chains.
+    pub git_branch: Option<String>,
+
+    /// LLM model version used for planning (e.g. "claude-sonnet-4-20250514").
+    /// `None` when no LLM was used or the model version was not captured.
+    pub model_version: Option<String>,
+
+    /// The planning prompt text (opt-in, privacy-sensitive).
+    ///
+    /// Only populated when prompt content capture is enabled in configuration.
+    /// Used for compliance provenance and audit evidence.
+    pub planning_prompt: Option<String>,
+
+    /// File paths changed or created during this execution (if available).
+    ///
+    /// Used for compliance provenance chains to track which files were
+    /// modified by AI-generated output.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub file_paths: Vec<String>,
+
     /// The ordered list of execution events captured during this run.
     pub events: Vec<ExecutionEventRef>,
 
@@ -75,6 +112,14 @@ pub struct ExecutionEventRef {
 
     /// Whether this event represents a success or failure.
     pub status: EventStatus,
+
+    /// Optional JSON payload with event-specific details.
+    ///
+    /// May contain per-node output, tool usage data, budget warning details,
+    /// or error information depending on the event type.
+    /// Omitted when empty to keep envelope size manageable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload: Option<serde_json::Value>,
 }
 
 /// Status of an execution event.

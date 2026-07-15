@@ -68,6 +68,11 @@ pub struct PlanningMetadata {
     /// Hash of the planning prompt for replay reproducibility.
     pub prompt_hash: String,
 
+    /// LLM model version used for planning (e.g. "claude-sonnet-4-20250514").
+    /// `None` when no LLM was used or the model version was not captured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_version: Option<String>,
+
     /// Raw TOML content when the template was generated on-the-fly.
     /// None when using a pre-existing template.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -261,6 +266,7 @@ impl Default for PlanningMetadata {
             prompt_hash: String::new(),
             generated_toml: None,
             node_order: vec![],
+            model_version: None,
         }
     }
 }

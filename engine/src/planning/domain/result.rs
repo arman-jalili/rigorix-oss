@@ -106,6 +106,11 @@ pub struct PlanningResult {
     /// (not pre-registered). `None` when using a pre-existing template.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generated_toml: Option<String>,
+
+    /// LLM model version used for planning (e.g. "claude-sonnet-4-20250514").
+    /// `None` when no LLM was used or the model version was not captured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_version: Option<String>,
 }
 
 impl PlanningResult {
@@ -133,6 +138,7 @@ impl PlanningResult {
             llm_calls_used,
             llm_tokens_used,
             generated_toml,
+            model_version: None,
         }
     }
 }

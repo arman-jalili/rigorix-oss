@@ -48,6 +48,33 @@ pub struct BuildEnvelopeInput {
     /// Identity of the user or bot that triggered the execution.
     pub author: Option<String>,
 
+    /// Total number of LLM tokens consumed during this execution.
+    pub total_tokens: u32,
+
+    /// Total wall-clock duration of the execution in milliseconds.
+    pub duration_ms: u64,
+
+    /// Git commit hash of the repository at the time of execution.
+    pub git_commit: Option<String>,
+
+    /// Git branch name at the time of execution.
+    pub git_branch: Option<String>,
+
+    /// LLM model version used for planning (e.g. "claude-sonnet-4-20250514").
+    pub model_version: Option<String>,
+
+    /// The planning prompt text (opt-in, privacy-sensitive).
+    ///
+    /// Only populated when prompt content capture is enabled in configuration.
+    /// Separate from `planning_prompt` (used for hash computation) to allow
+    /// opt-in prompt content capture without affecting the deterministic hash.
+    pub planning_prompt_content: Option<String>,
+
+    /// File paths changed or created during this execution.
+    /// Populated from node output when file paths are detected.
+    #[serde(default)]
+    pub file_paths: Vec<String>,
+
     /// Optional execution metadata key-value pairs.
     pub metadata: Option<HashMap<String, String>>,
 

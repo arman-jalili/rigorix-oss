@@ -71,6 +71,34 @@ pub struct BuildEnvelopeRequest {
 
     /// Identity of the user or bot that triggered the execution.
     pub author: Option<String>,
+
+    /// Total number of LLM tokens consumed during this execution.
+    #[serde(default)]
+    pub total_tokens: Option<u32>,
+
+    /// Total wall-clock duration of the execution in milliseconds.
+    #[serde(default)]
+    pub duration_ms: Option<u64>,
+
+    /// Git commit hash of the repository at the time of execution.
+    #[serde(default)]
+    pub git_commit: Option<String>,
+
+    /// Git branch name at the time of execution.
+    #[serde(default)]
+    pub git_branch: Option<String>,
+
+    /// LLM model version used for planning (e.g. "claude-sonnet-4-20250514").
+    #[serde(default)]
+    pub model_version: Option<String>,
+
+    /// The planning prompt text (opt-in, privacy-sensitive).
+    #[serde(default)]
+    pub planning_prompt_content: Option<String>,
+
+    /// File paths changed or created during this execution.
+    #[serde(default)]
+    pub file_paths: Vec<String>,
 }
 
 impl From<BuildEnvelopeRequest> for BuildEnvelopeInput {
@@ -81,6 +109,13 @@ impl From<BuildEnvelopeRequest> for BuildEnvelopeInput {
             planning_prompt: req.planning_prompt,
             events: req.events.into_iter().map(Into::into).collect(),
             source: None,
+            total_tokens: req.total_tokens.unwrap_or(0),
+            duration_ms: req.duration_ms.unwrap_or(0),
+            git_commit: req.git_commit,
+            git_branch: req.git_branch,
+            model_version: req.model_version,
+            planning_prompt_content: req.planning_prompt_content,
+            file_paths: req.file_paths,
             metadata: req.metadata,
             sign: req.sign.unwrap_or(false),
             repository: req.repository,
@@ -276,6 +311,10 @@ pub struct ExecutionEventRefDto {
     pub correlation_id: Option<uuid::Uuid>,
     /// Event status (success, failure, skipped, cancelled).
     pub status: String,
+
+    /// Optional JSON payload with event-specific details.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload: Option<serde_json::Value>,
 }
 
 impl From<ExecutionEventRefDto> for crate::audit::domain::ExecutionEventRef {
@@ -292,6 +331,7 @@ impl From<ExecutionEventRefDto> for crate::audit::domain::ExecutionEventRef {
                 "cancelled" => crate::audit::domain::EventStatus::Cancelled,
                 _ => crate::audit::domain::EventStatus::Skipped,
             },
+            payload: dto.payload,
         }
     }
 }
@@ -309,6 +349,7 @@ impl From<crate::audit::domain::ExecutionEventRef> for ExecutionEventRefDto {
                 crate::audit::domain::EventStatus::Skipped => "skipped".to_string(),
                 crate::audit::domain::EventStatus::Cancelled => "cancelled".to_string(),
             },
+            payload: event.payload,
         }
     }
 }

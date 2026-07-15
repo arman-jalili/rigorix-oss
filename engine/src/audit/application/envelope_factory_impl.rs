@@ -55,6 +55,8 @@ impl AuditEnvelopeFactoryImpl {
         mac.update(envelope.timestamp.to_rfc3339().as_bytes());
         mac.update(envelope.template_id.as_bytes());
         mac.update(envelope.planning_hash.as_bytes());
+        mac.update(&envelope.total_tokens.to_le_bytes());
+        mac.update(&envelope.duration_ms.to_le_bytes());
         mac.update(&(envelope.events.len() as u64).to_le_bytes());
 
         let result = mac.finalize().into_bytes();
@@ -87,6 +89,13 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
             source: input.source,
             repository: input.repository,
             author: input.author,
+            total_tokens: input.total_tokens,
+            duration_ms: input.duration_ms,
+            git_commit: input.git_commit,
+            git_branch: input.git_branch,
+            model_version: input.model_version,
+            planning_prompt: input.planning_prompt_content,
+            file_paths: input.file_paths,
             events: input.events,
             signature: None,
         };
@@ -143,8 +152,16 @@ mod tests {
                 occurred_at: chrono::Utc::now(),
                 correlation_id: None,
                 status: EventStatus::Success,
+                payload: None,
             }],
             source: None,
+            total_tokens: 0,
+            duration_ms: 0,
+            git_commit: None,
+            git_branch: None,
+            model_version: None,
+            planning_prompt_content: None,
+            file_paths: vec![],
             metadata: None,
             sign: false,
             repository: None,

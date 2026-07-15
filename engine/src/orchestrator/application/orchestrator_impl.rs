@@ -216,6 +216,7 @@ impl OrchestratorServiceImpl {
                 prompt_hash: String::new(),
                 generated_toml: None,
                 node_order: vec![],
+                model_version: None,
             }),
             task_results,
             events,
@@ -334,6 +335,7 @@ impl OrchestratorServiceImpl {
             prompt_hash: pr.planning_hash.0.clone(),
             generated_toml: pr.generated_toml.clone(),
             node_order,
+            model_version: pr.model_version.clone(),
         }
     }
 }
@@ -631,9 +633,9 @@ impl OrchestratorService for OrchestratorServiceImpl {
                             event_type: pe.event.event_type_name().to_string(),
                             summary: pe.event.event_type_name().to_string(),
                             occurred_at: ts,
-                            correlation_id: None,
-                            payload: None,
-                            status: EventInfoStatus::Info,
+                            correlation_id: Some(*pe.event.execution_id()),
+                            payload: pe.event.payload_json(),
+                            status: pe.event.event_info_status(),
                         }
                     })
                     .collect()
@@ -669,12 +671,20 @@ impl OrchestratorService for OrchestratorServiceImpl {
             let aref: Vec<crate::audit::domain::ExecutionEventRef> = record
                 .events
                 .iter()
-                .map(|e| crate::audit::domain::ExecutionEventRef {
-                    event_type: e.event_type.clone(),
-                    summary: e.summary.clone(),
-                    occurred_at: e.occurred_at,
-                    correlation_id: e.correlation_id,
-                    status: crate::audit::domain::EventStatus::Success,
+                .map(|e| {
+                    let audit_status = match e.status {
+                        EventInfoStatus::Success => crate::audit::domain::EventStatus::Success,
+                        EventInfoStatus::Failure => crate::audit::domain::EventStatus::Failure,
+                        EventInfoStatus::Info => crate::audit::domain::EventStatus::Success,
+                    };
+                    crate::audit::domain::ExecutionEventRef {
+                        event_type: e.event_type.clone(),
+                        summary: e.summary.clone(),
+                        occurred_at: e.occurred_at,
+                        correlation_id: e.correlation_id,
+                        status: audit_status,
+                        payload: e.payload.clone(),
+                    }
                 })
                 .collect();
             let _ = audit
@@ -684,6 +694,13 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     planning_prompt: record.planning.prompt_hash.clone(),
                     events: aref,
                     source: Some(record.context.environment.clone()),
+                    total_tokens: record.planning.total_tokens,
+                    duration_ms: record.duration_ms,
+                    git_commit: record.context.git_commit.clone(),
+                    git_branch: record.context.git_branch.clone(),
+                    model_version: record.planning.model_version.clone(),
+                    planning_prompt_content: None, // TODO: populate from config when prompt capture is enabled
+                    file_paths: vec![], // TODO: extract from node outputs when structured file path tracking is implemented
                     metadata: None,
                     sign: false,
                     repository: input.repository.clone(),
@@ -816,6 +833,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
             prompt_hash: String::new(),
             generated_toml: None,
             node_order,
+            model_version: None,
         };
 
         // 2. Save initial state
@@ -998,9 +1016,9 @@ impl OrchestratorService for OrchestratorServiceImpl {
                             event_type: pe.event.event_type_name().to_string(),
                             summary: pe.event.event_type_name().to_string(),
                             occurred_at: ts,
-                            correlation_id: None,
-                            payload: None,
-                            status: EventInfoStatus::Info,
+                            correlation_id: Some(*pe.event.execution_id()),
+                            payload: pe.event.payload_json(),
+                            status: pe.event.event_info_status(),
                         }
                     })
                     .collect()
@@ -1034,12 +1052,20 @@ impl OrchestratorService for OrchestratorServiceImpl {
             let aref: Vec<crate::audit::domain::ExecutionEventRef> = record
                 .events
                 .iter()
-                .map(|e| crate::audit::domain::ExecutionEventRef {
-                    event_type: e.event_type.clone(),
-                    summary: e.summary.clone(),
-                    occurred_at: e.occurred_at,
-                    correlation_id: e.correlation_id,
-                    status: crate::audit::domain::EventStatus::Success,
+                .map(|e| {
+                    let audit_status = match e.status {
+                        EventInfoStatus::Success => crate::audit::domain::EventStatus::Success,
+                        EventInfoStatus::Failure => crate::audit::domain::EventStatus::Failure,
+                        EventInfoStatus::Info => crate::audit::domain::EventStatus::Success,
+                    };
+                    crate::audit::domain::ExecutionEventRef {
+                        event_type: e.event_type.clone(),
+                        summary: e.summary.clone(),
+                        occurred_at: e.occurred_at,
+                        correlation_id: e.correlation_id,
+                        status: audit_status,
+                        payload: e.payload.clone(),
+                    }
                 })
                 .collect();
             let _ = audit
@@ -1049,6 +1075,13 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     planning_prompt: record.planning.prompt_hash.clone(),
                     events: aref,
                     source: Some(record.context.environment.clone()),
+                    total_tokens: record.planning.total_tokens,
+                    duration_ms: record.duration_ms,
+                    git_commit: record.context.git_commit.clone(),
+                    git_branch: record.context.git_branch.clone(),
+                    model_version: record.planning.model_version.clone(),
+                    planning_prompt_content: None, // TODO: populate from config when prompt capture is enabled
+                    file_paths: vec![], // TODO: extract from node outputs when structured file path tracking is implemented
                     metadata: None,
                     sign: false,
                     repository: input.repository.clone(),

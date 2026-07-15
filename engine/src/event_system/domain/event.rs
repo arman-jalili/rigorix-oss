@@ -382,6 +382,83 @@ impl ExecutionEvent {
         )
     }
 
+    /// Extracts a JSON payload for critical event types.
+    ///
+    /// Returns `Some(...)` for events with operational data (budget, timing,
+    /// tool usage, errors) and `None` for informational events.
+    pub fn payload_json(&self) -> Option<serde_json::Value> {
+        match self {
+            ExecutionEvent::NodeCompleted {
+                node_id,
+                node_name,
+                duration_ms,
+                ..
+            } => Some(serde_json::json!({
+                "node_id": node_id,
+                "node_name": node_name,
+                "duration_ms": duration_ms,
+            })),
+            ExecutionEvent::NodeFailed {
+                node_id,
+                attempt,
+                error,
+                ..
+            } => Some(serde_json::json!({
+                "node_id": node_id,
+                "attempt": attempt,
+                "error": error,
+            })),
+            ExecutionEvent::ToolExecuted {
+                tool,
+                risk_level,
+                skipped,
+                node_id,
+                ..
+            } => Some(serde_json::json!({
+                "tool": tool,
+                "risk_level": risk_level,
+                "skipped": skipped,
+                "node_id": node_id,
+            })),
+            ExecutionEvent::BudgetWarning {
+                resource,
+                used,
+                limit,
+                ..
+            } => Some(serde_json::json!({
+                "resource": resource,
+                "used": used,
+                "limit": limit,
+            })),
+            ExecutionEvent::ExecutionCompleted {
+                duration_ms,
+                nodes_executed,
+                ..
+            } => Some(serde_json::json!({
+                "duration_ms": duration_ms,
+                "nodes_executed": nodes_executed,
+            })),
+            ExecutionEvent::ExecutionFailed { error, .. } => Some(serde_json::json!({
+                "error": error,
+            })),
+            ExecutionEvent::PlanningCompleted {
+                template_id,
+                confidence,
+                parameters,
+                ..
+            } => Some(serde_json::json!({
+                "template_id": template_id,
+                "confidence": confidence,
+                "parameters": parameters,
+            })),
+            // Informational events — no payload needed
+            ExecutionEvent::PlanningStarted { .. }
+            | ExecutionEvent::NodeStarted { .. }
+            | ExecutionEvent::NodeRetrying { .. }
+            | ExecutionEvent::ExecutionCancelled { .. } => None,
+        }
+    }
+
     /// Returns true if this variant represents an error/failure condition.
     pub fn is_error(&self) -> bool {
         matches!(
@@ -390,6 +467,23 @@ impl ExecutionEvent {
                 | ExecutionEvent::ExecutionFailed { .. }
                 | ExecutionEvent::BudgetWarning { .. }
         )
+    }
+
+    /// Derives the `EventInfoStatus` from the event variant.
+    ///
+    /// - `NodeFailed` / `ExecutionFailed` → `Failure`
+    /// - `ExecutionCancelled` → `Info`
+    /// - All other variants → `Success`
+    pub fn event_info_status(&self) -> crate::orchestrator::domain::record::EventInfoStatus {
+        match self {
+            ExecutionEvent::NodeFailed { .. } | ExecutionEvent::ExecutionFailed { .. } => {
+                crate::orchestrator::domain::record::EventInfoStatus::Failure
+            }
+            ExecutionEvent::ExecutionCancelled { .. } => {
+                crate::orchestrator::domain::record::EventInfoStatus::Info
+            }
+            _ => crate::orchestrator::domain::record::EventInfoStatus::Success,
+        }
     }
 }
 
