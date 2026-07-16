@@ -308,6 +308,27 @@ impl OrchestratorServiceImpl {
         Ok(graph)
     }
 
+    /// Detect git commit and branch from the working directory.
+    fn detect_git_info(repo_root: &str) -> (Option<String>, Option<String>) {
+        let run_git = |args: &[&str]| -> Option<String> {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(repo_root)
+                .output()
+                .ok()
+                .and_then(|o| {
+                    if o.status.success() {
+                        Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+                    } else {
+                        None
+                    }
+                })
+        };
+        let commit = run_git(&["rev-parse", "HEAD"]);
+        let branch = run_git(&["rev-parse", "--abbrev-ref", "HEAD"]);
+        (commit, branch)
+    }
+
     fn planning_meta(
         pr: &crate::planning::domain::result::PlanningResult,
         graph: Option<&crate::dag_engine::domain::TaskGraph>,
@@ -643,6 +664,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
             .unwrap_or_default();
 
         // 9. Build record
+        let (git_commit, git_branch) = Self::detect_git_info(&input.repo_root);
         let record = self.build_record(
             execution_id,
             started_at,
@@ -652,8 +674,8 @@ impl OrchestratorService for OrchestratorServiceImpl {
             ExecutionContext {
                 repo_root: input.repo_root,
                 symbol_graph_hash: None,
-                git_commit: None,
-                git_branch: None,
+                git_commit,
+                git_branch,
                 environment: if std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true") {
                     "rigorix_action".into()
                 } else {
@@ -1026,6 +1048,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
             .unwrap_or_default();
 
         // 9. Build record
+        let (git_commit, git_branch) = Self::detect_git_info(&input.repo_root);
         let record = self.build_record(
             execution_id,
             started_at,
@@ -1035,8 +1058,8 @@ impl OrchestratorService for OrchestratorServiceImpl {
             ExecutionContext {
                 repo_root: input.repo_root,
                 symbol_graph_hash: None,
-                git_commit: None,
-                git_branch: None,
+                git_commit,
+                git_branch,
                 environment: std::env::var("RIGORIX_MCP_SERVER")
                     .map(|_| "rigorix_mcp".to_string())
                     .unwrap_or_else(|_| "rigorix_mcp".to_string()),
