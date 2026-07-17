@@ -113,5 +113,7 @@ export type EpicState = {
 	issues: { id: string; title: string; status: string; remoteIssueId?: string | null }[];
 	currentIssueIndex: number;
 	createdAt: string;
+	tdd: boolean;
+	tddTestFiles: string[];
 };
 

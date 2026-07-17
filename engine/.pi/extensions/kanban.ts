@@ -1,4 +1,7 @@
 /**
+ * Canonical Reference: .pi/architecture/modules/core-libraries.md
+ * Last Sync: 2026-05-31
+
  * Kanban Extension for pi
  *
  * Durable JSON-backed task board for multi-agent collaboration.

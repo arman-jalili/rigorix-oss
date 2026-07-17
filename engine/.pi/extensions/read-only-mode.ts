@@ -1,4 +1,7 @@
 /**
+ * Canonical Reference: .pi/architecture/modules/core-libraries.md
+ * Last Sync: 2026-05-31
+
  * Read-Only Mode Extension for pi
  *
  * Hard-enforces a tiny tool allowlist: read, grep, find, ls.

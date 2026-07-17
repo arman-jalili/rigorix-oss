@@ -1,6 +1,9 @@
 // biome-ignore lint/suspicious/noExplicitAny: pi ExtensionContext has no published types
 // biome-ignore lint/style/noNonNullAssertion: pi UI callbacks use non-null assertions
 /**
+ * Canonical Reference: .pi/architecture/modules/core-libraries.md
+ * Last Sync: 2026-05-31
+
  * Ask User Question Extension for pi
  *
  * biome-ignore lint/suspicious/noExplicitAny: pi ExtensionContext has no published types

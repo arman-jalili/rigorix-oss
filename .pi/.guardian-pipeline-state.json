@@ -1,0 +1,446 @@
+{
+  "id": "PL-6321",
+  "name": "OSS Dashboard Gap Resolution",
+  "items": [
+    "TK-0006",
+    "TK-0007",
+    "TK-0008",
+    "TK-0009",
+    "TK-0010",
+    "TK-0011",
+    "TK-0012",
+    "TK-0013",
+    "TK-0014",
+    "TK-0015",
+    "TK-0019",
+    "TK-0016",
+    "TK-0017",
+    "TK-0018",
+    "TK-0020"
+  ],
+  "steps": [
+    {
+      "name": "Impact Analysis",
+      "acceptance": {
+        "type": "none"
+      }
+    },
+    {
+      "name": "Implementation",
+      "acceptance": {
+        "type": "none"
+      }
+    },
+    {
+      "name": "Review",
+      "acceptance": {
+        "type": "none"
+      }
+    },
+    {
+      "name": "Acceptance",
+      "acceptance": {
+        "type": "none"
+      }
+    }
+  ],
+  "currentItemIndex": 15,
+  "currentStepIndex": 0,
+  "status": "done",
+  "retryCount": 0,
+  "results": [
+    {
+      "item": "TK-0006",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "Impact Analysis",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Implementation",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Review",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Acceptance",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "TK-0007",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "Impact Analysis",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Implementation",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Review",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Acceptance",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "TK-0008",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "Impact Analysis",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Implementation",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Review",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Acceptance",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "TK-0009",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "Impact Analysis",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Implementation",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Review",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Acceptance",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "TK-0010",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "Impact Analysis",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Implementation",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Review",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Acceptance",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "TK-0011",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "Impact Analysis",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Implementation",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Review",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Acceptance",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "TK-0012",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "Implementation",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Review",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Acceptance",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Impact Analysis",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "TK-0013",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "Implementation",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Review",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Acceptance",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Impact Analysis",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "TK-0014",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "Implementation",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Review",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Acceptance",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Impact Analysis",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "TK-0015",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "Implementation",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Review",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Acceptance",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Impact Analysis",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "TK-0019",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "Impact Analysis",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Implementation",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Review",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Acceptance",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "TK-0016",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "Impact Analysis",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Implementation",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Review",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Acceptance",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "TK-0017",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "Impact Analysis",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Implementation",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Review",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Acceptance",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "TK-0018",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "Impact Analysis",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Implementation",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Review",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Acceptance",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "item": "TK-0020",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "Impact Analysis",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Implementation",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Review",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Acceptance",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    }
+  ],
+  "mergeOnValid": false,
+  "createdAt": "2026-07-14T20:32:43.353Z",
+  "updatedAt": "2026-07-14T21:50:16.577Z"
+}

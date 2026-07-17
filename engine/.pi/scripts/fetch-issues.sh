@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# fetch-issues.sh — Fetch GitHub Issues for Implementation
+# fetch-issues.sh — Fetch Issues from GitHub or GitLab for Implementation
 #
 # Run as: bash .pi/scripts/fetch-issues.sh [limit] [state]
 # Output: .claude/plans/issues-fetched.json
@@ -17,40 +17,79 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+detect_platform() {
+	if [ -f "guardian-manifest.json" ]; then
+		local tool=$(jq -r '.repoTool // ""' guardian-manifest.json 2>/dev/null || echo "")
+		if [[ "$tool" == "glab" ]]; then echo "gitlab"; return; fi
+		if [[ "$tool" == "gh" ]]; then echo "github"; return; fi
+	fi
+	if [[ -n "${GIT_PLATFORM:-}" ]]; then
+		echo "$GIT_PLATFORM"
+	elif command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then
+		echo "github"
+	elif command -v glab &>/dev/null && glab auth status &>/dev/null 2>&1; then
+		echo "gitlab"
+	else
+		echo "none"
+	fi
+}
+
 echo "============================================"
-echo "  Fetch GitHub Issues"
+echo "  Fetch Issues"
 echo "============================================"
 echo ""
+
+PLATFORM=$(detect_platform)
+
+if [[ "$PLATFORM" == "none" ]]; then
+	echo -e "${RED}❌ No git platform detected${NC}"
+	echo "  Install and authenticate gh (GitHub) or glab (GitLab) CLI."
+	exit 1
+fi
 
 # Ensure output directory exists
 mkdir -p "$OUTPUT_DIR"
 
 # ---------------------------------------------------------------------------
-# Check GitHub CLI
-# ---------------------------------------------------------------------------
-if ! command -v gh &> /dev/null; then
-    echo -e "${RED}❌ GitHub CLI (gh) not installed${NC}"
-    echo "  Install: brew install gh"
-    exit 1
-fi
-
-# Check authentication
-if ! gh auth status &> /dev/null; then
-    echo -e "${RED}❌ GitHub CLI not authenticated${NC}"
-    echo "  Run: gh auth login"
-    exit 1
-fi
-
-# ---------------------------------------------------------------------------
 # Fetch Issues
 # ---------------------------------------------------------------------------
-echo "Fetching $STATE issues (limit: $LIMIT)..."
+echo "Fetching $STATE issues from $PLATFORM (limit: $LIMIT)..."
 
-gh issue list \
-    --state "$STATE" \
-    --limit "$LIMIT" \
-    --json number,title,labels,body,state,createdAt,updatedAt,assignees \
-    > "$OUTPUT_FILE"
+case "$PLATFORM" in
+	github)
+		gh issue list \
+			--state "$STATE" \
+			--limit "$LIMIT" \
+			--json number,title,labels,body,state,createdAt,updatedAt,assignees \
+			> "$OUTPUT_FILE"
+		;;
+
+	gitlab)
+		# glab does not export the same rich JSON schema as gh, so we build it
+		glab issue list \
+			--state "$STATE" \
+			--per-page "$LIMIT" \
+			--output json 2>/dev/null > "$OUTPUT_FILE.tmp" || true
+
+		# Convert glab output to match gh schema (if possible)
+		if [[ -s "$OUTPUT_FILE.tmp" ]]; then
+			jq '[.[] | {
+				number: (.iid // .id),
+				title,
+				labels: (.labels // []),
+				body: (.description // ""),
+				state: (.state | ascii_downcase),
+				createdAt: (.created_at // ""),
+				updatedAt: (.updated_at // ""),
+				assignees: ([.assignee? | select(. != null) | {login: .username, name: .name}] // [])
+			}]' "$OUTPUT_FILE.tmp" > "$OUTPUT_FILE" 2>/dev/null || mv "$OUTPUT_FILE.tmp" "$OUTPUT_FILE"
+			rm -f "$OUTPUT_FILE.tmp"
+		else
+			echo "[]" > "$OUTPUT_FILE"
+			rm -f "$OUTPUT_FILE.tmp"
+		fi
+		;;
+esac
 
 COUNT=$(jq 'length' "$OUTPUT_FILE")
 echo -e "${GREEN}✅ Fetched $COUNT issues${NC}"
@@ -81,7 +120,7 @@ echo "--- Issue List ---"
 jq -r '.[] | "#\(.number) - \(.title) [\(.labels[]?.name // "none")]"' "$OUTPUT_FILE" | head -20
 
 if [ "$COUNT" -gt 20 ]; then
-    echo "... and $((COUNT - 20)) more"
+	echo "... and $((COUNT - 20)) more"
 fi
 
 echo ""

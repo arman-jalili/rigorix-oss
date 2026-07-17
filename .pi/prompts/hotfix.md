@@ -19,6 +19,7 @@ Production Issue Detected
 │ 2. CODE-DEVELOPER: Fix ASAP     │
 │    Minimal change, no refactor  │
 │    Load: context/patterns.md    │
+│    → Auto-advance: pipeline_advance (no asking)│
 └──────────────┬──────────────────┘
                │
                ▼

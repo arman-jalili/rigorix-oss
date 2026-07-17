@@ -92,6 +92,12 @@ Each step can have a different acceptance condition:
 | `pipeline_advance` | Mark current step as passed and advance |
 | `pipeline_fail` | Mark current step as failed, skip remaining steps for this item |
 
+## Behavioral Rules
+
+→ Auto-advance: pipeline_advance (no asking)│
+
+After completing any pipeline step, call `pipeline_advance` immediately without asking the user. The next step is already defined in the pipeline state — just advance and continue the loop.
+
 ## Pipeline States
 
 ```

@@ -62,6 +62,12 @@ guardian project create --lang <lang>   (Epic 0 — greenfield only)
 - Generates `system-context.md` with a mermaid diagram of bounded context flow
 - **Sends results as a follow-up message** so the agent sees what was generated
 
+**Agent responsibilities after scaffold:**
+- Generate additional ADRs — only `ADR-001` is created; the agent must create the rest
+- Fill in `## ADRs` sections in each module doc (initially `None yet`)
+- Fill in `## Key Files` sections in each module doc (initially `None yet`)
+- Update the CHANGELOG (initially a placeholder)
+
 **Output files:**
 | Path | Contents |
 |------|----------|

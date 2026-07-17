@@ -2,8 +2,15 @@
 name: code-developer
 description: Primary implementation agent. Writes code following approved plans and validation contracts.
 model: inherit
-tools: [Read, Write, Edit, Bash, Grep, Glob]
+tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Grep
+  - Glob
 ---
+
 
 # Code Developer
 
@@ -36,10 +43,20 @@ You implement code from approved plans. You follow ALL architectural patterns.
 ## Workflow
 
 ### Pre-Implementation
-1. Read the approved Design Proposal + Implementation Plan
-2. Read the Validation Contract (pre-validated items)
-3. Grep for existing types with same name
-4. Verify dependencies satisfied
+1. **Run GitNexus impact analysis on EVERY symbol you plan to modify.**
+   Before editing any function, class, or method:
+   - Call `gitnexus_impact({target: "symbolName", direction: "upstream"})`
+   - Review the blast radius (callers, affected processes, risk level)
+   - If risk is HIGH or CRITICAL, warn the user before proceeding
+2. Read the approved Design Proposal + Implementation Plan
+3. Read the Validation Contract (pre-validated items)
+4. Grep for existing types with same name
+5. Verify dependencies satisfied
+
+### Post-Implementation (Before Create-MR)
+1. Run `gitnexus_detect_changes()` to verify changes only affect expected symbols
+2. For regression review: `gitnexus_detect_changes({scope: "compare", base_ref: "main"})`
+3. Confirm no unexpected blast radius from your changes
 
 ### Implementation
 1. Create feature branch: `[branch-prefix]/[issue-N]-[description]`
@@ -49,10 +66,10 @@ You implement code from approved plans. You follow ALL architectural patterns.
 
 ### Verification
 ```bash
-cargo build
-cargo test --all
-cargo clippy -- -D warnings
-cargo fmt
+bun build ./src/index.ts --outdir ./dist
+bun test
+biome check .
+biome format . --write
 ```
 
 ### Wiring Verification (Before Marking Complete)

@@ -1,4 +1,7 @@
 /**
+ * Canonical Reference: .pi/architecture/modules/core-libraries.md
+ * Last Sync: 2026-05-31
+
  * Skill Curator Extension for pi
  *
  * Background maintenance for agent-created skills.

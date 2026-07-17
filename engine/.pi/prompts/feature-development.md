@@ -67,6 +67,8 @@ User Request
 │    Load: context/patterns.md         │
 │    Add: Canonical Reference Headers  │
 │    Output: Code + tests             │
+│    → Auto-advance: call pipeline_advance   │
+│      immediately when done (no asking)     │
 └──────────────┬───────────────────────┘
                │
                ▼

@@ -10,18 +10,40 @@ Generated: NEVER (this is the source)
 
 [Brief description of the module's purpose and scope within the system]
 
-## Responsibilities
+## DDD Layers
 
-- [Responsibility 1]
-- [Responsibility 2]
-- [Responsibility 3]
+This module follows Clean Architecture with 4 DDD layers:
 
-## Components
+| Layer | Purpose | Tech |
+|-------|---------|------|
+| `domain/` | Pure business logic, types, errors | Zero framework imports |
+| `application/` | State management, use cases, actions | Stores, Server Actions |
+| `infrastructure/` | External adapters, API clients, SDKs | Fetch, tRPC, GraphQL |
+| `interfaces/` | UI components, pages, layouts | React, Next.js |
 
-| Component | File Path | Purpose | Canonical Section |
-|-----------|-----------|---------|-------------------|
-| [Name] | src/[path] | [Description] | #[section] |
-| [Name] | src/[path] | [Description] | #[section] |
+**Dependency rule:** `domain → application → infrastructure → interfaces` (inward)
+
+## Components by Layer
+
+### Domain Layer (`domain/`)
+| Component | Description | Framework? |
+|-----------|-------------|------------|
+| [Name] | [Purpose] | ❌ No |
+
+### Application Layer (`application/`)
+| Component | Description | Type |
+|-----------|-------------|------|
+| [Name] | [Purpose] | Store / Action / Query |
+
+### Infrastructure Layer (`infrastructure/`)
+| Component | Description | Connects to |
+|-----------|-------------|-------------|
+| [Name] | [Purpose] | [API / SDK] |
+
+### Interfaces Layer (`interfaces/`)
+| Component | Description | 'use client'? |
+|-----------|-------------|---------------|
+| [Name] | [Purpose] | Yes / No |
 
 ---
 
@@ -31,35 +53,40 @@ Generated: NEVER (this is the source)
 
 **Purpose:** [What this component does]
 
-**Implementation File:** `src/[path]`
+**DDL Layer:** `[domain/application/infrastructure/interfaces]`
+
+**Implementation File:** `src/[module]/[layer]/[file].ts`
 
 **Canonical Reference:** `.pi/architecture/modules/[module-name].md#[component-section]`
+
+**States:**
+- **Loading:** [What the user sees during load]
+- **Empty:** [What the user sees when there's no data]
+- **Populated:** [Normal state]
+- **Error:** [What the user sees on failure]
 
 **Dependencies:**
 - [Dependency 1]
 - [Dependency 2]
-
-**Interface:**
-
-```typescript
-// Public interface
-interface [InterfaceName] {
-  [method signatures]
-}
-```
 
 ---
 
 ## Data Flow
 
 ```
-[Input Source]
+User Intent
      │
      ▼
-[Processing Component]
+Component (interfaces/) → user action
      │
      ▼
-[Output Destination]
+Store/Server Action (application/) → optimistic update
+     │
+     ▼
+API Client (infrastructure/) → fetch
+     │
+     ▼
+Response → commit or rollback → UI update
 ```
 
 **Flow Description:**
@@ -69,40 +96,69 @@ interface [InterfaceName] {
 
 ---
 
+## User Intents
+
+| Intent | Triggered By | Handled By | Domain Event (backend) |
+|--------|-------------|------------|----------------------|
+| UserClickedThread | Click on thread title | ThreadPanel | ThreadSelected |
+| UserSubmittedComment | Click Submit button | CommentInput | CommentCreated |
+
+---
+
+## Design Principles
+
+- This module is **optimistic**: UI updates before API responds
+- This module is **resilient**: failure doesn't crash other modules
+- This module is **stateless**: state lives in stores, not server
+
+---
+
+## Degradation Strategy
+
+| Feature | When Unavailable | User Sees |
+|---------|-----------------|-----------|
+| [Feature] | API is down | [Degraded state] |
+
+---
+
+## Acceptance Criteria
+
+Each component in this module has specific acceptance criteria that must be verified
+before the implementation issue can be closed. These ACs flow into the generated issues.
+
+| # | Component | Criterion | Verify In |
+|---|-----------|-----------|-----------|
+| 1 | [ComponentName] | [Specific, testable criterion for this component] | [unit test / integration test / manual] |
+| 2 | [ComponentName] | [Another criterion] | [verification method] |
+
+---
+
 ## Dependencies
 
 ### Depends On
 - **[Module Name]**: [Why/what it provides]
-- **[Module Name]**: [Why/what it provides]
 
 ### Used By
-- **[Module Name]**: [Why/what it uses]
 - **[Module Name]**: [Why/what it uses]
 
 ---
 
 ## Security Considerations
 
-| Concern | Mitigation | Validator |
-|---------|------------|-----------|
-| [Concern 1] | [Mitigation] | security-validator |
-| [Concern 2] | [Mitigation] | security-validator |
-
-**Authentication/Authorization:**
-- [Auth requirements]
-
-**Data Protection:**
-- [Encryption/sanitization requirements]
+| Concern | Mitigation |
+|---------|------------|
+| [Concern 1] | [Mitigation] |
 
 ---
 
 ## Testing Requirements
 
-| Test Type | Coverage Target | Files |
-|-----------|-----------------|-------|
-| Unit | [X]% | tests/unit/[module].test.ts |
-| Integration | [Y]% | tests/integration/[module].test.ts |
-| E2E | [Z]% | tests/e2e/[module].test.ts |
+| Layer | Test Type | Coverage Target |
+|-------|-----------|-----------------|
+| Domain | Unit | [X]% |
+| Application | Unit | [X]% |
+| Infrastructure | Integration | [X]% |
+| Interfaces | Component | [X]% |
 
 **Key Test Scenarios:**
 - [Scenario 1]
@@ -113,17 +169,64 @@ interface [InterfaceName] {
 
 ## Error Handling
 
+**Domain errors (domain/):**
+
+TypeScript:
 ```typescript
-// Error types defined in this module
 class [ErrorType] extends Error {
-  constructor(message: string) {
+  constructor(code: string, message: string, retriable?: boolean) {
     super(message);
     this.name = '[ErrorType]';
   }
 }
 ```
 
-**Error Recovery:**
+Java:
+```java
+// domain/error/DomainException.java — abstract base
+public abstract class DomainException extends RuntimeException {
+  private final ErrorCode code;
+  protected DomainException(ErrorCode code, String message) {
+    super(message); this.code = code;
+  }
+  public ErrorCode getCode() { return code; }
+}
+
+// domain/error/DomainError.java — concrete error
+public class DomainError extends DomainException {
+  public DomainError(ErrorCode code, String message) { super(code, message); }
+}
+```
+
+Python:
+```python
+class DomainError(Exception):
+    """Base domain error."""
+    def __init__(self, message: str, code: str = "VALIDATION"):
+        super().__init__(message)
+        self.code = code
+```
+
+Go:
+```go
+var (
+    ErrNotFound    = errors.New("resource not found")
+    ErrInvalidState = errors.New("invalid state")
+)
+```
+
+Rust:
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum DomainError {
+    #[error("Resource {0} not found")]
+    NotFound(String),
+    #[error("Invalid state: {0}")]
+    InvalidState(String),
+}
+```
+
+**Recovery:**
 - [Error 1]: [Recovery strategy]
 - [Error 2]: [Recovery strategy]
 
@@ -131,20 +234,9 @@ class [ErrorType] extends Error {
 
 ## Performance Considerations
 
-| Metric | Target | Monitoring |
-|--------|--------|------------|
-| Latency | [X]ms | [How monitored] |
-| Throughput | [Y] req/s | [How monitored] |
-
----
-
-## Change Log References
-
-| Date | Change | Section | Status |
-|------|--------|---------|--------|
-| [date] | [description] | #[section] | [synced/pending] |
-
-See full details in `.pi/architecture/CHANGELOG.md`
+| Metric | Target | Strategy |
+|--------|--------|----------|
+| [Metric] | [Target] | [Strategy] |
 
 ---
 

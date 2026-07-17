@@ -1,6 +1,6 @@
 {
   "schemaVersion": "0.1",
-  "frameworkVersion": "0.1.0",
+  "frameworkVersion": "0.1.93",
   "source": "pi",
   "tools": [
     "pi"
@@ -968,5 +968,5 @@
     "domainDescription": "**Rigorix** is a **deterministic coding CLI** built in Rust. It's a **task graph compiler with execution profiles**, NOT a multi-agent system."
   },
   "scaffoldedAt": "2026-06-13T04:29:03.845Z",
-  "lastUpdatedAt": "2026-06-13T04:29:03.923Z"
+  "lastUpdatedAt": "2026-07-17T20:37:53.109Z"
 }

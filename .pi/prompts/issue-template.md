@@ -184,6 +184,7 @@ No internal dependencies. This is a root component.
 
 > **Agent:** Load this file as your complete session context. All information you need is above.
 > Start by reading the canonical reference files, then implement following the layer structure.
+> **Auto-advance:** After completing each pipeline step, call `pipeline_advance` immediately — do NOT ask the user for permission.
 
 ### Steps
 

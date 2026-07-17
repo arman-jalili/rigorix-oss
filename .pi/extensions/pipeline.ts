@@ -1,4 +1,7 @@
 /**
+ * Canonical Reference: .pi/architecture/modules/core-libraries.md
+ * Last Sync: 2026-05-31
+
  * Pipeline Extension for pi
  *
  * Multi-step workflow engine that iterates over items (issues, tasks, etc.)
@@ -17,9 +20,18 @@
  *   /pipeline abort               Kill pipeline
  */
 
-import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync, execSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import {
+	fetchIssueContent,
+	forgePrExists as adapterForgePrExists,
+	forgePrMerged as adapterForgePrMerged,
+	readRepoTool,
+	readRepository,
+	getGitBaseUrl,
+	runScript,
+} from "./architect-lib/forge-adapter.ts";
 
 // ── Validator Scripts ──
 
@@ -35,131 +47,27 @@ const VALIDATOR_SCRIPTS: Record<string, string> = {
 
 // ── Helpers ──
 
-function runScript(cwd: string, script: string): { exitCode: number; stdout: string } {
-	try {
-		const stdout = execSync(`bash -c "${script}"`, { cwd, timeout: 120_000, encoding: "utf-8" });
-		return { exitCode: 0, stdout };
-	} catch (e: unknown) {
-		const err = e as { status?: number; stdout?: string; message?: string };
-		return { exitCode: err.status ?? 1, stdout: err.stdout ?? err.message ?? "" };
-	}
-}
-
-function readRepository(cwd: string): string | null {
-	try {
-		const manifestPath = join(cwd, "guardian-manifest.json");
-		if (existsSync(manifestPath)) {
-			const raw = readFileSync(manifestPath, "utf-8");
-			const manifest = JSON.parse(raw) as {
-				repository?: string;
-				templateContext?: { repository?: string };
-			};
-			if (manifest.repository) return manifest.repository;
-			if (manifest.templateContext?.repository) return manifest.templateContext.repository;
+/**
+ * Parse CLI-style arguments with quote awareness.
+ * Handles double-quoted strings so that `--name "My Epic"` yields ["--name", "My Epic"].
+ */
+function parseArgs(raw: string): string[] {
+	const tokens: string[] = [];
+	let current = "";
+	let inQuote = false;
+	for (const ch of raw) {
+		if (ch === '"') {
+			inQuote = !inQuote;
+			continue;
 		}
-	} catch {
-		// ignore
-	}
-	return null;
-}
-
-function readRepoTool(cwd: string): string {
-	try {
-		const manifestPath = join(cwd, "guardian-manifest.json");
-		if (existsSync(manifestPath)) {
-			const raw = readFileSync(manifestPath, "utf-8");
-			const manifest = JSON.parse(raw) as { repoTool?: string };
-			if (manifest.repoTool === "glab") return "glab";
+		if (!inQuote && ch === " ") {
+			if (current) { tokens.push(current); current = ""; }
+			continue;
 		}
-	} catch {
-		// fall through to default
+		current += ch;
 	}
-	return "gh";
-}
-
-function getGitBaseUrl(repoTool: string): string {
-	if (repoTool === "glab") {
-		try {
-			const uri = execSync("glab config get gitlab_uri 2>/dev/null", {
-				encoding: "utf-8",
-			}).trim();
-			if (uri) return uri.replace(/\/+$/, "");
-		} catch {
-			// fall through to default
-		}
-		return "https://gitlab.com";
-	}
-	return "https://github.com";
-}
-
-// Fetch issue content from remote (gh or glab) or fallback to local file
-function fetchIssueContent(
-	cwd: string,
-	issueId: string,
-	remoteIssueId?: string | null,
-): { content: string; source: string } {
-	const repository = readRepository(cwd);
-	const repoTool = readRepoTool(cwd);
-	const baseUrl = getGitBaseUrl(repoTool);
-
-	if (remoteIssueId && repository) {
-		try {
-			let result;
-			if (repoTool === "glab") {
-				result = runScript(
-					cwd,
-					`glab issue view ${remoteIssueId} --repo ${repository} --output json`,
-				);
-				if (result.exitCode === 0 && result.stdout) {
-					const parsed = JSON.parse(result.stdout) as {
-						title?: string;
-						description?: string;
-					};
-					if (parsed.description) {
-						return {
-							content: parsed.description,
-							source: `Remote issue: ${baseUrl}/${repository}/issues/${remoteIssueId}`,
-						};
-					}
-				}
-			} else {
-				result = runScript(
-					cwd,
-					`gh issue view ${remoteIssueId} --repo ${repository} --json title,body`,
-				);
-				if (result.exitCode === 0 && result.stdout) {
-					const parsed = JSON.parse(result.stdout) as { title?: string; body?: string };
-					if (parsed.body) {
-						return {
-							content: parsed.body,
-							source: `Remote issue: ${baseUrl}/${repository}/issues/${remoteIssueId}`,
-						};
-					}
-				}
-			}
-		} catch {
-			// fallback to local file
-		}
-	}
-
-	// Fallback to local file
-	const issueFilename = `${issueId}.md`.replace(/\//g, "-");
-	const issuePath = join(cwd, ".pi/issues", issueFilename);
-	try {
-		if (existsSync(issuePath)) {
-			return {
-				content: readFileSync(issuePath, "utf-8"),
-				source: `Local file: .pi/issues/${issueFilename}`,
-			};
-		}
-	} catch {
-		// ignore
-	}
-
-	return {
-		content: "Issue content not available.",
-		source: issueId,
-	};
+	if (current) tokens.push(current);
+	return tokens;
 }
 
 // ── Types ──
@@ -327,24 +235,211 @@ function statusLine(state: PipelineState | null): string {
 
 class PipelineManager {
 	private state: PipelineState | null;
+	private repoTool: string;
 
 	constructor(private cwd: string) {
 		this.state = loadPipelineState(cwd);
+		this.repoTool = readRepoTool(cwd);
+	}
+
+	/**
+	 * Reload pipeline state from disk, discarding any cached in-memory state.
+	 * Use this when another extension (e.g., architect) may have written state directly.
+	 */
+	private reloadFromDisk(): void {
+		this.state = loadPipelineState(this.cwd);
+	}
+
+	/**
+	 * Reconcile pipeline state against ground truth (git, GitHub, validators).
+	 * Also updates module markdown docs when items complete.
+	 * Call this on session_start and before any state-dependent operation.
+	 */
+	reconcile(): void {
+		if (!this.state) return;
+		let changed = false;
+
+		for (let i = 0; i < this.state.items.length; i++) {
+			const item = this.state.items[i];
+			const slug = item.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+			const branch = `feat/${slug}`;
+			const result = this.state.results.find((r) => r.item === item);
+
+			// Check ground truth
+			const branchExists = this.gitBranchExists(branch);
+			const prMerged = this.forgePrMerged(branch);
+			const prExists = this.forgePrExists(branch);
+			const hasCommits = branchExists && this.branchHasCommits(branch);
+
+			if (prMerged) {
+				// All steps done — mark item complete
+				if (!result || result.status !== "done") {
+					const itemResult: ItemResult = {
+						item,
+						status: "done",
+						stepResults: this.state.steps.map((s) => ({ step: s.name, status: "passed", reason: "reconciled" })),
+					};
+					// Replace or add
+					const idx = this.state.results.findIndex((r) => r.item === item);
+					if (idx >= 0) this.state.results[idx] = itemResult;
+					else this.state.results.push(itemResult);
+					changed = true;
+					this.updateModuleDocStatus(item, "implemented");
+				}
+			} else if (prExists) {
+				// PR open — implement+validate+create-mr done, waiting on merge
+				if (!result || result.status === "skipped") {
+					const steps = this.state.steps;
+					const stepResults = steps.map((s, idx) => ({
+						step: s.name,
+						status: idx < steps.length - 1 ? "passed" as const : "skipped" as const,
+						reason: idx < steps.length - 1 ? "reconciled" : "waiting for merge",
+					}));
+					const itemResult: ItemResult = { item, status: "in-progress", stepResults };
+					const idx = this.state.results.findIndex((r) => r.item === item);
+					if (idx >= 0) this.state.results[idx] = itemResult;
+					else this.state.results.push(itemResult);
+					changed = true;
+				}
+			} else if (hasCommits) {
+				// Branch with commits — implement done, rest pending
+				if (!result || result.status === "skipped") {
+					const stepResults = [{ step: "implement", status: "passed" as const, reason: "reconciled" }];
+					const itemResult: ItemResult = { item, status: "in-progress", stepResults };
+					const idx = this.state.results.findIndex((r) => r.item === item);
+					if (idx >= 0) this.state.results[idx] = itemResult;
+					else this.state.results.push(itemResult);
+					changed = true;
+				}
+			}
+		}
+
+		// If all items done, update overall status
+		if (this.state.results.length === this.state.items.length && this.state.results.length > 0 && this.state.results.every((r) => r.status === "done")) {
+			this.state.status = "done";
+			this.state.currentItemIndex = this.state.items.length;
+			this.state.currentStepIndex = 0;
+			this.syncRoadmapState();
+			changed = true;
+		}
+
+		// Reposition currentItemIndex to first non-done item
+		const firstUndone = this.state.items.findIndex((item, idx) => {
+			const r = this.state!.results.find((res) => res.item === item);
+			return !r || r.status !== "done";
+		});
+		if (firstUndone >= 0) {
+			this.state.currentItemIndex = firstUndone;
+			this.state.currentStepIndex = 0;
+		} else if (this.state.items.length > 0) {
+			// All done
+			this.state.currentItemIndex = this.state.items.length;
+			this.state.currentStepIndex = 0;
+		}
+
+		if (changed) {
+			this.state.updatedAt = new Date().toISOString();
+			savePipelineState(this.cwd, this.state);
+		}
+	}
+
+	private gitBranchExists(branch: string): boolean {
+		try {
+			const result = execFileSync("git", ["branch", "-a", "--list", branch], { cwd: this.cwd, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
+			return result.trim().length > 0;
+		} catch { return false; }
+	}
+
+	private branchHasCommits(branch: string): boolean {
+		try {
+			const result = execFileSync("git", ["log", "--oneline", branch], { cwd: this.cwd, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
+			return result.trim().length > 0;
+		} catch { return false; }
+	}
+
+	/**
+	 * Check if a PR/MR exists for the given branch, dispatching by repoTool.
+	 */
+	private forgePrExists(branch: string): boolean {
+		return adapterForgePrExists(this.cwd, branch);
+	}
+
+	/**
+	 * Check if a PR/MR for the given branch is merged, dispatching by repoTool.
+	 */
+	private forgePrMerged(branch: string): boolean {
+		return adapterForgePrMerged(this.cwd, branch);
+	}
+
+	/**
+	 * Update module markdown doc status when an item is confirmed done.
+	 * Looks for .pi/architecture/modules/<item>.md and replaces `status: planned` with `status: implemented`.
+	 */
+	private updateModuleDocStatus(item: string, newStatus: string): void {
+		const modulesDir = join(this.cwd, ".pi", "architecture", "modules");
+		try {
+			const files = readdirSync(modulesDir).filter((f) => f.endsWith(".md") && f !== "module-template.md");
+			// Match by module name (kebab-case from item name)
+			const slug = item.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+			for (const file of files) {
+				if (file.replace(".md", "") === slug || file.includes(slug)) {
+					const filePath = join(modulesDir, file);
+					let content = readFileSync(filePath, "utf-8");
+					const oldStatus = content.match(/\*\*Status:\*\*\s*(\w+)/);
+					if (oldStatus && oldStatus[1] !== newStatus) {
+						content = content.replace(/\*\*Status:\*\*\s*\w+/, `**Status:** ${newStatus}`);
+						// Also update status: planned → status: implemented markers
+						content = content.replace(/^status: planned$/gm, `status: ${newStatus}`);
+						writeFileSync(filePath, content, "utf-8");
+					}
+					break;
+				}
+			}
+		} catch { /* modules dir may not exist */ }
+	}
+
+	/**
+	 * Verify the current step's work actually happened before advancing.
+	 * For "implement" step: check git branch has commits.
+	 * For "validate" step: run acceptance gates.
+	 * For "create-mr" step: check PR exists.
+	 * For "merge" step: check PR is merged.
+	 */
+	verifyCurrentStep(): { verified: boolean; reason: string } {
+		if (!this.state) return { verified: false, reason: "No pipeline state" };
+		const item = this.state.items[this.state.currentItemIndex];
+		const step = this.state.steps[this.state.currentStepIndex];
+		if (!step) return { verified: true, reason: "No current step" };
+
+		const slug = item.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+		const branch = `feat/${slug}`;
+
+		switch (step.name) {
+			case "implement": {
+				if (!this.gitBranchExists(branch) || !this.branchHasCommits(branch)) {
+					return { verified: false, reason: `No commits found on branch ${branch}. Implement the feature first.` };
+				}
+				return { verified: true, reason: "Commits found on branch" };
+			}
+			case "create-mr": {
+				if (!this.forgePrExists(branch)) {
+					return { verified: false, reason: `No PR/MR found for branch ${branch}. Create a PR/MR first.` };
+				}
+				return { verified: true, reason: "PR/MR exists" };
+			}
+			case "merge": {
+				if (!this.forgePrMerged(branch)) {
+					return { verified: false, reason: `PR/MR for ${branch} is not merged yet.` };
+				}
+				return { verified: true, reason: "PR/MR merged" };
+			}
+			default:
+				return { verified: true, reason: "Unknown step — skipping verification" };
+		}
 	}
 
 	getState(): PipelineState | null {
 		return this.state;
-	}
-
-	reload(): void {
-		const raw = loadPipelineState(this.cwd);
-		if (raw) {
-			// Migrate old string-step format to StepConfig objects
-			if (raw.steps.length > 0 && typeof raw.steps[0] === "string") {
-				raw.steps = buildSteps(raw.steps as unknown as string[]);
-			}
-		}
-		this.state = raw;
 	}
 
 	create(
@@ -424,6 +519,20 @@ class PipelineManager {
 
 	advanceStep(): void {
 		if (!this.state) return;
+
+		// Auto-run acceptance gates for validate steps
+		if (this.state.currentStepIndex < this.state.steps.length) {
+			const step = this.state.steps[this.state.currentStepIndex];
+			if (step.name === "validate" && step.acceptance.type !== "none") {
+				const { allPassed, errors } = this.runAcceptanceGates(step);
+				if (!allPassed) {
+					const item = this.state.items[this.state.currentItemIndex];
+					this.markStepFailed(step.name, `Acceptance failed: ${errors.join("; ")}`);
+					return; // don't advance, acceptance failed
+				}
+			}
+		}
+
 		this.state.currentStepIndex++;
 		this.state.updatedAt = new Date().toISOString();
 
@@ -432,8 +541,6 @@ class PipelineManager {
 			const item = this.state.items[this.state.currentItemIndex];
 			let result = this.state.results.find((r) => r.item === item);
 
-			// If no result entry exists (e.g. advanceStep called before any steps ran),
-			// create one so the item is tracked.
 			if (!result) {
 				result = { item, status: "skipped", stepResults: [] };
 				this.state.results.push(result);
@@ -444,6 +551,8 @@ class PipelineManager {
 					result.status = "skipped";
 				} else {
 					result.status = "done";
+					// Update module doc to implemented
+					this.updateModuleDocStatus(item, "implemented");
 				}
 			} else {
 				result.status = "failed";
@@ -456,10 +565,89 @@ class PipelineManager {
 
 			if (this.state.currentItemIndex >= this.state.items.length) {
 				this.state.status = "done";
+				this.syncRoadmapState();
 			}
 		}
 
 		savePipelineState(this.cwd, this.state);
+	}
+
+	/**
+	 * When pipeline completes, sync the roadmap state file to reflect done phases.
+	 */
+	private syncRoadmapState(): void {
+		try {
+			const roadmapPath = join(this.cwd, ".pi", ".guardian-roadmap-state.json");
+			if (!existsSync(roadmapPath)) return;
+			const raw = readFileSync(roadmapPath, "utf-8");
+			const roadmap = JSON.parse(raw) as { phases?: { index: number; status: string }[] };
+			if (!roadmap.phases) return;
+			for (const phase of roadmap.phases) {
+				const phaseModules = this.state!.items.filter((item) =>
+					item.toLowerCase().includes(`phase${phase.index}`) ||
+					this.isItemInPhase(item, phase.index)
+				);
+				const allDone = phaseModules.every((item) => {
+					const r = this.state!.results.find((res) => res.item === item);
+					return r && r.status === "done";
+				});
+				if (allDone && phaseModules.length > 0) {
+					phase.status = "done";
+				}
+			}
+			writeFileSync(roadmapPath, JSON.stringify(roadmap, null, 2));
+		} catch { /* roadmap file may not exist */ }
+	}
+
+	private isItemInPhase(item: string, phaseIndex: number): boolean {
+		try {
+			const roadmapPath = join(this.cwd, ".pi", "architecture", "implementation-roadmap.md");
+			if (!existsSync(roadmapPath)) return false;
+			const content = readFileSync(roadmapPath, "utf-8");
+			// Check if item appears under the phase section
+			const phaseSection = content.match(
+				new RegExp(`## Phase ${phaseIndex}:.*?\\n(?:.|\\n)*?(?=\\n## Phase|$)`),
+			);
+			if (!phaseSection) return false;
+			return phaseSection[0].includes(item);
+		} catch { return false; }
+	}
+
+	/**
+	 * Run acceptance gates for a step and return pass/fail.
+	 */
+	private runAcceptanceGates(step: StepConfig): { allPassed: boolean; errors: string[] } {
+		const errors: string[] = [];
+		const acceptance = step.acceptance;
+
+		if (acceptance.type === "none") return { allPassed: true, errors: [] };
+
+		if (acceptance.type === "shell") {
+			try {
+				execFileSync("bash", ["-c", acceptance.command], { cwd: this.cwd, timeout: 300_000, encoding: "utf-8" });
+				return { allPassed: true, errors: [] };
+			} catch (e: unknown) {
+				const err = e as { stdout?: string };
+				return { allPassed: false, errors: [err.stdout?.slice(0, 200) || "shell failed"] };
+			}
+		}
+
+		if (acceptance.type === "validator") {
+			for (const validator of acceptance.validators) {
+				const scriptPath = VALIDATOR_SCRIPTS[validator];
+				if (!scriptPath) { errors.push(`Unknown validator: ${validator}`); continue; }
+				try {
+					execFileSync("bash", ["-c", scriptPath], { cwd: this.cwd, timeout: 120_000, encoding: "utf-8" });
+				} catch (e: unknown) {
+					const err = e as { stdout?: string };
+					errors.push(`${validator}: ${(err.stdout || "").slice(0, 200)}`);
+				}
+			}
+			return { allPassed: errors.length === 0, errors };
+		}
+
+		// LLM gates — can't auto-run, skip verification
+		return { allPassed: true, errors: [] };
 	}
 
 	markStepFailed(stepName: string, reason: string): void {
@@ -490,88 +678,6 @@ class PipelineManager {
 	}
 }
 
-// ── Step-specific instruction builders ──
-
-function getDefaultBranch(cwd: string): string {
-	try {
-		const symRef = execSync("git symbolic-ref refs/remotes/origin/HEAD", {
-			cwd, encoding: "utf-8"
-		}).trim();
-		return symRef.replace(/^refs\/remotes\/origin\//, "");
-	} catch {
-		return "main";
-	}
-}
-
-function buildImplementInstructions(issueId: string, branchExists: boolean): string {
-	const slug = issueId.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-	const branch = `feat/${slug}`;
-
-	if (branchExists) {
-		return [
-			"## MANDATORY GIT WORKFLOW",
-			"",
-			`Branch \`${branch}\` already exists. Continue working on it.`,
-			"",
-			"1. **CHECKOUT:** `git checkout " + branch + "`",
-			"2. Implement the issue requirements",
-			"3. **COMMIT every logical chunk:** `git add <files> && git commit -m \"feat: description\"`",
-			"4. **PUSH regularly:** `git push origin " + branch + "`",
-			"5. When implementation complete, commit+push final changes then call `pipeline_run_acceptance`",
-			"",
-			"⛔ DO NOT skip git. Every commit must be pushed. This is MANDATORY.",
-		].join("\n");
-	}
-
-	return [
-		"## MANDATORY GIT WORKFLOW — DO NOT SKIP",
-		"",
-		"1. **CREATE BRANCH:** `git checkout -b " + branch + "`",
-		"2. Implement the issue requirements",
-		"3. **COMMIT every logical chunk:** `git add <files> && git commit -m \"feat: description\"`",
-		"4. **PUSH regularly:** `git push origin " + branch + "`",
-		"5. When implementation complete, commit+push final changes then call `pipeline_run_acceptance`",
-		"",
-		"⛔ **CRITICAL:** You MUST create a branch, commit, and push. The pipeline validates git history.",
-		"Do NOT implement directly on main. Do NOT skip git operations.",
-	].join("\n");
-}
-
-function buildCreateMRInstructions(issueId: string, repo: string, defaultBranch: string): string {
-	const slug = issueId.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-	const branch = `feat/${slug}`;
-
-	return [
-		"## MANDATORY: CREATE PULL REQUEST",
-		"",
-		"1. **ENSURE pushed:** `git push origin " + branch + "`",
-		"2. **CREATE PR:** `gh pr create --base " + defaultBranch + " --head " + branch + " --title \"" + issueId + ": <description>\" --body \"Closes #<issue-number>\"`",
-		"3. Wait for CI checks to pass on the PR",
-		"4. If checks fail, fix, commit+push, re-check",
-		"5. When PR is created and CI passes, call `pipeline_advance`",
-		"",
-		"⛔ **CRITICAL:** You MUST create a PR via `gh pr create`. Do NOT skip this.",
-		"The repository is: " + (repo || "check guardian-manifest.json"),
-	].join("\n");
-}
-
-function buildMergeInstructions(issueId: string, defaultBranch: string): string {
-	const slug = issueId.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-	const branch = `feat/${slug}`;
-
-	return [
-		"## MANDATORY: MERGE PULL REQUEST",
-		"",
-		"1. Find the PR for branch `" + branch + "`: `gh pr list --head " + branch + " --json number --jq '.[0].number'`",
-		"2. **MERGE PR:** `gh pr merge <PR_NUMBER> --squash --delete-branch`",
-		"3. **CHECKOUT main:** `git checkout " + defaultBranch + "`",
-		"4. **PULL latest:** `git pull origin " + defaultBranch + "`",
-		"5. Call `pipeline_advance`",
-		"",
-		"⛔ **CRITICAL:** You MUST merge the PR via `gh pr merge`. Do NOT skip this.",
-	].join("\n");
-}
-
 // ── Extension ──
 
 export default function (pi: ExtensionAPI) {
@@ -579,6 +685,8 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => {
 		manager = new PipelineManager(ctx.cwd);
+		// Always reconcile pipeline state against ground truth on session start
+		manager.reconcile();
 		const state = manager.getState();
 		if (state && state.status !== "done" && state.status !== "aborted") {
 			ctx.ui.setStatus("pipeline", statusLine(state));
@@ -590,12 +698,11 @@ export default function (pi: ExtensionAPI) {
 		description: "Manage multi-step pipeline workflows",
 		handler: async (args, ctx) => {
 			if (!manager) manager = new PipelineManager(ctx.cwd);
-			manager.reload();
 			const state = manager.getState();
 
-			// pi passes args as a string. Split into tokens.
+			// pi passes args as a string. Parse into tokens (quote-aware).
 			const raw = typeof args === "string" ? args : "";
-			const tokens = raw.split(/\s+/).filter(Boolean);
+			const tokens = parseArgs(raw);
 			const action = tokens[0];
 
 			// Status
@@ -725,7 +832,7 @@ export default function (pi: ExtensionAPI) {
 		parameters: { type: "object", properties: {} },
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
 			if (!manager) manager = new PipelineManager(ctx.cwd);
-			manager.reload();
+			manager.reloadFromDisk();
 			const state = manager.getState();
 			if (!state) {
 				return { content: [{ type: "text" as const, text: "No active pipeline." }] };
@@ -747,7 +854,7 @@ export default function (pi: ExtensionAPI) {
 		},
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			if (!manager) manager = new PipelineManager(ctx.cwd);
-			manager.reload();
+			manager.reloadFromDisk();
 			const state = manager.getState();
 			if (!state || state.status !== "running") {
 				return { content: [{ type: "text" as const, text: "No running pipeline." }] };
@@ -756,11 +863,48 @@ export default function (pi: ExtensionAPI) {
 			const prevItemIndex = state.currentItemIndex;
 			const prevStepIndex = state.currentStepIndex;
 			const stepName = (params.stepName as string) || state.steps[prevStepIndex]?.name;
+
+			// Verify current step before advancing (unless user explicitly provides the step name,
+			// which counts as manual confirmation)
+			if (!params.stepName) {
+				const verification = manager.verifyCurrentStep();
+				if (!verification.verified) {
+					return {
+						content: [{ type: "text" as const, text: `Cannot advance: ${verification.reason}` }],
+					};
+				}
+			}
+
 			manager.markStepPassed(stepName);
 			manager.advanceStep();
 
 			// Re-read state after advance
 			const updatedState = manager.getState()!;
+
+			// Non-blocking: sync progress to tracking issue if one exists
+			try {
+				const trackingStatePath = join(ctx.cwd, ".pi/.guardian-epic-state.json");
+				if (existsSync(trackingStatePath)) {
+					const trackingState = JSON.parse(readFileSync(trackingStatePath, "utf-8")) as {
+						trackingIssueId?: string | null;
+						issues?: { id: string; title: string; status: string }[];
+					};
+					if (trackingState.trackingIssueId && !trackingState.trackingIssueId.startsWith("local:")) {
+						const stepNote = stepName
+							? `✓ Step "${stepName}" complete for item "${updatedState.items[prevItemIndex]}"`
+							: `✓ Advanced to item ${updatedState.currentItemIndex + 1}/${updatedState.items.length}: "${updatedState.items[updatedState.currentItemIndex]}"`;
+						const updateScript = join(ctx.cwd, ".pi/scripts/git/update-tracking-issue.sh");
+						if (existsSync(updateScript)) {
+							execFileSync("bash", [updateScript, "--id", trackingState.trackingIssueId, "--comment", stepNote], {
+								cwd: ctx.cwd,
+								timeout: 30_000,
+								encoding: "utf-8",
+								stdio: "ignore",
+							});
+						}
+					}
+				}
+			} catch { /* non-blocking — don't fail the pipeline */ }
 
 			// Pipeline complete
 			if (updatedState.currentItemIndex >= updatedState.items.length) {
@@ -777,18 +921,71 @@ export default function (pi: ExtensionAPI) {
 			const movedToNextItem = updatedState.currentItemIndex !== prevItemIndex;
 
 			// If we moved to a new item (completed all steps of previous item),
-			// inject the full next-task prompt with issue context
-			if (movedToNextItem && currentStep?.name === "implement") {
-				// Find the remote issue ID from epic state
-				let remoteId: string | null | undefined;
+			// close its remote issue and inject the full next-task prompt
+			if (movedToNextItem) {
+				// Close remote issue for the completed item
 				try {
 					const epicStatePath = join(ctx.cwd, ".pi/.guardian-epic-state.json");
 					if (existsSync(epicStatePath)) {
 						const epicState = JSON.parse(readFileSync(epicStatePath, "utf-8")) as {
 							issues?: { id: string; remoteIssueId?: string | null }[];
 						};
+						const prevItemId = updatedState.items[prevItemIndex];
+						const prevIssue = epicState.issues?.find((i) => i.id === prevItemId);
+						if (prevIssue?.remoteIssueId) {
+							const closeScript = join(ctx.cwd, ".pi/scripts/git/close-issue.sh");
+							if (existsSync(closeScript)) {
+								execFileSync("bash", [closeScript, "--id", prevIssue.remoteIssueId], {
+									cwd: ctx.cwd, timeout: 30_000, encoding: "utf-8", stdio: "ignore",
+								});
+							}
+						}
+					}
+				} catch { /* non-blocking */ }
+
+				// If the pipeline is fully complete, close tracking issue and epic too
+				if (updatedState.currentItemIndex >= updatedState.items.length) {
+					try {
+						const epicStatePath = join(ctx.cwd, ".pi/.guardian-epic-state.json");
+						if (existsSync(epicStatePath)) {
+							const epicState = JSON.parse(readFileSync(epicStatePath, "utf-8")) as {
+								trackingIssueId?: string | null;
+								epicId?: string | null;
+							};
+							if (epicState.trackingIssueId && !epicState.trackingIssueId.startsWith("local:")) {
+								const closeEpicScript = join(ctx.cwd, ".pi/scripts/git/close-epic.sh");
+								if (existsSync(closeEpicScript)) {
+									const args: string[] = [closeEpicScript, "--tracking-id", epicState.trackingIssueId];
+									if (epicState.epicId) args.push("--epic-id", epicState.epicId);
+									execFileSync("bash", args, {
+										cwd: ctx.cwd, timeout: 30_000, encoding: "utf-8", stdio: "ignore",
+									});
+								}
+							}
+						}
+					} catch { /* non-blocking */ }
+				}
+			}
+
+			// If we moved to a new item and the next step is implement,
+			// inject the full next-task prompt with issue context
+			if (movedToNextItem && currentStep?.name === "implement") {
+				// Load epic state for TDD context and remote issue ID
+				let epicTdd = false;
+				let epicTddTestFiles: string[] = [];
+				let remoteId: string | null | undefined;
+				try {
+					const epicStatePath = join(ctx.cwd, ".pi/.guardian-epic-state.json");
+					if (existsSync(epicStatePath)) {
+						const epicState = JSON.parse(readFileSync(epicStatePath, "utf-8")) as {
+							issues?: { id: string; remoteIssueId?: string | null }[];
+							tdd?: boolean;
+							tddTestFiles?: string[];
+						};
 						const issue = epicState.issues?.find((i) => i.id === currentItem);
 						remoteId = issue?.remoteIssueId;
+						epicTdd = epicState.tdd ?? false;
+						epicTddTestFiles = epicState.tddTestFiles ?? [];
 					}
 				} catch {
 					// ignore
@@ -800,6 +997,19 @@ export default function (pi: ExtensionAPI) {
 					remoteId,
 				);
 
+				const tddAdvanceBlock = epicTdd
+					? [
+						"",
+						"## TDD: Red-Green-Refactor",
+						"",
+						"Failing tests already exist for this component. Follow TDD:",
+						"1. **RED:** Run the failing tests first to confirm they fail",
+						"2. **GREEN:** Write minimal implementation to make tests pass",
+						"3. **REFACTOR:** Clean up while keeping tests green",
+						"",
+					].join("\n")
+					: "";
+
 				const instructions = [
 					`## Pipeline: Moving to next item`,
 					"",
@@ -808,22 +1018,17 @@ export default function (pi: ExtensionAPI) {
 					`**Issue:** ${issueSource}`,
 					"",
 					`**Next task:** Item "${currentItem}" → Step: implement`,
+					tddAdvanceBlock,
 					"",
 					"**Instructions:**",
-					"1. Create branch: `feat/${currentItem}`",
-					"2. Review the issue context below",
-					"3. Implement the component according to the issue spec",
-					"4. Run `pipeline_run_acceptance` to validate",
-					"5. Call `pipeline_advance` when done",
+					"1. Review the issue context below",
+					epicTdd
+						? "2. Run the pre-generated failing tests to confirm RED phase"
+						: "2. Implement the component according to the issue spec",
+					"3. Run `pipeline_run_acceptance` to validate",
+					"4. Call `pipeline_advance` when done",
 					"",
-					"**Available tools:**",
-					"- `pipeline_next_task` — get full context for current step",
-					"- `pipeline_run_acceptance` — run validators (CI, tests, security, shell, LLM)",
-					"- `pipeline_advance` — mark step passed, advance to next",
-					"- `pipeline_fail` — mark step failed, skip remaining steps for this item",
-					"- `pipeline_status` — check overall pipeline progress",
-					"",
-					"⚠️ **IMPORTANT:** After each step, call `pipeline_run_acceptance` then `pipeline_advance`. The pipeline flows: implement → validate → create-mr → merge. Continue through ALL items — do not stop after completing one.",
+					"⚠️ **IMPORTANT:** After you complete this item and call `pipeline_advance`, the pipeline will automatically advance to the next step. Continue this loop until all items are done. Do not stop after completing a single item — keep going through implement → validate → create-mr → merge for every item.",
 					"",
 					"---",
 					"",
@@ -832,12 +1037,12 @@ export default function (pi: ExtensionAPI) {
 					issueContent || "Issue content not available.",
 				].join("\n");
 
-				return { content: [{ type: "text" as const, text: instructions }] };
+				return { content: [{ type: "text" as const, text: "Call `pipeline_next_task` to get the next item and continue implementing (no asking).\n\n→ Auto-advance: pipeline_advance (no asking)│" }] };
 			}
 
 			// Same item, next step — just report
 			const nextInfo = getNextStepInfo(updatedState);
-			return { content: [{ type: "text" as const, text: nextInfo }] };
+			return { content: [{ type: "text" as const, text: "Call `pipeline_next_task` to continue (no asking).\n\n→ Auto-advance: pipeline_advance (no asking)│" }] };
 		},
 	});
 
@@ -855,7 +1060,7 @@ export default function (pi: ExtensionAPI) {
 		},
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			if (!manager) manager = new PipelineManager(ctx.cwd);
-			manager.reload();
+			manager.reloadFromDisk();
 			const state = manager.getState();
 			if (!state || state.status !== "running") {
 				return { content: [{ type: "text" as const, text: "No running pipeline." }] };
@@ -904,6 +1109,7 @@ export default function (pi: ExtensionAPI) {
 		},
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			if (!manager) manager = new PipelineManager(ctx.cwd);
+			manager.reloadFromDisk();
 
 			const name = (params.name as string) || "pipeline";
 			const items = ((params.items as string) || "")
@@ -922,7 +1128,8 @@ export default function (pi: ExtensionAPI) {
 				return { content: [{ type: "text" as const, text: "No steps specified." }] };
 			}
 
-			const state = manager.create(name, items, steps, { mergeOnValid: !!params.mergeOnValid });
+			const stepConfigs = buildSteps(steps);
+			const state = manager.create(name, items, stepConfigs, { mergeOnValid: !!params.mergeOnValid });
 			ctx.ui.setStatus(
 				"pipeline",
 				`▶ ${name} (${state.items.length} items × ${state.steps.length} steps)`,
@@ -951,7 +1158,7 @@ export default function (pi: ExtensionAPI) {
 		},
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			if (!manager) manager = new PipelineManager(ctx.cwd);
-			manager.reload();
+			manager.reloadFromDisk();
 			const state = manager.getState();
 			if (!state || state.status !== "running") {
 				return { content: [{ type: "text" as const, text: "No running pipeline." }] };
@@ -960,16 +1167,22 @@ export default function (pi: ExtensionAPI) {
 			const step = state.steps[state.currentStepIndex];
 			if (!step) return { content: [{ type: "text" as const, text: "No more steps." }] };
 
-			// Find the remote issue ID from epic state
+			// Load epic state for TDD context and remote issue ID
+			let epicTdd = false;
+			let epicTddTestFiles: string[] = [];
 			let remoteId: string | null | undefined;
 			try {
 				const epicStatePath = join(ctx.cwd, ".pi/.guardian-epic-state.json");
 				if (existsSync(epicStatePath)) {
 					const epicState = JSON.parse(readFileSync(epicStatePath, "utf-8")) as {
 						issues?: { id: string; remoteIssueId?: string | null }[];
+						tdd?: boolean;
+						tddTestFiles?: string[];
 					};
 					const issue = epicState.issues?.find((i) => i.id === issueId);
 					remoteId = issue?.remoteIssueId;
+					epicTdd = epicState.tdd ?? false;
+					epicTddTestFiles = epicState.tddTestFiles ?? [];
 				}
 			} catch {
 				// ignore
@@ -991,29 +1204,28 @@ export default function (pi: ExtensionAPI) {
 				}
 			}
 
-			// Build step-specific git-mandatory instructions
-			const repo = readRepository(ctx.cwd) || "";
-			const defaultBranch = getDefaultBranch(ctx.cwd);
-			const slug = issueId.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-			const branch = `feat/${slug}`;
-
-			let stepInstructions = "";
-			if (step.name === "implement") {
-				let branchExists = false;
-				try {
-					execSync(`git rev-parse --verify ${branch}`, { cwd: ctx.cwd, encoding: "utf-8" });
-					branchExists = true;
-				} catch { /* doesn't exist */ }
-				stepInstructions = buildImplementInstructions(issueId, branchExists);
-			} else if (step.name === "validate") {
-				stepInstructions = "## VALIDATION STEP\n\n1. Ensure all changes committed+push to feature branch\n2. Call `pipeline_run_acceptance`\n3. If pass: `pipeline_advance`. If fail: fix, commit+push, re-run.\n\n⛔ All changes must be committed and pushed before validation.";
-			} else if (step.name === "create-mr") {
-				stepInstructions = buildCreateMRInstructions(issueId, repo, defaultBranch);
-			} else if (step.name === "merge") {
-				stepInstructions = buildMergeInstructions(issueId, defaultBranch);
-			} else {
-				stepInstructions = "## Instructions\n\n1. Complete the work for this step\n2. Commit and push all changes\n3. Call `pipeline_run_acceptance` then `pipeline_advance`";
-			}
+			const tddBlock = epicTdd
+				? [
+					"",
+					"---",
+					"",
+					"## TDD: Red-Green-Refactor",
+					"",
+					"Failing test files have already been generated. Follow TDD discipline:",
+					"",
+					"**1. RED — Run the failing tests first:**",
+					...epicTddTestFiles.map((f) => `  - \`${f}\``),
+					"",
+					"**2. GREEN — Implement the minimum code to make tests pass:**",
+					"  - Do NOT write new test files — the tests already exist",
+					"  - Focus on the implementation only",
+					"  - Run tests after each change to track progress",
+					"",
+					"**3. REFACTOR — Clean up while keeping tests green:**",
+					"  - Extract helpers, improve naming, remove duplication",
+					"",
+				].join("\n")
+				: "";
 
 			const text = [
 				"## Pipeline Task",
@@ -1025,17 +1237,24 @@ export default function (pi: ExtensionAPI) {
 				"",
 				"---",
 				"",
-				stepInstructions,
-				"",
-				"---",
-				"",
 				stepPrompt || "",
+				tddBlock,
 				"",
 				"---",
 				"",
 				"## Issue Context",
 				"",
 				issueContent,
+				"",
+				"---",
+				"",
+				"**Instructions:**",
+				"1. Review the issue context above",
+				"2. Follow the step prompt instructions",
+				"3. When complete, call `pipeline_run_acceptance` to validate your work",
+				"4. Then call `pipeline_advance` to move to the next step (no asking)",
+				"",
+				"→ Auto-advance: pipeline_advance (no asking)│",
 			].join("\n");
 
 			return { content: [{ type: "text" as const, text }] };
@@ -1050,7 +1269,7 @@ export default function (pi: ExtensionAPI) {
 		parameters: { type: "object", properties: {} },
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
 			if (!manager) manager = new PipelineManager(ctx.cwd);
-			manager.reload();
+			manager.reloadFromDisk();
 			const state = manager.getState();
 			if (!state || state.status !== "running") {
 				return { content: [{ type: "text" as const, text: "No running pipeline." }] };
@@ -1066,45 +1285,6 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
-			if (acceptance.type === "llm") {
-				const promptPath = join(ctx.cwd, acceptance.prompt);
-				let validatorPrompt = "";
-				try {
-					if (existsSync(promptPath)) {
-						validatorPrompt = readFileSync(promptPath, "utf-8");
-					}
-				} catch {
-					// ignore
-				}
-				if (!validatorPrompt) {
-					return {
-						content: [{
-							type: "text" as const,
-							text: `LLM validator prompt not found: ${acceptance.prompt}. Skipping gate.`,
-						}],
-					};
-				}
-				return {
-					content: [{
-						type: "text" as const,
-						text: [
-							`## LLM Validator: ${step.name}`,
-							"",
-							"Read the validator agent definition below. Execute it as an agent:",
-							"1. Read and understand the validation criteria",
-							"2. Audit the current implementation against each criterion",
-							"3. Report pass/fail with evidence for each criterion",
-							"4. If all pass, call `pipeline_advance`",
-							"5. If any fail, fix the issues and re-run acceptance",
-							"",
-							"---",
-							"",
-							validatorPrompt,
-						].join("\n"),
-					}],
-				};
-			}
-
 			if (acceptance.type === "shell") {
 				const lines: string[] = [`## Acceptance Gate: ${step.name}\n`];
 				const scriptPath = acceptance.command;
@@ -1115,7 +1295,7 @@ export default function (pi: ExtensionAPI) {
 					return { content: [{ type: "text" as const, text: lines.join("\n") }] };
 				}
 				try {
-					const output = execSync("bash " + scriptPath, {
+					const output = execFileSync("bash", [scriptPath], {
 						cwd: ctx.cwd,
 						timeout: 300_000,
 						encoding: "utf-8",
@@ -1130,6 +1310,10 @@ export default function (pi: ExtensionAPI) {
 					lines.push("```\n" + ((err.stdout || "").split("\n").slice(-10).join("\n")) + "\n```");
 				}
 				return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+			}
+
+			if (acceptance.type !== "validator") {
+				return { content: [{ type: "text" as const, text: "Unknown acceptance type: " + acceptance.type }] };
 			}
 
 			const lines: string[] = ["## Acceptance Gate: " + step.name + "\n"];
@@ -1150,7 +1334,7 @@ export default function (pi: ExtensionAPI) {
 					continue;
 				}
 				try {
-					execSync(`bash -c "${scriptPath}"`, {
+					execFileSync("bash", ["-c", scriptPath], {
 						cwd: ctx.cwd,
 						timeout: 120_000,
 						encoding: "utf-8",
@@ -1197,20 +1381,7 @@ function buildSteps(stepNames: string[]): StepConfig[] {
 		},
 		merge: {
 			name: "merge",
-			prompt: ".pi/prompts/issue-merge.md",
 			acceptance: { type: "validator", validators: ["ci", "canonical"] },
-		},
-		"architecture-validator": {
-			name: "architecture-validator",
-			acceptance: { type: "llm", prompt: ".pi/agents/architecture-validator.md" },
-		},
-		"security-validator": {
-			name: "security-validator",
-			acceptance: { type: "llm", prompt: ".pi/agents/security-validator.md" },
-		},
-		"operations-validator": {
-			name: "operations-validator",
-			acceptance: { type: "llm", prompt: ".pi/agents/operations-validator.md" },
 		},
 		document: {
 			name: "document",

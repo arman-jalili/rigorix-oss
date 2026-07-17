@@ -17,6 +17,7 @@ Every issue must contain:
 - **Canonical references** — Architecture module + ADR paths
 - **Files/layers affected** — domain, application, infrastructure, api
 - **Rollout or operational notes** — When relevant
+- **Auto-advance pipeline** — After completing a step, call `pipeline_advance` immediately. Do NOT ask the user for permission.
 
 ---
 

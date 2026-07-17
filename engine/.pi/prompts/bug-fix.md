@@ -19,6 +19,7 @@ Bug Report
 │ 2. CODE-DEVELOPER: Fix bug      │
 │    Load: context/patterns.md    │
 │    Output: Fixed code + test    │
+│    → Auto-advance: pipeline_advance (no asking)│
 └──────────────┬──────────────────┘
                │
                ▼

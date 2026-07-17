@@ -1,4 +1,7 @@
 /**
+ * Canonical Reference: .pi/architecture/modules/core-libraries.md
+ * Last Sync: 2026-05-31
+
  * Slash Commands Extension for pi
  *
  * Intercepts user input starting with `/` and transforms slash commands into

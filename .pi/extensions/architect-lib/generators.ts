@@ -1,59 +1,268 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { ArchitectureSlice, ModuleComponent } from "./types.ts";
+
+// ── Module Doc Readers ───────────────────────────────────────────────────────
+
+/** Read the raw module architecture doc, or empty string if missing. */
+function readModuleDoc(cwd: string, moduleId: string): string {
+	try {
+		return readFileSync(
+			join(cwd, ".pi", "architecture", "modules", `${moduleId}.md`),
+			"utf-8",
+		);
+	} catch {
+		return "";
+	}
+}
+
+/** Extract a named section's body (between ## heading and next ## / --- / EOF). */
+function extractSection(doc: string, heading: string): string {
+	const m = doc.match(new RegExp(`## ${heading}\n([\\s\\S]*?)(?=\n##|\n---|$)`));
+	return m ? m[1].trim() : "";
+}
+
+interface AcRow { num: string; component?: string; criterion: string; verifyIn: string; }
+
+/**
+ * Parse every AC row from ## Acceptance Criteria.
+ * Supports:
+ *   4-column: `| # | Component | Criterion | Verify In |`
+ *   3-column: `| # | Criterion | Verify In |`
+ * Returns rows with component populated when the 4-col format is detected.
+ */
+function parseAcTable(doc: string): AcRow[] {
+	const section = extractSection(doc, "Acceptance Criteria");
+	if (!section) return [];
+	const rows = section.match(/^\| [\d✅☐][^|]*\|[^|]+\|[^|]+\|[^|]*\|$/gm) ?? [];
+	return rows.map((row) => {
+		const parts = row.split("|").map((p) => p.trim()).filter(Boolean);
+		// 4-col: [num, component, criterion, verifyIn]
+		// 3-col: [num, criterion, verifyIn]
+		const isFourCol = parts.length >= 4 && parts[1] !== "Criterion";
+		if (isFourCol) {
+			return { num: parts[0] ?? "", component: parts[1], criterion: parts[2] ?? "", verifyIn: parts[3] ?? "" };
+		}
+		return { num: parts[0] ?? "", criterion: parts[1] ?? "", verifyIn: parts[2] ?? "" };
+	});
+}
+
+/** Parse numbered steps from ## Implementation Sequence. */
+function parseImplSequence(doc: string): string[] {
+	const section = extractSection(doc, "Implementation Sequence");
+	if (!section) return [];
+	return (section.match(/^\d+\. .+$/gm) ?? []).map((s) => s.trim());
+}
+
+/**
+ * Filter ACs that belong to a specific component.
+ * 
+ * When the AC table has a Component column (4-col format), ACs are matched
+ * by component name. Falls back to keyword matching on criterion text when
+ * no component column is present.
+ */
+function primaryAcs(acs: AcRow[], componentName: string): AcRow[] {
+	if (acs.length === 0) return [];
+
+	// Prefer explicit component column match
+	const byComponent = acs.filter((ac) => ac.component && ac.component === componentName);
+	if (byComponent.length > 0) return byComponent;
+
+	// Fallback: keyword match on criterion text
+	const lower = componentName.toLowerCase();
+	const isDomainModel =
+		(lower.includes("entity") || lower.includes("aggregate") ||
+		 lower.includes("snapshot") || lower.includes("enum")) &&
+		!lower.includes("repository");
+
+	const matched = acs.filter((ac) =>
+		ac.criterion.toLowerCase().includes(lower.replace(/[^a-z0-9]/g, "")),
+	);
+	if (matched.length > 0) return matched;
+
+	if (isDomainModel) {
+		const domainKeywords = ["entity", "aggregate", "enum", "value object", "jpa", "migration", "flyway", "snapshot", "status"];
+		const filtered = acs.filter((ac) =>
+			domainKeywords.some((kw) => ac.criterion.toLowerCase().includes(kw)),
+		);
+		if (filtered.length > 0) return filtered;
+	}
+
+	// Last resort: evenly split ACs among all components (assuming n components, take 1/n-th)
+	return acs.slice(0, Math.max(1, Math.ceil(acs.length / 4)));
+}
+
+/** Format AcRow[] as a markdown table body (no header). Includes Component column if any row has one. */
+function acRowsToMarkdown(rows: AcRow[]): string {
+	const hasComponent = rows.some((r) => r.component);
+	if (hasComponent) {
+		return rows.map((r) => `| ${r.num} | ${r.component} | ${r.criterion} | ${r.verifyIn} |`).join("\n");
+	}
+	return rows.map((r) => `| ${r.num} | ${r.criterion} | ${r.verifyIn} |`).join("\n");
+}
+
+/** Build a human-readable title for the component issue. */
+function buildIssueTitle(comp: ModuleComponent, moduleId: string): string {
+	return `Implement ${comp.name} — ${moduleId}`;
+}
+
+/** Derive `in_scope` lines from primary ACs. Falls back to generic if none. */
+function buildInScope(comp: ModuleComponent, primaryAcRows: AcRow[], implSteps: string[], moduleId: string): string[] {
+	if (primaryAcRows.length > 0) {
+		return primaryAcRows.slice(0, 6).map((r) => r.criterion.replace(/^✅\s*/, ""));
+	}
+	if (implSteps.length > 0) {
+		return implSteps.slice(0, 4).map((s) => s.replace(/^\d+\.\s*/, ""));
+	}
+	return [
+		`Implement ${comp.name} for the ${moduleId} module`,
+		"Write unit tests for all public methods",
+		"Add integration tests with upstream/downstream components",
+	];
+}
+
+/** Detect whether project at `cwd` is a Java project. */
+function isJavaProject(cwd?: string): boolean {
+	if (!cwd) return false;
+	try {
+		return existsSync(join(cwd, "pom.xml")) ||
+		       existsSync(join(cwd, "build.gradle")) ||
+		       existsSync(join(cwd, "build.gradle.kts"));
+	} catch {
+		return false;
+	}
+}
+
+/** Get the test runner command for a project language. */
+function testRunnerFromCwd(cwd?: string): string | null {
+	if (!cwd) return null;
+	try {
+		if (existsSync(join(cwd, "Cargo.toml"))) return "cargo test";
+		if (existsSync(join(cwd, "go.mod"))) return "go test";
+		if (existsSync(join(cwd, "pyproject.toml")) || existsSync(join(cwd, "requirements.txt"))) return "pytest";
+		if (existsSync(join(cwd, "package.json"))) return "bun test";
+	} catch {}
+	return null;
+}
+
+/** Get the implementation file suffix for a project language. */
+function implSuffix(cwd?: string): string {
+	if (!cwd) return "ts";
+	try {
+		if (existsSync(join(cwd, "pom.xml")) || existsSync(join(cwd, "build.gradle")) || existsSync(join(cwd, "build.gradle.kts"))) return "java";
+		if (existsSync(join(cwd, "Cargo.toml"))) return "rs";
+		if (existsSync(join(cwd, "go.mod"))) return "go";
+		if (existsSync(join(cwd, "pyproject.toml")) || existsSync(join(cwd, "requirements.txt"))) return "py";
+	} catch {}
+	return "ts";
+}
 
 // ── Issue Generation ──
 
 export function generateIssueMarkdown(
-	component: ModuleComponent,
+	comp: ModuleComponent,
 	slice: ArchitectureSlice,
 	issueIndex: number,
-	totalIssues: number,
+	_totalIssues: number,
+	tdd?: boolean,
+	cwd?: string,
 ): string {
 	const moduleId = slice.module.replace(/^module-/, "");
-	const componentName = component.name.toLowerCase().replace(/\s+/g, "-");
 	const issueId = `ISSUE-${moduleId.toUpperCase()}-${issueIndex + 1}`;
+
+	// ── Read module doc for specifics ──
+	const doc = cwd ? readModuleDoc(cwd, slice.module) : "";
+	const allAcs = parseAcTable(doc);
+	const implSteps = parseImplSequence(doc);
+	const compAcs = primaryAcs(allAcs, comp.name);
+
+	const title = buildIssueTitle(comp, moduleId);
+	const inScope = buildInScope(comp, compAcs, implSteps, moduleId);
+
+	// Language-aware test paths
+	const isJava = isJavaProject(cwd);
+	const testBaseDir = isJava ? "src/test/java" : "tests/unit";
+	const testRunnerHint = isJava ? "mvn test" : testRunnerFromCwd(cwd) || "bun test";
+
+	const testLine = tdd
+		? `    - "update: ${testBaseDir}/ (failing tests already generated — make them pass)"`
+		: `    - "create: ${testBaseDir}/"`;
+
+	// YAML front-matter ACs
+	const yamlAcs = compAcs.length > 0
+		? compAcs.map((r) => {
+			const c = r.criterion.replace(/^✅\s*/, "").replaceAll("\"", "'");
+			return `    - "${c}"`;
+		}).join("\n")
+		: `    - "CI pipeline passes (validate-ci.sh)"
+    - "All unit tests pass"
+    - "Architecture compliance (validate-architecture.sh)"
+    - "Canonical references valid (validate-canonical.sh)"`;
+
+	// Markdown body: all ACs
+	const hasCompCol = allAcs.some((a) => a.component);
+	const allAcHeader = hasCompCol
+		? `| # | Component | Criterion | Verify In |\n|---|-----------|-----------|-----------|`
+		: `| # | Criterion | Verify In |\n|---|-----------|-----------|`;
+	const allAcMarkdown = allAcs.length > 0
+		? `${allAcHeader}\n${acRowsToMarkdown(allAcs)}`
+		: `| # | Criterion | Validator |\n|---|-----------|-----------|\n| 1 | CI pipeline passes | \`validate-ci.sh\` |\n| 2 | All unit tests pass | \`validate-tests.sh\` |\n| 3 | Integration tests pass | \`validate-integration.sh\` |\n| 4 | Architecture compliance | \`validate-architecture.sh\` |\n| 5 | Canonical references valid | \`validate-canonical.sh\` |`;
+
+	// Implementation steps from module doc
+	const stepsMarkdown = implSteps.length > 0
+		? implSteps.map((s) => `- ${s}`).join("\n")
+		: `- Read .pi/architecture/modules/${slice.module}.md\n- Implement entities and interfaces\n- Implement infrastructure (adapter, mapper, repository)\n- Implement use case\n- Write unit + integration tests\n- Run validators\n- Create MR`;
+
+	const tddSteps = tdd
+		? [
+				"1. Read canonical architecture references",
+				`2. Run the pre-generated failing tests: \`cd ${testBaseDir} && ${testRunnerHint}\``,
+				"3. Verify tests FAIL (Red phase)",
+				"4. Implement domain entities and interfaces",
+				"5. Implement application service/handler",
+				"6. Add infrastructure connections",
+				"7. Run tests again — they should PASS (Green phase)",
+				"8. Refactor if needed (Refactor phase)",
+				"9. Write integration tests",
+				"10. Run all validators",
+				"11. Create MR",
+			].join("\n")
+		: [
+				"1. Read canonical architecture references",
+				"2. Create domain entities and interfaces",
+				"3. Implement application service/handler",
+				"4. Add infrastructure connections",
+				"5. Write unit tests (≥ 90% coverage)",
+				"6. Write integration tests",
+				"7. Run all validators",
+				"8. Create MR",
+			].join("\n");
 
 	return `---
 guardian_issue:
   id: "${issueId}"
   epic: "TBD"
-  component: "${component.name}"
+  component: "${comp.name}"
   module: "${slice.module}"
   status: planned
   priority: high
   dependencies:
-${component.dependencies.map((d) => `    - "${d}"`).join("\n")}
+${comp.dependencies.map((d) => `    - "${d}"`).join("\n")}
 
   in_scope:
-    - Implement ${component.name} for the ${slice.module} module
-    - Write unit tests for all public interfaces
-    - Add integration tests with upstream/downstream components
-    - Create API documentation
+${inScope.map((s) => { const sc = s.replaceAll("\"", "'"); return `    - "${sc}"`; }).join("\n")}
 
   out_of_scope:
-    - Changes to upstream components (${component.dependencies.join(", ")})
+    - Changes to upstream components (${comp.dependencies.join(", ") || "none"})
     - UI/frontend changes
     - Deployment pipeline configuration
 
-  affected_layers:
-    domain:
-      - New domain models for ${componentName}
-    application:
-      - New service/handler for ${componentName}
-    infrastructure:
-      - New database tables or external service connections
-    api:
-      - New endpoints or event handlers
-
   canonical_references:
-    - module: ".pi/architecture/modules/${slice.module}.md#${componentName}"
+    - module: ".pi/architecture/modules/${slice.module}.md"
+    - acceptance_criteria: ".pi/architecture/modules/${slice.module}.md#acceptance-criteria"
 
   acceptance_criteria:
-    - "CI pipeline passes (validate-ci.sh)"
-    - "All unit tests pass with ≥ 90% coverage"
-    - "Integration tests pass with upstream/downstream components"
-    - "validate-security.sh passes"
-    - "validate-architecture.sh passes"
-    - "validate-canonical.sh passes"
+${yamlAcs}
 
   validators:
     - ci
@@ -63,90 +272,73 @@ ${component.dependencies.map((d) => `    - "${d}"`).join("\n")}
     - canonical
 
   implementation_notes: |
-    ${component.description || "Implement this component according to the architecture module."}
+    Read .pi/architecture/modules/${slice.module}.md BEFORE implementing.
+    All Acceptance Criteria in that file must be satisfied before this issue is closed.
+    Component focus: ${comp.name}.
+    CONCRETE IMPLEMENTATIONS MUST BE CREATED — interface stubs from the contract freeze
+    are not sufficient. Each domain service/aggregate needs a concrete .impl.${implSuffix(cwd)} file.
 
   file_changes:
-    - "create: src/${moduleId}/${componentName}/"
-    - "create: tests/unit/${moduleId}/${componentName}/"
-    - "create: tests/integration/${moduleId}/${componentName}/"
+    - "create: src/${moduleId}/domain/"
+    - "create: src/${moduleId}/application/"
+    - "create: src/${moduleId}/infrastructure/"
+    - "modify: src/${moduleId}/interfaces/"
+    - ${testLine}
 ---
 
-# ${issueId}: ${component.name}
+# ${issueId}: ${title}
 
 ## Intent
 
-${component.description || `Implement ${component.name} for the ${slice.module} module.`}
+Implement **${comp.name}** for the \`${slice.module}\` module.
+
+> ⚠️ **Read before implementing:** \`.pi/architecture/modules/${slice.module}.md\`
+> Every item in the **Acceptance Criteria** section of that file must be satisfied
+> before this issue is closed — including adapter, mapper, and WireMock items.
 
 ## Architecture Context
 
 - **Module:** ${slice.module}
-- **Component:** ${component.name}
-- **Status:** ${component.status}
-- **Dependencies:** ${component.dependencies.length > 0 ? component.dependencies.join(", ") : "none"}
+- **Component:** ${comp.name}
+- **Status:** ${comp.status}
+- **Dependencies:** ${comp.dependencies.length > 0 ? comp.dependencies.join(", ") : "none"}
 
-## Dependencies
+## In Scope (this component)
 
-\`\`\`
-${component.dependencies.map((d) => `  └── ${d}`).join("\n") || "  └── (root component — no dependencies)"}
-\`\`\`
+${inScope.map((s) => `- ${s}`).join("\n")}
 
-## In Scope
+## Acceptance Criteria (this issue)
 
-- Implement ${component.name} for the ${slice.module} module
-- Write unit tests for all public interfaces
-- Add integration tests with upstream/downstream components
-- Create API documentation
+These acceptance criteria must be satisfied before this issue can be closed:
 
-## Out of Scope
-
-- Changes to upstream components
-- UI/frontend changes
-- Deployment pipeline configuration
-
-## Affected Layers
-
-### Domain
-- New domain models for ${componentName}
-
-### Application
-- New service/handler for ${componentName}
-
-### Infrastructure
-- New database tables or external service connections
-
-### API
-- New endpoints or event handlers
-
-## Canonical References
-
-- **Module:** \`.pi/architecture/modules/${slice.module}.md#${componentName}\`
-
-## Acceptance Criteria
-
-| # | Criterion | Validator |
+| # | Criterion | Verify In |
 |---|-----------|-----------|
-| 1 | CI pipeline passes | \`validate-ci.sh\` |
-| 2 | All unit tests pass with ≥ 90% coverage | \`validate-tests.sh\` |
-| 3 | Integration tests pass | \`validate-integration.sh\` |
-| 4 | Security checks pass | \`validate-security.sh\` |
-| 5 | Architecture compliance | \`validate-architecture.sh\` |
-| 6 | Canonical references valid | \`validate-canonical.sh\` |
+${compAcs.length > 0 ? compAcs.map((r) => `| ${r.num} | ${r.criterion} | ${r.verifyIn} |`).join("\n") : `| 1 | CI pipeline passes | \`validate-ci.sh\` |\n| 2 | All unit tests pass | \`validate-tests.sh\` |\n| 3 | Architecture compliance | \`validate-architecture.sh\` |\n| 4 | Canonical references valid | \`validate-canonical.sh\` |`}
+
+## Full Module Acceptance Criteria
+
+> All items below must pass before the **epic** is closed.
+> Items may be split across multiple issues — verify your component's items before creating the MR.
+
+${allAcMarkdown}
+
+## Implementation Sequence (from module doc)
+
+${stepsMarkdown}
 
 ## Implementation
 
-> **Agent:** This is your complete session context. All information you need is above.
-> Start by reading the canonical reference files, then implement following the layer structure.
+> **Agent instructions:**
+> 1. Open \`.pi/architecture/modules/${slice.module}.md\` — read the full Acceptance Criteria table
+> 2. Identify which rows are your responsibility for **${comp.name}**
+> 3. Create concrete implementation files (\`.impl.${implSuffix(cwd)}\`) in \`src/${moduleId}/\` — the interface stubs from the contract freeze are NOT enough
+> 4. Each domain aggregate/service must have a working implementation with business logic
+> 5. Verify each AC row is satisfied in \`src/\` before marking done
+> 6. Run validators and create MR
 
 ### Steps
 
-1. Read canonical architecture references
-2. Create domain entities and interfaces
-3. Implement application service/handler
-4. Add infrastructure connections
-5. Write unit tests (≥ 90% coverage)
-6. Write integration tests
-7. Run all validators
-8. Create MR
+${tddSteps}
 `;
 }
 // ── Contract Freeze Generator ──
@@ -154,8 +346,13 @@ ${component.dependencies.map((d) => `  └── ${d}`).join("\n") || "  └─�
 export function generateContractFreezeMarkdown(
 	slice: ArchitectureSlice,
 	epicName: string,
+	_codegenSkill?: string,
+	cwd?: string,
 ): string {
 	const moduleId = slice.module.replace(/^module-/, "");
+	const doc = cwd ? readModuleDoc(cwd, slice.module) : "";
+	const implSteps = parseImplSequence(doc);
+	const allAcs = parseAcTable(doc);
 
 	return `---
 guardian_issue:
@@ -191,8 +388,8 @@ guardian_issue:
     - module: ".pi/architecture/modules/${slice.module}.md"
 
   acceptance_criteria:
-    - "All component interfaces defined as interfaces/types"
-    - "DTO schemas documented"
+    - "All component interfaces defined as stubs (TODO bodies)"
+    - "DTO schemas documented with field names and types"
     - "API contracts frozen and reviewed"
     - "Implementation PRs reference these contracts"
 
@@ -206,9 +403,10 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/${moduleId}/contracts/"
-    - "create: src/${moduleId}/contracts/dtos/"
-    - "create: src/${moduleId}/contracts/events/"
+    - "create: src/${moduleId}/domain/"
+    - "create: src/${moduleId}/application/"
+    - "create: src/${moduleId}/infrastructure/"
+    - "create: src/${moduleId}/interfaces/"
 ---
 
 # Contract Freeze: ${slice.module}
@@ -245,10 +443,24 @@ ${slice.nextLogicalSlice.map((c: { name: string }) => `- ${c.name}`).join("\n")}
 
 | # | Criterion | How to Verify |
 |---|-----------|---------------|
-| 1 | All component interfaces defined | Check src/<group>/<module>/domain/ and application/ |
+| 1 | All component interfaces defined as stubs (TODO bodies) | Check src/<module>/domain/ and application/ |
 | 2 | Contracts reviewed and frozen | PR approval |
-| 3 | DTO schemas documented | OpenAPI / TypeSpec / equivalent |
+| 3 | DTO schemas documented with field names and types | OpenAPI / record types |
 | 4 | Implementation depends on contracts | No implementation without interface |
+
+${allAcs.length > 0
+	? (() => {
+		const hasComp = allAcs.some((a) => a.component);
+		const header = hasComp
+			? `| # | Component | Criterion | Verify In |\n|---|-----------|-----------|-----------|`
+			: `| # | Criterion | Verify In |\n|---|-----------|-----------|`;
+		return `## Full Module Acceptance Criteria (for reference)\n\n> These are the complete ACs for the module. The contract freeze must define the interfaces\n> so every row below can be implemented in subsequent issues.\n\n${header}\n${acRowsToMarkdown(allAcs)}`;
+	})()
+	: ""}
+
+${implSteps.length > 0
+	? `## Full Implementation Sequence (for reference)\n\n${implSteps.map((s) => '- ' + s).join("\n")}`
+	: ""}
 
 ## Implementation
 
