@@ -421,6 +421,24 @@ json.NewEncoder(w).Encode(data)  // BAD — always handle errors
 
 // ❌ Background goroutines in handlers
 go doSomething()  // BAD — use proper worker pools with lifecycle management
+
+// ❌ Controller/handler with interface (handlers are concrete only)
+type UserHandler interface { ... }  // BAD — http.HandlerFunc IS the contract
+type userHandlerImpl struct { ... }  // BAD — pointless indirection
+
+// ❌ Handler importing repository directly (bypasses service layer)
+func Handler(w http.ResponseWriter, r *http.Request) {
+    repo.FindAll()  // BAD — use application service, not repository
+}
+
+// ❌ Repository interface in infrastructure layer
+// BAD: interfaces belong in domain/
+type UserRepository interface { ... }  // put this in domain/repository.go
+
+// ✅ Correct: repository interface in domain/
+type UserRepository interface { ... }  // ✅ in domain/repository.go
+// Implementation in infrastructure/repository/
+type postgresUserRepository struct { ... }
 ```
 
 ---

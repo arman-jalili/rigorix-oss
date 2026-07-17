@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Git Wrapper: Close Issue
 #
-# Usage: bash .pi/scripts/git/close-issue.sh --id 101
+# Usage: bash .pi/scripts/git/close-issue.sh --id 101 [--repo "group/project"]
 
 set -euo pipefail
 
@@ -17,19 +17,31 @@ detect_platform() {
     else echo "none"; fi
 }
 
+read_repository() {
+    if [ -f "guardian-manifest.json" ]; then
+        jq -r '.repository // (.templateContext.repository // "")' guardian-manifest.json 2>/dev/null || echo ""
+    else
+        echo ""
+    fi
+}
+
 ISSUE_ID=""
+REPO=""
+
 while [[ $# -gt 0 ]]; do
     case $1 in
         --id) ISSUE_ID="$2"; shift 2 ;;
+        --repo) REPO="$2"; shift 2 ;;
         *) shift ;;
     esac
 done
 
-[[ -z "$ISSUE_ID" ]] && { echo "Usage: $0 --id <issue_number>"; exit 1; }
+[[ -z "$ISSUE_ID" ]] && { echo "Usage: $0 --id <issue_number> [--repo <repo>]"; exit 1; }
 PLATFORM=$(detect_platform)
+[[ -z "$REPO" ]] && REPO=$(read_repository)
 
 case "$PLATFORM" in
-    github) gh issue close "$ISSUE_ID" 2>/dev/null && echo "Closed GitHub issue #$ISSUE_ID" ;;
-    gitlab) glab issue update "$ISSUE_ID" --state-event close 2>/dev/null && echo "Closed GitLab issue #$ISSUE_ID" ;;
+    github) gh issue close "$ISSUE_ID" ${REPO:+--repo "$REPO"} 2>/dev/null && echo "Closed GitHub issue #$ISSUE_ID" ;;
+    gitlab) glab issue update "$ISSUE_ID" --state-event close ${REPO:+--repo "$REPO"} 2>/dev/null && echo "Closed GitLab issue #$ISSUE_ID" ;;
     *) echo "Local issue #$ISSUE_ID marked as closed (no platform)" ;;
 esac

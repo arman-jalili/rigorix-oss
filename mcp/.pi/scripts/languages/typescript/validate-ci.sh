@@ -192,13 +192,16 @@ fi
 echo ""
 echo "--- Security Audit ---"
 if [ "$PKG_MGR" = "bun" ] && command -v bun &>/dev/null; then
-    AUDIT_OUT=$(bun audit 2>&1 || true)
-    CRITICAL_COUNT=$(echo "$AUDIT_OUT" | grep -ci "critical" 2>/dev/null || echo "0")
-    HIGH_COUNT=$(echo "$AUDIT_OUT" | grep -ci "high" 2>/dev/null || echo "0")
-    if [ "$CRITICAL_COUNT" -gt 0 ] || [ "$HIGH_COUNT" -gt 0 ]; then
+    CRITICAL_COUNT=$(bun audit 2>/dev/null | grep -ci "critical" 2>/dev/null || echo "0")
+    HIGH_COUNT=$(bun audit 2>/dev/null | grep -ci "high" 2>/dev/null || echo "0")
+    # Strip non-numeric characters (some bun versions output progress bars to stdout)
+    CRITICAL_COUNT=${CRITICAL_COUNT//[!0-9]}
+    HIGH_COUNT=${HIGH_COUNT//[!0-9]}
+    if [ "${CRITICAL_COUNT:-0}" -gt 0 ] || [ "${HIGH_COUNT:-0}" -gt 0 ]; then
         fail "Security audit found critical/high vulnerabilities"
     else
-        MODERATE_COUNT=$(echo "$AUDIT_OUT" | grep -ci "moderate" 2>/dev/null || echo "0")
+        MODERATE_COUNT=$(bun audit 2>/dev/null | grep -ci "moderate" 2>/dev/null || echo "0")
+        MODERATE_COUNT=${MODERATE_COUNT//[!0-9]}
         if [ "$MODERATE_COUNT" -gt 0 ]; then
             warn "Security audit found moderate vulnerabilities (review recommended)"
         else
@@ -206,7 +209,7 @@ if [ "$PKG_MGR" = "bun" ] && command -v bun &>/dev/null; then
         fi
     fi
 elif command -v npm &>/dev/null; then
-    AUDIT_OUT=$(npm audit 2>&1 || true)
+    AUDIT_OUT=$(npm audit 2>/dev/null || true)
     if echo "$AUDIT_OUT" | grep -q "found 0 vulnerabilities" 2>/dev/null; then
         pass "No vulnerabilities found"
     else

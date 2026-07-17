@@ -56,7 +56,7 @@ if [[ "$PLATFORM" == "none" ]]; then
 fi
 
 # Determine branch name from issue ID
-BRANCH_NAME="feature/${ISSUE_ID}"
+BRANCH_NAME="feat/${ISSUE_ID}"
 
 # Ensure we're on the main branch before creating feature branch
 git checkout -b "$BRANCH_NAME" 2>/dev/null || git checkout "$BRANCH_NAME" 2>/dev/null || true

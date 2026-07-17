@@ -9,9 +9,58 @@
  * reach the agent. The agent makes them green via Red→Green→Refactor.
  */
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ModuleComponent } from "./types.ts";
+
+// ── Java package derivation (from project manifest) ──
+
+/** Read groupId from guardian-manifest.json (never from pom.xml). */
+function readGroupId(cwd: string): string {
+	try {
+		const raw = readFileSync(join(cwd, "guardian-manifest.json"), "utf-8");
+		const manifest = JSON.parse(raw);
+		if (manifest.groupId && typeof manifest.groupId === "string") {
+			return manifest.groupId;
+		}
+	} catch {}
+	return "com.example";
+}
+
+/**
+ * Read the module→Java-package mapping from guardian-manifest.json.
+ * The manifest should have a `javaModulePackages` field:
+ * \`\`\`json
+ * {
+ *   "javaModulePackages": {
+ *     "integration-acl": "acl",
+ *     "order-intake": "orderintake"
+ *   }
+ * }
+ * \`\`\`
+ * Missing modules throw — no silent fallback to bad paths.
+ */
+function readJavaModulePackages(cwd: string): Record<string, string> {
+	try {
+		const raw = readFileSync(join(cwd, "guardian-manifest.json"), "utf-8");
+		const manifest = JSON.parse(raw);
+		if (manifest.javaModulePackages && typeof manifest.javaModulePackages === "object") {
+			return manifest.javaModulePackages;
+		}
+	} catch {}
+	return {};
+}
+
+/** Resolve a module ID to its Java sub-package suffix. Throws if unknown. */
+function javaModulePackage(cwd: string, moduleId: string): string {
+	const mapping = readJavaModulePackages(cwd);
+	const pkg = mapping[moduleId];
+	if (pkg) return pkg;
+	throw new Error(
+		`Unknown Java package for module "${moduleId}". ` +
+		`Add it to the "javaModulePackages" field in guardian-manifest.json.`
+	);
+}
 
 // ── Supported Languages ──
 
@@ -48,7 +97,6 @@ export function generateEpicTestFiles(options: TddGenerateOptions): string[] {
 		moduleId,
 		cwd,
 		language,
-		testBaseDir = "tests/unit",
 		moduleName,
 	} = options;
 
@@ -56,12 +104,42 @@ export function generateEpicTestFiles(options: TddGenerateOptions): string[] {
 		return [];
 	}
 
+	// ── Language-specific base dir & path strategy ──
+	let testBaseDir = options.testBaseDir;
+	let modulePath: string;
+
+	if (language === "java") {
+		// Java: src/test/java/<groupId-path>/<module-package>/
+		// All components in the same module share the same package dir.
+		const groupId = readGroupId(cwd);
+		const groupPath = groupId.replace(/\./g, "/");
+		const modPkg = javaModulePackage(cwd, moduleName || moduleId);
+		const modPath = modPkg.replace(/\./g, "/");
+		testBaseDir = testBaseDir ?? join("src", "test", "java");
+		modulePath = join(groupPath, modPath);
+	} else {
+		testBaseDir = testBaseDir ?? "tests/unit";
+		modulePath = moduleName || moduleId;
+	}
+
 	const generated: string[] = [];
-	const modulePath = moduleName || moduleId;
 
 	for (const comp of components) {
-		const componentId = comp.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-		const testDir = join(cwd, testBaseDir, modulePath, componentId);
+		const componentId = comp.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+		let testDir: string;
+		let javaPackage: string | undefined;
+
+		if (language === "java") {
+			// No componentId subdir — all components in same package dir
+			testDir = join(cwd, testBaseDir, modulePath);
+			const groupId = readGroupId(cwd);
+			const modPkg = javaModulePackage(cwd, moduleName || moduleId);
+			javaPackage = `${groupId}.${modPkg}`;
+		} else {
+			testDir = join(cwd, testBaseDir, modulePath, componentId);
+		}
+
 		mkdirSync(testDir, { recursive: true });
 
 		const fileName = getTestFileName(componentId, language);
@@ -70,7 +148,7 @@ export function generateEpicTestFiles(options: TddGenerateOptions): string[] {
 		// Skip if file already exists (don't overwrite user edits)
 		if (existsSync(filePath)) continue;
 
-		const content = generateTestContent(comp, language, moduleId, componentId);
+		const content = generateTestContent(comp, language, moduleId, componentId, javaPackage);
 		writeFileSync(filePath, content, "utf-8");
 		generated.push(filePath);
 	}
@@ -104,6 +182,7 @@ function generateTestContent(
 	language: string,
 	moduleId: string,
 	componentId: string,
+	javaPackage?: string,
 ): string {
 	switch (language) {
 		case "rust":
@@ -113,7 +192,7 @@ function generateTestContent(
 		case "go":
 			return generateGo(component, moduleId, componentId);
 		case "java":
-			return generateJava(component, moduleId, componentId);
+			return generateJava(component, moduleId, componentId, javaPackage);
 		case "typescript":
 		default:
 			return generateTypeScript(component, moduleId, componentId);
@@ -299,6 +378,7 @@ function generateJava(
 	component: ModuleComponent,
 	moduleId: string,
 	componentId: string,
+	javaPackage?: string,
 ): string {
 	const clsName = toPascalCase(componentId);
 	const lines: string[] = [
@@ -306,6 +386,14 @@ function generateJava(
 		`// From: ${component.name} (${moduleId} module)`,
 		`// These tests will FAIL until ${component.name} is implemented.`,
 		``,
+	];
+
+	// Always include package declaration for Java
+	if (javaPackage) {
+		lines.push(`package ${javaPackage};`, ``);
+	}
+
+	lines.push(
 		`import org.junit.jupiter.api.Test;`,
 		`import static org.junit.jupiter.api.Assertions.*;`,
 		``,
@@ -318,10 +406,10 @@ function generateJava(
 		`        // assertNotNull(instance);`,
 		`        fail("Test not yet implemented");`,
 		`    }`,
-	];
+	);
 
 	for (const dep of component.dependencies) {
-		lines.push(...[
+		lines.push(
 			``,
 			`    @Test`,
 			`    void test${clsName}_InteractsWith_${capitalize(dep.replace(/[^a-zA-Z0-9]/g, ""))}() {`,
@@ -330,11 +418,10 @@ function generateJava(
 			`        // ${clsName} instance = new ${clsName}(mock);`,
 			`        fail("Dependency test not yet implemented");`,
 			`    }`,
-		]);
+		);
 	}
 
-	lines.push(`}`);
-	lines.push(``);
+	lines.push(`}`, ``);
 	return lines.join("\n");
 }
 

@@ -1,0 +1,15 @@
+{
+	"compilerOptions": {
+		"types": ["bun-types"],
+		"strict": true,
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"noEmit": true,
+		"isolatedModules": true,
+		"allowImportingTsExtensions": true
+	},
+	"include": ["**/*.ts"]
+}

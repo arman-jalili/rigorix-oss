@@ -971,6 +971,20 @@ pub struct Order { pub customer: Customer }  // BAD — use customer_id: Uuid
 
 // ❌ Infrastructure leak in domain
 use sqlx::PgPool;  // BAD — domain NEVER imports infrastructure concerns
+
+// ❌ Handler with trait (handlers are concrete only)
+pub trait UserHandler { ... }  // BAD — the route/handler fn IS the contract
+pub struct UserHandlerImpl { ... }  // BAD — pointless indirection
+
+// ❌ Handler importing repository directly (bypasses service layer)
+async fn get_users(repo: impl UserRepository) {  // BAD — use application service
+    let users = repo.find_all().await;
+}
+
+// Note: This project keeps repository traits + impls together in
+// infrastructure/repository/ for consistency across existing codebases.
+// Both traits and concrete implementations live side by side:
+// infrastructure/repository/user_repository.rs  — both trait + impl
 ```
 
 ---

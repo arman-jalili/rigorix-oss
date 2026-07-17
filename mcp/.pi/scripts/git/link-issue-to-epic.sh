@@ -3,7 +3,8 @@
 #
 # Usage: bash .pi/scripts/git/link-issue-to-epic.sh \
 #   --issue-id 102 \
-#   --epic-id 101
+#   --epic-id 101 \
+#   [--repo "group/project"]
 
 set -euo pipefail
 
@@ -19,46 +20,53 @@ detect_platform() {
     else echo "none"; fi
 }
 
+read_repository() {
+    if [ -f "guardian-manifest.json" ]; then
+        jq -r '.repository // (.templateContext.repository // "")' guardian-manifest.json 2>/dev/null || echo ""
+    else
+        echo ""
+    fi
+}
+
 ISSUE_ID=""
 EPIC_ID=""
+REPO=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --issue-id) ISSUE_ID="$2"; shift 2 ;;
         --epic-id) EPIC_ID="$2"; shift 2 ;;
+        --repo) REPO="$2"; shift 2 ;;
         *) shift ;;
     esac
 done
 
-[[ -z "$ISSUE_ID" || -z "$EPIC_ID" ]] && { echo "Usage: $0 --issue-id <issue> --epic-id <epic>"; exit 1; }
+[[ -z "$ISSUE_ID" || -z "$EPIC_ID" ]] && { echo "Usage: $0 --issue-id <issue> --epic-id <epic> [--repo <repo>]"; exit 1; }
 PLATFORM=$(detect_platform)
+[[ -z "$REPO" ]] && REPO=$(read_repository)
 
 case "$PLATFORM" in
     github)
-        # GitHub uses "closes #N" or "fixes #N" in issue body to link
-        gh issue edit "$ISSUE_ID" --body "$(gh issue view "$ISSUE_ID" --json body -q .body)
+        gh issue edit "$ISSUE_ID" ${REPO:+--repo "$REPO"} --body "$(gh issue view "$ISSUE_ID" --json body -q .body 2>/dev/null || true)
 
 Relates to #$EPIC_ID" 2>/dev/null
         echo "Linked GitHub issue #$ISSUE_ID to #$EPIC_ID"
         ;;
     gitlab)
-        # Use GitLab API to link issue to epic (--milestone is semantically wrong).
+        # GitLab: link issue to epic via API
         # API: POST /groups/:group/epics/:epic_iid/issues/:issue_iid
-        # We derive the group from the project path.
-        if command -v jq &>/dev/null && [[ -n "${CI_PROJECT_ID:-}" || -n "${GITLAB_PROJECT_ID:-}" ]]; then
-            local pid="${CI_PROJECT_ID:-${GITLAB_PROJECT_ID:-}}"
-            glab api "projects/$pid" --method GET 2>/dev/null | jq -r '.namespace.full_path // empty' | read -r group_path
+        # Derive group from repository path: "group/subgroup/project" -> "group/subgroup"
+        if [[ -n "$REPO" ]]; then
+            group_path=$(echo "$REPO" | rev | cut -d'/' -f2- | rev)
             if [[ -n "$group_path" ]]; then
-                glab api --method POST "groups/$group_path/epics/$EPIC_ID/issues/$ISSUE_ID" 2>/dev/null || {
-                    # Fallback: add a note referencing the epic
-                    glab issue note "$ISSUE_ID" --message "Part of epic #$EPIC_ID" 2>/dev/null || true
+                glab api --method POST "groups/$group_path/epics/$EPIC_ID/issues/$ISSUE_ID" 2>/dev/null && {
+                    echo "Linked GitLab issue #$ISSUE_ID to epic #$EPIC_ID"
+                    exit 0
                 }
-            else
-                glab issue note "$ISSUE_ID" --message "Part of epic #$EPIC_ID" 2>/dev/null || true
             fi
-        else
-            glab issue note "$ISSUE_ID" --message "Part of epic #$EPIC_ID" 2>/dev/null || true
         fi
+        # Fallback: add a note referencing the epic
+        glab issue note "$ISSUE_ID" ${REPO:+--repo "$REPO"} --message "Part of epic #$EPIC_ID" 2>/dev/null || true
         echo "Linked GitLab issue #$ISSUE_ID to epic #$EPIC_ID"
         ;;
     *)

@@ -114,5 +114,6 @@ export type EpicState = {
 	currentIssueIndex: number;
 	createdAt: string;
 	tdd: boolean;
+	tddTestFiles: string[];
 };
 

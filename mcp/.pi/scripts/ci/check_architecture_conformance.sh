@@ -35,21 +35,21 @@ declare -a FAILURES=()
 
 log_pass() {
     echo -e "  ${GREEN}✓ PASS${NC} $1"
-    ((PASS_COUNT++))
-    ((TOTAL_COUNT++))
+    PASS_COUNT=$((PASS_COUNT + 1))
+    TOTAL_COUNT=$((TOTAL_COUNT + 1))
 }
 
 log_fail() {
     echo -e "  ${RED}✗ FAIL${NC} $1 — $2"
-    ((FAIL_COUNT++))
-    ((TOTAL_COUNT++))
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+    TOTAL_COUNT=$((TOTAL_COUNT + 1))
     FAILURES+=("$1: $2")
 }
 
 log_skip() {
     echo -e "  ${YELLOW}⊘ SKIP${NC} $1 — $2"
-    ((SKIP_COUNT++))
-    ((TOTAL_COUNT++))
+    SKIP_COUNT=$((SKIP_COUNT + 1))
+    TOTAL_COUNT=$((TOTAL_COUNT + 1))
 }
 
 # ── Language Detection ──

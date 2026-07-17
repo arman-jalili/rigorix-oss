@@ -163,7 +163,7 @@ case "$PLATFORM" in
 
         # Try to add labels separately (non-fatal)
         if [[ -n "$LABELS" && -n "$ISSUE_NUMBER" ]]; then
-            glab issue update "$ISSUE_NUMBER" --label "$LABELS" 2>/dev/null || true
+            glab issue update "$ISSUE_NUMBER" --label "$LABELS" ${REPO:+--repo "$REPO"} 2>/dev/null || true
         fi
 
         echo "TRACKING_ID=$ISSUE_NUMBER"

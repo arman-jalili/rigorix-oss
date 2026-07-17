@@ -23,53 +23,10 @@
  *   /subgoal clear        Remove all subgoals
  */
 
+import { execFileSync, execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-
-// ── Types ──
-
-type ExtensionContext = {
-	cwd: string;
-	ui: {
-		notify(message: string, level?: string): void;
-		setStatus(key: string, message: string | null): void;
-		confirm(title: string, message: string): Promise<boolean>;
-	};
-	shell: {
-		execute(
-			command: string,
-			options?: { signal?: AbortSignal },
-		): Promise<{
-			exitCode: number;
-			stdout: string;
-		}>;
-	};
-	tools: { execute(name: string, params: Record<string, unknown>): Promise<unknown> };
-};
-
-type ExtensionAPI = {
-	on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void | Promise<void>): void;
-	registerTool(options: {
-		name: string;
-		label: string;
-		description: string;
-		parameters: unknown;
-		execute(
-			toolCallId: string,
-			params: Record<string, unknown>,
-			signal: AbortSignal,
-			onUpdate: (update: { type: string; message: string }) => void,
-			ctx: ExtensionContext,
-		): unknown | Promise<unknown>;
-	}): void;
-	registerCommand(
-		name: string,
-		options: {
-			description: string;
-			handler(args: string, ctx: ExtensionContext): unknown | Promise<unknown>;
-		},
-	): void;
-};
+import type { ExtensionAPI, ExtensionContext, ExecResult } from "@earendil-works/pi-coding-agent";
 
 type GoalState = {
 	goal: string;
@@ -185,10 +142,10 @@ const BUILTIN_NAMES = Object.keys(BUILTIN_VALIDATORS);
 // ── Validator-Backed Judge ──
 
 async function runValidatorsForGoal(
-	ctx: ExtensionContext,
+	cwd: string,
 	validators: string[] = ["ci", "canonical"],
 ): Promise<{ pass: boolean; failures: string[]; results: Record<string, boolean> }> {
-	const registry = getAllValidators(ctx.cwd);
+	const registry = getAllValidators(cwd);
 	const results: Record<string, boolean> = {};
 	const failures: string[] = [];
 
@@ -199,21 +156,22 @@ async function runValidatorsForGoal(
 			failures.push(`${name}: unknown validator`);
 			continue;
 		}
-		const fullPath = join(ctx.cwd, relPath);
+		const fullPath = join(cwd, relPath);
 		if (!existsSync(fullPath)) {
 			results[name] = true; // missing script = skip = pass
 			continue;
 		}
 		try {
-			const r = await ctx.shell.execute(`bash ${relPath}`, {
-				signal: AbortSignal.timeout(60_000),
+			execFileSync("bash", [relPath], {
+				cwd,
+				timeout: 60_000,
+				encoding: "utf-8",
+				stdio: ["pipe", "pipe", "pipe"],
 			});
-			const passed = r.exitCode === 0;
-			results[name] = passed;
-			if (!passed) failures.push(`${name}: validator failed`);
+			results[name] = true;
 		} catch {
 			results[name] = false;
-			failures.push(`${name}: timeout or error`);
+			failures.push(`${name}: validator failed or timed out`);
 		}
 	}
 
@@ -221,7 +179,6 @@ async function runValidatorsForGoal(
 }
 
 async function runLLMJudge(
-	ctx: ExtensionContext,
 	goal: string,
 	lastResponse: string,
 	subgoals: string[],
@@ -236,16 +193,9 @@ async function runLLMJudge(
 
 	const prompt = `Goal:\n${truncatedGoal}\n${subgoalsBlock}\n\nAgent's most recent response:\n${truncatedResponse}\n\nIs the goal satisfied?`;
 
-	// Use guardian_coordinate to run an LLM-based judgment
-	try {
-		const result = await ctx.tools.execute("guardian_scope", {});
-		// We can't directly call LLM from extension — instead return a heuristic judgment
-		// The LLM judge runs via the agent itself being prompted to self-assess
-		// For now, return continue to let the agent decide
-		return { done: false, reason: "LLM judge requires agent self-assessment turn" };
-	} catch {
-		return { done: false, reason: "judge unavailable, continuing" };
-	}
+	// LLM judge runs via the agent itself being prompted to self-assess
+	// For now, return continue to let the agent decide
+	return { done: false, reason: "LLM judge requires agent self-assessment turn" };
 }
 
 function truncate(text: string, limit: number): string {
@@ -399,7 +349,7 @@ class GoalManager {
 
 		// Step 1: Run deterministic validators (per-goal list, or fallback)
 		const validatorsToRun = state.validators.length > 0 ? state.validators : ["ci", "canonical"];
-		const valResult = await runValidatorsForGoal(ctx, validatorsToRun);
+		const valResult = await runValidatorsForGoal(ctx.cwd, validatorsToRun);
 		state.validatorResults = {};
 		for (const [name, passed] of Object.entries(valResult.results)) {
 			state.validatorResults[name] = { passed, lastRun: new Date().toISOString() };
@@ -433,7 +383,7 @@ class GoalManager {
 
 		// Step 2: LLM semantic judge (via ask the agent to self-assess)
 		// We inject a self-assessment prompt into the continuation
-		const llmResult = await runLLMJudge(ctx, state.goal, lastResponse, state.subgoals);
+		const llmResult = await runLLMJudge(state.goal, lastResponse, state.subgoals);
 
 		if (llmResult.done) {
 			state.status = "done";

@@ -65,7 +65,7 @@ fi
 echo ""
 echo "--- Dependency Audit ---"
 if [ "$PKG_MGR" = "bun" ] && command -v bun &>/dev/null; then
-    AUDIT_OUT=$(bun audit 2>&1 || true)
+    AUDIT_OUT=$(bun audit 2>/dev/null || true)
     CRITICAL=$(echo "$AUDIT_OUT" | grep -ci "critical" 2>/dev/null || echo "0")
     HIGH=$(echo "$AUDIT_OUT" | grep -ci "high" 2>/dev/null || echo "0")
     if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
@@ -74,7 +74,7 @@ if [ "$PKG_MGR" = "bun" ] && command -v bun &>/dev/null; then
         pass "No critical/high vulnerabilities in dependencies"
     fi
 elif command -v npm &>/dev/null; then
-    AUDIT_OUT=$(npm audit 2>&1 || true)
+    AUDIT_OUT=$(npm audit 2>/dev/null || true)
     if echo "$AUDIT_OUT" | grep -q "found 0 vulnerabilities" 2>/dev/null; then
         pass "No vulnerabilities in dependencies"
     else

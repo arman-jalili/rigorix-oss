@@ -20,7 +20,7 @@
  *   /pipeline abort               Kill pipeline
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
@@ -345,14 +345,14 @@ class PipelineManager {
 
 	private gitBranchExists(branch: string): boolean {
 		try {
-			const result = execSync(`git branch -a --list "${branch}" 2>/dev/null`, { cwd: this.cwd, encoding: "utf-8" });
+			const result = execFileSync("git", ["branch", "-a", "--list", branch], { cwd: this.cwd, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
 			return result.trim().length > 0;
 		} catch { return false; }
 	}
 
 	private branchHasCommits(branch: string): boolean {
 		try {
-			const result = execSync(`git log --oneline "${branch}" 2>/dev/null | head -1`, { cwd: this.cwd, encoding: "utf-8" });
+			const result = execFileSync("git", ["log", "--oneline", branch], { cwd: this.cwd, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
 			return result.trim().length > 0;
 		} catch { return false; }
 	}
@@ -624,7 +624,7 @@ class PipelineManager {
 
 		if (acceptance.type === "shell") {
 			try {
-				execSync(`bash -c "${acceptance.command}"`, { cwd: this.cwd, timeout: 300_000, encoding: "utf-8" });
+				execFileSync("bash", ["-c", acceptance.command], { cwd: this.cwd, timeout: 300_000, encoding: "utf-8" });
 				return { allPassed: true, errors: [] };
 			} catch (e: unknown) {
 				const err = e as { stdout?: string };
@@ -637,7 +637,7 @@ class PipelineManager {
 				const scriptPath = VALIDATOR_SCRIPTS[validator];
 				if (!scriptPath) { errors.push(`Unknown validator: ${validator}`); continue; }
 				try {
-					execSync(`bash -c "${scriptPath}"`, { cwd: this.cwd, timeout: 120_000, encoding: "utf-8" });
+					execFileSync("bash", ["-c", scriptPath], { cwd: this.cwd, timeout: 120_000, encoding: "utf-8" });
 				} catch (e: unknown) {
 					const err = e as { stdout?: string };
 					errors.push(`${validator}: ${(err.stdout || "").slice(0, 200)}`);
@@ -863,11 +863,48 @@ export default function (pi: ExtensionAPI) {
 			const prevItemIndex = state.currentItemIndex;
 			const prevStepIndex = state.currentStepIndex;
 			const stepName = (params.stepName as string) || state.steps[prevStepIndex]?.name;
+
+			// Verify current step before advancing (unless user explicitly provides the step name,
+			// which counts as manual confirmation)
+			if (!params.stepName) {
+				const verification = manager.verifyCurrentStep();
+				if (!verification.verified) {
+					return {
+						content: [{ type: "text" as const, text: `Cannot advance: ${verification.reason}` }],
+					};
+				}
+			}
+
 			manager.markStepPassed(stepName);
 			manager.advanceStep();
 
 			// Re-read state after advance
 			const updatedState = manager.getState()!;
+
+			// Non-blocking: sync progress to tracking issue if one exists
+			try {
+				const trackingStatePath = join(ctx.cwd, ".pi/.guardian-epic-state.json");
+				if (existsSync(trackingStatePath)) {
+					const trackingState = JSON.parse(readFileSync(trackingStatePath, "utf-8")) as {
+						trackingIssueId?: string | null;
+						issues?: { id: string; title: string; status: string }[];
+					};
+					if (trackingState.trackingIssueId && !trackingState.trackingIssueId.startsWith("local:")) {
+						const stepNote = stepName
+							? `✓ Step "${stepName}" complete for item "${updatedState.items[prevItemIndex]}"`
+							: `✓ Advanced to item ${updatedState.currentItemIndex + 1}/${updatedState.items.length}: "${updatedState.items[updatedState.currentItemIndex]}"`;
+						const updateScript = join(ctx.cwd, ".pi/scripts/git/update-tracking-issue.sh");
+						if (existsSync(updateScript)) {
+							execFileSync("bash", [updateScript, "--id", trackingState.trackingIssueId, "--comment", stepNote], {
+								cwd: ctx.cwd,
+								timeout: 30_000,
+								encoding: "utf-8",
+								stdio: "ignore",
+							});
+						}
+					}
+				}
+			} catch { /* non-blocking — don't fail the pipeline */ }
 
 			// Pipeline complete
 			if (updatedState.currentItemIndex >= updatedState.items.length) {
@@ -884,18 +921,71 @@ export default function (pi: ExtensionAPI) {
 			const movedToNextItem = updatedState.currentItemIndex !== prevItemIndex;
 
 			// If we moved to a new item (completed all steps of previous item),
-			// inject the full next-task prompt with issue context
-			if (movedToNextItem && currentStep?.name === "implement") {
-				// Find the remote issue ID from epic state
-				let remoteId: string | null | undefined;
+			// close its remote issue and inject the full next-task prompt
+			if (movedToNextItem) {
+				// Close remote issue for the completed item
 				try {
 					const epicStatePath = join(ctx.cwd, ".pi/.guardian-epic-state.json");
 					if (existsSync(epicStatePath)) {
 						const epicState = JSON.parse(readFileSync(epicStatePath, "utf-8")) as {
 							issues?: { id: string; remoteIssueId?: string | null }[];
 						};
+						const prevItemId = updatedState.items[prevItemIndex];
+						const prevIssue = epicState.issues?.find((i) => i.id === prevItemId);
+						if (prevIssue?.remoteIssueId) {
+							const closeScript = join(ctx.cwd, ".pi/scripts/git/close-issue.sh");
+							if (existsSync(closeScript)) {
+								execFileSync("bash", [closeScript, "--id", prevIssue.remoteIssueId], {
+									cwd: ctx.cwd, timeout: 30_000, encoding: "utf-8", stdio: "ignore",
+								});
+							}
+						}
+					}
+				} catch { /* non-blocking */ }
+
+				// If the pipeline is fully complete, close tracking issue and epic too
+				if (updatedState.currentItemIndex >= updatedState.items.length) {
+					try {
+						const epicStatePath = join(ctx.cwd, ".pi/.guardian-epic-state.json");
+						if (existsSync(epicStatePath)) {
+							const epicState = JSON.parse(readFileSync(epicStatePath, "utf-8")) as {
+								trackingIssueId?: string | null;
+								epicId?: string | null;
+							};
+							if (epicState.trackingIssueId && !epicState.trackingIssueId.startsWith("local:")) {
+								const closeEpicScript = join(ctx.cwd, ".pi/scripts/git/close-epic.sh");
+								if (existsSync(closeEpicScript)) {
+									const args: string[] = [closeEpicScript, "--tracking-id", epicState.trackingIssueId];
+									if (epicState.epicId) args.push("--epic-id", epicState.epicId);
+									execFileSync("bash", args, {
+										cwd: ctx.cwd, timeout: 30_000, encoding: "utf-8", stdio: "ignore",
+									});
+								}
+							}
+						}
+					} catch { /* non-blocking */ }
+				}
+			}
+
+			// If we moved to a new item and the next step is implement,
+			// inject the full next-task prompt with issue context
+			if (movedToNextItem && currentStep?.name === "implement") {
+				// Load epic state for TDD context and remote issue ID
+				let epicTdd = false;
+				let epicTddTestFiles: string[] = [];
+				let remoteId: string | null | undefined;
+				try {
+					const epicStatePath = join(ctx.cwd, ".pi/.guardian-epic-state.json");
+					if (existsSync(epicStatePath)) {
+						const epicState = JSON.parse(readFileSync(epicStatePath, "utf-8")) as {
+							issues?: { id: string; remoteIssueId?: string | null }[];
+							tdd?: boolean;
+							tddTestFiles?: string[];
+						};
 						const issue = epicState.issues?.find((i) => i.id === currentItem);
 						remoteId = issue?.remoteIssueId;
+						epicTdd = epicState.tdd ?? false;
+						epicTddTestFiles = epicState.tddTestFiles ?? [];
 					}
 				} catch {
 					// ignore
@@ -907,6 +997,19 @@ export default function (pi: ExtensionAPI) {
 					remoteId,
 				);
 
+				const tddAdvanceBlock = epicTdd
+					? [
+						"",
+						"## TDD: Red-Green-Refactor",
+						"",
+						"Failing tests already exist for this component. Follow TDD:",
+						"1. **RED:** Run the failing tests first to confirm they fail",
+						"2. **GREEN:** Write minimal implementation to make tests pass",
+						"3. **REFACTOR:** Clean up while keeping tests green",
+						"",
+					].join("\n")
+					: "";
+
 				const instructions = [
 					`## Pipeline: Moving to next item`,
 					"",
@@ -915,10 +1018,13 @@ export default function (pi: ExtensionAPI) {
 					`**Issue:** ${issueSource}`,
 					"",
 					`**Next task:** Item "${currentItem}" → Step: implement`,
+					tddAdvanceBlock,
 					"",
 					"**Instructions:**",
 					"1. Review the issue context below",
-					"2. Implement the component according to the issue spec",
+					epicTdd
+						? "2. Run the pre-generated failing tests to confirm RED phase"
+						: "2. Implement the component according to the issue spec",
 					"3. Run `pipeline_run_acceptance` to validate",
 					"4. Call `pipeline_advance` when done",
 					"",
@@ -1061,16 +1167,22 @@ export default function (pi: ExtensionAPI) {
 			const step = state.steps[state.currentStepIndex];
 			if (!step) return { content: [{ type: "text" as const, text: "No more steps." }] };
 
-			// Find the remote issue ID from epic state
+			// Load epic state for TDD context and remote issue ID
+			let epicTdd = false;
+			let epicTddTestFiles: string[] = [];
 			let remoteId: string | null | undefined;
 			try {
 				const epicStatePath = join(ctx.cwd, ".pi/.guardian-epic-state.json");
 				if (existsSync(epicStatePath)) {
 					const epicState = JSON.parse(readFileSync(epicStatePath, "utf-8")) as {
 						issues?: { id: string; remoteIssueId?: string | null }[];
+						tdd?: boolean;
+						tddTestFiles?: string[];
 					};
 					const issue = epicState.issues?.find((i) => i.id === issueId);
 					remoteId = issue?.remoteIssueId;
+					epicTdd = epicState.tdd ?? false;
+					epicTddTestFiles = epicState.tddTestFiles ?? [];
 				}
 			} catch {
 				// ignore
@@ -1092,6 +1204,29 @@ export default function (pi: ExtensionAPI) {
 				}
 			}
 
+			const tddBlock = epicTdd
+				? [
+					"",
+					"---",
+					"",
+					"## TDD: Red-Green-Refactor",
+					"",
+					"Failing test files have already been generated. Follow TDD discipline:",
+					"",
+					"**1. RED — Run the failing tests first:**",
+					...epicTddTestFiles.map((f) => `  - \`${f}\``),
+					"",
+					"**2. GREEN — Implement the minimum code to make tests pass:**",
+					"  - Do NOT write new test files — the tests already exist",
+					"  - Focus on the implementation only",
+					"  - Run tests after each change to track progress",
+					"",
+					"**3. REFACTOR — Clean up while keeping tests green:**",
+					"  - Extract helpers, improve naming, remove duplication",
+					"",
+				].join("\n")
+				: "";
+
 			const text = [
 				"## Pipeline Task",
 				"",
@@ -1103,6 +1238,7 @@ export default function (pi: ExtensionAPI) {
 				"---",
 				"",
 				stepPrompt || "",
+				tddBlock,
 				"",
 				"---",
 				"",
@@ -1159,7 +1295,7 @@ export default function (pi: ExtensionAPI) {
 					return { content: [{ type: "text" as const, text: lines.join("\n") }] };
 				}
 				try {
-					const output = execSync("bash " + scriptPath, {
+					const output = execFileSync("bash", [scriptPath], {
 						cwd: ctx.cwd,
 						timeout: 300_000,
 						encoding: "utf-8",
@@ -1198,7 +1334,7 @@ export default function (pi: ExtensionAPI) {
 					continue;
 				}
 				try {
-					execSync(`bash -c "${scriptPath}"`, {
+					execFileSync("bash", ["-c", scriptPath], {
 						cwd: ctx.cwd,
 						timeout: 120_000,
 						encoding: "utf-8",

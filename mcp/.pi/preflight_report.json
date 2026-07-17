@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-07-12T12:03:13Z",
+  "timestamp": "2026-07-17T21:04:50Z",
   "mode": "all",
   "stages_run": [],
   "summary": {
@@ -8,7 +8,7 @@
     "failed": 1,
     "skipped": 12
   },
-  "duration_seconds": 1,
+  "duration_seconds": 0,
   "results": [
   {
     "name": "check_mr_traceability.sh",

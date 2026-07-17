@@ -121,6 +121,18 @@ Response → commit or rollback → UI update
 
 ---
 
+## Acceptance Criteria
+
+Each component in this module has specific acceptance criteria that must be verified
+before the implementation issue can be closed. These ACs flow into the generated issues.
+
+| # | Component | Criterion | Verify In |
+|---|-----------|-----------|-----------|
+| 1 | [ComponentName] | [Specific, testable criterion for this component] | [unit test / integration test / manual] |
+| 2 | [ComponentName] | [Another criterion] | [verification method] |
+
+---
+
 ## Dependencies
 
 ### Depends On
@@ -158,12 +170,59 @@ Response → commit or rollback → UI update
 ## Error Handling
 
 **Domain errors (domain/):**
+
+TypeScript:
 ```typescript
 class [ErrorType] extends Error {
   constructor(code: string, message: string, retriable?: boolean) {
     super(message);
     this.name = '[ErrorType]';
   }
+}
+```
+
+Java:
+```java
+// domain/error/DomainException.java — abstract base
+public abstract class DomainException extends RuntimeException {
+  private final ErrorCode code;
+  protected DomainException(ErrorCode code, String message) {
+    super(message); this.code = code;
+  }
+  public ErrorCode getCode() { return code; }
+}
+
+// domain/error/DomainError.java — concrete error
+public class DomainError extends DomainException {
+  public DomainError(ErrorCode code, String message) { super(code, message); }
+}
+```
+
+Python:
+```python
+class DomainError(Exception):
+    """Base domain error."""
+    def __init__(self, message: str, code: str = "VALIDATION"):
+        super().__init__(message)
+        self.code = code
+```
+
+Go:
+```go
+var (
+    ErrNotFound    = errors.New("resource not found")
+    ErrInvalidState = errors.New("invalid state")
+)
+```
+
+Rust:
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum DomainError {
+    #[error("Resource {0} not found")]
+    NotFound(String),
+    #[error("Invalid state: {0}")]
+    InvalidState(String),
 }
 ```
 

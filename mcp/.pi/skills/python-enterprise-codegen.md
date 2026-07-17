@@ -345,6 +345,23 @@ except Exception:  # BAD — catch specific exceptions
 # ❌ Business logic in FastAPI routes
 @router.post("/")
 async def handler(payload: dict):  # BAD — use pydantic models + service layer
+
+# ❌ Controller/route with abstract interface (routes are concrete only)
+class AbstractUserController(ABC): ...  # BAD — FastAPI routes ARE the contract
+
+# ❌ Route importing repository directly (bypasses service layer)
+@router.get("/")
+async def handler(repo=Depends(get_repo)):  # BAD — use service, not repository
+    data = await repo.find_all()
+
+# ❌ Repository interface/ABC in infrastructure layer
+class AbstractUserRepository(ABC): ...  # BAD — interfaces belong in domain/
+
+# ✅ Correct: repository ABC in domain/, impl in infrastructure/
+# domain/repository.py
+class AbstractUserRepository(ABC): ...  # ✅
+# infrastructure/repository.py
+class PostgresUserRepository(AbstractUserRepository): ...
 ```
 
 ---

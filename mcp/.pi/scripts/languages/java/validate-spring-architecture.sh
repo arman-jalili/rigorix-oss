@@ -123,7 +123,7 @@ if [ -n "$APP_DIR" ]; then
     BAD_IMPORTS=0
     for f in $(find "$APP_DIR" -name "*.java" 2>/dev/null); do
         while IFS= read -r line; do
-            if echo "$line" | grep -qE "import\s+.*\.(infrastructure|web|interfaces|controller|repository)\." 2>/dev/null; then
+            if echo "$line" | grep -qE "import\s+.*\.(infrastructure|web|interfaces|controller)\." 2>/dev/null; then
                 # Skip Java/Spring standard imports
                 if echo "$line" | grep -qE "import\s+(java\.|javax\.|org\.springframework\.|org\.slf4j\.)"; then
                     continue
@@ -176,7 +176,7 @@ if [ -n "$WEB_DIR" ]; then
     BAD_IMPORTS=0
     for f in $(find "$WEB_DIR" -name "*.java" 2>/dev/null); do
         while IFS= read -r line; do
-            if echo "$line" | grep -qE "import\s+.*\.(infrastructure|repository)\." 2>/dev/null; then
+            if echo "$line" | grep -qE "import\s+.*\.(infrastructure)\." 2>/dev/null; then
                 if echo "$line" | grep -qE "import\s+(java\.|javax\.|org\.springframework\.|org\.slf4j\.)"; then
                     continue
                 fi

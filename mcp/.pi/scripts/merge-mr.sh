@@ -36,7 +36,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 PLATFORM=$(detect_platform)
-BRANCH_NAME="feature/${ISSUE_ID}"
+BRANCH_NAME="feat/${ISSUE_ID}"
 
 if [[ "$PLATFORM" == "none" ]]; then
     echo "No git platform detected. Cannot merge without gh/glab CLI."

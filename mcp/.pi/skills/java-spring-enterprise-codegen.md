@@ -29,7 +29,9 @@ module/
 │   ├── repository/             # Repository interfaces
 │   │   └── EntityRepository.java
 │   └── error/                  # Typed exception classes
-│       └── DomainError.java
+│       ├── DomainException.java   # Abstract base for all domain errors
+│       ├── DomainError.java      # Concrete domain error
+│       └── ErrorCode.java        # Machine-readable error codes
 ├── application/                # Service interfaces and DTOs
 │   ├── service/                # Service interfaces
 │   │   └── EntityService.java
@@ -177,25 +179,39 @@ public enum Status {
 ## 3. Domain Error Handling
 
 ```java
-// domain/error/DomainError.java
+// domain/error/DomainException.java
 
 package com.project.module.domain.error;
 
-public class DomainError extends RuntimeException {
-
+/**
+ * Base exception for all domain errors.
+ * Extending this (rather than RuntimeException directly) allows
+ * catching all domain-level errors in a single handler.
+ */
+public abstract class DomainException extends RuntimeException {
     private final ErrorCode code;
 
-    public DomainError(String message) {
-        super(message);
-        this.code = ErrorCode.VALIDATION;
-    }
-
-    public DomainError(ErrorCode code, String message) {
+    protected DomainException(ErrorCode code, String message) {
         super(message);
         this.code = code;
     }
 
     public ErrorCode getCode() { return code; }
+}
+
+// domain/error/DomainError.java
+
+package com.project.module.domain.error;
+
+public class DomainError extends DomainException {
+
+    public DomainError(String message) {
+        super(ErrorCode.VALIDATION, message);
+    }
+
+    public DomainError(ErrorCode code, String message) {
+        super(code, message);
+    }
 
     public static DomainError notFound(String id) {
         return new DomainError(ErrorCode.NOT_FOUND, "Resource " + id + " not found");
@@ -221,7 +237,8 @@ public enum ErrorCode {
 ```
 
 ### Rules
-- ✅ Use `RuntimeException` subclasses for domain errors
+- ✅ Use `DomainException` subclasses for domain errors (never `RuntimeException` directly)
+- ✅ Define `DomainException` as an abstract base in `domain/error/`
 - ✅ Use `ErrorCode` enum for machine-readable error types
 - ✅ Use `record` for value objects (Java 16+)
 - ❌ Don't use Spring annotations in domain layer
@@ -463,6 +480,28 @@ public class Money {
 public class User {
     // used directly in REST responses  // BAD — use DTOs
 }
+
+// ❌ Controller with interface (controllers are concrete only)
+public interface UserController { ... }  // BAD — @RestController is the contract
+public class UserControllerImpl implements UserController { ... }  // BAD — pointless indirection
+
+// ❌ Controller importing repository directly (bypasses service layer)
+@RestController
+public class UserController {
+    private final UserRepository repo;  // BAD — use application service, not repository
+}
+
+// ❌ Repository interface in infrastructure layer
+package com.project.module.infrastructure.repository;  // BAD — interfaces belong in domain/repository/
+public interface UserRepository { ... }
+
+// ✅ Correct: repository interface in domain, impl in infrastructure
+package com.project.module.domain.repository;  // ✅ interface in domain
+public interface UserRepository { ... }
+
+package com.project.module.infrastructure.repository;  // ✅ impl in infrastructure
+@Repository
+public class JpaUserRepository implements UserRepository { ... }
 ```
 
 ---

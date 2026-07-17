@@ -44,7 +44,7 @@ fi
 echo ""
 echo "--- Dependency Audit ---"
 if command -v pip-audit &>/dev/null && [ -f "pyproject.toml" ]; then
-    AUDIT_OUT=$(pip-audit 2>&1 || true)
+    AUDIT_OUT=$(pip-audit 2>/dev/null || true)
     if echo "$AUDIT_OUT" | grep -q "no known vulnerabilities"; then
         pass "No known vulnerabilities"
     elif echo "$AUDIT_OUT" | grep -q "Dependency not found on PyPI"; then

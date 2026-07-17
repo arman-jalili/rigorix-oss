@@ -379,6 +379,23 @@ throw 'something went wrong'  // BAD
 
 // ❌ Ignoring promise rejections
 processAsync()  // BAD — missing await
+
+// ❌ Controller with interface (controllers are concrete only)
+export interface UserController { ... }  // BAD — the router/handler IS the contract
+export class UserControllerImpl implements UserController { ... }  // BAD — pointless indirection
+
+// ❌ Controller importing repository directly (bypasses service layer)
+router.get('/', async (req, res) => {
+  const data = await repo.findAll();  // BAD — use service, not repository
+})
+
+// ❌ Repository interface in infrastructure layer
+export interface UserRepository {}  // BAD — interfaces belong in domain/
+
+// ✅ Correct: repository interface in domain/
+export interface UserRepository {}  // ✅ in domain/repository.ts
+// Implementation in infrastructure/repository/ (without interface)
+export class PostgresUserRepository implements UserRepository {}
 ```
 
 ---
