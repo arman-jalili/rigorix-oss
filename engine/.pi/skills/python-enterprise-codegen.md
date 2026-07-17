@@ -3,6 +3,7 @@ name: python-enterprise-codegen
 description: Full reference for Python enterprise code generation with DDD + Clean Architecture. Covers module structure, dataclass entities, FastAPI controllers, error handling, SQLAlchemy repositories, testing, and anti-patterns. Loaded on-demand via agents/python-codegen.md skill.
 ---
 
+
 # Python Enterprise Code Generation — DDD + Clean Architecture
 
 > Canonical skill for generating production-grade Python code following Clean Architecture with DDD.
@@ -345,6 +346,9 @@ except Exception:  # BAD — catch specific exceptions
 # ❌ Business logic in FastAPI routes
 @router.post("/")
 async def handler(payload: dict):  # BAD — use pydantic models + service layer
+
+# ❌ Controller/route with abstract interface (routes are concrete only)
+class AbstractUserController(ABC): ...  # BAD — FastAPI routes ARE the contract
 
 # ❌ Route importing repository directly (bypasses service layer)
 @router.get("/")

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "0.1",
-  "frameworkVersion": "0.1.93",
+  "frameworkVersion": "0.1.97",
   "source": "pi",
   "tools": [
     "pi",
@@ -1451,5 +1451,5 @@
     "domainDescription": "cli module for rigorix"
   },
   "scaffoldedAt": "2026-06-16T04:28:47.905Z",
-  "lastUpdatedAt": "2026-07-17T20:46:15.100Z"
+  "lastUpdatedAt": "2026-07-17T21:11:39.581Z"
 }

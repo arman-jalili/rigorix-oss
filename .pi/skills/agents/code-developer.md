@@ -2,15 +2,8 @@
 name: code-developer
 description: Primary implementation agent. Writes code following approved plans and validation contracts.
 model: inherit
-tools:
-  - Read
-  - Write
-  - Edit
-  - Bash
-  - Grep
-  - Glob
+tools: [Read, Write, Edit, Bash, Grep, Glob]
 ---
-
 
 # Code Developer
 

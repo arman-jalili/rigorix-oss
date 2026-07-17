@@ -3,6 +3,7 @@ name: rust-enterprise-codegen
 description: Full reference for Rust enterprise code generation with DDD + Clean Architecture. 17 sections covering module structure, tactical patterns, error handling, async, testing, and anti-patterns. Loaded on-demand — never inline. Use via agents/rust-codegen.md skill.
 ---
 
+
 # Rust Enterprise Code Generation — DDD + Clean Architecture
 
 > Canonical skill for generating production-grade Rust code.
@@ -971,6 +972,20 @@ pub struct Order { pub customer: Customer }  // BAD — use customer_id: Uuid
 
 // ❌ Infrastructure leak in domain
 use sqlx::PgPool;  // BAD — domain NEVER imports infrastructure concerns
+
+// ❌ Handler with trait (handlers are concrete only)
+pub trait UserHandler { ... }  // BAD — the route/handler fn IS the contract
+pub struct UserHandlerImpl { ... }  // BAD — pointless indirection
+
+// ❌ Handler importing repository directly (bypasses service layer)
+async fn get_users(repo: impl UserRepository) {  // BAD — use application service
+    let users = repo.find_all().await;
+}
+
+// Note: This project keeps repository traits + impls together in
+// infrastructure/repository/ for consistency across existing codebases.
+// Both traits and concrete implementations live side by side:
+// infrastructure/repository/user_repository.rs  — both trait + impl
 ```
 
 ---

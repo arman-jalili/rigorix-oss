@@ -2,12 +2,8 @@
 name: pipeline
 description: Multi-step workflow engine for iterating over items with per-step prompts and acceptance gates.
 model: inherit
-tools:
-  - Read
-  - Bash
-  - Edit
+tools: [Read, Bash, Edit]
 ---
-
 
 # Pipeline Engine
 
