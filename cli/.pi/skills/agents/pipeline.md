@@ -2,8 +2,12 @@
 name: pipeline
 description: Multi-step workflow engine for iterating over items with per-step prompts and acceptance gates.
 model: inherit
-tools: [Read, Bash, Edit]
+tools:
+  - Read
+  - Bash
+  - Edit
 ---
+
 
 # Pipeline Engine
 
@@ -91,6 +95,12 @@ Each step can have a different acceptance condition:
 | `pipeline_status` | Show current pipeline status and progress |
 | `pipeline_advance` | Mark current step as passed and advance |
 | `pipeline_fail` | Mark current step as failed, skip remaining steps for this item |
+
+## Behavioral Rules
+
+→ Auto-advance: pipeline_advance (no asking)│
+
+After completing any pipeline step, call `pipeline_advance` immediately without asking the user. The next step is already defined in the pipeline state — just advance and continue the loop.
 
 ## Pipeline States
 

@@ -1,4 +1,7 @@
 /**
+ * Canonical Reference: .pi/architecture/modules/core-libraries.md
+ * Last Sync: 2026-05-31
+
  * Shell Hooks Extension for pi
  *
  * Declarative shell-script hooks that fire on lifecycle events.

@@ -35,6 +35,7 @@ Refactor Request
 │    Small commits, one change at │
 │    a time                       │
 │    Run tests after each change  │
+│    → Auto-advance: pipeline_advance (no asking)│
 └──────────────┬──────────────────┘
                │
                ▼

@@ -1,4 +1,7 @@
 /**
+ * Canonical Reference: .pi/architecture/modules/core-libraries.md
+ * Last Sync: 2026-05-31
+
  * Snippets Extension for pi
  *
  * Manages reusable prompt fragments (snippets) that can be referenced via
@@ -57,7 +60,10 @@ function normalizeHandle(raw: string): string {
 		.replace(/^-+|-+$/g, "");
 }
 
-/** Expand #handle tokens in text, returning the body with tokens stripped and snippet XML blocks. */
+/**
+ * Canonical Reference: .pi/architecture/modules/core-libraries.md
+ * Last Sync: 2026-05-31
+ Expand #handle tokens in text, returning the body with tokens stripped and snippet XML blocks. */
 function expandSnippetTokens(
 	text: string,
 	snippets: readonly Snippet[],

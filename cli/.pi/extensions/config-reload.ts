@@ -1,4 +1,7 @@
 /**
+ * Canonical Reference: .pi/architecture/modules/core-libraries.md
+ * Last Sync: 2026-05-31
+
  * Dynamic Config Reload Extension for pi
  *
  * Watches `.pi/agent/AGENTS.md` for file changes and re-applies

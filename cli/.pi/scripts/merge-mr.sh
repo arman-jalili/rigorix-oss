@@ -8,6 +8,13 @@
 set -euo pipefail
 
 detect_platform() {
+    # First: check guardian-manifest.json for repoTool
+    if [ -f "guardian-manifest.json" ]; then
+        local tool=$(jq -r '.repoTool // ""' guardian-manifest.json 2>/dev/null || echo "")
+        if [[ "$tool" == "glab" ]]; then echo "gitlab"; return; fi
+        if [[ "$tool" == "gh" ]]; then echo "github"; return; fi
+    fi
+    # Fallback: check environment or installed CLIs
     if [[ -n "${GIT_PLATFORM:-}" ]]; then
         echo "$GIT_PLATFORM"
     elif command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then
@@ -29,7 +36,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 PLATFORM=$(detect_platform)
-BRANCH_NAME="feature/${ISSUE_ID}"
+BRANCH_NAME="feat/${ISSUE_ID}"
 
 if [[ "$PLATFORM" == "none" ]]; then
     echo "No git platform detected. Cannot merge without gh/glab CLI."

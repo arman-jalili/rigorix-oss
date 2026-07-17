@@ -23,6 +23,11 @@ fail() { echo -e "${RED}❌ FAIL${NC} $1"; ERRORS+=("$1"); }
 warn() { echo -e "${YELLOW}⚠️  WARN${NC} $1"; }
 
 detect_platform() {
+	if [ -f "guardian-manifest.json" ]; then
+		local tool=$(jq -r '.repoTool // ""' guardian-manifest.json 2>/dev/null || echo "")
+		if [[ "$tool" == "glab" ]]; then echo "gitlab"; return; fi
+		if [[ "$tool" == "gh" ]]; then echo "github"; return; fi
+	fi
 	if [[ -n "${GIT_PLATFORM:-}" ]]; then
 		echo "$GIT_PLATFORM"
 	elif command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then

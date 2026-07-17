@@ -72,6 +72,7 @@ For each issue in batch order:
    git commit -m "feat: implement #123 - {description}"
    ```
 5. Mark issue in progress: `gh issue comment {num} --body "Implementing in {branch}"`
+6. Auto-advance: call `pipeline_advance` immediately (no asking)
 
 ### Phase 6: Pre-MR Validation
 **Scripts:** Run automated validators

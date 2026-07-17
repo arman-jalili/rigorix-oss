@@ -11,6 +11,13 @@
 set -euo pipefail
 
 detect_platform() {
+    # First: check guardian-manifest.json for repoTool
+    if [ -f "guardian-manifest.json" ]; then
+        local tool=$(jq -r '.repoTool // ""' guardian-manifest.json 2>/dev/null || echo "")
+        if [[ "$tool" == "glab" ]]; then echo "gitlab"; return; fi
+        if [[ "$tool" == "gh" ]]; then echo "github"; return; fi
+    fi
+    # Fallback: check environment or installed CLIs
     if [[ -n "${GIT_PLATFORM:-}" ]]; then
         echo "$GIT_PLATFORM"
     elif command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then
@@ -49,7 +56,7 @@ if [[ "$PLATFORM" == "none" ]]; then
 fi
 
 # Determine branch name from issue ID
-BRANCH_NAME="feature/${ISSUE_ID}"
+BRANCH_NAME="feat/${ISSUE_ID}"
 
 # Ensure we're on the main branch before creating feature branch
 git checkout -b "$BRANCH_NAME" 2>/dev/null || git checkout "$BRANCH_NAME" 2>/dev/null || true

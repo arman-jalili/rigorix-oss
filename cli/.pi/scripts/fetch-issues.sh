@@ -18,6 +18,11 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 detect_platform() {
+	if [ -f "guardian-manifest.json" ]; then
+		local tool=$(jq -r '.repoTool // ""' guardian-manifest.json 2>/dev/null || echo "")
+		if [[ "$tool" == "glab" ]]; then echo "gitlab"; return; fi
+		if [[ "$tool" == "gh" ]]; then echo "github"; return; fi
+	fi
 	if [[ -n "${GIT_PLATFORM:-}" ]]; then
 		echo "$GIT_PLATFORM"
 	elif command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then

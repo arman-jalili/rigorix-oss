@@ -17,6 +17,13 @@
 set -euo pipefail
 
 detect_platform() {
+    # First: check guardian-manifest.json for repoTool
+    if [ -f "guardian-manifest.json" ]; then
+        local tool=$(jq -r '.repoTool // ""' guardian-manifest.json 2>/dev/null || echo "")
+        if [[ "$tool" == "glab" ]]; then echo "gitlab"; return; fi
+        if [[ "$tool" == "gh" ]]; then echo "github"; return; fi
+    fi
+    # Fallback: check environment or installed CLIs
     if [[ -n "${GIT_PLATFORM:-}" ]]; then
         echo "$GIT_PLATFORM"
     elif command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then
@@ -94,7 +101,7 @@ case "$PLATFORM" in
         if [[ -n "$BODY_FILE" && -f "$BODY_FILE" ]]; then
             STRIPPED_BODY=$(awk '/^---$/{n++; next} n>=2{print}' "$BODY_FILE")
             if [[ -n "$STRIPPED_BODY" ]]; then
-                TMP_BODY=$(mktemp /tmp/guardian-issue-XXXXXX.md)
+                TMP_BODY=$(mktemp /tmp/guardian-issue-body-XXXXXX 2>/dev/null) || TMP_BODY="/tmp/guardian-issue-body-$$.md"
                 echo "$STRIPPED_BODY" > "$TMP_BODY"
                 ARGS+=(--body-file "$TMP_BODY")
                 trap "rm -f '$TMP_BODY'" EXIT
@@ -131,16 +138,14 @@ case "$PLATFORM" in
         [[ -n "$TITLE" ]] && ARGS+=(--title "$TITLE")
         [[ -n "$MILESTONE" ]] && ARGS+=(--milestone "$MILESTONE")
 
-        # Body: strip YAML frontmatter from --body-file, then write to temp file for glab
+        # Body: strip YAML frontmatter from --body-file, then pass as inline --description
+        # (glab does not support --description-file, so we load into a string)
         if [[ -n "$BODY_FILE" && -f "$BODY_FILE" ]]; then
             STRIPPED_BODY=$(awk '/^---$/{n++; next} n>=2{print}' "$BODY_FILE")
             if [[ -n "$STRIPPED_BODY" ]]; then
-                TMP_BODY=$(mktemp /tmp/guardian-issue-XXXXXX.md)
-                echo "$STRIPPED_BODY" > "$TMP_BODY"
-                ARGS+=(--description-file "$TMP_BODY")
-                trap "rm -f '$TMP_BODY'" EXIT
+                ARGS+=(--description "$STRIPPED_BODY")
             else
-                ARGS+=(--description-file "$BODY_FILE")
+                ARGS+=(--description "$(cat "$BODY_FILE")")
             fi
         elif [[ -n "$BODY" ]]; then
             ARGS+=(--description "$BODY")
@@ -158,7 +163,7 @@ case "$PLATFORM" in
 
         # Try to add labels separately (non-fatal)
         if [[ -n "$LABELS" && -n "$ISSUE_NUMBER" ]]; then
-            glab issue update "$ISSUE_NUMBER" --label "$LABELS" 2>/dev/null || true
+            glab issue update "$ISSUE_NUMBER" --label "$LABELS" ${REPO:+--repo "$REPO"} 2>/dev/null || true
         fi
 
         echo "TRACKING_ID=$ISSUE_NUMBER"

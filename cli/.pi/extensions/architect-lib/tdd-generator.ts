@@ -1,0 +1,441 @@
+/**
+ * TDD Test Generator for Guardian Architect Extension
+ *
+ * Deterministic test file generation from architecture module components.
+ * No LLM involvement — tests are generated from structured component data.
+ *
+ * When --tdd is enabled on an epic via /architect --epic "Name" --tdd,
+ * this generator creates failing test files before implementation issues
+ * reach the agent. The agent makes them green via Red→Green→Refactor.
+ */
+
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import type { ModuleComponent } from "./types.ts";
+
+// ── Java package derivation (from project manifest) ──
+
+/** Read groupId from guardian-manifest.json (never from pom.xml). */
+function readGroupId(cwd: string): string {
+	try {
+		const raw = readFileSync(join(cwd, "guardian-manifest.json"), "utf-8");
+		const manifest = JSON.parse(raw);
+		if (manifest.groupId && typeof manifest.groupId === "string") {
+			return manifest.groupId;
+		}
+	} catch {}
+	return "com.example";
+}
+
+/**
+ * Read the module→Java-package mapping from guardian-manifest.json.
+ * The manifest should have a `javaModulePackages` field:
+ * \`\`\`json
+ * {
+ *   "javaModulePackages": {
+ *     "integration-acl": "acl",
+ *     "order-intake": "orderintake"
+ *   }
+ * }
+ * \`\`\`
+ * Missing modules throw — no silent fallback to bad paths.
+ */
+function readJavaModulePackages(cwd: string): Record<string, string> {
+	try {
+		const raw = readFileSync(join(cwd, "guardian-manifest.json"), "utf-8");
+		const manifest = JSON.parse(raw);
+		if (manifest.javaModulePackages && typeof manifest.javaModulePackages === "object") {
+			return manifest.javaModulePackages;
+		}
+	} catch {}
+	return {};
+}
+
+/** Resolve a module ID to its Java sub-package suffix. Throws if unknown. */
+function javaModulePackage(cwd: string, moduleId: string): string {
+	const mapping = readJavaModulePackages(cwd);
+	const pkg = mapping[moduleId];
+	if (pkg) return pkg;
+	throw new Error(
+		`Unknown Java package for module "${moduleId}". ` +
+		`Add it to the "javaModulePackages" field in guardian-manifest.json.`
+	);
+}
+
+// ── Supported Languages ──
+
+const TDD_LANGUAGES = new Set(["typescript", "rust", "python", "go", "java"]);
+
+export function isTddSupported(language: string): boolean {
+	return TDD_LANGUAGES.has(language);
+}
+
+// ── Main Generator ──
+
+export interface TddGenerateOptions {
+	/** Array of components from the epic's slice */
+	components: ModuleComponent[];
+	/** Module identifier (e.g., "audit-ingestion") */
+	moduleId: string;
+	/** Project root directory */
+	cwd: string;
+	/** Language from manifest (default: "typescript") */
+	language: string;
+	/** Base test directory (default: "tests/unit") */
+	testBaseDir?: string;
+	/** Module name for path construction */
+	moduleName?: string;
+}
+
+/**
+ * Generate failing test files for all components in an epic slice.
+ * Returns list of generated file paths.
+ */
+export function generateEpicTestFiles(options: TddGenerateOptions): string[] {
+	const {
+		components,
+		moduleId,
+		cwd,
+		language,
+		moduleName,
+	} = options;
+
+	if (!isTddSupported(language)) {
+		return [];
+	}
+
+	// ── Language-specific base dir & path strategy ──
+	let testBaseDir = options.testBaseDir;
+	let modulePath: string;
+
+	if (language === "java") {
+		// Java: src/test/java/<groupId-path>/<module-package>/
+		// All components in the same module share the same package dir.
+		const groupId = readGroupId(cwd);
+		const groupPath = groupId.replace(/\./g, "/");
+		const modPkg = javaModulePackage(cwd, moduleName || moduleId);
+		const modPath = modPkg.replace(/\./g, "/");
+		testBaseDir = testBaseDir ?? join("src", "test", "java");
+		modulePath = join(groupPath, modPath);
+	} else {
+		testBaseDir = testBaseDir ?? "tests/unit";
+		modulePath = moduleName || moduleId;
+	}
+
+	const generated: string[] = [];
+
+	for (const comp of components) {
+		const componentId = comp.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+		let testDir: string;
+		let javaPackage: string | undefined;
+
+		if (language === "java") {
+			// No componentId subdir — all components in same package dir
+			testDir = join(cwd, testBaseDir, modulePath);
+			const groupId = readGroupId(cwd);
+			const modPkg = javaModulePackage(cwd, moduleName || moduleId);
+			javaPackage = `${groupId}.${modPkg}`;
+		} else {
+			testDir = join(cwd, testBaseDir, modulePath, componentId);
+		}
+
+		mkdirSync(testDir, { recursive: true });
+
+		const fileName = getTestFileName(componentId, language);
+		const filePath = join(testDir, fileName);
+
+		// Skip if file already exists (don't overwrite user edits)
+		if (existsSync(filePath)) continue;
+
+		const content = generateTestContent(comp, language, moduleId, componentId, javaPackage);
+		writeFileSync(filePath, content, "utf-8");
+		generated.push(filePath);
+	}
+
+	return generated;
+}
+
+// ── Test File Name ──
+
+function getTestFileName(componentId: string, language: string): string {
+	switch (language) {
+		case "typescript":
+			return `${componentId}.test.ts`;
+		case "rust":
+			return `${componentId}_test.rs`;
+		case "python":
+			return `test_${componentId}.py`;
+		case "go":
+			return `${componentId}_test.go`;
+		case "java":
+			return `${toPascalCase(componentId)}Test.java`;
+		default:
+			return `${componentId}.test.ts`;
+	}
+}
+
+// ── Test Content Generation ──
+
+function generateTestContent(
+	component: ModuleComponent,
+	language: string,
+	moduleId: string,
+	componentId: string,
+	javaPackage?: string,
+): string {
+	switch (language) {
+		case "rust":
+			return generateRust(component, moduleId, componentId);
+		case "python":
+			return generatePython(component, moduleId, componentId);
+		case "go":
+			return generateGo(component, moduleId, componentId);
+		case "java":
+			return generateJava(component, moduleId, componentId, javaPackage);
+		case "typescript":
+		default:
+			return generateTypeScript(component, moduleId, componentId);
+	}
+}
+
+// ── TypeScript Test Generator ──
+
+function generateTypeScript(
+	component: ModuleComponent,
+	moduleId: string,
+	componentId: string,
+): string {
+	const lines: string[] = [
+		`// Generated by Guardian TDD`,
+		`// From: ${component.name} (${moduleId} module)`,
+		`// These tests will FAIL until ${component.name} is implemented.`,
+		``,
+		`import { describe, it, expect } from "bun:test";`,
+		``,
+		`describe("${component.name}", () => {`,
+	];
+
+	// Instantiation test
+	lines.push(...indent([
+		`it("should be defined", () => {`,
+		`  expect(false).toBe(true);`,
+		`  // TODO: uncomment when ${component.name} is implemented`,
+		`  // const instance = new ${component.name.replace(/[^a-zA-Z0-9]/g, "")}();`,
+		`  // expect(instance).toBeDefined();`,
+		`});`,
+	], 1));
+
+	// Dependency interaction tests
+	for (const dep of component.dependencies) {
+		lines.push(...indent([
+			`it("should interact with ${dep}", () => {`,
+			`  expect(false).toBe(true);`,
+			`  // TODO: implement dependency test for ${dep}`,
+			`  // const mock = { /* mock ${dep} interface */ };`,
+			`  // const result = new ${component.name.replace(/[^a-zA-Z0-9]/g, "")}(mock);`,
+			`  // expect(result).toBeDefined();`,
+			`});`,
+		], 1));
+	}
+
+	lines.push(`});`);
+	lines.push(``);
+	return lines.join("\n");
+}
+
+// ── Rust Test Generator ──
+
+function generateRust(
+	component: ModuleComponent,
+	moduleId: string,
+	componentId: string,
+): string {
+	const lines: string[] = [
+		`// Generated by Guardian TDD`,
+		`// From: ${component.name} (${moduleId} module)`,
+		`// These tests will FAIL until ${component.name} is implemented.`,
+		``,
+		`#[cfg(test)]`,
+		`mod tests {`,
+		`    use super::*;`,
+		``,
+		`    #[test]`,
+		`    fn test_${componentId}_is_defined() {`,
+		`        // TODO: uncomment when ${component.name} is implemented`,
+		`        // let _instance = ${toPascalCase(componentId)}::new();`,
+		`        assert!(false, "Test not yet implemented");`,
+		`    }`,
+	];
+
+	for (const dep of component.dependencies) {
+		lines.push(...[
+			``,
+			`    #[test]`,
+			`    fn test_${componentId}_interacts_with_${dep.replace(/[^a-z0-9]/gi, "_").toLowerCase()}() {`,
+			`        // TODO: implement dependency test for ${dep}`,
+			`        // let mock = Mock${dep.replace(/[^a-zA-Z0-9]/g, "")}::new();`,
+			`        // let result = ${toPascalCase(componentId)}::new(mock);`,
+			`        assert!(false, "Dependency test not yet implemented");`,
+			`    }`,
+		]);
+	}
+
+	lines.push(`}`);
+	lines.push(``);
+	return lines.join("\n");
+}
+
+// ── Python Test Generator ──
+
+function generatePython(
+	component: ModuleComponent,
+	moduleId: string,
+	componentId: string,
+): string {
+	const clsName = toPascalCase(componentId);
+	const lines: string[] = [
+		`# Generated by Guardian TDD`,
+		`# From: ${component.name} (${moduleId} module)`,
+		`# These tests will FAIL until ${component.name} is implemented.`,
+		``,
+		`import pytest`,
+		``,
+		``,
+		`class Test${clsName}:`,
+		`    """Tests for ${component.name}."""`,
+		``,
+		`    def test_${componentId}_is_defined(self):`,
+		`        """${component.name} should be instantiable."""`,
+		`        assert False, "TODO: uncomment when ${component.name} is implemented"`,
+		`        # instance = ${clsName}()`,
+		`        # assert instance is not None`,
+	];
+
+	for (const dep of component.dependencies) {
+		lines.push(...[
+			``,
+			`    def test_${componentId}_interacts_with_${dep.replace(/[^a-z0-9]/gi, "_").toLowerCase()}(self):`,
+			`        """${component.name} should interact with ${dep}."""`,
+			`        assert False, "TODO: implement dependency test for ${dep}"`,
+			`        # mock = MagicMock(spec=${dep.replace(/[^a-zA-Z0-9]/g, "")})`,
+			`        # instance = ${clsName}(mock)`,
+			`        # result = instance.execute()`,
+			`        # assert result is not None`,
+		]);
+	}
+
+	lines.push(``);
+	return lines.join("\n");
+}
+
+// ── Go Test Generator ──
+
+function generateGo(
+	component: ModuleComponent,
+	moduleId: string,
+	componentId: string,
+): string {
+	const lines: string[] = [
+		`// Generated by Guardian TDD`,
+		`// From: ${component.name} (${moduleId} module)`,
+		`// These tests will FAIL until ${component.name} is implemented.`,
+		``,
+		`package ${moduleId.replace(/[^a-zA-Z0-9]/g, "").toLowerCase()}`,
+		``,
+		`import "testing"`,
+		``,
+		`func Test${toPascalCase(componentId)}_IsDefined(t *testing.T) {`,
+		`	// TODO: uncomment when ${component.name} is implemented`,
+		`	// instance := New${toPascalCase(componentId)}()`,
+		`	// if instance == nil {`,
+		`	// 	t.Fail()`,
+		`	// }`,
+		`	t.Fatal("Test not yet implemented")`,
+		`}`,
+	];
+
+	for (const dep of component.dependencies) {
+		lines.push(...[
+			``,
+			`func Test${toPascalCase(componentId)}_InteractsWith_${capitalize(dep.replace(/[^a-zA-Z0-9]/g, ""))}(t *testing.T) {`,
+			`	// TODO: implement dependency test for ${dep}`,
+			`	// mock := new(Mock${capitalize(dep.replace(/[^a-zA-Z0-9]/g, ""))})`,
+			`	// instance := New${toPascalCase(componentId)}(mock)`,
+			`	// result := instance.Execute()`,
+			`	t.Fatal("Dependency test not yet implemented")`,
+			`}`,
+		]);
+	}
+
+	lines.push(``);
+	return lines.join("\n");
+}
+
+// ── Java Test Generator ──
+
+function generateJava(
+	component: ModuleComponent,
+	moduleId: string,
+	componentId: string,
+	javaPackage?: string,
+): string {
+	const clsName = toPascalCase(componentId);
+	const lines: string[] = [
+		`// Generated by Guardian TDD`,
+		`// From: ${component.name} (${moduleId} module)`,
+		`// These tests will FAIL until ${component.name} is implemented.`,
+		``,
+	];
+
+	// Always include package declaration for Java
+	if (javaPackage) {
+		lines.push(`package ${javaPackage};`, ``);
+	}
+
+	lines.push(
+		`import org.junit.jupiter.api.Test;`,
+		`import static org.junit.jupiter.api.Assertions.*;`,
+		``,
+		`class ${clsName}Test {`,
+		``,
+		`    @Test`,
+		`    void test${clsName}_IsDefined() {`,
+		`        // TODO: uncomment when ${component.name} is implemented`,
+		`        // ${clsName} instance = new ${clsName}();`,
+		`        // assertNotNull(instance);`,
+		`        fail("Test not yet implemented");`,
+		`    }`,
+	);
+
+	for (const dep of component.dependencies) {
+		lines.push(
+			``,
+			`    @Test`,
+			`    void test${clsName}_InteractsWith_${capitalize(dep.replace(/[^a-zA-Z0-9]/g, ""))}() {`,
+			`        // TODO: implement dependency test for ${dep}`,
+			`        // ${capitalize(dep.replace(/[^a-zA-Z0-9]/g, ""))} mock = mock(${capitalize(dep.replace(/[^a-zA-Z0-9]/g, ""))}.class);`,
+			`        // ${clsName} instance = new ${clsName}(mock);`,
+			`        fail("Dependency test not yet implemented");`,
+			`    }`,
+		);
+	}
+
+	lines.push(`}`, ``);
+	return lines.join("\n");
+}
+
+// ── Utility ──
+
+function capitalize(s: string): string {
+	return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function toPascalCase(s: string): string {
+	return s.split("-").map(capitalize).join("");
+}
+
+function indent(lines: string[], level: number): string[] {
+	const pad = "  ".repeat(level);
+	return lines.map((l) => `${pad}${l}`);
+}

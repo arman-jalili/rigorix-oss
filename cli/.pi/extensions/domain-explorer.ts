@@ -6,6 +6,7 @@
  * Pi extension providing:
  *   /domain --explore — Returns DDD analysis instructions + agent writes files directly
  *   /domain --architect-scaffold — Generate architecture directories from exploration
+ *   /domain --enrich — Enrich module stubs with full DDD content
  *   /domain --validate — Validate exploration session structure
  *   domain_explore tool — (deprecated, use /domain --explore instead)
  *   domain_validate tool — Validate exploration sessions against glossary + source code
@@ -18,7 +19,17 @@ import * as child_process from "node:child_process";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+// @ts-ignore — typebox is provided at runtime by pi
 import { Type } from "typebox";
+
+// Strip markdown formatting (**bold**, *italic*, `code`) from a string
+function stripMarkdown(text: string): string {
+	return text
+		.replace(/\*\*(.+?)\*\*/g, "$1")
+		.replace(/\*(.+?)\*/g, "$1")
+		.replace(/`(.+?)`/g, "$1")
+		.trim();
+}
 
 // ── Minimal pi ExtensionAPI types (same pattern as coordinator.ts) ──
 
@@ -44,6 +55,24 @@ type ExtensionContext = {
  * Execute a shell command, preferring ctx.shell if available,
  * falling back to child_process.execSync otherwise.
  */
+function readLanguage(cwd: string): string {
+	try {
+		const manifestPath = path.join(cwd, "guardian-manifest.json");
+		if (fs.existsSync(manifestPath)) {
+			const data = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+			if (data.language) return data.language;
+		}
+		const piManifestPath = path.join(cwd, ".pi", "guardian-manifest.json");
+		if (fs.existsSync(piManifestPath)) {
+			const data = JSON.parse(fs.readFileSync(piManifestPath, "utf-8"));
+			if (data.language) return data.language;
+		}
+	} catch {
+		// ignore
+	}
+	return "typescript";
+}
+
 function shellExec(
 	ctx: ExtensionContext,
 	command: string,
@@ -284,7 +313,7 @@ export default function (pi: ExtensionAPI) {
 
 			function toRow(arr: unknown[], fields: string[]): string {
 				if (!Array.isArray(arr) || arr.length === 0) return "None identified yet.";
-				return arr.map((item: Record<string, unknown>) => {
+				return (arr as Record<string, unknown>[]).map((item) => {
 					const vals = fields.map((f) => String(item[f] ?? "").replace(/\n/g, " "));
 					return "| " + vals.join(" | ") + " |";
 				}).join("\n");
@@ -375,7 +404,7 @@ export default function (pi: ExtensionAPI) {
 				}
 			}
 
-			onUpdate({ content: [{ type: "text", text: "Domain exploration saved for session: " + sessionId }] });
+			onUpdate({ type: "update", message: "Domain exploration saved for session: " + sessionId });
 			return { content: [{ type: "text" as const, text: "Domain exploration saved for " + sessionId + ". Next: /domain --architect-scaffold " + sessionId + " or review .pi/domain/exploration.md" }] };
 		},
 	});
@@ -723,6 +752,8 @@ export default function (pi: ExtensionAPI) {
 				}
 
 				// Parse bounded context names from (now synced) session content
+				// stripMarkdown moved to module level to avoid ES5 strict mode issue
+
 				const bcNames: string[] = [];
 				const sourceForBC = analysisContent || sessionContent;
 				const bcSection = sourceForBC.match(/## Bounded Contexts[\s\S]*?(?=\n## |$)/);
@@ -734,7 +765,7 @@ export default function (pi: ExtensionAPI) {
 						if (!inData || !line.startsWith("|")) continue;
 						const cells = line.split("|").map(c => c.trim()).filter(c => c);
 						if (cells.length >= 1 && cells[0] !== "Context" && cells[0] !== "Bounded Context") {
-							bcNames.push(cells[0]);
+							bcNames.push(stripMarkdown(cells[0]));
 						}
 					}
 				}
@@ -824,25 +855,27 @@ export default function (pi: ExtensionAPI) {
 				}
 
 				// Build mermaid diagram from bounded contexts
-				// Labels are double-quoted to handle special chars like (), [], {}
-				let bcDiagram = "";
+				// Each line is a separate array element to guarantee newline separation
+				const escLabel = (s: string) => s.replace(/"/g, "'");
+				const diagramLines: string[] = [];
 				if (bcNames.length > 0) {
-					const escLabel = (s: string) => s.replace(/"/g, "'");
-					const nodeLines = bcNames.map((n, i) =>
-						"    " + String.fromCharCode(65 + i) + "[\"" + escLabel(n) + "\"]"
-					).join("\n");
-					const edgeLines = bcNames.slice(0, -1).map((n, i) =>
-						"    " + String.fromCharCode(65 + i) + " --> " + String.fromCharCode(66 + i) + " : events"
-					).join("\n");
-					const lastNode = bcNames.length > 1
-						? "    " + String.fromCharCode(64 + bcNames.length) + " --> Downstream[\"Consumers\"]"
-						: bcNames.length === 1
-							? "    A[\"" + escLabel(bcNames[0]) + "\"] --> Downstream[\"Consumers\"]"
-							: "";
-					bcDiagram = nodeLines + "\n\n" + edgeLines + (lastNode ? "\n" + lastNode : "");
+					for (let i = 0; i < bcNames.length; i++) {
+						diagramLines.push("    " + String.fromCharCode(65 + i) + "[\"" + escLabel(bcNames[i]) + "\"]");
+					}
+					// blank line separator between nodes and edges
+					diagramLines.push("");
+					for (let i = 0; i < bcNames.length - 1; i++) {
+						diagramLines.push("    " + String.fromCharCode(65 + i) + " --> " + String.fromCharCode(66 + i) + " : events");
+					}
+					if (bcNames.length > 1) {
+						diagramLines.push("    " + String.fromCharCode(64 + bcNames.length) + " --> Downstream[\"Consumers\"]");
+					} else {
+						diagramLines.push("    A[\"" + escLabel(bcNames[0]) + "\"] --> Downstream[\"Consumers\"]");
+					}
 				} else {
-					bcDiagram = "    A[\"Bounded Context 1\"] --> B[\"Bounded Context 2\"] : events";
+					diagramLines.push("    A[\"Bounded Context 1\"] --> B[\"Bounded Context 2\"] : events");
 				}
+				const bcDiagram = diagramLines.join("\n");
 
 				const diagramContent = [
 					"# System Context Diagram",
@@ -906,27 +939,152 @@ export default function (pi: ExtensionAPI) {
 				}
 
 				resultLines.push("", "### Next Steps");
-				resultLines.push("1. Review the module docs in .pi/architecture/modules/");
-				resultLines.push("2. Review ADR-001 in .pi/architecture/decisions/");
-				resultLines.push("3. Review the system diagram in .pi/architecture/diagrams/");
-				resultLines.push("4. Use /epic-plan --overview or /architect to plan implementation");
+				resultLines.push("1. Review ADR-001 in .pi/architecture/decisions/");
+				resultLines.push("2. Review the system diagram in .pi/architecture/diagrams/");
+				resultLines.push("3. Use /epic-plan --overview or /architect to plan implementation");
 				resultLines.push("");
-				resultLines.push("Or run through the full delivery pipeline:");
-				resultLines.push("  1. /domain --validate " + sessionId + "    (validate exploration)");
-				resultLines.push("  2. (architecture scaffold just completed)");
-				resultLines.push("  3. guardian project create --lang <lang>   (Epic 0 - greenfield only)");
-				resultLines.push("  4. /epic-plan --module <module>    (plan each module)");
+				resultLines.push("To enrich stubs with full DDD content: /domain --enrich " + sessionId);
 
-				// Send the results as a follow-up message so the agent sees them
+				ctx.ui.notify("Architecture scaffold complete", "success");
+				return resultLines.join("\n");
+			}
+			if (trimmed.startsWith("--enrich")) {
+				const sessionId = trimmed.slice("--enrich".length).trim();
+				if (!sessionId) {
+					ctx.ui.notify("Usage: /domain --enrich <session-id>", "error");
+					return "(domain command handled)";
+				}
+
+				const explorationDir = path.join(ctx.cwd, ".pi", "domain", "exploration");
+				const sessionPath = path.join(explorationDir, sessionId + ".md");
+				const modulesDir = path.join(ctx.cwd, ".pi", "architecture", "modules");
+
+				if (!fs.existsSync(sessionPath)) {
+					ctx.ui.notify("Session not found: " + sessionId + ". Run /domain --explore first.", "error");
+					return "(domain command handled)";
+				}
+
+				const moduleFiles = fs.readdirSync(modulesDir).filter(f => f.endsWith(".md") && f !== "module-template.md");
+				if (moduleFiles.length === 0) {
+					ctx.ui.notify("No module docs found. Run /domain --architect-scaffold " + sessionId + " first.", "error");
+					return "(domain command handled)";
+				}
+
+				ctx.ui.notify("Enriching " + moduleFiles.length + " module docs from session " + sessionId, "info");
+				const lang = readLanguage(ctx.cwd);
+
+				const enrichPrompt = [
+					"## Task: Complete Architecture Package",
+					"",
+					"The scaffold generated basic stubs. Your task is to produce a **complete, interconnected architecture package**",
+					"that an implementation agent can build from.",
+					"",
+					"**YOU MUST FOLLOW THESE 3 STEPS IN ORDER. Do not skip steps or reorder them.**",
+					"",
+					"### Source Data",
+					"",
+					"- Domain exploration: `.pi/domain/exploration/" + sessionId + ".md`",
+					"- Ubiquitous Language: `.pi/domain/ubiquitous-language.md`",
+					"- Current ADR-001: `.pi/architecture/decisions/ADR-001-architecture-pattern.md`",
+					"- System diagram: `.pi/architecture/diagrams/system-context.md`",
+					"- Module stubs: `.pi/architecture/modules/` (" + moduleFiles.length + " files)",
+					"",
+					"### STEP 1: Generate All ADRs",
+					"",
+					"**Do this first, before touching any module docs.** Module enrichment needs ADR references.",
+					"",
+					"Create these ADR files in `.pi/architecture/decisions/`:",
+					"",
+					"- ADR-001: Architecture Pattern (DDD Modular Monolith) — review and update if needed",
+					"- ADR-002: Data Storage Strategy (Postgres + SQLx per context)",
+					"- ADR-003: Cross-Context Communication (Domain Events)",
+					"- ADR-004: API Design (REST + JSON, versioning strategy)",
+					"- ADR-005: Authentication & Authorization (API Keys + Scopes)",
+					"- ADR-006: Cost Tracking & Usage Metering",
+					"- ADR-007: Compliance Engine Architecture",
+					"",
+					"Each ADR file must follow the format: **Status, Date, Context, Decision, Consequences, Alternatives**",
+					"Stop after generating ALL ADR files before proceeding.",
+					"",
+					"### STEP 2: Generate Diagrams",
+					"",
+					"**After all ADRs are created, generate diagrams.**",
+					"",
+					"#### System-Level (in `.pi/architecture/diagrams/`)",
+					"",
+					"1. Update `system-context.md` with clean names",
+					"2. Create `event-flow.md` — Mermaid flowchart showing domain events between all bounded contexts",
+					"",
+					"#### Module-Level (embedded in each module doc)",
+					"",
+					"In EACH module doc under `## Diagrams`, add these 4 mermaid diagrams:",
+					"",
+					"1. **Data Flow** — flowchart: inputs → processing → outputs → storage",
+					"2. **Entity Relationship** — classDiagram: aggregates, entities, VOs, fields, relationships",
+					"3. **Aggregate State** — stateDiagram-v2: states and transitions for each aggregate root",
+					"4. **Key Use Case Sequence** — sequenceDiagram: Actor → Interface → App → Domain → Infra",
+					"",
+					"Stop after creating diagrams before proceeding.",
+					"",
+					"### STEP 3: Enrich Each Module Doc",
+					"",
+					"**After ADRs and diagrams are done, enhance each module doc.**",
+					"",
+					"For each file in `.pi/architecture/modules/*.md`, add:",
+					"",
+					"1. **## Related ADRs** — Links to ADR files with descriptions of relevance",
+					"2. **## Diagrams** — Embed the 4 mermaid diagrams from Step 2",
+					"3. **## Acceptance Criteria** — Add a table row for each component: | # | Component | Criterion | Verify In | with specific, testable acceptance criteria",
+					"5. **## Components** — Expand each aggregate with " + lang + " stubs, methods, invariants keep `status:` and `depends:` markers",
+					"6. **Domain Events** — Table: Event, Description, Trigger, Payload, Published By",
+					"7. **API Endpoints** — Table: Method, Path, Handler, Input, Output, Auth",
+					"8. **Ubiquitous Language** — Terms for this context from `.pi/domain/ubiquitous-language.md`",
+					"9. **Dependencies** — Depends On + Used By",
+					"10. **Implementation Sequence** — Ordered build list",
+					"",
+					"### STEP 4: Generate Implementation Roadmap",
+					"",
+					"**After all module docs are enriched, generate the implementation roadmap.**",
+					"",
+					"Read each module doc's dependency section and create `.pi/architecture/implementation-roadmap.md`",
+					"with `## Phase N: Name (Days N-N)` sections, each having:",
+					"- Goal, Modules table, Dependencies, Database Migrations, Acceptance Criteria",
+					"",
+					"Organize phases by dependency chain:",
+					"- Phase 0: Foundation (no upstream deps)",
+					"- Phase 1: Core services depending on Phase 0",
+					"- Phase 2+: Following the dependency chain",
+					"",
+					"Also add: Dependency Graph, Effort Estimates table, Key Milestones",
+					"",
+					"### STEP 5: Fill Architecture CHANGELOG",
+					"",
+					"Read `.pi/architecture/CHANGELOG.md` and add an entry for each enriched module.",
+					"Each entry should note: Module, what was defined (aggregates, events, endpoints),",
+					"and update the Sync Status table at the bottom.",
+					"",
+					"### Scope Rules",
+					"",
+					"- CREATE new ADRs in `.pi/architecture/decisions/`",
+					"- CREATE new diagram md files in `.pi/architecture/diagrams/`",
+					"- CREATE `.pi/architecture/implementation-roadmap.md` with phased plan",
+					"- EDIT `.pi/architecture/CHANGELOG.md` — add entries for each module",
+					"- EDIT existing module docs in `.pi/architecture/modules/`",
+					"- Do NOT create any source code files",
+					"- Use " + lang + " syntax for code stubs",
+					"- Use Mermaid for all diagrams",
+				].join("\n");
+
 				try {
 					pi.sendMessage(
-						{ content: resultLines.join("\n"), display: true },
+						{ content: enrichPrompt, display: true },
 						{ deliverAs: "followUp", triggerTurn: true },
 					);
 				} catch (e) {
-					return resultLines.join("\n");
+					return enrichPrompt;
 				}
-				return "Architecture scaffold dispatched. Session: " + sessionId;
+				ctx.ui.notify("Enrich task dispatched to agent for " + moduleFiles.length + " modules", "success");
+				return "Enrich task dispatched. Session: " + sessionId;
 			}
 			if (trimmed.startsWith("--validate")) {
 				const sessionId = trimmed.slice("--validate".length).trim();
@@ -966,6 +1124,7 @@ export default function (pi: ExtensionAPI) {
 					"Usage:",
 					'  /domain --explore "Business context description"',
 					"  /domain --architect-scaffold <session-id>",
+					"  /domain --enrich <session-id>",
 					"  /domain --validate <session-id>",
 				].join("\n"),
 				"info",
@@ -980,8 +1139,11 @@ export default function (pi: ExtensionAPI) {
 				"  /domain --architect-scaffold <session-id>",
 				"    Generate architecture directories from exploration",
 				"",
+				"  /domain --enrich <session-id>",
+				"    Enrich module stubs with full DDD architecture content",
+				"",
 				"  /domain --validate <session-id>",
-				"    Validate exploration session structure",
+				"    Validate exploration session structure"
 			].join("\n");
 		},
 	});

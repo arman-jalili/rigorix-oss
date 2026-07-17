@@ -1,4 +1,7 @@
 /**
+ * Canonical Reference: .pi/architecture/modules/core-libraries.md
+ * Last Sync: 2026-05-31
+
  * Redaction Extension for pi
  *
  * Automatically redacts sensitive data from tool results, terminal output,
@@ -40,6 +43,9 @@ const PATTERNS: Array<{ kind: string; re: RegExp }> = [
 ];
 
 /**
+ * Canonical Reference: .pi/architecture/modules/core-libraries.md
+ * Last Sync: 2026-05-31
+
  * Redact sensitive data from text. Returns the redacted string.
  */
 export function redactSensitive(text: string): string {
@@ -58,6 +64,9 @@ export function redactSensitive(text: string): string {
 }
 
 /**
+ * Canonical Reference: .pi/architecture/modules/core-libraries.md
+ * Last Sync: 2026-05-31
+
  * Count redactions made (for logging/telemetry-free reporting).
  */
 export function countRedactions(text: string): number {

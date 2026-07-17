@@ -1,4 +1,7 @@
 /**
+ * Canonical Reference: .pi/architecture/modules/core-libraries.md
+ * Last Sync: 2026-05-31
+
  * Plan Mode Extension for pi
  *
  * Intercepts mutating tool calls (edit, write_file, create_directory) and queues

@@ -85,6 +85,7 @@ DO NOT EDIT DIRECTLY - Modify source in .pi/
 │   └── output-formats.md      # Report templates
 │
 ├── skills/
+│   ├── rust-enterprise-codegen.md
 │   ├── agents/
 │   │   ├── architecture-coordinator.md
 │   │   ├── architecture-validator.md
@@ -415,6 +416,8 @@ When running `guardian-framework generate`, `.pi/` files are transformed:
 | `AGENTS.md` | `.github/copilot-instructions.md` | YAML frontmatter + canonical header |
 | `architecture/modules/*.md` | `.claude/architecture/*.md` | Direct copy + canonical header |
 | `architecture/CHANGELOG.md` | `.claude/architecture/CHANGELOG.md` | Direct copy |
+| `skills/rust-enterprise-codegen.md` | `.pi/skills/rust-enterprise-codegen.md` | Direct copy — full reference patterns |
+| `skills/tdd-practice.md` | `.pi/skills/tdd-practice.md` | Direct copy — TDD practice guidance for agents |
 | `skills/agents/*.md` | `.claude/agents/*.md`, `.github/agents/*.agent.md` | Direct copy + YAML frontmatter |
 | `skills/validators/*.md` | `.opencode/prompts/*.txt` | Convert to .txt, compress |
 | `context/*.md` | `.claude/context/*.md`, `.opencode/context/*.md` | Direct copy + canonical header |
