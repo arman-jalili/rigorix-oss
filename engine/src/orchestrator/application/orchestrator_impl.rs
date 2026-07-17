@@ -308,6 +308,32 @@ impl OrchestratorServiceImpl {
         Ok(graph)
     }
 
+    /// Extract file paths from task result outputs.
+    /// Uses simple heuristics to find file path patterns in node output text.
+    fn extract_file_paths(task_results: &[TaskResult]) -> Vec<String> {
+        let mut paths: Vec<String> = Vec::new();
+        let path_re = regex::Regex::new(
+            r#"(?:^|\s)((?:\.[/\\])?[a-zA-Z0-9_\-./\\]+\.(?:rs|ts|js|py|go|rb|java|kt|swift|c|cpp|h|hpp|toml|json|yaml|yml|md|css|scss|html|svelte|vue))(?::\d+(?::\d+)?)?"#
+        ).ok();
+        for task in task_results {
+            if let Some(ref output) = task.output {
+                if let Some(ref re) = path_re {
+                    for cap in re.captures_iter(output) {
+                        let path = cap.get(1).map(|m| m.as_str().to_string());
+                        if let Some(p) = path {
+                            // Remove trailing line/column numbers
+                            let clean = p.split(':').next().unwrap_or(&p).to_string();
+                            if !paths.contains(&clean) {
+                                paths.push(clean);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        paths
+    }
+
     /// Detect git commit and branch from the working directory.
     fn detect_git_info(repo_root: &str) -> (Option<String>, Option<String>) {
         let run_git = |args: &[&str]| -> Option<String> {
@@ -332,6 +358,7 @@ impl OrchestratorServiceImpl {
     fn planning_meta(
         pr: &crate::planning::domain::result::PlanningResult,
         graph: Option<&crate::dag_engine::domain::TaskGraph>,
+        model_version: &Option<String>,
     ) -> PlanningMetadata {
         let node_order = match graph {
             Some(g) => match g.topological_order() {
@@ -356,7 +383,7 @@ impl OrchestratorServiceImpl {
             prompt_hash: pr.planning_hash.0.clone(),
             generated_toml: pr.generated_toml.clone(),
             node_order,
-            model_version: pr.model_version.clone(),
+            model_version: model_version.clone(),
         }
     }
 }
@@ -462,7 +489,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
             ))
             .await;
 
-        let pmeta = Self::planning_meta(&plan_out.planning_result, Some(&plan_out.graph));
+        let pmeta = Self::planning_meta(&plan_out.planning_result, Some(&plan_out.graph), &self.config.model_version);
 
         // 4. Save initial state
         self.state_manager
@@ -722,7 +749,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     git_branch: record.context.git_branch.clone(),
                     model_version: record.planning.model_version.clone(),
                     planning_prompt_content: None, // TODO: populate from config when prompt capture is enabled
-                    file_paths: vec![], // TODO: extract from node outputs when structured file path tracking is implemented
+                    file_paths: Self::extract_file_paths(&record.task_results),
                     metadata: None,
                     sign: false,
                     repository: input.repository.clone(),
@@ -855,7 +882,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
             prompt_hash: String::new(),
             generated_toml: None,
             node_order,
-            model_version: None,
+            model_version: self.config.model_version.clone(),
         };
 
         // 2. Save initial state
@@ -1104,7 +1131,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     git_branch: record.context.git_branch.clone(),
                     model_version: record.planning.model_version.clone(),
                     planning_prompt_content: None, // TODO: populate from config when prompt capture is enabled
-                    file_paths: vec![], // TODO: extract from node outputs when structured file path tracking is implemented
+                    file_paths: Self::extract_file_paths(&record.task_results),
                     metadata: None,
                     sign: false,
                     repository: input.repository.clone(),

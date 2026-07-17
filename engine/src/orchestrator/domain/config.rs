@@ -52,6 +52,11 @@ pub struct OrchestratorConfig {
     /// when a single phase fails.
     /// Default: true.
     pub propagate_cancellation: bool,
+
+    /// LLM model version used for planning
+    /// (e.g. "claude-sonnet-4-20250514").
+    /// `None` when unknown or not configured.
+    pub model_version: Option<String>,
 }
 
 impl Default for OrchestratorConfig {
@@ -64,6 +69,7 @@ impl Default for OrchestratorConfig {
             state_persistence_timeout_secs: 10,
             save_intermediate_state: false,
             propagate_cancellation: true,
+            model_version: None,
         }
     }
 }

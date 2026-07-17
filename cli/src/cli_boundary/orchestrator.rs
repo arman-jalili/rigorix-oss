@@ -192,6 +192,11 @@ pub async fn build_orchestrator_with_budget(
 
     // ── 0. Convert config → orchestrator domain config ────────────────
     let audit_enabled = engine_config.audit_backend_url.is_some();
+    let model_version = if engine_config.llm.model.is_empty() {
+        None
+    } else {
+        Some(engine_config.llm.model.clone())
+    };
     let orch_domain_config = OrchestratorDomainConfig {
         event_buffer_capacity: 10_000,
         audit_enabled,
@@ -200,6 +205,7 @@ pub async fn build_orchestrator_with_budget(
         state_persistence_timeout_secs: 10,
         save_intermediate_state: false,
         propagate_cancellation: true,
+        model_version,
     };
 
     // ── 1. CancellationService ────────────────────────────────────────

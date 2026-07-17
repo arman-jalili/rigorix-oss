@@ -193,6 +193,7 @@ async fn build_action_orchestrator(
         tracing::info!("Backend audit configured — audit posting enabled");
     }
 
+    let action_model = std::env::var("INPUT_MODEL").ok();
     let orch_domain_config = OrchestratorDomainConfig {
         event_buffer_capacity: 10_000,
         audit_enabled: has_backend,
@@ -201,6 +202,7 @@ async fn build_action_orchestrator(
         state_persistence_timeout_secs: 10,
         save_intermediate_state: false,
         propagate_cancellation: true,
+        model_version: action_model,
     };
 
     // ── 1. CancellationService ────────────────────────────────────────
