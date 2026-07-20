@@ -13,7 +13,7 @@
 use thiserror::Error;
 
 /// Errors that can occur during scored evaluation.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum ScoredEvaluationError {
     /// The requested backend was not found in the registry.
     #[error("Backend not found: {0}")]

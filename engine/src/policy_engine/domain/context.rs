@@ -13,6 +13,8 @@
 //! - Context is immutable once constructed
 //! - `green_level` is a u8 representing the quality gate tier (0-5)
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 /// Typed snapshot of execution state evaluated by policy conditions.
@@ -45,6 +47,13 @@ pub struct LaneContext {
 
     /// Whether the lane has been reconciled (no merge needed).
     pub reconciled: bool,
+
+    /// Scored evaluation dimension scores (dimension name → score percentage 0–100).
+    ///
+    /// Populated when scored evaluation nodes are present in the DAG.
+    /// Evaluated by `ScoreAbove` and `ScoreBelow` policy conditions.
+    #[serde(default)]
+    pub scoring_scores: HashMap<String, u8>,
 }
 
 /// Blocker state for a lane.
@@ -101,6 +110,7 @@ mod tests {
             diff_scope: DiffScope::Scoped,
             completed: true,
             reconciled: false,
+                scoring_scores: std::collections::HashMap::new(),
         };
         assert_eq!(ctx.lane_id, "lane-1");
         assert_eq!(ctx.green_level, 3);
@@ -119,6 +129,7 @@ mod tests {
             diff_scope: DiffScope::Full,
             completed: true,
             reconciled: false,
+                scoring_scores: std::collections::HashMap::new(),
         };
         let json = serde_json::to_string(&ctx).unwrap();
         let deserialized: LaneContext = serde_json::from_str(&json).unwrap();

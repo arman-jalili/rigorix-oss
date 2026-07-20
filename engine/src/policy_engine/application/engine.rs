@@ -154,6 +154,7 @@ mod tests {
             diff_scope: DiffScope::Scoped,
             completed: true,
             reconciled: false,
+                scoring_scores: std::collections::HashMap::new(),
         };
 
         let actions = evaluate_rules(&rules, &ctx);
@@ -182,6 +183,7 @@ mod tests {
             diff_scope: DiffScope::Scoped,
             completed: true,
             reconciled: false,
+                scoring_scores: std::collections::HashMap::new(),
         };
 
         let actions = evaluate_rules(&rules, &ctx);
@@ -209,6 +211,7 @@ mod tests {
             diff_scope: DiffScope::Scoped,
             completed: true,
             reconciled: false,
+                scoring_scores: std::collections::HashMap::new(),
         };
 
         let actions = evaluate_rules(&rules, &ctx);

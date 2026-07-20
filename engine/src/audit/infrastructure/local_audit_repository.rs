@@ -238,6 +238,7 @@ mod tests {
             model_version: None,
             planning_prompt: None,
             file_paths: vec![],
+            scoring_results: std::collections::HashMap::new(),
             signature: None,
             repository: None,
             author: None,

@@ -15,5 +15,7 @@
 
 pub mod backends;
 pub mod repository;
+pub mod repository_impl;
 
 pub use repository::EvaluationRepository;
+pub use repository_impl::LocalEvaluationRepository;

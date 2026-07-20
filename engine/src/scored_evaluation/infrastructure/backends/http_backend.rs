@@ -1,22 +1,11 @@
 //! HTTPBackend — HTTP REST adapter for the Rigorix scoring protocol.
 //!
 //! @canonical .pi/architecture/modules/scored-evaluation.md#http-backend
-//! Implements: Contract Freeze — HttpBackend stub
-//! Issue: #673 (scored-evaluation epic)
+//! Implements: HTTP REST adapter for Rigorix scoring protocol
+//! Issue: #689 (scored-evaluation epic)
 //!
-//! # Contract (Frozen)
-//! - Implements the `ScoringBackend` trait
-//! - POSTs artifact + rubric to configurable URL
-//! - Expects `ScoringResult`-compatible JSON response
-//! - Configurable timeout, headers, and auth
-//! - Implements health check via HEAD or GET to health endpoint
-//!
-//! # Implementation Notes (TODO)
-//! - Use reqwest for HTTP client
-//! - POST with JSON body containing artifact + rubric
-//! - Parse response into ScoringResult
-//! - Support auth headers (Bearer token, custom header)
-//! - Configurable timeout per request
+//! POSTs artifact + rubric to a configurable HTTP endpoint per the Rigorix
+//! scoring protocol and parses the JSON response into ScoringResult.
 
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -28,18 +17,15 @@ use crate::scored_evaluation::domain::{
 /// HTTP REST adapter for the Rigorix scoring protocol.
 ///
 /// POSTs scoring requests to a configurable HTTP endpoint and parses
-/// the JSON response into a `ScoringResult`.
+/// the JSON response into a `ScoringResult`. Supports custom headers,
+/// bearer auth, and configurable timeout.
 pub struct HttpBackend {
-    /// Name identifier for this backend instance.
     name: &'static str,
-    /// Scoring endpoint URL.
     url: String,
-    /// Custom HTTP headers to include in requests.
     headers: HashMap<String, String>,
-    /// Request timeout in milliseconds.
     timeout_ms: u64,
-    /// Optional URL for health checks (defaults to same URL).
     health_url: Option<String>,
+    client: reqwest::Client,
 }
 
 impl HttpBackend {
@@ -49,12 +35,29 @@ impl HttpBackend {
         headers: HashMap<String, String>,
         timeout_ms: u64,
     ) -> Self {
+        let timeout = std::time::Duration::from_millis(timeout_ms);
+        let mut client_builder = reqwest::Client::builder().timeout(timeout);
+
+        if let Some(auth) = headers.get("Authorization") {
+            if let Some(_bearer) = auth.strip_prefix("Bearer ") {
+                let mut auth_value = reqwest::header::HeaderValue::try_from(auth.as_str()).ok();
+                if let Some(val) = auth_value.as_mut() {
+                    client_builder = client_builder.default_headers({
+                        let mut h = reqwest::header::HeaderMap::new();
+                        h.insert(reqwest::header::AUTHORIZATION, val.clone());
+                        h
+                    });
+                }
+            }
+        }
+
         Self {
             name: "http",
             url: url.into(),
             headers,
             timeout_ms,
             health_url: None,
+            client: client_builder.build().unwrap_or_default(),
         }
     }
 
@@ -84,16 +87,52 @@ impl HttpBackend {
 impl ScoringBackend for HttpBackend {
     async fn evaluate(
         &self,
-        _artifact: &serde_json::Value,
-        _rubric: &Rubric,
+        artifact: &serde_json::Value,
+        rubric: &Rubric,
     ) -> Result<ScoringResult, ScoredEvaluationError> {
-        // TODO: implement HTTP call
-        // 1. POST artifact + rubric as JSON to self.url
-        // 2. Parse response into ScoringResult
-        // 3. Handle timeout, HTTP errors, invalid responses
-        Err(ScoredEvaluationError::Internal(
-            "HTTPBackend not yet implemented".to_string(),
-        ))
+        let payload = serde_json::json!({
+            "artifact": artifact,
+            "rubric": rubric,
+        });
+
+        let mut request = self.client.post(&self.url).json(&payload);
+
+        // Add custom headers
+        for (key, value) in &self.headers {
+            if key != "Authorization" {
+                if let Some(header_name) = key.parse::<reqwest::header::HeaderName>().ok() {
+                    if let Some(header_value) = value.parse::<reqwest::header::HeaderValue>().ok() {
+                        request = request.header(header_name, header_value);
+                    }
+                }
+            }
+        }
+
+        let response = request.send().await.map_err(|e| {
+            if e.is_timeout() {
+                ScoredEvaluationError::Timeout(self.timeout_ms)
+            } else {
+                ScoredEvaluationError::BackendError(format!("HTTP request failed: {}", e))
+            }
+        })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(ScoredEvaluationError::BackendError(format!(
+                "HTTP {}: {}",
+                status, body
+            )));
+        }
+
+        let scoring_result: ScoringResult = response.json().await.map_err(|e| {
+            ScoredEvaluationError::BackendError(format!(
+                "Invalid ScoringResult response: {}",
+                e
+            ))
+        })?;
+
+        Ok(scoring_result)
     }
 
     fn backend_name(&self) -> &'static str {
@@ -101,11 +140,11 @@ impl ScoringBackend for HttpBackend {
     }
 
     async fn health_check(&self) -> Result<bool, ScoredEvaluationError> {
-        // TODO: implement health check
-        // HEAD or GET to health_url (or self.url), check status 200
-        Err(ScoredEvaluationError::Internal(
-            "HTTPBackend health check not yet implemented".to_string(),
-        ))
+        let health_url = self.health_url.as_deref().unwrap_or(&self.url);
+        match self.client.head(health_url).send().await {
+            Ok(response) => Ok(response.status().is_success()),
+            Err(_) => Ok(false),
+        }
     }
 }
 
@@ -138,7 +177,23 @@ mod tests {
     fn test_custom_headers() {
         let mut headers = HashMap::new();
         headers.insert("Authorization".to_string(), "Bearer token123".to_string());
+        headers.insert("X-Custom".to_string(), "value".to_string());
         let backend = HttpBackend::new("https://evaluate.example.com/score", headers.clone(), 10_000);
-        assert_eq!(backend.headers().get("Authorization").unwrap(), "Bearer token123");
+        assert_eq!(
+            backend.headers().get("Authorization").unwrap(),
+            "Bearer token123"
+        );
+        assert_eq!(backend.headers().get("X-Custom").unwrap(), "value");
+    }
+
+    #[test]
+    fn test_serialization_payload() {
+        let payload = serde_json::json!({
+            "artifact": {"code": "fn main() {}"},
+            "rubric": {"source": {"type": "inline", "content": {"quality": 0.9}}, "scenario_id": null},
+        });
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("artifact"));
+        assert!(json.contains("rubric"));
     }
 }

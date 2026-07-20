@@ -86,10 +86,52 @@ pub struct AuditEnvelope {
     /// The ordered list of execution events captured during this run.
     pub events: Vec<ExecutionEventRef>,
 
+    /// Scoring results from scored_evaluation nodes, keyed by node_id.
+    ///
+    /// Populated when scored evaluation nodes are present in the DAG.
+    /// Used for compliance provenance and quality audit evidence.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub scoring_results: std::collections::HashMap<String, ScoringResultRef>,
+
     /// HMAC signature for envelope integrity verification.
     ///
     /// `None` if HMAC signing is not configured.
     pub signature: Option<String>,
+}
+
+/// A reference to a scoring result included in the audit envelope.
+///
+/// Contains the pass/fail status, backend metadata, and dimension scores
+/// but not the full raw response (to keep envelope size manageable).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScoringResultRef {
+    /// Whether all scoring dimensions passed.
+    pub passed: bool,
+
+    /// Name of the scoring backend that produced this result.
+    pub backend: String,
+
+    /// Map of dimension name to score dimension reference.
+    pub dimensions: std::collections::HashMap<String, ScoreDimensionRef>,
+
+    /// Duration of the evaluation in milliseconds.
+    pub duration_ms: u64,
+}
+
+/// A reference to a single scoring dimension within a scoring result.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScoreDimensionRef {
+    /// The achieved score (0.0–1.0).
+    pub score: f64,
+
+    /// The maximum possible score.
+    pub max: f64,
+
+    /// Human-readable label for this dimension.
+    pub label: String,
+
+    /// Whether this dimension passed.
+    pub passed: bool,
 }
 
 /// A reference to an execution event included in the audit envelope.

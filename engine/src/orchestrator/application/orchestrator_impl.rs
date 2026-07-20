@@ -609,6 +609,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 diff_scope: DiffScope::Scoped,
                 completed: final_status == ExecutionStatus::Completed,
                 reconciled: false,
+                scoring_scores: std::collections::HashMap::new(),
             };
 
             let eval_policy_input = EvaluatePolicyInput {
@@ -998,6 +999,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 diff_scope: DiffScope::Scoped,
                 completed: final_status == ExecutionStatus::Completed,
                 reconciled: false,
+                scoring_scores: std::collections::HashMap::new(),
             };
             let eval_policy_input = EvaluatePolicyInput {
                 context,

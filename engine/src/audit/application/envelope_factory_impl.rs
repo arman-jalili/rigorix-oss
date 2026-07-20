@@ -97,6 +97,7 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
             planning_prompt: input.planning_prompt_content,
             file_paths: input.file_paths,
             events: input.events,
+            scoring_results: std::collections::HashMap::new(),
             signature: None,
         };
 
