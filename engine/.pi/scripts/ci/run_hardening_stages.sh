@@ -329,6 +329,12 @@ run_stage "31" "llm-step_proofing" \
 run_stage "32" "failure-parser_proofing" \
     "${SCRIPTS_DIR}/stage_failure-parser_proofing.sh" \
     "always"
+
+# Stage 33: Scored Evaluation Proofing
+run_stage "33" "scored-evaluation_proofing" \
+    "${SCRIPTS_DIR}/stage_scored-evaluation_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""
