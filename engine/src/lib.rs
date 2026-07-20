@@ -48,6 +48,7 @@ pub mod planning;
 pub mod policy_engine;
 pub mod quality_gates;
 pub mod recovery_recipes;
+pub mod scored_evaluation;
 pub mod repo_engine;
 pub mod risk_gating;
 pub mod state_persistence;
