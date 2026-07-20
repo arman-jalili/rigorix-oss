@@ -14,8 +14,11 @@
 
 pub mod dto;
 pub mod service;
+pub mod service_impl;
 
 pub use dto::EvaluateInput;
 pub use dto::EvaluateOutput;
 pub use dto::EvaluationContext;
 pub use service::ScoredEvaluationService;
+pub use service_impl::EventSink;
+pub use service_impl::ScoredEvaluationServiceImpl;

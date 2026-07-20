@@ -108,6 +108,33 @@ pub enum PolicyCondition {
         /// Minimum duration in seconds since the last commit.
         duration_secs: u64,
     },
+
+    /// All scoring dimensions are above a percentage threshold.
+    ///
+    /// Evaluates against `LaneContext::scoring_scores`. If `dimension` is
+    /// `None`, checks all dimensions. If `dimension` is `Some`, checks only
+    /// that specific dimension.
+    ///
+    /// Score thresholds use u8 percentage (0–100), matching the `GreenAt`
+    /// convention. Backend scores (0.0–1.0) are converted: `(score * 100.0) as u8`.
+    ScoreAbove {
+        /// Optional: only check this specific dimension. None = all dimensions.
+        dimension: Option<String>,
+        /// Minimum score threshold as percentage (0–100). E.g., 80 = 80%.
+        threshold: u8,
+    },
+
+    /// Any scoring dimension below a percentage threshold triggers action.
+    ///
+    /// Evaluates against `LaneContext::scoring_scores`. If `dimension` is
+    /// `None`, checks any dimension. If `dimension` is `Some`, checks only
+    /// that specific dimension.
+    ScoreBelow {
+        /// Optional: only check this specific dimension. None = any dimension.
+        dimension: Option<String>,
+        /// Minimum score threshold as percentage (0–100). E.g., 80 = 80%.
+        threshold: u8,
+    },
 }
 
 impl PolicyCondition {
@@ -138,6 +165,32 @@ impl PolicyCondition {
             PolicyCondition::TimedOut { duration_secs } => {
                 context.branch_freshness_secs >= *duration_secs
             }
+            PolicyCondition::ScoreAbove {
+                dimension,
+                threshold,
+            } => {
+                let threshold = *threshold;
+                match dimension {
+                    Some(dim) => context.scoring_scores.get(dim).copied().map_or(false, |s| s >= threshold),
+                    None => {
+                        if context.scoring_scores.is_empty() {
+                            false
+                        } else {
+                            context.scoring_scores.values().all(|&s| s >= threshold)
+                        }
+                    }
+                }
+            }
+            PolicyCondition::ScoreBelow {
+                dimension,
+                threshold,
+            } => {
+                let threshold = *threshold;
+                match dimension {
+                    Some(dim) => context.scoring_scores.get(dim).copied().map_or(true, |s| s < threshold),
+                    None => context.scoring_scores.values().any(|&s| s < threshold),
+                }
+            }
         }
     }
 }
@@ -150,6 +203,9 @@ mod tests {
     };
 
     fn test_context() -> LaneContext {
+        let mut scores = std::collections::HashMap::new();
+        scores.insert("correctness".to_string(), 85);
+        scores.insert("completeness".to_string(), 90);
         LaneContext {
             lane_id: "test-lane".to_string(),
             green_level: 3,
@@ -159,6 +215,7 @@ mod tests {
             diff_scope: DiffScope::Scoped,
             completed: true,
             reconciled: false,
+            scoring_scores: scores,
         }
     }
 
@@ -301,5 +358,120 @@ mod tests {
         let mut ctx = test_context();
         ctx.diff_scope = DiffScope::Full;
         assert!(!PolicyCondition::ScopedDiff.matches(&ctx));
+    }
+
+    #[test]
+    fn test_score_above_all_dimensions() {
+        let ctx = test_context();
+        assert!(PolicyCondition::ScoreAbove {
+            dimension: None,
+            threshold: 80,
+        }
+        .matches(&ctx));
+    }
+
+    #[test]
+    fn test_score_above_one_fails() {
+        let ctx = test_context();
+        assert!(!PolicyCondition::ScoreAbove {
+            dimension: None,
+            threshold: 95,
+        }
+        .matches(&ctx));
+    }
+
+    #[test]
+    fn test_score_above_specific_dimension() {
+        let ctx = test_context();
+        assert!(PolicyCondition::ScoreAbove {
+            dimension: Some("correctness".to_string()),
+            threshold: 80,
+        }
+        .matches(&ctx));
+        assert!(!PolicyCondition::ScoreAbove {
+            dimension: Some("correctness".to_string()),
+            threshold: 90,
+        }
+        .matches(&ctx));
+    }
+
+    #[test]
+    fn test_score_above_missing_dimension() {
+        let ctx = test_context();
+        assert!(!PolicyCondition::ScoreAbove {
+            dimension: Some("nonexistent".to_string()),
+            threshold: 50,
+        }
+        .matches(&ctx));
+    }
+
+    #[test]
+    fn test_score_below_any_dimension() {
+        let mut ctx = test_context();
+        ctx.scoring_scores.insert("style".to_string(), 70);
+        assert!(PolicyCondition::ScoreBelow {
+            dimension: None,
+            threshold: 80,
+        }
+        .matches(&ctx));
+    }
+
+    #[test]
+    fn test_score_below_all_pass() {
+        let ctx = test_context();
+        assert!(!PolicyCondition::ScoreBelow {
+            dimension: None,
+            threshold: 80,
+        }
+        .matches(&ctx));
+    }
+
+    #[test]
+    fn test_score_below_specific_dimension() {
+        let mut ctx = test_context();
+        ctx.scoring_scores.insert("style".to_string(), 70);
+        assert!(PolicyCondition::ScoreBelow {
+            dimension: Some("style".to_string()),
+            threshold: 80,
+        }
+        .matches(&ctx));
+        assert!(!PolicyCondition::ScoreBelow {
+            dimension: Some("correctness".to_string()),
+            threshold: 80,
+        }
+        .matches(&ctx));
+    }
+
+    #[test]
+    fn test_score_above_empty_scores() {
+        let mut ctx = test_context();
+        ctx.scoring_scores.clear();
+        assert!(!PolicyCondition::ScoreAbove {
+            dimension: None,
+            threshold: 50,
+        }
+        .matches(&ctx));
+    }
+
+    #[test]
+    fn test_score_above_serde_roundtrip() {
+        let condition = PolicyCondition::ScoreAbove {
+            dimension: Some("correctness".to_string()),
+            threshold: 80,
+        };
+        let json = serde_json::to_string(&condition).unwrap();
+        let deserialized: PolicyCondition = serde_json::from_str(&json).unwrap();
+        assert_eq!(condition, deserialized);
+    }
+
+    #[test]
+    fn test_score_below_serde_roundtrip() {
+        let condition = PolicyCondition::ScoreBelow {
+            dimension: None,
+            threshold: 80,
+        };
+        let json = serde_json::to_string(&condition).unwrap();
+        let deserialized: PolicyCondition = serde_json::from_str(&json).unwrap();
+        assert_eq!(condition, deserialized);
     }
 }

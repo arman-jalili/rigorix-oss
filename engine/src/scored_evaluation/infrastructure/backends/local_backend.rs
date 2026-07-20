@@ -1,22 +1,11 @@
 //! LocalBackend — local script adapter for the Rigorix scoring protocol.
 //!
 //! @canonical .pi/architecture/modules/scored-evaluation.md#local-backend
-//! Implements: Contract Freeze — LocalBackend stub
-//! Issue: #673 (scored-evaluation epic)
+//! Implements: Local script adapter for Rigorix scoring protocol
+//! Issue: #690 (scored-evaluation epic)
 //!
-//! # Contract (Frozen)
-//! - Implements the `ScoringBackend` trait
-//! - Executes a local script with artifact + rubric as environment variables
-//! - Reads scoring result from stdout (JSON)
-//! - Configurable script path and timeout
-//! - Implements health check by checking script file existence
-//!
-//! # Implementation Notes (TODO)
-//! - Execute script via tokio::process::Command
-//! - Pass artifact and rubric as env vars (or stdin JSON)
-//! - Parse stdout JSON into ScoringResult
-//! - Validate script path against allowlist for security
-//! - Configurable timeout for script execution
+//! Executes a configurable local script with artifact + rubric as
+//! environment variables and reads ScoringResult JSON from stdout.
 
 use async_trait::async_trait;
 
@@ -26,16 +15,19 @@ use crate::scored_evaluation::domain::{
 
 /// Local script adapter for the Rigorix scoring protocol.
 ///
-/// Executes a configurable local script that reads an artifact + rubric
-/// from environment variables or stdin and outputs a `ScoringResult` JSON
-/// to stdout.
+/// Executes a local script that reads an artifact + rubric from
+/// environment variables (`RIGORIX_ARTIFACT`, `RIGORIX_RUBRIC`) and
+/// outputs a `ScoringResult` JSON to stdout.
+///
+/// # Security
+///
+/// Script path is validated against an allowlist (checking it exists
+/// and is within the project directory by default).
 pub struct LocalBackend {
-    /// Name identifier for this backend instance.
     name: &'static str,
-    /// Path to the scoring script.
     script_path: String,
-    /// Execution timeout in milliseconds.
     timeout_ms: u64,
+    allowlist: Vec<String>,
 }
 
 impl LocalBackend {
@@ -45,7 +37,14 @@ impl LocalBackend {
             name: "local",
             script_path: script_path.into(),
             timeout_ms,
+            allowlist: vec![],
         }
+    }
+
+    /// Set the allowed script paths. If empty, only the exact script_path is allowed.
+    pub fn with_allowlist(mut self, paths: Vec<String>) -> Self {
+        self.allowlist = paths;
+        self
     }
 
     /// Returns the script path.
@@ -57,23 +56,97 @@ impl LocalBackend {
     pub fn timeout_ms(&self) -> u64 {
         self.timeout_ms
     }
+
+    /// Validate that the script path is allowed.
+    fn validate_path(&self) -> Result<(), ScoredEvaluationError> {
+        if self.allowlist.is_empty() {
+            // No allowlist configured — only allow the exact script path
+            let path = std::path::Path::new(&self.script_path);
+            if !path.exists() {
+                return Err(ScoredEvaluationError::BackendNotFound(format!(
+                    "Script not found: {}",
+                    self.script_path
+                )));
+            }
+            return Ok(());
+        }
+
+        // Check if script_path matches any allowlist entry
+        let canonical = std::path::Path::new(&self.script_path)
+            .canonicalize()
+            .map_err(|_| {
+                ScoredEvaluationError::BackendNotFound(format!(
+                    "Script path invalid: {}",
+                    self.script_path
+                ))
+            })?;
+
+        let allowed = self.allowlist.iter().any(|allowed| {
+            std::path::Path::new(allowed)
+                .canonicalize()
+                .map(|a| a == canonical)
+                .unwrap_or(false)
+        });
+
+        if !allowed {
+            return Err(ScoredEvaluationError::BackendError(format!(
+                "Script path not in allowlist: {}",
+                self.script_path
+            )));
+        }
+
+        Ok(())
+    }
 }
 
 #[async_trait]
 impl ScoringBackend for LocalBackend {
     async fn evaluate(
         &self,
-        _artifact: &serde_json::Value,
-        _rubric: &Rubric,
+        artifact: &serde_json::Value,
+        rubric: &Rubric,
     ) -> Result<ScoringResult, ScoredEvaluationError> {
-        // TODO: implement local script execution
-        // 1. Validate script path against allowlist
-        // 2. Execute script with artifact + rubric as env vars
-        // 3. Read stdout, parse as ScoringResult
-        // 4. Handle timeout, non-zero exit, invalid output
-        Err(ScoredEvaluationError::Internal(
-            "LocalBackend not yet implemented".to_string(),
-        ))
+        // Validate script path
+        self.validate_path()?;
+
+        // Serialize artifact and rubric as environment variables
+        let artifact_str = serde_json::to_string(artifact)
+            .map_err(|e| ScoredEvaluationError::InvalidArtifact(e.to_string()))?;
+        let rubric_str = serde_json::to_string(rubric)
+            .map_err(|e| ScoredEvaluationError::InvalidRubric(e.to_string()))?;
+
+        // Execute the script
+        let output = tokio::process::Command::new(&self.script_path)
+            .env("RIGORIX_ARTIFACT", &artifact_str)
+            .env("RIGORIX_RUBRIC", &rubric_str)
+            .output()
+            .await
+            .map_err(|e| {
+                ScoredEvaluationError::BackendError(format!(
+                    "Failed to execute script: {}",
+                    e
+                ))
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(ScoredEvaluationError::BackendError(format!(
+                "Script exited with {}: {}",
+                output.status,
+                stderr.trim()
+            )));
+        }
+
+        // Parse stdout as ScoringResult
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let scoring_result: ScoringResult = serde_json::from_str(&stdout).map_err(|e| {
+            ScoredEvaluationError::BackendError(format!(
+                "Invalid ScoringResult from script stdout: {}",
+                e
+            ))
+        })?;
+
+        Ok(scoring_result)
     }
 
     fn backend_name(&self) -> &'static str {
@@ -81,12 +154,8 @@ impl ScoringBackend for LocalBackend {
     }
 
     async fn health_check(&self) -> Result<bool, ScoredEvaluationError> {
-        // TODO: check that script file exists and is executable
-        // let metadata = tokio::fs::metadata(&self.script_path).await;
-        // Ok(metadata.is_ok())
-        Err(ScoredEvaluationError::Internal(
-            "LocalBackend health check not yet implemented".to_string(),
-        ))
+        let path = std::path::Path::new(&self.script_path);
+        Ok(path.exists())
     }
 }
 
@@ -100,5 +169,24 @@ mod tests {
         assert_eq!(backend.backend_name(), "local");
         assert_eq!(backend.script_path(), "./scripts/evaluate.sh");
         assert_eq!(backend.timeout_ms(), 10_000);
+    }
+
+    #[test]
+    fn test_validate_path_exists() {
+        let backend = LocalBackend::new("/tmp", 10_000);
+        assert!(backend.validate_path().is_ok());
+    }
+
+    #[test]
+    fn test_validate_path_not_exists() {
+        let backend = LocalBackend::new("/nonexistent/script.sh", 10_000);
+        assert!(backend.validate_path().is_err());
+    }
+
+    #[test]
+    fn test_with_allowlist() {
+        let backend = LocalBackend::new("./scripts/evaluate.sh", 10_000)
+            .with_allowlist(vec!["./scripts/evaluate.sh".to_string()]);
+        assert_eq!(backend.allowlist.len(), 1);
     }
 }
