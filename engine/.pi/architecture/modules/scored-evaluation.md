@@ -2,7 +2,7 @@
 
 <!--
 Canonical Reference: .pi/architecture/modules/scored-evaluation.md
-Blueprint Source: Guardian Agent Prompt — Scored Evaluation Module
+Rationale: Multidimensional quality scoring of AI-generated artifacts via pluggable backends — orthogonal to test-scope quality gates
 -->
 
 ## Overview
@@ -11,43 +11,86 @@ The Scored Evaluation system adds a scored quality evaluation primitive to the R
 
 This complements the Quality Gates system (GreenContract), which evaluates test scope (TargetedTests → MergeReady), by adding output quality scoring as an orthogonal dimension.
 
-## Adoption Rationale
+## System Context
 
-- Multidimensional scoring of AI-generated artifacts before CI
-- Pluggable backends (MCP/HTTP/local) — no vendor lock-in
-- Policy integration: deny merge if any dimension below threshold
-- Audit envelope carries scoring results for compliance provenance
-- First backend: RuntimeAI (MCP-native, scoring via check-rides + rubrics)
+The following diagram shows where Scored Evaluation fits within the Rigorix architecture — as an execution-phase DAG node type that feeds quality scores into the Policy Engine and audit trail.
 
-## Responsibilities
+```mermaid
+graph TB
+    subgraph "DAG Execution Phase"
+        DAG[DAG Engine]
+        EE[Execution Engine]
+        SE[Scored Evaluation]
+        QG[Quality Gates]
+    end
 
-- Define scored evaluation node type for DAG integration
-- Define `ScoringBackend` trait for pluggable evaluation backends
-- Execute evaluations and capture multidimensional results
-- Emit scored evaluation events for audit trail
-- Integrate with policy engine for score-based gating
-- Integrate with audit envelope for compliance reporting
+    subgraph "Policy & Audit"
+        PE[Policy Engine]
+        AUD[Audit]
+        EV[Event System]
+    end
 
-## Components
+    subgraph "Scoring Backends (Protocol Adapters)"
+        MCP[MCPBackend\nMCP Protocol]
+        HTTP[HTTPBackend\nREST API]
+        LOC[LocalBackend\nScript]
+    end
 
-| Component | File Path | Purpose | Canonical Section |
-|-----------|-----------|---------|-------------------|
-| ScoredEvaluationNode | `engine/src/scored_evaluation/domain/node.rs` | DAG node value object with artifact + rubric + thresholds | #node |
-| Rubric | `engine/src/scored_evaluation/domain/rubric.rs` | Evaluation rubric (inline or reference) | #rubric |
-| ScoringResult | `engine/src/scored_evaluation/domain/result.rs` | Multidimensional score result with passed flag | #result |
-| ScoreDimension | `engine/src/scored_evaluation/domain/result.rs` | Single dimension: score, max, label, passed | #dimension |
-| ScoringBackend | `engine/src/scored_evaluation/domain/backend.rs` | Trait for pluggable evaluation backends | #backend |
-| ScoredEvaluationEvent | `engine/src/scored_evaluation/domain/event.rs` | Domain events for scoring lifecycle | #event |
-| ScoredEvaluationError | `engine/src/scored_evaluation/domain/error.rs` | Typed error enum (thiserror) | #error |
-| ScoredEvaluationService | `engine/src/scored_evaluation/application/service.rs` | Service trait for evaluation orchestration | #service |
-| EvaluateInput | `engine/src/scored_evaluation/application/dto/mod.rs` | Input DTO: artifact + rubric + context | #dto |
-| EvaluateOutput | `engine/src/scored_evaluation/application/dto/mod.rs` | Output DTO: ScoringResult + metadata | #dto |
-| MCPBackend | `engine/src/scored_evaluation/infrastructure/backends/mcp_backend.rs` | MCP-based scoring backend (RuntimeAI compatible) | #mcp_backend |
-| HTTPBackend | `engine/src/scored_evaluation/infrastructure/backends/http_backend.rs` | HTTP-based scoring backend | #http_backend |
-| LocalBackend | `engine/src/scored_evaluation/infrastructure/backends/local_backend.rs` | Local script/file-based backend | #local_backend |
-| EvaluationRepository | `engine/src/scored_evaluation/infrastructure/repository/evaluation_repository.rs` | Persist evaluation results | #repository |
+    DAG -->|"compiles scored_evaluation node"| EE
+    EE -->|"invokes"| SE
+    QG -->|"scope quality"| PE
+    SE -->|"output quality scores"| PE
+    SE -->|"ScoreAbove/ScoreBelow"| PE
+    SE -.->|"emits events"| EV
+    SE -.->|"envelope extension"| AUD
+    SE -->|"evaluate artifact"| MCP
+    SE -->|"evaluate artifact"| HTTP
+    SE -->|"evaluate artifact"| LOC
 
----
+    style SE fill:#4a90d9,stroke:#2c5f8a,color:#fff
+    style QG fill:#6bb86b,stroke:#3d7a3d,color:#fff
+    style PE fill:#d9a74a,stroke:#8a6b2c,color:#fff
+```
+
+## DDD Layers
+
+This module follows Clean Architecture with 3 DDD layers. There is no `interfaces/` layer — the module exposes its API through the application service trait, matching the same pattern as `quality_gates`.
+
+| Layer | Purpose | Tech |
+|-------|---------|------|
+| `domain/` | Pure business logic, types, errors, traits | Zero framework imports, `thiserror` |
+| `application/` | Service orchestration, DTOs, use cases | Traits + async |
+| `infrastructure/` | Backend adapters (MCP, HTTP, Local), repository | Reqwest, script execution |
+
+**Dependency rule:** `domain → application → infrastructure` (inward)
+
+## Components by Layer
+
+### Domain Layer (`domain/`)
+| Component | Description | Framework? |
+|-----------|-------------|------------|
+| ScoredEvaluationNode | DAG node value object with artifact + rubric + thresholds | ❌ No |
+| Rubric | Evaluation rubric (inline or reference) | ❌ No |
+| ScoringResult | Multidimensional score result with passed flag | ❌ No |
+| ScoreDimension | Single dimension: score, max, label, passed | ❌ No |
+| ScoringBackend | Trait for pluggable evaluation backends | ❌ No |
+| ScoredEvaluationEvent | Domain events for scoring lifecycle | ❌ No |
+| ScoredEvaluationError | Typed error enum (thiserror) | ❌ No |
+
+### Application Layer (`application/`)
+| Component | Description | Type |
+|-----------|-------------|------|
+| ScoredEvaluationService | Service trait for evaluation orchestration | Service |
+| EvaluateInput | Input DTO: artifact + rubric + context | DTO |
+| EvaluateOutput | Output DTO: ScoringResult + metadata | DTO |
+
+### Infrastructure Layer (`infrastructure/`)
+| Component | Description | Connects to |
+|-----------|-------------|-------------|
+| MCPBackend | MCP protocol adapter — sends evaluation requests per Rigorix scoring protocol | MCP SDK |
+| HTTPBackend | HTTP-based scoring backend | External HTTP API |
+| LocalBackend | Local script/file-based backend | Local filesystem |
+| EvaluationRepository | Persist evaluation results | Local filesystem / DB |
 
 ## Component Details
 
@@ -55,7 +98,11 @@ This complements the Quality Gates system (GreenContract), which evaluates test 
 
 **Purpose:** DAG node value object holding artifact, rubric, backend config, and thresholds
 
+**DDL Layer:** `domain/`
+
 **Implementation File:** `engine/src/scored_evaluation/domain/node.rs`
+
+**Canonical Reference:** `.pi/architecture/modules/scored-evaluation.md#component-details`
 
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,11 +116,26 @@ pub struct ScoredEvaluationNode {
 }
 ```
 
+**States:**
+- **Loading:** Node is being deserialized from DAG template
+- **Populated:** All fields set, ready for evaluation
+- **Error:** Invalid artifact or rubric detected at construction time
+
+**Dependencies:**
+- Rubric value object
+- ExecutionPolicy (shared across all DAG node types)
+
+---
+
 ### Rubric
 
 **Purpose:** Evaluation rubric — either inline JSON content or a reference to an external file/URL
 
+**DDL Layer:** `domain/`
+
 **Implementation File:** `engine/src/scored_evaluation/domain/rubric.rs`
+
+**Canonical Reference:** `.pi/architecture/modules/scored-evaluation.md#component-details`
 
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,11 +152,23 @@ pub enum RubricSource {
 }
 ```
 
+**States:**
+- **Populated:** Valid inline content or path/URL
+- **Error:** Invalid JSON content or unresolvable reference
+
+**Dependencies:** None
+
+---
+
 ### ScoringResult
 
 **Purpose:** Multidimensional scoring result returned by a scoring backend
 
+**DDL Layer:** `domain/`
+
 **Implementation File:** `engine/src/scored_evaluation/domain/result.rs`
+
+**Canonical Reference:** `.pi/architecture/modules/scored-evaluation.md#component-details`
 
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -116,11 +190,23 @@ pub struct ScoreDimension {
 }
 ```
 
+**States:**
+- **Populated:** Result with one or more dimensions
+- **Empty:** No dimensions but a summary
+
+**Dependencies:** ScoreDimension
+
+---
+
 ### ScoringBackend (Trait)
 
 **Purpose:** Pluggable scoring backend interface — domain-level contract for any evaluation backend
 
+**DDL Layer:** `domain/`
+
 **Implementation File:** `engine/src/scored_evaluation/domain/backend.rs`
+
+**Canonical Reference:** `.pi/architecture/modules/scored-evaluation.md#component-details`
 
 ```rust
 #[async_trait]
@@ -131,11 +217,19 @@ pub trait ScoringBackend: Send + Sync {
 }
 ```
 
+**Dependencies:** ScoringResult, Rubric, ScoredEvaluationError
+
+---
+
 ### ScoredEvaluationEvent
 
 **Purpose:** Domain events for the evaluation lifecycle — started, completed, failed
 
+**DDL Layer:** `domain/`
+
 **Implementation File:** `engine/src/scored_evaluation/domain/event.rs`
+
+**Canonical Reference:** `.pi/architecture/modules/scored-evaluation.md#component-details`
 
 Uses `node_id: String` to match the existing `ExecutionEvent` pattern (see `engine/src/event_system/domain/event.rs` where all node-related variants use `node_id: String` rather than `uuid::Uuid`).
 
@@ -164,11 +258,19 @@ pub enum ScoredEvaluationEvent {
 }
 ```
 
+**Dependencies:** ScoringResult
+
+---
+
 ### ScoredEvaluationError
 
 **Purpose:** Typed error enum for all scored evaluation failure modes
 
+**DDL Layer:** `domain/`
+
 **Implementation File:** `engine/src/scored_evaluation/domain/error.rs`
+
+**Canonical Reference:** `.pi/architecture/modules/scored-evaluation.md#component-details`
 
 Follows the same pattern as `QualityGateError` (`engine/src/quality_gates/domain/error.rs`): `use thiserror::Error;` import + `#[derive(Debug, Error)]` derive, with an `is_retriable()` method for execution policy integration.
 
@@ -207,11 +309,19 @@ impl ScoredEvaluationError {
 }
 ```
 
+**Dependencies:** None
+
+---
+
 ### ScoredEvaluationService
 
 **Purpose:** Service trait orchestrating the evaluation lifecycle — validate input, delegate to backend, capture result, emit events
 
+**DDL Layer:** `application/`
+
 **Implementation File:** `engine/src/scored_evaluation/application/service.rs`
+
+**Canonical Reference:** `.pi/architecture/modules/scored-evaluation.md#component-details`
 
 ```rust
 #[async_trait]
@@ -222,11 +332,19 @@ pub trait ScoredEvaluationService: Send + Sync {
 }
 ```
 
+**Dependencies:** EvaluateInput, EvaluateOutput, ScoredEvaluationError
+
+---
+
 ### EvaluateInput / EvaluateOutput
 
 **Purpose:** Typed DTOs for the evaluation service boundary
 
+**DDL Layer:** `application/`
+
 **Implementation File:** `engine/src/scored_evaluation/application/dto/mod.rs`
+
+**Canonical Reference:** `.pi/architecture/modules/scored-evaluation.md#component-details`
 
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -253,24 +371,42 @@ pub struct EvaluateOutput {
 }
 ```
 
+**Dependencies:** Rubric, ScoringResult
+
+---
+
 ### MCPBackend
 
-**Purpose:** MCP-based scoring backend implementation — translates `ScoringBackend::evaluate` into `runtimeai_run_checkride` MCP calls
+**Purpose:** MCP protocol adapter — sends evaluation requests over MCP to any server implementing the Rigorix scoring protocol
+
+**DDL Layer:** `infrastructure/`
 
 **Implementation File:** `engine/src/scored_evaluation/infrastructure/backends/mcp_backend.rs`
 
+**Canonical Reference:** `.pi/architecture/modules/scored-evaluation.md#component-details`
+
 **Key behavior:**
-- Calls `runtimeai_run_checkride` MCP tool with artifact + rubric
-- Parses MCP response into `ScoringResult`
-- Calls `runtimeai_forecast_cost` before evaluation for cost-aware routing (optional)
-- Falls back to `runtimeai_generate_scenario` if no scenario_id provided
-- Implements health check via `runtimeai_suggest_scenario` with a known test input
+- Sends artifact + rubric to the MCP server via the Rigorix `rigorix_evaluate_artifact` MCP request
+- Parses the MCP response into `ScoringResult`
+- Optionally pre-flights cost via the Rigorix `rigorix_estimate_evaluation_cost` request
+- Falls back to auto-generated rubric dimensions if no explicit rubric dimensions provided
+- Implements health check via `rigorix_ping` with a known test input
+
+> **Protocol Ownership:** Rigorix defines the scoring protocol (`rigorix_evaluate_artifact`, `rigorix_*` MCP operations). External scoring systems like RuntimeAI adopt this protocol by implementing the server side. The initial protocol design is informed by RuntimeAI's conceptual model (checkrides, scenarios, rubrics) since they are the first planned backend adopter.
+
+**Dependencies:** ScoringBackend trait, MCP client
+
+---
 
 ### HTTPBackend
 
 **Purpose:** Generic HTTP-based scoring backend for custom evaluation services
 
+**DDL Layer:** `infrastructure/`
+
 **Implementation File:** `engine/src/scored_evaluation/infrastructure/backends/http_backend.rs`
+
+**Canonical Reference:** `.pi/architecture/modules/scored-evaluation.md#component-details`
 
 **Key behavior:**
 - POSTs artifact + rubric to configurable URL
@@ -278,11 +414,19 @@ pub struct EvaluateOutput {
 - Configurable timeout, headers, and auth
 - Implements health check via HEAD or GET to health endpoint
 
+**Dependencies:** ScoringBackend trait, reqwest
+
+---
+
 ### LocalBackend
 
 **Purpose:** Local script/file-based backend for development and testing
 
+**DDL Layer:** `infrastructure/`
+
 **Implementation File:** `engine/src/scored_evaluation/infrastructure/backends/local_backend.rs`
+
+**Canonical Reference:** `.pi/architecture/modules/scored-evaluation.md#component-details`
 
 **Key behavior:**
 - Executes a local script with artifact + rubric as environment variables
@@ -290,43 +434,67 @@ pub struct EvaluateOutput {
 - Configurable script path and timeout
 - Implements health check by checking script file existence
 
+**Dependencies:** ScoringBackend trait, subprocess execution
+
 ---
 
 ## Data Flow
 
-```
-DAG Execution reaches scored_evaluation node
-        │
-        ▼
-ScoredEvaluationService::evaluate(EvaluateInput)
-  ─ Validates artifact + rubric
-  ─ Resolves backend by name (MCPBackend / HTTPBackend / LocalBackend)
-        │
-        ▼
-Emits ScoredEvaluationStarted event
-        │
-        ▼
-ScoringBackend::evaluate(artifact, rubric)
-  ─ MCPBackend: runtimeai_run_checkride via MCP
-  ─ HTTPBackend: POST to scoring service endpoint
-  ─ LocalBackend: execute local script
-        │
-        ├── Success →
-        │   ─ Parse response into ScoringResult
-        │   ─ Evaluate thresholds against dimensions
-        │   ─ Emit ScoredEvaluationCompleted
-        │   ─ Persist result via EvaluationRepository
-        │   ─ Embed scoring result in audit envelope
-        │   ─ Return EvaluateOutput
-        │
-        └── Failure →
-            ─ Emit ScoredEvaluationFailed
-            ─ Apply ExecutionPolicy (retry / fallback / flag_for_review)
-            ─ Return ScoredEvaluationError
-        │
-        ▼
-Policy Engine evaluates ScoreAbove / ScoreBelow conditions
-  ─ If gating rule matches → block_merge / flag_for_review
+```mermaid
+sequenceDiagram
+    participant DAG as DAG Engine
+    participant Service as ScoredEvaluationService
+    participant Backend as ScoringBackend
+    participant Repo as EvaluationRepository
+    participant Events as Event Bus
+    participant Audit as Audit Envelope
+    participant Policy as Policy Engine
+
+    DAG->>Service: evaluate(input)
+    activate Service
+
+    Service->>Service: Validate artifact + rubric
+    Service->>Service: Resolve backend by name
+
+    Service->>Events: Publish ScoredEvaluationStarted
+
+    alt MCPBackend
+        Service->>Backend: rigorix_evaluate_artifact(artifact, rubric)
+    else HTTPBackend
+        Service->>Backend: POST /api/v1/score
+        Note over Service,Backend: Rigorix Scoring Protocol (JSON)
+    else LocalBackend
+        Service->>Backend: execute script (env vars)
+        Note over Service,Backend: Rigorix Scoring Protocol (stdin/stdout)
+    end
+
+    alt Evaluation Success
+        Backend-->>Service: ScoringResult { dimensions, passed }
+        Service->>Service: Evaluate thresholds
+        Service->>Events: Publish ScoredEvaluationCompleted
+        Service->>Repo: Persist evaluation result
+        Service->>Audit: Embed scoring result
+        Service-->>DAG: EvaluateOutput { result }
+
+        Service->>Policy: Evaluate ScoreAbove/ScoreBelow
+        Policy-->>Service: block_merge / flag_for_review
+
+    else Evaluation Failure
+        Backend-->>Service: Error (timeout, unavailable, invalid)
+        Service->>Service: Classify error → is_retriable()?
+
+        alt Retriable
+            Service->>Service: Apply retry with backoff
+            Service->>Events: Publish ScoredEvaluationFailed
+            Service-->>DAG: Retry / fallback node
+        else Non-retriable
+            Service->>Events: Publish ScoredEvaluationFailed
+            Service->>Policy: flag_for_review / block
+            Service-->>DAG: ScoredEvaluationError
+        end
+    end
+
+    deactivate Service
 ```
 
 **Flow Description:**
@@ -334,13 +502,69 @@ Policy Engine evaluates ScoreAbove / ScoreBelow conditions
 2. Input is validated and the appropriate `ScoringBackend` is resolved by name
 3. A `ScoredEvaluationStarted` event is emitted for audit tracing
 4. The backend evaluates the artifact against the rubric:
-   - **MCPBackend**: calls `runtimeai_run_checkride` via MCP tool dispatch
-   - **HTTPBackend**: POSTs to a configurable evaluation endpoint
-   - **LocalBackend**: executes a local script with artifact + rubric
+   - **MCPBackend**: sends a `rigorix_evaluate_artifact` MCP request to any server implementing the Rigorix scoring protocol (RuntimeAI will be the first adopter)
+   - **HTTPBackend**: POSTs to a configurable endpoint following the Rigorix scoring protocol
+   - **LocalBackend**: executes a local script with artifact + rubric per the protocol
 5. On success, the `ScoringResult` is parsed, thresholds are evaluated against each dimension, domain events are emitted, and the result is persisted
 6. On failure, retry/fallback policy is applied and errors are propagated
 7. The audit envelope is extended with scoring results for compliance provenance
 8. The policy engine evaluates `ScoreAbove`/`ScoreBelow` conditions for merge gating
+
+---
+
+## User Intents
+
+| Intent | Triggered By | Handled By | Domain Event |
+|--------|-------------|------------|--------------|
+| ArtifactReadyForScoring | DAG execution reaches `scored_evaluation` node | ScoredEvaluationService | ScoredEvaluationStarted |
+| ScoringResultReceived | ScoringBackend responds successfully | ScoredEvaluationService | ScoredEvaluationCompleted |
+| ScoringFailed | Backend error or timeout | ScoredEvaluationService (retry/fallback) | ScoredEvaluationFailed |
+
+> Note: Scored Evaluation is a backend module with no direct user interaction. Intents are triggered by DAG execution, not by UI actions.
+
+---
+
+## Design Principles
+
+- **Rigorix defines the protocol**: The scoring protocol (`rigorix_evaluate_artifact`, `rigorix_ping`, etc.) is owned by Rigorix. External systems (RuntimeAI, custom services) adopt it by implementing the server side. RuntimeAI's conceptual model influences the initial design since they are the first planned adopter.
+- **Pluggable backends**: No vendor lock-in — MCP, HTTP, and local backends supported from day one
+- **Domain purity**: `ScoringBackend` trait lives in the domain layer; all backend implementations live in infrastructure
+- **Audit-native**: Every evaluation produces structured events for compliance provenance
+- **Policy-integrated**: Score thresholds feed directly into policy conditions (`ScoreAbove`/`ScoreBelow`) for merge gating
+- **Resilient**: Transient errors (backend down, timeout) are retriable; permanent errors (invalid rubric, misconfiguration) fail fast
+
+---
+
+## Degradation Strategy
+
+| Feature | When Unavailable | User Sees |
+|---------|-----------------|-----------|
+| Evaluation (all backends) | No backend configured or all backends unhealthy | Execution error: `ScoredEvaluationError::BackendNotFound` or `BackendUnavailable` |
+| Evaluation (MCPBackend) | MCP runtime is down | Falls back to configured alternative backend if available; otherwise `BackendUnavailable` |
+| Evaluation (HTTPBackend) | Scoring service endpoint unreachable | Retry with exponential backoff; escalate to `flag_for_review` on exhaustion |
+| Evaluation (LocalBackend) | Script not found or execution fails | `BackendNotFound` or `BackendError` — misconfiguration detected at startup |
+| Health check | All backends unhealthy | Pre-flight validation blocks pipeline start |
+| Persistence | EvaluationRepository unavailable | Results held in-memory; warning logged |
+
+---
+
+## Acceptance Criteria
+
+| # | Component | Criterion | Verify In |
+|---|-----------|-----------|-----------|
+| 1 | ScoredEvaluationNode | Serde round-trip: serialize and deserialize preserves all fields | unit test |
+| 2 | Rubric | Inline and Reference sources serialize correctly with tagged enum | unit test |
+| 3 | ScoringResult | `passed` flag computed correctly from per-dimension `passed` | unit test |
+| 4 | ScoreDimension | `passed` correctly calculated from score vs max | unit test |
+| 5 | ScoringBackend | All three backend implementations pass same trait contract test suite | integration test |
+| 6 | MCPBackend | Sends `rigorix_evaluate_artifact` and parses MCP response into ScoringResult | integration test |
+| 7 | HTTPBackend | POSTs artifact + rubric to URL, parses JSON response | integration test |
+| 8 | LocalBackend | Executes script with env vars, reads scoring result from stdout | integration test |
+| 9 | ScoredEvaluationService | Orchestrates: validate → emit Started → backend → emit Completed/Failed → persist | integration test |
+| 10 | ScoredEvaluationEvent | All three event variants serialize/deserialize correctly | unit test |
+| 11 | ScoredEvaluationError | All 7 variants, `Display` impl, `is_retriable()` classification correct | unit test |
+| 12 | ScoreAbove policy condition | Policy condition correctly gates merge when dimension(s) below threshold | integration test |
+| 13 | ScoreBelow policy condition | Policy condition correctly blocks merge when any dimension below threshold | integration test |
 
 ---
 
@@ -363,6 +587,63 @@ Policy Engine evaluates ScoreAbove / ScoreBelow conditions
 
 ## Integration with Existing Modules
 
+The following diagram shows how Scored Evaluation integrates with the DAG Engine, Policy Engine, Audit, and Event System:
+
+```mermaid
+graph LR
+    subgraph "DAG Execution"
+        TG[TaskGraph] -->|contains| SN[scored_evaluation node]
+        SN -->|tool string match| VAL[TaskNode validation]
+    end
+
+    subgraph "Scored Evaluation Module"
+        SERVICE[ScoredEvaluationService]
+        BACKEND[ScoringBackend trait]
+        MCP[MCPBackend]
+        HTTP[HTTPBackend]
+        LOC[LocalBackend]
+    end
+
+    subgraph "Policy Engine"
+        COND[PolicyCondition]
+        SA[ScoreAbove]
+        SB[ScoreBelow]
+        RULE[PolicyRule → block_merge]
+    end
+
+    subgraph "Audit & Events"
+        AE[AuditEnvelope]
+        SR[ScoringResultRef]
+        EVT[ExecutionEvent]
+        SSE[ScoredEvaluationStarted]
+        SCE[ScoredEvaluationCompleted]
+        SFE[ScoredEvaluationFailed]
+    end
+
+    SN -->|invokes| SERVICE
+    SERVICE -->|delegates to| BACKEND
+    BACKEND --> MCP
+    BACKEND --> HTTP
+    BACKEND --> LOC
+    SERVICE -->|score thresholds| COND
+    COND --> SA
+    COND --> SB
+    SA --> RULE
+    SB --> RULE
+    SERVICE -->|extends| AE
+    AE --> SR
+    SERVICE -->|publishes| EVT
+    EVT --> SSE
+    EVT --> SCE
+    EVT --> SFE
+
+    style SN fill:#4a90d9,stroke:#2c5f8a,color:#fff
+    style SERVICE fill:#4a90d9,stroke:#2c5f8a,color:#fff
+    style SA fill:#d9a74a,stroke:#8a6b2c,color:#fff
+    style SB fill:#d9a74a,stroke:#8a6b2c,color:#fff
+    style RULE fill:#d9534f,stroke:#8a2a27,color:#fff
+```
+
 ### DAG Engine — New Node Tool Type
 
 `TaskNode.tool: String` currently uses raw string values (e.g., `"cargo build"`, `"npm test"`). Add `"scored_evaluation"` as a recognized tool string in `TaskNode` validation within `engine/src/dag_engine/domain/graph.rs`. No enum refactoring needed — the tool field is validated against a known set of strings at node construction time.
@@ -382,6 +663,8 @@ Until then, validation checks `tool == "scored_evaluation"` as a string match.
 
 Template YAML syntax:
 ```yaml
+# Example: a scored_evaluation node using the "runtimeai" backend,
+# which connects to a RuntimeAI server implementing the Rigorix scoring protocol
 - id: score_output
   action: scored_evaluation
   depends_on: [generate_patch]
@@ -514,18 +797,22 @@ Both feed into the policy engine independently.
 ```toml
 # .rigorix/scored_evaluation.toml
 [scored_evaluation]
+# Default backend name (maps to a section under [scored_evaluation.backends])
 default_backend = "runtimeai"
 
+# Backend "runtimeai": connects to a RuntimeAI server implementing the Rigorix scoring protocol over MCP
 [scored_evaluation.backends.runtimeai]
 type = "mcp"
 timeout_ms = 30_000
 
+# Backend "custom_http": connects to a custom scoring service via REST
 [scored_evaluation.backends.custom_http]
 type = "http"
 url = "https://evaluate.internal.example.com/api/v1/score"
 timeout_ms = 60_000
 auth_header = "Bearer ${SCORING_API_KEY}"
 
+# Backend "local_dev": runs a local script for development
 [scored_evaluation.backends.local_dev]
 type = "local"
 script_path = "./scripts/evaluate.sh"
@@ -537,6 +824,18 @@ timeout_ms = 10_000
 threshold = 80
 on_failure = "flag_for_review"
 ```
+
+---
+
+## Security Considerations
+
+| Concern | Mitigation | Validator |
+|---------|------------|-----------|
+| Remote backend tampering | HMAC-signed payloads for MCP/HTTP backends | security-validator |
+| Sensitive data in rubric | Rubric content reviewed; no secrets in `RubricSource::Inline` | security-validator |
+| Local script injection | `LocalBackend` validates script path against allowlist | security-validator |
+| Backend credential leakage | Auth tokens read from environment, never logged | security-validator |
+| Denial of service via long evaluations | Configurable `timeout_ms` per backend, default 30s | operations-validator |
 
 ---
 
@@ -585,30 +884,6 @@ impl ScoringBackend for MockBackend {
 
 ---
 
-## Security Considerations
-
-| Concern | Mitigation | Validator |
-|---------|------------|-----------|
-| Remote backend tampering | HMAC-signed payloads for MCP/HTTP backends | security-validator |
-| Sensitive data in rubric | Rubric content reviewed; no secrets in `RubricSource::Inline` | security-validator |
-| Local script injection | `LocalBackend` validates script path against allowlist | security-validator |
-| Backend credential leakage | Auth tokens read from environment, never logged | security-validator |
-| Denial of service via long evaluations | Configurable `timeout_ms` per backend, default 30s | operations-validator |
-
----
-
-## Performance Considerations
-
-| Metric | Target | Strategy |
-|--------|--------|----------|
-| Evaluation latency (MCP) | < 5s (includes backend round-trip) | Configurable timeout, concurrent execution |
-| Evaluation latency (HTTP) | < 10s (includes network + backend) | Configurable timeout, concurrent execution |
-| Evaluation latency (Local) | < 2s (subprocess overhead) | Configurable timeout |
-| Memory per evaluation | < 1MB (artifact + rubric + result) | Streaming for large artifacts |
-| Backend resolution | O(1) | HashMap-backed registry |
-
----
-
 ## Error Handling
 
 ```rust
@@ -643,6 +918,16 @@ pub enum ScoredEvaluationError {
 
 ---
 
+## Performance Considerations
+
+| Metric | Target | Strategy |
+|--------|--------|----------|
+| Evaluation latency (MCP) | < 5s (includes backend round-trip) | Configurable timeout, concurrent execution |
+| Evaluation latency (HTTP) | < 10s (includes network + backend) | Configurable timeout, concurrent execution |
+| Evaluation latency (Local) | < 2s (subprocess overhead) | Configurable timeout |
+| Memory per evaluation | < 1MB (artifact + rubric + result) | Streaming for large artifacts |
+| Backend resolution | O(1) | HashMap-backed registry |
+
 ## Module Structure
 
 ```
@@ -668,14 +953,12 @@ engine/src/scored_evaluation/
     │   └── evaluation_repository.rs    # Persist evaluation results
     └── backends/
         ├── mod.rs
-        ├── mcp_backend.rs              # MCP-based backend (RuntimeAI compatible)
+        ├── mcp_backend.rs              # MCP protocol adapter (Rigorix scoring protocol)
         ├── http_backend.rs             # HTTP-based backend
         └── local_backend.rs            # Local script/file-based backend
 ```
 
 **Note:** No `interfaces/` directory initially — the module exposes its API through the application service trait. HTTP/MCP interfaces for direct invocation live in the MCP crate. This follows the same pattern as `quality_gates` which has no interfaces layer.
-
----
 
 ## Guardian Build Checklist
 
@@ -695,10 +978,10 @@ engine/src/scored_evaluation/
 
 ---
 
-Last updated: 2026-07-15
+*Last updated: 2026-07-15*
 *Module version: 1.0.0 (Planned)*
 
 ---
 
-**Status:** Planned  
+**Status:** Planned
 **Implementation priority:** P1 — quality evaluation primitive

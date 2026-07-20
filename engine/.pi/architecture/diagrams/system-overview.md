@@ -62,6 +62,23 @@ Rigorix is a **deterministic coding CLI** — a task graph compiler with executi
 │         │                                                        │
 │         ▼                                                        │
 │  ┌─────────────────────────────────────────────────────────┐    │
+│  │              Quality Gates & Scoring                      │    │
+│  │  ┌─────────────────┐    ┌────────────────────────┐      │    │
+│  │  │  Quality Gates   │    │  Scored Evaluation    │      │    │
+│  │  │  (GreenContract) │    │  (pluggable backends) │      │    │
+│  │  │  test scope      │    │  output quality       │      │    │
+│  │  └─────────────────┘    └────────────────────────┘      │    │
+│  └─────────────────────────────────────────────────────┘    │
+│         │                                                        │
+│         ▼                                                        │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │              Policy Engine                               │    │
+│  │  ScoreAbove / ScoreBelow / GreenAt / ...                 │    │
+│  │  → block_merge / flag_for_review / closeout              │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│         │                                                        │
+│         ▼                                                        │
+│  ┌─────────────────────────────────────────────────────────┐    │
 │  │              Cancellation Manager                        │    │
 │  │  (Graceful / Immediate shutdown signals)                 │    │
 │  └─────────────────────────────────────────────────────────┘    │
@@ -74,7 +91,7 @@ Rigorix is a **deterministic coding CLI** — a task graph compiler with executi
 │  ┌──────────────┐   ┌──────────────┐   ┌──────────────────┐    │
 │  │   Event Bus  │──►│    State     │──►│      Audit       │    │
 │  │ (broadcast + │   │ Persistence  │   │   (envelopes)    │    │
-│  │  drain)      │   │ (atomic w/r) │   │                  │    │
+│  │  drain)      │   │ (atomic w/r) │   │  + scoring refs  │    │
 │  └──────────────┘   └──────────────┘   └──────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -84,37 +101,52 @@ Rigorix is a **deterministic coding CLI** — a task graph compiler with executi
 | Layer | Modules | Purpose | Entry Point |
 |-------|---------|---------|-------------|
 | Planning | planning-pipeline, template-system, template-generation, repo-engine, budget-tracking | Intent → validated plan | `rigorix/src/planning/` |
-| Execution | dag-engine, execution-engine, risk-gating, tool-system, enforcement, cancellation, failure-classification | Plan → execution → result | `rigorix/src/dag/`, `rigorix/src/tools/` |
-| Observability | event-system, state-persistence, audit | Events → state → audit trail | `rigorix/src/event_bus.rs`, `rigorix/src/state/` |
+| Execution | dag-engine, execution-engine, risk-gating, tool-system, enforcement, cancellation, failure-classification, **quality-gates**, **scored-evaluation** | Plan → execution → result + quality scoring | `rigorix/src/dag/`, `rigorix/src/tools/`, `rigorix/src/quality/` |
+| Policy | policy-engine | Rule evaluation, merge gating, closeout | `rigorix/src/policy/` |
+| Observability | event-system, state-persistence, audit | Events → state → audit trail (with scoring refs) | `rigorix/src/event_bus.rs`, `rigorix/src/state/` |
 | Cross-Cutting | configuration, error-handling | Config loading, error types | `rigorix/src/config.rs`, `rigorix/src/error.rs` |
 
 ## Module Dependency Graph
 
 ```
 planning-pipeline
-    ├── template-system     (template loading + generation)
-    ├── template-generation (LLM fallback on low confidence)
-    ├── repo-engine         (symbol context for planning)
-    └── budget-tracking     (LLM cost control)
+    ├── template-system         (template loading + generation)
+    ├── template-generation     (LLM fallback on low confidence)
+    ├── repo-engine             (symbol context for planning)
+    └── budget-tracking         (LLM cost control)
 
 dag-engine
-    └── template-system     (consumes TaskGraph)
+    └── template-system         (consumes TaskGraph)
 
 execution-engine
-    ├── dag-engine          (consumes TaskGraph)
-    ├── risk-gating         (tool gate checks)
-    ├── tool-system         (tool execution)
-    ├── enforcement         (hard cap checks)
-    ├── cancellation        (shutdown signals)
-    └── failure-classification (retry routing)
+    ├── dag-engine              (consumes TaskGraph)
+    ├── risk-gating             (tool gate checks)
+    ├── tool-system             (tool execution)
+    ├── enforcement             (hard cap checks)
+    ├── cancellation            (shutdown signals)
+    ├── failure-classification  (retry routing)
+    │
+    ├── quality-gates           (GreenContract evaluation)
+    │   └── policy-engine       (GreenAt condition)
+    │
+    └── scored-evaluation       (output quality scoring)
+        ├── policy-engine       (ScoreAbove/ScoreBelow conditions)
+        ├── audit               (scoring_results envelope extension)
+        └── event-system        (ScoredEvaluation* event variants)
+
+policy-engine
+    └── quality-gates           (evaluates GreenAt)
+    └── scored-evaluation       (evaluates ScoreAbove/ScoreBelow)
 
 event-system
-    ├── execution-engine    (publishes node events)
-    ├── planning-pipeline   (publishes plan events)
-    ├── enforcement         (publishes budget warnings)
+    ├── execution-engine        (publishes node events)
+    ├── planning-pipeline       (publishes plan events)
+    ├── enforcement             (publishes budget warnings)
+    ├── quality-gates           (publishes gate events)
+    ├── scored-evaluation       (publishes scoring events)
     │
-    ├── state-persistence   (drains events into records)
-    └── audit               (builds envelopes from events)
+    ├── state-persistence       (drains events into records)
+    └── audit                   (builds envelopes from events)
 
 configuration ──► all modules (config shared via Arc)
 error-handling ──► all modules (thiserror enums)
@@ -122,7 +154,7 @@ error-handling ──► all modules (thiserror enums)
 
 ## Data Flow Overview
 
-### Request Flow (CLI Invocation)
+### Request Flow (CLI Invocation with Quality Scoring)
 
 ```
 UserIntent ("add a migration script runner")
@@ -147,28 +179,48 @@ ParallelExecutor::execute(&mut graph, cancel_token)
   ├── For each node: risk gate → tool execute → check result
   │     ├── Success → mark_completed, next ready node
   │     └── Failure → classify → can_retry? → retry/fallback/abort
+  │
+  ├── Quality Gates: evaluate GreenContract(test_scope)
+  │     └── If scored_evaluation node exists → invoke scoring
+  │           ├── Resolve backend (MCP/HTTP/Local)
+  │           ├── Emit ScoredEvaluationStarted
+  │           ├── Evaluate artifact against rubric
+  │           ├── Emit ScoredEvaluationCompleted/Failed
+  │           └── Persist scoring result
+  │
+  ├── Policy Engine: evaluate ScoreAbove/ScoreBelow/GreenAt
+  │     └── If gating rule matches → block_merge / flag_for_review
+  │
   └── Vec<TaskResult>
   │
   ▼
 StateManager::save_state(final)
 EventBus::drain_persisted() → ExecutionRecord
+  ├── Includes scoring results in audit envelope
+  └── Includes quality gate outcomes
 ```
 
-### Event Flow
+### Event Flow (with Scoring Events)
 
 ```
 Every component publishes to EventBus:
-  PlanningStarted  →  PlanningCompleted  →  NodeStarted  →  NodeCompleted  →  ...
-                                                                    │
-                                                                    ▼
-                                                              ExecutionCompleted
-                                                                  (or Failed/Cancelled)
+  PlanningStarted  →  PlanningCompleted
+  NodeStarted      →  NodeCompleted/Failed/Retrying
+  ToolExecuted
+  BudgetWarning
+
+  ScoredEvaluationStarted  →  ScoredEvaluationCompleted/Failed
+  QualityGateEvaluated     →  QualityGateOutcome
+
+  PolicyRuleMatched        →  ActionsDispatched
+
+  ExecutionCompleted / Failed / Cancelled
 
 Subscribers:
   ConsoleEventPrinter → human-readable stdout
   TUI subscriber      → ratatui real-time views
   State Persistence   → drained into ExecutionRecord at end
-  Audit               → built into AuditEnvelope
+  Audit               → built into AuditEnvelope (with scoring refs)
 ```
 
 ## Security Boundaries
@@ -180,8 +232,10 @@ Subscribers:
 | Tool → Shell | RunCommand allowlist + High risk dry-run | risk-gating, tool-system |
 | LLM Provider → Planning | API key via Secret wrapper | configuration |
 | Events → Audit | HMAC envelope signing | audit |
+| Scoring Payload → Backend | HMAC-signed payloads for MCP/HTTP | scored-evaluation |
+| Scoring Script → Host | Script path allowlist validation | scored-evaluation |
 
 ---
 
-*Last updated: 2026-06-13*
-*Architecture version: 1.0.0*
+*Last updated: 2026-07-15*
+*Architecture version: 1.1.0*

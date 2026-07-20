@@ -1,10 +1,11 @@
 ---
 session_id: 63c25384-1902-4b72-83bb-257f3f682af5
 created: 2026-06-13
-business_context: "# Rigorix Architecture Specification\n\n**Rigorix** is a **deterministic coding CLI** built in Rust. It's a **task graph compiler with execution profiles**, NOT a multi-agent system.\n\n### Core Principles\n- Template-driven: Workflows in `templates/*.toml`, not dynamic agent generation\n- DAG-based: Task nodes with dependencies, topological execution\n- Minimal LLM: LLM = planning tool only (classification, parameter extraction)\n- Bounded autonomy: Hard mathematical caps on dynamic behavior\n- Bounded retries: Max 3 retries with exponential backoff + jitter (±25%)\n- Risk-gated: Safe=auto, Medium=confirm, Dangerous=dry-run\n- Replayable: Full execution trace with state snapshots (including symbol graph)\n- Pre-validated: PlanValidator catches errors BEFORE execution\n- Auditable: Planning decisions tracked and diffable"
+updated: 2026-07-15
+business_context: "# Rigorix Architecture Specification\n\n**Rigorix** is a **deterministic coding CLI** built in Rust. It's a **task graph compiler with execution profiles**, NOT a multi-agent system.\n\n### Core Principles\n- Template-driven: Workflows in `templates/*.toml`, not dynamic agent generation\n- DAG-based: Task nodes with dependencies, topological execution\n- Minimal LLM: LLM = planning tool only (classification, parameter extraction)\n- Bounded autonomy: Hard mathematical caps on dynamic behavior\n- Bounded retries: Max 3 retries with exponential backoff + jitter (±25%)\n- Risk-gated: Safe=auto, Medium=confirm, Dangerous=dry-run\n- Replayable: Full execution trace with state snapshots (including symbol graph)\n- Pre-validated: PlanValidator catches errors BEFORE execution\n- Auditable: Planning decisions tracked and diffable\n- Quality-scored: Generated artifacts evaluated against rubrics via pluggable backends"
 language: rust
 group_id: com.rigorix-oss
-status: draft
+status: updated
 ---
 
 # Domain Exploration: 63c25384-1902-4b72-83bb-257f3f682af5
@@ -36,6 +37,7 @@ Frame all architecture decisions, module designs, and code patterns accordingly.
 | **Replayable** | Full execution trace with state snapshots and event bus persistence |
 | **Pre-validated** | CompositeValidator catches errors BEFORE execution |
 | **Auditable** | Planning decisions tracked, diffable, and persisted via audit envelope |
+| **Quality-scored** | Generated artifacts evaluated against rubrics via pluggable scoring backends (MCP/HTTP/Local) |
 
 ### Strategic Differentiators
 1. **Deterministic Planning** — Templates define structure, LLM fills parameters
@@ -61,6 +63,7 @@ Frame all architecture decisions, module designs, and code patterns accordingly.
 | **RiskClassifier** | Classifies tools/tasks by risk level (Low, Medium, High) and enforces gating policies | Analyzes tool name and parameters; applies policy: Low=auto, Medium=confirm, High=dry-run |
 | **ExecutionEnforcer** | Runtime enforcer that tracks hard caps on retries, tool calls, dynamic nodes, execution time, and LLM budget | Receives state change events from executor; enforces `EnforcementConfig` limits; emits `BudgetWarning` events |
 | **TemplateGenerator** | LLM-driven component that generates new TOML workflow templates from natural language user intent + repo context when no matching template exists | Receives user intent and `RepoContext`, produces validated `Template` struct, registers it into `TemplateEngine`; consumes LLM budget via `LlmBudget` |
+| **ScoringBackend** | Pluggable evaluation backend adapter that scores generated artifacts against rubrics. Three implementations: MCP (Rigorix scoring protocol), HTTP (REST), Local (script). External systems like RuntimeAI adopt the protocol. | Receives artifact + rubric via `ScoredEvaluationService`, returns `ScoringResult` with multidimensional scores; implements `health_check()` for pre-flight validation |
 | **Audit System** | Records execution audit trails via typed envelopes for governance and replay | Consumes `ExecutionEvent`s from event bus; produces `AuditEnvelope` records for external audit backends |
 
 ---
@@ -119,6 +122,17 @@ Frame all architecture decisions, module designs, and code patterns accordingly.
 | FR-034 | The system SHALL load configuration from `rigorix.toml`, environment variables (`RIGORIX__*`), and CLI flags with layered merging | High | Configuration |
 | **Error Handling** |
 | FR-035 | The system SHALL use structured thiserror Error enums with full source chain tracking for all error types | Critical | Error Handling |
+| **Scored Evaluation** |
+| FR-036 | The system SHALL support `scored_evaluation` as a recognized DAG node tool type that evaluates generated artifacts against rubrics | High | Scored Evaluation |
+| FR-037 | The system SHALL provide a pluggable `ScoringBackend` trait with three implementations: MCP , HTTP (custom service), and Local (script) | High | Scored Evaluation |
+| FR-038 | The system SHALL produce multidimensional scoring results with per-dimension scores, pass/fail flags, and an overall passed flag | High | Scored Evaluation |
+| FR-039 | The system SHALL emit `ScoredEvaluationStarted`, `ScoredEvaluationCompleted`, and `ScoredEvaluationFailed` events for audit tracing | High | Scored Evaluation |
+| FR-040 | The system SHALL persist evaluation results via an EvaluationRepository for later retrieval | Medium | Scored Evaluation |
+| FR-041 | The system SHALL support per-backend health checks for pre-flight validation | Medium | Scored Evaluation |
+| **Policy Engine** |
+| FR-042 | The system SHALL support `ScoreAbove` and `ScoreBelow` policy conditions for merge gating based on scoring thresholds | High | Policy Engine |
+| **Audit** |
+| FR-043 | The system SHALL embed scoring results (`ScoringResultRef`) in the AuditEnvelope for compliance provenance | Medium | Audit |
 
 ---
 
@@ -143,6 +157,12 @@ Frame all architecture decisions, module designs, and code patterns accordingly.
 | NFR-015 | Template generation SHALL NOT allow `run_command` unless the command is on an explicit allowlist | Security | Allowlist only |
 | NFR-016 | State persistence SHALL use atomic write-rename (`.tmp` → final) for crash safety | Maintainability | Atomic writes |
 | NFR-017 | Event Bus SHALL persist events synchronously using `std::sync::Mutex` (not spawn) | Performance | Synchronous |
+| NFR-018 | Scored evaluation SHALL complete within 5s for MCP backends, 10s for HTTP, and 2s for local scripts | Performance | < 5s / < 10s / < 2s |
+| NFR-019 | Scoring backend resolution SHALL be O(1) via HashMap-backed registry | Performance | O(1) |
+| NFR-020 | Scored evaluation SHALL NOT exceed 1MB memory per evaluation (artifact + rubric + result) | Performance | < 1MB |
+| NFR-021 | Evaluation payloads to remote backends SHALL be HMAC-signed for integrity | Security | HMAC signing |
+| NFR-022 | Local scoring scripts SHALL be validated against an explicit path allowlist | Security | Allowlist only |
+| NFR-023 | MCP/HTTP backends SHALL support configurable timeouts with a default of 30s | Reliability | Configurable timeout |
 
 ---
 
@@ -160,6 +180,10 @@ Frame all architecture decisions, module designs, and code patterns accordingly.
 | Three enforcement modes (Default/Advanced/Aggressive) cover all use cases | Users need intermediate or custom limits | EnforcementConfig is serializable and can be customized per-project via rigorix.toml |
 | Symbol graph indexing at execution start produces fresh-enough context for planning | Stale symbols lead to incorrect plans | Index on every `run()` call; cache invalidation tracked via symbol_graph_hash in ExecutionState |
 | Generated templates are bounded in complexity (3-7 nodes typical, max 10 nodes) | Generator produces overly complex templates that exceed user capacity to review | Enforce `max_nodes` config cap; show preview before registration |
+| Scoring backends return structured, parseable JSON responses consistent with ScoringResult schema | Backend returns malformed or schema-incompatible responses | Validate response schema before parsing; return InvalidResponse error with diagnostic |
+| Artifacts to be scored fit within a reasonable size limit (< 1MB serialized JSON) | Large artifacts cause OOM or timeout during evaluation | Implement streaming for large payloads; configurable max artifact size |
+| MCP protocol adapter (Rigorix scoring protocol) is the primary scoring transport for production use | MCP server becomes unavailable or changes its interface | HTTPBackend and LocalBackend provide fallback options; configurable backend selection per DAG template |
+| Score thresholds are configured per DAG template, not per global policy | Per-template thresholds become unwieldy to manage | Policy-level ScoreAbove/ScoreBelow conditions provide a global override mechanism |
 
 ---
 
@@ -183,7 +207,8 @@ Frame all architecture decisions, module designs, and code patterns accordingly.
 | **Failure Classification** | Classifies execution failures into typed categories for retry routing. Maps error messages to FailureType via pattern matching. | FailureType, classify_failure, RetryStrategy |
 | **Audit** | Records execution audit trails via typed envelopes for governance, replay, and external audit backends. | AuditEnvelope, AuditSender, AuditQueue |
 | **Configuration** | Loads and validates configuration from `rigorix.toml`, environment variables (`RIGORIX__*`), and CLI flags with layered merging. | Config, OrchestratorConfig, LoggingConfig, ToolsConfig, EnforcementPreset, AuditConfig, LlmConfig, RiskConfig, Secret |
-| **Error Handling** | Structured error types using thiserror across all modules: DagError, PlanningError, EnforcementError, LlmBudgetError, ExecutionError, ToolError, SymbolGraphError, ConfigurationError, CoreOrchestratorError. | ErrorKind, ErrorSource, ErrorChain, RecoveryStrategy |
+| **Scored Evaluation** | Evaluates quality of generated artifacts against rubrics via pluggable scoring backends. Rigorix defines the protocol; external systems (e.g. RuntimeAI, custom HTTP services, local scripts) adopt it. | ScoredEvaluationNode, Rubric, ScoringResult, ScoreDimension, ScoringBackend, ScoredEvaluationService, EvaluateInput, EvaluateOutput, MCPBackend, HTTPBackend, LocalBackend, EvaluationRepository, ScoredEvaluationError |
+| **Error Handling** | Structured error types using thiserror across all modules: DagError, PlanningError, EnforcementError, LlmBudgetError, ExecutionError, ToolError, SymbolGraphError, ConfigurationError, ScoredEvaluationError, CoreOrchestratorError. | ErrorKind, ErrorSource, ErrorChain, RecoveryStrategy |
 
 ---
 
@@ -248,7 +273,19 @@ Frame all architecture decisions, module designs, and code patterns accordingly.
 | **Config** | Configuration | Aggregate Root | Full application config with sub-configs: orchestrator, logging, tools (risk), enforcement preset, audit, llm (provider, model, api_key, base_url). |
 | **Secret** | Configuration | Value Object | API key wrapper with redacted Debug/Display/Serialize output. Accessible only via `.expose()`. |
 | **AuditEnvelope** | Audit | Entity | Typed envelope for execution audit records. Contains execution metadata, events, and HMAC signature for integrity. |
-| **CoreOrchestratorError** | Error Handling | Value Object | Root error type wrapping all domain-specific errors via `#[from]`. Includes DagError, PlanningError, EnforcementError, LlmBudgetError, ExecutionError, ToolError, SymbolGraphError, ConfigurationError, and Cancelled/Io/Json/Http variants. |
+| **ScoredEvaluationNode** | Scored Evaluation | Value Object | DAG node value object holding artifact, rubric, backend config, and per-dimension thresholds. Node ID, artifact (JSON), rubric, backend name, thresholds map, execution policy. |
+| **Rubric** | Scored Evaluation | Value Object | Evaluation rubric — either inline JSON content (`RubricSource::Inline`) or a reference to an external file/URL (`RubricSource::Reference`). Can include scenario identifiers compatible with external systems adopting the Rigorix protocol. |
+| **ScoringResult** | Scored Evaluation | Value Object | Multidimensional scoring result returned by a backend. Contains passed flag, dimensions map, summary string, backend name, duration_ms, and optional raw response. |
+| **ScoreDimension** | Scored Evaluation | Value Object | A single scoring dimension: score (f64 0.0–1.0), max score, human-readable label, and passed boolean. |
+| **ScoringBackend** | Scored Evaluation | Trait | Domain-layer trait for pluggable evaluation backends. Defines `evaluate(artifact, rubric) -> ScoringResult`, `backend_name()`, and `health_check()`. |
+| **ScoredEvaluationService** | Scored Evaluation | Service Trait | Application-layer service orchestrating the evaluation lifecycle: validate input, resolve backend, delegate evaluation, emit events, persist results. |
+| **EvaluateInput** | Scored Evaluation | Value Object | Input DTO for `ScoredEvaluationService::evaluate()`. Contains artifact (JSON), rubric, and EvaluationContext (execution_id, node_id, node_name). |
+| **EvaluateOutput** | Scored Evaluation | Value Object | Output DTO from `ScoredEvaluationService::evaluate()`. Contains scoring result, execution metadata, and timestamp. |
+| **MCPBackend** | Scored Evaluation | Entity | MCP protocol adapter implementing the Rigorix scoring protocol. Sends `rigorix_evaluate_artifact` requests to any MCP server that implements the protocol server side. External systems (e.g. RuntimeAI) adopt the protocol by implementing the server. |
+| **HTTPBackend** | Scored Evaluation | Entity | HTTP-based scoring backend. POSTs artifact + rubric to configurable URL; expects ScoringResult-compatible JSON response. Configurable timeout, headers, auth. |
+| **LocalBackend** | Scored Evaluation | Entity | Local script-based scoring backend. Executes a script with artifact + rubric as environment variables; reads ScoringResult from stdout JSON. |
+| **EvaluationRepository** | Scored Evaluation | Repository | Persistence interface for storing evaluation results. Implemented as filesystem-backed repository in infrastructure layer. |
+| **CoreOrchestratorError** | Error Handling | Value Object | Root error type wrapping all domain-specific errors via `#[from]`. Includes DagError, PlanningError, EnforcementError, LlmBudgetError, ExecutionError, ToolError, SymbolGraphError, ConfigurationError, ScoredEvaluationError, and Cancelled/Io/Json/Http variants. |
 
 ---
 
@@ -279,6 +316,11 @@ Frame all architecture decisions, module designs, and code patterns accordingly.
 | **RetryRecorded** | Enforcement | A retry attempt was recorded by the ExecutionEnforcer | ExecutionEnforcer.record_retry() succeeds |
 | **PlanValidated** | Planning Pipeline | A plan passed all validation checks | CompositeValidator.validate() returns is_valid=true |
 | **PlanRejected** | Planning Pipeline | A plan failed validation with structured error details | CompositeValidator.validate() returns is_valid=false |
+| **ScoredEvaluationStarted** | Scored Evaluation | A scored evaluation has started execution | ScoredEvaluationService::evaluate() begins backend dispatch |
+| **ScoredEvaluationCompleted** | Scored Evaluation | A scored evaluation completed successfully with scoring result | ScoringBackend::evaluate() returns ScoringResult |
+| **ScoredEvaluationFailed** | Scored Evaluation | A scored evaluation failed with an error | ScoringBackend::evaluate() throws retriable or non-retriable error |
+| **ScoreAboveTriggered** | Policy Engine | A ScoreAbove policy condition matched (all dimensions above threshold) | PolicyEngine evaluates ScoreAbove condition against ScoringResult |
+| **ScoreBelowTriggered** | Policy Engine | A ScoreBelow policy condition matched (a dimension below threshold) | PolicyEngine evaluates ScoreBelow condition against ScoringResult |
 
 ---
 
@@ -330,6 +372,14 @@ Frame all architecture decisions, module designs, and code patterns accordingly.
 | **AuditEnvelope** | Typed envelope containing execution audit data with HMAC integrity | Audit | audit-record, governance-envelope |
 | **GeneratorError** | Typed error for generation failures: BudgetExhausted, LlmError, InvalidTOML, ValidationFailed, etc. | Template Generation | generation-failure, gen-error |
 | **Dogfooding** | Testing Rigorix by using Rigorix to build Rigorix features (self-hosting validation) | Core Architecture | self-hosting, eat-your-own-dogfood |
+| **Scored Evaluation** | A quality evaluation primitive that scores generated artifacts against rubrics via pluggable backends | Scored Evaluation | quality-scoring, artifact-evaluation |
+| **ScoringBackend** | Pluggable backend trait for evaluating artifacts: MCP, HTTP, or local script execution | Scored Evaluation | evaluation-backend, scorer |
+| **Rubric** | Evaluation criteria — either inline JSON or a reference to an external rubric file/URL | Scored Evaluation | scoring-rubric, evaluation-criteria, quality-standard |
+| **ScoringResult** | Multidimensional score result with passed flag, dimensions, summary, and backend metadata | Scored Evaluation | score-result, evaluation-outcome |
+| **ScoreDimension** | A single scoring dimension with float score (0.0–1.0), max, label, and passed boolean | Scored Evaluation | dimension, scoring-axis, metric |
+| **ScoreAbove** | Policy condition: all dimensions (or a specific one) must be above a percentage threshold | Policy Engine | minimum-score-gate, floor-condition |
+| **ScoreBelow** | Policy condition: any dimension (or a specific one) below threshold triggers action | Policy Engine | maximum-score-gate, ceiling-condition |
+| **Checkride** | A single evaluation run of an artifact against a rubric/scenario — concept adopted from RuntimeAI's model, adapted into the Rigorix scoring protocol | Scored Evaluation | evaluation-run, scoring-pass, rigorix_evaluate_artifact |
 
 ---
 
@@ -344,6 +394,9 @@ Frame all architecture decisions, module designs, and code patterns accordingly.
 7. How does the dogfooding test verify that Rigorix built the template generator feature *under its own governance rules* (deterministic, bounded, auditable)?
 8. Should the EventBus support persistence to disk (SQLite or append-only log) for replay across process restarts, or is in-memory sufficient?
 9. Is the three-mode enforcement system (Default/Advanced/Aggressive) sufficient, or should users be able to set custom limits via rigorix.toml?
+10. How should the system handle scoring backends that return inconsistent rubric dimensions across evaluations (e.g., some dimensions missing on retry)?
+11. Should there be a mechanism for human-in-the-loop override of scoring results (e.g., reviewer marks a failing evaluation as accepted)?
+12. Should scoring backends support caching of evaluations for identical artifact+rubric pairs to avoid redundant costs?
 
 ---
 
@@ -360,3 +413,4 @@ Frame all architecture decisions, module designs, and code patterns accordingly.
 | **EnforcementConfig** | Enforcement | EnforcementConfig, ExecutionEnforcer | Hard caps must validate against absolute safety limits (max_dynamic_nodes ≤ 1000, max_time ≤ 7200s, max_parallel_tasks ≤ 64); atomic counters must be thread-safe |
 | **ExecutionState** | State Persistence | ExecutionState, NodeState, StateManager | State persists via atomic write-rename (crash-safe); node IDs must match TaskGraph nodes; status transitions must be valid |
 | **Config** | Configuration | Config, Secret, RiskConfig, LlmConfig | Config must merge from multiple sources (file, env, CLI); provider keys must use Secret wrapper with redacted output |
+| **ScoredEvaluation** | Scored Evaluation | ScoredEvaluationNode, ScoringResult, ScoringBackend, ScoredEvaluationService, EvaluationRepository | Every evaluation must produce a ScoringResult with at least one dimension; backend health check must pass before evaluation; results must be persisted after evaluation; threshold evaluation must be deterministic |
