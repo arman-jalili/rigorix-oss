@@ -122,9 +122,10 @@ impl EvaluationRepository for LocalEvaluationRepository {
             let path = entry.path();
             if path.extension().is_some_and(|ext| ext == "json")
                 && let Ok(json) = tokio::fs::read_to_string(&path).await
-                    && let Ok(output) = serde_json::from_str::<EvaluateOutput>(&json) {
-                        results.push(output);
-                    }
+                && let Ok(output) = serde_json::from_str::<EvaluateOutput>(&json)
+            {
+                results.push(output);
+            }
         }
 
         Ok(results)

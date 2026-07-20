@@ -35,16 +35,17 @@ impl HttpBackend {
         let mut client_builder = reqwest::Client::builder().timeout(timeout);
 
         if let Some(auth) = headers.get("Authorization")
-            && let Some(_bearer) = auth.strip_prefix("Bearer ") {
-                let mut auth_value = reqwest::header::HeaderValue::try_from(auth.as_str()).ok();
-                if let Some(val) = auth_value.as_mut() {
-                    client_builder = client_builder.default_headers({
-                        let mut h = reqwest::header::HeaderMap::new();
-                        h.insert(reqwest::header::AUTHORIZATION, val.clone());
-                        h
-                    });
-                }
+            && let Some(_bearer) = auth.strip_prefix("Bearer ")
+        {
+            let mut auth_value = reqwest::header::HeaderValue::try_from(auth.as_str()).ok();
+            if let Some(val) = auth_value.as_mut() {
+                client_builder = client_builder.default_headers({
+                    let mut h = reqwest::header::HeaderMap::new();
+                    h.insert(reqwest::header::AUTHORIZATION, val.clone());
+                    h
+                });
             }
+        }
 
         Self {
             name: "http",
@@ -96,9 +97,10 @@ impl ScoringBackend for HttpBackend {
         for (key, value) in &self.headers {
             if key != "Authorization"
                 && let Ok(header_name) = key.parse::<reqwest::header::HeaderName>()
-                    && let Ok(header_value) = value.parse::<reqwest::header::HeaderValue>() {
-                        request = request.header(header_name, header_value);
-                    }
+                && let Ok(header_value) = value.parse::<reqwest::header::HeaderValue>()
+            {
+                request = request.header(header_name, header_value);
+            }
         }
 
         let response = request.send().await.map_err(|e| {

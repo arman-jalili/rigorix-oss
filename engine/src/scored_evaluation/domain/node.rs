@@ -73,7 +73,6 @@ pub enum FailureAction {
     Block,
 }
 
-
 fn default_max_retries() -> u32 {
     3
 }
@@ -111,7 +110,7 @@ impl ScoredEvaluationNode {
 #[cfg(test)]
 mod tests {
     use super::*;
- 
+
     #[test]
     fn test_new_node() {
         let node_id = Uuid::new_v4();

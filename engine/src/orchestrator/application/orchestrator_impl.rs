@@ -155,31 +155,49 @@ impl OrchestratorServiceImpl {
 
     /// Collect scoring results from the scored evaluation service for an execution.
     /// Returns an empty map if the service is not configured or if no results exist.
-    async fn collect_scoring_results(&self, execution_id: Uuid)
-        -> std::collections::HashMap<String, crate::audit::domain::ScoringResultRef>
-    {
+    async fn collect_scoring_results(
+        &self,
+        execution_id: Uuid,
+    ) -> std::collections::HashMap<String, crate::audit::domain::ScoringResultRef> {
         let Some(ref se_svc) = self.scored_evaluation_service else {
             return std::collections::HashMap::new();
         };
         let Ok(outputs) = se_svc.list_evaluations(execution_id).await else {
             return std::collections::HashMap::new();
         };
-        outputs.into_iter().map(|output| {
-            let ref_map: std::collections::HashMap<String, crate::audit::domain::ScoreDimensionRef> = output.result.dimensions.into_iter().map(|(k, d)| {
-                (k, crate::audit::domain::ScoreDimensionRef {
-                    score: d.score,
-                    max: d.max,
-                    label: d.label,
-                    passed: d.passed,
-                })
-            }).collect();
-            (output.node_id.to_string(), crate::audit::domain::ScoringResultRef {
-                passed: output.result.passed,
-                backend: output.result.backend,
-                dimensions: ref_map,
-                duration_ms: output.result.duration_ms,
+        outputs
+            .into_iter()
+            .map(|output| {
+                let ref_map: std::collections::HashMap<
+                    String,
+                    crate::audit::domain::ScoreDimensionRef,
+                > = output
+                    .result
+                    .dimensions
+                    .into_iter()
+                    .map(|(k, d)| {
+                        (
+                            k,
+                            crate::audit::domain::ScoreDimensionRef {
+                                score: d.score,
+                                max: d.max,
+                                label: d.label,
+                                passed: d.passed,
+                            },
+                        )
+                    })
+                    .collect();
+                (
+                    output.node_id.to_string(),
+                    crate::audit::domain::ScoringResultRef {
+                        passed: output.result.passed,
+                        backend: output.result.backend,
+                        dimensions: ref_map,
+                        duration_ms: output.result.duration_ms,
+                    },
+                )
             })
-        }).collect()
+            .collect()
     }
 
     /// Build a module dependency graph string from the repo root.
