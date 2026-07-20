@@ -4,9 +4,6 @@
 # ============================================================================
 set -euo pipefail
 
-# Scope to mcp/ package (this project's primary Rust crate)
-cd "$(git rev-parse --show-toplevel 2>/dev/null || echo ".")"/mcp 2>/dev/null || true
-
 PASS_COUNT=0
 ERRORS=()
 WARNINGS=()
@@ -111,7 +108,7 @@ fi
 echo ""
 echo "--- Security Audit ---"
 if command -v cargo &>/dev/null && cargo audit --version &>/dev/null; then
-    AUDIT_OUT=$(cargo audit 2>&1 || true)
+    AUDIT_OUT=$(cargo audit 2>/dev/null || true)
     if echo "$AUDIT_OUT" | grep -q "No advisabilities found\|No known vulnerabilities\|info"; then
         pass "No known vulnerabilities"
     else

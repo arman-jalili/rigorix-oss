@@ -86,7 +86,7 @@ fi
 echo ""
 echo "--- Canonical References ---"
 if [ -d ".pi/architecture/modules" ]; then
-    MODULE_COUNT=$(find .pi/architecture/modules -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
+    MODULE_COUNT=$(find .pi/architecture/modules -name "*.md" 2>/dev/null | wc -l | tr -d ' ') || true
     pass "Canonical architecture documents found ($MODULE_COUNT modules)"
 else
     warn "No .pi/architecture/modules directory found"

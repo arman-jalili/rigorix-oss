@@ -42,7 +42,7 @@ fi
 echo ""
 echo "--- Tests ---"
 if [ -f "go.mod" ]; then
-    TEST_FILES=$(find . -name "*_test.go" -not -path "./vendor/*" 2>/dev/null | wc -l | tr -d ' ')
+    TEST_FILES=$(find . -name "*_test.go" -not -path "./vendor/*" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$TEST_FILES" -gt 0 ]; then
         if go test ./... -count=1 2>/dev/null; then
             pass "All tests passed"

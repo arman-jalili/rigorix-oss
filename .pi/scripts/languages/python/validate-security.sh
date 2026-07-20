@@ -23,7 +23,7 @@ echo "============================================"
 
 # Hardcoded secrets
 echo "--- Hardcoded Secrets ---"
-SECRET_COUNT=$(grep -rE "(api_key|secret_key|password|token)\s*=\s*['\"][^'\"]{8,}" "$SRC_DIR" --include="*.py" 2>/dev/null | grep -v "__init__" | grep -v "test" | wc -l | tr -d ' ')
+SECRET_COUNT=$(grep -rE "(api_key|secret_key|password|token)\s*=\s*['\"][^'\"]{8,}" "$SRC_DIR" --include="*.py" 2>/dev/null | grep -v "__init__" | grep -v "test" | wc -l | tr -d ' ') || true
 if [ "$SECRET_COUNT" -eq 0 ]; then
     pass "No hardcoded secrets detected"
 else
@@ -33,7 +33,7 @@ fi
 # SQL injection
 echo ""
 echo "--- Injection Patterns ---"
-INJECT_COUNT=$(grep -rE "(execute|cursor\.execute)\s*\(\s*['\"]" "$SRC_DIR" --include="*.py" 2>/dev/null | wc -l | tr -d ' ')
+INJECT_COUNT=$(grep -rE "(execute|cursor\.execute)\s*\(\s*['\"]" "$SRC_DIR" --include="*.py" 2>/dev/null | wc -l | tr -d ' ') || true
 if [ "$INJECT_COUNT" -eq 0 ]; then
     pass "No obvious injection patterns"
 else

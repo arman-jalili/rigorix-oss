@@ -3,7 +3,6 @@ name: rust-enterprise-codegen
 description: Full reference for Rust enterprise code generation with DDD + Clean Architecture. 17 sections covering module structure, tactical patterns, error handling, async, testing, and anti-patterns. Loaded on-demand — never inline. Use via agents/rust-codegen.md skill.
 ---
 
-
 # Rust Enterprise Code Generation — DDD + Clean Architecture
 
 > Canonical skill for generating production-grade Rust code.

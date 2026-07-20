@@ -20,9 +20,9 @@ echo ""
 # ---------------------------------------------------------------------------
 echo "--- Architecture Reference Tracing ---"
 if [ -f "go.mod" ]; then
-    GO_FILES=$(find . -name "*.go" -not -path "./vendor/*" 2>/dev/null | wc -l | tr -d ' ')
+    GO_FILES=$(find . -name "*.go" -not -path "./vendor/*" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$GO_FILES" -gt 0 ]; then
-        CANONICAL_REFS=$(grep -rlE '//\s*(Canonical:|@canonical|Reference:|Canonical\s+ref)' . --include="*.go" 2>/dev/null | wc -l | tr -d ' ')
+        CANONICAL_REFS=$(grep -rlE '//\s*(Canonical:|@canonical|Reference:|Canonical\s+ref)' . --include="*.go" 2>/dev/null | wc -l | tr -d ' ') || true
         if [ "$CANONICAL_REFS" -gt 0 ]; then
             PCT=$((CANONICAL_REFS * 100 / GO_FILES))
             pass "Canonical references found in ${CANONICAL_REFS}/${GO_FILES} Go files (${PCT}%)"
@@ -74,8 +74,8 @@ fi
 echo ""
 echo "--- Package Documentation ---"
 if [ -f "go.mod" ]; then
-    PKG_FILES_WITH_DOC=$(grep -rlE '//\s*Package\s+\w+\s+(implements|provides|defines|is|contains)' . --include="*.go" 2>/dev/null | wc -l | tr -d ' ')
-    GO_PACKAGES=$(go list ./... 2>/dev/null | wc -l | tr -d ' ')
+    PKG_FILES_WITH_DOC=$(grep -rlE '//\s*Package\s+\w+\s+(implements|provides|defines|is|contains)' . --include="*.go" 2>/dev/null | wc -l | tr -d ' ') || true
+    GO_PACKAGES=$(go list ./... 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$GO_PACKAGES" -gt 0 ] && [ "$PKG_FILES_WITH_DOC" -gt 0 ]; then
         pass "Package documentation found in $PKG_FILES_WITH_DOC files"
     else
@@ -91,9 +91,9 @@ fi
 echo ""
 echo "--- ADR Linkage ---"
 if [ -d ".pi/architecture/decisions" ]; then
-    ADR_COUNT=$(find .pi/architecture/decisions -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
+    ADR_COUNT=$(find .pi/architecture/decisions -name "*.md" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$ADR_COUNT" -gt 0 ]; then
-        ADR_REFS=$(grep -rlE '//\s*ADR[-_]?\d+' . --include="*.go" 2>/dev/null | wc -l | tr -d ' ')
+        ADR_REFS=$(grep -rlE '//\s*ADR[-_]?\d+' . --include="*.go" 2>/dev/null | wc -l | tr -d ' ') || true
         if [ "$ADR_REFS" -gt 0 ]; then
             pass "ADR references found in $ADR_REFS Go files"
         else

@@ -169,7 +169,17 @@ function loadPipelineState(cwd: string): PipelineState | null {
 	const p = join(cwd, PIPELINE_STATE_KEY);
 	if (!existsSync(p)) return null;
 	try {
-		return JSON.parse(readFileSync(p, "utf-8")) as PipelineState;
+		const state = JSON.parse(readFileSync(p, "utf-8")) as PipelineState;
+		// Normalize: ensure every step has an acceptance config
+		// (old pipeline state may lack it, triggering TypeError on .type access)
+		if (state && Array.isArray(state.steps)) {
+			for (const step of state.steps) {
+				if (!step.acceptance) {
+					step.acceptance = { type: "none" };
+				}
+			}
+		}
+		return state;
 	} catch {
 		return null;
 	}
@@ -637,7 +647,7 @@ class PipelineManager {
 				const scriptPath = VALIDATOR_SCRIPTS[validator];
 				if (!scriptPath) { errors.push(`Unknown validator: ${validator}`); continue; }
 				try {
-					execFileSync("bash", ["-c", scriptPath], { cwd: this.cwd, timeout: 120_000, encoding: "utf-8" });
+					execFileSync("bash", [scriptPath], { cwd: this.cwd, timeout: 120_000, encoding: "utf-8" });
 				} catch (e: unknown) {
 					const err = e as { stdout?: string };
 					errors.push(`${validator}: ${(err.stdout || "").slice(0, 200)}`);
@@ -1334,7 +1344,7 @@ export default function (pi: ExtensionAPI) {
 					continue;
 				}
 				try {
-					execFileSync("bash", ["-c", scriptPath], {
+					execFileSync("bash", [scriptPath], {
 						cwd: ctx.cwd,
 						timeout: 120_000,
 						encoding: "utf-8",

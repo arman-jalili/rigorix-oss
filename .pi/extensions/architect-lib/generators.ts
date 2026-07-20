@@ -133,30 +133,6 @@ function isJavaProject(cwd?: string): boolean {
 	}
 }
 
-/** Get the test runner command for a project language. */
-function testRunnerFromCwd(cwd?: string): string | null {
-	if (!cwd) return null;
-	try {
-		if (existsSync(join(cwd, "Cargo.toml"))) return "cargo test";
-		if (existsSync(join(cwd, "go.mod"))) return "go test";
-		if (existsSync(join(cwd, "pyproject.toml")) || existsSync(join(cwd, "requirements.txt"))) return "pytest";
-		if (existsSync(join(cwd, "package.json"))) return "bun test";
-	} catch {}
-	return null;
-}
-
-/** Get the implementation file suffix for a project language. */
-function implSuffix(cwd?: string): string {
-	if (!cwd) return "ts";
-	try {
-		if (existsSync(join(cwd, "pom.xml")) || existsSync(join(cwd, "build.gradle")) || existsSync(join(cwd, "build.gradle.kts"))) return "java";
-		if (existsSync(join(cwd, "Cargo.toml"))) return "rs";
-		if (existsSync(join(cwd, "go.mod"))) return "go";
-		if (existsSync(join(cwd, "pyproject.toml")) || existsSync(join(cwd, "requirements.txt"))) return "py";
-	} catch {}
-	return "ts";
-}
-
 // ── Issue Generation ──
 
 export function generateIssueMarkdown(
@@ -182,7 +158,7 @@ export function generateIssueMarkdown(
 	// Language-aware test paths
 	const isJava = isJavaProject(cwd);
 	const testBaseDir = isJava ? "src/test/java" : "tests/unit";
-	const testRunnerHint = isJava ? "mvn test" : testRunnerFromCwd(cwd) || "bun test";
+	const testRunnerHint = isJava ? "mvn test" : "bun test";
 
 	const testLine = tdd
 		? `    - "update: ${testBaseDir}/ (failing tests already generated — make them pass)"`
@@ -276,7 +252,7 @@ ${yamlAcs}
     All Acceptance Criteria in that file must be satisfied before this issue is closed.
     Component focus: ${comp.name}.
     CONCRETE IMPLEMENTATIONS MUST BE CREATED — interface stubs from the contract freeze
-    are not sufficient. Each domain service/aggregate needs a concrete .impl.${implSuffix(cwd)} file.
+    are not sufficient. Each domain service/aggregate needs a concrete .impl.${isJava ? "java" : "ts"} file.
 
   file_changes:
     - "create: src/${moduleId}/domain/"
@@ -331,7 +307,7 @@ ${stepsMarkdown}
 > **Agent instructions:**
 > 1. Open \`.pi/architecture/modules/${slice.module}.md\` — read the full Acceptance Criteria table
 > 2. Identify which rows are your responsibility for **${comp.name}**
-> 3. Create concrete implementation files (\`.impl.${implSuffix(cwd)}\`) in \`src/${moduleId}/\` — the interface stubs from the contract freeze are NOT enough
+> 3. Create concrete implementation files (\`.impl.${isJava ? "java" : "ts"}\`) in \`src/${moduleId}/\` — the interface stubs from the contract freeze are NOT enough
 > 4. Each domain aggregate/service must have a working implementation with business logic
 > 5. Verify each AC row is satisfied in \`src/\` before marking done
 > 6. Run validators and create MR
@@ -466,8 +442,8 @@ ${implSteps.length > 0
 
 > **Agent:** Create interface-only files. No implementation. Use Clean Architecture layers:
 > 1. Read the architecture module to understand each component's role
-> 2. Place domain interfaces in domain/, service interfaces in application/, API contracts in interfaces/http/
-> 3. DTOs with proper validation decorators go in application/
+> 2. Place domain interfaces in domain/, service interfaces in application/, DTOs in application/
+> 3. Controllers/routers are CONCRETE — they do NOT get interfaces. The concrete router/handler class goes directly in interfaces/http/ without a separate contract file.
 > 4. Event schemas go in domain/event/
 > 5. Repository interfaces go in infrastructure/repository/
 >
@@ -597,6 +573,16 @@ run_stage "11" "${moduleId}_proofing" \\
 > 2. Runnable as a CI stage
 > 3. Self-documenting with --help
 > 4. Exit 0 for pass, 1 for fail
+>
+> CRITICAL: Do NOT map handler type files to separate impl files. Controllers/routers
+> are concrete — they DO NOT have a separate interface. The contract checker must:
+> - ✅ Verify domain and application interfaces have impls
+> - ✅ Verify DTO schemas exist and match the module doc
+> - ❌ NOT check for a handlers.ts → router.impl.ts mapping (handlers are concrete)
+> - ❌ NOT create separate contract files for the HTTP layer
+>
+> For the HTTP layer, just verify the router file exists in interfaces/http/. That\'s
+> the concrete handler — no interface needed.
 >
 > End by running the full CI pipeline to verify integration:
 > \`bash .pi/scripts/ci/run_hardening_stages.sh\`

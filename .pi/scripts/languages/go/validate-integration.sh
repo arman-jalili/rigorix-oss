@@ -65,7 +65,7 @@ fi
 echo ""
 echo "--- Contract Tests ---"
 if [ -f "go.mod" ]; then
-    CONTRACT_FILES=$(find . -name "*_contract_test.go" -not -path "./vendor/*" 2>/dev/null | wc -l | tr -d ' ')
+    CONTRACT_FILES=$(find . -name "*_contract_test.go" -not -path "./vendor/*" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$CONTRACT_FILES" -gt 0 ]; then
         pass "Contract test files found ($CONTRACT_FILES files)"
     else
@@ -123,7 +123,7 @@ fi
 echo ""
 echo "--- HTTP Integration ---"
 if [ -f "go.mod" ]; then
-    HTTPTEST_COUNT=$(grep -rl '"net/http/httptest"' . --include="*.go" 2>/dev/null | wc -l | tr -d ' ')
+    HTTPTEST_COUNT=$(grep -rl '"net/http/httptest"' . --include="*.go" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$HTTPTEST_COUNT" -gt 0 ]; then
         pass "HTTP integration tests found (httptest in $HTTPTEST_COUNT files)"
     else

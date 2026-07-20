@@ -39,7 +39,7 @@ fi
 echo ""
 echo "--- Implementation File References ---"
 if [ -d "$SRC_DIR" ]; then
-    JAVA_FILES=$(find "$SRC_DIR" -name "*.java" 2>/dev/null | wc -l | tr -d ' ')
+    JAVA_FILES=$(find "$SRC_DIR" -name "*.java" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$JAVA_FILES" -gt 0 ]; then
         # Check for canonical reference headers in Java files
         WITH_REFS=0
@@ -81,7 +81,7 @@ fi
 echo ""
 echo "--- ADR References ---"
 if [ -d ".pi/architecture/decisions" ]; then
-    ADR_COUNT=$(find .pi/architecture/decisions -name "*.md" -not -name "ADR-template.md" 2>/dev/null | wc -l | tr -d ' ')
+    ADR_COUNT=$(find .pi/architecture/decisions -name "*.md" -not -name "ADR-template.md" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$ADR_COUNT" -gt 0 ]; then
         pass "Architecture Decision Records found ($ADR_COUNT ADRs)"
     else

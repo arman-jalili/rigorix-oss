@@ -1,6 +1,6 @@
 {
   "schemaVersion": "0.1",
-  "frameworkVersion": "0.1.97",
+  "frameworkVersion": "0.1.103",
   "source": "pi",
   "tools": [
     "pi"
@@ -110,118 +110,118 @@
     },
     ".pi/extensions/curator.ts": {
       "category": "framework",
-      "originalHash": "sha256:7cebd53167de7c68d0b776be1ed878808f04035104125ebb8222e15367708f83",
-      "status": "modified"
+      "originalHash": "sha256:73e4167139e574df37fefa89271bd3ff2941f6d6f6e1abb8accfd0059a240c83",
+      "status": "unchanged"
     },
     ".pi/extensions/session-persistence.ts": {
       "category": "framework",
-      "originalHash": "sha256:8994200dabf4502b4c315278cb995b9195f5060bfd7f416ba0eb1ed74008d66e",
-      "status": "modified"
+      "originalHash": "sha256:57ffec30b56753fd5cb676577f4a72c2feaf967470611316716825f3f50135fd",
+      "status": "unchanged"
     },
     ".pi/extensions/domain-explorer.ts": {
       "category": "framework",
-      "originalHash": "sha256:cf02dd7d2a9f6a79aadf0e4ad21f65eaa8630b966620c52f1f0b99e5657a4e22",
-      "status": "modified"
+      "originalHash": "sha256:da4d8fda181acc1033eca422ab07186c2ddd18054376e0660882ee1005e21a80",
+      "status": "unchanged"
     },
     ".pi/extensions/kanban.ts": {
       "category": "framework",
-      "originalHash": "sha256:ae324cea4192f38295469343d1c841e7b4cfa33a4887cde176c873c128c7a605",
-      "status": "modified"
+      "originalHash": "sha256:c6cb9c7876986c155a784cac3919a094f0c0510413e955fd0d3986b27071a7e3",
+      "status": "unchanged"
     },
     ".pi/extensions/project-scaffolder.ts": {
       "category": "framework",
-      "originalHash": "sha256:a30e79c81a5f373401a038fdd87d313761d3ce933cb5dee6789e0e2842ecaa74",
-      "status": "modified"
+      "originalHash": "sha256:d0dd4ddeb736cb45a785b92b8c912e5dfd54254756f1e67202e56934c8b1a751",
+      "status": "unchanged"
     },
     ".pi/extensions/snippets.ts": {
       "category": "framework",
-      "originalHash": "sha256:30d157510a72a2f5dd0ebbbe706ebfa780131eb397e2d1091c88f1b7f067ec68",
-      "status": "modified"
+      "originalHash": "sha256:700a8426ac78d7a8d3a887ad2cba8078a603a427e8afef484e65ca09da21ce89",
+      "status": "unchanged"
     },
     ".pi/extensions/read-only-mode.ts": {
       "category": "framework",
-      "originalHash": "sha256:a579d34865fee1d53fec4d7218e905cfc3b1e08c8fafa1492a2532140f910f1e",
-      "status": "modified"
+      "originalHash": "sha256:97ba2d0956971f86e9301498a1065c8f3f0400d4631e9ef16961e7f00f94778e",
+      "status": "unchanged"
     },
     ".pi/extensions/slash-commands.ts": {
       "category": "framework",
-      "originalHash": "sha256:e60a12667b22dd287b2da0969df554f3d8e40a7be12e85c122232310057f075f",
-      "status": "modified"
+      "originalHash": "sha256:57403f17cfe8a8d68d573cf213e96d5be7928102c7565b05e18297f4d2f92c2d",
+      "status": "unchanged"
     },
     ".pi/extensions/config-reload.ts": {
       "category": "framework",
-      "originalHash": "sha256:702c33e12f62867cadce1eeb8e94c98a491cc8b048bd88c6031daee514b957c7",
-      "status": "modified"
+      "originalHash": "sha256:1c3bf2e7dc67f61f14ca6bd7c768aa47ed99e4477721e562467d27e8072fc57a",
+      "status": "unchanged"
     },
     ".pi/extensions/pipeline.ts": {
       "category": "framework",
-      "originalHash": "sha256:0b77763e1c78aed36fcd3710edeafb9fa8ea6ae6e101ef16a0510e32f0789982",
-      "status": "modified"
+      "originalHash": "sha256:7e55a3ee8addcbf31e441f7fafd380ecca97476a6463b257af68a290b82d117d",
+      "status": "unchanged"
     },
     ".pi/extensions/bash-guard.ts": {
       "category": "framework",
-      "originalHash": "sha256:0af4981f5c6235b2182f2d2aff6b7b0f1377835e6c8a7ff33a93d346b1a693c6",
-      "status": "modified"
+      "originalHash": "sha256:faac81ad49dc7585f34db4be51d609349cfddb1685ae39047f6bcba305c6ba04",
+      "status": "unchanged"
     },
     ".pi/extensions/validation-runner.ts": {
       "category": "framework",
-      "originalHash": "sha256:c0352feda293f89c0b1757a592c0a8341ce30274666876474ffe804d46214793",
-      "status": "modified"
+      "originalHash": "sha256:c00de33ce0f3b28da4fe486c503542311fc55888cd06b056aa25d1242030fc5c",
+      "status": "unchanged"
     },
     ".pi/extensions/architect.ts": {
       "category": "framework",
-      "originalHash": "sha256:e7b6d379a62c61b108341c1c0b792f90c01b9fed22e00fa27723ecc31fda55f0",
-      "status": "modified"
+      "originalHash": "sha256:1424503f9a819be325e0058358c0ab2303685146ea593ad06e2eb9c15350ffb7",
+      "status": "unchanged"
     },
     ".pi/extensions/architect-lib/helpers.ts": {
       "category": "framework",
-      "originalHash": "sha256:ca513317f5bb7427f627752185df3c912cff8e2bd714ebc9dccb26535524f94a",
-      "status": "modified"
+      "originalHash": "sha256:a447ff900952ea8383080b8ae5aaf322c25621b5e63508bc7d743ab1afd9890d",
+      "status": "unchanged"
     },
     ".pi/extensions/architect-lib/generators.ts": {
       "category": "framework",
-      "originalHash": "sha256:942c1b7061dfbfb0443484cb853b7f38641bdf4acf6f414a358d2d15ff03fe96",
-      "status": "modified"
+      "originalHash": "sha256:976dccd28e5afff26278180b5cb1feb6370aa3f9850a727763679f1a6d611b11",
+      "status": "unchanged"
     },
     ".pi/extensions/architect-lib/types.ts": {
       "category": "framework",
-      "originalHash": "sha256:d4c9206f10fd179d7e312039ee3a7b4b51363d90d7a6f9c1b9898a306082f535",
-      "status": "modified"
+      "originalHash": "sha256:f7d25e49d928093d479709a656da15341b64c9a0691229644328ced609311acb",
+      "status": "unchanged"
     },
     ".pi/extensions/ask-user-question.ts": {
       "category": "framework",
-      "originalHash": "sha256:983057f59aa40647f11c0703f1b9393e780900e23c67be0e579881d1c6729edb",
-      "status": "modified"
+      "originalHash": "sha256:c770fa193453768ee33875ffd626311e52f061af2856acc3fde014db3ec4fe64",
+      "status": "unchanged"
     },
     ".pi/extensions/filechanges.ts": {
       "category": "framework",
-      "originalHash": "sha256:411094739728d704423b287f54dd4d265c5aab3346bb90f7f638b856aaebe244",
-      "status": "modified"
+      "originalHash": "sha256:b04dfde9d19dcf1d0c6197bb36b153cc200befea7cb459a545afeec5b0f5c22c",
+      "status": "unchanged"
     },
     ".pi/extensions/hooks.ts": {
       "category": "framework",
-      "originalHash": "sha256:46fa45dd6b3d7db55208fdf5e28001fd2d5e6a53570f38d78eee57537b96bf48",
-      "status": "modified"
+      "originalHash": "sha256:2a953dde5b843d05818cadbe82876a6d362113e6d4932f0571b4c35935cdb405",
+      "status": "unchanged"
     },
     ".pi/extensions/coordinator.ts": {
       "category": "framework",
-      "originalHash": "sha256:070df0ef9fdb429cd284d8c7a6f3fbe1ba7f92927bf0128a941bf6d6a0f10d6e",
-      "status": "modified"
+      "originalHash": "sha256:f25eb28fb9e2d5b4542f27252c427e044b5ded0169fa467e2b77174669747367",
+      "status": "unchanged"
     },
     ".pi/extensions/goal-loop.ts": {
       "category": "framework",
-      "originalHash": "sha256:6ed7949769ef9a36a7c0e023779279d8407b7a16867445c01b1102d13213688f",
-      "status": "modified"
+      "originalHash": "sha256:c65806990e28fd1b635c926d511e0fcbab98a95174a74f4cddb01c90b5ff29be",
+      "status": "unchanged"
     },
     ".pi/extensions/redaction.ts": {
       "category": "framework",
-      "originalHash": "sha256:9f69807463e1bf305cd981e2ca18c432446ba67ffb83e8b5f518d9fdb1c691f2",
-      "status": "modified"
+      "originalHash": "sha256:8fd16eba73b995d7e8f20f03a7c495c1ea26fb5032610e27cf239eb64299ba13",
+      "status": "unchanged"
     },
     ".pi/extensions/plan-mode.ts": {
       "category": "framework",
-      "originalHash": "sha256:6d0b1a68ec3c64127421b5eea7b3385790d870b69de291b24e6c967354e743d4",
-      "status": "modified"
+      "originalHash": "sha256:34efd4378ecb3431d77cf7e60c589ddb9aa7bf56c578d2f3fde52cfc6deee3cf",
+      "status": "unchanged"
     },
     ".pi/types.ts": {
       "category": "framework",
@@ -245,8 +245,8 @@
     },
     ".pi/architecture/modules/module-template.md": {
       "category": "framework",
-      "originalHash": "sha256:4790f7bde099ad6ee10f11602ecfc281c6de4e775c7739500eb1260afc1fa849",
-      "status": "modified"
+      "originalHash": "sha256:699b7812db449bf3de6885e3d56d03cc62f8a0f82352d1328c50c412b7073be0",
+      "status": "unchanged"
     },
     ".pi/github/instructions/architecture.instructions.md": {
       "category": "framework",
@@ -325,8 +325,8 @@
     },
     ".pi/INDEX.md": {
       "category": "framework",
-      "originalHash": "sha256:e166bc3e698236cbe4ef3fcca2f866c8ac2a28cd4ea293ca74c598a0dfea44ed",
-      "status": "modified"
+      "originalHash": "sha256:e61e5215c25ec05ff53bfb72309dde3f7c781c2ddc79c8af9cf6fa987cd4136e",
+      "status": "unchanged"
     },
     ".pi/scripts/validate-operations.sh": {
       "category": "generated",
@@ -345,8 +345,8 @@
     },
     ".pi/scripts/validate-ubiquitous-language.sh": {
       "category": "framework",
-      "originalHash": "sha256:fdae16e0bf2030b87c9bb5263eceb73cd5510066bbe85d7925a35dd92a2a13f8",
-      "status": "modified"
+      "originalHash": "sha256:d9886f03dcc186d367c92dcd8f0547768534413c50f32d396d3d55ea3d016fb0",
+      "status": "unchanged"
     },
     ".pi/scripts/ci/stage_security.sh": {
       "category": "framework",
@@ -361,7 +361,7 @@
     ".pi/scripts/ci/stage_remaining.sh": {
       "category": "framework",
       "originalHash": "sha256:396b75ec9fb00224781e9eca66ac51a9ec7f05876d5175f80070560fdf629fe5",
-      "status": "modified"
+      "status": "unchanged"
     },
     ".pi/scripts/ci/check_planning_packet.py": {
       "category": "framework",
@@ -391,7 +391,7 @@
     ".pi/scripts/ci/stage_unit.sh": {
       "category": "framework",
       "originalHash": "sha256:64c8b8a4c6266725962b238a1c9814ea110c0f067e90ca9d38287a40074a5f19",
-      "status": "modified"
+      "status": "unchanged"
     },
     ".pi/scripts/ci/stage_release_readiness.sh": {
       "category": "framework",
@@ -401,7 +401,7 @@
     ".pi/scripts/ci/stage_docs_policy.sh": {
       "category": "framework",
       "originalHash": "sha256:8b13849d612e4dde20a43e3e2ef23c9279869c14683e29506213749e4f2e29ec",
-      "status": "modified"
+      "status": "unchanged"
     },
     ".pi/scripts/ci/validate_agent_output.sh": {
       "category": "framework",
@@ -421,27 +421,27 @@
     ".pi/scripts/ci/stage_lint.sh": {
       "category": "framework",
       "originalHash": "sha256:b5ce9794af4d271f7e04a82f6a35fe7e254d64ff4e71518cf201e4210c1b6560",
-      "status": "modified"
+      "status": "unchanged"
     },
     ".pi/scripts/ci/check_architecture_conformance.sh": {
       "category": "framework",
-      "originalHash": "sha256:eaee494fb728fdc422fa9d83b4c8abdbe52041bd31e53fa8ba85f91196ea765d",
-      "status": "modified"
+      "originalHash": "sha256:811af3f104c77a13c076ddd3b876392e64c84c4f63ff8bc925f5441ef08c7d82",
+      "status": "unchanged"
     },
     ".pi/scripts/ci/stage_static_analysis.sh": {
       "category": "framework",
       "originalHash": "sha256:5d40980d65b39245bb3db064f0ae60b977b33cb0e7f86b0d211020cb894bafa7",
-      "status": "modified"
+      "status": "unchanged"
     },
     ".pi/scripts/merge-mr.sh": {
       "category": "framework",
-      "originalHash": "sha256:726ff4212cf5097de646668bb2a48c0ff63de02cb0132686474f6dc91e047afb",
-      "status": "modified"
+      "originalHash": "sha256:204694650a7467f7bff61d77a73020b0c46e7699ba70fe92afe68470611ce006",
+      "status": "unchanged"
     },
     ".pi/scripts/validate-architecture-readiness.sh": {
       "category": "framework",
-      "originalHash": "sha256:d460c6ccd94a3382d3fde7fff1e9d9f7c10abba76a3f6a3e41238283e81354d5",
-      "status": "modified"
+      "originalHash": "sha256:2d7d786c72399e2ad2aa1db15a0d016faad1b303bb6b0b2bec3212ce16531ae4",
+      "status": "unchanged"
     },
     ".pi/scripts/fetch-issues.sh": {
       "category": "framework",
@@ -455,8 +455,8 @@
     },
     ".pi/scripts/create-mr.sh": {
       "category": "framework",
-      "originalHash": "sha256:6670010595a85cbf518fb02d760c417922e480b27979351e418ec4bcd0571b29",
-      "status": "modified"
+      "originalHash": "sha256:c12ede5af3f0840e5042aee0bada314909843aa63d14f8cad40b993b66feb12b",
+      "status": "unchanged"
     },
     ".pi/scripts/validation-cache.sh": {
       "category": "generated",
@@ -470,33 +470,33 @@
     },
     ".pi/scripts/languages/rust/validate-architecture.sh": {
       "category": "framework",
-      "originalHash": "sha256:250210026e0e228def1481a26f9bfc85c032734edc867d1aa153ee5ea4b09e6d",
-      "status": "modified"
+      "originalHash": "sha256:bde99e5c9735c306c6fa9b5286f56ff695f164608e559f08c95578fdc4f630b5",
+      "status": "unchanged"
     },
     ".pi/scripts/languages/rust/validate-security.sh": {
       "category": "framework",
-      "originalHash": "sha256:ce3a057d27fbdcffb0e8043aece29acceea9e9eb69e61dae276f6a7205bdbb8e",
-      "status": "modified"
+      "originalHash": "sha256:4aae6dc07ce65b800685600603af9e8bb9078fb8c543455b9d2aaefbc984f9e0",
+      "status": "unchanged"
     },
     ".pi/scripts/languages/rust/validate-canonical.sh": {
       "category": "framework",
-      "originalHash": "sha256:c0e145a8e1c16024062bf928945c2cd45c4d1c0a78c942e547a7f3f4ededc80b",
-      "status": "modified"
+      "originalHash": "sha256:57aa990956727168405190ae951940081d48241de825acdfe18583a7ca711ffc",
+      "status": "unchanged"
     },
     ".pi/scripts/languages/rust/validate-ci.sh": {
       "category": "framework",
-      "originalHash": "sha256:d27898b08963a4ddfa0a62227ded3e91e61e81ecd4859c1549c3660abc09ec51",
-      "status": "modified"
+      "originalHash": "sha256:190560cc2814c33f598bb2a53a4363789d22ad9ea6001323aa5ce38cc9909690",
+      "status": "unchanged"
     },
     ".pi/scripts/languages/rust/validate-integration.sh": {
       "category": "framework",
-      "originalHash": "sha256:11a8b41544e1bd36379f724cd4fefc6ef4c608aca5f093d1db22b840d04d133f",
+      "originalHash": "sha256:1c1fd623c2de1b9e7c5e305ef4a208630bdf2445782c71fc82215c18a7d3f0ee",
       "status": "unchanged"
     },
     ".pi/scripts/languages/rust/validate-tests.sh": {
       "category": "framework",
-      "originalHash": "sha256:7538f07f8a432ba2c25ca1f53fc2778a3cbe1f811d77f26eff7015915b3471c9",
-      "status": "modified"
+      "originalHash": "sha256:e325f270d711dfd73a141c2dce39bd6e7511ce28d3f15dc1d0584a52c11930b1",
+      "status": "unchanged"
     },
     ".pi/scripts/validate-security.sh": {
       "category": "generated",
@@ -535,28 +535,28 @@
     },
     ".pi/scripts/git/close-epic.sh": {
       "category": "framework",
-      "originalHash": "sha256:fade48608d4bfc267ec7bae6b374c6fb2a40b709a2d226ec06c36ede853f5c2a",
-      "status": "modified"
+      "originalHash": "sha256:d395291ad32ba27fff27f0826876762490adf2ce724b19d57ed6a442eaafaef4",
+      "status": "unchanged"
     },
     ".pi/scripts/git/close-issue.sh": {
       "category": "framework",
-      "originalHash": "sha256:8984749dc0957659553108265bb16463166ade0f6e7acd8742be003bf92f990e",
-      "status": "modified"
+      "originalHash": "sha256:03e023bde33ac7303f291ba8ddc0420545a37cd3b43476ae1d742c3cc875d261",
+      "status": "unchanged"
     },
     ".pi/scripts/git/update-tracking-issue.sh": {
       "category": "framework",
-      "originalHash": "sha256:4701dc3b3afca2884071db20a4b4a2665d12e6af5498b349a75b598da0fe7cbe",
-      "status": "modified"
+      "originalHash": "sha256:564fb3b8e420f69ece40152cbeeb82fd1d5c4dadb1f1bcfa696bba7d88d0b337",
+      "status": "unchanged"
     },
     ".pi/scripts/git/link-issue-to-epic.sh": {
       "category": "framework",
-      "originalHash": "sha256:a1dd8606544bba38b0e4a90bce111c6c0d0d578bf63e6a752b6aaede54a6d7e3",
-      "status": "modified"
+      "originalHash": "sha256:527408594f868eec8727bf54365742716fbe584ad649031783980f6d7e778ff9",
+      "status": "unchanged"
     },
     ".pi/scripts/git/create-tracking-issue.sh": {
       "category": "framework",
-      "originalHash": "sha256:3b221bb26e7c0fcb9b073de037c382db8031eb6b8b921d27f4f5e76cd2ddfec5",
-      "status": "modified"
+      "originalHash": "sha256:76c3b50ef2f404043778fb7f2cd33168836767aff69332df1298670683baaece",
+      "status": "unchanged"
     },
     ".pi/prompts/blueprint-validate.md": {
       "category": "framework",
@@ -565,13 +565,13 @@
     },
     ".pi/prompts/bug-fix.md": {
       "category": "framework",
-      "originalHash": "sha256:0af6405b22d77066427d69b2486f13de2b5d7ceb00a69af78778bdb5bfeb011a",
-      "status": "modified"
+      "originalHash": "sha256:9d88f8d9766a66f348a78d137e5c7e186dee834c448f5e21ad284559b27e3422",
+      "status": "unchanged"
     },
     ".pi/prompts/issue-implementation-series.md": {
       "category": "framework",
-      "originalHash": "sha256:983e2b90b70424403a9223b7ed30840878fe7cf4d10b39f8fcf547a4ae0fd1cd",
-      "status": "modified"
+      "originalHash": "sha256:af7eb7eadeb1c8929fae9c15a86ac627140a123a03f52c4ef5246c60543d539e",
+      "status": "unchanged"
     },
     ".pi/prompts/pattern-extract.md": {
       "category": "framework",
@@ -600,13 +600,13 @@
     },
     ".pi/prompts/hotfix.md": {
       "category": "framework",
-      "originalHash": "sha256:ce1c5a45625d678c57094d2d3f7b80d05bb8d19c12afe7e6bf12c1d50ec43f6e",
-      "status": "modified"
+      "originalHash": "sha256:65cc83277bbf83931e1941fb6059bfd1ae41ae5fe11a6f3124ce1f356fd3e1ec",
+      "status": "unchanged"
     },
     ".pi/prompts/issue-template.md": {
       "category": "framework",
-      "originalHash": "sha256:0171d092bd362617327b5ef14e3b58b06052482ddd338338da3ccfb404ee0e93",
-      "status": "modified"
+      "originalHash": "sha256:082223c4d14099fa85cf960b06b909baf0701f7ed4e450621e1e930593c6128c",
+      "status": "unchanged"
     },
     ".pi/prompts/epic-template.md": {
       "category": "framework",
@@ -630,8 +630,8 @@
     },
     ".pi/prompts/issue-template-set.md": {
       "category": "framework",
-      "originalHash": "sha256:cf6e8b0f1db914475264e6c153cd1945bffc537210501f898c6d01661c9dc027",
-      "status": "modified"
+      "originalHash": "sha256:1f0d117b87a4823ba75024f094e2fde585a70dae3bfb7e25accd82662733b9a0",
+      "status": "unchanged"
     },
     ".pi/prompts/issue-merge.md": {
       "category": "framework",
@@ -650,8 +650,8 @@
     },
     ".pi/prompts/feature-development.md": {
       "category": "framework",
-      "originalHash": "sha256:f388ede538c684a91f3fd59bbac710be8f027a7e5214717f83caeb4325289909",
-      "status": "modified"
+      "originalHash": "sha256:4161e4ba61d4f00d75f0c616513ffb1f4a628292ad091ab33b0063d5e0ebeed9",
+      "status": "unchanged"
     },
     ".pi/prompts/plan-to-issues.md": {
       "category": "framework",
@@ -660,8 +660,8 @@
     },
     ".pi/prompts/refactoring.md": {
       "category": "framework",
-      "originalHash": "sha256:fb65f0efee082ea47aa893bde7ac6f4d6014512e3dec3f9b820d86f1bcf6037a",
-      "status": "modified"
+      "originalHash": "sha256:b1fafce9705a0ac15ce975d5ab9747ed8685b37f05d7266ed5915b95582d2b2f",
+      "status": "unchanged"
     },
     ".pi/skills/agents/slash-commands.md": {
       "category": "framework",
@@ -670,7 +670,7 @@
     },
     ".pi/skills/agents/pipeline.md": {
       "category": "framework",
-      "originalHash": "sha256:619398512a775ba23612a7c436da7ae125af2ddc3a6ae63829a190d1716822ed",
+      "originalHash": "sha256:e44a23d8ff5d49b6a1ae08b6b50f5ecbf09f774be2944dc3e60d98f57f7a6ca3",
       "status": "unchanged"
     },
     ".pi/skills/agents/debug.md": {
@@ -790,7 +790,7 @@
     },
     ".pi/skills/agents/code-developer.md": {
       "category": "framework",
-      "originalHash": "sha256:05c8f2729446681f546af7d5f78009f39112b5008ea8e86fb70184db1065463f",
+      "originalHash": "sha256:a1497671fe07dde01d159919c12f7cdcaaf2a37df5b1ba38ca7736ef5c77180b",
       "status": "unchanged"
     },
     ".pi/skills/agents/test-validator.md": {
@@ -850,8 +850,8 @@
     },
     ".pi/validators/default.toml": {
       "category": "framework",
-      "originalHash": "sha256:b9fea586ef6035733f7873cab8ba3399426a6ea67de10f5ebb4f8110620436d4",
-      "status": "modified"
+      "originalHash": "sha256:860fbc421f5761cccb280f8eb657bc7e8bf14131220362631c87d5821d7cfb3f",
+      "status": "unchanged"
     },
     ".pi/validators/README.md": {
       "category": "framework",
@@ -865,8 +865,8 @@
     },
     ".pi/preflight_report.json": {
       "category": "framework",
-      "originalHash": "sha256:c739bbb27fde3d3d9ea1e47a453b8d07d46a04d42674854cf7472d5a5d406148",
-      "status": "modified"
+      "originalHash": "sha256:7e5f198c598032cda32a6e0e00253e9fc4d5c2bb653216d6f86c232aba09f9d0",
+      "status": "unchanged"
     },
     ".pi/domain/ubiquitous-language.md": {
       "category": "user",
@@ -975,32 +975,32 @@
     },
     ".pi/scripts/languages/go/validate-operations.sh": {
       "category": "framework",
-      "originalHash": "sha256:2b6745a33274d3a271a00e8329988f6a40e736ba7e74d0174d2d176b07872e82",
+      "originalHash": "sha256:3ba4b6711f8515f37a478f7a06823c4650b61be7da778a095b2f7860442bcfb7",
       "status": "unchanged"
     },
     ".pi/scripts/languages/go/validate-architecture.sh": {
       "category": "framework",
-      "originalHash": "sha256:b6015897f70de7b5edbe1e153655f4b982704586d4d8fac03927d41ad640967f",
+      "originalHash": "sha256:20312e4ae7b5b354f49dd31e4e997f16b3ae8ab7818f26704f35dcf118af31e9",
       "status": "unchanged"
     },
     ".pi/scripts/languages/go/validate-security.sh": {
       "category": "framework",
-      "originalHash": "sha256:bf5377f544e859f1ad99fc3ee0a5e2c8bdb19dcee611e858b0f6ccac4a6516ec",
+      "originalHash": "sha256:3d66400fc310fb7432ff9434d28bbaf705b4d3ddf10266cf9fa350ad940a8692",
       "status": "unchanged"
     },
     ".pi/scripts/languages/go/validate-canonical.sh": {
       "category": "framework",
-      "originalHash": "sha256:36c34500a75c020cee85b73fea050d1f0c70353248c24fe2572a3f9cd282f9b7",
+      "originalHash": "sha256:b819783a2d29184a66b3ac0ae71b6a8f3989c5a798977d1b147c3a60df326457",
       "status": "unchanged"
     },
     ".pi/scripts/languages/go/validate-ci.sh": {
       "category": "framework",
-      "originalHash": "sha256:3614692f8dc60c3a29f03673691a663f6c68e3963a84b963db82c1e114581102",
+      "originalHash": "sha256:043448c4de25e226e96709b94c3c1a7670cd0a6f47ab307fa4ed826d07deebc4",
       "status": "unchanged"
     },
     ".pi/scripts/languages/go/validate-integration.sh": {
       "category": "framework",
-      "originalHash": "sha256:fe3616e2a6db18b783813c5cb22a021daded3c8fc87a6a3c0d4e030a61a18078",
+      "originalHash": "sha256:dcbdc609280db0ac5a7f40820d5cc3b951df7f1dcb36aa2ec255741a265e1e7a",
       "status": "unchanged"
     },
     ".pi/scripts/languages/go/validate-tests.sh": {
@@ -1015,17 +1015,17 @@
     },
     ".pi/scripts/languages/python/validate-architecture.sh": {
       "category": "framework",
-      "originalHash": "sha256:b6f1c2112ffdaf7a0dc835f105ec27c7aa1cd5abfe646725591bc6e0549f31d4",
+      "originalHash": "sha256:34fd11fbd19cee0856f8c1c1f99becb7154646886d26ccd239673de863919265",
       "status": "unchanged"
     },
     ".pi/scripts/languages/python/validate-security.sh": {
       "category": "framework",
-      "originalHash": "sha256:8d5d076a170c0e36dbcbb14f8099d30d812e022f07d719d14cdae00c31701009",
+      "originalHash": "sha256:a8453e22fb1b1cfdd62a79dd200e35144a13478bc5c2db856b62c4a4c910ac65",
       "status": "unchanged"
     },
     ".pi/scripts/languages/python/validate-canonical.sh": {
       "category": "framework",
-      "originalHash": "sha256:a103e9eabe98aed37b8e52531163212e7dfc15dc554a2be303c4f454d2430b79",
+      "originalHash": "sha256:c1595344580d5eb2399e2dec95e2393b9f772770514da2f81415152c49c9ee78",
       "status": "unchanged"
     },
     ".pi/scripts/languages/python/validate-ci.sh": {
@@ -1035,7 +1035,7 @@
     },
     ".pi/scripts/languages/python/validate-integration.sh": {
       "category": "framework",
-      "originalHash": "sha256:065c60cfe9aba2d4f5e52bf752f0e1db97e48ffd093758b1a00ebc0958047e7f",
+      "originalHash": "sha256:a1e8b48da8e448ec54a3c8ab86567669d536a29ba9920abad23bffea2b55cf1e",
       "status": "unchanged"
     },
     ".pi/scripts/languages/python/validate-tests.sh": {
@@ -1045,22 +1045,22 @@
     },
     ".pi/scripts/languages/typescript/validate-operations.sh": {
       "category": "framework",
-      "originalHash": "sha256:61c6c9f26dc06e7027685807c3eba18c0ee6527e69a070fd1ef8cc08f1ca0c92",
+      "originalHash": "sha256:a6f54c7526002cb928b2d9b272c26dfc38151a6bcf9b16e88d363eaa9c0cda4f",
       "status": "unchanged"
     },
     ".pi/scripts/languages/typescript/validate-architecture.sh": {
       "category": "framework",
-      "originalHash": "sha256:27fda438aea3c16685e5630ab8fcbefe9f35a2c41ab010ef9ec26769c46f572f",
+      "originalHash": "sha256:d81953aaad55f085aad5c822106ada41efdb96d98cffe75af9fdf3b5fb645455",
       "status": "unchanged"
     },
     ".pi/scripts/languages/typescript/validate-security.sh": {
       "category": "framework",
-      "originalHash": "sha256:244280a285eedc000ba540f9aa281965487a632866e5a0a867191b90a747b5fc",
+      "originalHash": "sha256:6efaacb0d964ac4802af1b6e64febcea5381dd7a0532078473a6db4c4d662506",
       "status": "unchanged"
     },
     ".pi/scripts/languages/typescript/validate-canonical.sh": {
       "category": "framework",
-      "originalHash": "sha256:ead8ae65e342b653fb52197af44cc22a14cf96b355213da31a8606ba186505c6",
+      "originalHash": "sha256:fda459070dc7382aa21a18ef35bcef6690785cc2893dc0a21cb7163d65afde7d",
       "status": "unchanged"
     },
     ".pi/scripts/languages/typescript/validate-ci.sh": {
@@ -1070,7 +1070,7 @@
     },
     ".pi/scripts/languages/typescript/validate-integration.sh": {
       "category": "framework",
-      "originalHash": "sha256:ea04b21a89fa59c3b15a3e1988a8341a5cb2b965d0ebf11fe6afd19cc5818676",
+      "originalHash": "sha256:fff4fa86138b9a665530802f27164289030ff9a310e9b83bcfa0aa6d21fadec6",
       "status": "unchanged"
     },
     ".pi/scripts/languages/typescript/validate-tests.sh": {
@@ -1080,12 +1080,12 @@
     },
     ".pi/scripts/languages/java/validate-operations.sh": {
       "category": "framework",
-      "originalHash": "sha256:85ba34bd70b8bb363f434ff8135bd88eebfa09860f90fd6e98faa2bcacd99d16",
+      "originalHash": "sha256:d9311bb85d151a87de536d59ca5ecedb64f8e706dc567676f319e29cd219e86e",
       "status": "unchanged"
     },
     ".pi/scripts/languages/java/validate-architecture.sh": {
       "category": "framework",
-      "originalHash": "sha256:860df0ab3d3405c665775ff330d3ccc42b04532d9e3e52e8381f6a251ef0d043",
+      "originalHash": "sha256:865075e55eac4ddc376801126790a22243cc3afe040ba9ea87ed48e75d7b6100",
       "status": "unchanged"
     },
     ".pi/scripts/languages/java/validate-spring-architecture.sh": {
@@ -1095,7 +1095,7 @@
     },
     ".pi/scripts/languages/java/validate-annotations.sh": {
       "category": "framework",
-      "originalHash": "sha256:d41f71ecd7bc7bedb32cbc2710b7404d4cdc34d049953a48a2cba293a58fed74",
+      "originalHash": "sha256:f203261df873cd3fe3802841b17776c0fae1dc99a03aa214dd16cd4bfa4725dc",
       "status": "unchanged"
     },
     ".pi/scripts/languages/java/validate-security.sh": {
@@ -1105,7 +1105,7 @@
     },
     ".pi/scripts/languages/java/validate-canonical.sh": {
       "category": "framework",
-      "originalHash": "sha256:2305270475030599a2b8e27166f0e6c0f5025b396bf237afcaa3175ad5ec1bcc",
+      "originalHash": "sha256:a14ab70ba53946757a9c3692b9e31291d90fb43df6f6130b20b272a5c379c686",
       "status": "unchanged"
     },
     ".pi/scripts/languages/java/validate-ci.sh": {
@@ -1115,7 +1115,7 @@
     },
     ".pi/scripts/languages/java/validate-integration.sh": {
       "category": "framework",
-      "originalHash": "sha256:ff677d9afbc2ba1503d5bbf935a5a96d77930b8ea85e463e175d46680e188ba3",
+      "originalHash": "sha256:7d918adf8f28b4f91af68bc0f3da661195d6eb922a452e86852fd39b6821b91b",
       "status": "unchanged"
     },
     ".pi/scripts/languages/java/validate-tests.sh": {
@@ -1150,7 +1150,7 @@
     },
     ".pi/skills/rust-enterprise-codegen.md": {
       "category": "framework",
-      "originalHash": "sha256:925da32ef88c0f594db9b1a619d086bbf7f4337ecca9201dd0d702ff9084aead",
+      "originalHash": "sha256:278e23e4be7752607f94f390f6770d2ac5837e28f06ad347bb706d726bc87dba",
       "status": "unchanged"
     },
     ".pi/skills/agents/rust-codegen.md": {
@@ -1200,7 +1200,7 @@
     },
     ".pi/skills/python-enterprise-codegen.md": {
       "category": "framework",
-      "originalHash": "sha256:e5f8b0b4a0524ab6efc96ac63e5def6d7f995620ed9caa0044c11288bc301086",
+      "originalHash": "sha256:89a1bdfbc5d3a1eedb5bf2f4260890321cc892e0893121e48d4b3f91d6e978c2",
       "status": "unchanged"
     },
     ".pi/skills/nextjs-enterprise-codegen.md": {
@@ -1234,5 +1234,5 @@
     "domainDescription": "main rigorix project, parent for engine, cli and github actions"
   },
   "scaffoldedAt": "2026-06-21T19:05:41.403Z",
-  "lastUpdatedAt": "2026-07-17T21:07:24.367Z"
+  "lastUpdatedAt": "2026-07-20T15:43:56.691Z"
 }

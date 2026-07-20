@@ -67,7 +67,7 @@ if command -v govulncheck &>/dev/null && [ -f "go.mod" ]; then
         warn "govulncheck reported findings (review manually)"
     fi
 elif [ -f "go.mod" ]; then
-    DEP_COUNT=$(go list -m all 2>/dev/null | wc -l | tr -d ' ')
+    DEP_COUNT=$(go list -m all 2>/dev/null | wc -l | tr -d ' ') || true
     warn "govulncheck not available; $DEP_COUNT dependencies require manual review"
 else
     warn "Not in a Go module, skipping dependency audit"
@@ -99,8 +99,8 @@ fi
 echo ""
 echo "--- Input Validation ---"
 if [ -f "go.mod" ]; then
-    TEXT_TEMPLATE=$(grep -rl '"text/template"' . --include="*.go" 2>/dev/null | grep -v "_test.go" | wc -l | tr -d ' ')
-    HTML_TEMPLATE=$(grep -rl '"html/template"' . --include="*.go" 2>/dev/null | wc -l | tr -d ' ')
+    TEXT_TEMPLATE=$(grep -rl '"text/template"' . --include="*.go" 2>/dev/null | grep -v "_test.go" | wc -l | tr -d ' ') || true
+    HTML_TEMPLATE=$(grep -rl '"html/template"' . --include="*.go" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$TEXT_TEMPLATE" -eq 0 ]; then
         pass "No text/template usage in production code (html/template auto-escapes)"
     elif [ "$HTML_TEMPLATE" -gt 0 ]; then

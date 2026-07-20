@@ -26,9 +26,9 @@ SRC_DIR="${1:-src}"
 
 # ── Architecture reference tracing ──
 echo "--- Architecture Reference Tracing ---"
-TOTAL_PY_FILES=$(find "$SRC_DIR" -name "*.py" 2>/dev/null | wc -l | tr -d ' ')
+TOTAL_PY_FILES=$(find "$SRC_DIR" -name "*.py" 2>/dev/null | wc -l | tr -d ' ') || true
 if [ "$TOTAL_PY_FILES" -gt 0 ]; then
-    FILES_WITH_REFS=$(grep -rlE "(Canonical:|@canonical|Reference:.*\.pi/architecture)" "$SRC_DIR" --include="*.py" 2>/dev/null | wc -l | tr -d ' ')
+    FILES_WITH_REFS=$(grep -rlE "(Canonical:|@canonical|Reference:.*\.pi/architecture)" "$SRC_DIR" --include="*.py" 2>/dev/null | wc -l | tr -d ' ') || true
     PCT=$((FILES_WITH_REFS * 100 / TOTAL_PY_FILES))
     if [ "$FILES_WITH_REFS" -gt 0 ]; then
         pass "Canonical references detected in $FILES_WITH_REFS/$TOTAL_PY_FILES files (${PCT}%)"
@@ -92,8 +92,8 @@ fi
 echo ""
 echo "--- ADR Linkage ---"
 if [ -d ".pi/architecture/decisions" ]; then
-    ADR_COUNT=$(find .pi/architecture/decisions -name "ADR-*.md" 2>/dev/null | wc -l | tr -d ' ')
-    ADR_REFS=$(grep -rlE "ADR-[0-9]+" "$SRC_DIR" --include="*.py" 2>/dev/null | wc -l | tr -d ' ')
+    ADR_COUNT=$(find .pi/architecture/decisions -name "ADR-*.md" 2>/dev/null | wc -l | tr -d ' ') || true
+    ADR_REFS=$(grep -rlE "ADR-[0-9]+" "$SRC_DIR" --include="*.py" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$ADR_REFS" -gt 0 ]; then
         pass "ADR references found in $ADR_REFS source files ($ADR_COUNT ADRs exist)"
     else

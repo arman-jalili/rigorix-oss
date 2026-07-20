@@ -24,8 +24,8 @@ echo "--- Architecture Reference Tracing ---"
 CANONICAL_REFS=0
 TOTAL_TS_FILES=0
 if [ -d "$SRC_DIR" ]; then
-    TOTAL_TS_FILES=$(find "$SRC_DIR" -name "*.ts" -o -name "*.tsx" 2>/dev/null | wc -l | tr -d ' ')
-    CANONICAL_REFS=$(find "$SRC_DIR" -type f \( -name "*.ts" -o -name "*.tsx" \) -exec grep -lE '(// Canonical:|@canonical).*\.pi/architecture/' {} + 2>/dev/null | wc -l | tr -d ' ')
+    TOTAL_TS_FILES=$(find "$SRC_DIR" -name "*.ts" -o -name "*.tsx" 2>/dev/null | wc -l | tr -d ' ') || true
+    CANONICAL_REFS=$(find "$SRC_DIR" -type f \( -name "*.ts" -o -name "*.tsx" \) -exec grep -lE '(// Canonical:|@canonical).*\.pi/architecture/' {} + 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$TOTAL_TS_FILES" -gt 0 ] && [ "$CANONICAL_REFS" -gt 0 ]; then
         PCT=$((CANONICAL_REFS * 100 / TOTAL_TS_FILES))
         pass "Canonical references found: $CANONICAL_REFS / $TOTAL_TS_FILES files ($PCT%)"
@@ -77,7 +77,7 @@ if [ -d "$SRC_DIR" ]; then
     EXPORT_WITH_DOCS=0
     EXPORTS_TOTAL=0
     # Check for documented exports: JSDoc comment (/** ... */) immediately before export
-    EXPORTS_TOTAL=$(grep -rE "^\s*(export\s+(const|function|class|interface|type|default))" "$SRC_DIR" --include="*.ts" --include="*.tsx" 2>/dev/null | wc -l | tr -d ' ')
+    EXPORTS_TOTAL=$(grep -rE "^\s*(export\s+(const|function|class|interface|type|default))" "$SRC_DIR" --include="*.ts" --include="*.tsx" 2>/dev/null | wc -l | tr -d ' ') || true
     EXPORT_WITH_DOCS=$(grep -B1 -rE "^\s*(export\s+(const|function|class|interface|type|default))" "$SRC_DIR" --include="*.ts" --include="*.tsx" 2>/dev/null | grep -c '\*/' 2>/dev/null || echo "0")
     if [ "$EXPORTS_TOTAL" -gt 0 ]; then
         if [ "$EXPORT_WITH_DOCS" -gt 0 ]; then
@@ -99,8 +99,8 @@ fi
 echo ""
 echo "--- ADR Linkage ---"
 if [ -d ".pi/architecture/decisions" ]; then
-    ADR_FILES=$(find .pi/architecture/decisions -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
-    ADR_REFS=$(find "$SRC_DIR" -type f \( -name "*.ts" -o -name "*.tsx" \) -exec grep -rlE '(@adr|ADR-)' {} + 2>/dev/null | wc -l | tr -d ' ')
+    ADR_FILES=$(find .pi/architecture/decisions -name "*.md" 2>/dev/null | wc -l | tr -d ' ') || true
+    ADR_REFS=$(find "$SRC_DIR" -type f \( -name "*.ts" -o -name "*.tsx" \) -exec grep -rlE '(@adr|ADR-)' {} + 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$ADR_FILES" -gt 0 ] && [ "$ADR_REFS" -gt 0 ]; then
         pass "ADR references found: $ADR_REFS files link to $ADR_FILES decisions"
     elif [ "$ADR_FILES" -gt 0 ]; then

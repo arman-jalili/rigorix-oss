@@ -95,7 +95,7 @@ if [ -d "$SRC_DIR" ]; then
     if [ -n "$FIELD_AUTOWIRED" ]; then
         # Count field-level @Autowired (not constructor)
         FIELD_COUNT=$(echo "$FIELD_AUTOWIRED" | wc -l | tr -d ' ')
-        CONSTRUCTOR_COUNT=$(grep -rn "@Autowired\s*$" "$SRC_DIR" --include="*.java" 2>/dev/null | grep -v "//\|/\*" | wc -l | tr -d ' ')
+        CONSTRUCTOR_COUNT=$(grep -rn "@Autowired\s*$" "$SRC_DIR" --include="*.java" 2>/dev/null | grep -v "//\|/\*" | wc -l | tr -d ' ') || true
 
         # Heuristic: more field injections than constructor injections
         if [ "$FIELD_COUNT" -gt "$CONSTRUCTOR_COUNT" ]; then

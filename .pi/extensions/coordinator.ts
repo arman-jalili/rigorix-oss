@@ -10,6 +10,7 @@
  */
 
 type ExtensionContext = {
+	cwd: string;
 	ui: { notify(message: string, level?: string): void };
 	shell: {
 		execute(
@@ -179,10 +180,19 @@ export default function (pi: ExtensionAPI) {
 
 				const scriptPath = VALIDATORS[validator];
 				try {
-					const result = await ctx.shell.execute(`bash ${scriptPath}`, { signal });
-					results[validator] = { passed: result.exitCode === 0, output: result.stdout };
+					const { execFileSync } = require("node:child_process");
+					const cwd = ctx.cwd || process.cwd();
+					const result = execFileSync("bash", [scriptPath], {
+						cwd,
+						timeout: 120_000,
+						encoding: "utf-8",
+						stdio: ["ignore", "pipe", "pipe"],
+					});
+					results[validator] = { passed: true, output: (result || "").trim() };
 				} catch (error) {
-					results[validator] = { passed: false, output: `Error: ${error}` };
+					const err = error as { stdout?: string | Buffer; stderr?: string | Buffer };
+					const stdout = (err.stdout || "").toString().slice(0, 500);
+					results[validator] = { passed: false, output: stdout || String(error) };
 				}
 			}
 

@@ -32,7 +32,7 @@ echo "--- Hardcoded Secrets ---"
 SECRET_COUNT=0
 for ext in ts tsx; do
     COUNT=$(find . -name "*.$ext" -not -path "./node_modules/*" -not -path "./.next/*" -not -path "./dist/*" \
-        -exec grep -E "(apiKey|api_key|apiKey|secret|password|token|privateKey)\s*[:=]\s*['\"][^'\"]{8,}['\"]" {} + 2>/dev/null | wc -l | tr -d ' ')
+        -exec grep -E "(apiKey|api_key|apiKey|secret|password|token|privateKey)\s*[:=]\s*['\"][^'\"]{8,}['\"]" {} + 2>/dev/null | wc -l | tr -d ' ') || true
     SECRET_COUNT=$((SECRET_COUNT + COUNT))
 done
 if [ "$SECRET_COUNT" -eq 0 ]; then
@@ -50,7 +50,7 @@ INJECTION_PATTERNS=0
 for ext in ts tsx; do
     # Template literals used with query/exec calls
     COUNT=$(find . -name "*.$ext" -not -path "./node_modules/*" -not -path "./.next/*" -not -path "./dist/*" \
-        -exec grep -E "\.(query|exec)\(\s*\`" {} + 2>/dev/null | wc -l | tr -d ' ')
+        -exec grep -E "\.(query|exec)\(\s*\`" {} + 2>/dev/null | wc -l | tr -d ' ') || true
     INJECTION_PATTERNS=$((INJECTION_PATTERNS + COUNT))
 done
 if [ "$INJECTION_PATTERNS" -eq 0 ]; then
@@ -97,7 +97,7 @@ echo "--- eval / Dangerous Patterns ---"
 DANGEROUS_COUNT=0
 for ext in ts tsx; do
     COUNT=$(find . -name "*.$ext" -not -path "./node_modules/*" -not -path "./.next/*" -not -path "./dist/*" \
-        -exec grep -E "(eval\(|innerHTML\s*=|dangerouslySetInnerHTML)" {} + 2>/dev/null | wc -l | tr -d ' ')
+        -exec grep -E "(eval\(|innerHTML\s*=|dangerouslySetInnerHTML)" {} + 2>/dev/null | wc -l | tr -d ' ') || true
     DANGEROUS_COUNT=$((DANGEROUS_COUNT + COUNT))
 done
 if [ "$DANGEROUS_COUNT" -eq 0 ]; then
@@ -114,14 +114,14 @@ echo "--- XSS Prevention ---"
 SANITIZE_LIBS=0
 for ext in ts tsx; do
     COUNT=$(find . -name "*.$ext" -not -path "./node_modules/*" -not -path "./.next/*" -not -path "./dist/*" \
-        -exec grep -lE "(DOMPurify|sanitize-html|xss|sanitize)" {} + 2>/dev/null | wc -l | tr -d ' ')
+        -exec grep -lE "(DOMPurify|sanitize-html|xss|sanitize)" {} + 2>/dev/null | wc -l | tr -d ' ') || true
     SANITIZE_LIBS=$((SANITIZE_LIBS + COUNT))
 done
 if [ "$SANITIZE_LIBS" -gt 0 ]; then
     pass "Sanitization libraries detected ($SANITIZE_LIBS files)"
 else
     # Only warn if there are TSX files (likely has JSX/DOM rendering)
-    TSX_COUNT=$(find . -name "*.tsx" -not -path "./node_modules/*" -not -path "./.next/*" -not -path "./dist/*" 2>/dev/null | wc -l | tr -d ' ')
+    TSX_COUNT=$(find . -name "*.tsx" -not -path "./node_modules/*" -not -path "./.next/*" -not -path "./dist/*" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$TSX_COUNT" -gt 0 ]; then
         warn "No sanitization library found in TSX files (consider DOMPurify or sanitize-html)"
     else
@@ -137,7 +137,7 @@ echo "--- HTTPS Enforcement ---"
 HTTP_ONLY=0
 for ext in ts tsx; do
     COUNT=$(find . -name "*.$ext" -not -path "./node_modules/*" -not -path "./.next/*" -not -path "./dist/*" \
-        -exec grep -E "['\"]http://(?!localhost)" {} + 2>/dev/null | grep -ivE "(test|spec|mock|example|dev)" | wc -l | tr -d ' ')
+        -exec grep -E "['\"]http://(?!localhost)" {} + 2>/dev/null | grep -ivE "(test|spec|mock|example|dev)" | wc -l | tr -d ' ') || true
     HTTP_ONLY=$((HTTP_ONLY + COUNT))
 done
 if [ "$HTTP_ONLY" -eq 0 ]; then

@@ -149,11 +149,11 @@ check_tenant_isolation() {
                     has_tenant_filter=true
                 fi
                 if [[ "$has_tenant_filter" == "false" ]]; then
-                    violations=$((violations + 1))
+                    ((violations++))
                     log_fail "$check_name" "Model $(basename "$model_file") has tenant_id but no tenant-scoped queries"
                 fi
             fi
-        done < <(find . -not -path "*/target/*" -not -path "*/.git/*" \( -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" \) 2>/dev/null | head -50)
+        done < <(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -50)
     fi
 
     if [[ $violations -eq 0 ]]; then
@@ -187,7 +187,7 @@ check_event_ordering() {
     esac
 
     local has_ordering=false
-    for f in $(find . -not -path "*/target/*" -not -path "*/.git/*" \( -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" \) 2>/dev/null | head -30); do
+    for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
         if grep -qE "(sequence|sequence_num|causal|version|timestamp.*order)" "$f" 2>/dev/null; then
             has_ordering=true
             break
@@ -229,7 +229,7 @@ check_outbox_dlq() {
     local has_outbox=false
     local has_dlq=false
 
-    for f in $(find . -not -path "*/target/*" -not -path "*/.git/*" \( -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" \) 2>/dev/null | head -30); do
+    for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
         grep -qi "outbox" "$f" 2>/dev/null && has_outbox=true
         grep -qi "dead.letter\|dlq\|failed.queue" "$f" 2>/dev/null && has_dlq=true
     done
@@ -269,7 +269,7 @@ check_replay_upcaster() {
     local has_replay=false
     local has_upcaster=false
 
-    for f in $(find . -not -path "*/target/*" -not -path "*/.git/*" \( -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" \) 2>/dev/null | head -30); do
+    for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
         grep -qi "replay\|replay_from\|replay_events" "$f" 2>/dev/null && has_replay=true
         grep -qi "upcast\|schema.*version\|migrate.*event" "$f" 2>/dev/null && has_upcaster=true
     done
@@ -307,7 +307,7 @@ check_runstarted_publication() {
     esac
 
     local has_publication=false
-    for f in $(find . -not -path "*/target/*" -not -path "*/.git/*" \( -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" \) 2>/dev/null | head -30); do
+    for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
         if grep -qi "run.started\|run_started\|RunStarted\|runstarted" "$f" 2>/dev/null; then
             has_publication=true
             break
@@ -347,7 +347,7 @@ check_runstarted_worker_activation() {
     esac
 
     local has_worker_activation=false
-    for f in $(find . -not -path "*/target/*" -not -path "*/.git/*" \( -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" \) 2>/dev/null | head -30); do
+    for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
         if grep -qi "worker.*start\|activate.*worker\|on_run.*start" "$f" 2>/dev/null; then
             has_worker_activation=true
             break
@@ -387,7 +387,7 @@ check_bounded_execution() {
     esac
 
     local has_bounds=false
-    for f in $(find . -not -path "*/target/*" -not -path "*/.git/*" \( -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" \) 2>/dev/null | head -30); do
+    for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
         if grep -qiE "(timeout|max_steps|max_tokens|step_limit|bounded|circuit.breaker)" "$f" 2>/dev/null; then
             has_bounds=true
             break
@@ -427,7 +427,7 @@ check_artifact_proof_surfaces() {
     esac
 
     local has_proof=false
-    for f in $(find . -not -path "*/target/*" -not -path "*/.git/*" \( -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" \) 2>/dev/null | head -30); do
+    for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
         if grep -qiE "(artifact.*proof|proof.*surface|verification.*artifact|artifact_hash)" "$f" 2>/dev/null; then
             has_proof=true
             break
@@ -521,7 +521,7 @@ check_runtime_baseline() {
         while IFS= read -r var; do
             var_name=$(echo "$var" | cut -d= -f1)
             if [[ -z "${!var_name:-}" ]]; then
-                unbound=$((unbound + 1))
+                ((unbound++))
             fi
         done < <(grep -v "^#" .env.example 2>/dev/null | grep "=" || true)
         if [[ $unbound -eq 0 ]]; then
@@ -560,7 +560,7 @@ check_controlled_stage_progression() {
     esac
 
     local has_state_machine=false
-    for f in $(find . -not -path "*/target/*" -not -path "*/.git/*" \( -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" \) 2>/dev/null | head -30); do
+    for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
         if grep -qiE "(state_machine|transition|Stage\(|step_to|next_stage|progression)" "$f" 2>/dev/null; then
             has_state_machine=true
             break
@@ -601,9 +601,9 @@ check_arch_sanity() {
 
     # Generic: no orphaned imports
     local orphaned_imports=0
-    for f in $(find . -not -path "*/target/*" -not -path "*/.git/*" \( -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" \) 2>/dev/null | head -30); do
+    for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
         if grep -qE "^import.*UNUSED|^from.*UNUSED" "$f" 2>/dev/null; then
-            orphaned_imports=$((orphaned_imports + 1))
+            ((orphaned_imports++))
         fi
     done
     if [[ $orphaned_imports -gt 0 ]]; then
@@ -614,7 +614,7 @@ check_arch_sanity() {
 
     # Concurrency safety patterns
     local has_concurrency_safety=false
-    for f in $(find . -not -path "*/target/*" -not -path "*/.git/*" \( -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" \) 2>/dev/null | head -30); do
+    for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
         if grep -qiE "(lock|mutex|atomic|transaction|isolation|concurrent\.)" "$f" 2>/dev/null; then
             has_concurrency_safety=true
             break
@@ -636,7 +636,7 @@ check_arch_sanity() {
                 example_val=$(grep "^${var_name}=" ".env.example" | cut -d= -f2-)
                 actual_val=$(grep "^${var_name}=" ".env" | cut -d= -f2-)
                 if [[ "$example_val" == "$actual_val" ]]; then
-                    collisions=$((collisions + 1))
+                    ((collisions++))
                 fi
             fi
         done < <(grep -v "^#" .env.example 2>/dev/null | grep "=" || true)
@@ -674,7 +674,7 @@ check_import_boundaries() {
     esac
 
     # Basic check: no cross-layer violations
-    # Layer structure: app/domain → app/application → app/infrastructure → app/api
+    # DDD 4-layer structure: domain/ → application/ → infrastructure/ → interfaces/
     local violations=0
 
     for layer_dir in app/domain app/application app/infrastructure app/api src/domain src/application src/infrastructure src/api; do
@@ -682,18 +682,47 @@ check_import_boundaries() {
         while IFS= read -r file; do
             [[ -f "$file" ]] || continue
             if [[ "$layer_dir" == *"domain" ]]; then
-                if grep -qE "from.*infrastructure|from.*api|import.*infrastructure|import.*api" "$file" 2>/dev/null; then
-                    violations=$((violations + 1))
-                    log_fail "$check_name" "Domain layer imports from infrastructure/api in $(basename "$file")"
+                if grep -qE "from.*infrastructure|from.*api|from.*interfaces|import.*infrastructure|import.*api|import.*interfaces" "$file" 2>/dev/null; then
+                    ((violations++))
+                    log_fail "$check_name" "Domain layer imports from outer layer in $(basename "$file")"
                 fi
             fi
             if [[ "$layer_dir" == *"application" ]]; then
-                if grep -qE "from.*api|import.*api" "$file" 2>/dev/null; then
-                    violations=$((violations + 1))
-                    log_fail "$check_name" "Application layer imports from api in $(basename "$file")"
+                if grep -qE "from.*api|from.*interfaces|import.*api|import.*interfaces" "$file" 2>/dev/null; then
+                    ((violations++))
+                    log_fail "$check_name" "Application layer imports from api/interfaces in $(basename "$file")"
                 fi
             fi
-        done < <(find "$layer_dir" -not -path "*/target/*" -not -path "*/.git/*" \( -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" \) 2>/dev/null | head -20)
+        done < <(find "$layer_dir" -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -20)
+    done
+
+    # Also check per-module 4-layer DDD structure directly under src/
+    local module_dirs
+    module_dirs=$(find src -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
+    for module_dir in $module_dirs; do
+        module=$(basename "$module_dir")
+        # Skip non-DDD modules (CLI, config, shared)
+        case "$module" in shared|common|config|lib|bin) continue ;; esac
+        
+        # Check contracts/ anti-pattern
+        if [[ -d "${module_dir}/contracts" ]]; then
+            log_fail "$check_name" "Module '${module}' has contracts/ wrapper — should use domain/ application/ infrastructure/ interfaces/"
+        fi
+        
+        # Check required DDD layers
+        local layers_present=0
+        local layers_missing=""
+        for layer in domain application infrastructure interfaces; do
+            if [[ -d "${module_dir}/${layer}" ]]; then
+                layers_present=$((layers_present + 1))
+            else
+                layers_missing="${layers_missing} ${layer}"
+            fi
+        done
+        
+        if [[ "$layers_present" -gt 0 ]] && [[ "$layers_present" -lt 4 ]]; then
+            log_fail "$check_name" "Module '${module}' has incomplete DDD layers (missing:${layers_missing})"
+        fi
     done
 
     if [[ $violations -eq 0 ]]; then

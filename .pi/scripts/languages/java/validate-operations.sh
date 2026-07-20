@@ -44,10 +44,10 @@ fi
 echo ""
 echo "--- @Scheduled Tasks ---"
 if [ -d "$SRC_DIR" ]; then
-    SCHEDULED_COUNT=$(grep -r "@Scheduled" "$SRC_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ')
+    SCHEDULED_COUNT=$(grep -r "@Scheduled" "$SRC_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$SCHEDULED_COUNT" -gt 0 ]; then
         # Check if @EnableScheduling is present
-        ENABLED_SCHEDULING=$(grep -r "@EnableScheduling" "$SRC_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ')
+        ENABLED_SCHEDULING=$(grep -r "@EnableScheduling" "$SRC_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ') || true
         if [ "$ENABLED_SCHEDULING" -gt 0 ]; then
             pass "$SCHEDULED_COUNT @Scheduled tasks found with @EnableScheduling"
         else
@@ -64,9 +64,9 @@ fi
 echo ""
 echo "--- @Async Tasks ---"
 if [ -d "$SRC_DIR" ]; then
-    ASYNC_COUNT=$(grep -r "@Async" "$SRC_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ')
+    ASYNC_COUNT=$(grep -r "@Async" "$SRC_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$ASYNC_COUNT" -gt 0 ]; then
-        ENABLED_ASYNC=$(grep -r "@EnableAsync" "$SRC_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ')
+        ENABLED_ASYNC=$(grep -r "@EnableAsync" "$SRC_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ') || true
         if [ "$ENABLED_ASYNC" -gt 0 ]; then
             pass "$ASYNC_COUNT @Async methods found with @EnableAsync"
         else

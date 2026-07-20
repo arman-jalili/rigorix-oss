@@ -32,7 +32,7 @@ if [ -d "$SRC_DIR" ] || [ -d "." ]; then
     for dir in $SEARCH_DIRS; do
         [ -d "$dir" ] || continue
         FOUND=$(find "$dir" -type f \( -name "*.ts" -o -name "*.tsx" \) -not -path "*/node_modules/*" \
-            -exec grep -lE "(winston|pino|bunyan|console\.(log|info|warn|error))" {} + 2>/dev/null | wc -l | tr -d ' ')
+            -exec grep -lE "(winston|pino|bunyan|console\.(log|info|warn|error))" {} + 2>/dev/null | wc -l | tr -d ' ') || true
         LOGGING_LIBS=$((LOGGING_LIBS + FOUND))
     done
     if [ "$LOGGING_LIBS" -gt 0 ]; then
@@ -52,7 +52,7 @@ echo "--- Health Checks ---"
 HEALTH_ROUTES=0
 if [ -d "$SRC_DIR" ]; then
     HEALTH_ROUTES=$(find "$SRC_DIR" -type f \( -name "*.ts" -o -name "*.tsx" \) -not -path "*/node_modules/*" \
-        -exec grep -lE "(/health[^/]?|/healthz|/ready|/readiness)" {} + 2>/dev/null | wc -l | tr -d ' ')
+        -exec grep -lE "(/health[^/]?|/healthz|/ready|/readiness)" {} + 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$HEALTH_ROUTES" -gt 0 ]; then
         pass "Health check endpoints found ($HEALTH_ROUTES files)"
     else
@@ -70,7 +70,7 @@ echo "--- Graceful Shutdown ---"
 SHUTDOWN_HANDLERS=0
 if [ -d "$SRC_DIR" ]; then
     SHUTDOWN_HANDLERS=$(find "$SRC_DIR" -type f \( -name "*.ts" -o -name "*.tsx" \) -not -path "*/node_modules/*" \
-        -exec grep -lE "process\.on\(['\"]SIG(TERM|INT)['\"]" {} + 2>/dev/null | wc -l | tr -d ' ')
+        -exec grep -lE "process\.on\(['\"]SIG(TERM|INT)['\"]" {} + 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$SHUTDOWN_HANDLERS" -gt 0 ]; then
         pass "Graceful shutdown handlers found ($SHUTDOWN_HANDLERS files)"
     else
@@ -88,7 +88,7 @@ echo "--- Metrics ---"
 METRICS_LIBS=0
 if [ -d "$SRC_DIR" ]; then
     METRICS_LIBS=$(find "$SRC_DIR" -type f \( -name "*.ts" -o -name "*.tsx" \) -not -path "*/node_modules/*" \
-        -exec grep -lE "(prom-client|@opentelemetry|statsd|hot-shots|dd-trace)" {} + 2>/dev/null | wc -l | tr -d ' ')
+        -exec grep -lE "(prom-client|@opentelemetry|statsd|hot-shots|dd-trace)" {} + 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$METRICS_LIBS" -gt 0 ]; then
         pass "Metrics/observability libraries detected ($METRICS_LIBS files)"
     else
@@ -107,10 +107,10 @@ ERROR_PATTERNS=0
 if [ -d "$SRC_DIR" ]; then
     # Check for try/catch blocks
     TRY_CATCH=$(find "$SRC_DIR" -type f \( -name "*.ts" -o -name "*.tsx" \) -not -path "*/node_modules/*" \
-        -exec grep -lE "try\s*\{" {} + 2>/dev/null | wc -l | tr -d ' ')
+        -exec grep -lE "try\s*\{" {} + 2>/dev/null | wc -l | tr -d ' ') || true
     # Check for error middleware (Express-style)
     ERROR_MIDDLEWARE=$(find "$SRC_DIR" -type f \( -name "*.ts" -o -name "*.tsx" \) -not -path "*/node_modules/*" \
-        -exec grep -lE "error.*:.*Error.*req.*res" {} + 2>/dev/null | wc -l | tr -d ' ')
+        -exec grep -lE "error.*:.*Error.*req.*res" {} + 2>/dev/null | wc -l | tr -d ' ') || true
     ERROR_PATTERNS=$((TRY_CATCH + ERROR_MIDDLEWARE))
     if [ "$ERROR_PATTERNS" -gt 0 ]; then
         pass "Error handling patterns found ($ERROR_PATTERNS files with try/catch or error middleware)"
@@ -129,7 +129,7 @@ echo "--- Configuration ---"
 CONFIG_FOUND=0
 if [ -d "$SRC_DIR" ]; then
     CONFIG_FOUND=$(find "$SRC_DIR" -type f \( -name "*.ts" -o -name "*.tsx" \) -not -path "*/node_modules/*" \
-        -exec grep -lE "(dotenv|require\(['\"]config['\"]\)|process\.env)" {} + 2>/dev/null | wc -l | tr -d ' ')
+        -exec grep -lE "(dotenv|require\(['\"]config['\"]\)|process\.env)" {} + 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$CONFIG_FOUND" -gt 0 ]; then
         pass "Configuration management detected ($CONFIG_FOUND files with dotenv/config/process.env)"
     else

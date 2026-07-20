@@ -40,7 +40,7 @@ fi
 echo ""
 echo "--- Health Checks ---"
 if [ -f "go.mod" ]; then
-    HEALTH_ENDPOINTS=$(grep -rE '("/health|/healthz|/ready|/readiness)' . --include="*.go" 2>/dev/null | wc -l | tr -d ' ')
+    HEALTH_ENDPOINTS=$(grep -rE '("/health|/healthz|/ready|/readiness)' . --include="*.go" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$HEALTH_ENDPOINTS" -gt 0 ]; then
         pass "Health/readiness endpoint handlers found ($HEALTH_ENDPOINTS references)"
     else
@@ -94,7 +94,7 @@ fi
 echo ""
 echo "--- Error Wrapping ---"
 if [ -f "go.mod" ]; then
-    WRAP_COUNT=$(grep -rE 'fmt\.Errorf\(.*%w' . --include="*.go" 2>/dev/null | wc -l | tr -d ' ')
+    WRAP_COUNT=$(grep -rE 'fmt\.Errorf\(.*%w' . --include="*.go" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$WRAP_COUNT" -gt 0 ]; then
         pass "Error wrapping with %w found ($WRAP_COUNT usages)"
     else

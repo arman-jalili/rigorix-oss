@@ -41,7 +41,7 @@ fi
 echo ""
 echo "--- Canonical References ---"
 if [ -d ".pi/architecture/modules" ]; then
-    MODULE_COUNT=$(find .pi/architecture/modules -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
+    MODULE_COUNT=$(find .pi/architecture/modules -name "*.md" 2>/dev/null | wc -l | tr -d ' ') || true
     pass "Canonical architecture documents found ($MODULE_COUNT modules)"
 else
     warn "No canonical architecture directory found"
@@ -50,7 +50,7 @@ fi
 # Domain models
 echo ""
 echo "--- Domain Models ---"
-DOMAIN_FILES=$(find "$SRC_DIR" -path "*/domain/*.py" 2>/dev/null | wc -l | tr -d ' ')
+DOMAIN_FILES=$(find "$SRC_DIR" -path "*/domain/*.py" 2>/dev/null | wc -l | tr -d ' ') || true
 if [ "$DOMAIN_FILES" -gt 0 ]; then
     pass "Domain model files found ($DOMAIN_FILES files)"
 else
@@ -60,7 +60,7 @@ fi
 # Dependency direction
 echo ""
 echo "--- Dependency Direction ---"
-DOMAIN_INFRA_IMPORTS=$(find "$SRC_DIR" -path "*/domain/*.py" -exec grep -l "from.*infrastructure" {} + 2>/dev/null | wc -l | tr -d ' ')
+DOMAIN_INFRA_IMPORTS=$(find "$SRC_DIR" -path "*/domain/*.py" -exec grep -l "from.*infrastructure" {} + 2>/dev/null | wc -l | tr -d ' ') || true
 if [ "$DOMAIN_INFRA_IMPORTS" -eq 0 ]; then
     pass "Domain layer has no infrastructure dependencies (clean architecture)"
 else
@@ -70,7 +70,7 @@ fi
 # Error handling
 echo ""
 echo "--- Error Handling ---"
-ERROR_COUNT=$(grep -r "class.*Error" "$SRC_DIR" 2>/dev/null | wc -l | tr -d ' ')
+ERROR_COUNT=$(grep -r "class.*Error" "$SRC_DIR" 2>/dev/null | wc -l | tr -d ' ') || true
 if [ "$ERROR_COUNT" -gt 0 ]; then
     pass "Custom exception classes defined ($ERROR_COUNT found)"
 else
@@ -80,7 +80,7 @@ fi
 # Typed models
 echo ""
 echo "--- Typed Models ---"
-MODEL_COUNT=$(grep -r "@dataclass" "$SRC_DIR" 2>/dev/null | wc -l | tr -d ' ')
+MODEL_COUNT=$(grep -r "@dataclass" "$SRC_DIR" 2>/dev/null | wc -l | tr -d ' ') || true
 if [ "$MODEL_COUNT" -gt 0 ]; then
     pass "Typed dataclass models found ($MODEL_COUNT definitions)"
 else

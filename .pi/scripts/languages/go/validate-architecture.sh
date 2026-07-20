@@ -40,7 +40,7 @@ fi
 echo ""
 echo "--- Canonical References ---"
 if [ -d ".pi/architecture/modules" ]; then
-    MODULE_COUNT=$(find .pi/architecture/modules -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
+    MODULE_COUNT=$(find .pi/architecture/modules -name "*.md" 2>/dev/null | wc -l | tr -d ' ') || true
     pass "Canonical architecture documents found ($MODULE_COUNT modules)"
 else
     warn "No canonical architecture directory (.pi/architecture/modules) found"
@@ -54,7 +54,7 @@ echo "--- Domain Models ---"
 DOMAIN_FILES=0
 for dir in "internal/domain" "pkg/domain"; do
     if [ -d "$dir" ]; then
-        COUNT=$(grep -rlE 'type\s+\w+\s+struct' "$dir" --include="*.go" 2>/dev/null | wc -l | tr -d ' ')
+        COUNT=$(grep -rlE 'type\s+\w+\s+struct' "$dir" --include="*.go" 2>/dev/null | wc -l | tr -d ' ') || true
         DOMAIN_FILES=$((DOMAIN_FILES + COUNT))
     fi
 done
@@ -73,7 +73,7 @@ VIOLATIONS=0
 for dir in "internal/domain" "pkg/domain"; do
     if [ -d "$dir" ]; then
         # Domain should not import from infrastructure or cmd
-        VIOLATIONS=$((VIOLATIONS + $(grep -rlE 'import.*"(.*/infrastructure|/cmd)"' "$dir" --include="*.go" 2>/dev/null | wc -l | tr -d ' ')))
+        VIOLATIONS=$((VIOLATIONS + $(grep -rlE 'import.*"(.*/infrastructure|/cmd)"' "$dir" --include="*.go" 2>/dev/null | wc -l | tr -d ' '))) || true
     fi
 done
 if [ "$VIOLATIONS" -eq 0 ]; then
@@ -88,8 +88,8 @@ fi
 echo ""
 echo "--- Error Handling ---"
 if [ -f "go.mod" ]; then
-    ERROR_VARIABS=$(grep -rE 'var\s+Err\w+\s*=\s*(errors\.New|fmt\.Errorf)' . --include="*.go" 2>/dev/null | wc -l | tr -d ' ')
-    ERROR_STRUCTS=$(grep -rE 'type\s+\w*Error\w*\s+struct' . --include="*.go" 2>/dev/null | wc -l | tr -d ' ')
+    ERROR_VARIABS=$(grep -rE 'var\s+Err\w+\s*=\s*(errors\.New|fmt\.Errorf)' . --include="*.go" 2>/dev/null | wc -l | tr -d ' ') || true
+    ERROR_STRUCTS=$(grep -rE 'type\s+\w*Error\w*\s+struct' . --include="*.go" 2>/dev/null | wc -l | tr -d ' ') || true
     TOTAL=$((ERROR_VARIABS + ERROR_STRUCTS))
     if [ "$TOTAL" -gt 0 ]; then
         pass "Custom error types defined ($TOTAL definitions)"
@@ -106,7 +106,7 @@ fi
 echo ""
 echo "--- Interfaces ---"
 if [ -f "go.mod" ]; then
-    INTERFACE_COUNT=$(grep -rE 'type\s+\w+\s+interface' . --include="*.go" 2>/dev/null | wc -l | tr -d ' ')
+    INTERFACE_COUNT=$(grep -rE 'type\s+\w+\s+interface' . --include="*.go" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$INTERFACE_COUNT" -gt 0 ]; then
         pass "Interface definitions found ($INTERFACE_COUNT interfaces)"
     else

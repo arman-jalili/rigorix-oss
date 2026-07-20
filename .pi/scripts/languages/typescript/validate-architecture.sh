@@ -44,7 +44,7 @@ fi
 echo ""
 echo "--- Canonical References ---"
 if [ -d ".pi/architecture/modules" ]; then
-    MODULE_COUNT=$(find .pi/architecture/modules -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
+    MODULE_COUNT=$(find .pi/architecture/modules -name "*.md" 2>/dev/null | wc -l | tr -d ' ') || true
     pass "Canonical architecture documents found ($MODULE_COUNT modules)"
 else
     warn "No .pi/architecture/modules directory found"
@@ -56,7 +56,7 @@ fi
 echo ""
 echo "--- Domain Models ---"
 if [ -d "$SRC_DIR/domain" ]; then
-    DOMAIN_MODELS=$(find "$SRC_DIR/domain" -name "*.ts" -o -name "*.tsx" 2>/dev/null | xargs grep -lE '\b(interface|type|class)\b' 2>/dev/null | wc -l | tr -d ' ')
+    DOMAIN_MODELS=$(find "$SRC_DIR/domain" -name "*.ts" -o -name "*.tsx" 2>/dev/null | xargs grep -lE '\b(interface|type|class)\b' 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$DOMAIN_MODELS" -gt 0 ]; then
         pass "Domain model definitions found ($DOMAIN_MODELS files with interface/type/class)"
     else
@@ -93,7 +93,7 @@ fi
 echo ""
 echo "--- Error Handling ---"
 if [ -d "$SRC_DIR" ]; then
-    ERROR_CLASSES=$(grep -rE "class\s+\w+Error.*extends\s+(Error|AppError)" "$SRC_DIR" 2>/dev/null | wc -l | tr -d ' ')
+    ERROR_CLASSES=$(grep -rE "class\s+\w+Error.*extends\s+(Error|AppError)" "$SRC_DIR" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$ERROR_CLASSES" -gt 0 ]; then
         pass "Custom error classes defined ($ERROR_CLASSES found)"
     else
@@ -109,7 +109,7 @@ fi
 echo ""
 echo "--- Interfaces / Contracts ---"
 if [ -d "$SRC_DIR" ]; then
-    INTERFACE_COUNT=$(grep -rE "^\s*(export\s+)?interface\s+" "$SRC_DIR" --include="*.ts" --include="*.tsx" 2>/dev/null | wc -l | tr -d ' ')
+    INTERFACE_COUNT=$(grep -rE "^\s*(export\s+)?interface\s+" "$SRC_DIR" --include="*.ts" --include="*.tsx" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$INTERFACE_COUNT" -gt 0 ]; then
         pass "Interface contracts defined ($INTERFACE_COUNT found)"
     else

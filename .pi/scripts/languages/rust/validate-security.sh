@@ -4,9 +4,6 @@
 # ============================================================================
 set -euo pipefail
 
-# Scope to mcp/ package
-cd "$(git rev-parse --show-toplevel 2>/dev/null || echo ".")"/mcp 2>/dev/null || true
-
 PASS_COUNT=0
 ERRORS=()
 WARNINGS=()
@@ -47,13 +44,9 @@ SECRETS_FOUND=$(grep -rnE '=\s*"[A-Za-z0-9+/=_\-]{20,}"' --include="*.rs" src/ 2
     | grep -v '_test\.rs' \
     | grep -v '#\[cfg(test)\]' \
     | grep -v 'mod tests' \
-    | grep -v 'interfaces/http/' \
-    | grep -v 'observability/metrics/' \
-    | grep -v 'AKIAIOSFODNN7EXAMPLE' \
-    | grep -v 'ghp_secret12345' \
-    | wc -l | tr -d ' ' || true)
+    | wc -l | tr -d ' ')
 if [ "$SECRETS_FOUND" -gt 0 ]; then
-    warn "Possible hardcoded secrets found ($SECRETS_FOUND occurrences — verify manually, likely false positives)"
+    fail "Possible hardcoded secrets found ($SECRETS_FOUND occurrences)"
 else
     pass "No hardcoded secrets detected"
 fi
@@ -80,7 +73,7 @@ fi
 echo ""
 echo "--- Dependency Audit ---"
 if command -v cargo &>/dev/null && cargo audit --version &>/dev/null; then
-    AUDIT_OUT=$(cargo audit 2>&1 || true)
+    AUDIT_OUT=$(cargo audit 2>/dev/null || true)
     if echo "$AUDIT_OUT" | grep -qE "No advisabilities found|No known vulnerabilities"; then
         pass "No known vulnerabilities (cargo audit)"
     else

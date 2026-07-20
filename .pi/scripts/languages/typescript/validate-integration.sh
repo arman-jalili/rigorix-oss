@@ -64,9 +64,9 @@ fi
 echo ""
 echo "--- Docker/Compose ---"
 if [ -f "docker-compose.yml" ] || [ -f "docker-compose.yaml" ]; then
-    SERVICES=$(grep -E "^\s{2}\w+:" docker-compose.yml 2>/dev/null | grep -vE "^\s{2}version:|^\s{2}services:" | wc -l | tr -d ' ')
+    SERVICES=$(grep -E "^\s{2}\w+:" docker-compose.yml 2>/dev/null | grep -vE "^\s{2}version:|^\s{2}services:" | wc -l | tr -d ' ') || true
     if [ -f "docker-compose.yaml" ] && [ "$SERVICES" -eq 0 ]; then
-        SERVICES=$(grep -E "^\s{2}\w+:" docker-compose.yaml 2>/dev/null | grep -vE "^\s{2}version:|^\s{2}services:" | wc -l | tr -d ' ')
+        SERVICES=$(grep -E "^\s{2}\w+:" docker-compose.yaml 2>/dev/null | grep -vE "^\s{2}version:|^\s{2}services:" | wc -l | tr -d ' ') || true
     fi
     pass "Docker Compose found ($SERVICES services — integration tests may require running services)"
 else
@@ -81,7 +81,7 @@ echo "--- Contract Tests ---"
 CONTRACT_FILES=0
 for dir in tests test; do
     if [ -d "$dir" ]; then
-        COUNT=$(find "$dir" -name "*.contract.test.ts" -o -name "*.contract.test.tsx" 2>/dev/null | wc -l | tr -d ' ')
+        COUNT=$(find "$dir" -name "*.contract.test.ts" -o -name "*.contract.test.tsx" 2>/dev/null | wc -l | tr -d ' ') || true
         CONTRACT_FILES=$((CONTRACT_FILES + COUNT))
     fi
 done
@@ -99,7 +99,7 @@ echo "--- Mock/Stub Detection ---"
 MOCK_USAGE=0
 for ext in ts tsx; do
     COUNT=$(find . -name "*.$ext" -not -path "./node_modules/*" -not -path "./dist/*" \
-        -exec grep -lE "(vitest\.mock|jest\.mock|from\s+['\"]msw['\"]|from\s+['\"]@testing-library)" {} + 2>/dev/null | wc -l | tr -d ' ')
+        -exec grep -lE "(vitest\.mock|jest\.mock|from\s+['\"]msw['\"]|from\s+['\"]@testing-library)" {} + 2>/dev/null | wc -l | tr -d ' ') || true
     MOCK_USAGE=$((MOCK_USAGE + COUNT))
 done
 if [ "$MOCK_USAGE" -gt 0 ]; then
@@ -116,7 +116,7 @@ echo "--- Database Integration ---"
 DB_INTEGRATION_FILES=0
 for dir in tests test; do
     if [ -d "$dir" ]; then
-        COUNT=$(find "$dir" -name "*_integration.test.ts" -o -name "*_integration.test.tsx" -o -name "*.db.test.ts" -o -name "*.db.test.tsx" 2>/dev/null | wc -l | tr -d ' ')
+        COUNT=$(find "$dir" -name "*_integration.test.ts" -o -name "*_integration.test.tsx" -o -name "*.db.test.ts" -o -name "*.db.test.tsx" 2>/dev/null | wc -l | tr -d ' ') || true
         DB_INTEGRATION_FILES=$((DB_INTEGRATION_FILES + COUNT))
     fi
 done
@@ -134,7 +134,7 @@ echo "--- HTTP Integration ---"
 HTTP_LIBS=0
 for ext in ts tsx; do
     COUNT=$(find . -name "*.$ext" -not -path "./node_modules/*" -not -path "./dist/*" \
-        -exec grep -lE "(supertest|msw|@testing-library)" {} + 2>/dev/null | wc -l | tr -d ' ')
+        -exec grep -lE "(supertest|msw|@testing-library)" {} + 2>/dev/null | wc -l | tr -d ' ') || true
     HTTP_LIBS=$((HTTP_LIBS + COUNT))
 done
 if [ "$HTTP_LIBS" -gt 0 ]; then

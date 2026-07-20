@@ -5,6 +5,13 @@
 
 ## General Rules
 
+> **IMPORTANT — Controllers/routers are CONCRETE, no interface needed:**
+> HTTP controllers, routers, and API handlers must NOT have a separate contract
+> interface (no `IUserController`, no `UserHandlerInterface`, no `handlers.ts`
+> as a type contract). The concrete router/handler file IS the contract.
+> Domain interfaces (services, repositories) SHOULD have interfaces — but the
+> HTTP layer is an adapter, not an abstractable domain concern.
+
 Every issue must contain:
 
 - **Why** — Business or platform reason

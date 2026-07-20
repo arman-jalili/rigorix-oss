@@ -49,7 +49,7 @@ fi
 # ── Contract Tests ──
 echo ""
 echo "--- Contract Tests ---"
-CONTRACT_COUNT=$(find tests -name "*contract*" -o -name "*pact*" 2>/dev/null | wc -l | tr -d ' ')
+CONTRACT_COUNT=$(find tests -name "*contract*" -o -name "*pact*" 2>/dev/null | wc -l | tr -d ' ') || true
 if [ "$CONTRACT_COUNT" -gt 0 ]; then
     pass "Contract test files found ($CONTRACT_COUNT)"
 else
@@ -75,7 +75,7 @@ fi
 # ── Database Integration Tests ──
 echo ""
 echo "--- Database Integration Tests ---"
-DB_TEST_COUNT=$(grep -rlE "(pytest.*db|session_scope|test_db|database_url|SQLALCHEMY)" tests/ --include="*.py" 2>/dev/null | wc -l | tr -d ' ')
+DB_TEST_COUNT=$(grep -rlE "(pytest.*db|session_scope|test_db|database_url|SQLALCHEMY)" tests/ --include="*.py" 2>/dev/null | wc -l | tr -d ' ') || true
 if [ "$DB_TEST_COUNT" -gt 0 ]; then
     pass "Database integration tests found ($DB_TEST_COUNT files)"
 else

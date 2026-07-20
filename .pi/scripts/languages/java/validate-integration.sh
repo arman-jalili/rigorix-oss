@@ -24,12 +24,12 @@ TEST_DIR="${2:-src/test/java}"
 echo "--- Test Slice Correctness ---"
 if [ -d "$TEST_DIR" ]; then
     # Check for @SpringBootTest usage (no slice annotations)
-    FULL_CONTEXT_TESTS=$(grep -r "@SpringBootTest" "$TEST_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ')
+    FULL_CONTEXT_TESTS=$(grep -r "@SpringBootTest" "$TEST_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ') || true
     # Check for slice test annotations
-    WEB_MVC_TESTS=$(grep -r "@WebMvcTest" "$TEST_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ')
-    DATA_JPA_TESTS=$(grep -r "@DataJpaTest" "$TEST_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ')
-    JSON_TESTS=$(grep -r "@JsonTest" "$TEST_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ')
-    REST_CLIENT_TESTS=$(grep -r "@RestClientTest" "$TEST_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ')
+    WEB_MVC_TESTS=$(grep -r "@WebMvcTest" "$TEST_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ') || true
+    DATA_JPA_TESTS=$(grep -r "@DataJpaTest" "$TEST_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ') || true
+    JSON_TESTS=$(grep -r "@JsonTest" "$TEST_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ') || true
+    REST_CLIENT_TESTS=$(grep -r "@RestClientTest" "$TEST_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ') || true
 
     TOTAL_SLICE_TESTS=$((WEB_MVC_TESTS + DATA_JPA_TESTS + JSON_TESTS + REST_CLIENT_TESTS))
 
@@ -52,7 +52,7 @@ fi
 echo ""
 echo "--- Context Caching ---"
 if [ -d "$TEST_DIR" ]; then
-    DIRTY_CONTEXT=$(grep -r "@DirtiesContext" "$TEST_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ')
+    DIRTY_CONTEXT=$(grep -r "@DirtiesContext" "$TEST_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$DIRTY_CONTEXT" -gt 0 ]; then
         warn "$DIRTY_CONTEXT @DirtiesContext annotations found — these disable context caching and slow tests"
     else
@@ -74,7 +74,7 @@ if [ -d "$TEST_DIR" ]; then
         TRANSACTIONAL_TESTS=$(echo "$DATA_JPA_CLASSES" | wc -l | tr -d ' ')
     fi
 
-    ROLLBACK_COUNT=$(grep -r "@Rollback" "$TEST_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ')
+    ROLLBACK_COUNT=$(grep -r "@Rollback" "$TEST_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ') || true
 
     if [ "$TRANSACTIONAL_TESTS" -gt 0 ] || [ "$ROLLBACK_COUNT" -gt 0 ]; then
         pass "Database state management found (@DataJpaTest: $TRANSACTIONAL_TESTS, @Rollback: $ROLLBACK_COUNT)"
@@ -103,7 +103,7 @@ fi
 echo ""
 echo "--- Mockito Usage ---"
 if [ -d "$TEST_DIR" ]; then
-    MOCKITO_ANNOTATIONS=$(grep -r "@Mock\|@InjectMocks\|@MockBean\|@SpyBean" "$TEST_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ')
+    MOCKITO_ANNOTATIONS=$(grep -r "@Mock\|@InjectMocks\|@MockBean\|@SpyBean" "$TEST_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$MOCKITO_ANNOTATIONS" -gt 0 ]; then
         pass "Mockito usage detected ($MOCKITO_ANNOTATIONS annotations)"
     else
@@ -117,8 +117,8 @@ fi
 echo ""
 echo "--- Assertions ---"
 if [ -d "$TEST_DIR" ]; then
-    ASSERTJ=$(grep -r "assertThat\|Assertions.assertThat" "$TEST_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ')
-    JUNIT_ASSERT=$(grep -r "assertEquals\|assertTrue\|assertNotNull\|assertThrows" "$TEST_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ')
+    ASSERTJ=$(grep -r "assertThat\|Assertions.assertThat" "$TEST_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ') || true
+    JUNIT_ASSERT=$(grep -r "assertEquals\|assertTrue\|assertNotNull\|assertThrows" "$TEST_DIR" --include="*.java" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$ASSERTJ" -gt 0 ] || [ "$JUNIT_ASSERT" -gt 0 ]; then
         pass "Assertions found (AssertJ: $ASSERTJ, JUnit: $JUNIT_ASSERT)"
     else
