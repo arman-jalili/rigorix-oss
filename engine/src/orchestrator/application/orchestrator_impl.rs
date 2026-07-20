@@ -756,6 +756,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     planning_prompt_content: None, // TODO: populate from config when prompt capture is enabled
                     file_paths: Self::extract_file_paths(&record.task_results),
                     metadata: None,
+                    scoring_results: std::collections::HashMap::new(),
                     sign: false,
                     repository: input.repository.clone(),
                     author: input.author.clone(),
@@ -1139,6 +1140,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     planning_prompt_content: None, // TODO: populate from config when prompt capture is enabled
                     file_paths: Self::extract_file_paths(&record.task_results),
                     metadata: None,
+                    scoring_results: std::collections::HashMap::new(),
                     sign: false,
                     repository: input.repository.clone(),
                     author: input.author.clone(),

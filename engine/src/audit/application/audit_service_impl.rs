@@ -235,6 +235,7 @@ mod tests {
             planning_prompt_content: None,
             file_paths: vec![],
             metadata: None,
+            scoring_results: std::collections::HashMap::new(),
             sign: false,
             repository: None,
             author: None,

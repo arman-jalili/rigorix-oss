@@ -97,7 +97,7 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
             planning_prompt: input.planning_prompt_content,
             file_paths: input.file_paths,
             events: input.events,
-            scoring_results: std::collections::HashMap::new(),
+            scoring_results: input.scoring_results,
             signature: None,
         };
 
@@ -164,6 +164,7 @@ mod tests {
             planning_prompt_content: None,
             file_paths: vec![],
             metadata: None,
+            scoring_results: std::collections::HashMap::new(),
             sign: false,
             repository: None,
             author: None,

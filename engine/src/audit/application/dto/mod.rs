@@ -80,6 +80,10 @@ pub struct BuildEnvelopeInput {
 
     /// Whether to include HMAC signature (requires signing key config).
     pub sign: bool,
+
+    /// Scoring results from scored evaluation nodes, keyed by node_id.
+    #[serde(default)]
+    pub scoring_results: HashMap<String, crate::audit::domain::ScoringResultRef>,
 }
 
 /// Output from building an audit envelope.
