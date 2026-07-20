@@ -10,7 +10,7 @@
 use async_trait::async_trait;
 
 use crate::scored_evaluation::domain::{
-    ScoredEvaluationError, ScoringBackend, ScoringResult, Rubric,
+    Rubric, ScoredEvaluationError, ScoringBackend, ScoringResult,
 };
 
 /// Local script adapter for the Rigorix scoring protocol.
@@ -122,10 +122,7 @@ impl ScoringBackend for LocalBackend {
             .output()
             .await
             .map_err(|e| {
-                ScoredEvaluationError::BackendError(format!(
-                    "Failed to execute script: {}",
-                    e
-                ))
+                ScoredEvaluationError::BackendError(format!("Failed to execute script: {}", e))
             })?;
 
         if !output.status.success() {

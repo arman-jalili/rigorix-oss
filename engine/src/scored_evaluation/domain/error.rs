@@ -115,7 +115,10 @@ mod tests {
     #[test]
     fn test_timeout() {
         let err = ScoredEvaluationError::Timeout(30_000);
-        assert_eq!(err.to_string(), "Timeout: backend did not respond within 30000ms");
+        assert_eq!(
+            err.to_string(),
+            "Timeout: backend did not respond within 30000ms"
+        );
         assert!(err.is_retriable());
         assert_eq!(err.category(), "timeout");
     }

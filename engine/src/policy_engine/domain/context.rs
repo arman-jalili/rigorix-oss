@@ -110,7 +110,7 @@ mod tests {
             diff_scope: DiffScope::Scoped,
             completed: true,
             reconciled: false,
-                scoring_scores: std::collections::HashMap::new(),
+            scoring_scores: std::collections::HashMap::new(),
         };
         assert_eq!(ctx.lane_id, "lane-1");
         assert_eq!(ctx.green_level, 3);
@@ -129,7 +129,7 @@ mod tests {
             diff_scope: DiffScope::Full,
             completed: true,
             reconciled: false,
-                scoring_scores: std::collections::HashMap::new(),
+            scoring_scores: std::collections::HashMap::new(),
         };
         let json = serde_json::to_string(&ctx).unwrap();
         let deserialized: LaneContext = serde_json::from_str(&json).unwrap();

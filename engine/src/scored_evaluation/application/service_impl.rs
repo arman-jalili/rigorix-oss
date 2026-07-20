@@ -84,7 +84,9 @@ impl ScoredEvaluationServiceImpl {
 
     /// Validate that the artifact and rubric are well-formed.
     fn validate_input(&self, input: &EvaluateInput) -> Result<(), ScoredEvaluationError> {
-        if input.artifact.is_null() || input.artifact.is_array() && input.artifact.as_array().map_or(true, |a| a.is_empty()) {
+        if input.artifact.is_null()
+            || input.artifact.is_array() && input.artifact.as_array().is_none_or(|a| a.is_empty())
+        {
             return Err(ScoredEvaluationError::InvalidArtifact(
                 "Artifact must be a non-empty JSON value".to_string(),
             ));
@@ -95,14 +97,6 @@ impl ScoredEvaluationServiceImpl {
             ));
         }
         Ok(())
-    }
-
-    /// Resolve a scoring backend by name.
-    fn resolve_backend(&self, name: &str) -> Result<&dyn ScoringBackend, ScoredEvaluationError> {
-        self.backends
-            .get(name)
-            .map(|b| b.as_ref())
-            .ok_or_else(|| ScoredEvaluationError::BackendNotFound(name.to_string()))
     }
 
     /// Execute the evaluation with retry logic for transient failures.
@@ -132,14 +126,18 @@ impl ScoredEvaluationServiceImpl {
 
 #[async_trait]
 impl ScoredEvaluationService for ScoredEvaluationServiceImpl {
-    async fn evaluate(&self, input: EvaluateInput) -> Result<EvaluateOutput, ScoredEvaluationError> {
+    async fn evaluate(
+        &self,
+        input: EvaluateInput,
+    ) -> Result<EvaluateOutput, ScoredEvaluationError> {
         // 1. Validate input
         self.validate_input(&input)?;
 
         // 2. Resolve backend
         // Find the first configured backend
-        let (backend_name, backend) = self.backends.iter().next()
-            .ok_or_else(|| ScoredEvaluationError::BackendNotFound("no backends configured".to_string()))?;
+        let (backend_name, backend) = self.backends.iter().next().ok_or_else(|| {
+            ScoredEvaluationError::BackendNotFound("no backends configured".to_string())
+        })?;
 
         // 3. Emit started event
         let node_id = input.context.node_id.to_string();
@@ -148,14 +146,13 @@ impl ScoredEvaluationService for ScoredEvaluationServiceImpl {
             execution_id: input.context.execution_id,
             backend: backend_name.clone(),
             timestamp: Utc::now(),
-        }).await;
+        })
+        .await;
 
         // 4. Execute evaluation with retry
-        let result = self.execute_with_retry(
-            backend.as_ref(),
-            &input.artifact,
-            &input.rubric,
-        ).await;
+        let result = self
+            .execute_with_retry(backend.as_ref(), &input.artifact, &input.rubric)
+            .await;
 
         let timestamp = Utc::now();
 
@@ -167,7 +164,8 @@ impl ScoredEvaluationService for ScoredEvaluationServiceImpl {
                     execution_id: input.context.execution_id,
                     result: scoring_result.clone(),
                     timestamp,
-                }).await;
+                })
+                .await;
 
                 // Persist result
                 let output = EvaluateOutput::new(
@@ -188,7 +186,8 @@ impl ScoredEvaluationService for ScoredEvaluationServiceImpl {
                     execution_id: input.context.execution_id,
                     error: error.to_string(),
                     timestamp,
-                }).await;
+                })
+                .await;
 
                 Err(error)
             }
@@ -214,7 +213,7 @@ impl ScoredEvaluationService for ScoredEvaluationServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scored_evaluation::domain::{Rubric, ScoringResult, ScoreDimension};
+    use crate::scored_evaluation::domain::{Rubric, ScoreDimension, ScoringResult};
     use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::Mutex;
@@ -286,6 +285,7 @@ mod tests {
         }
     }
 
+    #[allow(dead_code)]
     struct MockEventSink {
         events: Arc<Mutex<Vec<ScoredEvaluationEvent>>>,
     }
@@ -319,7 +319,9 @@ mod tests {
         );
 
         let results = Arc::new(Mutex::new(Vec::new()));
-        let repository = Box::new(MockRepository { results: results.clone() });
+        let repository = Box::new(MockRepository {
+            results: results.clone(),
+        });
 
         ScoredEvaluationServiceImpl::new(backends, repository)
     }
@@ -352,7 +354,10 @@ mod tests {
         );
         let result = service.evaluate(input).await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), ScoredEvaluationError::InvalidArtifact(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            ScoredEvaluationError::InvalidArtifact(_)
+        ));
     }
 
     #[tokio::test]

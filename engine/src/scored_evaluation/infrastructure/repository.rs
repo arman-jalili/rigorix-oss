@@ -34,14 +34,8 @@ pub trait EvaluationRepository: Send + Sync {
     ) -> Result<Option<EvaluateOutput>, ScoredEvaluationError>;
 
     /// List all evaluations for a given execution.
-    async fn list(
-        &self,
-        execution_id: Uuid,
-    ) -> Result<Vec<EvaluateOutput>, ScoredEvaluationError>;
+    async fn list(&self, execution_id: Uuid) -> Result<Vec<EvaluateOutput>, ScoredEvaluationError>;
 
     /// Delete all evaluations for a given execution.
-    async fn delete_by_execution(
-        &self,
-        execution_id: Uuid,
-    ) -> Result<(), ScoredEvaluationError>;
+    async fn delete_by_execution(&self, execution_id: Uuid) -> Result<(), ScoredEvaluationError>;
 }

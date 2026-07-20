@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 
 use crate::scored_evaluation::domain::{
-    ScoredEvaluationError, ScoringBackend, ScoringResult, Rubric,
+    Rubric, ScoredEvaluationError, ScoringBackend, ScoringResult,
 };
 
 /// HTTP REST adapter for the Rigorix scoring protocol.
@@ -30,16 +30,12 @@ pub struct HttpBackend {
 
 impl HttpBackend {
     /// Create a new HTTP backend adapter.
-    pub fn new(
-        url: impl Into<String>,
-        headers: HashMap<String, String>,
-        timeout_ms: u64,
-    ) -> Self {
+    pub fn new(url: impl Into<String>, headers: HashMap<String, String>, timeout_ms: u64) -> Self {
         let timeout = std::time::Duration::from_millis(timeout_ms);
         let mut client_builder = reqwest::Client::builder().timeout(timeout);
 
-        if let Some(auth) = headers.get("Authorization") {
-            if let Some(_bearer) = auth.strip_prefix("Bearer ") {
+        if let Some(auth) = headers.get("Authorization")
+            && let Some(_bearer) = auth.strip_prefix("Bearer ") {
                 let mut auth_value = reqwest::header::HeaderValue::try_from(auth.as_str()).ok();
                 if let Some(val) = auth_value.as_mut() {
                     client_builder = client_builder.default_headers({
@@ -49,7 +45,6 @@ impl HttpBackend {
                     });
                 }
             }
-        }
 
         Self {
             name: "http",
@@ -99,13 +94,11 @@ impl ScoringBackend for HttpBackend {
 
         // Add custom headers
         for (key, value) in &self.headers {
-            if key != "Authorization" {
-                if let Some(header_name) = key.parse::<reqwest::header::HeaderName>().ok() {
-                    if let Some(header_value) = value.parse::<reqwest::header::HeaderValue>().ok() {
+            if key != "Authorization"
+                && let Ok(header_name) = key.parse::<reqwest::header::HeaderName>()
+                    && let Ok(header_value) = value.parse::<reqwest::header::HeaderValue>() {
                         request = request.header(header_name, header_value);
                     }
-                }
-            }
         }
 
         let response = request.send().await.map_err(|e| {
@@ -126,10 +119,7 @@ impl ScoringBackend for HttpBackend {
         }
 
         let scoring_result: ScoringResult = response.json().await.map_err(|e| {
-            ScoredEvaluationError::BackendError(format!(
-                "Invalid ScoringResult response: {}",
-                e
-            ))
+            ScoredEvaluationError::BackendError(format!("Invalid ScoringResult response: {}", e))
         })?;
 
         Ok(scoring_result)
@@ -178,7 +168,11 @@ mod tests {
         let mut headers = HashMap::new();
         headers.insert("Authorization".to_string(), "Bearer token123".to_string());
         headers.insert("X-Custom".to_string(), "value".to_string());
-        let backend = HttpBackend::new("https://evaluate.example.com/score", headers.clone(), 10_000);
+        let backend = HttpBackend::new(
+            "https://evaluate.example.com/score",
+            headers.clone(),
+            10_000,
+        );
         assert_eq!(
             backend.headers().get("Authorization").unwrap(),
             "Bearer token123"

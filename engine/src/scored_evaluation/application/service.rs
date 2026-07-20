@@ -42,7 +42,8 @@ pub trait ScoredEvaluationService: Send + Sync {
     /// - `ScoredEvaluationError::BackendNotFound` — no backend configured for name
     /// - `ScoredEvaluationError::BackendError` — backend returned an error
     /// - `ScoredEvaluationError::Timeout` — backend did not respond in time
-    async fn evaluate(&self, input: EvaluateInput) -> Result<EvaluateOutput, ScoredEvaluationError>;
+    async fn evaluate(&self, input: EvaluateInput)
+    -> Result<EvaluateOutput, ScoredEvaluationError>;
 
     /// Get a specific evaluation result by execution and node ID.
     async fn get_evaluation(

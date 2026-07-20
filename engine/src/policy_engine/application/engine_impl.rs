@@ -239,7 +239,7 @@ mod tests {
             diff_scope: DiffScope::Scoped,
             completed: true,
             reconciled: false,
-                scoring_scores: std::collections::HashMap::new(),
+            scoring_scores: std::collections::HashMap::new(),
         }
     }
 

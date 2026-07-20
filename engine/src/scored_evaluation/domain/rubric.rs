@@ -112,18 +112,13 @@ mod tests {
 
     #[test]
     fn test_with_scenario_id() {
-        let rubric = Rubric::inline(serde_json::json!({}))
-            .with_scenario_id("scenario-abc-123");
-        assert_eq!(
-            rubric.scenario_id,
-            Some("scenario-abc-123".to_string())
-        );
+        let rubric = Rubric::inline(serde_json::json!({})).with_scenario_id("scenario-abc-123");
+        assert_eq!(rubric.scenario_id, Some("scenario-abc-123".to_string()));
     }
 
     #[test]
     fn test_serialization_roundtrip_inline() {
-        let rubric = Rubric::inline(serde_json::json!({"dim": 0.8}))
-            .with_scenario_id("s-1");
+        let rubric = Rubric::inline(serde_json::json!({"dim": 0.8})).with_scenario_id("s-1");
         let json = serde_json::to_string(&rubric).unwrap();
         let deserialized: Rubric = serde_json::from_str(&json).unwrap();
         assert_eq!(rubric, deserialized);

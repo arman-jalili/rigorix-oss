@@ -171,7 +171,11 @@ impl PolicyCondition {
             } => {
                 let threshold = *threshold;
                 match dimension {
-                    Some(dim) => context.scoring_scores.get(dim).copied().map_or(false, |s| s >= threshold),
+                    Some(dim) => context
+                        .scoring_scores
+                        .get(dim)
+                        .copied()
+                        .is_some_and(|s| s >= threshold),
                     None => {
                         if context.scoring_scores.is_empty() {
                             false
@@ -187,7 +191,11 @@ impl PolicyCondition {
             } => {
                 let threshold = *threshold;
                 match dimension {
-                    Some(dim) => context.scoring_scores.get(dim).copied().map_or(true, |s| s < threshold),
+                    Some(dim) => context
+                        .scoring_scores
+                        .get(dim)
+                        .copied()
+                        .is_none_or(|s| s < threshold),
                     None => context.scoring_scores.values().any(|&s| s < threshold),
                 }
             }
@@ -363,94 +371,114 @@ mod tests {
     #[test]
     fn test_score_above_all_dimensions() {
         let ctx = test_context();
-        assert!(PolicyCondition::ScoreAbove {
-            dimension: None,
-            threshold: 80,
-        }
-        .matches(&ctx));
+        assert!(
+            PolicyCondition::ScoreAbove {
+                dimension: None,
+                threshold: 80,
+            }
+            .matches(&ctx)
+        );
     }
 
     #[test]
     fn test_score_above_one_fails() {
         let ctx = test_context();
-        assert!(!PolicyCondition::ScoreAbove {
-            dimension: None,
-            threshold: 95,
-        }
-        .matches(&ctx));
+        assert!(
+            !PolicyCondition::ScoreAbove {
+                dimension: None,
+                threshold: 95,
+            }
+            .matches(&ctx)
+        );
     }
 
     #[test]
     fn test_score_above_specific_dimension() {
         let ctx = test_context();
-        assert!(PolicyCondition::ScoreAbove {
-            dimension: Some("correctness".to_string()),
-            threshold: 80,
-        }
-        .matches(&ctx));
-        assert!(!PolicyCondition::ScoreAbove {
-            dimension: Some("correctness".to_string()),
-            threshold: 90,
-        }
-        .matches(&ctx));
+        assert!(
+            PolicyCondition::ScoreAbove {
+                dimension: Some("correctness".to_string()),
+                threshold: 80,
+            }
+            .matches(&ctx)
+        );
+        assert!(
+            !PolicyCondition::ScoreAbove {
+                dimension: Some("correctness".to_string()),
+                threshold: 90,
+            }
+            .matches(&ctx)
+        );
     }
 
     #[test]
     fn test_score_above_missing_dimension() {
         let ctx = test_context();
-        assert!(!PolicyCondition::ScoreAbove {
-            dimension: Some("nonexistent".to_string()),
-            threshold: 50,
-        }
-        .matches(&ctx));
+        assert!(
+            !PolicyCondition::ScoreAbove {
+                dimension: Some("nonexistent".to_string()),
+                threshold: 50,
+            }
+            .matches(&ctx)
+        );
     }
 
     #[test]
     fn test_score_below_any_dimension() {
         let mut ctx = test_context();
         ctx.scoring_scores.insert("style".to_string(), 70);
-        assert!(PolicyCondition::ScoreBelow {
-            dimension: None,
-            threshold: 80,
-        }
-        .matches(&ctx));
+        assert!(
+            PolicyCondition::ScoreBelow {
+                dimension: None,
+                threshold: 80,
+            }
+            .matches(&ctx)
+        );
     }
 
     #[test]
     fn test_score_below_all_pass() {
         let ctx = test_context();
-        assert!(!PolicyCondition::ScoreBelow {
-            dimension: None,
-            threshold: 80,
-        }
-        .matches(&ctx));
+        assert!(
+            !PolicyCondition::ScoreBelow {
+                dimension: None,
+                threshold: 80,
+            }
+            .matches(&ctx)
+        );
     }
 
     #[test]
     fn test_score_below_specific_dimension() {
         let mut ctx = test_context();
         ctx.scoring_scores.insert("style".to_string(), 70);
-        assert!(PolicyCondition::ScoreBelow {
-            dimension: Some("style".to_string()),
-            threshold: 80,
-        }
-        .matches(&ctx));
-        assert!(!PolicyCondition::ScoreBelow {
-            dimension: Some("correctness".to_string()),
-            threshold: 80,
-        }
-        .matches(&ctx));
+        assert!(
+            PolicyCondition::ScoreBelow {
+                dimension: Some("style".to_string()),
+                threshold: 80,
+            }
+            .matches(&ctx)
+        );
+        assert!(
+            !PolicyCondition::ScoreBelow {
+                dimension: Some("correctness".to_string()),
+                threshold: 80,
+            }
+            .matches(&ctx)
+        );
     }
 
     #[test]
     fn test_score_above_empty_scores() {
         let mut ctx = test_context();
         ctx.scoring_scores.clear();
-        assert!(!PolicyCondition::ScoreAbove {
-            dimension: None,
-            threshold: 50,
-        }
-        .matches(&ctx));
+        assert!(
+            !PolicyCondition::ScoreAbove {
+                dimension: None,
+                threshold: 50,
+            }
+            .matches(&ctx)
+        );
     }
 
     #[test]

@@ -48,11 +48,9 @@ impl LocalEvaluationRepository {
     /// Ensure the execution directory exists.
     async fn ensure_dir(&self, execution_id: Uuid) -> Result<(), ScoredEvaluationError> {
         let dir = self.execution_dir(execution_id);
-        tokio::fs::create_dir_all(&dir)
-            .await
-            .map_err(|e| {
-                ScoredEvaluationError::Internal(format!("Failed to create directory: {}", e))
-            })
+        tokio::fs::create_dir_all(&dir).await.map_err(|e| {
+            ScoredEvaluationError::Internal(format!("Failed to create directory: {}", e))
+        })
     }
 }
 
@@ -64,22 +62,17 @@ impl EvaluationRepository for LocalEvaluationRepository {
         let path = self.result_path(output.execution_id, output.node_id);
         let tmp_path = path.with_extension("tmp");
 
-        let json = serde_json::to_string_pretty(output).map_err(|e| {
-            ScoredEvaluationError::Internal(format!("Serialization error: {}", e))
-        })?;
+        let json = serde_json::to_string_pretty(output)
+            .map_err(|e| ScoredEvaluationError::Internal(format!("Serialization error: {}", e)))?;
 
         // Atomic write: write to .tmp, then rename
         tokio::fs::write(&tmp_path, &json)
             .await
-            .map_err(|e| {
-                ScoredEvaluationError::Internal(format!("Write error: {}", e))
-            })?;
+            .map_err(|e| ScoredEvaluationError::Internal(format!("Write error: {}", e)))?;
 
         tokio::fs::rename(&tmp_path, &path)
             .await
-            .map_err(|e| {
-                ScoredEvaluationError::Internal(format!("Rename error: {}", e))
-            })?;
+            .map_err(|e| ScoredEvaluationError::Internal(format!("Rename error: {}", e)))?;
 
         Ok(())
     }
@@ -106,10 +99,7 @@ impl EvaluationRepository for LocalEvaluationRepository {
         }
     }
 
-    async fn list(
-        &self,
-        execution_id: Uuid,
-    ) -> Result<Vec<EvaluateOutput>, ScoredEvaluationError> {
+    async fn list(&self, execution_id: Uuid) -> Result<Vec<EvaluateOutput>, ScoredEvaluationError> {
         let dir = self.execution_dir(execution_id);
         let mut results = Vec::new();
 
@@ -120,30 +110,27 @@ impl EvaluationRepository for LocalEvaluationRepository {
                 return Err(ScoredEvaluationError::Internal(format!(
                     "List error: {}",
                     e
-                )))
+                )));
             }
         };
 
-        while let Some(entry) = entries.next_entry().await.map_err(|e| {
-            ScoredEvaluationError::Internal(format!("Read dir error: {}", e))
-        })? {
+        while let Some(entry) = entries
+            .next_entry()
+            .await
+            .map_err(|e| ScoredEvaluationError::Internal(format!("Read dir error: {}", e)))?
+        {
             let path = entry.path();
-            if path.extension().map_or(false, |ext| ext == "json") {
-                if let Ok(json) = tokio::fs::read_to_string(&path).await {
-                    if let Ok(output) = serde_json::from_str::<EvaluateOutput>(&json) {
+            if path.extension().is_some_and(|ext| ext == "json")
+                && let Ok(json) = tokio::fs::read_to_string(&path).await
+                    && let Ok(output) = serde_json::from_str::<EvaluateOutput>(&json) {
                         results.push(output);
                     }
-                }
-            }
         }
 
         Ok(results)
     }
 
-    async fn delete_by_execution(
-        &self,
-        execution_id: Uuid,
-    ) -> Result<(), ScoredEvaluationError> {
+    async fn delete_by_execution(&self, execution_id: Uuid) -> Result<(), ScoredEvaluationError> {
         let dir = self.execution_dir(execution_id);
         match tokio::fs::remove_dir_all(&dir).await {
             Ok(()) => Ok(()),
@@ -159,9 +146,9 @@ impl EvaluationRepository for LocalEvaluationRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scored_evaluation::domain::{Rubric, ScoringResult, ScoreDimension};
-    use std::collections::HashMap;
+    use crate::scored_evaluation::domain::{ScoreDimension, ScoringResult};
     use chrono::Utc;
+    use std::collections::HashMap;
     use tempfile::TempDir;
 
     fn make_output() -> EvaluateOutput {

@@ -62,20 +62,17 @@ pub struct ExecutionPolicy {
 /// Action to take on evaluation failure.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum FailureAction {
     /// Retry the evaluation with backoff.
     Retry,
     /// Flag the node for human review (non-blocking).
+    #[default]
     FlagForReview,
     /// Block the pipeline execution.
     Block,
 }
 
-impl Default for FailureAction {
-    fn default() -> Self {
-        FailureAction::FlagForReview
-    }
-}
 
 fn default_max_retries() -> u32 {
     3
@@ -114,8 +111,7 @@ impl ScoredEvaluationNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scored_evaluation::domain::rubric::RubricSource;
-
+ 
     #[test]
     fn test_new_node() {
         let node_id = Uuid::new_v4();

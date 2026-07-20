@@ -65,9 +65,7 @@ impl ScoredEvaluationEvent {
     pub fn log_line(&self) -> String {
         match self {
             ScoredEvaluationEvent::ScoredEvaluationStarted {
-                node_id,
-                backend,
-                ..
+                node_id, backend, ..
             } => {
                 format!(
                     "[ScoredEvaluation] Started: node={}, backend={}",
@@ -84,9 +82,7 @@ impl ScoredEvaluationEvent {
                     result.dimensions.len()
                 )
             }
-            ScoredEvaluationEvent::ScoredEvaluationFailed {
-                node_id, error, ..
-            } => {
+            ScoredEvaluationEvent::ScoredEvaluationFailed { node_id, error, .. } => {
                 format!(
                     "[ScoredEvaluation] Failed: node={}, error={}",
                     node_id, error
@@ -108,8 +104,8 @@ impl ScoredEvaluationEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
     use crate::scored_evaluation::domain::result::ScoreDimension;
+    use std::collections::HashMap;
 
     fn make_result() -> ScoringResult {
         let mut dims = HashMap::new();

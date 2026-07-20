@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::scored_evaluation::domain::{
-    ScoredEvaluationError, ScoringBackend, ScoringResult, Rubric,
+    Rubric, ScoredEvaluationError, ScoringBackend, ScoringResult,
 };
 
 /// JSON-RPC request for artifact evaluation.
@@ -26,6 +26,7 @@ struct EvaluateRequest {
 
 /// JSON-RPC response for artifact evaluation.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct EvaluateResponse {
     jsonrpc: String,
     result: Option<serde_json::Value>,
@@ -51,6 +52,7 @@ struct PingRequest {
 
 /// Ping response.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct PingResponse {
     jsonrpc: String,
     result: Option<serde_json::Value>,
@@ -151,10 +153,7 @@ impl ScoringBackend for McpBackend {
             .ok_or_else(|| ScoredEvaluationError::BackendError("Empty MCP response".to_string()))?;
 
         let scoring_result: ScoringResult = serde_json::from_value(result_value).map_err(|e| {
-            ScoredEvaluationError::BackendError(format!(
-                "Invalid ScoringResult from MCP: {}",
-                e
-            ))
+            ScoredEvaluationError::BackendError(format!("Invalid ScoringResult from MCP: {}", e))
         })?;
 
         Ok(scoring_result)
