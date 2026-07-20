@@ -316,16 +316,16 @@ impl OrchestratorServiceImpl {
             r#"(?:^|\s)((?:\.[/\\])?[a-zA-Z0-9_\-./\\]+\.(?:rs|ts|js|py|go|rb|java|kt|swift|c|cpp|h|hpp|toml|json|yaml|yml|md|css|scss|html|svelte|vue))(?::\d+(?::\d+)?)?"#
         ).ok();
         for task in task_results {
-            if let Some(ref output) = task.output {
-                if let Some(ref re) = path_re {
-                    for cap in re.captures_iter(output) {
-                        let path = cap.get(1).map(|m| m.as_str().to_string());
-                        if let Some(p) = path {
-                            // Remove trailing line/column numbers
-                            let clean = p.split(':').next().unwrap_or(&p).to_string();
-                            if !paths.contains(&clean) {
-                                paths.push(clean);
-                            }
+            if let Some(ref output) = task.output
+                && let Some(ref re) = path_re
+            {
+                for cap in re.captures_iter(output) {
+                    let path = cap.get(1).map(|m| m.as_str().to_string());
+                    if let Some(p) = path {
+                        // Remove trailing line/column numbers
+                        let clean = p.split(':').next().unwrap_or(&p).to_string();
+                        if !paths.contains(&clean) {
+                            paths.push(clean);
                         }
                     }
                 }
@@ -489,7 +489,11 @@ impl OrchestratorService for OrchestratorServiceImpl {
             ))
             .await;
 
-        let pmeta = Self::planning_meta(&plan_out.planning_result, Some(&plan_out.graph), &self.config.model_version);
+        let pmeta = Self::planning_meta(
+            &plan_out.planning_result,
+            Some(&plan_out.graph),
+            &self.config.model_version,
+        );
 
         // 4. Save initial state
         self.state_manager
