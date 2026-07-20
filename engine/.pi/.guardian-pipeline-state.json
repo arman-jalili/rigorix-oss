@@ -1,12 +1,26 @@
 {
-  "id": "PL-9708",
-  "name": "\"plan-validation\"",
+  "id": "PL-8612",
+  "name": "scored-evaluation",
   "items": [
     "issue-contract-freeze",
-    "issue-validationloop-config",
-    "issue-validationstate",
-    "issue-validationloopservice",
-    "issue-contextaugmenter",
+    "issue-domain-layer-domain-",
+    "issue-application-layer-application-",
+    "issue-infrastructure-layer-infrastructure-",
+    "issue-scoredevaluationnode",
+    "issue-rubric",
+    "issue-scoringresult",
+    "issue-scoringbackend-trait-",
+    "issue-scoredevaluationevent",
+    "issue-scoredevaluationerror",
+    "issue-scoredevaluationservice",
+    "issue-evaluateinput-evaluateoutput",
+    "issue-mcpbackend",
+    "issue-httpbackend",
+    "issue-localbackend",
+    "issue-scoredimension",
+    "issue-scoringbackend",
+    "issue-scoreabove-policy-condition",
+    "issue-scorebelow-policy-condition",
     "issue-proofing",
     "issue-architecture-readiness"
   ],
@@ -51,9 +65,9 @@
       }
     }
   ],
-  "currentItemIndex": 7,
+  "currentItemIndex": 1,
   "currentStepIndex": 0,
-  "status": "done",
+  "status": "running",
   "retryCount": 0,
   "results": [
     {
@@ -89,252 +103,11 @@
           "step": "merge",
           "status": "passed",
           "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-validationloop-config",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-validationstate",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-validationloopservice",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-contextaugmenter",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-proofing",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-architecture-readiness",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
         }
       ]
     }
   ],
   "mergeOnValid": true,
-  "createdAt": "2026-06-19T19:32:36.880Z",
-  "updatedAt": "2026-06-20T05:44:06.426Z"
+  "createdAt": "2026-07-20T16:36:46.241Z",
+  "updatedAt": "2026-07-20T16:43:33.713Z"
 }

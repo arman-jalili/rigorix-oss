@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-PROOFING"
-  epic: ""plan-validation""
+  epic: "scored-evaluation"
   component: "Proofing & CI Enforcement"
-  module: "plan-validation"
+  module: "scored-evaluation"
   status: planned
   priority: critical
   dependencies: []
@@ -26,7 +26,7 @@ guardian_issue:
       - Updated CI stage configuration
 
   canonical_references:
-    - module: ".pi/architecture/modules/plan-validation.md"
+    - module: ".pi/architecture/modules/scored-evaluation.md"
 
   acceptance_criteria:
     - "All proofing scripts created and executable"
@@ -47,12 +47,12 @@ guardian_issue:
     every build for zero token cost.
 
   file_changes:
-    - "create: .pi/scripts/ci/check_plan-validation_contracts.sh"
-    - "create: .pi/scripts/ci/check_plan-validation_coverage.sh"
+    - "create: .pi/scripts/ci/check_scored-evaluation_contracts.sh"
+    - "create: .pi/scripts/ci/check_scored-evaluation_coverage.sh"
     - "modify: .pi/scripts/ci/run_hardening_stages.sh"
 ---
 
-# Proofing & CI Enforcement: plan-validation
+# Proofing & CI Enforcement: scored-evaluation
 
 ## Intent
 
@@ -81,17 +81,17 @@ on every PR. No LLM cost. No human review. Just pass or fail.
 
 | Script | Purpose | Location |
 |--------|---------|----------|
-| check_plan-validation_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
-| check_plan-validation_coverage.sh | Enforce coverage thresholds | .pi/scripts/ci/ |
-| stage_plan-validation_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
+| check_scored-evaluation_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
+| check_scored-evaluation_coverage.sh | Enforce coverage thresholds | .pi/scripts/ci/ |
+| stage_scored-evaluation_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
 
 ## CI Pipeline Update
 
 Add the new stage to `run_hardening_stages.sh`:
 
 ```bash
-run_stage "11" "plan-validation_proofing" \
-    "${SCRIPTS_DIR}/stage_plan-validation_proofing.sh" \
+run_stage "11" "scored-evaluation_proofing" \
+    "${SCRIPTS_DIR}/stage_scored-evaluation_proofing.sh" \
     "always"
 ```
 
