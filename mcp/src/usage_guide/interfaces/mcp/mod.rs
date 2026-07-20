@@ -254,7 +254,8 @@ description = "Read the specified file"
                 "rigorix_run — Load a template and execute its DAG through rigorix-engine",
                 "rigorix_execute — Execute a plan or template through rigorix-engine (legacy, prefer plan+run)",
                 "rigorix_validate_plan — Validate a plan against enforcement policies",
-                "rigorix_check_enforcement — Check current enforcement status and budget"
+                "rigorix_check_enforcement — Check current enforcement status and budget",
+                "rigorix_evaluate_artifact — Rigorix scoring protocol MCP call. Sends artifact + rubric to a scoring backend. Returns multidimensional ScoringResult. Protocol is defined by Rigorix; external systems like RuntimeAI adopt it."
             ],
             "template_tools": [
                 "rigorix_list_templates — List all registered templates",
@@ -273,7 +274,30 @@ description = "Read the specified file"
             ],
             "guide_tool": [
                 "rigorix_get_usage_guide — This tool — get usage context for all rigorix tools"
-            ]
+            ],
+            "scored_evaluation": {
+                "description": "Scored evaluation adds quality scoring of generated artifacts to the Rigorix DAG:",
+                "data_flow": "ScoredEvaluationService -> Orchestrator -> BuildEnvelopeInput -> AuditEnvelope -> POST /api/v1/audit/oss-envelope -> audit_records JSONB -> mv_team_scoring -> GET /api/v1/reports/scoring -> Enterprise Dashboard",
+                "protocol": "Rigorix defines the scoring protocol (rigorix_evaluate_artifact MCP request, rigorix_ping health check). External systems like RuntimeAI adopt this protocol by implementing the server side.",
+                "example_template": "[[template.nodes]]\nid = \"score_output\"\nname = \"Score Code Quality\"\naction = { type = \"scored_evaluation\", backend = \"runtimeai\", rubric_source = \"inline\", rubric = { correctness = { threshold = 0.8 }, completeness = { threshold = 0.8 } } }\ndescription = \"Evaluate generated code quality\"\ndepends_on = [\"generate_code\"]",
+                "scoring_result_schema": {
+                    "passed": "boolean - Overall pass/fail",
+                    "dimensions": "map<string, object> - Per-dimension scores",
+                    "dimension.score": "number (0.0-1.0) - Achieved score",
+                    "dimension.max": "number - Maximum possible score",
+                    "dimension.label": "string - Human-readable label",
+                    "dimension.passed": "boolean - Whether this dimension passed",
+                    "summary": "string - Human-readable summary",
+                    "backend": "string - Backend that produced the result",
+                    "duration_ms": "number - Evaluation latency"
+                },
+                "enterprise_dashboard": "Scoring results appear under Reports > Scoring. GET /api/v1/reports/scoring returns: total_evaluations, scored_evaluations, pass_rate, avg_evaluation_duration_ms, dimension_breakdown (per-dimension avg_score and pass_rate).",
+                "policy_conditions": {
+                    "score_above": "ScoreAbove { dimension: Option<String>, threshold: u8 } - All dimensions above percentage threshold",
+                    "score_below": "ScoreBelow { dimension: Option<String>, threshold: u8 } - Any dimension below percentage threshold",
+                    "example_toml": "[[rules]]\nname = \"scored-evaluation-gate\"\ncondition = { type = \"score_below\", dimension = null, threshold = 80 }\naction = \"block_merge\""
+                }
+            }
         }
     })
 }
