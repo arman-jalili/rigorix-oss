@@ -44,6 +44,7 @@ use crate::policy_engine::application::engine::PolicyEngineService;
 use crate::policy_engine::domain::{DiffScope, LaneBlocker, LaneContext, ReviewStatus};
 use crate::quality_gates::application::dto::{ClassifyTestScopeInput, EvaluateGateInput};
 use crate::quality_gates::application::service::QualityGateService;
+use crate::scored_evaluation::application::ScoredEvaluationService;
 use crate::state_persistence::application::{dto as state_dto, service as state_svc};
 
 pub struct OrchestratorServiceImpl {
@@ -57,6 +58,7 @@ pub struct OrchestratorServiceImpl {
     budget_service: Arc<dyn budget_app::LlmBudgetService>,
     code_graph_service: Option<Arc<dyn CodeGraphServiceTrait>>,
     quality_gate_service: Option<Arc<dyn QualityGateService>>,
+    scored_evaluation_service: Option<Arc<dyn ScoredEvaluationService>>,
     policy_engine: Option<Arc<dyn PolicyEngineService>>,
     validation_loop_service: Option<Arc<dyn ValidationLoopService>>,
     current_execution: Arc<RwLock<Option<CurrentExecutionState>>>,
@@ -95,6 +97,7 @@ impl OrchestratorServiceImpl {
             budget_service,
             code_graph_service,
             quality_gate_service: None,
+            scored_evaluation_service: None,
             policy_engine: None,
             validation_loop_service: None,
             current_execution: Arc::new(RwLock::new(None)),
@@ -116,6 +119,12 @@ impl OrchestratorServiceImpl {
     /// Set the quality gate service for post-execution quality evaluation.
     pub fn with_quality_gate_service(mut self, svc: Arc<dyn QualityGateService>) -> Self {
         self.quality_gate_service = Some(svc);
+        self
+    }
+
+    /// Set the scored evaluation service for artifact quality scoring.
+    pub fn with_scored_evaluation_service(mut self, svc: Arc<dyn ScoredEvaluationService>) -> Self {
+        self.scored_evaluation_service = Some(svc);
         self
     }
 
@@ -142,6 +151,35 @@ impl OrchestratorServiceImpl {
 
     fn gen_id(&self) -> Uuid {
         Uuid::now_v7()
+    }
+
+    /// Collect scoring results from the scored evaluation service for an execution.
+    /// Returns an empty map if the service is not configured or if no results exist.
+    async fn collect_scoring_results(&self, execution_id: Uuid)
+        -> std::collections::HashMap<String, crate::audit::domain::ScoringResultRef>
+    {
+        let Some(ref se_svc) = self.scored_evaluation_service else {
+            return std::collections::HashMap::new();
+        };
+        let Ok(outputs) = se_svc.list_evaluations(execution_id).await else {
+            return std::collections::HashMap::new();
+        };
+        outputs.into_iter().map(|output| {
+            let ref_map: std::collections::HashMap<String, crate::audit::domain::ScoreDimensionRef> = output.result.dimensions.into_iter().map(|(k, d)| {
+                (k, crate::audit::domain::ScoreDimensionRef {
+                    score: d.score,
+                    max: d.max,
+                    label: d.label,
+                    passed: d.passed,
+                })
+            }).collect();
+            (output.node_id.to_string(), crate::audit::domain::ScoringResultRef {
+                passed: output.result.passed,
+                backend: output.result.backend,
+                dimensions: ref_map,
+                duration_ms: output.result.duration_ms,
+            })
+        }).collect()
     }
 
     /// Build a module dependency graph string from the repo root.
@@ -756,7 +794,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     planning_prompt_content: None, // TODO: populate from config when prompt capture is enabled
                     file_paths: Self::extract_file_paths(&record.task_results),
                     metadata: None,
-                    scoring_results: std::collections::HashMap::new(),
+                    scoring_results: self.collect_scoring_results(record.execution_id).await,
                     sign: false,
                     repository: input.repository.clone(),
                     author: input.author.clone(),
@@ -1140,7 +1178,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     planning_prompt_content: None, // TODO: populate from config when prompt capture is enabled
                     file_paths: Self::extract_file_paths(&record.task_results),
                     metadata: None,
-                    scoring_results: std::collections::HashMap::new(),
+                    scoring_results: self.collect_scoring_results(record.execution_id).await,
                     sign: false,
                     repository: input.repository.clone(),
                     author: input.author.clone(),
