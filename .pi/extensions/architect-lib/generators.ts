@@ -121,15 +121,57 @@ function buildInScope(comp: ModuleComponent, primaryAcRows: AcRow[], implSteps: 
 	];
 }
 
-/** Detect whether project at `cwd` is a Java project. */
-function isJavaProject(cwd?: string): boolean {
-	if (!cwd) return false;
+/** Supported project languages. */
+export type ProjectLanguage = "typescript" | "java" | "python" | "go" | "rust";
+
+/** Detect project language at `cwd` by checking for build files. */
+export function detectLanguage(cwd?: string): ProjectLanguage {
+	if (!cwd) return "typescript";
 	try {
-		return existsSync(join(cwd, "pom.xml")) ||
-		       existsSync(join(cwd, "build.gradle")) ||
-		       existsSync(join(cwd, "build.gradle.kts"));
+		if (existsSync(join(cwd, "pom.xml")) || existsSync(join(cwd, "build.gradle")) || existsSync(join(cwd, "build.gradle.kts")))
+			return "java";
+		if (existsSync(join(cwd, "go.mod")))
+			return "go";
+		if (existsSync(join(cwd, "Cargo.toml")))
+			return "rust";
+		if (existsSync(join(cwd, "pyproject.toml")) || existsSync(join(cwd, "setup.py")) || existsSync(join(cwd, "requirements.txt")))
+			return "python";
+		return "typescript";
 	} catch {
-		return false;
+		return "typescript";
+	}
+}
+
+/** Language-specific file extension for implementation files. */
+export function implExtension(lang: ProjectLanguage): string {
+	switch (lang) {
+		case "java": return "java";
+		case "python": return "py";
+		case "go": return "go";
+		case "rust": return "rs";
+		default: return "ts";
+	}
+}
+
+/** Language-specific test directory base. */
+export function testBaseDirFromLang(lang: ProjectLanguage): string {
+	switch (lang) {
+		case "java": return "src/test/java";
+		case "python": return "tests";
+		case "go": return "tests";
+		case "rust": return "tests";
+		default: return "tests/unit";
+	}
+}
+
+/** Language-specific test runner command hint. */
+export function testRunnerHintFromLang(lang: ProjectLanguage): string {
+	switch (lang) {
+		case "java": return "mvn test";
+		case "python": return "pytest";
+		case "go": return "go test ./...";
+		case "rust": return "cargo test";
+		default: return "bun test";
 	}
 }
 
@@ -156,9 +198,10 @@ export function generateIssueMarkdown(
 	const inScope = buildInScope(comp, compAcs, implSteps, moduleId);
 
 	// Language-aware test paths
-	const isJava = isJavaProject(cwd);
-	const testBaseDir = isJava ? "src/test/java" : "tests/unit";
-	const testRunnerHint = isJava ? "mvn test" : "bun test";
+	const lang = detectLanguage(cwd);
+	const ext = implExtension(lang);
+	const testBaseDir = testBaseDirFromLang(lang);
+	const testRunnerHint = testRunnerHintFromLang(lang);
 
 	const testLine = tdd
 		? `    - "update: ${testBaseDir}/ (failing tests already generated — make them pass)"`
@@ -252,7 +295,7 @@ ${yamlAcs}
     All Acceptance Criteria in that file must be satisfied before this issue is closed.
     Component focus: ${comp.name}.
     CONCRETE IMPLEMENTATIONS MUST BE CREATED — interface stubs from the contract freeze
-    are not sufficient. Each domain service/aggregate needs a concrete .impl.${isJava ? "java" : "ts"} file.
+    are not sufficient. Each domain service/aggregate needs a concrete .impl.${ext} file.
 
   file_changes:
     - "create: src/${moduleId}/domain/"
@@ -307,7 +350,7 @@ ${stepsMarkdown}
 > **Agent instructions:**
 > 1. Open \`.pi/architecture/modules/${slice.module}.md\` — read the full Acceptance Criteria table
 > 2. Identify which rows are your responsibility for **${comp.name}**
-> 3. Create concrete implementation files (\`.impl.${isJava ? "java" : "ts"}\`) in \`src/${moduleId}/\` — the interface stubs from the contract freeze are NOT enough
+> 3. Create concrete implementation files (\`.impl.${ext}\`) in \`src/${moduleId}/\` — the interface stubs from the contract freeze are NOT enough
 > 4. Each domain aggregate/service must have a working implementation with business logic
 > 5. Verify each AC row is satisfied in \`src/\` before marking done
 > 6. Run validators and create MR

@@ -34,6 +34,10 @@ import {
 	generateContractFreezeMarkdown,
 	generateIssueMarkdown,
 	generateProofingMarkdown,
+	detectLanguage,
+	testBaseDirFromLang,
+	testRunnerHintFromLang,
+	implExtension,
 } from "./architect-lib/generators";
 import {
 	generateEpicTestFiles,
@@ -870,7 +874,7 @@ export default function (pi: ExtensionAPI) {
 						"",
 						"**TDD Mode: ON**",
 						"- Failing test files were generated from architecture contracts before issues were created.",
-						"- Start each component by examining its test file in the `tests/unit/` directory.",
+						"- Start each component by examining its test file in the `" + testBaseDirFromLang(detectLanguage(ctx.cwd)) + "/` directory.",
 						"- Run tests first to see them fail, then implement to make them pass (Red→Green→Refactor).",
 						"- Tests are living artifacts — evolve them as the component grows.",
 						"- Reference `.pi/skills/tdd-practice.md` for TDD guidance.",

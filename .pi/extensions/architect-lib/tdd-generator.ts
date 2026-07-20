@@ -81,7 +81,7 @@ export interface TddGenerateOptions {
 	cwd: string;
 	/** Language from manifest (default: "typescript") */
 	language: string;
-	/** Base test directory (default: "tests/unit") */
+	/** Base test directory (auto-detected from project language if not set) */
 	testBaseDir?: string;
 	/** Module name for path construction */
 	moduleName?: string;

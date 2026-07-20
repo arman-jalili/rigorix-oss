@@ -1,6 +1,6 @@
 {
   "schemaVersion": "0.1",
-  "frameworkVersion": "0.1.103",
+  "frameworkVersion": "0.1.105",
   "source": "pi",
   "tools": [
     "pi"
@@ -170,7 +170,7 @@
     },
     ".pi/extensions/architect.ts": {
       "category": "framework",
-      "originalHash": "sha256:1424503f9a819be325e0058358c0ab2303685146ea593ad06e2eb9c15350ffb7",
+      "originalHash": "sha256:1c7232b7fb9bd24ed9cd10b37ad0064577f5dbeb1186ef1712a27e3b1829dbc4",
       "status": "unchanged"
     },
     ".pi/extensions/architect-lib/helpers.ts": {
@@ -180,7 +180,7 @@
     },
     ".pi/extensions/architect-lib/generators.ts": {
       "category": "framework",
-      "originalHash": "sha256:976dccd28e5afff26278180b5cb1feb6370aa3f9850a727763679f1a6d611b11",
+      "originalHash": "sha256:ad7e14d8548103fd193b9b566872bc9d4e754d7301ed253910ac34d690c23462",
       "status": "unchanged"
     },
     ".pi/extensions/architect-lib/types.ts": {
@@ -865,7 +865,7 @@
     },
     ".pi/preflight_report.json": {
       "category": "framework",
-      "originalHash": "sha256:7e5f198c598032cda32a6e0e00253e9fc4d5c2bb653216d6f86c232aba09f9d0",
+      "originalHash": "sha256:7e42a99e6f4df0c913f79ffa733847ef8e010a459953cae893930e1e31a05b1b",
       "status": "unchanged"
     },
     ".pi/domain/ubiquitous-language.md": {
@@ -950,7 +950,7 @@
     },
     ".pi/extensions/architect-lib/tdd-generator.ts": {
       "category": "framework",
-      "originalHash": "sha256:a583891e8a9352dacc526a5c04d658f3a67a0e73a50e473e253f12d5c7c59066",
+      "originalHash": "sha256:160bd6297c85403f99496fbf7809bcc1c29635cd057a4f76ebbd28b0ff18754d",
       "status": "unchanged"
     },
     ".pi/extensions/tsconfig.json": {
@@ -1125,7 +1125,7 @@
     },
     ".pi/skills/tdd-practice.md": {
       "category": "framework",
-      "originalHash": "sha256:8c2a7fbb809dda355bae934cc725b09f5198e4e730a5951819306db76eb2403f",
+      "originalHash": "sha256:c4e2f05e88abaa31f48376eb127e769b56694866a73769f36c0960573d5f2585",
       "status": "unchanged"
     },
     ".pi/skills/go-enterprise-codegen.md": {
@@ -1234,5 +1234,5 @@
     "domainDescription": "main rigorix project, parent for engine, cli and github actions"
   },
   "scaffoldedAt": "2026-06-21T19:05:41.403Z",
-  "lastUpdatedAt": "2026-07-20T15:43:56.691Z"
+  "lastUpdatedAt": "2026-07-20T16:07:23.151Z"
 }

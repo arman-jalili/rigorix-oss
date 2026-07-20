@@ -6,7 +6,9 @@ description: TDD practice guide for Guardian implementation agents. Use when TDD
 # TDD Practice — Red → Green → Refactor
 
 > This skill applies when TDD mode is enabled on the current epic (`--tdd`).
-> Pre-generated failing test files exist in `tests/unit/<module>/<component>/`.
+> Pre-generated failing test files exist in the project's test directory
+> (language-specific: `tests/unit/` for TypeScript, `src/test/java/` for Java,
+> `tests/` for Python/Go/Rust).
 > These tests were generated deterministically from architecture contracts — no LLM involvement.
 
 ## Core Principle
@@ -24,8 +26,14 @@ Do NOT treat the generated tests as rigid specs you must match exactly. Treat th
 
 ### 1. Red — See the test fail
 
-```
-bun test tests/unit/<module>/<component>/<component>.test.ts
+Run the project's test runner on the generated test file:
+
+```bash
+# TypeScript: bun test tests/unit/<module>/<component>/<component>.test.ts
+# Java:       mvn test -Dtest=<Component>Test
+# Python:     pytest tests/<module>/<component>/test_<component>.py
+# Go:         go test ./tests/<module>/<component>/
+# Rust:       cargo test --test <component>
 ```
 
 Confirm the test fails before writing any implementation code. This validates that:
@@ -41,7 +49,7 @@ Write the minimal implementation to make the failing test pass.
 - Write only enough code to pass the test
 - Do not over-engineer — YAGNI
 - Use the test's TODO comments as a guide for what the API should look like
-- The test file is in `tests/unit/`, implementation files go in `src/`
+- The test file is in the project's test directory (`tests/unit/`, `src/test/java/`, or `tests/`), implementation files go in `src/`
 - Import the implementation module into the test file
 
 If the generated test assumes an API shape that doesn't fit, **update the test first**, then implement.
@@ -107,11 +115,11 @@ The generated tests are **suggestions, not constraints**. You should modify them
 
 ## File Locations
 
-| Artifact | Path |
-|----------|------|
-| Tests | `tests/unit/<module>/<component>/<component>.test.ts` |
-| Implementation | `src/<module>/<component>.ts` (or appropriate layer) |
-| TDD guide | `.pi/skills/tdd-practice.md` |
+| Artifact | TypeScript | Java | Python | Go | Rust |
+|----------|------------|------|--------|-----|------|
+| Tests | `tests/unit/.../component.test.ts` | `src/test/java/.../ComponentTest.java` | `tests/.../test_component.py` | `tests/.../component_test.go` | `tests/.../mod.rs` |
+| Implementation | `src/<module>/` | `src/main/java/.../` | `src/<module>/` | `src/<module>/` | `src/<module>/` |
+| TDD guide | `.pi/skills/tdd-practice.md` | same | same | same | same |
 
 ## Anti-Patterns
 
