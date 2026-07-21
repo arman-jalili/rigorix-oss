@@ -145,6 +145,17 @@ mod tests {
         {
             Err(EngineFacadeError::ExecutionNotFound(uuid::Uuid::nil()))
         }
+
+        async fn run_template(
+            &self,
+            _template_name: &str,
+            _repository: Option<String>,
+            _author: Option<String>,
+        ) -> Result<ExecutionResult, EngineFacadeError> {
+            self.execute_result
+                .clone()
+                .unwrap_or_else(|| Err(EngineFacadeError::EngineNotAvailable("mock".into())))
+        }
     }
 
     // -----------------------------------------------------------------------

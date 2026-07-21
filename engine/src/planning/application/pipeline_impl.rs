@@ -257,28 +257,39 @@ impl PlanningPipelineImpl {
             }
         })?;
 
-        let graph = Self::build_task_graph(&output);
+        let (graph, scored_node_ids) = Self::build_task_graph(&output);
         let sealed = graph.sealed;
         Ok(GenerateGraphOutput {
             graph,
             node_count: output.node_count as u32,
             sealed,
             from_generator: false,
+            scored_node_ids,
         })
     }
 
     /// Build a TaskGraph from the template engine's GenerateOutput nodes.
     fn build_task_graph(
         output: &crate::templates::application::dto::GenerateOutput,
-    ) -> crate::dag_engine::domain::TaskGraph {
-        use crate::templates::domain::TemplateAction;
+    ) -> (crate::dag_engine::domain::TaskGraph, Vec<String>) {
+        use crate::templates::domain::{TemplateAction, ValidationRule};
         use std::collections::HashMap;
+
+        // Collect nodes that have ScoredEvaluation validation
+        let mut scored_node_ids: Vec<String> = Vec::new();
 
         // Map template node IDs to TaskNode UUIDs
         let mut node_id_map: HashMap<String, uuid::Uuid> = HashMap::new();
         for node in &output.nodes {
             let id = uuid::Uuid::new_v4();
             node_id_map.insert(node.id.clone(), id);
+            if node
+                .validate
+                .iter()
+                .any(|v| matches!(v, ValidationRule::ScoredEvaluation))
+            {
+                scored_node_ids.push(id.to_string());
+            }
         }
 
         // Build dependency map: for each node, find its dependency UUIDs from edges
@@ -373,7 +384,7 @@ impl PlanningPipelineImpl {
         }
         // Seal the graph so it's ready for execution
         let _ = graph.seal();
-        graph
+        (graph, scored_node_ids)
     }
 
     /// Phase 5: Validate plan.
@@ -758,6 +769,7 @@ impl PlanningPipelineService for PlanningPipelineImpl {
             total_llm_calls: plan_output.total_llm_calls,
             total_llm_tokens: plan_output.total_llm_tokens,
             completed_at: chrono::Utc::now(),
+            scored_node_ids: gen_output.scored_node_ids,
         })
     }
 

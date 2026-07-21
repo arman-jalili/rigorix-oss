@@ -58,6 +58,28 @@ impl EngineFacade for MockEngineForHandler {
     ) -> Result<CostBreakdown, EngineFacadeError> {
         Err(EngineFacadeError::ExecutionNotFound(uuid::Uuid::nil()))
     }
+
+    async fn run_template(
+        &self,
+        _template_name: &str,
+        _repository: Option<String>,
+        _author: Option<String>,
+    ) -> Result<ExecutionResult, EngineFacadeError> {
+        Ok(ExecutionResult::new(
+            uuid::Uuid::nil(),
+            ExecutionStatus::Completed,
+            vec![StepResult::new(
+                "s1".into(),
+                true,
+                None,
+                serde_json::json!({}),
+                50,
+            )],
+            100,
+            Some(50),
+            "rigorix://audit/test".into(),
+        ))
+    }
 }
 
 #[test]

@@ -105,6 +105,17 @@ impl EngineFacade for TddMockEngine {
             *execution_id.as_uuid(),
         ))
     }
+
+    async fn run_template(
+        &self,
+        _template_name: &str,
+        _repository: Option<String>,
+        _author: Option<String>,
+    ) -> Result<ExecutionResult, EngineFacadeError> {
+        self.execute_result
+            .clone()
+            .unwrap_or_else(|| Err(EngineFacadeError::EngineNotAvailable("mock".into())))
+    }
 }
 
 fn make_plan() -> PlanTemplate {

@@ -87,6 +87,20 @@ pub trait EngineFacade: Send + Sync {
         &self,
         execution_id: &ExecutionId,
     ) -> Result<CostBreakdown, EngineFacadeError>;
+
+    /// Run a named template through the orchestrator's full `run()` path.
+    ///
+    /// Uses the template name as the intent string, goes through the planning
+    /// pipeline (template loading, graph generation, validation rules), then
+    /// executes the DAG. This is the same path the CLI uses.
+    ///
+    /// Returns execution results with per-step outcomes.
+    async fn run_template(
+        &self,
+        template_name: &str,
+        repository: Option<String>,
+        author: Option<String>,
+    ) -> Result<ExecutionResult, EngineFacadeError>;
 }
 
 /// Shared ownership of an EngineFacade implementation.

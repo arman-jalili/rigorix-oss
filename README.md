@@ -122,6 +122,7 @@ When no existing template matches the intent — or confidence is low — Rigori
 | **PR governance** | Built-in policy.toml | External CI | ✗ | ✗ | ✗ |
 | **Audit** | HMAC-signed envelopes | Conversation history | Conversation history | Git log | Ephemeral containers |
 | **Quality gates** | Post-execution validation | ✗ | ✗ | ✗ | ✗ |
+| **Scored evaluation** | Multidimensional quality scoring with pluggable backends and policy-based merge gating | ✗ | ✗ | ✗ | ✗ |
 | **Self-correcting** | Validate loop (plan → verify → fix) | Retry loop | ✗ | Lint-then-fix loop | Retry loop |
 
 Rigorix is designed for **deterministic, auditable, safely-bounded automation** — not open-ended agent loops. If you need a code assistant that chats with you, use Claude Code or Aider. If you need a CI/CD pipeline that enforces policies and generates auditable code changes, use Rigorix.

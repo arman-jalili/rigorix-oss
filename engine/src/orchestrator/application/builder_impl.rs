@@ -17,6 +17,7 @@ use std::sync::Arc;
 use crate::code_graph::application::CodeGraphService;
 use crate::orchestrator::domain::OrchestratorConfig;
 use crate::orchestrator::domain::OrchestratorError;
+use crate::scored_evaluation::application::ScoredEvaluationService;
 
 use super::builder::OrchestratorBuilder;
 use super::orchestrator_impl::OrchestratorServiceImpl;
@@ -41,6 +42,7 @@ pub struct OrchestratorBuilderImpl {
     audit_service: Option<Arc<dyn crate::audit::application::AuditService>>,
     budget_service: Option<Arc<dyn crate::budget_tracking::application::LlmBudgetService>>,
     code_graph_service: Option<Arc<dyn CodeGraphService>>,
+    scored_evaluation_service: Option<Arc<dyn ScoredEvaluationService>>,
 }
 
 impl OrchestratorBuilderImpl {
@@ -113,6 +115,12 @@ impl OrchestratorBuilderImpl {
         self
     }
 
+    /// Override the scored evaluation service.
+    pub fn with_scored_evaluation_service(mut self, svc: Arc<dyn ScoredEvaluationService>) -> Self {
+        self.scored_evaluation_service = Some(svc);
+        self
+    }
+
     /// Check if all required services are provided.
     fn check_ready(&self) -> Result<(), OrchestratorError> {
         if self.planning_pipeline.is_none() {
@@ -172,6 +180,7 @@ impl OrchestratorBuilder for OrchestratorBuilderImpl {
             audit_service: None,
             budget_service: None,
             code_graph_service: None,
+            scored_evaluation_service: None,
         }
     }
 
@@ -220,8 +229,9 @@ impl OrchestratorBuilder for OrchestratorBuilderImpl {
             .budget_service
             .expect("check_ready verified budget_service is Some");
         let code_graph_service = self.code_graph_service;
+        let scored_evaluation_service = self.scored_evaluation_service;
 
-        let orchestrator = OrchestratorServiceImpl::new(
+        let mut orchestrator = OrchestratorServiceImpl::new(
             config,
             planning_pipeline,
             execution_service,
@@ -232,6 +242,10 @@ impl OrchestratorBuilder for OrchestratorBuilderImpl {
             budget_service,
             code_graph_service,
         );
+
+        if let Some(se_svc) = scored_evaluation_service {
+            orchestrator = orchestrator.with_scored_evaluation_service(se_svc);
+        }
 
         Ok(Box::new(orchestrator))
     }

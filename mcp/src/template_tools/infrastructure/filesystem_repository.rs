@@ -21,13 +21,75 @@
 //! - Thread-safe (Send + Sync) via Arc<Mutex<>>
 
 use async_trait::async_trait;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::template_tools::domain::entity::TemplateRepository;
 use crate::template_tools::domain::error::TemplateError;
-use crate::template_tools::domain::value::{PlanTemplate, TemplateFilter, TemplateSummary};
+use crate::template_tools::domain::value::{
+    PlanTemplate, StepDefinition, TemplateFilter, TemplateSummary,
+};
+use rigorix_engine::templates::domain::{
+    Template as EngineTemplate, TemplateAction, ValidationRule,
+};
+
+/// Convert an engine Template ([[nodes]] format) to an MCP PlanTemplate ([[steps]] format).
+fn engine_template_to_plan_template(tmpl: &EngineTemplate) -> PlanTemplate {
+    let steps: Vec<StepDefinition> = tmpl
+        .nodes
+        .iter()
+        .map(|node| {
+            let (tool, params) = match &node.action {
+                TemplateAction::RunCommand { command, .. } => {
+                    ("run_command", serde_json::json!({"command": command}))
+                }
+                TemplateAction::FileRead { path } => {
+                    ("file_read", serde_json::json!({"path": path}))
+                }
+                TemplateAction::FileWrite { path, content } => (
+                    "file_write",
+                    serde_json::json!({"path": path, "content": content}),
+                ),
+                TemplateAction::FileAppend { path, content } => (
+                    "file_append",
+                    serde_json::json!({"path": path, "content": content}),
+                ),
+                _ => ("run_command", serde_json::json!({"command": ""})),
+            };
+            let mut sd = StepDefinition::new(
+                node.name.clone(),
+                tool.to_string(),
+                params,
+                false,
+                format!("Step: {}", node.name),
+                None,
+            );
+            sd.set_evaluate_score(
+                node.validate
+                    .iter()
+                    .any(|v| matches!(v, ValidationRule::ScoredEvaluation)),
+            );
+            sd
+        })
+        .collect();
+
+    // Panic is acceptable here: if we parsed a valid engine template, steps are non-empty.
+    let now = chrono::Utc::now();
+    PlanTemplate::new(
+        tmpl.id.clone(),
+        tmpl.description.clone(),
+        "1.0.0".to_string(),
+        tmpl.tags.clone(),
+        steps,
+        None,
+        HashMap::new(),
+        now,
+        now,
+    )
+    .expect("Engine template has at least one node — PlanTemplate creation must succeed")
+}
 
 /// Filesystem-backed implementation of TemplateRepository.
 ///
@@ -239,12 +301,20 @@ impl TemplateRepository for FilesystemTemplateRepository {
             ))
         })?;
 
-        PlanTemplate::from_json(json_value).map_err(|e| {
-            TemplateError::DeserializationFailed(format!(
-                "Invalid template structure in '{}': {}",
-                name, e
-            ))
-        })
+        // Try PlanTemplate ([[steps]] format) first, then fall back to EngineTemplate ([[nodes]] format)
+        match PlanTemplate::from_json(json_value.clone()) {
+            Ok(pt) => return Ok(pt),
+            Err(_) => {
+                // Not a [[steps]] template — try [[nodes]] format via engine Template
+                let engine_tmpl: EngineTemplate = toml::from_str(&content).map_err(|e| {
+                    TemplateError::DeserializationFailed(format!(
+                        "Template '{}' is neither [[steps]] nor [[nodes]] format: {}",
+                        name, e
+                    ))
+                })?;
+                return Ok(engine_template_to_plan_template(&engine_tmpl));
+            }
+        }
     }
 
     async fn create(&self, template: PlanTemplate, overwrite: bool) -> Result<(), TemplateError> {

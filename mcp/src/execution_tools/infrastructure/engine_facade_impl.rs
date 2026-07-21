@@ -17,7 +17,7 @@ use uuid::Uuid;
 use rigorix_engine::enforcement::application::dto::GetBudgetStatusInput;
 use rigorix_engine::enforcement::domain::EnforcementError;
 use rigorix_engine::orchestrator::application::dto::{
-    PlanFromTemplateInput, RunFromTemplateInput, TemplateStepDef,
+    PlanFromTemplateInput, RunFromTemplateInput, RunInput, TemplateStepDef,
 };
 use rigorix_engine::orchestrator::application::service::OrchestratorService;
 use rigorix_engine::orchestrator::domain::OrchestratorError;
@@ -109,6 +109,7 @@ fn plan_to_step_defs(plan: &PlanTemplate) -> Vec<TemplateStepDef> {
             parameters: s.parameters().clone(),
             requires_approval: false,
             timeout_secs: None,
+            evaluate_score: s.evaluate_score(),
         })
         .collect()
 }
@@ -389,5 +390,63 @@ impl EngineFacade for EngineFacadeImpl {
             .find_cost_breakdown(execution_id)
             .await?
             .ok_or_else(|| EngineFacadeError::ExecutionNotFound(*execution_id.as_uuid()))
+    }
+
+    async fn run_template(
+        &self,
+        template_name: &str,
+        repository: Option<String>,
+        author: Option<String>,
+    ) -> Result<ExecutionResult, EngineFacadeError> {
+        let repository = repository.or_else(|| derive_repository(&self.config.repo_root));
+        let author = author.or_else(|| derive_author(&self.config.repo_root));
+
+        let input = RunInput {
+            intent: template_name.to_string(),
+            config: serde_json::json!({
+                "execution": {
+                    "max_llm_calls": 0,
+                    "max_llm_tokens": 0,
+                }
+            }),
+            repo_root: self.config.repo_root.clone(),
+            repository,
+            author,
+            enforcement_preset: None,
+        };
+
+        let run_output = self
+            .orchestrator
+            .run(input)
+            .await
+            .map_err(|e| EngineFacadeError::Internal(e.to_string()))?;
+
+        let record = &run_output.record;
+        let steps = task_results_to_steps(&record.task_results);
+
+        let status = match record.status {
+            rigorix_engine::orchestrator::domain::record::ExecutionStatus::Completed => {
+                ExecutionStatus::Completed
+            }
+            rigorix_engine::orchestrator::domain::record::ExecutionStatus::Failed
+            | rigorix_engine::orchestrator::domain::record::ExecutionStatus::PartialFailure => {
+                ExecutionStatus::Failed
+            }
+            rigorix_engine::orchestrator::domain::record::ExecutionStatus::Cancelled => {
+                ExecutionStatus::Failed
+            }
+        };
+
+        let result = ExecutionResult::new(
+            run_output.execution_id,
+            status,
+            steps,
+            record.duration_ms,
+            None,
+            format!("rigorix://audit/{}", run_output.execution_id),
+        );
+
+        self.repository.save_execution(&result).await?;
+        Ok(result)
     }
 }

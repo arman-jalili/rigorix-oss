@@ -93,6 +93,9 @@ pub struct TemplateStepDef {
     pub parameters: serde_json::Value,
     pub requires_approval: bool,
     pub timeout_secs: Option<u64>,
+    /// Whether to run scored evaluation on this step's output.
+    #[serde(default)]
+    pub evaluate_score: bool,
 }
 
 /// Input for a full orchestrator run from a pre-resolved template.

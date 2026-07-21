@@ -45,6 +45,8 @@ use crate::policy_engine::domain::{DiffScope, LaneBlocker, LaneContext, ReviewSt
 use crate::quality_gates::application::dto::{ClassifyTestScopeInput, EvaluateGateInput};
 use crate::quality_gates::application::service::QualityGateService;
 use crate::scored_evaluation::application::ScoredEvaluationService;
+use crate::scored_evaluation::application::dto::EvaluateInput as ScoredEvalInput;
+use crate::scored_evaluation::domain::Rubric;
 use crate::state_persistence::application::{dto as state_dto, service as state_svc};
 
 pub struct OrchestratorServiceImpl {
@@ -595,6 +597,49 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     .collect::<Vec<_>>()
             })?;
 
+        // 5a. Post-execution scored evaluation — only nodes with ScoredEvaluation validation
+        if let Some(ref se_svc) = self.scored_evaluation_service {
+            for tr in &task_results {
+                if tr.status != TaskStatus::Success {
+                    continue;
+                }
+                if !plan_out.scored_node_ids.contains(&tr.node_id) {
+                    continue;
+                }
+                let node_id = match uuid::Uuid::parse_str(&tr.node_id) {
+                    Ok(id) => id,
+                    Err(_) => continue,
+                };
+                let artifact = tr.output.clone().unwrap_or_default();
+                let rubric = Rubric::inline(serde_json::json!({
+                    "scoring_key": "default"
+                }));
+                let input = ScoredEvalInput::new(
+                    serde_json::Value::String(artifact),
+                    rubric,
+                    execution_id,
+                    node_id,
+                    &tr.node_name,
+                );
+                match se_svc.evaluate(input).await {
+                    Ok(output) => {
+                        tracing::debug!(
+                            node = %tr.node_name,
+                            passed = output.result.passed,
+                            "Scored evaluation completed"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            node = %tr.node_name,
+                            error = %e,
+                            "Scored evaluation skipped"
+                        );
+                    }
+                }
+            }
+        }
+
         // 6. Determine final status
         let final_status = if task_results.is_empty() {
             ExecutionStatus::Completed
@@ -990,6 +1035,66 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     })
                     .collect::<Vec<_>>()
             })?;
+
+        // 3a. Post-execution scored evaluation — only nodes where step has evaluate_score: true
+        let scored_step_names: std::collections::HashSet<&str> = input
+            .steps
+            .iter()
+            .filter(|s| s.evaluate_score)
+            .map(|s| s.name.as_str())
+            .collect();
+        tracing::debug!(
+            scored_count = scored_step_names.len(),
+            names = ?scored_step_names,
+            "Scored evaluation candidates"
+        );
+        tracing::debug!(
+            total_nodes = task_results.len(),
+            "Checking scored evaluation targets"
+        );
+        if let Some(ref se_svc) = self.scored_evaluation_service {
+            for tr in &task_results {
+                if tr.status != TaskStatus::Success {
+                    continue;
+                }
+                if !scored_step_names.contains(tr.node_name.as_str()) {
+                    tracing::debug!(node = %tr.node_name, "Skipping — not in scored steps");
+                    continue;
+                }
+                tracing::debug!(node = %tr.node_name, "Running scored evaluation");
+                let node_id = match uuid::Uuid::parse_str(&tr.node_id) {
+                    Ok(id) => id,
+                    Err(_) => continue,
+                };
+                let artifact = tr.output.clone().unwrap_or_default();
+                let rubric = Rubric::inline(serde_json::json!({
+                    "scoring_key": "default"
+                }));
+                let input = ScoredEvalInput::new(
+                    serde_json::Value::String(artifact),
+                    rubric,
+                    execution_id,
+                    node_id,
+                    &tr.node_name,
+                );
+                match se_svc.evaluate(input).await {
+                    Ok(output) => {
+                        tracing::debug!(
+                            node = %tr.node_name,
+                            passed = output.result.passed,
+                            "Scored evaluation completed"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            node = %tr.node_name,
+                            error = %e,
+                            "Scored evaluation skipped"
+                        );
+                    }
+                }
+            }
+        }
 
         // 4. Determine final status
         let final_status = if task_results.is_empty() {

@@ -36,7 +36,6 @@ impl ExecuteHandlerImpl {
 #[async_trait]
 impl ExecuteHandler for ExecuteHandlerImpl {
     async fn handle(&self, input: ExecuteInput) -> Result<ToolCallResult, HandlerError> {
-        // Plan is guaranteed Some by the caller (resolved from template if needed)
         let plan = input.plan.ok_or_else(|| {
             HandlerError::InvalidArguments(
                 "Either 'plan' or 'template_name' must be provided".into(),

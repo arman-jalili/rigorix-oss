@@ -68,6 +68,12 @@ module/
 | `recovery_recipes` | Scenario-based recovery with escalation | `RecoveryRecipe`, `FailureScenario`, `EscalationPath` |
 | `code_gen` | Code generation result domain for DAG node outputs | `CodeGenResult`, `SyntaxGate`, `ValidationOutcome` |
 
+#### Phase 4.5 — Quality Scoring
+
+| Module | Purpose | Key Types |
+|--------|---------|-----------|
+| `scored_evaluation` | Multidimensional artifact quality scoring with pluggable backends | `ScoredEvaluationNode`, `ScoringResult`, `ScoreDimension`, `ScoringBackend`, `ScoredEvaluationService`, `EvaluateOutput` |
+
 #### Phase 4 — Infrastructure
 
 | Module | Purpose | Key Types |
@@ -83,6 +89,173 @@ module/
 | Module | Purpose | Key Types |
 |--------|---------|-----------|
 | `common` | Shared validation helpers and utility functions | `ValidationResult`, `ValidationError` |
+
+---
+
+## Scored Evaluation
+
+The `scored_evaluation` module adds quality scoring of generated artifacts to the execution DAG. It is a **Clean Architecture bounded context** (domain → application → infrastructure) with pluggable transport backends.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                          Domain Layer                            │
+│                                                                   │
+│  ScoredEvaluationNode   ScoringResult    ScoreDimension          │
+│  ScoringBackend (trait) ScoredEvaluationEvent  ScoredEvaluationError
+└─────────────────────────────────────────────────────────────────┘
+                               │
+┌──────────────────────────────┴──────────────────────────────────┐
+│                       Application Layer                          │
+│                                                                   │
+│  ScoredEvaluationService (trait)  —  ScoredEvaluationServiceImpl │
+│  EvaluateInput / EvaluateOutput (DTOs)                           │
+└─────────────────────────────────────────────────────────────────┘
+                               │
+┌──────────────────────────────┴──────────────────────────────────┐
+│                     Infrastructure Layer                          │
+│                                                                   │
+│  EvaluationRepository (trait)  —  LocalEvaluationRepository      │
+│  McpBackend  │  HttpBackend  │  LocalBackend                     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Scoring Backends
+
+Rigorix defines the scoring protocol — external systems (RuntimeAI, custom evaluators) adopt it by implementing the server side. Three transport adapters are built-in:
+
+| Backend | Transport | Protocol Method |
+|---------|-----------|-----------------|
+| **McpBackend** | MCP (JSON-RPC over HTTP) | `rigorix_evaluate_artifact` + `rigorix_ping` |
+| **HttpBackend** | REST HTTP POST | Scoring JSON to configurable endpoint |
+| **LocalBackend** | Subprocess (stdin/stdout) | Local script with env vars |
+
+All backends implement the domain `ScoringBackend` trait:
+
+```rust
+#[async_trait]
+pub trait ScoringBackend: Send + Sync {
+    async fn evaluate(&self, artifact: &Value, rubric: &Rubric)
+        -> Result<ScoringResult, ScoredEvaluationError>;
+    fn backend_name(&self) -> &'static str;
+    async fn health_check(&self) -> Result<bool, ScoredEvaluationError>;
+}
+```
+
+### Scoring Result
+
+Backends return a multidimensional `ScoringResult`:
+
+```rust
+pub struct ScoringResult {
+    pub passed: bool,                                // All dimensions passed
+    pub dimensions: HashMap<String, ScoreDimension>, // Per-dimension scores
+    pub summary: String,                             // Human-readable summary
+    pub backend: String,                             // Backend identifier
+    pub duration_ms: u64,                            // Evaluation latency
+    pub raw: Option<Value>,                          // Raw backend response
+}
+
+pub struct ScoreDimension {
+    pub score: f64,     // 0.0–1.0 achieved score
+    pub max: f64,       // Maximum possible score
+    pub label: String,  // Human-readable dimension name
+    pub passed: bool,   // Whether threshold was met
+}
+```
+
+### Retry & Failure Policy
+
+Evaluations support configurable retry with exponential backoff:
+
+```rust
+pub struct ExecutionPolicy {
+    pub max_retries: u32,                     // Default: 3
+    pub on_failure: FailureAction,            // Retry | FlagForReview | Block
+}
+```
+
+Transient errors (backend error, unavailable, timeout) are retried 3× with 200ms base backoff. Non-transient errors (invalid rubric, misconfiguration) fail immediately.
+
+### DAG Integration
+
+The `scored_evaluation` action type can be used in templates:
+
+```toml
+[[template.nodes]]
+id = "score_output"
+name = "Score Code Quality"
+action = { type = "scored_evaluation", backend = "runtimeai",
+           rubric_source = "inline",
+           rubric = { correctness = { threshold = 0.8 },
+                      completeness = { threshold = 0.8 } } }
+description = "Evaluate generated code quality"
+depends_on = ["generate_code"]
+```
+
+### Policy Engine Integration
+
+Score thresholds integrate with the Policy Engine for merge gating:
+
+```toml
+[[rules]]
+name = "scored-evaluation-gate"
+condition = { type = "score_below", dimension = null, threshold = 80 }
+action = "block_merge"
+```
+
+Available conditions:
+- `ScoreAbove { dimension, threshold }` — All dimensions above threshold (u8 %)
+- `ScoreBelow { dimension, threshold }` — Any dimension below threshold
+
+Scores are stored in `LaneContext.scoring_scores: HashMap<String, u8>` (f64 0.0–1.0 converted to u8 percentage via `(score * 100.0) as u8`).
+
+### Audit & Enterprise Integration
+
+Scoring results flow into the audit envelope for enterprise visibility:
+
+```
+ScoredEvaluationService → Orchestrator → BuildEnvelopeInput
+  → AuditEnvelope.scoring_results
+  → POST /api/v1/audit/oss-envelope
+  → audit_records JSONB column
+  → mv_team_scoring materialized view
+  → GET /api/v1/reports/scoring
+  → Enterprise Dashboard (Reports > Scoring)
+```
+
+The audit envelope carries a `ScoringResultRef` per evaluated node:
+
+```rust
+pub struct ScoringResultRef {
+    pub passed: bool,
+    pub backend: String,
+    pub dimensions: HashMap<String, ScoreDimensionRef>,
+    pub duration_ms: u64,
+}
+
+pub struct ScoreDimensionRef {
+    pub score: f64,
+    pub max: f64,
+    pub label: String,
+    pub passed: bool,
+}
+```
+
+### Errors
+
+All 7 error variants in `ScoredEvaluationError`:
+
+| Variant | Retriable | Category |
+|---------|-----------|----------|
+| `BackendNotFound(name)` | No | misconfiguration |
+| `BackendError(msg)` | Yes | backend |
+| `InvalidRubric(msg)` | No | validation |
+| `InvalidArtifact(msg)` | No | validation |
+| `BackendUnavailable(msg)` | Yes | infrastructure |
+| `Timeout(ms)` | Yes | timeout |
+| `Internal(msg)` | No | internal |
 
 ---
 
@@ -156,6 +329,8 @@ cargo bench -p rigorix-engine
 | ADR-006 | Atomic write-rename for state persistence | [Read](.pi/architecture/decisions/ADR-006-atomic-write-rename.md) |
 | ADR-007 | Risk gating with Low/Medium/High classification | [Read](.pi/architecture/decisions/ADR-007-risk-gating-model.md) |
 | ADR-008 | RAII-style budget reservation for LLM calls | [Read](.pi/architecture/decisions/ADR-008-raii-budget-reservation.md) |
+| ADR-009 | Error handling conventions and patterns | [Read](.pi/architecture/decisions/ADR-009-error-handling.md) |
+| ADR-010 | Scored evaluation: protocol ownership, backends, audit, policy | [Read](.pi/architecture/decisions/ADR-010-scored-evaluation.md) |
 
 ---
 

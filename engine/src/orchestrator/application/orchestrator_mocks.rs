@@ -78,6 +78,7 @@ impl crate::planning::application::PlanningPipelineService for MockPlanningServi
             from_generator: false,
             clarification_used: false,
             total_llm_calls: 2,
+            scored_node_ids: vec![],
             total_llm_tokens: 500,
             completed_at: chrono::Utc::now(),
         })
@@ -136,6 +137,7 @@ impl crate::planning::application::PlanningPipelineService for MockPlanningServi
             node_count: 0,
             sealed: true,
             from_generator: false,
+            scored_node_ids: vec![],
         })
     }
     async fn validate_plan(

@@ -563,6 +563,8 @@ pub enum ValidationRule {
         #[serde(default)]
         expected_exit_code: i32,
     },
+    /// Run scored evaluation on the node's output.
+    ScoredEvaluation,
 }
 
 // ---------------------------------------------------------------------------

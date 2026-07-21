@@ -150,6 +150,10 @@ pub struct StepDefinition {
     /// Optional timeout in seconds for this step.
     #[serde(default)]
     timeout_secs: Option<u64>,
+
+    /// Whether to run scored evaluation on this step's output.
+    #[serde(default)]
+    evaluate_score: bool,
 }
 
 impl StepDefinition {
@@ -169,6 +173,7 @@ impl StepDefinition {
             requires_approval,
             description,
             timeout_secs,
+            evaluate_score: false,
         }
     }
 
@@ -200,6 +205,16 @@ impl StepDefinition {
     /// Optional timeout in seconds.
     pub fn timeout_secs(&self) -> Option<u64> {
         self.timeout_secs
+    }
+
+    /// Whether to run scored evaluation on this step's output.
+    pub fn evaluate_score(&self) -> bool {
+        self.evaluate_score
+    }
+
+    /// Set whether to run scored evaluation.
+    pub fn set_evaluate_score(&mut self, val: bool) {
+        self.evaluate_score = val;
     }
 }
 

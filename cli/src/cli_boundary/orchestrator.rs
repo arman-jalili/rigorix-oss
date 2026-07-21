@@ -21,12 +21,43 @@ use rigorix_engine::execution_engine::application::factory::{
 };
 use rigorix_engine::execution_engine::application::factory_impl::ParallelExecutionFactoryImpl;
 use rigorix_engine::execution_engine::domain::{ParallelExecutorConfig, RetryPolicy};
+use std::collections::HashMap;
+
 use rigorix_engine::orchestrator::application::builder::OrchestratorBuilder;
 use rigorix_engine::orchestrator::application::builder_impl::OrchestratorBuilderImpl;
 use rigorix_engine::orchestrator::application::service::OrchestratorService;
 use rigorix_engine::orchestrator::domain::OrchestratorConfig as OrchestratorDomainConfig;
 use rigorix_engine::planning::application::factory::PlanningPipelineFactory;
 use rigorix_engine::planning::application::pipeline_factory_impl::PlanningPipelineFactoryImpl;
+use rigorix_engine::scored_evaluation::application::ScoredEvaluationServiceImpl;
+use rigorix_engine::scored_evaluation::infrastructure::LocalEvaluationRepository;
+use rigorix_engine::scored_evaluation::infrastructure::backends::HttpBackend;
+use rigorix_engine::scored_evaluation::infrastructure::backends::LocalBackend;
+use rigorix_engine::scored_evaluation::infrastructure::backends::McpBackend;
+
+// ── Scored Evaluation Config (parsed from .rigorix/scored_evaluation.toml) ──
+#[derive(serde::Deserialize)]
+struct ScoredEvalConfig {
+    scored_evaluation: ScoredEvalSection,
+}
+#[derive(serde::Deserialize)]
+struct ScoredEvalSection {
+    backends: Option<HashMap<String, BackendConfig>>,
+    defaults: Option<ScoredEvalDefaults>,
+}
+#[derive(serde::Deserialize)]
+struct BackendConfig {
+    #[serde(rename = "type")]
+    backend_type: String,
+    script_path: Option<String>,
+    timeout_ms: Option<u64>,
+    url: Option<String>,
+}
+#[derive(serde::Deserialize)]
+struct ScoredEvalDefaults {
+    threshold: Option<f64>,
+    on_failure: Option<String>,
+}
 use rigorix_engine::planning::infrastructure::claude_classifier::{
     ClaudeClassifier, ClaudeClassifierConfig,
 };
@@ -435,8 +466,103 @@ pub async fn build_orchestrator_with_budget(
         audit_enabled,
     )) as Arc<dyn rigorix_engine::audit::application::service::AuditService>;
 
+    // ── 8. ScoredEvaluationService (optional) ──────────────────────────
+    let scored_evaluation_config_path = rigorix_dir.join("scored_evaluation.toml");
+    let scored_evaluation_svc = if scored_evaluation_config_path.exists() {
+        match std::fs::read_to_string(&scored_evaluation_config_path) {
+            Ok(config_content) => match toml::from_str::<ScoredEvalConfig>(&config_content) {
+                Ok(ref cfg) => {
+                    if let Some(ref defaults) = cfg.scored_evaluation.defaults {
+                        tracing::debug!(threshold = ?defaults.threshold, on_failure = ?defaults.on_failure, "Scored evaluation defaults loaded");
+                    }
+                    let mut backends: HashMap<
+                        String,
+                        Box<dyn rigorix_engine::scored_evaluation::domain::ScoringBackend>,
+                    > = HashMap::new();
+                    if let Some(ref backends_config) = cfg.scored_evaluation.backends {
+                        for (name, bcfg) in backends_config.iter() {
+                            match bcfg.backend_type.as_str() {
+                                "local" => {
+                                    if let Some(script_path) = &bcfg.script_path {
+                                        let full_path = rigorix_dir
+                                            .parent()
+                                            .map(|p| p.join(script_path))
+                                            .unwrap_or_else(|| {
+                                                std::path::PathBuf::from(script_path)
+                                            });
+                                        backends.insert(
+                                            name.clone(),
+                                            Box::new(LocalBackend::new(
+                                                full_path.to_string_lossy().to_string(),
+                                                bcfg.timeout_ms.unwrap_or(30_000),
+                                            )),
+                                        );
+                                    }
+                                }
+                                "mcp" => {
+                                    if let Some(url) = &bcfg.url {
+                                        backends.insert(
+                                            name.clone(),
+                                            Box::new(McpBackend::new(
+                                                url.clone(),
+                                                bcfg.timeout_ms.unwrap_or(30_000),
+                                            )),
+                                        );
+                                    }
+                                }
+                                "http" => {
+                                    if let Some(url) = &bcfg.url {
+                                        backends.insert(
+                                            name.clone(),
+                                            Box::new(HttpBackend::new(
+                                                url.clone(),
+                                                HashMap::new(),
+                                                bcfg.timeout_ms.unwrap_or(30_000),
+                                            )),
+                                        );
+                                    }
+                                }
+                                _ => {
+                                    tracing::warn!(backend = %name, type = %bcfg.backend_type, "Unsupported scored evaluation backend type; skipping");
+                                }
+                            }
+                        }
+                    }
+
+                    if !backends.is_empty() {
+                        let eval_repo = Box::new(LocalEvaluationRepository::new(
+                            rigorix_dir.join("evaluations"),
+                        ));
+                        Some(Arc::new(
+                                ScoredEvaluationServiceImpl::new(backends, eval_repo),
+                            ) as Arc<dyn rigorix_engine::scored_evaluation::application::ScoredEvaluationService>)
+                    } else {
+                        tracing::warn!(
+                            "scored_evaluation.toml found but no valid backends configured"
+                        );
+                        None
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(path = %scored_evaluation_config_path.display(), error = %e, "Failed to parse scored_evaluation.toml");
+                    None
+                }
+            },
+            Err(e) => {
+                tracing::warn!(path = %scored_evaluation_config_path.display(), error = %e, "Failed to read scored_evaluation.toml");
+                None
+            }
+        }
+    } else {
+        tracing::debug!(
+            "No scored_evaluation.toml found at {}",
+            scored_evaluation_config_path.display()
+        );
+        None
+    };
+
     // ── Wire everything ────────────────────────────────────────────────
-    let orchestrator = OrchestratorBuilderImpl::new(orch_domain_config)
+    let mut builder = OrchestratorBuilderImpl::new(orch_domain_config)
         .with_repo_root(repo_root)
         .with_cancellation_service(Arc::from(cancellation))
         .with_event_bus(Arc::clone(&event_bus))
@@ -444,10 +570,13 @@ pub async fn build_orchestrator_with_budget(
         .with_budget_service(Arc::from(budget))
         .with_execution_service(Arc::from(execution))
         .with_planning_pipeline(Arc::from(planning))
-        .with_audit_service(audit)
-        .build()
-        .await
-        .map_err(CliError::Engine)?;
+        .with_audit_service(audit);
+
+    if let Some(se_svc) = scored_evaluation_svc {
+        builder = builder.with_scored_evaluation_service(se_svc);
+    }
+
+    let orchestrator = builder.build().await.map_err(CliError::Engine)?;
 
     // Build audit repository and dag planning service for CliServices
     let audit_repo = Arc::new(

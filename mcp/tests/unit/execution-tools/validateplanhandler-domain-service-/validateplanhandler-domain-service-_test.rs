@@ -50,6 +50,22 @@ impl EngineFacade for MockEngineForValidator {
     ) -> Result<CostBreakdown, EngineFacadeError> {
         Err(EngineFacadeError::ExecutionNotFound(uuid::Uuid::nil()))
     }
+
+    async fn run_template(
+        &self,
+        _template_name: &str,
+        _repository: Option<String>,
+        _author: Option<String>,
+    ) -> Result<ExecutionResult, EngineFacadeError> {
+        Ok(ExecutionResult::new(
+            uuid::Uuid::nil(),
+            ExecutionStatus::Completed,
+            vec![],
+            0,
+            None,
+            String::new(),
+        ))
+    }
 }
 
 #[test]

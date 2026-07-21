@@ -126,9 +126,9 @@ fn build_guide() -> Value {
             },
             {
                 "type": "file_patch",
-                "description": "Insert or patch content in a file using search or tree-sitter anchors",
+                "description": "[PREFERRED for code injection] Insert or patch content using tree-sitter AST anchors or text search. Use this instead of run_command with sed/cat/regex scripts — tree-sitter anchors reliably find the right insertion point even when file content changes.",
                 "intent_format": "Patch <path> with <insert> at <search>",
-                "intent_example": "Patch src/lib.rs inserting a new function after 'fn main()'",
+                "intent_example": "Patch src/task.ts inserting a new method before the TaskList class closing brace using anchor_type='class', anchor_name='TaskList', position='before'",
                 "parameters": {
                     "path": "string — Path to the file",
                     "insert": "string — Content to insert",
@@ -142,7 +142,7 @@ fn build_guide() -> Value {
             },
             {
                 "type": "run_command",
-                "description": "Run a shell command and capture output",
+                "description": "Run a shell command and capture output. Do NOT use for file patching/code injection — use file_patch with tree-sitter anchors instead.",
                 "intent_format": "Run <command>",
                 "intent_example": "Run cargo test",
                 "parameters": {

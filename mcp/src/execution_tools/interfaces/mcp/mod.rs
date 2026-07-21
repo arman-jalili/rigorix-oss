@@ -57,7 +57,8 @@ pub const RIGORIX_EXECUTE_INPUT_SCHEMA: &str = r#"{
                             "parameters": { "type": "object" },
                             "requires_approval": { "type": "boolean" },
                             "description": { "type": "string" },
-                            "timeout_secs": { "type": "integer" }
+                            "timeout_secs": { "type": "integer" },
+                            "evaluate_score": { "type": "boolean", "description": "Whether to run scored evaluation on this step's output" }
                         },
                         "required": ["name", "tool", "parameters"]
                     },
@@ -115,7 +116,8 @@ pub const RIGORIX_VALIDATE_INPUT_SCHEMA: &str = r#"{
                             "parameters": { "type": "object" },
                             "requires_approval": { "type": "boolean" },
                             "description": { "type": "string" },
-                            "timeout_secs": { "type": "integer" }
+                            "timeout_secs": { "type": "integer" },
+                            "evaluate_score": { "type": "boolean", "description": "Whether to run scored evaluation on this step's output" }
                         },
                         "required": ["name", "tool", "parameters"]
                     },

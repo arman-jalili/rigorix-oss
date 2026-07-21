@@ -143,6 +143,10 @@ pub struct PlanWithGraphOutput {
     /// Total LLM calls consumed.
     pub total_llm_calls: u32,
 
+    /// Node IDs that have `ScoredEvaluation` validation.
+    #[serde(default)]
+    pub scored_node_ids: Vec<String>,
+
     /// Total LLM tokens consumed.
     pub total_llm_tokens: u32,
 
@@ -273,6 +277,10 @@ pub struct GenerateGraphOutput {
 
     /// Whether the graph was generated from a built-in template or generator.
     pub from_generator: bool,
+
+    /// Node UUID strings for nodes that have `ScoredEvaluation` validation.
+    #[serde(default)]
+    pub scored_node_ids: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
