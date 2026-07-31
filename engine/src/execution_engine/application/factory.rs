@@ -18,6 +18,7 @@ use std::sync::Arc;
 
 use crate::event_system::application::EventBusService;
 use crate::execution_engine::domain::ExecutionError;
+use crate::permission::application::enforcer::PermissionEnforcer;
 
 use super::service::{ParallelExecutionService, RetryEvaluationService};
 
@@ -58,6 +59,13 @@ pub struct ParallelExecutionFactoryConfig {
 
     /// The event bus service for publishing execution lifecycle events.
     pub event_bus: Option<Arc<dyn EventBusService>>,
+
+    /// Optional permission enforcer for mode-based gating of tool calls.
+    ///
+    /// When set, every tool invocation (including bash commands) is checked
+    /// against the active permission mode before execution. When `None`, no
+    /// permission gating is applied.
+    pub permission_enforcer: Option<Arc<dyn PermissionEnforcer>>,
 }
 
 impl Default for ParallelExecutionFactoryConfig {
@@ -68,6 +76,7 @@ impl Default for ParallelExecutionFactoryConfig {
             enable_progress_callbacks: true,
             event_channel_capacity: 1024,
             event_bus: None,
+            permission_enforcer: None,
         }
     }
 }

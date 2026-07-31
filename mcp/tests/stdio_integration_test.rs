@@ -274,6 +274,28 @@ fn test_stdio_list_prompts() {
         "Should expose rigorix_introduction prompt"
     );
 
+    // prompts/get for the advertised prompt must be implemented (not "not implemented")
+    let get_response = send_rpc(
+        r#"{"jsonrpc":"2.0","id":5,"method":"prompts/get","params":{"name":"rigorix_introduction"}}"#,
+        &mut stdin,
+        &mut stdout,
+    );
+    let parsed_get: serde_json::Value =
+        serde_json::from_str(&get_response).expect("Response should be valid JSON");
+    assert_eq!(parsed_get["jsonrpc"], "2.0");
+    assert_eq!(parsed_get["id"], 5);
+    assert!(
+        parsed_get["result"]["messages"].is_array(),
+        "prompts/get should return messages for rigorix_introduction, got: {get_response}"
+    );
+    assert!(
+        parsed_get["result"]["messages"][0]["content"]["text"]
+            .as_str()
+            .map(|t| t.contains("Rigorix"))
+            .unwrap_or(false),
+        "prompt text should mention Rigorix, got: {get_response}"
+    );
+
     drop(stdin);
     let _ = child.wait();
 }

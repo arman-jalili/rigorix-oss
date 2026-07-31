@@ -2,7 +2,7 @@
 //!
 //! @canonical actions/.pi/architecture/modules/security-config.md
 //! Implements: Contract Freeze — ForkRepository, TokenRepository, PolicyRepository,
-//! HmacKeyRepository, AllowlistRepository traits
+//! AllowlistRepository traits
 //! Issue: issue-contract-freeze
 //!
 //! Repositories abstract data access behind interfaces, allowing
@@ -17,7 +17,7 @@
 
 use async_trait::async_trait;
 
-use crate::security_config::domain::{HmacKey, SecurityError};
+use crate::security_config::domain::SecurityError;
 
 /// Repository for reading GitHub environment variables related to fork detection.
 ///
@@ -89,24 +89,6 @@ pub trait PolicyRepository: Send + Sync {
 /// Repository for managing HMAC signing keys.
 ///
 /// Abstracts key storage behind a trait for testability.
-/// In production, keys are loaded from environment variables.
-#[async_trait]
-pub trait HmacKeyRepository: Send + Sync {
-    /// Load the HMAC signing key from its configured source.
-    /// Typically reads from an environment variable.
-    async fn load_key(&self, env_var: &str) -> Result<Option<HmacKey>, SecurityError>;
-
-    /// Store a new HMAC key (for key rotation).
-    /// In production, this would update a secret store.
-    async fn store_key(&self, key: &HmacKey) -> Result<(), SecurityError>;
-
-    /// Get the key rotation configuration.
-    async fn rotation_config(&self) -> Result<(u32, String), SecurityError>;
-
-    /// List all available key IDs (for key rotation).
-    async fn list_keys(&self) -> Result<Vec<String>, SecurityError>;
-}
-
 /// Repository for managing the URL allowlist.
 ///
 /// Abstracts allowlist storage behind a trait for testability.

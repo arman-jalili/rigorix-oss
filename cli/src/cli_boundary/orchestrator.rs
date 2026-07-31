@@ -21,6 +21,9 @@ use rigorix_engine::execution_engine::application::factory::{
 };
 use rigorix_engine::execution_engine::application::factory_impl::ParallelExecutionFactoryImpl;
 use rigorix_engine::execution_engine::domain::{ParallelExecutorConfig, RetryPolicy};
+use rigorix_engine::permission::application::enforcer_factory_impl::PermissionEnforcerFactoryImpl;
+use rigorix_engine::permission::application::factory::PermissionEnforcerFactory;
+use rigorix_engine::permission::domain::mode::PermissionMode;
 use std::collections::HashMap;
 
 use rigorix_engine::orchestrator::application::builder::OrchestratorBuilder;
@@ -282,6 +285,19 @@ pub async fn build_orchestrator_with_budget(
     };
 
     // ── 5. ParallelExecutionService ────────────────────────────────────
+    let permission_mode = resolve_permission_mode(engine_config.permission_mode.as_ref());
+    let permission_enforcer: Option<
+        Arc<dyn rigorix_engine::permission::application::enforcer::PermissionEnforcer>,
+    > = match PermissionEnforcerFactoryImpl
+        .create_with_mode(permission_mode)
+        .await
+    {
+        Ok(enforcer) => Some(Arc::from(enforcer)),
+        Err(e) => {
+            tracing::warn!("permission enforcer unavailable ({e}); continuing without mode gating");
+            None
+        }
+    };
     let execution = ParallelExecutionFactoryImpl
         .create(ParallelExecutionFactoryConfig {
             executor_config: ParallelExecutorConfig {
@@ -298,6 +314,7 @@ pub async fn build_orchestrator_with_budget(
             enable_progress_callbacks: true,
             event_channel_capacity: 1024,
             event_bus: Some(Arc::clone(&event_bus)),
+            permission_enforcer,
         })
         .await
         .map_err(|e| CliError::General(format!("execution: {e}")))?;
@@ -453,7 +470,9 @@ pub async fn build_orchestrator_with_budget(
     // ── 7. AuditService (optional) ─────────────────────────────────────
     let envelope_factory: Box<
         dyn rigorix_engine::audit::application::factory::AuditEnvelopeFactory,
-    > = Box::new(AuditEnvelopeFactoryImpl::new(None));
+    > = Box::new(AuditEnvelopeFactoryImpl::new(resolve_hmac_key(
+        engine_config.audit_hmac_key.as_ref(),
+    )));
     let audit_backend_url = engine_config.audit_backend_url.clone();
     let audit_backend_key = engine_config.audit_backend_key.clone();
     let sender: Arc<dyn AuditSender> =
@@ -600,4 +619,90 @@ pub async fn build_orchestrator_with_budget(
     };
 
     Ok((orchestrator, services))
+}
+
+// ---------------------------------------------------------------------------
+// Permission mode + HMAC key resolution
+// ---------------------------------------------------------------------------
+
+/// Resolve the effective permission mode for tool-execution gating.
+///
+/// Resolution order: configured value (rigorix.toml / `RIGORIX__PERMISSION_MODE`)
+/// → `RIGORIX_PERMISSION_MODE` env var → `workspace_write` (safe default).
+/// Accepts both `dangerous_full_access` (action.yml spelling) and
+/// `danger_full_access` (engine serde spelling).
+fn resolve_permission_mode(configured: Option<&String>) -> PermissionMode {
+    let raw = configured
+        .cloned()
+        .or_else(|| std::env::var("RIGORIX_PERMISSION_MODE").ok())
+        .unwrap_or_else(|| "workspace_write".to_string());
+    match raw.as_str() {
+        "read_only" => PermissionMode::ReadOnly,
+        "dangerous_full_access" | "danger_full_access" => PermissionMode::DangerousFullAccess,
+        _ => PermissionMode::WorkspaceWrite,
+    }
+}
+
+/// Resolve the HMAC-SHA256 audit signing key.
+///
+/// Resolution order: configured value (rigorix.toml / `RIGORIX__AUDIT_HMAC_KEY`)
+/// → `RIGORIX_HMAC_KEY` env var. When `None`, audit envelopes are emitted
+/// unsigned (and `AuditEnvelopeFactory` refuses to verify them).
+fn resolve_hmac_key(configured: Option<&String>) -> Option<String> {
+    configured
+        .cloned()
+        .or_else(|| std::env::var("RIGORIX_HMAC_KEY").ok())
+        .filter(|k| !k.is_empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mode(s: &str) -> Option<String> {
+        Some(s.to_string())
+    }
+
+    #[test]
+    fn permission_mode_defaults_to_workspace_write() {
+        assert_eq!(
+            resolve_permission_mode(None),
+            PermissionMode::WorkspaceWrite
+        );
+        assert_eq!(
+            resolve_permission_mode(mode("bogus").as_ref()),
+            PermissionMode::WorkspaceWrite
+        );
+    }
+
+    #[test]
+    fn permission_mode_parses_all_modes() {
+        assert_eq!(
+            resolve_permission_mode(mode("read_only").as_ref()),
+            PermissionMode::ReadOnly
+        );
+        assert_eq!(
+            resolve_permission_mode(mode("workspace_write").as_ref()),
+            PermissionMode::WorkspaceWrite
+        );
+        // Both documented spellings of the unrestricted mode are accepted.
+        assert_eq!(
+            resolve_permission_mode(mode("dangerous_full_access").as_ref()),
+            PermissionMode::DangerousFullAccess
+        );
+        assert_eq!(
+            resolve_permission_mode(mode("danger_full_access").as_ref()),
+            PermissionMode::DangerousFullAccess
+        );
+    }
+
+    #[test]
+    fn hmac_key_uses_configured_value() {
+        assert_eq!(
+            resolve_hmac_key(mode("secret-key").as_ref()),
+            Some("secret-key".to_string())
+        );
+        assert_eq!(resolve_hmac_key(None), None);
+        assert_eq!(resolve_hmac_key(mode("").as_ref()), None);
+    }
 }

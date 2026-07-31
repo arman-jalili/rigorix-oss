@@ -69,13 +69,6 @@ pub enum SecurityError {
         actual: String,
     },
 
-    /// HMAC signing key not available.
-    #[error("HMAC signing key not available: {detail}")]
-    HmacKeyMissing {
-        /// Details about the missing key.
-        detail: String,
-    },
-
     /// Organization policy could not be loaded.
     #[error("Failed to load organization policy from '{path}': {detail}")]
     OrgPolicyLoadFailed {

@@ -231,6 +231,82 @@ async fn test_approval_gate_pauses_until_human_signoff() {
     assert!(state.is_complete, "execution should be complete");
 }
 
+// ---------------------------------------------------------------------------
+// Permission-mode gating through the factory
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_factory_threads_permission_enforcer_read_only_gates_bash_write() {
+    use crate::dag_engine::domain::{TaskGraph, TaskNode};
+    use crate::execution_engine::application::factory::{
+        ParallelExecutionFactory, ParallelExecutionFactoryConfig,
+    };
+    use crate::execution_engine::application::factory_impl::ParallelExecutionFactoryImpl;
+    use crate::permission::application::enforcer_factory_impl::PermissionEnforcerFactoryImpl;
+    use crate::permission::application::factory::PermissionEnforcerFactory;
+    use crate::permission::domain::mode::PermissionMode;
+
+    // Build a ReadOnly enforcer and thread it through the factory config —
+    // this is exactly what the CLI/action/MCP entry points now do.
+    let enforcer = PermissionEnforcerFactoryImpl
+        .create_with_mode(PermissionMode::ReadOnly)
+        .await
+        .expect("read-only enforcer construction");
+
+    let service = ParallelExecutionFactoryImpl::new()
+        .create(ParallelExecutionFactoryConfig {
+            permission_enforcer: Some(Arc::from(enforcer)),
+            ..Default::default()
+        })
+        .await
+        .expect("factory create");
+
+    let dag_id = Uuid::new_v4();
+    // `run_command` requires WorkspaceWrite → denied in ReadOnly before exec.
+    let write_node = TaskNode::new(
+        Uuid::new_v4(),
+        "write",
+        "run_command",
+        vec![],
+        "touch /tmp/rigorix-perm",
+    );
+    // `grep_search` is allow-listed at ReadOnly → allowed, placeholder success.
+    let read_node = TaskNode::new(
+        Uuid::new_v4(),
+        "read",
+        "grep_search",
+        vec![],
+        "pattern in src",
+    );
+    let mut graph = TaskGraph::new();
+    graph.add_unchecked(write_node).unwrap();
+    graph.add_unchecked(read_node).unwrap();
+    graph.seal().unwrap();
+
+    let output = service
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            graph: Some(graph),
+            config_override: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(output.result.dag_id, dag_id);
+
+    let state = service
+        .get_execution_state(GetExecutionStateInput { dag_id })
+        .await
+        .unwrap();
+    assert_eq!(
+        state.failed_count, 1,
+        "bash write command must be denied in read_only mode"
+    );
+    assert_eq!(
+        state.completed_count, 1,
+        "allow-listed read tool must still complete"
+    );
+}
+
 #[tokio::test]
 async fn test_approval_gate_rejects_unknown_step_name() {
     use crate::dag_engine::domain::{TaskGraph, TaskNode};

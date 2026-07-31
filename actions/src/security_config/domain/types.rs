@@ -163,26 +163,6 @@ impl ActionMode {
 }
 
 // ---------------------------------------------------------------------------
-// HmacKey
-// ---------------------------------------------------------------------------
-
-/// An HMAC signing key with metadata for key rotation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HmacKey {
-    /// The raw key bytes (32 bytes for SHA-256).
-    pub key: Vec<u8>,
-
-    /// A human-readable identifier for the key (for key rotation).
-    pub key_id: String,
-
-    /// ISO 8601 timestamp when the key was created.
-    pub created_at: String,
-
-    /// ISO 8601 timestamp when the key expires.
-    pub expires_at: String,
-}
-
-// ---------------------------------------------------------------------------
 // SecurityPolicy
 // ---------------------------------------------------------------------------
 

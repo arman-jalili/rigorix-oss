@@ -22,7 +22,6 @@
 //! | SecretMasker | — | `application::service::SecretMaskingService` | — | — |
 //! | TokenValidator | — | `application::service::TokenValidationService` | `infrastructure::repository::TokenRepository` | — |
 //! | UrlAllowlist | — | `application::service::UrlAllowlistService` | `infrastructure::repository::AllowlistRepository` | — |
-//! | HmacSigner | `domain::types::HmacKey` | `application::service::HmacSigningService` | `infrastructure::repository::HmacKeyRepository` | — |
 //! | OrgPolicyLoader | `domain::types::SecurityPolicy` | `application::service::PolicyLoadingService` | `infrastructure::repository::PolicyRepository` | — |
 //!
 //! # Layer Structure
@@ -32,7 +31,7 @@
 //! ├── mod.rs                          # Module root
 //! ├── domain/                         # Domain entities and interfaces
 //! │   ├── mod.rs
-//! │   ├── types.rs                    # SecurityContext, SecurityLevel, ActionMode, HmacKey, SecurityPolicy
+//! │   ├── types.rs                    # SecurityContext, SecurityLevel, ActionMode, SecurityPolicy
 //! │   ├── error.rs                    # SecurityError
 //! │   └── event/
 //! │       └── mod.rs                  # SecurityEvent payloads

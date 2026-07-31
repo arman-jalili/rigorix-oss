@@ -52,8 +52,11 @@ impl ParallelExecutionFactory for ParallelExecutionFactoryImpl {
         let event_bus = config
             .event_bus
             .unwrap_or_else(|| std::sync::Arc::new(crate::event_system::application::event_bus_service_impl::EventBusServiceImpl::default()));
-        let executor =
+        let mut executor =
             ParallelExecutionServiceImpl::new(config.executor_config, retry_service, event_bus);
+        if let Some(enforcer) = config.permission_enforcer {
+            executor = executor.with_permission_enforcer(enforcer);
+        }
         Ok(Box::new(executor))
     }
 }

@@ -2,11 +2,11 @@
 //!
 //! @canonical actions/.pi/architecture/modules/security-config.md#domain
 //! Implements: Contract Freeze — domain entities SecurityContext, SecurityLevel,
-//! ActionMode, HmacKey, SecurityPolicy, SecurityError, SecurityEvent
+//! ActionMode, SecurityPolicy, SecurityError, SecurityEvent
 //! Issue: issue-contract-freeze
 //!
 //! This module defines the core domain types — `SecurityContext`, `SecurityLevel`,
-//! `ActionMode`, `HmacKey`, `SecurityPolicy`, `SecurityError`, and `SecurityEvent`.
+//! `ActionMode`, `SecurityPolicy`, `SecurityError`, and `SecurityEvent`.
 //! These are pure domain objects with no framework dependencies. They serve as the
 //! frozen contract that all implementation must satisfy.
 //!

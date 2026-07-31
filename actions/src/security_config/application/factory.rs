@@ -1,7 +1,7 @@
 //! Factory interfaces for constructing Security Configuration domain objects.
 //!
 //! @canonical actions/.pi/architecture/modules/security-config.md
-//! Implements: Contract Freeze — SecurityContextFactory, HmacKeyFactory, SecurityPolicyFactory traits
+//! Implements: Contract Freeze — SecurityContextFactory, SecurityPolicyFactory traits
 //! Issue: issue-contract-freeze
 //!
 //! Factories encapsulate the construction of complex domain objects,
@@ -16,7 +16,7 @@
 use async_trait::async_trait;
 
 use crate::security_config::domain::{
-    HmacKey, SecurityContext, SecurityError, SecurityLevel, SecurityPolicy,
+    SecurityContext, SecurityError, SecurityLevel, SecurityPolicy,
 };
 
 /// Factory for constructing `SecurityContext` from raw check results.
@@ -58,25 +58,6 @@ pub trait SecurityContextFactory: Send + Sync {
         api_key_masked: bool,
         backend_url_allowed: bool,
     ) -> SecurityLevel;
-}
-
-/// Factory for constructing `HmacKey` values.
-///
-/// Handles key generation, parsing, and expiration management.
-#[allow(clippy::wrong_self_convention)]
-#[async_trait]
-pub trait HmacKeyFactory: Send + Sync {
-    /// Generate a new cryptographically random HMAC key.
-    async fn generate_key(&self, key_id: Option<String>) -> Result<HmacKey, SecurityError>;
-
-    /// Parse an HMAC key from raw bytes.
-    fn from_bytes(&self, key: Vec<u8>, key_id: String) -> Result<HmacKey, SecurityError>;
-
-    /// Parse an HMAC key from a hex-encoded string.
-    fn from_hex(&self, hex_key: &str, key_id: String) -> Result<HmacKey, SecurityError>;
-
-    /// Check if a key has expired.
-    fn is_expired(&self, key: &HmacKey) -> bool;
 }
 
 /// Factory for constructing `SecurityPolicy` from TOML configuration.

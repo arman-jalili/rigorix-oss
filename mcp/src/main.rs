@@ -24,6 +24,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use rigorix_engine::permission::domain::mode::PermissionMode;
+
 use rigorix_mcp::audit_tools::application::service::{
     AuditSummaryHandler, ListAuditsHandler, ReadAuditHandler,
 };
@@ -520,6 +522,24 @@ fn load_toml_config<T: serde::de::DeserializeOwned + Default>(
     }
 }
 
+/// Resolve the effective permission mode for the MCP engine.
+///
+/// Resolution order: rigorix.toml `permission_mode` → `RIGORIX_PERMISSION_MODE`
+/// env var → `workspace_write` (safe default). Accepts both
+/// `dangerous_full_access` (action.yml spelling) and `danger_full_access`
+/// (engine serde spelling).
+fn resolve_mcp_permission_mode(configured: Option<&String>) -> PermissionMode {
+    let raw = configured
+        .cloned()
+        .or_else(|| std::env::var("RIGORIX_PERMISSION_MODE").ok())
+        .unwrap_or_else(|| "workspace_write".to_string());
+    match raw.trim().to_lowercase().as_str() {
+        "read_only" => PermissionMode::ReadOnly,
+        "dangerous_full_access" | "danger_full_access" => PermissionMode::DangerousFullAccess,
+        _ => PermissionMode::WorkspaceWrite,
+    }
+}
+
 /// Build a real EngineFacadeImpl by constructing all required engine sub-services.
 async fn build_real_engine(
     repo_root: &str,
@@ -543,6 +563,8 @@ async fn build_real_engine(
     use rigorix_engine::orchestrator::application::builder::OrchestratorBuilder;
     use rigorix_engine::orchestrator::application::builder_impl::OrchestratorBuilderImpl;
     use rigorix_engine::orchestrator::domain::OrchestratorConfig;
+    use rigorix_engine::permission::application::enforcer_factory_impl::PermissionEnforcerFactoryImpl;
+    use rigorix_engine::permission::application::factory::PermissionEnforcerFactory;
     use rigorix_engine::planning::application::factory::PlanningPipelineFactory;
     use rigorix_engine::planning::application::pipeline_factory_impl::PlanningPipelineFactoryImpl;
     use rigorix_engine::state_persistence::application::service::StateManagerService;
@@ -630,10 +652,31 @@ async fn build_real_engine(
         .create_default(classifier, extractor, template_service)
         .await?;
 
+    // ── Engine config (rigorix.toml: audit HMAC key, permission mode) ──
+    use rigorix_engine::configuration::domain::config::Config;
+    let engine_config = load_toml_config::<Config>(repo_root, "rigorix.toml");
+
     // ── Execution service ──
+    // Permission mode: rigorix.toml → RIGORIX_PERMISSION_MODE env → workspace_write.
+    let permission_mode = resolve_mcp_permission_mode(engine_config.permission_mode.as_ref());
+    let permission_enforcer: Option<
+        Arc<dyn rigorix_engine::permission::application::enforcer::PermissionEnforcer>,
+    > = match PermissionEnforcerFactoryImpl
+        .create_with_mode(permission_mode)
+        .await
+    {
+        Ok(enforcer) => Some(Arc::from(enforcer)),
+        Err(e) => {
+            tracing::warn!("permission enforcer unavailable ({e}); continuing without mode gating");
+            None
+        }
+    };
     let execution_service: Arc<dyn ParallelExecutionService> = Arc::from(
         ParallelExecutionFactoryImpl::new()
-            .create(ParallelExecutionFactoryConfig::default())
+            .create(ParallelExecutionFactoryConfig {
+                permission_enforcer,
+                ..ParallelExecutionFactoryConfig::default()
+            })
             .await?,
     );
 
@@ -663,15 +706,19 @@ async fn build_real_engine(
     use rigorix_engine::audit::application::audit_sender_impl::AuditSenderImpl;
     use rigorix_engine::audit::application::audit_service_impl::AuditServiceImpl;
     use rigorix_engine::audit::application::envelope_factory_impl::AuditEnvelopeFactoryImpl;
-    use rigorix_engine::configuration::domain::config::Config;
 
-    let audit_config = load_toml_config::<Config>(repo_root, "rigorix.toml");
-    let audit_url = audit_config.audit_backend_url.clone();
-    let audit_key = audit_config.audit_backend_key.clone();
+    let audit_url = engine_config.audit_backend_url.clone();
+    let audit_key = engine_config.audit_backend_key.clone();
     let audit_sender =
         Arc::new(AuditSenderImpl::new(None, audit_url.clone()).with_api_key(audit_key.clone()));
+    // HMAC signing key: rigorix.toml `audit_hmac_key` or RIGORIX_HMAC_KEY env.
+    let hmac_key = engine_config
+        .audit_hmac_key
+        .clone()
+        .or_else(|| std::env::var("RIGORIX_HMAC_KEY").ok())
+        .filter(|k| !k.is_empty());
     let audit_service: Arc<dyn AuditService> = Arc::new(AuditServiceImpl::new(
-        Box::new(AuditEnvelopeFactoryImpl::default()),
+        Box::new(AuditEnvelopeFactoryImpl::new(hmac_key)),
         audit_sender,
         Box::new(AuditQueueImpl::default()),
         audit_url.is_some(),
@@ -1099,10 +1146,41 @@ async fn handle_get_prompt(id: &RequestId, params: &serde_json::Value) -> JsonRp
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
 
-    JsonRpcMessage::error(
-        id.clone(),
-        JsonRpcError::internal_error(format!("Prompt '{}' not implemented", name)),
-    )
+    match name {
+        "rigorix_introduction" => {
+            let text = concat!(
+                "You are using Rigorix, an AI code-governance engine that plans, ",
+                "executes, and audits multi-step work against a frozen contract.\n\n",
+                "Key capabilities:\n",
+                "  • rigorix_list_templates / rigorix_get_template — inspect plan templates\n",
+                "  • rigorix_validate_plan — check a plan against enforcement policies\n",
+                "  • rigorix_run — execute a template's DAG through the engine\n",
+                "  • rigorix_approve_execution — human sign-off when a step requires it\n",
+                "    (plans may mark steps requires_approval: true; execution pauses until approved)\n",
+                "  • rigorix_check_enforcement — current enforcement status and budget\n",
+                "  • rigorix_get_execution_status / rigorix_get_audit_log — inspect evidence\n\n",
+                "All execution is gated: budgets, safety caps, tool policy, and (when ",
+                "configured) a permission mode (read_only / workspace_write / ",
+                "dangerous_full_access). Every audit event is timestamped and, when a ",
+                "signing key is configured, HMAC-signed for tamper-evident evidence.\n\n",
+                "Start by listing templates, then run one with rigorix_run.",
+            );
+            let result = serde_json::json!({
+                "description": "Introduction to Rigorix tool usage",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": { "type": "text", "text": text }
+                    }
+                ]
+            });
+            JsonRpcMessage::success(id.clone(), result)
+        }
+        _ => JsonRpcMessage::error(
+            id.clone(),
+            JsonRpcError::internal_error(format!("Prompt '{}' not found", name)),
+        ),
+    }
 }
 
 // ---------------------------------------------------------------------------

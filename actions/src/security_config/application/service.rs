@@ -3,7 +3,7 @@
 //! @canonical actions/.pi/architecture/modules/security-config.md
 //! Implements: Contract Freeze — SecurityValidationService, ForkDetectionService,
 //! SecretMaskingService, TokenValidationService, UrlAllowlistService,
-//! HmacSigningService, PolicyLoadingService traits
+//! PolicyLoadingService traits
 //! Issue: issue-contract-freeze
 //!
 //! These traits define the application-level operations for security validation,
@@ -18,13 +18,13 @@
 
 use async_trait::async_trait;
 
-use crate::security_config::domain::{ActionMode, HmacKey, SecurityError};
+use crate::security_config::domain::{ActionMode, SecurityError};
 
 use super::dto::{
-    DetectForkInput, DetectForkOutput, HmacSignInput, HmacSignOutput, HmacVerifyInput,
-    HmacVerifyOutput, LoadOrgPolicyInput, LoadOrgPolicyOutput, LoadPolicyInput, LoadPolicyOutput,
-    MaskSecretsInput, MaskSecretsOutput, ValidateSecurityInput, ValidateSecurityOutput,
-    ValidateTokenInput, ValidateTokenOutput, ValidateUrlInput, ValidateUrlOutput,
+    DetectForkInput, DetectForkOutput, LoadOrgPolicyInput, LoadOrgPolicyOutput, LoadPolicyInput,
+    LoadPolicyOutput, MaskSecretsInput, MaskSecretsOutput, ValidateSecurityInput,
+    ValidateSecurityOutput, ValidateTokenInput, ValidateTokenOutput, ValidateUrlInput,
+    ValidateUrlOutput,
 };
 
 /// Application service for orchestrating all pre-flight security checks.
@@ -174,35 +174,6 @@ pub trait UrlAllowlistService: Send + Sync {
 
     /// Check if a host matches any allowlist entry.
     async fn is_host_allowed(&self, host: &str) -> Result<bool, SecurityError>;
-}
-
-/// Application service for HMAC-SHA256 signing and verification.
-///
-/// Implements the `HmacSigner` component from the architecture doc.
-/// Signs audit record payloads and verifies signatures using constant-time
-/// comparison to prevent timing attacks.
-///
-/// # Contract (Frozen)
-/// - `sign()` produces hex-encoded HMAC-SHA256 signatures
-/// - `verify()` uses constant-time comparison
-/// - `generate_key()` produces cryptographically random 32-byte keys
-/// - Key rotation is supported via key_id tracking
-#[async_trait]
-pub trait HmacSigningService: Send + Sync {
-    /// Sign a payload and return the hex-encoded signature.
-    async fn sign(&self, input: HmacSignInput) -> Result<HmacSignOutput, SecurityError>;
-
-    /// Verify a signature against a payload (constant-time comparison).
-    async fn verify(&self, input: HmacVerifyInput) -> Result<HmacVerifyOutput, SecurityError>;
-
-    /// Generate a new HMAC key (32 random bytes).
-    async fn generate_key(&self) -> Result<HmacKey, SecurityError>;
-
-    /// Load the HMAC signing key from the configured source.
-    async fn load_key(&self) -> Result<HmacKey, SecurityError>;
-
-    /// Rotate the HMAC signing key.
-    async fn rotate_key(&self) -> Result<HmacKey, SecurityError>;
 }
 
 /// Application service for loading security policy configuration.

@@ -46,6 +46,11 @@ inputs:
     required: false
     default: 'false'
 
+  hmac-key:
+    description: 'HMAC-SHA256 signing key for audit envelopes (RIGORIX_HMAC_KEY). When set, every audit record is signed for tamper-evident evidence.'
+    required: false
+    default: ''
+
   fail-on-action-error:
     description: 'Fail workflow if the action itself encounters an error. Default false (fail-open).'
     required: false

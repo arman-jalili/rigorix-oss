@@ -64,6 +64,22 @@ pub struct Config {
     /// Audit backend API key (optional).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audit_backend_key: Option<String>,
+
+    /// HMAC-SHA256 signing key for audit envelopes (optional).
+    ///
+    /// When set, every audit envelope is signed before persistence/posting,
+    /// fulfilling the "signed, timestamped evidence" contract. Also honored
+    /// from the `RIGORIX_HMAC_KEY` environment variable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audit_hmac_key: Option<String>,
+
+    /// Permission mode for tool execution gating (optional).
+    ///
+    /// One of `read_only`, `workspace_write` (default), or
+    /// `dangerous_full_access`. When set, every tool call (including bash
+    /// commands) is gated against the mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_mode: Option<String>,
 }
 
 /// Orchestrator execution parameters.

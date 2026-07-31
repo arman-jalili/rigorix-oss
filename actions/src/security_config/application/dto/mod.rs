@@ -152,47 +152,6 @@ pub struct ValidateUrlOutput {
 }
 
 // ---------------------------------------------------------------------------
-// HMAC Signing DTOs
-// ---------------------------------------------------------------------------
-
-/// Input for signing a payload.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HmacSignInput {
-    /// The payload bytes to sign.
-    pub payload: Vec<u8>,
-    /// Optional key override. If None, uses configured key.
-    pub key_override: Option<Vec<u8>>,
-}
-
-/// Output from HMAC signing.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HmacSignOutput {
-    /// The hex-encoded signature.
-    pub signature: String,
-    /// Key identifier used.
-    pub key_id: String,
-}
-
-/// Input for verifying an HMAC signature.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HmacVerifyInput {
-    /// The original payload bytes.
-    pub payload: Vec<u8>,
-    /// The signature to verify.
-    pub signature: String,
-    /// Optional key override. If None, uses configured key.
-    pub key_override: Option<Vec<u8>>,
-}
-
-/// Output from HMAC signature verification.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HmacVerifyOutput {
-    /// Whether the signature is valid.
-    pub valid: bool,
-    /// Key identifier used for verification.
-    pub key_id: String,
-}
-
 // ---------------------------------------------------------------------------
 // Security Policy DTOs
 // ---------------------------------------------------------------------------

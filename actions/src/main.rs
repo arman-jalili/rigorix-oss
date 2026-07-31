@@ -50,6 +50,9 @@ use rigorix_engine::orchestrator::application::builder::OrchestratorBuilder;
 use rigorix_engine::orchestrator::application::builder_impl::OrchestratorBuilderImpl;
 use rigorix_engine::orchestrator::application::service::OrchestratorService;
 use rigorix_engine::orchestrator::domain::OrchestratorConfig as OrchestratorDomainConfig;
+use rigorix_engine::permission::application::enforcer_factory_impl::PermissionEnforcerFactoryImpl;
+use rigorix_engine::permission::application::factory::PermissionEnforcerFactory;
+use rigorix_engine::permission::domain::mode::PermissionMode;
 use rigorix_engine::planning::application::factory::PlanningPipelineFactory;
 use rigorix_engine::planning::application::pipeline_factory_impl::PlanningPipelineFactoryImpl;
 use rigorix_engine::planning::infrastructure::claude_classifier::{
@@ -171,6 +174,7 @@ async fn build_action_orchestrator(
     repo_root: &str,
     max_llm_calls: Option<u32>,
     max_llm_tokens: Option<u64>,
+    permission_mode: PermissionMode,
 ) -> Result<
     (
         Arc<dyn OrchestratorService>,
@@ -237,6 +241,18 @@ async fn build_action_orchestrator(
         .map_err(|e| format!("budget: {e}"))?;
 
     // ── 5. ParallelExecutionService ────────────────────────────────────
+    let permission_enforcer: Option<
+        Arc<dyn rigorix_engine::permission::application::enforcer::PermissionEnforcer>,
+    > = match PermissionEnforcerFactoryImpl
+        .create_with_mode(permission_mode)
+        .await
+    {
+        Ok(enforcer) => Some(Arc::from(enforcer)),
+        Err(e) => {
+            tracing::warn!("permission enforcer unavailable ({e}); continuing without mode gating");
+            None
+        }
+    };
     let execution = ParallelExecutionFactoryImpl
         .create(ParallelExecutionFactoryConfig {
             executor_config: ParallelExecutorConfig {
@@ -253,6 +269,7 @@ async fn build_action_orchestrator(
             enable_progress_callbacks: true,
             event_channel_capacity: 1024,
             event_bus: Some(Arc::clone(&event_bus)),
+            permission_enforcer,
         })
         .await
         .map_err(|e| format!("execution: {e}"))?;
@@ -458,9 +475,16 @@ async fn build_action_orchestrator(
         .map_err(|e| format!("planning: {e}"))?;
 
     // ── 7. AuditService (optional) ─────────────────────────────────────
+    // HMAC signing key: RIGORIX_HMAC_KEY env var or `hmac-key` action input.
+    // Without a key every audit envelope would be emitted UNSIGNED, breaking
+    // the "signed, timestamped evidence" contract.
+    let hmac_key = std::env::var("RIGORIX_HMAC_KEY")
+        .ok()
+        .or_else(|| read_input("hmac-key"))
+        .filter(|k| !k.is_empty());
     let envelope_factory: Box<
         dyn rigorix_engine::audit::application::factory::AuditEnvelopeFactory,
-    > = Box::new(AuditEnvelopeFactoryImpl::new(None));
+    > = Box::new(AuditEnvelopeFactoryImpl::new(hmac_key));
     let queue: Box<dyn AuditQueue> = Box::new(AuditQueueImpl::default());
 
     let (sender, audit_enabled): (Arc<dyn AuditSender>, bool) =
@@ -521,6 +545,19 @@ fn read_input(name: &str) -> Option<String> {
     std::env::var(&env_name).ok().filter(|v| !v.is_empty())
 }
 
+/// Parse the `permission-mode` action input into a `PermissionMode`.
+///
+/// Accepts both `dangerous_full_access` (documented in action.yml) and
+/// `danger_full_access` (engine serde spelling). Unknown values fall back
+/// to `workspace_write` (the action.yml default) rather than failing.
+fn parse_permission_mode(raw: &str) -> PermissionMode {
+    match raw.trim().to_lowercase().as_str() {
+        "read_only" => PermissionMode::ReadOnly,
+        "dangerous_full_access" | "danger_full_access" => PermissionMode::DangerousFullAccess,
+        _ => PermissionMode::WorkspaceWrite,
+    }
+}
+
 /// Read GITHUB_WORKSPACE.
 fn read_workspace() -> String {
     std::env::var("GITHUB_WORKSPACE").unwrap_or_else(|_| ".".to_string())
@@ -549,7 +586,9 @@ async fn main() {
     // 2. Read all action inputs
     let input_mode = read_input("mode").unwrap_or_else(|| "auto".to_string());
     let input_intent = read_input("intent");
-    let _permission_mode = read_input("permission-mode");
+    let permission_mode = read_input("permission-mode")
+        .map(|m| parse_permission_mode(&m))
+        .unwrap_or(PermissionMode::WorkspaceWrite);
     let fail_on_violation = read_input("fail-on-violation")
         .map(|v| v == "true")
         .unwrap_or(false);
@@ -588,7 +627,9 @@ async fn main() {
     // 4. Build the engine orchestrator
     tracing::info!("Building engine orchestrator (repo_root: {repo_root})");
     let (orchestrator, _event_bus) =
-        match build_action_orchestrator(&repo_root, max_llm_calls, max_llm_tokens).await {
+        match build_action_orchestrator(&repo_root, max_llm_calls, max_llm_tokens, permission_mode)
+            .await
+        {
             Ok(services) => services,
             Err(e) => {
                 tracing::error!("Failed to build orchestrator: {e}");
@@ -796,4 +837,43 @@ fn read_github_token() -> Option<String> {
     std::env::var("GITHUB_TOKEN")
         .ok()
         .or_else(|| std::env::var("INPUT_GITHUB_TOKEN").ok())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_permission_mode;
+    use rigorix_engine::permission::domain::mode::PermissionMode;
+
+    #[test]
+    fn parse_permission_mode_accepts_all_documented_values() {
+        assert_eq!(parse_permission_mode("read_only"), PermissionMode::ReadOnly);
+        assert_eq!(
+            parse_permission_mode("workspace_write"),
+            PermissionMode::WorkspaceWrite
+        );
+        assert_eq!(
+            parse_permission_mode("dangerous_full_access"),
+            PermissionMode::DangerousFullAccess
+        );
+    }
+
+    #[test]
+    fn parse_permission_mode_accepts_engine_spelling_and_whitespace() {
+        assert_eq!(
+            parse_permission_mode("danger_full_access"),
+            PermissionMode::DangerousFullAccess
+        );
+        assert_eq!(
+            parse_permission_mode("  READ_ONLY  "),
+            PermissionMode::ReadOnly
+        );
+    }
+
+    #[test]
+    fn parse_permission_mode_falls_back_on_unknown() {
+        assert_eq!(
+            parse_permission_mode("whatever"),
+            PermissionMode::WorkspaceWrite
+        );
+    }
 }
