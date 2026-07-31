@@ -499,6 +499,24 @@ mod tests {
         fn event_bus(&self) -> &dyn rigorix_engine::event_system::application::EventBusService {
             unimplemented!("event_bus not needed in tests")
         }
+
+        async fn approve_execution(
+            &self,
+            input: rigorix_engine::orchestrator::application::dto::ApproveExecutionInput,
+        ) -> Result<
+            rigorix_engine::orchestrator::application::dto::ApproveExecutionOutput,
+            rigorix_engine::orchestrator::domain::OrchestratorError,
+        > {
+            Ok(
+                rigorix_engine::orchestrator::application::dto::ApproveExecutionOutput {
+                    execution_id: input.execution_id,
+                    approved: input.step_names.clone(),
+                    not_found: Vec::new(),
+                    still_pending: Vec::new(),
+                    resumed: true,
+                },
+            )
+        }
     }
 
     // ── Mock ValidationLoopService ──

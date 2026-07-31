@@ -26,7 +26,7 @@ pub type ProgressCallback = Box<dyn Fn(ExecutionProgress) + Send + Sync>;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::Mutex;
 use uuid::Uuid;
@@ -45,10 +45,10 @@ use crate::recovery_recipes::application::service::RecoveryService;
 use crate::recovery_recipes::domain::FailureScenario;
 
 use super::dto::{
-    AbortExecutionInput, AbortExecutionOutput, EvaluateRetryInput, EvaluateRetryOutput,
-    ExecuteGraphInput, ExecuteGraphOutput, ExecuteNodeInput, ExecuteNodeOutput,
-    GetExecutionStateInput, GetExecutionStateOutput, PauseExecutionInput, PauseExecutionOutput,
-    ResumeExecutionInput, ResumeExecutionOutput,
+    AbortExecutionInput, AbortExecutionOutput, ApproveNodeInput, ApproveNodeOutput,
+    EvaluateRetryInput, EvaluateRetryOutput, ExecuteGraphInput, ExecuteGraphOutput,
+    ExecuteNodeInput, ExecuteNodeOutput, GetExecutionStateInput, GetExecutionStateOutput,
+    PauseExecutionInput, PauseExecutionOutput, ResumeExecutionInput, ResumeExecutionOutput,
 };
 use super::service::{ExecutionProgress, ParallelExecutionService, RetryEvaluationService};
 
@@ -276,6 +276,8 @@ struct ExecutionSession {
     paused: bool,
     /// Whether execution has been aborted.
     aborted: bool,
+    /// Node IDs granted human approval (for `requires_approval` steps).
+    approved: HashSet<Uuid>,
 
     /// ISO 8601 timestamp when execution started.
     started_at: chrono::DateTime<chrono::Utc>,
@@ -313,6 +315,220 @@ pub struct ParallelExecutionServiceImpl {
 }
 
 impl ParallelExecutionServiceImpl {
+    /// Pop the next dispatchable ready node from the graph.
+    ///
+    /// Returns `(node_id, paused)`:
+    /// - `(Some(id), false)` — `id` is ready to dispatch.
+    /// - `(None, false)` — the ready queue is empty.
+    /// - `(None, true)` — the front node requires un-granted human approval;
+    ///   it was requeued and dispatch must pause until it is approved.
+    fn pop_dispatchable(
+        graph: &mut crate::dag_engine::domain::TaskGraph,
+        approved: &HashSet<Uuid>,
+    ) -> (Option<Uuid>, bool) {
+        let Some(node_id) = graph.pop_ready_node() else {
+            return (None, false);
+        };
+        let needs_approval = graph
+            .get_node(node_id)
+            .map(|n| n.requires_approval && !approved.contains(&node_id))
+            .unwrap_or(false);
+        if needs_approval {
+            graph.requeue_ready_node(node_id);
+            (None, true)
+        } else {
+            (Some(node_id), false)
+        }
+    }
+
+    /// Run the producer-consumer dispatch loop for a sealed TaskGraph.
+    ///
+    /// Dispatches ready nodes up to `max_concurrent`, gating dispatch on
+    /// human approval: a ready node with `requires_approval: true` that is
+    /// not in `approved` is requeued and marked `AwaitingApproval`, and
+    /// dispatch pauses at the first such boundary. In-flight nodes always
+    /// drain before the loop returns, so a paused execution has no dangling
+    /// tasks and can be continued by `approve_node` + `resume_execution`.
+    ///
+    /// Returns `(completed_count, failed_count, node_results, approval_blocked)`.
+    #[allow(clippy::too_many_arguments)]
+    async fn run_dispatch_loop(
+        &self,
+        graph: &mut crate::dag_engine::domain::TaskGraph,
+        dag_id: Uuid,
+        started_at: chrono::DateTime<chrono::Utc>,
+        total_nodes: u32,
+        approved: &HashSet<Uuid>,
+    ) -> Result<(u32, u32, HashMap<Uuid, TaskResult>, bool), ExecutionError> {
+        let mut join_set: tokio::task::JoinSet<(Uuid, TaskResult)> = tokio::task::JoinSet::new();
+        let mut completed_count: u32 = 0;
+        let mut failed_count: u32 = 0;
+        let mut node_results: HashMap<Uuid, TaskResult> = HashMap::new();
+        let max_concurrent = self.config.max_concurrent_executions.max(1) as usize;
+        let event_bus = &self.event_bus;
+        let mut approval_blocked = false;
+
+        // Phase 1: Initial dispatch — fill the pipeline up to max_concurrent
+        while join_set.len() < max_concurrent {
+            let (node_id, paused) = Self::pop_dispatchable(graph, approved);
+            if paused {
+                approval_blocked = true;
+                self.mark_awaiting_approval(dag_id, graph, total_nodes)
+                    .await?;
+                break;
+            }
+            let Some(node_id) = node_id else {
+                break;
+            };
+            spawn_concurrent_node(
+                &mut join_set,
+                graph,
+                event_bus,
+                &self.sessions,
+                dag_id,
+                node_id,
+                &self.permission_enforcer,
+                &self.hook_runner,
+            )
+            .await?;
+        }
+
+        // Phase 2: Consume completions, dispatch new nodes as slots open
+        while let Some(joined) = join_set.join_next().await {
+            let (node_id, task_result) = joined.map_err(|e| ExecutionError::InternalError {
+                detail: format!("Task panicked: {e}"),
+            })?;
+
+            let success = task_result.success;
+            if success {
+                completed_count += 1;
+            } else {
+                failed_count += 1;
+            }
+            node_results.insert(node_id, task_result.clone());
+
+            // Update session node state
+            {
+                let mut sessions =
+                    self.sessions
+                        .lock()
+                        .map_err(|e| ExecutionError::InternalError {
+                            detail: format!("Lock error: {e}"),
+                        })?;
+                if let Some(session) = sessions.get_mut(&dag_id)
+                    && let Some(state) = session.node_states.get_mut(&node_id)
+                {
+                    if success {
+                        state.mark_completed(task_result.duration_ms);
+                    } else {
+                        state.mark_failed(
+                            task_result
+                                .failure_type
+                                .clone()
+                                .unwrap_or_else(|| "unknown".to_string()),
+                            task_result.error.clone().unwrap_or_default(),
+                        );
+                    }
+                    // Notify progress callbacks
+                    self.notify_progress(dag_id, node_id, state, total_nodes);
+                }
+            }
+
+            // Mark completed in graph to release dependents
+            let _ = graph.mark_completed(node_id);
+
+            // Phase 3: Dispatch newly ready nodes (a slot just opened)
+            while join_set.len() < max_concurrent {
+                let (next_id, paused) = Self::pop_dispatchable(graph, approved);
+                if paused {
+                    approval_blocked = true;
+                    self.mark_awaiting_approval(dag_id, graph, total_nodes)
+                        .await?;
+                    break;
+                }
+                let Some(next_id) = next_id else {
+                    break;
+                };
+                spawn_concurrent_node(
+                    &mut join_set,
+                    graph,
+                    event_bus,
+                    &self.sessions,
+                    dag_id,
+                    next_id,
+                    &self.permission_enforcer,
+                    &self.hook_runner,
+                )
+                .await?;
+            }
+
+            // Update aggregate result in session
+            {
+                let mut sessions =
+                    self.sessions
+                        .lock()
+                        .map_err(|e| ExecutionError::InternalError {
+                            detail: format!("Lock error: {e}"),
+                        })?;
+                if let Some(session) = sessions.get_mut(&dag_id) {
+                    session.result = ExecutionResult {
+                        dag_id,
+                        node_results: node_results.clone(),
+                        execution_states: session.node_states.clone(),
+                        completed_count,
+                        failed_count,
+                        skipped_count: 0,
+                        total_nodes,
+                        total_duration_ms: Utc::now()
+                            .signed_duration_since(started_at)
+                            .num_milliseconds()
+                            .max(0) as u64,
+                        total_retries: node_results.values().map(|r| r.retry_attempts as u32).sum(),
+                        started_at,
+                        completed_at: Utc::now(),
+                        cancelled: false,
+                        cancellation_reason: None,
+                    };
+                }
+            }
+        }
+
+        Ok((
+            completed_count,
+            failed_count,
+            node_results,
+            approval_blocked,
+        ))
+    }
+
+    /// Mark the front ready node as awaiting human approval in the session.
+    ///
+    /// Called when dispatch pauses at an approval boundary. The blocked node
+    /// was requeued to the front of the ready queue by `pop_dispatchable`.
+    async fn mark_awaiting_approval(
+        &self,
+        dag_id: Uuid,
+        graph: &crate::dag_engine::domain::TaskGraph,
+        total_nodes: u32,
+    ) -> Result<(), ExecutionError> {
+        let Some(blocked_id) = graph.ready_nodes().first().copied() else {
+            return Ok(());
+        };
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|e| ExecutionError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
+        if let Some(session) = sessions.get_mut(&dag_id)
+            && let Some(state) = session.node_states.get_mut(&blocked_id)
+        {
+            state.mark_awaiting_approval();
+            self.notify_progress(dag_id, blocked_id, state, total_nodes);
+        }
+        Ok(())
+    }
+
     /// Create a new ParallelExecutionServiceImpl.
     pub fn new(
         config: ParallelExecutorConfig,
@@ -1246,6 +1462,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                     result: ExecutionResult::new(input.dag_id),
                     paused: false,
                     aborted: false,
+                    approved: HashSet::new(),
                     started_at: Utc::now(),
                     graph: None,
                 },
@@ -1272,6 +1489,8 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
             return Ok(ExecuteGraphOutput {
                 result,
                 completed_at: now,
+                approval_pending: false,
+                pending_approval_steps: Vec::new(),
             });
         };
 
@@ -1323,6 +1542,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                     result: ExecutionResult::new(input.dag_id),
                     paused: false,
                     aborted: false,
+                    approved: HashSet::new(),
                     started_at,
                     graph: Some(graph.clone()),
                 },
@@ -1330,135 +1550,41 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         }
 
         // ── Parallel dispatch loop ────────────────────────────────────
-        // Uses tokio JoinSet to execute independent nodes concurrently.
-        // When multiple DAG nodes have no dependencies, they execute
-        // concurrently via spawned tasks. The max_concurrent_executions
-        // config limits how many tasks run simultaneously.
-        //
-        // The loop follows a producer-consumer pattern:
-        // 1. Initial dispatch: spawn all initially ready nodes (up to limit)
-        // 2. Wait for one to complete via JoinSet
-        // 3. Process result, mark completed in graph
-        // 4. Spawn newly ready nodes (dependencies now satisfied)
-        // 5. Repeat until all nodes processed
-        let mut join_set: tokio::task::JoinSet<(Uuid, TaskResult)> = tokio::task::JoinSet::new();
-        let mut completed_count: u32 = 0;
-        let mut failed_count: u32 = 0;
-        let mut node_results: HashMap<Uuid, TaskResult> = HashMap::new();
-        let max_concurrent = self.config.max_concurrent_executions.max(1) as usize;
-        let dag_id = input.dag_id;
-        let event_bus = &self.event_bus;
+        // Dispatches ready nodes up to max_concurrent, gating dispatch on
+        // human approval: steps declaring `requires_approval` are not
+        // dispatched until approved (see run_dispatch_loop).
+        let approved: HashSet<Uuid> = {
+            let sessions = self
+                .sessions
+                .lock()
+                .map_err(|e| ExecutionError::InternalError {
+                    detail: format!("Lock error: {}", e),
+                })?;
+            sessions
+                .get(&input.dag_id)
+                .map(|s| s.approved.clone())
+                .unwrap_or_default()
+        };
 
-        // Phase 1: Initial dispatch — fill the pipeline up to max_concurrent
-        while join_set.len() < max_concurrent {
-            let Some(node_id) = graph.pop_ready_node() else {
-                break;
-            };
-            spawn_concurrent_node(
-                &mut join_set,
-                &mut graph,
-                event_bus,
-                &self.sessions,
-                dag_id,
-                node_id,
-                &self.permission_enforcer,
-                &self.hook_runner,
-            )
+        let (completed_count, failed_count, node_results, approval_blocked) = self
+            .run_dispatch_loop(&mut graph, input.dag_id, started_at, total_nodes, &approved)
             .await?;
-        }
 
-        // Phase 2: Consume completions, dispatch new nodes as slots open
-        while let Some(joined) = join_set.join_next().await {
-            let (node_id, task_result) = joined.map_err(|e| ExecutionError::InternalError {
-                detail: format!("Task panicked: {e}"),
-            })?;
-
-            let success = task_result.success;
-            if success {
-                completed_count += 1;
-            } else {
-                failed_count += 1;
-            }
-            node_results.insert(node_id, task_result.clone());
-
-            // Update session node state
-            {
-                let mut sessions =
-                    self.sessions
-                        .lock()
-                        .map_err(|e| ExecutionError::InternalError {
-                            detail: format!("Lock error: {e}"),
-                        })?;
-                if let Some(session) = sessions.get_mut(&dag_id)
-                    && let Some(state) = session.node_states.get_mut(&node_id)
-                {
-                    if success {
-                        state.mark_completed(task_result.duration_ms);
-                    } else {
-                        state.mark_failed(
-                            task_result
-                                .failure_type
-                                .clone()
-                                .unwrap_or_else(|| "unknown".to_string()),
-                            task_result.error.clone().unwrap_or_default(),
-                        );
-                    }
-                    // Notify progress callbacks
-                    self.notify_progress(dag_id, node_id, state, total_nodes);
-                }
-            }
-
-            // Mark completed in graph to release dependents
-            let _ = graph.mark_completed(node_id);
-
-            // Phase 3: Dispatch newly ready nodes (a slot just opened)
-            while join_set.len() < max_concurrent {
-                let Some(next_id) = graph.pop_ready_node() else {
-                    break;
-                };
-                spawn_concurrent_node(
-                    &mut join_set,
-                    &mut graph,
-                    event_bus,
-                    &self.sessions,
-                    dag_id,
-                    next_id,
-                    &self.permission_enforcer,
-                    &self.hook_runner,
-                )
-                .await?;
-            }
-
-            // Update aggregate result in session
-            {
-                let mut sessions =
-                    self.sessions
-                        .lock()
-                        .map_err(|e| ExecutionError::InternalError {
-                            detail: format!("Lock error: {e}"),
-                        })?;
-                if let Some(session) = sessions.get_mut(&dag_id) {
-                    session.result = ExecutionResult {
-                        dag_id,
-                        node_results: node_results.clone(),
-                        execution_states: session.node_states.clone(),
-                        completed_count,
-                        failed_count,
-                        skipped_count: 0,
-                        total_nodes,
-                        total_duration_ms: Utc::now()
-                            .signed_duration_since(started_at)
-                            .num_milliseconds()
-                            .max(0) as u64,
-                        total_retries: node_results.values().map(|r| r.retry_attempts as u32).sum(),
-                        started_at,
-                        completed_at: Utc::now(),
-                        cancelled: false,
-                        cancellation_reason: None,
-                    };
-                }
-            }
-        }
+        // Build final result using the LIVE node states from the session so
+        // completed/failed/awaiting-approval states survive for approve,
+        // resume, and get_execution_state flows.
+        let live_states: HashMap<Uuid, NodeExecutionState> = {
+            let sessions = self
+                .sessions
+                .lock()
+                .map_err(|e| ExecutionError::InternalError {
+                    detail: format!("Lock error: {}", e),
+                })?;
+            sessions
+                .get(&input.dag_id)
+                .map(|s| s.node_states.clone())
+                .unwrap_or_else(|| node_states.clone())
+        };
 
         // Build final result
         let completed_at = Utc::now();
@@ -1466,7 +1592,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         let final_result = ExecutionResult {
             dag_id: input.dag_id,
             node_results,
-            execution_states: node_states.clone(),
+            execution_states: live_states.clone(),
             completed_count,
             failed_count,
             skipped_count: 0,
@@ -1482,7 +1608,20 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
             cancellation_reason: None,
         };
 
-        // Update session with final result
+        let (approval_pending, pending_approval_steps) = if approval_blocked {
+            let steps = live_states
+                .values()
+                .filter(|s| s.status == NodeStatus::AwaitingApproval)
+                .map(|s| s.node_name.clone())
+                .collect::<Vec<_>>();
+            (true, steps)
+        } else {
+            (false, Vec::new())
+        };
+
+        // Update session with final result (preserve live node states and
+        // persist the live graph so a later approve/resume can continue the
+        // DAG exactly where dispatch paused).
         {
             let mut sessions = self
                 .sessions
@@ -1492,13 +1631,18 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                 })?;
             if let Some(session) = sessions.get_mut(&input.dag_id) {
                 session.result = final_result.clone();
-                session.node_states = node_states;
+                session.graph = Some(graph.clone());
+                if approval_pending {
+                    session.paused = true;
+                }
             }
         }
 
         Ok(ExecuteGraphOutput {
             result: final_result,
             completed_at,
+            approval_pending,
+            pending_approval_steps,
         })
     }
 
@@ -1958,6 +2102,121 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         &self,
         input: ResumeExecutionInput,
     ) -> Result<ResumeExecutionOutput, ExecutionError> {
+        // Snapshot the paused session (graph + approvals) so the dispatch
+        // loop can run without holding the sessions lock across awaits.
+        let (graph, approved, node_states) = {
+            let mut sessions = self
+                .sessions
+                .lock()
+                .map_err(|e| ExecutionError::InternalError {
+                    detail: format!("Lock error: {}", e),
+                })?;
+
+            let session = sessions
+                .get_mut(&input.dag_id)
+                .ok_or(ExecutionError::NodeNotFound {
+                    node_id: input.dag_id,
+                })?;
+
+            if !session.paused {
+                return Err(ExecutionError::InvalidState {
+                    reason: "Execution is not paused".to_string(),
+                });
+            }
+
+            session.paused = false;
+            (
+                session.graph.clone(),
+                session.approved.clone(),
+                session.node_states.clone(),
+            )
+        };
+
+        let mut ready = node_states
+            .values()
+            .filter(|s| s.status == NodeStatus::Ready)
+            .count() as u32;
+
+        // Continue the DAG if there is a live graph (an approval-paused
+        // execution): re-run the dispatch loop for the remaining nodes now
+        // that approvals have been granted.
+        if let Some(mut graph) = graph {
+            let total_nodes = graph.node_count() as u32;
+            let started_at = Utc::now();
+            let (completed, failed, node_results, approval_blocked) = self
+                .run_dispatch_loop(&mut graph, input.dag_id, started_at, total_nodes, &approved)
+                .await?;
+
+            let live_states = {
+                let sessions = self
+                    .sessions
+                    .lock()
+                    .map_err(|e| ExecutionError::InternalError {
+                        detail: format!("Lock error: {}", e),
+                    })?;
+                let s =
+                    sessions
+                        .get(&input.dag_id)
+                        .ok_or_else(|| ExecutionError::InvalidState {
+                            reason: "Session disappeared during resume".to_string(),
+                        })?;
+                s.node_states.clone()
+            };
+
+            ready = live_states
+                .values()
+                .filter(|s| s.status == NodeStatus::Ready)
+                .count() as u32;
+
+            let total_retries: u32 = node_results.values().map(|r| r.retry_attempts as u32).sum();
+            let mut sessions = self
+                .sessions
+                .lock()
+                .map_err(|e| ExecutionError::InternalError {
+                    detail: format!("Lock error: {}", e),
+                })?;
+            if let Some(session) = sessions.get_mut(&input.dag_id) {
+                // Merge this segment's results with pre-pause results so
+                // no completed node is lost.
+                let mut all_results = session.result.node_results.clone();
+                all_results.extend(node_results);
+                session.result = ExecutionResult {
+                    dag_id: input.dag_id,
+                    node_results: all_results,
+                    execution_states: live_states.clone(),
+                    completed_count: session.result.completed_count + completed,
+                    failed_count: session.result.failed_count + failed,
+                    skipped_count: 0,
+                    total_nodes,
+                    total_duration_ms: session.result.total_duration_ms
+                        + Utc::now()
+                            .signed_duration_since(started_at)
+                            .num_milliseconds()
+                            .max(0) as u64,
+                    total_retries: session.result.total_retries + total_retries,
+                    started_at: session.result.started_at,
+                    completed_at: Utc::now(),
+                    cancelled: false,
+                    cancellation_reason: None,
+                };
+                session.graph = Some(graph.clone());
+                if approval_blocked {
+                    session.paused = true;
+                }
+            }
+        }
+
+        Ok(ResumeExecutionOutput {
+            dag_id: input.dag_id,
+            ready_count: ready,
+            resumed_at: Utc::now(),
+        })
+    }
+
+    async fn approve_node(
+        &self,
+        input: ApproveNodeInput,
+    ) -> Result<ApproveNodeOutput, ExecutionError> {
         let mut sessions = self
             .sessions
             .lock()
@@ -1971,23 +2230,45 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                 node_id: input.dag_id,
             })?;
 
-        if !session.paused {
-            return Err(ExecutionError::InvalidState {
-                reason: "Execution is not paused".to_string(),
-            });
+        let mut approved: Vec<String> = Vec::new();
+        let mut not_found: Vec<String> = Vec::new();
+
+        for name in &input.step_names {
+            // Resolve step name -> node id from the session's live states.
+            let node_id = session
+                .node_states
+                .iter()
+                .find(|(_, s)| &s.node_name == name)
+                .map(|(id, _)| *id);
+
+            let Some(node_id) = node_id else {
+                not_found.push(name.clone());
+                continue;
+            };
+
+            session.approved.insert(node_id);
+            approved.push(name.clone());
+
+            // A node blocked on approval becomes dispatchable again.
+            if let Some(state) = session.node_states.get_mut(&node_id)
+                && state.status == NodeStatus::AwaitingApproval
+            {
+                state.mark_ready();
+            }
         }
 
-        session.paused = false;
-        let ready = session
+        let still_pending: Vec<String> = session
             .node_states
             .values()
-            .filter(|s| s.status == NodeStatus::Ready)
-            .count() as u32;
+            .filter(|s| s.status == NodeStatus::AwaitingApproval)
+            .map(|s| s.node_name.clone())
+            .collect();
 
-        Ok(ResumeExecutionOutput {
+        Ok(ApproveNodeOutput {
             dag_id: input.dag_id,
-            ready_count: ready,
-            resumed_at: Utc::now(),
+            approved,
+            not_found,
+            still_pending,
         })
     }
 

@@ -77,6 +77,9 @@ struct AppState {
     // Enterprise proxy (optional)
     enterprise_proxy: Option<SharedEnterpriseProxy>,
 
+    // Engine facade (direct access for approval/sign-off flows)
+    engine: SharedEngineFacade,
+
     // Execution tools
     execute_handler: Box<dyn ExecuteHandler>,
     plan_handler: Box<dyn PlanHandler>,
@@ -158,6 +161,7 @@ impl AppState {
 
         Self {
             enterprise_proxy,
+            engine: engine.clone(),
             execute_handler: Box::new(ExecuteHandlerImpl::new(
                 engine.clone(),
                 Duration::from_secs(300),
@@ -362,6 +366,48 @@ impl AppState {
                     .await
                     .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
                 Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
+            }
+            "rigorix_approve_execution" => {
+                use rigorix_mcp::execution_tools::domain::value::ExecutionId;
+
+                let execution_id = params["execution_id"]
+                    .as_str()
+                    .and_then(|s| uuid::Uuid::parse_str(s).ok())
+                    .ok_or_else(
+                        || serde_json::json!({"error": "Invalid or missing execution_id"}),
+                    )?;
+                let step_names: Vec<String> = params["step_names"]
+                    .as_array()
+                    .ok_or_else(|| serde_json::json!({"error": "Missing step_names array"}))?
+                    .iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect();
+                if step_names.is_empty() {
+                    return Err(serde_json::json!({
+                        "error": "step_names must contain at least one step name"
+                    }));
+                }
+
+                let approval = self
+                    .engine
+                    .approve_execution(&ExecutionId::from_uuid(execution_id), step_names)
+                    .await
+                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+
+                Ok(serde_json::json!({
+                    "execution_id": approval.execution_id().to_string(),
+                    "approved_steps": approval.approved_steps(),
+                    "not_found": approval.not_found(),
+                    "still_pending": approval.still_pending(),
+                    "resumed": approval.resumed(),
+                    "message": if approval.resumed() {
+                        "Approved — execution resumed"
+                    } else if approval.still_pending().is_empty() {
+                        "Approved — execution paused"
+                    } else {
+                        "Approval recorded — more steps still pending"
+                    }
+                }))
             }
 
             // Audit tools
@@ -776,12 +822,13 @@ async fn build_real_engine(
 /// Returns the list of all registered OSS MCP tool descriptors.
 fn all_tool_descriptors() -> Vec<serde_json::Value> {
     vec![
-        // Execution tools (5)
+        // Execution tools (6)
         rigorix_mcp::execution_tools::interfaces::mcp::rigorix_execute_tool_descriptor(),
         rigorix_mcp::execution_tools::interfaces::mcp::rigorix_plan_tool_descriptor(),
         rigorix_mcp::execution_tools::interfaces::mcp::rigorix_run_tool_descriptor(),
         rigorix_mcp::execution_tools::interfaces::mcp::rigorix_validate_plan_tool_descriptor(),
         rigorix_mcp::execution_tools::interfaces::mcp::rigorix_check_enforcement_tool_descriptor(),
+        rigorix_mcp::execution_tools::interfaces::mcp::rigorix_approve_execution_tool_descriptor(),
         // Audit tools (3)
         rigorix_mcp::audit_tools::interfaces::mcp::rigorix_read_audit_tool_descriptor(),
         rigorix_mcp::audit_tools::interfaces::mcp::rigorix_list_audits_tool_descriptor(),

@@ -18,8 +18,9 @@ use async_trait::async_trait;
 use crate::orchestrator::domain::OrchestratorError;
 
 use super::dto::{
-    CancelInput, CancelOutput, PlanFromTemplateInput, PlanOnlyInput, PlanOnlyOutput,
-    RunFromTemplateInput, RunInput, RunOutput, StatusOutput,
+    ApproveExecutionInput, ApproveExecutionOutput, CancelInput, CancelOutput,
+    PlanFromTemplateInput, PlanOnlyInput, PlanOnlyOutput, RunFromTemplateInput, RunInput,
+    RunOutput, StatusOutput,
 };
 
 /// Single entry point for executing a Rigorix run from intent to result.
@@ -98,4 +99,15 @@ pub trait OrchestratorService: Send + Sync {
     /// run starts. The returned reference must be valid for the lifetime of
     /// the service.
     fn event_bus(&self) -> &dyn crate::event_system::application::EventBusService;
+
+    /// Approve steps of an execution paused for human sign-off and resume it.
+    ///
+    /// Steps that declared `requires_approval: true` are only dispatched
+    /// after being approved here. Grants approval by step name, then resumes
+    /// the paused execution so the remaining DAG nodes continue. If any steps
+    /// remain pending after this call, the execution stays paused.
+    async fn approve_execution(
+        &self,
+        input: ApproveExecutionInput,
+    ) -> Result<ApproveExecutionOutput, OrchestratorError>;
 }

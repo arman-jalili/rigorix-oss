@@ -156,6 +156,21 @@ mod tests {
                 .clone()
                 .unwrap_or_else(|| Err(EngineFacadeError::EngineNotAvailable("mock".into())))
         }
+
+        async fn approve_execution(
+            &self,
+            execution_id: &ExecutionId,
+            step_names: Vec<String>,
+        ) -> Result<crate::execution_tools::domain::value::ApprovalResult, EngineFacadeError>
+        {
+            Ok(crate::execution_tools::domain::value::ApprovalResult::new(
+                *execution_id.as_uuid(),
+                step_names,
+                vec![],
+                vec![],
+                true,
+            ))
+        }
     }
 
     // -----------------------------------------------------------------------

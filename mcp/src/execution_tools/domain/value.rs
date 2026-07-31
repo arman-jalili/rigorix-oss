@@ -352,6 +352,10 @@ pub enum ExecutionStatus {
     Cancelled,
     /// Execution was blocked by enforcement (budget exceeded).
     EnforcementBlocked,
+    /// Execution paused awaiting human sign-off on one or more steps that
+    /// declared `requires_approval: true`. Resumable via
+    /// `rigorix_approve_execution`.
+    PendingApproval,
 }
 
 // ---------------------------------------------------------------------------
@@ -691,6 +695,77 @@ pub struct StepCost {
 
     /// Optional monetary cost (in micro-units).
     pub cost_micro: Option<u64>,
+}
+
+// ---------------------------------------------------------------------------
+// ApprovalResult — outcome of a human sign-off on a paused execution
+// ---------------------------------------------------------------------------
+
+/// Result of approving steps of an execution paused for human sign-off.
+///
+/// Returned by `rigorix_approve_execution`. Indicates which steps were
+/// approved, which were unknown, which remain pending, and whether the
+/// paused execution resumed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ApprovalResult {
+    /// Execution ID the approval applied to.
+    execution_id: Uuid,
+
+    /// Step names granted approval.
+    approved_steps: Vec<String>,
+
+    /// Step names not found in this execution.
+    not_found: Vec<String>,
+
+    /// Step names still awaiting approval after this call.
+    still_pending: Vec<String>,
+
+    /// Whether the paused execution resumed after approval.
+    resumed: bool,
+}
+
+impl ApprovalResult {
+    /// Create a new ApprovalResult.
+    pub fn new(
+        execution_id: Uuid,
+        approved_steps: Vec<String>,
+        not_found: Vec<String>,
+        still_pending: Vec<String>,
+        resumed: bool,
+    ) -> Self {
+        Self {
+            execution_id,
+            approved_steps,
+            not_found,
+            still_pending,
+            resumed,
+        }
+    }
+
+    /// Execution ID the approval applied to.
+    pub fn execution_id(&self) -> &Uuid {
+        &self.execution_id
+    }
+
+    /// Step names granted approval.
+    pub fn approved_steps(&self) -> &[String] {
+        &self.approved_steps
+    }
+
+    /// Step names not found in this execution.
+    pub fn not_found(&self) -> &[String] {
+        &self.not_found
+    }
+
+    /// Step names still awaiting approval after this call.
+    pub fn still_pending(&self) -> &[String] {
+        &self.still_pending
+    }
+
+    /// Whether the paused execution resumed after approval.
+    pub fn resumed(&self) -> bool {
+        self.resumed
+    }
 }
 
 // ---------------------------------------------------------------------------

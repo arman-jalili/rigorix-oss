@@ -21,8 +21,9 @@ use crate::orchestrator::domain::record::TaskStatus;
 use crate::orchestrator::domain::{OrchestratorConfig, OrchestratorError};
 
 use super::dto::{
-    CancelInput, CancelOutput, NodeState, PlanFromTemplateInput, PlanOnlyInput, PlanOnlyOutput,
-    RunFromTemplateInput, RunInput, RunOutput, StatusOutput,
+    ApproveExecutionInput, ApproveExecutionOutput, CancelInput, CancelOutput, NodeState,
+    PlanFromTemplateInput, PlanOnlyInput, PlanOnlyOutput, RunFromTemplateInput, RunInput,
+    RunOutput, StatusOutput,
 };
 use super::service::OrchestratorService;
 
@@ -299,6 +300,8 @@ impl OrchestratorServiceImpl {
             ExecutionStatus::Completed => SpStatus::Completed,
             ExecutionStatus::PartialFailure | ExecutionStatus::Failed => SpStatus::Failed,
             ExecutionStatus::Cancelled => SpStatus::Cancelled,
+            // Not terminal — persisted as Pending so approve/resume continues it.
+            ExecutionStatus::PendingApproval => SpStatus::Pending,
         };
         let mut state =
             crate::state_persistence::domain::ExecutionState::new(execution_id, String::new());
@@ -351,7 +354,8 @@ impl OrchestratorServiceImpl {
                 step.tool.clone(),
                 vec![],
                 intent,
-            );
+            )
+            .with_requires_approval(step.requires_approval);
             graph
                 .add_unchecked(node)
                 .map_err(|e| OrchestratorError::Internal {
@@ -1002,7 +1006,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
             })?;
 
         // 3. Execute DAG
-        let task_results = self
+        let (task_results, approval_pending, pending_approval_steps) = self
             .execution_service
             .execute_graph(exec_dto::ExecuteGraphInput {
                 dag_id: execution_id,
@@ -1016,7 +1020,8 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 nodes_remaining: 0,
             })
             .map(|o| {
-                o.result
+                let task_results = o
+                    .result
                     .node_results
                     .into_values()
                     .map(|nr| TaskResult {
@@ -1033,8 +1038,17 @@ impl OrchestratorService for OrchestratorServiceImpl {
                         retry_attempts: nr.retry_attempts as u32,
                         tool_used: None,
                     })
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<_>>();
+                (task_results, o.approval_pending, o.pending_approval_steps)
             })?;
+
+        if approval_pending {
+            tracing::info!(
+                %execution_id,
+                pending_steps = ?pending_approval_steps,
+                "Execution paused for human approval"
+            );
+        }
 
         // 3a. Post-execution scored evaluation — only nodes where step has evaluate_score: true
         let scored_step_names: std::collections::HashSet<&str> = input
@@ -1096,8 +1110,11 @@ impl OrchestratorService for OrchestratorServiceImpl {
             }
         }
 
-        // 4. Determine final status
-        let final_status = if task_results.is_empty() {
+        // 4. Determine final status — approval-paused executions are NOT
+        // terminal: they are resumable via `approve_execution`.
+        let final_status = if approval_pending {
+            ExecutionStatus::PendingApproval
+        } else if task_results.is_empty() {
             ExecutionStatus::Completed
         } else {
             let f = task_results.iter().any(|t| t.status == TaskStatus::Failure);
@@ -1339,6 +1356,76 @@ impl OrchestratorService for OrchestratorServiceImpl {
     fn event_bus(&self) -> &dyn event_app::EventBusService {
         &*self.event_bus
     }
+
+    async fn approve_execution(
+        &self,
+        input: ApproveExecutionInput,
+    ) -> Result<ApproveExecutionOutput, OrchestratorError> {
+        // 1. Record approval in the execution engine session (by step name;
+        // the engine resolves names to node IDs from its live node states).
+        let approve_out = self
+            .execution_service
+            .approve_node(exec_dto::ApproveNodeInput {
+                dag_id: input.execution_id,
+                step_names: input.step_names,
+            })
+            .await
+            .map_err(|e| OrchestratorError::Internal {
+                detail: format!("Failed to approve execution steps: {e}"),
+                source_module: "orchestrator".into(),
+            })?;
+
+        // 2. Resume the paused execution if no steps remain pending.
+        let mut resumed = false;
+        if approve_out.still_pending.is_empty() {
+            resumed = self
+                .execution_service
+                .resume_execution(exec_dto::ResumeExecutionInput {
+                    dag_id: input.execution_id,
+                })
+                .await
+                .is_ok();
+        }
+
+        // 3. Sync the orchestrator's current execution status.
+        if let Some(s) = self.current_execution.write().await.as_mut() {
+            s.status = if resumed {
+                match self
+                    .execution_service
+                    .get_execution_state(exec_dto::GetExecutionStateInput {
+                        dag_id: input.execution_id,
+                    })
+                    .await
+                {
+                    Ok(state) => {
+                        let failed = state
+                            .node_states
+                            .values()
+                            .filter(|st| {
+                                st.status == crate::execution_engine::domain::NodeStatus::Failed
+                            })
+                            .count();
+                        if failed > 0 {
+                            ExecutionStatus::PartialFailure
+                        } else {
+                            ExecutionStatus::Completed
+                        }
+                    }
+                    Err(_) => ExecutionStatus::Completed,
+                }
+            } else {
+                ExecutionStatus::PendingApproval
+            };
+        }
+
+        Ok(ApproveExecutionOutput {
+            execution_id: input.execution_id,
+            approved: approve_out.approved,
+            not_found: approve_out.not_found,
+            still_pending: approve_out.still_pending,
+            resumed,
+        })
+    }
 }
 
 // Mocks moved to orchestrator_mocks.rs
@@ -1579,5 +1666,82 @@ mod tests {
             }
             _ => panic!("expected PlanningFailed"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_run_from_template_pauses_for_approval_and_resumes() {
+        // Wire a REAL execution service into the orchestrator so the
+        // requires_approval gate is exercised end to end (steps → graph →
+        // pause → approve → resume).
+        use crate::event_system::application::event_bus_service_impl::EventBusServiceImpl;
+        use crate::execution_engine::application::service_impl::{
+            ParallelExecutionServiceImpl, RetryEvaluationServiceImpl,
+        };
+        use crate::execution_engine::domain::ParallelExecutorConfig;
+
+        let executor: Arc<dyn exec_svc::ParallelExecutionService> =
+            Arc::new(ParallelExecutionServiceImpl::new(
+                ParallelExecutorConfig::default(),
+                Box::new(RetryEvaluationServiceImpl::new()),
+                Arc::new(EventBusServiceImpl::default()),
+            ));
+        let orch = OrchestratorServiceImpl::new(
+            OrchestratorConfig::default(),
+            Arc::new(super::super::orchestrator_mocks::MockPlanningService::new()),
+            executor,
+            Arc::new(super::super::orchestrator_mocks::MockStateService::new()),
+            Arc::new(super::super::orchestrator_mocks::MockCancellationService),
+            Arc::new(super::super::orchestrator_mocks::MockEventBusService::new()),
+            None,
+            Arc::new(super::super::orchestrator_mocks::MockBudgetService),
+            None,
+        );
+
+        let step_def = |name: &str, requires_approval: bool| {
+            crate::orchestrator::application::dto::TemplateStepDef {
+                name: name.into(),
+                tool: "bash".into(),
+                description: name.into(),
+                parameters: serde_json::json!({}),
+                requires_approval,
+                timeout_secs: None,
+                evaluate_score: false,
+            }
+        };
+
+        let input = RunFromTemplateInput {
+            steps: vec![step_def("build", false), step_def("deploy", true)],
+            repo_root: "/tmp/t".into(),
+            execution_id: None,
+            template_name: "approval-test".into(),
+            repository: None,
+            author: None,
+            enforcement_preset: None,
+        };
+
+        // 1. First run pauses at the approval boundary — NOT terminal.
+        let out = orch.run_from_template(input).await.unwrap();
+        assert_eq!(
+            out.record.status,
+            ExecutionStatus::PendingApproval,
+            "record must report PendingApproval, got {:?}",
+            out.record.status
+        );
+        assert!(
+            !out.record.status.is_terminal(),
+            "pending approval is resumable"
+        );
+
+        // 2. Approve the deploy step → execution resumes and completes.
+        let approve = orch
+            .approve_execution(ApproveExecutionInput {
+                execution_id: out.execution_id,
+                step_names: vec!["deploy".into()],
+            })
+            .await
+            .unwrap();
+        assert_eq!(approve.approved, vec!["deploy".to_string()]);
+        assert!(approve.still_pending.is_empty());
+        assert!(approve.resumed, "execution should resume after approval");
     }
 }

@@ -309,6 +309,7 @@ fn test_e2e_tools_list_contains_all_tools() {
         "rigorix_execute",
         "rigorix_validate_plan",
         "rigorix_check_enforcement",
+        "rigorix_approve_execution",
         "rigorix_read_audit",
         "rigorix_list_audits",
         "rigorix_audit_summary",
@@ -330,8 +331,8 @@ fn test_e2e_tools_list_contains_all_tools() {
 
     assert_eq!(
         names.len(),
-        13,
-        "Should have exactly 13 tools, got {}",
+        14,
+        "Should have exactly 14 tools, got {}",
         names.len()
     );
 

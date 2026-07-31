@@ -26,7 +26,8 @@ use std::sync::Arc;
 
 use super::error::EngineFacadeError;
 use super::value::{
-    CostBreakdown, EnforcementStatus, ExecutionId, ExecutionResult, PlanTemplate, ValidationResult,
+    ApprovalResult, CostBreakdown, EnforcementStatus, ExecutionId, ExecutionResult, PlanTemplate,
+    ValidationResult,
 };
 
 /// Thin async facade over rigorix-engine public APIs.
@@ -101,6 +102,20 @@ pub trait EngineFacade: Send + Sync {
         repository: Option<String>,
         author: Option<String>,
     ) -> Result<ExecutionResult, EngineFacadeError>;
+
+    /// Approve steps of an execution paused for human sign-off and resume it.
+    ///
+    /// Grants approval for steps that declared `requires_approval: true` in
+    /// the plan (see [`ExecutionResult::status`]). If no steps remain pending,
+    /// the paused execution resumes automatically.
+    ///
+    /// # Errors
+    /// - `EngineFacadeError::ExecutionNotFound` if `execution_id` doesn't exist
+    async fn approve_execution(
+        &self,
+        execution_id: &ExecutionId,
+        step_names: Vec<String>,
+    ) -> Result<ApprovalResult, EngineFacadeError>;
 }
 
 /// Shared ownership of an EngineFacade implementation.

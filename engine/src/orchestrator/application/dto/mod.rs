@@ -172,6 +172,42 @@ pub struct CancelOutput {
 }
 
 // ---------------------------------------------------------------------------
+// Approval DTOs
+// ---------------------------------------------------------------------------
+
+/// Input for approving steps of a paused execution.
+///
+/// Grants human sign-off for steps that declared `requires_approval: true`
+/// and resumes the paused execution once approval is recorded.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApproveExecutionInput {
+    /// The execution ID to approve steps for.
+    pub execution_id: uuid::Uuid,
+
+    /// Step (node) names to approve.
+    pub step_names: Vec<String>,
+}
+
+/// Output from approving steps of a paused execution.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApproveExecutionOutput {
+    /// The execution ID.
+    pub execution_id: uuid::Uuid,
+
+    /// Step names that were approved.
+    pub approved: Vec<String>,
+
+    /// Step names that could not be found in this execution.
+    pub not_found: Vec<String>,
+
+    /// Step names still awaiting approval after this call.
+    pub still_pending: Vec<String>,
+
+    /// Whether the paused execution resumed after approval.
+    pub resumed: bool,
+}
+
+// ---------------------------------------------------------------------------
 // Status DTOs
 // ---------------------------------------------------------------------------
 

@@ -47,6 +47,41 @@ pub struct ExecuteGraphOutput {
     pub result: ExecutionResult,
     /// ISO 8601 timestamp of completion.
     pub completed_at: DateTime<Utc>,
+    /// Whether execution paused awaiting human approval on one or more steps.
+    #[serde(default)]
+    pub approval_pending: bool,
+    /// Names of steps paused awaiting human approval (when `approval_pending`).
+    #[serde(default)]
+    pub pending_approval_steps: Vec<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Approve Node DTOs
+// ---------------------------------------------------------------------------
+
+/// Input for approving one or more steps of a paused execution.
+///
+/// Grants human sign-off for steps that declared `requires_approval: true`
+/// in the plan. After approval, `resume_execution` continues the paused DAG.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApproveNodeInput {
+    /// The ID of the paused DAG execution.
+    pub dag_id: Uuid,
+    /// Step (node) names to approve.
+    pub step_names: Vec<String>,
+}
+
+/// Output from approving steps of a paused execution.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApproveNodeOutput {
+    /// The ID of the DAG execution.
+    pub dag_id: Uuid,
+    /// Step names that were approved.
+    pub approved: Vec<String>,
+    /// Step names that could not be found in this execution.
+    pub not_found: Vec<String>,
+    /// Step names still awaiting approval after this call.
+    pub still_pending: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------

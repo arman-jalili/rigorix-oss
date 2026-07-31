@@ -23,10 +23,10 @@ use crate::execution_engine::domain::{
 };
 
 use super::dto::{
-    AbortExecutionInput, AbortExecutionOutput, EvaluateRetryInput, EvaluateRetryOutput,
-    ExecuteGraphInput, ExecuteGraphOutput, ExecuteNodeInput, ExecuteNodeOutput,
-    GetExecutionStateInput, GetExecutionStateOutput, PauseExecutionInput, PauseExecutionOutput,
-    ResumeExecutionInput, ResumeExecutionOutput,
+    AbortExecutionInput, AbortExecutionOutput, ApproveNodeInput, ApproveNodeOutput,
+    EvaluateRetryInput, EvaluateRetryOutput, ExecuteGraphInput, ExecuteGraphOutput,
+    ExecuteNodeInput, ExecuteNodeOutput, GetExecutionStateInput, GetExecutionStateOutput,
+    PauseExecutionInput, PauseExecutionOutput, ResumeExecutionInput, ResumeExecutionOutput,
 };
 
 /// Parallel DAG execution service.
@@ -112,6 +112,16 @@ pub trait ParallelExecutionService: Send + Sync {
         &self,
         input: ResumeExecutionInput,
     ) -> Result<ResumeExecutionOutput, ExecutionError>;
+
+    /// Approve one or more steps of an execution paused for human sign-off.
+    ///
+    /// Steps that declared `requires_approval: true` are dispatched only
+    /// after being approved here. Approving is idempotent; the execution
+    /// resumes via `resume_execution` once all pending steps are approved.
+    async fn approve_node(
+        &self,
+        input: ApproveNodeInput,
+    ) -> Result<ApproveNodeOutput, ExecutionError>;
 
     /// Abort an in-flight execution.
     ///

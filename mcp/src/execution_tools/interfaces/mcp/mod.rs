@@ -207,6 +207,37 @@ pub fn rigorix_check_enforcement_tool_descriptor() -> serde_json::Value {
     })
 }
 
+/// JSON Schema for the `rigorix_approve_execution` tool input.
+pub const RIGORIX_APPROVE_INPUT_SCHEMA: &str = r#"{
+    "type": "object",
+    "properties": {
+        "execution_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Execution ID of a run that returned status PendingApproval"
+        },
+        "step_names": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1,
+            "description": "Step names to approve (human sign-off). Steps that declared requires_approval: true only run after approval."
+        }
+    },
+    "required": ["execution_id", "step_names"]
+}"#;
+
+/// Descriptor for the `rigorix_approve_execution` tool.
+///
+/// Provides the human sign-off half of the `requires_approval` plan
+/// contract: approves steps of a paused execution and resumes it.
+pub fn rigorix_approve_execution_tool_descriptor() -> serde_json::Value {
+    json!({
+        "name": "rigorix_approve_execution",
+        "description": "Approve steps of an execution paused for human sign-off (status PendingApproval) and resume it. Steps that declared requires_approval: true are only executed after approval. Returns approved, not-found, still-pending step names and whether the execution resumed.",
+        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_APPROVE_INPUT_SCHEMA).unwrap()
+    })
+}
+
 /// Descriptor for the `rigorix_plan` tool.
 pub fn rigorix_plan_tool_descriptor() -> serde_json::Value {
     json!({

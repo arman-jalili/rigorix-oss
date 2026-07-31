@@ -130,11 +130,12 @@ fn test_without_enterprise_config_no_enterprise_tools() {
     let list_resp = send_one_request(&[], &list_req.to_string(), 5).unwrap();
     let tool_names = get_tool_names(&list_resp);
 
-    // Exactly 13 OSS tools (including rigorix_get_usage_guide, rigorix_plan, rigorix_run), no enterprise tools
+    // Exactly 14 OSS tools (including rigorix_get_usage_guide, rigorix_plan,
+    // rigorix_run, rigorix_approve_execution), no enterprise tools
     assert_eq!(
         tool_names.len(),
-        13,
-        "expected 13 OSS tools, got {}: {:?}",
+        14,
+        "expected 14 OSS tools, got {}: {:?}",
         tool_names.len(),
         tool_names
     );
@@ -197,10 +198,10 @@ fn test_with_enterprise_config_tools_appear() {
     let list_resp = send_one_request(env, &list_req.to_string(), 5).unwrap();
     let tool_names = get_tool_names(&list_resp);
 
-    // Should have 13 OSS + at least the static enterprise tool
+    // Should have 14 OSS + at least the static enterprise tool
     assert!(
-        tool_names.len() >= 14,
-        "expected 13+ tools with enterprise config, got {}: {:?}",
+        tool_names.len() >= 15,
+        "expected 14+ tools with enterprise config, got {}: {:?}",
         tool_names.len(),
         tool_names
     );

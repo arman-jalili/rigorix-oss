@@ -338,6 +338,16 @@ impl TaskGraph {
         self.execution_state.ready_queue.pop_front()
     }
 
+    /// Return a popped ready node to the front of the ready queue without
+    /// dispatching it.
+    ///
+    /// Used by the execution engine when a ready node requires human approval
+    /// that has not yet been granted: the node keeps its place in the queue
+    /// and execution pauses for sign-off instead of losing the node.
+    pub fn requeue_ready_node(&mut self, node_id: Uuid) {
+        self.execution_state.ready_queue.push_front(node_id);
+    }
+
     /// Check if all nodes have been completed.
     pub fn is_execution_complete(&self) -> bool {
         self.sealed && self.execution_state.completed.len() == self.nodes.len()
@@ -437,6 +447,15 @@ pub struct TaskNode {
 
     /// Optional validation rules to run after this node executes.
     pub validation_rule: Option<ValidationRule>,
+
+    /// Whether this node requires explicit human approval before execution.
+    ///
+    /// When `true`, the execution engine pauses dispatch of this node until
+    /// it is approved via `approve_node`. This implements the frozen plan
+    /// contract: *"If `requires_approval` is true, execution pauses for human
+    /// sign-off"*.
+    #[serde(default)]
+    pub requires_approval: bool,
 }
 
 impl TaskNode {
@@ -456,6 +475,7 @@ impl TaskNode {
             policy: ExecutionPolicy::default(),
             intent: intent.into(),
             validation_rule: None,
+            requires_approval: false,
         }
     }
 
@@ -476,7 +496,19 @@ impl TaskNode {
             policy,
             intent: intent.into(),
             validation_rule: None,
+            requires_approval: false,
         }
+    }
+
+    /// Mark this node as requiring explicit human approval before execution.
+    pub fn with_requires_approval(mut self, val: bool) -> Self {
+        self.requires_approval = val;
+        self
+    }
+
+    /// Whether this node requires explicit human approval before execution.
+    pub fn requires_approval(&self) -> bool {
+        self.requires_approval
     }
 
     /// Create a new TaskNode with a custom execution policy and validation rule.
@@ -497,6 +529,7 @@ impl TaskNode {
             policy,
             intent: intent.into(),
             validation_rule: Some(validation_rule),
+            requires_approval: false,
         }
     }
 }

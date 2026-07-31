@@ -167,6 +167,9 @@ pub enum ExecutionStatus {
     Failed,
     /// Execution was cancelled.
     Cancelled,
+    /// Execution paused awaiting human approval on one or more steps.
+    /// Resumable via `approve_execution`.
+    PendingApproval,
 }
 
 /// Status of a single DAG task.

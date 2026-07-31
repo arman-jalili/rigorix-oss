@@ -116,6 +116,23 @@ impl EngineFacade for TddMockEngine {
             .clone()
             .unwrap_or_else(|| Err(EngineFacadeError::EngineNotAvailable("mock".into())))
     }
+
+    async fn approve_execution(
+        &self,
+        execution_id: &ExecutionId,
+        step_names: Vec<String>,
+    ) -> Result<rigorix_mcp::execution_tools::domain::value::ApprovalResult, EngineFacadeError>
+    {
+        Ok(
+            rigorix_mcp::execution_tools::domain::value::ApprovalResult::new(
+                *execution_id.as_uuid(),
+                step_names,
+                vec![],
+                vec![],
+                true,
+            ),
+        )
+    }
 }
 
 fn make_plan() -> PlanTemplate {

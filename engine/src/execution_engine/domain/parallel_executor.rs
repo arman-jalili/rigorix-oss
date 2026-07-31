@@ -98,6 +98,7 @@ impl Default for ParallelExecutorConfig {
 /// - `Completed`: Execution succeeded
 /// - `Failed`: Execution failed, retries exhausted
 /// - `Skipped`: Skipped via retry strategy or configuration
+/// - `AwaitingApproval`: Ready but blocked on human sign-off
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum NodeStatus {
     /// Waiting for dependencies to complete.
@@ -112,6 +113,8 @@ pub enum NodeStatus {
     Failed,
     /// Skipped via retry strategy or configuration.
     Skipped,
+    /// Ready but paused awaiting human approval (sign-off required).
+    AwaitingApproval,
 }
 
 impl NodeStatus {
@@ -137,6 +140,7 @@ impl NodeStatus {
             NodeStatus::Completed => "completed",
             NodeStatus::Failed => "failed",
             NodeStatus::Skipped => "skipped",
+            NodeStatus::AwaitingApproval => "awaiting_approval",
         }
     }
 }
@@ -241,6 +245,13 @@ impl NodeExecutionState {
         self.status = NodeStatus::Skipped;
         self.last_error = Some(reason);
         self.completed_at = Some(Utc::now());
+    }
+
+    /// Transition the node to AwaitingApproval state (blocked on sign-off).
+    pub fn mark_awaiting_approval(&mut self) {
+        if self.status == NodeStatus::Ready {
+            self.status = NodeStatus::AwaitingApproval;
+        }
     }
 
     /// Record a retry (increments attempt counter, resets to Ready).

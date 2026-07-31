@@ -118,6 +118,7 @@ impl AuditFormatter for AuditFormatterImpl {
                 crate::execution_tools::domain::value::ExecutionStatus::PartialFailed => "⚠️",
                 crate::execution_tools::domain::value::ExecutionStatus::Cancelled => "🚫",
                 crate::execution_tools::domain::value::ExecutionStatus::EnforcementBlocked => "🔒",
+                crate::execution_tools::domain::value::ExecutionStatus::PendingApproval => "⏸️",
             };
             out.push_str(&format!(
                 "{}. {} `{}` — {} ms",

@@ -190,6 +190,8 @@ impl exec_svc::ParallelExecutionService for MockExecutionService {
         Ok(exec_dto::ExecuteGraphOutput {
             result: crate::execution_engine::domain::ExecutionResult::new(Uuid::new_v4()),
             completed_at: chrono::Utc::now(),
+            approval_pending: false,
+            pending_approval_steps: Vec::new(),
         })
     }
     async fn execute_node(
@@ -218,6 +220,17 @@ impl exec_svc::ParallelExecutionService for MockExecutionService {
     ) -> Result<exec_dto::ResumeExecutionOutput, crate::execution_engine::domain::ExecutionError>
     {
         unimplemented!("MockExecutionService::resume_execution not needed by current tests")
+    }
+    async fn approve_node(
+        &self,
+        input: exec_dto::ApproveNodeInput,
+    ) -> Result<exec_dto::ApproveNodeOutput, crate::execution_engine::domain::ExecutionError> {
+        Ok(exec_dto::ApproveNodeOutput {
+            dag_id: input.dag_id,
+            approved: input.step_names.clone(),
+            not_found: Vec::new(),
+            still_pending: Vec::new(),
+        })
     }
     async fn abort_execution(
         &self,

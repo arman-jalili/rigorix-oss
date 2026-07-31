@@ -255,6 +255,7 @@ description = "Read the specified file"
                 "rigorix_execute — Execute a plan or template through rigorix-engine (legacy, prefer plan+run)",
                 "rigorix_validate_plan — Validate a plan against enforcement policies",
                 "rigorix_check_enforcement — Check current enforcement status and budget",
+                "rigorix_approve_execution — Approve steps of an execution paused for human sign-off (requires_approval) and resume it",
                 "rigorix_evaluate_artifact — Rigorix scoring protocol MCP call. Sends artifact + rubric to a scoring backend. Returns multidimensional ScoringResult. Protocol is defined by Rigorix; external systems like RuntimeAI adopt it."
             ],
             "template_tools": [

@@ -17,7 +17,7 @@ use uuid::Uuid;
 use rigorix_engine::enforcement::application::dto::GetBudgetStatusInput;
 use rigorix_engine::enforcement::domain::EnforcementError;
 use rigorix_engine::orchestrator::application::dto::{
-    PlanFromTemplateInput, RunFromTemplateInput, RunInput, TemplateStepDef,
+    ApproveExecutionInput, PlanFromTemplateInput, RunFromTemplateInput, RunInput, TemplateStepDef,
 };
 use rigorix_engine::orchestrator::application::service::OrchestratorService;
 use rigorix_engine::orchestrator::domain::OrchestratorError;
@@ -25,8 +25,8 @@ use rigorix_engine::orchestrator::domain::OrchestratorError;
 use crate::execution_tools::domain::entity::EngineFacade;
 use crate::execution_tools::domain::error::EngineFacadeError;
 use crate::execution_tools::domain::value::{
-    BudgetStatus, CostBreakdown, EnforcementStatus, ExecutionId, ExecutionResult, ExecutionStatus,
-    PlanTemplate, StepResult, ValidationResult,
+    ApprovalResult, BudgetStatus, CostBreakdown, EnforcementStatus, ExecutionId, ExecutionResult,
+    ExecutionStatus, PlanTemplate, StepResult, ValidationResult,
 };
 
 use super::repository::ExecutionRepository;
@@ -107,8 +107,10 @@ fn plan_to_step_defs(plan: &PlanTemplate) -> Vec<TemplateStepDef> {
             tool: s.tool().to_string(),
             description: s.description().to_string(),
             parameters: s.parameters().clone(),
-            requires_approval: false,
-            timeout_secs: None,
+            // Propagate the plan's frozen-contract approval flag so the
+            // engine can pause for human sign-off.
+            requires_approval: s.requires_approval(),
+            timeout_secs: s.timeout_secs(),
             evaluate_score: s.evaluate_score(),
         })
         .collect()
@@ -304,6 +306,9 @@ impl EngineFacade for EngineFacadeImpl {
             rigorix_engine::orchestrator::domain::record::ExecutionStatus::Cancelled => {
                 ExecutionStatus::Failed
             }
+            rigorix_engine::orchestrator::domain::record::ExecutionStatus::PendingApproval => {
+                ExecutionStatus::PendingApproval
+            }
         };
 
         let result = ExecutionResult::new(
@@ -435,6 +440,9 @@ impl EngineFacade for EngineFacadeImpl {
             rigorix_engine::orchestrator::domain::record::ExecutionStatus::Cancelled => {
                 ExecutionStatus::Failed
             }
+            rigorix_engine::orchestrator::domain::record::ExecutionStatus::PendingApproval => {
+                ExecutionStatus::PendingApproval
+            }
         };
 
         let result = ExecutionResult::new(
@@ -448,5 +456,83 @@ impl EngineFacade for EngineFacadeImpl {
 
         self.repository.save_execution(&result).await?;
         Ok(result)
+    }
+
+    async fn approve_execution(
+        &self,
+        execution_id: &ExecutionId,
+        step_names: Vec<String>,
+    ) -> Result<ApprovalResult, EngineFacadeError> {
+        let output = self
+            .orchestrator
+            .approve_execution(ApproveExecutionInput {
+                execution_id: *execution_id.as_uuid(),
+                step_names,
+            })
+            .await
+            .map_err(|e| EngineFacadeError::Internal(e.to_string()))?;
+
+        Ok(ApprovalResult::new(
+            output.execution_id,
+            output.approved,
+            output.not_found,
+            output.still_pending,
+            output.resumed,
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::execution_tools::domain::value::StepDefinition;
+    use std::collections::HashMap;
+
+    fn plan_with_approval_flags(approval_flags: &[bool]) -> PlanTemplate {
+        let steps: Vec<StepDefinition> = approval_flags
+            .iter()
+            .enumerate()
+            .map(|(i, flag)| {
+                StepDefinition::new(
+                    format!("step-{}", i),
+                    "bash".into(),
+                    serde_json::json!({}),
+                    *flag,
+                    format!("Step {}", i),
+                    None,
+                )
+            })
+            .collect();
+        PlanTemplate::new(
+            "approval-plan".into(),
+            "test".into(),
+            steps,
+            None,
+            HashMap::new(),
+        )
+        .expect("valid plan")
+    }
+
+    #[test]
+    fn test_plan_to_step_defs_propagates_requires_approval() {
+        // Regression test: the facade previously hardcoded
+        // requires_approval: false, silently dropping the plan's frozen
+        // contract flag so the engine never paused for human sign-off.
+        let plan = plan_with_approval_flags(&[false, true, false]);
+        let defs = plan_to_step_defs(&plan);
+
+        assert_eq!(defs.len(), 3);
+        assert!(
+            !defs[0].requires_approval,
+            "step-0 must not require approval"
+        );
+        assert!(
+            defs[1].requires_approval,
+            "step-1 MUST propagate requires_approval"
+        );
+        assert!(
+            !defs[2].requires_approval,
+            "step-2 must not require approval"
+        );
     }
 }

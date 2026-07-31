@@ -66,6 +66,22 @@ impl EngineFacade for MockEngineForValidator {
             String::new(),
         ))
     }
+    async fn approve_execution(
+        &self,
+        execution_id: &ExecutionId,
+        step_names: Vec<String>,
+    ) -> Result<rigorix_mcp::execution_tools::domain::value::ApprovalResult, EngineFacadeError>
+    {
+        Ok(
+            rigorix_mcp::execution_tools::domain::value::ApprovalResult::new(
+                *execution_id.as_uuid(),
+                step_names,
+                vec![],
+                vec![],
+                true,
+            ),
+        )
+    }
 }
 
 #[test]

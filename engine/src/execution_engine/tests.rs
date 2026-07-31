@@ -12,7 +12,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::execution_engine::application::dto::{
-    AbortExecutionInput, EvaluateRetryInput, ExecuteGraphInput, ExecuteNodeInput,
+    AbortExecutionInput, ApproveNodeInput, EvaluateRetryInput, ExecuteGraphInput, ExecuteNodeInput,
     GetExecutionStateInput, PauseExecutionInput, ResumeExecutionInput,
 };
 use crate::execution_engine::application::service::{
@@ -165,6 +165,116 @@ async fn test_get_execution_state_before_execution_returns_error() {
         err,
         crate::execution_engine::domain::ExecutionError::NodeNotFound { .. }
     ));
+}
+
+#[tokio::test]
+async fn test_approval_gate_pauses_until_human_signoff() {
+    use crate::dag_engine::domain::{TaskGraph, TaskNode};
+
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+
+    // Graph: [safe] and [risky] are independent; risky requires approval.
+    let safe = TaskNode::new(Uuid::new_v4(), "safe", "echo safe", vec![], "run safe");
+    let risky = TaskNode::new(Uuid::new_v4(), "risky", "echo risky", vec![], "run risky")
+        .with_requires_approval(true);
+    let mut graph = TaskGraph::new();
+    graph.add_unchecked(safe).unwrap();
+    graph.add_unchecked(risky).unwrap();
+    graph.seal().unwrap();
+
+    // 1. Execute → pauses at the approval boundary; the approval-required
+    // step is NOT dispatched and execution is paused for human sign-off.
+    let output = executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            graph: Some(graph),
+            config_override: None,
+        })
+        .await
+        .unwrap();
+
+    assert!(output.approval_pending, "expected approval-pending output");
+    assert_eq!(output.pending_approval_steps, vec!["risky".to_string()]);
+
+    let state = executor
+        .get_execution_state(GetExecutionStateInput { dag_id })
+        .await
+        .unwrap();
+    assert!(state.paused, "execution should be paused");
+    assert!(!state.is_complete, "execution should not be terminal");
+
+    // 2. Approve the risky step (human sign-off).
+    let approve = executor
+        .approve_node(ApproveNodeInput {
+            dag_id,
+            step_names: vec!["risky".to_string()],
+        })
+        .await
+        .unwrap();
+    assert_eq!(approve.approved, vec!["risky".to_string()]);
+    assert!(approve.still_pending.is_empty());
+
+    // 3. Resume → the remaining node runs and the execution completes.
+    let resume = executor
+        .resume_execution(ResumeExecutionInput { dag_id })
+        .await
+        .unwrap();
+    assert_eq!(resume.dag_id, dag_id);
+
+    let state = executor
+        .get_execution_state(GetExecutionStateInput { dag_id })
+        .await
+        .unwrap();
+    assert!(!state.paused, "execution should be resumed");
+    assert_eq!(state.completed_count, 2, "both nodes should complete");
+    assert!(state.is_complete, "execution should be complete");
+}
+
+#[tokio::test]
+async fn test_approval_gate_rejects_unknown_step_name() {
+    use crate::dag_engine::domain::{TaskGraph, TaskNode};
+
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+
+    let risky = TaskNode::new(Uuid::new_v4(), "risky", "echo risky", vec![], "run risky")
+        .with_requires_approval(true);
+    let mut graph = TaskGraph::new();
+    graph.add_unchecked(risky).unwrap();
+    graph.seal().unwrap();
+
+    executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            graph: Some(graph),
+            config_override: None,
+        })
+        .await
+        .unwrap();
+
+    let approve = executor
+        .approve_node(ApproveNodeInput {
+            dag_id,
+            step_names: vec!["nope".to_string()],
+        })
+        .await
+        .unwrap();
+    assert!(approve.approved.is_empty());
+    assert_eq!(approve.not_found, vec!["nope".to_string()]);
+    assert_eq!(approve.still_pending, vec!["risky".to_string()]);
+
+    // Not approved → resume still leaves the node blocked, so execution
+    // remains paused.
+    let _ = executor
+        .resume_execution(ResumeExecutionInput { dag_id })
+        .await
+        .unwrap();
+    let state = executor
+        .get_execution_state(GetExecutionStateInput { dag_id })
+        .await
+        .unwrap();
+    assert!(state.paused, "execution stays paused until real approval");
 }
 
 #[tokio::test]
