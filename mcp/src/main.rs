@@ -65,6 +65,7 @@ use rigorix_mcp::enterprise_proxy::infrastructure::EnterpriseProxyImpl;
 
 use rigorix_mcp::enterprise_proxy::interfaces::mcp::ENTERPRISE_TOOL_PREFIX;
 
+use rigorix_mcp::mcp_server::application::service::McpToolExecutor;
 use rigorix_mcp::mcp_server::domain::value::{JsonRpcError, JsonRpcMessage, RequestId};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::signal;
@@ -105,6 +106,32 @@ struct AppState {
 
     // Template repository for resolving template_name → plan
     template_repo: SharedTemplateRepository,
+
+    // Live MCP server service — wired with the same handlers so the
+    // `mcp_server` library module dispatches to production logic.
+    mcp_service: Arc<dyn rigorix_mcp::mcp_server::application::service::McpServerService>,
+}
+
+/// Adapter that routes `mcp_server` protocol calls to the production handlers
+/// held by the global [`AppState`].
+struct AppStateExecutor;
+
+#[async_trait::async_trait]
+impl McpToolExecutor for AppStateExecutor {
+    async fn execute_tool(
+        &self,
+        name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        app_state()
+            .handle_tool_call(name, &arguments)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    async fn read_resource(&self, uri: &str) -> Result<String, String> {
+        resolve_resource(uri).await
+    }
 }
 
 impl AppState {
@@ -191,6 +218,36 @@ impl AppState {
             )),
             validate_template_handler: Box::new(ValidateTemplateHandlerImpl::new()),
             audit_storage,
+            mcp_service: {
+                // Wire the mcp_server library module to the same handlers used
+                // by the stdio server, so its protocol surface is live.
+                let tool_schemas = all_tool_descriptors()
+                    .into_iter()
+                    .filter_map(|d| {
+                        let name = d["name"].as_str()?.to_string();
+                        let description = d["description"].as_str().unwrap_or("").to_string();
+                        let input_schema = d.get("inputSchema").cloned().unwrap_or_default();
+                        Some(rigorix_mcp::mcp_server::domain::value::ToolSchema::new(
+                            name,
+                            description,
+                            input_schema,
+                        ))
+                    })
+                    .collect();
+                let executor: Arc<dyn McpToolExecutor> = Arc::new(AppStateExecutor);
+                let service = rigorix_mcp::mcp_server::application::service_impl::
+                    McpServerServiceWithRepos::new(
+                        Arc::new(rigorix_mcp::mcp_server::infrastructure::
+                            InMemoryMcpServerRepository::new()),
+                        Arc::new(rigorix_mcp::mcp_server::infrastructure::
+                            InMemoryToolRegistryRepository::new()),
+                        Arc::new(rigorix_mcp::mcp_server::infrastructure::
+                            InMemorySessionRepository::new()),
+                    )
+                    .with_executor(executor, tool_schemas);
+                Arc::new(service)
+                    as Arc<dyn rigorix_mcp::mcp_server::application::service::McpServerService>
+            },
             template_repo,
         }
     }
@@ -540,6 +597,33 @@ fn resolve_mcp_permission_mode(configured: Option<&String>) -> PermissionMode {
     }
 }
 
+/// Load a `HookRunnerService` from `.rigorix/hooks.toml` (optional).
+///
+/// When the file exists and parses as a `HookConfig`, every tool execution
+/// runs the configured PreToolUse/PostToolUse shell hooks. Returns `None`
+/// when the file is absent — never fatal.
+fn load_mcp_hook_runner(
+    repo_root: &str,
+) -> Option<Arc<dyn rigorix_engine::hooks::application::service::HookRunnerService>> {
+    use rigorix_engine::hooks::application::factory::HookRunnerFactory;
+    use rigorix_engine::hooks::application::runner_factory_impl::HookRunnerFactoryImpl;
+    use rigorix_engine::hooks::domain::config::HookConfig;
+
+    let path = std::path::PathBuf::from(repo_root).join(".rigorix/hooks.toml");
+    let content = std::fs::read_to_string(&path).ok()?;
+    let config: HookConfig = toml::from_str(&content).ok()?;
+    match HookRunnerFactoryImpl.create(config) {
+        Ok(runner) => {
+            tracing::info!("Hooks enabled from {}", path.display());
+            Some(Arc::from(runner))
+        }
+        Err(e) => {
+            tracing::warn!("hooks config invalid: {e}");
+            None
+        }
+    }
+}
+
 /// Build a real EngineFacadeImpl by constructing all required engine sub-services.
 async fn build_real_engine(
     repo_root: &str,
@@ -671,10 +755,13 @@ async fn build_real_engine(
             None
         }
     };
+    // Hooks: optional `.rigorix/hooks.toml` → PreToolUse/PostToolUse interception.
+    let hook_runner = load_mcp_hook_runner(repo_root);
     let execution_service: Arc<dyn ParallelExecutionService> = Arc::from(
         ParallelExecutionFactoryImpl::new()
             .create(ParallelExecutionFactoryConfig {
                 permission_enforcer,
+                hook_runner,
                 ..ParallelExecutionFactoryConfig::default()
             })
             .await?,
@@ -836,9 +923,42 @@ async fn build_real_engine(
     let orchestrator = builder.build().await?;
 
     // ── Execution enforcer ──
+    // Enforcement config: local defaults, optionally merged from a remote
+    // backend (rigorix.toml `enforcement_backend_url` / `enforcement_backend_key`).
+    use rigorix_engine::backend::EnforcementConfigProvider;
+    use rigorix_engine::enforcement::domain::config::EnforcementConfig;
+    let local_enforcement = EnforcementConfig::default();
+    let enforcement_config = match &engine_config.enforcement_backend_url {
+        Some(url) => {
+            let provider = rigorix_engine::backend::HttpEnforcementConfigProvider::new(
+                url.clone(),
+                engine_config.enforcement_backend_key.clone(),
+                std::time::Duration::from_secs(10),
+            );
+            match provider.fetch_merged_config(&local_enforcement).await {
+                Ok(Some(merged)) => {
+                    tracing::info!("Remote enforcement config applied from {url}");
+                    merged
+                }
+                Ok(None) => {
+                    tracing::debug!(
+                        "Remote enforcement backend returned no override; using local config"
+                    );
+                    local_enforcement
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to fetch remote enforcement config ({e}); using local defaults"
+                    );
+                    local_enforcement
+                }
+            }
+        }
+        None => local_enforcement,
+    };
     let enforcer: Arc<dyn rigorix_engine::enforcement::application::ExecutionEnforcer> = Arc::from(
         ExecutionEnforcerFactoryImpl
-            .create_default(&execution_id)
+            .create_from_config(&execution_id, enforcement_config)
             .await?,
     );
 
@@ -1111,12 +1231,86 @@ async fn handle_read_resource(id: &RequestId, params: &serde_json::Value) -> Jso
     let uri = params
         .get("uri")
         .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
+        .unwrap_or("unknown")
+        .to_string();
 
-    JsonRpcMessage::error(
-        id.clone(),
-        JsonRpcError::internal_error(format!("Resource '{}' not implemented", uri)),
-    )
+    // Route through the wired mcp_server service so the library module is
+    // the live backend for the advertised resources.
+    let input = rigorix_mcp::mcp_server::application::dto::ReadResourceInput { uri: uri.clone() };
+    match app_state().mcp_service.read_resource(input).await {
+        Ok(output) => {
+            let result = serde_json::json!({
+                "contents": [
+                    {
+                        "uri": output.uri,
+                        "mimeType": output.mime_type,
+                        "text": output.text
+                    }
+                ]
+            });
+            JsonRpcMessage::success(id.clone(), result)
+        }
+        Err(err) => JsonRpcMessage::error(
+            id.clone(),
+            JsonRpcError::invalid_params(format!("Resource read failed: {err}")),
+        ),
+    }
+}
+
+/// Resolve an advertised `rigorix://` resource to its text content.
+///
+/// Backs the resources advertised in `resources/list`:
+/// - `rigorix://audit/{id}`        → formatted audit trail for an execution
+/// - `rigorix://templates/{name}`  → template definition (JSON)
+async fn resolve_resource(uri: &str) -> Result<String, String> {
+    let (scheme, rest) = uri
+        .split_once("://")
+        .ok_or_else(|| format!("unsupported URI scheme: {uri}"))?;
+    if scheme != "rigorix" {
+        return Err(format!("unsupported URI scheme: {scheme}"));
+    }
+
+    if let Some(exec_id) = rest.strip_prefix("audit/") {
+        if exec_id.is_empty() || exec_id.contains('/') {
+            return Err(format!("malformed audit resource URI: {uri}"));
+        }
+        let input = rigorix_mcp::audit_tools::application::dto::ReadAuditInput {
+            execution_id: exec_id.to_string(),
+            format: None,
+        };
+        let output = app_state()
+            .read_audit_handler
+            .handle(input)
+            .await
+            .map_err(|e| e.to_string())?;
+        return output
+            .content
+            .first()
+            .map(|c| c.text.clone())
+            .ok_or_else(|| "audit handler returned no content".to_string());
+    }
+
+    if let Some(name) = rest.strip_prefix("templates/") {
+        if name.is_empty() || name.contains('/') {
+            return Err(format!("malformed template resource URI: {uri}"));
+        }
+        let input = rigorix_mcp::template_tools::domain::value::GetTemplateInput {
+            name: name.to_string(),
+            format: Some("json".to_string()),
+        };
+        let output = app_state()
+            .get_template_handler
+            .handle(&input)
+            .await
+            .map_err(|e| e.to_string())?;
+        return output
+            .content
+            .first()
+            .map(|c| c.text.clone())
+            .ok_or_else(|| "template handler returned no content".to_string());
+    }
+
+    Err(format!("unknown Rigorix resource: {uri}"))
 }
 
 // ---------------------------------------------------------------------------
@@ -1258,14 +1452,15 @@ async fn run_stdio_server(cancel: CancellationToken) {
 
 #[tokio::main]
 async fn main() {
-    // Initialize tracing
-    tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
+    // Initialize tracing via the engine's centralized observability layer.
+    // Logs MUST go to stderr: stdout is the JSON-RPC channel for stdio mode.
+    let tracing_config = rigorix_engine::observability::TracingConfig {
+        write_to_stderr: true,
+        ..rigorix_engine::observability::TracingConfig::default()
+    };
+    if let Err(e) = rigorix_engine::observability::init_tracing(&tracing_config) {
+        eprintln!("Failed to initialize tracing: {e}");
+    }
 
     // ── Build real engine facade ──
     let repo_root = std::env::var("RIGORIX_REPO_ROOT").unwrap_or_else(|_| ".".to_string());

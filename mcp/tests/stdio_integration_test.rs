@@ -231,8 +231,66 @@ fn test_stdio_list_resources() {
         "Should expose rigorix://templates/{{name}} resource"
     );
 
+    // Close the first server before spawning the fixture-backed one.
     drop(stdin);
     let _ = child.wait();
+
+    // resources/read for an advertised template resource must resolve.
+    // Point the server at a temp repo with a registered template fixture.
+    let tmp = std::env::temp_dir().join(format!("rigorix-res-test-{}", std::process::id()));
+    std::fs::create_dir_all(tmp.join(".rigorix/templates")).unwrap();
+    std::fs::write(
+        tmp.join(".rigorix/templates/echo-template.toml"),
+        "id = \"echo-template\"\nname = \"Echo template\"\ndescription = \"test\"\nversion = \"1.0.0\"\n\n[[nodes]]\nid = \"echo\"\nname = \"Echo\"\n[nodes.action]\ntype = \"run_command\"\ncommand = \"echo hi\"\n",
+    )
+    .unwrap();
+
+    let mut fixture_child = Command::new(env!("CARGO_BIN_EXE_rigorix-mcp"))
+        .env("RIGORIX_REPO_ROOT", tmp.to_str().unwrap())
+        .current_dir(&tmp)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("Failed to spawn rigorix-mcp");
+
+    let mut stdin = fixture_child.stdin.take().expect("Failed to open stdin");
+    let mut stdout = fixture_child.stdout.take().expect("Failed to open stdout");
+
+    std::thread::sleep(Duration::from_millis(100));
+
+    let read_response = send_rpc(
+        r#"{"jsonrpc":"2.0","id":4,"method":"resources/read","params":{"uri":"rigorix://templates/echo-template"}}"#,
+        &mut stdin,
+        &mut stdout,
+    );
+    let parsed_read: serde_json::Value =
+        serde_json::from_str(&read_response).expect("Response should be valid JSON");
+    assert_eq!(parsed_read["id"], 4);
+    assert!(
+        parsed_read["result"]["contents"].is_array()
+            && parsed_read["result"]["contents"][0]["text"]
+                .as_str()
+                .map(|t| t.contains("echo-template"))
+                .unwrap_or(false),
+        "resources/read should resolve rigorix://templates/echo-template, got: {read_response}"
+    );
+
+    // An unknown resource must return a proper error — not "not implemented".
+    let bad_response = send_rpc(
+        r#"{"jsonrpc":"2.0","id":5,"method":"resources/read","params":{"uri":"rigorix://nope/xyz"}}"#,
+        &mut stdin,
+        &mut stdout,
+    );
+    let parsed_bad: serde_json::Value =
+        serde_json::from_str(&bad_response).expect("Response should be valid JSON");
+    assert!(
+        parsed_bad["error"].is_object(),
+        "unknown resource should error, got: {bad_response}"
+    );
+
+    drop(stdin);
+    let _ = fixture_child.wait();
 }
 
 #[test]

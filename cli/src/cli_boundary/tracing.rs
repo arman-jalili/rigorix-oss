@@ -32,13 +32,12 @@
 /// - Respect `RIGORIX_LOG` env var (not `RUST_LOG`, to avoid conflicts)
 /// - Call `tracing_subscriber::fmt().with_env_filter(...).init()`
 pub fn init_tracing() {
-    // Placeholder: installs a no-op subscriber.
-    // Implementation issue: initialise tracing-subscriber with RIGORIX_LOG
-    // env filter and fmt layer. Use try_init to handle double-init gracefully.
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_env("RIGORIX_LOG")
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .try_init();
+    // Delegate to the engine's centralized observability layer so the
+    // `rigorix_engine::observability` module is the single tracing
+    // initializer across all entry points. RIGORIX_LOG controls the level;
+    // debug builds get human-readable output, release builds JSON.
+    use rigorix_engine::observability::TracingConfig;
+    if let Err(e) = rigorix_engine::observability::init_tracing(&TracingConfig::default()) {
+        eprintln!("Failed to initialize tracing: {e}");
+    }
 }

@@ -55,6 +55,7 @@ use rigorix_engine::permission::application::factory::PermissionEnforcerFactory;
 use rigorix_engine::permission::domain::mode::PermissionMode;
 use rigorix_engine::planning::application::factory::PlanningPipelineFactory;
 use rigorix_engine::planning::application::pipeline_factory_impl::PlanningPipelineFactoryImpl;
+use rigorix_engine::planning::application::service::PlanningPipelineService;
 use rigorix_engine::planning::infrastructure::claude_classifier::{
     ClaudeClassifier, ClaudeClassifierConfig,
 };
@@ -170,6 +171,126 @@ fn build_step_summary(
 /// 5. ParallelExecutionService
 /// 6. PlanningPipelineService (needs LLM key)
 /// 7. AuditService (optional)
+///
+/// Box-compatible adapter around a shared Arc planning pipeline for the validation-loop factory dependency (delegates all methods to the Arc).
+struct ArcPlanningPipeline(Arc<dyn PlanningPipelineService>);
+
+#[async_trait::async_trait]
+impl PlanningPipelineService for ArcPlanningPipeline {
+    async fn plan(
+        &self,
+        input: rigorix_engine::planning::application::dto::PlanInput,
+    ) -> Result<
+        rigorix_engine::planning::application::dto::PlanOutput,
+        rigorix_engine::planning::domain::PlanningError,
+    > {
+        self.0.plan(input).await
+    }
+    async fn plan_with_graph(
+        &self,
+        input: rigorix_engine::planning::application::dto::PlanWithGraphInput,
+    ) -> Result<
+        rigorix_engine::planning::application::dto::PlanWithGraphOutput,
+        rigorix_engine::planning::domain::PlanningError,
+    > {
+        self.0.plan_with_graph(input).await
+    }
+    async fn check_budget(
+        &self,
+        input: rigorix_engine::planning::application::dto::CheckBudgetInput,
+    ) -> Result<
+        rigorix_engine::planning::application::dto::CheckBudgetOutput,
+        rigorix_engine::planning::domain::PlanningError,
+    > {
+        self.0.check_budget(input).await
+    }
+    async fn classify_intent(
+        &self,
+        intent: rigorix_engine::planning::domain::intent::UserIntent,
+    ) -> Result<
+        rigorix_engine::planning::domain::classification::ClassificationResult,
+        rigorix_engine::planning::domain::PlanningError,
+    > {
+        self.0.classify_intent(intent).await
+    }
+    async fn extract_parameters(
+        &self,
+        input: rigorix_engine::planning::application::dto::ExtractParametersInput,
+    ) -> Result<
+        rigorix_engine::planning::application::dto::ExtractParametersOutput,
+        rigorix_engine::planning::domain::PlanningError,
+    > {
+        self.0.extract_parameters(input).await
+    }
+    async fn generate_graph(
+        &self,
+        input: rigorix_engine::planning::application::dto::GenerateGraphInput,
+    ) -> Result<
+        rigorix_engine::planning::application::dto::GenerateGraphOutput,
+        rigorix_engine::planning::domain::PlanningError,
+    > {
+        self.0.generate_graph(input).await
+    }
+    async fn validate_plan(
+        &self,
+        input: rigorix_engine::planning::application::dto::ValidatePlanInput,
+    ) -> Result<
+        rigorix_engine::planning::application::dto::ValidatePlanOutput,
+        rigorix_engine::planning::domain::PlanningError,
+    > {
+        self.0.validate_plan(input).await
+    }
+    async fn request_clarification(
+        &self,
+        input: rigorix_engine::planning::application::dto::RequestClarificationInput,
+    ) -> Result<
+        rigorix_engine::planning::application::dto::RequestClarificationOutput,
+        rigorix_engine::planning::domain::PlanningError,
+    > {
+        self.0.request_clarification(input).await
+    }
+    async fn available_templates(
+        &self,
+    ) -> Result<
+        rigorix_engine::planning::application::dto::AvailableTemplatesOutput,
+        rigorix_engine::planning::domain::PlanningError,
+    > {
+        self.0.available_templates().await
+    }
+    fn execution_id(&self) -> uuid::Uuid {
+        self.0.execution_id()
+    }
+}
+
+/// Build a real `ValidationLoopService` (with a default `QualityGateService`)
+/// wired to the action's planning pipeline. Returns `None` (falling back to
+/// Run mode) if construction fails — never fatal.
+async fn build_validation_loop(
+    planning: Arc<dyn PlanningPipelineService>,
+) -> Option<Arc<dyn rigorix_engine::plan_validation::application::service::ValidationLoopService>> {
+    use rigorix_engine::failure_parser::application::service_impl::FailureParserServiceImpl;
+    use rigorix_engine::plan_validation::application::factory::ValidationLoopFactory;
+    use rigorix_engine::plan_validation::application::factory_impl::ValidationLoopFactoryImpl;
+    use rigorix_engine::quality_gates::application::service_impl::QualityGateServiceImpl;
+
+    match ValidationLoopFactoryImpl
+        .create_default(
+            Box::new(ArcPlanningPipeline(planning)),
+            Box::new(FailureParserServiceImpl::empty()),
+            Box::new(QualityGateServiceImpl::new_default()),
+        )
+        .await
+    {
+        Ok(svc) => Some(Arc::from(svc)),
+        Err(e) => {
+            tracing::warn!(
+                "Validation loop unavailable ({e}); validate mode will fall back to run"
+            );
+            None
+        }
+    }
+}
+
 async fn build_action_orchestrator(
     repo_root: &str,
     max_llm_calls: Option<u32>,
@@ -179,6 +300,9 @@ async fn build_action_orchestrator(
     (
         Arc<dyn OrchestratorService>,
         Arc<dyn rigorix_engine::event_system::application::EventBusService>,
+        Option<
+            Arc<dyn rigorix_engine::plan_validation::application::service::ValidationLoopService>,
+        >,
     ),
     String,
 > {
@@ -253,6 +377,7 @@ async fn build_action_orchestrator(
             None
         }
     };
+    let hook_runner = load_hook_runner(repo_root);
     let execution = ParallelExecutionFactoryImpl
         .create(ParallelExecutionFactoryConfig {
             executor_config: ParallelExecutorConfig {
@@ -270,6 +395,7 @@ async fn build_action_orchestrator(
             event_channel_capacity: 1024,
             event_bus: Some(Arc::clone(&event_bus)),
             permission_enforcer,
+            hook_runner,
         })
         .await
         .map_err(|e| format!("execution: {e}"))?;
@@ -317,6 +443,8 @@ async fn build_action_orchestrator(
                     .create_default(mock_classifier, mock_extractor, mock_template_service)
                     .await
                     .map_err(|e| format!("planning (mock): {e}"))?;
+                let planning_arc: Arc<dyn PlanningPipelineService> = Arc::from(planning);
+                let validation_loop = build_validation_loop(planning_arc.clone()).await;
 
                 let orchestrator = OrchestratorBuilderImpl::new(orch_domain_config)
                     .with_repo_root(repo_root.to_string())
@@ -325,12 +453,12 @@ async fn build_action_orchestrator(
                     .with_state_manager(Arc::clone(&state_manager))
                     .with_budget_service(Arc::from(budget))
                     .with_execution_service(Arc::from(execution))
-                    .with_planning_pipeline(Arc::from(planning))
+                    .with_planning_pipeline(planning_arc)
                     .build()
                     .await
                     .map_err(|e| format!("orchestrator build: {e}"))?;
 
-                return Ok((Arc::from(orchestrator), event_bus));
+                return Ok((Arc::from(orchestrator), event_bus, validation_loop));
             }
         };
 
@@ -473,6 +601,8 @@ async fn build_action_orchestrator(
         )
         .await
         .map_err(|e| format!("planning: {e}"))?;
+    let planning_arc: Arc<dyn PlanningPipelineService> = Arc::from(planning);
+    let validation_loop = build_validation_loop(planning_arc.clone()).await;
 
     // ── 7. AuditService (optional) ─────────────────────────────────────
     // HMAC signing key: RIGORIX_HMAC_KEY env var or `hmac-key` action input.
@@ -517,7 +647,7 @@ async fn build_action_orchestrator(
         .with_state_manager(Arc::clone(&state_manager))
         .with_budget_service(Arc::from(budget))
         .with_execution_service(Arc::from(execution))
-        .with_planning_pipeline(Arc::from(planning));
+        .with_planning_pipeline(planning_arc);
 
     // Apply budget limits if provided
     if let (Some(calls), Some(tokens)) = (max_llm_calls, max_llm_tokens) {
@@ -532,7 +662,7 @@ async fn build_action_orchestrator(
         .await
         .map_err(|e| format!("orchestrator build: {e}"))?;
 
-    Ok((Arc::from(orchestrator), event_bus))
+    Ok((Arc::from(orchestrator), event_bus, validation_loop))
 }
 
 // ---------------------------------------------------------------------------
@@ -574,12 +704,13 @@ fn read_event_name() -> String {
 
 #[tokio::main]
 async fn main() {
-    // 1. Initialize tracing
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
-        )
-        .init();
+    // 1. Initialize tracing via the engine's centralized observability layer
+    // (RIGORIX_LOG controls the level; RUST_LOG no longer needed).
+    if let Err(e) = rigorix_engine::observability::init_tracing(
+        &rigorix_engine::observability::TracingConfig::default(),
+    ) {
+        eprintln!("Failed to initialize tracing: {e}");
+    }
 
     tracing::info!("Rigorix GitHub Action v{}", env!("CARGO_PKG_VERSION"));
 
@@ -600,7 +731,7 @@ async fn main() {
     let _max_validation_iterations: u32 = read_input("max-validation-iterations")
         .and_then(|v| v.parse().ok())
         .unwrap_or(3);
-    let _post_pr_comment = read_input("post-pr-comment")
+    let post_pr_comment = read_input("post-pr-comment")
         .map(|v| v == "true")
         .unwrap_or(true);
     let _profile = read_input("profile");
@@ -626,7 +757,7 @@ async fn main() {
 
     // 4. Build the engine orchestrator
     tracing::info!("Building engine orchestrator (repo_root: {repo_root})");
-    let (orchestrator, _event_bus) =
+    let (orchestrator, _event_bus, validation_loop) =
         match build_action_orchestrator(&repo_root, max_llm_calls, max_llm_tokens, permission_mode)
             .await
         {
@@ -725,7 +856,7 @@ async fn main() {
     let final_context = context.with_mode(resolved_mode.mode.clone());
 
     // 7. Dispatch via ActionRouter
-    let router = ActionRouterImpl::new(orchestrator, None);
+    let router = ActionRouterImpl::new(orchestrator, validation_loop);
     let dispatch_result = router
         .dispatch(DispatchInput {
             context: final_context,
@@ -769,6 +900,17 @@ async fn main() {
 
             for (key, value) in &output.output.output_variables {
                 set_github_output(key, value).await;
+            }
+
+            // Post a PR comment when enabled and running on a pull request
+            if post_pr_comment {
+                post_pr_comment_if_requested(
+                    &output.output,
+                    &status,
+                    execution_id.as_deref(),
+                    duration_ms,
+                )
+                .await;
             }
 
             match status {
@@ -837,6 +979,132 @@ fn read_github_token() -> Option<String> {
     std::env::var("GITHUB_TOKEN")
         .ok()
         .or_else(|| std::env::var("INPUT_GITHUB_TOKEN").ok())
+}
+
+// ---------------------------------------------------------------------------
+// PR comment posting (post-pr-comment input)
+// ---------------------------------------------------------------------------
+
+/// Extract the pull-request number from GitHub environment variables.
+/// Returns `None` unless the event is a `pull_request` and `GITHUB_REF`
+/// looks like `refs/pull/<N>/merge`.
+fn detect_pr_number() -> Option<u64> {
+    let event = std::env::var("GITHUB_EVENT_NAME").unwrap_or_default();
+    if event != "pull_request" {
+        return None;
+    }
+    std::env::var("GITHUB_REF")
+        .ok()?
+        .strip_prefix("refs/pull/")?
+        .split('/')
+        .next()?
+        .parse()
+        .ok()
+}
+
+/// Post the execution summary as a PR comment (best-effort).
+///
+/// Only runs when the `post-pr-comment` input is enabled, the event is a
+/// pull request, and a `GITHUB_TOKEN` is available. Failures are logged,
+/// never fatal.
+async fn post_pr_comment_if_requested(
+    _output: &rigorix_actions::action_entrypoint::domain::ActionOutput,
+    status: &DispatchStatus,
+    execution_id: Option<&str>,
+    duration_ms: u64,
+) {
+    use rigorix_actions::action_output::application::dto::PostPrCommentInput;
+    use rigorix_actions::action_output::application::pr_comment_impl::PrCommentServiceImpl;
+    use rigorix_actions::action_output::application::service::PrCommentService;
+    use rigorix_actions::action_output::domain::{
+        ExecutionContext, ExecutionStatus as OutputExecutionStatus,
+    };
+    use rigorix_actions::shared::github_client::GitHubClient;
+
+    let Some(pr_number) = detect_pr_number() else {
+        return;
+    };
+    let Ok(github_token) = std::env::var("GITHUB_TOKEN") else {
+        tracing::debug!("post-pr-comment enabled but GITHUB_TOKEN is not set; skipping");
+        return;
+    };
+    let repo = std::env::var("GITHUB_REPOSITORY").unwrap_or_default();
+    if repo.is_empty() {
+        tracing::debug!("post-pr-comment enabled but GITHUB_REPOSITORY is not set; skipping");
+        return;
+    }
+
+    let out_status = match status {
+        DispatchStatus::Success => OutputExecutionStatus::Completed,
+        DispatchStatus::Warning => OutputExecutionStatus::PartialFailure,
+        _ => OutputExecutionStatus::Failed,
+    };
+    let context = ExecutionContext {
+        execution_id: execution_id
+            .and_then(|s| uuid::Uuid::parse_str(s).ok())
+            .unwrap_or_else(uuid::Uuid::nil),
+        status: out_status,
+        iterations: 0,
+        max_iterations: 3,
+        cumulative_tokens: 0,
+        duration_ms,
+        quality_level: None,
+        template_id: None,
+        failure_count: u32::from(matches!(status, DispatchStatus::Failure)),
+        file_changes: vec![],
+        execution_steps: vec![],
+        metadata: Default::default(),
+    };
+
+    let svc = PrCommentServiceImpl::new(GitHubClient::new(github_token.clone()));
+    let body = match svc.format_execution_summary(&context).await {
+        Ok(body) => body,
+        Err(e) => {
+            tracing::warn!("Failed to format PR comment: {e}");
+            return;
+        }
+    };
+
+    match svc
+        .post_comment(PostPrCommentInput {
+            pr_number,
+            body,
+            github_token,
+            repo,
+            reply_to_comment_id: None,
+        })
+        .await
+    {
+        Ok(_) => tracing::info!("Posted execution summary as PR comment #{pr_number}"),
+        Err(e) => tracing::warn!("Failed to post PR comment: {e}"),
+    }
+}
+
+/// Load a `HookRunnerService` from `.rigorix/hooks.toml` (optional).
+///
+/// When the file exists and parses as a `HookConfig`, every tool execution
+/// runs the configured PreToolUse/PostToolUse shell hooks. Returns `None`
+/// when the file is absent — never fatal.
+fn load_hook_runner(
+    repo_root: &str,
+) -> Option<Arc<dyn rigorix_engine::hooks::application::service::HookRunnerService>> {
+    use rigorix_engine::hooks::application::factory::HookRunnerFactory;
+    use rigorix_engine::hooks::application::runner_factory_impl::HookRunnerFactoryImpl;
+    use rigorix_engine::hooks::domain::config::HookConfig;
+
+    let path = std::path::PathBuf::from(repo_root).join(".rigorix/hooks.toml");
+    let content = std::fs::read_to_string(&path).ok()?;
+    let config: HookConfig = toml::from_str(&content).ok()?;
+    match HookRunnerFactoryImpl.create(config) {
+        Ok(runner) => {
+            tracing::info!("Hooks enabled from {}", path.display());
+            Some(Arc::from(runner))
+        }
+        Err(e) => {
+            tracing::warn!("hooks config invalid: {e}");
+            None
+        }
+    }
 }
 
 #[cfg(test)]

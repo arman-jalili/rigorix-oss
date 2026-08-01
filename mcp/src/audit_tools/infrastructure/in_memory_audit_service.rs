@@ -201,7 +201,7 @@ impl AuditQueryService for InMemoryAuditQueryService {
         let mut top_templates: Vec<TopTemplate> = template_map
             .into_iter()
             .map(|(name, (count, total_dur))| {
-                TopTemplate::new(name, count, if count > 0 { total_dur / count } else { 0 })
+                TopTemplate::new(name, count, total_dur.checked_div(count).unwrap_or(0))
             })
             .collect();
         top_templates.sort_by_key(|b| std::cmp::Reverse(b.count()));

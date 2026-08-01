@@ -71,21 +71,19 @@ fn send_one_request(
     // Read one line from stdout
     let start = std::time::Instant::now();
     let mut line = String::new();
-    loop {
-        if start.elapsed() > Duration::from_secs(timeout_secs) {
+    if start.elapsed() > Duration::from_secs(timeout_secs) {
+        let _ = child.kill();
+        return Err("timeout".into());
+    }
+    match reader.read_line(&mut line) {
+        Ok(0) => {
             let _ = child.kill();
-            return Err("timeout".into());
+            return Err("EOF before response line".into());
         }
-        match reader.read_line(&mut line) {
-            Ok(0) => {
-                let _ = child.kill();
-                return Err("EOF before response line".into());
-            }
-            Ok(_) => break,
-            Err(e) => {
-                let _ = child.kill();
-                return Err(format!("read: {}", e));
-            }
+        Ok(_) => {}
+        Err(e) => {
+            let _ = child.kill();
+            return Err(format!("read: {e}"));
         }
     }
 

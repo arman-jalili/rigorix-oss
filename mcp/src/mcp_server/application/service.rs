@@ -30,6 +30,30 @@ use super::dto::{
 };
 
 // ---------------------------------------------------------------------------
+// McpToolExecutor
+// ---------------------------------------------------------------------------
+
+/// Adapter trait for wiring real (async) tool and resource execution into the
+/// MCP server service.
+///
+/// Implemented by the composition root (e.g. `rigorix-mcp`'s `AppState`) so
+/// the server can dispatch `tools/call`, `resources/read` and `prompts/get`
+/// to the production handlers without depending on them directly. This is
+/// what turns the previously-stubbed server surface into a live backend.
+#[async_trait]
+pub trait McpToolExecutor: Send + Sync {
+    /// Execute a tool by name with JSON arguments.
+    async fn execute_tool(
+        &self,
+        name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, String>;
+
+    /// Resolve a `rigorix://` resource URI to its text content.
+    async fn read_resource(&self, uri: &str) -> Result<String, String>;
+}
+
+// ---------------------------------------------------------------------------
 // McpServerService
 // ---------------------------------------------------------------------------
 

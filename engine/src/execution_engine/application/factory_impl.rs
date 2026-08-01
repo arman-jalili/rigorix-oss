@@ -57,6 +57,9 @@ impl ParallelExecutionFactory for ParallelExecutionFactoryImpl {
         if let Some(enforcer) = config.permission_enforcer {
             executor = executor.with_permission_enforcer(enforcer);
         }
+        if let Some(runner) = config.hook_runner {
+            executor = executor.with_hook_runner(runner);
+        }
         Ok(Box::new(executor))
     }
 }

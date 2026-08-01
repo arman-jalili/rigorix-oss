@@ -21,6 +21,7 @@ use rigorix_engine::execution_engine::application::factory::{
 };
 use rigorix_engine::execution_engine::application::factory_impl::ParallelExecutionFactoryImpl;
 use rigorix_engine::execution_engine::domain::{ParallelExecutorConfig, RetryPolicy};
+use rigorix_engine::hooks::application::service::HookRunnerService;
 use rigorix_engine::permission::application::enforcer_factory_impl::PermissionEnforcerFactoryImpl;
 use rigorix_engine::permission::application::factory::PermissionEnforcerFactory;
 use rigorix_engine::permission::domain::mode::PermissionMode;
@@ -298,6 +299,7 @@ pub async fn build_orchestrator_with_budget(
             None
         }
     };
+    let hook_runner = load_hook_runner(repo_root.as_str());
     let execution = ParallelExecutionFactoryImpl
         .create(ParallelExecutionFactoryConfig {
             executor_config: ParallelExecutorConfig {
@@ -315,6 +317,7 @@ pub async fn build_orchestrator_with_budget(
             event_channel_capacity: 1024,
             event_bus: Some(Arc::clone(&event_bus)),
             permission_enforcer,
+            hook_runner,
         })
         .await
         .map_err(|e| CliError::General(format!("execution: {e}")))?;
@@ -653,6 +656,31 @@ fn resolve_hmac_key(configured: Option<&String>) -> Option<String> {
         .cloned()
         .or_else(|| std::env::var("RIGORIX_HMAC_KEY").ok())
         .filter(|k| !k.is_empty())
+}
+
+/// Load a `HookRunnerService` from `.rigorix/hooks.toml` (optional).
+///
+/// When the file exists and parses as a `HookConfig`, every tool execution
+/// runs the configured PreToolUse/PostToolUse shell hooks. Returns `None`
+/// (no hook interception) when the file is absent — never fatal.
+fn load_hook_runner(repo_root: &str) -> Option<Arc<dyn HookRunnerService>> {
+    use rigorix_engine::hooks::application::factory::HookRunnerFactory;
+    use rigorix_engine::hooks::application::runner_factory_impl::HookRunnerFactoryImpl;
+    use rigorix_engine::hooks::domain::config::HookConfig;
+
+    let path = std::path::PathBuf::from(repo_root).join(".rigorix/hooks.toml");
+    let content = std::fs::read_to_string(&path).ok()?;
+    let config: HookConfig = toml::from_str(&content).ok()?;
+    match HookRunnerFactoryImpl.create(config) {
+        Ok(runner) => {
+            tracing::info!("Hooks enabled from {}", path.display());
+            Some(Arc::from(runner))
+        }
+        Err(e) => {
+            tracing::warn!("hooks config invalid: {e}");
+            None
+        }
+    }
 }
 
 #[cfg(test)]

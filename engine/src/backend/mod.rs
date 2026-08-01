@@ -57,6 +57,81 @@ impl EnforcementConfigProvider for NullConfigProvider {
     }
 }
 
+/// HTTP-backed implementation of `EnforcementConfigProvider`.
+///
+/// Posts the local `EnforcementConfig` to the configured backend URL and
+/// accepts either a merged `EnforcementConfig` JSON body (`Some`), an empty
+/// body / `204 No Content` (`None` — use local unchanged), or an error.
+///
+/// # Protocol
+///
+/// - `POST {url}` with `Authorization: Bearer {api_key}` (when key is set)
+/// - Request body: the local `EnforcementConfig` serialized as JSON
+/// - `200` + `EnforcementConfig` JSON → merged config is used
+/// - `204` / empty body → local config is used unchanged
+/// - Non-2xx → `BackendError` (caller should fall back to local config)
+pub struct HttpEnforcementConfigProvider {
+    url: String,
+    api_key: Option<String>,
+    timeout: std::time::Duration,
+}
+
+impl HttpEnforcementConfigProvider {
+    /// Create a new HTTP provider for the given backend URL.
+    pub fn new(
+        url: impl Into<String>,
+        api_key: Option<String>,
+        timeout: std::time::Duration,
+    ) -> Self {
+        Self {
+            url: url.into(),
+            api_key,
+            timeout,
+        }
+    }
+}
+
+#[async_trait]
+impl EnforcementConfigProvider for HttpEnforcementConfigProvider {
+    async fn fetch_merged_config(
+        &self,
+        local_config: &EnforcementConfig,
+    ) -> Result<Option<EnforcementConfig>, BackendError> {
+        let client = reqwest::Client::builder()
+            .timeout(self.timeout)
+            .build()
+            .map_err(|e| BackendError::RequestFailed {
+                detail: e.to_string(),
+            })?;
+
+        let mut request = client.post(&self.url).json(local_config);
+        if let Some(ref key) = self.api_key {
+            request = request.bearer_auth(key);
+        }
+
+        let response = request.send().await?;
+        if response.status() == reqwest::StatusCode::NO_CONTENT {
+            return Ok(None);
+        }
+        if !response.status().is_success() {
+            return Err(BackendError::RequestFailed {
+                detail: format!("backend returned HTTP {}", response.status()),
+            });
+        }
+
+        let body = response.text().await?;
+        if body.trim().is_empty() || body.trim() == "null" {
+            return Ok(None);
+        }
+
+        serde_json::from_str(&body)
+            .map(Some)
+            .map_err(|e| BackendError::InvalidResponse {
+                detail: format!("failed to parse merged enforcement config: {e}"),
+            })
+    }
+}
+
 /// Errors from backend operations.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum BackendError {
@@ -145,5 +220,88 @@ mod tests {
         let _: BackendError = BackendError::Unauthorized {
             detail: "test".to_string(),
         };
+    }
+
+    #[tokio::test]
+    async fn test_http_provider_returns_merged_config() {
+        // Tiny in-test HTTP server serving a merged EnforcementConfig.
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 4096];
+            let _ = socket.read(&mut buf).await;
+            let merged_fixture = EnforcementConfig {
+                execution_limits: crate::enforcement::domain::config::ExecutionLimits {
+                    max_execution_time_secs: 5000,
+                    ..EnforcementConfig::default().execution_limits
+                },
+                ..EnforcementConfig::default()
+            };
+            let body = serde_json::to_string(&merged_fixture).unwrap();
+            let response = format!(
+                "HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: {}
+Connection: close
+
+{}",
+                body.len(),
+                body
+            );
+            let _ = socket.write_all(response.as_bytes()).await;
+        });
+
+        let provider = HttpEnforcementConfigProvider::new(
+            format!("http://{addr}/enforcement"),
+            Some("test-key".to_string()),
+            std::time::Duration::from_secs(5),
+        );
+        let merged = provider
+            .fetch_merged_config(&EnforcementConfig::default())
+            .await
+            .expect("provider should succeed");
+        let merged = merged.expect("should return a merged config");
+        assert_eq!(merged.execution_limits.max_execution_time_secs, 5000);
+
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_http_provider_empty_body_means_use_local() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 4096];
+            let _ = socket.read(&mut buf).await;
+            let response = "HTTP/1.1 204 No Content
+Content-Length: 0
+Connection: close
+
+";
+            let _ = socket.write_all(response.as_bytes()).await;
+        });
+
+        let provider = HttpEnforcementConfigProvider::new(
+            format!("http://{addr}/enforcement"),
+            None,
+            std::time::Duration::from_secs(5),
+        );
+        let result = provider
+            .fetch_merged_config(&EnforcementConfig::default())
+            .await
+            .expect("provider should succeed");
+        assert!(result.is_none(), "204 means use local config unchanged");
+
+        server.await.unwrap();
     }
 }

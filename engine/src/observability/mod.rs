@@ -25,10 +25,18 @@ pub fn init_tracing(config: &TracingConfig) -> Result<(), Box<dyn std::error::Er
         .with_default_directive(config.default_level.parse()?)
         .from_env_lossy();
 
+    use tracing_subscriber::fmt::writer::BoxMakeWriter;
+
+    let writer = if config.write_to_stderr {
+        BoxMakeWriter::new(std::io::stderr)
+    } else {
+        BoxMakeWriter::new(std::io::stdout)
+    };
     let subscriber = tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_target(true)
-        .with_line_number(true);
+        .with_line_number(true)
+        .with_writer(writer);
 
     if config.pretty {
         subscriber.pretty().init();

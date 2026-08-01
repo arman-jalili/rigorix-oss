@@ -13,7 +13,8 @@ use std::sync::Arc;
 use crate::mcp_server::domain::entity::{McpServer, ToolRegistry};
 use crate::mcp_server::domain::error::{McpServerError, SessionError};
 use crate::mcp_server::domain::value::{
-    ClientCapabilities, ClientInfo, ServerCapabilities, SessionId, ToolHandler, ToolSchema,
+    ClientCapabilities, ClientInfo, ContentItem, ServerCapabilities, SessionId, ToolHandler,
+    ToolSchema,
 };
 use crate::mcp_server::infrastructure::{
     InMemoryMcpServerRepository, InMemorySessionRepository, InMemoryToolRegistryRepository,
@@ -27,7 +28,9 @@ use super::dto::{
     RegisterToolOutput, ServerStatusInfo, SessionInfo, StartServerInput, StartServerOutput,
     UnregisterToolInput, UnregisterToolOutput,
 };
-use super::service::{McpServerEvent, McpServerService, SessionService, ToolRegistryService};
+use super::service::{
+    McpServerEvent, McpServerService, McpToolExecutor, SessionService, ToolRegistryService,
+};
 
 // ---------------------------------------------------------------------------
 // McpServerServiceImpl
@@ -36,12 +39,15 @@ use super::service::{McpServerEvent, McpServerService, SessionService, ToolRegis
 /// Concrete implementation of McpServerService.
 ///
 /// Wires the McpServer aggregate with in-memory repository, transport,
-/// and protocol message dispatching.
+/// and protocol message dispatching. When an executor is wired via
+/// [`McpServerServiceImpl::with_executor`], the protocol surface is live.
 pub struct McpServerServiceImpl {
     server_repo: InMemoryMcpServerRepository,
     registry_repo: InMemoryToolRegistryRepository,
     #[allow(dead_code)]
     session_repo: InMemorySessionRepository,
+    executor: Option<Arc<dyn McpToolExecutor>>,
+    tool_schemas: Vec<ToolSchema>,
 }
 
 impl McpServerServiceImpl {
@@ -51,7 +57,20 @@ impl McpServerServiceImpl {
             server_repo: InMemoryMcpServerRepository::new(),
             registry_repo: InMemoryToolRegistryRepository::new(),
             session_repo: InMemorySessionRepository::new(),
+            executor: None,
+            tool_schemas: Vec::new(),
         }
+    }
+
+    /// Wire a live executor and the tool schemas it can dispatch.
+    pub fn with_executor(
+        mut self,
+        executor: Arc<dyn McpToolExecutor>,
+        tool_schemas: Vec<ToolSchema>,
+    ) -> Self {
+        self.executor = Some(executor);
+        self.tool_schemas = tool_schemas;
+        self
     }
 }
 
@@ -122,14 +141,43 @@ impl McpServerService for McpServerServiceImpl {
         Ok((output, events))
     }
 
-    async fn list_tools(&self, _input: ListToolsInput) -> Result<ListToolsOutput, McpServerError> {
-        Ok(ListToolsOutput { tools: Vec::new() })
+    async fn list_tools(&self, input: ListToolsInput) -> Result<ListToolsOutput, McpServerError> {
+        let tools = match input.filter {
+            Some(super::dto::ToolFilter::Oss) => self
+                .tool_schemas
+                .iter()
+                .filter(|t| t.is_oss_tool())
+                .cloned()
+                .collect(),
+            Some(super::dto::ToolFilter::Enterprise) => self
+                .tool_schemas
+                .iter()
+                .filter(|t| t.is_enterprise_tool())
+                .cloned()
+                .collect(),
+            Some(super::dto::ToolFilter::All) | None => self.tool_schemas.clone(),
+        };
+        Ok(ListToolsOutput { tools })
     }
 
-    async fn call_tool(&self, _input: CallToolInput) -> Result<CallToolOutput, McpServerError> {
-        Err(McpServerError::Internal(
-            "Tool not implemented yet".to_string(),
-        ))
+    async fn call_tool(&self, input: CallToolInput) -> Result<CallToolOutput, McpServerError> {
+        let Some(ref executor) = self.executor else {
+            return Err(McpServerError::Internal(
+                "No tool executor wired — server is not connected to a backend".to_string(),
+            ));
+        };
+        match executor.execute_tool(&input.name, input.arguments).await {
+            Ok(result) => Ok(CallToolOutput {
+                content: vec![ContentItem::text(
+                    serde_json::to_string(&result).unwrap_or_else(|_| "null".to_string()),
+                )],
+                is_error: false,
+            }),
+            Err(err) => Ok(CallToolOutput {
+                content: vec![ContentItem::text(err)],
+                is_error: true,
+            }),
+        }
     }
 
     async fn list_resources(&self) -> Result<ListResourcesOutput, McpServerError> {
@@ -155,10 +203,20 @@ impl McpServerService for McpServerServiceImpl {
         &self,
         input: ReadResourceInput,
     ) -> Result<ReadResourceOutput, McpServerError> {
-        Err(McpServerError::Internal(format!(
-            "Resource '{}' not implemented yet",
-            input.uri
-        )))
+        let Some(ref executor) = self.executor else {
+            return Err(McpServerError::Internal(
+                "No tool executor wired — server is not connected to a backend".to_string(),
+            ));
+        };
+        let text = executor
+            .read_resource(&input.uri)
+            .await
+            .map_err(McpServerError::Internal)?;
+        Ok(ReadResourceOutput {
+            uri: input.uri.clone(),
+            mime_type: "text/plain".to_string(),
+            text,
+        })
     }
 
     async fn list_prompts(&self) -> Result<ListPromptsOutput, McpServerError> {
@@ -172,10 +230,21 @@ impl McpServerService for McpServerServiceImpl {
     }
 
     async fn get_prompt(&self, input: GetPromptInput) -> Result<GetPromptOutput, McpServerError> {
-        Err(McpServerError::Internal(format!(
-            "Prompt '{}' not implemented yet",
-            input.name
-        )))
+        match input.name.as_str() {
+            "rigorix_introduction" => Ok(GetPromptOutput {
+                description: Some("Introduction to Rigorix tool usage".to_string()),
+                messages: vec![super::dto::PromptMessageDto {
+                    role: "user".to_string(),
+                    content: super::dto::PromptContentDto::Text {
+                        text: INTRODUCTION_PROMPT_TEXT.to_string(),
+                    },
+                }],
+            }),
+            _ => Err(McpServerError::Internal(format!(
+                "Prompt '{}' not found",
+                input.name
+            ))),
+        }
     }
 
     async fn status(&self) -> Result<ServerStatusInfo, McpServerError> {
@@ -184,8 +253,8 @@ impl McpServerService for McpServerServiceImpl {
             status: "running".to_string(),
             transport_mode: Some("stdio".to_string()),
             active_sessions: 0,
-            registered_tools: 0,
-            has_enterprise_tools: false,
+            registered_tools: self.tool_schemas.len(),
+            has_enterprise_tools: self.tool_schemas.iter().any(|t| t.is_enterprise_tool()),
             started_at: Some(chrono::Utc::now()),
         })
     }
@@ -199,11 +268,67 @@ const PROMPT_COUNT: usize = 1;
 // McpServerServiceImpl with repositories (full version)
 // ---------------------------------------------------------------------------
 
+/// The `rigorix_introduction` prompt body — shared so the stdio server and the
+/// `mcp_server` module advertise the same content.
+pub const INTRODUCTION_PROMPT_TEXT: &str = concat!(
+    "You are using Rigorix, an AI code-governance engine that plans, ",
+    "executes, and audits multi-step work against a frozen contract.\n\n",
+    "Key capabilities:\n",
+    "  • rigorix_list_templates / rigorix_get_template — inspect plan templates\n",
+    "  • rigorix_validate_plan — check a plan against enforcement policies\n",
+    "  • rigorix_run — execute a template's DAG through the engine\n",
+    "  • rigorix_approve_execution — human sign-off when a step requires it\n",
+    "    (plans may mark steps requires_approval: true; execution pauses until approved)\n",
+    "  • rigorix_check_enforcement — current enforcement status and budget\n",
+    "  • rigorix_get_execution_status / rigorix_get_audit_log — inspect evidence\n\n",
+    "All execution is gated: budgets, safety caps, tool policy, and (when ",
+    "configured) a permission mode (read_only / workspace_write / ",
+    "dangerous_full_access). Every audit event is timestamped and, when a ",
+    "signing key is configured, HMAC-signed for tamper-evident evidence.\n\n",
+    "Start by listing templates, then run one with rigorix_run.",
+);
+
 /// Full-context service implementation that works with all injected repos.
+///
+/// When an `McpToolExecutor` and tool schemas are wired in, the protocol
+/// surface (tools/call, resources/read, prompts/get) is live: calls are
+/// dispatched to the production handlers instead of returning stubs.
 pub struct McpServerServiceWithRepos {
     pub server_repo: Arc<dyn McpServerRepository>,
     pub registry_repo: Arc<dyn ToolRegistryRepository>,
     pub session_repo: Arc<dyn SessionRepository>,
+    /// Optional live dispatcher backed by the composition root.
+    pub executor: Option<Arc<dyn McpToolExecutor>>,
+    /// Tool schemas advertised by `tools/list`.
+    pub tool_schemas: Vec<ToolSchema>,
+}
+
+impl McpServerServiceWithRepos {
+    /// Create the service with the given repositories.
+    pub fn new(
+        server_repo: Arc<dyn McpServerRepository>,
+        registry_repo: Arc<dyn ToolRegistryRepository>,
+        session_repo: Arc<dyn SessionRepository>,
+    ) -> Self {
+        Self {
+            server_repo,
+            registry_repo,
+            session_repo,
+            executor: None,
+            tool_schemas: Vec::new(),
+        }
+    }
+
+    /// Wire a live executor and the tool schemas it can dispatch.
+    pub fn with_executor(
+        mut self,
+        executor: Arc<dyn McpToolExecutor>,
+        tool_schemas: Vec<ToolSchema>,
+    ) -> Self {
+        self.executor = Some(executor);
+        self.tool_schemas = tool_schemas;
+        self
+    }
 }
 
 #[async_trait]
@@ -252,25 +377,61 @@ impl McpServerService for McpServerServiceWithRepos {
         Ok((output, events))
     }
 
-    async fn list_tools(&self, _input: ListToolsInput) -> Result<ListToolsOutput, McpServerError> {
-        Ok(ListToolsOutput { tools: Vec::new() })
+    async fn list_tools(&self, input: ListToolsInput) -> Result<ListToolsOutput, McpServerError> {
+        let tools = match input.filter {
+            Some(super::dto::ToolFilter::Oss) => self
+                .tool_schemas
+                .iter()
+                .filter(|t| t.is_oss_tool())
+                .cloned()
+                .collect(),
+            Some(super::dto::ToolFilter::Enterprise) => self
+                .tool_schemas
+                .iter()
+                .filter(|t| t.is_enterprise_tool())
+                .cloned()
+                .collect(),
+            Some(super::dto::ToolFilter::All) | None => self.tool_schemas.clone(),
+        };
+        Ok(ListToolsOutput { tools })
     }
 
     async fn call_tool(&self, input: CallToolInput) -> Result<CallToolOutput, McpServerError> {
-        Err(McpServerError::Internal(format!(
-            "Tool '{}' not implemented",
-            input.name
-        )))
+        let Some(ref executor) = self.executor else {
+            return Err(McpServerError::Internal(
+                "No tool executor wired — server is not connected to a backend".to_string(),
+            ));
+        };
+        match executor.execute_tool(&input.name, input.arguments).await {
+            Ok(result) => Ok(CallToolOutput {
+                content: vec![ContentItem::text(
+                    serde_json::to_string(&result).unwrap_or_else(|_| "null".to_string()),
+                )],
+                is_error: false,
+            }),
+            Err(err) => Ok(CallToolOutput {
+                content: vec![ContentItem::text(err)],
+                is_error: true,
+            }),
+        }
     }
 
     async fn list_resources(&self) -> Result<ListResourcesOutput, McpServerError> {
         Ok(ListResourcesOutput {
-            resources: vec![crate::mcp_server::domain::value::ResourceSchema::new(
-                "rigorix://audit/{id}",
-                "Audit Trail",
-                "Read an audit trail by execution ID",
-                "text/plain",
-            )],
+            resources: vec![
+                crate::mcp_server::domain::value::ResourceSchema::new(
+                    "rigorix://audit/{id}",
+                    "Audit Trail",
+                    "Read an audit trail by execution ID",
+                    "text/plain",
+                ),
+                crate::mcp_server::domain::value::ResourceSchema::new(
+                    "rigorix://templates/{name}",
+                    "Template",
+                    "Read a template by name",
+                    "text/plain",
+                ),
+            ],
         })
     }
 
@@ -278,10 +439,20 @@ impl McpServerService for McpServerServiceWithRepos {
         &self,
         input: ReadResourceInput,
     ) -> Result<ReadResourceOutput, McpServerError> {
-        Err(McpServerError::Internal(format!(
-            "Resource '{}' not implemented",
-            input.uri
-        )))
+        let Some(ref executor) = self.executor else {
+            return Err(McpServerError::Internal(
+                "No tool executor wired — server is not connected to a backend".to_string(),
+            ));
+        };
+        let text = executor
+            .read_resource(&input.uri)
+            .await
+            .map_err(McpServerError::Internal)?;
+        Ok(ReadResourceOutput {
+            uri: input.uri.clone(),
+            mime_type: "text/plain".to_string(),
+            text,
+        })
     }
 
     async fn list_prompts(&self) -> Result<ListPromptsOutput, McpServerError> {
@@ -295,10 +466,21 @@ impl McpServerService for McpServerServiceWithRepos {
     }
 
     async fn get_prompt(&self, input: GetPromptInput) -> Result<GetPromptOutput, McpServerError> {
-        Err(McpServerError::Internal(format!(
-            "Prompt '{}' not implemented",
-            input.name
-        )))
+        match input.name.as_str() {
+            "rigorix_introduction" => Ok(GetPromptOutput {
+                description: Some("Introduction to Rigorix tool usage".to_string()),
+                messages: vec![super::dto::PromptMessageDto {
+                    role: "user".to_string(),
+                    content: super::dto::PromptContentDto::Text {
+                        text: INTRODUCTION_PROMPT_TEXT.to_string(),
+                    },
+                }],
+            }),
+            _ => Err(McpServerError::Internal(format!(
+                "Prompt '{}' not found",
+                input.name
+            ))),
+        }
     }
 
     async fn status(&self) -> Result<ServerStatusInfo, McpServerError> {
@@ -307,8 +489,8 @@ impl McpServerService for McpServerServiceWithRepos {
             status: "running".to_string(),
             transport_mode: Some("stdio".to_string()),
             active_sessions: 0,
-            registered_tools: 0,
-            has_enterprise_tools: false,
+            registered_tools: self.tool_schemas.len(),
+            has_enterprise_tools: self.tool_schemas.iter().any(|t| t.is_enterprise_tool()),
             started_at: Some(chrono::Utc::now()),
         })
     }

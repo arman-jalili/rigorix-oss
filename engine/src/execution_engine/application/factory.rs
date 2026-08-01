@@ -18,6 +18,7 @@ use std::sync::Arc;
 
 use crate::event_system::application::EventBusService;
 use crate::execution_engine::domain::ExecutionError;
+use crate::hooks::application::service::HookRunnerService;
 use crate::permission::application::enforcer::PermissionEnforcer;
 
 use super::service::{ParallelExecutionService, RetryEvaluationService};
@@ -66,6 +67,12 @@ pub struct ParallelExecutionFactoryConfig {
     /// against the active permission mode before execution. When `None`, no
     /// permission gating is applied.
     pub permission_enforcer: Option<Arc<dyn PermissionEnforcer>>,
+
+    /// Optional hook runner for PreToolUse/PostToolUse interception.
+    ///
+    /// When set, every tool execution runs the configured shell hooks
+    /// (which can block, override permissions, or enrich audit context).
+    pub hook_runner: Option<Arc<dyn HookRunnerService>>,
 }
 
 impl Default for ParallelExecutionFactoryConfig {
@@ -77,6 +84,7 @@ impl Default for ParallelExecutionFactoryConfig {
             event_channel_capacity: 1024,
             event_bus: None,
             permission_enforcer: None,
+            hook_runner: None,
         }
     }
 }
