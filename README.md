@@ -31,6 +31,37 @@ npm install && node .rigorix/run-demo.mjs
 
 ---
 
+## Works with the agents you already run
+
+Rigorix isn't a separate agent — it's a governance layer underneath yours. The [rigorix-mcp gateway](mcp/README.md) plugs Rigorix into any MCP-compatible coding assistant (Claude Code, Cursor, Aider) as a standard MCP server, exposing 12 built-in tools:
+
+- **Execution** — `rigorix_execute`, `rigorix_run`, `rigorix_plan`, `rigorix_validate_plan`, `rigorix_check_enforcement`
+- **Templates** — list, get, create, validate
+- **Audit** — read, list, summarize signed audit records (read-only — the gateway never modifies audit data)
+
+Your agent keeps its own loop; everything it does through Rigorix is planned, gated, and recorded.
+
+```bash
+cargo install rigorix-mcp
+```
+
+Add to `.mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "rigorix-mcp": {
+      "command": "rigorix-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+Then let the agent drive — plan, validate, execute, and audit from inside the conversation. Full docs: [mcp/README.md](mcp/README.md).
+
+---
+
 ## The problem
 
 Every agent loop today works the same way: an LLM decides what to do, does it, checks the result, and loops. That loop is powerful — and unstructured. There's no distinction between planning and execution. There's no audit trail beyond conversation history. There's no way to say *"execute this plan, but only if it stays within these boundaries."*
@@ -234,6 +265,9 @@ rigorix-oss/
 ├── cli/                 # CLI binary — thin wrapper over engine
 │   ├── src/cli_boundary/# Flag-based CLI (Clap, dispatch, config)
 │   ├── src/tui/         # Interactive TUI (ratatui)
+│   └── .pi/             # Architecture docs
+├── mcp/                 # MCP gateway server (rigorix-mcp) — bridges
+│   │                    # Claude Code / Cursor / Aider to the engine
 │   └── .pi/             # Architecture docs
 ├── actions/             # GitHub Action — thin adapter over engine
 │   ├── src/             # 9 bounded-context modules
