@@ -33,11 +33,12 @@ npm install && node .rigorix/run-demo.mjs
 
 ## Works with the agents you already run
 
-Rigorix isn't a separate agent — it's a governance layer underneath yours. The [rigorix-mcp gateway](mcp/README.md) plugs Rigorix into any MCP-compatible coding assistant (Claude Code, Cursor, Aider) as a standard MCP server, exposing 12 built-in tools:
+Rigorix isn't a separate agent — it's a governance layer underneath yours. The [rigorix-mcp gateway](mcp/README.md) plugs Rigorix into any MCP-compatible coding assistant (Claude Code, Cursor, Aider) as a standard MCP server, exposing 14 built-in tools:
 
-- **Execution** — `rigorix_execute`, `rigorix_run`, `rigorix_plan`, `rigorix_validate_plan`, `rigorix_check_enforcement`
+- **Execution** — `rigorix_execute`, `rigorix_run`, `rigorix_plan`, `rigorix_validate_plan`, `rigorix_check_enforcement`, `rigorix_approve_execution`
 - **Templates** — list, get, create, validate
 - **Audit** — read, list, summarize signed audit records (read-only — the gateway never modifies audit data)
+- **Usage guide** — `rigorix_get_usage_guide`, a self-documenting tool list and workflow patterns
 
 Your agent keeps its own loop; everything it does through Rigorix is planned, gated, and recorded.
 
@@ -267,7 +268,8 @@ rigorix-oss/
 │   ├── src/tui/         # Interactive TUI (ratatui)
 │   └── .pi/             # Architecture docs
 ├── mcp/                 # MCP gateway server (rigorix-mcp) — bridges
-│   │                    # Claude Code / Cursor / Aider to the engine
+│   │                    #   Claude Code / Cursor / Aider to the engine
+│   ├── src/             # 6 bounded-context modules
 │   └── .pi/             # Architecture docs
 ├── actions/             # GitHub Action — thin adapter over engine
 │   ├── src/             # 9 bounded-context modules
