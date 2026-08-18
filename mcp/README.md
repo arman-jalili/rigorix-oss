@@ -7,7 +7,7 @@
 
 **Model Context Protocol (MCP) gateway server for the Rigorix engine.**
 
-`rigorix-mcp` bridges AI coding assistants (Claude Code, Cursor, Aider, and any MCP-compatible client) with the Rigorix engine. It exposes 12 built-in OSS tools for plan execution, template management, and audit queries — plus optional enterprise proxy tools for API gateway integration.
+`rigorix-mcp` bridges AI coding assistants (Claude Code, Cursor, Aider, and any MCP-compatible client) with the Rigorix engine. It exposes 14 built-in OSS tools for plan execution, template management, and audit queries — plus optional enterprise proxy tools for API gateway integration.
 
 ---
 
@@ -49,12 +49,13 @@ The server reads newline-delimited JSON-RPC messages from stdin (stdio mode) or 
 │                    │        Tool Handlers     │          │   │
 │                    │                          ▼          │   │
 │                    │  ┌─────────────────────────────┐   │   │
-│                    │  │  Execution Tools (5)         │   │   │
+│                    │  │  Execution Tools (6)         │   │   │
 │                    │  │  rigorix_execute             │   │   │
 │                    │  │  rigorix_run                 │   │   │
 │                    │  │  rigorix_plan                │   │   │
 │                    │  │  rigorix_validate_plan       │   │   │
 │                    │  │  rigorix_check_enforcement   │   │   │
+│                    │  │  rigorix_approve_execution   │   │   │
 │                    │  └─────────────────────────────┘   │   │
 │                    │  ┌─────────────────────────────┐   │   │
 │                    │  │  Template Tools (4)          │   │   │
@@ -94,7 +95,7 @@ The crate follows Domain-Driven Design with Clean Architecture layers inside eac
 | Context | Responsibility | Tools |
 |---------|---------------|-------|
 | **MCP Server** | Transport, sessions, tool registry, request routing | Foundation layer |
-| **Execution Tools** | Plan execution, validation, enforcement checking | 5 tools |
+| **Execution Tools** | Plan execution, validation, enforcement checking, human sign-off | 6 tools |
 | **Template Tools** | Template CRUD (TOML files on disk) | 4 tools |
 | **Audit Tools** | Read-only audit querying and formatting | 3 tools |
 | **Usage Guide** | Self-documenting tool list and workflow patterns | 1 tool |
@@ -113,6 +114,7 @@ The crate follows Domain-Driven Design with Clean Architecture layers inside eac
 | `rigorix_plan` | Load a template and display the planned DAG without execution |
 | `rigorix_validate_plan` | Validate a plan against enforcement policies |
 | `rigorix_check_enforcement` | Check if any enforcement policies are active |
+| `rigorix_approve_execution` | Approve steps of a paused (`PendingApproval`) execution — the human sign-off for `requires_approval` steps |
 
 ### Template Tools
 
