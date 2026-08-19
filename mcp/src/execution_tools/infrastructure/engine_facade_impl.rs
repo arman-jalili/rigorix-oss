@@ -480,6 +480,46 @@ impl EngineFacade for EngineFacadeImpl {
             output.resumed,
         ))
     }
+
+    async fn execution_state(
+        &self,
+        execution_id: &ExecutionId,
+    ) -> Result<crate::execution_tools::domain::value::ExecutionStateInfo, EngineFacadeError> {
+        let state = self
+            .orchestrator
+            .execution_state(*execution_id.as_uuid())
+            .await
+            .map_err(|e| EngineFacadeError::Internal(e.to_string()))?;
+
+        use crate::execution_tools::domain::value::{ExecutionStateInfo, NodeExecutionStateInfo};
+        let node_states = state
+            .node_states
+            .into_iter()
+            .map(|(id, s)| {
+                (
+                    id,
+                    NodeExecutionStateInfo {
+                        node_id: id,
+                        node_name: s.node_name.clone(),
+                        status: s.status.as_str().to_string(),
+                        last_duration_ms: s.last_duration_ms,
+                        last_error: s.last_error.clone(),
+                    },
+                )
+            })
+            .collect();
+
+        Ok(ExecutionStateInfo {
+            execution_id: *execution_id.as_uuid(),
+            node_states,
+            completed_count: state.completed_count,
+            failed_count: state.failed_count,
+            skipped_count: state.skipped_count,
+            total_nodes: state.total_nodes,
+            paused: state.paused,
+            is_complete: state.is_complete,
+        })
+    }
 }
 
 #[cfg(test)]

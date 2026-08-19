@@ -110,4 +110,16 @@ pub trait OrchestratorService: Send + Sync {
         &self,
         input: ApproveExecutionInput,
     ) -> Result<ApproveExecutionOutput, OrchestratorError>;
+
+    /// Get the current per-node state of an execution (completed/failed/
+    /// awaiting-approval). Used after a resumed approval to surface the
+    /// FINAL run state (all steps, statuses) for evidence — the paused-run
+    /// snapshot alone would show a stale PendingApproval.
+    async fn execution_state(
+        &self,
+        execution_id: uuid::Uuid,
+    ) -> Result<
+        crate::execution_engine::application::dto::GetExecutionStateOutput,
+        OrchestratorError,
+    >;
 }

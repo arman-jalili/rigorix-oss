@@ -116,6 +116,16 @@ pub trait EngineFacade: Send + Sync {
         execution_id: &ExecutionId,
         step_names: Vec<String>,
     ) -> Result<ApprovalResult, EngineFacadeError>;
+
+    /// Get the per-node state of an execution after it ran or resumed.
+    ///
+    /// Used to refresh the audit envelope after a resumed approval so the
+    /// evidence reflects the FINAL run state (all steps, statuses) rather
+    /// than the paused snapshot.
+    async fn execution_state(
+        &self,
+        execution_id: &ExecutionId,
+    ) -> Result<crate::execution_tools::domain::value::ExecutionStateInfo, EngineFacadeError>;
 }
 
 /// Shared ownership of an EngineFacade implementation.

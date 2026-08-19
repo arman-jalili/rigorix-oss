@@ -107,6 +107,16 @@ impl EngineFacade for EngineFacadeTddContract {
             ),
         )
     }
+
+    async fn execution_state(
+        &self,
+        _: &ExecutionId,
+    ) -> Result<
+        rigorix_mcp::execution_tools::domain::value::ExecutionStateInfo,
+        EngineFacadeError,
+    > {
+        unimplemented!("mock execution_state not needed by current tests")
+    }
 }
 
 #[test]

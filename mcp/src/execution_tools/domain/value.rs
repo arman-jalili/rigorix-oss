@@ -826,3 +826,45 @@ impl From<Uuid> for ExecutionId {
         Self(id)
     }
 }
+
+// ---------------------------------------------------------------------------
+// ExecutionStateInfo — post-run per-node state for evidence refresh
+// ---------------------------------------------------------------------------
+
+/// Snapshot of an execution's per-node state after a run (or after a resumed
+/// approval), used to refresh the audit envelope so the evidence reflects the
+/// FINAL state — not the paused snapshot.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionStateInfo {
+    /// The execution ID.
+    pub execution_id: Uuid,
+    /// Per-node state by node id.
+    pub node_states: std::collections::HashMap<Uuid, NodeExecutionStateInfo>,
+    /// Number of completed nodes.
+    pub completed_count: u32,
+    /// Number of failed nodes.
+    pub failed_count: u32,
+    /// Number of skipped nodes.
+    pub skipped_count: u32,
+    /// Total number of nodes.
+    pub total_nodes: u32,
+    /// Whether the execution is paused.
+    pub paused: bool,
+    /// Whether the execution is complete.
+    pub is_complete: bool,
+}
+
+/// Minimal per-node state surfaced to MCP clients.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NodeExecutionStateInfo {
+    /// Node id.
+    pub node_id: Uuid,
+    /// Node name (step name).
+    pub node_name: String,
+    /// Lifecycle status string (snake_case).
+    pub status: String,
+    /// Duration of the last attempt in milliseconds.
+    pub last_duration_ms: Option<u64>,
+    /// Error message from the last failure.
+    pub last_error: Option<String>,
+}

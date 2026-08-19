@@ -517,6 +517,16 @@ mod tests {
                 },
             )
         }
+
+        async fn execution_state(
+            &self,
+            _: uuid::Uuid,
+        ) -> Result<
+            rigorix_engine::execution_engine::application::dto::GetExecutionStateOutput,
+            rigorix_engine::orchestrator::domain::OrchestratorError,
+        > {
+            unimplemented!("MockOrchestrator::execution_state not needed by current tests")
+        }
     }
 
     // ── Mock ValidationLoopService ──

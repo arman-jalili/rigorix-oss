@@ -32,7 +32,9 @@ use rigorix_mcp::audit_tools::application::service::{
 use rigorix_mcp::audit_tools::application::service_impl::{
     AuditSummaryHandlerImpl, ListAuditsHandlerImpl, ReadAuditHandlerImpl,
 };
-use rigorix_mcp::audit_tools::domain::entity::{AuditFormatter, SharedAuditQueryService};
+use rigorix_mcp::audit_tools::domain::entity::{
+    AuditFormatter, AuditQueryService, SharedAuditQueryService,
+};
 use rigorix_mcp::audit_tools::domain::formatter_impl::AuditFormatterImpl;
 
 use rigorix_mcp::execution_tools::application::service::{
@@ -448,6 +450,58 @@ impl AppState {
                     .await
                     .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
 
+                // After a resumed approval, refresh the audit envelope with the
+                // FINAL run state (all steps, statuses) so rigorix_read_audit
+                // shows the completed runbook — not the stale paused snapshot.
+                let mut final_state = None;
+                if approval.resumed()
+                    && let Ok(state) = self
+                        .engine
+                        .execution_state(&ExecutionId::from_uuid(execution_id))
+                        .await
+                {
+                        // Reuse the stored envelope's template name if present.
+                        let stored_template = self
+                            .audit_storage
+                            .read_audit(&ExecutionId::from_uuid(execution_id))
+                            .await
+                            .ok()
+                            .and_then(|e| e.template_name().map(|s| s.to_string()))
+                            .unwrap_or_else(|| "unknown".to_string());
+                        let steps: Vec<serde_json::Value> = state
+                            .node_states
+                            .values()
+                            .map(|s| {
+                                serde_json::json!({
+                                    "step_name": s.node_name,
+                                    "success": s.status == "completed",
+                                    "error": s.last_error,
+                                    "duration_ms": s.last_duration_ms.unwrap_or(0),
+                                })
+                            })
+                            .collect();
+                        let refreshed = serde_json::json!({
+                            "execution_id": execution_id.to_string(),
+                            "status": if state.is_complete && state.failed_count == 0 {
+                                "Completed"
+                            } else if state.failed_count > 0 {
+                                "Failed"
+                            } else {
+                                "PendingApproval"
+                            },
+                            "duration_ms": 0,
+                            "steps": steps,
+                        });
+                        let envelope = build_envelope_from_run(
+                            &refreshed,
+                            execution_id,
+                            stored_template,
+                            &self.audit_hmac_key,
+                        );
+                        let _ = self.audit_storage.store(envelope);
+                        final_state = Some(state);
+                }
+
                 Ok(serde_json::json!({
                     "execution_id": approval.execution_id().to_string(),
                     "approved_steps": approval.approved_steps(),
@@ -460,7 +514,13 @@ impl AppState {
                         "Approved — execution paused"
                     } else {
                         "Approval recorded — more steps still pending"
-                    }
+                    },
+                    "final_state": final_state.map(|s| serde_json::json!({
+                        "is_complete": s.is_complete,
+                        "completed_count": s.completed_count,
+                        "failed_count": s.failed_count,
+                        "total_nodes": s.total_nodes,
+                    })),
                 }))
             }
 

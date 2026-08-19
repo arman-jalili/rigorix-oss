@@ -1509,6 +1509,21 @@ impl OrchestratorService for OrchestratorServiceImpl {
             resumed,
         })
     }
+
+    async fn execution_state(
+        &self,
+        execution_id: Uuid,
+    ) -> Result<exec_dto::GetExecutionStateOutput, OrchestratorError> {
+        self.execution_service
+            .get_execution_state(exec_dto::GetExecutionStateInput {
+                dag_id: execution_id,
+            })
+            .await
+            .map_err(|e| OrchestratorError::Internal {
+                detail: format!("Failed to query execution state: {e}"),
+                source_module: "orchestrator".into(),
+            })
+    }
 }
 
 // Mocks moved to orchestrator_mocks.rs
