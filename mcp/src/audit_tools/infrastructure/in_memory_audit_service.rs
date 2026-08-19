@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::audit_tools::domain::entity::AuditQueryService;
 use crate::audit_tools::domain::error::AuditError;
 use crate::audit_tools::domain::value::{
-    AuditEnvelope, AuditFilter, AuditSummary, TopFailure, TopTemplate,
+    AuditEnvelope, AuditFilter, AuditSummary, ExecutionStep, TopFailure, TopTemplate,
 };
 use crate::execution_tools::domain::value::{ExecutionId, ExecutionStatus};
 
@@ -71,6 +71,55 @@ impl InMemoryAuditQueryService {
             "sample-hmac".into(),
             vec![],
         )
+    }
+
+    /// Build a REAL audit envelope from an actual run result and sign it.
+    ///
+    /// Replaces the fabricated `create_sample` path: steps come from the run
+    /// output (real names, success flags, errors, durations), the HMAC is
+    /// computed over the same canonical fields the engine signs
+    /// (envelope_factory_impl::compute_signature), so `rigorix_read_audit`
+    /// returns evidence that is honest — every step actually ran, and the
+    /// signature is verifiable with the configured key.
+    pub fn build_from_run(
+        execution_id: Uuid,
+        status: ExecutionStatus,
+        template_name: Option<String>,
+        duration_ms: u64,
+        steps: Vec<ExecutionStep>,
+        hmac_key: Option<&str>,
+    ) -> AuditEnvelope {
+        let started_at = chrono::Utc::now();
+        let completed_at = started_at + chrono::Duration::milliseconds(duration_ms as i64);
+        let envelope = AuditEnvelope::new(
+            execution_id,
+            status.clone(),
+            template_name.clone(),
+            started_at,
+            completed_at,
+            duration_ms,
+            steps,
+            None,
+            String::new(),
+            vec![],
+        );
+
+        let hmac = hmac_key.map(|key| compute_hmac(&envelope, key));
+        match hmac {
+            Some(sig) => AuditEnvelope::new(
+                execution_id,
+                status,
+                template_name,
+                started_at,
+                completed_at,
+                duration_ms,
+                envelope.steps().to_vec(),
+                None,
+                sig,
+                vec![],
+            ),
+            None => envelope,
+        }
     }
 }
 
@@ -327,4 +376,74 @@ mod tests {
             .unwrap();
         assert_eq!(summary.total_executions(), 0);
     }
+
+    #[test]
+    fn test_build_from_run_signs_real_steps() {
+        // Honest-evidence regression: the envelope stored for read_audit must
+        // carry the REAL steps that ran and a signature derived from them —
+        // not the fabricated "sample-hmac" placeholder.
+        use crate::audit_tools::domain::value::ExecutionStep;
+
+        let id = Uuid::new_v4();
+        let steps = vec![
+            ExecutionStep::new("validate".into(), true, None, serde_json::json!({}), 5),
+            ExecutionStep::new("migrate".into(), false, Some("SQL error".into()), serde_json::json!({}), 12),
+        ];
+        let env = InMemoryAuditQueryService::build_from_run(
+            id,
+            ExecutionStatus::Failed,
+            Some("db-migration".into()),
+            17,
+            steps,
+            Some("test-key"),
+        );
+
+        assert_ne!(env.hmac(), "sample-hmac", "must not be the placeholder");
+        assert!(!env.hmac().is_empty(), "must carry a signature");
+        assert_eq!(env.hmac().len(), 64, "SHA-256 hex digest is 64 chars");
+        assert_eq!(env.steps().len(), 2);
+        assert_eq!(env.steps()[0].step_name(), "validate");
+        assert!(env.steps()[0].is_success());
+        assert_eq!(env.steps()[1].error(), Some("SQL error"));
+
+        // Same steps but different key → different signature.
+        let other_key = InMemoryAuditQueryService::build_from_run(
+            id,
+            ExecutionStatus::Failed,
+            Some("db-migration".into()),
+            17,
+            vec![
+                ExecutionStep::new("validate".into(), true, None, serde_json::json!({}), 5),
+                ExecutionStep::new("migrate".into(), false, Some("SQL error".into()), serde_json::json!({}), 12),
+            ],
+            Some("other-key"),
+        );
+        assert_ne!(env.hmac(), other_key.hmac(), "different key must differ");
+    }
+}
+
+/// Compute an HMAC-SHA256 signature over the envelope's canonical fields,
+/// mirroring the engine's `envelope_factory_impl::compute_signature` so the
+/// MCP-facing envelope can be verified with the same key used by the engine.
+fn compute_hmac(envelope: &AuditEnvelope, key: &str) -> String {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(key.as_bytes()).expect("HMAC key from config is valid");
+    mac.update(envelope.execution_id().to_string().as_bytes());
+    mac.update(envelope.started_at().to_rfc3339().as_bytes());
+    mac.update(envelope.completed_at().to_rfc3339().as_bytes());
+    mac.update(envelope.template_name().unwrap_or("").as_bytes());
+    mac.update(&envelope.duration_ms().to_le_bytes());
+    mac.update(&(envelope.steps().len() as u64).to_le_bytes());
+    for step in envelope.steps() {
+        mac.update(step.step_name().as_bytes());
+        mac.update(&[step.is_success() as u8]);
+        if let Some(err) = step.error() {
+            mac.update(err.as_bytes());
+        }
+    }
+    let result = mac.finalize().into_bytes();
+    result.iter().map(|b| format!("{:02x}", b)).collect()
 }

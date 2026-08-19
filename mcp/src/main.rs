@@ -47,8 +47,6 @@ use rigorix_mcp::execution_tools::infrastructure::{
     EngineFacadeConfig, EngineFacadeImpl, InMemoryExecutionRepository,
 };
 
-use rigorix_mcp::execution_tools::domain::value::ExecutionStatus;
-
 use rigorix_mcp::template_tools::application::service::{
     CreateTemplateHandler, GetTemplateHandler, ListTemplatesHandler, ValidateTemplateHandler,
 };
@@ -61,6 +59,7 @@ use rigorix_mcp::template_tools::infrastructure::FilesystemTemplateRepository;
 
 use rigorix_mcp::enterprise_proxy::domain::entity::SharedEnterpriseProxy;
 use rigorix_mcp::enterprise_proxy::domain::value::ProxyConfig;
+use rigorix_engine::configuration::domain::config::Config;
 use rigorix_mcp::enterprise_proxy::infrastructure::EnterpriseProxyImpl;
 
 use rigorix_mcp::enterprise_proxy::interfaces::mcp::ENTERPRISE_TOOL_PREFIX;
@@ -103,6 +102,9 @@ struct AppState {
     // Direct access to concrete audit service for storing execution results
     audit_storage:
         std::sync::Arc<rigorix_mcp::audit_tools::infrastructure::InMemoryAuditQueryService>,
+
+    // HMAC key used to sign envelopes stored for the read_audit cycle.
+    audit_hmac_key: Option<String>,
 
     // Template repository for resolving template_name → plan
     template_repo: SharedTemplateRepository,
@@ -172,7 +174,11 @@ impl AppState {
     }
 
     /// Build the composition root with the given engine facade and template repository.
-    fn new(engine: SharedEngineFacade, template_repo: SharedTemplateRepository) -> Self {
+    fn new(
+        engine: SharedEngineFacade,
+        template_repo: SharedTemplateRepository,
+        audit_hmac_key: Option<String>,
+    ) -> Self {
         // ── Audit service (in-memory) ──
         let audit_storage = std::sync::Arc::new(
             rigorix_mcp::audit_tools::infrastructure::InMemoryAuditQueryService::new(),
@@ -218,6 +224,7 @@ impl AppState {
             )),
             validate_template_handler: Box::new(ValidateTemplateHandlerImpl::new()),
             audit_storage,
+            audit_hmac_key,
             mcp_service: {
                 // Wire the mcp_server library module to the same handlers used
                 // by the stdio server, so its protocol surface is live.
@@ -316,19 +323,14 @@ impl AppState {
                 let json_result: serde_json::Value =
                     serde_json::from_str(&result.content[0].text).unwrap_or_default();
 
-                // Store an audit record for the read_audit cycle
+                // Store an audit record for the read_audit cycle — REAL envelope
+                // built from the actual run result (steps, status, duration),
+                // signed with the configured HMAC key when present.
                 if let Some(execution_id_str) = json_result["execution_id"].as_str()
                     && let Ok(exec_id) = uuid::Uuid::parse_str(execution_id_str)
                 {
-                    let now = chrono::Utc::now();
                     let envelope =
-                            rigorix_mcp::audit_tools::infrastructure::InMemoryAuditQueryService::create_sample(
-                                exec_id,
-                                ExecutionStatus::Completed,
-                                Some(template_name_for_audit.clone()),
-                                now,
-                                100,
-                            );
+                        build_envelope_from_run(&json_result, exec_id, template_name_for_audit, &self.audit_hmac_key);
                     let _ = self.audit_storage.store(envelope);
                 }
 
@@ -386,23 +388,16 @@ impl AppState {
                 let json_result: serde_json::Value =
                     serde_json::from_str(&result.content[0].text).unwrap_or_default();
 
-                // Store audit record
+                // Store audit record — REAL envelope from the run result.
                 if let Some(execution_id_str) = json_result["execution_id"].as_str()
                     && let Ok(exec_id) = uuid::Uuid::parse_str(execution_id_str)
                 {
-                    let now = chrono::Utc::now();
                     let template_name = params["template_name"]
                         .as_str()
                         .unwrap_or_default()
                         .to_string();
                     let envelope =
-                            rigorix_mcp::audit_tools::infrastructure::InMemoryAuditQueryService::create_sample(
-                                exec_id,
-                                ExecutionStatus::Completed,
-                                Some(template_name),
-                                now,
-                                100,
-                            );
+                        build_envelope_from_run(&json_result, exec_id, template_name, &self.audit_hmac_key);
                     let _ = self.audit_storage.store(envelope);
                 }
 
@@ -478,7 +473,12 @@ impl AppState {
                     .handle(input)
                     .await
                     .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
-                Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
+                // The handler may return markdown (text format) or JSON — pass
+                // the text through, only parsing when it is actually JSON.
+                let text = &result.content[0].text;
+                Ok(serde_json::from_str(text).unwrap_or_else(|_| {
+                    serde_json::Value::String(text.clone())
+                }))
             }
             "rigorix_list_audits" => {
                 let input = serde_json::from_value(params.clone())
@@ -488,7 +488,10 @@ impl AppState {
                     .handle(input)
                     .await
                     .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
-                Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
+                let text = &result.content[0].text;
+                Ok(serde_json::from_str(text).unwrap_or_else(|_| {
+                    serde_json::Value::String(text.clone())
+                }))
             }
             "rigorix_audit_summary" => {
                 let input = serde_json::from_value(params.clone())
@@ -560,6 +563,59 @@ impl AppState {
 // =========================================================================
 
 // ── Helpers ──────────────────────────────────────────────────────────────
+
+/// Build a REAL audit envelope from an execution run's JSON result.
+///
+/// The run result (rigorix_execute / rigorix_run) contains the actual steps,
+/// status, and duration. We convert those into ExecutionStep records and sign
+/// with the configured HMAC key (when present) — replacing the old fabricated
+/// `create_sample` ("sample-hmac") so rigorix_read_audit returns honest
+/// evidence: steps that actually ran, with a verifiable signature.
+fn build_envelope_from_run(
+    json_result: &serde_json::Value,
+    exec_id: uuid::Uuid,
+    template_name: String,
+    hmac_key: &Option<String>,
+) -> rigorix_mcp::audit_tools::domain::value::AuditEnvelope {
+    use rigorix_mcp::audit_tools::domain::value::ExecutionStep;
+    use rigorix_mcp::execution_tools::domain::value::ExecutionStatus as McpStatus;
+
+    let status = match json_result["status"].as_str().unwrap_or("") {
+        "Completed" => McpStatus::Completed,
+        "Failed" => McpStatus::Failed,
+        "PartialFailure" | "PartialFailed" => McpStatus::PartialFailed,
+        "Cancelled" => McpStatus::Cancelled,
+        "PendingApproval" => McpStatus::PendingApproval,
+        _ => McpStatus::Completed,
+    };
+    let duration_ms = json_result["duration_ms"].as_u64().unwrap_or(0);
+
+    let steps: Vec<ExecutionStep> = json_result["steps"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .map(|s| {
+                    ExecutionStep::new(
+                        s["step_name"].as_str().unwrap_or("?").to_string(),
+                        s["success"].as_bool().unwrap_or(false),
+                        s["error"].as_str().map(|e| e.to_string()),
+                        s["output"].clone(),
+                        s["duration_ms"].as_u64().unwrap_or(0),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    rigorix_mcp::audit_tools::infrastructure::InMemoryAuditQueryService::build_from_run(
+        exec_id,
+        status,
+        Some(template_name),
+        duration_ms,
+        steps,
+        hmac_key.as_deref(),
+    )
+}
 
 /// Load a deserializable config struct from a TOML file in the repo root.
 fn load_toml_config<T: serde::de::DeserializeOwned + Default>(
@@ -1480,7 +1536,14 @@ async fn main() {
     // ── Initialize app state ──
     let template_repo: SharedTemplateRepository =
         Arc::new(FilesystemTemplateRepository::new(".rigorix/templates"));
-    let _ = APP_STATE.set(AppState::new(engine, template_repo));
+    // Same resolution as build_real_engine: rigorix.toml audit_hmac_key or
+    // RIGORIX_HMAC_KEY env — used to sign the envelopes read back via
+    // rigorix_read_audit so the evidence is real, not a sample.
+    let audit_hmac_key = load_toml_config::<Config>(&repo_root, "rigorix.toml")
+        .audit_hmac_key
+        .or_else(|| std::env::var("RIGORIX_HMAC_KEY").ok())
+        .filter(|k| !k.is_empty());
+    let _ = APP_STATE.set(AppState::new(engine, template_repo, audit_hmac_key));
 
     let cancel = CancellationToken::new();
 
