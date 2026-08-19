@@ -593,6 +593,7 @@ mod tests {
                 description: None,
                 retry: crate::templates::domain::RetryConfig::default(),
                 validate: vec![],
+                requires_approval: false,
                 intent: None,
             }],
             tags: vec![],
@@ -724,6 +725,7 @@ mod tests {
                     description: None,
                     retry: crate::templates::domain::RetryConfig::default(),
                     validate: vec![],
+                    requires_approval: false,
                     intent: None,
                 },
                 TemplateNode {
@@ -736,6 +738,7 @@ mod tests {
                     description: None,
                     retry: crate::templates::domain::RetryConfig::default(),
                     validate: vec![],
+                    requires_approval: false,
                     intent: None,
                 },
             ],

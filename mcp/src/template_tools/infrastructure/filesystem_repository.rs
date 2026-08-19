@@ -62,7 +62,7 @@ fn engine_template_to_plan_template(tmpl: &EngineTemplate) -> PlanTemplate {
                 node.name.clone(),
                 tool.to_string(),
                 params,
-                false,
+                node.requires_approval,
                 format!("Step: {}", node.name),
                 None,
             );
@@ -438,6 +438,7 @@ fn filter_matches(summary: &TemplateSummary, filter: &TemplateFilter) -> bool {
 mod tests {
     use super::*;
     use crate::template_tools::domain::value::StepDefinition;
+    use rigorix_engine::templates::domain::TemplateNode;
 
     /// Create a minimal valid PlanTemplate for testing.
     fn test_template(name: &str) -> PlanTemplate {
@@ -678,5 +679,69 @@ mod tests {
         let repo = FilesystemTemplateRepository::new(dir.path());
         let arc: Arc<dyn TemplateRepository> = Arc::new(repo);
         let _ = arc;
+    }
+
+    #[test]
+    fn test_nodes_format_propagates_requires_approval() {
+        // Fix 2 regression: [[nodes]] templates must preserve the approval
+        // flag through the engine-template → plan-template conversion, so a
+        // migration runbook can gate its destructive step (migrate → ALTER
+        // TABLE) behind human sign-off.
+        let engine_tmpl = EngineTemplate {
+            id: "db-migration".to_string(),
+            name: "db-migration".to_string(),
+            description: "Migration runbook".to_string(),
+            version: "1.0.0".to_string(),
+            parameters: vec![],
+            nodes: vec![
+                TemplateNode {
+                    id: "validate".to_string(),
+                    name: "validate".to_string(),
+                    depends_on: vec![],
+                    action: TemplateAction::RunCommand {
+                        command: "true".to_string(),
+                        cwd: None,
+                        timeout_secs: 30,
+                        env: Default::default(),
+                    },
+                    description: None,
+                    retry: Default::default(),
+                    validate: vec![],
+                    requires_approval: false,
+                    intent: None,
+                },
+                TemplateNode {
+                    id: "migrate".to_string(),
+                    name: "migrate".to_string(),
+                    depends_on: vec!["validate".to_string()],
+                    action: TemplateAction::RunCommand {
+                        command: "psql -c 'ALTER TABLE ...'".to_string(),
+                        cwd: None,
+                        timeout_secs: 60,
+                        env: Default::default(),
+                    },
+                    description: None,
+                    retry: Default::default(),
+                    validate: vec![],
+                    requires_approval: true,
+                    intent: None,
+                },
+            ],
+            tags: vec![],
+            category: None,
+            author: None,
+        };
+
+        let plan = engine_template_to_plan_template(&engine_tmpl);
+        let steps = plan.steps();
+        assert_eq!(steps.len(), 2);
+        assert!(
+            !steps[0].requires_approval(),
+            "validate step must not require approval"
+        );
+        assert!(
+            steps[1].requires_approval(),
+            "migrate step must require approval after conversion"
+        );
     }
 }

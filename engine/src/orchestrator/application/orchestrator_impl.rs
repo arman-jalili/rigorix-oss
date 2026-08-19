@@ -345,14 +345,22 @@ impl OrchestratorServiceImpl {
         steps: &[super::dto::TemplateStepDef],
     ) -> Result<crate::dag_engine::domain::TaskGraph, OrchestratorError> {
         let mut graph = crate::dag_engine::domain::TaskGraph::new();
+        // Step order is significant (frozen contract, template-tools value.rs):
+        // each step depends on its predecessor, so a template executes as a
+        // sequential runbook — validate → backup → migrate → verify — instead
+        // of a parallel batch where the migrate step could race ahead of the
+        // backup step. Parallel DAGs are expressed via explicit dependencies
+        // (engine [[nodes]] format); template steps are ordered by definition.
+        let mut prev: Option<Uuid> = None;
         for step in steps {
             let node_id = Uuid::new_v4();
             let intent = serde_json::to_string(&step.parameters).unwrap_or_default();
+            let deps = prev.map(|p| vec![p]).unwrap_or_default();
             let node = crate::dag_engine::domain::TaskNode::new(
                 node_id,
                 step.name.clone(),
                 step.tool.clone(),
-                vec![],
+                deps,
                 intent,
             )
             .with_requires_approval(step.requires_approval);
@@ -362,6 +370,7 @@ impl OrchestratorServiceImpl {
                     detail: format!("Failed to add graph node: {e}"),
                     source_module: "orchestrator".into(),
                 })?;
+            prev = Some(node_id);
         }
         graph.seal().map_err(|e| OrchestratorError::Internal {
             detail: format!("Failed to seal graph: {e}"),
@@ -1743,5 +1752,71 @@ mod tests {
         assert_eq!(approve.approved, vec!["deploy".to_string()]);
         assert!(approve.still_pending.is_empty());
         assert!(approve.resumed, "execution should resume after approval");
+    }
+
+    #[test]
+    fn test_build_graph_from_steps_chains_sequentially() {
+        // Frozen contract (template-tools value.rs): "Step order is significant".
+        // Steps must execute as a sequential runbook, not a parallel batch — a
+        // migration template (validate → backup → migrate → verify) would
+        // otherwise race the destructive step ahead of the backup.
+        let orch = OrchestratorServiceImpl::default_test();
+        let steps = [
+            crate::orchestrator::application::dto::TemplateStepDef {
+                name: "validate".into(),
+                tool: "bash".into(),
+                description: "validate".into(),
+                parameters: serde_json::json!({}),
+                requires_approval: false,
+                timeout_secs: None,
+                evaluate_score: false,
+            },
+            crate::orchestrator::application::dto::TemplateStepDef {
+                name: "backup".into(),
+                tool: "bash".into(),
+                description: "backup".into(),
+                parameters: serde_json::json!({}),
+                requires_approval: false,
+                timeout_secs: None,
+                evaluate_score: false,
+            },
+            crate::orchestrator::application::dto::TemplateStepDef {
+                name: "migrate".into(),
+                tool: "bash".into(),
+                description: "migrate".into(),
+                parameters: serde_json::json!({}),
+                requires_approval: true,
+                timeout_secs: None,
+                evaluate_score: false,
+            },
+        ];
+        let graph = orch.build_graph_from_steps(&steps).unwrap();
+        let nodes: Vec<_> = graph.nodes().collect();
+        assert_eq!(nodes.len(), 3, "all three steps must be in the graph");
+
+        // First step has no dependency; every later step depends on its
+        // immediate predecessor (and transitively on all earlier steps).
+        assert!(
+            nodes[0].dependencies.is_empty(),
+            "first step must have no dependencies"
+        );
+        assert_eq!(
+            nodes[1].dependencies,
+            vec![nodes[0].id],
+            "step 2 must depend on step 1"
+        );
+        assert_eq!(
+            nodes[2].dependencies,
+            vec![nodes[1].id],
+            "step 3 must depend on step 2"
+        );
+
+        // Approval flag survives the graph construction.
+        assert!(!nodes[0].requires_approval());
+        assert!(!nodes[1].requires_approval());
+        assert!(
+            nodes[2].requires_approval(),
+            "requires_approval must propagate to the graph node"
+        );
     }
 }

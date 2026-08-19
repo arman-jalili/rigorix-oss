@@ -148,6 +148,15 @@ pub struct TemplateNode {
     #[serde(default)]
     pub validate: Vec<ValidationRule>,
 
+    /// Whether this node requires explicit human approval before execution.
+    ///
+    /// When `true`, the execution engine pauses dispatch of this node until
+    /// it is approved via `approve_node`. Mirrors the frozen plan contract:
+    /// *"If `requires_approval` is true, execution pauses for human sign-off"*.
+    /// Additive field — absent in existing templates and defaults to `false`.
+    #[serde(default)]
+    pub requires_approval: bool,
+
     /// Optional documentation intended for the LLM planning context.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intent: Option<String>,
