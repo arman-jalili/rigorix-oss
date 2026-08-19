@@ -140,7 +140,7 @@ impl NodeStatus {
 ///
 /// Persisted atomically by `StateManager` using write-rename:
 /// `{execution_id}.json.tmp` → `{execution_id}.json`
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionState {
     /// Globally unique execution identifier.
     pub execution_id: Uuid,
@@ -165,6 +165,30 @@ pub struct ExecutionState {
     /// Used for replay determinism — two executions with the same
     /// symbol_graph_hash on the same template should produce the same plan.
     pub symbol_graph_hash: String,
+
+    /// The TaskGraph for an approval-paused execution, persisted so a
+    /// DIFFERENT process (fresh MCP/CLI session) can resume the run via
+    /// `approve_execution`. `None` for non-resumable states.
+    /// Additive field — absent in pre-GAP-3 state files, defaults to `None`.
+    #[serde(default)]
+    pub graph: Option<crate::dag_engine::domain::TaskGraph>,
+
+    /// Node IDs already granted human approval (for resumed runs).
+    /// Additive field — absent in pre-GAP-3 state files, defaults to empty.
+    #[serde(default)]
+    pub approved: Vec<Uuid>,
+
+    /// The execution-engine per-node states (name, status, durations, errors)
+    /// for an approval-paused execution. Persisted so a DIFFERENT process can
+    /// hydrate the session and resolve step names → node ids for approval.
+    /// Additive field — absent in pre-GAP-3 state files, defaults to `None`.
+    #[serde(default)]
+    pub exec_node_states: Option<
+        std::collections::HashMap<
+            Uuid,
+            crate::execution_engine::domain::NodeExecutionState,
+        >,
+    >,
 }
 
 impl ExecutionState {
@@ -180,6 +204,9 @@ impl ExecutionState {
             completed_at: None,
             node_states: IndexMap::new(),
             symbol_graph_hash,
+            graph: None,
+            approved: Vec::new(),
+            exec_node_states: None,
         }
     }
 

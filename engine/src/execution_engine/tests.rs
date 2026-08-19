@@ -231,6 +231,145 @@ async fn test_approval_gate_pauses_until_human_signoff() {
     assert!(state.is_complete, "execution should be complete");
 }
 
+#[tokio::test]
+async fn test_cross_process_resume_hydrates_session_and_continues() {
+    // GAP-3: a run paused for approval in process A must be resumable from
+    // process B. Process B has NO live session — it hydrates from the
+    // persisted ExecutionState (sealed graph + node states + approved set),
+    // then approves + resumes the DAG exactly where dispatch paused.
+    use crate::dag_engine::domain::{TaskGraph, TaskNode};
+    use crate::execution_engine::application::dto::HydrateExecutionInput;
+
+    // ── Process A: build a gated graph, run it, pause at approval, and
+    //    capture the session state (graph + node states) as process B would
+    //    receive it via the persisted ExecutionState. ──
+    let executor_a = create_executor();
+    let dag_id = Uuid::new_v4();
+
+    let backup = TaskNode::new(
+        Uuid::new_v4(),
+        "backup",
+        "echo backup",
+        vec![],
+        "run backup",
+    );
+    let migrate = TaskNode::new(
+        Uuid::new_v4(),
+        "migrate",
+        "echo migrate",
+        vec![backup.id],
+        "run migrate",
+    )
+    .with_requires_approval(true);
+    let verify = TaskNode::new(
+        Uuid::new_v4(),
+        "verify",
+        "echo verify",
+        vec![migrate.id],
+        "run verify",
+    );
+    let mut graph = TaskGraph::new();
+    graph.add_unchecked(backup).unwrap();
+    graph.add_unchecked(migrate).unwrap();
+    graph.add_unchecked(verify).unwrap();
+    graph.seal().unwrap();
+
+    let output_a = executor_a
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            graph: Some(graph.clone()),
+            config_override: None,
+        })
+        .await
+        .unwrap();
+    assert!(output_a.approval_pending, "process A must pause at approval");
+    assert_eq!(output_a.pending_approval_steps, vec!["migrate".to_string()]);
+
+    // The live node states from A's run (backup completed, migrate awaiting,
+    // verify pending) — what A would persist into ExecutionState.
+    let state_a = executor_a
+        .get_execution_state(GetExecutionStateInput { dag_id })
+        .await
+        .unwrap();
+    let node_states: std::collections::HashMap<_, _> = state_a
+        .node_states
+        .clone()
+        .into_iter()
+        .map(|(id, s)| (id, s))
+        .collect();
+    assert_eq!(state_a.completed_count, 1, "backup completed before pause");
+
+    // ── Process B: a FRESH executor has no session for dag_id. Approve first
+    //    fails with NodeNotFound, exactly as observed in the GAP-3 bug. ──
+    //
+    // Crucially, the graph arrives SERIALIZED (as persisted in the state
+    // file): TaskGraph serializes `sealed: true` but `execution_state` is
+    // #[serde(skip)], so the deserialized graph has an EMPTY ready queue.
+    // Hydration must rebuild execution state from the nodes, not reuse it.
+    let graph_serialized: serde_json::Value = serde_json::to_value(&graph).unwrap();
+    let graph: TaskGraph = serde_json::from_value(graph_serialized).unwrap();
+    assert!(graph.sealed, "persisted graph must deserialize as sealed");
+    assert!(
+        graph.ready_nodes().is_empty(),
+        "deserialized execution_state is empty — this is the GAP-3 trap"
+    );
+
+    let executor_b = create_executor();
+    let err = executor_b
+        .approve_node(ApproveNodeInput {
+            dag_id,
+            step_names: vec!["migrate".to_string()],
+        })
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            crate::execution_engine::domain::ExecutionError::NodeNotFound { .. }
+        ),
+        "fresh process must not find the session (NodeNotFound)"
+    );
+
+    // B hydrates from the persisted state, then approves + resumes.
+    let hydrate = executor_b
+        .hydrate_execution(HydrateExecutionInput {
+            dag_id,
+            graph,
+            node_states,
+            approved: Default::default(),
+        })
+        .await
+        .unwrap();
+    assert!(hydrate.created, "session must be created by hydration");
+    assert_eq!(hydrate.node_count, 3);
+
+    let approve = executor_b
+        .approve_node(ApproveNodeInput {
+            dag_id,
+            step_names: vec!["migrate".to_string()],
+        })
+        .await
+        .unwrap();
+    assert_eq!(approve.approved, vec!["migrate".to_string()]);
+    assert!(approve.still_pending.is_empty());
+
+    let resume = executor_b
+        .resume_execution(ResumeExecutionInput { dag_id })
+        .await
+        .unwrap();
+    assert_eq!(resume.dag_id, dag_id);
+
+    let state_b = executor_b
+        .get_execution_state(GetExecutionStateInput { dag_id })
+        .await
+        .unwrap();
+    assert!(!state_b.paused, "execution should be resumed");
+    assert!(
+        state_b.is_complete,
+        "hydrated run should complete: backup (done in A) + migrate + verify"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Permission-mode gating through the factory
 // ---------------------------------------------------------------------------

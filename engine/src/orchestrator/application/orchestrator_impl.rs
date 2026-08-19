@@ -1014,8 +1014,10 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 state: "Pending".into(),
             })?;
 
-        // 3. Execute DAG
-        let (task_results, approval_pending, pending_approval_steps) = self
+        // 3. Execute DAG — keep a clone of the graph so an approval pause can
+        // be persisted for cross-process resume (GAP-3).
+        let graph_for_resume = graph.clone();
+        let exec_output = self
             .execution_service
             .execute_graph(exec_dto::ExecuteGraphInput {
                 dag_id: execution_id,
@@ -1027,29 +1029,29 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 detail: e.to_string(),
                 nodes_completed: 0,
                 nodes_remaining: 0,
-            })
-            .map(|o| {
-                let task_results = o
-                    .result
-                    .node_results
-                    .into_values()
-                    .map(|nr| TaskResult {
-                        node_id: nr.node_id.to_string(),
-                        node_name: nr.node_name,
-                        status: if nr.success {
-                            TaskStatus::Success
-                        } else {
-                            TaskStatus::Failure
-                        },
-                        duration_ms: nr.duration_ms,
-                        output: nr.output,
-                        error: nr.error,
-                        retry_attempts: nr.retry_attempts as u32,
-                        tool_used: None,
-                    })
-                    .collect::<Vec<_>>();
-                (task_results, o.approval_pending, o.pending_approval_steps)
             })?;
+        let task_results = exec_output
+            .result
+            .node_results
+            .clone()
+            .into_values()
+            .map(|nr| TaskResult {
+                node_id: nr.node_id.to_string(),
+                node_name: nr.node_name,
+                status: if nr.success {
+                    TaskStatus::Success
+                } else {
+                    TaskStatus::Failure
+                },
+                duration_ms: nr.duration_ms,
+                output: nr.output,
+                error: nr.error,
+                retry_attempts: nr.retry_attempts as u32,
+                tool_used: None,
+            })
+            .collect::<Vec<_>>();
+        let approval_pending = exec_output.approval_pending;
+        let pending_approval_steps = exec_output.pending_approval_steps.clone();
 
         if approval_pending {
             tracing::info!(
@@ -1137,14 +1139,29 @@ impl OrchestratorService for OrchestratorServiceImpl {
             }
         };
 
-        // 5. Save final state
-        self.state_manager
-            .save_state(Self::make_final_state(execution_id, final_status))
-            .await
-            .map_err(|e| OrchestratorError::StatePersistenceFailed {
-                detail: e.to_string(),
-                state: format!("{final_status:?}"),
-            })?;
+        // 5. Save final state — for an approval pause, persist the graph +
+        // node states + approved set so a DIFFERENT process can resume the
+        // run (GAP-3 cross-process resume).
+        let save_out = if approval_pending {
+            let mut state =
+                crate::state_persistence::domain::ExecutionState::new(execution_id, String::new());
+            state.status = crate::state_persistence::domain::ExecutionStatus::Pending;
+            state.graph = Some(graph_for_resume);
+            state.approved = Vec::new();
+            state.exec_node_states =
+                Some(exec_output.result.execution_states.clone());
+            self.state_manager
+                .save_state(state_dto::SaveStateInput { state })
+                .await
+        } else {
+            self.state_manager
+                .save_state(Self::make_final_state(execution_id, final_status))
+                .await
+        };
+        save_out.map_err(|e| OrchestratorError::StatePersistenceFailed {
+            detail: e.to_string(),
+            state: format!("{final_status:?}"),
+        })?;
 
         // 6. Quality Gate evaluation
         if let Some(ref quality_svc) = self.quality_gate_service {
@@ -1370,6 +1387,63 @@ impl OrchestratorService for OrchestratorServiceImpl {
         &self,
         input: ApproveExecutionInput,
     ) -> Result<ApproveExecutionOutput, OrchestratorError> {
+        // 0. Cross-process resume (GAP-3): the run paused in another process
+        // (or an earlier session). The session is not in this process's
+        // memory, so hydrate it from the persisted ExecutionState before
+        // approving — the state carries the sealed graph, live node states,
+        // and approved set.
+        if let Err(crate::execution_engine::domain::ExecutionError::NodeNotFound { node_id }) = self
+            .execution_service
+            .approve_node(exec_dto::ApproveNodeInput {
+                dag_id: input.execution_id,
+                step_names: input.step_names.clone(),
+            })
+            .await
+        {
+            tracing::info!(
+                %node_id,
+                "approve_execution: session not in this process — hydrating from persisted state"
+            );
+                let loaded = self
+                    .state_manager
+                    .load_state(state_dto::LoadStateInput {
+                        execution_id: input.execution_id,
+                    })
+                    .await
+                    .map_err(|e| OrchestratorError::Internal {
+                        detail: format!("Failed to load paused execution state: {e}"),
+                        source_module: "orchestrator".into(),
+                    })?;
+                let Some(graph) = loaded.state.graph.clone() else {
+                    return Err(OrchestratorError::Internal {
+                        detail: format!(
+                            "Execution {} has no resumable graph in state",
+                            input.execution_id
+                        ),
+                        source_module: "orchestrator".into(),
+                    });
+                };
+                let node_states = loaded
+                    .state
+                    .exec_node_states
+                    .clone()
+                    .unwrap_or_default();
+                let approved: std::collections::HashSet<uuid::Uuid> =
+                    loaded.state.approved.iter().copied().collect();
+                self.execution_service
+                    .hydrate_execution(exec_dto::HydrateExecutionInput {
+                        dag_id: input.execution_id,
+                        graph,
+                        node_states,
+                        approved,
+                    })
+                    .await
+                    .map_err(|e| OrchestratorError::Internal {
+                        detail: format!("Failed to hydrate execution session: {e}"),
+                        source_module: "orchestrator".into(),
+                    })?;
+        }
+
         // 1. Record approval in the execution engine session (by step name;
         // the engine resolves names to node IDs from its live node states).
         let approve_out = self

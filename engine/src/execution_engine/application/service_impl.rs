@@ -48,7 +48,8 @@ use super::dto::{
     AbortExecutionInput, AbortExecutionOutput, ApproveNodeInput, ApproveNodeOutput,
     EvaluateRetryInput, EvaluateRetryOutput, ExecuteGraphInput, ExecuteGraphOutput,
     ExecuteNodeInput, ExecuteNodeOutput, GetExecutionStateInput, GetExecutionStateOutput,
-    PauseExecutionInput, PauseExecutionOutput, ResumeExecutionInput, ResumeExecutionOutput,
+    HydrateExecutionInput, HydrateExecutionOutput, PauseExecutionInput, PauseExecutionOutput,
+    ResumeExecutionInput, ResumeExecutionOutput,
 };
 use super::service::{ExecutionProgress, ParallelExecutionService, RetryEvaluationService};
 
@@ -2269,6 +2270,76 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
             approved,
             not_found,
             still_pending,
+        })
+    }
+
+    async fn hydrate_execution(
+        &self,
+        input: HydrateExecutionInput,
+    ) -> Result<HydrateExecutionOutput, ExecutionError> {
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|e| ExecutionError::InternalError {
+                detail: format!("Lock error: {}", e),
+            })?;
+
+        // Idempotent — a live session (same process paused the run) wins.
+        if sessions.contains_key(&input.dag_id) {
+            return Ok(HydrateExecutionOutput {
+                dag_id: input.dag_id,
+                node_count: 0,
+                created: false,
+            });
+        }
+
+        // Rebuild the graph's runtime execution state. The persisted graph
+        // was deserialized with `sealed: true` but `execution_state` is
+        // #[serde(skip)] — its in-degree/dependents/ready-queue are empty.
+        // Build a FRESH TaskGraph from the persisted nodes and seal it to
+        // reconstruct the execution state, then release the dependents of
+        // nodes that already completed before the pause.
+        let mut graph = crate::dag_engine::domain::TaskGraph::new();
+        for node in &input.graph.nodes {
+            graph
+                .add_unchecked(node.clone())
+                .map_err(|e| ExecutionError::InvalidState {
+                    reason: format!("Failed to rebuild persisted graph: {}", e),
+                })?;
+        }
+        graph.seal().map_err(|e| ExecutionError::InvalidState {
+            reason: format!("Failed to seal persisted graph: {}", e),
+        })?;
+        for (node_id, state) in &input.node_states {
+            if state.status.is_terminal() {
+                let _ = graph.mark_completed(*node_id);
+            }
+        }
+
+        let node_count = input.node_states.len();
+        let approved = input.approved;
+        let started_at = Utc::now();
+
+        sessions.insert(
+            input.dag_id,
+            ExecutionSession {
+                node_states: input.node_states,
+                in_flight: Vec::new(),
+                result: ExecutionResult::new(input.dag_id),
+                // Hydrated sessions start paused: the caller approves then
+                // resumes, which re-runs the dispatch loop for remaining nodes.
+                paused: true,
+                aborted: false,
+                approved: approved.clone(),
+                started_at,
+                graph: Some(graph),
+            },
+        );
+
+        Ok(HydrateExecutionOutput {
+            dag_id: input.dag_id,
+            node_count,
+            created: true,
         })
     }
 

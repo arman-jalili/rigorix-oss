@@ -232,6 +232,15 @@ impl exec_svc::ParallelExecutionService for MockExecutionService {
             still_pending: Vec::new(),
         })
     }
+    async fn hydrate_execution(
+        &self,
+        _: exec_dto::HydrateExecutionInput,
+    ) -> Result<
+        exec_dto::HydrateExecutionOutput,
+        crate::execution_engine::domain::ExecutionError,
+    > {
+        unimplemented!("MockExecutionService::hydrate_execution not needed by current tests")
+    }
     async fn abort_execution(
         &self,
         _: exec_dto::AbortExecutionInput,

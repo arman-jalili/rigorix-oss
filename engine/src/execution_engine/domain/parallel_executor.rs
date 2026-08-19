@@ -249,7 +249,11 @@ impl NodeExecutionState {
 
     /// Transition the node to AwaitingApproval state (blocked on sign-off).
     pub fn mark_awaiting_approval(&mut self) {
-        if self.status == NodeStatus::Ready {
+        // A node can arrive here either already Ready (initial dispatch) or
+        // still Pending (released by a dependency completing right before the
+        // approval gate — its state was never flipped to Ready). Both mean
+        // "dispatchable once approved", so both become AwaitingApproval.
+        if self.status == NodeStatus::Ready || self.status == NodeStatus::Pending {
             self.status = NodeStatus::AwaitingApproval;
         }
     }

@@ -331,3 +331,37 @@ impl From<NodeExecutionState> for NodeStateSummary {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Hydrate Execution DTOs — cross-process resume (GAP-3)
+// ---------------------------------------------------------------------------
+
+/// Input for hydrating a session from persisted state.
+///
+/// Used when `approve_execution` is called from a DIFFERENT process than the
+/// one that paused the run: the session (dag + node states) is not in this
+/// process's memory, so the orchestrator loads the persisted ExecutionState
+/// (which now carries the sealed TaskGraph + node states + approved set) and
+/// rebuilds the in-memory session before approving + resuming.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HydrateExecutionInput {
+    /// The ID of the DAG execution to hydrate.
+    pub dag_id: Uuid,
+    /// The sealed TaskGraph that was executing when the run paused.
+    pub graph: crate::dag_engine::domain::TaskGraph,
+    /// Per-node states (status, durations, errors) from the paused run.
+    pub node_states: std::collections::HashMap<Uuid, NodeExecutionState>,
+    /// Node IDs already granted human approval.
+    pub approved: std::collections::HashSet<Uuid>,
+}
+
+/// Output from hydrating an execution session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HydrateExecutionOutput {
+    /// The hydrated dag id.
+    pub dag_id: Uuid,
+    /// Number of node states loaded.
+    pub node_count: usize,
+    /// Whether the session was created (true) or already existed (false).
+    pub created: bool,
+}

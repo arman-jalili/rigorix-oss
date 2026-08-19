@@ -26,7 +26,8 @@ use super::dto::{
     AbortExecutionInput, AbortExecutionOutput, ApproveNodeInput, ApproveNodeOutput,
     EvaluateRetryInput, EvaluateRetryOutput, ExecuteGraphInput, ExecuteGraphOutput,
     ExecuteNodeInput, ExecuteNodeOutput, GetExecutionStateInput, GetExecutionStateOutput,
-    PauseExecutionInput, PauseExecutionOutput, ResumeExecutionInput, ResumeExecutionOutput,
+    HydrateExecutionInput, HydrateExecutionOutput, PauseExecutionInput, PauseExecutionOutput,
+    ResumeExecutionInput, ResumeExecutionOutput,
 };
 
 /// Parallel DAG execution service.
@@ -122,6 +123,21 @@ pub trait ParallelExecutionService: Send + Sync {
         &self,
         input: ApproveNodeInput,
     ) -> Result<ApproveNodeOutput, ExecutionError>;
+
+    /// Hydrate an execution session from persisted state.
+    ///
+    /// Cross-process resume (GAP-3): a run paused for approval in process A
+    /// (or in a previous session) has its session in A's memory only. When
+    /// `approve_execution` runs in a fresh process B, the session does not
+    /// exist yet — B loads the persisted ExecutionState (sealed TaskGraph +
+    /// node states + approved set) and rebuilds the in-memory session here so
+    /// `approve_node` + `resume_execution` can continue the DAG exactly where
+    /// dispatch paused. Idempotent: if a session already exists for the dag,
+    /// it is left untouched and `created` is false.
+    async fn hydrate_execution(
+        &self,
+        input: HydrateExecutionInput,
+    ) -> Result<HydrateExecutionOutput, ExecutionError>;
 
     /// Abort an in-flight execution.
     ///
