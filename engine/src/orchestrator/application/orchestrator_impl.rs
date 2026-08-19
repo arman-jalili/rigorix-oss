@@ -1014,6 +1014,47 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 state: "Pending".into(),
             })?;
 
+        // 2a. Budget gate — template runs consume one budget call per step.
+        // Reserve the full runbook up front so an exhausted budget refuses
+        // the run deterministically (pre-execution) instead of failing
+        // halfway through a consequential operation. Reservations are
+        // committed after execution (actual = 1 call per step); if the run
+        // errors before that, the Drop guard rolls them back.
+        let mut reservations: Vec<budget_app::ReserveBudgetOutput> = Vec::new();
+        for step in &input.steps {
+            match self
+                .budget_service
+                .reserve(budget_app::ReserveBudgetInput {
+                    execution_id,
+                    estimated_tokens: 1,
+                    call_label: Some(step.name.clone()),
+                })
+                .await
+            {
+                Ok(out) => reservations.push(out),
+                Err(crate::budget_tracking::domain::LlmBudgetError::MaxCallsExceeded {
+                    used,
+                    max,
+                }) => {
+                    return Err(OrchestratorError::Internal {
+                        detail: format!(
+                            "Budget exhausted: runbook needs {} steps but budget has {} of {} calls used — top up the budget or shrink the runbook",
+                            input.steps.len(),
+                            used,
+                            max
+                        ),
+                        source_module: "orchestrator".into(),
+                    });
+                }
+                Err(e) => {
+                    return Err(OrchestratorError::Internal {
+                        detail: format!("Budget reservation failed: {e}"),
+                        source_module: "orchestrator".into(),
+                    });
+                }
+            }
+        }
+
         // 3. Execute DAG — keep a clone of the graph so an approval pause can
         // be persisted for cross-process resume (GAP-3).
         let graph_for_resume = graph.clone();
@@ -1355,6 +1396,19 @@ impl OrchestratorService for OrchestratorServiceImpl {
         // Update state
         if let Some(ref mut s) = *self.current_execution.write().await {
             s.status = final_status;
+        }
+
+        // Commit the runbook's budget reservations (1 call per step).
+        for r in &reservations {
+            let _ = self
+                .budget_service
+                .commit(budget_app::CommitReservationInput {
+                    execution_id,
+                    call_id: r.reservation.call_id,
+                    reserved_tokens: r.reservation.reserved_tokens,
+                    actual_tokens: 1,
+                })
+                .await;
         }
 
         tracing::info!(%execution_id, status=?final_status, "run_from_template completed");
@@ -1907,5 +1961,71 @@ mod tests {
             nodes[2].requires_approval(),
             "requires_approval must propagate to the graph node"
         );
+    }
+
+    #[tokio::test]
+    async fn test_run_from_template_refused_when_budget_exhausted() {
+        // Budget-halt (spike's second half): a tight budget must refuse the
+        // runbook BEFORE execution — deterministically, not halfway through a
+        // consequential operation.
+        use crate::budget_tracking::application::llm_budget_impl::LlmBudgetImpl;
+        use crate::event_system::application::event_bus_service_impl::EventBusServiceImpl;
+        use crate::execution_engine::application::service_impl::{
+            ParallelExecutionServiceImpl, RetryEvaluationServiceImpl,
+        };
+        use crate::execution_engine::domain::ParallelExecutorConfig;
+
+        let executor: Arc<dyn exec_svc::ParallelExecutionService> =
+            Arc::new(ParallelExecutionServiceImpl::new(
+                ParallelExecutorConfig::default(),
+                Box::new(RetryEvaluationServiceImpl::new()),
+                Arc::new(EventBusServiceImpl::default()),
+            ));
+        // Budget allows only 2 calls; the runbook needs 3.
+        let budget: Arc<dyn budget_app::LlmBudgetService> =
+            Arc::new(LlmBudgetImpl::new(2, 1000, "test".into()));
+        let orch = OrchestratorServiceImpl::new(
+            OrchestratorConfig::default(),
+            Arc::new(super::super::orchestrator_mocks::MockPlanningService::new()),
+            executor,
+            Arc::new(super::super::orchestrator_mocks::MockStateService::new()),
+            Arc::new(super::super::orchestrator_mocks::MockCancellationService),
+            Arc::new(super::super::orchestrator_mocks::MockEventBusService::new()),
+            None,
+            budget,
+            None,
+        );
+
+        let step_def = |name: &str| crate::orchestrator::application::dto::TemplateStepDef {
+            name: name.into(),
+            tool: "bash".into(),
+            description: name.into(),
+            parameters: serde_json::json!({}),
+            requires_approval: false,
+            timeout_secs: None,
+            evaluate_score: false,
+        };
+        let input = RunFromTemplateInput {
+            steps: vec![step_def("a"), step_def("b"), step_def("c")],
+            repo_root: "/tmp/t".into(),
+            execution_id: None,
+            template_name: "budget-test".into(),
+            repository: None,
+            author: None,
+            enforcement_preset: None,
+        };
+
+        let err = orch.run_from_template(input).await.unwrap_err();
+        match err {
+            OrchestratorError::Internal { detail, .. } => {
+                assert!(
+                    detail.contains("Budget exhausted"),
+                    "expected budget-exhausted refusal, got: {detail}"
+                );
+                assert!(detail.contains("3 steps"), "should name the runbook size");
+                assert!(detail.contains("2 of 2 calls"), "should name the budget");
+            }
+            e => panic!("expected Internal budget error, got {e:?}"),
+        }
     }
 }

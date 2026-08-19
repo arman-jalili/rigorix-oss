@@ -901,9 +901,13 @@ async fn build_real_engine(
     let event_bus: Arc<dyn EventBusService> =
         Arc::new(EventBusServiceImpl::new(EventBusConfig::default()));
 
-    // ── Budget service ──
-    let budget_service: Arc<dyn LlmBudgetService> =
-        Arc::new(LlmBudgetImpl::new(1000, 100_000, "mcp-server".into()));
+    // ── Budget service (configurable via rigorix.toml; each runbook step
+    //    consumes one call — a tight budget makes rigorix_run refuse) ──
+    let budget_service: Arc<dyn LlmBudgetService> = Arc::new(LlmBudgetImpl::new(
+        engine_config.budget_max_calls.unwrap_or(1000),
+        engine_config.budget_max_tokens.unwrap_or(100_000),
+        "mcp-server".into(),
+    ));
 
     // ── Audit service (reads audit_backend_url / audit_backend_key from rigorix.toml) ──
     use rigorix_engine::audit::application::AuditService;

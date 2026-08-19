@@ -73,6 +73,18 @@ pub struct Config {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audit_hmac_key: Option<String>,
 
+    /// Budget limits for template runs (optional).
+    ///
+    /// Each runbook step consumes one budget call. When exhausted, template
+    /// runs are refused deterministically before execution.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_max_calls: Option<u32>,
+
+    /// Maximum budget tokens (optional; template steps reserve 1 token each
+    /// and commit 1 — the call limit is the binding constraint for runbooks).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_max_tokens: Option<u32>,
+
     /// Permission mode for tool execution gating (optional).
     ///
     /// One of `read_only`, `workspace_write` (default), or
