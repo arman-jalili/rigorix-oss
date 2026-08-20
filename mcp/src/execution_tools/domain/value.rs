@@ -852,6 +852,13 @@ pub struct ExecutionStateInfo {
     pub paused: bool,
     /// Whether the execution is complete.
     pub is_complete: bool,
+    /// Total wall-clock duration in milliseconds.
+    #[serde(default)]
+    pub total_duration_ms: u64,
+    /// ISO 8601 timestamp when execution started.
+    pub started_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// ISO 8601 timestamp when execution completed.
+    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Minimal per-node state surfaced to MCP clients.

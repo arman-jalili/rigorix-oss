@@ -2046,6 +2046,21 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
             .count() as u32;
         let total = session.node_states.len() as u32;
         let is_complete = completed + failed + skipped >= total && total > 0;
+        let (total_duration_ms, completed_at) = if is_complete {
+            (
+                session.result.total_duration_ms,
+                Some(session.result.completed_at),
+            )
+        } else {
+            // Paused / still running: report elapsed wall-clock since start.
+            (
+                chrono::Utc::now()
+                    .signed_duration_since(session.started_at)
+                    .num_milliseconds()
+                    .max(0) as u64,
+                None,
+            )
+        };
 
         Ok(GetExecutionStateOutput {
             dag_id: input.dag_id,
@@ -2057,6 +2072,8 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
             started_at: Some(session.started_at),
             paused: session.paused,
             is_complete,
+            total_duration_ms,
+            completed_at,
         })
     }
 

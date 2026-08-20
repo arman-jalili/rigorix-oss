@@ -518,6 +518,9 @@ impl EngineFacade for EngineFacadeImpl {
             total_nodes: state.total_nodes,
             paused: state.paused,
             is_complete: state.is_complete,
+            total_duration_ms: state.total_duration_ms,
+            started_at: state.started_at,
+            completed_at: state.completed_at,
         })
     }
 }

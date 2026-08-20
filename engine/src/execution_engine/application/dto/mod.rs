@@ -140,6 +140,12 @@ pub struct GetExecutionStateOutput {
     pub paused: bool,
     /// Whether the execution is complete.
     pub is_complete: bool,
+    /// Total wall-clock duration in milliseconds (from the live session result).
+    #[serde(default)]
+    pub total_duration_ms: u64,
+    /// ISO 8601 timestamp when execution completed (None if still running/paused).
+    #[serde(default)]
+    pub completed_at: Option<DateTime<Utc>>,
 }
 
 // ---------------------------------------------------------------------------

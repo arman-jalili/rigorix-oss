@@ -89,7 +89,30 @@ impl InMemoryAuditQueryService {
         steps: Vec<ExecutionStep>,
         hmac_key: Option<&str>,
     ) -> AuditEnvelope {
-        let started_at = chrono::Utc::now();
+        Self::build_from_run_at(
+            execution_id,
+            status,
+            template_name,
+            duration_ms,
+            steps,
+            hmac_key,
+            chrono::Utc::now(),
+        )
+    }
+
+    /// Build a REAL audit envelope from an actual run result and sign it,
+    /// with an explicit run start time (from the engine session) so the
+    /// envelope's Started/Completed timestamps reflect the REAL run, not
+    /// envelope-construction time.
+    pub fn build_from_run_at(
+        execution_id: Uuid,
+        status: ExecutionStatus,
+        template_name: Option<String>,
+        duration_ms: u64,
+        steps: Vec<ExecutionStep>,
+        hmac_key: Option<&str>,
+        started_at: chrono::DateTime<chrono::Utc>,
+    ) -> AuditEnvelope {
         let completed_at = started_at + chrono::Duration::milliseconds(duration_ms as i64);
         let envelope = AuditEnvelope::new(
             execution_id,

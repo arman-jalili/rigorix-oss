@@ -332,7 +332,7 @@ impl AppState {
                     && let Ok(exec_id) = uuid::Uuid::parse_str(execution_id_str)
                 {
                     let envelope =
-                        build_envelope_from_run(&json_result, exec_id, template_name_for_audit, &self.audit_hmac_key);
+                        build_envelope_from_run(&json_result, exec_id, template_name_for_audit, &self.audit_hmac_key, None);
                     let _ = self.audit_storage.store(envelope);
                 }
 
@@ -399,7 +399,7 @@ impl AppState {
                         .unwrap_or_default()
                         .to_string();
                     let envelope =
-                        build_envelope_from_run(&json_result, exec_id, template_name, &self.audit_hmac_key);
+                        build_envelope_from_run(&json_result, exec_id, template_name, &self.audit_hmac_key, None);
                     let _ = self.audit_storage.store(envelope);
                 }
 
@@ -489,14 +489,18 @@ impl AppState {
                             } else {
                                 "PendingApproval"
                             },
-                            "duration_ms": 0,
+                            "duration_ms": state.total_duration_ms,
                             "steps": steps,
                         });
+                        // Use the REAL run start time from the engine session so
+                        // the envelope's Started/Completed reflect the actual run.
+                        let run_started = state.started_at.unwrap_or_else(chrono::Utc::now);
                         let envelope = build_envelope_from_run(
                             &refreshed,
                             execution_id,
                             stored_template,
                             &self.audit_hmac_key,
+                            Some(run_started),
                         );
                         let _ = self.audit_storage.store(envelope);
                         final_state = Some(state);
@@ -636,6 +640,7 @@ fn build_envelope_from_run(
     exec_id: uuid::Uuid,
     template_name: String,
     hmac_key: &Option<String>,
+    started_at: Option<chrono::DateTime<chrono::Utc>>,
 ) -> rigorix_mcp::audit_tools::domain::value::AuditEnvelope {
     use rigorix_mcp::audit_tools::domain::value::ExecutionStep;
     use rigorix_mcp::execution_tools::domain::value::ExecutionStatus as McpStatus;
@@ -667,14 +672,29 @@ fn build_envelope_from_run(
         })
         .unwrap_or_default();
 
-    rigorix_mcp::audit_tools::infrastructure::InMemoryAuditQueryService::build_from_run(
-        exec_id,
-        status,
-        Some(template_name),
-        duration_ms,
-        steps,
-        hmac_key.as_deref(),
-    )
+    match started_at {
+        Some(start) => {
+            rigorix_mcp::audit_tools::infrastructure::InMemoryAuditQueryService::build_from_run_at(
+                exec_id,
+                status,
+                Some(template_name),
+                duration_ms,
+                steps,
+                hmac_key.as_deref(),
+                start,
+            )
+        }
+        None => {
+            rigorix_mcp::audit_tools::infrastructure::InMemoryAuditQueryService::build_from_run(
+                exec_id,
+                status,
+                Some(template_name),
+                duration_ms,
+                steps,
+                hmac_key.as_deref(),
+            )
+        }
+    }
 }
 
 /// Load a deserializable config struct from a TOML file in the repo root.
