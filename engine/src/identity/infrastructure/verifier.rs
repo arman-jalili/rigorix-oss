@@ -68,16 +68,18 @@ impl Default for NullVerifier {
 
 #[async_trait]
 impl TokenVerifier for NullVerifier {
-    /// # TODO
-    /// Offline default: returns `VerificationOutcome::Unverified` with an
-    /// explicit reason (no IdP reachable). Implemented in ISSUE-IDENTITY-4
-    /// (TokenVerifier). Contract stub — behavior lands with the implementation.
+    /// Offline default (ADR-012 option c): no IdP is reachable, so verification
+    /// is unavailable and the outcome is explicitly `Unverified` — never an
+    /// error. Attestation degrades the claim to `IdentitySource::Unverified`.
+    /// Implemented in ISSUE-IDENTITY-2 (the offline default's stated contract).
     async fn verify(
         &self,
         _token: &str,
         _claim: &IdentityClaim,
     ) -> Result<VerificationOutcome, IdentityError> {
-        todo!("ISSUE-IDENTITY-4 (TokenVerifier): implement NullVerifier offline default")
+        Ok(VerificationOutcome::Unverified {
+            reason: "verification disabled — offline default (NullVerifier)".to_string(),
+        })
     }
 }
 
