@@ -56,25 +56,35 @@ impl IdentityClaim {
     /// - `false` once `expires_at` is in the past (expired claims must be
     ///   rejected at approval binding)
     ///
-    /// # TODO
-    /// Implemented in ISSUE-IDENTITY-1 (IdentityClaim). This body is a
-    /// contract stub — behavior lands with the implementation issue.
+    /// Implemented in ISSUE-IDENTITY-1 (IdentityClaim).
     pub fn is_valid(&self) -> bool {
-        todo!("ISSUE-IDENTITY-1 (IdentityClaim): implement is_valid() across the expiry boundary")
+        match self.expires_at {
+            None => true,
+            Some(expires_at) => expires_at > Utc::now(),
+        }
     }
 
     /// Redacted rendering for logs and envelope summaries.
     ///
     /// # Contract
     /// - Renders subject, issuer, source, and lifetime
-    /// - Never contains the raw token or its value
+    /// - Never contains the raw token, its reference locator, or the
+    ///   `token_ref` field name
     /// - Follows the SpanPrivacy pattern (api_key/token/secret fields never logged)
     ///
-    /// # TODO
-    /// Implemented in ISSUE-IDENTITY-1 (IdentityClaim). This body is a
-    /// contract stub — behavior lands with the implementation issue.
+    /// Implemented in ISSUE-IDENTITY-1 (IdentityClaim).
     pub fn redacted_summary(&self) -> String {
-        todo!("ISSUE-IDENTITY-1 (IdentityClaim): implement redacted_summary() without raw token")
+        format!(
+            "identity[subject={}, issuer={}, source={}, authority={}, auth_method={}, expires_at={}]",
+            self.subject,
+            self.issuer,
+            self.source,
+            self.authority.as_deref().unwrap_or("none"),
+            self.auth_method.as_deref().unwrap_or("none"),
+            self.expires_at
+                .map(|t| t.to_rfc3339())
+                .unwrap_or_else(|| "none".to_string()),
+        )
     }
 }
 
@@ -92,6 +102,60 @@ pub enum IdentitySource {
     LocalPrincipal,
     /// No identity presented or IdP unreachable — explicitly degraded.
     Unverified,
+}
+
+impl std::fmt::Display for IdentitySource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Matches the frozen serde snake_case representation.
+        let rendered = match self {
+            IdentitySource::IdpToken => "idp_token",
+            IdentitySource::LocalPrincipal => "local_principal",
+            IdentitySource::Unverified => "unverified",
+        };
+        f.write_str(rendered)
+    }
+}
+
+/// Redacted envelope representation of an identity claim.
+///
+/// The audit envelope carries this ref in its `identity` block (see
+/// `.pi/architecture/modules/audit.md`): subject, issuer, source, authority,
+/// and expiry — **redacted, never the raw token**. Raw tokens are preserved by
+/// reference (`token_ref`) in the full claim, never embedded here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IdentityRef {
+    /// Subject — the human's unique identifier at the IdP.
+    pub subject: String,
+    /// Issuer — who vouches for the subject.
+    pub issuer: String,
+    /// How the identity was established (degradation marker preserved).
+    pub source: IdentitySource,
+    /// Roles / authority presented (captured fact, not judgment).
+    pub authority: Option<String>,
+    /// When the claim expires (`None` = no expiry).
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+impl IdentityRef {
+    /// Build a redacted ref from a claim.
+    ///
+    /// Deliberately copies only the summary fields — `token_ref`, `auth_method`
+    /// and the raw token are never carried into the envelope.
+    pub fn from_claim(claim: &IdentityClaim) -> Self {
+        Self {
+            subject: claim.subject.clone(),
+            issuer: claim.issuer.clone(),
+            source: claim.source.clone(),
+            authority: claim.authority.clone(),
+            expires_at: claim.expires_at,
+        }
+    }
+}
+
+impl From<&IdentityClaim> for IdentityRef {
+    fn from(claim: &IdentityClaim) -> Self {
+        Self::from_claim(claim)
+    }
 }
 
 #[cfg(test)]
@@ -175,5 +239,86 @@ mod tests {
             let restored: IdentitySource = serde_json::from_str(&json).expect("deserialize source");
             assert_eq!(source, restored);
         }
+    }
+
+    // ── ISSUE-IDENTITY-1 behavior tests (Red → Green) ────────────────────────
+
+    #[test]
+    fn is_valid_none_expiry_is_valid() {
+        let claim = IdentityClaim {
+            expires_at: None,
+            ..sample_claim()
+        };
+        assert!(claim.is_valid(), "no expiry => always valid");
+    }
+
+    #[test]
+    fn is_valid_future_expiry_is_valid() {
+        let claim = IdentityClaim {
+            expires_at: Some(Utc::now() + chrono::Duration::seconds(60)),
+            ..sample_claim()
+        };
+        assert!(claim.is_valid(), "future expiry => valid");
+    }
+
+    #[test]
+    fn is_valid_past_expiry_is_invalid() {
+        let claim = IdentityClaim {
+            expires_at: Some(Utc::now() - chrono::Duration::seconds(60)),
+            ..sample_claim()
+        };
+        assert!(!claim.is_valid(), "past expiry => invalid (expired)");
+    }
+
+    #[test]
+    fn redacted_summary_contains_subject_but_never_raw_token() {
+        let raw_token = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyQG9yZyJ9.signature";
+        let claim = IdentityClaim {
+            token_ref: Some("keychain://default/rigorix/idp-token".to_string()),
+            ..sample_claim()
+        };
+        let summary = claim.redacted_summary();
+        assert!(summary.contains("user@org"), "subject rendered");
+        assert!(
+            !summary.contains("keychain"),
+            "token_ref locator must never appear: {summary}"
+        );
+        assert!(
+            !summary.contains("token_ref"),
+            "token_ref field name must never appear: {summary}"
+        );
+        assert!(
+            !summary.contains(&raw_token[0..20]),
+            "raw token payload must never appear: {summary}"
+        );
+    }
+
+    #[test]
+    fn identity_ref_from_claim_redacts_token_ref() {
+        let claim = sample_claim(); // token_ref = Some("keychain://.../idp-token")
+        let reference = IdentityRef::from(&claim);
+        assert_eq!(reference.subject, "user@org");
+        assert_eq!(reference.issuer, "https://idp.example.com");
+        assert_eq!(reference.source, IdentitySource::IdpToken);
+        assert_eq!(reference.authority, Some("admin".to_string()));
+        assert_eq!(
+            reference.expires_at,
+            Some(Utc.with_ymd_and_hms(2026, 8, 28, 10, 15, 0).unwrap())
+        );
+        // Redacted: no token_ref field, no token locator in the serialized ref.
+        let json = serde_json::to_string(&reference).expect("serialize identity ref");
+        assert!(
+            !json.contains("token_ref"),
+            "IdentityRef must not carry token_ref: {json}"
+        );
+        assert!(!json.contains("keychain"));
+    }
+
+    #[test]
+    fn identity_ref_serde_round_trip() {
+        let reference = IdentityRef::from(&sample_claim());
+        let json = serde_json::to_string(&reference).expect("serialize identity ref");
+        let restored: IdentityRef = serde_json::from_str(&json).expect("deserialize identity ref");
+        assert_eq!(reference, restored);
     }
 }
