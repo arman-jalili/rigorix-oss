@@ -47,9 +47,15 @@ pub struct ExecutionState {
     pub completed_at: Option<DateTime<Utc>>,
     pub node_states: IndexMap<Uuid, NodeState>,  // Ordered map for deterministic serialization
     pub symbol_graph_hash: String,
+
+    // ── Approval & identity evidence (additive, serde-defaulted) ──
+    /// Durable human-approval records (intent hash, approver, TTL, nonce, status).
+    pub approval_records: Vec<ApprovalRecord>,
+    /// Attributed identity of the run author (redacted summary).
+    pub identity: Option<IdentityClaim>,
 }
 
-pub enum NodeStatus { Pending, InProgress, Completed, Failed, Skipped }
+pub enum NodeStatus { Pending, InProgress, Completed, Failed, Skipped, AwaitingApproval, IntentMismatch }
 
 pub struct NodeState {
     pub node_id: Uuid,
@@ -60,6 +66,16 @@ pub struct NodeState {
     pub duration_ms: Option<u64>,
 }
 ```
+
+### Durable Approval Records (Contract Amendment)
+
+See [approval module](./modules/approval.md) for the full contract. This module provides the **operational (mid-run)** durability tier:
+
+- `approval_records: Vec<ApprovalRecord>` — appended at approval time, survives cross-process resume (GAP-3), queryable via `ApprovalService::get_approval`
+- The **evidence (end-state)** tier is the signed envelope (`audit` module) — the envelope's HMAC covers the records transitively
+- `identity: Option<IdentityClaim>` — durable run-author identity for continuity and audit
+
+**Migration rule (security-validator pass/fail):** legacy persisted `approved: Vec<Uuid>` sets (pre-binding) carry no intent hash and no decision record. On hydrate, legacy approvals are **invalidated** → re-approval required. No records are fabricated — fabricating would break the binding guarantee on upgrade.
 
 ### StateManager
 
@@ -145,6 +161,9 @@ fs::rename("{id}.json.tmp", "{id}.json")?;  // Atomic rename
 - Atomic write: .tmp file removed after successful write
 - Node state transitions: Pending → InProgress → Completed
 - Parallel saves don't corrupt state
+- Approval records persist across save/load (round-trip)
+- Hydrate with legacy `approved` (no records) → invalidated, re-approval required
+- Hydrate with `approval_records` → records restored, verification continues
 
 ---
 
@@ -157,11 +176,11 @@ fs::rename("{id}.json.tmp", "{id}.json")?;  // Atomic rename
 
 ---
 
-Last updated: 2026-06-15
-*Module version: 1.0.0*
+Last updated: 2026-08-28
+*Module version: 1.1.0*
 
 ---
 
 **Status:** Implemented  
-**Last verified:** 2026-06-15  
-**Module version:** 1.0.0
+**Last verified:** 2026-08-28 (durable approval records — contract amendment)  
+**Module version:** 1.1.0

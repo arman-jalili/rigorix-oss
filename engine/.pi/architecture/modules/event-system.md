@@ -15,7 +15,7 @@ Captures all execution events as an append-only log via tokio broadcast channel 
 - Persist all events synchronously in-memory with monotonic sequence numbers
 - Support multiple subscribers (console, TUI, audit) with independent receivers
 - Drain persisted events at execution end into ExecutionRecord
-- Define the full ExecutionEvent enum (11 variants)
+- Define the full ExecutionEvent enum (11 variants + approval/identity extension)
 - Track event count and sequence for ordering
 
 ## Components
@@ -23,7 +23,7 @@ Captures all execution events as an append-only log via tokio broadcast channel 
 | Component | File Path | Purpose | Canonical Section |
 |-----------|-----------|---------|-------------------|
 | EventBus | `rigorix/src/event_bus.rs` | Central pub-sub with persistence | #bus |
-| ExecutionEvent | `rigorix/src/event_bus.rs` | Tagged union of 11 event variants | #events |
+| ExecutionEvent | `rigorix/src/event_bus.rs` | Tagged union of 11 event variants (+ approval/identity extension) | #events |
 | PersistedEvent | `rigorix/src/event_bus.rs` | Event with monotonic sequence number | #persisted |
 | ConsoleEventPrinter | `rigorix/src/event_bus.rs` | Human-readable event printer | #printer |
 
@@ -53,7 +53,7 @@ impl EventBus {
 }
 ```
 
-### ExecutionEvent — All 11 Variants
+### ExecutionEvent — All 11 Variants (+ Approval/Identity Extension)
 
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,8 +70,22 @@ pub enum ExecutionEvent {
     ExecutionFailed     { execution_id, error, timestamp },
     ExecutionCancelled  { execution_id, timestamp },
     BudgetWarning     { execution_id, resource, used, limit, timestamp },
+
+    // ── Approval binding & identity (contract freeze 2026-08-28, see approval.md) ──
+    NodeAwaitingApproval { execution_id, node_id, node_name, timestamp },
+    ApprovalRecorded { execution_id, node_id, step_name, intent_hash, approver_id, authority, decided_at, decision_context_ref },
+    IntentMismatchDetected { execution_id, node_id, step_name, expected_hash, actual_hash, timestamp },
+    ScopeViolationRecorded { execution_id, node_id, step_name, out_of_scope, timestamp },
+    NodeConsumed { execution_id, node_id, nonce, timestamp },
 }
 ```
+
+**Approval/identity variants** (all serde-defaulted, backward compatible):
+- `NodeAwaitingApproval` — requires_approval node paused for human sign-off
+- `ApprovalRecorded` — human approved a step; bound to `intent_hash` with `approver_id`/`authority` (ADR-011 R3)
+- `IntentMismatchDetected` — pre-dispatch verification failed; HALT, re-approval required (ADR-011 R2)
+- `ScopeViolationRecorded` — post-execution effects exceeded declared scope (ADR-011 R5)
+- `NodeConsumed` — approved node dispatched; approval consumed (single-use)
 
 ---
 
@@ -168,11 +182,11 @@ ordered by sequence"]
 
 ---
 
-Last updated: 2026-06-15
-*Module version: 1.0.0*
+*Last updated: 2026-08-28*
+*Module version: 1.1.0*
 
 ---
 
 **Status:** Implemented  
-**Last verified:** 2026-06-15  
-**Module version:** 1.0.0
+**Last verified:** 2026-08-28 (approval/identity event variants — contract amendment)  
+**Module version:** 1.1.0

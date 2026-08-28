@@ -48,6 +48,45 @@ Each entry follows this structure:
 
 ## Entries
 
+### 2026-08-28 — Approval Binding & Identity Attestation (Contract Amendment, Planned)
+
+#### Added
+- **Module: Auth** (new — see `.pi/architecture/modules/auth.md`)
+  - `rigorix_auth_login` / `rigorix_auth_status` / `rigorix_auth_logout` MCP tools
+  - OIDC device flow (RFC 8628) client; OS keychain custody for refresh tokens; short-TTL in-memory access tokens
+  - Attestation bridge to engine `IdentityAttestationService` (ADR-012 — OSS attests, Enterprise authorizes)
+  - Optional SSE transport auth for non-localhost binds (`mcp.sse.auth`)
+  - ADR-008: Auth Client Flow
+
+#### Changed
+- **Module: Execution Tools**
+  - `rigorix_execute` gains `identity?: IdentityClaim` (author attestation)
+  - `rigorix_approve_execution` gains `approver_id` / `authority` / `decision_context` / `token_claims_ref` (approval binding — engine ADR-011)
+- **Module: MCP Server**
+  - Auth tools registered via ToolRegistry; SSE transport auth option for non-localhost binds
+- **Module: Enterprise Proxy**
+  - Identity claims forwarded with enterprise calls (Enterprise authorizes on them)
+- **Module: Usage Guide**
+  - Auth tools + approval workflow documented in the self-documenting guide
+
+#### Impact Analysis
+- Files affected:
+  - `mcp/src/auth/` (new module)
+  - `mcp/src/execution_tools/` (approve/execute identity params)
+  - `mcp/src/mcp_server/` (registration, SSE auth)
+  - `mcp/src/usage_guide/` (guide content)
+- Canonical refs to update:
+  - `engine/.pi/architecture/modules/approval.md`
+  - `engine/.pi/architecture/modules/identity.md`
+  - `engine/.pi/architecture/decisions/ADR-011-approval-binding.md`, `ADR-012-identity-attestation.md`
+- Validators required: architecture-validator, security-validator, operations-validator
+
+#### Status
+- [x] Architecture doc updated (auth.md, mcp-server, execution-tools, enterprise-proxy, usage-guide, ADR-008)
+- [x] CHANGELOG entry added
+- [ ] Implementation (NOT YET BUILT — pending approval)
+- [ ] Validators run
+
 ### 2026-07-12 — Execution Tools Implementation
 
 #### Changed

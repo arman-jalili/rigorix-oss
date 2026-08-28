@@ -2,9 +2,14 @@
 #
 # Canonical Reference: .pi/architecture/PHASE_MANIFEST.toml
 # Source: .pi/architecture/implementation-roadmap.md
-# Last Updated: 2026-06-13
+# Last Updated: 2026-08-28
 #
-# Maps each of the 17 modules to its implementation phase.
+# Maps each module to its implementation phase.
+# NOTE: The original manifest tracked the 17 core modules. Post-scaffold
+# modules (policy-engine, quality-gates, scored-evaluation, permission,
+# orchestrator, etc.) are tracked in their module docs pending a full
+# manifest refresh. Phase 5 tracks the governance modules added by the
+# approval-binding + identity contract freeze (2026-08-28).
 # Use this manifest to:
 #   - Discover which phase a module belongs to
 #   - Check implementation status across milestones
@@ -12,8 +17,8 @@
 
 [metadata]
 version = "1.0.0"
-total_modules = 17
-total_phases = 5
+total_modules = 19
+total_phases = 6
 
 # ────────────────────────────────────────────────────────────────────────────
 # Phase 0: Foundation
@@ -215,6 +220,33 @@ description = "AuditEnvelope with HMAC signature, AuditSender with retry, AuditQ
 depends_on = ["Event System", "Configuration", "Error Handling"]
 
 # ────────────────────────────────────────────────────────────────────────────
+# Phase 5: Governance & Identity
+# ────────────────────────────────────────────────────────────────────────────
+
+[phase5]
+name = "Governance & Identity"
+description = "Consequence-bound human sign-off and attributed identity in the evidence chain (contract freeze 2026-08-28)."
+gate = "Approval binds to intent hash; pre-dispatch verification halts on mismatch; approval records signed into envelope; identity claims attested"
+
+[[phase5.modules]]
+id = 18
+name = "Approval"
+module = "approval"
+path = "src/approval/ (planned)"
+status = "planned"
+description = "ExecutionIntent + IntentHash + ApprovalRecord (single-use/TTL/nonce), ApprovalService, pre-dispatch verification, effect-scope oracle, durable records"
+depends_on = ["Execution Engine", "Identity", "Audit", "State Persistence", "Event System", "Failure Classification"]
+
+[[phase5.modules]]
+id = 19
+name = "Identity"
+module = "identity"
+path = "src/identity/ (planned)"
+status = "planned"
+description = "IdentityClaim value type, IdentityAttestationService, best-effort verification, OSS-attests/Enterprise-authorizes seam"
+depends_on = ["Configuration", "Error Handling"]
+
+# ────────────────────────────────────────────────────────────────────────────
 # Milestone Checkpoints
 # ────────────────────────────────────────────────────────────────────────────
 
@@ -250,6 +282,12 @@ modules = [17]
 test_command = "rigorix history"
 description = "Complete audit trail"
 
+[milestones.m5]
+name = "M5: Governance & Identity"
+modules = [18, 19]
+test_command = "cargo test --test approval_binding"
+description = "Approval binds to consequence; identity attested; replay halted; scope violations recorded"
+
 # ────────────────────────────────────────────────────────────────────────────
 # Status Summary (auto-generated for quick reference)
 # ────────────────────────────────────────────────────────────────────────────
@@ -260,6 +298,6 @@ planned = [
     "error_handling", "event_system", "enforcement", "budget_tracking",
     "state_persistence", "risk_gating", "template_system", "dag_engine",
     "tool_system", "repo_engine", "planning_pipeline", "template_generation",
-    "execution_engine",
+    "execution_engine", "approval", "identity",
 ]
-coverage = "4/17 implemented (23.5%)"
+coverage = "4/19 implemented (21.1% — manifest tracks 17 core + 2 governance; post-scaffold modules tracked in module docs)"

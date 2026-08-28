@@ -10,7 +10,52 @@ This document tracks all architecture changes requiring implementation updates.
 
 ---
 
-## [2026-06-16] — Orchestrator Module Added
+## [2026-08-28] — Approval Binding & Identity Attestation (Architecture Contract Freeze)
+
+### Added
+- Module: approval (new bounded context — see `.pi/architecture/modules/approval.md`)
+  - Consequence-bound human sign-off: approval binds to `(tool, intent, declared_scope)` via HMAC intent hash
+  - Pre-dispatch verification at the single dispatch choke point; `IntentMismatch` halt (re-approval required)
+  - Single-use, time-bound approval records; retry-vs-replay nonce; token binding (token_claims_ref)
+  - Decision context capture (R4) — "the recorded why"; envelope `approval_events[]` / `scope_violations[]` / `decision_context_ref`
+  - Effect-scope verification via git-diff oracle (R5)
+  - ApprovalService trait: approve / verify_intent / consume / record_scope_violation / get_approval
+  - ADR-011: approval binding — consequence-bound sign-off
+- Module: identity (new bounded context — see `.pi/architecture/modules/identity.md`)
+  - Shared IdentityClaim value type + IdentityAttestationService (attest / extract_claims / verify best-effort)
+  - OSS attests / Enterprise authorizes seam (ADR-012); offline degradation is explicit, never silent
+  - Envelope `identity` block; RunInput.identity; approver identity for approval binding
+  - ADR-012: identity attestation — OSS attests, Enterprise authorizes
+
+### Changed
+- Module: execution-engine
+  - NodeStatus gains `IntentMismatch` (pre-dispatch verification failure)
+  - approve_node contract: ApproveNodeInput + approver_id / authority / decision_context / token_claims_ref; approved set → approval records map
+  - Pre-dispatch intent verification in `run_dispatch_loop` (single choke point — execute + resume paths)
+  - New events: NodeAwaitingApproval, ApprovalRecorded, IntentMismatchDetected, ScopeViolationRecorded, NodeConsumed
+- Module: audit
+  - Envelope gains `approval_events`, `scope_violations`, `decision_context_ref`, `identity` (additive, serde-defaulted)
+- Module: state-persistence
+  - ExecutionState gains `approval_records` + `identity`; migration rule: legacy approved sets invalidated on hydrate
+- Module: failure-classification
+  - FailureType gains `IntentMismatch` (non-retriable — re-approval is the only recovery)
+- Module: permission-enforcer
+  - Documented gate composition: permission mode (policy) + approval binding (human) at dispatch
+- Module: orchestrator
+  - RunInput gains `identity: Option<IdentityClaim>`; approval record wiring
+- Module: event-system
+  - New event variants: ApprovalRecorded, IntentMismatchDetected, ScopeViolationRecorded
+
+### Rationale
+Approval today binds to a node, not a consequence; the envelope signs execution events, not the human decision. This contract freezes the binding layer that closes the replay gap at the step level (Agent Hooks closes it at the call level), makes approver identity + decision context first-class signed evidence, and establishes the OSS-attests / Enterprise-authorizes identity seam. Industry validated by the OpenAI/Hugging Face postmortems and Portotify's "Capability Is Not Authority" stress-test.
+
+### Status
+- [x] Architecture docs updated (approval.md, identity.md, ADR-011, ADR-012, diagrams, CHANGELOG)
+- [x] Canonical refs added
+- [ ] Implementation (NOT YET BUILT — pending approval)
+- [ ] Validators run
+
+---
 
 ### Added
 - Module: orchestrator

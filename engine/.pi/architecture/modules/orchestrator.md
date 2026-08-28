@@ -166,7 +166,7 @@ let result = orchestrator.run(RunInput { intent }).await?;
 
 | DTO | Input/Output | Fields |
 |-----|:-----------:|--------|
-| RunInput | Input | intent: String, config: Config, repo_root: String, repository: Option\<String\>, author: Option\<String\>, enforcement_preset: Option\<String\> |
+| RunInput | Input | intent: String, config: Config, repo_root: String, repository: Option\<String\>, author: Option\<String\> (legacy, self-asserted), identity: Option\<IdentityClaim\>, enforcement_preset: Option\<String\> |
 | RunFromTemplateInput | Input | steps: Vec\<TemplateStepDef\>, repo_root: String, execution_id: Option\<Uuid\>, template_name: String, repository: Option\<String\>, author: Option\<String\>, enforcement_preset: Option\<String\> |
 | RunOutput | Output | execution_id, record: ExecutionRecord |
 | PlanFromTemplateInput | Input | steps: Vec\<TemplateStepDef\>, repo_root: String, template_name: String |
@@ -201,6 +201,8 @@ let result = orchestrator.run(RunInput { intent }).await?;
 - **Event System**: Event emission and draining
 - **Audit**: Envelope building and delivery
 - **Budget Tracking**: LLM budget pre-check
+- **Approval**: Approval record wiring (via execution engine — see `modules/approval.md`)
+- **Identity**: Run-author attestation — `RunInput.identity` → envelope identity block (see `modules/identity.md`)
 - **Configuration**: Config loading (used during setup, not per-run)
 
 ### Used By
@@ -230,6 +232,7 @@ let result = orchestrator.run(RunInput { intent }).await?;
 | Concern | Mitigation |
 |---------|-----------|
 | API key leakage in ExecutionRecord | Redact Secret fields before building record |
+| Identity claim leakage | Redact IdentityClaim summaries; raw tokens never in records (token_ref only) |
 | Cancellation abuse | Only cancel execution matching execution_id |
 
 ---
@@ -248,6 +251,7 @@ let result = orchestrator.run(RunInput { intent }).await?;
 
 | Date | Change | Section | Status |
 |------|--------|---------|--------|
+| 2026-08-28 | Added `identity: Option<IdentityClaim>` to RunInput (author attestation), approval record wiring | dtos, dependencies | planned |
 | 2026-07-13 | Added `repository`/`author` to RunInput and RunFromTemplateInput, added `run_from_template`/`plan_from_template` to trait | dtos, trait | done |
 | 2026-06-16 | Initial architecture definition | all | done |
 | 2026-06-16 | Contract freeze — all interfaces, DTOs, events, API contracts | interfaces, DTOs, events | done |

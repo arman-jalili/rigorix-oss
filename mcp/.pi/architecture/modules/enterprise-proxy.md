@@ -10,6 +10,8 @@
 
 Forwards `rigorix_enterprise_*` tool calls to the Rigorix Enterprise API via HTTP JSON-RPC; discovers available enterprise tools dynamically during initialization. This is a **conditional module** — when no enterprise configuration is present, zero enterprise code is loaded, and no `rigorix_enterprise_*` tools appear in the MCP tool list.
 
+**Identity forwarding (ADR-012):** when the auth module holds an active identity claim, the claim is forwarded with enterprise tool calls alongside the API key — Enterprise performs JWKS verification + authorization on it (the authorize half of the OSS-attests / Enterprise-authorizes seam). The API key authenticates the gateway; the identity claim authorizes the human. Never logged.
+
 ## Architecture
 
 This module follows **Domain-Driven Design** with Clean Architecture layers:

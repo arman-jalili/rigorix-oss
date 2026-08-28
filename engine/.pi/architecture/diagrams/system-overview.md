@@ -55,6 +55,13 @@ Rigorix is a **deterministic coding CLI** — a task graph compiler with executi
 │         │                                                        │
 │         ▼                                                        │
 │  ┌─────────────────────────────────────────────────────────┐    │
+│  │       Approval Binding (intent verify pre-dispatch)     │    │
+│  │  intent hash → verify → consume · IntentMismatch halt   │    │
+│  │  effect-scope oracle (git diff) · signed records        │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│         │                                                        │
+│         ▼                                                        │
+│  ┌─────────────────────────────────────────────────────────┐    │
 │  │              Tool System                                 │    │
 │  │  FileRead · FileWrite · FileAppend · FilePatch           │    │
 │  │  RunCommand · LspQuery · GitRead · GitStage · GitCommit  │    │
@@ -101,10 +108,10 @@ Rigorix is a **deterministic coding CLI** — a task graph compiler with executi
 | Layer | Modules | Purpose | Entry Point |
 |-------|---------|---------|-------------|
 | Planning | planning-pipeline, template-system, template-generation, repo-engine, budget-tracking | Intent → validated plan | `rigorix/src/planning/` |
-| Execution | dag-engine, execution-engine, risk-gating, tool-system, enforcement, cancellation, failure-classification, **quality-gates**, **scored-evaluation** | Plan → execution → result + quality scoring | `rigorix/src/dag/`, `rigorix/src/tools/`, `rigorix/src/quality/` |
+| Execution | dag-engine, execution-engine, risk-gating, tool-system, enforcement, cancellation, failure-classification, **quality-gates**, **scored-evaluation**, **approval** | Plan → execution → result + quality scoring + consequence-bound sign-off | `rigorix/src/dag/`, `rigorix/src/tools/`, `rigorix/src/quality/`, `rigorix/src/approval/` |
 | Policy | policy-engine | Rule evaluation, merge gating, closeout | `rigorix/src/policy/` |
 | Observability | event-system, state-persistence, audit | Events → state → audit trail (with scoring refs) | `rigorix/src/event_bus.rs`, `rigorix/src/state/` |
-| Cross-Cutting | configuration, error-handling | Config loading, error types | `rigorix/src/config.rs`, `rigorix/src/error.rs` |
+| Cross-Cutting | configuration, error-handling, **identity** | Config loading, error types, attributed human identity | `rigorix/src/config.rs`, `rigorix/src/error.rs`, `rigorix/src/identity/` |
 
 ## Module Dependency Graph
 
@@ -133,6 +140,18 @@ execution-engine
         ├── policy-engine       (ScoreAbove/ScoreBelow conditions)
         ├── audit               (scoring_results envelope extension)
         └── event-system        (ScoredEvaluation* event variants)
+
+approval
+    ├── execution-engine        (pre-dispatch intent verification)
+    ├── identity                (approver identity, token_claims_ref)
+    ├── audit                   (approval_events, scope_violations, decision_context_ref)
+    ├── state-persistence       (durable approval records)
+    └── failure-classification  (IntentMismatch — non-retriable)
+
+identity
+    ├── orchestrator            (RunInput.identity — author)
+    ├── approval                (approver_id, token_claims_ref)
+    └── audit                   (envelope identity block)
 
 policy-engine
     └── quality-gates           (evaluates GreenAt)
@@ -188,6 +207,11 @@ ParallelExecutor::execute(&mut graph, cancel_token)
   │           ├── Emit ScoredEvaluationCompleted/Failed
   │           └── Persist scoring result
   │
+  ├── Approval Binding: for approved nodes, verify intent pre-dispatch
+  │     ├── Hash match → dispatch + consume (single-use, TTL)
+  │     ├── Hash mismatch → HALT (IntentMismatch) — re-approval required
+  │     └── Post-execution: effect-scope vs git-diff oracle → scope_violations
+  │
   ├── Policy Engine: evaluate ScoreAbove/ScoreBelow/GreenAt
   │     └── If gating rule matches → block_merge / flag_for_review
   │
@@ -212,6 +236,8 @@ Every component publishes to EventBus:
   ScoredEvaluationStarted  →  ScoredEvaluationCompleted/Failed
   QualityGateEvaluated     →  QualityGateOutcome
 
+  ApprovalRecorded        →  IntentMismatchDetected  →  ScopeViolationRecorded
+
   PolicyRuleMatched        →  ActionsDispatched
 
   ExecutionCompleted / Failed / Cancelled
@@ -231,11 +257,13 @@ Subscribers:
 | Tool → Filesystem | Path validation against repo_root | tool-system |
 | Tool → Shell | RunCommand allowlist + High risk dry-run | risk-gating, tool-system |
 | LLM Provider → Planning | API key via Secret wrapper | configuration |
+| Human Approval → Node | Intent-hash binding + pre-dispatch verification | approval |
+| Identity → Evidence | Attributed claims; best-effort verification | identity |
 | Events → Audit | HMAC envelope signing | audit |
 | Scoring Payload → Backend | HMAC-signed payloads for MCP/HTTP | scored-evaluation |
 | Scoring Script → Host | Script path allowlist validation | scored-evaluation |
 
 ---
 
-*Last updated: 2026-07-15*
-*Architecture version: 1.1.0*
+*Last updated: 2026-08-28*
+*Architecture version: 1.2.0*

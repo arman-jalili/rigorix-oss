@@ -392,9 +392,10 @@ impl CheckEnforcementHandler {
 
 | Method | Path (tool name) | Handler | Input | Output | Auth |
 |--------|-----------------|---------|-------|--------|------|
-| `rigorix_execute` | `tools/call` | ExecuteHandler | `{ plan: PlanTemplate, template_name?: string, execution_id?: string, repository?: string, author?: string }` | `{ execution_id, status, steps, duration_ms, tokens_used?, audit_uri }` | Session-bound |
+| `rigorix_execute` | `tools/call` | ExecuteHandler | `{ plan: PlanTemplate, template_name?: string, execution_id?: string, repository?: string, author?: string, identity?: IdentityClaim }` | `{ execution_id, status, steps, duration_ms, tokens_used?, audit_uri }` | Session-bound (identity attested) |
 | `rigorix_validate_plan` | `tools/call` | ValidatePlanHandler | `{ plan: PlanTemplate }` | `{ valid, warnings, errors, estimated_cost? }` | Session-bound |
 | `rigorix_check_enforcement` | `tools/call` | CheckEnforcementHandler | `{}` | `{ active, preset, budget: { tool_calls_total, tool_calls_remaining, tokens_total, tokens_remaining }, circuit_breakers }` | Session-bound |
+| `rigorix_approve_execution` | `tools/call` | ApproveHandler | `{ execution_id, step_names: string[], approver_id?: string, authority?: string, decision_context?: object, token_claims_ref?: string }` | `{ execution_id, approved, not_found, still_pending, approval_records }` | Session-bound (approval binding — ADR-011) |
 
 ## Ubiquitous Language
 
@@ -409,6 +410,7 @@ Terms specific to this context from `.pi/domain/ubiquitous-language.md`:
 | **PlanTemplate** | Value object shared between execution and template contexts: a structured plan with steps, constraints, and metadata |
 | **StepDefinition** | Value object representing a single step in a plan: tool name, parameters, approval requirement, description |
 | **ExecutionResult** | Value object returned by `rigorix_execute`: execution_id, status, per-step results, duration, tokens, audit_uri |
+| **ApprovalRecordRef** | Value object in approve output: step_name, node_id, intent_hash, approver_id, authority, decided_at (approval binding — ADR-011) |
 | **ValidationResult** | Value object returned by `rigorix_validate_plan`: valid flag, warnings, errors, estimated cost |
 | **EnforcementStatus** | Value object returned by `rigorix_check_enforcement`: active, preset, remaining budget, circuit breaker states |
 

@@ -38,7 +38,8 @@ Handles `rigorix_get_usage_guide` tool calls: returns static, structured usage c
 - Documents 9 valid action types (`file_read`, `file_write`, `file_append`, `edit_file`, `file_patch`, `run_command`, `git_read`, `git_stage`, `git_commit`)
 - Provides example plan JSON structure with required fields
 - Documents TOML template file format with example
-- Lists all available MCP tools grouped by category (execution, template, audit, enterprise, guide)
+- Lists all available MCP tools grouped by category (auth, execution, template, audit, enterprise, guide)
+- Documents the approval workflow: `rigorix_approve_execution` with `approver_id`/`authority`/`decision_context` (approval binding) and the `rigorix_auth_*` tools (identity attestation)
 
 ## Data Flow
 

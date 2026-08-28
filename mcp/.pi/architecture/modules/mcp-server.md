@@ -10,6 +10,8 @@
 
 Core protocol implementation: transport management, session lifecycle, tool registration, request routing, resource exposure, prompt templates. This is the **entry point** for all MCP client connections — every tool call, resource read, and prompt request arrives here first.
 
+**Auth integration (ADR-008):** the SSE transport gains an optional gate — when `mcp.sse.bind_address` is non-localhost AND `mcp.sse.auth` is set (`"idp" | "api_key"`), the transport requires a valid bearer token before routing any tool call. Default remains localhost-only with no auth (ADR-005). Stdio remains trusted-parent (no auth).
+
 ## Architecture
 
 This module follows **Domain-Driven Design** with Clean Architecture layers:
@@ -299,6 +301,7 @@ Central registry of all registered tools with their schemas and handlers.
 - Tool names must match `rigorix_` prefix for OSS, `rigorix_enterprise_` prefix for enterprise
 - Enterprise tools are registered separately via `register_enterprise_tools` — never mixed
 - Schemas are immutable after registration (no hot-reload in Phase 0)
+- Auth tools (`rigorix_auth_*`) register like any other tool — see auth module (ADR-008)
 
 **Repository Interface:**
 

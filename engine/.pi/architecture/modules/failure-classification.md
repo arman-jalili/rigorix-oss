@@ -11,7 +11,7 @@ Classifies execution failures into typed categories for retry routing. Maps erro
 
 ## Responsibilities
 
-- Define FailureType enum with 7 categories
+- Define FailureType enum with 8 categories
 - Classify error messages into FailureType via pattern matching
 - Map each FailureType to its recommended RetryStrategy
 - Expose is_retryable() for quick retry eligibility check
@@ -44,6 +44,7 @@ pub enum FailureType {
     LspConflict,         // LSP type conflict → exponential backoff
     ResourceExhausted,   // OOM, disk full → try Fallback strategy
     SystemError,         // Process crash, I/O error → Fallback
+    IntentMismatch,      // Approval intent hash mismatch → HALT, re-approval required
     NonRetryable,        // Bad input, auth → Fatal
 }
 ```
@@ -75,6 +76,7 @@ pub fn classify_failure(error_message: &str) -> FailureType;
 //   "lsp"/"type error"/"type mismatch" → LspConflict
 //   "out of memory"/"disk full"      → ResourceExhausted
 //   "signal"/"process crash"/"killed" → SystemError
+//   "intent mismatch"/"approval mismatch" → IntentMismatch
 //   "timeout"/"connection"/"network" → Transient
 //   else                              → NonRetryable
 ```
@@ -91,6 +93,7 @@ pub fn classify_failure(error_message: &str) -> FailureType;
 | SystemError | ✅ Yes | Fallback |
 | TestFailure | ❌ No | PatchWithFeedback (replanning) |
 | BuildFailure | ❌ No | PatchWithFeedback (replanning) |
+| IntentMismatch | ❌ No | Fatal — HALT, re-approval required (never auto-retry; retrying the same broken intent is a replay loop) |
 | NonRetryable | ❌ No | Fatal error, no retry |
 
 ---
@@ -132,6 +135,7 @@ from tool execution"] --> CLASS["classify_failure
     CLASS -->|'lsp'/'type error'| LSP["FailureType::LspConflict"]
     CLASS -->|'OOM'/'disk full'| RE["FailureType::ResourceExhausted"]
     CLASS -->|'signal'/'killed'| SE["FailureType::SystemError"]
+    CLASS -->|'intent mismatch'/'approval mismatch'| IM["FailureType::IntentMismatch"]
     CLASS -->|'timeout'/'connection'| TR["FailureType::Transient"]
     CLASS -->|no match| NR["FailureType::NonRetryable"]
     
@@ -143,6 +147,7 @@ from tool execution"] --> CLASS["classify_failure
     SE --> S3
     TR -->|retry_strategy| S4["SameOperation"]
     NR -->|no retry| FATAL["Fatal"]
+    IM -->|no retry| HALT["HALT — re-approval required"]
     
     subgraph RetryStrategy
         RS["SameOperation
@@ -171,6 +176,7 @@ ExpandContext"]
 - classify_failure("LSP type mismatch") → LspConflict
 - classify_failure("connection timeout") → Transient
 - classify_failure("invalid api key") → NonRetryable
+- classify_failure("intent mismatch: expected abc got def") → IntentMismatch
 - Each FailureType maps to correct RetryStrategy
 - is_retryable() correct for each type
 - Strategy override flows work correctly
@@ -186,11 +192,11 @@ ExpandContext"]
 
 ---
 
-Last updated: 2026-06-15
-*Module version: 1.0.0*
+Last updated: 2026-08-28
+*Module version: 1.1.0*
 
 ---
 
 **Status:** Implemented  
-**Last verified:** 2026-06-15  
-**Module version:** 1.0.0
+**Last verified:** 2026-08-28 (IntentMismatch failure type — contract amendment)  
+**Module version:** 1.1.0

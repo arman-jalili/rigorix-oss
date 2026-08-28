@@ -45,6 +45,14 @@ graph LR
         SCHEMA_FAIL["EnterpriseSchemaRefreshFailed"]
     end
 
+    subgraph "Auth Tools"
+        AUTH_LOGIN_START["AuthLoginStarted"]
+        AUTH_LOGIN_OK["AuthLoginSucceeded"]
+        AUTH_LOGIN_FAIL["AuthLoginFailed"]
+        AUTH_STATUS["AuthStatusChecked"]
+        AUTH_LOGOUT["AuthLoggedOut"]
+    end
+
     subgraph "EventBus (broadcast)"
         BUS["In-Memory EventBus\ntokio::sync::broadcast"]
     end
@@ -54,6 +62,7 @@ graph LR
     AUDIT_READ & AUDIT_LISTED & AUDIT_SUM --> BUS
     TEMPL_CREATED & TEMPL_READ & TEMPL_LISTED & TEMPL_VALID --> BUS
     ENT_CALLED & ENT_OK & ENT_FAIL & SCHEMA_OK & SCHEMA_FAIL --> BUS
+    AUTH_LOGIN_START & AUTH_LOGIN_OK & AUTH_LOGIN_FAIL & AUTH_STATUS & AUTH_LOGOUT --> BUS
 
     BUS --> OBS["Observability\n(Logging, Metrics,\n Telemetry)"]
 ```
@@ -97,6 +106,16 @@ graph LR
 | **TemplateListed** | Templates listed | `{ filter_criteria, result_count }` | Logger |
 | **TemplateValidated** | Template validated | `{ template_name, is_valid, errors }` | Logger |
 
+### Auth Tools Events
+
+| Event | Description | Payload | Consumers |
+|-------|-------------|---------|-----------|
+| **AuthLoginStarted** | Device flow initiated | `{ session_id, verification_uri, user_code }` | Logger, TUI |
+| **AuthLoginSucceeded** | Token exchange completed | `{ session_id, subject, issuer, token_ttl_secs }` | Logger, Metrics |
+| **AuthLoginFailed** | Device flow failed (denied/expired/error) | `{ session_id, error_type, reason }` | Logger, Alerts |
+| **AuthStatusChecked** | Identity status queried | `{ session_id, status, claim_summary }` | Logger |
+| **AuthLoggedOut** | Tokens cleared | `{ session_id, revoked }` | Logger |
+
 ### Enterprise Proxy Events
 
 | Event | Description | Payload | Consumers |
@@ -110,4 +129,4 @@ graph LR
 ---
 
 *Generated from session: d19b7a21-8f4c-4b3e-9a1d-5e6f7c8b9a0d*
-*Updated: 2026-07-12*
+*Updated: 2026-08-28*

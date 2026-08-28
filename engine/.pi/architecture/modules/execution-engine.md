@@ -20,6 +20,7 @@ Executes sealed TaskGraphs from the DAG Engine using a concurrent worker pool (t
 - Fallback execution: execute fallback node when retries exhausted
 - Execution event emission: 11 event types for observability
 - Progress callbacks: per-terminal-state notifications for TUI
+- Approval integration: pre-dispatch intent verification, `IntentMismatch` halt, consume-on-dispatch (see approval module)
 
 ## Dependencies
 
@@ -31,6 +32,7 @@ Executes sealed TaskGraphs from the DAG Engine using a concurrent worker pool (t
 - `failure_classification` — FailureType classification
 - `event_system` — EventBus for execution event emission
 - `state_persistence` — ExecutionState for crash recovery
+- `approval` — pre-dispatch intent verification, approval records (see `modules/approval.md`)
 
 ## Components
 
@@ -38,7 +40,7 @@ Executes sealed TaskGraphs from the DAG Engine using a concurrent worker pool (t
 |-----------|-----------|---------|-------------------|
 | ParallelExecutorConfig | `engine/src/execution_engine/domain/parallel_executor.rs` | Global executor configuration (concurrency, retry defaults, enforcement) | #config |
 | NodeExecutionState | `engine/src/execution_engine/domain/parallel_executor.rs` | Per-node lifecycle tracking (Pending → Ready → Running → Terminal) | #node-state |
-| NodeStatus | `engine/src/execution_engine/domain/parallel_executor.rs` | Status enum: Pending, Ready, Running, Completed, Failed, Skipped | #node-status |
+| NodeStatus | `engine/src/execution_engine/domain/parallel_executor.rs` | Status enum: Pending, Ready, Running, Completed, Failed, Skipped, AwaitingApproval, IntentMismatch | #node-status |
 | TaskResult | `engine/src/execution_engine/domain/parallel_executor.rs` | Single node execution result with output, duration, retry count | #task-result |
 | ExecutionResult | `engine/src/execution_engine/domain/parallel_executor.rs` | Aggregate DAG execution result with summary statistics | #exec-result |
 | RetryPolicy | `engine/src/execution_engine/domain/retry.rs` | Per-node retry config: max_attempts, strategies, backoff, skip conditions | #retry-policy |
@@ -161,6 +163,18 @@ RetryPolicy {
 | AbortExecutionOutput | Output | dag_id, completed_count, skipped_count, aborted_at |
 | EvaluateRetryInput | Input | failure_context, policy, fallback_node_id |
 | EvaluateRetryOutput | Output | decision, is_terminal |
+| ApproveNodeInput | Input | dag_id, step_names, approver_id, authority, decision_context, token_claims_ref |
+| ApproveNodeOutput | Output | dag_id, approved, not_found, still_pending, records: Vec<ApprovalRecord> |
+
+## Approval Integration (Contract Amendment)
+
+See [approval module](./modules/approval.md) for the full contract. Summary of changes to this module:
+
+- **`NodeStatus`** gains `AwaitingApproval` (exists in code) and **`IntentMismatch`** (new — pre-dispatch verification failure; node never dispatches; re-approval required)
+- **Dispatch choke point**: verification is inserted between `pop_dispatchable` and `execute_tool` inside `run_dispatch_loop` (the single loop used by both `execute_graph` and `resume_execution`) — every dispatch entry path is covered by one insertion
+- **`approve_node`** contract change: `ApproveNodeInput` gains `approver_id` (required), `authority` (optional), `decision_context` (optional), `token_claims_ref` (optional); the session's `approved: HashSet<Uuid>` becomes a map of node_id → `ApprovalRecord` (delegating to `ApprovalService`); output gains `records: Vec<ApprovalRecord>`
+- **Single-use semantics**: dispatch consumes the approval (`Pending → Consumed`); retries re-verify intent rather than re-consuming; TTL enforced at verification
+- **Retry integration**: `IntentMismatch` is non-retriable (see failure-classification) — the node stays halted for human re-approval
 
 ---
 
@@ -178,6 +192,11 @@ RetryPolicy {
 | DependencyResolutionConflict | dag_id, node_id, node_name, unsatisfied_deps | Dependency issue |
 | ExecutionCompleted | dag_id, total_nodes, completed/failed/skipped counts, total_duration_ms | All nodes terminal |
 | ExecutionCancelled | dag_id, completed_count, remaining_count, reason | Cancellation received |
+| NodeAwaitingApproval | dag_id, node_id, node_name | requires_approval node paused for sign-off |
+| ApprovalRecorded | dag_id, node_id, step_name, intent_hash, approver_id, authority, decided_at | Human approved a step (bound to intent hash) |
+| IntentMismatchDetected | dag_id, node_id, step_name, expected_hash, actual_hash | Pre-dispatch verification failed — HALT |
+| ScopeViolationRecorded | dag_id, node_id, step_name, out_of_scope | Post-execution effects exceeded declared scope |
+| NodeConsumed | dag_id, node_id, nonce | Approved node dispatched; approval consumed (single-use) |
 
 ---
 
@@ -237,5 +256,5 @@ CI stage: stage 25 — `execution-engine_proofing` in `run_hardening_stages.sh`
 ---
 
 **Status:** Implemented  
-**Last verified:** 2026-06-15  
-**Module version:** 1.0.0
+**Last verified:** 2026-08-28 (approval integration — contract amendment)  
+**Module version:** 1.1.0

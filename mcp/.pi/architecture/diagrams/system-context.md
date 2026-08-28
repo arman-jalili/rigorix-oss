@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Rigorix MCP Gateway bridges AI coding assistants to the Rigorix execution engine via the Model Context Protocol (MCP). It operates as a modular monolith with five bounded contexts.
+The Rigorix MCP Gateway bridges AI coding assistants to the Rigorix execution engine via the Model Context Protocol (MCP). It operates as a modular monolith with six bounded contexts.
 
 ## Bounded Contexts Flow
 
@@ -25,12 +25,13 @@ graph TB
             EXEC["Execution Tools\n(rigorix_execute)"]
             AUDIT["Audit Tools\n(rigorix_read_audit)"]
             TEMPL["Template Tools\n(rigorix_list_templates)"]
+            AUTH["Auth Tools\n(rigorix_auth_login)"]
             EP["Enterprise Proxy\n(rigorix_enterprise_*)"]
         end
     end
 
     subgraph "Rigorix Engine (local)"
-        ENG["Rigorix Engine\n(Orchestrator, DAG Executor,\n Enforcement, Audit Storage)"]
+        ENG["Rigorix Engine\n(Orchestrator, DAG Executor,\n Enforcement, Audit Storage,\n Identity Attestation)"]
     end
 
     subgraph "Rigorix Enterprise (optional)"
@@ -41,11 +42,13 @@ graph TB
     MCP -->|"tool/call routing"| EXEC
     MCP -->|"tool/call routing"| AUDIT
     MCP -->|"tool/call routing"| TEMPL
+    MCP -->|"tool/call routing"| AUTH
     MCP -->|"if enterprise configured"| EP
 
     EXEC -->|"EngineFacade trait"| ENG
     AUDIT -->|"EngineFacade trait"| ENG
     TEMPL -->|"EngineFacade trait"| ENG
+    AUTH -->|"attestation bridge\n(IdentityAttestationService)"| ENG
 
     EP -->|"HTTPS JSON-RPC\n(Bearer token auth)"| ENT
 
@@ -53,6 +56,7 @@ graph TB
     style EXEC fill:#50b080,stroke:#2d6a4f,color:#fff
     style AUDIT fill:#e9c46a,stroke:#b8973a,color:#222
     style TEMPL fill:#f4a261,stroke:#c1773a,color:#222
+    style AUTH fill:#b56576,stroke:#803f4e,color:#fff
     style EP fill:#e76f51,stroke:#b5452a,color:#fff
     style ENG fill:#6b5b95,stroke:#4a3d6e,color:#fff
     style ENT fill:#b56576,stroke:#803f4e,color:#fff
@@ -63,11 +67,11 @@ graph TB
 | Boundary | Includes | Communication |
 |----------|----------|---------------|
 | **AI Tools** | MCP clients (7+ different tools) | JSON-RPC 2.0 over stdio or SSE |
-| **MCP Gateway** | 5 bounded contexts in a Rust crate workspace | In-process trait calls + EventBus |
-| **Rigorix Engine** | Orchestrator, DAG executor, enforcement, audit | Local engine API calls via EngineFacade trait |
+| **MCP Gateway** | 6 bounded contexts in a Rust crate workspace | In-process trait calls + EventBus |
+| **Rigorix Engine** | Orchestrator, DAG executor, enforcement, audit, identity attestation | Local engine API calls via EngineFacade trait |
 | **Rigorix Enterprise** | Multi-team audit, approvals, policies | HTTPS JSON-RPC with Bearer token auth |
 
 ---
 
 *Generated from session: d19b7a21-8f4c-4b3e-9a1d-5e6f7c8b9a0d*
-*Updated: 2026-07-12*
+*Updated: 2026-08-28*

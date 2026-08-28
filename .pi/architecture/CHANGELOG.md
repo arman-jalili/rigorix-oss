@@ -48,6 +48,24 @@ Each entry follows this structure:
 
 ## Entries
 
+### 2026-08-28 — Approval Binding & Identity Attestation (Contract Freeze, Planned)
+
+#### Added
+- Module: `engine/approval` — consequence-bound human sign-off (intent hash, pre-dispatch verification, single-use/TTL, effect-scope oracle) — `engine/.pi/architecture/modules/approval.md` + ADR-011
+- Module: `engine/identity` — shared IdentityClaim + attestation core (OSS attests / Enterprise authorizes) — `engine/.pi/architecture/modules/identity.md` + ADR-012
+- Module: `mcp/auth` — OIDC device flow, keychain custody, SSE transport auth — `mcp/.pi/architecture/modules/auth.md` + ADR-008
+
+#### Changed
+- `engine`: execution-engine (IntentMismatch, approve contract), audit (envelope evidence fields), state-persistence (durable approval records + migration), failure-classification (IntentMismatch type), permission-enforcer (gate composition), orchestrator (RunInput.identity), event-system (new variants)
+- `mcp`: mcp-server (auth registration, SSE auth), execution-tools (identity + approve params), enterprise-proxy (claims forwarding), usage-guide (auth tools)
+- Diagrams: engine + mcp system-context/system-overview/event-flow; mcp system-overview scaffold replaced with real architecture
+
+#### Status
+- [x] Architecture docs updated
+- [x] CHANGELOG entry added
+- [ ] Implementation (NOT YET BUILT — pending approval)
+- [ ] Validators run
+
 <!-- Add new entries above this line -->
 
 ---

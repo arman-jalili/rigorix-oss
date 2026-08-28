@@ -81,11 +81,37 @@ pub struct AuditEnvelope {
     pub planning_hash: String,    // SHA-256 of planning prompt
     pub source: Option<String>,   // Source environment (e.g. "rigorix_cli", "rigorix_action")
     pub repository: Option<String>, // Repository name (e.g. "my-org/my-repo")
-    pub author: Option<String>,   // Author identity (email or username)
+    pub author: Option<String>,   // Author identity (email or username) — legacy, self-asserted
     pub events: Vec<ExecutionEventRef>,
     pub signature: Option<String>, // HMAC-SHA256 signature for integrity
+
+    // ── Approval & Identity evidence (additive, serde-defaulted) ──
+    /// Signed approval decisions, in approval order (see approval module).
+    pub approval_events: Vec<ApprovalRecordRef>,
+    /// Post-execution scope violations (non-blocking evidence).
+    pub scope_violations: Vec<ScopeViolationRef>,
+    /// Reference + summary of decision context (full payload opt-in, stored locally).
+    pub decision_context_ref: Option<String>,
+    /// Attributed human identity of author/approver (see identity module).
+    /// Redacted summary — never the raw token.
+    pub identity: Option<IdentityRef>,
 }
 ```
+
+### Approval & Identity Evidence (Contract Amendment)
+
+See [approval module](./modules/approval.md) and [identity module](./modules/identity.md) for the full contracts. Summary:
+
+| Field | Type | Source | Notes |
+|-------|------|--------|-------|
+| `approval_events` | `Vec<ApprovalRecordRef>` | ApprovalService | One ref per human approval: step_name, node_id, intent_hash, approver_id, authority, decided_at, decision_context_ref |
+| `scope_violations` | `Vec<ScopeViolationRef>` | ApprovalService (git-diff oracle) | Out-of-scope effects; non-blocking evidence |
+| `decision_context_ref` | `Option<String>` | ApprovalService (R4) | Points to full decision context; summary embedded in the ref |
+| `identity` | `Option<IdentityRef>` | Identity module | Subject, issuer, source, authority, expires_at — redacted, never the raw token |
+
+All fields are additive with `#[serde(default, skip_serializing_if = ...)]` — backward compatible with existing envelopes (same pattern as `scoring_results`). When envelope signing is disabled, these remain operational evidence; docs/UI must never claim tamper-evidence for unsigned runs.
+
+**Privacy:** `identity` and `decision_context` follow the `planning_prompt` opt-in pattern — full payloads stored locally, redacted summaries in the envelope (SpanPrivacy).
 
 ### AuditSender
 
@@ -214,6 +240,9 @@ base * 2^attempt + jitter"]
 | Envelope tampering | HMAC-SHA256 signature field for integrity verification | security-validator |
 | Sensitive data in events | Event payload reviewed; no Secret values in events | security-validator |
 | Circuit breaker bypass | Atomic counters prevent race conditions | operations-validator |
+| Approval evidence forgery | `approval_events` bound to intent hashes; covered by envelope HMAC when signing on | security-validator |
+| Identity leakage | `identity` block redacted; raw tokens never in the envelope (token_ref only) | security-validator |
+| Decision context secrets | `planning_prompt` privacy pattern; full payload opt-in | security-validator |
 
 ---
 
@@ -231,11 +260,11 @@ See `.pi/architecture/CHANGELOG.md` for architecture change history.
 
 ---
 
-Last updated: 2026-07-13
-*Module version: 2.1.0*
+Last updated: 2026-08-28
+*Module version: 2.2.0*
 
 ---
 
 **Status:** Implemented
-**Last verified:** 2026-07-13
-**Module version:** 2.1.0
+**Last verified:** 2026-08-28 (approval & identity evidence — contract amendment)
+**Module version:** 2.2.0

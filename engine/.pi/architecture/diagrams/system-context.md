@@ -7,7 +7,7 @@ Blueprint Source: Domain Exploration Session 63c25384
 
 ## Context
 
-Rigorix is a deterministic coding CLI built in Rust. It operates as a task graph compiler with execution profiles. The system context below shows how the 19 bounded contexts interact (17 original + Quality Gates + Scored Evaluation).
+Rigorix is a deterministic coding CLI built in Rust. It operates as a task graph compiler with execution profiles. The system context below shows how the 21 bounded contexts interact (17 original + Quality Gates + Scored Evaluation + Approval Binding + Identity).
 
 ## Bounded Contexts Interaction Flow
 
@@ -35,6 +35,7 @@ graph TB
         ENF[Enforcement]
         QG[Quality Gates]
         SE[Scored Evaluation]
+        AP[Approval Binding]
     end
 
     subgraph "Observability & Persistence"
@@ -50,6 +51,7 @@ graph TB
     subgraph "Cross-Cutting"
         CFG[Configuration]
         EH[Error Handling]
+        ID[Identity]
     end
 
     %% User to Planning
@@ -75,11 +77,20 @@ graph TB
     EE -.->|"checks cancellation"| CAN
     EE -->|"evaluates test scope"| QG
     EE -->|"invokes scoring"| SE
+    EE -->|"verifies intent pre-dispatch"| AP
+    AP -->|"re-approval / IntentMismatch halt"| EE
 
     %% Policy Engine receives from both quality dimensions
     QG -->|"scope quality"| POL
     SE -->|"output quality scores"| POL
     POL -->|"gating actions"| EE
+
+    %% Approval Binding & Identity
+    AP -->|"approver identity"| ID
+    AP -->|"signed approval records"| AUD
+    AP -.->|"ApprovalRecorded / IntentMismatch / ScopeViolation"| ES
+    ID -.->|"identity claims (author / approver)"| EE
+    ID -.->|"identity block"| AUD
 
     %% Observability
     EE -.->|"publishes events"| ES
@@ -106,6 +117,8 @@ graph TB
     CFG -.- QG
     CFG -.- SE
     CFG -.- POL
+    CFG -.- AP
+    CFG -.- ID
 
     EH -.- PP
     EH -.- DAG
@@ -113,6 +126,7 @@ graph TB
     EH -.- TSYS
     EH -.- QG
     EH -.- SE
+    EH -.- AP
 
     %% External scoring backends
     subgraph "External Systems (Protocol Adopters)"
@@ -129,6 +143,8 @@ graph TB
     style QG fill:#6bb86b,stroke:#3d7a3d,color:#fff
     style SE fill:#4a90d9,stroke:#2c5f8a,color:#fff
     style POL fill:#d9a74a,stroke:#8a6b2c,color:#fff
+    style AP fill:#e76f51,stroke:#b5452a,color:#fff
+    style ID fill:#b56576,stroke:#803f4e,color:#fff
 ```
 
 ## Execution Lifecycle Flow

@@ -323,6 +323,17 @@ EnforcementResult::Denied → return denial to LLM as ToolError
 
 ---
 
+## Relationship to Approval Binding (Contract Amendment)
+
+See [approval module](./modules/approval.md). Approval binding and permission mode are **different gates** that compose at dispatch:
+
+| Gate | Question | Blocks |
+|------|----------|--------|
+| Permission mode | "May this *tool class* run under the active mode?" | Immediate, policy-based |
+| Approval binding | "Was this *exact payload* approved by a human?" | Until human re-approval |
+
+Permission denies instantly; approval halts for human decision. A tool allowed by mode still requires approval; an approved payload still requires mode permission. The two gates are evaluated in sequence at the dispatch choke point (permission mode → intent verification).
+
 ## Dependencies
 
 ### Depends On
@@ -409,8 +420,8 @@ rigorix tui --permission-mode workspace-write
 
 ---
 
-*Last updated: 2026-06-19*
-*Module version: 1.0.0 (Planned)*
+*Last updated: 2026-08-28*
+*Module version: 1.1.0 (Planned — approval binding composition added)*
 
 ---
 
