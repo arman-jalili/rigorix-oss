@@ -335,6 +335,11 @@ run_stage "33" "scored-evaluation_proofing" \
     "${SCRIPTS_DIR}/stage_scored-evaluation_proofing.sh" \
     "always"
 
+# Stage 34: Identity Proofing
+run_stage "34" "identity_proofing" \
+    "${SCRIPTS_DIR}/stage_identity_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""
