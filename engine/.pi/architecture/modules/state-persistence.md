@@ -57,6 +57,8 @@ pub struct ExecutionState {
 
 pub enum NodeStatus { Pending, InProgress, Completed, Failed, Skipped, AwaitingApproval, IntentMismatch }
 
+> **Vocabulary note (intentional, pre-existing):** this persisted snapshot vocabulary (`InProgress`) deliberately differs from the runtime executor vocabulary in execution-engine.md (`Ready`/`Running`) — the mapping `NodeExecutionState → NodeState` happens at the state-persistence boundary. Both gain the two new approval variants consistently. Unifying is a follow-up cleanup (serialized-state migration required).
+
 pub struct NodeState {
     pub node_id: Uuid,
     pub status: NodeStatus,

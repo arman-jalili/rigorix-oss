@@ -30,7 +30,7 @@ Not every step can be bound with equal strength. Two classes are defined explici
 | Class | Step types | What is bound | Strength |
 |-------|-----------|---------------|----------|
 | **Payload-anchored** | `run_command`, `file_write`, `file_append`, `edit_file`, `git_stage`, `git_commit` — deterministic tool calls | The full dispatch payload: `tool` + resolved `intent` JSON + declared scope | Airtight at dispatch level — re-derivation is byte-identical to what dispatches |
-| **Input-anchored** | `llm_generate` — generative steps | The *input* (prompt + context snapshot), not the output | Binding covers what was fed to the LLM; generated output is inherently non-deterministic and verified post-hoc (validation loop, quality gates) |
+| **Input-anchored** | `llm_generate` — generative steps | The **assembled prompt** (resolved `prompt_template` + `LlmStepContext` — deterministic given the same inputs, per the llm-step contract) | Binding covers the exact input fed to the LLM; generated output is inherently non-deterministic and verified post-hoc (validation loop, quality gates) |
 
 This distinction is stated explicitly so the feature is never over-sold as "approval guarantees consequence" for generative steps.
 
@@ -62,7 +62,7 @@ Verification happens at the **single dispatch choke point** (`run_dispatch_loop`
 - New audit event variant: `ApprovalRecorded { step_name, node_id, intent_hash, approver_id, authority, decided_at, decision_context_ref }` — emitted at the moment of approval, included in the final HMAC-signed envelope.
 - `approve` API carries identity: `approver_id` (required) + `authority` (optional structured field — role/policy id; a **captured fact, not a judgment**).
 - **Token binding:** the identity/token claims used at approval time are captured into the approval record (`token_claims_ref`) — a replayed approval with a different credential fails (Portotify: "can another credential be substituted?").
-- **TTL + single-use:** `ApprovalRecord` carries `expires_at` and is **consumed on dispatch** (`status: Pending → Consumed`). A consumed approval cannot be replayed; a legitimate retry re-verifies the intent rather than re-consuming.
+- **TTL + single-use:** `ApprovalRecord` carries `expires_at` and is **consumed on terminal outcome** (`status: Pending → Consumed` when the node reaches a terminal state — success, skipped, or exhausted failure — after at least one dispatch). One dispatch-chain per approval: failed attempts do NOT consume, so a legitimate retry re-verifies the same intent while still `Pending`. A consumed approval cannot be replayed; a non-terminal interruption (run cancelled mid-node, cross-process resume) keeps the approval `Pending` so the resumed run can verify and continue.
 
 ### R4 — Decision Context Capture ("the recorded why")
 
@@ -91,7 +91,7 @@ The Portotify stress-test questions map one-to-one onto this module's contract (
 | "One exact action and target" | R1 intent hash — `(tool, intent, scope)` |
 | "Can parameters change after the decision?" | R2 pre-dispatch re-derivation → halt |
 | "Can another credential be substituted?" | R3 token binding (`token_claims_ref`) |
-| "How long does authorization survive? Single-use?" | R3 TTL + consume-on-dispatch |
+| "How long does authorization survive? Single-use?" | R3 TTL + single-use (consume-on-terminal) |
 | "Legitimate retry vs replay" | R2 per-attempt verification + nonce |
 | "Can more data leave than the decision point evaluated?" | R5 effect-scope via git-diff oracle |
 
@@ -164,6 +164,8 @@ impl ExecutionIntent {
 ```
 
 **Invariant:** `render()` and `canonical_bytes()` must derive from the same canonical serialization — what the human sees is what is hashed. There is exactly one renderer.
+
+**Canonical serialization (all binding classes):** `canonical_bytes()` serializes `{ tool, intent, declared_scope }` as **sorted-key JSON** (recursively sorted keys, stable field order) so identical payloads always hash identically. For `llm_generate` nodes (input-anchored), `intent` carries the **assembled prompt** — the resolved `prompt_template` plus the filled `LlmStepContext` (source excerpts, failure analysis; deterministic given the same inputs per the llm-step contract). Dynamic runtime context that is only knowable at dispatch time (e.g., live file reads by the tool) is **excluded from the hash** and recorded in `decision_context` as evidence instead — the binding stays deterministic.
 
 **States:**
 - **Populated:** tool + intent from a sealed graph node
@@ -240,6 +242,8 @@ pub struct DecisionContext {
 **Invariants:**
 - `intent_hash` must match `canonical_bytes(tool ‖ intent ‖ declared_scope)` at record construction
 - `status` transitions: `Pending → Consumed | Expired | Superseded` (single-use)
+- `Superseded` triggers: (a) a **re-plan** replaces the sealed graph for a paused run (same dag_id, new graph — old approvals no longer authorize); (b) a **newer approval** for the same node replaces an older one (re-approval after `IntentMismatch` or after expiry-then-reapproval); (c) the run is **cancelled and re-executed** with the same dag_id
+- `Consumed` transitions on **terminal outcome** (success, skipped, or exhausted failure after ≥1 dispatch) — failed attempts stay `Pending` so legitimate retries re-verify; non-terminal interruptions keep it `Pending` for cross-process resume
 - `expires_at` enforced at verification time; expired approvals never dispatch
 
 **Dependencies:** `IntentHash`, `DecisionContext`, `IdentityClaim` (identity)
@@ -320,7 +324,8 @@ pub trait ApprovalService: Send + Sync {
     /// R2 — re-derive current intent and compare to the recorded hash.
     async fn verify_intent(&self, node_id: Uuid) -> Result<IntentVerification, ApprovalError>;
 
-    /// R3 — single-use: consume the approval on successful dispatch.
+    /// R3 — single-use: consume the approval on terminal outcome (success/exhausted failure).
+    /// Failed attempts stay Pending so legitimate retries re-verify.
     async fn consume(&self, node_id: Uuid) -> Result<(), ApprovalError>;
 
     /// R5 — record a post-execution scope violation into the envelope evidence.
@@ -371,7 +376,7 @@ pub struct ApproveOutput {
     pub approved: Vec<String>,
     pub not_found: Vec<String>,
     pub still_pending: Vec<String>,
-    pub records: Vec<ApprovalRecord>,
+    pub approval_records: Vec<ApprovalRecord>,
 }
 ```
 
@@ -423,7 +428,8 @@ sequenceDiagram
     alt Matched
         SVC-->>EE: IntentVerification::Matched
         EE->>EE: dispatch tool (execute_tool)
-        EE->>SVC: consume(node_id) → single-use
+        EE->>EE: node reaches terminal state (success / skipped / exhausted)
+        EE->>SVC: consume(node_id) → single-use (on terminal)
         EE->>AUD: effect-scope check (git diff oracle)
         alt Effects outside declared scope
             EE->>SVC: record_scope_violation(violation)
@@ -441,7 +447,7 @@ sequenceDiagram
 1. The human approves steps with identity + decision context; `ApprovalService` captures the canonical `ExecutionIntent` from the sealed graph, hashes it, and persists a single-use `ApprovalRecord`
 2. An `ApprovalRecorded` event enters the audit stream at the moment of approval
 3. At dispatch, the engine calls `verify_intent` at the single choke point — the re-derived hash must match
-4. Match → dispatch → consume (single-use) → post-hoc effect-scope verification via the git-diff oracle; out-of-scope effects are flagged into the envelope as non-blocking evidence
+4. Match → dispatch → execute → **consume on terminal outcome** (single-use) → post-hoc effect-scope verification via the git-diff oracle; out-of-scope effects are flagged into the envelope as non-blocking evidence
 5. Mismatch → **halt**, `IntentMismatch` state, no execution, re-approval required
 
 ## Durability
@@ -476,7 +482,7 @@ Existing persisted `approved: Vec<Uuid>` sets (pre-binding) carry **no intent ha
 - **One renderer, one hash**: `render()` and `canonical_bytes()` derive from the same canonical serialization — shown = dispatched
 - **Single choke point**: verification lives in `run_dispatch_loop` — every dispatch path (execute + resume/hydrate) is covered by one insertion
 - **Payload-anchored binding, input-anchored for generative steps**: never over-sell consequence binding for `llm_generate`
-- **Single-use, time-bound**: approvals consume on dispatch; TTL enforced at verification
+- **Single-use, time-bound**: approvals consume on **terminal outcome**; TTL enforced at verification
 - **Honest boundary**: binding governs agent-mediated tool dispatch; effect-scope is evidence, not prevention
 - **Identity is a captured fact**: `approver_id`/`authority` are attributed claims (see identity module), not authentication
 
@@ -499,7 +505,7 @@ Existing persisted `approved: Vec<Uuid>` sets (pre-binding) carry **no intent ha
 | 4 | ApprovalService | approve → dispatch identical intent → executes; envelope contains signed `ApprovalRecorded` | integration test |
 | 5 | ApprovalService | approve → intent mutated (simulated upstream change / tampered state) → **HALT before dispatch**, `IntentMismatch`, tool never called (spy tool asserts) | integration test |
 | 6 | ApprovalService | Cross-process: pause in A, tamper persisted intent in state file, resume in B → halted, re-approval required | integration test |
-| 7 | ApprovalService | Retry path: failed approved node retries with same intent → per-attempt verify passes; consume happens once | integration test |
+| 7 | ApprovalService | Retry path: failed approved node retries with same intent → per-attempt verify passes; a failed attempt does NOT consume; consume happens once on terminal outcome | integration test |
 | 8 | ApprovalService | Replay: consumed approval replayed against same step → rejected (single-use + nonce) | integration test |
 | 9 | ApprovalService | TTL: approval expires between approve and dispatch → `Invalid(Expired)`, no dispatch | unit test |
 | 10 | ApprovalService | Migration: persisted `approved` without records → invalidated on hydrate, re-approval required | integration test |
@@ -536,7 +542,11 @@ Verification is inserted between `pop_dispatchable` and `execute_tool` inside `r
 ```rust
 // in run_dispatch_loop, after pop_dispatchable:
 match approval_service.verify_intent(node_id).await {
-    IntentVerification::Matched => { approval_service.consume(node_id).await?; /* dispatch */ }
+    IntentVerification::Matched => {
+        // dispatch the tool (execute_tool)
+        // ... on terminal outcome (success / skipped / exhausted failure):
+        approval_service.consume(node_id).await?;
+    }
     IntentVerification::Mismatched { .. } | IntentVerification::Invalid(_) => {
         // HALT: node → NodeStatus::IntentMismatch, emit IntentMismatchDetected, requeue nothing
     }
@@ -611,6 +621,20 @@ pub enum ExecutionEvent {
 
 `FailureType::IntentMismatch` — **non-retriable** (re-approval is the only recovery; auto-retry is a replay loop). Maps to a fatal/abort decision at the node level with the node left in `IntentMismatch` for human re-approval.
 
+### MCP Execution Tools — Interface Vocabulary (Layer Mapping)
+
+The engine contract and the MCP tool schema use different identifiers by **existing layer convention** (the MCP facade translates; see execution-tools.md). The mapping is explicit and frozen:
+
+| Engine (approval.md / ApproveNodeOutput) | MCP tool schema (execution-tools.md / ApprovalResult) |
+|---|---|
+| `dag_id` | `execution_id` |
+| `approved` | `approved_steps` |
+| `not_found` | `not_found` |
+| `still_pending` | `still_pending` |
+| `approval_records` | `approval_records` |
+
+**The new field has ONE name everywhere: `approval_records`** (matches state-persistence.md; the envelope's event list is the distinct `approval_events`). No other naming variant is valid.
+
 ### Permission Enforcer — Orthogonal, Composes at Dispatch
 
 Approval binding and permission mode are **different gates** that compose at dispatch:
@@ -644,7 +668,7 @@ run_key_source = "config"
 | Concern | Mitigation | Validator |
 |---------|------------|-----------|
 | Replay of approved call against mutated intent | R2 pre-dispatch verification at single choke point | security-validator |
-| Replay of consumed approval | R3 single-use (consume-on-dispatch) + nonce | security-validator |
+| Replay of consumed approval | R3 single-use (consume-on-terminal) + nonce | security-validator |
 | Credential substitution at approval | R3 `token_claims_ref` captured at approval time | security-validator |
 | Legacy approvals without binding | Migration rule — invalidated, re-approval required | security-validator |
 | Identity spoofing | Identity is an attributed claim (see identity module); authority is a captured fact, not judgment | security-validator |

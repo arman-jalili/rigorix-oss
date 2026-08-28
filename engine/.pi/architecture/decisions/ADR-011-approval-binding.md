@@ -44,7 +44,7 @@ The honest boundary stands: binding governs agent-mediated tool dispatch, not ar
 
 ### 4. Approval is a first-class signed event with identity
 
-New `ApprovalRecorded` audit event; envelope gains `approval_events[]`. The approve API carries `approver_id` (required) + `authority` (optional — a **captured fact, not a judgment**). Token claims used at approval time are captured (`token_claims_ref`) — credential substitution at replay fails. TTL + consume-on-dispatch + nonce give single-use semantics and retry-vs-replay disambiguation.
+New `ApprovalRecorded` audit event; envelope gains `approval_events[]`. The approve API carries `approver_id` (required) + `authority` (optional — a **captured fact, not a judgment**). Token claims used at approval time are captured (`token_claims_ref`) — credential substitution at replay fails. TTL + single-use (consume-on-terminal) + nonce give single-use semantics and retry-vs-replay disambiguation.
 
 ### 5. Effect-scope verification via git-diff oracle
 

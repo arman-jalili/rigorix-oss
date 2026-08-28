@@ -395,7 +395,9 @@ impl CheckEnforcementHandler {
 | `rigorix_execute` | `tools/call` | ExecuteHandler | `{ plan: PlanTemplate, template_name?: string, execution_id?: string, repository?: string, author?: string, identity?: IdentityClaim }` | `{ execution_id, status, steps, duration_ms, tokens_used?, audit_uri }` | Session-bound (identity attested) |
 | `rigorix_validate_plan` | `tools/call` | ValidatePlanHandler | `{ plan: PlanTemplate }` | `{ valid, warnings, errors, estimated_cost? }` | Session-bound |
 | `rigorix_check_enforcement` | `tools/call` | CheckEnforcementHandler | `{}` | `{ active, preset, budget: { tool_calls_total, tool_calls_remaining, tokens_total, tokens_remaining }, circuit_breakers }` | Session-bound |
-| `rigorix_approve_execution` | `tools/call` | ApproveHandler | `{ execution_id, step_names: string[], approver_id?: string, authority?: string, decision_context?: object, token_claims_ref?: string }` | `{ execution_id, approved, not_found, still_pending, approval_records }` | Session-bound (approval binding — ADR-011) |
+| `rigorix_approve_execution` | `tools/call` | ApproveHandler | `{ execution_id, step_names: string[], approver_id?: string, authority?: string, decision_context?: object, token_claims_ref?: string }` | `{ execution_id, approved_steps, not_found, still_pending, approval_records }` | Session-bound (approval binding — ADR-011) |
+
+> **Layer vocabulary (frozen):** MCP uses `execution_id`/`approved_steps`; the engine contract uses `dag_id`/`approved` (existing facade translation, see approval.md §MCP Execution Tools). The new field is `approval_records` in both layers.
 
 ## Ubiquitous Language
 

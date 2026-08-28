@@ -20,7 +20,7 @@ Executes sealed TaskGraphs from the DAG Engine using a concurrent worker pool (t
 - Fallback execution: execute fallback node when retries exhausted
 - Execution event emission: 11 event types for observability
 - Progress callbacks: per-terminal-state notifications for TUI
-- Approval integration: pre-dispatch intent verification, `IntentMismatch` halt, consume-on-dispatch (see approval module)
+- Approval integration: pre-dispatch intent verification, `IntentMismatch` halt, consume-on-terminal (see approval module)
 
 ## Dependencies
 
@@ -171,6 +171,7 @@ RetryPolicy {
 See [approval module](./modules/approval.md) for the full contract. Summary of changes to this module:
 
 - **`NodeStatus`** gains `AwaitingApproval` (exists in code) and **`IntentMismatch`** (new — pre-dispatch verification failure; node never dispatches; re-approval required)
+- **Vocabulary note (intentional, pre-existing):** this module's `NodeStatus` (Pending/Ready/Running/…) is the **runtime executor** vocabulary; the persisted snapshot in state-persistence.md uses a different set (Pending/InProgress/…) — mapped at the state-persistence boundary (`NodeExecutionState → NodeState`). Both gain the two new variants consistently. Unifying the vocabularies is a follow-up cleanup (serialized-state migration required), out of this contract-freeze scope.
 - **Dispatch choke point**: verification is inserted between `pop_dispatchable` and `execute_tool` inside `run_dispatch_loop` (the single loop used by both `execute_graph` and `resume_execution`) — every dispatch entry path is covered by one insertion
 - **`approve_node`** contract change: `ApproveNodeInput` gains `approver_id` (required), `authority` (optional), `decision_context` (optional), `token_claims_ref` (optional); the session's `approved: HashSet<Uuid>` becomes a map of node_id → `ApprovalRecord` (delegating to `ApprovalService`); output gains `records: Vec<ApprovalRecord>`
 - **Single-use semantics**: dispatch consumes the approval (`Pending → Consumed`); retries re-verify intent rather than re-consuming; TTL enforced at verification
