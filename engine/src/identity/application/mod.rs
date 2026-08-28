@@ -19,6 +19,8 @@
 
 pub mod dto;
 pub mod service;
+pub mod service_impl;
 
 pub use dto::{AttestInput, AttestOutput};
 pub use service::{IdentityAttestationService, VerificationOutcome};
+pub use service_impl::IdentityAttestationServiceImpl;

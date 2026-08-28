@@ -1963,6 +1963,7 @@ name = "rigorix-engine"
 version = "1.2.0"
 dependencies = [
  "async-trait",
+ "base64",
  "chrono",
  "criterion",
  "hex",
