@@ -15,5 +15,7 @@
 //! - Raw tokens stored by reference (`token_ref`), never embedded in records
 
 pub mod identity_repository;
+pub mod identity_repository_impl;
 
 pub use identity_repository::IdentityRepository;
+pub use identity_repository_impl::FileSystemIdentityRepository;
