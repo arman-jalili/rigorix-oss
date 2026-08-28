@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::audit::domain::{AuditEnvelope, ExecutionEventRef};
+use crate::identity::domain::IdentityRef;
 
 // ---------------------------------------------------------------------------
 // Build Envelope DTOs
@@ -47,6 +48,10 @@ pub struct BuildEnvelopeInput {
 
     /// Identity of the user or bot that triggered the execution.
     pub author: Option<String>,
+
+    /// Attributed identity of author/approver — redacted ref for the envelope
+    /// identity block (never the raw token).
+    pub identity: Option<IdentityRef>,
 
     /// Total number of LLM tokens consumed during this execution.
     pub total_tokens: u32,

@@ -16,6 +16,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::identity::domain::IdentityRef;
+
 /// Typed envelope containing execution audit data.
 ///
 /// Built at execution completion by the orchestration layer and sent to
@@ -45,6 +47,14 @@ pub struct AuditEnvelope {
 
     /// Identity of the user or bot that triggered the execution.
     pub author: Option<String>,
+
+    /// Attributed human identity of author/approver (see identity module).
+    ///
+    /// Redacted summary — subject/issuer/source/authority/expiry — never the
+    /// raw token (`.pi/architecture/modules/audit.md` identity block).
+    /// Additive and serde-defaulted: absent in pre-identity envelopes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<IdentityRef>,
 
     /// Total number of LLM tokens consumed during this execution.
     ///

@@ -89,6 +89,7 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
             source: input.source,
             repository: input.repository,
             author: input.author,
+            identity: input.identity,
             total_tokens: input.total_tokens,
             duration_ms: input.duration_ms,
             git_commit: input.git_commit,
@@ -168,6 +169,7 @@ mod tests {
             sign: false,
             repository: None,
             author: None,
+            identity: None,
         }
     }
 

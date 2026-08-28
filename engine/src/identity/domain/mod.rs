@@ -25,5 +25,5 @@ pub mod claim;
 pub mod error;
 
 pub use authority::Authority;
-pub use claim::{IdentityClaim, IdentitySource};
+pub use claim::{IdentityClaim, IdentityRef, IdentitySource};
 pub use error::IdentityError;

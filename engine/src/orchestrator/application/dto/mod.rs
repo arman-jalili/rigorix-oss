@@ -15,6 +15,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::identity::domain::IdentityClaim;
 use crate::orchestrator::domain::record::{ExecutionRecord, ExecutionStatus};
 
 // ---------------------------------------------------------------------------
@@ -38,6 +39,12 @@ pub struct RunInput {
 
     /// Author identity for audit (e.g. email or username).
     pub author: Option<String>,
+
+    /// Attributed identity claim for the run author (see identity module).
+    /// Supersedes the self-asserted `author` string when present — flows into
+    /// the audit envelope's redacted `identity` block.
+    #[serde(default)]
+    pub identity: Option<IdentityClaim>,
 
     /// Optional enforcement preset override.
     pub enforcement_preset: Option<String>,
