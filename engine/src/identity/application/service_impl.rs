@@ -59,6 +59,13 @@ impl Default for IdentityAttestationServiceImpl {
 
 #[async_trait]
 impl IdentityAttestationService for IdentityAttestationServiceImpl {
+    /// Attest from a presented token/principal → `IdentityClaim`.
+    ///
+    /// # Observability (SpanPrivacy)
+    /// The raw token is never logged — it is skipped from the tracing span
+    /// (`.pi/architecture/modules/observability.md#privacy`). The redacted
+    /// claim summary is emitted as the `subject` span field.
+    #[tracing::instrument(skip_all, fields(subject = tracing::field::Empty))]
     async fn attest(&self, input: AttestInput) -> Result<IdentityClaim, IdentityError> {
         // 1. Build the initial claim from the presented credential.
         let mut claim = match (input.token.as_deref(), input.principal.as_deref()) {
@@ -100,12 +107,19 @@ impl IdentityAttestationService for IdentityAttestationServiceImpl {
             }
         }
 
+        tracing::Span::current()
+            .record("subject", tracing::field::display(claim.redacted_summary()));
+
         Ok(claim)
     }
 
     /// Extract standard JWT claims (`sub`, `iss`, `exp`, `roles`) WITHOUT
     /// signature verification. Used for attestation; verification is separate
     /// and best-effort.
+    ///
+    /// # Observability (SpanPrivacy)
+    /// The raw token is skipped from the tracing span — it never reaches logs.
+    #[tracing::instrument(skip_all)]
     fn extract_claims(&self, token: &str) -> Result<IdentityClaim, IdentityError> {
         // JWT shape: header.payload.signature (all base64url segments).
         let segments: Vec<&str> = token.split('.').collect();
@@ -192,11 +206,16 @@ impl IdentityAttestationService for IdentityAttestationServiceImpl {
     /// Delegates to the injected `TokenVerifier` (default `NullVerifier` =
     /// offline). An unreachable IdP yields `VerificationOutcome::Unverified`,
     /// never an error.
+    ///
+    /// # Observability (SpanPrivacy)
+    /// The raw token is skipped from the tracing span — it never reaches logs.
+    #[tracing::instrument(skip_all, fields(claim = tracing::field::Empty))]
     async fn verify(
         &self,
         claim: &IdentityClaim,
         token: &str,
     ) -> Result<VerificationOutcome, IdentityError> {
+        tracing::Span::current().record("claim", tracing::field::display(claim.redacted_summary()));
         self.verifier.verify(token, claim).await
     }
 }
