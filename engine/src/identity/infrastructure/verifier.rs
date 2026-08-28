@@ -1,22 +1,28 @@
 //! TokenVerifier — best-effort signature verification against the IdP JWKS.
 //!
 //! @canonical .pi/architecture/modules/identity.md#tokenverifier
-//! Implements: Contract Freeze — TokenVerifier trait + NullVerifier (offline default)
-//! Issue: #700 (identity epic — contract freeze)
+//! Implements: ISSUE-IDENTITY-3 — JWKS-backed RS256 verification (AC#5)
+//! Issue: #703 (identity epic)
 //!
 //! Best-effort signature verification keeps attestation fully offline-capable
 //! (ADR-012 option c): an unreachable IdP yields
 //! `VerificationOutcome::Unverified`, never an error. The `NullVerifier`
 //! struct is the offline default — attestation proceeds without network
-//! verification.
+//! verification. The `JwksVerifier` fetches the IdP JWKS and validates the
+//! token signature (RS256) when online.
 //!
 //! # Contract (Frozen)
 //! - `verify` never errors on an unreachable IdP — it records `Unverified`
 //! - `NullVerifier` is the offline default and is constructible via
 //!   `NullVerifier::new()`
-//! - Concrete JWKS-backed implementations land in ISSUE-IDENTITY-4
+//! - `JwksVerifier` (JWKS-backed, RS256) lands in ISSUE-IDENTITY-3
 
 use async_trait::async_trait;
+use base64::Engine as _;
+use rsa::pkcs1v15::{Signature, VerifyingKey};
+use rsa::sha2::Sha256;
+use rsa::signature::Verifier;
+use rsa::{BigUint, RsaPublicKey};
 
 use crate::identity::application::service::VerificationOutcome;
 use crate::identity::domain::{IdentityClaim, IdentityError};
@@ -91,5 +97,174 @@ mod tests {
     fn null_verifier_is_constructible() {
         let verifier = NullVerifier::new();
         let _offline_default: &dyn TokenVerifier = &verifier;
+    }
+}
+
+/// JWKS-backed best-effort token verifier (RS256).
+///
+/// Fetches the IdP's JSON Web Key Set (`/.well-known/jwks.json`), resolves the
+/// signing key by `kid`, and validates the RS256 signature. Best-effort: an
+/// unreachable IdP, unknown `kid`, or verification failure yields
+/// `VerificationOutcome::Unverified` — never an error (ADR-012 option c).
+pub struct JwksVerifier {
+    /// IdP JWKS endpoint (e.g. `https://idp.example.com/.well-known/jwks.json`).
+    jwks_url: String,
+    /// HTTP client with a bounded timeout.
+    client: reqwest::Client,
+}
+
+impl JwksVerifier {
+    /// Create a JWKS-backed verifier for the given IdP JWKS endpoint.
+    pub fn new(jwks_url: impl Into<String>) -> Self {
+        Self {
+            jwks_url: jwks_url.into(),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(5))
+                .build()
+                .unwrap_or_default(),
+        }
+    }
+
+    /// Parse the JWT header and extract the `kid` (and expected `alg`).
+    fn header_kid_alg(token: &str) -> Result<(String, String), IdentityError> {
+        let header_segment = token
+            .split('.')
+            .next()
+            .ok_or_else(|| IdentityError::InvalidToken("missing header segment".to_string()))?;
+        let header_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(header_segment)
+            .map_err(|e| IdentityError::InvalidToken(format!("header decode: {e}")))?;
+        let header: serde_json::Value = serde_json::from_slice(&header_bytes)
+            .map_err(|e| IdentityError::InvalidToken(format!("header JSON: {e}")))?;
+        let kid = header
+            .get("kid")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| IdentityError::MissingClaim("kid".to_string()))?
+            .to_string();
+        let alg = header
+            .get("alg")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("RS256")
+            .to_string();
+        Ok((kid, alg))
+    }
+
+    /// Fetch the JWKS document from the IdP.
+    ///
+    /// A fetch failure (unreachable IdP, non-200, timeout) is a best-effort
+    /// outcome, NOT an error — the claim degrades to `Unverified`.
+    async fn fetch_jwks(&self) -> Result<serde_json::Value, IdentityError> {
+        let response = self
+            .client
+            .get(&self.jwks_url)
+            .send()
+            .await
+            .map_err(|e| IdentityError::VerificationUnavailable(format!("jwks fetch: {e}")))?;
+        if !response.status().is_success() {
+            return Err(IdentityError::VerificationUnavailable(format!(
+                "jwks http {}",
+                response.status()
+            )));
+        }
+        response
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|e| IdentityError::VerificationUnavailable(format!("jwks parse: {e}")))
+    }
+}
+
+#[async_trait]
+impl TokenVerifier for JwksVerifier {
+    /// Verify a token signature against the IdP JWKS.
+    ///
+    /// # Outcomes
+    /// - Valid signature for the `kid`'s key → `VerificationOutcome::Verified`
+    /// - Tampered/mismatched signature → `VerificationOutcome::Unverified`
+    /// - IdP unreachable / unknown kid → `VerificationOutcome::Unverified`, **never an error**
+    ///
+    /// # Errors
+    /// - `IdentityError::InvalidToken` — token is not a parseable JWT
+    async fn verify(
+        &self,
+        token: &str,
+        _claim: &IdentityClaim,
+    ) -> Result<VerificationOutcome, IdentityError> {
+        // 1. Parse header (kid + alg). Malformed tokens are contract errors.
+        let (kid, alg) = Self::header_kid_alg(token)?;
+        if alg != "RS256" {
+            return Ok(VerificationOutcome::Unverified {
+                reason: format!("unsupported algorithm: {alg}"),
+            });
+        }
+
+        // 2. Fetch the JWKS. Unreachable IdP → Unverified, never an error.
+        let jwks = match self.fetch_jwks().await {
+            Ok(jwks) => jwks,
+            Err(e) => {
+                return Ok(VerificationOutcome::Unverified {
+                    reason: e.to_string(),
+                });
+            }
+        };
+
+        // 3. Resolve the signing key by kid.
+        let key = match jwks
+            .get("keys")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|keys| {
+                keys.iter().find(|k| {
+                    k.get("kid").and_then(serde_json::Value::as_str) == Some(kid.as_str())
+                })
+            }) {
+            Some(key) => key,
+            None => {
+                return Ok(VerificationOutcome::Unverified {
+                    reason: format!("no JWKS key for kid: {kid}"),
+                });
+            }
+        };
+
+        // 4. Build the RSA public key from n/e (base64url, big-endian).
+        let decode_biguint = |field: &str| -> Result<BigUint, IdentityError> {
+            let encoded = key
+                .get(field)
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| {
+                    IdentityError::VerificationUnavailable(format!("jwks missing {field}"))
+                })?;
+            let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(encoded)
+                .map_err(|e| {
+                    IdentityError::VerificationUnavailable(format!("jwks {field}: {e}"))
+                })?;
+            Ok(BigUint::from_bytes_be(&bytes))
+        };
+        let n = decode_biguint("n")?;
+        let e = decode_biguint("e")?;
+        let public_key = RsaPublicKey::new(n, e)
+            .map_err(|err| IdentityError::VerificationUnavailable(format!("jwks key: {err}")))?;
+
+        // 5. Split the JWT into signed-content and signature segments.
+        let segments: Vec<&str> = token.split('.').collect();
+        if segments.len() != 3 {
+            return Err(IdentityError::InvalidToken(
+                "expected 3 JWT segments".to_string(),
+            ));
+        }
+        let signed_content = format!("{}.{}", segments[0], segments[1]);
+        let signature_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(segments[2])
+            .map_err(|e| IdentityError::InvalidToken(format!("signature decode: {e}")))?;
+        let signature = Signature::try_from(&signature_bytes[..])
+            .map_err(|e| IdentityError::InvalidToken(format!("signature size: {e}")))?;
+
+        // 6. Verify RS256 over the signed content (verifier hashes internally).
+        let verifying_key = VerifyingKey::<Sha256>::new(public_key);
+        match verifying_key.verify(signed_content.as_bytes(), &signature) {
+            Ok(()) => Ok(VerificationOutcome::Verified),
+            Err(_) => Ok(VerificationOutcome::Unverified {
+                reason: "signature mismatch (tampered token)".to_string(),
+            }),
+        }
     }
 }

@@ -19,4 +19,4 @@ pub mod repository;
 pub mod verifier;
 
 pub use repository::IdentityRepository;
-pub use verifier::{NullVerifier, TokenVerifier};
+pub use verifier::{JwksVerifier, NullVerifier, TokenVerifier};
