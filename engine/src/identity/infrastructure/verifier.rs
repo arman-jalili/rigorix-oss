@@ -98,6 +98,53 @@ mod tests {
         let verifier = NullVerifier::new();
         let _offline_default: &dyn TokenVerifier = &verifier;
     }
+
+    #[test]
+    fn jwks_verifier_is_constructible_and_trait_object_safe() {
+        let verifier = JwksVerifier::new("https://idp.example.com/.well-known/jwks.json");
+        let _as_trait: &dyn TokenVerifier = &verifier;
+    }
+
+    #[test]
+    fn header_kid_alg_extracts_kid_and_alg() {
+        let header = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(r#"{"alg":"RS256","kid":"key-123","typ":"JWT"}"#);
+        let (kid, alg) =
+            JwksVerifier::header_kid_alg(&format!("{header}.payload.sig")).expect("header parse");
+        assert_eq!(kid, "key-123");
+        assert_eq!(alg, "RS256");
+    }
+
+    #[test]
+    fn header_kid_alg_defaults_alg_when_absent() {
+        let header =
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(r#"{"kid":"key-123"}"#);
+        let (kid, alg) =
+            JwksVerifier::header_kid_alg(&format!("{header}.payload.sig")).expect("header parse");
+        assert_eq!(kid, "key-123");
+        assert_eq!(alg, "RS256"); // RS256 is the supported default
+    }
+
+    #[test]
+    fn header_kid_alg_rejects_malformed_header() {
+        // Not base64url → InvalidToken.
+        assert!(matches!(
+            JwksVerifier::header_kid_alg("!!!.payload.sig"),
+            Err(IdentityError::InvalidToken(_))
+        ));
+        // Valid base64 but not JSON → InvalidToken.
+        let not_json = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode("not-json");
+        assert!(matches!(
+            JwksVerifier::header_kid_alg(&format!("{not_json}.payload.sig")),
+            Err(IdentityError::InvalidToken(_))
+        ));
+        // Missing kid → MissingClaim.
+        let no_kid = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(r#"{"alg":"RS256"}"#);
+        assert!(matches!(
+            JwksVerifier::header_kid_alg(&format!("{no_kid}.payload.sig")),
+            Err(IdentityError::MissingClaim(ref c)) if c == "kid"
+        ));
+    }
 }
 
 /// JWKS-backed best-effort token verifier (RS256).
