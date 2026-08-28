@@ -235,10 +235,8 @@ impl exec_svc::ParallelExecutionService for MockExecutionService {
     async fn hydrate_execution(
         &self,
         _: exec_dto::HydrateExecutionInput,
-    ) -> Result<
-        exec_dto::HydrateExecutionOutput,
-        crate::execution_engine::domain::ExecutionError,
-    > {
+    ) -> Result<exec_dto::HydrateExecutionOutput, crate::execution_engine::domain::ExecutionError>
+    {
         unimplemented!("MockExecutionService::hydrate_execution not needed by current tests")
     }
     async fn abort_execution(
@@ -505,6 +503,7 @@ impl crate::audit::application::AuditService for MockAuditService {
                 signature: None,
                 repository: None,
                 author: None,
+                identity: None,
             },
             signed: false,
             event_count: 0,

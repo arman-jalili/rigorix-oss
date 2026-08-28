@@ -699,6 +699,7 @@ async fn handle_action(
                     enforcement_preset: None,
                     repository: None,
                     author: None,
+                    identity: None,
                 };
                 match orch.run(input).await {
                     Ok(output) => {

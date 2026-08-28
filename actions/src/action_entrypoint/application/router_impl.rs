@@ -74,6 +74,7 @@ impl ActionRouterImpl {
             enforcement_preset: None,
             repository: ctx.repository.clone(),
             author: ctx.author.clone(),
+            identity: None, // TODO(identity epic): attest from action context
         };
 
         let output = self

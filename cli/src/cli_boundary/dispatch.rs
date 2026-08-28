@@ -142,6 +142,9 @@ async fn handle_run(
             .unwrap_or_default(),
         repository: detect_git_repository(),
         author: detect_git_author(),
+        // Identity attestation arrives via the MCP auth module (ADR-012);
+        // the CLI run path is legacy self-asserted author.
+        identity: None,
         enforcement_preset: enforcement,
     };
     match orch.run(input).await {

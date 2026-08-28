@@ -299,6 +299,7 @@ mod tests {
                 enforcement_preset: None,
                 repository: None,
                 author: None,
+                identity: None,
             })
             .await;
         assert!(result.is_ok(), "run should succeed: {:?}", result.err());

@@ -152,6 +152,7 @@ impl OrchestratorSpawner for OrchestratorSpawnerImpl {
                         enforcement_preset: None,
                         repository: None,
                         author: None,
+                        identity: None,
                     };
                     match orch.run(input).await {
                         Ok(output) => {

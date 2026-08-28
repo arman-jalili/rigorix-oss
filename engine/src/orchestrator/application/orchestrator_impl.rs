@@ -36,6 +36,7 @@ use crate::code_graph::application::service::CodeGraphFormatter as CodeGraphForm
 use crate::code_graph::application::service_impl::CodeGraphFormatterImpl;
 use crate::event_system::application as event_app;
 use crate::execution_engine::application::{dto as exec_dto, service as exec_svc};
+use crate::identity::domain::IdentityRef;
 use crate::plan_validation::application::dto::ValidateInput;
 use crate::plan_validation::application::service::ValidationLoopService;
 use crate::plan_validation::domain::loop_config::ValidationLoopConfig;
@@ -874,6 +875,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     sign: false,
                     repository: input.repository.clone(),
                     author: input.author.clone(),
+                    identity: input.identity.as_ref().map(IdentityRef::from_claim),
                 })
                 .await;
         }
@@ -1189,8 +1191,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
             state.status = crate::state_persistence::domain::ExecutionStatus::Pending;
             state.graph = Some(graph_for_resume);
             state.approved = Vec::new();
-            state.exec_node_states =
-                Some(exec_output.result.execution_states.clone());
+            state.exec_node_states = Some(exec_output.result.execution_states.clone());
             self.state_manager
                 .save_state(state_dto::SaveStateInput { state })
                 .await
@@ -1389,6 +1390,9 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     sign: false,
                     repository: input.repository.clone(),
                     author: input.author.clone(),
+                    // run_from_template is the MCP auth-module path — the attested
+                    // claim lands here once the auth flow feeds it (identity epic).
+                    identity: None,
                 })
                 .await;
         }
@@ -1458,44 +1462,40 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 %node_id,
                 "approve_execution: session not in this process — hydrating from persisted state"
             );
-                let loaded = self
-                    .state_manager
-                    .load_state(state_dto::LoadStateInput {
-                        execution_id: input.execution_id,
-                    })
-                    .await
-                    .map_err(|e| OrchestratorError::Internal {
-                        detail: format!("Failed to load paused execution state: {e}"),
-                        source_module: "orchestrator".into(),
-                    })?;
-                let Some(graph) = loaded.state.graph.clone() else {
-                    return Err(OrchestratorError::Internal {
-                        detail: format!(
-                            "Execution {} has no resumable graph in state",
-                            input.execution_id
-                        ),
-                        source_module: "orchestrator".into(),
-                    });
-                };
-                let node_states = loaded
-                    .state
-                    .exec_node_states
-                    .clone()
-                    .unwrap_or_default();
-                let approved: std::collections::HashSet<uuid::Uuid> =
-                    loaded.state.approved.iter().copied().collect();
-                self.execution_service
-                    .hydrate_execution(exec_dto::HydrateExecutionInput {
-                        dag_id: input.execution_id,
-                        graph,
-                        node_states,
-                        approved,
-                    })
-                    .await
-                    .map_err(|e| OrchestratorError::Internal {
-                        detail: format!("Failed to hydrate execution session: {e}"),
-                        source_module: "orchestrator".into(),
-                    })?;
+            let loaded = self
+                .state_manager
+                .load_state(state_dto::LoadStateInput {
+                    execution_id: input.execution_id,
+                })
+                .await
+                .map_err(|e| OrchestratorError::Internal {
+                    detail: format!("Failed to load paused execution state: {e}"),
+                    source_module: "orchestrator".into(),
+                })?;
+            let Some(graph) = loaded.state.graph.clone() else {
+                return Err(OrchestratorError::Internal {
+                    detail: format!(
+                        "Execution {} has no resumable graph in state",
+                        input.execution_id
+                    ),
+                    source_module: "orchestrator".into(),
+                });
+            };
+            let node_states = loaded.state.exec_node_states.clone().unwrap_or_default();
+            let approved: std::collections::HashSet<uuid::Uuid> =
+                loaded.state.approved.iter().copied().collect();
+            self.execution_service
+                .hydrate_execution(exec_dto::HydrateExecutionInput {
+                    dag_id: input.execution_id,
+                    graph,
+                    node_states,
+                    approved,
+                })
+                .await
+                .map_err(|e| OrchestratorError::Internal {
+                    detail: format!("Failed to hydrate execution session: {e}"),
+                    source_module: "orchestrator".into(),
+                })?;
         }
 
         // 1. Record approval in the execution engine session (by step name;
@@ -1588,6 +1588,125 @@ impl OrchestratorService for OrchestratorServiceImpl {
 mod tests {
     use super::*;
 
+    /// Captures the `BuildEnvelopeInput` the orchestrator sends to audit.
+    ///
+    /// Used by the identity AC#6 test — verifies `RunInput.identity` flows
+    /// into the envelope identity block (redacted).
+    struct CapturingAuditService {
+        captured: Arc<std::sync::Mutex<Option<audit_app::BuildEnvelopeInput>>>,
+    }
+
+    #[async_trait]
+    impl audit_app::AuditService for CapturingAuditService {
+        async fn build_and_send(
+            &self,
+            input: audit_app::BuildEnvelopeInput,
+        ) -> Result<audit_app::BuildEnvelopeOutput, crate::audit::domain::AuditError> {
+            *self.captured.lock().unwrap() = Some(input);
+            Ok(audit_app::BuildEnvelopeOutput {
+                envelope: crate::audit::domain::AuditEnvelope {
+                    execution_id: Uuid::new_v4(),
+                    timestamp: chrono::Utc::now(),
+                    template_id: "captured".into(),
+                    planning_hash: "hash".into(),
+                    source: None,
+                    repository: None,
+                    author: None,
+                    identity: None,
+                    total_tokens: 0,
+                    duration_ms: 0,
+                    git_commit: None,
+                    git_branch: None,
+                    model_version: None,
+                    planning_prompt: None,
+                    file_paths: vec![],
+                    events: vec![],
+                    scoring_results: std::collections::HashMap::new(),
+                    signature: None,
+                },
+                signed: false,
+                event_count: 0,
+            })
+        }
+
+        async fn retry_pending(
+            &self,
+        ) -> Result<audit_app::RetryPendingOutput, crate::audit::domain::AuditError> {
+            Ok(audit_app::RetryPendingOutput {
+                delivered: 0,
+                still_pending: 0,
+                dropped: 0,
+            })
+        }
+
+        async fn status(
+            &self,
+        ) -> Result<audit_app::AuditStatusOutput, crate::audit::domain::AuditError> {
+            Ok(audit_app::AuditStatusOutput {
+                pending_count: 0,
+                circuit_breaker_state: crate::audit::domain::CircuitBreakerState::Closed,
+                backend_available: false,
+            })
+        }
+    }
+
+    /// Identity AC#6: `RunInput.identity` flows into the envelope identity
+    /// block (redacted) through the real run pipeline.
+    #[tokio::test]
+    async fn test_run_input_identity_flows_into_envelope_identity_block() {
+        let captured = Arc::new(std::sync::Mutex::new(None));
+        let orch = OrchestratorServiceImpl::default_test().with_audit_service(Arc::new(
+            CapturingAuditService {
+                captured: captured.clone(),
+            },
+        ));
+
+        let claim = crate::identity::domain::IdentityClaim {
+            subject: "user@org".to_string(),
+            issuer: "https://idp.example.com".to_string(),
+            authority: Some("admin".to_string()),
+            source: crate::identity::domain::IdentitySource::IdpToken,
+            auth_method: Some("device_code".to_string()),
+            issued_at: chrono::Utc::now(),
+            expires_at: Some(chrono::Utc::now() + chrono::Duration::minutes(15)),
+            token_ref: Some("keychain://default/rigorix/idp-token".to_string()),
+        };
+
+        orch.run(RunInput {
+            intent: "test identity attestation".to_string(),
+            config: serde_json::json!({}),
+            repo_root: "/tmp/t".to_string(),
+            author: Some("legacy-author".to_string()),
+            identity: Some(claim),
+            repository: None,
+            enforcement_preset: None,
+        })
+        .await
+        .expect("run should succeed with mock services");
+
+        let envelope_input = captured
+            .lock()
+            .unwrap()
+            .take()
+            .expect("audit service must receive the built envelope input");
+
+        let identity_ref = envelope_input
+            .identity
+            .expect("envelope identity block must be populated from RunInput.identity");
+        assert_eq!(identity_ref.subject, "user@org");
+        assert_eq!(identity_ref.issuer, "https://idp.example.com");
+        assert_eq!(
+            identity_ref.source,
+            crate::identity::domain::IdentitySource::IdpToken
+        );
+        assert_eq!(identity_ref.authority, Some("admin".to_string()));
+
+        // Redacted: no token_ref and no token locator survive into the block.
+        let json = serde_json::to_string(&identity_ref).expect("serialize identity ref");
+        assert!(!json.contains("token_ref"));
+        assert!(!json.contains("keychain"));
+    }
+
     #[tokio::test]
     async fn test_run_returns_execution_id() {
         let orch = OrchestratorServiceImpl::default_test();
@@ -1597,6 +1716,7 @@ mod tests {
                 config: serde_json::json!({}),
                 repo_root: "/tmp/t".into(),
                 author: None,
+                identity: None,
                 repository: None,
                 enforcement_preset: None,
             })
@@ -1616,6 +1736,7 @@ mod tests {
                 config: serde_json::json!({}),
                 repo_root: "/tmp/t".into(),
                 author: None,
+                identity: None,
                 repository: None,
                 enforcement_preset: None,
             })
@@ -1634,6 +1755,7 @@ mod tests {
                 config: serde_json::json!({}),
                 repo_root: "/tmp/t".into(),
                 author: None,
+                identity: None,
                 repository: None,
                 enforcement_preset: None,
             })
@@ -1651,6 +1773,7 @@ mod tests {
                 config: serde_json::json!({}),
                 repo_root: "/tmp/repo".into(),
                 author: None,
+                identity: None,
                 repository: None,
                 enforcement_preset: None,
             })
@@ -1695,6 +1818,7 @@ mod tests {
                 config: serde_json::json!({}),
                 repo_root: "/tmp/t".into(),
                 author: None,
+                identity: None,
                 repository: None,
                 enforcement_preset: None,
             })
@@ -1806,6 +1930,7 @@ mod tests {
                 config: serde_json::json!({}),
                 repo_root: "/tmp/t".into(),
                 author: None,
+                identity: None,
                 repository: None,
                 enforcement_preset: None,
             })

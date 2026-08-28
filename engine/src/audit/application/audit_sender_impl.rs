@@ -281,6 +281,7 @@ mod tests {
             signature: None,
             repository: None,
             author: None,
+            identity: None,
         }
     }
 

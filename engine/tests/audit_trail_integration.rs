@@ -40,6 +40,7 @@ async fn test_audit_envelope_has_hmac_signature() {
         sign: true,
         repository: None,
         author: None,
+        identity: None,
     };
 
     let envelope = factory.build_envelope(input).await.unwrap();

@@ -239,6 +239,7 @@ mod tests {
             sign: false,
             repository: None,
             author: None,
+            identity: None,
         }
     }
 

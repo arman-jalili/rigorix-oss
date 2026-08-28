@@ -417,6 +417,9 @@ impl EngineFacade for EngineFacadeImpl {
             repo_root: self.config.repo_root.clone(),
             repository,
             author,
+            // Identity attestation arrives with the MCP auth module (ADR-012):
+            // the engine facade receives the attested claim from the auth flow.
+            identity: None,
             enforcement_preset: None,
         };
 
