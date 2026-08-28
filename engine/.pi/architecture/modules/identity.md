@@ -3,8 +3,10 @@
 <!--
 Canonical Reference: .pi/architecture/modules/identity.md
 Rationale: Attributed human identity in the evidence chain — OSS attests who acted; Enterprise authorizes what they may do
-Blueprint Source: Requirements v1 — 2026-08-28 (approved, NOT YET BUILT)
+Blueprint Source: Requirements v1 — 2026-08-28 (approved, BUILT 2026-08-28)
 -->
+**Status:** Implemented — identity epic complete (#700–#708); see docs/runbook-identity.md and docs/dr-plan-identity.md
+
 
 ## Overview
 
@@ -411,10 +413,22 @@ engine/src/identity/
 
 ---
 
-*Last updated: 2026-08-28*
-*Module version: 1.0.0 (Planned)*
+*Last updated: 2026-08-28 (identity epic implemented — #700..#708)*
+*Module version: 1.1.0 (Implemented)*
 
 ---
 
-**Status:** Planned
+**Status:** Implemented
 **Implementation priority:** P1 — after approval binding core (R3 identity is consumed by approval)
+**Epic:** identity (#699) — all 7 component issues + proofing + readiness merged (MRs #709..#716)
+**Implementation notes:**
+- `IdentityClaim.is_valid()` / `redacted_summary()`: implemented (#701); `IdentityRef` is the redacted envelope block
+- `IdentityAttestationServiceImpl`: attest/extract_claims/verify with explicit `Unverified` degradation (#702)
+- `JwksVerifier`: JWKS-backed RS256 verification — valid → Verified, tampered → Unverified (#703)
+- `NullVerifier`: offline default, never errors (#702/#704)
+- `FileSystemIdentityRepository`: atomic write-rename records, token_ref by reference (#705)
+- `IdentityError`: recovery semantics + `CoreOrchestratorError` #[from] wiring (#706)
+- Proofing: check_identity_contracts.sh / check_identity_coverage.sh / hardening stage 34 (#707)
+- Observability: tracing spans with SpanPrivacy (raw tokens skipped) (#708)
+- Envelope `identity` block (redacted) wired from RunInput.identity (#701)
+- AC7 (approver binding) deferred to the approval epic — the identity contract is ready (token_claims_ref)
