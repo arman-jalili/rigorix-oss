@@ -32,6 +32,7 @@ use crate::enforcement::domain::EnforcementError;
 use crate::event_system::domain::EventSystemError;
 use crate::execution_engine::domain::ExecutionError;
 use crate::failure_classification::domain::FailureClassificationError;
+use crate::identity::domain::IdentityError;
 use crate::llm_step::domain::LlmStepError;
 use crate::orchestrator::domain::OrchestratorError;
 use crate::planning::domain::PlanningError;
@@ -132,6 +133,10 @@ pub enum CoreOrchestratorError {
     #[error("Failure classification error: {0}")]
     FailureClassification(#[from] FailureClassificationError),
 
+    /// Identity attestation error — invalid/missing claims, verification.
+    #[error("Identity error: {0}")]
+    Identity(#[from] IdentityError),
+
     // ------------------------------------------------------------------ /
     // Standard library wrappers (via #[from])
     // ------------------------------------------------------------------ /
@@ -201,6 +206,9 @@ impl CoreOrchestratorError {
             CoreOrchestratorError::Recovery(e) => e.is_retriable(),
             CoreOrchestratorError::QualityGate(e) => e.is_retriable(),
             CoreOrchestratorError::FailureClassification(e) => e.is_retriable(),
+            // Identity errors are never retriable in the retry sense —
+            // reject the presented identity, re-authenticate, or degrade.
+            CoreOrchestratorError::Identity(_) => false,
             // JSON deserialization errors are not retriable — the input is malformed
             CoreOrchestratorError::Json(_) => false,
             // Cancellation is intentional, not transient
@@ -229,6 +237,7 @@ impl CoreOrchestratorError {
             CoreOrchestratorError::Recovery(_) => "RECOVERY_ERROR",
             CoreOrchestratorError::QualityGate(_) => "QUALITY_GATE_ERROR",
             CoreOrchestratorError::FailureClassification(_) => "FAILURE_CLASSIFICATION_ERROR",
+            CoreOrchestratorError::Identity(_) => "IDENTITY_ERROR",
             CoreOrchestratorError::Io(_) => "IO_ERROR",
             CoreOrchestratorError::Json(_) => "JSON_ERROR",
             CoreOrchestratorError::Cancelled(_) => "CANCELLED",
@@ -257,6 +266,7 @@ impl CoreOrchestratorError {
             CoreOrchestratorError::Recovery(_) => 500,
             CoreOrchestratorError::QualityGate(_) => 500,
             CoreOrchestratorError::FailureClassification(_) => 500,
+            CoreOrchestratorError::Identity(_) => 400, // invalid/missing claims, expired
             CoreOrchestratorError::Io(_) => 500,
             CoreOrchestratorError::Json(_) => 400,
             CoreOrchestratorError::Cancelled(_) => 499,
