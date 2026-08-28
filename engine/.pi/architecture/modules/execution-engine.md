@@ -164,7 +164,7 @@ RetryPolicy {
 | EvaluateRetryInput | Input | failure_context, policy, fallback_node_id |
 | EvaluateRetryOutput | Output | decision, is_terminal |
 | ApproveNodeInput | Input | dag_id, step_names, approver_id, authority, decision_context, token_claims_ref |
-| ApproveNodeOutput | Output | dag_id, approved, not_found, still_pending, records: Vec<ApprovalRecord> |
+| ApproveNodeOutput | Output | dag_id, approved, not_found, still_pending, approval_records: Vec<ApprovalRecord> |
 
 ## Approval Integration (Contract Amendment)
 
@@ -173,8 +173,8 @@ See [approval module](./modules/approval.md) for the full contract. Summary of c
 - **`NodeStatus`** gains `AwaitingApproval` (exists in code) and **`IntentMismatch`** (new — pre-dispatch verification failure; node never dispatches; re-approval required)
 - **Vocabulary note (intentional, pre-existing):** this module's `NodeStatus` (Pending/Ready/Running/…) is the **runtime executor** vocabulary; the persisted snapshot in state-persistence.md uses a different set (Pending/InProgress/…) — mapped at the state-persistence boundary (`NodeExecutionState → NodeState`). Both gain the two new variants consistently. Unifying the vocabularies is a follow-up cleanup (serialized-state migration required), out of this contract-freeze scope.
 - **Dispatch choke point**: verification is inserted between `pop_dispatchable` and `execute_tool` inside `run_dispatch_loop` (the single loop used by both `execute_graph` and `resume_execution`) — every dispatch entry path is covered by one insertion
-- **`approve_node`** contract change: `ApproveNodeInput` gains `approver_id` (required), `authority` (optional), `decision_context` (optional), `token_claims_ref` (optional); the session's `approved: HashSet<Uuid>` becomes a map of node_id → `ApprovalRecord` (delegating to `ApprovalService`); output gains `records: Vec<ApprovalRecord>`
-- **Single-use semantics**: dispatch consumes the approval (`Pending → Consumed`); retries re-verify intent rather than re-consuming; TTL enforced at verification
+- **`approve_node`** contract change: `ApproveNodeInput` gains `approver_id` (required), `authority` (optional), `decision_context` (optional), `token_claims_ref` (optional); the session's `approved: HashSet<Uuid>` becomes a map of node_id → `ApprovalRecord` (delegating to `ApprovalService`); output gains `approval_records: Vec<ApprovalRecord>`
+- **Single-use semantics**: the approval is **consumed on terminal outcome** (`Pending → Consumed` on success/skipped/exhausted failure after ≥1 dispatch); failed attempts stay `Pending` so legitimate retries re-verify; non-terminal interruptions keep `Pending` for cross-process resume; TTL enforced at verification
 - **Retry integration**: `IntentMismatch` is non-retriable (see failure-classification) — the node stays halted for human re-approval
 
 ---
