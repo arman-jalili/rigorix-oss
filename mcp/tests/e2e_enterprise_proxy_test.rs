@@ -12,31 +12,10 @@ use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-/// Minify a multi-line JSON string to a single line (for line-delimited JSON).
-fn minify_json(json: &str) -> String {
-    let mut result = String::with_capacity(json.len());
-    let mut in_string = false;
-    let mut prev_escape = false;
-    for c in json.chars() {
-        match c {
-            '\\' if in_string => {
-                result.push(c);
-                prev_escape = !prev_escape;
-            }
-            '"' if !prev_escape => {
-                result.push(c);
-                in_string = !in_string;
-                prev_escape = false;
-            }
-            _ if !in_string && (c == ' ' || c == '\n' || c == '\t' || c == '\r') => {}
-            _ => {
-                result.push(c);
-                prev_escape = false;
-            }
-        }
-    }
-    result
-}
+mod common;
+
+use common::minify_json;
+
 
 /// Spawn the MCP binary, send one request, read one response, kill the process.
 fn send_one_request(
