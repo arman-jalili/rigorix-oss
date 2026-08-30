@@ -97,7 +97,7 @@ async fn spawn_concurrent_node(
     let node_intent = node.intent.clone();
 
     // Emit NodeStarted event
-    let _ = event_bus
+    if let Err(e) = event_bus
         .publish(crate::event_system::application::dto::PublishEventInput {
             event: ExecutionEvent::NodeStarted {
                 execution_id: dag_id,
@@ -106,7 +106,10 @@ async fn spawn_concurrent_node(
                 timestamp: chrono::Utc::now(),
             },
         })
-        .await;
+        .await
+    {
+        tracing::warn!(error = %e, "event publish failed — evidence may be incomplete");
+    }
 
     let eb = Arc::clone(event_bus);
     let exec_id = dag_id;
@@ -128,7 +131,7 @@ async fn spawn_concurrent_node(
                     dur,
                     0,
                 );
-                let _ = eb
+                if let Err(e) = eb
                     .publish(crate::event_system::application::dto::PublishEventInput {
                         event: ExecutionEvent::NodeCompleted {
                             execution_id: exec_id,
@@ -139,7 +142,10 @@ async fn spawn_concurrent_node(
                             timestamp: chrono::Utc::now(),
                         },
                     })
-                    .await;
+                    .await
+                {
+                    tracing::warn!(error = %e, "event publish failed — evidence may be incomplete");
+                }
                 return (node_id, result);
             }
         }
@@ -171,7 +177,7 @@ async fn spawn_concurrent_node(
                     dur,
                     0,
                 );
-                let _ = eb
+                if let Err(e) = eb
                     .publish(crate::event_system::application::dto::PublishEventInput {
                         event: ExecutionEvent::NodeCompleted {
                             execution_id: exec_id,
@@ -182,7 +188,10 @@ async fn spawn_concurrent_node(
                             timestamp: chrono::Utc::now(),
                         },
                     })
-                    .await;
+                    .await
+                {
+                    tracing::warn!(error = %e, "event publish failed — evidence may be incomplete");
+                }
                 return (node_id, result);
             }
         }
@@ -303,7 +312,7 @@ async fn spawn_concurrent_node(
         }
 
         // Emit NodeCompleted
-        let _ = eb
+        if let Err(e) = eb
             .publish(crate::event_system::application::dto::PublishEventInput {
                 event: ExecutionEvent::NodeCompleted {
                     execution_id: exec_id,
@@ -314,7 +323,10 @@ async fn spawn_concurrent_node(
                     timestamp: chrono::Utc::now(),
                 },
             })
-            .await;
+            .await
+        {
+            tracing::warn!(error = %e, "event publish failed — evidence may be incomplete");
+        }
 
         (node_id, result)
     });
@@ -1775,7 +1787,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
             // Look up node from the session graph to dispatch the tool.
 
             // Emit NodeStarted
-            let _ = self
+            if let Err(e) = self
                 .event_bus
                 .publish(crate::event_system::application::dto::PublishEventInput {
                     event: ExecutionEvent::NodeStarted {
@@ -1785,7 +1797,10 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                         timestamp: chrono::Utc::now(),
                     },
                 })
-                .await;
+                .await
+            {
+                tracing::warn!(error = %e, "event publish failed — evidence may be incomplete");
+            }
 
             // Extract node info from sessions WITHOUT holding the lock across .await
             let node_info = {
@@ -1839,7 +1854,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                 };
 
             // Emit NodeCompleted
-            let _ = self
+            if let Err(e) = self
                 .event_bus
                 .publish(crate::event_system::application::dto::PublishEventInput {
                     event: ExecutionEvent::NodeCompleted {
@@ -1851,7 +1866,10 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                         timestamp: chrono::Utc::now(),
                     },
                 })
-                .await;
+                .await
+            {
+                tracing::warn!(error = %e, "event publish failed — evidence may be incomplete");
+            }
 
             let duration_ms = start.elapsed().as_millis() as u64;
 
@@ -2328,6 +2346,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
 
         let mut approved: Vec<String> = Vec::new();
         let mut not_found: Vec<String> = Vec::new();
+        let mut denied: Vec<String> = Vec::new();
 
         for name in &input.step_names {
             // Resolve step name -> node id from the session's live states.
@@ -2342,13 +2361,32 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                 continue;
             };
 
+            // GAP-H-07: only approval-gated nodes awaiting human sign-off may
+            // be approved. Resolve `requires_approval` from the session graph;
+            // a node not in `AwaitingApproval` (already approved/executed/
+            // completed) is rejected.
+            let gated = session
+                .graph
+                .as_ref()
+                .and_then(|g| g.get_node(node_id))
+                .map(|n| n.requires_approval)
+                .unwrap_or(false);
+            let awaiting = session
+                .node_states
+                .get(&node_id)
+                .map(|s| s.status == NodeStatus::AwaitingApproval)
+                .unwrap_or(false);
+
+            if !gated || !awaiting {
+                denied.push(name.clone());
+                continue;
+            }
+
             session.approved.insert(node_id);
             approved.push(name.clone());
 
             // A node blocked on approval becomes dispatchable again.
-            if let Some(state) = session.node_states.get_mut(&node_id)
-                && state.status == NodeStatus::AwaitingApproval
-            {
+            if let Some(state) = session.node_states.get_mut(&node_id) {
                 state.mark_ready();
             }
         }
@@ -2365,6 +2403,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
             approved,
             not_found,
             still_pending,
+            denied,
         })
     }
 

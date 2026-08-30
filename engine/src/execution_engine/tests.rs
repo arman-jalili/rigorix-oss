@@ -621,6 +621,102 @@ async fn test_cross_process_resume_hydrates_session_and_continues() {
     );
 }
 
+/// GAP-H-07: approving a node that never requested approval must be denied.
+#[tokio::test]
+async fn test_approve_node_rejects_ungated_node() {
+    use crate::dag_engine::domain::{TaskGraph, TaskNode};
+
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+    // NOT approval-gated.
+    let node = TaskNode::new(
+        Uuid::new_v4(),
+        "plain",
+        "run_command",
+        vec![],
+        r#"{"command": "echo hi"}"#,
+    );
+    let mut graph = TaskGraph::new();
+    graph.add_unchecked(node).unwrap();
+    graph.seal().unwrap();
+
+    executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            graph: Some(graph),
+            config_override: None,
+        })
+        .await
+        .unwrap();
+
+    let approve = executor
+        .approve_node(ApproveNodeInput {
+            dag_id,
+            step_names: vec!["plain".to_string()],
+        })
+        .await
+        .unwrap();
+    assert!(
+        approve.approved.is_empty(),
+        "ungated node must not be approvable"
+    );
+    assert_eq!(approve.denied, vec!["plain".to_string()]);
+}
+
+/// GAP-H-07: approving a node that is not currently AwaitingApproval
+/// (already approved / executed) must be denied.
+#[tokio::test]
+async fn test_approve_node_rejects_non_awaiting_node() {
+    use crate::dag_engine::domain::{TaskGraph, TaskNode};
+
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+    let node = TaskNode::new(
+        Uuid::new_v4(),
+        "gated",
+        "run_command",
+        vec![],
+        r#"{"command": "echo hi"}"#,
+    )
+    .with_requires_approval(true);
+    let mut graph = TaskGraph::new();
+    graph.add_unchecked(node.clone()).unwrap();
+    graph.seal().unwrap();
+
+    // First execution pauses at the gate.
+    let output = executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            graph: Some(graph),
+            config_override: None,
+        })
+        .await
+        .unwrap();
+    assert!(output.approval_pending);
+
+    // First approval succeeds.
+    let first = executor
+        .approve_node(ApproveNodeInput {
+            dag_id,
+            step_names: vec!["gated".to_string()],
+        })
+        .await
+        .unwrap();
+    assert_eq!(first.approved, vec!["gated".to_string()]);
+    assert!(first.denied.is_empty());
+
+    // Second approval — the node is no longer AwaitingApproval — is denied.
+    let second = executor
+        .approve_node(ApproveNodeInput {
+            dag_id,
+            step_names: vec!["gated".to_string()],
+        })
+        .await
+        .unwrap();
+    assert!(second.approved.is_empty(), "double approval must be denied");
+    assert_eq!(second.denied, vec!["gated".to_string()]);
+}
+
 // ---------------------------------------------------------------------------
 // Permission-mode gating through the factory
 // ---------------------------------------------------------------------------
@@ -729,6 +825,7 @@ async fn test_approval_gate_rejects_unknown_step_name() {
     assert!(approve.approved.is_empty());
     assert_eq!(approve.not_found, vec!["nope".to_string()]);
     assert_eq!(approve.still_pending, vec!["risky".to_string()]);
+    assert!(approve.denied.is_empty());
 
     // Not approved → resume still leaves the node blocked, so execution
     // remains paused.

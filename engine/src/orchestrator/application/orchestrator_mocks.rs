@@ -230,6 +230,7 @@ impl exec_svc::ParallelExecutionService for MockExecutionService {
             approved: input.step_names.clone(),
             not_found: Vec::new(),
             still_pending: Vec::new(),
+            denied: Vec::new(),
         })
     }
     async fn hydrate_execution(

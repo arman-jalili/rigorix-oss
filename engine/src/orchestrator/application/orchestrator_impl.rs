@@ -274,6 +274,7 @@ impl OrchestratorServiceImpl {
                 llm_calls: 0,
                 total_tokens: 0,
                 prompt_hash: String::new(),
+                parameters: std::collections::HashMap::new(),
                 generated_toml: None,
                 node_order: vec![],
                 model_version: None,
@@ -406,6 +407,21 @@ impl OrchestratorServiceImpl {
         paths
     }
 
+    /// GAP-M-13: deterministic capture of the resolved planning inputs for
+    /// the audit envelope, gated on `capture_planning_prompt`. The planning
+    /// service retains only the hash; the canonical inputs (template +
+    /// resolved parameters) are serialized as the prompt-content evidence.
+    fn planning_prompt_content(&self, planning: &PlanningMetadata) -> Option<String> {
+        if !self.config.capture_planning_prompt {
+            return None;
+        }
+        serde_json::to_string(&serde_json::json!({
+            "template_id": planning.template_id,
+            "parameters": planning.parameters,
+        }))
+        .ok()
+    }
+
     /// Detect git commit and branch from the working directory.
     fn detect_git_info(repo_root: &str) -> (Option<String>, Option<String>) {
         let run_git = |args: &[&str]| -> Option<String> {
@@ -453,6 +469,7 @@ impl OrchestratorServiceImpl {
             llm_calls: pr.llm_calls_used,
             total_tokens: pr.llm_tokens_used,
             prompt_hash: pr.planning_hash.0.clone(),
+            parameters: pr.parameters.clone(),
             generated_toml: pr.generated_toml.clone(),
             node_order,
             model_version: model_version.clone(),
@@ -884,7 +901,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     git_commit: record.context.git_commit.clone(),
                     git_branch: record.context.git_branch.clone(),
                     model_version: record.planning.model_version.clone(),
-                    planning_prompt_content: None, // TODO: populate from config when prompt capture is enabled
+                    planning_prompt_content: self.planning_prompt_content(&record.planning),
                     file_paths: Self::extract_file_paths(&record.task_results),
                     metadata: None,
                     scoring_results: self.collect_scoring_results(record.execution_id).await,
@@ -1018,6 +1035,17 @@ impl OrchestratorService for OrchestratorServiceImpl {
             llm_calls: 0,
             total_tokens: 0,
             prompt_hash: String::new(),
+            parameters: input
+                .steps
+                .iter()
+                .enumerate()
+                .map(|(i, s)| {
+                    (
+                        format!("step_{}", i),
+                        serde_json::to_string(&s.parameters).unwrap_or_default(),
+                    )
+                })
+                .collect(),
             generated_toml: None,
             node_order,
             model_version: self.config.model_version.clone(),
@@ -1415,7 +1443,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     git_commit: record.context.git_commit.clone(),
                     git_branch: record.context.git_branch.clone(),
                     model_version: record.planning.model_version.clone(),
-                    planning_prompt_content: None, // TODO: populate from config when prompt capture is enabled
+                    planning_prompt_content: self.planning_prompt_content(&record.planning),
                     file_paths: Self::extract_file_paths(&record.task_results),
                     metadata: None,
                     scoring_results: self.collect_scoring_results(record.execution_id).await,
@@ -1477,12 +1505,12 @@ impl OrchestratorService for OrchestratorServiceImpl {
         &self,
         input: ApproveExecutionInput,
     ) -> Result<ApproveExecutionOutput, OrchestratorError> {
-        // 0. Cross-process resume (GAP-3): the run paused in another process
-        // (or an earlier session). The session is not in this process's
-        // memory, so hydrate it from the persisted ExecutionState before
-        // approving — the state carries the sealed graph, live node states,
-        // and approved set.
-        if let Err(crate::execution_engine::domain::ExecutionError::NodeNotFound { node_id }) = self
+        // 0. Approve in the engine session. If the session is not in this
+        // process's memory (GAP-3 cross-process resume), hydrate it from the
+        // persisted ExecutionState first, then approve. Single approve call:
+        // a second call would see the node already marked Ready and be
+        // correctly denied by the GAP-H-07 gate.
+        let approve_out = match self
             .execution_service
             .approve_node(exec_dto::ApproveNodeInput {
                 dag_id: input.execution_id,
@@ -1490,62 +1518,67 @@ impl OrchestratorService for OrchestratorServiceImpl {
             })
             .await
         {
-            tracing::info!(
-                %node_id,
-                "approve_execution: session not in this process — hydrating from persisted state"
-            );
-            let loaded = self
-                .state_manager
-                .load_state(state_dto::LoadStateInput {
-                    execution_id: input.execution_id,
-                })
-                .await
-                .map_err(|e| OrchestratorError::Internal {
-                    detail: format!("Failed to load paused execution state: {e}"),
-                    source_module: "orchestrator".into(),
-                })?;
-            let Some(graph) = loaded.state.graph.clone() else {
+            Ok(out) => out,
+            Err(crate::execution_engine::domain::ExecutionError::NodeNotFound { node_id }) => {
+                tracing::info!(
+                    %node_id,
+                    "approve_execution: session not in this process — hydrating from persisted state"
+                );
+                let loaded = self
+                    .state_manager
+                    .load_state(state_dto::LoadStateInput {
+                        execution_id: input.execution_id,
+                    })
+                    .await
+                    .map_err(|e| OrchestratorError::Internal {
+                        detail: format!("Failed to load paused execution state: {e}"),
+                        source_module: "orchestrator".into(),
+                    })?;
+                let Some(graph) = loaded.state.graph.clone() else {
+                    return Err(OrchestratorError::Internal {
+                        detail: format!(
+                            "Execution {} has no resumable graph in state",
+                            input.execution_id
+                        ),
+                        source_module: "orchestrator".into(),
+                    });
+                };
+                let node_states = loaded.state.exec_node_states.clone().unwrap_or_default();
+                let approved: std::collections::HashSet<uuid::Uuid> =
+                    loaded.state.approved.iter().copied().collect();
+                self.execution_service
+                    .hydrate_execution(exec_dto::HydrateExecutionInput {
+                        dag_id: input.execution_id,
+                        graph,
+                        node_states,
+                        approved,
+                        started_at: loaded.state.started_at,
+                    })
+                    .await
+                    .map_err(|e| OrchestratorError::Internal {
+                        detail: format!("Failed to hydrate execution session: {e}"),
+                        source_module: "orchestrator".into(),
+                    })?;
+                self.execution_service
+                    .approve_node(exec_dto::ApproveNodeInput {
+                        dag_id: input.execution_id,
+                        step_names: input.step_names,
+                    })
+                    .await
+                    .map_err(|e| OrchestratorError::Internal {
+                        detail: format!("Failed to approve execution steps: {e}"),
+                        source_module: "orchestrator".into(),
+                    })?
+            }
+            Err(e) => {
                 return Err(OrchestratorError::Internal {
-                    detail: format!(
-                        "Execution {} has no resumable graph in state",
-                        input.execution_id
-                    ),
+                    detail: format!("Failed to approve execution steps: {e}"),
                     source_module: "orchestrator".into(),
                 });
-            };
-            let node_states = loaded.state.exec_node_states.clone().unwrap_or_default();
-            let approved: std::collections::HashSet<uuid::Uuid> =
-                loaded.state.approved.iter().copied().collect();
-            self.execution_service
-                .hydrate_execution(exec_dto::HydrateExecutionInput {
-                    dag_id: input.execution_id,
-                    graph,
-                    node_states,
-                    approved,
-                    started_at: loaded.state.started_at,
-                })
-                .await
-                .map_err(|e| OrchestratorError::Internal {
-                    detail: format!("Failed to hydrate execution session: {e}"),
-                    source_module: "orchestrator".into(),
-                })?;
-        }
+            }
+        };
 
-        // 1. Record approval in the execution engine session (by step name;
-        // the engine resolves names to node IDs from its live node states).
-        let approve_out = self
-            .execution_service
-            .approve_node(exec_dto::ApproveNodeInput {
-                dag_id: input.execution_id,
-                step_names: input.step_names,
-            })
-            .await
-            .map_err(|e| OrchestratorError::Internal {
-                detail: format!("Failed to approve execution steps: {e}"),
-                source_module: "orchestrator".into(),
-            })?;
-
-        // 2. Resume the paused execution if no steps remain pending.
+        // 1. Resume the paused execution if no steps remain pending.
         let mut resumed = false;
         if approve_out.still_pending.is_empty() {
             resumed = self

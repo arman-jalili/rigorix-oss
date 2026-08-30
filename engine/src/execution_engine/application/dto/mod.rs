@@ -82,6 +82,11 @@ pub struct ApproveNodeOutput {
     pub not_found: Vec<String>,
     /// Step names still awaiting approval after this call.
     pub still_pending: Vec<String>,
+    /// Step names rejected by the approval gate: the node is not
+    /// approval-gated (`requires_approval == false`) or is not in
+    /// `AwaitingApproval` (GAP-H-07).
+    #[serde(default)]
+    pub denied: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
