@@ -223,7 +223,6 @@ impl IdentityAttestationService for IdentityAttestationServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use base64::Engine as _;
 
     /// Build an unsigned JWT string from a claims payload (for extraction tests).
     fn make_jwt(claims: serde_json::Value) -> String {

@@ -148,7 +148,7 @@ mod tests {
 
     async fn repo() -> FileSystemIdentityRepository {
         let dir = tempfile::tempdir().expect("tempdir");
-        let dir_path = dir.into_path();
+        let dir_path = dir.keep();
         FileSystemIdentityRepository::new(&dir_path)
             .await
             .expect("repo")

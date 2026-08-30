@@ -8,7 +8,6 @@
 //! (rsa crate): the test generates a keypair, signs tokens with the private
 //! key, serves the public key as a JWKS document, and drives `JwksVerifier`.
 
-use async_trait::async_trait;
 use base64::Engine as _;
 use rsa::RsaPrivateKey;
 use rsa::pkcs1v15::SigningKey;
@@ -163,7 +162,6 @@ async fn test_jwks_verify_tampered_token_returns_unverified() {
 async fn test_jwks_verify_unreachable_idp_returns_unverified_no_error() {
     // Point at a port with no listener — the IdP is unreachable.
     let verifier = JwksVerifier::new("http://127.0.0.1:1/.well-known/jwks.json".to_string());
-    let token = "unused"; // header parse happens first... use a well-formed header
 
     let token = {
         let header = base64::engine::general_purpose::URL_SAFE_NO_PAD
