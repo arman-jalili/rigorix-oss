@@ -72,7 +72,7 @@ async fn spawn_concurrent_node(
     dag_id: Uuid,
     node_id: Uuid,
     permission_enforcer: &Option<Arc<dyn PermissionEnforcer>>,
-    _hook_runner: &Option<Arc<dyn HookRunnerService>>,
+    hook_runner: &Option<Arc<dyn HookRunnerService>>,
 ) -> Result<(), ExecutionError> {
     let node = match graph.get_node(node_id).cloned() {
         Some(n) => n,
@@ -111,6 +111,7 @@ async fn spawn_concurrent_node(
     let eb = Arc::clone(event_bus);
     let exec_id = dag_id;
     let permission = permission_enforcer.clone();
+    let hook_runner = hook_runner.clone();
 
     join_set.spawn(async move {
         // Permission check (gate before execution)
@@ -133,6 +134,49 @@ async fn spawn_concurrent_node(
                             execution_id: exec_id,
                             node_id: node_id.to_string(),
                             node_name,
+                            duration_ms: dur,
+                            output: serde_json::json!(null),
+                            timestamp: chrono::Utc::now(),
+                        },
+                    })
+                    .await;
+                return (node_id, result);
+            }
+        }
+
+        // ── PreToolUse hooks (parallel path) — same gating as execute_tool ──
+        if let Some(ref hook_runner) = hook_runner {
+            let abort = crate::hooks::domain::HookAbortSignal::default();
+            let pre_input = crate::hooks::application::dto::RunPreToolUseInput {
+                tool_name: node_tool.clone(),
+                tool_input: serde_json::Value::String(node_intent.clone()),
+                session_id: node_id.to_string(),
+                workspace_root: ".".to_string(),
+            };
+            if let Ok(pre_output) = hook_runner.run_pre_tool_use(pre_input, Some(&abort))
+                && (pre_output.result.is_denied()
+                    || pre_output.result.is_failed()
+                    || pre_output.result.is_cancelled())
+            {
+                let dur = start.elapsed().as_millis() as u64;
+                let result = TaskResult::failure(
+                    node_id,
+                    &node_name,
+                    format!(
+                        "Tool '{}' blocked by PreToolUse hook: {:?}",
+                        node_tool,
+                        pre_output.result.feedback_messages()
+                    ),
+                    "hook_blocked".to_string(),
+                    dur,
+                    0,
+                );
+                let _ = eb
+                    .publish(crate::event_system::application::dto::PublishEventInput {
+                        event: ExecutionEvent::NodeCompleted {
+                            execution_id: exec_id,
+                            node_id: node_id.to_string(),
+                            node_name: node_name.clone(),
                             duration_ms: dur,
                             output: serde_json::json!(null),
                             timestamp: chrono::Utc::now(),
@@ -241,6 +285,22 @@ async fn spawn_concurrent_node(
                 )
             }
         };
+
+        // ── PostToolUse hooks (informational — no gating, mirrors execute_tool) ──
+        if let Some(ref hook_runner) = hook_runner {
+            let tool_output = result.output.clone().unwrap_or_default();
+            let abort = crate::hooks::domain::HookAbortSignal::default();
+            let post_input = crate::hooks::application::dto::RunPostToolUseInput {
+                tool_name: node_tool.clone(),
+                tool_input: serde_json::Value::String(node_intent.clone()),
+                tool_output,
+                session_id: node_id.to_string(),
+                workspace_root: ".".to_string(),
+            };
+            if let Ok(_post_output) = hook_runner.run_post_tool_use(post_input, Some(&abort)) {
+                // Post-tool feedback is informational — no gating
+            }
+        }
 
         // Emit NodeCompleted
         let _ = eb
