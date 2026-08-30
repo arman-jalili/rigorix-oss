@@ -1487,17 +1487,23 @@ impl OrchestratorService for OrchestratorServiceImpl {
             s.status = final_status;
         }
 
-        // Commit the runbook's budget reservations (1 call per step).
+        // Commit the runbook's budget reservations (1 call per step). The
+        // RAII guard (GAP-A-09) reconciles atomically and marks itself
+        // committed so its Drop does not roll back a committed reservation.
         for r in &reservations {
-            let _ = self
-                .budget_service
-                .commit(budget_app::CommitReservationInput {
-                    execution_id,
-                    call_id: r.reservation.call_id,
-                    reserved_tokens: r.reservation.reserved_tokens,
-                    actual_tokens: 1,
-                })
-                .await;
+            if let Some(ref guard) = r.reservation_guard {
+                let _ = guard.commit(1).await;
+            } else {
+                let _ = self
+                    .budget_service
+                    .commit(budget_app::CommitReservationInput {
+                        execution_id,
+                        call_id: r.reservation.call_id,
+                        reserved_tokens: r.reservation.reserved_tokens,
+                        actual_tokens: 1,
+                    })
+                    .await;
+            }
         }
 
         tracing::info!(%execution_id, status=?final_status, "run_from_template completed");

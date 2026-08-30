@@ -38,10 +38,16 @@ pub struct ReserveBudgetInput {
 }
 
 /// Output from a successful budget reservation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct ReserveBudgetOutput {
     /// Snapshot of the reservation state.
     pub reservation: LlmBudgetReservationState,
+
+    /// RAII guard for the reservation (GAP-A-09): auto-rollbacks on Drop if
+    /// not committed. `None` when produced by mocks/legacy code paths.
+    #[serde(skip)]
+    pub reservation_guard:
+        Option<Box<dyn crate::budget_tracking::application::LlmBudgetReservation>>,
 
     /// Remaining call capacity after this reservation.
     pub remaining_calls: u32,
@@ -54,6 +60,25 @@ pub struct ReserveBudgetOutput {
 
     /// Number of tokens used so far (not yet including this reservation).
     pub tokens_used_before_reservation: u32,
+}
+
+impl std::fmt::Debug for ReserveBudgetOutput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ReserveBudgetOutput")
+            .field("reservation", &self.reservation)
+            .field("remaining_calls", &self.remaining_calls)
+            .field("remaining_tokens", &self.remaining_tokens)
+            .field("calls_used", &self.calls_used)
+            .field(
+                "tokens_used_before_reservation",
+                &self.tokens_used_before_reservation,
+            )
+            .field(
+                "reservation_guard",
+                &self.reservation_guard.as_ref().map(|_| "Some(guard)"),
+            )
+            .finish()
+    }
 }
 
 // ---------------------------------------------------------------------------

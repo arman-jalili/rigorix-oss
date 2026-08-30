@@ -112,7 +112,7 @@ pub trait LlmBudgetService: Send + Sync {
 /// }
 /// ```
 #[async_trait]
-pub trait LlmBudgetReservation: Send {
+pub trait LlmBudgetReservation: Send + Sync {
     /// Commit this reservation with the actual tokens consumed.
     ///
     /// This is the only way to finalize a reservation without triggering

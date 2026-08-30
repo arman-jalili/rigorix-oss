@@ -43,13 +43,19 @@ mod tests {
                 };
                 let result = budget.reserve(input).await.unwrap();
 
-                let commit = CommitReservationInput {
-                    execution_id,
-                    call_id: result.reservation.call_id,
-                    reserved_tokens: result.reservation.reserved_tokens,
-                    actual_tokens: 90,
-                };
-                budget.commit(commit).await.unwrap();
+                // Commit via the RAII guard (GAP-A-09) so its Drop does not
+                // roll back the committed reservation.
+                if let Some(ref guard) = result.reservation_guard {
+                    guard.commit(90).await.unwrap();
+                } else {
+                    let commit = CommitReservationInput {
+                        execution_id,
+                        call_id: result.reservation.call_id,
+                        reserved_tokens: result.reservation.reserved_tokens,
+                        actual_tokens: 90,
+                    };
+                    budget.commit(commit).await.unwrap();
+                }
             }));
         }
 
@@ -92,13 +98,17 @@ mod tests {
                 };
                 match budget.reserve(input).await {
                     Ok(result) => {
-                        let commit = CommitReservationInput {
-                            execution_id,
-                            call_id: result.reservation.call_id,
-                            reserved_tokens: result.reservation.reserved_tokens,
-                            actual_tokens: 90,
-                        };
-                        budget.commit(commit).await.unwrap();
+                        if let Some(ref guard) = result.reservation_guard {
+                            guard.commit(90).await.unwrap();
+                        } else {
+                            let commit = CommitReservationInput {
+                                execution_id,
+                                call_id: result.reservation.call_id,
+                                reserved_tokens: result.reservation.reserved_tokens,
+                                actual_tokens: 90,
+                            };
+                            budget.commit(commit).await.unwrap();
+                        }
                         successes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                     }
                     Err(_) => {

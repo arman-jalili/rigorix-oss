@@ -195,33 +195,44 @@ impl LlmBudgetService for LlmBudgetImpl {
             });
         }
 
-        // Check token limit (saturating to avoid overflow in edge cases)
-        let tokens_used_before = self.state.used_tokens.load(Ordering::Acquire);
-        if tokens_used_before.saturating_add(estimated_tokens) > self.state.max_tokens {
-            return Err(LlmBudgetError::MaxTokensExceeded {
-                used: tokens_used_before,
+        // GAP-A-09: atomic check-and-reserve. The previous load -> check ->
+        // fetch_add sequence raced: concurrent commits could over-commit.
+        let tokens_used_before = self
+            .state
+            .used_tokens
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                if current.saturating_add(estimated_tokens) > self.state.max_tokens {
+                    None // reject — leave unchanged
+                } else {
+                    Some(current + estimated_tokens)
+                }
+            })
+            .map_err(|used| LlmBudgetError::MaxTokensExceeded {
+                used,
                 max: self.state.max_tokens,
                 requested: estimated_tokens,
-            });
-        }
+            })?;
 
         // Atomically increment call counter
         let call_id = self.state.next_call_id.fetch_add(1, Ordering::AcqRel);
         self.state.used_calls.fetch_add(1, Ordering::AcqRel);
 
-        // Pre-reserve tokens on the assumption they'll be used
-        self.state
-            .used_tokens
-            .fetch_add(estimated_tokens, Ordering::AcqRel);
-
         let calls_used = self.state.used_calls.load(Ordering::Acquire);
         let tokens_used = self.state.used_tokens.load(Ordering::Acquire);
+
+        let reservation_guard: Option<Box<dyn super::service::LlmBudgetReservation>> =
+            Some(Box::new(LlmBudgetReservationImpl::new(
+                Arc::clone(&self.state),
+                call_id,
+                estimated_tokens,
+            )));
 
         Ok(ReserveBudgetOutput {
             reservation: crate::budget_tracking::domain::LlmBudgetReservationState::new(
                 call_id,
                 estimated_tokens,
             ),
+            reservation_guard,
             remaining_calls: self.state.max_calls.saturating_sub(calls_used),
             remaining_tokens: self.state.max_tokens.saturating_sub(tokens_used),
             calls_used,
@@ -240,15 +251,21 @@ impl LlmBudgetService for LlmBudgetImpl {
         // used_tokens. We need to reconcile to actual consumption.
         if actual_tokens > reserved_tokens {
             let extra = actual_tokens - reserved_tokens;
-            let current_used = self.state.used_tokens.load(Ordering::Acquire);
-            if current_used.saturating_add(extra) > self.state.max_tokens {
-                return Err(LlmBudgetError::MaxTokensExceeded {
-                    used: current_used,
+            // GAP-A-09: atomic reconcile (CAS) — no load/check/add race.
+            self.state
+                .used_tokens
+                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                    if current.saturating_add(extra) > self.state.max_tokens {
+                        None
+                    } else {
+                        Some(current + extra)
+                    }
+                })
+                .map_err(|used| LlmBudgetError::MaxTokensExceeded {
+                    used,
                     max: self.state.max_tokens,
                     requested: actual_tokens,
-                });
-            }
-            self.state.used_tokens.fetch_add(extra, Ordering::AcqRel);
+                })?;
         } else if actual_tokens < reserved_tokens {
             let refund = reserved_tokens - actual_tokens;
             self.state
@@ -357,7 +374,6 @@ impl LlmBudgetService for LlmBudgetImpl {
 /// Concrete implementation of the `LlmBudgetReservation` RAII guard.
 ///
 /// Holds a reference to the budget and auto-rollbacks on Drop if not committed.
-#[cfg(test)]
 pub(crate) struct LlmBudgetReservationImpl {
     /// Shared reference to the budget state.
     budget: Arc<BudgetState>,
@@ -371,7 +387,6 @@ pub(crate) struct LlmBudgetReservationImpl {
     rolled_back: AtomicBool,
 }
 
-#[cfg(test)]
 impl LlmBudgetReservationImpl {
     /// Create a new reservation guard.
     ///
@@ -388,7 +403,6 @@ impl LlmBudgetReservationImpl {
     }
 }
 
-#[cfg(test)]
 impl Drop for LlmBudgetReservationImpl {
     #[tracing::instrument(skip_all)]
     fn drop(&mut self) {
@@ -416,7 +430,6 @@ impl Drop for LlmBudgetReservationImpl {
     }
 }
 
-#[cfg(test)]
 #[async_trait]
 impl super::service::LlmBudgetReservation for LlmBudgetReservationImpl {
     #[tracing::instrument(skip_all)]
@@ -433,18 +446,29 @@ impl super::service::LlmBudgetReservation for LlmBudgetReservationImpl {
         // If actual tokens are more, we need to check if we have capacity.
         if actual_tokens > self.reserved_tokens {
             let extra = actual_tokens - self.reserved_tokens;
-            let current_used = self.budget.used_tokens.load(Ordering::Acquire);
-            if current_used.saturating_add(extra) > self.budget.max_tokens {
-                return Err(LlmBudgetError::MaxTokensExceeded {
-                    used: current_used,
+            // GAP-A-09: atomic reconcile (CAS).
+            self.budget
+                .used_tokens
+                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                    if current.saturating_add(extra) > self.budget.max_tokens {
+                        None
+                    } else {
+                        Some(current + extra)
+                    }
+                })
+                .map_err(|used| LlmBudgetError::MaxTokensExceeded {
+                    used,
                     max: self.budget.max_tokens,
                     requested: actual_tokens,
-                });
-            }
-            self.budget.used_tokens.fetch_add(extra, Ordering::AcqRel);
+                })?;
         } else if actual_tokens < self.reserved_tokens {
             let refund = self.reserved_tokens - actual_tokens;
-            self.budget.used_tokens.fetch_sub(refund, Ordering::AcqRel);
+            self.budget
+                .used_tokens
+                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |v| {
+                    Some(v.saturating_sub(refund))
+                })
+                .ok();
         }
 
         self.committed.store(true, Ordering::Release);

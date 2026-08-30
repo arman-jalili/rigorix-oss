@@ -547,6 +547,7 @@ impl budget_app::LlmBudgetService for MockBudgetService {
     {
         Ok(budget_app::ReserveBudgetOutput {
             reservation: crate::budget_tracking::domain::LlmBudgetReservationState::new(0, 100),
+            reservation_guard: None,
             remaining_calls: 100,
             remaining_tokens: 10000,
             calls_used: 0,
