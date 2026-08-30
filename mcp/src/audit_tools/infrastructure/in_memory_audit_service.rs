@@ -410,7 +410,13 @@ mod tests {
         let id = Uuid::new_v4();
         let steps = vec![
             ExecutionStep::new("validate".into(), true, None, serde_json::json!({}), 5),
-            ExecutionStep::new("migrate".into(), false, Some("SQL error".into()), serde_json::json!({}), 12),
+            ExecutionStep::new(
+                "migrate".into(),
+                false,
+                Some("SQL error".into()),
+                serde_json::json!({}),
+                12,
+            ),
         ];
         let env = InMemoryAuditQueryService::build_from_run(
             id,
@@ -437,7 +443,13 @@ mod tests {
             17,
             vec![
                 ExecutionStep::new("validate".into(), true, None, serde_json::json!({}), 5),
-                ExecutionStep::new("migrate".into(), false, Some("SQL error".into()), serde_json::json!({}), 12),
+                ExecutionStep::new(
+                    "migrate".into(),
+                    false,
+                    Some("SQL error".into()),
+                    serde_json::json!({}),
+                    12,
+                ),
             ],
             Some("other-key"),
         );

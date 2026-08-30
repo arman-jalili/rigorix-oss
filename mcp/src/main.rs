@@ -59,9 +59,9 @@ use rigorix_mcp::template_tools::application::service_impl::{
 use rigorix_mcp::template_tools::domain::entity::SharedTemplateRepository;
 use rigorix_mcp::template_tools::infrastructure::FilesystemTemplateRepository;
 
+use rigorix_engine::configuration::domain::config::Config;
 use rigorix_mcp::enterprise_proxy::domain::entity::SharedEnterpriseProxy;
 use rigorix_mcp::enterprise_proxy::domain::value::ProxyConfig;
-use rigorix_engine::configuration::domain::config::Config;
 use rigorix_mcp::enterprise_proxy::infrastructure::EnterpriseProxyImpl;
 
 use rigorix_mcp::enterprise_proxy::interfaces::mcp::ENTERPRISE_TOOL_PREFIX;
@@ -331,8 +331,13 @@ impl AppState {
                 if let Some(execution_id_str) = json_result["execution_id"].as_str()
                     && let Ok(exec_id) = uuid::Uuid::parse_str(execution_id_str)
                 {
-                    let envelope =
-                        build_envelope_from_run(&json_result, exec_id, template_name_for_audit, &self.audit_hmac_key, None);
+                    let envelope = build_envelope_from_run(
+                        &json_result,
+                        exec_id,
+                        template_name_for_audit,
+                        &self.audit_hmac_key,
+                        None,
+                    );
                     let _ = self.audit_storage.store(envelope);
                 }
 
@@ -398,8 +403,13 @@ impl AppState {
                         .as_str()
                         .unwrap_or_default()
                         .to_string();
-                    let envelope =
-                        build_envelope_from_run(&json_result, exec_id, template_name, &self.audit_hmac_key, None);
+                    let envelope = build_envelope_from_run(
+                        &json_result,
+                        exec_id,
+                        template_name,
+                        &self.audit_hmac_key,
+                        None,
+                    );
                     let _ = self.audit_storage.store(envelope);
                 }
 
@@ -460,50 +470,50 @@ impl AppState {
                         .execution_state(&ExecutionId::from_uuid(execution_id))
                         .await
                 {
-                        // Reuse the stored envelope's template name if present.
-                        let stored_template = self
-                            .audit_storage
-                            .read_audit(&ExecutionId::from_uuid(execution_id))
-                            .await
-                            .ok()
-                            .and_then(|e| e.template_name().map(|s| s.to_string()))
-                            .unwrap_or_else(|| "unknown".to_string());
-                        let steps: Vec<serde_json::Value> = state
-                            .node_states
-                            .values()
-                            .map(|s| {
-                                serde_json::json!({
-                                    "step_name": s.node_name,
-                                    "success": s.status == "completed",
-                                    "error": s.last_error,
-                                    "duration_ms": s.last_duration_ms.unwrap_or(0),
-                                })
+                    // Reuse the stored envelope's template name if present.
+                    let stored_template = self
+                        .audit_storage
+                        .read_audit(&ExecutionId::from_uuid(execution_id))
+                        .await
+                        .ok()
+                        .and_then(|e| e.template_name().map(|s| s.to_string()))
+                        .unwrap_or_else(|| "unknown".to_string());
+                    let steps: Vec<serde_json::Value> = state
+                        .node_states
+                        .values()
+                        .map(|s| {
+                            serde_json::json!({
+                                "step_name": s.node_name,
+                                "success": s.status == "completed",
+                                "error": s.last_error,
+                                "duration_ms": s.last_duration_ms.unwrap_or(0),
                             })
-                            .collect();
-                        let refreshed = serde_json::json!({
-                            "execution_id": execution_id.to_string(),
-                            "status": if state.is_complete && state.failed_count == 0 {
-                                "Completed"
-                            } else if state.failed_count > 0 {
-                                "Failed"
-                            } else {
-                                "PendingApproval"
-                            },
-                            "duration_ms": state.total_duration_ms,
-                            "steps": steps,
-                        });
-                        // Use the REAL run start time from the engine session so
-                        // the envelope's Started/Completed reflect the actual run.
-                        let run_started = state.started_at.unwrap_or_else(chrono::Utc::now);
-                        let envelope = build_envelope_from_run(
-                            &refreshed,
-                            execution_id,
-                            stored_template,
-                            &self.audit_hmac_key,
-                            Some(run_started),
-                        );
-                        let _ = self.audit_storage.store(envelope);
-                        final_state = Some(state);
+                        })
+                        .collect();
+                    let refreshed = serde_json::json!({
+                        "execution_id": execution_id.to_string(),
+                        "status": if state.is_complete && state.failed_count == 0 {
+                            "Completed"
+                        } else if state.failed_count > 0 {
+                            "Failed"
+                        } else {
+                            "PendingApproval"
+                        },
+                        "duration_ms": state.total_duration_ms,
+                        "steps": steps,
+                    });
+                    // Use the REAL run start time from the engine session so
+                    // the envelope's Started/Completed reflect the actual run.
+                    let run_started = state.started_at.unwrap_or_else(chrono::Utc::now);
+                    let envelope = build_envelope_from_run(
+                        &refreshed,
+                        execution_id,
+                        stored_template,
+                        &self.audit_hmac_key,
+                        Some(run_started),
+                    );
+                    let _ = self.audit_storage.store(envelope);
+                    final_state = Some(state);
                 }
 
                 Ok(serde_json::json!({
@@ -540,9 +550,8 @@ impl AppState {
                 // The handler may return markdown (text format) or JSON — pass
                 // the text through, only parsing when it is actually JSON.
                 let text = &result.content[0].text;
-                Ok(serde_json::from_str(text).unwrap_or_else(|_| {
-                    serde_json::Value::String(text.clone())
-                }))
+                Ok(serde_json::from_str(text)
+                    .unwrap_or_else(|_| serde_json::Value::String(text.clone())))
             }
             "rigorix_list_audits" => {
                 let input = serde_json::from_value(params.clone())
@@ -553,9 +562,8 @@ impl AppState {
                     .await
                     .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
                 let text = &result.content[0].text;
-                Ok(serde_json::from_str(text).unwrap_or_else(|_| {
-                    serde_json::Value::String(text.clone())
-                }))
+                Ok(serde_json::from_str(text)
+                    .unwrap_or_else(|_| serde_json::Value::String(text.clone())))
             }
             "rigorix_audit_summary" => {
                 let input = serde_json::from_value(params.clone())

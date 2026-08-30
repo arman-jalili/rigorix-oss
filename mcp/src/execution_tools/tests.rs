@@ -175,10 +175,8 @@ mod tests {
         async fn execution_state(
             &self,
             _: &ExecutionId,
-        ) -> Result<
-            crate::execution_tools::domain::value::ExecutionStateInfo,
-            EngineFacadeError,
-        > {
+        ) -> Result<crate::execution_tools::domain::value::ExecutionStateInfo, EngineFacadeError>
+        {
             unimplemented!("MockEngineFacade::execution_state not needed by current tests")
         }
     }
