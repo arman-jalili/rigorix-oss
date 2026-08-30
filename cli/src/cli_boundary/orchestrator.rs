@@ -241,6 +241,8 @@ pub async fn build_orchestrator_with_budget(
         save_intermediate_state: false,
         propagate_cancellation: true,
         capture_planning_prompt: false,
+        max_llm_calls: None,
+        max_llm_tokens: None,
         model_version,
     };
 
