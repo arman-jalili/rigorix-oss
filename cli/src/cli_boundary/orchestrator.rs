@@ -240,6 +240,7 @@ pub async fn build_orchestrator_with_budget(
         state_persistence_timeout_secs: 10,
         save_intermediate_state: false,
         propagate_cancellation: true,
+        capture_planning_prompt: false,
         model_version,
     };
 

@@ -68,6 +68,11 @@ pub struct PlanningMetadata {
     /// Hash of the planning prompt for replay reproducibility.
     pub prompt_hash: String,
 
+    /// Resolved template parameters from planning (deterministic capture for
+    /// audit evidence when prompt capture is enabled — GAP-M-13).
+    #[serde(default)]
+    pub parameters: std::collections::HashMap<String, String>,
+
     /// LLM model version used for planning (e.g. "claude-sonnet-4-20250514").
     /// `None` when no LLM was used or the model version was not captured.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -267,6 +272,7 @@ impl Default for PlanningMetadata {
             llm_calls: 0,
             total_tokens: 0,
             prompt_hash: String::new(),
+            parameters: std::collections::HashMap::new(),
             generated_toml: None,
             node_order: vec![],
             model_version: None,

@@ -53,6 +53,12 @@ pub struct OrchestratorConfig {
     /// Default: true.
     pub propagate_cancellation: bool,
 
+    /// Whether to capture resolved planning inputs (template + parameters)
+    /// into the audit envelope's `planning_prompt_content` (GAP-M-13).
+    /// Opt-in: the payload may contain user-supplied parameters.
+    /// Default: false.
+    pub capture_planning_prompt: bool,
+
     /// LLM model version used for planning
     /// (e.g. "claude-sonnet-4-20250514").
     /// `None` when unknown or not configured.
@@ -69,6 +75,7 @@ impl Default for OrchestratorConfig {
             state_persistence_timeout_secs: 10,
             save_intermediate_state: false,
             propagate_cancellation: true,
+            capture_planning_prompt: false,
             model_version: None,
         }
     }

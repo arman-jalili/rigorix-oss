@@ -330,6 +330,7 @@ async fn build_action_orchestrator(
         state_persistence_timeout_secs: 10,
         save_intermediate_state: false,
         propagate_cancellation: true,
+        capture_planning_prompt: false,
         model_version: action_model,
     };
 
