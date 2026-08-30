@@ -114,7 +114,8 @@ impl PersistedEventRepository for InMemoryEventRepository {
                         | ExecutionEvent::AuditEnvelopeDelivered { execution_id, .. }
                         | ExecutionEvent::AuditEnvelopeQueued { execution_id, .. }
                         | ExecutionEvent::AuditEnvelopeDropped { execution_id, .. }
-                        | ExecutionEvent::CircuitBreakerStateChanged { execution_id, .. } => {
+                        | ExecutionEvent::CircuitBreakerStateChanged { execution_id, .. }
+                        | ExecutionEvent::AuditEnvelopeCreated { execution_id, .. } => {
                             if execution_id != eid {
                                 return false;
                             }
@@ -151,6 +152,7 @@ impl PersistedEventRepository for InMemoryEventRepository {
                         ExecutionEvent::CircuitBreakerStateChanged { .. } => {
                             "circuit_breaker_state_changed"
                         }
+                        ExecutionEvent::AuditEnvelopeCreated { .. } => "audit_envelope_created",
                     };
                     if variant_name != event_type {
                         return false;
@@ -175,6 +177,7 @@ impl PersistedEventRepository for InMemoryEventRepository {
                     ExecutionEvent::AuditEnvelopeQueued { timestamp, .. } => timestamp,
                     ExecutionEvent::AuditEnvelopeDropped { timestamp, .. } => timestamp,
                     ExecutionEvent::CircuitBreakerStateChanged { timestamp, .. } => timestamp,
+                    ExecutionEvent::AuditEnvelopeCreated { timestamp, .. } => timestamp,
                 };
                 if let Some(after) = &input.after_timestamp
                     && ts < after
@@ -245,6 +248,7 @@ impl PersistedEventRepository for InMemoryEventRepository {
                 ExecutionEvent::AuditEnvelopeQueued { timestamp, .. } => timestamp,
                 ExecutionEvent::AuditEnvelopeDropped { timestamp, .. } => timestamp,
                 ExecutionEvent::CircuitBreakerStateChanged { timestamp, .. } => timestamp,
+                ExecutionEvent::AuditEnvelopeCreated { timestamp, .. } => timestamp,
             };
             ts >= &older_than
         });

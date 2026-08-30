@@ -26,6 +26,67 @@ use super::dto::{
 };
 use super::service::{AuditSender, CircuitBreaker};
 
+/// Map an audit-domain lifecycle event to the execution-event bus transport
+/// (GAP-A-17): the AuditEvent variants are referenced from production code.
+impl From<crate::audit::domain::event::AuditEvent> for ExecutionEvent {
+    fn from(e: crate::audit::domain::event::AuditEvent) -> Self {
+        use crate::audit::domain::event::AuditEvent as AE;
+        let timestamp = chrono::Utc::now();
+        match e {
+            AE::EnvelopeDelivered {
+                execution_id,
+                attempt,
+                duration_ms,
+            } => ExecutionEvent::AuditEnvelopeDelivered {
+                execution_id: uuid::Uuid::parse_str(&execution_id)
+                    .unwrap_or_else(|_| uuid::Uuid::nil()),
+                attempt,
+                duration_ms,
+                timestamp,
+            },
+            AE::EnvelopeQueued {
+                execution_id,
+                reason,
+                retry_count,
+                max_retries,
+            } => ExecutionEvent::AuditEnvelopeQueued {
+                execution_id: uuid::Uuid::parse_str(&execution_id)
+                    .unwrap_or_else(|_| uuid::Uuid::nil()),
+                reason,
+                retry_count,
+                max_retries,
+                timestamp,
+            },
+            AE::EnvelopeDropped {
+                execution_id,
+                attempts,
+                reason,
+            } => ExecutionEvent::AuditEnvelopeDropped {
+                execution_id: uuid::Uuid::parse_str(&execution_id)
+                    .unwrap_or_else(|_| uuid::Uuid::nil()),
+                attempts,
+                reason,
+                timestamp,
+            },
+            AE::CircuitBreakerStateChanged {
+                backend_url,
+                from_state,
+                to_state,
+            } => ExecutionEvent::CircuitBreakerStateChanged {
+                execution_id: uuid::Uuid::nil(),
+                backend_url,
+                from_state,
+                to_state,
+                timestamp,
+            },
+            AE::EnvelopeCreated { .. } => ExecutionEvent::AuditEnvelopeCreated {
+                execution_id: uuid::Uuid::nil(),
+                timestamp,
+            },
+        }
+    }
+}
+
 /// Implementation of `AuditSender` with HTTP delivery and circuit breaker.
 ///
 /// Uses reqwest for HTTP calls with configurable timeouts and retry logic.
@@ -103,9 +164,13 @@ impl AuditSenderImpl {
 
     /// Publish an envelope lifecycle event on the attached bus (best-effort:
     /// publish failures are logged by the bus and never fail delivery).
-    async fn emit(&self, event: ExecutionEvent) {
+    async fn emit(&self, event: crate::audit::domain::event::AuditEvent) {
         if let Some(ref bus) = self.event_bus {
-            let _ = bus.publish(PublishEventInput { event }).await;
+            let _ = bus
+                .publish(PublishEventInput {
+                    event: event.into(),
+                })
+                .await;
         }
     }
 
@@ -172,11 +237,10 @@ impl AuditSender for AuditSenderImpl {
                         cb.record_success().await.unwrap_or_default();
                     }
                     // GAP-A-17: emit the delivered lifecycle event.
-                    self.emit(ExecutionEvent::AuditEnvelopeDelivered {
-                        execution_id: input.envelope.execution_id,
+                    self.emit(crate::audit::domain::event::AuditEvent::EnvelopeDelivered {
+                        execution_id: input.envelope.execution_id.to_string(),
                         attempt: 1,
                         duration_ms,
-                        timestamp: chrono::Utc::now(),
                     })
                     .await;
                     Ok(SendEnvelopeOutput {
@@ -248,22 +312,21 @@ impl AuditSender for AuditSenderImpl {
                     if matches!(err, AuditError::CircuitBreakerOpen { .. }) {
                         // GAP-A-17: the breaker just transitioned — emit the
                         // state change and the permanent drop.
-                        self.emit(ExecutionEvent::CircuitBreakerStateChanged {
-                            execution_id: input.envelope.execution_id,
-                            backend_url: self
-                                .default_backend_url
-                                .clone()
-                                .unwrap_or_else(|| "<default>".to_string()),
-                            from_state: "closed".to_string(),
-                            to_state: "open".to_string(),
-                            timestamp: chrono::Utc::now(),
-                        })
+                        self.emit(
+                            crate::audit::domain::event::AuditEvent::CircuitBreakerStateChanged {
+                                backend_url: self
+                                    .default_backend_url
+                                    .clone()
+                                    .unwrap_or_else(|| "<default>".to_string()),
+                                from_state: "closed".to_string(),
+                                to_state: "open".to_string(),
+                            },
+                        )
                         .await;
-                        self.emit(ExecutionEvent::AuditEnvelopeDropped {
-                            execution_id: input.envelope.execution_id,
+                        self.emit(crate::audit::domain::event::AuditEvent::EnvelopeDropped {
+                            execution_id: input.envelope.execution_id.to_string(),
                             attempts: attempt,
                             reason: err.to_string(),
-                            timestamp: chrono::Utc::now(),
                         })
                         .await;
                         return Ok(DeliverEnvelopeOutput {
@@ -278,12 +341,11 @@ impl AuditSender for AuditSenderImpl {
                     // Wait for backoff before next retry
                     if attempt < input.max_retries {
                         // GAP-A-17: delivery failed and will be retried.
-                        self.emit(ExecutionEvent::AuditEnvelopeQueued {
-                            execution_id: input.envelope.execution_id,
+                        self.emit(crate::audit::domain::event::AuditEvent::EnvelopeQueued {
+                            execution_id: input.envelope.execution_id.to_string(),
                             reason: err.to_string(),
                             retry_count: attempt,
                             max_retries: input.max_retries,
-                            timestamp: chrono::Utc::now(),
                         })
                         .await;
                         let delay = Self::backoff_delay(
@@ -298,11 +360,10 @@ impl AuditSender for AuditSenderImpl {
         }
 
         // GAP-A-17: retries exhausted — the envelope is permanently dropped.
-        self.emit(ExecutionEvent::AuditEnvelopeDropped {
-            execution_id: input.envelope.execution_id,
+        self.emit(crate::audit::domain::event::AuditEvent::EnvelopeDropped {
+            execution_id: input.envelope.execution_id.to_string(),
             attempts: input.max_retries,
             reason: last_error.clone().unwrap_or_else(|| "unknown".to_string()),
-            timestamp: chrono::Utc::now(),
         })
         .await;
 

@@ -854,6 +854,10 @@ impl OrchestratorService for OrchestratorServiceImpl {
                                 timestamp,
                                 ..
                             } => *timestamp,
+                            crate::event_system::domain::ExecutionEvent::AuditEnvelopeCreated {
+                                timestamp,
+                                ..
+                            } => *timestamp,
                         };
                         ExecutionEventInfo {
                             event_type: pe.event.event_type_name().to_string(),
@@ -1395,6 +1399,10 @@ impl OrchestratorService for OrchestratorServiceImpl {
                                 ..
                             } => *timestamp,
                             crate::event_system::domain::ExecutionEvent::CircuitBreakerStateChanged {
+                                timestamp,
+                                ..
+                            } => *timestamp,
+                            crate::event_system::domain::ExecutionEvent::AuditEnvelopeCreated {
                                 timestamp,
                                 ..
                             } => *timestamp,
@@ -2120,6 +2128,43 @@ mod tests {
         assert!(approve.resumed, "execution should resume after approval");
     }
 
+    /// GAP-M-13: planning_prompt_content is populated only when
+    /// capture_planning_prompt is enabled (config-gated, deterministic).
+    #[test]
+    fn test_planning_prompt_content_gated() {
+        let mut planning = crate::orchestrator::domain::record::PlanningMetadata::default();
+        planning.template_id = "tpl".to_string();
+        planning
+            .parameters
+            .insert("key".to_string(), "value".to_string());
+
+        // Disabled (default) -> None.
+        let orch_off = OrchestratorServiceImpl::default_test();
+        assert!(orch_off.planning_prompt_content(&planning).is_none());
+
+        // Enabled -> deterministic JSON of template + resolved parameters.
+        let orch_on = OrchestratorServiceImpl::new(
+            OrchestratorConfig {
+                capture_planning_prompt: true,
+                ..Default::default()
+            },
+            Arc::new(super::super::orchestrator_mocks::MockPlanningService::new()),
+            Arc::new(super::super::orchestrator_mocks::MockExecutionService),
+            Arc::new(super::super::orchestrator_mocks::MockStateService::new()),
+            Arc::new(super::super::orchestrator_mocks::MockCancellationService),
+            Arc::new(super::super::orchestrator_mocks::MockEventBusService::new()),
+            None,
+            Arc::new(super::super::orchestrator_mocks::MockBudgetService),
+            None,
+        );
+        let content = orch_on
+            .planning_prompt_content(&planning)
+            .expect("capture must be populated when enabled");
+        assert!(content.contains("tpl"), "template_id must be captured");
+        assert!(content.contains("value"), "parameters must be captured");
+        // Deterministic: same input -> same output.
+        assert_eq!(content, orch_on.planning_prompt_content(&planning).unwrap());
+    }
     #[test]
     fn test_build_graph_from_steps_chains_sequentially() {
         // Frozen contract (template-tools value.rs): "Step order is significant".

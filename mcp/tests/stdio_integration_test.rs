@@ -10,42 +10,9 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-/// Helper: send a JSON-RPC message to the server's stdin, read one line from stdout.
-fn send_rpc(input: &str, stdin: &mut impl Write, stdout: &mut impl std::io::Read) -> String {
-    // Write the message
-    writeln!(stdin, "{}", input).expect("Failed to write to stdin");
-    std::thread::sleep(std::time::Duration::from_millis(50));
+mod common;
 
-    // Read one complete JSON line from stdout
-    let mut response = String::new();
-    let mut in_json = false;
-    let mut depth = 0i32;
-
-    loop {
-        let mut byte = [0u8; 1];
-        match stdout.read(&mut byte) {
-            Ok(0) => break, // EOF
-            Ok(_) => {
-                let c = byte[0] as char;
-                if c == '{' {
-                    in_json = true;
-                    depth += 1;
-                } else if c == '}' {
-                    depth -= 1;
-                }
-                if in_json {
-                    response.push(c);
-                    if depth == 0 && in_json {
-                        break; // Complete JSON object read
-                    }
-                }
-            }
-            Err(_) => break,
-        }
-    }
-
-    response
-}
+use common::send_rpc;
 
 #[test]
 fn test_stdio_initialize_handshake() {

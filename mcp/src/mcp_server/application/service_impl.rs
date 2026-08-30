@@ -126,7 +126,7 @@ impl McpServerService for McpServerServiceImpl {
 
         let output = InitializeOutput {
             protocol_version: "2025-03-26".to_string(),
-            server_capabilities: server_caps,
+            server_capabilities: server_caps.clone(),
             server_info: "Rigorix MCP Gateway".to_string(),
         };
 
@@ -362,12 +362,31 @@ impl McpServerService for McpServerServiceWithRepos {
 
         let output = InitializeOutput {
             protocol_version: "2025-03-26".to_string(),
-            server_capabilities: server_caps,
+            server_capabilities: server_caps.clone(),
             server_info: "Rigorix MCP Gateway".to_string(),
         };
 
+        // GAP-A-22: the initialize handshake must create a REAL session —
+        // previously the event carried a throwaway SessionId and the
+        // session repository was never written.
+        let client_caps = ClientCapabilities {
+            protocol_version: input.protocol_version.clone(),
+            client_name: Some(input.client_info.name.clone()),
+            client_version: input.client_info.version.clone(),
+            supports_progress: false,
+        };
+        let session = crate::mcp_server::domain::entity::Session::new(
+            input.client_info.clone(),
+            client_caps,
+            server_caps,
+        );
+        self.session_repo
+            .save(&session)
+            .await
+            .map_err(|e| McpServerError::Transport(format!("session save failed: {e}")))?;
+
         let events = vec![McpServerEvent::McpSessionStarted {
-            session_id: SessionId::new(),
+            session_id: session.id.clone(),
             client_name: input.client_info.name.clone(),
             client_version: input.client_info.version.clone(),
             protocol_version: input.protocol_version,

@@ -18,7 +18,7 @@
 //! rigorix-mcp
 //!
 //! # SSE mode (for GUI tools like Claude Desktop, Cursor)
-//! rigorix-mcp --sse --bind 127.0.0.1:3001
+//! rigorix-mcp (stdio mode)
 //! ```
 
 use std::sync::Arc;
@@ -768,6 +768,19 @@ fn load_mcp_hook_runner(
     }
 }
 
+
+/// GAP-A-07: mock classifier fallback (also used by e2e tests).
+fn mock_classifier() -> Box<dyn rigorix_engine::planning::domain::classification::Classifier> {
+    use rigorix_engine::planning::application::MockClassifier;
+    Box::new(
+        MockClassifier::default()
+            // Catch-all: empty string matches any intent input
+            .with_match("", "default", 0.1)
+            .with_match("e2e-test-plan", "e2e-test-plan", 1.0)
+            .with_match("default", "default", 0.9),
+    )
+}
+
 /// Build a real EngineFacadeImpl by constructing all required engine sub-services.
 async fn build_real_engine(
     repo_root: &str,
@@ -802,18 +815,93 @@ async fn build_real_engine(
     use rigorix_engine::templates::application::service::TemplateEngineService;
     use rigorix_engine::templates::application::template_engine_impl::TemplateEngineImpl;
 
-    // ── Planning pipeline (using mocks for classifier/extractor, real template engine) ──
+    // ── Planning pipeline ──
+    // GAP-A-07: prefer REAL LLM classifiers/extractor. Mock mode is used only
+    // when explicitly requested (RIGORIX_MOCK_PLANNING=1) or no API key is set.
+    let mock_planning = std::env::var("RIGORIX_MOCK_PLANNING")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    let classifier: Box<dyn rigorix_engine::planning::domain::classification::Classifier> =
+        if let Ok(key) = std::env::var("ANTHROPIC_API_KEY") {
+            if mock_planning {
+                tracing::warn!("RIGORIX_MOCK_PLANNING=1 overrides ANTHROPIC_API_KEY — mock mode");
+                mock_classifier()
+            } else {
+                tracing::info!("using real Claude classifier for planning");
+                Box::new(
+                    rigorix_engine::planning::infrastructure::ClaudeClassifier::new(
+                        key,
+                        Some(rigorix_engine::planning::infrastructure::ClaudeClassifierConfig {
+                            api_url: "https://api.anthropic.com/v1/messages".to_string(),
+                            model: std::env::var("RIGORIX_PLANNING_MODEL")
+                                .unwrap_or_else(|_| "claude-sonnet-4-20250514".to_string()),
+                            max_tokens: 1024,
+                            temperature: 0.2,
+                            timeout_secs: 120,
+                            requests_per_second: 10,
+                        }),
+                    ),
+                )
+            }
+        } else if let Ok(key) = std::env::var("OPENAI_API_KEY") {
+            if mock_planning {
+                tracing::warn!("RIGORIX_MOCK_PLANNING=1 overrides OPENAI_API_KEY — mock mode");
+                mock_classifier()
+            } else {
+                tracing::info!("using real OpenAI classifier for planning");
+                Box::new(
+                    rigorix_engine::planning::infrastructure::OpenaiClassifier::new(
+                        key,
+                        Some(rigorix_engine::planning::infrastructure::OpenaiClassifierConfig {
+                            api_url: "https://api.openai.com/v1/chat/completions".to_string(),
+                            model: std::env::var("RIGORIX_PLANNING_MODEL")
+                                .unwrap_or_else(|_| "gpt-4o".to_string()),
+                            max_tokens: 1024,
+                            temperature: 0.2,
+                            timeout_secs: 120,
+                            requests_per_second: 10,
+                        }),
+                    ),
+                )
+            }
+        } else {
+            tracing::warn!(
+                "no ANTHROPIC_API_KEY/OPENAI_API_KEY — falling back to mock planning (set RIGORIX_MOCK_PLANNING=1 to silence)"
+            );
+            mock_classifier()
+        };
+
     let execution_id = uuid::Uuid::new_v4().to_string();
-    let classifier = Box::new(
-        rigorix_engine::planning::application::MockClassifier::default()
-            // Catch-all: empty string matches any intent input
-            .with_match("", "default", 0.1)
-            // Specific matches take priority (higher confidence)
-            .with_match("e2e-test-plan", "e2e-test-plan", 1.0)
-            .with_match("default", "default", 0.9),
-    );
-    let extractor =
-        Box::new(rigorix_engine::planning::application::MockParameterExtractor::default());
+    let extractor: Box<dyn rigorix_engine::planning::domain::extractor::ParameterExtractor> =
+        if mock_planning
+            || (std::env::var("ANTHROPIC_API_KEY").is_err() && std::env::var("OPENAI_API_KEY").is_err())
+        {
+            Box::new(rigorix_engine::planning::application::MockParameterExtractor::default())
+        } else {
+            let key = std::env::var("ANTHROPIC_API_KEY")
+                .or_else(|_| std::env::var("OPENAI_API_KEY"))
+                .unwrap_or_default();
+            tracing::info!("using real LLM parameter extractor");
+            Box::new(rigorix_engine::planning::infrastructure::LlmParameterExtractor::new(
+                key,
+                Some(rigorix_engine::planning::infrastructure::LlmExtractorConfig {
+                    api_url: std::env::var("ANTHROPIC_API_KEY")
+                        .map(|_| "https://api.anthropic.com/v1/messages".to_string())
+                        .unwrap_or_else(|_| "https://api.openai.com/v1/chat/completions".to_string()),
+                    model: std::env::var("RIGORIX_PLANNING_MODEL")
+                        .unwrap_or_else(|_| "claude-sonnet-4-20250514".to_string()),
+                    max_tokens: 1024,
+                    temperature: 0.2,
+                    timeout_secs: 120,
+                    provider: if std::env::var("ANTHROPIC_API_KEY").is_ok() {
+                        rigorix_engine::planning::infrastructure::ExtractorProvider::Anthropic
+                    } else {
+                        rigorix_engine::planning::infrastructure::ExtractorProvider::OpenAI
+                    },
+                }),
+            ))
+        };
     let template_service: Arc<dyn TemplateEngineService> = {
         let svc = Arc::new(TemplateEngineImpl::new());
         // Register a default catch-all template so the engine can execute any plan
@@ -831,7 +919,7 @@ async fn build_real_engine(
                         depends_on: vec![],
                         action:
                             rigorix_engine::templates::domain::template::TemplateAction::FileRead {
-                                path: "/dev/null".into(),
+                                path: format!("{}/README.md", repo_root).into(),
                             },
                         description: Some("Default execution step".into()),
                         retry: Default::default(),
@@ -861,7 +949,7 @@ async fn build_real_engine(
                         depends_on: vec![],
                         action:
                             rigorix_engine::templates::domain::template::TemplateAction::FileRead {
-                                path: "/dev/null".into(),
+                                path: format!("{}/README.md", repo_root).into(),
                             },
                         description: Some("E2E test step".into()),
                         retry: Default::default(),
@@ -1642,7 +1730,9 @@ async fn main() {
     // Parse args
     let args: Vec<String> = std::env::args().collect();
     let use_sse = args.iter().any(|a| a == "--sse");
-    let bind_addr = args
+    // --bind is accepted for CLI compatibility; the server runs over stdio
+    // (GAP-A-10: SSE transport removed).
+    let _bind_addr = args
         .iter()
         .position(|a| a == "--bind")
         .and_then(|i| args.get(i + 1).cloned())
@@ -1671,13 +1761,17 @@ async fn main() {
         cancel_clone.cancel();
     });
 
+    // GAP-A-10: SSE transport removed — the --sse flag never started a real
+    // server (it logged 'not fully implemented' and exited). The server now
+    // always runs over stdio; --sse is accepted with a deprecation notice so
+    // existing invocations do not silently change behavior.
     if use_sse {
-        tracing::info!("Starting MCP Server in SSE mode on {}", bind_addr);
-        tracing::warn!("SSE mode is not fully implemented in this phase");
-    } else {
-        tracing::info!("Starting MCP Server in stdio mode");
-        run_stdio_server(cancel).await;
+        tracing::warn!(
+            "SSE transport is not supported (removed); starting in stdio mode. See .pi/architecture/modules/mcp-server.md"
+        );
     }
+    tracing::info!("Starting MCP Server in stdio mode");
+    run_stdio_server(cancel).await;
 
     tracing::info!("MCP Server shut down gracefully");
 }
