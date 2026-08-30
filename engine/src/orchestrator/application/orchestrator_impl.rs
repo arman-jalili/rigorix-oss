@@ -796,6 +796,22 @@ impl OrchestratorService for OrchestratorServiceImpl {
                                 timestamp,
                                 ..
                             } => *timestamp,
+                            crate::event_system::domain::ExecutionEvent::AuditEnvelopeDelivered {
+                                timestamp,
+                                ..
+                            } => *timestamp,
+                            crate::event_system::domain::ExecutionEvent::AuditEnvelopeQueued {
+                                timestamp,
+                                ..
+                            } => *timestamp,
+                            crate::event_system::domain::ExecutionEvent::AuditEnvelopeDropped {
+                                timestamp,
+                                ..
+                            } => *timestamp,
+                            crate::event_system::domain::ExecutionEvent::CircuitBreakerStateChanged {
+                                timestamp,
+                                ..
+                            } => *timestamp,
                         };
                         ExecutionEventInfo {
                             event_type: pe.event.event_type_name().to_string(),
@@ -1313,6 +1329,22 @@ impl OrchestratorService for OrchestratorServiceImpl {
                                 timestamp,
                                 ..
                             } => *timestamp,
+                            crate::event_system::domain::ExecutionEvent::AuditEnvelopeDelivered {
+                                timestamp,
+                                ..
+                            } => *timestamp,
+                            crate::event_system::domain::ExecutionEvent::AuditEnvelopeQueued {
+                                timestamp,
+                                ..
+                            } => *timestamp,
+                            crate::event_system::domain::ExecutionEvent::AuditEnvelopeDropped {
+                                timestamp,
+                                ..
+                            } => *timestamp,
+                            crate::event_system::domain::ExecutionEvent::CircuitBreakerStateChanged {
+                                timestamp,
+                                ..
+                            } => *timestamp,
                         };
                         ExecutionEventInfo {
                             event_type: pe.event.event_type_name().to_string(),
@@ -1624,6 +1656,7 @@ mod tests {
                     events: vec![],
                     scoring_results: std::collections::HashMap::new(),
                     signature: None,
+                    evidence_degraded: false,
                 },
                 signed: false,
                 event_count: 0,

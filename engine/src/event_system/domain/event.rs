@@ -211,6 +211,62 @@ pub enum ExecutionEvent {
         /// ISO 8601 timestamp of the warning.
         timestamp: DateTime<Utc>,
     },
+
+    /// An audit envelope was successfully delivered to the backend.
+    AuditEnvelopeDelivered {
+        /// The execution ID this envelope belongs to.
+        execution_id: uuid::Uuid,
+        /// Delivery attempt number.
+        attempt: u32,
+        /// Duration of delivery in milliseconds.
+        duration_ms: u64,
+        /// ISO 8601 timestamp of the event.
+        timestamp: DateTime<Utc>,
+    },
+
+    /// An audit envelope failed delivery and was queued for retry.
+    AuditEnvelopeQueued {
+        /// The execution ID this envelope belongs to.
+        execution_id: uuid::Uuid,
+        /// Why delivery failed.
+        reason: String,
+        /// Number of pending retries so far.
+        retry_count: u32,
+        /// Maximum retries before dropping.
+        max_retries: u32,
+        /// ISO 8601 timestamp of the event.
+        timestamp: DateTime<Utc>,
+    },
+
+    /// An audit envelope was permanently dropped after exhausting retries.
+    AuditEnvelopeDropped {
+        /// The execution ID this envelope belongs to.
+        execution_id: uuid::Uuid,
+        /// Total delivery attempts made.
+        attempts: u32,
+        /// Final error detail.
+        reason: String,
+        /// ISO 8601 timestamp of the event.
+        timestamp: DateTime<Utc>,
+    },
+
+    /// The audit circuit breaker changed state.
+    ///
+    /// Carries the execution context of the delivery attempt that observed
+    /// the transition (the breaker is backend-scoped, but the transition is
+    /// surfaced during a specific envelope's delivery).
+    CircuitBreakerStateChanged {
+        /// The execution ID whose delivery observed the transition.
+        execution_id: uuid::Uuid,
+        /// The backend URL affected.
+        backend_url: String,
+        /// Previous state.
+        from_state: String,
+        /// New state.
+        to_state: String,
+        /// ISO 8601 timestamp of the event.
+        timestamp: DateTime<Utc>,
+    },
 }
 
 /// A persisted execution event with a monotonic sequence number.
@@ -251,6 +307,10 @@ impl ExecutionEvent {
             ExecutionEvent::ExecutionFailed { .. } => "execution_failed",
             ExecutionEvent::ExecutionCancelled { .. } => "execution_cancelled",
             ExecutionEvent::BudgetWarning { .. } => "budget_warning",
+            ExecutionEvent::AuditEnvelopeDelivered { .. } => "audit_envelope_delivered",
+            ExecutionEvent::AuditEnvelopeQueued { .. } => "audit_envelope_queued",
+            ExecutionEvent::AuditEnvelopeDropped { .. } => "audit_envelope_dropped",
+            ExecutionEvent::CircuitBreakerStateChanged { .. } => "circuit_breaker_state_changed",
         }
     }
 
@@ -267,7 +327,11 @@ impl ExecutionEvent {
             | ExecutionEvent::ExecutionCompleted { execution_id, .. }
             | ExecutionEvent::ExecutionFailed { execution_id, .. }
             | ExecutionEvent::ExecutionCancelled { execution_id, .. }
-            | ExecutionEvent::BudgetWarning { execution_id, .. } => execution_id,
+            | ExecutionEvent::BudgetWarning { execution_id, .. }
+            | ExecutionEvent::AuditEnvelopeDelivered { execution_id, .. }
+            | ExecutionEvent::AuditEnvelopeQueued { execution_id, .. }
+            | ExecutionEvent::AuditEnvelopeDropped { execution_id, .. }
+            | ExecutionEvent::CircuitBreakerStateChanged { execution_id, .. } => execution_id,
         }
     }
 
@@ -284,7 +348,11 @@ impl ExecutionEvent {
             | ExecutionEvent::ExecutionCompleted { timestamp, .. }
             | ExecutionEvent::ExecutionFailed { timestamp, .. }
             | ExecutionEvent::ExecutionCancelled { timestamp, .. }
-            | ExecutionEvent::BudgetWarning { timestamp, .. } => timestamp,
+            | ExecutionEvent::BudgetWarning { timestamp, .. }
+            | ExecutionEvent::AuditEnvelopeDelivered { timestamp, .. }
+            | ExecutionEvent::AuditEnvelopeQueued { timestamp, .. }
+            | ExecutionEvent::AuditEnvelopeDropped { timestamp, .. }
+            | ExecutionEvent::CircuitBreakerStateChanged { timestamp, .. } => timestamp,
         }
     }
 
@@ -368,6 +436,41 @@ impl ExecutionEvent {
                     "Budget warning: {} used {}/{} (resource: {})",
                     resource, used, limit, resource
                 )
+            }
+            ExecutionEvent::AuditEnvelopeDelivered {
+                attempt,
+                duration_ms,
+                ..
+            } => {
+                format!(
+                    "Audit envelope delivered (attempt {}, {}ms)",
+                    attempt, duration_ms
+                )
+            }
+            ExecutionEvent::AuditEnvelopeQueued {
+                reason,
+                retry_count,
+                ..
+            } => {
+                format!(
+                    "Audit envelope queued (retry {}, reason: {})",
+                    retry_count, reason
+                )
+            }
+            ExecutionEvent::AuditEnvelopeDropped {
+                attempts, reason, ..
+            } => {
+                format!(
+                    "Audit envelope dropped ({} attempts, reason: {})",
+                    attempts, reason
+                )
+            }
+            ExecutionEvent::CircuitBreakerStateChanged {
+                backend_url,
+                to_state,
+                ..
+            } => {
+                format!("Circuit breaker {} for {}", to_state, backend_url)
             }
         }
     }
@@ -455,7 +558,11 @@ impl ExecutionEvent {
             ExecutionEvent::PlanningStarted { .. }
             | ExecutionEvent::NodeStarted { .. }
             | ExecutionEvent::NodeRetrying { .. }
-            | ExecutionEvent::ExecutionCancelled { .. } => None,
+            | ExecutionEvent::ExecutionCancelled { .. }
+            | ExecutionEvent::AuditEnvelopeDelivered { .. }
+            | ExecutionEvent::AuditEnvelopeQueued { .. }
+            | ExecutionEvent::AuditEnvelopeDropped { .. }
+            | ExecutionEvent::CircuitBreakerStateChanged { .. } => None,
         }
     }
 
