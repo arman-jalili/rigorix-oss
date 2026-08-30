@@ -501,6 +501,7 @@ impl crate::audit::application::AuditService for MockAuditService {
                 events: vec![],
                 scoring_results: std::collections::HashMap::new(),
                 signature: None,
+                evidence_degraded: false,
                 repository: None,
                 author: None,
                 identity: None,
