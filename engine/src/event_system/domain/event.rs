@@ -250,6 +250,14 @@ pub enum ExecutionEvent {
         timestamp: DateTime<Utc>,
     },
 
+    /// An audit envelope was created (audit disabled or otherwise).
+    AuditEnvelopeCreated {
+        /// The execution ID this envelope belongs to.
+        execution_id: uuid::Uuid,
+        /// ISO 8601 timestamp of the event.
+        timestamp: DateTime<Utc>,
+    },
+
     /// The audit circuit breaker changed state.
     ///
     /// Carries the execution context of the delivery attempt that observed
@@ -311,6 +319,7 @@ impl ExecutionEvent {
             ExecutionEvent::AuditEnvelopeQueued { .. } => "audit_envelope_queued",
             ExecutionEvent::AuditEnvelopeDropped { .. } => "audit_envelope_dropped",
             ExecutionEvent::CircuitBreakerStateChanged { .. } => "circuit_breaker_state_changed",
+            ExecutionEvent::AuditEnvelopeCreated { .. } => "audit_envelope_created",
         }
     }
 
@@ -331,7 +340,8 @@ impl ExecutionEvent {
             | ExecutionEvent::AuditEnvelopeDelivered { execution_id, .. }
             | ExecutionEvent::AuditEnvelopeQueued { execution_id, .. }
             | ExecutionEvent::AuditEnvelopeDropped { execution_id, .. }
-            | ExecutionEvent::CircuitBreakerStateChanged { execution_id, .. } => execution_id,
+            | ExecutionEvent::CircuitBreakerStateChanged { execution_id, .. }
+            | ExecutionEvent::AuditEnvelopeCreated { execution_id, .. } => execution_id,
         }
     }
 
@@ -352,7 +362,8 @@ impl ExecutionEvent {
             | ExecutionEvent::AuditEnvelopeDelivered { timestamp, .. }
             | ExecutionEvent::AuditEnvelopeQueued { timestamp, .. }
             | ExecutionEvent::AuditEnvelopeDropped { timestamp, .. }
-            | ExecutionEvent::CircuitBreakerStateChanged { timestamp, .. } => timestamp,
+            | ExecutionEvent::CircuitBreakerStateChanged { timestamp, .. }
+            | ExecutionEvent::AuditEnvelopeCreated { timestamp, .. } => timestamp,
         }
     }
 
@@ -472,6 +483,7 @@ impl ExecutionEvent {
             } => {
                 format!("Circuit breaker {} for {}", to_state, backend_url)
             }
+            ExecutionEvent::AuditEnvelopeCreated { .. } => "Audit envelope created".to_string(),
         }
     }
 
@@ -562,7 +574,8 @@ impl ExecutionEvent {
             | ExecutionEvent::AuditEnvelopeDelivered { .. }
             | ExecutionEvent::AuditEnvelopeQueued { .. }
             | ExecutionEvent::AuditEnvelopeDropped { .. }
-            | ExecutionEvent::CircuitBreakerStateChanged { .. } => None,
+            | ExecutionEvent::CircuitBreakerStateChanged { .. }
+            | ExecutionEvent::AuditEnvelopeCreated { .. } => None,
         }
     }
 
