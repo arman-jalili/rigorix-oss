@@ -30,6 +30,38 @@ use super::service::{HookCommandExecutor, HookRunnerService};
 /// Minimum timeout in seconds.
 const MIN_TIMEOUT_SECS: u64 = 1;
 
+/// Spawn a thread that drains a child pipe to EOF. Used by
+/// `execute_single_command` so a hook writing more than the pipe buffer
+/// (~64KB) cannot deadlock (GAP-A-04).
+fn spawn_reader_thread(pipe: std::process::ChildStdout) -> std::thread::JoinHandle<Vec<u8>> {
+    std::thread::spawn(move || {
+        use std::io::Read;
+        let mut buf = Vec::new();
+        let _ = std::io::BufReader::new(pipe).read_to_end(&mut buf);
+        buf
+    })
+}
+
+/// Spawn a thread that drains a child stderr pipe to EOF (see above).
+fn spawn_stderr_reader_thread(pipe: std::process::ChildStderr) -> std::thread::JoinHandle<Vec<u8>> {
+    std::thread::spawn(move || {
+        use std::io::Read;
+        let mut buf = Vec::new();
+        let _ = std::io::BufReader::new(pipe).read_to_end(&mut buf);
+        buf
+    })
+}
+
+/// Join both drain threads and return their collected output.
+fn join_reader_threads(
+    out_thread: Option<std::thread::JoinHandle<Vec<u8>>>,
+    err_thread: Option<std::thread::JoinHandle<Vec<u8>>>,
+) -> (Vec<u8>, Vec<u8>) {
+    let stdout = out_thread.and_then(|t| t.join().ok()).unwrap_or_default();
+    let stderr = err_thread.and_then(|t| t.join().ok()).unwrap_or_default();
+    (stdout, stderr)
+}
+
 /// Concrete implementation of `HookRunnerService`.
 ///
 /// Executes hook commands by spawning child processes, piping JSON to stdin,
@@ -107,13 +139,22 @@ impl HookRunnerImpl {
             });
         }
 
+        // Take stdout/stderr and drain them on reader threads while we wait.
+        // GAP-A-04: without concurrent draining, a hook writing more than the
+        // ~64KB pipe buffer blocks forever on write(2) — try_wait() then only
+        // ever sees None and the wall-clock timeout is the sole escape.
+        let out_thread = child.stdout.take().map(spawn_reader_thread);
+        let err_thread = child.stderr.take().map(spawn_stderr_reader_thread);
+
         // Wait for the process with timeout
         let start = Instant::now();
-        loop {
+        let status = loop {
             if let Some(signal) = abort_signal
                 && signal.is_aborted()
             {
                 let _ = child.kill();
+                let _ = child.wait();
+                let _ = join_reader_threads(out_thread, err_thread);
                 return Ok(HookRunResult::cancelled(
                     event,
                     vec![format!("Hook '{}' aborted during execution", command)],
@@ -121,50 +162,13 @@ impl HookRunnerImpl {
             }
 
             match child.try_wait() {
-                Ok(Some(status)) => {
-                    let elapsed = start.elapsed().as_millis() as u64;
-                    let output_result =
-                        child.wait_with_output().map_err(|e| HookError::Internal {
-                            detail: format!("Failed to read output from hook '{}': {}", command, e),
-                        })?;
-
-                    let stdout = String::from_utf8_lossy(&output_result.stdout).to_string();
-                    let stderr = String::from_utf8_lossy(&output_result.stderr).to_string();
-
-                    if !status.success() {
-                        // Try to parse JSON from stdout even on non-zero exit
-                        if let Ok(response) = serde_json::from_str::<HookStdoutResponse>(&stdout) {
-                            return Ok(Self::response_to_result(response, event, elapsed));
-                        }
-                        return Err(HookError::ProcessError {
-                            command: command.to_string(),
-                            exit_code: status.code().unwrap_or(-1),
-                            stderr,
-                        });
-                    }
-
-                    // Successful exit — parse stdout as JSON
-                    match serde_json::from_str::<HookStdoutResponse>(&stdout) {
-                        Ok(response) => {
-                            return Ok(Self::response_to_result(response, event, elapsed));
-                        }
-                        Err(e) => {
-                            if stdout.trim().is_empty() {
-                                // Empty stdout on success = allow (no-op hook)
-                                return Ok(HookRunResult::new(event));
-                            }
-                            return Err(HookError::InvalidJson {
-                                command: command.to_string(),
-                                detail: e.to_string(),
-                                raw_output: stdout.chars().take(500).collect(),
-                            });
-                        }
-                    }
-                }
+                Ok(Some(status)) => break status,
                 Ok(None) => {
                     // Process still running — check timeout
                     if start.elapsed().as_millis() as u64 > timeout_ms {
                         let _ = child.kill();
+                        let _ = child.wait();
+                        let _ = join_reader_threads(out_thread, err_thread);
                         return Err(HookError::Timeout {
                             command: command.to_string(),
                             timeout_ms,
@@ -173,10 +177,50 @@ impl HookRunnerImpl {
                     std::thread::sleep(std::time::Duration::from_millis(10));
                 }
                 Err(e) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = join_reader_threads(out_thread, err_thread);
                     return Err(HookError::Internal {
                         detail: format!("Error waiting for hook '{}': {}", command, e),
                     });
                 }
+            }
+        };
+
+        // Child has exited (reaped by try_wait above). The drain threads see
+        // EOF once the child's write ends close, so joining is prompt. This
+        // replaces the previous `wait_with_output()` call which ran AFTER the
+        // child was already reaped.
+        let (stdout_bytes, stderr_bytes) = join_reader_threads(out_thread, err_thread);
+        let elapsed = start.elapsed().as_millis() as u64;
+        let stdout = String::from_utf8_lossy(&stdout_bytes).to_string();
+        let stderr = String::from_utf8_lossy(&stderr_bytes).to_string();
+
+        if !status.success() {
+            // Try to parse JSON from stdout even on non-zero exit
+            if let Ok(response) = serde_json::from_str::<HookStdoutResponse>(&stdout) {
+                return Ok(Self::response_to_result(response, event, elapsed));
+            }
+            return Err(HookError::ProcessError {
+                command: command.to_string(),
+                exit_code: status.code().unwrap_or(-1),
+                stderr,
+            });
+        }
+
+        // Successful exit — parse stdout as JSON
+        match serde_json::from_str::<HookStdoutResponse>(&stdout) {
+            Ok(response) => Ok(Self::response_to_result(response, event, elapsed)),
+            Err(e) => {
+                if stdout.trim().is_empty() {
+                    // Empty stdout on success = allow (no-op hook)
+                    return Ok(HookRunResult::new(event));
+                }
+                Err(HookError::InvalidJson {
+                    command: command.to_string(),
+                    detail: e.to_string(),
+                    raw_output: stdout.chars().take(500).collect(),
+                })
             }
         }
     }
@@ -511,6 +555,65 @@ mod tests {
         // Empty config — no hooks to run, so abort doesn't matter
         let output = runner.run_pre_tool_use(input, Some(&signal)).unwrap();
         assert!(output.result.is_allowed());
+    }
+
+    /// GAP-A-04 regression: a hook emitting more than the ~64KB pipe buffer
+    /// must complete promptly (output drained on reader threads) instead of
+    /// blocking forever and only escaping via the wall-clock timeout.
+    ///
+    /// `execute_command` surfaces the raw error: before the fix this was
+    /// `Timeout` (after the 1s window); with the fix the child exits as soon
+    /// as the pipe drains and the non-JSON output yields `InvalidJson`.
+    #[test]
+    fn test_large_hook_output_does_not_deadlock() {
+        let runner = HookRunnerImpl::new(HookConfig::default());
+        let payload = serde_json::json!({});
+        let start = std::time::Instant::now();
+        let result = runner.execute_command("yes x | head -c 200000", &payload, None);
+        let elapsed_ms = start.elapsed().as_millis();
+        assert!(
+            matches!(result, Err(HookError::InvalidJson { .. })),
+            "expected InvalidJson (output drained), got {:?}",
+            result
+        );
+        assert!(
+            elapsed_ms < 900,
+            "must not wait out the 1s timeout, took {}ms",
+            elapsed_ms
+        );
+    }
+
+    #[test]
+    fn test_abort_kills_long_running_hook() {
+        // Abort must kill + reap the child and join the drain threads so no
+        // zombie/leaked pipe is left behind.
+        let config = HookConfig {
+            pre_tool_use: vec!["sleep 30".into()],
+            timeout_secs: 30,
+            ..Default::default()
+        };
+        let runner = HookRunnerImpl::new(config);
+        let signal = runner.create_abort_signal();
+        let input = RunPreToolUseInput {
+            tool_name: "test_tool".into(),
+            tool_input: serde_json::json!({}),
+            session_id: "s".into(),
+            workspace_root: "/tmp".into(),
+        };
+        let thread_signal = signal.clone();
+        let handle =
+            std::thread::spawn(move || runner.run_pre_tool_use(input, Some(&thread_signal)));
+        // Give the hook a moment to spawn, then abort.
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        signal.abort();
+        let output = handle
+            .join()
+            .expect("runner thread must not hang")
+            .expect("runner must return Ok");
+        assert!(
+            output.result.is_cancelled(),
+            "aborted hook must report cancelled"
+        );
     }
 
     // -----------------------------------------------------------------------
