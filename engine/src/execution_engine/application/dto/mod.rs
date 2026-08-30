@@ -359,6 +359,9 @@ pub struct HydrateExecutionInput {
     pub node_states: std::collections::HashMap<Uuid, NodeExecutionState>,
     /// Node IDs already granted human approval.
     pub approved: std::collections::HashSet<Uuid>,
+    /// The original execution start time, preserved so resumed runs report
+    /// an undistorted `duration_ms` in the audit envelope.
+    pub started_at: DateTime<Utc>,
 }
 
 /// Output from hydrating an execution session.

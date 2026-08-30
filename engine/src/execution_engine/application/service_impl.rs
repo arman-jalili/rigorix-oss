@@ -229,12 +229,13 @@ async fn spawn_concurrent_node(
                 .await
             }
             other => {
-                // Unknown tool — return minimal placeholder
+                // Unknown tool — fail the node instead of silently succeeding
                 let dur = start.elapsed().as_millis() as u64;
-                TaskResult::success(
+                TaskResult::failure(
                     node_id,
                     &node_name,
-                    Some(format!("Unknown tool '{}', intent: {}", other, node_intent)),
+                    format!("Unknown tool '{}', intent: {}", other, node_intent),
+                    "unknown_tool".to_string(),
                     dur,
                     0,
                 )
@@ -360,12 +361,13 @@ impl ParallelExecutionServiceImpl {
         started_at: chrono::DateTime<chrono::Utc>,
         total_nodes: u32,
         approved: &HashSet<Uuid>,
+        config: &crate::execution_engine::domain::ParallelExecutorConfig,
     ) -> Result<(u32, u32, HashMap<Uuid, TaskResult>, bool), ExecutionError> {
         let mut join_set: tokio::task::JoinSet<(Uuid, TaskResult)> = tokio::task::JoinSet::new();
         let mut completed_count: u32 = 0;
         let mut failed_count: u32 = 0;
         let mut node_results: HashMap<Uuid, TaskResult> = HashMap::new();
-        let max_concurrent = self.config.max_concurrent_executions.max(1) as usize;
+        let max_concurrent = config.max_concurrent_executions.max(1) as usize;
         let event_bus = &self.event_bus;
         let mut approval_blocked = false;
 
@@ -677,14 +679,13 @@ impl ParallelExecutionServiceImpl {
             "git_commit" => Self::exec_git_commit(tool_intent, node_id, &node.name, start).await,
             "edit_file" => Self::exec_edit_file(tool_intent, node_id, &node.name, start).await,
             _ => {
+                // Unknown tool — fail the node instead of silently succeeding
                 let duration_ms = start.elapsed().as_millis() as u64;
-                TaskResult::success(
+                TaskResult::failure(
                     node_id,
                     &node.name,
-                    Some(format!(
-                        "[PLACEHOLDER] Tool '{}' would execute: {}",
-                        tool_name, tool_intent
-                    )),
+                    format!("Unknown tool '{}', intent: {}", tool_name, tool_intent),
+                    "unknown_tool".to_string(),
                     duration_ms,
                     0,
                 )
@@ -1435,7 +1436,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         &self,
         input: ExecuteGraphInput,
     ) -> Result<ExecuteGraphOutput, ExecutionError> {
-        let _config = input
+        let config = input
             .config_override
             .clone()
             .unwrap_or_else(|| self.config.clone());
@@ -1568,7 +1569,14 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         };
 
         let (completed_count, failed_count, node_results, approval_blocked) = self
-            .run_dispatch_loop(&mut graph, input.dag_id, started_at, total_nodes, &approved)
+            .run_dispatch_loop(
+                &mut graph,
+                input.dag_id,
+                started_at,
+                total_nodes,
+                &approved,
+                &config,
+            )
             .await?;
 
         // Build final result using the LIVE node states from the session so
@@ -1757,12 +1765,15 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                         )
                     }
                 } else {
-                    // No graph or node not found: placeholder success
+                    // No graph or node not found: fail the node instead of placeholder success
                     (
-                        true,
-                        "execution output placeholder".to_string(),
+                        false,
                         String::new(),
-                        String::new(),
+                        "node_not_found".to_string(),
+                        format!(
+                            "Node {} not found in session graph for dag {}",
+                            node_id, input.dag_id
+                        ),
                         0,
                     )
                 };
@@ -2162,7 +2173,14 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
             let total_nodes = graph.node_count() as u32;
             let started_at = Utc::now();
             let (completed, failed, node_results, approval_blocked) = self
-                .run_dispatch_loop(&mut graph, input.dag_id, started_at, total_nodes, &approved)
+                .run_dispatch_loop(
+                    &mut graph,
+                    input.dag_id,
+                    started_at,
+                    total_nodes,
+                    &approved,
+                    &self.config,
+                )
                 .await?;
 
             let live_states = {
@@ -2335,7 +2353,11 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
 
         let node_count = input.node_states.len();
         let approved = input.approved;
-        let started_at = Utc::now();
+        // Preserve the original execution start: the persisted ExecutionState
+        // carries it (state_persistence `started_at`), so a resumed run reports
+        // an undistorted duration_ms in the audit envelope instead of
+        // re-baselining to "now".
+        let started_at = input.started_at;
 
         sessions.insert(
             input.dag_id,

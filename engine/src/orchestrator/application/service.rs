@@ -118,8 +118,5 @@ pub trait OrchestratorService: Send + Sync {
     async fn execution_state(
         &self,
         execution_id: uuid::Uuid,
-    ) -> Result<
-        crate::execution_engine::application::dto::GetExecutionStateOutput,
-        OrchestratorError,
-    >;
+    ) -> Result<crate::execution_engine::application::dto::GetExecutionStateOutput, OrchestratorError>;
 }
