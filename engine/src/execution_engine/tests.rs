@@ -338,6 +338,106 @@ async fn test_pre_tool_use_hook_blocks_parallel_dispatch() {
     );
 }
 
+/// GAP-A-11: max_failures_before_abort stops dispatching new nodes once the
+/// threshold is crossed (sequential dispatch keeps it deterministic).
+#[tokio::test]
+async fn test_max_failures_before_abort_stops_dispatch() {
+    use crate::dag_engine::domain::{TaskGraph, TaskNode};
+
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+    let mut graph = TaskGraph::new();
+    let ids: Vec<_> = (0..3)
+        .map(|i| {
+            let n = TaskNode::new(
+                Uuid::new_v4(),
+                format!("bad-{}", i),
+                "no_such_tool",
+                vec![],
+                "boom",
+            );
+            let id = n.id;
+            graph.add_unchecked(n).unwrap();
+            id
+        })
+        .collect();
+    graph.seal().unwrap();
+
+    let output = executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            graph: Some(graph),
+            config_override: Some(ParallelExecutorConfig {
+                max_concurrent_executions: 1, // sequential -> deterministic
+                max_failures_before_abort: 1, // abort after the first failure
+                ..Default::default()
+            }),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(
+        output.result.node_results.len(),
+        1,
+        "only the first node should be dispatched before the abort"
+    );
+    let (_, first) = output.result.node_results.iter().next().unwrap();
+    assert!(!first.success, "the dispatched node must have failed");
+    let _ = ids;
+}
+
+/// GAP-A-11: max_total_retries_per_session stops the retry loop once the
+/// session-wide budget is consumed.
+#[tokio::test]
+async fn test_max_total_retries_per_session_stops_retrying() {
+    use crate::dag_engine::domain::{TaskGraph, TaskNode};
+
+    let retry =
+        crate::execution_engine::application::service_impl::RetryEvaluationServiceImpl::new();
+    let event_bus = Arc::new(EventBusServiceImpl::default());
+    let executor = ParallelExecutionServiceImpl::new(
+        ParallelExecutorConfig {
+            max_total_retries_per_session: 1,
+            ..Default::default()
+        },
+        Box::new(retry),
+        event_bus,
+    );
+    let dag_id = Uuid::new_v4();
+    let node = TaskNode::new(Uuid::new_v4(), "fragile", "no_such_tool", vec![], "boom")
+        .with_requires_approval(true);
+    let mut graph = TaskGraph::new();
+    graph.add_unchecked(node.clone()).unwrap();
+    graph.seal().unwrap();
+
+    let output = executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            graph: Some(graph),
+            config_override: None,
+        })
+        .await
+        .unwrap();
+    assert!(output.approval_pending);
+
+    let node_out = executor
+        .execute_node(ExecuteNodeInput {
+            dag_id,
+            node_id: node.id,
+            retry_policy: None, // default: all failures retriable, 4 attempts
+        })
+        .await
+        .unwrap();
+
+    assert!(!node_out.result.success);
+    assert_eq!(
+        node_out.result.failure_type.as_deref(),
+        Some("retry_budget_exhausted"),
+        "retry loop must stop at the session budget, got {:?}",
+        node_out.result.failure_type
+    );
+}
+
 /// H-08 regression: hydrating a session must preserve the persisted
 /// `started_at` so a resumed run reports an undistorted duration.
 #[tokio::test]

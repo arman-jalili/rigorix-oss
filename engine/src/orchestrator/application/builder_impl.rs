@@ -208,7 +208,11 @@ impl OrchestratorBuilder for OrchestratorBuilderImpl {
     async fn build(self) -> Result<Box<dyn OrchestratorService>, OrchestratorError> {
         self.check_ready()?;
 
-        let config = self.config;
+        let config = OrchestratorConfig {
+            max_llm_calls: self.max_llm_calls,
+            max_llm_tokens: self.max_llm_tokens,
+            ..self.config
+        };
         let planning_pipeline = self
             .planning_pipeline
             .expect("check_ready verified planning_pipeline is Some");

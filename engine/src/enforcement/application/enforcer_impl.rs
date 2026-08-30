@@ -218,6 +218,41 @@ impl ExecutionEnforcer for ExecutionEnforcerImpl {
             });
         }
 
+        // GAP-A-14: the evaluation gate must block on time and token limits
+        // too — previously only `check_limits()` reported them, so a call
+        // could be allowed past max_execution_time / max_tokens.
+        if state.total_execution_time_ms / 1000
+            >= state.config.execution_limits.max_execution_time_secs
+        {
+            return Ok(EvaluateToolCallOutput {
+                allowed: false,
+                reason: Some(format!(
+                    "Execution limit reached: max_execution_time ({}s)",
+                    state.config.execution_limits.max_execution_time_secs
+                )),
+                risk_level: policy.risk_level,
+                requires_confirmation: policy.requires_confirmation,
+                dry_run: policy.dry_run,
+                budget_status: None,
+                active_warnings: state.warnings.keys().cloned().collect(),
+            });
+        }
+
+        if state.total_tokens >= state.config.execution_limits.max_tokens {
+            return Ok(EvaluateToolCallOutput {
+                allowed: false,
+                reason: Some(format!(
+                    "Execution limit reached: max_tokens ({})",
+                    state.config.execution_limits.max_tokens
+                )),
+                risk_level: policy.risk_level,
+                requires_confirmation: policy.requires_confirmation,
+                dry_run: policy.dry_run,
+                budget_status: None,
+                active_warnings: state.warnings.keys().cloned().collect(),
+            });
+        }
+
         // Tool call is allowed
         Ok(EvaluateToolCallOutput {
             allowed: true,
@@ -591,6 +626,76 @@ mod tests {
         };
         let output = enforcer.evaluate_tool_call(input).await.unwrap();
         assert!(!output.allowed);
+    }
+
+    /// GAP-A-14: the evaluation gate must block on max_execution_time.
+    #[tokio::test]
+    async fn test_evaluate_tool_blocked_when_time_limit_reached() {
+        let enforcer = create_strict_enforcer();
+        enforcer
+            .track_resource_usage(TrackResourceUsageInput {
+                execution_id: "test-exec-time".to_string(),
+                resource: "execution_time_ms".to_string(),
+                amount: 3600 * 1000 + 1, // exceed the default 3600s limit
+                context: None,
+            })
+            .await
+            .unwrap();
+
+        let input = EvaluateToolCallInput {
+            execution_id: "test-exec-time".to_string(),
+            node_id: "node-1".to_string(),
+            tool: "read".to_string(),
+            arguments: None,
+            is_retry: false,
+            attempt: 1,
+        };
+        let output = enforcer.evaluate_tool_call(input).await.unwrap();
+        assert!(!output.allowed, "time limit must block the call");
+        assert!(
+            output
+                .reason
+                .as_deref()
+                .unwrap_or("")
+                .contains("max_execution_time"),
+            "reason must name the time limit, got {:?}",
+            output.reason
+        );
+    }
+
+    /// GAP-A-14: the evaluation gate must block on max_tokens.
+    #[tokio::test]
+    async fn test_evaluate_tool_blocked_when_token_limit_reached() {
+        let enforcer = create_strict_enforcer();
+        enforcer
+            .track_resource_usage(TrackResourceUsageInput {
+                execution_id: "test-exec-tok".to_string(),
+                resource: "tokens".to_string(),
+                amount: 100_001, // exceed the default 100_000 limit
+                context: None,
+            })
+            .await
+            .unwrap();
+
+        let input = EvaluateToolCallInput {
+            execution_id: "test-exec-tok".to_string(),
+            node_id: "node-1".to_string(),
+            tool: "read".to_string(),
+            arguments: None,
+            is_retry: false,
+            attempt: 1,
+        };
+        let output = enforcer.evaluate_tool_call(input).await.unwrap();
+        assert!(!output.allowed, "token limit must block the call");
+        assert!(
+            output
+                .reason
+                .as_deref()
+                .unwrap_or("")
+                .contains("max_tokens"),
+            "reason must name the token limit, got {:?}",
+            output.reason
+        );
     }
 
     #[tokio::test]

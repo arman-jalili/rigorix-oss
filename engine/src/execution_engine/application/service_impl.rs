@@ -73,6 +73,7 @@ async fn spawn_concurrent_node(
     node_id: Uuid,
     permission_enforcer: &Option<Arc<dyn PermissionEnforcer>>,
     hook_runner: &Option<Arc<dyn HookRunnerService>>,
+    enforce_permission: bool,
 ) -> Result<(), ExecutionError> {
     let node = match graph.get_node(node_id).cloned() {
         Some(n) => n,
@@ -117,8 +118,9 @@ async fn spawn_concurrent_node(
     let hook_runner = hook_runner.clone();
 
     join_set.spawn(async move {
-        // Permission check (gate before execution)
-        if let Some(ref enforcer) = permission {
+        // Permission check (gate before execution) — GAP-A-11: gated by the
+        // executor's enable_enforcement config flag.
+        if enforce_permission && let Some(ref enforcer) = permission {
             let outcome = enforcer.check(&node_tool, &node_intent, None).await;
             if let crate::permission::domain::PermissionOutcome::Denied { ref reason, .. } = outcome
             {
@@ -350,6 +352,9 @@ struct ExecutionSession {
     paused: bool,
     /// Whether execution has been aborted.
     aborted: bool,
+
+    /// Session-wide retry counter (GAP-A-11: max_total_retries_per_session).
+    total_retries: u32,
     /// Node IDs granted human approval (for `requires_approval` steps).
     approved: HashSet<Uuid>,
 
@@ -464,6 +469,7 @@ impl ParallelExecutionServiceImpl {
                 node_id,
                 &self.permission_enforcer,
                 &self.hook_runner,
+                config.enable_enforcement,
             )
             .await?;
         }
@@ -481,6 +487,35 @@ impl ParallelExecutionServiceImpl {
                 failed_count += 1;
             }
             node_results.insert(node_id, task_result.clone());
+
+            // GAP-A-11: abort dispatch when the failure threshold is crossed
+            // (0 = unlimited) or the session was cancelled.
+            if config.max_failures_before_abort > 0
+                && failed_count >= config.max_failures_before_abort
+            {
+                tracing::warn!(
+                    %dag_id,
+                    failed_count,
+                    threshold = config.max_failures_before_abort,
+                    "aborting dispatch: failure threshold reached"
+                );
+                break;
+            }
+            if config.enable_cancellation {
+                let cancelled = {
+                    let sessions =
+                        self.sessions
+                            .lock()
+                            .map_err(|e| ExecutionError::InternalError {
+                                detail: format!("Lock error: {e}"),
+                            })?;
+                    sessions.get(&dag_id).map(|s| s.aborted).unwrap_or(false)
+                };
+                if cancelled {
+                    tracing::warn!(%dag_id, "aborting dispatch: execution cancelled");
+                    break;
+                }
+            }
 
             // Update session node state
             {
@@ -533,6 +568,7 @@ impl ParallelExecutionServiceImpl {
                     next_id,
                     &self.permission_enforcer,
                     &self.hook_runner,
+                    config.enable_enforcement,
                 )
                 .await?;
             }
@@ -1536,6 +1572,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                     result: ExecutionResult::new(input.dag_id),
                     paused: false,
                     aborted: false,
+                    total_retries: 0,
                     approved: HashSet::new(),
                     started_at: Utc::now(),
                     graph: None,
@@ -1616,6 +1653,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                     result: ExecutionResult::new(input.dag_id),
                     paused: false,
                     aborted: false,
+                    total_retries: 0,
                     approved: HashSet::new(),
                     started_at,
                     graph: Some(graph.clone()),
@@ -2024,6 +2062,49 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                     backoff_ms,
                     ..
                 } => {
+                    // GAP-A-11: session-wide retry budget — when
+                    // max_total_retries_per_session is crossed, stop retrying
+                    // and fail the node instead of looping forever.
+                    let budget_exhausted = {
+                        let mut sessions =
+                            self.sessions
+                                .lock()
+                                .map_err(|e| ExecutionError::InternalError {
+                                    detail: format!("Lock error: {e}"),
+                                })?;
+                        match sessions.get_mut(&input.dag_id) {
+                            Some(s) => {
+                                if self.config.max_total_retries_per_session > 0
+                                    && s.total_retries >= self.config.max_total_retries_per_session
+                                {
+                                    true
+                                } else {
+                                    s.total_retries += 1;
+                                    false
+                                }
+                            }
+                            None => false,
+                        }
+                    };
+                    if budget_exhausted {
+                        let result = TaskResult::failure(
+                            node_id,
+                            format!("node-{}", node_id),
+                            format!(
+                                "Session retry budget exhausted ({})",
+                                self.config.max_total_retries_per_session
+                            ),
+                            "retry_budget_exhausted".to_string(),
+                            duration_ms,
+                            attempt,
+                        );
+                        return Ok(ExecuteNodeOutput {
+                            result,
+                            retry_decision: Some(RetryDecision::Abort {
+                                reason: "Session retry budget exhausted".to_string(),
+                            }),
+                        });
+                    }
                     if backoff_ms > 0 {
                         tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
                     }
@@ -2468,6 +2549,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                 // resumes, which re-runs the dispatch loop for remaining nodes.
                 paused: true,
                 aborted: false,
+                total_retries: 0,
                 approved: approved.clone(),
                 started_at,
                 graph: Some(graph),

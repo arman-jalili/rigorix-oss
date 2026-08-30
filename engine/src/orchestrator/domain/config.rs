@@ -59,6 +59,16 @@ pub struct OrchestratorConfig {
     /// Default: false.
     pub capture_planning_prompt: bool,
 
+    /// Maximum LLM calls allowed for planning (from actions
+    /// --max-llm-calls). `None` = unlimited. GAP-A-11.
+    #[serde(default)]
+    pub max_llm_calls: Option<u32>,
+
+    /// Maximum LLM tokens allowed for planning (from actions
+    /// --max-llm-tokens). `None` = unlimited. GAP-A-11.
+    #[serde(default)]
+    pub max_llm_tokens: Option<u64>,
+
     /// LLM model version used for planning
     /// (e.g. "claude-sonnet-4-20250514").
     /// `None` when unknown or not configured.
@@ -76,6 +86,8 @@ impl Default for OrchestratorConfig {
             save_intermediate_state: false,
             propagate_cancellation: true,
             capture_planning_prompt: false,
+            max_llm_calls: None,
+            max_llm_tokens: None,
             model_version: None,
         }
     }

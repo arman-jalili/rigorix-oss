@@ -584,6 +584,31 @@ impl OrchestratorService for OrchestratorServiceImpl {
             &self.config.model_version,
         );
 
+        // GAP-A-11: enforce the action-level LLM budget (--max-llm-calls /
+        // --max-llm-tokens) against the planning metadata.
+        if let Some(limit) = self.config.max_llm_calls
+            && pmeta.llm_calls > limit
+        {
+            return Err(OrchestratorError::PlanningFailed {
+                detail: format!(
+                    "LLM call budget exceeded: {} calls > limit {}",
+                    pmeta.llm_calls, limit
+                ),
+                intent: input.intent.clone(),
+            });
+        }
+        if let Some(limit) = self.config.max_llm_tokens
+            && pmeta.total_tokens as u64 > limit
+        {
+            return Err(OrchestratorError::PlanningFailed {
+                detail: format!(
+                    "LLM token budget exceeded: {} tokens > limit {}",
+                    pmeta.total_tokens, limit
+                ),
+                intent: input.intent.clone(),
+            });
+        }
+
         // 4. Save initial state
         self.state_manager
             .save_state(Self::make_pending_state(execution_id))
