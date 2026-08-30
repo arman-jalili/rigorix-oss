@@ -42,7 +42,11 @@ impl AuditEnvelopeFactoryImpl {
         hex
     }
 
-    /// Compute HMAC-SHA256 signature over the envelope content.
+    /// Compute HMAC-SHA256 signature over the full canonical envelope.
+    ///
+    /// GAP-A-06: previously only 7 scalar fields were signed — event contents,
+    /// `file_paths`, `scoring_results`, `identity` and git metadata were
+    /// unsigned, so tampering with any evidence field went undetected.
     fn compute_signature(envelope: &AuditEnvelope, key: &str) -> Result<String, AuditError> {
         use hmac::Mac;
         let mut mac =
@@ -50,14 +54,17 @@ impl AuditEnvelopeFactoryImpl {
                 detail: format!("HMAC key error: {e}"),
             })?;
 
-        // Sign the canonical fields
-        mac.update(envelope.execution_id.to_string().as_bytes());
-        mac.update(envelope.timestamp.to_rfc3339().as_bytes());
-        mac.update(envelope.template_id.as_bytes());
-        mac.update(envelope.planning_hash.as_bytes());
-        mac.update(&envelope.total_tokens.to_le_bytes());
-        mac.update(&envelope.duration_ms.to_le_bytes());
-        mac.update(&(envelope.events.len() as u64).to_le_bytes());
+        // Canonical form: the FULL envelope serialized as sorted-key JSON.
+        // serde_json::Map is BTreeMap-backed (no preserve_order feature), so
+        // HashMap fields serialize deterministically. The signature field is
+        // excluded so signing and verification hash identical bytes.
+        let mut canonical_envelope = envelope.clone();
+        canonical_envelope.signature = None;
+        let canonical =
+            serde_json::to_string(&canonical_envelope).map_err(|e| AuditError::Internal {
+                detail: format!("Canonical envelope serialization failed: {e}"),
+            })?;
+        mac.update(canonical.as_bytes());
 
         let result = mac.finalize().into_bytes();
         let hex: String = result.iter().map(|b| format!("{:02x}", b)).collect();
@@ -100,6 +107,10 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
             events: input.events,
             scoring_results: input.scoring_results,
             signature: None,
+            // GAP-M-12: an unsigned run is explicitly degraded evidence.
+            // Approval-bearing runs must request signing; this marker makes
+            // the absence of a signature observable downstream.
+            evidence_degraded: !input.sign,
         };
 
         // Optionally apply HMAC signing
@@ -249,5 +260,99 @@ mod tests {
 
         // Same planning prompt should produce the same hash
         assert_eq!(e1.planning_hash, e2.planning_hash);
+    }
+
+    /// GAP-A-06: the HMAC must cover the FULL envelope. Tampering with any
+    /// evidence field — event contents, file_paths, scoring_results — must
+    /// break verification. (Previously only 7 scalar fields were signed.)
+    #[tokio::test]
+    async fn test_verify_signature_detects_evidence_tampering() {
+        let factory = AuditEnvelopeFactoryImpl::new(Some("test-key-123".to_string()));
+
+        // Tamper with an event's payload content.
+        let mut input = sample_input();
+        input.sign = true;
+        let mut envelope = factory.build_envelope(input).await.unwrap();
+        envelope.events[0].summary = "Tampered summary".to_string();
+        assert!(
+            factory.verify_signature(&envelope).await.is_err(),
+            "tampered event content must fail verification"
+        );
+
+        // Tamper with file_paths.
+        let mut input = sample_input();
+        input.sign = true;
+        let mut envelope = factory.build_envelope(input).await.unwrap();
+        envelope.file_paths.push("src/injected.rs".to_string());
+        assert!(
+            factory.verify_signature(&envelope).await.is_err(),
+            "tampered file_paths must fail verification"
+        );
+
+        // Tamper with scoring_results.
+        let mut input = sample_input();
+        input.sign = true;
+        let mut envelope = factory.build_envelope(input).await.unwrap();
+        envelope.scoring_results.insert(
+            "node-1".to_string(),
+            crate::audit::domain::ScoringResultRef {
+                passed: true,
+                backend: "test".to_string(),
+                dimensions: std::collections::HashMap::new(),
+                duration_ms: 10,
+            },
+        );
+        assert!(
+            factory.verify_signature(&envelope).await.is_err(),
+            "tampered scoring_results must fail verification"
+        );
+
+        // Untampered envelope still verifies (control).
+        let mut input = sample_input();
+        input.sign = true;
+        let envelope = factory.build_envelope(input).await.unwrap();
+        assert!(factory.verify_signature(&envelope).await.is_ok());
+    }
+
+    /// GAP-M-12: unsigned envelopes are explicitly marked as degraded
+    /// evidence; signed envelopes are not.
+    #[tokio::test]
+    async fn test_evidence_degraded_marker() {
+        let factory = AuditEnvelopeFactoryImpl::new(Some("test-key-123".to_string()));
+
+        let mut unsigned_input = sample_input();
+        unsigned_input.sign = false;
+        let unsigned = factory.build_envelope(unsigned_input).await.unwrap();
+        assert!(
+            unsigned.evidence_degraded,
+            "unsigned envelope must be marked evidence_degraded"
+        );
+        assert!(unsigned.signature.is_none());
+
+        let mut signed_input = sample_input();
+        signed_input.sign = true;
+        let signed = factory.build_envelope(signed_input).await.unwrap();
+        assert!(
+            !signed.evidence_degraded,
+            "signed envelope must not be marked degraded"
+        );
+        assert!(signed.signature.is_some());
+    }
+
+    /// GAP-L-09: git provenance fields must carry from input into the
+    /// envelope (the orchestrator populates them from `detect_git_info`).
+    #[tokio::test]
+    async fn test_git_provenance_fields_carry_through() {
+        let factory = AuditEnvelopeFactoryImpl::default();
+        let mut input = sample_input();
+        input.git_commit = Some("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2".to_string());
+        input.git_branch = Some("main".to_string());
+
+        let envelope = factory.build_envelope(input).await.unwrap();
+        assert_eq!(
+            envelope.git_commit.as_deref(),
+            Some("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2")
+        );
+        assert_eq!(envelope.git_branch.as_deref(), Some("main"));
     }
 }
