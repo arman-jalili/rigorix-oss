@@ -1,26 +1,14 @@
 {
-  "id": "PL-8612",
-  "name": "scored-evaluation",
+  "id": "PL-4237",
+  "name": "identity",
   "items": [
     "issue-contract-freeze",
-    "issue-domain-layer-domain-",
-    "issue-application-layer-application-",
-    "issue-infrastructure-layer-infrastructure-",
-    "issue-scoredevaluationnode",
-    "issue-rubric",
-    "issue-scoringresult",
-    "issue-scoringbackend-trait-",
-    "issue-scoredevaluationevent",
-    "issue-scoredevaluationerror",
-    "issue-scoredevaluationservice",
-    "issue-evaluateinput-evaluateoutput",
-    "issue-mcpbackend",
-    "issue-httpbackend",
-    "issue-localbackend",
-    "issue-scoredimension",
-    "issue-scoringbackend",
-    "issue-scoreabove-policy-condition",
-    "issue-scorebelow-policy-condition",
+    "issue-identityclaim",
+    "issue-identitysource",
+    "issue-identityattestationservice",
+    "issue-tokenverifier",
+    "issue-identityrepository",
+    "issue-identityerror",
     "issue-proofing",
     "issue-architecture-readiness"
   ],
@@ -65,7 +53,7 @@
       }
     }
   ],
-  "currentItemIndex": 21,
+  "currentItemIndex": 9,
   "currentStepIndex": 0,
   "status": "done",
   "retryCount": 0,
@@ -100,6 +88,16 @@
           "reason": ""
         },
         {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
           "step": "merge",
           "status": "passed",
           "reason": ""
@@ -107,7 +105,7 @@
       ]
     },
     {
-      "item": "issue-domain-layer-domain-",
+      "item": "issue-identityclaim",
       "status": "done",
       "stepResults": [
         {
@@ -136,6 +134,16 @@
           "reason": ""
         },
         {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
           "step": "merge",
           "status": "passed",
           "reason": ""
@@ -143,7 +151,7 @@
       ]
     },
     {
-      "item": "issue-application-layer-application-",
+      "item": "issue-identitysource",
       "status": "done",
       "stepResults": [
         {
@@ -172,6 +180,16 @@
           "reason": ""
         },
         {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
           "step": "merge",
           "status": "passed",
           "reason": ""
@@ -179,7 +197,7 @@
       ]
     },
     {
-      "item": "issue-infrastructure-layer-infrastructure-",
+      "item": "issue-identityattestationservice",
       "status": "done",
       "stepResults": [
         {
@@ -208,6 +226,16 @@
           "reason": ""
         },
         {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
           "step": "merge",
           "status": "passed",
           "reason": ""
@@ -215,7 +243,7 @@
       ]
     },
     {
-      "item": "issue-scoredevaluationnode",
+      "item": "issue-tokenverifier",
       "status": "done",
       "stepResults": [
         {
@@ -244,6 +272,16 @@
           "reason": ""
         },
         {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
           "step": "merge",
           "status": "passed",
           "reason": ""
@@ -251,7 +289,7 @@
       ]
     },
     {
-      "item": "issue-rubric",
+      "item": "issue-identityrepository",
       "status": "done",
       "stepResults": [
         {
@@ -280,6 +318,16 @@
           "reason": ""
         },
         {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
           "step": "merge",
           "status": "passed",
           "reason": ""
@@ -287,7 +335,7 @@
       ]
     },
     {
-      "item": "issue-scoringresult",
+      "item": "issue-identityerror",
       "status": "done",
       "stepResults": [
         {
@@ -316,434 +364,12 @@
           "reason": ""
         },
         {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-scoringbackend-trait-",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
           "step": "create-mr",
           "status": "passed",
           "reason": ""
         },
         {
           "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-scoredevaluationevent",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-scoredevaluationerror",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-scoredevaluationservice",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-evaluateinput-evaluateoutput",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-mcpbackend",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-httpbackend",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-localbackend",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-scoredimension",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-scoringbackend",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-scoreabove-policy-condition",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "merge",
-          "status": "passed",
-          "reason": ""
-        }
-      ]
-    },
-    {
-      "item": "issue-scorebelow-policy-condition",
-      "status": "done",
-      "stepResults": [
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "implement",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "validate",
-          "status": "passed",
-          "reason": ""
-        },
-        {
-          "step": "create-mr",
           "status": "passed",
           "reason": ""
         },
@@ -784,6 +410,16 @@
           "reason": ""
         },
         {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
           "step": "merge",
           "status": "passed",
           "reason": ""
@@ -820,6 +456,16 @@
           "reason": ""
         },
         {
+          "step": "create-mr",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "merge",
+          "status": "passed",
+          "reason": ""
+        },
+        {
           "step": "merge",
           "status": "passed",
           "reason": ""
@@ -828,6 +474,6 @@
     }
   ],
   "mergeOnValid": true,
-  "createdAt": "2026-07-20T16:36:46.241Z",
-  "updatedAt": "2026-07-20T16:58:06.556Z"
+  "createdAt": "2026-08-28T15:59:10.162Z",
+  "updatedAt": "2026-08-28T18:17:26.763Z"
 }

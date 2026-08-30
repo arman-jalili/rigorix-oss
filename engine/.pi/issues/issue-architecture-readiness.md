@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-READINESS"
-  epic: "scored-evaluation"
+  epic: "identity"
   component: "Architecture Readiness"
-  module: "scored-evaluation"
+  module: "identity"
   status: planned
   priority: critical
   dependencies: []
@@ -32,7 +32,7 @@ guardian_issue:
       - Verify proofing scripts + validators in CI
 
   canonical_references:
-    - module: ".pi/architecture/modules/scored-evaluation.md"
+    - module: ".pi/architecture/modules/identity.md"
 
   acceptance_criteria:
     - "Runbook created and reviewed"
@@ -58,30 +58,30 @@ guardian_issue:
     and CI will catch regressions (proofing scripts + validators).
 
   file_changes:
-    - "create: docs/runbook-scored-evaluation.md"
-    - "create: docs/dr-plan-scored-evaluation.md"
+    - "create: docs/runbook-identity.md"
+    - "create: docs/dr-plan-identity.md"
     - "modify: .pi/architecture/CHANGELOG.md"
-    - "modify: .pi/architecture/modules/scored-evaluation.md"
+    - "modify: .pi/architecture/modules/identity.md"
 ---
 
-# Architecture Readiness: scored-evaluation
+# Architecture Readiness: identity
 
 ## Intent
 
-Make the scored-evaluation module production-ready. This is the final issue in every epic
+Make the identity module production-ready. This is the final issue in every epic
 — it closes the loop between implementation and operability.
 
 ## Deliverables
 
 ### Runbook
-`docs/runbook-scored-evaluation.md` covering:
+`docs/runbook-identity.md` covering:
 - Startup sequence and dependencies
 - Graceful shutdown procedure
 - Common failure modes and recovery
 - Configuration reference
 
 ### DR Plan
-`docs/dr-plan-scored-evaluation.md` covering:
+`docs/dr-plan-identity.md` covering:
 - Backup strategy and schedule
 - Restore procedure
 - Failover plan

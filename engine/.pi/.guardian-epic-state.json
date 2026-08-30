@@ -1,151 +1,55 @@
 {
-  "name": "scored-evaluation",
-  "trackingIssueId": "673",
+  "name": "identity",
+  "trackingIssueId": "699",
   "epicId": null,
   "slices": [
     {
-      "module": "scored-evaluation",
+      "module": "identity",
       "components": [
         {
-          "name": "Domain Layer (`domain/`)",
+          "name": "IdentityClaim",
           "status": "planned",
-          "description": "Domain Layer (`domain/`) component",
+          "description": "The shared, serde-stable value type every identity-bearing surface uses — runs, approvals, envelope",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "Application Layer (`application/`)",
+          "name": "IdentitySource",
           "status": "planned",
-          "description": "Application Layer (`application/`) component",
+          "description": "How the identity was established — drives the attestation marker (explicit, never silent)",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "Infrastructure Layer (`infrastructure/`)",
+          "name": "IdentityAttestationService",
           "status": "planned",
-          "description": "Infrastructure Layer (`infrastructure/`) component",
+          "description": "Convert presented credentials into attested `IdentityClaim`s; best-effort verification",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ScoredEvaluationNode",
+          "name": "TokenVerifier",
           "status": "planned",
-          "description": "DAG node value object holding artifact, rubric, backend config, and thresholds",
+          "description": "Best-effort signature verification against the IdP JWKS; `NullVerifier` default keeps attestation fully offline-capable",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "Rubric",
+          "name": "IdentityRepository",
           "status": "planned",
-          "description": "Evaluation rubric — either inline JSON content or a reference to an external file/URL",
+          "description": "Durable identity records — attached to execution state for continuity and audit",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ScoringResult",
+          "name": "IdentityError",
           "status": "planned",
-          "description": "Multidimensional scoring result returned by a scoring backend",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "ScoringBackend (Trait)",
-          "status": "planned",
-          "description": "Pluggable scoring backend interface — domain-level contract for any evaluation backend",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "ScoredEvaluationEvent",
-          "status": "planned",
-          "description": "Domain events for the evaluation lifecycle — started, completed, failed",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "ScoredEvaluationError",
-          "status": "planned",
-          "description": "Typed error enum for all scored evaluation failure modes",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "ScoredEvaluationService",
-          "status": "planned",
-          "description": "Service trait orchestrating the evaluation lifecycle — validate input, delegate to backend, capture result, emit events",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "EvaluateInput / EvaluateOutput",
-          "status": "planned",
-          "description": "Typed DTOs for the evaluation service boundary",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "MCPBackend",
-          "status": "planned",
-          "description": "MCP protocol adapter — sends evaluation requests over MCP to any server implementing the Rigorix scoring protocol",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "HTTPBackend",
-          "status": "planned",
-          "description": "Generic HTTP-based scoring backend for custom evaluation services",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "LocalBackend",
-          "status": "planned",
-          "description": "Local script/file-based backend for development and testing",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "ScoreDimension",
-          "status": "planned",
-          "description": "`passed` correctly calculated from score vs max",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "ScoringBackend",
-          "status": "planned",
-          "description": "All three backend implementations pass same trait contract test suite",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "ScoreAbove policy condition",
-          "status": "planned",
-          "description": "Policy condition correctly gates merge when dimension(s) below threshold",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "ScoreBelow policy condition",
-          "status": "planned",
-          "description": "Policy condition correctly blocks merge when any dimension below threshold",
+          "description": "Typed error enum for all identity attestation failure modes",
           "dependencies": [
             "none"
           ]
@@ -153,145 +57,49 @@
       ],
       "nextLogicalSlice": [
         {
-          "name": "Domain Layer (`domain/`)",
+          "name": "IdentityClaim",
           "status": "planned",
-          "description": "Domain Layer (`domain/`) component",
+          "description": "The shared, serde-stable value type every identity-bearing surface uses — runs, approvals, envelope",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "Application Layer (`application/`)",
+          "name": "IdentitySource",
           "status": "planned",
-          "description": "Application Layer (`application/`) component",
+          "description": "How the identity was established — drives the attestation marker (explicit, never silent)",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "Infrastructure Layer (`infrastructure/`)",
+          "name": "IdentityAttestationService",
           "status": "planned",
-          "description": "Infrastructure Layer (`infrastructure/`) component",
+          "description": "Convert presented credentials into attested `IdentityClaim`s; best-effort verification",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ScoredEvaluationNode",
+          "name": "TokenVerifier",
           "status": "planned",
-          "description": "DAG node value object holding artifact, rubric, backend config, and thresholds",
+          "description": "Best-effort signature verification against the IdP JWKS; `NullVerifier` default keeps attestation fully offline-capable",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "Rubric",
+          "name": "IdentityRepository",
           "status": "planned",
-          "description": "Evaluation rubric — either inline JSON content or a reference to an external file/URL",
+          "description": "Durable identity records — attached to execution state for continuity and audit",
           "dependencies": [
             "none"
           ]
         },
         {
-          "name": "ScoringResult",
+          "name": "IdentityError",
           "status": "planned",
-          "description": "Multidimensional scoring result returned by a scoring backend",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "ScoringBackend (Trait)",
-          "status": "planned",
-          "description": "Pluggable scoring backend interface — domain-level contract for any evaluation backend",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "ScoredEvaluationEvent",
-          "status": "planned",
-          "description": "Domain events for the evaluation lifecycle — started, completed, failed",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "ScoredEvaluationError",
-          "status": "planned",
-          "description": "Typed error enum for all scored evaluation failure modes",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "ScoredEvaluationService",
-          "status": "planned",
-          "description": "Service trait orchestrating the evaluation lifecycle — validate input, delegate to backend, capture result, emit events",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "EvaluateInput / EvaluateOutput",
-          "status": "planned",
-          "description": "Typed DTOs for the evaluation service boundary",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "MCPBackend",
-          "status": "planned",
-          "description": "MCP protocol adapter — sends evaluation requests over MCP to any server implementing the Rigorix scoring protocol",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "HTTPBackend",
-          "status": "planned",
-          "description": "Generic HTTP-based scoring backend for custom evaluation services",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "LocalBackend",
-          "status": "planned",
-          "description": "Local script/file-based backend for development and testing",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "ScoreDimension",
-          "status": "planned",
-          "description": "`passed` correctly calculated from score vs max",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "ScoringBackend",
-          "status": "planned",
-          "description": "All three backend implementations pass same trait contract test suite",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "ScoreAbove policy condition",
-          "status": "planned",
-          "description": "Policy condition correctly gates merge when dimension(s) below threshold",
-          "dependencies": [
-            "none"
-          ]
-        },
-        {
-          "name": "ScoreBelow policy condition",
-          "status": "planned",
-          "description": "Policy condition correctly blocks merge when any dimension below threshold",
+          "description": "Typed error enum for all identity attestation failure modes",
           "dependencies": [
             "none"
           ]
@@ -304,151 +112,67 @@
       "id": "issue-contract-freeze",
       "title": "Contract Freeze: Define interfaces and contracts",
       "status": "planned",
-      "remoteIssueId": "674"
+      "remoteIssueId": "700"
     },
     {
-      "id": "issue-domain-layer-domain-",
-      "title": "Implement Domain Layer (`domain/`) — scored-evaluation",
+      "id": "issue-identityclaim",
+      "title": "Implement IdentityClaim — identity",
       "status": "planned",
-      "remoteIssueId": "675"
+      "remoteIssueId": "701"
     },
     {
-      "id": "issue-application-layer-application-",
-      "title": "Implement Application Layer (`application/`) — scored-evaluation",
+      "id": "issue-identitysource",
+      "title": "Implement IdentitySource — identity",
       "status": "planned",
-      "remoteIssueId": "676"
+      "remoteIssueId": "702"
     },
     {
-      "id": "issue-infrastructure-layer-infrastructure-",
-      "title": "Implement Infrastructure Layer (`infrastructure/`) — scored-evaluation",
+      "id": "issue-identityattestationservice",
+      "title": "Implement IdentityAttestationService — identity",
       "status": "planned",
-      "remoteIssueId": "677"
+      "remoteIssueId": "703"
     },
     {
-      "id": "issue-scoredevaluationnode",
-      "title": "Implement ScoredEvaluationNode — scored-evaluation",
+      "id": "issue-tokenverifier",
+      "title": "Implement TokenVerifier — identity",
       "status": "planned",
-      "remoteIssueId": "678"
+      "remoteIssueId": "704"
     },
     {
-      "id": "issue-rubric",
-      "title": "Implement Rubric — scored-evaluation",
+      "id": "issue-identityrepository",
+      "title": "Implement IdentityRepository — identity",
       "status": "planned",
-      "remoteIssueId": "679"
+      "remoteIssueId": "705"
     },
     {
-      "id": "issue-scoringresult",
-      "title": "Implement ScoringResult — scored-evaluation",
+      "id": "issue-identityerror",
+      "title": "Implement IdentityError — identity",
       "status": "planned",
-      "remoteIssueId": "680"
-    },
-    {
-      "id": "issue-scoringbackend-trait-",
-      "title": "Implement ScoringBackend (Trait) — scored-evaluation",
-      "status": "planned",
-      "remoteIssueId": "681"
-    },
-    {
-      "id": "issue-scoredevaluationevent",
-      "title": "Implement ScoredEvaluationEvent — scored-evaluation",
-      "status": "planned",
-      "remoteIssueId": "682"
-    },
-    {
-      "id": "issue-scoredevaluationerror",
-      "title": "Implement ScoredEvaluationError — scored-evaluation",
-      "status": "planned",
-      "remoteIssueId": "683"
-    },
-    {
-      "id": "issue-scoredevaluationservice",
-      "title": "Implement ScoredEvaluationService — scored-evaluation",
-      "status": "planned",
-      "remoteIssueId": "684"
-    },
-    {
-      "id": "issue-evaluateinput-evaluateoutput",
-      "title": "Implement EvaluateInput / EvaluateOutput — scored-evaluation",
-      "status": "planned",
-      "remoteIssueId": "685"
-    },
-    {
-      "id": "issue-mcpbackend",
-      "title": "Implement MCPBackend — scored-evaluation",
-      "status": "planned",
-      "remoteIssueId": "686"
-    },
-    {
-      "id": "issue-httpbackend",
-      "title": "Implement HTTPBackend — scored-evaluation",
-      "status": "planned",
-      "remoteIssueId": "687"
-    },
-    {
-      "id": "issue-localbackend",
-      "title": "Implement LocalBackend — scored-evaluation",
-      "status": "planned",
-      "remoteIssueId": "688"
-    },
-    {
-      "id": "issue-scoredimension",
-      "title": "Implement ScoreDimension — scored-evaluation",
-      "status": "planned",
-      "remoteIssueId": "689"
-    },
-    {
-      "id": "issue-scoringbackend",
-      "title": "Implement ScoringBackend — scored-evaluation",
-      "status": "planned",
-      "remoteIssueId": "690"
-    },
-    {
-      "id": "issue-scoreabove-policy-condition",
-      "title": "Implement ScoreAbove policy condition — scored-evaluation",
-      "status": "planned",
-      "remoteIssueId": "691"
-    },
-    {
-      "id": "issue-scorebelow-policy-condition",
-      "title": "Implement ScoreBelow policy condition — scored-evaluation",
-      "status": "planned",
-      "remoteIssueId": "692"
+      "remoteIssueId": "706"
     },
     {
       "id": "issue-proofing",
       "title": "Proofing: Validation scripts + CI integration",
       "status": "planned",
-      "remoteIssueId": "693"
+      "remoteIssueId": "707"
     },
     {
       "id": "issue-architecture-readiness",
       "title": "Architecture Readiness: Runbook, DR, docs, CI enforcement",
       "status": "planned",
-      "remoteIssueId": "694"
+      "remoteIssueId": "708"
     }
   ],
   "status": "planning",
   "currentIssueIndex": 0,
-  "createdAt": "2026-07-20T16:36:46.238Z",
+  "createdAt": "2026-08-28T15:59:10.160Z",
   "tdd": true,
   "tddTestFiles": [
-    "/Users/arman/project/rigorix-oss/engine/tests/unit/scored-evaluation/domain-layer-domain/domain-layer-domain_test.rs",
-    "/Users/arman/project/rigorix-oss/engine/tests/unit/scored-evaluation/application-layer-application/application-layer-application_test.rs",
-    "/Users/arman/project/rigorix-oss/engine/tests/unit/scored-evaluation/infrastructure-layer-infrastructure/infrastructure-layer-infrastructure_test.rs",
-    "/Users/arman/project/rigorix-oss/engine/tests/unit/scored-evaluation/scoredevaluationnode/scoredevaluationnode_test.rs",
-    "/Users/arman/project/rigorix-oss/engine/tests/unit/scored-evaluation/rubric/rubric_test.rs",
-    "/Users/arman/project/rigorix-oss/engine/tests/unit/scored-evaluation/scoringresult/scoringresult_test.rs",
-    "/Users/arman/project/rigorix-oss/engine/tests/unit/scored-evaluation/scoringbackend-trait/scoringbackend-trait_test.rs",
-    "/Users/arman/project/rigorix-oss/engine/tests/unit/scored-evaluation/scoredevaluationevent/scoredevaluationevent_test.rs",
-    "/Users/arman/project/rigorix-oss/engine/tests/unit/scored-evaluation/scoredevaluationerror/scoredevaluationerror_test.rs",
-    "/Users/arman/project/rigorix-oss/engine/tests/unit/scored-evaluation/scoredevaluationservice/scoredevaluationservice_test.rs",
-    "/Users/arman/project/rigorix-oss/engine/tests/unit/scored-evaluation/evaluateinput-evaluateoutput/evaluateinput-evaluateoutput_test.rs",
-    "/Users/arman/project/rigorix-oss/engine/tests/unit/scored-evaluation/mcpbackend/mcpbackend_test.rs",
-    "/Users/arman/project/rigorix-oss/engine/tests/unit/scored-evaluation/httpbackend/httpbackend_test.rs",
-    "/Users/arman/project/rigorix-oss/engine/tests/unit/scored-evaluation/localbackend/localbackend_test.rs",
-    "/Users/arman/project/rigorix-oss/engine/tests/unit/scored-evaluation/scoredimension/scoredimension_test.rs",
-    "/Users/arman/project/rigorix-oss/engine/tests/unit/scored-evaluation/scoringbackend/scoringbackend_test.rs",
-    "/Users/arman/project/rigorix-oss/engine/tests/unit/scored-evaluation/scoreabove-policy-condition/scoreabove-policy-condition_test.rs",
-    "/Users/arman/project/rigorix-oss/engine/tests/unit/scored-evaluation/scorebelow-policy-condition/scorebelow-policy-condition_test.rs"
+    "/Users/arman/project/rigorix-oss/engine/tests/unit/identity/identityclaim/identityclaim_test.rs",
+    "/Users/arman/project/rigorix-oss/engine/tests/unit/identity/identitysource/identitysource_test.rs",
+    "/Users/arman/project/rigorix-oss/engine/tests/unit/identity/identityattestationservice/identityattestationservice_test.rs",
+    "/Users/arman/project/rigorix-oss/engine/tests/unit/identity/tokenverifier/tokenverifier_test.rs",
+    "/Users/arman/project/rigorix-oss/engine/tests/unit/identity/identityrepository/identityrepository_test.rs",
+    "/Users/arman/project/rigorix-oss/engine/tests/unit/identity/identityerror/identityerror_test.rs"
   ]
 }

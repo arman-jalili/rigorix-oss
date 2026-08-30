@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: "scored-evaluation"
+  epic: "identity"
   component: "Contract Freeze"
-  module: "scored-evaluation"
+  module: "identity"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/scored-evaluation.md"
+    - module: ".pi/architecture/modules/identity.md"
 
   acceptance_criteria:
     - "All component interfaces defined as stubs (TODO bodies)"
@@ -47,40 +47,28 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/scored-evaluation/domain/"
-    - "create: src/scored-evaluation/application/"
-    - "create: src/scored-evaluation/infrastructure/"
-    - "create: src/scored-evaluation/interfaces/"
+    - "create: src/identity/domain/"
+    - "create: src/identity/application/"
+    - "create: src/identity/infrastructure/"
+    - "create: src/identity/interfaces/"
 ---
 
-# Contract Freeze: scored-evaluation
+# Contract Freeze: identity
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the scored-evaluation
+Define and freeze all public interfaces, contracts, and schemas for the identity
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- Domain Layer (`domain/`)
-- Application Layer (`application/`)
-- Infrastructure Layer (`infrastructure/`)
-- ScoredEvaluationNode
-- Rubric
-- ScoringResult
-- ScoringBackend (Trait)
-- ScoredEvaluationEvent
-- ScoredEvaluationError
-- ScoredEvaluationService
-- EvaluateInput / EvaluateOutput
-- MCPBackend
-- HTTPBackend
-- LocalBackend
-- ScoreDimension
-- ScoringBackend
-- ScoreAbove policy condition
-- ScoreBelow policy condition
+- IdentityClaim
+- IdentitySource
+- IdentityAttestationService
+- TokenVerifier
+- IdentityRepository
+- IdentityError
 
 ## What Must Be Frozen
 
@@ -116,19 +104,13 @@ must satisfy contracts, not the other way around.
 
 | # | Component | Criterion | Verify In |
 |---|-----------|-----------|-----------|
-| 1 | ScoredEvaluationNode | Serde round-trip: serialize and deserialize preserves all fields | unit test |
-| 2 | Rubric | Inline and Reference sources serialize correctly with tagged enum | unit test |
-| 3 | ScoringResult | `passed` flag computed correctly from per-dimension `passed` | unit test |
-| 4 | ScoreDimension | `passed` correctly calculated from score vs max | unit test |
-| 5 | ScoringBackend | All three backend implementations pass same trait contract test suite | integration test |
-| 6 | MCPBackend | Sends `rigorix_evaluate_artifact` and parses MCP response into ScoringResult | integration test |
-| 7 | HTTPBackend | POSTs artifact + rubric to URL, parses JSON response | integration test |
-| 8 | LocalBackend | Executes script with env vars, reads scoring result from stdout | integration test |
-| 9 | ScoredEvaluationService | Orchestrates: validate → emit Started → backend → emit Completed/Failed → persist | integration test |
-| 10 | ScoredEvaluationEvent | All three event variants serialize/deserialize correctly | unit test |
-| 11 | ScoredEvaluationError | All 7 variants, `Display` impl, `is_retriable()` classification correct | unit test |
-| 12 | ScoreAbove policy condition | Policy condition correctly gates merge when dimension(s) below threshold | integration test |
-| 13 | ScoreBelow policy condition | Policy condition correctly blocks merge when any dimension below threshold | integration test |
+| 1 | IdentityClaim | Serde round-trip preserves all fields; `redacted_summary()` never contains raw token | unit test |
+| 2 | IdentityClaim | `is_valid()` correct across expiry boundary | unit test |
+| 3 | IdentityAttestationService | `extract_claims` decodes standard JWT claims (sub, iss, exp, roles) | unit test |
+| 4 | IdentityAttestationService | attest with unreachable IdP → `IdentitySource::Unverified`, explicit marker, no error | integration test |
+| 5 | IdentityAttestationService | verify against mock JWKS: valid → Verified; tampered → Unverified | integration test |
+| 6 | IdentityClaim | RunInput.identity flows into envelope identity block (redacted) | integration test |
+| 7 | IdentityAttestationService | ApproveInput.approver_id populated from claim; recorded in ApprovalRecord | integration test |
 
 
 
