@@ -381,6 +381,11 @@ pub(crate) fn event_to_vm_command(event: &ExecutionEvent) -> Option<VmCommand> {
             // No VmCommand equivalent for budget warnings currently
             None
         }
+        // Audit lifecycle events have no TUI rendering — informational.
+        ExecutionEvent::AuditEnvelopeDelivered { .. }
+        | ExecutionEvent::AuditEnvelopeQueued { .. }
+        | ExecutionEvent::AuditEnvelopeDropped { .. }
+        | ExecutionEvent::CircuitBreakerStateChanged { .. } => None,
     }
 }
 

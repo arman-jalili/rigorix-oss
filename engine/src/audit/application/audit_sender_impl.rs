@@ -17,6 +17,9 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::audit::domain::AuditError;
+use crate::event_system::application::dto::PublishEventInput;
+use crate::event_system::application::service::EventBusService;
+use crate::event_system::domain::event::ExecutionEvent;
 
 use super::dto::{
     DeliverEnvelopeInput, DeliverEnvelopeOutput, SendEnvelopeInput, SendEnvelopeOutput,
@@ -39,6 +42,9 @@ pub struct AuditSenderImpl {
     default_timeout_secs: u64,
     /// Optional API key for Bearer token authentication.
     api_key: Option<String>,
+    /// Optional event bus for emitting envelope lifecycle events
+    /// (GAP-A-17). `None` disables emission — zero behavior change.
+    event_bus: Option<Arc<dyn EventBusService>>,
 }
 
 impl AuditSenderImpl {
@@ -58,6 +64,7 @@ impl AuditSenderImpl {
             client,
             default_timeout_secs: 30,
             api_key: None,
+            event_bus: None,
         }
     }
 
@@ -78,6 +85,7 @@ impl AuditSenderImpl {
             client,
             default_timeout_secs,
             api_key: None,
+            event_bus: None,
         }
     }
 
@@ -85,6 +93,20 @@ impl AuditSenderImpl {
     pub fn with_api_key(mut self, api_key: Option<String>) -> Self {
         self.api_key = api_key;
         self
+    }
+
+    /// Attach an event bus to emit envelope lifecycle events (GAP-A-17).
+    pub fn with_event_bus(mut self, event_bus: Arc<dyn EventBusService>) -> Self {
+        self.event_bus = Some(event_bus);
+        self
+    }
+
+    /// Publish an envelope lifecycle event on the attached bus (best-effort:
+    /// publish failures are logged by the bus and never fail delivery).
+    async fn emit(&self, event: ExecutionEvent) {
+        if let Some(ref bus) = self.event_bus {
+            let _ = bus.publish(PublishEventInput { event }).await;
+        }
     }
 
     /// Compute the next backoff delay with jitter.
@@ -149,6 +171,14 @@ impl AuditSender for AuditSenderImpl {
                     if let Some(ref cb) = self.circuit_breaker {
                         cb.record_success().await.unwrap_or_default();
                     }
+                    // GAP-A-17: emit the delivered lifecycle event.
+                    self.emit(ExecutionEvent::AuditEnvelopeDelivered {
+                        execution_id: input.envelope.execution_id,
+                        attempt: 1,
+                        duration_ms,
+                        timestamp: chrono::Utc::now(),
+                    })
+                    .await;
                     Ok(SendEnvelopeOutput {
                         success: true,
                         http_status: Some(status),
@@ -216,6 +246,26 @@ impl AuditSender for AuditSenderImpl {
 
                     // Don't retry if circuit breaker is open
                     if matches!(err, AuditError::CircuitBreakerOpen { .. }) {
+                        // GAP-A-17: the breaker just transitioned — emit the
+                        // state change and the permanent drop.
+                        self.emit(ExecutionEvent::CircuitBreakerStateChanged {
+                            execution_id: input.envelope.execution_id,
+                            backend_url: self
+                                .default_backend_url
+                                .clone()
+                                .unwrap_or_else(|| "<default>".to_string()),
+                            from_state: "closed".to_string(),
+                            to_state: "open".to_string(),
+                            timestamp: chrono::Utc::now(),
+                        })
+                        .await;
+                        self.emit(ExecutionEvent::AuditEnvelopeDropped {
+                            execution_id: input.envelope.execution_id,
+                            attempts: attempt,
+                            reason: err.to_string(),
+                            timestamp: chrono::Utc::now(),
+                        })
+                        .await;
                         return Ok(DeliverEnvelopeOutput {
                             success: false,
                             attempts: attempt,
@@ -227,6 +277,15 @@ impl AuditSender for AuditSenderImpl {
 
                     // Wait for backoff before next retry
                     if attempt < input.max_retries {
+                        // GAP-A-17: delivery failed and will be retried.
+                        self.emit(ExecutionEvent::AuditEnvelopeQueued {
+                            execution_id: input.envelope.execution_id,
+                            reason: err.to_string(),
+                            retry_count: attempt,
+                            max_retries: input.max_retries,
+                            timestamp: chrono::Utc::now(),
+                        })
+                        .await;
                         let delay = Self::backoff_delay(
                             attempt,
                             input.backoff_base_secs,
@@ -237,6 +296,15 @@ impl AuditSender for AuditSenderImpl {
                 }
             }
         }
+
+        // GAP-A-17: retries exhausted — the envelope is permanently dropped.
+        self.emit(ExecutionEvent::AuditEnvelopeDropped {
+            execution_id: input.envelope.execution_id,
+            attempts: input.max_retries,
+            reason: last_error.clone().unwrap_or_else(|| "unknown".to_string()),
+            timestamp: chrono::Utc::now(),
+        })
+        .await;
 
         Ok(DeliverEnvelopeOutput {
             success: false,
@@ -279,6 +347,7 @@ mod tests {
             file_paths: vec![],
             scoring_results: std::collections::HashMap::new(),
             signature: None,
+            evidence_degraded: false,
             repository: None,
             author: None,
             identity: None,
@@ -364,5 +433,107 @@ mod tests {
         // Both should be capped at max_secs (5) plus jitter
         assert!(d1.as_secs_f64() <= 6.25); // 5 + 25%
         assert!(d2.as_secs_f64() <= 6.25);
+    }
+
+    /// GAP-A-17: delivery failures emit EnvelopeQueued then EnvelopeDropped.
+    #[tokio::test]
+    async fn test_sender_emits_queued_then_dropped_events() {
+        use crate::event_system::application::event_bus_service_impl::EventBusServiceImpl;
+        use crate::event_system::domain::event::ExecutionEvent;
+
+        let bus = Arc::new(EventBusServiceImpl::default());
+        let mut rx = bus.subscribe_receiver();
+        let sender = AuditSenderImpl::new(
+            None,
+            Some("http://127.0.0.1:1".to_string()), // port 1 -> instant ECONNREFUSED
+        )
+        .with_event_bus(bus);
+
+        let output = sender
+            .deliver_with_retry(DeliverEnvelopeInput {
+                envelope: sample_envelope(),
+                max_retries: 2,
+                backoff_base_secs: 0,
+                backoff_max_secs: 1,
+            })
+            .await
+            .unwrap();
+        assert!(!output.success, "delivery to port 1 must fail");
+
+        // First event: queued for retry.
+        let first = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+            .await
+            .expect("queued event must be emitted")
+            .expect("channel not closed");
+        match first {
+            ExecutionEvent::AuditEnvelopeQueued { retry_count, .. } => {
+                assert_eq!(retry_count, 1);
+            }
+            other => panic!("expected AuditEnvelopeQueued, got {other:?}"),
+        }
+
+        // Second event: permanently dropped after exhausting retries.
+        let second = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+            .await
+            .expect("dropped event must be emitted")
+            .expect("channel not closed");
+        assert!(
+            matches!(
+                second,
+                ExecutionEvent::AuditEnvelopeDropped { attempts: 2, .. }
+            ),
+            "expected AuditEnvelopeDropped after 2 attempts, got {second:?}"
+        );
+    }
+
+    /// GAP-A-17: an open circuit breaker emits the state change and a drop.
+    #[tokio::test]
+    async fn test_sender_emits_breaker_open_events() {
+        use crate::event_system::application::event_bus_service_impl::EventBusServiceImpl;
+        use crate::event_system::domain::event::ExecutionEvent;
+
+        let bus = Arc::new(EventBusServiceImpl::default());
+        let mut rx = bus.subscribe_receiver();
+        let cb = Arc::new(CircuitBreakerImpl::new(
+            "https://audit.example.com".to_string(),
+            1,
+            30,
+        ));
+        cb.record_failure().await.unwrap(); // open the breaker
+
+        let sender = AuditSenderImpl::new(Some(cb), Some("https://audit.example.com".to_string()))
+            .with_event_bus(bus);
+
+        let output = sender
+            .deliver_with_retry(DeliverEnvelopeInput {
+                envelope: sample_envelope(),
+                max_retries: 3,
+                backoff_base_secs: 0,
+                backoff_max_secs: 1,
+            })
+            .await
+            .unwrap();
+        assert!(!output.success, "open breaker must drop delivery");
+
+        let first = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+            .await
+            .expect("breaker event must be emitted")
+            .expect("channel not closed");
+        assert!(
+            matches!(
+                &first,
+                ExecutionEvent::CircuitBreakerStateChanged { to_state, .. } if to_state == "open"
+            ),
+            "expected CircuitBreakerStateChanged(open), got {first:?}"
+        );
+
+        let second = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+            .await
+            .expect("dropped event must be emitted")
+            .expect("channel not closed");
+        assert!(
+            matches!(&second, ExecutionEvent::AuditEnvelopeDropped { .. }),
+            "expected AuditEnvelopeDropped, got {second:?}"
+        );
     }
 }

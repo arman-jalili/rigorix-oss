@@ -457,28 +457,24 @@ mod tests {
     }
 }
 
-/// Compute an HMAC-SHA256 signature over the envelope's canonical fields,
+/// Compute an HMAC-SHA256 signature over the envelope's canonical form,
 /// mirroring the engine's `envelope_factory_impl::compute_signature` so the
-/// MCP-facing envelope can be verified with the same key used by the engine.
+/// MCP-facing envelope is verified with the same key used by the engine.
+///
+/// GAP-A-06: the signature covers the FULL serialized envelope (the hmac
+/// field is empty at signing time), so tampering with any step/status/duration
+/// field breaks the signature — previously only a scalar subset was signed.
 fn compute_hmac(envelope: &AuditEnvelope, key: &str) -> String {
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
 
     let mut mac =
         Hmac::<Sha256>::new_from_slice(key.as_bytes()).expect("HMAC key from config is valid");
-    mac.update(envelope.execution_id().to_string().as_bytes());
-    mac.update(envelope.started_at().to_rfc3339().as_bytes());
-    mac.update(envelope.completed_at().to_rfc3339().as_bytes());
-    mac.update(envelope.template_name().unwrap_or("").as_bytes());
-    mac.update(&envelope.duration_ms().to_le_bytes());
-    mac.update(&(envelope.steps().len() as u64).to_le_bytes());
-    for step in envelope.steps() {
-        mac.update(step.step_name().as_bytes());
-        mac.update(&[step.is_success() as u8]);
-        if let Some(err) = step.error() {
-            mac.update(err.as_bytes());
-        }
-    }
+    // Canonical: full sorted-key serialization (serde_json::Map is
+    // BTreeMap-backed without preserve_order). The hmac field is empty at
+    // signing time, matching the envelope the caller signs before rebuilding.
+    let canonical = serde_json::to_string(envelope).unwrap_or_default();
+    mac.update(canonical.as_bytes());
     let result = mac.finalize().into_bytes();
     result.iter().map(|b| format!("{:02x}", b)).collect()
 }

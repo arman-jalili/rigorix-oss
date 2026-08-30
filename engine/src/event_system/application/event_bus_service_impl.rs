@@ -197,7 +197,11 @@ impl EventBusService for EventBusServiceImpl {
                         | ExecutionEvent::ExecutionCompleted { execution_id, .. }
                         | ExecutionEvent::ExecutionFailed { execution_id, .. }
                         | ExecutionEvent::ExecutionCancelled { execution_id, .. }
-                        | ExecutionEvent::BudgetWarning { execution_id, .. } => {
+                        | ExecutionEvent::BudgetWarning { execution_id, .. }
+                        | ExecutionEvent::AuditEnvelopeDelivered { execution_id, .. }
+                        | ExecutionEvent::AuditEnvelopeQueued { execution_id, .. }
+                        | ExecutionEvent::AuditEnvelopeDropped { execution_id, .. }
+                        | ExecutionEvent::CircuitBreakerStateChanged { execution_id, .. } => {
                             if execution_id != eid {
                                 return false;
                             }
@@ -231,6 +235,12 @@ impl EventBusService for EventBusServiceImpl {
                         ExecutionEvent::ExecutionFailed { .. } => "execution_failed",
                         ExecutionEvent::ExecutionCancelled { .. } => "execution_cancelled",
                         ExecutionEvent::BudgetWarning { .. } => "budget_warning",
+                        ExecutionEvent::AuditEnvelopeDelivered { .. } => "audit_envelope_delivered",
+                        ExecutionEvent::AuditEnvelopeQueued { .. } => "audit_envelope_queued",
+                        ExecutionEvent::AuditEnvelopeDropped { .. } => "audit_envelope_dropped",
+                        ExecutionEvent::CircuitBreakerStateChanged { .. } => {
+                            "circuit_breaker_state_changed"
+                        }
                     };
                     if variant_name != event_type {
                         return false;
@@ -253,6 +263,10 @@ impl EventBusService for EventBusServiceImpl {
                         ExecutionEvent::ExecutionFailed { timestamp, .. } => timestamp,
                         ExecutionEvent::ExecutionCancelled { timestamp, .. } => timestamp,
                         ExecutionEvent::BudgetWarning { timestamp, .. } => timestamp,
+                        ExecutionEvent::AuditEnvelopeDelivered { timestamp, .. } => timestamp,
+                        ExecutionEvent::AuditEnvelopeQueued { timestamp, .. } => timestamp,
+                        ExecutionEvent::AuditEnvelopeDropped { timestamp, .. } => timestamp,
+                        ExecutionEvent::CircuitBreakerStateChanged { timestamp, .. } => timestamp,
                     };
                     if ts < after {
                         return false;
@@ -274,6 +288,10 @@ impl EventBusService for EventBusServiceImpl {
                         ExecutionEvent::ExecutionFailed { timestamp, .. } => timestamp,
                         ExecutionEvent::ExecutionCancelled { timestamp, .. } => timestamp,
                         ExecutionEvent::BudgetWarning { timestamp, .. } => timestamp,
+                        ExecutionEvent::AuditEnvelopeDelivered { timestamp, .. } => timestamp,
+                        ExecutionEvent::AuditEnvelopeQueued { timestamp, .. } => timestamp,
+                        ExecutionEvent::AuditEnvelopeDropped { timestamp, .. } => timestamp,
+                        ExecutionEvent::CircuitBreakerStateChanged { timestamp, .. } => timestamp,
                     };
                     if ts > before {
                         return false;

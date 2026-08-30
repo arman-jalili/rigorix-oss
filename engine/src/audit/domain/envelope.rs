@@ -107,6 +107,14 @@ pub struct AuditEnvelope {
     ///
     /// `None` if HMAC signing is not configured.
     pub signature: Option<String>,
+
+    /// Evidence-integrity marker: true when this envelope was produced
+    /// WITHOUT an HMAC signature (signing not requested). Approval-bearing
+    /// runs must be signed; unsigned envelopes carry this explicit degraded
+    /// marker so consumers can distinguish "intentionally unsigned" from
+    /// "tampered" (GAP-M-12).
+    #[serde(default)]
+    pub evidence_degraded: bool,
 }
 
 /// A reference to a scoring result included in the audit envelope.
