@@ -1490,6 +1490,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     graph,
                     node_states,
                     approved,
+                    started_at: loaded.state.started_at,
                 })
                 .await
                 .map_err(|e| OrchestratorError::Internal {

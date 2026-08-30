@@ -184,10 +184,7 @@ pub struct ExecutionState {
     /// Additive field — absent in pre-GAP-3 state files, defaults to `None`.
     #[serde(default)]
     pub exec_node_states: Option<
-        std::collections::HashMap<
-            Uuid,
-            crate::execution_engine::domain::NodeExecutionState,
-        >,
+        std::collections::HashMap<Uuid, crate::execution_engine::domain::NodeExecutionState>,
     >,
 }
 

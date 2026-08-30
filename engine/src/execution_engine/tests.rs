@@ -117,14 +117,20 @@ async fn test_execute_node_returns_result() {
         .execute_node(ExecuteNodeInput {
             dag_id,
             node_id,
-            retry_policy: None,
+            retry_policy: Some(fast_non_retriable_policy()),
         })
         .await
         .unwrap();
 
+    // A-02: a node that does not exist in any session graph must FAIL, not
+    // return the old placeholder success.
     assert_eq!(output.result.node_id, node_id);
-    assert!(output.result.success);
-    assert!(output.retry_decision.is_none());
+    assert!(!output.result.success);
+    let err = output.result.error.as_deref().unwrap_or("");
+    assert!(
+        err.contains("node_not_found") || err.contains("not found"),
+        "error should mention node_not_found, got: {err}"
+    );
 }
 
 #[tokio::test]
@@ -133,22 +139,183 @@ async fn test_execute_node_with_retry_policy() {
     let dag_id = Uuid::new_v4();
     let node_id = Uuid::new_v4();
 
-    let policy = RetryPolicy {
-        max_attempts: 2,
-        ..Default::default()
-    };
-
     let output = executor
         .execute_node(ExecuteNodeInput {
             dag_id,
             node_id,
-            retry_policy: Some(policy),
+            retry_policy: Some(fast_non_retriable_policy()),
         })
         .await
         .unwrap();
 
+    // A-02: missing node fails regardless of the configured retry policy.
     assert_eq!(output.result.node_id, node_id);
-    assert!(output.result.success);
+    assert!(!output.result.success);
+    assert!(
+        output
+            .result
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("node_not_found"),
+        "missing node must fail, not succeed"
+    );
+}
+
+/// Fast retry policy that treats the failure as non-retriable: a single
+/// attempt, immediate backoff, no sleep, so tests stay deterministic.
+fn fast_non_retriable_policy() -> RetryPolicy {
+    RetryPolicy {
+        max_attempts: 1,
+        retryable_failures: vec!["__never_matches__".to_string()],
+        backoff_strategy: BackoffStrategy::Immediate,
+        ..Default::default()
+    }
+}
+
+/// A-01 (parallel path): an unknown tool name in a graph must produce a
+/// node failure, never a silent success.
+#[tokio::test]
+async fn test_unknown_tool_fails_graph_execution() {
+    use crate::dag_engine::domain::{TaskGraph, TaskNode};
+
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+    let node = TaskNode::new(
+        Uuid::new_v4(),
+        "step",
+        "no_such_tool",
+        vec![],
+        "no such tool",
+    );
+    let mut graph = TaskGraph::new();
+    graph.add_unchecked(node.clone()).unwrap();
+    graph.seal().unwrap();
+
+    let output = executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            graph: Some(graph),
+            config_override: None,
+        })
+        .await
+        .unwrap();
+
+    let nr = output
+        .result
+        .node_results
+        .get(&node.id)
+        .expect("node result present");
+    assert!(
+        !nr.success,
+        "unknown tool must fail the node, not report success"
+    );
+    assert_eq!(
+        nr.failure_type.as_deref(),
+        Some("unknown_tool"),
+        "failure type must be unknown_tool"
+    );
+    assert!(
+        nr.error.as_deref().unwrap_or("").contains("no_such_tool"),
+        "error must name the tool"
+    );
+}
+
+/// A-01 (single-node path): the same unknown-tool failure must surface via
+/// `execute_node` (the `execute_tool` dispatch), not just the parallel loop.
+#[tokio::test]
+async fn test_unknown_tool_fails_single_node_path() {
+    use crate::dag_engine::domain::{TaskGraph, TaskNode};
+
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+    // Approval-gated so execute_graph leaves the node in the session graph
+    // without dispatching it; then execute_node drives the single-node path.
+    let node = TaskNode::new(
+        Uuid::new_v4(),
+        "step",
+        "no_such_tool",
+        vec![],
+        "no such tool",
+    )
+    .with_requires_approval(true);
+    let mut graph = TaskGraph::new();
+    graph.add_unchecked(node.clone()).unwrap();
+    graph.seal().unwrap();
+
+    let output = executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            graph: Some(graph),
+            config_override: None,
+        })
+        .await
+        .unwrap();
+    assert!(output.approval_pending, "gate must pause before dispatch");
+
+    let node_out = executor
+        .execute_node(ExecuteNodeInput {
+            dag_id,
+            node_id: node.id,
+            retry_policy: Some(fast_non_retriable_policy()),
+        })
+        .await
+        .unwrap();
+    assert!(
+        !node_out.result.success,
+        "single-node path must fail on unknown tool"
+    );
+    let err = node_out.result.error.as_deref().unwrap_or("");
+    assert!(
+        err.contains("no_such_tool") || err.contains("unknown_tool"),
+        "error must reference the unknown tool, got: {err}"
+    );
+}
+
+/// H-08 regression: hydrating a session must preserve the persisted
+/// `started_at` so a resumed run reports an undistorted duration.
+#[tokio::test]
+async fn test_hydrate_preserves_persisted_started_at() {
+    use crate::dag_engine::domain::{TaskGraph, TaskNode};
+    use crate::execution_engine::application::dto::HydrateExecutionInput;
+    use chrono::{Duration, Utc};
+
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+    let node = TaskNode::new(Uuid::new_v4(), "step", "echo hi", vec![], "say hi");
+    let mut graph = TaskGraph::new();
+    graph.add_unchecked(node).unwrap();
+    graph.seal().unwrap();
+
+    let persisted_started_at = Utc::now() - Duration::minutes(10);
+    let hydrate = executor
+        .hydrate_execution(HydrateExecutionInput {
+            dag_id,
+            graph,
+            node_states: Default::default(),
+            approved: Default::default(),
+            started_at: persisted_started_at,
+        })
+        .await
+        .unwrap();
+    assert!(hydrate.created, "session must be created by hydration");
+
+    let state = executor
+        .get_execution_state(GetExecutionStateInput { dag_id })
+        .await
+        .unwrap();
+    assert_eq!(
+        state.started_at,
+        Some(persisted_started_at),
+        "hydrated session must keep the persisted start time"
+    );
+    // While paused, reported duration is wall-clock since the preserved start
+    // — a fresh Utc::now() baseline would under-report by the pause length.
+    assert!(
+        state.total_duration_ms >= 10 * 60 * 1000,
+        "duration must include the 10-minute pause, got {:?}",
+        state.total_duration_ms
+    );
 }
 
 #[tokio::test]
@@ -175,9 +342,21 @@ async fn test_approval_gate_pauses_until_human_signoff() {
     let dag_id = Uuid::new_v4();
 
     // Graph: [safe] and [risky] are independent; risky requires approval.
-    let safe = TaskNode::new(Uuid::new_v4(), "safe", "echo safe", vec![], "run safe");
-    let risky = TaskNode::new(Uuid::new_v4(), "risky", "echo risky", vec![], "run risky")
-        .with_requires_approval(true);
+    let safe = TaskNode::new(
+        Uuid::new_v4(),
+        "safe",
+        "run_command",
+        vec![],
+        r#"{"command": "echo safe"}"#,
+    );
+    let risky = TaskNode::new(
+        Uuid::new_v4(),
+        "risky",
+        "run_command",
+        vec![],
+        r#"{"command": "echo risky"}"#,
+    )
+    .with_requires_approval(true);
     let mut graph = TaskGraph::new();
     graph.add_unchecked(safe).unwrap();
     graph.add_unchecked(risky).unwrap();
@@ -249,24 +428,24 @@ async fn test_cross_process_resume_hydrates_session_and_continues() {
     let backup = TaskNode::new(
         Uuid::new_v4(),
         "backup",
-        "echo backup",
+        "run_command",
         vec![],
-        "run backup",
+        r#"{"command": "echo backup"}"#,
     );
     let migrate = TaskNode::new(
         Uuid::new_v4(),
         "migrate",
-        "echo migrate",
+        "run_command",
         vec![backup.id],
-        "run migrate",
+        r#"{"command": "echo migrate"}"#,
     )
     .with_requires_approval(true);
     let verify = TaskNode::new(
         Uuid::new_v4(),
         "verify",
-        "echo verify",
+        "run_command",
         vec![migrate.id],
-        "run verify",
+        r#"{"command": "echo verify"}"#,
     );
     let mut graph = TaskGraph::new();
     graph.add_unchecked(backup).unwrap();
@@ -282,7 +461,10 @@ async fn test_cross_process_resume_hydrates_session_and_continues() {
         })
         .await
         .unwrap();
-    assert!(output_a.approval_pending, "process A must pause at approval");
+    assert!(
+        output_a.approval_pending,
+        "process A must pause at approval"
+    );
     assert_eq!(output_a.pending_approval_steps, vec!["migrate".to_string()]);
 
     // The live node states from A's run (backup completed, migrate awaiting,
@@ -337,6 +519,9 @@ async fn test_cross_process_resume_hydrates_session_and_continues() {
             graph,
             node_states,
             approved: Default::default(),
+            // H-08: the persisted start must survive hydration (the resume
+            // duration is computed from this timestamp).
+            started_at: state_a.started_at.unwrap_or_else(chrono::Utc::now),
         })
         .await
         .unwrap();
@@ -409,13 +594,13 @@ async fn test_factory_threads_permission_enforcer_read_only_gates_bash_write() {
         vec![],
         "touch /tmp/rigorix-perm",
     );
-    // `grep_search` is allow-listed at ReadOnly → allowed, placeholder success.
+    // `grep_search` is allow-listed at ReadOnly → real file_read completes.
     let read_node = TaskNode::new(
         Uuid::new_v4(),
         "read",
-        "grep_search",
+        "file_read",
         vec![],
-        "pattern in src",
+        r#"{"path": "Cargo.toml"}"#,
     );
     let mut graph = TaskGraph::new();
     graph.add_unchecked(write_node).unwrap();
@@ -1259,11 +1444,41 @@ async fn test_factory_with_custom_config() {
 // Inline Retry Loop Tests
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
-async fn test_inline_retry_loop_succeeds_on_first_attempt() {
+/// Create an approval-paused session holding a single `run_command` node, so
+/// `execute_node` can drive the single-node dispatch (inline retry loop)
+/// against a REAL tool — fake tool names now fail (GAP-A-01).
+async fn paused_session_with_node() -> (ParallelExecutionServiceImpl, Uuid, Uuid) {
+    use crate::dag_engine::domain::{TaskGraph, TaskNode};
+
     let executor = create_executor();
     let dag_id = Uuid::new_v4();
-    let node_id = Uuid::new_v4();
+    let node = TaskNode::new(
+        Uuid::new_v4(),
+        "step",
+        "run_command",
+        vec![],
+        r#"{"command": "echo hi"}"#,
+    )
+    .with_requires_approval(true);
+    let mut graph = TaskGraph::new();
+    graph.add_unchecked(node.clone()).unwrap();
+    graph.seal().unwrap();
+
+    let output = executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            graph: Some(graph),
+            config_override: None,
+        })
+        .await
+        .unwrap();
+    assert!(output.approval_pending, "gate must pause before dispatch");
+    (executor, dag_id, node.id)
+}
+
+#[tokio::test]
+async fn test_inline_retry_loop_succeeds_on_first_attempt() {
+    let (executor, dag_id, node_id) = paused_session_with_node().await;
 
     let output = executor
         .execute_node(ExecuteNodeInput {
@@ -1274,7 +1489,10 @@ async fn test_inline_retry_loop_succeeds_on_first_attempt() {
         .await
         .unwrap();
 
-    assert!(output.result.success);
+    assert!(
+        output.result.success,
+        "real tool must succeed on first attempt"
+    );
     assert_eq!(output.result.node_id, node_id);
     assert_eq!(output.result.retry_attempts, 0);
     assert!(output.retry_decision.is_none());
@@ -1282,9 +1500,7 @@ async fn test_inline_retry_loop_succeeds_on_first_attempt() {
 
 #[tokio::test]
 async fn test_inline_retry_loop_with_retry_policy() {
-    let executor = create_executor();
-    let dag_id = Uuid::new_v4();
-    let node_id = Uuid::new_v4();
+    let (executor, dag_id, node_id) = paused_session_with_node().await;
 
     let policy = RetryPolicy {
         max_attempts: 2,
@@ -1300,15 +1516,14 @@ async fn test_inline_retry_loop_with_retry_policy() {
         .await
         .unwrap();
 
-    // Placeholder succeeds immediately, so returns success on first attempt
+    // A real tool succeeds on the first attempt — no retries consumed.
     assert!(output.result.success);
+    assert_eq!(output.result.retry_attempts, 0);
 }
 
 #[tokio::test]
 async fn test_inline_retry_loop_uses_default_policy_when_none_provided() {
-    let executor = create_executor();
-    let dag_id = Uuid::new_v4();
-    let node_id = Uuid::new_v4();
+    let (executor, dag_id, node_id) = paused_session_with_node().await;
 
     let output = executor
         .execute_node(ExecuteNodeInput {

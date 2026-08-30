@@ -81,10 +81,16 @@ impl PermissionPolicy {
             active_mode,
             HashMap::from([
                 ("read_file".to_string(), PermissionMode::ReadOnly),
+                ("file_read".to_string(), PermissionMode::ReadOnly),
+                ("git_read".to_string(), PermissionMode::ReadOnly),
                 ("grep_search".to_string(), PermissionMode::ReadOnly),
                 ("glob".to_string(), PermissionMode::ReadOnly),
                 ("lsp_query".to_string(), PermissionMode::ReadOnly),
                 ("write_file".to_string(), PermissionMode::WorkspaceWrite),
+                ("file_write".to_string(), PermissionMode::WorkspaceWrite),
+                ("file_append".to_string(), PermissionMode::WorkspaceWrite),
+                ("file_patch".to_string(), PermissionMode::WorkspaceWrite),
+                ("git_stage".to_string(), PermissionMode::WorkspaceWrite),
                 ("edit_file".to_string(), PermissionMode::WorkspaceWrite),
                 ("create_file".to_string(), PermissionMode::WorkspaceWrite),
                 (
@@ -98,6 +104,8 @@ impl PermissionPolicy {
             ]),
             vec![
                 "read_file".to_string(),
+                "file_read".to_string(),
+                "git_read".to_string(),
                 "grep_search".to_string(),
                 "glob".to_string(),
                 "lsp_query".to_string(),

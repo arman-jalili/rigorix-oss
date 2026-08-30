@@ -137,10 +137,8 @@ impl EngineFacade for TddMockEngine {
     async fn execution_state(
         &self,
         _: &ExecutionId,
-    ) -> Result<
-        rigorix_mcp::execution_tools::domain::value::ExecutionStateInfo,
-        EngineFacadeError,
-    > {
+    ) -> Result<rigorix_mcp::execution_tools::domain::value::ExecutionStateInfo, EngineFacadeError>
+    {
         unimplemented!("mock execution_state not needed by current tests")
     }
 }
