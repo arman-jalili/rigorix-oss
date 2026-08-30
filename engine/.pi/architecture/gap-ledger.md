@@ -1,9 +1,9 @@
 # Gap Ledger
 
 > **Source:** Comprehensive codebase assessment — 2026-06-15
-> **Last Updated:** 2026-08-28 (Addendum: approval/identity pre-flight findings — 8 new, see bottom)
+> **Last Updated:** 2026-08-30 (Addendum 2: codebase audit implementation backlog — 30 new, see bottom)
 > **Scope:** All 17 modules across engine/src/, architecture docs, tests, CI, tooling
-> **Total findings:** 35 | **Resolved:** 27 | **Open:** 8
+> **Total findings:** 65 | **Resolved:** 27 | **Open:** 38
 
 ---
 
@@ -11,12 +11,12 @@
 
 | Tier | Label | Threshold | Open | Resolved |
 |------|-------|-----------|------|----------|
-| C | Critical | Must resolve before production use | 0 | 3 |
-| H | High | Should resolve in current phase | 2 | 6 |
-| M | Medium | Quality improvements, next 2 sprints | 4 | 11 |
-| L | Low | Nice to have, backlog | 2 | 7 |
+| C | Critical | Must resolve before production use | 6 | 3 |
+| H | High | Should resolve in current phase | 10 | 6 |
+| M | Medium | Quality improvements, next 2 sprints | 12 | 11 |
+| L | Low | Nice to have, backlog | 10 | 7 |
 
-> Open counts include Addendum 2026-08-28 (below).
+> Open counts include Addendum 2026-08-28 (approval pre-flight) + Addendum 2026-08-30 (codebase audit).
 
 ---
 
@@ -132,3 +132,76 @@
 ---
 
 *Addendum generated: 2026-08-28 | Disposition: fold H-07/H-08 + M-12/M-13/M-14 into the approval epic issues when generated; M-15 + L-08/L-09 as follow-ups*
+
+---
+
+# Addendum 2026-08-30 — Codebase Audit (v1–v3, code-verified): Implementation Backlog
+
+> **Source:** Independent codebase audit (GLM-5.3-Flash) + counter-validation — every claim verified against source (code is truth)
+> **Scope:** engine, mcp, actions, cli — execution integrity, wiring, dead-contract completion, tests, docs/CI truth
+> **Disposition (IMPORTANT):** ALL items are to be **IMPLEMENTED or CONNECTED — no deletions.** Dead contracts are unbuilt contracts; every repository, wiring, and event gets implemented and wired, not removed. The project's contract-freeze process treats each as a build target for an epic/issue.
+> **Total:** 30 findings | **Resolved:** 0 | **Open:** 30
+
+## Critical (C) — Execution Integrity (silent fake-success class — must resolve before production use)
+
+| ID | Category | Finding | Recommended Action | Address In | Effort | Status |
+|----|----------|---------|---------------------|-----------|--------|--------|
+| A-01 | Execution | **Unknown tool reports success.** `execution_engine/application/service_impl.rs:231-241` returns `TaskResult::success("Unknown tool '{tool}'...")` for any unrecognized tool — a typo'd/unsupported node passes validation and produces a green run that did nothing. | Unknown tool must **FAIL** (structured error, non-retriable); add the missing adversarial test. | Execution-engine epic | S (0.5d) | ⬜ Open |
+| A-02 | Execution | **Missing graph/node returns placeholder success.** `service_impl.rs:1759-1768` returns `("execution output placeholder", ...)` when no graph or node found. | Must **FAIL** with a typed error, not succeed. | Execution-engine epic | S (0.5d) | ⬜ Open |
+| A-03 | Execution | **`config_override` cloned and never applied.** `service_impl.rs:1438-1441` (`let _config = ...` — underscore-discarded). Callers believe they override concurrency/retry settings. | Apply the override to the executor config, or remove the field + fix the DTO. | Execution-engine epic | S (0.5d) | ⬜ Open |
+| A-04 | Operations | **Hook-runner pipe deadlock.** `hooks/application/hook_runner_impl.rs:100-181` polls `child.try_wait()` in a 10ms sleep loop **without draining stdout/stderr** — a hook writing >64KB blocks forever (only the timeout kills it); `wait_with_output()` is called after `try_wait` already reaped. | Concurrent drain (threads or `tokio::process`), wall-clock timeout around the whole interaction, `wait()` after `kill()`. | Hooks epic | M (1-2d) | ⬜ Open |
+| A-05 | Enforcement | **Hooks bypassed in the parallel dispatch loop.** `spawn_concurrent_node` (`service_impl.rs:67`) receives `_hook_runner` (underscore-prefixed/unused); nodes dispatch directly to `exec_*` statics, skipping `execute_tool` — the only PreToolUse/PostToolUse hook site. Permission IS enforced in both paths (verified `:110-121`). | **Wire hooks into the parallel path** (or explicitly document single-node-only semantics); add a test that a PreToolUse hook blocks a parallel-path tool. | Hooks epic | M (1-2d) | ⬜ Open |
+| A-06 | Security | **HMAC signs a subset of the envelope, not the payload.** `audit/application/envelope_factory_impl.rs:53-60` signs only `execution_id, timestamp, template_id, planning_hash, total_tokens, duration_ms, events.len()` — NOT event contents, `file_paths`, `scoring_results`, or future `approval_events`/`scope_violations`/`identity`. MCP `compute_hmac` uses a different field set. | Sign the **full canonical serialized envelope** (or all evidence fields); unify engine↔mcp HMAC; refuse unsigned envelopes in `read_audit`. **Blocks ADR-011's "covered transitively by the envelope HMAC" claim.** | Approval epic — evidence issue | M (1-2d) | ⬜ Open |
+
+## High (H) — Should Resolve in Current Phase
+
+| ID | Category | Finding | Recommended Action | Address In | Effort | Status |
+|----|----------|---------|---------------------|-----------|--------|--------|
+| A-07 | Integration | **MCP production planning is mocked.** `mcp/src/main.rs:797-871`: `build_real_engine` hardwires `MockClassifier` (catch-all `""→"default"`, 0.1) + `MockParameterExtractor`; the registered default template's `read_file` action reads **`/dev/null`**. Real LLM classifiers are never wrapped. | Wire real `claude/openai_classifier` + `llm_extractor` into `build_real_engine`; keep mock mode behind an explicit flag. | MCP epic | M (2-3d) | ⬜ Open |
+| A-08 | Integration | **"governance" action mode is a silent alias for Validate.** `actions/src/action_entrypoint/application/mode_resolver_impl.rs:84` maps `"governance" → ActionMode::Validate`. Mode A machinery (diff_analyzer ~5K, policy_evaluator ~4.7K, security_config ~1.7K, audit_posting ~3K) has no runtime path. | **Implement Mode A**: route `governance` through `diff_analyzer` + `policy_evaluator` with base-branch `policy-file` and honored `fail-on-violation`. | Actions epic | L (3-5d) | ⬜ Open |
+| A-09 | Reliability | **Budget accounting non-atomic; RAII guard test-only.** `budget_tracking/application/llm_budget_impl.rs:243-250`: load(Acquire) → capacity check → `fetch_add` — TOCTOU, concurrent commits can over-commit. RAII guard `LlmBudgetReservationImpl` is `#[cfg(test)]`-only (`:360`). | CAS loop or `Mutex<BudgetState>`; ship the reservation guard in production; add a contention test. | Budget epic | M (1-2d) | ⬜ Open |
+| A-10 | Integration | **SSE advertised, unimplemented.** `mcp/src/main.rs:1666-1668`: `--sse` logs "not fully implemented"; `axum` declared (feature enabled) with zero axum code. | Implement SSE transport or remove the flag + claims. | MCP epic | M (2-3d) | ⬜ Open |
+| A-11 | Execution | **Config flags parsed but never read.** `enable_cancellation`, `enable_enforcement`, `max_failures_before_abort`, `max_total_retries_per_session` (executor); no `CancellationToken` in the executor; actions `max-llm-calls`/`max-llm-tokens` unapplied. | Implement the documented behavior (`execution_engine/application/service.rs:59-77`) — cancellation, enforcement limits, abort thresholds — or remove the flags. | Execution-engine epic | M (2-3d) | ⬜ Open |
+| A-12 | Performance | **Blocking std IO on the async runtime.** `exec_*` file/git/shell tools (`service_impl.rs:779-1098`), hooks, `template_generation/generator.rs` (~700 lines) use `std::process`/`std::fs` in tokio context; no timeouts on `sh -c`/git. | `tokio::fs`/`tokio::process`; timeouts on all subprocess calls. | Execution-engine epic | L (3-5d) | ⬜ Open |
+| A-13 | Quality | **scored_evaluation always uses the first backend.** `scored_evaluation/application/service_impl.rs:138` (`iter().next()`); `EvaluateInput` (application/dto.rs:23-32) has **no backend field** — design limitation, not a selection bug (v3-corrected). | Add backend selection to the API (or document single-backend mode). | Scored-evaluation epic | S (1d) | ⬜ Open |
+| A-14 | Enforcement | **Enforcement limits may not block time-based calls.** `enforcement/.../enforcer_impl.rs:205-219` checks calls/tokens but not time (per audit; spot-verify). | Verify + implement time-limit enforcement; add a test that enforcement actually blocks. | Enforcement epic | S (1d) | ⬜ Open |
+
+## Medium (M) — Dead Contracts to CONNECT/IMPLEMENT (no deletions)
+
+| ID | Category | Finding | Recommended Action | Address In | Effort | Status |
+|----|----------|---------|---------------------|-----------|--------|--------|
+| A-15 | Contracts | **repo_engine indexer stack has no impls.** `IndexerService`/`SymbolRepository`/`SourceRepository`/`GrammarRepository` traits exist with **zero implementations**; real symbol indexing happens elsewhere (code_graph, template_generation). | **Implement** the indexer + repositories and wire them into the symbol graph service (replace the panic-by-design `graph()`). | Repo-engine epic | L (3-5d) | ⬜ Open |
+| A-16 | Contracts | **~10 impl-less repository traits.** `GrammarRepository`, `GeneratedTemplateRepository`, `ExecutionResultRepository`, `LlmBudgetRepository`, `PatternRepository`, `ClassificationLogRepository`, `ConfigWriteRepository`, `FailureLogRepository`, `CodeGenEventRepository`, `ParserConfigRepository` — zero impls. | **Implement + wire** each (filesystem/state-backed), or fold into their consuming service if the trait is redundant. | Per-module epics | M (2-3d ea) | ⬜ Open |
+| A-17 | Contracts | **Event enums never emitted.** `AuditEvent` (audit/domain/event/mod.rs) has **zero** variants referenced outside its file; other domain event enums similar. | **Wire emission** — publish the lifecycle events (EnvelopeDelivered/Queued/Dropped, CircuitBreakerStateChanged) from the audit sender/queue/circuit-breaker. | Audit epic | S (1d) | ⬜ Open |
+| A-18 | Contracts | **RiskClassifier never constructed.** `risk_gating`'s classifier service has zero constructions in the workspace (only `RiskLevel` is used, via tools registry). | **Connect** the classifier into the tool-execution risk-gating path (`execute_with_risk_gate`). | Risk-gating epic | S (1d) | ⬜ Open |
+| A-19 | Contracts | **failure_classification services have no callers.** `FailureClassifierService`/`classify_failure` — zero constructions outside the module (only types/strategies consumed). | **Wire** the classifier service into the execution retry loop (replace/augment substring mapping with `FailureType`). | Execution-engine epic | M (1-2d) | ⬜ Open |
+| A-20 | Contracts | **Engine templates module is InMemory-only.** `engine/src/templates` has only `InMemoryTemplateRepository`; filesystem loading exists only in MCP template_tools. | **Implement** a filesystem `TemplateRepository` in the engine (`.rigorix/templates/`) so the engine's own wiring can load templates from disk. | Templates epic | M (1-2d) | ⬜ Open |
+| A-21 | Architecture | **2 real layering violations (domain→application).** `tools/domain/tool_trait.rs:23` (`application::dto::{ToolInput, ToolResult}`) and `risk_gating/domain/gate_state.rs:21` (`application::dto::PendingGate`). (15 infra→app DTO imports are CORRECT hexagonal direction — not violations.) | Move the DTOs to domain (or invert to domain-owned value objects). | Cleanup (with A-18/A-19 epics) | S (0.5d) | ⬜ Open |
+| A-22 | Contracts | **MCP session creation never exercised at runtime.** `create_session` has zero runtime callers; `handle_initialize` fabricates a response with hardcoded `protocolVersion`/version instead of negotiating. | **Wire** session creation into the initialize handshake; implement protocol negotiation. | MCP epic | M (1-2d) | ⬜ Open |
+
+## Low (L) — Tests, Docs & CI Truth
+
+| ID | Category | Finding | Recommended Action | Address In | Effort | Status |
+|----|----------|---------|---------------------|-----------|--------|--------|
+| A-23 | Testing | **Missing adversarial tests.** No tests for: unknown-tool failure (currently can't fail), parallel-path hook gating, enforcement actually blocking a call, budget reserve contention, circuit-breaker half-open recovery, HTTP/MCP backend transports. | Add the tests that would catch A-01..A-05/A-09/A-14. | Test hardening epic | M (2-3d) | ⬜ Open |
+| A-24 | Testing | **24 inert `assert!(false)` stubs** under `engine/tests/unit/**` (no `unit/mod.rs` — not compiled, not red; misleading). | Remove or convert to real tests. | Test hardening epic | S (1d) | ⬜ Open |
+| A-25 | Testing | **mcp e2e flakiness + pollution.** 3 near-identical `minify_json`/`send_rpc` helpers; fixed 50-200ms sleeps; one test writes into real CWD `.rigorix/templates/`. | Extract shared helpers; replace sleeps with polling; run in tempdirs (`RIGORIX_REPO_ROOT`). | MCP epic | M (1-2d) | ⬜ Open |
+| A-26 | Docs | **Binary name mismatch.** README quickstart says `./target/release/rigorix`; real binary is `rigorix-cli` (no `[[bin]] name="rigorix"` in cli/Cargo.toml — only `[lib] name="rigorix"`). | Fix docs (or add `[[bin]]`); CONTRIBUTING tree omits `mcp/`. | Docs epic | S (0.5d) | ⬜ Open |
+| A-27 | Docs/CI | **Stale claims + non-gating CI.** README claims Go/SSE support (absent); "86 verification steps" unreconciled; per-crate proofing steps run `continue-on-error: true` (not gating). | Fix claims; make docs/integration stages actually gate; remove `continue-on-error` from proofing. | Docs/CI epic | M (1-2d) | ⬜ Open |
+| A-28 | Docs | **Count drift.** HOW says 3 crates/28-30 modules; actual 4 crates / 33 `pub mod` in lib.rs. GitNexus counts stale (HOW vs AGENTS.md). | Reconcile counts; generate metrics instead of hand-maintaining. | Docs epic | S (0.5d) | ⬜ Open |
+| A-29 | Hygiene | **Repo hygiene.** `.gitignore:81` corrupted with literal `\n` (`.mcp.json\nmcp/019*.json\nmcp/.rigorix/`); `rigorix-demo.mov` (16.3MB) tracked; `cli/.rigorix/state/*.json` + `.guardian-*.json` committed. | Repair .gitignore; move .mov to GitHub Releases; purge runtime state; add ignore entries. | Hygiene epic | S (1d) | ⬜ Open |
+| A-30 | Docs | **Misc doc drift.** crates.io badge → `rigorix` (nonexistent crate); `SECURITY.md` placeholder email; `mcp/src/main.rs:10-11` comment says "10 OSS tools" (actual 14); dual sha2/hmac versions (0.11/0.13 vs workspace 0.10/0.12). | Fix badge/comment/email; unify crypto stack versions. | Docs epic | S (0.5d) | ⬜ Open |
+
+## Addendum Summary (2026-08-30)
+
+| Tier | Open | Resolved |
+|------|------|----------|
+| C | 6 | 0 |
+| H | 8 | 0 |
+| M | 8 | 0 |
+| L | 8 | 0 |
+| **Total** | **30** | **0** |
+
+---
+
+*Addendum generated: 2026-08-30 | Disposition: implement/connect everything — no deletions. Cross-references: gap-ledger-validation.md (verification record); 07/08 in codebase-analysis/ (audit record).*
