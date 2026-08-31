@@ -355,6 +355,9 @@ impl ContextBuilder for ContextBuilderImpl {
                 ActionMode::Validate { .. } => ActionMode::Validate {
                     intent: intent_val.clone(),
                 },
+                ActionMode::Governance { .. } => ActionMode::Governance {
+                    intent: intent_val.clone(),
+                },
                 other => other,
             }
         } else {
@@ -411,6 +414,34 @@ impl ContextBuilder for ContextBuilderImpl {
                 .await?
         };
 
+        // 8b. Mode A governance flags (GAP-A-08)
+        let policy_file = if let Some(overrides) = &input.env_override {
+            overrides
+                .get("INPUT_POLICY_FILE")
+                .cloned()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| ".rigorix/policy.toml".to_string())
+        } else {
+            self.repository
+                .read_env_var("INPUT_POLICY_FILE")
+                .await?
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| ".rigorix/policy.toml".to_string())
+        };
+
+        let fail_on_violation = if let Some(overrides) = &input.env_override {
+            overrides
+                .get("INPUT_FAIL_ON_VIOLATION")
+                .and_then(|v| v.parse::<bool>().ok())
+                .unwrap_or(false)
+        } else {
+            self.repository
+                .read_env_var("INPUT_FAIL_ON_VIOLATION")
+                .await?
+                .and_then(|v| v.parse::<bool>().ok())
+                .unwrap_or(false)
+        };
+
         // 9. Repository and author for audit trail (from GitHub CI env vars)
         let repository = if let Some(overrides) = &input.env_override {
             overrides.get("GITHUB_REPOSITORY").cloned()
@@ -435,6 +466,8 @@ impl ContextBuilder for ContextBuilderImpl {
             permission_mode,
             repository,
             author,
+            policy_file,
+            fail_on_violation,
         };
 
         Ok(BuildContextOutput {

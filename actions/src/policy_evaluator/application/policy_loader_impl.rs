@@ -85,15 +85,21 @@ impl PolicyLoadingService for PolicyLoadingServiceImpl {
 
     async fn read_policy_content(
         &self,
-        _policy_path: &str,
-        _base_ref: &str,
+        policy_path: &str,
+        base_ref: &str,
         _repo: Option<&str>,
     ) -> Result<String, PolicyError> {
-        // In production, this would use the GitHub API to fetch from base branch.
-        // For now, return an error — concrete implementations will override this.
+        // GAP-A-08: the action runs inside a checked-out workspace, so the
+        // policy file is available at `policy_path` (absolute, or relative to
+        // the workspace). Reading it locally is the Mode A runtime path.
+        // Fetching from the GitHub API by base ref remains future work for
+        // remote-only evaluation.
+        if let Ok(content) = tokio::fs::read_to_string(policy_path).await {
+            return Ok(content);
+        }
         Err(PolicyError::FileNotFound {
-            path: _policy_path.to_string(),
-            reference: _base_ref.to_string(),
+            path: policy_path.to_string(),
+            reference: base_ref.to_string(),
         })
     }
 }
