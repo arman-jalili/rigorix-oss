@@ -134,19 +134,23 @@ impl RepoContext {
     }
 
     /// Build a RepoContext from a working directory by scanning the filesystem.
-    pub fn from_path(dir: &std::path::Path) -> std::io::Result<Self> {
-        let dir_tree = build_dir_tree(dir, 5)?;
+    /// Build a `RepoContext` by scanning the filesystem.
+    ///
+    /// GAP-A-12: async — performs all file IO with `tokio::fs` so the async
+    /// execution path never blocks on std fs calls.
+    pub async fn from_path(dir: &std::path::Path) -> std::io::Result<Self> {
+        let dir_tree = build_dir_tree(dir, 5).await?;
         let project_type = detect_project_type(dir);
-        let dependencies = read_dependencies(dir, &project_type);
+        let dependencies = read_dependencies(dir, &project_type).await;
 
         // Read key entry-point files
-        let key_file_contents = read_key_files(dir);
+        let key_file_contents = read_key_files(dir).await;
 
         // Scan public API symbols from source files
-        let public_api = scan_public_api(dir, &project_type);
+        let public_api = scan_public_api(dir, &project_type).await;
 
         // Read architecture documentation
-        let architecture_overview = read_architecture_docs(dir);
+        let architecture_overview = read_architecture_docs(dir).await;
 
         // Detect bounded context from CWD
         let bounded_context = detect_bounded_context(dir);
@@ -177,7 +181,7 @@ impl RepoContext {
     ///
     /// When `compact` is `true`, the output uses compact citation format
     /// (file → [dependencies]) instead of full content dumps.
-    pub fn from_path_filtered(
+    pub async fn from_path_filtered(
         dir: &std::path::Path,
         topic_filter: &str,
         compact: bool,
@@ -188,11 +192,11 @@ impl RepoContext {
         let dir_tree = if compact {
             format!("(scoped to: {})", topic_filter)
         } else {
-            build_dir_tree_scoped(dir, 3, topic_filter)?
+            build_dir_tree_scoped(dir, 3, topic_filter).await?
         };
 
         // 2. Only read dependencies (cheap, always useful)
-        let dependencies = read_dependencies(dir, &project_type);
+        let dependencies = read_dependencies(dir, &project_type).await;
 
         // 3. Key files: only detect the bounded context, skip full content
         let bounded_context = if topic_filter.is_empty() {
@@ -204,17 +208,17 @@ impl RepoContext {
         // 4. Public API: only scan files within the topic's directory
         let (public_api, public_api_list) = if compact {
             // Compact mode: return file paths only
-            let filtered_paths = scan_filtered_paths(dir, topic_filter);
+            let filtered_paths = scan_filtered_paths(dir, topic_filter).await;
             let api = filtered_paths.join("\n");
             (api, filtered_paths)
         } else {
-            let api = scan_public_api_filtered(dir, &project_type, topic_filter);
+            let api = scan_public_api_filtered(dir, &project_type, topic_filter).await;
             let list: Vec<String> = api.lines().map(|l| l.to_string()).collect();
             (api, list)
         };
 
         // 5. Architecture docs: read regardless (cheap)
-        let architecture_overview = read_architecture_docs(dir);
+        let architecture_overview = read_architecture_docs(dir).await;
 
         Ok(Self {
             root_dir: dir.to_path_buf(),
@@ -398,7 +402,7 @@ impl GeneratorError {
 // ---------------------------------------------------------------------------
 
 /// Scan source files for public API symbols (pub fn, pub struct, pub trait, etc.).
-fn scan_public_api(root: &std::path::Path, project_type: &str) -> String {
+async fn scan_public_api(root: &std::path::Path, project_type: &str) -> String {
     let mut symbols = Vec::new();
     let extensions: &[&str] = if project_type.contains("Rust") {
         &["rs"]
@@ -419,37 +423,40 @@ fn scan_public_api(root: &std::path::Path, project_type: &str) -> String {
         if files_scanned >= max_files || symbols.len() >= max_symbols {
             break;
         }
-        if let Ok(entries) = std::fs::read_dir(&dir) {
-            for entry in entries.flatten() {
-                if files_scanned >= max_files || symbols.len() >= max_symbols {
-                    break;
-                }
-                let path = entry.path();
-                if path.is_dir() {
-                    // Skip hidden and target/build dirs
-                    let name = path
-                        .file_name()
-                        .map(|n| n.to_string_lossy())
-                        .unwrap_or_default();
-                    if name.starts_with('.')
-                        || name == "target"
-                        || name == "node_modules"
-                        || name == "__pycache__"
-                    {
-                        continue;
-                    }
-                    dirs_to_visit.push(path);
-                } else if let Some(ext) = path.extension().and_then(|e| e.to_str())
-                    && extensions.contains(&ext)
-                    && let Ok(content) = std::fs::read_to_string(&path)
+        let mut entries = match tokio::fs::read_dir(&dir).await {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            if files_scanned >= max_files || symbols.len() >= max_symbols {
+                break;
+            }
+            let path = entry.path();
+            let is_dir = entry.file_type().await.map(|t| t.is_dir()).unwrap_or(false);
+            if is_dir {
+                // Skip hidden and target/build dirs
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy())
+                    .unwrap_or_default();
+                if name.starts_with('.')
+                    || name == "target"
+                    || name == "node_modules"
+                    || name == "__pycache__"
                 {
-                    files_scanned += 1;
-                    let rel_path = path
-                        .strip_prefix(root)
-                        .map(|p| p.to_string_lossy())
-                        .unwrap_or_else(|_| path.to_string_lossy());
-                    extract_public_symbols(&content, &rel_path, &mut symbols, project_type);
+                    continue;
                 }
+                dirs_to_visit.push(path);
+            } else if let Some(ext) = path.extension().and_then(|e| e.to_str())
+                && extensions.contains(&ext)
+                && let Ok(content) = tokio::fs::read_to_string(&path).await
+            {
+                files_scanned += 1;
+                let rel_path = path
+                    .strip_prefix(root)
+                    .map(|p| p.to_string_lossy())
+                    .unwrap_or_else(|_| path.to_string_lossy());
+                extract_public_symbols(&content, &rel_path, &mut symbols, project_type);
             }
         }
     }
@@ -625,7 +632,7 @@ fn extract_python_public_api(content: &str, file_path: &str, symbols: &mut Vec<S
 }
 
 /// Read architecture documentation from common locations.
-fn read_architecture_docs(root: &std::path::Path) -> String {
+async fn read_architecture_docs(root: &std::path::Path) -> String {
     let candidates = [
         "ARCHITECTURE.md",
         "docs/ARCHITECTURE.md",
@@ -636,8 +643,8 @@ fn read_architecture_docs(root: &std::path::Path) -> String {
     let mut sections = Vec::new();
     for rel in &candidates {
         let path = root.join(rel);
-        if path.exists()
-            && let Ok(content) = std::fs::read_to_string(&path)
+        if tokio::fs::try_exists(&path).await.unwrap_or(false)
+            && let Ok(content) = tokio::fs::read_to_string(&path).await
         {
             let truncated: String = content.lines().take(200).collect::<Vec<_>>().join("\n");
             let note = if content.lines().count() > 200 {
@@ -719,64 +726,69 @@ fn detect_bounded_context(root: &std::path::Path) -> String {
 /// Build a directory tree scoped to directories/keywords matching a filter.
 /// Uses simple substring matching on directory names. Falls back to full tree
 /// if filter is empty.
-fn build_dir_tree_scoped(
+async fn build_dir_tree_scoped(
     root: &std::path::Path,
     max_depth: usize,
     filter: &str,
 ) -> std::io::Result<String> {
     if filter.is_empty() {
-        return build_dir_tree(root, max_depth);
+        return build_dir_tree(root, max_depth).await;
     }
     let filter_lower = filter.to_lowercase();
     let mut lines = Vec::new();
-    build_dir_tree_scoped_recursive(root, root, 0, max_depth, &filter_lower, &mut lines)?;
+    build_dir_tree_scoped_recursive(root, root, 0, max_depth, &filter_lower, &mut lines).await?;
     Ok(lines.join("\n"))
 }
 
 #[allow(clippy::only_used_in_recursion)]
-fn build_dir_tree_scoped_recursive(
-    root: &std::path::Path,
-    dir: &std::path::Path,
+fn build_dir_tree_scoped_recursive<'a>(
+    root: &'a std::path::Path,
+    dir: &'a std::path::Path,
     depth: usize,
     max_depth: usize,
-    filter: &str,
-    lines: &mut Vec<String>,
-) -> std::io::Result<()> {
-    if depth > max_depth {
-        return Ok(());
-    }
-    let indent = "  ".repeat(depth);
-    let dir_name = dir
-        .file_name()
-        .map(|n| n.to_string_lossy())
-        .unwrap_or_default()
-        .to_string();
-
-    // Skip hidden dirs
-    if depth > 0 && dir_name.starts_with('.') {
-        return Ok(());
-    }
-
-    // Only include directories matching the filter
-    if depth == 0 || dir_name.to_lowercase().contains(filter) {
-        let prefix = if depth == 0 {
-            dir.file_name()
-                .map(|n| n.to_string_lossy())
-                .unwrap_or_default()
-                .to_string()
-        } else {
-            dir_name.clone()
-        };
-        if depth > 0 || !prefix.is_empty() {
-            lines.push(format!("{}{}/", indent, prefix));
+    filter: &'a str,
+    lines: &'a mut Vec<String>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<()>> + Send + 'a>> {
+    Box::pin(async move {
+        if depth > max_depth {
+            return Ok(());
         }
-    }
+        let indent = "  ".repeat(depth);
+        let dir_name = dir
+            .file_name()
+            .map(|n| n.to_string_lossy())
+            .unwrap_or_default()
+            .to_string();
 
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
+        // Skip hidden dirs
+        if depth > 0 && dir_name.starts_with('.') {
+            return Ok(());
+        }
+
+        // Only include directories matching the filter
+        if depth == 0 || dir_name.to_lowercase().contains(filter) {
+            let prefix = if depth == 0 {
+                dir.file_name()
+                    .map(|n| n.to_string_lossy())
+                    .unwrap_or_default()
+                    .to_string()
+            } else {
+                dir_name.clone()
+            };
+            if depth > 0 || !prefix.is_empty() {
+                lines.push(format!("{}{}/", indent, prefix));
+            }
+        }
+
+        let mut entries = match tokio::fs::read_dir(dir).await {
+            Ok(rd) => rd,
+            Err(_) => return Ok(()),
+        };
+        while let Ok(Some(entry)) = entries.next_entry().await {
             let path = entry.path();
-            if path.is_dir() {
-                build_dir_tree_scoped_recursive(root, &path, depth + 1, max_depth, filter, lines)?;
+            if entry.file_type().await.map(|t| t.is_dir()).unwrap_or(false) {
+                build_dir_tree_scoped_recursive(root, &path, depth + 1, max_depth, filter, lines)
+                    .await?;
             } else if (depth == 0 || dir_name.to_lowercase().contains(filter))
                 && let Some(name) = path.file_name().and_then(|n| n.to_str())
                 && !name.starts_with('.')
@@ -784,13 +796,13 @@ fn build_dir_tree_scoped_recursive(
                 lines.push(format!("{}{}{}", indent, "  ", name));
             }
         }
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 /// Scan only file paths under directories matching a topic filter.
 /// Returns a compact list of relative file paths.
-fn scan_filtered_paths(root: &std::path::Path, filter: &str) -> Vec<String> {
+async fn scan_filtered_paths(root: &std::path::Path, filter: &str) -> Vec<String> {
     let filter_lower = filter.to_lowercase();
     let mut paths = Vec::new();
     let mut dirs = vec![root.to_path_buf()];
@@ -808,23 +820,25 @@ fn scan_filtered_paths(root: &std::path::Path, filter: &str) -> Vec<String> {
         if dir != root && !dir_name.to_lowercase().contains(&filter_lower) {
             continue;
         }
-        if let Ok(entries) = std::fs::read_dir(&dir) {
-            for entry in entries.flatten() {
-                if paths.len() >= max_files {
-                    break;
+        let mut entries = match tokio::fs::read_dir(&dir).await {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            if paths.len() >= max_files {
+                break;
+            }
+            let path = entry.path();
+            if entry.file_type().await.map(|t| t.is_dir()).unwrap_or(false) {
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy())
+                    .unwrap_or_default();
+                if !name.starts_with('.') && name != "target" && name != "node_modules" {
+                    dirs.push(path);
                 }
-                let path = entry.path();
-                if path.is_dir() {
-                    let name = path
-                        .file_name()
-                        .map(|n| n.to_string_lossy())
-                        .unwrap_or_default();
-                    if !name.starts_with('.') && name != "target" && name != "node_modules" {
-                        dirs.push(path);
-                    }
-                } else if let Ok(rel) = path.strip_prefix(root) {
-                    paths.push(rel.to_string_lossy().to_string());
-                }
+            } else if let Ok(rel) = path.strip_prefix(root) {
+                paths.push(rel.to_string_lossy().to_string());
             }
         }
     }
@@ -833,7 +847,11 @@ fn scan_filtered_paths(root: &std::path::Path, filter: &str) -> Vec<String> {
 }
 
 /// Scan public API symbols only from files under directories matching the filter.
-fn scan_public_api_filtered(root: &std::path::Path, project_type: &str, filter: &str) -> String {
+async fn scan_public_api_filtered(
+    root: &std::path::Path,
+    project_type: &str,
+    filter: &str,
+) -> String {
     let filter_lower = filter.to_lowercase();
     let mut symbols = Vec::new();
     let max_symbols = 50; // Half the default limit since we're targeted
@@ -862,30 +880,32 @@ fn scan_public_api_filtered(root: &std::path::Path, project_type: &str, filter: 
         if dir != root && !dir_name.to_lowercase().contains(&filter_lower) {
             continue;
         }
-        if let Ok(entries) = std::fs::read_dir(&dir) {
-            for entry in entries.flatten() {
-                if symbols.len() >= max_symbols {
-                    break;
+        let mut entries = match tokio::fs::read_dir(&dir).await {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            if symbols.len() >= max_symbols {
+                break;
+            }
+            let path = entry.path();
+            if entry.file_type().await.map(|t| t.is_dir()).unwrap_or(false) {
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy())
+                    .unwrap_or_default();
+                if !name.starts_with('.') && name != "target" && name != "node_modules" {
+                    dirs.push(path);
                 }
-                let path = entry.path();
-                if path.is_dir() {
-                    let name = path
-                        .file_name()
-                        .map(|n| n.to_string_lossy())
-                        .unwrap_or_default();
-                    if !name.starts_with('.') && name != "target" && name != "node_modules" {
-                        dirs.push(path);
-                    }
-                } else if let Some(ext) = path.extension().and_then(|e| e.to_str())
-                    && extensions.contains(&ext)
-                    && let Ok(content) = std::fs::read_to_string(&path)
-                {
-                    let rel_path = path
-                        .strip_prefix(root)
-                        .map(|p| p.to_string_lossy())
-                        .unwrap_or_else(|_| path.to_string_lossy());
-                    extract_public_symbols(&content, &rel_path, &mut symbols, project_type);
-                }
+            } else if let Some(ext) = path.extension().and_then(|e| e.to_str())
+                && extensions.contains(&ext)
+                && let Ok(content) = tokio::fs::read_to_string(&path).await
+            {
+                let rel_path = path
+                    .strip_prefix(root)
+                    .map(|p| p.to_string_lossy())
+                    .unwrap_or_else(|_| path.to_string_lossy());
+                extract_public_symbols(&content, &rel_path, &mut symbols, project_type);
             }
         }
     }
@@ -893,89 +913,94 @@ fn scan_public_api_filtered(root: &std::path::Path, project_type: &str, filter: 
     symbols.join("\n")
 }
 
-fn build_dir_tree(root: &std::path::Path, max_depth: usize) -> std::io::Result<String> {
+async fn build_dir_tree(root: &std::path::Path, max_depth: usize) -> std::io::Result<String> {
     let mut lines = Vec::new();
-    build_dir_tree_recursive(root, "", max_depth, &mut lines)?;
+    build_dir_tree_recursive(root, "", max_depth, &mut lines).await?;
     Ok(lines.join("\n"))
 }
 
-fn build_dir_tree_recursive(
-    dir: &std::path::Path,
-    prefix: &str,
+/// Boxed-future recursion so the async walker can descend without the
+/// compiler rejecting recursive async fns.
+fn build_dir_tree_recursive<'a>(
+    dir: &'a std::path::Path,
+    prefix: &'a str,
     remaining_depth: usize,
-    lines: &mut Vec<String>,
-) -> std::io::Result<()> {
-    let name = dir
-        .file_name()
-        .map(|n| n.to_string_lossy())
-        .unwrap_or_default();
+    lines: &'a mut Vec<String>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<()>> + Send + 'a>> {
+    Box::pin(async move {
+        let name = dir
+            .file_name()
+            .map(|n| n.to_string_lossy())
+            .unwrap_or_default();
 
-    if !prefix.is_empty() {
-        // We don't have is_last for root, simplified version
-        lines.push(format!("{}{}", prefix, name));
-    } else {
-        lines.push(name.to_string());
-    }
-
-    if remaining_depth == 0 {
-        return Ok(());
-    }
-
-    let new_prefix = format!("{}    ", prefix);
-
-    let mut entries: Vec<_> = match std::fs::read_dir(dir) {
-        Ok(rd) => rd.filter_map(|e| e.ok()).collect(),
-        Err(_) => return Ok(()),
-    };
-
-    // Sort: directories first, then files
-    entries.sort_by_key(|e| {
-        let is_dir = e.path().is_dir();
-        let name = e.file_name();
-        (is_dir, name)
-    });
-
-    // Filter out noise directories
-    let entries: Vec<_> = entries
-        .into_iter()
-        .filter(|e| {
-            if e.path().is_dir() {
-                let name_str = e.file_name().to_string_lossy().to_string();
-                !matches!(
-                    name_str.as_str(),
-                    ".git" | "target" | "node_modules" | "__pycache__" | ".venv" | ".rigorix"
-                )
-            } else {
-                true
-            }
-        })
-        .collect();
-
-    let len = entries.len();
-    for (i, entry) in entries.into_iter().enumerate() {
-        let path = entry.path();
-        let is_last_entry = i == len - 1;
-        let connector = if is_last_entry {
-            "└── "
+        if !prefix.is_empty() {
+            // We don't have is_last for root, simplified version
+            lines.push(format!("{}{}", prefix, name));
         } else {
-            "├── "
-        };
-        let name = entry.file_name().to_string_lossy().to_string();
-
-        if path.is_dir() {
-            lines.push(format!("{}{}{}", new_prefix, connector, name));
-            let child_prefix = format!(
-                "{}{}",
-                new_prefix,
-                if is_last_entry { "    " } else { "│   " }
-            );
-            build_dir_tree_recursive(&path, &child_prefix, remaining_depth - 1, lines)?;
-        } else {
-            lines.push(format!("{}{}{}", new_prefix, connector, name));
+            lines.push(name.to_string());
         }
-    }
 
-    Ok(())
+        if remaining_depth == 0 {
+            return Ok(());
+        }
+
+        let new_prefix = format!("{}    ", prefix);
+
+        // Collect (name, is_dir, path) triples asynchronously, then sort.
+        let mut collected: Vec<(String, bool, std::path::PathBuf)> = Vec::new();
+        let mut entries = match tokio::fs::read_dir(dir).await {
+            Ok(rd) => rd,
+            Err(_) => return Ok(()),
+        };
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            let is_dir = entry.file_type().await.map(|t| t.is_dir()).unwrap_or(false);
+            collected.push((name, is_dir, path));
+        }
+
+        // Sort: directories first, then files
+        collected.sort_by_key(|(name, is_dir, _)| (*is_dir, name.clone()));
+
+        // Filter out noise directories
+        let entries: Vec<_> = collected
+            .into_iter()
+            .filter(|(name, is_dir, _)| {
+                if *is_dir {
+                    !matches!(
+                        name.as_str(),
+                        ".git" | "target" | "node_modules" | "__pycache__" | ".venv" | ".rigorix"
+                    )
+                } else {
+                    true
+                }
+            })
+            .collect();
+
+        let len = entries.len();
+        for (i, (name, is_dir, path)) in entries.into_iter().enumerate() {
+            let is_last_entry = i == len - 1;
+            let connector = if is_last_entry {
+                "└── "
+            } else {
+                "├── "
+            };
+
+            if is_dir {
+                lines.push(format!("{}{}{}", new_prefix, connector, name));
+                let child_prefix = format!(
+                    "{}{}",
+                    new_prefix,
+                    if is_last_entry { "    " } else { "│   " }
+                );
+                build_dir_tree_recursive(&path, &child_prefix, remaining_depth - 1, lines).await?;
+            } else {
+                lines.push(format!("{}{}{}", new_prefix, connector, name));
+            }
+        }
+
+        Ok(())
+    })
 }
 
 /// Detect the project type from key files in the root directory.
@@ -1007,23 +1032,23 @@ fn detect_project_type(root: &std::path::Path) -> String {
 }
 
 /// Read existing dependencies from the project's manifest file.
-fn read_dependencies(root: &std::path::Path, project_type: &str) -> Vec<String> {
+async fn read_dependencies(root: &std::path::Path, project_type: &str) -> Vec<String> {
     if project_type.contains("Rust") {
-        return read_cargo_dependencies(root);
+        return read_cargo_dependencies(root).await;
     }
     if project_type.contains("npm") || project_type.contains("TypeScript/JavaScript") {
-        return read_package_json_dependencies(root);
+        return read_package_json_dependencies(root).await;
     }
     if project_type.contains("Python") {
-        return read_python_dependencies(root);
+        return read_python_dependencies(root).await;
     }
     Vec::new()
 }
 
 /// Parse [dependencies] section from Cargo.toml.
-fn read_cargo_dependencies(root: &std::path::Path) -> Vec<String> {
+async fn read_cargo_dependencies(root: &std::path::Path) -> Vec<String> {
     let path = root.join("Cargo.toml");
-    let content = match std::fs::read_to_string(&path) {
+    let content = match tokio::fs::read_to_string(&path).await {
         Ok(c) => c,
         Err(_) => return Vec::new(),
     };
@@ -1057,9 +1082,9 @@ fn read_cargo_dependencies(root: &std::path::Path) -> Vec<String> {
 }
 
 /// Parse dependencies from package.json.
-fn read_package_json_dependencies(root: &std::path::Path) -> Vec<String> {
+async fn read_package_json_dependencies(root: &std::path::Path) -> Vec<String> {
     let path = root.join("package.json");
-    let content = match std::fs::read_to_string(&path) {
+    let content = match tokio::fs::read_to_string(&path).await {
         Ok(c) => c,
         Err(_) => return Vec::new(),
     };
@@ -1083,12 +1108,12 @@ fn read_package_json_dependencies(root: &std::path::Path) -> Vec<String> {
 }
 
 /// Parse Python dependencies.
-fn read_python_dependencies(root: &std::path::Path) -> Vec<String> {
+async fn read_python_dependencies(root: &std::path::Path) -> Vec<String> {
     let mut deps = Vec::new();
 
     let req_path = root.join("requirements.txt");
     if req_path.exists()
-        && let Ok(content) = std::fs::read_to_string(&req_path)
+        && let Ok(content) = tokio::fs::read_to_string(&req_path).await
     {
         for line in content.lines() {
             let trimmed = line.trim();
@@ -1102,7 +1127,7 @@ fn read_python_dependencies(root: &std::path::Path) -> Vec<String> {
     if deps.is_empty() {
         let pyproject = root.join("pyproject.toml");
         if pyproject.exists()
-            && let Ok(content) = std::fs::read_to_string(&pyproject)
+            && let Ok(content) = tokio::fs::read_to_string(&pyproject).await
         {
             let mut in_deps = false;
             for line in content.lines() {
@@ -1128,7 +1153,7 @@ fn read_python_dependencies(root: &std::path::Path) -> Vec<String> {
 }
 
 /// Read content of key entry-point files for the project type.
-fn read_key_files(root: &std::path::Path) -> String {
+async fn read_key_files(root: &std::path::Path) -> String {
     let mut sections = Vec::new();
     let max_lines = 200;
 
@@ -1146,7 +1171,7 @@ fn read_key_files(root: &std::path::Path) -> String {
         if !full_path.exists() {
             continue;
         }
-        let content = match std::fs::read_to_string(&full_path) {
+        let content = match tokio::fs::read_to_string(&full_path).await {
             Ok(c) => c,
             Err(_) => continue,
         };
@@ -1168,9 +1193,9 @@ fn read_key_files(root: &std::path::Path) -> String {
     if root.join("tsconfig.json").exists() || root.join("package.json").exists() {
         let src_dir = root.join("src");
         if src_dir.is_dir()
-            && let Ok(entries) = std::fs::read_dir(&src_dir)
+            && let Ok(mut entries) = tokio::fs::read_dir(&src_dir).await
         {
-            for entry in entries.flatten() {
+            while let Ok(Some(entry)) = entries.next_entry().await {
                 let path = entry.path();
                 if path.extension().is_none_or(|e| e != "ts") {
                     continue;
@@ -1184,7 +1209,7 @@ fn read_key_files(root: &std::path::Path) -> String {
                 if candidates.iter().any(|c| **c == rel) {
                     continue;
                 }
-                let content = match std::fs::read_to_string(&path) {
+                let content = match tokio::fs::read_to_string(&path).await {
                     Ok(c) => c,
                     Err(_) => continue,
                 };

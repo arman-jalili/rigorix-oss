@@ -657,6 +657,7 @@ impl PlanningPipelineService for PlanningPipelineImpl {
                                 crate::template_generation::domain::RepoContext::from_path(
                                     &repo_path,
                                 )
+                                .await
                                 .unwrap_or_else(|_| {
                                     crate::template_generation::domain::RepoContext::new(
                                         repo_path,
