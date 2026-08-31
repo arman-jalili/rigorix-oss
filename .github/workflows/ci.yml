@@ -159,18 +159,12 @@ jobs:
             exit 1
           fi
           echo "✅ No secrets detected"
-      - name: Root + per-crate scripts (all conventions)
-        continue-on-error: true
-        shell: bash
-        run: |
-          for script in .pi/scripts/ci/check_*.sh .pi/scripts/ci/run_*.sh \
-                       .pi/scripts/ci/stage_*.sh .pi/scripts/ci/validate_*.sh \
-                       .pi/scripts/validate-*.sh \
-                       */.pi/scripts/ci/check_*.sh */.pi/scripts/ci/run_*.sh \
-                       */.pi/scripts/ci/stage_*.sh */.pi/scripts/ci/validate_*.sh \
-                       */.pi/scripts/validate-*.sh; do
-            [ -f "$script" ] && [[ "$script" != *_coverage.sh ]] && echo "--- $script ---" && bash "$script" || true
-          done
+      # NOTE: the "Root + per-crate scripts" convention loop is deliberately
+      # NOT run here. It takes ~20 min (runs every proofing/stage script,
+      # each of which may execute full test suites) and blew the job's
+      # 25-min timeout at teardown. It is non-gating (continue-on-error)
+      # everywhere and is already executed by the docs and integration jobs.
+      # The audit stage's job is security only: dependency audit + secret scan.
 
   # ── Stage 5: Documentation + Architecture ─────────────────────
   docs:
