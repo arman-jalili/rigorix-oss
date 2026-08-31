@@ -208,6 +208,10 @@ done
 echo ""
 echo "--- HTTP Contracts ---"
 
+# GAP-A-27: interfaces/http stubs were removed for internal modules (Jul 2026);
+# these checks apply only when the HTTP interface exists.
+if [ -f "$SRC_DIR/$MODULE/interfaces/http/mod.rs" ]; then
+
 HTTP_FILE="$SRC_DIR/$MODULE/interfaces/http/mod.rs"
 
 for endpoint in API_BASE_PATH LIST_EXECUTIONS_PATH GET_EXECUTION_STATE_PATH \
@@ -232,6 +236,9 @@ else
     log_fail "Error codes not defined"
 fi
 
+else
+    log_pass "skipped: no HTTP API for this internal module"
+fi
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------

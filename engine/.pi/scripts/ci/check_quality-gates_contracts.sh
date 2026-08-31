@@ -160,6 +160,10 @@ done
 echo ""
 echo "--- HTTP Contracts ---"
 
+# GAP-A-27: interfaces/http stubs were removed for internal modules (Jul 2026);
+# these checks apply only when the HTTP interface exists.
+if [ -f "$QUALITY_DIR/interfaces/http.rs" ]; then
+
 for endpoint in EVALUATE_PATH CLASSIFY_PATH CONTRACT_PATH; do
     if grep -q "pub const $endpoint" "$QUALITY_DIR/interfaces/http.rs" 2>/dev/null; then
         log_pass "HTTP endpoint $endpoint exists"
@@ -183,6 +187,9 @@ else
     log_fail "Error codes not defined"
 fi
 
+else
+    log_pass "skipped: no HTTP API for this internal module"
+fi
 # ---------------------------------------------------------------------------
 # Check 9: Event payloads exist
 # ---------------------------------------------------------------------------

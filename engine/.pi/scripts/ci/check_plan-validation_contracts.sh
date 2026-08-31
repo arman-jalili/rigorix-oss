@@ -167,6 +167,10 @@ done
 echo ""
 echo "--- HTTP Contracts ---"
 
+# GAP-A-27: interfaces/http stubs were removed for internal modules (Jul 2026);
+# these checks apply only when the HTTP interface exists.
+if [ -f "$PV_DIR/interfaces/http/mod.rs" ]; then
+
 for endpoint in VALIDATE_PATH REPORT_PATH REPORTS_LIST_PATH RETRY_PATH; do
     if grep -q "pub const $endpoint" "$PV_DIR/interfaces/http/mod.rs" 2>/dev/null; then
         log_pass "HTTP endpoint $endpoint exists"
@@ -191,6 +195,9 @@ else
     log_fail "Error codes not defined"
 fi
 
+else
+    log_pass "skipped: no HTTP API for this internal module"
+fi
 # ---------------------------------------------------------------------------
 # Check 8: Tests exist
 # ---------------------------------------------------------------------------

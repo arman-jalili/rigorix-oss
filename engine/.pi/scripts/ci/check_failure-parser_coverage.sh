@@ -101,7 +101,6 @@ REQUIRED_DIRS=(
     "$SRC_DIR/failure_parser/domain/event"
     "$SRC_DIR/failure_parser/application/dto"
     "$SRC_DIR/failure_parser/infrastructure/repository"
-    "$SRC_DIR/failure_parser/interfaces/http"
 )
 
 MISSING_DIRS=0

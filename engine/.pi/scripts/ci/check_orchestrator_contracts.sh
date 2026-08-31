@@ -154,6 +154,10 @@ fi
 echo ""
 echo "--- HTTP API Contracts ---"
 
+# GAP-A-27: interfaces/http stubs were removed for internal modules (Jul 2026);
+# these checks apply only when the HTTP interface exists.
+if [ -f "$SRC_DIR/orchestrator/interfaces/http/mod.rs" ]; then
+
 for path_var in RUN_PATH PLAN_PATH CANCEL_PATH STATUS_PATH; do
     if grep -q "${path_var}" "$SRC_DIR/orchestrator/interfaces/http/mod.rs" 2>/dev/null; then
         log_pass "Endpoint $path_var defined"
@@ -162,6 +166,9 @@ for path_var in RUN_PATH PLAN_PATH CANCEL_PATH STATUS_PATH; do
     fi
 done
 
+else
+    log_pass "skipped: no HTTP API for this internal module"
+fi
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------

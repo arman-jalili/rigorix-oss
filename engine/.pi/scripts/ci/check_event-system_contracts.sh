@@ -160,6 +160,10 @@ done
 echo ""
 echo "--- HTTP Contracts ---"
 
+# GAP-A-27: interfaces/http stubs were removed for internal modules (Jul 2026);
+# these checks apply only when the HTTP interface exists.
+if [ -f "$SRC_DIR/event_system/interfaces/http/mod.rs" ]; then
+
 for endpoint in PUBLISH_EVENT_PATH SUBSCRIBE_PATH DRAIN_EVENTS_PATH \
                 QUERY_EVENTS_PATH EVENT_BUS_STATUS_PATH CLEAR_EVENTS_PATH; do
     if grep -q "pub const $endpoint" "$SRC_DIR/event_system/interfaces/http/mod.rs" 2>/dev/null; then
@@ -181,6 +185,9 @@ else
     log_fail "Error codes not defined"
 fi
 
+else
+    log_pass "skipped: no HTTP API for this internal module"
+fi
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------

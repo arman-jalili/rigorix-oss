@@ -180,6 +180,8 @@ echo "--- Interface Layer ---"
 
 if [ -f "$FP_DIR/interfaces/http/mod.rs" ] && grep -q 'pub const API_BASE_PATH' "$FP_DIR/interfaces/http/mod.rs" 2>/dev/null; then
     log_pass "HTTP API contracts exist"
+elif [ ! -f "$FP_DIR/interfaces/http/mod.rs" ]; then
+    log_pass "skipped: no HTTP API for this internal module"
 else
     log_fail "HTTP API contracts not found"
 fi

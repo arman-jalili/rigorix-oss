@@ -159,6 +159,10 @@ done
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- API Contracts ---"
+
+# GAP-A-27: interfaces/http stubs were removed for internal modules (Jul 2026);
+# these checks apply only when the HTTP interface exists.
+if [ -f "$SRC_DIR/tools/interfaces/http/mod.rs" ]; then
 if grep -q 'pub const API_BASE_PATH' "$SRC_DIR/tools/interfaces/http/mod.rs" 2>/dev/null; then
     log_pass "HTTP API contracts exist in interfaces/http/"
 else
@@ -173,6 +177,9 @@ else
     log_fail "Only $ENDPOINT_COUNT API endpoints found (expected at least 5)"
 fi
 
+else
+    log_pass "skipped: no HTTP API for this internal module"
+fi
 # ---------------------------------------------------------------------------
 # Check 9: Risk Mapping
 # ---------------------------------------------------------------------------

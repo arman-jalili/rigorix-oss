@@ -174,6 +174,10 @@ fi
 echo ""
 echo "--- HTTP API Contracts ---"
 
+# GAP-A-27: interfaces/http stubs were removed for internal modules (Jul 2026);
+# these checks apply only when the HTTP interface exists.
+if [ -f "$SRC_DIR/failure_classification/interfaces/http/mod.rs" ]; then
+
 for endpoint in "CLASSIFY_PATH" "STRATEGY_PATH" "CHECK_ELIGIBILITY_PATH" "VALIDATE_CONFIG_PATH" "API_BASE_PATH"; do
     if grep -q "pub const $endpoint" "$SRC_DIR/failure_classification/interfaces/http/mod.rs" 2>/dev/null; then
         log_pass "API endpoint $endpoint defined"
@@ -182,6 +186,9 @@ for endpoint in "CLASSIFY_PATH" "STRATEGY_PATH" "CHECK_ELIGIBILITY_PATH" "VALIDA
     fi
 done
 
+else
+    log_pass "skipped: no HTTP API for this internal module"
+fi
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------

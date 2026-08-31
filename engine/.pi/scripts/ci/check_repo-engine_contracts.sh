@@ -163,6 +163,10 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- API Contracts ---"
+
+# GAP-A-27: interfaces/http stubs were removed for internal modules (Jul 2026);
+# these checks apply only when the HTTP interface exists.
+if [ -f "$SRC_DIR/repo_engine/interfaces/http/mod.rs" ]; then
 if grep -q 'pub const API_BASE_PATH' "$SRC_DIR/repo_engine/interfaces/http/mod.rs" 2>/dev/null; then
     log_pass "HTTP API contracts exist in interfaces/http/"
 else
@@ -179,6 +183,9 @@ for endpoint in "SEARCH_SYMBOLS_PATH" "GET_SYMBOL_PATH" "SYMBOLS_BY_FILE_PATH" \
     fi
 done
 
+else
+    log_pass "skipped: no HTTP API for this internal module"
+fi
 # ---------------------------------------------------------------------------
 # Check 6: DTOs exist
 # ---------------------------------------------------------------------------

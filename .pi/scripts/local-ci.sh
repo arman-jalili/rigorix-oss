@@ -219,10 +219,9 @@ fi
 # ═════════════════════════════════════════════════════════════════
 if should_run "docs"; then
     header "Stage 5: Documentation"
-    for script in .pi/scripts/validate-canonical.sh .pi/scripts/validate-architecture.sh \
-                  .pi/scripts/validate-architecture-readiness.sh .pi/scripts/validate-ubiquitous-language.sh; do
-        [[ -f "$script" ]] && run_root_script "$(basename "$script")" "$script"
-    done
+    # GAP-A-27: the root-level validators assume a flat src/ layout and fail
+    # on this monorepo (no src/ at root). They are fully covered per-crate
+    # below, so only the per-crate variants run.
     for crate in "${CRATES[@]}"; do
         for script in "$crate/.pi/scripts/validate-canonical.sh" \
                       "$crate/.pi/scripts/validate-architecture.sh" \

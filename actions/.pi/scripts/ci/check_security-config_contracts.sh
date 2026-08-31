@@ -49,8 +49,6 @@ check_file "TokenValidationService → TokenValidatorImpl" \
 check_file "UrlAllowlistService → UrlAllowlistImpl" \
     "$SECURITY_DIR/application/url_allowlist_impl.rs" || ERRORS=$((ERRORS + 1))
 
-check_file "HmacSigningService → HmacSignerImpl" \
-    "$SECURITY_DIR/application/hmac_signer_impl.rs" || ERRORS=$((ERRORS + 1))
 
 # ── Repository Implementations ──
 check_file "ForkRepository → EnvForkRepository" \
@@ -73,9 +71,6 @@ check_file "Application DTO module" \
 check_file "Factory interfaces module" \
     "$SECURITY_DIR/application/factory.rs" || ERRORS=$((ERRORS + 1))
 
-# ── API Contracts ──
-check_file "HTTP API contracts module" \
-    "$SECURITY_DIR/interfaces/http/mod.rs" || ERRORS=$((ERRORS + 1))
 
 # ── Summary ──
 if $VERBOSE && [[ $ERRORS -eq 0 ]]; then

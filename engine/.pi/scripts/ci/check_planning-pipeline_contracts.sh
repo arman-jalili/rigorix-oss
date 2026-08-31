@@ -204,6 +204,10 @@ fi
 echo ""
 echo "--- API Contracts ---"
 
+# GAP-A-27: interfaces/http stubs were removed for internal modules (Jul 2026);
+# these checks apply only when the HTTP interface exists.
+if [ -f "$SRC/interfaces/http/mod.rs" ]; then
+
 if grep -q 'pub const.*_PATH' "$SRC/interfaces/http/mod.rs" 2>/dev/null; then
     ENDPOINT_COUNT=$(grep -c 'pub const.*_PATH' "$SRC/interfaces/http/mod.rs" || echo 0)
     log_pass "API endpoint contracts exist ($ENDPOINT_COUNT endpoints)"
@@ -223,6 +227,9 @@ else
     log_fail "Standardized error codes not found"
 fi
 
+else
+    log_pass "skipped: no HTTP API for this internal module"
+fi
 # ---------------------------------------------------------------------------
 # Check 7: Repository contracts
 # ---------------------------------------------------------------------------
@@ -253,6 +260,8 @@ for entry in "${MODULES[@]}"; do
     EXPECTED="${entry##*:}"
     if grep -q "$EXPECTED" "$SRC_DIR/$FILE" 2>/dev/null; then
         log_pass "Module file exists: $FILE"
+    elif [[ "$FILE" == *"interfaces/"* ]] && [ ! -d "$SRC_DIR/$(dirname "$FILE")" ]; then
+        log_pass "skipped: no interfaces layer for this internal module"
     else
         log_fail "Module file missing or invalid: $FILE"
     fi

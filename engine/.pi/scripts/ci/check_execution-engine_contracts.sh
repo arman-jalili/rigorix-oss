@@ -220,6 +220,10 @@ done
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- HTTP API Contracts ---"
+
+# GAP-A-27: interfaces/http stubs were removed for internal modules (Jul 2026);
+# these checks apply only when the HTTP interface exists.
+if [ -f "$MODULE_DIR/interfaces/http/mod.rs" ]; then
 for endpoint_var in \
     "EXECUTE_GRAPH_PATH" \
     "EXECUTION_STATE_PATH" \
@@ -237,6 +241,9 @@ for endpoint_var in \
     fi
 done
 
+else
+    log_pass "skipped: no HTTP API for this internal module"
+fi
 # ---------------------------------------------------------------------------
 # Check 7: Module registration
 # ---------------------------------------------------------------------------

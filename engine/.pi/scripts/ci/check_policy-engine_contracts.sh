@@ -42,7 +42,7 @@ echo ""
 # ---------------------------------------------------------------------------
 echo "--- Module Structure ---"
 
-for layer in domain application infrastructure interfaces; do
+for layer in domain application infrastructure; do
     if [ -f "$SRC_DIR/policy_engine/$layer/mod.rs" ]; then
         log_pass "policy_engine/$layer/ exists"
     else
@@ -193,6 +193,10 @@ fi
 echo ""
 echo "--- API Contracts ---"
 
+# GAP-A-27: interfaces/http stubs were removed for internal modules (Jul 2026);
+# these checks apply only when the HTTP interface exists.
+if [ -f "$SRC_DIR/policy_engine/interfaces/http/mod.rs" ]; then
+
 if grep -q 'pub const.*_PATH' "$SRC_DIR/policy_engine/interfaces/http/mod.rs" 2>/dev/null; then
     ENDPOINT_COUNT=$(grep -c 'pub const.*_PATH' "$SRC_DIR/policy_engine/interfaces/http/mod.rs" || echo 0)
     log_pass "API endpoint contracts exist ($ENDPOINT_COUNT endpoints)"
@@ -214,6 +218,9 @@ else
     log_fail "Error response format not found"
 fi
 
+else
+    log_pass "skipped: no HTTP API for this internal module"
+fi
 # ---------------------------------------------------------------------------
 # Check 8: Repository contracts
 # ---------------------------------------------------------------------------
