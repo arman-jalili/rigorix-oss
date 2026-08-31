@@ -11,6 +11,8 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::risk_gating::domain::risk_classifier::RiskClassifier;
+use crate::risk_gating::domain::{DefaultClassifier, RiskConfig};
 use crate::tools::application::dto::{
     ExecuteToolInput, ExecuteToolOutput, GetToolInput, GetToolOutput, ListToolsOutput,
     RegisterToolInput, RegisterToolOutput, ToolInfo, ToolInput, ToolResult,
@@ -22,10 +24,15 @@ use crate::tools::domain::{Tool, ToolError};
 /// Concrete implementation of both ToolRegistryService and ToolExecutionService.
 ///
 /// Holds registered tools in a thread-safe HashMap behind a tokio RwLock.
-/// Applies risk gating based on the tool's default risk level.
+/// Applies risk gating based on the wired `RiskClassifier` (GAP-A-18): every
+/// execution classifies the tool before deciding gate/deny.
 pub struct ToolRegistryImpl {
     /// Registered tools keyed by kebab-case name.
     tools: tokio::sync::RwLock<HashMap<String, RegisteredTool>>,
+
+    /// Risk classifier driving the gating decision.
+    /// Constructed in `new()` (default rules) or via `with_risk_config`.
+    classifier: Box<dyn RiskClassifier>,
 }
 
 /// Internal wrapper combining a tool instance with its metadata.
@@ -38,10 +45,20 @@ struct RegisteredTool {
 }
 
 impl ToolRegistryImpl {
-    /// Create a new empty ToolRegistry.
+    /// Create a new empty ToolRegistry with the default risk classifier.
     pub fn new() -> Self {
+        Self::with_risk_config(RiskConfig::default())
+    }
+
+    /// Create a registry whose gate path classifies through a
+    /// `DefaultClassifier` built from the given risk config.
+    ///
+    /// GAP-A-18: the RiskClassifier is constructed here and drives the
+    /// gate decision in `execute_with_risk_gate`.
+    pub fn with_risk_config(config: RiskConfig) -> Self {
         Self {
             tools: tokio::sync::RwLock::new(HashMap::new()),
+            classifier: Box::new(DefaultClassifier::new(config)),
         }
     }
 
@@ -114,19 +131,23 @@ impl ToolRegistryService for ToolRegistryImpl {
 
     #[tracing::instrument(skip_all)]
     async fn execute_tool(&self, input: ExecuteToolInput) -> Result<ExecuteToolOutput, ToolError> {
+        self.execute_with_risk_gate(input).await
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn execute_with_risk_gate(
+        &self,
+        input: ExecuteToolInput,
+    ) -> Result<ExecuteToolOutput, ToolError> {
         let tool_name = input.tool_name.clone();
 
-        // Look up the tool and extract risk level + tool Arc
-        let (risk_level, tool_arc) = {
+        // Look up the tool first (NotFound takes precedence over gating).
+        let tool_arc = {
             let tools = self.tools.read().await;
 
             tools
                 .get(&tool_name)
-                .map(|entry| {
-                    let risk_level = default_risk_level_for(&tool_name)
-                        .unwrap_or(crate::risk_gating::domain::risk_level::RiskLevel::High);
-                    (risk_level, entry.tool.clone())
-                })
+                .map(|entry| entry.tool.clone())
                 .ok_or_else(|| {
                     let available: Vec<String> = tools.keys().cloned().collect();
                     ToolError::NotFound(format!(
@@ -137,7 +158,19 @@ impl ToolRegistryService for ToolRegistryImpl {
                 })?
         };
 
-        // Apply risk gating
+        // GAP-A-18: classify BEFORE deciding gate/deny. The wired
+        // RiskClassifier (constructed in `new`/`with_risk_config`) maps the
+        // tool name + parameters to a RiskLevel; config overrides take
+        // precedence over the built-in default rules. The classifier contract
+        // uses snake_case tool names ("run_command") while the Tool trait
+        // registers kebab-case ("run-command") — normalize at this boundary.
+        let classifier_key = tool_name.replace('-', "_");
+        let params_value = serde_json::Value::Object(input.params.clone().into_iter().collect());
+        let classification = self
+            .classifier
+            .classify(&classifier_key, Some(&params_value));
+        let risk_level = classification.risk_level;
+
         let tool_input = ToolInput {
             params: input.params,
             execution_id: Some(input.execution_id),
@@ -481,6 +514,120 @@ mod tests {
 
         assert!(result.dry_run);
         assert!(result.result.output.contains("DRY RUN"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_uses_classifier_override_low_risk_executes() {
+        // GAP-A-18 AC2: the wired RiskClassifier drives the decision — an
+        // override downgrading run-command to Low must EXECUTE it (not dry-run).
+        let mut overrides = std::collections::HashMap::new();
+        overrides.insert(
+            "run_command".to_string(),
+            crate::risk_gating::domain::RiskLevel::Low,
+        );
+        let config = crate::risk_gating::domain::RiskConfig::new(overrides);
+
+        let (tool, _dir) = create_test_tool("run-command");
+        let registry = ToolRegistryImpl::with_risk_config(config);
+        registry
+            .register_tool(register_input("run-command"), tool)
+            .await
+            .unwrap();
+
+        let mut params = std::collections::HashMap::new();
+        params.insert(
+            "command".to_string(),
+            serde_json::Value::String("echo hello".to_string()),
+        );
+
+        let result = registry
+            .execute_tool(ExecuteToolInput {
+                tool_name: "run-command".to_string(),
+                params,
+                execution_id: uuid::Uuid::new_v4(),
+            })
+            .await
+            .unwrap();
+
+        // Classified Low via override -> actually executed, not dry-run.
+        assert!(!result.dry_run);
+        assert_eq!(
+            result.risk_level,
+            crate::risk_gating::domain::RiskLevel::Low
+        );
+        assert!(result.result.output.contains("hello"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_uses_classifier_override_high_blocks() {
+        // GAP-A-18 AC2: an override escalating file-read to High must be
+        // gated (dry-run, no side effects).
+        let mut overrides = std::collections::HashMap::new();
+        overrides.insert(
+            "file_read".to_string(),
+            crate::risk_gating::domain::RiskLevel::High,
+        );
+        let config = crate::risk_gating::domain::RiskConfig::new(overrides);
+
+        let (tool, _dir) = create_test_tool("file-read");
+        let registry = ToolRegistryImpl::with_risk_config(config);
+        registry
+            .register_tool(register_input("file-read"), tool)
+            .await
+            .unwrap();
+
+        let mut params = std::collections::HashMap::new();
+        params.insert(
+            "path".to_string(),
+            serde_json::Value::String("test.txt".to_string()),
+        );
+
+        let result = registry
+            .execute_tool(ExecuteToolInput {
+                tool_name: "file-read".to_string(),
+                params,
+                execution_id: uuid::Uuid::new_v4(),
+            })
+            .await
+            .unwrap();
+
+        assert!(result.dry_run);
+        assert!(result.result.output.contains("DRY RUN"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_with_risk_gate_is_classifier_driven() {
+        // AC1: execute_with_risk_gate exists and classifies before deciding.
+        // Medium risk via the classifier -> gated (RequiresConfirmation).
+        let (tool, _dir) = create_test_tool("file-write");
+        let registry = ToolRegistryImpl::new();
+        registry
+            .register_tool(register_input("file-write"), tool)
+            .await
+            .unwrap();
+
+        let mut params = std::collections::HashMap::new();
+        params.insert(
+            "path".to_string(),
+            serde_json::Value::String("test.txt".to_string()),
+        );
+        params.insert(
+            "content".to_string(),
+            serde_json::Value::String("x".to_string()),
+        );
+
+        let result = registry
+            .execute_with_risk_gate(ExecuteToolInput {
+                tool_name: "file-write".to_string(),
+                params,
+                execution_id: uuid::Uuid::new_v4(),
+            })
+            .await;
+
+        assert!(matches!(
+            result.unwrap_err(),
+            ToolError::RequiresConfirmation
+        ));
     }
 
     #[tokio::test]

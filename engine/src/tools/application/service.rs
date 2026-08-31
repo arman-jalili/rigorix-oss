@@ -70,6 +70,24 @@ pub trait ToolRegistryService: Send + Sync {
     /// - `ToolError::ExecutionFailed` if execution encounters a runtime error
     async fn execute_tool(&self, input: ExecuteToolInput) -> Result<ExecuteToolOutput, ToolError>;
 
+    /// Execute a registered tool through the risk gate, classifying the
+    /// node risk BEFORE deciding gate/deny.
+    ///
+    /// This is the documented enforcement point (GAP-A-18): the registry's
+    /// wired `RiskClassifier` maps the tool name and parameters to a
+    /// `RiskLevel`, then the gating policy decides:
+    /// - Low → auto-execute
+    /// - Medium → `RequiresConfirmation` (gated)
+    /// - High → dry-run preview (no side effects)
+    ///
+    /// # Errors
+    /// - `ToolError::NotFound` if the tool is not registered
+    /// - `ToolError::RequiresConfirmation` for Medium risk tools
+    async fn execute_with_risk_gate(
+        &self,
+        input: ExecuteToolInput,
+    ) -> Result<ExecuteToolOutput, ToolError>;
+
     /// Look up a registered tool by name.
     ///
     /// Returns tool metadata without executing it.
