@@ -29,6 +29,13 @@ pub struct EvaluateInput {
 
     /// Execution context for traceability.
     pub context: EvaluationContext,
+
+    /// The scoring backend to use (GAP-A-13).
+    ///
+    /// `None` selects the first configured backend (default); `Some(name)`
+    /// selects the named backend or fails with `BackendNotFound`.
+    #[serde(default)]
+    pub backend: Option<String>,
 }
 
 /// Execution context for an evaluation request.
@@ -80,7 +87,14 @@ impl EvaluateInput {
                 node_id,
                 node_name: node_name.into(),
             },
+            backend: None,
         }
+    }
+
+    /// Select a specific scoring backend for this evaluation.
+    pub fn with_backend(mut self, backend: impl Into<String>) -> Self {
+        self.backend = Some(backend.into());
+        self
     }
 }
 
