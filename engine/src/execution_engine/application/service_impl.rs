@@ -161,7 +161,7 @@ async fn spawn_concurrent_node(
                 session_id: node_id.to_string(),
                 workspace_root: ".".to_string(),
             };
-            if let Ok(pre_output) = hook_runner.run_pre_tool_use(pre_input, Some(&abort))
+            if let Ok(pre_output) = hook_runner.run_pre_tool_use(pre_input, Some(&abort)).await
                 && (pre_output.result.is_denied()
                     || pre_output.result.is_failed()
                     || pre_output.result.is_cancelled())
@@ -308,7 +308,10 @@ async fn spawn_concurrent_node(
                 session_id: node_id.to_string(),
                 workspace_root: ".".to_string(),
             };
-            if let Ok(_post_output) = hook_runner.run_post_tool_use(post_input, Some(&abort)) {
+            if let Ok(_post_output) = hook_runner
+                .run_post_tool_use(post_input, Some(&abort))
+                .await
+            {
                 // Post-tool feedback is informational — no gating
             }
         }
@@ -372,6 +375,12 @@ struct ExecutionSession {
 ///
 /// Executes DAG nodes concurrently using tokio JoinSet, respecting
 /// the max_concurrent_executions limit via a Semaphore.
+/// GAP-A-12: bound `sh -c` subprocess execution (the async path must not
+/// block on an unbounded subprocess).
+const SUBPROCESS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+/// GAP-A-12: bound git subprocess execution.
+const GIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 pub struct ParallelExecutionServiceImpl {
     /// Active execution sessions keyed by dag_id.
     sessions: Mutex<HashMap<Uuid, ExecutionSession>>,
@@ -754,7 +763,7 @@ impl ParallelExecutionServiceImpl {
                 session_id: node_id.to_string(),
                 workspace_root: ".".to_string(),
             };
-            if let Ok(pre_output) = hook_runner.run_pre_tool_use(pre_input, Some(&abort))
+            if let Ok(pre_output) = hook_runner.run_pre_tool_use(pre_input, Some(&abort)).await
                 && (pre_output.result.is_denied()
                     || pre_output.result.is_failed()
                     || pre_output.result.is_cancelled())
@@ -811,7 +820,10 @@ impl ParallelExecutionServiceImpl {
                 session_id: node_id.to_string(),
                 workspace_root: ".".to_string(),
             };
-            if let Ok(_post_output) = hook_runner.run_post_tool_use(post_input, Some(&abort)) {
+            if let Ok(_post_output) = hook_runner
+                .run_post_tool_use(post_input, Some(&abort))
+                .await
+            {
                 // Post-tool feedback is informational — no gating
             }
         }
@@ -836,13 +848,18 @@ impl ParallelExecutionServiceImpl {
         start: std::time::Instant,
     ) -> TaskResult {
         let command = Self::resolve_json_field(intent, "command");
-        let output = tokio::process::Command::new("sh")
-            .arg("-c")
-            .arg(&command)
-            .output()
-            .await;
+        // GAP-A-12: bounded subprocess execution — never block the async
+        // runtime on an unbounded `sh -c`.
+        let output = tokio::time::timeout(
+            SUBPROCESS_TIMEOUT,
+            tokio::process::Command::new("sh")
+                .arg("-c")
+                .arg(&command)
+                .output(),
+        )
+        .await;
         match output {
-            Ok(out) => {
+            Ok(Ok(out)) => {
                 let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
                 let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
                 let duration_ms = start.elapsed().as_millis() as u64;
@@ -866,11 +883,19 @@ impl ParallelExecutionServiceImpl {
                     )
                 }
             }
-            Err(e) => TaskResult::failure(
+            Ok(Err(e)) => TaskResult::failure(
                 node_id,
                 node_name,
                 e.to_string(),
                 "exec_error".to_string(),
+                0,
+                0,
+            ),
+            Err(_elapsed) => TaskResult::failure(
+                node_id,
+                node_name,
+                format!("command timed out after {SUBPROCESS_TIMEOUT:?}: {command}"),
+                "command_timed_out".to_string(),
                 0,
                 0,
             ),
@@ -885,7 +910,7 @@ impl ParallelExecutionServiceImpl {
     ) -> TaskResult {
         let path = Self::resolve_json_field(intent, "path");
         let duration_ms = start.elapsed().as_millis() as u64;
-        match std::fs::read_to_string(&path) {
+        match tokio::fs::read_to_string(&path).await {
             Ok(content) => {
                 let truncated: String = content.chars().take(4096).collect();
                 TaskResult::success(node_id, node_name, Some(truncated), duration_ms, 0)
@@ -928,9 +953,9 @@ impl ParallelExecutionServiceImpl {
         if let Some(parent) = std::path::Path::new(path).parent()
             && !parent.as_os_str().is_empty()
         {
-            let _ = std::fs::create_dir_all(parent);
+            let _ = tokio::fs::create_dir_all(parent).await;
         }
-        match std::fs::write(path, content) {
+        match tokio::fs::write(path, content).await {
             Ok(()) => TaskResult::success(
                 node_id,
                 node_name,
@@ -972,14 +997,15 @@ impl ParallelExecutionServiceImpl {
         let path = parsed["path"].as_str().unwrap_or("");
         let content = parsed["content"].as_str().unwrap_or("");
         let duration_ms = start.elapsed().as_millis() as u64;
-        match std::fs::OpenOptions::new()
+        match tokio::fs::OpenOptions::new()
             .append(true)
             .create(true)
             .open(path)
+            .await
         {
             Ok(mut file) => {
-                use std::io::Write;
-                match writeln!(file, "{}", content) {
+                use tokio::io::AsyncWriteExt;
+                match file.write_all(format!("{}\n", content).as_bytes()).await {
                     Ok(()) => TaskResult::success(
                         node_id,
                         node_name,
@@ -1032,7 +1058,7 @@ impl ParallelExecutionServiceImpl {
         let insert = parsed["insert"].as_str().unwrap_or("");
         let duration_ms = start.elapsed().as_millis() as u64;
 
-        let content = match std::fs::read_to_string(path) {
+        let content = match tokio::fs::read_to_string(path).await {
             Ok(c) => c,
             Err(e) => {
                 return TaskResult::failure(
@@ -1105,7 +1131,7 @@ impl ParallelExecutionServiceImpl {
                         normalized_insert,
                         &content[anchor.insert_offset..]
                     );
-                    match std::fs::write(path, &new_content) {
+                    match tokio::fs::write(path, &new_content).await {
                         Ok(()) => TaskResult::success(
                             node_id,
                             node_name,
@@ -1204,7 +1230,7 @@ impl ParallelExecutionServiceImpl {
                 insert,
                 &content[insert_pos..]
             );
-            match std::fs::write(path, &new_content) {
+            match tokio::fs::write(path, &new_content).await {
                 Ok(()) => TaskResult::success(
                     node_id,
                     node_name,
@@ -1254,7 +1280,7 @@ impl ParallelExecutionServiceImpl {
         let replace_all = parsed["replace_all"].as_bool().unwrap_or(false);
         let duration_ms = start.elapsed().as_millis() as u64;
 
-        let original = match std::fs::read_to_string(path) {
+        let original = match tokio::fs::read_to_string(path).await {
             Ok(c) => c,
             Err(e) => {
                 return TaskResult::failure(
@@ -1298,7 +1324,7 @@ impl ParallelExecutionServiceImpl {
             original.replacen(old_string, new_string, 1)
         };
 
-        match std::fs::write(path, &updated) {
+        match tokio::fs::write(path, &updated).await {
             Ok(()) => TaskResult::success(
                 node_id,
                 node_name,
@@ -1331,16 +1357,17 @@ impl ParallelExecutionServiceImpl {
         let args_str = Self::resolve_json_field(intent, "args");
         let args: Vec<&str> = args_str.split_whitespace().collect();
         let output = if args.is_empty() {
-            tokio::process::Command::new("git").output().await
+            tokio::time::timeout(GIT_TIMEOUT, tokio::process::Command::new("git").output()).await
         } else {
-            tokio::process::Command::new("git")
-                .args(&args)
-                .output()
-                .await
+            tokio::time::timeout(
+                GIT_TIMEOUT,
+                tokio::process::Command::new("git").args(&args).output(),
+            )
+            .await
         };
         let duration_ms = start.elapsed().as_millis() as u64;
         match output {
-            Ok(out) => {
+            Ok(Ok(out)) => {
                 let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
                 let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
                 if out.status.success() {
@@ -1358,11 +1385,19 @@ impl ParallelExecutionServiceImpl {
                     )
                 }
             }
-            Err(e) => TaskResult::failure(
+            Ok(Err(e)) => TaskResult::failure(
                 node_id,
                 node_name,
                 e.to_string(),
                 "exec_error".to_string(),
+                duration_ms,
+                0,
+            ),
+            Err(_elapsed) => TaskResult::failure(
+                node_id,
+                node_name,
+                format!("git command timed out after {GIT_TIMEOUT:?}"),
+                "git_timed_out".to_string(),
                 duration_ms,
                 0,
             ),
@@ -1376,13 +1411,16 @@ impl ParallelExecutionServiceImpl {
         start: std::time::Instant,
     ) -> TaskResult {
         let path = Self::resolve_json_field(intent, "path");
-        let output = tokio::process::Command::new("git")
-            .args(["add", path.as_str()])
-            .output()
-            .await;
+        let output = tokio::time::timeout(
+            GIT_TIMEOUT,
+            tokio::process::Command::new("git")
+                .args(["add", path.as_str()])
+                .output(),
+        )
+        .await;
         let duration_ms = start.elapsed().as_millis() as u64;
         match output {
-            Ok(out) => {
+            Ok(Ok(out)) => {
                 let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
                 let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
                 if out.status.success() {
@@ -1398,11 +1436,19 @@ impl ParallelExecutionServiceImpl {
                     )
                 }
             }
-            Err(e) => TaskResult::failure(
+            Ok(Err(e)) => TaskResult::failure(
                 node_id,
                 node_name,
                 e.to_string(),
                 "exec_error".to_string(),
+                duration_ms,
+                0,
+            ),
+            Err(_elapsed) => TaskResult::failure(
+                node_id,
+                node_name,
+                format!("git command timed out after {GIT_TIMEOUT:?}"),
+                "git_timed_out".to_string(),
                 duration_ms,
                 0,
             ),
@@ -1435,18 +1481,24 @@ impl ParallelExecutionServiceImpl {
 
         // If auto_stage, stage all modified tracked files first
         if auto_stage {
-            let _ = tokio::process::Command::new("git")
-                .args(["add", "-u"])
-                .output()
-                .await;
+            let _ = tokio::time::timeout(
+                GIT_TIMEOUT,
+                tokio::process::Command::new("git")
+                    .args(["add", "-u"])
+                    .output(),
+            )
+            .await;
         }
 
-        let output = tokio::process::Command::new("git")
-            .args(["commit", "-m", message])
-            .output()
-            .await;
+        let output = tokio::time::timeout(
+            GIT_TIMEOUT,
+            tokio::process::Command::new("git")
+                .args(["commit", "-m", message])
+                .output(),
+        )
+        .await;
         match output {
-            Ok(out) => {
+            Ok(Ok(out)) => {
                 let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
                 let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
                 if out.status.success() {
@@ -1468,11 +1520,19 @@ impl ParallelExecutionServiceImpl {
                     )
                 }
             }
-            Err(e) => TaskResult::failure(
+            Ok(Err(e)) => TaskResult::failure(
                 node_id,
                 node_name,
                 e.to_string(),
                 "exec_error".to_string(),
+                duration_ms,
+                0,
+            ),
+            Err(_elapsed) => TaskResult::failure(
+                node_id,
+                node_name,
+                format!("git command timed out after {GIT_TIMEOUT:?}"),
+                "git_timed_out".to_string(),
                 duration_ms,
                 0,
             ),
