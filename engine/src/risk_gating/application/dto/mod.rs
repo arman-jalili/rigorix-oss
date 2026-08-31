@@ -206,26 +206,10 @@ pub struct RiskConfigSummary {
 // Gate State DTOs
 // ---------------------------------------------------------------------------
 
-/// A snapshot of a pending gate's state.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PendingGate {
-    /// Unique gate identifier.
-    pub gate_id: String,
-    /// The execution ID.
-    pub execution_id: String,
-    /// The node ID that requested the gate.
-    pub node_id: String,
-    /// The tool being gated.
-    pub tool: String,
-    /// The risk level that triggered the gate.
-    pub risk_level: RiskLevel,
-    /// The gating action required.
-    pub action: GatingAction,
-    /// ISO 8601 timestamp when the gate was created.
-    pub created_at: String,
-    /// Whether the gate has been resolved.
-    pub resolved: bool,
-}
+/// The pending-gate value object lives in the domain layer (GAP-A-21: it
+/// was previously defined here, creating a domain -> application import in
+/// gate_state.rs). It is re-exported for the service I/O contracts.
+pub use crate::risk_gating::domain::gate_state::PendingGate;
 
 /// Status of risk gating for an execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -22,6 +22,8 @@ pub mod error;
 pub mod event;
 pub mod risk_mapping;
 pub mod tool_trait;
+pub mod types;
 
 pub use error::ToolError;
 pub use tool_trait::Tool;
+pub use types::{SideEffect, ToolInput, ToolResult};

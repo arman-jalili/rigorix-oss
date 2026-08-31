@@ -17,9 +17,35 @@ use std::sync::RwLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
 
-use crate::risk_gating::application::dto::PendingGate;
 use crate::risk_gating::domain::risk_level::{GatingAction, RiskLevel};
+
+/// A gate awaiting resolution.
+///
+/// Created when a Medium (confirmation) or High (dry-run approval) risk tool
+/// is classified. Lives in the domain layer because the gate registry is a
+/// domain entity (GAP-A-21: moved from application/dto — the application DTO
+/// module re-exports it for service I/O).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingGate {
+    /// Unique gate identifier.
+    pub gate_id: String,
+    /// The execution ID.
+    pub execution_id: String,
+    /// The node ID that requested the gate.
+    pub node_id: String,
+    /// The tool being gated.
+    pub tool: String,
+    /// The risk level that triggered the gate.
+    pub risk_level: RiskLevel,
+    /// The gating action required.
+    pub action: GatingAction,
+    /// ISO 8601 timestamp when the gate was created.
+    pub created_at: String,
+    /// Whether the gate has been resolved.
+    pub resolved: bool,
+}
 
 /// Thread-safe registry for tracking pending gates across executions.
 pub struct GateStateRegistry {

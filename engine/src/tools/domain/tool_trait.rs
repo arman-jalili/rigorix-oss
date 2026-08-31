@@ -20,7 +20,7 @@
 use async_trait::async_trait;
 
 use super::error::ToolError;
-use crate::tools::application::dto::{ToolInput, ToolResult};
+use super::types::{ToolInput, ToolResult};
 
 /// Core abstraction for all tool implementations in the Rigorix engine.
 ///
