@@ -16,7 +16,6 @@ mod common;
 
 use common::minify_json;
 
-
 /// Spawn the MCP binary, send one request, read one response, kill the process.
 fn send_one_request(
     env_vars: &[(&str, &str)],

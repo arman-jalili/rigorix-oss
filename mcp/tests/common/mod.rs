@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Shared helpers for MCP e2e tests (GAP-A-25: previously duplicated in
 //! three test files with divergent sleeps).
 
@@ -32,30 +34,11 @@ pub fn minify_json(json: &str) -> String {
     result
 }
 
-/// Poll a condition with a timeout instead of a fixed sleep.
-///
-/// Returns the value produced by `f` once it returns `Some`, or `None` after
-/// `timeout` elapses. The poll interval is 25ms.
-pub fn poll<T>(timeout: Duration, mut f: impl FnMut() -> Option<T>) -> Option<T> {
-    let start = std::time::Instant::now();
-    while start.elapsed() < timeout {
-        if let Some(v) = f() {
-            return Some(v);
-        }
-        std::thread::sleep(Duration::from_millis(25));
-    }
-    None
-}
-
 /// Send a JSON-RPC message to the server's stdin, read one line from stdout.
 ///
 /// The initial 200ms delay is a handshake settle period; the read loop then
 /// blocks until the server responds, which is the effective poll.
-pub fn send_rpc(
-    input: &str,
-    stdin: &mut impl Write,
-    stdout: &mut impl std::io::Read,
-) -> String {
+pub fn send_rpc(input: &str, stdin: &mut impl Write, stdout: &mut impl std::io::Read) -> String {
     let minified = minify_json(input);
     writeln!(stdin, "{}", minified).expect("Failed to write to stdin");
     std::thread::sleep(Duration::from_millis(200));

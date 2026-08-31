@@ -6,7 +6,6 @@
 // Spawns the rigorix-mcp binary, sends newline-delimited JSON-RPC messages
 // via stdin, reads responses from stdout, and verifies the protocol.
 
-use std::io::Write;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 

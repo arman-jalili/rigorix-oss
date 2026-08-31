@@ -385,7 +385,8 @@ pub(crate) fn event_to_vm_command(event: &ExecutionEvent) -> Option<VmCommand> {
         ExecutionEvent::AuditEnvelopeDelivered { .. }
         | ExecutionEvent::AuditEnvelopeQueued { .. }
         | ExecutionEvent::AuditEnvelopeDropped { .. }
-        | ExecutionEvent::CircuitBreakerStateChanged { .. } => None,
+        | ExecutionEvent::CircuitBreakerStateChanged { .. }
+        | ExecutionEvent::AuditEnvelopeCreated { .. } => None,
     }
 }
 

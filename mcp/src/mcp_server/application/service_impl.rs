@@ -386,7 +386,7 @@ impl McpServerService for McpServerServiceWithRepos {
             .map_err(|e| McpServerError::Transport(format!("session save failed: {e}")))?;
 
         let events = vec![McpServerEvent::McpSessionStarted {
-            session_id: session.id.clone(),
+            session_id: session.id,
             client_name: input.client_info.name.clone(),
             client_version: input.client_info.version.clone(),
             protocol_version: input.protocol_version,

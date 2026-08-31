@@ -768,7 +768,6 @@ fn load_mcp_hook_runner(
     }
 }
 
-
 /// GAP-A-07: mock classifier fallback (also used by e2e tests).
 fn mock_classifier() -> Box<dyn rigorix_engine::planning::domain::classification::Classifier> {
     use rigorix_engine::planning::application::MockClassifier;
@@ -832,15 +831,17 @@ async fn build_real_engine(
                 Box::new(
                     rigorix_engine::planning::infrastructure::ClaudeClassifier::new(
                         key,
-                        Some(rigorix_engine::planning::infrastructure::ClaudeClassifierConfig {
-                            api_url: "https://api.anthropic.com/v1/messages".to_string(),
-                            model: std::env::var("RIGORIX_PLANNING_MODEL")
-                                .unwrap_or_else(|_| "claude-sonnet-4-20250514".to_string()),
-                            max_tokens: 1024,
-                            temperature: 0.2,
-                            timeout_secs: 120,
-                            requests_per_second: 10,
-                        }),
+                        Some(
+                            rigorix_engine::planning::infrastructure::ClaudeClassifierConfig {
+                                api_url: "https://api.anthropic.com/v1/messages".to_string(),
+                                model: std::env::var("RIGORIX_PLANNING_MODEL")
+                                    .unwrap_or_else(|_| "claude-sonnet-4-20250514".to_string()),
+                                max_tokens: 1024,
+                                temperature: 0.2,
+                                timeout_secs: 120,
+                                requests_per_second: 10,
+                            },
+                        ),
                     ),
                 )
             }
@@ -853,15 +854,17 @@ async fn build_real_engine(
                 Box::new(
                     rigorix_engine::planning::infrastructure::OpenaiClassifier::new(
                         key,
-                        Some(rigorix_engine::planning::infrastructure::OpenaiClassifierConfig {
-                            api_url: "https://api.openai.com/v1/chat/completions".to_string(),
-                            model: std::env::var("RIGORIX_PLANNING_MODEL")
-                                .unwrap_or_else(|_| "gpt-4o".to_string()),
-                            max_tokens: 1024,
-                            temperature: 0.2,
-                            timeout_secs: 120,
-                            requests_per_second: 10,
-                        }),
+                        Some(
+                            rigorix_engine::planning::infrastructure::OpenaiClassifierConfig {
+                                api_url: "https://api.openai.com/v1/chat/completions".to_string(),
+                                model: std::env::var("RIGORIX_PLANNING_MODEL")
+                                    .unwrap_or_else(|_| "gpt-4o".to_string()),
+                                max_tokens: 1024,
+                                temperature: 0.2,
+                                timeout_secs: 120,
+                                requests_per_second: 10,
+                            },
+                        ),
                     ),
                 )
             }
@@ -875,7 +878,8 @@ async fn build_real_engine(
     let execution_id = uuid::Uuid::new_v4().to_string();
     let extractor: Box<dyn rigorix_engine::planning::domain::extractor::ParameterExtractor> =
         if mock_planning
-            || (std::env::var("ANTHROPIC_API_KEY").is_err() && std::env::var("OPENAI_API_KEY").is_err())
+            || (std::env::var("ANTHROPIC_API_KEY").is_err()
+                && std::env::var("OPENAI_API_KEY").is_err())
         {
             Box::new(rigorix_engine::planning::application::MockParameterExtractor::default())
         } else {
@@ -883,24 +887,30 @@ async fn build_real_engine(
                 .or_else(|_| std::env::var("OPENAI_API_KEY"))
                 .unwrap_or_default();
             tracing::info!("using real LLM parameter extractor");
-            Box::new(rigorix_engine::planning::infrastructure::LlmParameterExtractor::new(
-                key,
-                Some(rigorix_engine::planning::infrastructure::LlmExtractorConfig {
-                    api_url: std::env::var("ANTHROPIC_API_KEY")
-                        .map(|_| "https://api.anthropic.com/v1/messages".to_string())
-                        .unwrap_or_else(|_| "https://api.openai.com/v1/chat/completions".to_string()),
-                    model: std::env::var("RIGORIX_PLANNING_MODEL")
-                        .unwrap_or_else(|_| "claude-sonnet-4-20250514".to_string()),
-                    max_tokens: 1024,
-                    temperature: 0.2,
-                    timeout_secs: 120,
-                    provider: if std::env::var("ANTHROPIC_API_KEY").is_ok() {
-                        rigorix_engine::planning::infrastructure::ExtractorProvider::Anthropic
-                    } else {
-                        rigorix_engine::planning::infrastructure::ExtractorProvider::OpenAI
-                    },
-                }),
-            ))
+            Box::new(
+                rigorix_engine::planning::infrastructure::LlmParameterExtractor::new(
+                    key,
+                    Some(
+                        rigorix_engine::planning::infrastructure::LlmExtractorConfig {
+                            api_url: std::env::var("ANTHROPIC_API_KEY")
+                                .map(|_| "https://api.anthropic.com/v1/messages".to_string())
+                                .unwrap_or_else(|_| {
+                                    "https://api.openai.com/v1/chat/completions".to_string()
+                                }),
+                            model: std::env::var("RIGORIX_PLANNING_MODEL")
+                                .unwrap_or_else(|_| "claude-sonnet-4-20250514".to_string()),
+                            max_tokens: 1024,
+                            temperature: 0.2,
+                            timeout_secs: 120,
+                            provider: if std::env::var("ANTHROPIC_API_KEY").is_ok() {
+                                rigorix_engine::planning::infrastructure::ExtractorProvider::Anthropic
+                            } else {
+                                rigorix_engine::planning::infrastructure::ExtractorProvider::OpenAI
+                            },
+                        },
+                    ),
+                ),
+            )
         };
     let template_service: Arc<dyn TemplateEngineService> = {
         let svc = Arc::new(TemplateEngineImpl::new());
@@ -919,7 +929,7 @@ async fn build_real_engine(
                         depends_on: vec![],
                         action:
                             rigorix_engine::templates::domain::template::TemplateAction::FileRead {
-                                path: format!("{}/README.md", repo_root).into(),
+                                path: format!("{}/README.md", repo_root),
                             },
                         description: Some("Default execution step".into()),
                         retry: Default::default(),
@@ -949,7 +959,7 @@ async fn build_real_engine(
                         depends_on: vec![],
                         action:
                             rigorix_engine::templates::domain::template::TemplateAction::FileRead {
-                                path: format!("{}/README.md", repo_root).into(),
+                                path: format!("{}/README.md", repo_root),
                             },
                         description: Some("E2E test step".into()),
                         retry: Default::default(),
