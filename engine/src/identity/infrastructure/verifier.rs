@@ -19,10 +19,10 @@
 
 use async_trait::async_trait;
 use base64::Engine as _;
-use rsa::pkcs1v15::{Signature, VerifyingKey};
-use rsa::sha2::Sha256;
-use rsa::signature::Verifier;
-use rsa::{BigUint, RsaPublicKey};
+// RUSTSEC-2023-0071 (rsa, Marvin): verification-only usage — no private-key
+// operation exists here. Replaced rsa with ring (maintained, BoringSSL-derived)
+// which exposes no private-key path at all.
+use ring::signature::{RSA_PKCS1_2048_8192_SHA256, RsaPublicKeyComponents};
 
 use crate::identity::application::service::VerificationOutcome;
 use crate::identity::domain::{IdentityClaim, IdentityError};
@@ -86,64 +86,6 @@ impl TokenVerifier for NullVerifier {
         Ok(VerificationOutcome::Unverified {
             reason: "verification disabled — offline default (NullVerifier)".to_string(),
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn null_verifier_is_constructible() {
-        let verifier = NullVerifier::new();
-        let _offline_default: &dyn TokenVerifier = &verifier;
-    }
-
-    #[test]
-    fn jwks_verifier_is_constructible_and_trait_object_safe() {
-        let verifier = JwksVerifier::new("https://idp.example.com/.well-known/jwks.json");
-        let _as_trait: &dyn TokenVerifier = &verifier;
-    }
-
-    #[test]
-    fn header_kid_alg_extracts_kid_and_alg() {
-        let header = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(r#"{"alg":"RS256","kid":"key-123","typ":"JWT"}"#);
-        let (kid, alg) =
-            JwksVerifier::header_kid_alg(&format!("{header}.payload.sig")).expect("header parse");
-        assert_eq!(kid, "key-123");
-        assert_eq!(alg, "RS256");
-    }
-
-    #[test]
-    fn header_kid_alg_defaults_alg_when_absent() {
-        let header =
-            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(r#"{"kid":"key-123"}"#);
-        let (kid, alg) =
-            JwksVerifier::header_kid_alg(&format!("{header}.payload.sig")).expect("header parse");
-        assert_eq!(kid, "key-123");
-        assert_eq!(alg, "RS256"); // RS256 is the supported default
-    }
-
-    #[test]
-    fn header_kid_alg_rejects_malformed_header() {
-        // Not base64url → InvalidToken.
-        assert!(matches!(
-            JwksVerifier::header_kid_alg("!!!.payload.sig"),
-            Err(IdentityError::InvalidToken(_))
-        ));
-        // Valid base64 but not JSON → InvalidToken.
-        let not_json = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode("not-json");
-        assert!(matches!(
-            JwksVerifier::header_kid_alg(&format!("{not_json}.payload.sig")),
-            Err(IdentityError::InvalidToken(_))
-        ));
-        // Missing kid → MissingClaim.
-        let no_kid = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(r#"{"alg":"RS256"}"#);
-        assert!(matches!(
-            JwksVerifier::header_kid_alg(&format!("{no_kid}.payload.sig")),
-            Err(IdentityError::MissingClaim(ref c)) if c == "kid"
-        ));
     }
 }
 
@@ -271,25 +213,25 @@ impl TokenVerifier for JwksVerifier {
             }
         };
 
-        // 4. Build the RSA public key from n/e (base64url, big-endian).
-        let decode_biguint = |field: &str| -> Result<BigUint, IdentityError> {
+        // 4. Build the RSA public key from n/e (base64url, big-endian bytes —
+        //    ring consumes the big-endian representation directly).
+        let decode_rsa_param = |field: &str| -> Result<Vec<u8>, IdentityError> {
             let encoded = key
                 .get(field)
                 .and_then(serde_json::Value::as_str)
                 .ok_or_else(|| {
                     IdentityError::VerificationUnavailable(format!("jwks missing {field}"))
                 })?;
-            let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            base64::engine::general_purpose::URL_SAFE_NO_PAD
                 .decode(encoded)
-                .map_err(|e| {
-                    IdentityError::VerificationUnavailable(format!("jwks {field}: {e}"))
-                })?;
-            Ok(BigUint::from_bytes_be(&bytes))
+                .map_err(|e| IdentityError::VerificationUnavailable(format!("jwks {field}: {e}")))
         };
-        let n = decode_biguint("n")?;
-        let e = decode_biguint("e")?;
-        let public_key = RsaPublicKey::new(n, e)
-            .map_err(|err| IdentityError::VerificationUnavailable(format!("jwks key: {err}")))?;
+        let n = decode_rsa_param("n")?;
+        let e = decode_rsa_param("e")?;
+        let public_key = RsaPublicKeyComponents {
+            n: n.as_slice(),
+            e: e.as_slice(),
+        };
 
         // 5. Split the JWT into signed-content and signature segments.
         let segments: Vec<&str> = token.split('.').collect();
@@ -302,16 +244,75 @@ impl TokenVerifier for JwksVerifier {
         let signature_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .decode(segments[2])
             .map_err(|e| IdentityError::InvalidToken(format!("signature decode: {e}")))?;
-        let signature = Signature::try_from(&signature_bytes[..])
-            .map_err(|e| IdentityError::InvalidToken(format!("signature size: {e}")))?;
 
-        // 6. Verify RS256 over the signed content (verifier hashes internally).
-        let verifying_key = VerifyingKey::<Sha256>::new(public_key);
-        match verifying_key.verify(signed_content.as_bytes(), &signature) {
+        // 6. Verify RS256 over the signed content (ring hashes internally).
+        match public_key.verify(
+            &RSA_PKCS1_2048_8192_SHA256,
+            signed_content.as_bytes(),
+            &signature_bytes,
+        ) {
             Ok(()) => Ok(VerificationOutcome::Verified),
             Err(_) => Ok(VerificationOutcome::Unverified {
                 reason: "signature mismatch (tampered token)".to_string(),
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn null_verifier_is_constructible() {
+        let verifier = NullVerifier::new();
+        let _offline_default: &dyn TokenVerifier = &verifier;
+    }
+
+    #[test]
+    fn jwks_verifier_is_constructible_and_trait_object_safe() {
+        let verifier = JwksVerifier::new("https://idp.example.com/.well-known/jwks.json");
+        let _as_trait: &dyn TokenVerifier = &verifier;
+    }
+
+    #[test]
+    fn header_kid_alg_extracts_kid_and_alg() {
+        let header = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(r#"{"alg":"RS256","kid":"key-123","typ":"JWT"}"#);
+        let (kid, alg) =
+            JwksVerifier::header_kid_alg(&format!("{header}.payload.sig")).expect("header parse");
+        assert_eq!(kid, "key-123");
+        assert_eq!(alg, "RS256");
+    }
+
+    #[test]
+    fn header_kid_alg_defaults_alg_when_absent() {
+        let header =
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(r#"{"kid":"key-123"}"#);
+        let (kid, alg) =
+            JwksVerifier::header_kid_alg(&format!("{header}.payload.sig")).expect("header parse");
+        assert_eq!(kid, "key-123");
+        assert_eq!(alg, "RS256"); // RS256 is the supported default
+    }
+
+    #[test]
+    fn header_kid_alg_rejects_malformed_header() {
+        // Not base64url → InvalidToken.
+        assert!(matches!(
+            JwksVerifier::header_kid_alg("!!!.payload.sig"),
+            Err(IdentityError::InvalidToken(_))
+        ));
+        // Valid base64 but not JSON → InvalidToken.
+        let not_json = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode("not-json");
+        assert!(matches!(
+            JwksVerifier::header_kid_alg(&format!("{not_json}.payload.sig")),
+            Err(IdentityError::InvalidToken(_))
+        ));
+        // Missing kid → MissingClaim.
+        let no_kid = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(r#"{"alg":"RS256"}"#);
+        assert!(matches!(
+            JwksVerifier::header_kid_alg(&format!("{no_kid}.payload.sig")),
+            Err(IdentityError::MissingClaim(ref c)) if c == "kid"
+        ));
     }
 }

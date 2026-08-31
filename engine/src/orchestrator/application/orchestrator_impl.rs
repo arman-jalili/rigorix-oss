@@ -2132,8 +2132,10 @@ mod tests {
     /// capture_planning_prompt is enabled (config-gated, deterministic).
     #[test]
     fn test_planning_prompt_content_gated() {
-        let mut planning = crate::orchestrator::domain::record::PlanningMetadata::default();
-        planning.template_id = "tpl".to_string();
+        let mut planning = crate::orchestrator::domain::record::PlanningMetadata {
+            template_id: "tpl".to_string(),
+            ..Default::default()
+        };
         planning
             .parameters
             .insert("key".to_string(), "value".to_string());

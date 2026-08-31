@@ -440,7 +440,7 @@ inputs:
         assert!(!result.env_overrides_applied);
         assert_eq!(result.config.mode, "run");
         assert_eq!(result.config.max_llm_calls, 25);
-        assert_eq!(result.config.post_pr_comment, true);
+        assert!(result.config.post_pr_comment);
     }
 
     #[tokio::test]
@@ -530,7 +530,7 @@ inputs:
         // CLI override (middle priority) - but env didn't set it
         assert_eq!(result.config.max_llm_calls, 30);
         // YAML default (lowest priority - no override)
-        assert_eq!(result.config.post_pr_comment, false);
+        assert!(!result.config.post_pr_comment);
     }
 
     #[tokio::test]
@@ -589,8 +589,8 @@ inputs:
         assert!(result.yml_defaults_applied);
         assert_eq!(result.config.mode, "run");
         assert_eq!(result.config.max_llm_calls, 100);
-        assert_eq!(result.config.post_pr_comment, true);
-        assert_eq!(result.config.fail_on_violation, true);
+        assert!(result.config.post_pr_comment);
+        assert!(result.config.fail_on_violation);
     }
 
     #[tokio::test]
@@ -607,7 +607,7 @@ inputs:
         assert_eq!(config.max_validation_iterations, 3);
         assert_eq!(config.max_retries, 3);
         assert_eq!(config.retry_delay_ms, 1000);
-        assert_eq!(config.post_pr_comment, true);
+        assert!(config.post_pr_comment);
         assert_eq!(config.fail_on_violation, false);
         assert_eq!(config.fail_on_action_error, false);
         assert_eq!(config.intent, None);

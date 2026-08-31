@@ -48,9 +48,8 @@ mod tests {
         })
         .await;
 
-        match result {
-            Ok(_) => {}  // Operation completed (unlikely with 1ms timeout)
-            Err(_) => {} // Timed out as expected
-        }
+        // Either the operation completed (unlikely with a 1ms timeout) or it
+        // timed out as expected — both outcomes are acceptable here.
+        let _ = result;
     }
 }

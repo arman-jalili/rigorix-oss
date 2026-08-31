@@ -45,6 +45,12 @@ pub(crate) struct BudgetState {
     /// Whether warnings have been emitted (dedup flag).
     pub(crate) calls_warning_emitted: AtomicBool,
     pub(crate) tokens_warning_emitted: AtomicBool,
+
+    /// Call ids committed through the service-level `commit()` path. The RAII
+    /// guard's Drop consults this so a reservation committed via the service
+    /// is NOT rolled back (GAP-A-09 reconciliation between the two commit
+    /// paths).
+    pub(crate) committed_call_ids: std::sync::Mutex<std::collections::HashSet<u32>>,
     /// Cancellation token triggered when budget is exhausted.
     pub(crate) cancel_token: CancellationToken,
     /// Human-readable label for this budget.
@@ -71,6 +77,7 @@ impl LlmBudgetImpl {
                 used_tokens: AtomicU32::new(0),
                 calls_warning_emitted: AtomicBool::new(false),
                 tokens_warning_emitted: AtomicBool::new(false),
+                committed_call_ids: std::sync::Mutex::new(std::collections::HashSet::new()),
                 cancel_token: CancellationToken::new(),
                 label,
             }),
@@ -276,6 +283,16 @@ impl LlmBudgetService for LlmBudgetImpl {
                 .ok();
         }
 
+        // GAP-A-09: mark this reservation committed at the service level so
+        // the RAII guard's Drop does not roll it back.
+        self.state
+            .committed_call_ids
+            .lock()
+            .map(|mut set| {
+                set.insert(input.call_id);
+            })
+            .ok();
+
         let calls_used = self.state.used_calls.load(Ordering::Acquire);
         let tokens_used = self.state.used_tokens.load(Ordering::Acquire);
 
@@ -407,7 +424,13 @@ impl Drop for LlmBudgetReservationImpl {
     #[tracing::instrument(skip_all)]
     fn drop(&mut self) {
         // Auto-rollback: decrement call and token counters if not committed.
-        if !self.committed.load(Ordering::Acquire) {
+        let service_committed = self
+            .budget
+            .committed_call_ids
+            .lock()
+            .map(|set| set.contains(&self.call_id))
+            .unwrap_or(false);
+        if !self.committed.load(Ordering::Acquire) && !service_committed {
             self.rolled_back.store(true, Ordering::Release);
 
             // Decrement the call counter (saturating to prevent underflow

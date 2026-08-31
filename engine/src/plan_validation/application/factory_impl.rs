@@ -183,10 +183,7 @@ mod tests {
         ) -> Result<EvaluateGateOutput, QualityGateError> {
             let req = input.contract.required_level;
             let obs = input.observed_level;
-            let satisfied = match (req, obs) {
-                (r, Some(o)) if o >= r => true,
-                _ => false,
-            };
+            let satisfied = matches!((req, obs), (r, Some(o)) if o >= r);
             Ok(EvaluateGateOutput {
                 outcome: if satisfied {
                     QualityGateOutcome::Satisfied {

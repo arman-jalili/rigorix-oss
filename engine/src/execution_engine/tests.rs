@@ -639,12 +639,8 @@ async fn test_cross_process_resume_hydrates_session_and_continues() {
         .get_execution_state(GetExecutionStateInput { dag_id })
         .await
         .unwrap();
-    let node_states: std::collections::HashMap<_, _> = state_a
-        .node_states
-        .clone()
-        .into_iter()
-        .map(|(id, s)| (id, s))
-        .collect();
+    let node_states: std::collections::HashMap<_, _> =
+        state_a.node_states.clone().into_iter().collect();
     assert_eq!(state_a.completed_count, 1, "backup completed before pause");
 
     // ── Process B: a FRESH executor has no session for dag_id. Approve first
@@ -1324,8 +1320,10 @@ async fn test_retry_exhausted_with_fallback() {
 async fn test_retry_non_retriable_failure() {
     let service = RetryEvaluationServiceImpl::new();
     let node_id = Uuid::new_v4();
-    let mut policy = RetryPolicy::default();
-    policy.retryable_failures = vec!["transient".to_string()];
+    let policy = RetryPolicy {
+        retryable_failures: vec!["transient".to_string()],
+        ..Default::default()
+    };
 
     let ctx = FailureContext::new(
         node_id,
@@ -1358,8 +1356,10 @@ async fn test_retry_non_retriable_with_fallback() {
     let service = RetryEvaluationServiceImpl::new();
     let node_id = Uuid::new_v4();
     let fallback_id = Uuid::new_v4();
-    let mut policy = RetryPolicy::default();
-    policy.retryable_failures = vec!["transient".to_string()];
+    let policy = RetryPolicy {
+        retryable_failures: vec!["transient".to_string()],
+        ..Default::default()
+    };
 
     let ctx = FailureContext::new(
         node_id,
@@ -1879,8 +1879,10 @@ async fn test_abort_marks_execution_as_cancelled() {
 #[tokio::test]
 async fn test_is_failure_retriable_filtered() {
     let service = RetryEvaluationServiceImpl::new();
-    let mut policy = RetryPolicy::default();
-    policy.retryable_failures = vec!["transient".to_string(), "lsp_conflict".to_string()];
+    let policy = RetryPolicy {
+        retryable_failures: vec!["transient".to_string(), "lsp_conflict".to_string()],
+        ..Default::default()
+    };
 
     assert!(service.is_failure_retriable(&policy, "transient").await);
     assert!(service.is_failure_retriable(&policy, "lsp_conflict").await);

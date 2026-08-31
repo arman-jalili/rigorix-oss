@@ -127,8 +127,10 @@ mod tests {
     #[tokio::test]
     async fn test_save_and_load_config() {
         let repo = InMemoryConfigRepository::new();
-        let mut config = RiskConfig::default();
-        config.auto_confirm_low = false;
+        let config = RiskConfig {
+            auto_confirm_low: false,
+            ..Default::default()
+        };
 
         repo.save_config("exec-1", &config).await.unwrap();
         let loaded = repo.load_config("exec-1").await.unwrap();
@@ -177,8 +179,10 @@ mod tests {
     #[tokio::test]
     async fn test_configs_isolated_by_execution() {
         let repo = InMemoryConfigRepository::new();
-        let mut config_a = RiskConfig::default();
-        config_a.auto_confirm_low = false;
+        let config_a = RiskConfig {
+            auto_confirm_low: false,
+            ..Default::default()
+        };
         repo.save_config("exec-a", &config_a).await.unwrap();
 
         let config_b = repo.load_config("exec-b").await.unwrap();

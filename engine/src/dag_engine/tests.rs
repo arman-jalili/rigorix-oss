@@ -551,7 +551,9 @@ fn test_impact_level_as_str() {
 fn test_plan_diff_identical_plans() {
     let id = Uuid::new_v4();
     let node = make_node(id, "build", vec![]);
-    let diff = PlanDiff::compute(&[node.clone()], &[node]);
+    let old_nodes = [node.clone()];
+    let new_nodes = [node];
+    let diff = PlanDiff::compute(&old_nodes, &new_nodes);
     assert_eq!(diff.added.len(), 0);
     assert_eq!(diff.removed.len(), 0);
     assert_eq!(diff.modified.len(), 0);
