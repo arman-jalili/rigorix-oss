@@ -7,7 +7,6 @@
 // via stdin, reads responses from stdout, and verifies the protocol.
 
 use std::process::{Command, Stdio};
-use std::time::Duration;
 
 mod common;
 
@@ -24,9 +23,7 @@ fn test_stdio_initialize_handshake() {
 
     let mut stdin = child.stdin.take().expect("Failed to open stdin");
     let mut stdout = child.stdout.take().expect("Failed to open stdout");
-
-    // Give the server time to start
-    std::thread::sleep(Duration::from_millis(100));
+    common::set_nonblocking(&stdout);
 
     // Send initialize
     let response = send_rpc(
@@ -80,8 +77,7 @@ fn test_stdio_list_tools() {
 
     let mut stdin = child.stdin.take().expect("Failed to open stdin");
     let mut stdout = child.stdout.take().expect("Failed to open stdout");
-
-    std::thread::sleep(Duration::from_millis(100));
+    common::set_nonblocking(&stdout);
 
     // Send tools/list
     let response = send_rpc(
@@ -165,8 +161,7 @@ fn test_stdio_list_resources() {
 
     let mut stdin = child.stdin.take().expect("Failed to open stdin");
     let mut stdout = child.stdout.take().expect("Failed to open stdout");
-
-    std::thread::sleep(Duration::from_millis(100));
+    common::set_nonblocking(&stdout);
 
     // Send resources/list
     let response = send_rpc(
@@ -222,8 +217,7 @@ fn test_stdio_list_resources() {
 
     let mut stdin = fixture_child.stdin.take().expect("Failed to open stdin");
     let mut stdout = fixture_child.stdout.take().expect("Failed to open stdout");
-
-    std::thread::sleep(Duration::from_millis(100));
+    common::set_nonblocking(&stdout);
 
     let read_response = send_rpc(
         r#"{"jsonrpc":"2.0","id":4,"method":"resources/read","params":{"uri":"rigorix://templates/echo-template"}}"#,
@@ -270,8 +264,7 @@ fn test_stdio_list_prompts() {
 
     let mut stdin = child.stdin.take().expect("Failed to open stdin");
     let mut stdout = child.stdout.take().expect("Failed to open stdout");
-
-    std::thread::sleep(Duration::from_millis(100));
+    common::set_nonblocking(&stdout);
 
     // Send prompts/list
     let response = send_rpc(
@@ -335,8 +328,7 @@ fn test_stdio_method_not_found() {
 
     let mut stdin = child.stdin.take().expect("Failed to open stdin");
     let mut stdout = child.stdout.take().expect("Failed to open stdout");
-
-    std::thread::sleep(Duration::from_millis(100));
+    common::set_nonblocking(&stdout);
 
     // Send unknown method
     let response = send_rpc(
@@ -376,8 +368,7 @@ fn test_stdio_parse_error() {
 
     let mut stdin = child.stdin.take().expect("Failed to open stdin");
     let mut stdout = child.stdout.take().expect("Failed to open stdout");
-
-    std::thread::sleep(Duration::from_millis(100));
+    common::set_nonblocking(&stdout);
 
     // Send malformed JSON
     let response = send_rpc(r#"this is not json"#, &mut stdin, &mut stdout);

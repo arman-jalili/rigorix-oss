@@ -8,7 +8,6 @@
 //! Implements: Acceptance Criterion #12 — end-to-end plan execution → audit
 
 use std::process::{Command, Stdio};
-use std::time::Duration;
 
 mod common;
 
@@ -25,9 +24,7 @@ fn test_e2e_execute_to_audit_cycle() {
 
     let mut stdin = child.stdin.take().expect("Failed to open stdin");
     let mut stdout = child.stdout.take().expect("Failed to open stdout");
-
-    // Give the server time to start
-    std::thread::sleep(Duration::from_millis(200));
+    common::set_nonblocking(&stdout);
 
     // -----------------------------------------------------------------------
     // Step 1: Initialize the server
@@ -204,8 +201,7 @@ fn test_e2e_tools_list_contains_all_tools() {
 
     let mut stdin = child.stdin.take().expect("Failed to open stdin");
     let mut stdout = child.stdout.take().expect("Failed to open stdout");
-
-    std::thread::sleep(Duration::from_millis(200));
+    common::set_nonblocking(&stdout);
 
     // Initialize
     let _ = send_rpc(
@@ -275,8 +271,7 @@ fn test_e2e_create_template_then_get_template() {
 
     let mut stdin = child.stdin.take().expect("Failed to open stdin");
     let mut stdout = child.stdout.take().expect("Failed to open stdout");
-
-    std::thread::sleep(Duration::from_millis(200));
+    common::set_nonblocking(&stdout);
 
     // Initialize
     let _ = send_rpc(

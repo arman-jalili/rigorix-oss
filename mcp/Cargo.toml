@@ -42,3 +42,7 @@ sse = ["dep:axum"]
 [dev-dependencies]
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
+
+[target.'cfg(unix)'.dev-dependencies]
+# Non-blocking pipe polling in e2e tests (GAP-A-25)
+libc = "0.2"
