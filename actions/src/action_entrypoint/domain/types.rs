@@ -45,6 +45,16 @@ pub enum ActionMode {
         intent: String,
     },
 
+    /// Mode A — governance: diff analysis + policy evaluation (GAP-A-08).
+    ///
+    /// Routes through the diff_analyzer and policy_evaluator pipelines.
+    /// Requires a PR event, a base branch, and an existing policy file;
+    /// `fail-on-violation` gates the action exit code.
+    Governance {
+        /// Natural-language intent (informational for Mode A).
+        intent: String,
+    },
+
     /// Show current execution status.
     Status,
 }
@@ -54,7 +64,10 @@ impl ActionMode {
     pub fn requires_intent(&self) -> bool {
         matches!(
             self,
-            ActionMode::Run { .. } | ActionMode::Plan { .. } | ActionMode::Validate { .. }
+            ActionMode::Run { .. }
+                | ActionMode::Plan { .. }
+                | ActionMode::Validate { .. }
+                | ActionMode::Governance { .. }
         )
     }
 
@@ -63,7 +76,8 @@ impl ActionMode {
         match self {
             ActionMode::Run { intent }
             | ActionMode::Plan { intent }
-            | ActionMode::Validate { intent } => Some(intent.as_str()),
+            | ActionMode::Validate { intent }
+            | ActionMode::Governance { intent } => Some(intent.as_str()),
             ActionMode::Status => None,
         }
     }
@@ -74,6 +88,7 @@ impl ActionMode {
             ActionMode::Run { .. } => "run",
             ActionMode::Plan { .. } => "plan",
             ActionMode::Validate { .. } => "validate",
+            ActionMode::Governance { .. } => "governance",
             ActionMode::Status => "status",
         }
     }
@@ -210,6 +225,12 @@ pub struct ActionContext {
 
     /// Actor that triggered the workflow (from GITHUB_ACTOR).
     pub author: Option<String>,
+
+    /// Mode A governance: path to the policy file (GAP-A-08).
+    pub policy_file: String,
+
+    /// Mode A governance: fail the action when policy violations exist.
+    pub fail_on_violation: bool,
 }
 
 impl ActionContext {
@@ -232,6 +253,8 @@ impl ActionContext {
             permission_mode: None,
             repository: None,
             author: None,
+            policy_file: ".rigorix/policy.toml".to_string(),
+            fail_on_violation: false,
         }
     }
 
@@ -263,6 +286,8 @@ impl ActionContext {
             permission_mode: self.permission_mode.clone(),
             repository: self.repository.clone(),
             author: self.author.clone(),
+            policy_file: self.policy_file.clone(),
+            fail_on_violation: self.fail_on_violation,
         }
     }
 }

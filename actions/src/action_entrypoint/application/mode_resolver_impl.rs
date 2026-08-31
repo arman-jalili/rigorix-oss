@@ -83,8 +83,10 @@ impl ModeResolver for ModeResolverImpl {
                 }
                 "governance" => {
                     let intent = input.input_intent.unwrap_or_default();
+                    // GAP-A-08: governance is Mode A (diff + policy evaluation),
+                    // NOT a silent alias for Validate.
                     return Ok(ResolveModeOutput {
-                        mode: ActionMode::Validate { intent },
+                        mode: ActionMode::Governance { intent },
                         source: "input".to_string(),
                         unambiguous: true,
                         warnings,
@@ -177,7 +179,10 @@ impl ModeResolver for ModeResolverImpl {
             "plan" => Some(ActionMode::Plan {
                 intent: String::new(),
             }),
-            "validate" | "governance" => Some(ActionMode::Validate {
+            "validate" => Some(ActionMode::Validate {
+                intent: String::new(),
+            }),
+            "governance" => Some(ActionMode::Governance {
                 intent: String::new(),
             }),
             "status" => Some(ActionMode::Status),
@@ -285,6 +290,17 @@ mod tests {
     async fn test_resolve_from_string_validate() {
         let mode = resolver().resolve_from_string("validate").await;
         assert!(matches!(mode, Some(ActionMode::Validate { .. })));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_from_string_governance_is_mode_a() {
+        // GAP-A-08: governance must resolve to Governance (Mode A), not a
+        // silent alias for Validate.
+        let mode = resolver().resolve_from_string("governance").await;
+        assert!(
+            matches!(mode, Some(ActionMode::Governance { .. })),
+            "governance must resolve to ActionMode::Governance, got {mode:?}"
+        );
     }
 
     #[tokio::test]

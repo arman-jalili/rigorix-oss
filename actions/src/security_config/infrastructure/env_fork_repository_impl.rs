@@ -73,13 +73,11 @@ impl ForkRepository for EnvForkRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{LazyLock, Mutex};
-
     /// Global lock for env var tests — prevents races between parallel test threads.
-    static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+    static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-    fn lock_env() -> std::sync::MutexGuard<'static, ()> {
-        ENV_LOCK.lock().unwrap()
+    async fn lock_env() -> tokio::sync::MutexGuard<'static, ()> {
+        ENV_LOCK.lock().await
     }
 
     unsafe fn set_env(key: &str, value: &str) {
@@ -96,7 +94,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_base_repo() {
-        let _guard = lock_env();
+        let _guard = lock_env().await;
         unsafe {
             set_env("GITHUB_REPOSITORY", "org/test-repo");
         }
@@ -110,7 +108,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_base_repo_missing() {
-        let _guard = lock_env();
+        let _guard = lock_env().await;
         unsafe {
             remove_env("GITHUB_REPOSITORY");
         }
@@ -120,7 +118,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_head_repo_present() {
-        let _guard = lock_env();
+        let _guard = lock_env().await;
         unsafe {
             set_env(
                 "GITHUB_EVENT_PULL_REQUEST_HEAD_REPO_FULL_NAME",
@@ -137,7 +135,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_head_repo_absent() {
-        let _guard = lock_env();
+        let _guard = lock_env().await;
         unsafe {
             remove_env("GITHUB_EVENT_PULL_REQUEST_HEAD_REPO_FULL_NAME");
         }
@@ -147,7 +145,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_head_repo_owner() {
-        let _guard = lock_env();
+        let _guard = lock_env().await;
         unsafe {
             set_env("GITHUB_EVENT_PULL_REQUEST_HEAD_REPO_OWNER", "fork-user");
         }
@@ -161,7 +159,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_event_name() {
-        let _guard = lock_env();
+        let _guard = lock_env().await;
         unsafe {
             set_env("GITHUB_EVENT_NAME", "pull_request");
         }
@@ -175,7 +173,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_pr_number() {
-        let _guard = lock_env();
+        let _guard = lock_env().await;
         unsafe {
             set_env("GITHUB_EVENT_PULL_REQUEST_NUMBER", "42");
         }
@@ -189,7 +187,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_pr_number_absent() {
-        let _guard = lock_env();
+        let _guard = lock_env().await;
         unsafe {
             remove_env("GITHUB_EVENT_PULL_REQUEST_NUMBER");
         }
@@ -199,7 +197,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_head_repo_empty() {
-        let _guard = lock_env();
+        let _guard = lock_env().await;
         unsafe {
             set_env("GITHUB_EVENT_PULL_REQUEST_HEAD_REPO_FULL_NAME", "");
         }

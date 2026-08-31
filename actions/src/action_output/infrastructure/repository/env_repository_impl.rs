@@ -89,13 +89,13 @@ impl crate::action_output::infrastructure::repository::EnvRepository for EnvRepo
 mod tests {
     use super::*;
     use crate::action_output::infrastructure::repository::EnvRepository;
-    use std::sync::Mutex;
+    use tokio::sync::Mutex;
 
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    static ENV_LOCK: Mutex<()> = Mutex::const_new(());
 
     #[tokio::test]
     async fn test_read_env_var_present() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = ENV_LOCK.lock().await;
         // SAFETY: test-only env manipulation
         unsafe { std::env::set_var("RIGORIX_TEST_VAR", "test-value") };
         let repo = EnvRepositoryImpl::new();
@@ -115,7 +115,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_step_summary_path() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = ENV_LOCK.lock().await;
         unsafe { std::env::set_var("GITHUB_STEP_SUMMARY", "/tmp/summary.md") };
         let repo = EnvRepositoryImpl::new();
         let result = repo.read_step_summary_path().await.unwrap();
@@ -125,7 +125,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_github_token_prefers_input() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = ENV_LOCK.lock().await;
         unsafe {
             std::env::set_var("INPUT_GITHUB_TOKEN", "input-token");
             std::env::set_var("GITHUB_TOKEN", "env-token");
@@ -141,7 +141,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_ci_context() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = ENV_LOCK.lock().await;
         unsafe { std::env::set_var("GITHUB_ACTIONS", "true") };
         let repo = EnvRepositoryImpl::new();
         let ctx = repo.read_ci_context().await.unwrap();

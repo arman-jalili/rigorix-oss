@@ -70,6 +70,13 @@ pub enum ActionError {
         iterations_completed: Option<u32>,
     },
 
+    /// Mode A governance dispatch failed (GAP-A-08).
+    #[error("Governance error: {detail}")]
+    GovernanceError {
+        /// Description of the governance error.
+        detail: String,
+    },
+
     /// The workspace root path is invalid or inaccessible.
     #[error("Invalid workspace root '{path}': {detail}")]
     InvalidWorkspaceRoot {
@@ -122,6 +129,7 @@ impl ActionError {
                 | ActionError::GitHubApi(_)
                 | ActionError::EngineError { .. }
                 | ActionError::ValidationLoopError { .. }
+                | ActionError::GovernanceError { .. }
         )
     }
 
@@ -138,6 +146,7 @@ impl ActionError {
             ActionError::UnsupportedEvent { .. } | ActionError::OutputError { .. } => "warning",
             ActionError::EngineError { .. }
             | ActionError::ValidationLoopError { .. }
+            | ActionError::GovernanceError { .. }
             | ActionError::ContextRepositoryError { .. }
             | ActionError::GitHubApi(_)
             | ActionError::Io(_)

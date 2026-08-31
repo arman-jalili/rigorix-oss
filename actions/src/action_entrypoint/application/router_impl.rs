@@ -192,6 +192,103 @@ impl ActionRouterImpl {
         }
     }
 
+    /// Mode A dispatch (GAP-A-08): diff analysis + policy evaluation.
+    ///
+    /// 1. Requires a `pull_request` event (base branch for the diff)
+    /// 2. Computes `git diff {base}...HEAD` in the workspace
+    /// 3. Requires the configured policy file to exist (explicit error, not
+    ///    a silent fallback)
+    /// 4. Runs DiffAnalysisPipeline -> PolicyEvaluationPipeline
+    /// 5. `fail_on_violation` gates the action exit code
+    async fn dispatch_governance(
+        &self,
+        ctx: &crate::action_entrypoint::domain::ActionContext,
+    ) -> Result<ActionOutput, ActionError> {
+        use crate::diff_analyzer::application::service::DiffAnalysisPipelineService;
+        use crate::policy_evaluator::application::service::PolicyEvaluationPipelineService;
+
+        // 1. Base branch from the PR event
+        let base_branch = match &ctx.event {
+            crate::action_entrypoint::domain::GitHubEvent::PullRequest { base_branch, .. } => {
+                base_branch.clone()
+            }
+            _ => return Err(ActionError::GovernanceError {
+                detail:
+                    "governance mode requires a pull_request event (base branch to diff against)"
+                        .to_string(),
+            }),
+        };
+
+        // 2. Raw diff: git diff {base}...HEAD
+        let diff_output = tokio::process::Command::new("git")
+            .args(["diff", &format!("{base_branch}...HEAD")])
+            .current_dir(&ctx.workspace_root)
+            .output()
+            .await
+            .map_err(|e| ActionError::GovernanceError {
+                detail: format!("failed to run git diff: {e}"),
+            })?;
+        let raw_diff = String::from_utf8_lossy(&diff_output.stdout).to_string();
+
+        // 3. Policy file must exist (AC: explicit error, not silent Validate)
+        let policy_path = std::path::Path::new(&ctx.workspace_root).join(&ctx.policy_file);
+        if !policy_path.exists() {
+            return Err(ActionError::GovernanceError {
+                detail: format!(
+                    "policy file '{}' not found in workspace (governance mode requires an existing policy file)",
+                    ctx.policy_file
+                ),
+            });
+        }
+
+        // 4. Diff analysis -> policy evaluation
+        let analyzer = crate::diff_analyzer::application::diff_analysis_pipeline_impl::DiffAnalysisPipelineImpl::default();
+        let analyzed =
+            analyzer
+                .analyze_default(raw_diff)
+                .await
+                .map_err(|e| ActionError::GovernanceError {
+                    detail: format!("diff analysis failed: {e}"),
+                })?;
+
+        let evaluator = crate::policy_evaluator::application::policy_evaluation_pipeline_impl::PolicyEvaluationPipelineServiceImpl;
+        let (eval_output, report) = evaluator
+            .run_with_report(
+                crate::policy_evaluator::application::dto::RunPolicyEvaluationInput {
+                    diff: analyzed.diff,
+                    policy_path: policy_path.to_string_lossy().to_string(),
+                    base_ref: base_branch,
+                    repo: ctx.repository.clone(),
+                    org_policy_config: None,
+                    fail_on_violation: ctx.fail_on_violation,
+                    include_details: Some(true),
+                },
+            )
+            .await
+            .map_err(|e| ActionError::GovernanceError {
+                detail: format!("policy evaluation failed: {e}"),
+            })?;
+
+        let violations = eval_output.result.violations.len();
+        let blocking = eval_output.result.has_blocking_violations;
+
+        // 5. Gate exit code on fail_on_violation
+        if ctx.fail_on_violation && blocking {
+            return Ok(ActionOutput::failure(format!(
+                "Governance: {} blocking policy violations found.\n{}",
+                violations, report.markdown_summary
+            )));
+        }
+
+        Ok(ActionOutput::success(
+            format!(
+                "Governance: {} violations ({} blocking) — {}",
+                violations, blocking, report.markdown_summary
+            ),
+            None,
+        ))
+    }
+
     /// Dispatch to the engine's status mode.
     async fn dispatch_status(
         &self,
@@ -242,6 +339,7 @@ impl ActionRouter for ActionRouterImpl {
             ActionMode::Run { .. } => self.dispatch_run(ctx).await,
             ActionMode::Plan { .. } => self.dispatch_plan(ctx).await,
             ActionMode::Validate { .. } => self.dispatch_validate(ctx).await,
+            ActionMode::Governance { .. } => self.dispatch_governance(ctx).await,
             ActionMode::Status => self.dispatch_status(ctx).await,
         };
 
@@ -304,6 +402,7 @@ impl ActionRouter for ActionRouterImpl {
             ActionMode::Run { .. }
                 | ActionMode::Plan { .. }
                 | ActionMode::Validate { .. }
+                | ActionMode::Governance { .. }
                 | ActionMode::Status
         )
     }
@@ -317,6 +416,9 @@ impl ActionRouter for ActionRouterImpl {
                 intent: String::new(),
             },
             ActionMode::Validate {
+                intent: String::new(),
+            },
+            ActionMode::Governance {
                 intent: String::new(),
             },
             ActionMode::Status,
@@ -825,7 +927,210 @@ mod tests {
     async fn test_supported_modes_returns_all() {
         let router = create_router();
         let modes = router.supported_modes().await;
-        assert_eq!(modes.len(), 4);
+        assert_eq!(modes.len(), 5);
+        assert!(modes.contains(&ActionMode::Governance {
+            intent: String::new()
+        }));
+    }
+
+    // ── Mode A governance tests (GAP-A-08) ──
+
+    /// Init a throwaway git repo with an optional policy file.
+    /// Returns (TempDir, workspace_root) with the base commit on `main`.
+    async fn setup_git_workspace(policy_toml: Option<&str>) -> (tempfile::TempDir, String) {
+        let dir = tempfile::TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        let git = |args: Vec<&'static str>| {
+            let root = root.clone();
+            async move {
+                let out = tokio::process::Command::new("git")
+                    .args(&args)
+                    .current_dir(&root)
+                    .output()
+                    .await
+                    .expect("git must run");
+                String::from_utf8_lossy(if out.status.success() {
+                    &out.stdout
+                } else {
+                    &out.stderr
+                })
+                .to_string()
+            }
+        };
+        git(vec!["init", "-q"]).await;
+        git(vec!["checkout", "-q", "-b", "main"]).await;
+        git(vec!["config", "user.email", "test@example.com"]).await;
+        git(vec!["config", "user.name", "Test"]).await;
+        if let Some(policy) = policy_toml {
+            std::fs::create_dir_all(root.join(".rigorix")).unwrap();
+            std::fs::write(root.join(".rigorix/policy.toml"), policy).unwrap();
+        }
+        std::fs::write(root.join("README.md"), "base").unwrap();
+        git(vec!["add", "-A"]).await;
+        git(vec!["commit", "-qm", "base"]).await;
+        (dir, root.to_string_lossy().to_string())
+    }
+
+    fn governance_context(
+        workspace: &str,
+        event: GitHubEvent,
+        fail_on_violation: bool,
+    ) -> ActionContext {
+        let mut ctx = ActionContext::new(
+            workspace.to_string(),
+            event,
+            ActionMode::Governance {
+                intent: String::new(),
+            },
+            Some("gh_token_123".to_string()),
+        );
+        ctx.policy_file = ".rigorix/policy.toml".to_string();
+        ctx.fail_on_violation = fail_on_violation;
+        ctx
+    }
+
+    fn pr_event() -> GitHubEvent {
+        GitHubEvent::PullRequest {
+            pr_number: 42,
+            action: "opened".to_string(),
+            title: "test".to_string(),
+            base_branch: "main".to_string(),
+            head_branch: "feature".to_string(),
+            head_sha: "abc123".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_governance_with_policy_runs_mode_a() {
+        let (_dir, workspace) = setup_git_workspace(Some(
+            "version = \"1.0.0\"\n\n[[rules.flag]]\nname = \"markdown\"\ndescription = \"md files\"\npattern = \"*.md\"\n",
+        ))
+        .await;
+        let router = create_router();
+        let ctx = governance_context(&workspace, pr_event(), false);
+
+        let result = router
+            .dispatch(DispatchInput {
+                context: ctx,
+                timeout_secs: Some(60),
+                force: false,
+            })
+            .await
+            .unwrap();
+
+        // Mode A ran (not Validate): output names governance, status success.
+        assert!(result.success, "Mode A dispatch must succeed");
+        assert!(
+            result.output.summary.contains("Governance"),
+            "expected Mode A output, got: {}",
+            result.output.summary
+        );
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_governance_missing_policy_is_explicit_error() {
+        let (_dir, workspace) = setup_git_workspace(None).await;
+        let router = create_router();
+        let ctx = governance_context(&workspace, pr_event(), false);
+
+        let result = router
+            .dispatch(DispatchInput {
+                context: ctx,
+                timeout_secs: Some(60),
+                force: false,
+            })
+            .await
+            .unwrap();
+
+        // dispatch() converts governance errors into a failed output
+        // (never a silent Validate fallback).
+        assert!(!result.success, "missing policy file must fail the action");
+        assert_eq!(result.output.status, DispatchStatus::Failure);
+        assert!(
+            result.output.summary.contains("policy file"),
+            "expected explicit policy-file error, got: {}",
+            result.output.summary
+        );
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_governance_requires_pr_event() {
+        let (_dir, workspace) = setup_git_workspace(Some("version = \"1.0.0\"\n")).await;
+        let router = create_router();
+        let ctx = governance_context(
+            &workspace,
+            GitHubEvent::WorkflowDispatch {
+                ref_name: "main".to_string(),
+            },
+            false,
+        );
+
+        let result = router
+            .dispatch(DispatchInput {
+                context: ctx,
+                timeout_secs: Some(60),
+                force: false,
+            })
+            .await
+            .unwrap();
+
+        assert!(!result.success);
+        assert_eq!(result.output.status, DispatchStatus::Failure);
+        assert!(
+            result.output.summary.contains("pull_request"),
+            "expected pull_request requirement, got: {}",
+            result.output.summary
+        );
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_governance_fail_on_violation_gates_exit_code() {
+        let (_dir, workspace) = setup_git_workspace(Some(
+            "version = \"1.0.0\"\n\n[[rules.deny]]\nname = \"no-sql\"\ndescription = \"No raw SQL\"\npattern = \"*.sql\"\nseverity = \"critical\"\n",
+        ))
+        .await;
+        // Add a violating file on a HEAD branch so `git diff main...HEAD`
+        // sees it (the policy file itself stays unchanged from base).
+        let root = std::path::PathBuf::from(&workspace);
+        let out = tokio::process::Command::new("git")
+            .args(["checkout", "-q", "-b", "feature"])
+            .current_dir(&root)
+            .output()
+            .await
+            .unwrap();
+        assert!(out.status.success());
+        std::fs::write(root.join("secret.sql"), "SELECT * FROM users;").unwrap();
+        let out = tokio::process::Command::new("git")
+            .args(["add", "secret.sql"])
+            .current_dir(&root)
+            .output()
+            .await
+            .unwrap();
+        assert!(out.status.success());
+        let out = tokio::process::Command::new("git")
+            .args(["commit", "-qm", "add sql"])
+            .current_dir(&root)
+            .output()
+            .await
+            .unwrap();
+        assert!(out.status.success());
+
+        let router = create_router();
+        let ctx = governance_context(&workspace, pr_event(), true);
+
+        let result = router
+            .dispatch(DispatchInput {
+                context: ctx,
+                timeout_secs: Some(60),
+                force: false,
+            })
+            .await
+            .unwrap();
+
+        // fail_on_violation + blocking violation -> Failure status (exit code
+        // gated by main.rs on DispatchStatus::Failure).
+        assert_eq!(result.output.status, DispatchStatus::Failure);
+        assert!(result.output.summary.contains("Governance"));
     }
 
     #[tokio::test]
