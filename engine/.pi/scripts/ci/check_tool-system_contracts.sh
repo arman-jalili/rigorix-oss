@@ -139,6 +139,16 @@ DTO_CHECKS=(
     "ToolInput"
     "ToolResult"
     "SideEffect"
+)
+for dto in "${DTO_CHECKS[@]}"; do
+    # Domain value objects (GAP-A-21): moved from application/dto to domain/types
+    if grep -q "pub struct $dto\|pub enum $dto" "$SRC_DIR/tools/domain/types.rs" 2>/dev/null; then
+        log_pass "$dto value object defined in domain/types.rs"
+    else
+        log_fail "$dto value object not found in domain/types.rs"
+    fi
+done
+DTO_CHECKS_APP=(
     "RegisterToolInput"
     "ExecuteToolInput"
     "GetToolInput"
@@ -146,7 +156,7 @@ DTO_CHECKS=(
     "ToolInfo"
     "ToolSystemConfig"
 )
-for dto in "${DTO_CHECKS[@]}"; do
+for dto in "${DTO_CHECKS_APP[@]}"; do
     if grep -q "pub struct $dto\|pub enum $dto" "$SRC_DIR/tools/application/dto/mod.rs" 2>/dev/null; then
         log_pass "$dto DTO defined"
     else
