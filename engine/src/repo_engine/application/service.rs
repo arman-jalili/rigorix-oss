@@ -16,7 +16,7 @@
 
 use async_trait::async_trait;
 
-use crate::repo_engine::domain::{RepoEngineError, SymbolGraph};
+use crate::repo_engine::domain::{RepoEngineError, SharedSymbolGraph};
 
 use super::dto::{
     AddSymbolInput, AddSymbolOutput, DetectProjectInput, DetectProjectOutput, GraphStatsInput,
@@ -96,13 +96,15 @@ pub trait SymbolGraphService: Send + Sync {
 
     /// Get access to the underlying `SymbolGraph` for direct inspection.
     ///
-    /// Returns the graph behind its thread-safe wrapper, allowing callers
-    /// to perform batch operations without repeated async calls.
+    /// Returns the graph behind its thread-safe `SharedSymbolGraph` wrapper,
+    /// allowing callers to perform batch operations without repeated async
+    /// calls (GAP-A-15: replaced the previous panic-by-design reference form).
     ///
     /// # Contract
-    /// - The returned reference is valid only within the scope of this method
-    /// - Callers must not retain references across await points
-    fn graph(&self) -> &SymbolGraph;
+    /// - The returned handle is cheap to clone (Arc bump)
+    /// - Callers acquire read/write guards for each operation; guards must
+    ///   not be held across await points
+    fn graph(&self) -> SharedSymbolGraph;
 }
 
 // ---------------------------------------------------------------------------

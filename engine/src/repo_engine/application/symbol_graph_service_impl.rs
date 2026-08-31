@@ -10,11 +10,10 @@
 
 use async_trait::async_trait;
 use std::collections::HashMap;
-use std::sync::RwLock;
 
 #[cfg_attr(not(test), allow(unused_imports))]
 use crate::repo_engine::domain::{
-    RepoEngineError, SourceLanguage, SymbolDefinition, SymbolGraph, SymbolKind,
+    RepoEngineError, SharedSymbolGraph, SourceLanguage, SymbolDefinition, SymbolGraph, SymbolKind,
 };
 
 use super::dto::{
@@ -39,29 +38,29 @@ use super::service::SymbolGraphService;
 /// - `lookup_symbol`, `search_symbols`, `symbols_by_file`, `graph_stats` acquire read locks
 /// - The `graph()` method returns a reference to the locked graph (not for cross-await use)
 pub struct SymbolGraphServiceImpl {
-    /// The underlying symbol graph protected by a read-write lock.
-    graph: RwLock<SymbolGraph>,
+    /// The underlying symbol graph behind its thread-safe shared wrapper.
+    graph: SharedSymbolGraph,
 }
 
 impl SymbolGraphServiceImpl {
     /// Create a new `SymbolGraphServiceImpl` with an empty graph.
     pub fn new() -> Self {
         Self {
-            graph: RwLock::new(SymbolGraph::new()),
+            graph: SharedSymbolGraph::new(),
         }
     }
 
     /// Create a new `SymbolGraphServiceImpl` with a pre-populated graph.
     pub fn from_graph(graph: SymbolGraph) -> Self {
         Self {
-            graph: RwLock::new(graph),
+            graph: SharedSymbolGraph::from_graph(graph),
         }
     }
 
     /// Create a new `SymbolGraphServiceImpl` with a capacity limit.
     pub fn with_capacity(max: usize) -> Self {
         Self {
-            graph: RwLock::new(SymbolGraph::with_capacity(max)),
+            graph: SharedSymbolGraph::with_capacity(max),
         }
     }
 }
@@ -91,9 +90,7 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
         def.tags = input.tags;
 
         let name = def.name.clone();
-        let mut graph = self.graph.write().map_err(|e| RepoEngineError::Internal {
-            detail: format!("RwLock poisoned: {}", e),
-        })?;
+        let mut graph = self.graph.write();
 
         let total_before = graph.len();
         graph.add_symbol(def)?;
@@ -110,9 +107,7 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
         &self,
         input: LookupSymbolInput,
     ) -> Result<LookupSymbolOutput, RepoEngineError> {
-        let graph = self.graph.read().map_err(|e| RepoEngineError::Internal {
-            detail: format!("RwLock poisoned: {}", e),
-        })?;
+        let graph = self.graph.read();
 
         let symbol = graph.lookup(&input.name).cloned();
 
@@ -139,9 +134,7 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
         &self,
         input: SearchSymbolsInput,
     ) -> Result<SearchSymbolsOutput, RepoEngineError> {
-        let graph = self.graph.read().map_err(|e| RepoEngineError::Internal {
-            detail: format!("RwLock poisoned: {}", e),
-        })?;
+        let graph = self.graph.read();
 
         let mut results: Vec<SymbolDefinition> = graph
             .search(&input.pattern)
@@ -176,9 +169,7 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
         &self,
         input: SymbolsByFileInput,
     ) -> Result<SymbolsByFileOutput, RepoEngineError> {
-        let graph = self.graph.read().map_err(|e| RepoEngineError::Internal {
-            detail: format!("RwLock poisoned: {}", e),
-        })?;
+        let graph = self.graph.read();
 
         let symbols: Vec<SymbolDefinition> = graph
             .lookup_by_file(&input.file)
@@ -198,9 +189,7 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
 
     #[tracing::instrument(skip_all)]
     async fn remove_symbol(&self, name: &str) -> Result<bool, RepoEngineError> {
-        let mut graph = self.graph.write().map_err(|e| RepoEngineError::Internal {
-            detail: format!("RwLock poisoned: {}", e),
-        })?;
+        let mut graph = self.graph.write();
 
         if !graph.contains_key(name) {
             let suggestions: Vec<String> = graph
@@ -220,9 +209,7 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
 
     #[tracing::instrument(skip_all)]
     async fn clear_graph(&self) -> Result<(), RepoEngineError> {
-        let mut graph = self.graph.write().map_err(|e| RepoEngineError::Internal {
-            detail: format!("RwLock poisoned: {}", e),
-        })?;
+        let mut graph = self.graph.write();
 
         *graph = SymbolGraph::new();
         Ok(())
@@ -232,9 +219,7 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
         &self,
         input: GraphStatsInput,
     ) -> Result<GraphStatsOutput, RepoEngineError> {
-        let graph = self.graph.read().map_err(|e| RepoEngineError::Internal {
-            detail: format!("RwLock poisoned: {}", e),
-        })?;
+        let graph = self.graph.read();
 
         let by_kind = if input.detailed {
             let mut map = HashMap::new();
@@ -274,9 +259,7 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
 
     #[tracing::instrument(skip_all)]
     async fn add_reference(&self, from: &str, to: &str) -> Result<bool, RepoEngineError> {
-        let mut graph = self.graph.write().map_err(|e| RepoEngineError::Internal {
-            detail: format!("RwLock poisoned: {}", e),
-        })?;
+        let mut graph = self.graph.write();
 
         if !graph.contains_key(from) {
             return Err(RepoEngineError::SymbolNotFound {
@@ -306,13 +289,10 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
     }
 
     #[tracing::instrument(skip_all)]
-    fn graph(&self) -> &SymbolGraph {
-        // This method is intentionally limited — the RwLock prevents returning
-        // a reference to the inner graph. Implementations requiring direct access
-        // should use SharedSymbolGraph or the domain SymbolGraph directly.
-        panic!(
-            "graph() returns a reference that cannot outlive the RwLock guard. Use the service methods instead."
-        );
+    fn graph(&self) -> SharedSymbolGraph {
+        // GAP-A-15: return the shared graph handle (Arc bump) instead of a
+        // guard-bound reference that could not outlive the lock.
+        self.graph.clone()
     }
 }
 

@@ -8,4 +8,11 @@
 //! indexing configurations, and language grammar registrations behind traits.
 //! Implementations handle filesystem access, caching, and alternate storage backends.
 
+pub mod fs_source_repository;
+pub mod fs_symbol_repository;
+pub mod in_memory_grammar_repository;
 pub mod repository;
+
+pub use fs_source_repository::FileSystemSourceRepository;
+pub use fs_symbol_repository::FileSystemSymbolRepository;
+pub use in_memory_grammar_repository::InMemoryGrammarRepository;
