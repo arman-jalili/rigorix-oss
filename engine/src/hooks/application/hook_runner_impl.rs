@@ -8,11 +8,13 @@
 //! reads and parses stdout JSON responses, and aggregates results into
 //! `HookRunResult`. Supports cooperative cancellation via `HookAbortSignal`.
 
-use std::io::Write;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+use async_trait::async_trait;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::hooks::domain::abort::HookAbortSignal;
 use crate::hooks::domain::config::HookConfig;
@@ -29,38 +31,6 @@ use super::service::{HookCommandExecutor, HookRunnerService};
 
 /// Minimum timeout in seconds.
 const MIN_TIMEOUT_SECS: u64 = 1;
-
-/// Spawn a thread that drains a child pipe to EOF. Used by
-/// `execute_single_command` so a hook writing more than the pipe buffer
-/// (~64KB) cannot deadlock (GAP-A-04).
-fn spawn_reader_thread(pipe: std::process::ChildStdout) -> std::thread::JoinHandle<Vec<u8>> {
-    std::thread::spawn(move || {
-        use std::io::Read;
-        let mut buf = Vec::new();
-        let _ = std::io::BufReader::new(pipe).read_to_end(&mut buf);
-        buf
-    })
-}
-
-/// Spawn a thread that drains a child stderr pipe to EOF (see above).
-fn spawn_stderr_reader_thread(pipe: std::process::ChildStderr) -> std::thread::JoinHandle<Vec<u8>> {
-    std::thread::spawn(move || {
-        use std::io::Read;
-        let mut buf = Vec::new();
-        let _ = std::io::BufReader::new(pipe).read_to_end(&mut buf);
-        buf
-    })
-}
-
-/// Join both drain threads and return their collected output.
-fn join_reader_threads(
-    out_thread: Option<std::thread::JoinHandle<Vec<u8>>>,
-    err_thread: Option<std::thread::JoinHandle<Vec<u8>>>,
-) -> (Vec<u8>, Vec<u8>) {
-    let stdout = out_thread.and_then(|t| t.join().ok()).unwrap_or_default();
-    let stderr = err_thread.and_then(|t| t.join().ok()).unwrap_or_default();
-    (stdout, stderr)
-}
 
 /// Concrete implementation of `HookRunnerService`.
 ///
@@ -86,10 +56,11 @@ impl HookRunnerImpl {
 
     /// Execute a single hook command and return its result.
     ///
-    /// Spawns the command as a child process, writes the stdin JSON payload,
-    /// reads stdout, and parses the response. If the process exits with a
-    /// non-zero code and the stdout is not valid JSON, returns a `ProcessError`.
-    fn execute_single_command(
+    /// Spawns the command as a child process (GAP-A-12: `tokio::process`,
+    /// never blocking the async runtime), writes the stdin JSON payload,
+    /// reads stdout/stderr concurrently via a tokio drain task, and parses
+    /// the response. Timeouts and abort checks are cooperative (async).
+    async fn execute_single_command(
         &self,
         command: &str,
         stdin_payload: &serde_json::Value,
@@ -109,7 +80,7 @@ impl HookRunnerImpl {
         let timeout_ms = (self.config.timeout_secs.max(MIN_TIMEOUT_SECS)) * 1000;
 
         // Spawn the child process
-        let mut child = Command::new("sh")
+        let mut child = tokio::process::Command::new("sh")
             .arg("-c")
             .arg(command)
             .stdin(Stdio::piped())
@@ -130,31 +101,43 @@ impl HookRunnerImpl {
 
         // Write stdin payload
         let stdin_json = serde_json::to_string(stdin_payload).unwrap_or_default();
-        if let Some(mut stdin) = child.stdin.take()
-            && let Err(e) = stdin.write_all(stdin_json.as_bytes())
-        {
-            let _ = child.kill();
-            return Err(HookError::Internal {
-                detail: format!("Failed to write stdin to hook '{}': {}", command, e),
-            });
+        if let Some(mut stdin) = child.stdin.take() {
+            if let Err(e) = stdin.write_all(stdin_json.as_bytes()).await {
+                let _ = child.kill().await;
+                return Err(HookError::Internal {
+                    detail: format!("Failed to write stdin to hook '{}': {}", command, e),
+                });
+            }
+            let _ = stdin.flush().await;
         }
 
-        // Take stdout/stderr and drain them on reader threads while we wait.
-        // GAP-A-04: without concurrent draining, a hook writing more than the
-        // ~64KB pipe buffer blocks forever on write(2) — try_wait() then only
-        // ever sees None and the wall-clock timeout is the sole escape.
-        let out_thread = child.stdout.take().map(spawn_reader_thread);
-        let err_thread = child.stderr.take().map(spawn_stderr_reader_thread);
+        // Drain stdout/stderr concurrently in a tokio task while we wait.
+        // GAP-A-04 + GAP-A-12: without concurrent draining, a hook writing
+        // more than the ~64KB pipe buffer blocks forever on write(2); the
+        // async reactor reads both pipes while the wait loop polls.
+        let mut out_pipe = child.stdout.take();
+        let mut err_pipe = child.stderr.take();
+        let drain = tokio::spawn(async move {
+            let mut stdout_buf = Vec::new();
+            let mut stderr_buf = Vec::new();
+            if let Some(pipe) = out_pipe.as_mut() {
+                let _ = pipe.read_to_end(&mut stdout_buf).await;
+            }
+            if let Some(pipe) = err_pipe.as_mut() {
+                let _ = pipe.read_to_end(&mut stderr_buf).await;
+            }
+            (stdout_buf, stderr_buf)
+        });
 
-        // Wait for the process with timeout
+        // Wait for the process with timeout (async, cooperative)
         let start = Instant::now();
         let status = loop {
             if let Some(signal) = abort_signal
                 && signal.is_aborted()
             {
-                let _ = child.kill();
-                let _ = child.wait();
-                let _ = join_reader_threads(out_thread, err_thread);
+                let _ = child.kill().await;
+                let _ = child.wait().await;
+                let _ = drain.await;
                 return Ok(HookRunResult::cancelled(
                     event,
                     vec![format!("Hook '{}' aborted during execution", command)],
@@ -166,20 +149,20 @@ impl HookRunnerImpl {
                 Ok(None) => {
                     // Process still running — check timeout
                     if start.elapsed().as_millis() as u64 > timeout_ms {
-                        let _ = child.kill();
-                        let _ = child.wait();
-                        let _ = join_reader_threads(out_thread, err_thread);
+                        let _ = child.kill().await;
+                        let _ = child.wait().await;
+                        let _ = drain.await;
                         return Err(HookError::Timeout {
                             command: command.to_string(),
                             timeout_ms,
                         });
                     }
-                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    tokio::time::sleep(Duration::from_millis(10)).await;
                 }
                 Err(e) => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    let _ = join_reader_threads(out_thread, err_thread);
+                    let _ = child.kill().await;
+                    let _ = child.wait().await;
+                    let _ = drain.await;
                     return Err(HookError::Internal {
                         detail: format!("Error waiting for hook '{}': {}", command, e),
                     });
@@ -187,11 +170,9 @@ impl HookRunnerImpl {
             }
         };
 
-        // Child has exited (reaped by try_wait above). The drain threads see
-        // EOF once the child's write ends close, so joining is prompt. This
-        // replaces the previous `wait_with_output()` call which ran AFTER the
-        // child was already reaped.
-        let (stdout_bytes, stderr_bytes) = join_reader_threads(out_thread, err_thread);
+        // Child has exited (reaped by try_wait above). The drain task sees
+        // EOF once the child's write ends close, so awaiting it is prompt.
+        let (stdout_bytes, stderr_bytes) = drain.await.unwrap_or_default();
         let elapsed = start.elapsed().as_millis() as u64;
         let stdout = String::from_utf8_lossy(&stdout_bytes).to_string();
         let stderr = String::from_utf8_lossy(&stderr_bytes).to_string();
@@ -255,7 +236,7 @@ impl HookRunnerImpl {
     }
 
     /// Execute all commands for a given event and aggregate the results.
-    fn execute_all_for_event(
+    async fn execute_all_for_event(
         &self,
         commands: &[String],
         payload: &HookStdinPayload,
@@ -265,9 +246,7 @@ impl HookRunnerImpl {
         let mut aggregated = HookRunResult::new(payload.event);
         let stdin_value = serde_json::to_value(payload).unwrap_or_default();
 
-        let commands_iter: Box<dyn Iterator<Item = &String>> = Box::new(commands.iter());
-
-        for command in commands_iter {
+        for command in commands {
             // Check abort before each hook
             if let Some(signal) = abort_signal
                 && signal.is_aborted()
@@ -279,7 +258,10 @@ impl HookRunnerImpl {
                 break;
             }
 
-            match self.execute_single_command(command, &stdin_value, payload.event, abort_signal) {
+            match self
+                .execute_single_command(command, &stdin_value, payload.event, abort_signal)
+                .await
+            {
                 Ok(hook_result) => {
                     aggregated.merge(&hook_result);
                     // If denied or cancelled, stop executing more hooks
@@ -305,8 +287,9 @@ impl HookRunnerImpl {
     }
 }
 
+#[async_trait]
 impl HookRunnerService for HookRunnerImpl {
-    fn run_pre_tool_use(
+    async fn run_pre_tool_use(
         &self,
         input: RunPreToolUseInput,
         abort_signal: Option<&HookAbortSignal>,
@@ -329,13 +312,15 @@ impl HookRunnerService for HookRunnerImpl {
             &input.workspace_root,
         );
 
-        let result = self.execute_all_for_event(commands, &payload, abort_signal, true);
+        let result = self
+            .execute_all_for_event(commands, &payload, abort_signal, true)
+            .await;
 
         self.running.store(false, Ordering::SeqCst);
         Ok(RunPreToolUseOutput { result })
     }
 
-    fn run_post_tool_use(
+    async fn run_post_tool_use(
         &self,
         input: RunPostToolUseInput,
         abort_signal: Option<&HookAbortSignal>,
@@ -358,13 +343,15 @@ impl HookRunnerService for HookRunnerImpl {
             &input.workspace_root,
         );
 
-        let result = self.execute_all_for_event(commands, &payload, abort_signal, false);
+        let result = self
+            .execute_all_for_event(commands, &payload, abort_signal, false)
+            .await;
 
         self.running.store(false, Ordering::SeqCst);
         Ok(RunPostToolUseOutput { result })
     }
 
-    fn run_post_tool_use_failure(
+    async fn run_post_tool_use_failure(
         &self,
         input: RunPostToolUseFailureInput,
         abort_signal: Option<&HookAbortSignal>,
@@ -387,7 +374,9 @@ impl HookRunnerService for HookRunnerImpl {
             &input.workspace_root,
         );
 
-        let result = self.execute_all_for_event(commands, &payload, abort_signal, false);
+        let result = self
+            .execute_all_for_event(commands, &payload, abort_signal, false)
+            .await;
 
         self.running.store(false, Ordering::SeqCst);
         Ok(RunPostToolUseFailureOutput { result })
@@ -416,14 +405,16 @@ impl HookRunnerService for HookRunnerImpl {
     }
 }
 
+#[async_trait]
 impl HookCommandExecutor for HookRunnerImpl {
-    fn execute_command(
+    async fn execute_command(
         &self,
         command: &str,
         stdin_payload: &serde_json::Value,
         abort_signal: Option<&HookAbortSignal>,
     ) -> Result<HookRunResult, HookError> {
         self.execute_single_command(command, stdin_payload, HookEvent::PreToolUse, abort_signal)
+            .await
     }
 }
 
@@ -440,8 +431,8 @@ mod tests {
         assert_eq!(runner.status().total_hook_count, 0);
     }
 
-    #[test]
-    fn test_run_pre_tool_use_empty_config() {
+    #[tokio::test]
+    async fn test_run_pre_tool_use_empty_config() {
         let runner = HookRunnerImpl::new(HookConfig::default());
         let input = RunPreToolUseInput {
             tool_name: "test_tool".into(),
@@ -449,13 +440,13 @@ mod tests {
             session_id: "test-session".into(),
             workspace_root: "/tmp".into(),
         };
-        let output = runner.run_pre_tool_use(input, None).unwrap();
+        let output = runner.run_pre_tool_use(input, None).await.unwrap();
         assert!(output.result.is_allowed());
         assert!(!output.result.is_denied());
     }
 
-    #[test]
-    fn test_run_post_tool_use_empty_config() {
+    #[tokio::test]
+    async fn test_run_post_tool_use_empty_config() {
         let runner = HookRunnerImpl::new(HookConfig::default());
         let input = RunPostToolUseInput {
             tool_name: "test_tool".into(),
@@ -464,12 +455,12 @@ mod tests {
             session_id: "test-session".into(),
             workspace_root: "/tmp".into(),
         };
-        let output = runner.run_post_tool_use(input, None).unwrap();
+        let output = runner.run_post_tool_use(input, None).await.unwrap();
         assert!(output.result.is_allowed());
     }
 
-    #[test]
-    fn test_run_post_tool_use_failure_empty_config() {
+    #[tokio::test]
+    async fn test_run_post_tool_use_failure_empty_config() {
         let runner = HookRunnerImpl::new(HookConfig::default());
         let input = RunPostToolUseFailureInput {
             tool_name: "test_tool".into(),
@@ -478,7 +469,7 @@ mod tests {
             session_id: "test-session".into(),
             workspace_root: "/tmp".into(),
         };
-        let output = runner.run_post_tool_use_failure(input, None).unwrap();
+        let output = runner.run_post_tool_use_failure(input, None).await.unwrap();
         assert!(output.result.is_allowed());
     }
 
@@ -520,13 +511,15 @@ mod tests {
         assert!(runner.reconfigure(new_config).is_ok());
     }
 
-    #[test]
-    fn test_execute_command_not_found_returns_process_error() {
+    #[tokio::test]
+    async fn test_execute_command_not_found_returns_process_error() {
         // Commands passed to sh -c that don't exist return ProcessError
         // (sh exits with non-zero code, not ENOENT at spawn time)
         let runner = HookRunnerImpl::new(HookConfig::default());
         let payload = serde_json::json!({"event":"pre_tool_use"});
-        let result = runner.execute_command("nonexistent-command-xyz-99999", &payload, None);
+        let result = runner
+            .execute_command("nonexistent-command-xyz-99999", &payload, None)
+            .await;
         match result {
             Err(HookError::ProcessError {
                 command, exit_code, ..
@@ -542,8 +535,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_abort_before_execution() {
+    #[tokio::test]
+    async fn test_abort_before_execution() {
         let runner = HookRunnerImpl::new(HookConfig::default());
         let signal = HookAbortSignal::new_aborted();
         let input = RunPreToolUseInput {
@@ -553,7 +546,7 @@ mod tests {
             workspace_root: "/tmp".into(),
         };
         // Empty config — no hooks to run, so abort doesn't matter
-        let output = runner.run_pre_tool_use(input, Some(&signal)).unwrap();
+        let output = runner.run_pre_tool_use(input, Some(&signal)).await.unwrap();
         assert!(output.result.is_allowed());
     }
 
@@ -564,12 +557,14 @@ mod tests {
     /// `execute_command` surfaces the raw error: before the fix this was
     /// `Timeout` (after the 1s window); with the fix the child exits as soon
     /// as the pipe drains and the non-JSON output yields `InvalidJson`.
-    #[test]
-    fn test_large_hook_output_does_not_deadlock() {
+    #[tokio::test]
+    async fn test_large_hook_output_does_not_deadlock() {
         let runner = HookRunnerImpl::new(HookConfig::default());
         let payload = serde_json::json!({});
         let start = std::time::Instant::now();
-        let result = runner.execute_command("yes x | head -c 200000", &payload, None);
+        let result = runner
+            .execute_command("yes x | head -c 200000", &payload, None)
+            .await;
         let elapsed_ms = start.elapsed().as_millis();
         assert!(
             matches!(result, Err(HookError::InvalidJson { .. })),
@@ -583,9 +578,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_abort_kills_long_running_hook() {
-        // Abort must kill + reap the child and join the drain threads so no
+    #[tokio::test]
+    async fn test_abort_kills_long_running_hook() {
+        // Abort must kill + reap the child and drain the pipes so no
         // zombie/leaked pipe is left behind.
         let config = HookConfig {
             pre_tool_use: vec!["sleep 30".into()],
@@ -602,13 +597,13 @@ mod tests {
         };
         let thread_signal = signal.clone();
         let handle =
-            std::thread::spawn(move || runner.run_pre_tool_use(input, Some(&thread_signal)));
+            tokio::spawn(async move { runner.run_pre_tool_use(input, Some(&thread_signal)).await });
         // Give the hook a moment to spawn, then abort.
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        tokio::time::sleep(Duration::from_millis(200)).await;
         signal.abort();
         let output = handle
-            .join()
-            .expect("runner thread must not hang")
+            .await
+            .expect("runner task must not hang")
             .expect("runner must return Ok");
         assert!(
             output.result.is_cancelled(),

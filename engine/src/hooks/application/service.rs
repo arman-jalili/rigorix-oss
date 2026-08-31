@@ -17,6 +17,8 @@
 //! - Methods accept references to `HookAbortSignal` for cancellation
 //! - No implementation — only contract signatures
 
+use async_trait::async_trait;
+
 use crate::hooks::domain::abort::HookAbortSignal;
 use crate::hooks::domain::config::HookConfig;
 use crate::hooks::domain::error::HookError;
@@ -37,6 +39,7 @@ use super::dto::{
 /// - Hooks run as child processes with the same privileges as the engine
 /// - Hook output is validated as JSON before processing
 /// - Aborted hooks are killed, not just signalled
+#[async_trait]
 pub trait HookRunnerService: Send + Sync {
     /// Run all PreToolUse hooks for a tool invocation.
     ///
@@ -46,7 +49,7 @@ pub trait HookRunnerService: Send + Sync {
     ///
     /// If `abort_signal` is set before or during execution, remaining
     /// hooks are skipped and the result is marked as cancelled.
-    fn run_pre_tool_use(
+    async fn run_pre_tool_use(
         &self,
         input: RunPreToolUseInput,
         abort_signal: Option<&HookAbortSignal>,
@@ -57,7 +60,7 @@ pub trait HookRunnerService: Send + Sync {
     /// Executes every registered PostToolUse command with the tool's
     /// output context. Hooks can append feedback messages but cannot
     /// modify input or block execution retroactively.
-    fn run_post_tool_use(
+    async fn run_post_tool_use(
         &self,
         input: RunPostToolUseInput,
         abort_signal: Option<&HookAbortSignal>,
@@ -68,7 +71,7 @@ pub trait HookRunnerService: Send + Sync {
     /// Executes every registered PostToolUseFailure command with the
     /// tool's error context. Hooks can append diagnostic messages
     /// and trigger recovery scripts.
-    fn run_post_tool_use_failure(
+    async fn run_post_tool_use_failure(
         &self,
         input: RunPostToolUseFailureInput,
         abort_signal: Option<&HookAbortSignal>,
@@ -94,6 +97,7 @@ pub trait HookRunnerService: Send + Sync {
 ///
 /// Lower-level interface for executing one hook command in isolation.
 /// Used internally by `HookRunnerService` implementations.
+#[async_trait]
 pub trait HookCommandExecutor: Send + Sync {
     /// Execute a single hook command with the given stdin payload.
     ///
@@ -101,7 +105,7 @@ pub trait HookCommandExecutor: Send + Sync {
     /// piped to stdin. The stdout is read and parsed as `HookStdoutResponse`.
     ///
     /// Returns the parsed response, or a `HookError` if execution failed.
-    fn execute_command(
+    async fn execute_command(
         &self,
         command: &str,
         stdin_payload: &serde_json::Value,
