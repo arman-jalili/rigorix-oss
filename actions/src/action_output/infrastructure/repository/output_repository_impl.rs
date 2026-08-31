@@ -174,10 +174,10 @@ impl OutputRepository for OutputRepositoryImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
+    use tokio::sync::Mutex;
 
     /// Ensure tests don't run in parallel when modifying env vars
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    static ENV_LOCK: Mutex<()> = Mutex::const_new(());
 
     #[tokio::test]
     async fn test_resolve_path_rejects_traversal() {
@@ -193,7 +193,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_is_github_actions_false_locally() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = ENV_LOCK.lock().await;
         // SAFETY: test-only env manipulation
         unsafe { std::env::remove_var("GITHUB_ACTIONS") };
         let repo = OutputRepositoryImpl::new();
@@ -202,7 +202,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_write_output_variable_to_tempfile() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = ENV_LOCK.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let output_path = dir.path().join("GITHUB_OUTPUT");
         // SAFETY: test-only env manipulation
@@ -220,7 +220,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_append_summary_to_tempfile() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = ENV_LOCK.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let summary_path = dir.path().join("GITHUB_STEP_SUMMARY");
         // SAFETY: test-only env manipulation
@@ -238,7 +238,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_overwrite_summary() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = ENV_LOCK.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let summary_path = dir.path().join("GITHUB_STEP_SUMMARY");
         // SAFETY: test-only env manipulation
@@ -258,7 +258,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_output_path() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = ENV_LOCK.lock().await;
         unsafe { std::env::remove_var("GITHUB_OUTPUT") };
         let repo = OutputRepositoryImpl::new();
         assert!(repo.get_output_path().await.unwrap().is_none());

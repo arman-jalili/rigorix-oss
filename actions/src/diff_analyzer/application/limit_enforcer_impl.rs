@@ -265,7 +265,7 @@ mod tests {
         assert!(result.any_exceeded);
         assert!(result.degraded);
         // Small file should be kept, large should be excluded
-        assert!(result.diff.files.len() > 0 || result.diff.excluded_files.len() > 0);
+        assert!(!result.diff.files.is_empty() || !result.diff.excluded_files.is_empty());
     }
 
     #[tokio::test]

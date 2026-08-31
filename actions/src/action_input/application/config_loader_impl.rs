@@ -608,8 +608,8 @@ inputs:
         assert_eq!(config.max_retries, 3);
         assert_eq!(config.retry_delay_ms, 1000);
         assert!(config.post_pr_comment);
-        assert_eq!(config.fail_on_violation, false);
-        assert_eq!(config.fail_on_action_error, false);
+        assert!(!config.fail_on_violation);
+        assert!(!config.fail_on_action_error);
         assert_eq!(config.intent, None);
         assert_eq!(config.profile, None);
     }

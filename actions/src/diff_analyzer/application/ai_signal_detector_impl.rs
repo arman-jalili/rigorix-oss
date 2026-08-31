@@ -235,10 +235,10 @@ mod tests {
         let diff_lines: Vec<DiffLine> = lines
             .iter()
             .map(|&l| {
-                let (line_type, content) = if l.starts_with('+') {
-                    (DiffLineType::Added, l[1..].to_string())
-                } else if l.starts_with('-') {
-                    (DiffLineType::Deleted, l[1..].to_string())
+                let (line_type, content) = if let Some(rest) = l.strip_prefix('+') {
+                    (DiffLineType::Added, rest.to_string())
+                } else if let Some(rest) = l.strip_prefix('-') {
+                    (DiffLineType::Deleted, rest.to_string())
                 } else {
                     (DiffLineType::Context, l.to_string())
                 };
