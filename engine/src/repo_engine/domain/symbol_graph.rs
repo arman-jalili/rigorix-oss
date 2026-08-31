@@ -491,6 +491,13 @@ impl SharedSymbolGraph {
         Self(Arc::new(RwLock::new(SymbolGraph::with_capacity(max))))
     }
 
+    /// Wrap an existing `SymbolGraph` (GAP-A-15: used by the service's
+    /// `graph()` accessor so callers can inspect the graph without holding
+    /// a guard across awaits).
+    pub fn from_graph(graph: SymbolGraph) -> Self {
+        Self(Arc::new(RwLock::new(graph)))
+    }
+
     /// Acquire a read lock.
     ///
     /// Multiple concurrent reads are allowed.
