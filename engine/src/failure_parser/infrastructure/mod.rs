@@ -10,4 +10,7 @@
 //! - No framework-specific annotations on trait definitions
 //! - Implementations are hidden behind these interfaces
 
+pub mod in_memory_repositories;
 pub mod repository;
+
+pub use in_memory_repositories::{InMemoryFailureLogRepository, InMemoryParserConfigRepository};

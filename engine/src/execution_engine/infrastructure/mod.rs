@@ -12,4 +12,5 @@
 //! - All methods return domain error types
 //! - No framework-specific annotations on trait definitions
 
+pub mod in_memory_execution_repositories;
 pub mod repository;

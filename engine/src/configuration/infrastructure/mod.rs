@@ -9,6 +9,9 @@
 //! infrastructure module.
 
 pub mod config_factory_impl;
+pub mod config_write_repository_impl;
 pub mod filesystem_config_repository;
 pub mod repository;
 pub mod secret_factory_impl;
+
+pub use config_write_repository_impl::ConfigWriteRepositoryImpl;

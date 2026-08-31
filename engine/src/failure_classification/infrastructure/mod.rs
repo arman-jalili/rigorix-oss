@@ -8,4 +8,7 @@
 //! behind traits. Implementations are provided by the concrete
 //! infrastructure module.
 
+pub mod in_memory_repositories;
 pub mod repository;
+
+pub use in_memory_repositories::{InMemoryClassificationLogRepository, InMemoryPatternRepository};

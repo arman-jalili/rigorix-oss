@@ -8,4 +8,7 @@
 //! behind traits. Implementations are provided by the concrete
 //! infrastructure module (reserved for future use).
 
+pub mod in_memory_budget_repository;
 pub mod repository;
+
+pub use in_memory_budget_repository::InMemoryLlmBudgetRepository;
