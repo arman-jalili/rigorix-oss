@@ -133,11 +133,22 @@ impl ScoredEvaluationService for ScoredEvaluationServiceImpl {
         // 1. Validate input
         self.validate_input(&input)?;
 
-        // 2. Resolve backend
-        // Find the first configured backend
-        let (backend_name, backend) = self.backends.iter().next().ok_or_else(|| {
-            ScoredEvaluationError::BackendNotFound("no backends configured".to_string())
-        })?;
+        // 2. Resolve backend (GAP-A-13)
+        // Requested backend wins; otherwise fall back to the first configured.
+        let (backend_name, backend) = if let Some(requested) = &input.backend {
+            let found = self.backends.get(requested).ok_or_else(|| {
+                ScoredEvaluationError::BackendNotFound(format!(
+                    "backend '{}' not configured",
+                    requested
+                ))
+            })?;
+            (requested.clone(), found)
+        } else {
+            let (name, found) = self.backends.iter().next().ok_or_else(|| {
+                ScoredEvaluationError::BackendNotFound("no backends configured".to_string())
+            })?;
+            (name.clone(), found)
+        };
 
         // 3. Emit started event
         let node_id = input.context.node_id.to_string();
@@ -219,6 +230,7 @@ mod tests {
     use tokio::sync::Mutex;
 
     struct MockBackend {
+        label: &'static str,
         result: Option<ScoringResult>,
         error: Option<ScoredEvaluationError>,
         health: bool,
@@ -234,11 +246,13 @@ mod tests {
             if let Some(err) = &self.error {
                 return Err(err.clone());
             }
-            Ok(self.result.clone().unwrap())
+            let mut res = self.result.clone().unwrap();
+            res.backend = self.label.to_string();
+            Ok(res)
         }
 
         fn backend_name(&self) -> &'static str {
-            "mock"
+            self.label
         }
 
         async fn health_check(&self) -> Result<bool, ScoredEvaluationError> {
@@ -312,6 +326,16 @@ mod tests {
         backends.insert(
             "mock".to_string(),
             Box::new(MockBackend {
+                label: "mock",
+                result: Some(make_result()),
+                error: None,
+                health: true,
+            }),
+        );
+        backends.insert(
+            "alternate".to_string(),
+            Box::new(MockBackend {
+                label: "alternate",
                 result: Some(make_result()),
                 error: None,
                 health: true,
@@ -361,11 +385,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_evaluate_selects_requested_backend() {
+        let service = make_service();
+        let input = EvaluateInput::new(
+            serde_json::json!({"code": "fn main() {}"}),
+            Rubric::inline(serde_json::json!({"quality": 0.9})),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            "test-node",
+        )
+        .with_backend("alternate");
+
+        let output = service.evaluate(input).await.unwrap();
+        assert_eq!(output.result.backend, "alternate");
+    }
+
+    #[tokio::test]
+    async fn test_evaluate_unknown_backend_returns_typed_error() {
+        let service = make_service();
+        let input = EvaluateInput::new(
+            serde_json::json!({"code": "fn main() {}"}),
+            Rubric::inline(serde_json::json!({"quality": 0.9})),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            "test-node",
+        )
+        .with_backend("does-not-exist");
+
+        let err = service.evaluate(input).await.unwrap_err();
+        assert!(matches!(err, ScoredEvaluationError::BackendNotFound(_)));
+        assert!(err.to_string().contains("does-not-exist"));
+    }
+
+    #[tokio::test]
     async fn test_evaluate_backend_error() {
         let mut backends: HashMap<String, Box<dyn ScoringBackend>> = HashMap::new();
         backends.insert(
             "failing".to_string(),
             Box::new(MockBackend {
+                label: "failing",
                 result: None,
                 error: Some(ScoredEvaluationError::BackendError("failure".to_string())),
                 health: false,
