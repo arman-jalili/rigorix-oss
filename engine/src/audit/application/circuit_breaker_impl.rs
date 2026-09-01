@@ -227,6 +227,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_half_open_recovers_to_closed_on_success() {
+        // GAP-A-23: after the half-open timeout elapses, a probe succeeds and
+        // the breaker recovers to Closed (half-open recovery).
+        let cb = CircuitBreakerImpl::new("https://audit.example.com".to_string(), 2, 0);
+
+        // Open the breaker (threshold = 2)
+        cb.record_failure().await.unwrap();
+        cb.record_failure().await.unwrap();
+        assert_eq!(cb.state().await.unwrap(), CircuitBreakerState::Open);
+
+        // With half_open_timeout_secs = 0, the next request is the probe
+        // (transitions Open -> HalfOpen and is allowed through).
+        assert!(cb.allow_request().await.is_ok());
+        assert_eq!(cb.state().await.unwrap(), CircuitBreakerState::HalfOpen);
+
+        // Probe success -> close the breaker and reset the failure count
+        cb.record_success().await.unwrap();
+        assert_eq!(cb.state().await.unwrap(), CircuitBreakerState::Closed);
+
+        // A subsequent failure below the threshold does NOT reopen
+        cb.record_failure().await.unwrap();
+        assert_eq!(cb.state().await.unwrap(), CircuitBreakerState::Closed);
+        assert!(cb.allow_request().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_half_open_failure_reopens() {
+        // GAP-A-23: a failed probe reopens the breaker (back to Open).
+        let cb = CircuitBreakerImpl::new("https://audit.example.com".to_string(), 1, 0);
+        cb.record_failure().await.unwrap();
+        assert!(cb.allow_request().await.is_ok()); // probe -> HalfOpen
+        cb.record_failure().await.unwrap(); // probe failure
+        assert_eq!(cb.state().await.unwrap(), CircuitBreakerState::Open);
+        // (the next allow_request's Err/Ok depends on the real-time half-open
+        // timeout window — the state transition back to Open is the check)
+    }
+
+    #[tokio::test]
     async fn test_reset() {
         let cb = CircuitBreakerImpl::new("https://audit.example.com".to_string(), 1, 30);
 
