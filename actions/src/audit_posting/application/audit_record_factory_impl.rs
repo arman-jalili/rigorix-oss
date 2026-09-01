@@ -16,7 +16,9 @@ use crate::audit_posting::domain::{AuditPostingError, SignedAuditRecord};
 use super::dto::{CreateRecordInput, SignRecordInput, SignRecordOutput};
 use super::factory::AuditRecordFactory;
 
-use hmac::{Hmac, Mac};
+use hmac::{
+    KeyInit, {Hmac, Mac},
+};
 use sha2::Sha256;
 
 /// HMAC-SHA256 type alias.

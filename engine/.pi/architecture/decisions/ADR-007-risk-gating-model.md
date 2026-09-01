@@ -1,6 +1,6 @@
 # ADR-007: Risk Gating Model — Low / Medium / High
 
-**Status:** Accepted
+**Status:** Implemented (risk_gating/domain: RiskLevel Low/Medium/High + DefaultClassifier)
 **Date:** 2026-06-13
 **Session:** 63c25384-1902-4b72-83bb-257f3f682af5
 

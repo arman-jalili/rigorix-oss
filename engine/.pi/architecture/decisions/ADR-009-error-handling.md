@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (applied across all engine modules)
+Implemented (typed error enums with thiserror across all modules; ActionError/PolicyError/PlanningError etc.)
 
 ## Context
 

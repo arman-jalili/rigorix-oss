@@ -1,6 +1,6 @@
 # ADR-003: LLM Provider Abstraction via Traits
 
-**Status:** Accepted
+**Status:** Implemented (planning/infrastructure: ClaudeClassifier, OpenAI classifier, TemplateGenerator trait impls)
 **Date:** 2026-06-13
 **Session:** 63c25384-1902-4b72-83bb-257f3f682af5
 

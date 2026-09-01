@@ -302,7 +302,7 @@ impl AuditQueryService for InMemoryAuditQueryService {
 /// field is empty at signing time), so tampering with any step/status/duration
 /// field breaks the signature — previously only a scalar subset was signed.
 fn compute_hmac(envelope: &AuditEnvelope, key: &str) -> String {
-    use hmac::{Hmac, Mac};
+    use hmac::{Hmac, KeyInit, Mac};
     use sha2::Sha256;
 
     let mut mac =

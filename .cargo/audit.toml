@@ -1,0 +1,4 @@
+[advisories]
+# Intentionally empty: no advisory ignores. The project prefers an honest
+# failing audit over silently suppressing advisories. Remaining findings are
+# documented in the gap-ledger (see rsa/lru/wit-bindgen follow-ups).

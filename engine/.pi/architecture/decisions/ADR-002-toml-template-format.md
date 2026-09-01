@@ -1,6 +1,6 @@
 # ADR-002: TOML Template Format for Workflow Definitions
 
-**Status:** Accepted
+**Status:** Implemented (templates module: TOML parser + engine, verified against engine/src/templates)
 **Date:** 2026-06-13
 **Session:** 63c25384-1902-4b72-83bb-257f3f682af5
 
