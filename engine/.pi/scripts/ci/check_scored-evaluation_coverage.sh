@@ -92,12 +92,14 @@ if command -v cargo &>/dev/null; then
         log_fail "No test functions found in scored_evaluation"
     fi
 
-    # Count integration test files
-    INTEGRATION_COUNT=$(find tests/unit/scored-evaluation -name '*_test.rs' 2>/dev/null | wc -l | tr -d ' ')
+    # Count real integration test files (GAP-A-24: the 24 inert
+    # tests/unit stubs were removed — they were never compiled; count the
+    # actual *_integration.rs suites instead)
+    INTEGRATION_COUNT=$(find tests -maxdepth 1 -name '*_integration.rs' 2>/dev/null | wc -l | tr -d ' ')
     if [ "$INTEGRATION_COUNT" -gt 0 ]; then
-        log_pass "scored_evaluation has $INTEGRATION_COUNT integration test files"
+        log_pass "scored_evaluation has $INTEGRATION_COUNT integration test suites"
     else
-        log_fail "No integration test files found for scored_evaluation"
+        log_fail "No integration test suites found for scored_evaluation"
     fi
 
     # Verify cargo test passes
