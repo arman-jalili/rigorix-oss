@@ -1702,8 +1702,8 @@ impl crate::repo_engine::application::service::SymbolGraphService for MockSymbol
         unimplemented!()
     }
 
-    fn graph(&self) -> &crate::repo_engine::domain::SymbolGraph {
-        unimplemented!()
+    fn graph(&self) -> crate::repo_engine::domain::SharedSymbolGraph {
+        crate::repo_engine::domain::SharedSymbolGraph::new()
     }
 }
 
