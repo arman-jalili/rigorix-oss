@@ -1,6 +1,6 @@
 # ADR-010: Scored Evaluation Architecture — Pluggable Quality Scoring Backends
 
-**Status:** Accepted
+**Status:** Implemented (EvaluateInput.backend selection + typed BackendNotFound; engine/src/scored_evaluation/application/service_impl.rs:134-145)
 **Date:** 2026-07-15
 
 **Tech Stack:** Rust

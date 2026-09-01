@@ -1,6 +1,6 @@
 # ADR-007: Compliance Engine Architecture — Read-Only Audit Bridge
 
-**Status:** Accepted
+**Status:** Implemented (read-only audit bridge: ReadAuditHandler/ListAuditsHandler in mcp/src/audit_tools/application/service_impl.rs)
 **Date:** 2026-07-12
 **Session:** d19b7a21-8f4c-4b3e-9a1d-5e6f7c8b9a0d
 

@@ -1,6 +1,6 @@
 # ADR-001: Domain-Driven Design with Bounded Contexts
 
-**Status:** Accepted
+**Status:** Implemented (mcp/src/ bounded-context modules: mcp_server, execution_tools, audit_tools, template_tools, enterprise_proxy)
 **Date:** 2026-07-12
 **Session:** d19b7a21-8f4c-4b3e-9a1d-5e6f7c8b9a0d
 

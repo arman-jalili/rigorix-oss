@@ -38,37 +38,53 @@ fn create_executor() -> ParallelExecutionServiceImpl {
     ParallelExecutionServiceImpl::new(config, Box::new(retry), event_bus)
 }
 
+/// A-02: minimal sealed graph for session-setup tests (abort/pause/state).
+fn sample_graph() -> crate::dag_engine::domain::TaskGraph {
+    use crate::dag_engine::domain::{TaskGraph, TaskNode};
+    let mut graph = TaskGraph::new();
+    let root = TaskNode::new(Uuid::new_v4(), "root", "shell", vec![], "echo hi");
+    graph.add_unchecked(root).unwrap();
+    graph.seal().unwrap();
+    graph
+}
+
 // ---------------------------------------------------------------------------
 // ParallelExecutionServiceImpl Tests
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn test_execute_graph_creates_session() {
+async fn test_execute_graph_without_graph_fails() {
+    // GAP-A-02: a missing graph is a caller contract violation — typed error,
+    // never a fake-success empty result.
     let executor = create_executor();
     let dag_id = Uuid::new_v4();
 
-    let output = executor
+    let err = executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
             graph: None,
             config_override: None,
         })
         .await
-        .unwrap();
+        .unwrap_err();
 
-    assert_eq!(output.result.dag_id, dag_id);
-    assert!(output.result.execution_states.is_empty());
+    assert!(err.to_string().contains("without a graph"), "got: {err}");
 }
 
 #[tokio::test]
 async fn test_execute_graph_rejects_duplicate() {
     let executor = create_executor();
     let dag_id = Uuid::new_v4();
+    use crate::dag_engine::domain::{TaskGraph, TaskNode};
+    let mut graph = TaskGraph::new();
+    let root = TaskNode::new(Uuid::new_v4(), "root", "shell", vec![], "echo hi");
+    graph.add_unchecked(root.clone()).unwrap();
+    graph.seal().unwrap();
 
     executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
-            graph: None,
+            graph: Some(graph),
             config_override: None,
         })
         .await
@@ -77,7 +93,7 @@ async fn test_execute_graph_rejects_duplicate() {
     let err = executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
-            graph: None,
+            graph: Some(sample_graph()),
             config_override: None,
         })
         .await
@@ -96,10 +112,16 @@ async fn test_execute_graph_with_config_override() {
         ..Default::default()
     };
 
+    use crate::dag_engine::domain::{TaskGraph, TaskNode};
+    let mut graph = TaskGraph::new();
+    let root = TaskNode::new(Uuid::new_v4(), "root", "shell", vec![], "echo hi");
+    graph.add_unchecked(root.clone()).unwrap();
+    graph.seal().unwrap();
+
     let output = executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
-            graph: None,
+            graph: Some(graph),
             config_override: Some(custom_config),
         })
         .await
@@ -946,7 +968,7 @@ async fn test_pause_and_resume_execution() {
     executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
-            graph: None,
+            graph: Some(sample_graph()),
             config_override: None,
         })
         .await
@@ -989,7 +1011,7 @@ async fn test_pause_already_paused_returns_error() {
     executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
-            graph: None,
+            graph: Some(sample_graph()),
             config_override: None,
         })
         .await
@@ -1016,7 +1038,7 @@ async fn test_resume_not_paused_returns_error() {
     executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
-            graph: None,
+            graph: Some(sample_graph()),
             config_override: None,
         })
         .await
@@ -1038,7 +1060,7 @@ async fn test_abort_execution() {
     executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
-            graph: None,
+            graph: Some(sample_graph()),
             config_override: None,
         })
         .await
@@ -1064,7 +1086,7 @@ async fn test_abort_twice_returns_error() {
     executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
-            graph: None,
+            graph: Some(sample_graph()),
             config_override: None,
         })
         .await
@@ -1160,7 +1182,7 @@ async fn test_execute_graph_with_custom_config_override_respected() {
     let output = executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
-            graph: None,
+            graph: Some(sample_graph()),
             config_override: Some(config),
         })
         .await
@@ -1751,7 +1773,7 @@ async fn test_parallel_execution_factory_creates_service() {
     let output = service
         .execute_graph(ExecuteGraphInput {
             dag_id,
-            graph: None,
+            graph: Some(sample_graph()),
             config_override: None,
         })
         .await
@@ -1812,7 +1834,7 @@ async fn test_factory_with_custom_config() {
     let output = service
         .execute_graph(ExecuteGraphInput {
             dag_id,
-            graph: None,
+            graph: Some(sample_graph()),
             config_override: None,
         })
         .await
@@ -1926,7 +1948,7 @@ async fn test_execute_graph_creates_session_and_tracks_state() {
     executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
-            graph: None,
+            graph: Some(sample_graph()),
             config_override: None,
         })
         .await
@@ -1950,7 +1972,7 @@ async fn test_execute_graph_completes_without_cancellation() {
     let output = executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
-            graph: None,
+            graph: Some(sample_graph()),
             config_override: None,
         })
         .await
@@ -1968,7 +1990,7 @@ async fn test_abort_marks_execution_as_cancelled() {
     executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
-            graph: None,
+            graph: Some(sample_graph()),
             config_override: None,
         })
         .await
@@ -2113,15 +2135,21 @@ async fn test_progress_callback_fires() {
     executor
         .execute_graph(ExecuteGraphInput {
             dag_id,
-            graph: None,
+            graph: Some(sample_graph()),
             config_override: None,
         })
         .await
         .unwrap();
 
-    // Callback registered but not triggered since no nodes complete
-    // The callback infrastructure is ready for real execution
-    assert_eq!(called.load(std::sync::atomic::Ordering::SeqCst), 0);
+    // GAP-A-02 change: the graph now really executes (sample_graph has one
+    // shell node), so the progress callback fires for the completed node.
+    // This also guards the notify_progress re-lock deadlock (regression):
+    // a registered callback used to self-deadlock on the sessions Mutex.
+    let fired = called.load(std::sync::atomic::Ordering::SeqCst);
+    assert!(
+        fired >= 1,
+        "progress callback should fire for completed node, got {fired}"
+    );
 }
 
 #[tokio::test]

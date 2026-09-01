@@ -1,6 +1,6 @@
 # ADR-004: MCP Protocol Design — Hand-Rolled JSON-RPC over stdio/SSE
 
-**Status:** Accepted
+**Status:** Implemented, with one deviation — hand-rolled JSON-RPC over stdio stands; the SSE transport was removed (GAP-A-10), stdio-only since
 **Date:** 2026-07-12
 **Session:** d19b7a21-8f4c-4b3e-9a1d-5e6f7c8b9a0d
 

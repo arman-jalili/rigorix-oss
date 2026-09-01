@@ -107,7 +107,15 @@ impl McpServerService for McpServerServiceImpl {
         &self,
         input: InitializeInput,
     ) -> Result<(InitializeOutput, Vec<McpServerEvent>), McpServerError> {
-        let protocol_version = input.protocol_version.clone();
+        // GAP-A-22: protocol negotiation — echo the client's version when we
+        // support it, else fall back to our default (never fabricate).
+        const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2025-03-26", "2025-06-18", "2024-11-05"];
+        let negotiated = if SUPPORTED_PROTOCOL_VERSIONS.contains(&input.protocol_version.as_str()) {
+            input.protocol_version.clone()
+        } else {
+            "2025-03-26".to_string()
+        };
+        let protocol_version = negotiated.clone();
         let client_info = ClientInfo {
             name: input.client_info.name,
             version: input.client_info.version,
@@ -125,7 +133,7 @@ impl McpServerService for McpServerServiceImpl {
             ServerCapabilities::default_with_counts(tool_count, RESOURCE_COUNT, PROMPT_COUNT);
 
         let output = InitializeOutput {
-            protocol_version: "2025-03-26".to_string(),
+            protocol_version: negotiated,
             server_capabilities: server_caps.clone(),
             server_info: "Rigorix MCP Gateway".to_string(),
         };
@@ -356,12 +364,19 @@ impl McpServerService for McpServerServiceWithRepos {
         &self,
         input: InitializeInput,
     ) -> Result<(InitializeOutput, Vec<McpServerEvent>), McpServerError> {
+        // GAP-A-22: negotiate — echo client's version when supported.
+        const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2025-03-26", "2025-06-18", "2024-11-05"];
+        let negotiated = if SUPPORTED_PROTOCOL_VERSIONS.contains(&input.protocol_version.as_str()) {
+            input.protocol_version.clone()
+        } else {
+            "2025-03-26".to_string()
+        };
         let tool_count = 0; // Would query registry_repo
         let server_caps =
             ServerCapabilities::default_with_counts(tool_count, RESOURCE_COUNT, PROMPT_COUNT);
 
         let output = InitializeOutput {
-            protocol_version: "2025-03-26".to_string(),
+            protocol_version: negotiated,
             server_capabilities: server_caps.clone(),
             server_info: "Rigorix MCP Gateway".to_string(),
         };

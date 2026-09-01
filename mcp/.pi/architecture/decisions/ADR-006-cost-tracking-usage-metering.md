@@ -1,6 +1,6 @@
 # ADR-006: Cost Tracking & Usage Metering — Engine-Delegated + Proxy Telemetry
 
-**Status:** Accepted
+**Status:** Partial — engine-delegated usage/cost tracking is wired (execution_tools); proxy-side telemetry is not implemented (no telemetry module)
 **Date:** 2026-07-12
 **Session:** d19b7a21-8f4c-4b3e-9a1d-5e6f7c8b9a0d
 
