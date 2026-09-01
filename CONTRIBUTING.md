@@ -145,13 +145,16 @@ Before marking a PR as ready for review, confirm:
 
 ```
 rigorix-oss/
-├── engine/         # Core library (28 bounded contexts)
+├── engine/         # Core library (33 bounded-context modules)
 │   ├── src/        # Rust source
 │   └── .pi/        # Architecture docs, ADRs
-├── cli/            # CLI binary + TUI
+├── cli/            # CLI binary + TUI (rigorix-cli)
 │   ├── src/
 │   └── .pi/
-├── actions/        # GitHub Action adapter
+├── mcp/            # MCP server (rigorix-mcp)
+│   ├── src/
+│   └── .pi/
+├── actions/        # GitHub Action adapter (rigorix-action)
 │   ├── src/
 │   └── .pi/
 ├── .pi/            # Root-level architecture, prompts, scripts

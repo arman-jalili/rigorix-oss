@@ -1,6 +1,6 @@
 # ADR-008: RAII Budget Reservation for LLM Cost Control
 
-**Status:** Accepted
+**Status:** Implemented (budget_tracking: LlmBudgetReservationImpl RAII guard, GAP-A-09)
 **Date:** 2026-06-13
 **Session:** 63c25384-1902-4b72-83bb-257f3f682af5
 

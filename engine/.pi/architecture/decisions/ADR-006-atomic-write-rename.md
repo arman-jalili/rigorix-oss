@@ -1,6 +1,6 @@
 # ADR-006: Atomic Write-Rename for State Persistence
 
-**Status:** Accepted
+**Status:** Implemented (state_persistence: {id}.json.tmp -> rename in filesystem_state_repository)
 **Date:** 2026-06-13
 **Session:** 63c25384-1902-4b72-83bb-257f3f682af5
 

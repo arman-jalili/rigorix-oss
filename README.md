@@ -1,6 +1,6 @@
 # Rigorix
 
-[![Crates.io](https://img.shields.io/badge/crate-rigorix-blue)](https://crates.io/crates/rigorix)
+[![Crates.io](https://img.shields.io/badge/crate-rigorix--cli-blue)](https://crates.io/crates/rigorix-cli)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-green)](LICENSE-MIT)
 [![CI](https://github.com/arman-jalili/rigorix-oss/actions/workflows/ci.yml/badge.svg)](https://github.com/arman-jalili/rigorix-oss/actions/workflows/ci.yml)
 [![Rust](https://img.shields.io/static/v1?label=rust&message=2024%20edition&color=orange)](https://doc.rust-lang.org/edition-guide/rust-2024/index.html)
@@ -181,7 +181,7 @@ cargo install --git https://github.com/arman-jalili/rigorix-oss rigorix-cli
 # Or build locally
 git clone https://github.com/arman-jalili/rigorix-oss
 cd rigorix-oss && cargo build --release -p rigorix-cli
-./target/release/rigorix --help
+./target/release/rigorix-cli --help
 ```
 
 ### Set your API key

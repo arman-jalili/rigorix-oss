@@ -7,7 +7,7 @@
 //! JSON-RPC messages from stdin and writes responses to stdout. Supports
 //! graceful shutdown via SIGINT/SIGTERM.
 //!
-//! This composition root wires together all 10 OSS MCP tools across
+//! This composition root wires together all 15 OSS MCP tools across
 //! three bounded contexts (execution, audit, template) with shared
 //! in-memory services for development and testing.
 //!

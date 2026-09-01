@@ -1,6 +1,6 @@
 # ADR-004: Three Autonomy Presets with Hard Enforcement Caps
 
-**Status:** Accepted
+**Status:** Implemented (enforcement/domain/config.rs: EnforcementPresetProfile with hard caps)
 **Date:** 2026-06-13
 **Session:** 63c25384-1902-4b72-83bb-257f3f682af5
 

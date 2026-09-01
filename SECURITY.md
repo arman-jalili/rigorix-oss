@@ -7,8 +7,9 @@ please report it privately before disclosing it publicly.
 
 **Do not report security vulnerabilities through public GitHub issues.**
 
-Instead, please report via email to **security@example.com** (or the
-maintainer's email in the commit history). You should receive a response
+Instead, open a **private security advisory** via GitHub's *Security* tab
+(Security advisories → New draft security advisory), or reach the maintainer
+directly through the project's GitHub profile. You should receive a response
 within 48 hours.
 
 ## What to include
