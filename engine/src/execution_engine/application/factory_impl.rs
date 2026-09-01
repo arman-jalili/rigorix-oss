@@ -20,6 +20,7 @@ use crate::execution_engine::application::service_impl::{
     ParallelExecutionServiceImpl, RetryEvaluationServiceImpl,
 };
 use crate::execution_engine::domain::ExecutionError;
+use crate::failure_classification::application::failure_classifier_service_impl::FailureClassifierServiceImpl;
 
 /// Factory implementation for constructing `ParallelExecutionService` instances.
 ///
@@ -47,7 +48,11 @@ impl ParallelExecutionFactory for ParallelExecutionFactoryImpl {
         &self,
         config: ParallelExecutionFactoryConfig,
     ) -> Result<Box<dyn ParallelExecutionService>, ExecutionError> {
-        let retry_service = Box::new(RetryEvaluationServiceImpl::new());
+        // GAP-A-19: the production retry loop is driven by structured failure
+        // classification (with policy fallback for unclassified failures).
+        let retry_service = Box::new(RetryEvaluationServiceImpl::with_classifier(
+            std::sync::Arc::new(FailureClassifierServiceImpl),
+        ));
         // Use a default event bus if none was provided
         let event_bus = config
             .event_bus

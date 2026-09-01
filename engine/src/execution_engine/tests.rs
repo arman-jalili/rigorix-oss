@@ -25,6 +25,7 @@ use crate::execution_engine::domain::{
     BackoffStrategy, FailureContext, NodeExecutionState, ParallelExecutorConfig, RetryDecision,
     RetryPolicy, RetryStrategy,
 };
+use crate::failure_classification::application::failure_classifier_service_impl::FailureClassifierServiceImpl;
 
 // ---------------------------------------------------------------------------
 // Helper: create a configured service pair
@@ -1602,6 +1603,123 @@ async fn test_validate_policy_bad_multiplier() {
 
     let errors = service.validate_policy(&policy).await.unwrap();
     assert!(errors.iter().any(|e| e.contains("multiplier")));
+}
+
+#[tokio::test]
+async fn test_retry_decision_driven_by_classification_transient() {
+    // GAP-A-19: a confident Transient classification (network/timeout)
+    // drives a Retry decision.
+    let service = RetryEvaluationServiceImpl::with_classifier(std::sync::Arc::new(
+        FailureClassifierServiceImpl,
+    ));
+    let policy = RetryPolicy {
+        // Policy says this failure_code is NOT retriable; the structured
+        // classification (Transient) overrides and grants the retry.
+        retryable_failures: vec!["compile_error".to_string()],
+        max_attempts: 3,
+        ..Default::default()
+    };
+    let ctx = FailureContext::new(
+        uuid::Uuid::new_v4(),
+        "test-node",
+        "run-command",
+        "run",
+        "command_failed",
+        "connection to host timed out after 30s",
+        0,
+        3,
+        100,
+        100,
+    );
+
+    let output = service
+        .evaluate_retry(EvaluateRetryInput {
+            failure_context: ctx,
+            policy,
+            fallback_node_id: None,
+        })
+        .await
+        .unwrap();
+
+    assert!(
+        output.decision.is_retry(),
+        "Transient must retry: {:?}",
+        output.decision
+    );
+}
+
+#[tokio::test]
+async fn test_retry_decision_driven_by_classification_build_failure_skips() {
+    // GAP-A-19: a confident BuildFailure classification is NOT retryable
+    // even though the policy would allow the code.
+    let service = RetryEvaluationServiceImpl::with_classifier(std::sync::Arc::new(
+        FailureClassifierServiceImpl,
+    ));
+    let policy = RetryPolicy::default(); // all codes retriable
+    let ctx = FailureContext::new(
+        uuid::Uuid::new_v4(),
+        "test-node",
+        "cargo build",
+        "build",
+        "command_failed",
+        "error: build failed: cannot compile",
+        0,
+        3,
+        100,
+        100,
+    );
+
+    let output = service
+        .evaluate_retry(EvaluateRetryInput {
+            failure_context: ctx,
+            policy,
+            fallback_node_id: None,
+        })
+        .await
+        .unwrap();
+
+    assert!(
+        matches!(output.decision, RetryDecision::Skip { .. }),
+        "BuildFailure must skip: {:?}",
+        output.decision
+    );
+}
+
+#[tokio::test]
+async fn test_retry_decision_unclassified_defers_to_policy() {
+    // GAP-A-19: an unmatched message (documented NonRetryable default) is
+    // treated as unclassified and defers to the policy (all retriable here).
+    let service = RetryEvaluationServiceImpl::with_classifier(std::sync::Arc::new(
+        FailureClassifierServiceImpl,
+    ));
+    let policy = RetryPolicy::default();
+    let ctx = FailureContext::new(
+        uuid::Uuid::new_v4(),
+        "test-node",
+        "tool",
+        "op",
+        "custom_failure",
+        "some completely unusual error text",
+        0,
+        3,
+        100,
+        100,
+    );
+
+    let output = service
+        .evaluate_retry(EvaluateRetryInput {
+            failure_context: ctx,
+            policy,
+            fallback_node_id: None,
+        })
+        .await
+        .unwrap();
+
+    assert!(
+        output.decision.is_retry(),
+        "unclassified must defer to policy: {:?}",
+        output.decision
+    );
 }
 
 #[tokio::test]

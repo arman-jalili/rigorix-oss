@@ -2695,12 +2695,32 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
 /// - Remaining retry budget
 ///
 /// All decisions are computational — no external dependencies.
-pub struct RetryEvaluationServiceImpl;
+pub struct RetryEvaluationServiceImpl {
+    /// Optional structured failure classifier (GAP-A-19).
+    classifier: Option<
+        Arc<dyn crate::failure_classification::application::service::FailureClassifierService>,
+    >,
+}
 
 impl RetryEvaluationServiceImpl {
-    /// Create a new RetryEvaluationServiceImpl.
+    /// Create a new RetryEvaluationServiceImpl without structured
+    /// classification (legacy policy-only behavior).
     pub fn new() -> Self {
-        Self
+        Self { classifier: None }
+    }
+
+    /// Create a service whose retry decisions are driven by structured
+    /// `FailureClassifierService` classification (GAP-A-19) when the
+    /// classifier produces a confident match; unclassified failures defer
+    /// to the policy's substring list (preserving prior behavior).
+    pub fn with_classifier(
+        classifier: Arc<
+            dyn crate::failure_classification::application::service::FailureClassifierService,
+        >,
+    ) -> Self {
+        Self {
+            classifier: Some(classifier),
+        }
     }
 }
 
@@ -2784,21 +2804,63 @@ impl RetryEvaluationService for RetryEvaluationServiceImpl {
         policy: &RetryPolicy,
         fallback_node_id: Option<Uuid>,
     ) -> RetryDecision {
+        // GAP-A-19: structured classification augments the policy check.
+        // A confident classifier match decides retriability; the documented
+        // no-match default (NonRetryable) is treated as "unclassified" and
+        // defers to the policy's substring list.
+        let mut classification_note = String::new();
+        let classified_gate: Option<bool> = if let Some(classifier) = &self.classifier {
+            match classifier
+                .classify(
+                    crate::failure_classification::application::dto::ClassifyFailureInput {
+                        error_message: failure_context.error_message.clone(),
+                        operation_context: Some("execution retry evaluation".to_string()),
+                        source: Some("execution_engine".to_string()),
+                    },
+                )
+                .await
+            {
+                Ok(output) => {
+                    let is_default = output
+                        .explanation
+                        .as_deref()
+                        .is_some_and(|e| e.starts_with("No matching pattern"));
+                    if is_default {
+                        None
+                    } else {
+                        classification_note = format!(
+                            " (classified {:?}: {})",
+                            output.failure_type,
+                            output.explanation.as_deref().unwrap_or("")
+                        );
+                        Some(output.is_retryable)
+                    }
+                }
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+
         // 1. Check if the failure type is retriable
-        if !policy.is_failure_retriable(&failure_context.failure_type) {
+        let retriable = match classified_gate {
+            Some(decided) => decided,
+            None => policy.is_failure_retriable(&failure_context.failure_type),
+        };
+        if !retriable {
             if let Some(fallback_id) = fallback_node_id {
                 return RetryDecision::Fallback {
                     fallback_node_id: fallback_id,
                     reason: format!(
-                        "Failure type '{}' is not retriable; executing fallback",
-                        failure_context.failure_type
+                        "Failure type '{}' is not retriable{}; executing fallback",
+                        failure_context.failure_type, classification_note
                     ),
                 };
             }
             return RetryDecision::Skip {
                 reason: format!(
-                    "Failure type '{}' is not retriable and no fallback configured",
-                    failure_context.failure_type
+                    "Failure type '{}' is not retriable{} and no fallback configured",
+                    failure_context.failure_type, classification_note
                 ),
             };
         }
