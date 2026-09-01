@@ -78,9 +78,20 @@ graphify-out/
 
 # Local CI reports
 .pi/output/
-.mcp.json\nmcp/019*.json\nmcp/.rigorix/
 
 # Test artifacts
 .mcp.json
 mcp/019f*.json
 mcp/.rigorix/
+
+# --- Runtime state (never commit) ---
+# Guardian pipeline/epic state + manifests
+.guardian-*.json
+.guardian-kanban.json
+guardian-manifest.json
+**/.guardian-*.json
+**/guardian-manifest.json
+
+# CLI runtime state + demo media
+cli/.rigorix/state/
+*.mov
