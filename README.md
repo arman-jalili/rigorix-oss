@@ -166,7 +166,7 @@ When a user runs `rigorix plan "Extract docs from src/api.ts"`, Rigorix classifi
 
 When no existing template matches the intent — or confidence is low — Rigorix prompts the LLM to generate a new template dynamically. Generated templates can be cached and reused, reducing the need to regenerate common workflows.
 
-Rigorix currently supports Rust, TypeScript, Python, and Go as target codebases. TypeScript is the most mature integration today; the others are functional but earlier-stage.
+Rigorix currently supports Rust, TypeScript, and Python as target codebases. TypeScript is the most mature integration today; the others are functional but earlier-stage.
 
 ---
 
@@ -290,7 +290,7 @@ rigorix-oss/
 Rigorix treats CI as continuous verification rather than compilation and testing. Beyond formatting, linting, unit tests, and security scanning, every architectural capability is validated through proofing scripts that verify contracts, architecture readiness, documentation consistency, policy enforcement, and execution guarantees.
 
 ```
-📦 86 automated verification steps
+📦 84 automated verification steps
 
   Lint (12)     — formatting, clippy, CI validation × 3 crates
   Build (9)     — release build, static analysis, package × 3 crates
@@ -301,7 +301,7 @@ Rigorix treats CI as continuous verification rather than compilation and testing
 ```
 
 ```bash
-# Run the full CI suite (86 steps, ~2 min)
+# Run the full CI suite (84 steps, ~6 min)
 bash .pi/scripts/local-ci.sh
 
 # Run a specific stage
