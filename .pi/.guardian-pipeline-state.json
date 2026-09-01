@@ -39,12 +39,44 @@
       }
     }
   ],
-  "currentItemIndex": 0,
+  "currentItemIndex": 1,
   "currentStepIndex": 0,
   "status": "running",
   "retryCount": 0,
-  "results": [],
+  "results": [
+    {
+      "item": "feature/docs-truth",
+      "status": "done",
+      "stepResults": [
+        {
+          "step": "Impact Analysis",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Implementation",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Validate",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "PR",
+          "status": "passed",
+          "reason": ""
+        },
+        {
+          "step": "Merge",
+          "status": "passed",
+          "reason": ""
+        }
+      ]
+    }
+  ],
   "mergeOnValid": false,
   "createdAt": "2026-09-01T16:51:56.575Z",
-  "updatedAt": "2026-09-01T16:51:56.575Z"
+  "updatedAt": "2026-09-01T17:25:33.135Z"
 }

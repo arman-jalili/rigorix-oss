@@ -10,7 +10,9 @@
 
 Core protocol implementation: transport management, session lifecycle, tool registration, request routing, resource exposure, prompt templates. This is the **entry point** for all MCP client connections — every tool call, resource read, and prompt request arrives here first.
 
-**Auth integration (ADR-008):** the SSE transport gains an optional gate — when `mcp.sse.bind_address` is non-localhost AND `mcp.sse.auth` is set (`"idp" | "api_key"`), the transport requires a valid bearer token before routing any tool call. Default remains localhost-only with no auth (ADR-005). Stdio remains trusted-parent (no auth).
+> **GAP-A-10:** the SSE transport was **removed** — the server is stdio-only.
+> The `--sse` flag is accepted for compatibility and starts stdio mode with a warning.
+> The following ADR-005/ADR-008 auth-gate design applied to the removed SSE transport and is retained here as historical record.
 
 ## Architecture
 
@@ -20,7 +22,7 @@ This module follows **Domain-Driven Design** with Clean Architecture layers:
 |-------|---------------|------|
 | **Domain** | Aggregates, entities, value objects, domain services, repository interfaces | `src/mcp-server/domain/` |
 | **Application** | Use cases, DTOs, input validation, session management | `src/mcp-server/application/` |
-| **Infrastructure** | Transport implementations (stdio, SSE-Axum), JSON-RPC serialization | `src/mcp-server/infrastructure/` |
+| **Infrastructure** | Transport implementation (stdio only since GAP-A-10; SSE-Axum removed), JSON-RPC serialization | `src/mcp-server/infrastructure/` |
 | **Interfaces** | MCP protocol handlers, tool routing, resource/prompt providers | `src/mcp-server/interfaces/` |
 
 ## Related ADRs

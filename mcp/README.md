@@ -20,11 +20,11 @@ cargo install rigorix-mcp
 # Run in stdio mode (default, for Claude Code / Aider)
 rigorix-mcp
 
-# Run in SSE mode (for Claude Desktop / Cursor)
-rigorix-mcp --sse --bind 127.0.0.1:3001
+# (Removed) SSE mode — GAP-A-10
+rigorix-mcp --sse --bind 127.0.0.1:3001  # accepted for compatibility; starts stdio mode with a warning
 ```
 
-The server reads newline-delimited JSON-RPC messages from stdin (stdio mode) or accepts HTTP SSE connections (SSE mode). No configuration file required for basic use.
+The server reads newline-delimited JSON-RPC messages from stdin (stdio mode — the only transport since GAP-A-10 removed SSE). No configuration file required for basic use.
 
 ---
 

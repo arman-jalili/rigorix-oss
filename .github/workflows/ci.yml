@@ -74,12 +74,12 @@ jobs:
       - run: cargo fmt --check -p rigorix-${{ matrix.crate }}
       - run: cargo clippy -p rigorix-${{ matrix.crate }} -- -D warnings
       - name: Per-crate scripts (all conventions)
-        continue-on-error: true
+        # GAP-A-27: proofing gates the stage — failures fail the job.
         run: |
           for script in .pi/scripts/ci/check_*.sh .pi/scripts/ci/run_*.sh \
                        .pi/scripts/ci/stage_*.sh .pi/scripts/ci/validate_*.sh \
                        .pi/scripts/validate-*.sh; do
-            [ -f "$script" ] && [[ "$script" != *_coverage.sh ]] && echo "--- $script ---" && bash "$script" || true
+            [ -f "$script" ] && [[ "$script" != *_coverage.sh ]] && echo "--- $script ---" && bash "$script"
           done
         working-directory: ${{ matrix.crate }}
 
@@ -100,12 +100,12 @@ jobs:
           cache-key: build-${{ matrix.crate }}
       - run: cargo check -p rigorix-${{ matrix.crate }}
       - name: Per-crate scripts (all conventions)
-        continue-on-error: true
+        # GAP-A-27: proofing gates the stage — failures fail the job.
         run: |
           for script in .pi/scripts/ci/check_*.sh .pi/scripts/ci/run_*.sh \
                        .pi/scripts/ci/stage_*.sh .pi/scripts/ci/validate_*.sh \
                        .pi/scripts/validate-*.sh; do
-            [ -f "$script" ] && [[ "$script" != *_coverage.sh ]] && echo "--- $script ---" && bash "$script" || true
+            [ -f "$script" ] && [[ "$script" != *_coverage.sh ]] && echo "--- $script ---" && bash "$script"
           done
         working-directory: ${{ matrix.crate }}
 
@@ -126,12 +126,12 @@ jobs:
           cache-key: test-${{ matrix.crate }}
       - run: cargo test -p rigorix-${{ matrix.crate }} --lib
       - name: Per-crate scripts (all conventions)
-        continue-on-error: true
+        # GAP-A-27: proofing gates the stage — failures fail the job.
         run: |
           for script in .pi/scripts/ci/check_*.sh .pi/scripts/ci/run_*.sh \
                        .pi/scripts/ci/stage_*.sh .pi/scripts/ci/validate_*.sh \
                        .pi/scripts/validate-*.sh; do
-            [ -f "$script" ] && [[ "$script" != *_coverage.sh ]] && echo "--- $script ---" && bash "$script" || true
+            [ -f "$script" ] && [[ "$script" != *_coverage.sh ]] && echo "--- $script ---" && bash "$script"
           done
         working-directory: ${{ matrix.crate }}
 
@@ -171,11 +171,11 @@ jobs:
     name: 📝 Documentation
     needs: [build]
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: Root + per-crate scripts (all conventions)
-        continue-on-error: true
+        # GAP-A-27: proofing gates the stage — failures fail the job.
         shell: bash
         run: |
           for script in .pi/scripts/ci/check_*.sh .pi/scripts/ci/run_*.sh \
@@ -184,7 +184,7 @@ jobs:
                        */.pi/scripts/ci/check_*.sh */.pi/scripts/ci/run_*.sh \
                        */.pi/scripts/ci/stage_*.sh */.pi/scripts/ci/validate_*.sh \
                        */.pi/scripts/validate-*.sh; do
-            [ -f "$script" ] && [[ "$script" != *_coverage.sh ]] && echo "--- $script ---" && bash "$script" || true
+            [ -f "$script" ] && [[ "$script" != *_coverage.sh ]] && echo "--- $script ---" && bash "$script"
           done
 
   # ── Stage 6: Integration ──────────────────────────────────────
@@ -198,7 +198,7 @@ jobs:
       - uses: ./.github/actions/setup
       - run: cargo test --workspace
       - name: Root + per-crate scripts (all conventions)
-        continue-on-error: true
+        # GAP-A-27: proofing gates the stage — failures fail the job.
         shell: bash
         run: |
           for script in .pi/scripts/ci/check_*.sh .pi/scripts/ci/run_*.sh \
@@ -207,7 +207,7 @@ jobs:
                        */.pi/scripts/ci/check_*.sh */.pi/scripts/ci/run_*.sh \
                        */.pi/scripts/ci/stage_*.sh */.pi/scripts/ci/validate_*.sh \
                        */.pi/scripts/validate-*.sh; do
-            [ -f "$script" ] && [[ "$script" != *_coverage.sh ]] && echo "--- $script ---" && bash "$script" || true
+            [ -f "$script" ] && [[ "$script" != *_coverage.sh ]] && echo "--- $script ---" && bash "$script"
           done
 
   # ── Stage 7: Final Gate ───────────────────────────────────────
