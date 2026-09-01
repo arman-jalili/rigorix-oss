@@ -46,3 +46,9 @@ criterion = { version = "0.5", features = ["html_reports"] }
 [[bench]]
 name = "dag_engine"
 harness = false
+
+# GAP-A-24: converted real unit tests under tests/unit/** (previously inert
+# Guardian-TDD stubs that were never compiled).
+[[test]]
+name = "unit"
+path = "tests/unit/mod.rs"

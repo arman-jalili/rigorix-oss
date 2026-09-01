@@ -65,7 +65,10 @@ impl StateManagerService for FileSystemStateManager {
 
     #[tracing::instrument(skip_all)]
     async fn load_state(&self, input: LoadStateInput) -> Result<LoadStateOutput, StateError> {
-        let state = self.repository.load(input.execution_id).await?;
+        let mut state = self.repository.load(input.execution_id).await?;
+
+        // GAP-M-01: invalidate legacy pre-GAP-3 approvals on hydrate.
+        state.invalidate_legacy_approvals();
 
         Ok(LoadStateOutput {
             state,
