@@ -8,4 +8,9 @@
 //! behind traits. Implementations handle filesystem access, caching, and
 //! alternate storage backends.
 
+pub mod filesystem_template_repository;
 pub mod repository;
+
+pub use filesystem_template_repository::{
+    FileSystemTemplateRepository, template_repository_from_config,
+};
