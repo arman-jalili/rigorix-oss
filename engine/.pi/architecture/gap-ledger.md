@@ -344,7 +344,7 @@ All other rows **validated correct**:
 | M-09 | ✅ **RESOLVED** | 7 mcp ADRs + engine ADR-010 statused with code evidence. **Honest verdicts:** ADR-002 = **Superseded** (SQLx never adopted — 0 deps); ADR-006 = **Partial** (engine-delegated usage yes; proxy telemetry not implemented); ADR-004/005 qualified (SSE removed, GAP-A-10) |
 | M-03 | ✅ **RESOLVED** | `engine/deny.toml` exists (claim said repo root — corrected to actual location) |
 | M-04 | ✅ **RESOLVED** | `.githooks/pre-commit` restored: `cargo fmt --check` + `cargo clippy --workspace --all-targets -D warnings` |
-| L-06 | ✅ **RESOLVED** | `.pi/scripts/install_coverage_tools.sh` restored (cargo-llvm-cov installer) |
+| L-06 | ✅ **RESOLVED** | `.pi/scripts/install_coverage_tools.sh` restored **and wired**: real workspace coverage via `cargo llvm-cov` (`.pi/scripts/coverage.sh`) runs in local-ci (Stage 4b) + a dedicated CI job — baseline **78.92% line coverage**, gated ≥60% |
 | A-26 | ✅ **Evidence corrected** | No `[[bin]]` exists in cli/Cargo.toml (prior evidence was fictional); README→`rigorix-cli` fix stands |
 | M-12 | ✅ **ALREADY FIXED (missed by re-verification)** | `evidence_degraded: !input.sign` + `test_evidence_degraded_marker` landed in 5eb95f43 (#761), ancestor of HEAD. The re-verification's grep (`evidence: degraded` with colon) missed the underscore field name; the independent Validation section caught it. Unnecessary tracking issue #776 closed |
 | A-25 | ✅ verdict stands | 1 bounded poll-sleep remains in `mcp/tests/common/mod.rs:109` (deadline-loop interval) — the intended replacement for fixed sleeps |
