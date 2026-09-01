@@ -98,7 +98,9 @@ pub struct AuditSenderImpl {
     /// Default backend URL (can be overridden per-call).
     default_backend_url: Option<String>,
     /// HTTP client with default timeout.
-    client: reqwest::Client,
+    // GAP-L-08: Option so a client-build failure is a typed error at send
+    // time (never a panic that could silently drop evidence).
+    client: Option<reqwest::Client>,
     /// Default request timeout in seconds.
     default_timeout_secs: u64,
     /// Optional API key for Bearer token authentication.
@@ -117,7 +119,7 @@ impl AuditSenderImpl {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .expect("Failed to create HTTP client");
+            .ok();
 
         Self {
             circuit_breaker,
@@ -138,7 +140,7 @@ impl AuditSenderImpl {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(default_timeout_secs))
             .build()
-            .expect("Failed to create HTTP client");
+            .ok();
 
         Self {
             circuit_breaker,
@@ -213,8 +215,10 @@ impl AuditSender for AuditSenderImpl {
         })?;
 
         // Send HTTP POST (with optional Authorization header)
-        let mut request = self
-            .client
+        let client = self.client.as_ref().ok_or_else(|| AuditError::Internal {
+            detail: "HTTP client unavailable (client build failed at startup)".to_string(),
+        })?;
+        let mut request = client
             .post(backend_url)
             .header("Content-Type", "application/json")
             .body(body)
