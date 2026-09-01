@@ -1323,20 +1323,66 @@ async fn dispatch_message(msg: JsonRpcMessage) -> Option<JsonRpcMessage> {
 // initialize handler
 // ---------------------------------------------------------------------------
 
-async fn handle_initialize(id: &RequestId, _params: &serde_json::Value) -> JsonRpcMessage {
-    let result = serde_json::json!({
-        "protocolVersion": "2025-03-26",
-        "capabilities": {
-            "tools": {},
-            "resources": {},
-            "prompts": {}
-        },
-        "serverInfo": {
-            "name": "Rigorix MCP Gateway",
-            "version": "0.1.0"
+async fn handle_initialize(id: &RequestId, params: &serde_json::Value) -> JsonRpcMessage {
+    // GAP-A-22: route initialize through the runtime McpServerService — this
+    // creates the session and negotiates the protocol version (no fabricated
+    // response).
+    let protocol_version = params
+        .get("protocolVersion")
+        .and_then(|v| v.as_str())
+        .unwrap_or("2025-03-26")
+        .to_string();
+    let client_info = {
+        let ci = params.get("clientInfo").cloned().unwrap_or_default();
+        rigorix_mcp::mcp_server::domain::value::ClientInfo {
+            name: ci
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string(),
+            version: ci
+                .get("version")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
         }
-    });
-    JsonRpcMessage::success(id.clone(), result)
+    };
+    let caps = params.get("capabilities").cloned().unwrap_or_default();
+    let input = rigorix_mcp::mcp_server::application::dto::InitializeInput {
+        protocol_version: protocol_version.clone(),
+        client_info: client_info.clone(),
+        capabilities: rigorix_mcp::mcp_server::domain::value::ClientCapabilities {
+            protocol_version: protocol_version.clone(),
+            client_name: Some(client_info.name.clone()),
+            client_version: client_info.version.clone(),
+            supports_progress: caps
+                .get("experimental")
+                .and_then(|e| e.get("progress"))
+                .and_then(|p| p.as_bool())
+                .unwrap_or(false),
+        },
+    };
+
+    match app_state().mcp_service.initialize(input).await {
+        Ok((output, _events)) => {
+            let result = serde_json::json!({
+                "protocolVersion": output.protocol_version,
+                "capabilities": {
+                    "tools": {},
+                    "resources": {},
+                    "prompts": {}
+                },
+                "serverInfo": {
+                    "name": output.server_info,
+                    "version": "0.1.0"
+                }
+            });
+            JsonRpcMessage::success(id.clone(), result)
+        }
+        Err(err) => JsonRpcMessage::error(
+            id.clone(),
+            JsonRpcError::internal_error(format!("initialize failed: {err}")),
+        ),
+    }
 }
 
 // ---------------------------------------------------------------------------

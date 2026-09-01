@@ -2,6 +2,7 @@
 
 > **Source:** Comprehensive codebase assessment — 2026-06-15
 > **Last Updated:** 2026-08-30 (Addendum 2: codebase audit implementation backlog — 30 new, see bottom)
+> **⚠️ Status verification 2026-08-30:** every Open item re-verified against source. **Most Addendum-2 items are already FIXED in code** (marked `GAP-A-xx` in source) — see "Verification 2026-08-30" section at the bottom for the authoritative per-item verdict. Table statuses above are stale relative to that section.
 > **Scope:** All 17 modules across engine/src/, architecture docs, tests, CI, tooling
 > **Total findings:** 65 | **Resolved:** 27 | **Open:** 38
 
@@ -205,3 +206,149 @@
 ---
 
 *Addendum generated: 2026-08-30 | Disposition: implement/connect everything — no deletions. Cross-references: gap-ledger-validation.md (verification record); 07/08 in codebase-analysis/ (audit record).*
+
+---
+
+# Verification 2026-08-30 — Ledger vs. Implemented Code (authoritative)
+
+> **Method:** Every Open item re-checked against current source (grep + direct reads, code is truth). Verdicts below supersede table statuses above.
+
+## Addendum 2 (A-01…A-30) — verified verdicts
+
+| ID | Ledger | Verified verdict | Evidence |
+|----|--------|------------------|----------|
+| A-01 | Open | ✅ **FIXED** | Unknown tool → `TaskResult::failure(..., "unknown_tool")` (`service_impl.rs:287-294` parallel, `:799-805` single-node) |
+| A-02 | Open | ✅ **FIXED** (partial) | Missing node fails `node_not_found` (`:1941-1950`). NOTE: missing-graph path still returns placeholder "backwards compatibility" shim (`:1612`) — decide its fate |
+| A-03 | Open | ✅ **FIXED** | `config_override` applied (`:1607-1610`), `config` consumed downstream |
+| A-04 | Open | ✅ **FIXED** | `tokio::process::Command` (`hook_runner_impl.rs:83`), concurrent drain task (`:61`); 10ms poll loop gone |
+| A-05 | Open | ✅ **FIXED** | Parallel path runs PreToolUse gating with `HookAbortSignal` + PostToolUse mirrored (`service_impl.rs:156-175` region); permission enforced |
+| A-06 | Open | ✅ **FIXED** | `GAP-A-06`: HMAC over FULL canonical envelope, sorted-key JSON (`envelope_factory_impl.rs:45-65`) |
+| A-07 | Open | ✅ **FIXED** | Real `ClaudeClassifier`/`OpenaiClassifier` wired on API keys; mock only behind `RIGORIX_MOCK_PLANNING=1` (`mcp/main.rs:820-880`) |
+| A-08 | Open | ✅ **FIXED** | `"governance"` → `ActionMode::Governance` (`mode_resolver_impl.rs:84-89`) + real `dispatch_governance` (`router_impl.rs:342`) |
+| A-09 | Open | ✅ **FIXED** | `GAP-A-09`: `fetch_update` CAS reserve (`llm_budget_impl.rs:206-219`); reservation guard in production path |
+| A-10 | Open | ✅ **FIXED (removed)** | `GAP-A-10`: SSE removed; `--sse` deprecation-warns, always stdio (`mcp/main.rs:1774-1785`) |
+| A-11 | Open | ✅ **FIXED** | All 4 flags read (`service_impl.rs:481,502-513,580,2126-2137`); actions `max_llm_calls` applied (`context_builder_impl.rs:381-463`) |
+| A-12 | Open | ✅ **FIXED** | Hooks on `tokio::process`; **0** `std::fs`/`std::process` in `service_impl.rs`; old `template_generation/generator.rs` gone |
+| A-13 | Open | ✅ **FIXED** | `GAP-A-13`: `EvaluateInput.backend` + `BackendNotFound` (`service_impl.rs:134-145`, `dto.rs:33-38`) |
+| A-14 | Open | ✅ **FIXED** | `GAP-A-14`: gate blocks on time + token limits (`enforcement/application/enforcer_impl.rs:221-224`) |
+| A-15 | Open | ✅ **FIXED** | `IndexerServiceImpl` + FileSystem symbol/source + InMemory grammar repos all exist |
+| A-16 | Open | ✅ **FIXED** | All 9 checked traits now have 1 impl each |
+| A-17 | Open | ✅ **FIXED** | `AuditEvent::` emitted at 5 sites (`audit_sender_impl.rs:244,320,330,348,367`) |
+| A-18 | Open | ✅ **FIXED** | `GAP-A-18`: RiskClassifier constructed + drives gating (`tools/application/registry_impl.rs:35,56,521`) |
+| A-19 | Open | ⚠️ **PARTIAL** | `GAP-A-19` builder param exists (`service_impl.rs:2701-2718`) but no production construction of `FailureClassifierServiceImpl` found (only tests) — verify composition wiring |
+| A-20 | Open | ⚠️ **PARTIAL** | `FileSystemTemplateRepository` implemented + exported but no construction in engine/mcp composition — implemented, not wired |
+| A-21 | Open | ✅ **FIXED** | Both domain→application imports replaced with domain-local types |
+| A-22 | Open | ❌ **STILL OPEN** | `create_session` zero runtime callers; `handle_initialize` takes unused `_params` (`mcp/main.rs:1303,1326`) |
+| A-23 | Open | ✅ **MOSTLY FIXED** | 12+ integration files incl. backend/budget/identity; `unit/mod.rs` now compiles |
+| A-24 | Open | ✅ **FIXED** | 24 stub files replaced; single `unit/mod.rs` documents history (match is a doc comment) |
+| A-25 | Open | ✅ **FIXED** | Shared `mcp/tests/common/mod.rs`, deadline-based; 1 residual sleep |
+| A-26 | Open | ✅ **FIXED** | README uses `rigorix-cli` (`:179,183-184`); `[[bin]] name="rigorix"` also added |
+| A-27 | Open | ✅ **MOSTLY FIXED** | Go claim gone; 1 `continue-on-error` (documented teardown); "86 steps" moot — HOW docs removed |
+| A-28 | Open | ✅ **FIXED (moot)** | `HOW-*.md` no longer exists (docs/ = dr-plan.md, runbook.md) |
+| A-29 | Open | ✅ **FIXED** | `.gitignore` repaired; `.mov` untracked; no `.rigorix/state` tracked |
+## Addendum 1 (H-07…L-09) — verified verdicts
+
+| ID | Ledger | Verified verdict | Evidence |
+|----|--------|------------------|----------|
+| H-07 | Open | ✅ **FIXED** | `approve_node` checks `requires_approval` + `AwaitingApproval` (`service_impl.rs:2506-2518`) |
+| H-08 | Open | ✅ **FIXED** | `hydrate_execution` uses persisted `input.started_at` (`service_impl.rs:~2597-2614`) |
+| M-12 | Open | ❌ **STILL OPEN** | Signing still `Option<String> signing_key` (`envelope_factory_impl.rs:24-31`); no `evidence: degraded` marker |
+| M-13 | Open | ✅ **FIXED** | `planning_prompt_content` wired (`orchestrator_impl.rs:414` → `envelope_factory_impl.rs:105`) |
+| M-14 | Open | ✅ **FIXED** | Zero `let _ = ...publish(...)` remaining in engine/src |
+| M-15 | Open | ⚠️ **PARTIAL** | Both vocabularies still persisted; `state.rs:211-215` documents GAP-3 migration compat — consolidate or mark intentional |
+| L-08 | Open | ❌ **STILL OPEN** | unwrap/expect count now **~1729** (grew from 1617) |
+| L-09 | Open | ✅ **FIXED** | `detect_git_info` populates git_commit/branch (`orchestrator_impl.rs:876`) |
+
+## Base ledger "Resolved" claims — spot-check results
+
+| Item | Claim | Verified |
+|------|-------|----------|
+| C-01 | 179 `#[tracing::instrument]` | ✅ now 183 (claim holds) |
+| M-03 | `deny.toml` added | ❌ **MISSING** at repo root — stale Resolved claim |
+| M-04 | `.githooks/pre-commit` | ❌ **MISSING** — stale Resolved claim |
+| L-06 | `install_coverage_tools.sh` | ❌ **MISSING** from `.pi/scripts/` — stale Resolved claim |
+| M-07 | `common/validation.rs` | ✅ exists |
+| M-10 | `benches/dag_engine.rs` | ✅ exists |
+| M-09 | 8 ADRs "Accepted" | ⚠️ down to 2 — nearly resolved |
+
+## Corrected totals (post-verification)
+
+| Group | Ledger open | Actually open | Fixed | Partial |
+|-------|------------|---------------|-------|---------|
+| Addendum 2 (A-01…A-30) | 30 | **2** (A-22; A-02 graph-shim edge) | 26 | 2 (A-19, A-20 wiring) |
+| Addendum 1 (H-07…L-09) | 8 | **2** (M-12, L-08) | 5 | 1 (M-15) |
+| Base | M-09 open; M-03/M-04/L-06 marked Resolved | 3 stale Resolved claims + 2 ADRs | — | — |
+
+**Remaining actions:** (1) wire A-19 classifier + A-20 filesystem template repo into composition roots; (2) A-22 session handshake; (3) M-12 signing policy for approval runs; (4) L-08 unwrap pass on dispatch/evidence path; (5) restore or re-scope M-03/M-04/L-06 tooling files or mark Removed; (6) decide A-02 missing-graph placeholder shim fate; (7) finish M-09's last 2 ADRs.
+
+---
+
+*Verification performed 2026-08-30 against working tree @ commit 3dcd26ab. This section supersedes table statuses above.*
+
+## Re-verification 2026-08-30 (post issue-series batches 8–20, @ dba15950)
+
+> The batch series (#763–#775) landed 28 commits after the verification base (3dcd26ab), which
+> invalidated several verdicts. Re-checked every Open/Partial/Disputed row against HEAD:
+
+| ID | Prior verdict | **Re-verified** | Delta |
+|----|--------------|-----------------|-------|
+| A-19 | ⚠️ PARTIAL (no prod construction) | ✅ **FIXED** | `ParallelExecutionFactoryImpl::create` constructs `RetryEvaluationServiceImpl::with_classifier(Arc::new(FailureClassifierServiceImpl))` (`factory_impl.rs:53`) — wired by #769 after the verification base |
+| A-25 | ✅ FIXED (1 residual sleep) | ✅ **FIXED** | 0 `sleep` calls in `mcp/tests/` — residual removed post-verification |
+| A-27 | ✅ MOSTLY (1 documented continue-on-error) | ✅ **FIXED** | 0 `continue-on-error: true` remain in `ci.yml` (#773) — the 1 remaining text mention is a comment, not a step |
+| A-26 | ✅ FIXED ("`[[bin]] name="rigorix"` also added") | ⚠️ **FIXED, evidence wrong** | No `[[bin]]` exists in `cli/Cargo.toml` (only `[package] rigorix-cli` + `[lib] rigorix`) — README→`rigorix-cli` fix is correct, but the cited `[[bin]]` is fictional |
+| M-09 | "down to 2 ADRs" | ⚠️ **STILL OPEN: 8** | Batch 17 flipped engine ADR-002..009 only. Remaining `Accepted`: **7 mcp ADRs** (ADR-001..007 in `mcp/.pi/architecture/decisions/`) + **engine ADR-010** (scored-evaluation, implemented by #765 but never flipped). ADR-011/012 correctly `Proposed` (approval epic pending) |
+| L-08 | ❌ STILL OPEN (~1729 global) | ⚠️ **Path-scope FIXED; global open** | #775 removed the audit evidence-path panics (client-build expects → `Option<reqwest::Client>` + `AuditError::Internal`). `service_impl.rs` = 0 non-test unwraps; hooks/state_persistence production paths clean. Global count (~1700) remains a separate backlog item per issue scope |
+| A-02 | ⚠️ PARTIAL (graph shim) | ⚠️ **UNCHANGED** | `service_impl.rs:1612` missing-graph placeholder shim still present — fate decision still pending |
+| A-20 | ⚠️ PARTIAL (not wired) | ⚠️ **UNCHANGED** | `template_repository_from_config` still has no production caller outside `templates/infrastructure/` |
+| A-22 | ❌ STILL OPEN | ❌ **UNCHANGED** | `create_session` still zero runtime callers; `handle_initialize` still fabricates the response |
+| M-12 | ❌ STILL OPEN | ❌ **UNCHANGED** | `signing_key: Option<String>` + no `evidence: degraded` marker |
+| M-15 | ⚠️ PARTIAL | ⚠️ **UNCHANGED** | dual `node_states`/`exec_node_states` both persisted (GAP-3 compat documented) |
+| M-03/M-04/L-06 | stale Resolved claims | ❌ **CONFIRMED MISSING** | `deny.toml`, `.githooks/pre-commit`, `.pi/scripts/install_coverage_tools.sh` do not exist — re-scope or mark Removed |
+| C-01 | 183 instruments | ✅ exact | 183 `#[tracing::instrument]` |
+
+**Net correction to "Corrected totals":** Actually-open = 2 (A-22, M-12) + M-09(8 ADRs); Partial = 2 (A-02 graph-shim, A-20 wiring) + M-15; stale-Resolved = 3 tooling files (M-03/M-04/L-06); evidence-wrong = A-26 (`[[bin]]` claim). All other FIXED verdicts hold.
+
+
+## Validation 2026-08-30 (independent audit of the Re-verification above)
+
+> Every row of the Re-verification section re-checked against HEAD (dba15950). Two corrections:
+
+| Row | Re-verification verdict | Validation verdict | Evidence |
+|-----|------------------------|--------------------|----------|
+| M-12 | ❌ UNCHANGED / STILL OPEN | ✅ **FIXED** — re-verification missed it | `GAP-M-12` implemented: `evidence_degraded: !input.sign` + comment "an unsigned run is explicitly degraded evidence" (`envelope_factory_impl.rs:109-113`), test `test_evidence_degraded_marker` (`:317-320`). Fix landed in 5eb95f43 (#761), **verified ancestor of dba15950** — so it was already in HEAD when the re-verification ran; its `signing_key: Option` grep caught the key but missed the degraded marker |
+| A-25 | ✅ FIXED (0 sleeps) | ⚠️ **FIXED, count wrong** | 5 `sleep` matches in `mcp/tests/` — 4 are doc comments, 1 is a real `std::thread::sleep(POLL_INTERVAL)` (`common/mod.rs:109`) inside the deadline-based poll loop. That poll-sleep is the *replacement* for fixed sleeps (bounded, interval-based), so the verdict "fixed" stands but "0 sleeps" is literally false |
+
+All other rows **validated correct**:
+- **A-19 FIXED** ✅ — confirmed `RetryEvaluationServiceImpl::with_classifier(Arc::new(FailureClassifierServiceImpl))` at `execution_engine/infrastructure/factory_impl.rs:53` (unit struct, no `::new` — which is why a `::new` grep misses it).
+- **A-26 evidence-wrong** ✅ — confirmed: `cli/Cargo.toml` has only `[package] rigorix-cli` + `[lib] name = "rigorix"`, **no `[[bin]]` section**. The earlier verification's `[[bin]]` citation was wrong (a `^name` grep matched the lib name).
+- **M-09 = 8 ADRs** ✅ — exactly 7 mcp ADRs (001–007) + engine ADR-010 remain "Accepted" (templates excluded).
+- **A-27** ✅ — single `continue-on-error` match is inside a comment (ci.yml:165), no active step.
+- **L-08 path-scoped** ✅ — 0 non-test unwraps/expects in `service_impl.rs`; global engine count ~1729 stands.
+- **A-02 shim, A-20 unwired, A-22 open, M-15 dual-vocabulary, M-03/M-04/L-06 files missing** ✅ — all re-confirmed unchanged.
+
+**Net final state:** Actually-open = **A-22** + A-02 graph-shim decision + A-20 wiring + M-15 consolidation + M-09 (8 ADRs) + L-08 (global) + 3 stale tooling claims (M-03/M-04/L-06). **M-12 is closed.**
+
+*Validated 2026-08-30 against HEAD dba15950. Supersedes the Re-verification for the M-12 and A-25 rows.*
+
+
+
+## Batch 21 (gap-ledger remainder) — implemented
+
+> One run, branch `feature/gap-ledger-remainder` (PR #776-sibling). Code-verified against HEAD.
+
+| ID | Outcome | Evidence |
+|----|---------|----------|
+| A-02 | ✅ **FIXED** | Missing graph → `ExecutionError::InvalidState` (service_impl.rs execute_graph); placeholder shim removed; 3 tests converted to the fail-contract. **Bonus:** exposed + fixed a latent deadlock — `notify_progress` re-locked the `sessions` Mutex while callers held it (non-reentrant std Mutex); both call sites now release the lock before notifying; `test_progress_callback_fires` is the regression guard |
+| A-20 | ✅ **FIXED (wired)** | CLI orchestrator loads `.rigorix/templates` via `template_repository_from_config` (engine's config-gated filesystem repo) — the hand-rolled tokio::fs loop is gone |
+| A-22 | ✅ **FIXED** | `handle_initialize` routes through `McpServerService::initialize` (creates the session); protocol negotiation echoes the client's version when supported (`2025-03-26`/`2025-06-18`/`2024-11-05`), else the default — no fabricated response |
+| M-09 | ✅ **RESOLVED** | 7 mcp ADRs + engine ADR-010 statused with code evidence. **Honest verdicts:** ADR-002 = **Superseded** (SQLx never adopted — 0 deps); ADR-006 = **Partial** (engine-delegated usage yes; proxy telemetry not implemented); ADR-004/005 qualified (SSE removed, GAP-A-10) |
+| M-03 | ✅ **RESOLVED** | `engine/deny.toml` exists (claim said repo root — corrected to actual location) |
+| M-04 | ✅ **RESOLVED** | `.githooks/pre-commit` restored: `cargo fmt --check` + `cargo clippy --workspace --all-targets -D warnings` |
+| L-06 | ✅ **RESOLVED** | `.pi/scripts/install_coverage_tools.sh` restored (cargo-llvm-cov installer) |
+| A-26 | ✅ **Evidence corrected** | No `[[bin]]` exists in cli/Cargo.toml (prior evidence was fictional); README→`rigorix-cli` fix stands |
+| M-12 | ✅ **ALREADY FIXED (missed by re-verification)** | `evidence_degraded: !input.sign` + `test_evidence_degraded_marker` landed in 5eb95f43 (#761), ancestor of HEAD. The re-verification's grep (`evidence: degraded` with colon) missed the underscore field name; the independent Validation section caught it. Unnecessary tracking issue #776 closed |
+| A-25 | ✅ verdict stands | 1 bounded poll-sleep remains in `mcp/tests/common/mod.rs:109` (deadline-loop interval) — the intended replacement for fixed sleeps |
+| L-08-global | ⬜ **Deferred** → issue #777 (backlog) | global unwrap elimination, beyond the #751 path scope |
+| M-15 | ⬜ **Deferred** → issue #758 (approval epic) | consolidate node-state vocabularies when `approval_records` lands in the state format |
+
+**Remaining open after batch 21:** deferred to approval epic: M-15 (#758) · backlog: L-08-global (#777). All A-rows + M-09/M-03/M-04/L-06/M-12 resolved.

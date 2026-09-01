@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# M-04: pre-commit hook — formatting + clippy gate (restored from ledger claim).
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+echo "== fmt =="
+cargo fmt --check
+
+echo "== clippy (workspace) =="
+cargo clippy --workspace --all-targets -- -D warnings

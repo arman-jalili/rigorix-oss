@@ -1,6 +1,6 @@
 # ADR-003: Cross-Context Communication — Trait-Based DI + EventBus
 
-**Status:** Accepted
+**Status:** Implemented (trait-based DI throughout mcp/src; engine EventBusService wired at mcp/src/main.rs:795-797)
 **Date:** 2026-07-12
 **Session:** d19b7a21-8f4c-4b3e-9a1d-5e6f7c8b9a0d
 

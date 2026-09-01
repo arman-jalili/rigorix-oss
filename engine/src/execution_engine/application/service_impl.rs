@@ -526,8 +526,9 @@ impl ParallelExecutionServiceImpl {
                 }
             }
 
-            // Update session node state
-            {
+            // Update session node state (lock scope ends before notify_progress:
+            // it re-locks `sessions` internally — a self-deadlock otherwise).
+            let updated_state = {
                 let mut sessions =
                     self.sessions
                         .lock()
@@ -548,9 +549,13 @@ impl ParallelExecutionServiceImpl {
                             task_result.error.clone().unwrap_or_default(),
                         );
                     }
-                    // Notify progress callbacks
-                    self.notify_progress(dag_id, node_id, state, total_nodes);
+                    Some(state.clone())
+                } else {
+                    None
                 }
+            };
+            if let Some(state) = updated_state {
+                self.notify_progress(dag_id, node_id, state, total_nodes);
             }
 
             // Mark completed in graph to release dependents
@@ -634,16 +639,24 @@ impl ParallelExecutionServiceImpl {
         let Some(blocked_id) = graph.ready_nodes().first().copied() else {
             return Ok(());
         };
-        let mut sessions = self
-            .sessions
-            .lock()
-            .map_err(|e| ExecutionError::InternalError {
-                detail: format!("Lock error: {}", e),
-            })?;
-        if let Some(session) = sessions.get_mut(&dag_id)
-            && let Some(state) = session.node_states.get_mut(&blocked_id)
-        {
-            state.mark_awaiting_approval();
+        let updated_state = {
+            let mut sessions = self
+                .sessions
+                .lock()
+                .map_err(|e| ExecutionError::InternalError {
+                    detail: format!("Lock error: {}", e),
+                })?;
+            if let Some(session) = sessions.get_mut(&dag_id)
+                && let Some(state) = session.node_states.get_mut(&blocked_id)
+            {
+                state.mark_awaiting_approval();
+                Some(state.clone())
+            } else {
+                None
+            }
+        };
+        // Drop the sessions lock before notify (it re-locks internally).
+        if let Some(state) = updated_state {
             self.notify_progress(dag_id, blocked_id, state, total_nodes);
         }
         Ok(())
@@ -1545,7 +1558,7 @@ impl ParallelExecutionServiceImpl {
         &self,
         dag_id: Uuid,
         node_id: Uuid,
-        state: &NodeExecutionState,
+        state: NodeExecutionState,
         total_nodes: u32,
     ) {
         let Ok(callbacks) = self.progress_callbacks.lock() else {
@@ -1585,7 +1598,7 @@ impl ParallelExecutionServiceImpl {
         let progress = ExecutionProgress {
             dag_id,
             node_id,
-            state: state.clone(),
+            state,
             total_nodes,
             completed_count: completed,
             failed_count: failed,
@@ -1609,59 +1622,14 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
             .clone()
             .unwrap_or_else(|| self.config.clone());
 
-        // If no graph is provided, return placeholder (backwards compatibility)
+        // GAP-A-02: a missing graph is a caller contract violation — fail with
+        // a typed error instead of returning a fake-success empty result.
         let Some(mut graph) = input.graph else {
-            let mut sessions = self
-                .sessions
-                .lock()
-                .map_err(|e| ExecutionError::InternalError {
-                    detail: format!("Lock error: {}", e),
-                })?;
-
-            if sessions.contains_key(&input.dag_id) {
-                return Err(ExecutionError::InvalidState {
-                    reason: format!("Execution already in progress for dag_id={}", input.dag_id),
-                });
-            }
-
-            sessions.insert(
-                input.dag_id,
-                ExecutionSession {
-                    node_states: HashMap::new(),
-                    in_flight: Vec::new(),
-                    result: ExecutionResult::new(input.dag_id),
-                    paused: false,
-                    aborted: false,
-                    total_retries: 0,
-                    approved: HashSet::new(),
-                    started_at: Utc::now(),
-                    graph: None,
-                },
-            );
-            drop(sessions);
-
-            let now = Utc::now();
-            let result = ExecutionResult {
-                dag_id: input.dag_id,
-                node_results: HashMap::new(),
-                execution_states: HashMap::new(),
-                completed_count: 0,
-                failed_count: 0,
-                skipped_count: 0,
-                total_nodes: 0,
-                total_duration_ms: 0,
-                total_retries: 0,
-                started_at: now,
-                completed_at: now,
-                cancelled: false,
-                cancellation_reason: None,
-            };
-
-            return Ok(ExecuteGraphOutput {
-                result,
-                completed_at: now,
-                approval_pending: false,
-                pending_approval_steps: Vec::new(),
+            return Err(ExecutionError::InvalidState {
+                reason: format!(
+                    "execute_graph called without a graph (dag_id={})",
+                    input.dag_id
+                ),
             });
         };
 

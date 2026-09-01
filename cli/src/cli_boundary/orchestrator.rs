@@ -131,27 +131,27 @@ pub async fn build_cli_services(config: CliConfig) -> Result<CliServices, CliErr
     // ── Template service ───────────────────────────────────────────────
     let cli_template_service: Arc<dyn TemplateEngineService> = Arc::new(TemplateEngineImpl::new());
 
+    // GAP-A-20: the engine's config-gated filesystem TemplateRepository is
+    // the single template-loading path here (no hand-rolled fs loop). A
+    // missing dir yields no templates, not an error — same as before.
     let tpl_dir = PathBuf::from(&repo_root).join(".rigorix/templates");
-    if tpl_dir.exists()
-        && let Ok(mut entries) = tokio::fs::read_dir(&tpl_dir).await
     {
-        let mut files = Vec::new();
-        while let Ok(Some(entry)) = entries.next_entry().await {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("toml") {
-                files.push(path);
-            }
-        }
-        for path in files {
-            if let Ok(content) = tokio::fs::read_to_string(&path).await
-                && let Ok(template) =
-                    toml::from_str::<rigorix_engine::templates::domain::Template>(&content)
-            {
-                let input = rigorix_engine::templates::application::dto::RegisterInput {
-                    template,
-                    overwrite: true,
-                };
-                let _ = cli_template_service.register(input).await;
+        let template_repo =
+            rigorix_engine::templates::infrastructure::template_repository_from_config(&[tpl_dir
+                .to_string_lossy()
+                .to_string()]);
+        if let Ok(files) = template_repo.list_template_files(".", "toml").await {
+            for path in files {
+                if let Ok(content) = template_repo.read_template_file(&path).await
+                    && let Ok(template) =
+                        toml::from_str::<rigorix_engine::templates::domain::Template>(&content)
+                {
+                    let input = rigorix_engine::templates::application::dto::RegisterInput {
+                        template,
+                        overwrite: true,
+                    };
+                    let _ = cli_template_service.register(input).await;
+                }
             }
         }
     }

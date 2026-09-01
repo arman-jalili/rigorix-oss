@@ -1,6 +1,6 @@
 # ADR-002: Data Storage Strategy — SQLx + Per-Context Schema
 
-**Status:** Accepted
+**Status:** Superseded — SQLx was never adopted (0 `sqlx` deps/uses); storage is in-memory + filesystem repositories (mcp/src/*/infrastructure/, LocalAuditEnvelopeRepository)
 **Date:** 2026-07-12
 **Session:** d19b7a21-8f4c-4b3e-9a1d-5e6f7c8b9a0d
 

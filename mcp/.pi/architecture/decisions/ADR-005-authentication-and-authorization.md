@@ -1,6 +1,6 @@
 # ADR-005: Authentication & Authorization — Transport-Level + Enterprise Proxy Auth
 
-**Status:** Accepted
+**Status:** Implemented (enterprise-proxy auth via enterprise.api_key; the transport-level SSE auth gate was removed with the SSE transport — GAP-A-10)
 **Date:** 2026-07-12
 **Session:** d19b7a21-8f4c-4b3e-9a1d-5e6f7c8b9a0d
 
