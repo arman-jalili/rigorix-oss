@@ -135,6 +135,26 @@ jobs:
           done
         working-directory: ${{ matrix.crate }}
 
+  # ── Stage 3b: Coverage (real line coverage via cargo-llvm-cov) ──
+  coverage:
+    name: 📊 Coverage (workspace)
+    needs: [workspace, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          cache-key: coverage
+      - run: bash .pi/scripts/install_coverage_tools.sh
+      - name: Workspace coverage (gated at 60%, baseline 78.92%)
+        run: bash .pi/scripts/coverage.sh --gate --lcov
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: target/coverage.lcov
+          if-no-files-found: error
+
   # ── Stage 4: Security ─────────────────────────────────────────
   audit:
     name: 🔒 Audit

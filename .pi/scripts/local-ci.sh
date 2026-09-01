@@ -215,6 +215,14 @@ if should_run "security"; then
 fi
 
 # ═════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════
+# Stage 4b: Coverage (real line-coverage measurement via cargo-llvm-cov)
+# ═════════════════════════════════════════════════════════════════
+if should_run "coverage"; then
+    header "Stage 4b: Coverage"
+    run_cmd "coverage (workspace, gated >=${COVERAGE_THRESHOLD:-60}%)" bash .pi/scripts/coverage.sh --gate
+fi
+
 # Stage 5: Documentation
 # ═════════════════════════════════════════════════════════════════
 if should_run "docs"; then
