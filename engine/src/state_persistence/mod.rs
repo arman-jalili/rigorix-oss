@@ -55,4 +55,7 @@ pub mod infrastructure;
 pub mod concurrency_tests;
 
 #[cfg(test)]
+pub mod serialization_tests;
+
+#[cfg(test)]
 pub mod tests;

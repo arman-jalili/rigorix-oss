@@ -207,6 +207,19 @@ impl ExecutionState {
         }
     }
 
+    /// GAP-M-01 migration rule: approvals persisted under the LEGACY scheme
+    /// (pre-GAP-3 — no `exec_node_states`) were granted against the old
+    /// coarse `node_states` vocabulary and cannot be trusted when a session
+    /// is hydrated for resume. Invalidates (clears) them on hydrate.
+    ///
+    /// GAP-3+ state files carry `exec_node_states` (and write `approved`
+    /// empty at an approval pause), so their approved set is preserved.
+    pub fn invalidate_legacy_approvals(&mut self) {
+        if self.exec_node_states.is_none() && !self.approved.is_empty() {
+            self.approved.clear();
+        }
+    }
+
     /// Initialise per-node states from a list of node IDs.
     ///
     /// Each node is initialised to `NodeStatus::Pending`.
