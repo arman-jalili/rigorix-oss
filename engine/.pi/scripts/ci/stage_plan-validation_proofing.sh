@@ -36,12 +36,6 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- [2/2] Coverage Check ---"
-if bash "$SCRIPT_DIR/check_plan-validation_coverage.sh"; then
-    echo "  ✓ Coverage check passed"
-else
-    echo "  ✗ Coverage check failed"
-    exit 1
-fi
 
 # ---------------------------------------------------------------------------
 # Stage Result

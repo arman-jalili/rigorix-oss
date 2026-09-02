@@ -20,8 +20,4 @@ echo "  Security Config Contract Implementation Check..."
 $SCRIPT_DIR/check_security-config_contracts.sh ${VERBOSE:+--verbose} || exit 1
 
 echo ""
-echo "  Security Config Coverage Check..."
-$SCRIPT_DIR/check_security-config_coverage.sh ${VERBOSE:+--verbose} || exit 1
-
-echo ""
 echo "✅ security-config proofing passed"

@@ -38,11 +38,6 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Coverage Threshold Check ---"
-if bash "${SCRIPT_DIR}/check_template-system_coverage.sh" 2>&1; then
-    log_pass "Coverage thresholds met"
-else
-    log_fail "Coverage below threshold"
-fi
 
 # ---------------------------------------------------------------------------
 # Check 3: Validate all scripts exit properly

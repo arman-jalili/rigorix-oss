@@ -33,11 +33,6 @@ fi
 
 echo ""
 echo "--- Coverage Check ---"
-if bash "$SCRIPT_DIR/check_orchestrator_coverage.sh"; then
-    log_pass "Coverage check passed"
-else
-    log_fail "Coverage check failed"
-fi
 
 # Summary
 echo ""

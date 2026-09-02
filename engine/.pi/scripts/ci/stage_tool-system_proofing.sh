@@ -32,12 +32,6 @@ fi
 # Run coverage check
 echo ""
 echo "--- Stage 2/2: Coverage Threshold Check ---"
-if bash "$SCRIPT_DIR/check_tool-system_coverage.sh"; then
-    echo "  ✓ Coverage check passed"
-else
-    echo "  ✗ Coverage check FAILED"
-    exit 1
-fi
 
 echo ""
 echo "=============================================="

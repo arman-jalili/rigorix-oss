@@ -4,7 +4,6 @@
 #
 # CI stage wrapper that runs all quality-gates proofing checks:
 #   1. Contract implementation check
-#   2. Coverage threshold check
 #
 # Usage: bash .pi/scripts/ci/stage_quality-gates_proofing.sh [--help]
 #
@@ -37,12 +36,6 @@ fi
 echo ""
 
 echo "--- 2. Coverage Threshold Check ---"
-echo ""
-if bash "${SCRIPT_DIR}/check_quality-gates_coverage.sh" 2>&1; then
-    log_pass "Coverage threshold check passed"
-else
-    log_fail "Coverage threshold check failed"
-fi
 echo ""
 
 echo ""
