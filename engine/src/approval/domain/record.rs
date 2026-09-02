@@ -29,6 +29,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use super::error::ApprovalError;
 use super::hash::IntentHash;
 
 /// Lifecycle of a single-use approval record.
@@ -101,4 +102,96 @@ pub struct ApprovalRecord {
     pub status: ApprovalStatus,
     /// What the human was shown (R4).
     pub decision_context: DecisionContext,
+}
+
+impl ApprovalRecord {
+    /// Whether the approval is still pending (may be verified and dispatched).
+    pub fn is_pending(&self) -> bool {
+        matches!(self.status, ApprovalStatus::Pending)
+    }
+
+    /// Whether the approval has lapsed at (or before) the given instant.
+    ///
+    /// TTL is enforced at verification time — an expired approval never
+    /// dispatches. Non-expiring decisions are expressed with a far-future
+    /// `expires_at`; the comparison is inclusive (`now >= expires_at`).
+    pub fn is_expired_at(&self, at: DateTime<Utc>) -> bool {
+        at >= self.expires_at
+    }
+
+    /// Enforce the TTL at verification time.
+    ///
+    /// When `now` is at/past `expires_at` the record is transitioned to
+    /// `Expired` and `ApprovalError::Expired` is returned — the caller must
+    /// not dispatch. No-op for records that already left `Pending`.
+    pub fn enforce_ttl(&mut self, now: DateTime<Utc>) -> Result<(), ApprovalError> {
+        if !matches!(self.status, ApprovalStatus::Pending) {
+            return Ok(());
+        }
+        if now >= self.expires_at {
+            self.status = ApprovalStatus::Expired;
+            return Err(ApprovalError::Expired(self.node_id));
+        }
+        Ok(())
+    }
+
+    /// R3 single-use — consume the approval on **terminal outcome** (success,
+    /// skipped, or exhausted failure after ≥1 dispatch).
+    ///
+    /// Failed attempts do NOT consume — a legitimate retry re-verifies the
+    /// same intent while the record stays `Pending`. A non-terminal
+    /// interruption keeps `Pending` so a resumed run can verify and continue.
+    ///
+    /// # Errors
+    /// - `ApprovalError::Expired` — the approval lapsed before dispatch
+    /// - `ApprovalError::AlreadyConsumed` — replay of a consumed approval
+    /// - `ApprovalError::InvalidState` — record was superseded
+    pub fn consume(&mut self) -> Result<(), ApprovalError> {
+        match self.status {
+            ApprovalStatus::Pending => {
+                self.status = ApprovalStatus::Consumed;
+                Ok(())
+            }
+            ApprovalStatus::Consumed => Err(ApprovalError::AlreadyConsumed(self.node_id)),
+            ApprovalStatus::Expired => Err(ApprovalError::Expired(self.node_id)),
+            ApprovalStatus::Superseded => Err(ApprovalError::InvalidState(
+                "cannot consume a superseded approval".into(),
+            )),
+        }
+    }
+
+    /// Transition a pending approval to `Expired` (e.g. TTL sweep).
+    pub fn expire(&mut self) -> Result<(), ApprovalError> {
+        match self.status {
+            ApprovalStatus::Pending => {
+                self.status = ApprovalStatus::Expired;
+                Ok(())
+            }
+            ApprovalStatus::Consumed => Err(ApprovalError::AlreadyConsumed(self.node_id)),
+            ApprovalStatus::Expired => Err(ApprovalError::InvalidState(
+                "approval already expired".into(),
+            )),
+            ApprovalStatus::Superseded => Err(ApprovalError::InvalidState(
+                "cannot expire a superseded approval".into(),
+            )),
+        }
+    }
+
+    /// Invalidate a pending approval because it no longer authorizes:
+    /// (a) a re-plan replaced the sealed graph for a paused run, (b) a newer
+    /// approval for the same node replaced this one, or (c) the run was
+    /// cancelled and re-executed with the same dag_id.
+    pub fn supersede(&mut self) -> Result<(), ApprovalError> {
+        match self.status {
+            ApprovalStatus::Pending => {
+                self.status = ApprovalStatus::Superseded;
+                Ok(())
+            }
+            ApprovalStatus::Consumed => Err(ApprovalError::AlreadyConsumed(self.node_id)),
+            ApprovalStatus::Expired => Err(ApprovalError::Expired(self.node_id)),
+            ApprovalStatus::Superseded => Err(ApprovalError::InvalidState(
+                "approval already superseded".into(),
+            )),
+        }
+    }
 }
