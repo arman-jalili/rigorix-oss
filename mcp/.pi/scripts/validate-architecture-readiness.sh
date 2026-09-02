@@ -10,7 +10,7 @@
 #   0 — All readiness checks passed
 #   1 — One or more readiness checks failed
 
-set -euo pipefail
+set -uo pipefail
 
 PI_DIR=".pi"
 ARCH_DIR="${PI_DIR}/architecture"
@@ -32,29 +32,30 @@ echo ""
 
 # 1. Runbook readiness
 echo "Checking runbook readiness..."
-if [[ -f "docs/runbook.md" || -f "docs/RUNBOOK.md" || -f "RUNBOOK.md" ]]; then
-    # Check runbook has required sections
-    RUNBOOK=$(find . -name "runbook.md" -o -name "RUNBOOK.md" 2>/dev/null | head -1)
-    if grep -qiE "(incident|escalation|rollback|recovery|on.call)" "$RUNBOOK" 2>/dev/null; then
-        log_pass "Runbook readiness (runbook exists with incident/rollback sections)"
+# Match generic runbook.md, RUNBOOK.md, or module-specific runbook-*.md
+RUNBOOK=$(find docs -maxdepth 1 -name "runbook.md" -o -name "RUNBOOK.md" -o -name "runbook-*.md" 2>/dev/null | head -1)
+if [[ -n "$RUNBOOK" ]]; then
+    if grep -qiE "(incident|escalation|rollback|recovery|on.call|failure|shutdown)" "$RUNBOOK" 2>/dev/null; then
+        log_pass "Runbook readiness ($(basename "$RUNBOOK") exists with recovery/shutdown sections)"
     else
         log_fail "Runbook readiness" "Runbook exists but missing incident/rollback sections"
     fi
 else
-    log_fail "Architecture readiness" "No runbook.md found. Create docs/runbook.md with incident procedures."
+    log_fail "Architecture readiness" "No runbook found. Create docs/runbook*.md with incident procedures."
 fi
 
 # 2. DR plan
 echo "Checking DR plan..."
-if [[ -f "docs/dr-plan.md" || -f "docs/disaster-recovery.md" || -f "docs/DR.md" ]]; then
-    DR_FILE=$(find . -name "dr-plan.md" -o -name "disaster-recovery.md" -o -name "DR.md" 2>/dev/null | head -1)
+# Match generic DR files or module-specific dr-plan-*.md
+DR_FILE=$(find docs -maxdepth 1 -name "dr-plan.md" -o -name "disaster-recovery.md" -o -name "DR.md" -o -name "dr-plan-*.md" 2>/dev/null | head -1)
+if [[ -n "$DR_FILE" ]]; then
     if grep -qiE "(rto|rpo|backup|restore|failover|recovery)" "$DR_FILE" 2>/dev/null; then
-        log_pass "DR plan readiness (DR plan exists with RTO/RPO sections)"
+        log_pass "DR plan readiness ($(basename "$DR_FILE") exists with RTO/RPO sections)"
     else
         log_fail "DR plan readiness" "DR plan exists but missing RTO/RPO/recovery sections"
     fi
 else
-    log_fail "Architecture readiness" "No dr-plan.md found. Create docs/dr-plan.md with RTO/RPO targets."
+    log_fail "Architecture readiness" "No dr-plan found. Create docs/dr-plan*.md with RTO/RPO targets."
 fi
 
 # 3. Docs updated

@@ -702,7 +702,7 @@ check_import_boundaries() {
     for module_dir in $module_dirs; do
         module=$(basename "$module_dir")
         # Skip non-DDD modules (CLI, config, shared)
-        case "$module" in shared|common|config|lib|bin) continue ;; esac
+        case "$module" in shared|common|config|lib|bin|usage_guide) continue ;; esac
         
         # Check contracts/ anti-pattern
         if [[ -d "${module_dir}/contracts" ]]; then

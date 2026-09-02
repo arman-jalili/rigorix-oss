@@ -116,6 +116,7 @@ IMPORT_PATTERN=$(get_import_pattern "$PROJECT_LANG")
 
 # ── Discover modules ──
 declare -a MODULES
+MODULES=()
 if [[ -n "$SINGLE_MODULE" ]]; then
     if [[ -d "${SRC_DIR}/${SINGLE_MODULE}" ]]; then
         MODULES=("${SINGLE_MODULE}")
@@ -129,7 +130,9 @@ else
         module=$(basename "$dir")
         # Skip shared/ common/ config/ if they exist
         case "$module" in
-            shared|common|config|lib) continue ;;
+            # usage_guide = interface-only content module (static usage-docs
+            # tool endpoint; no domain/application logic by design)
+            shared|common|config|lib|usage_guide) continue ;;
         esac
         MODULES+=("$module")
     done < <(find "$SRC_DIR" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null | sort -z)

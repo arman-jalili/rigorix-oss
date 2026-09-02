@@ -9,7 +9,7 @@ CYAN='\033[0;36m'; BLUE='\033[0;34m'; NC='\033[0m'
 QUICK=false; STAGE=""; CRATE_FILTER=""; LIST_ONLY=false; SAVE_OUTPUT=false
 FAILED=0; PASSED=0; SKIPPED=0; START_TIME=$(date +%s)
 FAILURES=()
-CRATES=("engine" "cli" "actions")
+CRATES=("engine" "mcp" "cli" "actions")
 REPORT_DIR=".pi/output"
 
 while [[ $# -gt 0 ]]; do
