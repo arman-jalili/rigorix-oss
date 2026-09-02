@@ -26,6 +26,10 @@
 
 pub mod dto;
 pub mod service;
+pub mod service_impl;
 
 pub use dto::{ApproveInput, ApproveOutput};
-pub use service::{ApprovalService, IntentVerification};
+pub use service::{
+    ApprovalService, IntentVerification, NodeIntentResolver, ResolvedNode, ScopeViolationSink,
+};
+pub use service_impl::ApprovalServiceImpl;
