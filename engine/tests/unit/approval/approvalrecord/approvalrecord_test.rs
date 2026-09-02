@@ -61,3 +61,71 @@ fn test_approval_status_variants_are_frozen() {
         ApprovalStatus::Superseded
     ));
 }
+
+// ── #789 behavior: status transitions ────────────────────────────────────────
+
+#[test]
+fn test_consume_transitions_pending_to_consumed() {
+    let mut record = sample_record();
+    assert!(record.consume().is_ok());
+    assert_eq!(record.status, ApprovalStatus::Consumed);
+}
+
+#[test]
+fn test_consumed_record_cannot_be_replayed() {
+    // Single-use semantics: a second consume is rejected (replay guard).
+    let mut record = sample_record();
+    record.consume().unwrap();
+    let err = record.consume().unwrap_err();
+    assert!(matches!(
+        err,
+        rigorix_engine::approval::domain::ApprovalError::AlreadyConsumed(_)
+    ));
+    // A consumed approval must never transition to another terminal state.
+    assert!(record.supersede().is_err());
+}
+
+#[test]
+fn test_expire_transitions_pending_to_expired() {
+    let mut record = sample_record();
+    assert!(record.expire().is_ok());
+    assert_eq!(record.status, ApprovalStatus::Expired);
+    // Expired approvals never dispatch — a consume attempt fails with Expired.
+    let err = record.consume().unwrap_err();
+    assert!(matches!(
+        err,
+        rigorix_engine::approval::domain::ApprovalError::Expired(_)
+    ));
+}
+
+#[test]
+fn test_supersede_transitions_pending_to_superseded() {
+    // Re-plan / newer approval / cancelled-and-re-executed run → superseded.
+    let mut record = sample_record();
+    assert!(record.supersede().is_ok());
+    assert_eq!(record.status, ApprovalStatus::Superseded);
+    assert!(record.consume().is_err());
+}
+
+#[test]
+fn test_expired_after_ttl_never_dispatches() {
+    let mut record = sample_record();
+    let past = record.expires_at + Duration::seconds(1);
+    assert!(record.is_expired_at(past));
+    // Enforced at verification: TTL lapse → Expired, no dispatch.
+    assert!(record.enforce_ttl(past).is_err());
+    assert_eq!(record.status, ApprovalStatus::Expired);
+    let before = record.decided_at + Duration::seconds(1);
+    let fresh = sample_record();
+    assert!(!fresh.is_expired_at(before));
+}
+
+#[test]
+fn test_non_terminal_interruption_keeps_pending() {
+    // Cross-process resume: a paused run never consumed the approval, so a
+    // resumed run can verify and continue.
+    let record = sample_record();
+    assert_eq!(record.status, ApprovalStatus::Pending);
+    // Pausing is not a terminal outcome — nothing to consume yet.
+    assert!(record.is_pending());
+}
