@@ -129,7 +129,10 @@ else
         module=$(basename "$dir")
         # Skip shared/ common/ config/ if they exist
         case "$module" in
-            shared|common|config|lib) continue ;;
+            # backend = flat extension-point module (EnforcementConfigProvider
+            # trait + NullConfigProvider only — documented non-layered)
+            # observability = flat cross-cutting module (tracing/metrics/health)
+            shared|common|config|lib|backend|observability) continue ;;
         esac
         MODULES+=("$module")
     done < <(find "$SRC_DIR" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null | sort -z)
@@ -152,7 +155,10 @@ echo "Found ${#MODULES[@]} module(s): ${MODULES[*]}"
 echo ""
 
 # ── Required DDD layers ──
-DDD_LAYERS=("domain" "application" "infrastructure" "interfaces")
+# Engine is a 3-layer library: domain/application/infrastructure. The
+# `interfaces` layer belongs to the MCP-facing crates (rigorix-mcp modules
+# carry their own interfaces/) — do not require it here.
+DDD_LAYERS=("domain" "application" "infrastructure")
 
 # ── Check 1: Every module has the 4 DDD layers ──
 echo "--- Layer Structure ---"

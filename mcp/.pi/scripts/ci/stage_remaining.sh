@@ -13,8 +13,8 @@ PI_DIR=".pi"
 FAIL=0
 PASS=0
 
-log_pass() { echo "  ✓ PASS: $1"; ((PASS++)); }
-log_fail() { echo "  ✗ FAIL: $1 — $2"; ((FAIL++)); }
+log_pass() { echo "  ✓ PASS: $1"; PASS=$((PASS + 1)); }
+log_fail() { echo "  ✗ FAIL: $1 — $2"; FAIL=$((FAIL + 1)); }
 
 STAGE="${1:-all}"
 

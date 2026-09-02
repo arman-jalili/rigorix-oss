@@ -22,7 +22,7 @@ echo "  Canonical Reference Validation (Rust)"
 echo "============================================"
 echo ""
 
-if [ ! -f "Cargo.toml" ]; then
+if [ ! -f "Cargo.toml" ] && [ ! -f "engine/Cargo.toml" ]; then
     warn "No Cargo.toml found (skipping Rust canonical validation)"
     echo ""
     echo "============================================"
@@ -35,6 +35,16 @@ if [ ! -f "Cargo.toml" ]; then
     exit 0
 fi
 
+# Determine source directory — supports both flat and engine/ layouts
+SRC_DIR="src"
+if [ ! -d "$SRC_DIR" ] && [ -d "engine/src" ]; then
+    SRC_DIR="engine/src"
+fi
+PI_DIR=".pi"
+if [ ! -d "$PI_DIR" ] && [ -d "engine/.pi" ]; then
+    PI_DIR="engine/.pi"
+fi
+
 # ---------------------------------------------------------------------------
 # Architecture reference tracing
 # ---------------------------------------------------------------------------
@@ -43,10 +53,10 @@ CANONICAL_REFS=0
 TOTAL_RS=0
 
 # Count all Rust source files
-TOTAL_RS=$(find src -name "*.rs" 2>/dev/null | wc -l | tr -d ' ')
+TOTAL_RS=$(find "$SRC_DIR" -name "*.rs" 2>/dev/null | wc -l | tr -d ' ' || true)
 if [ "$TOTAL_RS" -gt 0 ]; then
     # Look for canonical reference patterns in doc comments
-    CANONICAL_REFS=$(grep -rE '(///\s*Canonical:|//!\s*@canonical|///\s*Reference:)' src/ 2>/dev/null | wc -l | tr -d ' ')
+    CANONICAL_REFS=$(grep -rE '(///\s*Canonical:|//!\s*@canonical|///\s*Reference:)' "$SRC_DIR/" 2>/dev/null | wc -l | tr -d ' ' || true)
     if [ "$CANONICAL_REFS" -gt 0 ]; then
         PCT=$((CANONICAL_REFS * 100 / TOTAL_RS))
         pass "Canonical references found: ${CANONICAL_REFS} files (${PCT}% of ${TOTAL_RS} Rust files)"
@@ -54,7 +64,7 @@ if [ "$TOTAL_RS" -gt 0 ]; then
         fail "No canonical references found in Rust doc comments"
     fi
 else
-    warn "No Rust source files in src/"
+    warn "No Rust source files in $SRC_DIR/"
 fi
 
 # ---------------------------------------------------------------------------
@@ -62,15 +72,20 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Module-to-Implementation Mapping ---"
-if [ -d ".pi/architecture/modules" ]; then
-    MODULE_FILES=$(find .pi/architecture/modules -name "*.md" 2>/dev/null)
+ARCH_MODULES_DIR="${PI_DIR}/architecture/modules"
+if [ -d "$ARCH_MODULES_DIR" ]; then
+    MODULE_FILES=$(find "$ARCH_MODULES_DIR" -name "*.md" 2>/dev/null)
     MAPPED=0
     TOTAL_MODULES=0
     for mf in $MODULE_FILES; do
         TOTAL_MODULES=$((TOTAL_MODULES + 1))
         MODULE_NAME=$(basename "$mf" .md)
         # Check if a matching Rust file exists (exact match or containing module name)
-        if find src -name "*${MODULE_NAME}*" -name "*.rs" 2>/dev/null | grep -q .; then
+        # Searches both filename and directory path for the module name
+        MODULE_PATTERN=$(echo "$MODULE_NAME" | sed 's/-/_/g')
+        if find "$SRC_DIR" -name "*.rs" -path "*${MODULE_PATTERN}*" 2>/dev/null | grep -q .; then
+            MAPPED=$((MAPPED + 1))
+        elif find "$SRC_DIR" -name "*${MODULE_PATTERN}*" -name "*.rs" 2>/dev/null | grep -q .; then
             MAPPED=$((MAPPED + 1))
         fi
     done
@@ -82,7 +97,7 @@ if [ -d ".pi/architecture/modules" ]; then
         fail "No architecture modules mapped to Rust implementation files"
     fi
 else
-    warn "No .pi/architecture/modules/ directory (no module mapping to validate)"
+    warn "No $ARCH_MODULES_DIR directory (no module mapping to validate)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -91,7 +106,7 @@ fi
 echo ""
 echo "--- Module Documentation ---"
 if [ "$TOTAL_RS" -gt 0 ]; then
-    MOD_DOCS=$(grep -rlE '^//!\s' src/ 2>/dev/null | wc -l | tr -d ' ')
+    MOD_DOCS=$(grep -rlE '^//!\s' "$SRC_DIR/" 2>/dev/null | wc -l | tr -d ' ' || true)
     if [ "$MOD_DOCS" -gt 0 ]; then
         PCT=$((MOD_DOCS * 100 / TOTAL_RS))
         pass "Module documentation found in ${MOD_DOCS}/${TOTAL_RS} files (${PCT}%)"
@@ -107,20 +122,21 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- ADR Linkage ---"
-if [ -d ".pi/architecture/decisions" ]; then
-    ADR_FILES=$(find .pi/architecture/decisions -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
+ADR_DIR="${PI_DIR}/architecture/decisions"
+if [ -d "$ADR_DIR" ]; then
+    ADR_FILES=$(find "$ADR_DIR" -name "*.md" 2>/dev/null | wc -l | tr -d ' ' || true)
     if [ "$ADR_FILES" -gt 0 ]; then
-        ADR_REFS=$(grep -rE '///\s*ADR-' src/ 2>/dev/null | wc -l | tr -d ' ')
+        ADR_REFS=$(grep -rE '///\s*ADR-' "$SRC_DIR/" 2>/dev/null | wc -l | tr -d ' ' || true)
         if [ "$ADR_REFS" -gt 0 ]; then
             pass "ADR references found in code ($ADR_REFS references)"
         else
             warn "No ADR references in code (consider adding /// ADR-NNN comments)"
         fi
     else
-        warn "No ADR files found in .pi/architecture/decisions/"
+        warn "No ADR files found in $ADR_DIR/"
     fi
 else
-    warn "No .pi/architecture/decisions/ directory (no ADRs to link)"
+    warn "No $ADR_DIR directory (no ADRs to link)"
 fi
 
 # ---------------------------------------------------------------------------
