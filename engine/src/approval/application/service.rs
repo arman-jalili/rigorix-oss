@@ -36,7 +36,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::approval::domain::{
-    ApprovalError, ApprovalRecord, ApprovalStatus, IntentHash, ScopeViolation,
+    ApprovalError, ApprovalRecord, ApprovalStatus, ExecutionIntent, IntentHash, ScopeViolation,
 };
 
 use super::dto::{ApproveInput, ApproveOutput};
@@ -93,4 +93,47 @@ pub trait ApprovalService: Send + Sync {
 
     /// Query the durable record (for TUI, audit, debugging).
     async fn get_approval(&self, node_id: Uuid) -> Result<Option<ApprovalRecord>, ApprovalError>;
+}
+
+/// A node resolved to the canonical intent that will dispatch.
+///
+/// Implementation-level support type (NOT part of the frozen contract): the
+/// `execution_engine` / `orchestrator` wires a `NodeIntentResolver` so the
+/// service can hash exactly what the dispatch choke point will execute.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedNode {
+    /// Node id (dispatch choke point key).
+    pub node_id: Uuid,
+    /// Human step name (approval surface key).
+    pub step_name: String,
+    /// The canonical execution intent that will dispatch.
+    pub intent: ExecutionIntent,
+}
+
+/// Intent source for the service implementation.
+///
+/// Implementation-level support trait (NOT part of the frozen contract).
+#[async_trait]
+pub trait NodeIntentResolver: Send + Sync {
+    /// Resolve the current intent for a step name (approval time, R1).
+    async fn resolve_by_step_name(&self, step_name: &str) -> Option<ResolvedNode>;
+
+    /// Re-derive the current intent for a node id (dispatch time, R2).
+    async fn resolve_by_node_id(&self, node_id: Uuid) -> Option<ResolvedNode>;
+}
+
+/// Receiver for post-execution scope violations (R5 envelope evidence).
+///
+/// Implementation-level support trait (NOT part of the frozen contract): the
+/// audit wiring implements it to flag `scope_violation` into the envelope.
+#[async_trait]
+pub trait ScopeViolationSink: Send + Sync {
+    /// Record one non-blocking scope-violation evidence item.
+    async fn record(&self, violation: &ScopeViolation);
+}
+
+/// No-op scope-violation sink (records nothing).
+#[async_trait]
+impl ScopeViolationSink for () {
+    async fn record(&self, _violation: &ScopeViolation) {}
 }
