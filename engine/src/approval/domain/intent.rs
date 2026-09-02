@@ -22,10 +22,10 @@
 //! - Dynamic runtime context knowable only at dispatch time is excluded from
 //!   the hash and recorded in `decision_context` as evidence instead
 //!
-//! **Implementation note:** method bodies are `todo!()` stubs; the canonical
-//! serialization logic lands in ISSUE-EXECUTIONINTENT.
+//! Implemented in ISSUE-EXECUTIONINTENT (#787).
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::dag_engine::domain::TaskNode;
 
@@ -50,34 +50,82 @@ impl ExecutionIntent {
     /// Build the canonical intent from a sealed `TaskNode` — the exact bytes
     /// that will dispatch.
     ///
+    /// The node's `intent` field is the resolved post-template payload. When
+    /// it holds a JSON payload it is parsed into a structured value; otherwise
+    /// (the common plain-description case) it is wrapped losslessly as a JSON
+    /// string — deterministic per node either way.
+    ///
     /// # States
     /// - **Populated:** tool + intent from a sealed graph node
     /// - **Error:** node missing tool or intent
-    ///
-    /// # Implementation
-    /// TODO: implemented in ISSUE-EXECUTIONINTENT (#787).
-    pub fn from_node(_node: &TaskNode) -> Self {
-        todo!("ISSUE-EXECUTIONINTENT (#787): derive canonical intent from sealed TaskNode")
+    pub fn from_node(node: &TaskNode) -> Self {
+        let intent = serde_json::from_str(&node.intent)
+            .unwrap_or_else(|_| Value::String(node.intent.clone()));
+        Self {
+            tool: node.tool.clone(),
+            intent,
+            // The declared effect scope is declared at approval time, not on
+            // the raw node; a bare sealed node declares no scope.
+            declared_scope: Vec::new(),
+        }
     }
 
-    /// Canonical serialization for hashing — deterministic field order
-    /// (recursively sorted-key JSON over `{ tool, intent, declared_scope }`).
+    /// Canonical serialization for hashing — deterministic field order.
     ///
-    /// # Implementation
-    /// TODO: implemented in ISSUE-EXECUTIONINTENT (#787).
+    /// Serializes `{ tool, intent, declared_scope }` as **sorted-key JSON**: a
+    /// compact, whitespace-free encoding whose object keys are recursively
+    /// sorted, so identical payloads always produce identical bytes and any
+    /// byte change alters the digest. `intent` values that parse as JSON are
+    /// canonicalized recursively (key order is normalized).
     pub fn canonical_bytes(&self) -> Vec<u8> {
-        todo!("ISSUE-EXECUTIONINTENT (#787): sorted-key canonical serialization")
+        let mut map = serde_json::Map::new();
+        map.insert("tool".to_string(), Value::String(self.tool.clone()));
+        map.insert("intent".to_string(), sorted_value(&self.intent));
+        map.insert(
+            "declared_scope".to_string(),
+            Value::Array(
+                self.declared_scope
+                    .iter()
+                    .map(|s| Value::String(s.clone()))
+                    .collect(),
+            ),
+        );
+        // Serialize the outer map too — serde_json emits BTreeMap keys in
+        // sorted order, giving a stable, deterministic byte stream.
+        serde_json::to_vec(&Value::Object(map))
+            .expect("canonical serialization is always valid JSON")
     }
 
     /// Human-readable render — the SAME renderer used for display and hashing.
     ///
     /// # Invariant
     /// `render()` and `canonical_bytes()` derive from the same canonical
-    /// serialization — what the human sees is what is hashed.
-    ///
-    /// # Implementation
-    /// TODO: implemented in ISSUE-EXECUTIONINTENT (#787).
+    /// serialization — what the human sees is what is hashed. This method is
+    /// deterministic: equal intents render identically.
     pub fn render(&self) -> String {
-        todo!("ISSUE-EXECUTIONINTENT (#787): single canonical renderer")
+        let bytes = self.canonical_bytes();
+        let canonical = String::from_utf8_lossy(&bytes);
+        format!("{} {}", self.tool, canonical)
+    }
+}
+
+/// Recursively normalize a JSON value for canonical serialization.
+///
+/// Object keys are sorted (byte-wise) at every level; arrays preserve order
+/// (a `declared_scope` / args list is an ordered sequence). Primitive values
+/// and the number formatting produced by serde_json are already canonical for
+/// a given input.
+fn sorted_value(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut entries: Vec<(String, Value)> = map
+                .iter()
+                .map(|(k, v)| (k.clone(), sorted_value(v)))
+                .collect();
+            entries.sort_by(|a, b| a.0.cmp(&b.0));
+            Value::Object(entries.into_iter().collect())
+        }
+        Value::Array(items) => Value::Array(items.iter().map(sorted_value).collect()),
+        other => other.clone(),
     }
 }
