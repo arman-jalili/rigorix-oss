@@ -28,13 +28,6 @@ else
 fi
 
 echo ""
-echo "  action-entrypoint Coverage Check..."
-if $SCRIPT_DIR/check_action-entrypoint_coverage.sh ${VERBOSE:+--verbose}; then
-    echo "  ✅ Coverage check passed"
-else
-    echo "  ❌ Coverage check failed"
-    exit 1
-fi
 
 echo ""
 echo "✅ action-entrypoint proofing passed"

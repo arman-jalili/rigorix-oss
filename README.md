@@ -290,7 +290,7 @@ rigorix-oss/
 Rigorix treats CI as continuous verification rather than compilation and testing. Beyond formatting, linting, unit tests, and security scanning, every architectural capability is validated through proofing scripts that verify contracts, architecture readiness, documentation consistency, policy enforcement, and execution guarantees.
 
 ```
-📦 84 automated verification steps
+📦 85 automated verification steps
 
   Lint (12)     — formatting, clippy, CI validation × 3 crates
   Build (9)     — release build, static analysis, package × 3 crates
@@ -301,7 +301,7 @@ Rigorix treats CI as continuous verification rather than compilation and testing
 ```
 
 ```bash
-# Run the full CI suite (84 steps, ~6 min)
+# Run the full CI suite (85 steps, ~8 min)
 bash .pi/scripts/local-ci.sh
 
 # Run a specific stage

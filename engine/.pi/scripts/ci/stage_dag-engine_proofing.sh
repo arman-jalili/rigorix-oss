@@ -4,7 +4,6 @@
 #
 # CI stage wrapper that runs all dag-engine proofing checks:
 #   1. Contract implementation check — all interfaces have implementations
-#   2. Coverage threshold check — meets minimum coverage
 #
 # Usage: bash .pi/scripts/ci/stage_dag-engine_proofing.sh [--help]
 #
@@ -44,17 +43,6 @@ echo ""
 # ---------------------------------------------------------------------------
 # Check 2: Coverage Threshold Check
 # ---------------------------------------------------------------------------
-echo "--- 2. Coverage Threshold Check ---"
-echo ""
-
-if bash "${SCRIPT_DIR}/check_dag-engine_coverage.sh" 2>&1; then
-    log_pass "Coverage threshold check passed"
-else
-    log_fail "Coverage threshold check failed"
-fi
-
-echo ""
-
 # ---------------------------------------------------------------------------
 # Check 3: Script Self-Validation
 # ---------------------------------------------------------------------------

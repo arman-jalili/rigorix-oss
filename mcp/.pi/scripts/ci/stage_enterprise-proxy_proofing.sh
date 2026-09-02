@@ -21,12 +21,9 @@ echo ""
 echo ">>> Contract Implementation Check"
 if bash "${SCRIPT_DIR}/check_enterprise-proxy_contracts.sh"; then
     echo ""
-    echo ">>> Coverage Check"
-    if bash "${SCRIPT_DIR}/check_enterprise-proxy_coverage.sh"; then
-        echo ""
-        echo -e "\e[32m✅ Stage enterprise-proxy proofing PASSED\e[0m"
-        exit 0
-    fi
+    # (heuristic *_coverage.sh removed — real coverage via .pi/scripts/coverage.sh)
+    echo -e "\e[32m✅ Stage enterprise-proxy proofing PASSED\e[0m"
+    exit 0
 fi
 
 echo ""

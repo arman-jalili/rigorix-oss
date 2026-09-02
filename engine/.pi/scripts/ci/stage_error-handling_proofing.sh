@@ -4,7 +4,6 @@
 #
 # CI stage wrapper that runs all error-handling proofing checks:
 #   1. Contract implementation check — all interfaces have implementations
-#   2. Coverage threshold check — meets minimum coverage
 #
 # Usage: bash .pi/scripts/ci/stage_error-handling_proofing.sh [--help]
 #
@@ -44,17 +43,6 @@ echo ""
 # ---------------------------------------------------------------------------
 # Check 2: Coverage Threshold Check
 # ---------------------------------------------------------------------------
-echo "--- 2. Coverage Threshold Check ---"
-echo ""
-
-if bash "${SCRIPT_DIR}/check_error-handling_coverage.sh" 2>&1; then
-    log_pass "Coverage threshold check passed"
-else
-    log_fail "Coverage threshold check failed"
-fi
-
-echo ""
-
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------

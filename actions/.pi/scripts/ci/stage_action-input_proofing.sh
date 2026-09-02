@@ -28,13 +28,6 @@ else
 fi
 
 echo ""
-echo "  action-input Coverage Check..."
-if $SCRIPT_DIR/check_action-input_coverage.sh ${VERBOSE:+--verbose}; then
-    echo "  ✅ Coverage check passed"
-else
-    echo "  ❌ Coverage check failed"
-    exit 1
-fi
 
 echo ""
 echo "✅ action-input proofing passed"

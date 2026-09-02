@@ -9,7 +9,6 @@
 #
 # This stage runs:
 #   1. check_policy-evaluator_contracts.sh - Validate contract implementations
-#   2. check_policy-evaluator_coverage.sh  - Verify test coverage thresholds
 # ============================================================================
 
 set -euo pipefail
@@ -46,13 +45,6 @@ echo ""
 # Check 2: Coverage Threshold Validation
 # ---------------------------------------------------------------------------
 echo "--- 2. Coverage Threshold Validation ---"
-if bash "$SCRIPT_DIR/check_policy-evaluator_coverage.sh" 2>&1; then
-    pass "Coverage check passed"
-else
-    fail "Coverage check failed"
-fi
-echo ""
-
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------

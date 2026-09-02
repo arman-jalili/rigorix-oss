@@ -23,8 +23,7 @@ checks_failed=0
 
 # Run all execution-engine proofing checks
 for check in \
-    "$SCRIPT_DIR/check_execution-engine_contracts.sh" \
-    "$SCRIPT_DIR/check_execution-engine_coverage.sh"; do
+    "$SCRIPT_DIR/check_execution-engine_contracts.sh"; do
 
     check_name="$(basename "$check" .sh)"
     echo "─── $check_name ───"

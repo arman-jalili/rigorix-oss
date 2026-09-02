@@ -22,13 +22,7 @@ bash "${SCRIPT_DIR}/check_execution-tools_contracts.sh" || {
 }
 echo ""
 
-# 2. Coverage check
-echo ">>> [2/2] Coverage Threshold Check"
-bash "${SCRIPT_DIR}/check_execution-tools_coverage.sh" || {
-    echo -e "\e[31m❌ Coverage check failed\e[0m"
-    exit 1
-}
-echo ""
+# (heuristic *_coverage.sh removed — real coverage via .pi/scripts/coverage.sh)
 
 echo -e "\e[32m✅ All execution-tools proofing checks passed.\e[0m"
 exit 0

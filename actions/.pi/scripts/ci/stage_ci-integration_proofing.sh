@@ -28,13 +28,6 @@ else
 fi
 
 echo ""
-echo "  ci-integration Coverage Check..."
-if $SCRIPT_DIR/check_ci-integration_coverage.sh ${VERBOSE:+--verbose}; then
-    echo "  ✅ Coverage check passed"
-else
-    echo "  ❌ Coverage check failed"
-    exit 1
-fi
 
 echo ""
 echo "✅ ci-integration proofing passed"

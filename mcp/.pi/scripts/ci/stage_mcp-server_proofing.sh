@@ -33,7 +33,7 @@ echo "═══ MCP Server Proofing Stage ═══"
 echo ""
 
 run_check "${SCRIPTS_DIR}/check_mcp-server_contracts.sh" "Contract Implementation Check"
-run_check "${SCRIPTS_DIR}/check_mcp-server_coverage.sh" "Coverage Threshold Check"
+# (heuristic *_coverage.sh removed — real coverage via .pi/scripts/coverage.sh)
 
 echo "═══ Stage Results: $PASS passed, $FAIL failed ═══"
 

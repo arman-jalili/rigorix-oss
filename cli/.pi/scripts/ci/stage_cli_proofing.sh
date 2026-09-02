@@ -56,11 +56,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- 2/3: Coverage Threshold Check ---"
-if (cd "${REPO_ROOT}/cli" && bash "${SCRIPT_DIR}/check_cli_coverage.sh") 2>/dev/null; then
-    pass "check_cli_coverage.sh"
-else
-    fail "check_cli_coverage.sh"
-fi
+# (heuristic *_coverage.sh removed — real coverage via .pi/scripts/coverage.sh)
 
 # ---------------------------------------------------------------------------
 # Check 3: CI Validation (build + tests + lint + format)

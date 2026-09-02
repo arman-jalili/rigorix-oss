@@ -3,7 +3,6 @@
 #
 # CI stage that validates the audit-posting module:
 #   1. Contract implementation check
-#   2. Coverage threshold check
 #   3. Build verification
 #
 # Usage: bash .pi/scripts/ci/stage_audit-posting_proofing.sh [--verbose]
@@ -36,16 +35,6 @@ fi
 CONTRACTS_RESULT=$?
 echo ""
 
-# ── Stage 2: Coverage Check ──
-echo "─── Stage 2: Coverage Check ───"
-if $VERBOSE; then
-    bash "$SCRIPT_DIR/check_audit-posting_coverage.sh" --verbose
-else
-    bash "$SCRIPT_DIR/check_audit-posting_coverage.sh"
-fi
-COVERAGE_RESULT=$?
-echo ""
-
 # ── Stage 3: Build Verification ──
 echo "─── Stage 3: Build Verification ───"
 echo -n "  Checking cargo build... "
@@ -70,13 +59,6 @@ if [[ $CONTRACTS_RESULT -eq 0 ]]; then
     echo "  ✅ Contract Implementation Check: PASSED"
 else
     echo "  ❌ Contract Implementation Check: FAILED"
-    TOTAL_FAILURES=$((TOTAL_FAILURES + 1))
-fi
-
-if [[ $COVERAGE_RESULT -eq 0 ]]; then
-    echo "  ✅ Coverage Check: PASSED"
-else
-    echo "  ❌ Coverage Check: FAILED"
     TOTAL_FAILURES=$((TOTAL_FAILURES + 1))
 fi
 
