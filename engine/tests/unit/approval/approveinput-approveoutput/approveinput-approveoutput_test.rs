@@ -81,3 +81,52 @@ fn test_approveoutput_serde_round_trip() {
     let decoded: ApproveOutput = serde_json::from_str(&encoded).expect("deserialize");
     assert_eq!(decoded, output);
 }
+
+// ── #793 behavior: boundary validation ───────────────────────────────────────
+
+#[test]
+fn test_approveinput_requires_approver_and_steps() {
+    use rigorix_engine::approval::domain::ApprovalError;
+
+    // Missing approver → rejected at the boundary.
+    let mut no_approver = sample_input();
+    no_approver.approver_id.clear();
+    assert!(matches!(
+        no_approver.validate(),
+        Err(ApprovalError::InvalidState(_))
+    ));
+
+    // No steps → rejected.
+    let mut no_steps = sample_input();
+    no_steps.step_names.clear();
+    assert!(matches!(
+        no_steps.validate(),
+        Err(ApprovalError::InvalidState(_))
+    ));
+
+    // Valid input passes.
+    assert!(sample_input().validate().is_ok());
+}
+
+#[test]
+fn test_approveinput_dedupes_and_preserves_order() {
+    let mut input = sample_input();
+    input.step_names = vec!["a".into(), "b".into(), "a".into(), "c".into()];
+    let deduped = input.dedup_step_names();
+    assert_eq!(
+        deduped,
+        vec!["a".to_string(), "b".to_string(), "c".to_string()]
+    );
+}
+
+#[test]
+fn test_approveoutput_aggregate_helpers() {
+    let mut out = sample_output();
+    assert!(out.is_fully_approved());
+    assert_eq!(out.approval_count(), 1);
+
+    out.approved.clear();
+    out.still_pending.push("deploy".into());
+    assert!(!out.is_fully_approved());
+    assert_eq!(out.pending_count(), 1);
+}
