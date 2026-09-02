@@ -349,6 +349,6 @@ All other rows **validated correct**:
 | M-12 | ✅ **ALREADY FIXED (missed by re-verification)** | `evidence_degraded: !input.sign` + `test_evidence_degraded_marker` landed in 5eb95f43 (#761), ancestor of HEAD. The re-verification's grep (`evidence: degraded` with colon) missed the underscore field name; the independent Validation section caught it. Unnecessary tracking issue #776 closed |
 | A-25 | ✅ verdict stands | 1 bounded poll-sleep remains in `mcp/tests/common/mod.rs:109` (deadline-loop interval) — the intended replacement for fixed sleeps |
 | L-08-global | ⬜ **Deferred** → issue #777 (backlog) | global unwrap elimination, beyond the #751 path scope |
-| M-15 | ⬜ **Deferred** → issue #758 (approval epic) | consolidate node-state vocabularies when `approval_records` lands in the state format |
+| M-15 | ✅ **RESOLVED (#758)** | canonicalize: `exec_node_states` is the single persisted representation (coarse `node_states` → `#[serde(skip_serializing)]` derived view rebuilt on hydrate; final states now persist exec states too; `update_node_state` syncs into exec). Full API removal still rides the approval epic's `approval_records` format change |
 
 **Remaining open after batch 21:** deferred to approval epic: M-15 (#758) · backlog: L-08-global (#777). All A-rows + M-09/M-03/M-04/L-06/M-12 resolved.
