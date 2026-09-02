@@ -21,7 +21,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::approval::domain::{ApprovalRecord, DecisionContext};
+use crate::approval::domain::{ApprovalError, ApprovalRecord, DecisionContext};
 
 /// Input for approving a set of steps of a DAG.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -55,4 +55,58 @@ pub struct ApproveOutput {
     pub still_pending: Vec<String>,
     /// The persisted single-use records (one per approved node).
     pub approval_records: Vec<ApprovalRecord>,
+}
+
+impl ApproveInput {
+    /// Validate the boundary input.
+    ///
+    /// # Contract
+    /// - `approver_id` is required (identity is a captured fact, R3)
+    /// - at least one `step_name` must be present
+    ///
+    /// # Errors
+    /// - `ApprovalError::InvalidState` — missing approver or empty step set
+    pub fn validate(&self) -> Result<(), ApprovalError> {
+        if self.approver_id.trim().is_empty() {
+            return Err(ApprovalError::InvalidState(
+                "approve requires an approver_id (identity is a captured fact)".into(),
+            ));
+        }
+        if self.step_names.is_empty() {
+            return Err(ApprovalError::InvalidState(
+                "approve requires at least one step_name".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// De-duplicate step names preserving first-occurrence order.
+    pub fn dedup_step_names(&self) -> Vec<String> {
+        let mut seen = std::collections::HashSet::new();
+        let mut out = Vec::with_capacity(self.step_names.len());
+        for name in &self.step_names {
+            if seen.insert(name.clone()) {
+                out.push(name.clone());
+            }
+        }
+        out
+    }
+}
+
+impl ApproveOutput {
+    /// Whether every requested/known step was approved (nothing pending or
+    /// missing).
+    pub fn is_fully_approved(&self) -> bool {
+        self.not_found.is_empty() && self.still_pending.is_empty() && !self.approved.is_empty()
+    }
+
+    /// Number of approved steps.
+    pub fn approval_count(&self) -> usize {
+        self.approved.len()
+    }
+
+    /// Number of steps still awaiting approval.
+    pub fn pending_count(&self) -> usize {
+        self.still_pending.len()
+    }
 }
