@@ -198,30 +198,28 @@ impl StateRepository for FileSystemStateRepository {
 mod tests {
     use super::*;
 
-    use indexmap::IndexMap;
     use tempfile::TempDir;
 
-    use crate::state_persistence::domain::{ExecutionStatus, NodeState, NodeStatus};
+    use crate::state_persistence::domain::ExecutionStatus;
 
     fn create_test_state(execution_id: Uuid) -> ExecutionState {
+        // GAP-M-15: seed the canonical exec_node_states vocabulary (coarse is
+        // derived and no longer persisted).
+        use crate::execution_engine::domain::{NodeExecutionState, NodeStatus as ExecStatus};
         let mut state = ExecutionState::new(execution_id, "test_hash_123".to_string());
         state.status = ExecutionStatus::Running;
 
-        let mut node_states = IndexMap::new();
         let node_id_1 = Uuid::new_v4();
         let node_id_2 = Uuid::new_v4();
 
-        let mut node1 = NodeState::new(node_id_1);
-        node1.status = NodeStatus::Completed;
-        node1.output = Some("test output".to_string());
-        node1.duration_ms = Some(100);
-
-        let mut node2 = NodeState::new(node_id_2);
-        node2.status = NodeStatus::Pending;
-
-        node_states.insert(node_id_1, node1);
-        node_states.insert(node_id_2, node2);
-        state.node_states = node_states;
+        let mut exec = std::collections::HashMap::new();
+        let mut n1 = NodeExecutionState::new(node_id_1, "node1");
+        n1.status = ExecStatus::Completed;
+        n1.last_duration_ms = Some(100);
+        let n2 = NodeExecutionState::new(node_id_2, "node2"); // Pending
+        exec.insert(node_id_1, n1);
+        exec.insert(node_id_2, n2);
+        state.exec_node_states = Some(exec);
 
         state
     }
@@ -242,10 +240,15 @@ mod tests {
 
         repo.save(&state).await.unwrap();
 
-        let loaded = repo.load(execution_id).await.unwrap();
+        let mut loaded = repo.load(execution_id).await.unwrap();
         assert_eq!(loaded.execution_id, execution_id);
         assert_eq!(loaded.status, ExecutionStatus::Running);
         assert_eq!(loaded.symbol_graph_hash, "test_hash_123");
+        // GAP-M-15: the persisted vocabulary is exec_node_states; coarse is
+        // derived on demand (manager.load_state does this automatically).
+        assert_eq!(loaded.exec_node_states.as_ref().map(|m| m.len()), Some(2));
+        assert!(loaded.node_states.is_empty());
+        loaded.derive_node_states_from_exec();
         assert_eq!(loaded.node_states.len(), 2);
     }
 

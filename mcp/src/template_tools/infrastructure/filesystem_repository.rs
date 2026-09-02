@@ -733,7 +733,8 @@ mod tests {
             author: None,
         };
 
-        let plan = engine_template_to_plan_template(&engine_tmpl).expect("valid engine template converts");
+        let plan =
+            engine_template_to_plan_template(&engine_tmpl).expect("valid engine template converts");
         let steps = plan.steps();
         assert_eq!(steps.len(), 2);
         assert!(

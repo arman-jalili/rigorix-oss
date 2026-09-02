@@ -10,37 +10,60 @@ use crate::state_persistence::domain::{ExecutionState, ExecutionStatus, NodeStat
 use uuid::Uuid;
 
 fn sample_state() -> ExecutionState {
+    // GAP-M-15: exec_node_states is the persisted node-state vocabulary.
     let mut state = ExecutionState::new(Uuid::new_v4(), "hash-v1".to_string());
     let node_id = Uuid::new_v4();
-    state.init_node_states(&[node_id]);
-    state.node_started(node_id).unwrap();
-    state
-        .node_completed(node_id, Some("output".to_string()), 10)
-        .unwrap();
+    let mut exec = crate::execution_engine::domain::NodeExecutionState::new(node_id, "sample");
+    exec.status = crate::execution_engine::domain::NodeStatus::Completed;
+    exec.last_duration_ms = Some(10);
+    let mut map = std::collections::HashMap::new();
+    map.insert(node_id, exec);
+    state.exec_node_states = Some(map);
     state
 }
 
 #[test]
 fn test_full_state_serialize_deserialize_round_trip() {
     let mut state = sample_state();
-    let node_id = *state.node_states.keys().next().unwrap();
+    let node_id = *state
+        .exec_node_states
+        .as_ref()
+        .expect("sample_state seeds exec")
+        .keys()
+        .next()
+        .unwrap();
     state.status = ExecutionStatus::Completed;
     state.completed_at = Some(chrono::Utc::now());
     state.approved = vec![node_id];
 
     let json = serde_json::to_string(&state).unwrap();
-    let back: ExecutionState = serde_json::from_str(&json).unwrap();
+    // GAP-M-15: coarse node_states is NOT serialized (derived view) — the
+    // persisted representation is exec_node_states.
+    // NB: "exec_node_states" contains the substring — check the exact key form.
+    assert!(
+        !json.contains("\"node_states\":"),
+        "coarse map must not be persisted"
+    );
+    assert!(
+        json.contains("exec_node_states"),
+        "exec map must be persisted"
+    );
+    let mut back: ExecutionState = serde_json::from_str(&json).unwrap();
 
     assert_eq!(back.execution_id, state.execution_id);
     assert_eq!(back.status, ExecutionStatus::Completed);
     assert_eq!(back.symbol_graph_hash, "hash-v1");
     assert_eq!(back.approved, vec![node_id]);
+    // Coarse is empty until derived from the canonical exec map.
+    assert!(back.node_states.is_empty());
+    back.derive_node_states_from_exec();
     assert_eq!(back.node_states.len(), 1);
     let node = back.node_states.get(&node_id).unwrap();
     assert_eq!(
         node.status,
         crate::state_persistence::domain::NodeStatus::Completed
     );
+    assert_eq!(node.duration_ms, Some(10));
     assert!(back.completed_at.is_some());
 }
 
@@ -99,7 +122,13 @@ fn test_legacy_approved_invalidated_on_hydrate_migration_rule() {
 fn test_gap3_state_preserves_approved_on_hydrate() {
     // GAP-3+ files carry exec_node_states — their approved set is preserved.
     let mut state = sample_state();
-    let node_id = *state.node_states.keys().next().unwrap();
+    let node_id = *state
+        .exec_node_states
+        .as_ref()
+        .expect("sample_state seeds exec")
+        .keys()
+        .next()
+        .unwrap();
     state.approved = vec![node_id];
     state.exec_node_states = Some(std::collections::HashMap::new());
 

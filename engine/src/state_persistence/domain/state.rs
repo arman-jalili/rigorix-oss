@@ -155,9 +155,14 @@ pub struct ExecutionState {
     /// `None` while the execution is still running.
     pub completed_at: Option<DateTime<Utc>>,
 
-    /// Per-node states keyed by node UUID.
+    /// Per-node states keyed by node UUID — **derived view** (GAP-M-15).
     ///
-    /// Uses `IndexMap` for deterministic serialization order.
+    /// Not persisted: `exec_node_states` is the single persisted node-state
+    /// representation. On hydrate this map is rebuilt from `exec_node_states`
+    /// (`derive_node_states_from_exec`); legacy pre-GAP-3 files that carry
+    /// `node_states` in JSON (and no `exec_node_states`) still deserialize
+    /// into it for backward compatibility.
+    #[serde(skip_serializing, default)]
     pub node_states: IndexMap<Uuid, NodeState>,
 
     /// SHA-256 hash of the symbol graph state at execution start.
@@ -217,6 +222,64 @@ impl ExecutionState {
     pub fn invalidate_legacy_approvals(&mut self) {
         if self.exec_node_states.is_none() && !self.approved.is_empty() {
             self.approved.clear();
+        }
+    }
+
+    /// GAP-M-15: rebuild the derived coarse `node_states` view from the
+    /// canonical `exec_node_states` map.
+    ///
+    /// When `exec_node_states` is present (GAP-3+ files) it is authoritative:
+    /// coarse statuses are mapped from the execution-engine vocabulary
+    /// (Pending/Ready -> Pending, Running/AwaitingApproval -> InProgress,
+    /// Completed/Failed/Skipped as-is). When it is `None` (legacy files) the
+    /// map is left untouched so coarse data deserialized from legacy JSON
+    /// remains available.
+    pub fn derive_node_states_from_exec(&mut self) {
+        use crate::execution_engine::domain::NodeStatus as ExecStatus;
+        let Some(exec_states) = &self.exec_node_states else {
+            return;
+        };
+        self.node_states.clear();
+        for (node_id, exec) in exec_states {
+            let mut ns = NodeState::new(*node_id);
+            ns.status = match exec.status {
+                ExecStatus::Pending | ExecStatus::Ready => NodeStatus::Pending,
+                ExecStatus::Running | ExecStatus::AwaitingApproval => NodeStatus::InProgress,
+                ExecStatus::Completed => NodeStatus::Completed,
+                ExecStatus::Failed => NodeStatus::Failed,
+                ExecStatus::Skipped => NodeStatus::Skipped,
+            };
+            ns.error = exec.last_error.clone();
+            ns.retries = exec.retry_attempts;
+            ns.duration_ms = exec.last_duration_ms;
+            self.node_states.insert(*node_id, ns);
+        }
+    }
+
+    /// GAP-M-15: mirror the derived coarse `node_states` back into the
+    /// canonical `exec_node_states` map before persisting (used by the
+    /// `update_node_state` service so its coarse transition survives a
+    /// save/load round trip).
+    pub fn sync_exec_from_node_states(&mut self) {
+        use crate::execution_engine::domain::NodeStatus as ExecStatus;
+        let exec = self.exec_node_states.get_or_insert_with(Default::default);
+        for (node_id, ns) in self.node_states.iter() {
+            let entry = exec.entry(*node_id).or_insert_with(|| {
+                crate::execution_engine::domain::NodeExecutionState::new(
+                    *node_id,
+                    ns.node_id.to_string(),
+                )
+            });
+            entry.status = match ns.status {
+                NodeStatus::Pending => ExecStatus::Pending,
+                NodeStatus::InProgress => ExecStatus::Running,
+                NodeStatus::Completed => ExecStatus::Completed,
+                NodeStatus::Failed => ExecStatus::Failed,
+                NodeStatus::Skipped => ExecStatus::Skipped,
+            };
+            entry.last_error = ns.error.clone();
+            entry.retry_attempts = ns.retries;
+            entry.last_duration_ms = ns.duration_ms;
         }
     }
 

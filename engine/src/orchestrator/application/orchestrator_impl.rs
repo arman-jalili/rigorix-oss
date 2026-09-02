@@ -296,7 +296,16 @@ impl OrchestratorServiceImpl {
         state_dto::SaveStateInput { state }
     }
 
-    fn make_final_state(execution_id: Uuid, status: ExecutionStatus) -> state_dto::SaveStateInput {
+    fn make_final_state(
+        execution_id: Uuid,
+        status: ExecutionStatus,
+        exec_states: Option<
+            &std::collections::HashMap<
+                uuid::Uuid,
+                crate::execution_engine::domain::NodeExecutionState,
+            >,
+        >,
+    ) -> state_dto::SaveStateInput {
         use crate::state_persistence::domain::ExecutionStatus as SpStatus;
         let sp_status = match status {
             ExecutionStatus::Completed => SpStatus::Completed,
@@ -309,6 +318,10 @@ impl OrchestratorServiceImpl {
             crate::state_persistence::domain::ExecutionState::new(execution_id, String::new());
         state.status = sp_status;
         state.completed_at = Some(chrono::Utc::now());
+        // GAP-M-15: exec_node_states is the single persisted node-state
+        // representation — final states persist it too (pause states already
+        // did), so every state file carries the canonical vocabulary.
+        state.exec_node_states = exec_states.cloned();
         state_dto::SaveStateInput { state }
     }
 
@@ -711,9 +724,10 @@ impl OrchestratorService for OrchestratorServiceImpl {
             }
         };
 
-        // 7. Save final state
+        // 7. Save final state (legacy single-flow path — no parallel
+        // execution-state map in scope, so None for exec_node_states)
         self.state_manager
-            .save_state(Self::make_final_state(execution_id, final_status))
+            .save_state(Self::make_final_state(execution_id, final_status, None))
             .await
             .map_err(|e| OrchestratorError::StatePersistenceFailed {
                 detail: e.to_string(),
@@ -1007,6 +1021,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
             .save_state(Self::make_final_state(
                 input.execution_id,
                 ExecutionStatus::Cancelled,
+                None,
             ))
             .await
             .map_err(|e| OrchestratorError::StatePersistenceFailed {
@@ -1270,7 +1285,11 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 .await
         } else {
             self.state_manager
-                .save_state(Self::make_final_state(execution_id, final_status))
+                .save_state(Self::make_final_state(
+                    execution_id,
+                    final_status,
+                    Some(&exec_output.result.execution_states),
+                ))
                 .await
         };
         save_out.map_err(|e| OrchestratorError::StatePersistenceFailed {

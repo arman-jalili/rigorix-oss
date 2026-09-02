@@ -69,6 +69,9 @@ impl StateManagerService for FileSystemStateManager {
 
         // GAP-M-01: invalidate legacy pre-GAP-3 approvals on hydrate.
         state.invalidate_legacy_approvals();
+        // GAP-M-15: node_states is derived — rebuild it from the canonical
+        // exec_node_states map (single persisted representation).
+        state.derive_node_states_from_exec();
 
         Ok(LoadStateOutput {
             state,
@@ -82,6 +85,8 @@ impl StateManagerService for FileSystemStateManager {
     ) -> Result<NodeStateChangedOutput, StateError> {
         // Load current state
         let mut state = self.repository.load(input.execution_id).await?;
+        // GAP-M-15: coarse is derived — rebuild from the canonical exec map.
+        state.derive_node_states_from_exec();
 
         // Apply the state transition based on new_status
         let node_id = input.node_id;
@@ -114,6 +119,10 @@ impl StateManagerService for FileSystemStateManager {
                 execution_id: input.execution_id.to_string(),
             })?
             .clone();
+
+        // GAP-M-15: coarse is a derived view — mirror the transition into the
+        // canonical exec_node_states map so it survives save/load.
+        state.sync_exec_from_node_states();
 
         // Save the updated state
         self.repository.save(&state).await?;
@@ -223,6 +232,15 @@ mod tests {
         assert!(matches!(result, Err(StateError::StateNotFound { .. })));
     }
 
+    /// GAP-M-15: seed the canonical exec_node_states representation (the
+    /// coarse map is derived and no longer persisted).
+    fn seed_exec_state(state: &mut ExecutionState, node_id: Uuid, name: &str) {
+        use crate::execution_engine::domain::NodeExecutionState;
+        let mut exec = std::collections::HashMap::new();
+        exec.insert(node_id, NodeExecutionState::new(node_id, name));
+        state.exec_node_states = Some(exec);
+    }
+
     #[tokio::test]
     async fn test_update_node_state_to_in_progress() {
         let (manager, _dir) = create_manager().await;
@@ -232,7 +250,7 @@ mod tests {
         // Save initial state with node
         let mut state = ExecutionState::new(execution_id, "hash".to_string());
         state.status = ExecutionStatus::Running;
-        state.init_node_states(&[node_id]);
+        seed_exec_state(&mut state, node_id, "test-node");
         manager.save_state(SaveStateInput { state }).await.unwrap();
 
         // Update node to in progress
@@ -259,10 +277,21 @@ mod tests {
 
         let mut state = ExecutionState::new(execution_id, "hash".to_string());
         state.status = ExecutionStatus::Running;
-        state.init_node_states(&[node_id]);
-        // Transition to in progress first
-        state.node_started(node_id).unwrap();
+        seed_exec_state(&mut state, node_id, "test-node");
         manager.save_state(SaveStateInput { state }).await.unwrap();
+
+        // Pending -> InProgress -> Completed (two-step, mirrors the lifecycle)
+        manager
+            .update_node_state(NodeStateChangedInput {
+                execution_id,
+                node_id,
+                new_status: NodeStatus::InProgress,
+                output: None,
+                error: None,
+                duration_ms: None,
+            })
+            .await
+            .unwrap();
 
         let output = manager
             .update_node_state(NodeStateChangedInput {
@@ -289,9 +318,21 @@ mod tests {
 
         let mut state = ExecutionState::new(execution_id, "hash".to_string());
         state.status = ExecutionStatus::Running;
-        state.init_node_states(&[node_id]);
-        state.node_started(node_id).unwrap();
+        seed_exec_state(&mut state, node_id, "test-node");
         manager.save_state(SaveStateInput { state }).await.unwrap();
+
+        // Pending -> InProgress -> Failed (two-step, mirrors the lifecycle)
+        manager
+            .update_node_state(NodeStateChangedInput {
+                execution_id,
+                node_id,
+                new_status: NodeStatus::InProgress,
+                output: None,
+                error: None,
+                duration_ms: None,
+            })
+            .await
+            .unwrap();
 
         let output = manager
             .update_node_state(NodeStateChangedInput {
