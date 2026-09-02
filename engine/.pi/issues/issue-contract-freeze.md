@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: "identity"
+  epic: "approval"
   component: "Contract Freeze"
-  module: "identity"
+  module: "approval"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/identity.md"
+    - module: ".pi/architecture/modules/approval.md"
 
   acceptance_criteria:
     - "All component interfaces defined as stubs (TODO bodies)"
@@ -47,28 +47,30 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/identity/domain/"
-    - "create: src/identity/application/"
-    - "create: src/identity/infrastructure/"
-    - "create: src/identity/interfaces/"
+    - "create: src/approval/domain/"
+    - "create: src/approval/application/"
+    - "create: src/approval/infrastructure/"
+    - "create: src/approval/interfaces/"
 ---
 
-# Contract Freeze: identity
+# Contract Freeze: approval
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the identity
+Define and freeze all public interfaces, contracts, and schemas for the approval
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- IdentityClaim
-- IdentitySource
-- IdentityAttestationService
-- TokenVerifier
-- IdentityRepository
-- IdentityError
+- ExecutionIntent
+- IntentHash
+- ApprovalRecord
+- DecisionContext
+- ScopeViolation
+- ApprovalService
+- ApproveInput / ApproveOutput
+- ApprovalError
 
 ## What Must Be Frozen
 
@@ -104,13 +106,21 @@ must satisfy contracts, not the other way around.
 
 | # | Component | Criterion | Verify In |
 |---|-----------|-----------|-----------|
-| 1 | IdentityClaim | Serde round-trip preserves all fields; `redacted_summary()` never contains raw token | unit test |
-| 2 | IdentityClaim | `is_valid()` correct across expiry boundary | unit test |
-| 3 | IdentityAttestationService | `extract_claims` decodes standard JWT claims (sub, iss, exp, roles) | unit test |
-| 4 | IdentityAttestationService | attest with unreachable IdP → `IdentitySource::Unverified`, explicit marker, no error | integration test |
-| 5 | IdentityAttestationService | verify against mock JWKS: valid → Verified; tampered → Unverified | integration test |
-| 6 | IdentityClaim | RunInput.identity flows into envelope identity block (redacted) | integration test |
-| 7 | IdentityAttestationService | ApproveInput.approver_id populated from claim; recorded in ApprovalRecord | integration test |
+| 1 | ExecutionIntent | `from_node` on sealed node produces canonical intent; `canonical_bytes` deterministic (property test) | unit test |
+| 2 | IntentHash | Same tool+intent+scope → same hash; any byte change → different hash | unit test |
+| 3 | ApprovalRecord | Serde round-trip preserves all fields; status transitions valid (Pending → Consumed/Expired/Superseded) | unit test |
+| 4 | ApprovalService | approve → dispatch identical intent → executes; envelope contains signed `ApprovalRecorded` | integration test |
+| 5 | ApprovalService | approve → intent mutated (simulated upstream change / tampered state) → **HALT before dispatch**, `IntentMismatch`, tool never called (spy tool asserts) | integration test |
+| 6 | ApprovalService | Cross-process: pause in A, tamper persisted intent in state file, resume in B → halted, re-approval required | integration test |
+| 7 | ApprovalService | Retry path: failed approved node retries with same intent → per-attempt verify passes; a failed attempt does NOT consume; consume happens once on terminal outcome | integration test |
+| 8 | ApprovalService | Replay: consumed approval replayed against same step → rejected (single-use + nonce) | integration test |
+| 9 | ApprovalService | TTL: approval expires between approve and dispatch → `Invalid(Expired)`, no dispatch | unit test |
+| 10 | ApprovalService | Migration: persisted `approved` without records → invalidated on hydrate, re-approval required | integration test |
+| 11 | ScopeViolation | File tool outside declared scope → `scope_violation` flagged in envelope | integration test |
+| 12 | ScopeViolation | `run_command` side-effect on `src/auth.ts` (script) → caught by **git-diff oracle** → `scope_violation` | integration test |
+| 13 | DecisionContext | approve with decision_context → envelope contains context ref + summary; full payload opt-in | integration test |
+| 14 | DecisionContext | api_key inside decision_context → redacted in summary (SpanPrivacy reuse) | unit test |
+| 15 | ApprovalError | All variants, `Display`, `is_retriable()` (IntentMismatch → non-retriable) | unit test |
 
 
 
