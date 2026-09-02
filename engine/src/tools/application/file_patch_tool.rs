@@ -152,10 +152,15 @@ impl FilePatchTool {
                 ) && params.container.is_some();
 
                 if can_fallback {
-                    // Retry with the container name as anchor_name and class as anchor_type
+                    // Retry with the container name as anchor_name and class as
+                    // anchor_type. can_fallback verified container.is_some() —
+                    // guard instead of unwrap so a panic is impossible.
+                    let Some(container_name) = params.container.clone() else {
+                        return Err(e);
+                    };
                     let fallback_params = AnchorParams {
                         anchor_type: "class".to_string(),
-                        anchor_name: params.container.clone().unwrap(),
+                        anchor_name: container_name,
                         container: None,
                         position: "after".to_string(),
                     };

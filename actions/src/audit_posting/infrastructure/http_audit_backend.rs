@@ -30,7 +30,8 @@ pub struct HttpAuditBackend {
     /// Default backend URL (can be overridden per-call).
     default_backend_url: Option<String>,
     /// HTTP client.
-    client: reqwest::Client,
+    // GAP-L-08: Option — client-build failure is a typed error at call time.
+    client: Option<reqwest::Client>,
     /// Default request timeout in seconds.
     default_timeout_secs: u64,
     /// Optional API key for enterprise authentication.
@@ -43,7 +44,7 @@ impl HttpAuditBackend {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .expect("Failed to create HTTP client");
+            .ok();
 
         Self {
             default_backend_url,
@@ -58,7 +59,7 @@ impl HttpAuditBackend {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(default_timeout_secs))
             .build()
-            .expect("Failed to create HTTP client");
+            .ok();
 
         Self {
             default_backend_url,
@@ -102,8 +103,15 @@ impl AuditBackend for HttpAuditBackend {
         })?;
 
         // Send HTTP POST (with optional Authorization header)
-        let mut request = self
+        let client = self
             .client
+            .as_ref()
+            .ok_or_else(|| AuditPostingError::BackendUnavailable {
+                backend_url: backend_url.clone(),
+                detail: "HTTP client unavailable (client build failed at startup)".to_string(),
+                is_transient: false,
+            })?;
+        let mut request = client
             .post(&backend_url)
             .header("Content-Type", "application/json")
             .body(body)
@@ -191,8 +199,18 @@ impl AuditBackend for HttpAuditBackend {
         match &self.default_backend_url {
             Some(url) => {
                 let start = std::time::Instant::now();
-                match self
-                    .client
+                let client = match self.client.as_ref() {
+                    Some(c) => c,
+                    None => {
+                        return Err(AuditPostingError::BackendUnavailable {
+                            backend_url: url.clone(),
+                            detail: "HTTP client unavailable (client build failed at startup)"
+                                .to_string(),
+                            is_transient: false,
+                        });
+                    }
+                };
+                match client
                     .head(url)
                     .timeout(std::time::Duration::from_secs(10))
                     .send()

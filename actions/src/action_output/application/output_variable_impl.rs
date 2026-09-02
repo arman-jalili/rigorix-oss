@@ -46,7 +46,8 @@ impl OutputVariableServiceImpl {
     pub fn new(output_repo: Box<dyn OutputRepository>) -> Self {
         Self {
             output_repo,
-            name_regex: Regex::new(r"^[a-z_][a-z0-9_]*$").unwrap(),
+            name_regex: Regex::new(r"^[a-z_][a-z0-9_]*$")
+                .expect("const name regex is valid (covered by validate_name tests)"),
             max_value_length: 10_240, // 10KB default
         }
     }

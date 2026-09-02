@@ -503,7 +503,7 @@ impl SharedSymbolGraph {
     /// Multiple concurrent reads are allowed.
     /// Panics if the lock is poisoned (another thread panicked while holding the lock).
     pub fn read(&self) -> std::sync::RwLockReadGuard<'_, SymbolGraph> {
-        self.0.read().expect("SymbolGraph RwLock poisoned")
+        self.0.read().unwrap_or_else(|e| e.into_inner())
     }
 
     /// Acquire a write lock.
@@ -511,7 +511,7 @@ impl SharedSymbolGraph {
     /// Exclusive access — no other reads or writes allowed.
     /// Panics if the lock is poisoned.
     pub fn write(&self) -> std::sync::RwLockWriteGuard<'_, SymbolGraph> {
-        self.0.write().expect("SymbolGraph RwLock poisoned")
+        self.0.write().unwrap_or_else(|e| e.into_inner())
     }
 
     /// Attempt to acquire a read lock without blocking.

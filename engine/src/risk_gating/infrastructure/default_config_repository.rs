@@ -62,7 +62,7 @@ impl Default for InMemoryConfigRepository {
 #[async_trait]
 impl RiskConfigRepository for InMemoryConfigRepository {
     async fn load_config(&self, execution_id: &str) -> Result<RiskConfig, RiskGatingError> {
-        let configs = self.configs.read().expect("ConfigRepository lock poisoned");
+        let configs = self.configs.read().unwrap_or_else(|e| e.into_inner());
         Ok(configs.get(execution_id).cloned().unwrap_or_default())
     }
 
@@ -71,19 +71,13 @@ impl RiskConfigRepository for InMemoryConfigRepository {
         execution_id: &str,
         config: &RiskConfig,
     ) -> Result<(), RiskGatingError> {
-        let mut configs = self
-            .configs
-            .write()
-            .expect("ConfigRepository lock poisoned");
+        let mut configs = self.configs.write().unwrap_or_else(|e| e.into_inner());
         configs.insert(execution_id.to_string(), config.clone());
         Ok(())
     }
 
     async fn load_tool_override(&self, tool: &str) -> Result<Option<RiskLevel>, RiskGatingError> {
-        let overrides = self
-            .overrides
-            .read()
-            .expect("ConfigRepository lock poisoned");
+        let overrides = self.overrides.read().unwrap_or_else(|e| e.into_inner());
         Ok(overrides.get(tool).copied())
     }
 
@@ -92,19 +86,13 @@ impl RiskConfigRepository for InMemoryConfigRepository {
         tool: &str,
         risk_level: &RiskLevel,
     ) -> Result<(), RiskGatingError> {
-        let mut overrides = self
-            .overrides
-            .write()
-            .expect("ConfigRepository lock poisoned");
+        let mut overrides = self.overrides.write().unwrap_or_else(|e| e.into_inner());
         overrides.insert(tool.to_string(), *risk_level);
         Ok(())
     }
 
     async fn remove_tool_override(&self, tool: &str) -> Result<bool, RiskGatingError> {
-        let mut overrides = self
-            .overrides
-            .write()
-            .expect("ConfigRepository lock poisoned");
+        let mut overrides = self.overrides.write().unwrap_or_else(|e| e.into_inner());
         Ok(overrides.remove(tool).is_some())
     }
 }

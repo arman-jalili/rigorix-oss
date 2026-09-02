@@ -1263,7 +1263,8 @@ impl Default for ClaudeGeneratorConfig {
 pub struct ClaudeTemplateGenerator {
     api_key: String,
     config: ClaudeGeneratorConfig,
-    client: reqwest::Client,
+    // GAP-L-08: Option — client-build failure is a typed error at call time.
+    client: Option<reqwest::Client>,
 }
 
 impl ClaudeTemplateGenerator {
@@ -1273,7 +1274,7 @@ impl ClaudeTemplateGenerator {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(config.timeout_secs))
             .build()
-            .expect("Failed to create HTTP client");
+            .ok();
         Self {
             api_key,
             config,
@@ -1752,8 +1753,15 @@ impl TemplateGenerator for ClaudeTemplateGenerator {
                 retry_after: None,
             })?;
 
-            let response = self
+            let client = self
                 .client
+                .as_ref()
+                .ok_or_else(|| GeneratorError::ApiError {
+                    detail: "HTTP client unavailable (client build failed at startup)".to_string(),
+                    status_code: None,
+                    retry_after: None,
+                })?;
+            let response = client
                 .post(&self.config.api_url)
                 .header("x-api-key", &self.api_key)
                 .header("anthropic-version", "2023-06-01")
@@ -1852,7 +1860,8 @@ impl TemplateGenerator for ClaudeTemplateGenerator {
 pub struct OpenaiTemplateGenerator {
     api_key: String,
     config: ClaudeGeneratorConfig,
-    client: reqwest::Client,
+    // GAP-L-08: Option — client-build failure is a typed error at call time.
+    client: Option<reqwest::Client>,
 }
 
 impl OpenaiTemplateGenerator {
@@ -1861,7 +1870,7 @@ impl OpenaiTemplateGenerator {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(config.timeout_secs))
             .build()
-            .expect("Failed to create HTTP client");
+            .ok();
         Self {
             api_key,
             config,
@@ -1962,8 +1971,15 @@ impl TemplateGenerator for OpenaiTemplateGenerator {
                 retry_after: None,
             })?;
 
-            let response = self
+            let client = self
                 .client
+                .as_ref()
+                .ok_or_else(|| GeneratorError::ApiError {
+                    detail: "HTTP client unavailable (client build failed at startup)".to_string(),
+                    status_code: None,
+                    retry_after: None,
+                })?;
+            let response = client
                 .post(&self.config.api_url)
                 .header("Authorization", format!("Bearer {}", &self.api_key))
                 .header("content-type", "application/json")

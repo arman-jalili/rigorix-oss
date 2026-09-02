@@ -325,39 +325,28 @@ impl PlanningPipelineImpl {
                     container,
                     position,
                 } => {
-                    let mut obj = serde_json::json!({
-                        "path": path,
-                        "insert": insert,
-                    });
+                    // GAP-L-08: build the object via Map directly — no
+                    // as_object_mut()/expect dance on a guaranteed-object json!.
+                    let mut obj = serde_json::Map::new();
+                    obj.insert("path".to_string(), serde_json::json!(path));
+                    obj.insert("insert".to_string(), serde_json::json!(insert));
                     if let Some(s) = search {
-                        obj.as_object_mut()
-                            .expect("obj is json!({...})")
-                            .insert("search".to_string(), serde_json::json!(s));
-                        obj.as_object_mut()
-                            .expect("obj is json!({...})")
-                            .insert("before".to_string(), serde_json::json!(before));
+                        obj.insert("search".to_string(), serde_json::json!(s));
+                        obj.insert("before".to_string(), serde_json::json!(before));
                     }
                     if let Some(at) = anchor_type {
-                        obj.as_object_mut()
-                            .expect("obj is json!({...})")
-                            .insert("anchor_type".to_string(), serde_json::json!(at));
+                        obj.insert("anchor_type".to_string(), serde_json::json!(at));
                     }
                     if let Some(an) = anchor_name {
-                        obj.as_object_mut()
-                            .expect("obj is json!({...})")
-                            .insert("anchor_name".to_string(), serde_json::json!(an));
+                        obj.insert("anchor_name".to_string(), serde_json::json!(an));
                     }
                     if let Some(c) = container {
-                        obj.as_object_mut()
-                            .expect("obj is json!({...})")
-                            .insert("container".to_string(), serde_json::json!(c));
+                        obj.insert("container".to_string(), serde_json::json!(c));
                     }
                     if let Some(p) = position {
-                        obj.as_object_mut()
-                            .expect("obj is json!({...})")
-                            .insert("position".to_string(), serde_json::json!(p));
+                        obj.insert("position".to_string(), serde_json::json!(p));
                     }
-                    ("file_patch", obj.to_string())
+                    ("file_patch", serde_json::Value::Object(obj).to_string())
                 }
                 TemplateAction::GitRead { command, .. } => ("git_read", command.clone()),
                 TemplateAction::GitStage { path } => ("git_stage", path.clone()),

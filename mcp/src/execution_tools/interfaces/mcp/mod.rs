@@ -185,7 +185,7 @@ pub fn rigorix_execute_tool_descriptor() -> serde_json::Value {
     json!({
         "name": "rigorix_execute",
         "description": "Execute a structured plan through the rigorix engine. Validates the plan against enforcement policies, executes each step in order, and returns execution results with audit trail.",
-        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_EXECUTE_INPUT_SCHEMA).unwrap()
+        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_EXECUTE_INPUT_SCHEMA).expect("schema const is valid JSON (test-enforced)")
     })
 }
 
@@ -194,7 +194,7 @@ pub fn rigorix_validate_plan_tool_descriptor() -> serde_json::Value {
     json!({
         "name": "rigorix_validate_plan",
         "description": "Validate a plan against enforcement policies without executing it. Returns validation warnings, blocking errors, and estimated cost.",
-        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_VALIDATE_INPUT_SCHEMA).unwrap()
+        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_VALIDATE_INPUT_SCHEMA).expect("schema const is valid JSON (test-enforced)")
     })
 }
 
@@ -203,7 +203,7 @@ pub fn rigorix_check_enforcement_tool_descriptor() -> serde_json::Value {
     json!({
         "name": "rigorix_check_enforcement",
         "description": "Check current enforcement status including active preset, remaining budget (tool calls and tokens), and circuit breaker states.",
-        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_CHECK_ENFORCEMENT_INPUT_SCHEMA).unwrap()
+        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_CHECK_ENFORCEMENT_INPUT_SCHEMA).expect("schema const is valid JSON (test-enforced)")
     })
 }
 
@@ -234,7 +234,7 @@ pub fn rigorix_approve_execution_tool_descriptor() -> serde_json::Value {
     json!({
         "name": "rigorix_approve_execution",
         "description": "Approve steps of an execution paused for human sign-off (status PendingApproval) and resume it. Steps that declared requires_approval: true are only executed after approval. Returns approved, not-found, still-pending step names and whether the execution resumed.",
-        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_APPROVE_INPUT_SCHEMA).unwrap()
+        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_APPROVE_INPUT_SCHEMA).expect("schema const is valid JSON (test-enforced)")
     })
 }
 
@@ -243,7 +243,7 @@ pub fn rigorix_plan_tool_descriptor() -> serde_json::Value {
     json!({
         "name": "rigorix_plan",
         "description": "Resolve a template from .rigorix/templates/ and display the planned DAG without execution. Validates the plan against enforcement policies and shows the step graph, constraints, and enforcement status. Use this before rigorix_run to preview what will execute.",
-        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_PLAN_INPUT_SCHEMA).unwrap()
+        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_PLAN_INPUT_SCHEMA).expect("schema const is valid JSON (test-enforced)")
     })
 }
 
@@ -252,7 +252,7 @@ pub fn rigorix_run_tool_descriptor() -> serde_json::Value {
     json!({
         "name": "rigorix_run",
         "description": "Load a template from .rigorix/templates/ and execute its DAG through rigorix-engine. Returns execution results with per-step status, duration, and audit URI.",
-        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_RUN_INPUT_SCHEMA).unwrap()
+        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_RUN_INPUT_SCHEMA).expect("schema const is valid JSON (test-enforced)")
     })
 }
 

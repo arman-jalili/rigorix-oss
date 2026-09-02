@@ -95,8 +95,17 @@ impl SymbolGraphService for SymbolGraphServiceImpl {
         let total_before = graph.len();
         graph.add_symbol(def)?;
 
+        let symbol_id =
+            graph
+                .lookup(&name)
+                .map(|s| s.id)
+                .ok_or_else(|| RepoEngineError::SymbolNotFound {
+                    name: name.clone(),
+                    suggestions: Vec::new(),
+                })?;
+
         Ok(AddSymbolOutput {
-            symbol_id: graph.lookup(&name).unwrap().id,
+            symbol_id,
             name,
             total_symbols: total_before + 1,
             accepted: true,
