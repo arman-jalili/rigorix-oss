@@ -54,3 +54,32 @@ fn test_approvalerror_implements_std_error() {
     fn assert_error<E: std::error::Error>() {}
     assert_error::<ApprovalError>();
 }
+
+#[test]
+fn test_approvalerror_source_is_none() {
+    // ApprovalError is a leaf error type — every variant has no source chain.
+    use std::error::Error;
+    let err: Box<dyn Error> = Box::new(ApprovalError::NotFound(Uuid::nil()));
+    assert!(err.source().is_none());
+    let err: Box<dyn Error> = Box::new(ApprovalError::IntentMismatch {
+        node_id: Uuid::nil(),
+        expected: "e".into(),
+        actual: "a".into(),
+    });
+    assert!(err.source().is_none());
+}
+
+#[test]
+fn test_approvalerror_mismatch_message_is_frozen_contract() {
+    // The Display message is part of the frozen error contract (ADR-011 /
+    // audit trails) — it must not drift.
+    let err = ApprovalError::IntentMismatch {
+        node_id: Uuid::nil(),
+        expected: "abc".into(),
+        actual: "def".into(),
+    };
+    assert_eq!(
+        err.to_string(),
+        "Intent verification failed for node 00000000-0000-0000-0000-000000000000: expected abc, got def"
+    );
+}
