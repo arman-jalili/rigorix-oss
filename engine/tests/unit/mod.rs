@@ -23,6 +23,34 @@ mod identity {
         mod tokenverifier_test;
     }
 }
+mod approval {
+    mod approvalerror {
+        mod approvalerror_test;
+    }
+    mod approvalrecord {
+        mod approvalrecord_test;
+    }
+    mod approvalservice {
+        mod approvalservice_test;
+    }
+    #[path = "approveinput-approveoutput"]
+    mod approveinput_approveoutput {
+        #[path = "approveinput-approveoutput_test.rs"]
+        mod approveinput_approveoutput_test;
+    }
+    mod decisioncontext {
+        mod decisioncontext_test;
+    }
+    mod executionintent {
+        mod executionintent_test;
+    }
+    mod intenthash {
+        mod intenthash_test;
+    }
+    mod scopeviolation {
+        mod scopeviolation_test;
+    }
+}
 #[path = "scored-evaluation"]
 mod scored_evaluation {
     #[path = "application-layer-application"]
