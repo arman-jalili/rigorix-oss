@@ -40,17 +40,19 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Check 2: Coverage Threshold Check
+# Check 2: Coverage (real measurement)
+#
+# Coverage is NOT a per-module heuristic script — heuristic *_coverage.sh
+# scripts were removed repo-wide in #780 as coverage-theater. Real line
+# coverage is enforced by the workspace gate:
+#   bash .pi/scripts/coverage.sh --gate     (cargo llvm-cov, ≥ COVERAGE_THRESHOLD)
+# wired as ci.yml Stage 3b / local-ci Stage 4b. This module's tests are part
+# of that workspace measurement.
 # ---------------------------------------------------------------------------
-echo ""
-echo "--- 2. Coverage Threshold Check ---"
-echo ""
-
-if bash "${SCRIPT_DIR}/check_approval_coverage.sh" 2>&1; then
-    log_pass "Coverage threshold check passed"
-else
-    log_fail "Coverage threshold check failed"
+if command -v cargo >/dev/null 2>&1 && cargo llvm-cov --version >/dev/null 2>&1; then
+    echo "  (real coverage gate runs in ci.yml Stage 3b: bash .pi/scripts/coverage.sh --gate)"
 fi
+log_pass "Coverage enforced via real cargo llvm-cov gate (not a per-module script)"
 
 # ---------------------------------------------------------------------------
 # Summary
