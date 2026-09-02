@@ -116,6 +116,7 @@ IMPORT_PATTERN=$(get_import_pattern "$PROJECT_LANG")
 
 # ── Discover modules ──
 declare -a MODULES
+MODULES=()
 if [[ -n "$SINGLE_MODULE" ]]; then
     if [[ -d "${SRC_DIR}/${SINGLE_MODULE}" ]]; then
         MODULES=("${SINGLE_MODULE}")
