@@ -35,3 +35,74 @@ fn test_scopeviolation_serde_round_trip() {
     let decoded: ScopeViolation = serde_json::from_str(&encoded).expect("deserialize");
     assert_eq!(decoded, v);
 }
+
+// ── #791 behavior: out-of-scope detection (git-diff oracle) ─────────────────
+
+#[test]
+fn test_file_tool_outside_declared_scope_is_flagged() {
+    // AC #11: a file tool writing outside the declared scope → violation.
+    let declared = vec!["docs/x.md".to_string(), "docs/".to_string()];
+    let actual = vec![
+        "docs/x.md".to_string(),
+        "src/sneaky.rs".to_string(), // outside declared scope
+    ];
+    let out = ScopeViolation::out_of_scope(&declared, &actual);
+    assert_eq!(out, vec!["src/sneaky.rs".to_string()]);
+}
+
+#[test]
+fn test_run_command_side_effect_caught_by_git_diff_oracle() {
+    // AC #12: a run_command script side-effected src/auth.ts — the git-diff
+    // oracle reports it and the declared-scope comparison flags it.
+    let declared = vec!["docs/".to_string()]; // script was "approved" for docs only
+    let actual = vec![
+        "docs/readme.md".to_string(),
+        "src/auth.ts".to_string(), // side-effect, outside declared scope
+    ];
+    let violation = ScopeViolation::detect(
+        Uuid::new_v4(),
+        "run_script".to_string(),
+        &declared,
+        &actual,
+        Utc::now(),
+    )
+    .expect("side-effect must produce a violation");
+    assert_eq!(violation.actual_effects, actual);
+    assert_eq!(violation.out_of_scope, vec!["src/auth.ts".to_string()]);
+}
+
+#[test]
+fn test_declared_directory_covers_nested_files() {
+    let declared = vec!["src/".to_string(), "Cargo.toml".to_string()];
+    let actual = vec!["src/lib.rs".to_string(), "Cargo.toml".to_string()];
+    assert!(ScopeViolation::out_of_scope(&declared, &actual).is_empty());
+    // Directory-prefix safety: "src" must not swallow "src2/…".
+    let actual2 = vec!["src2/evil.ts".to_string()];
+    assert_eq!(
+        ScopeViolation::out_of_scope(&declared, &actual2),
+        vec!["src2/evil.ts".to_string()]
+    );
+}
+
+#[test]
+fn test_no_effects_outside_scope_yields_no_violation() {
+    let declared = vec!["src/".to_string()];
+    let actual = vec!["src/lib.rs".to_string(), "src/main.rs".to_string()];
+    let violation = ScopeViolation::detect(
+        Uuid::new_v4(),
+        "build".to_string(),
+        &declared,
+        &actual,
+        Utc::now(),
+    );
+    assert!(violation.is_none(), "in-scope effects are not violations");
+}
+
+#[test]
+fn test_declared_exact_file_boundary() {
+    let declared = vec!["src/auth.ts".to_string()];
+    let actual = vec!["src/auth.ts.bak".to_string(), "src/auth.ts".to_string()];
+    // "src/auth.ts.bak" is a different path — not covered by the file entry.
+    let out = ScopeViolation::out_of_scope(&declared, &actual);
+    assert_eq!(out, vec!["src/auth.ts.bak".to_string()]);
+}
