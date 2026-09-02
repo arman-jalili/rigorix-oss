@@ -23,6 +23,7 @@
 //! - `infrastructure/` — Repository interfaces
 //! - `interfaces/` — API contracts (HTTP, events)
 
+pub mod approval;
 pub mod audit;
 pub mod backend;
 pub mod budget_tracking;
