@@ -340,6 +340,11 @@ run_stage "34" "identity_proofing" \
     "${SCRIPTS_DIR}/stage_identity_proofing.sh" \
     "always"
 
+# Stage 35: Approval Proofing
+run_stage "35" "approval_proofing" \
+    "${SCRIPTS_DIR}/stage_approval_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""

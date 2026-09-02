@@ -766,10 +766,12 @@ engine/src/approval/
 
 ---
 
-*Last updated: 2026-08-28*
-*Module version: 1.0.0 (Planned)*
+*Last updated: 2026-09-02*
+*Module version: 1.0.0*
 
 ---
 
-**Status:** Planned
+**Status:** Implemented — contract freeze (#798) + component implementations (#787–#794)
+shipped; CI enforcement stage 35 (approval_proofing) wired. Architecture readiness
+(runbook, DR, final docs) tracked in #796.
 **Implementation priority:** P0 — the binding core (R1+R2) first, then R3, R5, R4
