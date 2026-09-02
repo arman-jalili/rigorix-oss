@@ -119,6 +119,7 @@ impl ApprovalServiceImpl {
 
 #[async_trait::async_trait]
 impl ApprovalService for ApprovalServiceImpl {
+    #[tracing::instrument(skip_all, name = "approval.approve")]
     async fn approve(&self, input: ApproveInput) -> Result<ApproveOutput, ApprovalError> {
         let now = Utc::now();
         let mut approved = Vec::new();
@@ -132,9 +133,22 @@ impl ApprovalService for ApprovalServiceImpl {
             };
             let record = self.build_record(&resolved, &input, now);
             self.repo.save(&record).await?;
+            tracing::info!(
+                step_name = %record.step_name,
+                node_id = %record.node_id,
+                approver_id = %record.approver_id,
+                expires_at = %record.expires_at,
+                "approval recorded (intent hash bound, single-use, TTL set)"
+            );
             approved.push(step_name.clone());
             approval_records.push(record);
         }
+        tracing::info!(
+            requested = input.step_names.len(),
+            approved = approved.len(),
+            not_found = not_found.len(),
+            "approve complete"
+        );
 
         Ok(ApproveOutput {
             dag_id: input.dag_id,
@@ -147,11 +161,13 @@ impl ApprovalService for ApprovalServiceImpl {
         })
     }
 
+    #[tracing::instrument(skip_all, name = "approval.verify_intent", fields(node_id = %node_id))]
     async fn verify_intent(&self, node_id: Uuid) -> Result<IntentVerification, ApprovalError> {
         let now = Utc::now();
         let Some(mut record) = self.repo.load(node_id).await? else {
             // No record: never approved (or legacy pre-binding state that was
             // invalidated on hydrate) → re-approval required.
+            tracing::warn!(node_id = %node_id, "verify: no approval record — re-approval required");
             return Err(ApprovalError::NotFound(node_id));
         };
 
@@ -159,6 +175,7 @@ impl ApprovalService for ApprovalServiceImpl {
         if record.is_expired_at(now) {
             record.status = ApprovalStatus::Expired;
             self.repo.save(&record).await?;
+            tracing::warn!(node_id = %node_id, "verify: approval expired (TTL) — no dispatch");
             return Ok(IntentVerification::Invalid(ApprovalStatus::Expired));
         }
 
@@ -169,10 +186,17 @@ impl ApprovalService for ApprovalServiceImpl {
                 };
                 let current = self.digest(&resolved.intent);
                 if current == record.intent_hash {
+                    tracing::info!(node_id = %node_id, step_name = %resolved.step_name, "verify: MATCHED — dispatch");
                     Ok(IntentVerification::Matched)
                 } else {
                     // R2 — HALT: the executing call no longer matches what was
                     // approved. Re-approval is the only recovery.
+                    tracing::error!(
+                        node_id = %node_id,
+                        expected = %record.intent_hash.0,
+                        actual = %current.0,
+                        "verify: INTENT MISMATCH — HALT, re-approval required"
+                    );
                     Ok(IntentVerification::Mismatched {
                         expected: record.intent_hash,
                         actual: current,
@@ -180,10 +204,14 @@ impl ApprovalService for ApprovalServiceImpl {
                 }
             }
             // Consumed / superseded approvals never dispatch (single-use).
-            other => Ok(IntentVerification::Invalid(other)),
+            other => {
+                tracing::warn!(node_id = %node_id, status = ?other, "verify: INVALID — approval not dispatchable");
+                Ok(IntentVerification::Invalid(other))
+            }
         }
     }
 
+    #[tracing::instrument(skip_all, name = "approval.consume", fields(node_id = %node_id))]
     async fn consume(&self, node_id: Uuid) -> Result<(), ApprovalError> {
         let mut record = self
             .repo
@@ -191,10 +219,19 @@ impl ApprovalService for ApprovalServiceImpl {
             .await?
             .ok_or(ApprovalError::NotFound(node_id))?;
         record.consume()?;
-        self.repo.save(&record).await
+        self.repo.save(&record).await?;
+        tracing::info!(node_id = %node_id, "approval consumed (single-use, terminal outcome)");
+        Ok(())
     }
 
+    #[tracing::instrument(skip_all, name = "approval.record_scope_violation", fields(node_id = %violation.node_id, out_of_scope_count = violation.out_of_scope.len()))]
     async fn record_scope_violation(&self, violation: ScopeViolation) -> Result<(), ApprovalError> {
+        tracing::warn!(
+            node_id = %violation.node_id,
+            step_name = %violation.step_name,
+            out_of_scope = ?violation.out_of_scope,
+            "scope_violation recorded (non-blocking evidence)"
+        );
         self.sink.record(&violation).await;
         Ok(())
     }

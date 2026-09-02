@@ -759,7 +759,7 @@ engine/src/approval/
 - [ ] Module spec written to `engine/.pi/architecture/modules/approval.md`
 - [ ] Contract freeze annotations on all public types
 - [ ] Serde round-trip tests for `ApprovalRecord`, `DecisionContext`, `ScopeViolation`
-- [ ] Proofing scripts: `check_approval_contracts.sh` + `check_approval_coverage.sh`
+- [ ] Proofing scripts: `check_approval_contracts.sh` (coverage enforced by the real cargo llvm-cov gate, not a per-module script)
 - [ ] Integration tests for cross-process resume with tampered intent (halt path)
 - [ ] `cargo test --workspace` passes
 - [ ] `cargo clippy --workspace` zero warnings

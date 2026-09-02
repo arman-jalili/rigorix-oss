@@ -48,7 +48,6 @@ guardian_issue:
 
   file_changes:
     - "create: .pi/scripts/ci/check_approval_contracts.sh"
-    - "create: .pi/scripts/ci/check_approval_coverage.sh"
     - "modify: .pi/scripts/ci/run_hardening_stages.sh"
 ---
 
@@ -68,10 +67,12 @@ automatic — no human review needed for routine checks.
 - Verifies all interface methods are implemented
 - Reports violations with file:line references
 
-### Coverage Threshold Check
-- Runs the project's coverage tool
-- Asserts each module meets minimum coverage (default 80%)
-- Fails the build if coverage drops
+### Coverage Threshold Check (real coverage)
+- Coverage is measured by the REAL workspace tool: `cargo llvm-cov` via
+  `.pi/scripts/coverage.sh --gate` (repo-wide gate, default 60%; ci.yml Stage 3b)
+- Do NOT create a per-module `*_coverage.sh` script — heuristic grep-based
+  module coverage scripts were removed repo-wide in #780 (coverage-theater);
+  the llvm-cov `target/coverage.lcov` artifact provides the per-file breakdown
 
 ### CI Integration
 Each check becomes a CI stage in the hardening pipeline — it runs automatically
@@ -82,7 +83,6 @@ on every PR. No LLM cost. No human review. Just pass or fail.
 | Script | Purpose | Location |
 |--------|---------|----------|
 | check_approval_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
-| check_approval_coverage.sh | Enforce coverage thresholds | .pi/scripts/ci/ |
 | stage_approval_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
 
 ## CI Pipeline Update
@@ -100,7 +100,7 @@ run_stage "11" "approval_proofing" \
 | # | Criterion | Script |
 |---|-----------|--------|
 | 1 | All interfaces have implementations | check_contracts.sh |
-| 2 | Coverage ≥ 80% per module | check_coverage.sh |
+| 2 | Coverage meets the real project gate (cargo llvm-cov, ≥ COVERAGE_THRESHOLD) | .pi/scripts/coverage.sh --gate |
 | 3 | CI runs checks on every PR | run_hardening_stages.sh |
 | 4 | All scripts exit 0 on pass, 1 on fail | self-validating |
 

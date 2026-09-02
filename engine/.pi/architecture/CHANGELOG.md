@@ -10,6 +10,30 @@ This document tracks all architecture changes requiring implementation updates.
 
 ---
 
+## [2026-09-02] — Approval Module Implementation Complete
+
+### Added
+- Approval binding implemented per the frozen contract (epic: approval, #785–#796):
+  - `ExecutionIntent` (#787): canonical intent + deterministic sorted-key `canonical_bytes`
+  - `IntentHash` (#788): `HMAC-SHA256(run_key, canonical_bytes)` compute/verify
+  - `ApprovalRecord` (#789): single-use status transitions + TTL enforcement
+  - `DecisionContext` (#790): envelope-safe summary + SpanPrivacy redaction
+  - `ScopeViolation` (#791): out-of-scope detection over git-diff oracle effects
+  - `ApprovalService` (#792): approve/verify/consume lifecycle + repository impls + legacy migration
+  - `ApproveInput/Output` (#793): boundary validation + aggregate helpers
+  - `ApprovalError` (#794): Display + `is_retriable()` verified (IntentMismatch → non-retriable)
+- Proofing (#795): `check_approval_contracts.sh` + stage 35 in `run_hardening_stages.sh`;
+  coverage enforced via the REAL `cargo llvm-cov` gate (`.pi/scripts/coverage.sh --gate`),
+  not per-module heuristic scripts (#780 alignment)
+- Readiness (#796): `docs/runbook-approval.md`, `docs/dr-plan-approval.md`, tracing on
+  `ApprovalServiceImpl`, module status → Implemented
+
+### Implementation Stats
+- **58 tests** across the approval module (unit, incl. cross-process resume simulation)
+- **11 issues** closed: #786 (freeze) + #787–#794 (components) + #795 (proofing) + #796 (readiness)
+
+---
+
 ## [2026-08-28] — Approval Binding & Identity Attestation (Architecture Contract Freeze)
 
 ### Added
