@@ -75,6 +75,53 @@ pub struct DecisionContext {
     pub full_payload: Option<serde_json::Value>,
 }
 
+impl DecisionContext {
+    /// Recursively redact values under sensitive field names.
+    ///
+    /// Reuses the observability `span_privacy` classification (`api_key`,
+    /// `token`, `secret`, `password`, `authorization`, …) — one redaction
+    /// policy across traces and approval summaries. The value under a
+    /// sensitive key is replaced with `"<redacted>"` at any nesting depth.
+    pub fn redact_value(value: &serde_json::Value) -> serde_json::Value {
+        match value {
+            serde_json::Value::Object(map) => {
+                let mut out = serde_json::Map::with_capacity(map.len());
+                for (key, val) in map {
+                    if crate::observability::span_privacy::is_sensitive_field(key) {
+                        out.insert(key.clone(), serde_json::Value::String("<redacted>".into()));
+                    } else {
+                        out.insert(key.clone(), Self::redact_value(val));
+                    }
+                }
+                serde_json::Value::Object(out)
+            }
+            serde_json::Value::Array(items) => {
+                serde_json::Value::Array(items.iter().map(Self::redact_value).collect())
+            }
+            other => other.clone(),
+        }
+    }
+
+    /// Build the envelope-safe summary deterministically.
+    ///
+    /// The summary is `rendered_step` plus the compact, **redacted** evidence
+    /// and state snapshot (when present). The opt-in `full_payload` is never
+    /// included — what leaves the local store is safe by construction.
+    pub fn summarize(&self) -> String {
+        let mut parts = Vec::new();
+        parts.push(self.rendered_step.clone());
+        if let Some(evidence) = &self.upstream_evidence {
+            let redacted = Self::redact_value(evidence);
+            parts.push(serde_json::to_string(&redacted).unwrap_or_else(|_| "<evidence>".into()));
+        }
+        if let Some(snapshot) = &self.state_snapshot {
+            let redacted = Self::redact_value(snapshot);
+            parts.push(serde_json::to_string(&redacted).unwrap_or_else(|_| "<snapshot>".into()));
+        }
+        parts.join(" | ")
+    }
+}
+
 /// The durable record of a human decision, bound to an execution intent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ApprovalRecord {

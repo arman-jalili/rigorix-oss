@@ -48,3 +48,72 @@ fn test_decisioncontext_serde_round_trip() {
     let decoded: DecisionContext = serde_json::from_str(&encoded).expect("deserialize");
     assert_eq!(decoded, ctx);
 }
+
+// ── #790 behavior: envelope-safe summary + SpanPrivacy redaction ────────────
+
+#[test]
+fn test_summary_redacts_api_key_using_span_privacy() {
+    // AC #14: an api_key inside decision_context must be redacted in the summary.
+    let ctx = DecisionContext {
+        rendered_step: "call openai".to_string(),
+        upstream_evidence: Some(json!({
+            "api_key": "sk-0123456789abcdef",
+            "model": "gpt-4",
+            "nested": {"secret": "hunter2", "ok": "visible"}
+        })),
+        state_snapshot: Some(json!({"git": "abc123"})),
+        summary: String::new(), // will be derived
+        full_payload: None,
+    };
+    let summary = ctx.summarize();
+    assert!(
+        !summary.contains("sk-0123456789abcdef"),
+        "raw api_key leaked: {summary}"
+    );
+    assert!(!summary.contains("hunter2"), "raw secret leaked: {summary}");
+    assert!(
+        summary.contains("<redacted>"),
+        "summary must mark redaction"
+    );
+    assert!(summary.contains("visible"), "non-sensitive fields survive");
+    assert!(summary.contains("gpt-4"));
+}
+
+#[test]
+fn test_summarize_excludes_full_payload_by_default() {
+    // AC #13: full payload is opt-in — the summary never embeds it.
+    let ctx = DecisionContext {
+        rendered_step: "deploy".to_string(),
+        upstream_evidence: None,
+        state_snapshot: None,
+        summary: String::new(),
+        full_payload: Some(json!({"very": "long", "private": {"api_key": "x"}})),
+    };
+    let summary = ctx.summarize();
+    assert!(!summary.contains("very"));
+    assert!(!summary.contains("private"));
+    assert!(summary.contains("deploy"));
+}
+
+#[test]
+fn test_summarize_is_deterministic_and_redaction_util_reused() {
+    let ctx = DecisionContext {
+        rendered_step: "run tests".to_string(),
+        upstream_evidence: Some(json!({"results": {"passed": 3}, "api_token": "tok-1"})),
+        state_snapshot: Some(json!({"branch": "main"})),
+        summary: String::new(),
+        full_payload: None,
+    };
+    let s1 = ctx.summarize();
+    let s2 = ctx.summarize();
+    assert_eq!(s1, s2, "summarize must be deterministic");
+    assert!(!s1.contains("tok-1"));
+
+    // The redaction helper is the same span_privacy classification used by
+    // observability — reuse, not a parallel implementation.
+    let redacted =
+        DecisionContext::redact_value(&json!({"authorization": "Bearer x", "user": "u"}));
+    assert_eq!(redacted["authorization"], json!("<redacted>"));
+    assert_eq!(redacted["user"], json!("u"));
+    assert!(rigorix_engine::observability::span_privacy::is_sensitive_field("api_key"));
+}
