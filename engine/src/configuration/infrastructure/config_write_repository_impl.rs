@@ -37,16 +37,16 @@ impl Default for ConfigWriteRepositoryImpl {
 #[async_trait]
 impl ConfigWriteRepository for ConfigWriteRepositoryImpl {
     async fn write_cached(&self, config: &ConfigDto) -> Result<(), ConfigurationError> {
-        *self.cache.write().expect("config cache poisoned") = Some(config.clone());
+        *self.cache.write().unwrap_or_else(|e| e.into_inner()) = Some(config.clone());
         Ok(())
     }
 
     async fn read_cached(&self) -> Result<Option<ConfigDto>, ConfigurationError> {
-        Ok(self.cache.read().expect("config cache poisoned").clone())
+        Ok(self.cache.read().unwrap_or_else(|e| e.into_inner()).clone())
     }
 
     async fn invalidate_cache(&self) -> Result<(), ConfigurationError> {
-        *self.cache.write().expect("config cache poisoned") = None;
+        *self.cache.write().unwrap_or_else(|e| e.into_inner()) = None;
         Ok(())
     }
 }

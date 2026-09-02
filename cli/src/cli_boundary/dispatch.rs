@@ -786,6 +786,19 @@ pub async fn dispatch(
         _ => (None, None),
     };
 
+    // GAP-L-08: services is built unconditionally above (always Some or an
+    // early error return). Bind it directly — a None here is an internal bug
+    // reported as an error, never a panic on the dispatch path.
+    let services = match services {
+        Some(s) => s,
+        None => {
+            return DispatchResult::error(
+                "internal error: CLI services unavailable".to_string(),
+                1,
+            );
+        }
+    };
+
     // Thin router — delegates to handler functions
     match command {
         CliCommand::Run {
@@ -793,18 +806,24 @@ pub async fn dispatch(
             enforcement,
             ..
         } => {
-            handle_run(
-                orch.as_deref().expect("orchestrator for run"),
-                intent,
-                enforcement,
-            )
-            .await
+            let Some(orch) = orch.as_deref() else {
+                return DispatchResult::error(
+                    "internal error: orchestrator not built for run".to_string(),
+                    1,
+                );
+            };
+            handle_run(orch, intent, enforcement).await
         }
         CliCommand::Plan { intent } => {
+            let Some(orch) = orch.as_deref() else {
+                return DispatchResult::error(
+                    "internal error: orchestrator not built for plan".to_string(),
+                    1,
+                );
+            };
             let intent_clone = intent.clone();
             // Show plan output (handle_plan returns DispatchResult but doesn't print it)
-            let plan_result =
-                handle_plan(orch.as_deref().expect("orchestrator for plan"), intent).await;
+            let plan_result = handle_plan(orch, intent).await;
             if plan_result.is_success() {
                 // Print the plan output so user sees it before the prompt
                 println!("{}", plan_result.summary);
@@ -815,12 +834,7 @@ pub async fn dispatch(
                 std::io::stdin().read_line(&mut input).ok();
                 let input = input.trim().to_lowercase();
                 if input == "y" || input == "yes" {
-                    return handle_run(
-                        orch.as_deref().expect("orchestrator for run"),
-                        intent_clone,
-                        None,
-                    )
-                    .await;
+                    return handle_run(orch, intent_clone, None).await;
                 }
                 // User declined — exit cleanly with no double-print
                 return DispatchResult::success("");
@@ -828,53 +842,42 @@ pub async fn dispatch(
             plan_result
         }
         CliCommand::Cancel { execution_id } => {
-            handle_cancel(
-                orch.as_deref().expect("orchestrator for cancel"),
-                execution_id,
-            )
-            .await
+            let Some(orch) = orch.as_deref() else {
+                return DispatchResult::error(
+                    "internal error: orchestrator not built for cancel".to_string(),
+                    1,
+                );
+            };
+            handle_cancel(orch, execution_id).await
         }
         CliCommand::Status => {
-            handle_status(orch.as_deref().expect("orchestrator for status")).await
+            let Some(orch) = orch.as_deref() else {
+                return DispatchResult::error(
+                    "internal error: orchestrator not built for status".to_string(),
+                    1,
+                );
+            };
+            handle_status(orch).await
         }
-        CliCommand::History { limit, .. } => {
-            handle_history(services.as_ref().expect("services for history"), limit).await
-        }
-        CliCommand::Explain { execution_id, .. } => {
-            handle_explain(
-                services.as_ref().expect("services for explain"),
-                execution_id,
-            )
-            .await
-        }
-        CliCommand::DiffPlan { id1, id2 } => {
-            handle_diff_plan(services.as_ref().expect("services for diff-plan"), id1, id2).await
-        }
+        CliCommand::History { limit, .. } => handle_history(&services, limit).await,
+        CliCommand::Explain { execution_id, .. } => handle_explain(&services, execution_id).await,
+        CliCommand::DiffPlan { id1, id2 } => handle_diff_plan(&services, id1, id2).await,
         CliCommand::Generate { intent } => {
             handle_generate(
                 orch.as_deref(),
                 llm_services.as_ref(),
-                services.as_ref(),
+                Some(&services),
                 intent,
             )
             .await
         }
         CliCommand::Template { action } => {
-            let svc = llm_services
-                .as_ref()
-                .or(services.as_ref())
-                .expect("services for template");
+            let svc = llm_services.as_ref().unwrap_or(&services);
             handle_template(svc, action).await
         }
-        CliCommand::Audit { action } => {
-            handle_audit(services.as_ref().expect("services for audit"), action).await
-        }
-        CliCommand::Logs { session_id } => {
-            handle_logs(services.as_ref().expect("services for logs"), session_id).await
-        }
-        CliCommand::Config { action } => {
-            handle_config(services.as_ref().expect("services for config"), action).await
-        }
+        CliCommand::Audit { action } => handle_audit(&services, action).await,
+        CliCommand::Logs { session_id } => handle_logs(&services, session_id).await,
+        CliCommand::Config { action } => handle_config(&services, action).await,
         CliCommand::Init => cmd_init(),
         CliCommand::Key { label } => cmd_key(label),
         CliCommand::Tui { .. } => DispatchResult::success("TUI mode"),

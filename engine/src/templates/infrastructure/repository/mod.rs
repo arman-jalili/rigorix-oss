@@ -102,7 +102,7 @@ impl InMemoryTemplateRepository {
     pub fn add_source(&mut self, path: String, content: String) {
         self.sources
             .write()
-            .expect("lock poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .insert(path, content);
     }
 
@@ -110,9 +110,12 @@ impl InMemoryTemplateRepository {
     pub fn add_builtin(&mut self, id: &'static str, toml: &'static str) {
         self.builtins
             .write()
-            .expect("lock poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .insert(id.to_string(), toml);
-        self.builtin_ids.write().expect("lock poisoned").push(id);
+        self.builtin_ids
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(id);
     }
 }
 
@@ -125,7 +128,7 @@ impl Default for InMemoryTemplateRepository {
 #[async_trait]
 impl TemplateRepository for InMemoryTemplateRepository {
     async fn read_template_file(&self, path: &str) -> Result<String, TemplateError> {
-        let sources = self.sources.read().expect("lock poisoned");
+        let sources = self.sources.read().unwrap_or_else(|e| e.into_inner());
         sources
             .get(path)
             .cloned()
@@ -140,12 +143,12 @@ impl TemplateRepository for InMemoryTemplateRepository {
         _dir: &str,
         _extension: &str,
     ) -> Result<Vec<String>, TemplateError> {
-        let sources = self.sources.read().expect("lock poisoned");
+        let sources = self.sources.read().unwrap_or_else(|e| e.into_inner());
         Ok(sources.keys().cloned().collect())
     }
 
     async fn template_file_exists(&self, path: &str) -> bool {
-        let sources = self.sources.read().expect("lock poisoned");
+        let sources = self.sources.read().unwrap_or_else(|e| e.into_inner());
         sources.contains_key(path)
     }
 
@@ -153,7 +156,7 @@ impl TemplateRepository for InMemoryTemplateRepository {
         &self,
         _input: LoadBuiltinsInput,
     ) -> Result<LoadBuiltinsOutput, TemplateError> {
-        let builtins = self.builtins.read().expect("lock poisoned");
+        let builtins = self.builtins.read().unwrap_or_else(|e| e.into_inner());
         Ok(LoadBuiltinsOutput {
             loaded: builtins.keys().cloned().collect(),
             count: builtins.len(),
@@ -161,12 +164,12 @@ impl TemplateRepository for InMemoryTemplateRepository {
     }
 
     async fn get_builtin_source(&self, id: &str) -> Option<&'static str> {
-        let builtins = self.builtins.read().expect("lock poisoned");
+        let builtins = self.builtins.read().unwrap_or_else(|e| e.into_inner());
         builtins.get(id).copied()
     }
 
     async fn list_builtin_ids(&self) -> Vec<&'static str> {
-        let ids = self.builtin_ids.read().expect("lock poisoned");
+        let ids = self.builtin_ids.read().unwrap_or_else(|e| e.into_inner());
         ids.clone()
     }
 }

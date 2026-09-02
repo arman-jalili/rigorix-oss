@@ -36,7 +36,7 @@ use rigorix_engine::templates::domain::{
 };
 
 /// Convert an engine Template ([[nodes]] format) to an MCP PlanTemplate ([[steps]] format).
-fn engine_template_to_plan_template(tmpl: &EngineTemplate) -> PlanTemplate {
+fn engine_template_to_plan_template(tmpl: &EngineTemplate) -> Result<PlanTemplate, TemplateError> {
     let steps: Vec<StepDefinition> = tmpl
         .nodes
         .iter()
@@ -77,6 +77,8 @@ fn engine_template_to_plan_template(tmpl: &EngineTemplate) -> PlanTemplate {
 
     // Panic is acceptable here: if we parsed a valid engine template, steps are non-empty.
     let now = chrono::Utc::now();
+    // GAP-L-08: PlanTemplate::new returns a typed error on empty steps —
+    // propagate it instead of panicking on the conversion path.
     PlanTemplate::new(
         tmpl.id.clone(),
         tmpl.description.clone(),
@@ -88,7 +90,6 @@ fn engine_template_to_plan_template(tmpl: &EngineTemplate) -> PlanTemplate {
         now,
         now,
     )
-    .expect("Engine template has at least one node — PlanTemplate creation must succeed")
 }
 
 /// Filesystem-backed implementation of TemplateRepository.
@@ -312,7 +313,7 @@ impl TemplateRepository for FilesystemTemplateRepository {
                         name, e
                     ))
                 })?;
-                return Ok(engine_template_to_plan_template(&engine_tmpl));
+                return engine_template_to_plan_template(&engine_tmpl);
             }
         }
     }
@@ -732,7 +733,7 @@ mod tests {
             author: None,
         };
 
-        let plan = engine_template_to_plan_template(&engine_tmpl);
+        let plan = engine_template_to_plan_template(&engine_tmpl).expect("valid engine template converts");
         let steps = plan.steps();
         assert_eq!(steps.len(), 2);
         assert!(

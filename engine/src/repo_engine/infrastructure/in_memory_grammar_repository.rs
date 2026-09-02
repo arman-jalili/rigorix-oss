@@ -48,7 +48,7 @@ impl GrammarRepository for InMemoryGrammarRepository {
     ) -> Result<tree_sitter::Language, RepoEngineError> {
         self.grammars
             .read()
-            .expect("grammar registry poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .get(language)
             .cloned()
             .ok_or_else(|| RepoEngineError::Internal {
@@ -59,14 +59,14 @@ impl GrammarRepository for InMemoryGrammarRepository {
     async fn has_grammar(&self, language: &SourceLanguage) -> bool {
         self.grammars
             .read()
-            .expect("grammar registry poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .contains_key(language)
     }
 
     async fn available_languages(&self) -> Vec<SourceLanguage> {
         self.grammars
             .read()
-            .expect("grammar registry poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .keys()
             .cloned()
             .collect()
@@ -75,14 +75,14 @@ impl GrammarRepository for InMemoryGrammarRepository {
     async fn register_grammar(&self, language: SourceLanguage, grammar: tree_sitter::Language) {
         self.grammars
             .write()
-            .expect("grammar registry poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .insert(language, grammar);
     }
 
     async fn unload_grammar(&self, language: &SourceLanguage) -> Result<(), RepoEngineError> {
         self.grammars
             .write()
-            .expect("grammar registry poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .remove(language)
             .map(|_| ())
             .ok_or_else(|| RepoEngineError::Internal {

@@ -26,7 +26,7 @@ pub fn rigorix_get_usage_guide_tool_descriptor() -> Value {
     json!({
         "name": "rigorix_get_usage_guide",
         "description": "Get usage guide for rigorix MCP tools. Returns valid action types, intent formats, workflow patterns (create template → validate → execute → audit), and example plan JSON structures. Call this first if you are unfamiliar with the rigorix tool system.",
-        "inputSchema": serde_json::from_str::<Value>(RIGORIX_GET_USAGE_GUIDE_INPUT_SCHEMA).unwrap()
+        "inputSchema": serde_json::from_str::<Value>(RIGORIX_GET_USAGE_GUIDE_INPUT_SCHEMA).expect("schema const is valid JSON (test-enforced)")
     })
 }
 
@@ -43,7 +43,7 @@ pub fn handle_get_usage_guide() -> Value {
         "content": [
             {
                 "type": "text",
-                "text": serde_json::to_string_pretty(&build_guide()).unwrap()
+                "text": serde_json::to_string_pretty(&build_guide()).unwrap_or_default()
             }
         ]
     })

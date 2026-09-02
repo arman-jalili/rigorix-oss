@@ -47,7 +47,7 @@ impl TemplateEngineImpl {
         template: Template,
         is_builtin: bool,
     ) -> Result<(), TemplateError> {
-        let mut templates = self.templates.write().expect("lock poisoned");
+        let mut templates = self.templates.write().unwrap_or_else(|e| e.into_inner());
         let id = template.id.clone();
         if templates.contains_key(&id) {
             return Err(TemplateError::DuplicateTemplate { id });
@@ -74,7 +74,7 @@ impl Default for TemplateEngineImpl {
 impl TemplateEngineService for TemplateEngineImpl {
     #[tracing::instrument(skip_all)]
     async fn register(&self, input: RegisterInput) -> Result<RegisterOutput, TemplateError> {
-        let mut templates = self.templates.write().expect("lock poisoned");
+        let mut templates = self.templates.write().unwrap_or_else(|e| e.into_inner());
         let id = input.template.id.clone();
 
         let overwritten = if templates.contains_key(&id) {
@@ -104,7 +104,7 @@ impl TemplateEngineService for TemplateEngineImpl {
 
     #[tracing::instrument(skip_all)]
     async fn generate(&self, input: GenerateInput) -> Result<GenerateOutput, TemplateError> {
-        let templates = self.templates.read().expect("lock poisoned");
+        let templates = self.templates.read().unwrap_or_else(|e| e.into_inner());
         let entry = templates.get(&input.template_id).ok_or_else(|| {
             let available: Vec<String> = templates.keys().cloned().collect();
             TemplateError::NotFound {
@@ -182,7 +182,7 @@ impl TemplateEngineService for TemplateEngineImpl {
         &self,
         input: GetTemplateInput,
     ) -> Result<Option<TemplateSummary>, TemplateError> {
-        let templates = self.templates.read().expect("lock poisoned");
+        let templates = self.templates.read().unwrap_or_else(|e| e.into_inner());
         Ok(templates
             .get(&input.template_id)
             .map(|entry| TemplateSummary {
@@ -202,7 +202,7 @@ impl TemplateEngineService for TemplateEngineImpl {
         &self,
         template_id: &str,
     ) -> Option<crate::templates::domain::Template> {
-        let templates = self.templates.read().expect("lock poisoned");
+        let templates = self.templates.read().unwrap_or_else(|e| e.into_inner());
         templates
             .get(template_id)
             .map(|entry| entry.template.clone())
@@ -210,7 +210,7 @@ impl TemplateEngineService for TemplateEngineImpl {
 
     #[tracing::instrument(skip_all)]
     async fn list_templates(&self) -> Result<ListTemplatesOutput, TemplateError> {
-        let templates = self.templates.read().expect("lock poisoned");
+        let templates = self.templates.read().unwrap_or_else(|e| e.into_inner());
         let summaries: Vec<TemplateSummary> = templates
             .values()
             .map(|entry| TemplateSummary {
@@ -236,13 +236,13 @@ impl TemplateEngineService for TemplateEngineImpl {
 
     #[tracing::instrument(skip_all)]
     async fn has_template(&self, template_id: &str) -> bool {
-        let templates = self.templates.read().expect("lock poisoned");
+        let templates = self.templates.read().unwrap_or_else(|e| e.into_inner());
         templates.contains_key(template_id)
     }
 
     #[tracing::instrument(skip_all)]
     async fn template_count(&self) -> usize {
-        let templates = self.templates.read().expect("lock poisoned");
+        let templates = self.templates.read().unwrap_or_else(|e| e.into_inner());
         templates.len()
     }
 }

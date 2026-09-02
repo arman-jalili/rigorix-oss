@@ -138,7 +138,11 @@ impl Tool for FileWriteTool {
         // Atomic write: write to temp file, then rename
         let temp_path = resolved.with_extension(format!(
             ".tmp.{}",
-            uuid::Uuid::new_v4().to_string().split('-').next().unwrap()
+            uuid::Uuid::new_v4()
+                .to_string()
+                .split('-')
+                .next()
+                .unwrap_or_default()
         ));
 
         tokio::fs::write(&temp_path, &content).await.map_err(|e| {

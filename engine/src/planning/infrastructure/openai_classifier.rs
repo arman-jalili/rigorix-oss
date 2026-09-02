@@ -72,7 +72,8 @@ pub struct OpenaiClassifier {
     config: OpenaiClassifierConfig,
 
     /// HTTP client.
-    client: reqwest::Client,
+    // GAP-L-08: Option — client-build failure is a typed error at call time.
+    client: Option<reqwest::Client>,
 
     /// Last request timestamp for rate limiting.
     last_request: tokio::sync::Mutex<std::time::Instant>,
@@ -90,7 +91,7 @@ impl OpenaiClassifier {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(config.timeout_secs))
             .build()
-            .expect("Failed to create HTTP client");
+            .ok();
 
         Self {
             api_key,
@@ -253,8 +254,13 @@ impl Classifier for OpenaiClassifier {
             *last = std::time::Instant::now();
         }
 
-        let response = self
+        let client = self
             .client
+            .as_ref()
+            .ok_or_else(|| PlanningError::ClassificationError {
+                detail: "HTTP client unavailable (client build failed at startup)".to_string(),
+            })?;
+        let response = client
             .post(&self.config.api_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("content-type", "application/json")

@@ -144,14 +144,17 @@ impl GitHubClient {
 
     // ── HTTP helpers ──
 
-    fn auth_headers(&self) -> HeaderMap {
+    fn auth_headers(&self) -> Result<HeaderMap, GitHubClientError> {
         let mut headers = HeaderMap::new();
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", self.token)).expect("token is valid ASCII"),
-        );
+        let header_value =
+            HeaderValue::from_str(&format!("Bearer {}", self.token)).map_err(|e| {
+                GitHubClientError::AuthFailed(format!(
+                    "token contains characters invalid in an Authorization header: {e}"
+                ))
+            })?;
+        headers.insert(AUTHORIZATION, header_value);
         headers.insert(USER_AGENT, HeaderValue::from_static("rigorix-action/0.1.0"));
-        headers
+        Ok(headers)
     }
 
     async fn check_rate_limit(
@@ -236,7 +239,7 @@ impl GitHubClient {
         let response = self
             .http
             .get(&url)
-            .headers(self.auth_headers())
+            .headers(self.auth_headers()?)
             .header("Accept", "application/vnd.github.v3.diff")
             .send()
             .await?;
@@ -256,7 +259,7 @@ impl GitHubClient {
         let response = self
             .http
             .post(&url)
-            .headers(self.auth_headers())
+            .headers(self.auth_headers()?)
             .json(status)
             .send()
             .await?;
@@ -277,7 +280,7 @@ impl GitHubClient {
         let response = self
             .http
             .post(&url)
-            .headers(self.auth_headers())
+            .headers(self.auth_headers()?)
             .json(&serde_json::json!({ "body": body }))
             .send()
             .await?;
@@ -297,7 +300,7 @@ impl GitHubClient {
         let response = self
             .http
             .patch(&url)
-            .headers(self.auth_headers())
+            .headers(self.auth_headers()?)
             .json(&serde_json::json!({ "body": body }))
             .send()
             .await?;
@@ -317,7 +320,7 @@ impl GitHubClient {
         let response = self
             .http
             .get(&url)
-            .headers(self.auth_headers())
+            .headers(self.auth_headers()?)
             .send()
             .await?;
 
@@ -337,7 +340,7 @@ impl GitHubClient {
         let response = self
             .http
             .post(&url)
-            .headers(self.auth_headers())
+            .headers(self.auth_headers()?)
             .json(&serde_json::json!({ "labels": labels }))
             .send()
             .await?;
@@ -364,7 +367,7 @@ impl GitHubClient {
         let response = self
             .http
             .delete(&url)
-            .headers(self.auth_headers())
+            .headers(self.auth_headers()?)
             .send()
             .await?;
 
@@ -389,7 +392,7 @@ impl GitHubClient {
         let response = self
             .http
             .get(&url)
-            .headers(self.auth_headers())
+            .headers(self.auth_headers()?)
             .header("Accept", "application/vnd.github.v3.raw")
             .send()
             .await?;
@@ -404,7 +407,7 @@ impl GitHubClient {
         let response = self
             .http
             .get(&url)
-            .headers(self.auth_headers())
+            .headers(self.auth_headers()?)
             .send()
             .await?;
 

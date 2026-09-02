@@ -1716,7 +1716,7 @@ async fn run_stdio_server(cancel: CancellationToken) {
                                         "message": err.message
                                     }
                                 });
-                                let _ = writer.write_all(format!("{}\n", serde_json::to_string(&error_msg).unwrap()).as_bytes()).await;
+                                let _ = writer.write_all(format!("{}\n", serde_json::to_string(&error_msg).unwrap_or_default()).as_bytes()).await;
                                 let _ = writer.flush().await;
                                 tracing::warn!("Failed to parse JSON-RPC message: {}", e);
                             }

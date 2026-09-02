@@ -182,7 +182,7 @@ pub fn rigorix_list_templates_tool_descriptor() -> serde_json::Value {
     json!({
         "name": "rigorix_list_templates",
         "description": "List available plan templates. Supports optional filtering by tags, text search, and result limit. Returns template summaries with name, description, version, tags, step count, and last update time.",
-        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_LIST_TEMPLATES_INPUT_SCHEMA).unwrap()
+        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_LIST_TEMPLATES_INPUT_SCHEMA).expect("schema const is valid JSON (test-enforced)")
     })
 }
 
@@ -191,7 +191,7 @@ pub fn rigorix_get_template_tool_descriptor() -> serde_json::Value {
     json!({
         "name": "rigorix_get_template",
         "description": "Get a specific plan template by name. Supports optional format selection: 'json' (default) for structured data or 'toml' for raw TOML content.",
-        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_GET_TEMPLATE_INPUT_SCHEMA).unwrap()
+        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_GET_TEMPLATE_INPUT_SCHEMA).expect("schema const is valid JSON (test-enforced)")
     })
 }
 
@@ -200,7 +200,7 @@ pub fn rigorix_create_template_tool_descriptor() -> serde_json::Value {
     json!({
         "name": "rigorix_create_template",
         "description": "Create a new plan template. Validates the template structure, checks for name conflicts, and persists as a TOML file. Uses atomic write operations for data safety.",
-        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_CREATE_TEMPLATE_INPUT_SCHEMA).unwrap()
+        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_CREATE_TEMPLATE_INPUT_SCHEMA).expect("schema const is valid JSON (test-enforced)")
     })
 }
 
@@ -209,7 +209,7 @@ pub fn rigorix_validate_template_tool_descriptor() -> serde_json::Value {
     json!({
         "name": "rigorix_validate_template",
         "description": "Validate a plan template structure against the schema. Checks step definitions, constraints, and optionally validates against enforcement policies. Returns validation warnings, errors, and estimated cost.",
-        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_VALIDATE_TEMPLATE_INPUT_SCHEMA).unwrap()
+        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_VALIDATE_TEMPLATE_INPUT_SCHEMA).expect("schema const is valid JSON (test-enforced)")
     })
 }
 

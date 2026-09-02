@@ -320,11 +320,8 @@ impl ContextBuilder for ContextBuilderImpl {
         let (mode, _mode_source) =
             self.resolve_mode(input_mode.as_deref(), &event_name, &raw_payload)?;
 
-        if input_mode.is_some() {
-            warnings.push(format!(
-                "Mode resolved from INPUT_MODE: {}",
-                input_mode.as_deref().unwrap()
-            ));
+        if let Some(mode) = input_mode.as_deref() {
+            warnings.push(format!("Mode resolved from INPUT_MODE: {mode}"));
         } else {
             warnings.push(format!("Mode resolved from event type '{}'", event_name));
         }

@@ -126,8 +126,8 @@ impl RiskGateService for RiskGateServiceImpl {
         &self,
         input: EvaluateGateInput,
     ) -> Result<EvaluateGateOutput, RiskGatingError> {
-        let classifier = self.classifier.read().expect("Classifier lock poisoned");
-        let config = self.config.read().expect("Config lock poisoned");
+        let classifier = self.classifier.read().unwrap_or_else(|e| e.into_inner());
+        let config = self.config.read().unwrap_or_else(|e| e.into_inner());
 
         let classification = classifier.classify(&input.tool, input.parameters.as_ref());
 
@@ -170,7 +170,7 @@ impl RiskGateService for RiskGateServiceImpl {
         &self,
         input: ClassifyToolInput,
     ) -> Result<ClassifyToolOutput, RiskGatingError> {
-        let classifier = self.classifier.read().expect("Classifier lock poisoned");
+        let classifier = self.classifier.read().unwrap_or_else(|e| e.into_inner());
         let classification = classifier.classify(&input.tool, input.parameters.as_ref());
 
         Ok(ClassifyToolOutput {
@@ -219,7 +219,7 @@ impl RiskGateService for RiskGateServiceImpl {
 
     #[tracing::instrument(skip_all)]
     async fn get_config(&self) -> Result<GetConfigOutput, RiskGatingError> {
-        let config = self.config.read().expect("Config lock poisoned");
+        let config = self.config.read().unwrap_or_else(|e| e.into_inner());
         let override_count = config.tool_overrides.len() as u32;
         Ok(GetConfigOutput {
             config: config.clone(),
@@ -231,7 +231,7 @@ impl RiskGateService for RiskGateServiceImpl {
         &self,
         input: OverrideToolInput,
     ) -> Result<OverrideToolOutput, RiskGatingError> {
-        let mut config = self.config.write().expect("Config lock poisoned");
+        let mut config = self.config.write().unwrap_or_else(|e| e.into_inner());
         let previous = config.get_override(&input.tool).copied();
 
         config.set_override(input.tool.clone(), input.new_level);
@@ -253,7 +253,7 @@ impl RiskGateService for RiskGateServiceImpl {
     async fn reload_config(&self) -> Result<ReloadConfigOutput, RiskGatingError> {
         // In a real implementation, this would re-read from Config source.
         // For now, use the existing config (no-op reload).
-        let config = self.config.read().expect("Config lock poisoned");
+        let config = self.config.read().unwrap_or_else(|e| e.into_inner());
         Ok(ReloadConfigOutput {
             success: true,
             config_summary: RiskConfigSummary {
@@ -267,13 +267,13 @@ impl RiskGateService for RiskGateServiceImpl {
 
     #[tracing::instrument(skip_all)]
     fn classifier(&self) -> Box<dyn RiskClassifier> {
-        let guard = self.classifier.read().expect("Classifier lock poisoned");
+        let guard = self.classifier.read().unwrap_or_else(|e| e.into_inner());
         Box::new(guard.clone())
     }
 
     #[tracing::instrument(skip_all)]
     fn config(&self) -> RiskConfig {
-        let guard = self.config.read().expect("Config lock poisoned");
+        let guard = self.config.read().unwrap_or_else(|e| e.into_inner());
         guard.clone()
     }
 }

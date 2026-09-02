@@ -213,25 +213,41 @@ impl OrchestratorBuilder for OrchestratorBuilderImpl {
             max_llm_tokens: self.max_llm_tokens,
             ..self.config
         };
-        let planning_pipeline = self
-            .planning_pipeline
-            .expect("check_ready verified planning_pipeline is Some");
-        let execution_service = self
-            .execution_service
-            .expect("check_ready verified execution_service is Some");
+        let planning_pipeline =
+            self.planning_pipeline
+                .ok_or_else(|| OrchestratorError::Internal {
+                    source_module: "orchestrator::builder_impl".to_string(),
+                    detail: "check_ready verified planning_pipeline is Some".to_string(),
+                })?;
+        let execution_service =
+            self.execution_service
+                .ok_or_else(|| OrchestratorError::Internal {
+                    source_module: "orchestrator::builder_impl".to_string(),
+                    detail: "check_ready verified execution_service is Some".to_string(),
+                })?;
         let state_manager = self
             .state_manager
-            .expect("check_ready verified state_manager is Some");
-        let cancellation_service = self
-            .cancellation_service
-            .expect("check_ready verified cancellation_service is Some");
-        let event_bus = self
-            .event_bus
-            .expect("check_ready verified event_bus is Some");
+            .ok_or_else(|| OrchestratorError::Internal {
+                source_module: "orchestrator::builder_impl".to_string(),
+                detail: "check_ready verified state_manager is Some".to_string(),
+            })?;
+        let cancellation_service =
+            self.cancellation_service
+                .ok_or_else(|| OrchestratorError::Internal {
+                    source_module: "orchestrator::builder_impl".to_string(),
+                    detail: "check_ready verified cancellation_service is Some".to_string(),
+                })?;
+        let event_bus = self.event_bus.ok_or_else(|| OrchestratorError::Internal {
+            source_module: "orchestrator::builder_impl".to_string(),
+            detail: "check_ready verified event_bus is Some".to_string(),
+        })?;
         let audit_service = self.audit_service;
         let budget_service = self
             .budget_service
-            .expect("check_ready verified budget_service is Some");
+            .ok_or_else(|| OrchestratorError::Internal {
+                source_module: "orchestrator::builder_impl".to_string(),
+                detail: "check_ready verified budget_service is Some".to_string(),
+            })?;
         let code_graph_service = self.code_graph_service;
         let scored_evaluation_service = self.scored_evaluation_service;
 

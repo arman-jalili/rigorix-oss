@@ -347,13 +347,12 @@ fn set_nested(root: &mut serde_json::Value, path: &str, value: serde_json::Value
                 *cur = serde_json::Value::Object(serde_json::Map::new());
             }
             if let serde_json::Value::Object(m) = cur {
-                if !m.contains_key(*part) {
-                    m.insert(
-                        part.to_string(),
-                        serde_json::Value::Object(serde_json::Map::new()),
-                    );
-                }
-                cur = m.get_mut(*part).expect("just inserted");
+                // GAP-L-08: entry API — no contains_key/get_mut dance, no
+                // expect("just inserted"); or_insert_with matches the original
+                // semantics (existing key untouched, missing key -> object).
+                cur = m
+                    .entry(part.to_string())
+                    .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
             }
         }
     }

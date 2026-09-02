@@ -113,7 +113,7 @@ pub fn rigorix_read_audit_tool_descriptor() -> serde_json::Value {
     json!({
         "name": "rigorix_read_audit",
         "description": "Read an execution audit record by execution ID. Returns full execution metadata, step results, token usage, and event history. Supports both human-readable text and structured JSON output.",
-        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_READ_AUDIT_INPUT_SCHEMA).unwrap()
+        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_READ_AUDIT_INPUT_SCHEMA).expect("schema const is valid JSON (test-enforced)")
     })
 }
 
@@ -122,7 +122,7 @@ pub fn rigorix_list_audits_tool_descriptor() -> serde_json::Value {
     json!({
         "name": "rigorix_list_audits",
         "description": "List recent execution audit records with optional filtering by status, time range, and template name. Returns results ordered by completion time (newest first).",
-        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_LIST_AUDITS_INPUT_SCHEMA).unwrap()
+        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_LIST_AUDITS_INPUT_SCHEMA).expect("schema const is valid JSON (test-enforced)")
     })
 }
 
@@ -131,7 +131,7 @@ pub fn rigorix_audit_summary_tool_descriptor() -> serde_json::Value {
     json!({
         "name": "rigorix_audit_summary",
         "description": "Generate aggregate audit statistics over a time range. Returns total executions, success/failure counts, success rate, total duration, token usage, top failure patterns, and most frequently used templates.",
-        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_AUDIT_SUMMARY_INPUT_SCHEMA).unwrap()
+        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_AUDIT_SUMMARY_INPUT_SCHEMA).expect("schema const is valid JSON (test-enforced)")
     })
 }
 

@@ -95,7 +95,8 @@ pub struct LlmParameterExtractor {
     config: LlmExtractorConfig,
 
     /// HTTP client for API calls.
-    client: reqwest::Client,
+    // GAP-L-08: Option — client-build failure is a typed error at call time.
+    client: Option<reqwest::Client>,
 }
 
 impl LlmParameterExtractor {
@@ -110,7 +111,7 @@ impl LlmParameterExtractor {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(config.timeout_secs))
             .build()
-            .expect("Failed to create HTTP client");
+            .ok();
 
         Self {
             api_key,
@@ -331,8 +332,14 @@ impl ParameterExtractor for LlmParameterExtractor {
                         detail: format!("Failed to serialize request: {}", e),
                     })?;
 
-                let response = self
-                    .client
+                let client =
+                    self.client
+                        .as_ref()
+                        .ok_or_else(|| PlanningError::ExtractionError {
+                            detail: "HTTP client unavailable (client build failed at startup)"
+                                .to_string(),
+                        })?;
+                let response = client
                     .post(&self.config.api_url)
                     .header("x-api-key", &self.api_key)
                     .header("anthropic-version", "2023-06-01")
@@ -420,8 +427,14 @@ impl ParameterExtractor for LlmParameterExtractor {
                         detail: format!("Failed to serialize request: {}", e),
                     })?;
 
-                let response = self
-                    .client
+                let client =
+                    self.client
+                        .as_ref()
+                        .ok_or_else(|| PlanningError::ExtractionError {
+                            detail: "HTTP client unavailable (client build failed at startup)"
+                                .to_string(),
+                        })?;
+                let response = client
                     .post(&self.config.api_url)
                     .header("Authorization", format!("Bearer {}", self.api_key))
                     .header("content-type", "application/json")
