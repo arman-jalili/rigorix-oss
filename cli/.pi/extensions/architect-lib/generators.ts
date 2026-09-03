@@ -554,12 +554,12 @@ automatic — no human review needed for routine checks.
 - Reports violations with file:line references
 
 ### Coverage Threshold Check (real coverage)
-- Coverage is measured by the REAL workspace tool: `cargo llvm-cov` via
-  `.pi/scripts/coverage.sh --gate` (repo-wide line-coverage gate, default
+- Coverage is measured by the REAL workspace tool: \`cargo llvm-cov\` via
+  \`.pi/scripts/coverage.sh --gate\` (repo-wide line-coverage gate, default
   60%; wired in ci.yml Stage 3b / local-ci Stage 4b)
-- Do NOT create a per-module `*_coverage.sh` script — the heuristic
+- Do NOT create a per-module \`*_coverage.sh\` script — the heuristic
   grep-based module coverage scripts were removed repo-wide in #780 as
-  coverage-theater; the llvm-cov `target/coverage.lcov` artifact provides
+  coverage-theater; the llvm-cov \`target/coverage.lcov\` artifact provides
   the per-file breakdown instead
 
 ### CI Integration
