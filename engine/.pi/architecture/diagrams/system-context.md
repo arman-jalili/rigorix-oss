@@ -7,7 +7,7 @@ Blueprint Source: Domain Exploration Session 63c25384
 
 ## Context
 
-Rigorix is a deterministic coding CLI built in Rust. It operates as a task graph compiler with execution profiles. The system context below shows how the 21 bounded contexts interact (17 original + Quality Gates + Scored Evaluation + Approval Binding + Identity).
+Rigorix is a deterministic coding CLI built in Rust. It operates as a task graph compiler with execution profiles. The system context below shows how the 22 bounded contexts interact (17 original + Quality Gates + Scored Evaluation + Approval Binding + Identity + Sequence Policy (proposed 2026-09-04)).
 
 ## Bounded Contexts Interaction Flow
 
@@ -36,6 +36,7 @@ graph TB
         QG[Quality Gates]
         SE[Scored Evaluation]
         AP[Approval Binding]
+        SP[Sequence Policy]
     end
 
     subgraph "Observability & Persistence"
@@ -80,6 +81,13 @@ graph TB
     EE -->|"verifies intent pre-dispatch"| AP
     AP -->|"re-approval / IntentMismatch halt"| EE
 
+    %% Sequence Policy — composed-action gating
+    EE -->|"ordered plan / dispatch prefix"| SP
+    SP -->|"promote → requires_approval"| AP
+    SP -->|"deny / findings"| EE
+    SP -.->|"SequenceRuleMatched / SequencePolicyDenied"| ES
+    SP -.->|"sequence_policy_findings"| AUD
+
     %% Policy Engine receives from both quality dimensions
     QG -->|"scope quality"| POL
     SE -->|"output quality scores"| POL
@@ -118,6 +126,7 @@ graph TB
     CFG -.- SE
     CFG -.- POL
     CFG -.- AP
+    CFG -.- SP
     CFG -.- ID
 
     EH -.- PP
@@ -144,6 +153,7 @@ graph TB
     style SE fill:#4a90d9,stroke:#2c5f8a,color:#fff
     style POL fill:#d9a74a,stroke:#8a6b2c,color:#fff
     style AP fill:#e76f51,stroke:#b5452a,color:#fff
+    style SP fill:#9b59b6,stroke:#6c3483,color:#fff
     style ID fill:#b56576,stroke:#803f4e,color:#fff
 ```
 
@@ -160,6 +170,7 @@ sequenceDiagram
     participant POL as Policy Engine
     participant EV as Event Bus
     participant SP as State Persistence
+    participant SEQ as Sequence Policy
 
     User->>PP: UserIntent
     PP->>PP: Budget check → Classify → Extract
@@ -168,10 +179,19 @@ sequenceDiagram
     PP->>EV: Publish PlanningCompleted
     DAG->>DAG: Topological sort
     SP->>SP: Save ExecutionState (Pending)
+    SEQ->>SEQ: Evaluate ordered plan (sequence rules)
+    alt Sequence match (A → B)
+        SEQ-->>EE: Promote B (requires_approval)
+        Note over EE: run pauses — approval chain decides
+    else No match
+        SEQ-->>EE: Proceed
+    end
+    SEQ->>EV: Publish SequenceRuleMatched (on match)
 
     par Execute nodes (topological order)
         EE->>EE: Dequeue ready node
         EE->>EV: Publish NodeStarted
+        EE->>SEQ: Evaluate dispatch prefix (dynamic plans)
         EE->>EE: Execute tool (with retry loop)
         EE->>EV: Publish NodeCompleted/Failed
     end
@@ -201,5 +221,6 @@ sequenceDiagram
 
 ---
 
-*Last updated: 2026-07-15*
+*Last updated: 2026-09-04*
 *Generated from session: 63c25384-1902-4b72-83bb-257f3f682af5*
+*Amendment: Sequence Policy bounded context added (proposed, ADR-013 — docs only)*

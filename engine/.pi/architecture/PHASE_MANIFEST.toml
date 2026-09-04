@@ -17,7 +17,7 @@
 
 [metadata]
 version = "1.0.0"
-total_modules = 19
+total_modules = 20
 total_phases = 6
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -246,6 +246,15 @@ status = "planned"
 description = "IdentityClaim value type, IdentityAttestationService, best-effort verification, OSS-attests/Enterprise-authorizes seam"
 depends_on = ["Configuration", "Error Handling"]
 
+[[phase5.modules]]
+id = 20
+name = "Sequence Policy"
+module = "sequence_policy"
+path = "src/sequence_policy/ (planned)"
+status = "planned"
+description = "Declarative rules over ordered step sequences (tool + param predicates, window, promote/deny); plan-time evaluation before graph build; run-time prefix gate at dispatch; deterministic matching, no LLM in path; redacted envelope evidence (proposed 2026-09-04, ADR-013)"
+depends_on = ["Orchestrator", "Execution Engine", "Approval", "Audit", "Event System", "Permission Enforcer", "Configuration"]
+
 # ────────────────────────────────────────────────────────────────────────────
 # Milestone Checkpoints
 # ────────────────────────────────────────────────────────────────────────────
@@ -284,9 +293,9 @@ description = "Complete audit trail"
 
 [milestones.m5]
 name = "M5: Governance & Identity"
-modules = [18, 19]
-test_command = "cargo test --test approval_binding"
-description = "Approval binds to consequence; identity attested; replay halted; scope violations recorded"
+modules = [18, 19, 20]
+test_command = "cargo test --test approval_binding && cargo test --test sequence_policy"
+description = "Approval binds to consequence; identity attested; replay halted; scope violations recorded; sequence rules promote composed steps to approval"
 
 # ────────────────────────────────────────────────────────────────────────────
 # Status Summary (auto-generated for quick reference)
@@ -298,6 +307,6 @@ planned = [
     "error_handling", "event_system", "enforcement", "budget_tracking",
     "state_persistence", "risk_gating", "template_system", "dag_engine",
     "tool_system", "repo_engine", "planning_pipeline", "template_generation",
-    "execution_engine", "approval", "identity",
+    "execution_engine", "approval", "identity", "sequence_policy",
 ]
-coverage = "4/19 implemented (21.1% — manifest tracks 17 core + 2 governance; post-scaffold modules tracked in module docs)"
+coverage = "4/20 implemented (20% — manifest tracks 17 core + 3 governance; post-scaffold modules tracked in module docs)"

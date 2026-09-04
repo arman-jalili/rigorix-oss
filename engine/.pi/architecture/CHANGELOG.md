@@ -10,6 +10,26 @@ This document tracks all architecture changes requiring implementation updates.
 
 ---
 
+## [2026-09-04] — Sequence Policy (Proposed — Architecture Packet, docs only)
+
+### Added
+- Module: sequence-policy (new bounded context — see `.pi/architecture/modules/sequence-policy.md`)
+  - Declarative rules over ordered step sequences (tool + parameter predicates, window, promote/deny)
+  - Plan-time evaluation before graph build (promote matched later step to `requires_approval`)
+  - Run-time prefix gate at the dispatch choke point (dynamic plans)
+  - Deterministic matching — no LLM in the enforcement path
+  - Fail-closed config posture; redacted envelope evidence (`sequence_policy_findings[]`)
+- ADR-013: Sequence Policy — Composed-Action Gating (see `.pi/architecture/decisions/ADR-013-sequence-policy.md`)
+- Register in PHASE_MANIFEST.toml: phase5 module id 20, milestone m5
+
+### Status
+- **Proposed — NOT YET BUILT.** Docs-only packet (module spec, ADR, issue set, manifest registration).
+- No code changes made. No commit made.
+- Gates on F-20260904-06a (deny `.rigorix/**` writes) in the same epic; enterprise P3 gated on
+  F-20260904-02 and F-20260904-04.
+
+---
+
 ## [2026-09-02] — Approval Module Implementation Complete
 
 ### Added

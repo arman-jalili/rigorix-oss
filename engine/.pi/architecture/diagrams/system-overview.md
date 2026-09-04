@@ -62,6 +62,13 @@ Rigorix is a **deterministic coding CLI** — a task graph compiler with executi
 │         │                                                        │
 │         ▼                                                        │
 │  ┌─────────────────────────────────────────────────────────┐    │
+│  │       Sequence Policy (proposed — ADR-013)              │    │
+│  │  ordered-step rules A→B · promote B to approval / deny  │    │
+│  │  plan-time eval before graph build · prefix gate        │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│         │                                                        │
+│         ▼                                                        │
+│  ┌─────────────────────────────────────────────────────────┐    │
 │  │              Tool System                                 │    │
 │  │  FileRead · FileWrite · FileAppend · FilePatch           │    │
 │  │  RunCommand · LspQuery · GitRead · GitStage · GitCommit  │    │
@@ -108,7 +115,7 @@ Rigorix is a **deterministic coding CLI** — a task graph compiler with executi
 | Layer | Modules | Purpose | Entry Point |
 |-------|---------|---------|-------------|
 | Planning | planning-pipeline, template-system, template-generation, repo-engine, budget-tracking | Intent → validated plan | `rigorix/src/planning/` |
-| Execution | dag-engine, execution-engine, risk-gating, tool-system, enforcement, cancellation, failure-classification, **quality-gates**, **scored-evaluation**, **approval** | Plan → execution → result + quality scoring + consequence-bound sign-off | `rigorix/src/dag/`, `rigorix/src/tools/`, `rigorix/src/quality/`, `rigorix/src/approval/` |
+| Execution | dag-engine, execution-engine, risk-gating, tool-system, enforcement, cancellation, failure-classification, **quality-gates**, **scored-evaluation**, **approval**, **sequence-policy** *(proposed)* | Plan → execution → result + quality scoring + consequence-bound sign-off + composed-action gating | `rigorix/src/dag/`, `rigorix/src/tools/`, `rigorix/src/quality/`, `rigorix/src/approval/`, `rigorix/src/sequence_policy/` |
 | Policy | policy-engine | Rule evaluation, merge gating, closeout | `rigorix/src/policy/` |
 | Observability | event-system, state-persistence, audit | Events → state → audit trail (with scoring refs) | `rigorix/src/event_bus.rs`, `rigorix/src/state/` |
 | Cross-Cutting | configuration, error-handling, **identity** | Config loading, error types, attributed human identity | `rigorix/src/config.rs`, `rigorix/src/error.rs`, `rigorix/src/identity/` |
@@ -147,6 +154,14 @@ approval
     ├── audit                   (approval_events, scope_violations, decision_context_ref)
     ├── state-persistence       (durable approval records)
     └── failure-classification  (IntentMismatch — non-retriable)
+
+sequence-policy (proposed)
+    ├── orchestrator            (plan-time evaluation before graph build)
+    ├── execution-engine        (run-time prefix gate at dispatch)
+    ├── approval                (promote → requires_approval)
+    ├── audit                   (sequence_policy_findings)
+    ├── event-system            (SequenceRuleMatched / SequencePolicyDenied)
+    └── permission-enforcer     (.rigorix/** write denial — rule authorship)
 
 identity
     ├── orchestrator            (RunInput.identity — author)
@@ -212,6 +227,10 @@ ParallelExecutor::execute(&mut graph, cancel_token)
   │     ├── Hash mismatch → HALT (IntentMismatch) — re-approval required
   │     └── Post-execution: effect-scope vs git-diff oracle → scope_violations
   │
+  ├── Sequence Policy: evaluate ordered plan before graph build
+  │     ├── Match A→B → promote B (requires_approval) or deny
+  │     └── Dynamic plans → prefix gate at dispatch (promote/deny)
+  │
   ├── Policy Engine: evaluate ScoreAbove/ScoreBelow/GreenAt
   │     └── If gating rule matches → block_merge / flag_for_review
   │
@@ -237,6 +256,7 @@ Every component publishes to EventBus:
   QualityGateEvaluated     →  QualityGateOutcome
 
   ApprovalRecorded        →  IntentMismatchDetected  →  ScopeViolationRecorded
+  SequenceRuleMatched     →  SequencePolicyDenied (deny action)
 
   PolicyRuleMatched        →  ActionsDispatched
 
@@ -258,6 +278,7 @@ Subscribers:
 | Tool → Shell | RunCommand allowlist + High risk dry-run | risk-gating, tool-system |
 | LLM Provider → Planning | API key via Secret wrapper | configuration |
 | Human Approval → Node | Intent-hash binding + pre-dispatch verification | approval |
+| Step Sequence → Node | Ordered-step rules (promote/deny); admin-authored config; `.rigorix/**` write denial | sequence-policy |
 | Identity → Evidence | Attributed claims; best-effort verification | identity |
 | Events → Audit | HMAC envelope signing | audit |
 | Scoring Payload → Backend | HMAC-signed payloads for MCP/HTTP | scored-evaluation |
@@ -265,5 +286,6 @@ Subscribers:
 
 ---
 
-*Last updated: 2026-08-28*
+*Last updated: 2026-09-04*
 *Architecture version: 1.2.0*
+*Amendment: Sequence Policy bounded context added (proposed, ADR-013 — docs only)*
