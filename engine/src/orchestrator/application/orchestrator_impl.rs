@@ -1597,10 +1597,10 @@ impl OrchestratorService for OrchestratorServiceImpl {
             .approve_node(exec_dto::ApproveNodeInput {
                 dag_id: input.execution_id,
                 step_names: input.step_names.clone(),
-                approver_id: None,
-                authority: None,
+                approver_id: input.approver_id.clone(),
+                authority: input.authority.clone(),
                 decision_context: None,
-                token_claims_ref: None,
+                token_claims_ref: input.token_claims_ref.clone(),
             })
             .await
         {
@@ -2174,6 +2174,9 @@ mod tests {
             .approve_execution(ApproveExecutionInput {
                 execution_id: out.execution_id,
                 step_names: vec!["deploy".into()],
+                approver_id: None,
+                authority: None,
+                token_claims_ref: None,
             })
             .await
             .unwrap();
