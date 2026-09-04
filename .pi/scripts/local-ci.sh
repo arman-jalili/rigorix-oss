@@ -6,14 +6,14 @@ set -euo pipefail
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BLUE='\033[0;34m'; NC='\033[0m'
 
-QUICK=false; STAGE=""; CRATE_FILTER=""; LIST_ONLY=false; SAVE_OUTPUT=false
+QUICK=false; RELEASE=false; STAGE=""; CRATE_FILTER=""; LIST_ONLY=false; SAVE_OUTPUT=false
 FAILED=0; PASSED=0; SKIPPED=0; START_TIME=$(date +%s)
 FAILURES=()
 CRATES=("engine" "mcp" "cli" "actions")
 REPORT_DIR=".pi/output"
 
 while [[ $# -gt 0 ]]; do
-    case $1 in --quick) QUICK=true;; --stage=*) STAGE="${1#*=}";; --crate=*) CRATE_FILTER="${1#*=}";; --list) LIST_ONLY=true;; --save) SAVE_OUTPUT=true;; esac
+    case $1 in --quick) QUICK=true;; --release) RELEASE=true;; --stage=*) STAGE="${1#*=}";; --crate=*) CRATE_FILTER="${1#*=}";; --list) LIST_ONLY=true;; --save) SAVE_OUTPUT=true;; esac
     shift
 done
 
@@ -127,6 +127,7 @@ echo -e "║           Rigorix Local CI Simulation                  ║"
 echo -e "║           $(date)              ║"
 echo -e "╚══════════════════════════════════════════════════════════╝${NC}"
 echo "  Mode:    $([ "$QUICK" = true ] && echo 'quick' || echo 'full')"
+echo "  Profile: $([ "$RELEASE" = true ] && echo 'release' || echo 'debug')"
 echo "  Stage:   ${STAGE:-all}"
 echo "  Crates:  ${CRATES[*]}"; echo ""
 
@@ -154,8 +155,10 @@ if should_run "build"; then
         subheader "Build: $crate"
         if [[ "$QUICK" == "true" ]]; then
             run_cmd "cargo check -p rigorix-$crate (quick)" cargo check -p "rigorix-$crate"
-        else
+        elif [[ "$RELEASE" == "true" ]]; then
             run_cmd "cargo build -p rigorix-$crate --release" cargo build -p "rigorix-$crate" --release
+        else
+            run_cmd "cargo build -p rigorix-$crate" cargo build -p "rigorix-$crate"
         fi
         for script in "$crate/.pi/scripts/ci/stage_static_analysis.sh" "$crate/.pi/scripts/ci/stage_package_build.sh"; do
             [[ -f "$script" ]] && run_script "$(basename "$script") ($crate)" "$crate" "$script"
