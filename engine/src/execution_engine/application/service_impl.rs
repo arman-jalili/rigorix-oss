@@ -31,9 +31,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use uuid::Uuid;
 
-use crate::approval::application::ApprovalService;
-use crate::approval::application::IntentVerification;
 use crate::approval::application::dto::ApproveInput as ApprovalApproveInput;
+use crate::approval::application::{ApprovalService, IntentVerification, ResolvedNode};
 use crate::approval::domain::ApprovalError as ApprovalServiceError;
 use crate::approval::infrastructure::effect_scope::{ChangeSnapshot, GitDiffEffectOracle};
 use crate::event_system::application::EventBusService;
@@ -73,7 +72,7 @@ async fn spawn_concurrent_node(
     join_set: &mut tokio::task::JoinSet<(Uuid, TaskResult)>,
     graph: &mut crate::dag_engine::domain::TaskGraph,
     event_bus: &Arc<dyn EventBusService>,
-    sessions: &Mutex<HashMap<Uuid, ExecutionSession>>,
+    sessions: &Arc<Mutex<HashMap<Uuid, ExecutionSession>>>,
     dag_id: Uuid,
     node_id: Uuid,
     permission_enforcer: &Option<Arc<dyn PermissionEnforcer>>,
@@ -349,7 +348,7 @@ async fn spawn_concurrent_node(
 // ---------------------------------------------------------------------------
 
 /// Internal state for an active execution.
-struct ExecutionSession {
+pub(crate) struct ExecutionSession {
     /// Per-node execution states.
     node_states: HashMap<Uuid, NodeExecutionState>,
     /// IDs of nodes currently running in the JoinSet.
@@ -403,7 +402,11 @@ const GIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 pub struct ParallelExecutionServiceImpl {
     /// Active execution sessions keyed by dag_id.
-    sessions: Mutex<HashMap<Uuid, ExecutionSession>>,
+    ///
+    /// Shared via `Arc` so the ADR-011 session-graph intent resolver can
+    /// resolve step/node intents from the live run graph without holding a
+    /// reference back to the executor (no reference cycle).
+    sessions: Arc<Mutex<HashMap<Uuid, ExecutionSession>>>,
     /// Global executor config.
     config: ParallelExecutorConfig,
     /// Registered progress callbacks.
@@ -952,7 +955,7 @@ impl ParallelExecutionServiceImpl {
         event_bus: Arc<dyn EventBusService>,
     ) -> Self {
         Self {
-            sessions: Mutex::new(HashMap::new()),
+            sessions: Arc::new(Mutex::new(HashMap::new())),
             config,
             progress_callbacks: Mutex::new(Vec::new()),
             retry_service,
@@ -975,6 +978,11 @@ impl ParallelExecutionServiceImpl {
     pub fn with_permission_enforcer(mut self, enforcer: Arc<dyn PermissionEnforcer>) -> Self {
         self.permission_enforcer = Some(enforcer);
         self
+    }
+
+    /// Share the session map (ADR-011: session-graph intent resolver).
+    pub(crate) fn sessions_handle(&self) -> Arc<Mutex<HashMap<Uuid, ExecutionSession>>> {
+        Arc::clone(&self.sessions)
     }
 
     /// Set the recovery service for automatic failure recovery.
@@ -3292,5 +3300,69 @@ impl RetryEvaluationService for RetryEvaluationServiceImpl {
                 attempt, failure_context.max_attempts, strategy, backoff_ms
             ),
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SessionGraphResolver — ADR-011 intent source for the production binding
+// ---------------------------------------------------------------------------
+
+/// Resolves step/node intents from the executor's LIVE sessions.
+///
+/// Implementation-level `NodeIntentResolver` used to build the production
+/// `ApprovalServiceImpl`: `resolve_by_node_id` looks up the node in any
+/// active session's sealed graph; `resolve_by_step_name` matches a session
+/// node currently blocked at the approval gate (AwaitingApproval /
+/// IntentMismatch). Reads only the shared session map — no reference back to
+/// the executor, so no Arc cycle.
+#[derive(Clone)]
+pub(crate) struct SessionGraphResolver {
+    sessions: Arc<Mutex<HashMap<Uuid, ExecutionSession>>>,
+}
+
+impl SessionGraphResolver {
+    /// Attach a resolver to an executor's shared session map.
+    pub(crate) fn new(sessions: Arc<Mutex<HashMap<Uuid, ExecutionSession>>>) -> Self {
+        Self { sessions }
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::approval::application::NodeIntentResolver for SessionGraphResolver {
+    async fn resolve_by_step_name(&self, step_name: &str) -> Option<ResolvedNode> {
+        let map = self.sessions.lock().ok()?;
+        for session in map.values() {
+            if let Some((node_id, _)) = session.node_states.iter().find(|(_, st)| {
+                st.node_name == step_name
+                    && (st.status == NodeStatus::AwaitingApproval
+                        || st.status == NodeStatus::IntentMismatch)
+            }) && let Some(node) = session.graph.as_ref().and_then(|g| g.get_node(*node_id))
+            {
+                return Some(ResolvedNode {
+                    node_id: *node_id,
+                    step_name: step_name.to_string(),
+                    intent: crate::approval::domain::ExecutionIntent::from_node(node),
+                });
+            }
+        }
+        None
+    }
+
+    async fn resolve_by_node_id(&self, node_id: Uuid) -> Option<ResolvedNode> {
+        let map = self.sessions.lock().ok()?;
+        for session in map.values() {
+            if let Some(node) = session.graph.as_ref().and_then(|g| g.get_node(node_id)) {
+                return Some(ResolvedNode {
+                    node_id,
+                    step_name: session
+                        .node_states
+                        .get(&node_id)
+                        .map(|st| st.node_name.clone())
+                        .unwrap_or_else(|| node.name.clone()),
+                    intent: crate::approval::domain::ExecutionIntent::from_node(node),
+                });
+            }
+        }
+        None
     }
 }

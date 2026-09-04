@@ -382,11 +382,16 @@ pub(crate) fn event_to_vm_command(event: &ExecutionEvent) -> Option<VmCommand> {
             None
         }
         // Audit lifecycle events have no TUI rendering — informational.
+        // ADR-011 approval/scope events are likewise informational for the
+        // TUI (rendered in audit + progress views instead).
         ExecutionEvent::AuditEnvelopeDelivered { .. }
         | ExecutionEvent::AuditEnvelopeQueued { .. }
         | ExecutionEvent::AuditEnvelopeDropped { .. }
         | ExecutionEvent::CircuitBreakerStateChanged { .. }
-        | ExecutionEvent::AuditEnvelopeCreated { .. } => None,
+        | ExecutionEvent::AuditEnvelopeCreated { .. }
+        | ExecutionEvent::ApprovalRecorded { .. }
+        | ExecutionEvent::IntentMismatchDetected { .. }
+        | ExecutionEvent::ScopeViolationRecorded { .. } => None,
     }
 }
 

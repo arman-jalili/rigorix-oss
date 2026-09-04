@@ -337,3 +337,91 @@ async fn test_tampered_intent_halts_before_dispatch_and_reapproval_recovers() {
     let _ = std::fs::remove_file(&marker_a);
     let _ = std::fs::remove_file(&marker_b);
 }
+
+// ── Factory attach (production flip path) ───────────────────────────────────
+
+use crate::execution_engine::application::dto::ApproveNodeInput as ExecApproveNodeInput;
+use crate::execution_engine::application::factory::{
+    ApprovalBindingSetup, ParallelExecutionFactory, ParallelExecutionFactoryConfig,
+};
+use crate::execution_engine::application::factory_impl::ParallelExecutionFactoryImpl;
+
+/// ADR-011: the engine factory attaches the binding from
+/// `ParallelExecutionFactoryConfig.approval_binding` (the env-driven flip the
+/// CLI/action/MCP entry points use) — approve captures a record, the dispatch
+/// choke point verifies, and the record is consumed on terminal outcome.
+#[tokio::test]
+async fn test_factory_attached_binding_captures_verifies_consumes() {
+    let dag_id = Uuid::new_v4();
+    let node_id = Uuid::new_v4();
+    let marker = std::env::temp_dir().join(format!("approval-factory-{dag_id}.marker"));
+    let _ = std::fs::remove_file(&marker);
+    let graph = {
+        let mut g = TaskGraph::new();
+        g.add_unchecked(gated_run_node(
+            node_id,
+            "risky_step",
+            &format!("touch {}", marker.display()),
+        ))
+        .unwrap();
+        g.seal().unwrap();
+        g
+    };
+
+    let repo = Arc::new(InMemoryApprovalRepository::new());
+    let config = ParallelExecutionFactoryConfig {
+        executor_config: ParallelExecutorConfig::default(),
+        event_bus: Some(Arc::new(
+            crate::event_system::application::event_bus_service_impl::EventBusServiceImpl::default(
+            ),
+        )),
+        approval_binding: Some(ApprovalBindingSetup {
+            repository: repo.clone(),
+            run_key: b"engine-run-key".to_vec(),
+            ttl_seconds: 3600,
+        }),
+        ..ParallelExecutionFactoryConfig::default()
+    };
+    let executor: Box<dyn ParallelExecutionService> = ParallelExecutionFactoryImpl::new()
+        .create(config)
+        .await
+        .unwrap();
+
+    executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            graph: Some(graph.clone()),
+            config_override: None,
+        })
+        .await
+        .unwrap();
+    let approve = executor
+        .approve_node(ExecApproveNodeInput {
+            dag_id,
+            step_names: vec!["risky_step".to_string()],
+            approver_id: Some("tester@org".into()),
+            authority: None,
+            decision_context: None,
+            token_claims_ref: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(approve.approved, vec!["risky_step".to_string()]);
+
+    executor
+        .resume_execution(ResumeExecutionInput { dag_id })
+        .await
+        .unwrap();
+    let state = executor
+        .get_execution_state(GetExecutionStateInput { dag_id })
+        .await
+        .unwrap();
+    assert!(state.is_complete);
+    assert!(
+        marker.exists(),
+        "verified intent dispatched via the factory path"
+    );
+    let record = repo.load(node_id).await.unwrap().expect("record present");
+    assert_eq!(record.status, ApprovalStatus::Consumed);
+    let _ = std::fs::remove_file(&marker);
+}

@@ -1,3 +1,24 @@
+## [2026-09-02] — Approval binding production flip (ADR-011, env-driven)
+
+### Added
+- `ParallelExecutionFactoryConfig.approval_binding` (`ApprovalBindingSetup`) —
+  the engine factory attaches an `ApprovalServiceImpl` (repository + run key +
+  TTL) with a **live session-graph resolver** (`SessionGraphResolver` reads the
+  executor's shared session map — no Arc cycle), turning approve/verify/consume
+  on at the runtime choke point for factory-built engines
+- `ApprovalBindingSetup::from_env` + wiring in CLI / action / MCP entry points:
+  `RIGORIX_APPROVAL_BINDING=1` (+ `RIGORIX_HMAC_KEY` = envelope key,
+  `RIGORIX_APPROVAL_TTL_SECONDS`, store `.rigorix/approvals.json`) flips the
+  binding on; default off ⇒ legacy gate unchanged
+- Sessions map shared as `Arc<Mutex<..>>` (non-cyclic resolver); executor
+  sessions now pub(crate) handle for the factory
+- Factory-path integration test: approve captures → choke point verifies →
+  tool runs → record consumed
+- Remaining (boundary identity): MCP/CLI approve surfaces must pass
+  `approver_id` when binding is on (engine denies without it by design);
+  ADR-011 still Proposed until envelope build path populates refs + boundary
+  identity land
+
 # Architecture Change Log
 
 ---
