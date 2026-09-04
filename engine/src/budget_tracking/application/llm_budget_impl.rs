@@ -193,36 +193,58 @@ impl LlmBudgetService for LlmBudgetImpl {
             });
         }
 
-        // Check call limit
-        let calls_used_before = self.state.used_calls.load(Ordering::Acquire);
-        if calls_used_before >= self.state.max_calls {
-            return Err(LlmBudgetError::MaxCallsExceeded {
-                used: calls_used_before,
-                max: self.state.max_calls,
-            });
-        }
-
-        // GAP-A-09: atomic check-and-reserve. The previous load -> check ->
-        // fetch_add sequence raced: concurrent commits could over-commit.
-        let tokens_used_before = self
+        // GAP-A-09 (extended): atomic check-and-reserve for the CALL limit.
+        // The old load -> check -> fetch_add sequence raced: concurrent
+        // callers could both pass `used_calls < max_calls` and over-commit
+        // (6 reservations against a limit of 5). The token counter below got
+        // the fetch_update fix; the call counter now mirrors it.
+        let _ = self
             .state
-            .used_tokens
+            .used_calls
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                if current >= self.state.max_calls {
+                    None // at the call limit — reject, leave unchanged
+                } else {
+                    Some(current + 1)
+                }
+            })
+            .map_err(|used| LlmBudgetError::MaxCallsExceeded {
+                used,
+                max: self.state.max_calls,
+            })?;
+
+        // GAP-A-09: atomic check-and-reserve for the TOKEN budget. On
+        // rejection, compensate the call reservation above so a
+        // token-rejected attempt doesn't consume a call slot (the original
+        // load-check-then-increment ordering never counted token failures).
+        let tokens_used_before = match self.state.used_tokens.fetch_update(
+            Ordering::AcqRel,
+            Ordering::Acquire,
+            |current| {
                 if current.saturating_add(estimated_tokens) > self.state.max_tokens {
                     None // reject — leave unchanged
                 } else {
                     Some(current + estimated_tokens)
                 }
-            })
-            .map_err(|used| LlmBudgetError::MaxTokensExceeded {
-                used,
-                max: self.state.max_tokens,
-                requested: estimated_tokens,
-            })?;
+            },
+        ) {
+            Ok(v) => v,
+            Err(used) => {
+                let _ = self.state.used_calls.fetch_update(
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                    |current| current.checked_sub(1),
+                );
+                return Err(LlmBudgetError::MaxTokensExceeded {
+                    used,
+                    max: self.state.max_tokens,
+                    requested: estimated_tokens,
+                });
+            }
+        };
 
-        // Atomically increment call counter
+        // Atomically assign the next call id.
         let call_id = self.state.next_call_id.fetch_add(1, Ordering::AcqRel);
-        self.state.used_calls.fetch_add(1, Ordering::AcqRel);
 
         let calls_used = self.state.used_calls.load(Ordering::Acquire);
         let tokens_used = self.state.used_tokens.load(Ordering::Acquire);
