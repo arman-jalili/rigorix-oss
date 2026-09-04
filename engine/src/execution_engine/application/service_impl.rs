@@ -31,6 +31,10 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use uuid::Uuid;
 
+use crate::approval::application::ApprovalService;
+use crate::approval::application::IntentVerification;
+use crate::approval::application::dto::ApproveInput as ApprovalApproveInput;
+use crate::approval::domain::ApprovalError as ApprovalServiceError;
 use crate::event_system::application::EventBusService;
 use crate::event_system::domain::ExecutionEvent;
 use crate::execution_engine::domain::{
@@ -368,6 +372,21 @@ struct ExecutionSession {
 }
 
 // ---------------------------------------------------------------------------
+// ApprovalBinding
+// ---------------------------------------------------------------------------
+
+/// ADR-011 opt-in binding between the execution engine and the approval module.
+///
+/// The `service` captures approval records, verifies them at the dispatch
+/// choke point, and consumes them on terminal outcome. Callers construct the
+/// service with its own `NodeIntentResolver` (the sealed graph adapter) and
+/// inject it here per run scope.
+pub(crate) struct ApprovalBinding {
+    /// Approval lifecycle service (records, verify, consume).
+    pub(crate) service: Arc<dyn ApprovalService>,
+}
+
+// ---------------------------------------------------------------------------
 // ParallelExecutionServiceImpl
 // ---------------------------------------------------------------------------
 
@@ -400,6 +419,12 @@ pub struct ParallelExecutionServiceImpl {
     recovery_service: Option<Arc<dyn RecoveryService>>,
     /// Recovery context per execution session (dag_id keyed).
     recovery_contexts: Mutex<HashMap<Uuid, RecoveryContext>>,
+
+    /// ADR-011 approval binding (opt-in). When present, approval-gated nodes
+    /// are verified against the recorded intent at the dispatch choke point
+    /// (`verify_intent`), consume on terminal outcome, and approval capture
+    /// persists single-use records. `None` = legacy `session.approved` gate.
+    approval_binding: Option<Arc<ApprovalBinding>>,
 }
 
 impl ParallelExecutionServiceImpl {
@@ -469,6 +494,25 @@ impl ParallelExecutionServiceImpl {
             let Some(node_id) = node_id else {
                 break;
             };
+
+            // ADR-011 choke point: verify the approved intent before dispatch.
+            if graph
+                .get_node(node_id)
+                .map(|n| n.requires_approval)
+                .unwrap_or(false)
+            {
+                match self.verify_before_dispatch(node_id).await {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        self.halt_intent_mismatch(dag_id, graph, node_id, total_nodes)
+                            .await?;
+                        approval_blocked = true;
+                        break;
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+
             spawn_concurrent_node(
                 &mut join_set,
                 graph,
@@ -558,6 +602,16 @@ impl ParallelExecutionServiceImpl {
                 self.notify_progress(dag_id, node_id, state, total_nodes);
             }
 
+            // ADR-011 R3: consume the single-use approval on terminal outcome
+            // (success, skipped, or exhausted failure after ≥1 dispatch).
+            if graph
+                .get_node(node_id)
+                .map(|n| n.requires_approval)
+                .unwrap_or(false)
+            {
+                self.consume_on_terminal(node_id).await;
+            }
+
             // Mark completed in graph to release dependents
             let _ = graph.mark_completed(node_id);
 
@@ -573,6 +627,25 @@ impl ParallelExecutionServiceImpl {
                 let Some(next_id) = next_id else {
                     break;
                 };
+
+                // ADR-011 choke point: verify the approved intent before dispatch.
+                if graph
+                    .get_node(next_id)
+                    .map(|n| n.requires_approval)
+                    .unwrap_or(false)
+                {
+                    match self.verify_before_dispatch(next_id).await {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            self.halt_intent_mismatch(dag_id, graph, next_id, total_nodes)
+                                .await?;
+                            approval_blocked = true;
+                            break;
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
+
                 spawn_concurrent_node(
                     &mut join_set,
                     graph,
@@ -624,6 +697,92 @@ impl ParallelExecutionServiceImpl {
             node_results,
             approval_blocked,
         ))
+    }
+
+    /// ADR-011 choke point — verify a gated node's intent before dispatch.
+    ///
+    /// Returns `Ok(true)` to dispatch (`Matched`), `Ok(false)` to HALT
+    /// (`Mismatched` / `Invalid` / missing record — the tool is never called),
+    /// or an internal error when the approval service itself fails (fail-closed).
+    async fn verify_before_dispatch(&self, node_id: Uuid) -> Result<bool, ExecutionError> {
+        let Some(binding) = &self.approval_binding else {
+            return Ok(true); // legacy gate — no binding
+        };
+        match binding.service.verify_intent(node_id).await {
+            Ok(IntentVerification::Matched) => {
+                tracing::info!(node_id = %node_id, "dispatch: intent MATCHED — verified against approved record");
+                Ok(true)
+            }
+            Ok(verdict) => {
+                tracing::error!(
+                    node_id = %node_id,
+                    verdict = ?verdict,
+                    "dispatch HALT: approval invalid or intent mismatch — re-approval required"
+                );
+                Ok(false)
+            }
+            Err(ApprovalServiceError::NotFound(_)) => {
+                tracing::warn!(
+                    node_id = %node_id,
+                    "dispatch HALT: no approval record (legacy or invalidated) — re-approval required"
+                );
+                Ok(false)
+            }
+            Err(e) => Err(ExecutionError::InternalError {
+                detail: format!("Approval verification failed: {e}"),
+            }),
+        }
+    }
+
+    /// Halt a node on intent mismatch (R2): never dispatches; the node moves
+    /// to `IntentMismatch`, is requeued (so a later re-approval + resume can
+    /// pick it up), and is dropped from the session's approved set.
+    async fn halt_intent_mismatch(
+        &self,
+        dag_id: Uuid,
+        graph: &mut crate::dag_engine::domain::TaskGraph,
+        node_id: Uuid,
+        total_nodes: u32,
+    ) -> Result<(), ExecutionError> {
+        graph.requeue_ready_node(node_id);
+        let updated_state = {
+            let mut sessions = self
+                .sessions
+                .lock()
+                .map_err(|e| ExecutionError::InternalError {
+                    detail: format!("Lock error: {e}"),
+                })?;
+            if let Some(session) = sessions.get_mut(&dag_id) {
+                session.approved.remove(&node_id);
+                if let Some(state) = session.node_states.get_mut(&node_id) {
+                    state.mark_intent_mismatch();
+                    Some(state.clone())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+        if let Some(state) = updated_state {
+            self.notify_progress(dag_id, node_id, state, total_nodes);
+        }
+        Ok(())
+    }
+
+    /// Single-use settlement: consume the approval once the node reaches a
+    /// terminal outcome. Non-terminal failures never reach this point.
+    async fn consume_on_terminal(&self, node_id: Uuid) {
+        let Some(binding) = &self.approval_binding else {
+            return;
+        };
+        match binding.service.consume(node_id).await {
+            Ok(()) => tracing::info!(node_id = %node_id, "approval consumed (terminal outcome)"),
+            Err(ApprovalServiceError::NotFound(_) | ApprovalServiceError::AlreadyConsumed(_)) => {}
+            Err(e) => {
+                tracing::warn!(node_id = %node_id, error = %e, "consume failed (non-fatal)")
+            }
+        }
     }
 
     /// Mark the front ready node as awaiting human approval in the session.
@@ -678,6 +837,7 @@ impl ParallelExecutionServiceImpl {
             permission_enforcer: None,
             recovery_service: None,
             recovery_contexts: Mutex::new(HashMap::new()),
+            approval_binding: None,
         }
     }
 
@@ -696,6 +856,19 @@ impl ParallelExecutionServiceImpl {
     /// Set the recovery service for automatic failure recovery.
     pub fn with_recovery_service(mut self, recovery: Arc<dyn RecoveryService>) -> Self {
         self.recovery_service = Some(recovery);
+        self
+    }
+
+    /// Enable ADR-011 approval binding (opt-in).
+    ///
+    /// When set, approval-gated nodes are verified against the recorded
+    /// intent hash before dispatch (`Matched` → dispatch, else HALT into
+    /// `IntentMismatch` — the tool is never called) and single-use records are
+    /// consumed on terminal outcome. `approve_node` persists binding records
+    /// when the input carries an approver identity. Without a binding the
+    /// legacy `session.approved` gate is unchanged.
+    pub fn with_approval_service(mut self, service: Arc<dyn ApprovalService>) -> Self {
+        self.approval_binding = Some(Arc::new(ApprovalBinding { service }));
         self
     }
 
@@ -1758,7 +1931,10 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         let (approval_pending, pending_approval_steps) = if approval_blocked {
             let steps = live_states
                 .values()
-                .filter(|s| s.status == NodeStatus::AwaitingApproval)
+                .filter(|s| {
+                    s.status == NodeStatus::AwaitingApproval
+                        || s.status == NodeStatus::IntentMismatch
+                })
                 .map(|s| s.node_name.clone())
                 .collect::<Vec<_>>();
             (true, steps)
@@ -2440,72 +2616,163 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         &self,
         input: ApproveNodeInput,
     ) -> Result<ApproveNodeOutput, ExecutionError> {
-        let mut sessions = self
-            .sessions
-            .lock()
-            .map_err(|e| ExecutionError::InternalError {
-                detail: format!("Lock error: {}", e),
-            })?;
+        // Binding-aware approve: with ADR-011 approval binding the approval is
+        // captured as a single-use record bound to the canonical execution
+        // intent (R1+R3). The legacy `session.approved` set remains the gate
+        // in both modes — with binding, a node enters it only after its
+        // record was persisted.
+        struct Candidate {
+            name: String,
+            node_id: Uuid,
+        }
 
-        let session = sessions
-            .get_mut(&input.dag_id)
-            .ok_or(ExecutionError::NodeNotFound {
-                node_id: input.dag_id,
-            })?;
+        // (1) Resolve candidates under the sessions lock (no awaits held).
+        let (candidates, mut denied, not_found) = {
+            let mut sessions = self
+                .sessions
+                .lock()
+                .map_err(|e| ExecutionError::InternalError {
+                    detail: format!("Lock error: {e}"),
+                })?;
 
-        let mut approved: Vec<String> = Vec::new();
-        let mut not_found: Vec<String> = Vec::new();
-        let mut denied: Vec<String> = Vec::new();
+            let session = sessions
+                .get_mut(&input.dag_id)
+                .ok_or(ExecutionError::NodeNotFound {
+                    node_id: input.dag_id,
+                })?;
 
-        for name in &input.step_names {
-            // Resolve step name -> node id from the session's live states.
-            let node_id = session
-                .node_states
-                .iter()
-                .find(|(_, s)| &s.node_name == name)
-                .map(|(id, _)| *id);
+            let mut candidates: Vec<Candidate> = Vec::new();
+            let mut denied: Vec<String> = Vec::new();
+            let mut not_found: Vec<String> = Vec::new();
 
-            let Some(node_id) = node_id else {
-                not_found.push(name.clone());
-                continue;
-            };
+            for name in &input.step_names {
+                // Resolve step name -> node id from the session's live states.
+                let node_id = session
+                    .node_states
+                    .iter()
+                    .find(|(_, s)| &s.node_name == name)
+                    .map(|(id, _)| *id);
 
-            // GAP-H-07: only approval-gated nodes awaiting human sign-off may
-            // be approved. Resolve `requires_approval` from the session graph;
-            // a node not in `AwaitingApproval` (already approved/executed/
-            // completed) is rejected.
-            let gated = session
-                .graph
-                .as_ref()
-                .and_then(|g| g.get_node(node_id))
-                .map(|n| n.requires_approval)
-                .unwrap_or(false);
-            let awaiting = session
-                .node_states
-                .get(&node_id)
-                .map(|s| s.status == NodeStatus::AwaitingApproval)
-                .unwrap_or(false);
+                let Some(node_id) = node_id else {
+                    not_found.push(name.clone());
+                    continue;
+                };
 
-            if !gated || !awaiting {
-                denied.push(name.clone());
-                continue;
+                // GAP-H-07: only approval-gated nodes awaiting human sign-off
+                // may be approved. Resolve `requires_approval` from the session
+                // graph; a node not in `AwaitingApproval` (already approved/
+                // executed/completed) is rejected. A node halted on
+                // `IntentMismatch` is awaiting re-approval and may be approved
+                // again (fresh record + new hash).
+                let gated = session
+                    .graph
+                    .as_ref()
+                    .and_then(|g| g.get_node(node_id))
+                    .map(|n| n.requires_approval)
+                    .unwrap_or(false);
+                let awaiting = session
+                    .node_states
+                    .get(&node_id)
+                    .map(|s| {
+                        s.status == NodeStatus::AwaitingApproval
+                            || s.status == NodeStatus::IntentMismatch
+                    })
+                    .unwrap_or(false);
+
+                if !gated || !awaiting {
+                    denied.push(name.clone());
+                    continue;
+                }
+
+                candidates.push(Candidate {
+                    name: name.clone(),
+                    node_id,
+                });
             }
+            (candidates, denied, not_found)
+        };
 
-            session.approved.insert(node_id);
-            approved.push(name.clone());
+        let candidate_names: Vec<String> = candidates.iter().map(|c| c.name.clone()).collect();
 
-            // A node blocked on approval becomes dispatchable again.
-            if let Some(state) = session.node_states.get_mut(&node_id) {
-                state.mark_ready();
+        // (2) Capture the approval record when a binding is configured.
+        let mut approved: Vec<String> = Vec::new();
+        if let Some(binding) = &self.approval_binding {
+            // R3: identity is a required captured fact — fail closed without it.
+            let approver_id = input.approver_id.clone().filter(|s| !s.trim().is_empty());
+            match approver_id {
+                Some(approver_id) => {
+                    let approve_input = ApprovalApproveInput {
+                        dag_id: input.dag_id,
+                        step_names: candidate_names.clone(),
+                        approver_id,
+                        authority: input.authority.clone(),
+                        decision_context: input.decision_context.clone(),
+                        token_claims_ref: input.token_claims_ref.clone(),
+                    };
+                    let out = binding.service.approve(approve_input).await.map_err(|e| {
+                        ExecutionError::InternalError {
+                            detail: format!("Approval binding capture failed: {e}"),
+                        }
+                    })?;
+                    approved = out.approved;
+                    // Names that failed to bind are denied (never silently granted).
+                    for name in &candidate_names {
+                        if !approved.contains(name) {
+                            denied.push(name.clone());
+                        }
+                    }
+                }
+                None => {
+                    if !candidate_names.is_empty() {
+                        tracing::warn!(
+                            dag_id = %input.dag_id,
+                            candidates = candidate_names.len(),
+                            "approve denied: approval binding requires approver_id (identity is a captured fact)"
+                        );
+                        denied.extend(candidate_names.clone());
+                    }
+                }
+            }
+        } else {
+            approved = candidate_names;
+        }
+
+        // (3) Commit under the sessions lock: approved nodes become
+        // dispatchable; still_pending reflects the remaining approval gate.
+        let mut still_pending: Vec<String> = Vec::new();
+        {
+            let mut sessions = self
+                .sessions
+                .lock()
+                .map_err(|e| ExecutionError::InternalError {
+                    detail: format!("Lock error: {e}"),
+                })?;
+            if let Some(session) = sessions.get_mut(&input.dag_id) {
+                for cand in &candidates {
+                    if approved.contains(&cand.name) {
+                        session.approved.insert(cand.node_id);
+                        // A node blocked on approval becomes dispatchable again.
+                        if let Some(state) = session.node_states.get_mut(&cand.node_id) {
+                            state.mark_ready();
+                        }
+                    }
+                }
+                still_pending = session
+                    .node_states
+                    .values()
+                    .filter(|s| {
+                        s.status == NodeStatus::AwaitingApproval
+                            || s.status == NodeStatus::IntentMismatch
+                    })
+                    .map(|s| s.node_name.clone())
+                    .collect();
             }
         }
 
-        let still_pending: Vec<String> = session
-            .node_states
-            .values()
-            .filter(|s| s.status == NodeStatus::AwaitingApproval)
-            .map(|s| s.node_name.clone())
-            .collect();
+        // `denied` may contain duplicates if a name was both un-gated and
+        // binding-denied — de-dupe while preserving order.
+        let mut seen = HashSet::new();
+        denied.retain(|n| seen.insert(n.clone()));
 
         Ok(ApproveNodeOutput {
             dag_id: input.dag_id,

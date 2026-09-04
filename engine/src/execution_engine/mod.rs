@@ -46,6 +46,9 @@ pub mod domain;
 pub mod infrastructure;
 
 #[cfg(test)]
+pub mod approval_binding_tests;
+
+#[cfg(test)]
 pub mod concurrency_tests;
 
 #[cfg(test)]

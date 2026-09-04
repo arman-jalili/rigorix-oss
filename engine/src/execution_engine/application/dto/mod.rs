@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 
+use crate::approval::domain::DecisionContext;
 use crate::execution_engine::domain::{
     ExecutionResult, NodeExecutionState, NodeStatus, ParallelExecutorConfig, RetryDecision,
     RetryPolicy, TaskResult,
@@ -69,6 +70,26 @@ pub struct ApproveNodeInput {
     pub dag_id: Uuid,
     /// Step (node) names to approve.
     pub step_names: Vec<String>,
+
+    // ── ADR-011 approval binding (optional, engine-side) ───────────────────
+    // When the execution engine carries an approval binding, approving a step
+    // persists a single-use ApprovalRecord bound to the exact execution
+    // intent. Identity is a required captured fact (R3): absent `approver_id`
+    // with binding enabled denies the step.
+    /// Required for binding capture — human identity subject (see identity
+    /// module). `None` keeps the legacy approved-set path when no binding is
+    /// configured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approver_id: Option<String>,
+    /// Role / policy id (captured fact, not a judgment).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authority: Option<String>,
+    /// R4 — what the human was shown at approval time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision_context: Option<DecisionContext>,
+    /// IdP token/claims presented at approval (credential-substitution check).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_claims_ref: Option<String>,
 }
 
 /// Output from approving steps of a paused execution.

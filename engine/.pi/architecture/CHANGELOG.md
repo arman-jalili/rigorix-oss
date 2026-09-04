@@ -1,5 +1,32 @@
 # Architecture Change Log
 
+---
+
+## [2026-09-02] — Approval dispatch wiring (ADR-011 acceptance slice, opt-in)
+
+### Added
+- Execution engine now optionally carries an approval binding
+  (`ParallelExecutionServiceImpl::with_approval_service`):
+  - `approve_node` persists a single-use `ApprovalRecord` (identity captured
+    via new optional `ApproveNodeInput.approver_id` / `authority` /
+    `decision_context` / `token_claims_ref` fields) before releasing the node
+  - `run_dispatch_loop` (shared by execute + resume) verifies the recorded
+    intent at the dispatch choke point: `Matched` → dispatch;
+    `Mismatched` / `Invalid` / missing record → HALT into
+    `NodeStatus::IntentMismatch` (tool never called, re-approval required)
+  - single-use records are consumed once on terminal outcome
+- `NodeStatus::IntentMismatch` state + persistence mapping (coarse view:
+  InProgress); still_pending/pending-approval views include it
+- Integration tests: bound approve→verify→dispatch→consume; cross-process
+  tampered-intent resume halts before dispatch and re-approval recovers
+- Default-off: no binding ⇒ legacy `session.approved` gate unchanged
+  (1943 lib tests + 58 approval unit tests green; clippy clean)
+- Remaining ADR-011 surface (deferred): envelope `ApprovalRecorded` events,
+  git-diff effect-scope oracle, identity/token claims at the MCP layer —
+  ADR-011 stays Proposed until those land
+
+# Architecture Change Log
+
 <!--
 Canonical Reference: .pi/architecture/CHANGELOG.md
 Blueprint Source: Guardian Framework v1.2

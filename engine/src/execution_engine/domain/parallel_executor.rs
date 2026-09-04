@@ -115,6 +115,13 @@ pub enum NodeStatus {
     Skipped,
     /// Ready but paused awaiting human approval (sign-off required).
     AwaitingApproval,
+    /// Pre-dispatch verification failed — the executing intent no longer
+    /// matches what was approved (R2 HALT). Re-approval is the only recovery.
+    ///
+    /// ADR-011 acceptance: the node never dispatches in this state; a
+    /// legitimate re-approval transitions it back to `AwaitingApproval` →
+    /// `Ready`.
+    IntentMismatch,
 }
 
 impl NodeStatus {
@@ -141,6 +148,7 @@ impl NodeStatus {
             NodeStatus::Failed => "failed",
             NodeStatus::Skipped => "skipped",
             NodeStatus::AwaitingApproval => "awaiting_approval",
+            NodeStatus::IntentMismatch => "intent_mismatch",
         }
     }
 }
@@ -256,6 +264,17 @@ impl NodeExecutionState {
         if self.status == NodeStatus::Ready || self.status == NodeStatus::Pending {
             self.status = NodeStatus::AwaitingApproval;
         }
+    }
+
+    /// Transition the node to IntentMismatch (R2 HALT) and back to
+    /// `AwaitingApproval` on legitimate re-approval.
+    ///
+    /// - `mark_intent_mismatch`: pre-dispatch verification failed; the node is
+    ///   blocked and must be re-approved (never dispatches from this state).
+    /// - `mark_awaiting_approval` (called on re-approval) moves it back to the
+    ///   normal approval gate.
+    pub fn mark_intent_mismatch(&mut self) {
+        self.status = NodeStatus::IntentMismatch;
     }
 
     /// Record a retry (increments attempt counter, resets to Ready).
