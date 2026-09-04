@@ -303,7 +303,10 @@ pub async fn build_orchestrator_with_budget(
         }
     };
     let hook_runner = load_hook_runner(repo_root.as_str());
-    let approval_binding = rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env(std::path::Path::new(&repo_root));
+    let approval_binding =
+        rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env(
+            std::path::Path::new(&repo_root),
+        );
     let execution = ParallelExecutionFactoryImpl
         .create(ParallelExecutionFactoryConfig {
             executor_config: ParallelExecutorConfig {

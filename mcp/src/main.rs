@@ -467,11 +467,7 @@ impl AppState {
 
                 let approval = self
                     .engine
-                    .approve_execution(
-                        &ExecutionId::from_uuid(execution_id),
-                        step_names,
-                        identity,
-                    )
+                    .approve_execution(&ExecutionId::from_uuid(execution_id), step_names, identity)
                     .await
                     .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
 
