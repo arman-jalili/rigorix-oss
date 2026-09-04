@@ -701,6 +701,20 @@ pub struct StepCost {
 // ApprovalResult — outcome of a human sign-off on a paused execution
 // ---------------------------------------------------------------------------
 
+/// ADR-011 captured identity for an approval (R3).
+///
+/// With the approval binding enabled the approving identity is a required
+/// captured fact — the engine denies an approval that carries none.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ApprovalIdentity {
+    /// Human identity subject approving (see identity module).
+    pub approver_id: Option<String>,
+    /// Role / policy id (captured fact, not a judgment).
+    pub authority: Option<String>,
+    /// IdP token/claims presented at approval (credential-substitution check).
+    pub token_claims_ref: Option<String>,
+}
+
 /// Result of approving steps of an execution paused for human sign-off.
 ///
 /// Returned by `rigorix_approve_execution`. Indicates which steps were

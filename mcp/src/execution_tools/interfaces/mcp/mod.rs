@@ -221,6 +221,18 @@ pub const RIGORIX_APPROVE_INPUT_SCHEMA: &str = r#"{
             "items": { "type": "string" },
             "minItems": 1,
             "description": "Step names to approve (human sign-off). Steps that declared requires_approval: true only run after approval."
+        },
+        "approver_id": {
+            "type": "string",
+            "description": "Optional — identity subject of the human approving. Required when the ADR-011 approval binding is enabled (R3: identity is a captured fact; the engine denies approval without it)."
+        },
+        "authority": {
+            "type": "string",
+            "description": "Optional — role/policy id of the approver (captured fact)."
+        },
+        "token_claims_ref": {
+            "type": "string",
+            "description": "Optional — IdP token/claims presented at approval (credential-substitution check)."
         }
     },
     "required": ["execution_id", "step_names"]

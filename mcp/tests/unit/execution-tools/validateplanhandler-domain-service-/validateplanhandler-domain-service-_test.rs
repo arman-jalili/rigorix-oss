@@ -70,6 +70,7 @@ impl EngineFacade for MockEngineForValidator {
         &self,
         execution_id: &ExecutionId,
         step_names: Vec<String>,
+        _identity: Option<rigorix_mcp::execution_tools::domain::value::ApprovalIdentity>,
     ) -> Result<rigorix_mcp::execution_tools::domain::value::ApprovalResult, EngineFacadeError>
     {
         Ok(
