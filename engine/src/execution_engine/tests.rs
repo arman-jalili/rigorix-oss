@@ -577,6 +577,10 @@ async fn test_approval_gate_pauses_until_human_signoff() {
         .approve_node(ApproveNodeInput {
             dag_id,
             step_names: vec!["risky".to_string()],
+            approver_id: None,
+            authority: None,
+            decision_context: None,
+            token_claims_ref: None,
         })
         .await
         .unwrap();
@@ -686,6 +690,10 @@ async fn test_cross_process_resume_hydrates_session_and_continues() {
         .approve_node(ApproveNodeInput {
             dag_id,
             step_names: vec!["migrate".to_string()],
+            approver_id: None,
+            authority: None,
+            decision_context: None,
+            token_claims_ref: None,
         })
         .await
         .unwrap_err();
@@ -717,6 +725,10 @@ async fn test_cross_process_resume_hydrates_session_and_continues() {
         .approve_node(ApproveNodeInput {
             dag_id,
             step_names: vec!["migrate".to_string()],
+            approver_id: None,
+            authority: None,
+            decision_context: None,
+            token_claims_ref: None,
         })
         .await
         .unwrap();
@@ -772,6 +784,10 @@ async fn test_approve_node_rejects_ungated_node() {
         .approve_node(ApproveNodeInput {
             dag_id,
             step_names: vec!["plain".to_string()],
+            approver_id: None,
+            authority: None,
+            decision_context: None,
+            token_claims_ref: None,
         })
         .await
         .unwrap();
@@ -818,6 +834,10 @@ async fn test_approve_node_rejects_non_awaiting_node() {
         .approve_node(ApproveNodeInput {
             dag_id,
             step_names: vec!["gated".to_string()],
+            approver_id: None,
+            authority: None,
+            decision_context: None,
+            token_claims_ref: None,
         })
         .await
         .unwrap();
@@ -829,6 +849,10 @@ async fn test_approve_node_rejects_non_awaiting_node() {
         .approve_node(ApproveNodeInput {
             dag_id,
             step_names: vec!["gated".to_string()],
+            approver_id: None,
+            authority: None,
+            decision_context: None,
+            token_claims_ref: None,
         })
         .await
         .unwrap();
@@ -938,6 +962,10 @@ async fn test_approval_gate_rejects_unknown_step_name() {
         .approve_node(ApproveNodeInput {
             dag_id,
             step_names: vec!["nope".to_string()],
+            approver_id: None,
+            authority: None,
+            decision_context: None,
+            token_claims_ref: None,
         })
         .await
         .unwrap();

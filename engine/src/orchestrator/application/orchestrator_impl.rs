@@ -1573,6 +1573,10 @@ impl OrchestratorService for OrchestratorServiceImpl {
             .approve_node(exec_dto::ApproveNodeInput {
                 dag_id: input.execution_id,
                 step_names: input.step_names.clone(),
+                approver_id: None,
+                authority: None,
+                decision_context: None,
+                token_claims_ref: None,
             })
             .await
         {
@@ -1621,6 +1625,10 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     .approve_node(exec_dto::ApproveNodeInput {
                         dag_id: input.execution_id,
                         step_names: input.step_names,
+                        approver_id: None,
+                        authority: None,
+                        decision_context: None,
+                        token_claims_ref: None,
                     })
                     .await
                     .map_err(|e| OrchestratorError::Internal {
