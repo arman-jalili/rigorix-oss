@@ -244,7 +244,9 @@ impl ExecutionState {
             let mut ns = NodeState::new(*node_id);
             ns.status = match exec.status {
                 ExecStatus::Pending | ExecStatus::Ready => NodeStatus::Pending,
-                ExecStatus::Running | ExecStatus::AwaitingApproval => NodeStatus::InProgress,
+                ExecStatus::Running | ExecStatus::AwaitingApproval | ExecStatus::IntentMismatch => {
+                    NodeStatus::InProgress
+                }
                 ExecStatus::Completed => NodeStatus::Completed,
                 ExecStatus::Failed => NodeStatus::Failed,
                 ExecStatus::Skipped => NodeStatus::Skipped,
