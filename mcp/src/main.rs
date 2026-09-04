@@ -1006,6 +1006,7 @@ async fn build_real_engine(
             .create(ParallelExecutionFactoryConfig {
                 permission_enforcer,
                 hook_runner,
+                approval_binding: rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env(std::path::Path::new(repo_root)),
                 ..ParallelExecutionFactoryConfig::default()
             })
             .await?,

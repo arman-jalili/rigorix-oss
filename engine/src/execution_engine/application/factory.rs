@@ -45,6 +45,22 @@ pub trait ParallelExecutionFactory: Send + Sync {
 
 /// Configuration for creating a `ParallelExecutionService` instance.
 #[derive(Clone)]
+/// ADR-011 production approval binding setup.
+///
+/// When present, the engine factory attaches an `ApprovalServiceImpl`
+/// (repository + run key + TTL) with a session-graph intent resolver to the
+/// executor, turning on approval capture/verification/consume at the runtime
+/// choke point. `None` keeps the legacy `session.approved` gate.
+pub struct ApprovalBindingSetup {
+    /// Durable approval-record repository (node-scoped).
+    pub repository:
+        std::sync::Arc<dyn crate::approval::infrastructure::repository::ApprovalRepository>,
+    /// Run key — must equal the envelope HMAC key (ADR-011 §key).
+    pub run_key: Vec<u8>,
+    /// Approval lifetime (expires_at = decided_at + ttl).
+    pub ttl_seconds: u64,
+}
+
 pub struct ParallelExecutionFactoryConfig {
     /// The parallel executor configuration.
     pub executor_config: crate::execution_engine::domain::ParallelExecutorConfig,
@@ -73,6 +89,9 @@ pub struct ParallelExecutionFactoryConfig {
     /// When set, every tool execution runs the configured shell hooks
     /// (which can block, override permissions, or enrich audit context).
     pub hook_runner: Option<Arc<dyn HookRunnerService>>,
+
+    /// ADR-011: optional approval binding (see [`ApprovalBindingSetup`]).
+    pub approval_binding: Option<ApprovalBindingSetup>,
 }
 
 impl Default for ParallelExecutionFactoryConfig {
@@ -85,6 +104,7 @@ impl Default for ParallelExecutionFactoryConfig {
             event_bus: None,
             permission_enforcer: None,
             hook_runner: None,
+            approval_binding: None,
         }
     }
 }
@@ -136,4 +156,59 @@ pub struct FailureStrategyOverride {
     pub failure_type: String,
     /// The preferred retry strategy for this failure type.
     pub preferred_strategy: crate::execution_engine::domain::RetryStrategy,
+}
+
+impl ApprovalBindingSetup {
+    /// Build an approval binding setup from environment configuration.
+    ///
+    /// Enabled by `RIGORIX_APPROVAL_BINDING=1|true`. The run key defaults to
+    /// `RIGORIX_HMAC_KEY` (must equal the envelope HMAC key — ADR-011 §key);
+    /// TTL via `RIGORIX_APPROVAL_TTL_SECONDS` (default 3600). Records are
+    /// persisted to `<repo_root>/.rigorix/approvals.json` (atomic writes,
+    /// cross-process resume).
+    ///
+    /// Returns `None` when disabled — the executor keeps the legacy
+    /// `session.approved` gate (zero behavior change).
+    pub fn from_env(repo_root: &std::path::Path) -> Option<Self> {
+        let enabled = std::env::var("RIGORIX_APPROVAL_BINDING").ok();
+        let on = matches!(
+            enabled.as_deref(),
+            Some("1") | Some("true") | Some("TRUE") | Some("yes")
+        );
+        if !on {
+            return None;
+        }
+        let run_key = std::env::var("RIGORIX_HMAC_KEY")
+            .ok()
+            .filter(|k| !k.is_empty())
+            .map(|k| k.into_bytes());
+        let Some(run_key) = run_key else {
+            tracing::warn!(
+                "RIGORIX_APPROVAL_BINDING=1 but RIGORIX_HMAC_KEY is unset — approval binding disabled"
+            );
+            return None;
+        };
+        let ttl_seconds = std::env::var("RIGORIX_APPROVAL_TTL_SECONDS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(3600);
+        let store_dir = repo_root.join(".rigorix");
+        let _ = std::fs::create_dir_all(&store_dir);
+        let repository = std::sync::Arc::new(
+            crate::approval::infrastructure::repository::FileBackedApprovalRepository::open(
+                store_dir.join("approvals.json"),
+            )
+            .expect("approval store must open"),
+        );
+        tracing::info!(
+            ttl_seconds,
+            "approval binding ENABLED (ADR-011) — records at {}",
+            store_dir.join("approvals.json").display()
+        );
+        Some(Self {
+            repository,
+            run_key,
+            ttl_seconds,
+        })
+    }
 }

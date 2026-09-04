@@ -65,6 +65,24 @@ impl ParallelExecutionFactory for ParallelExecutionFactoryImpl {
         if let Some(runner) = config.hook_runner {
             executor = executor.with_hook_runner(runner);
         }
+        if let Some(binding) = config.approval_binding {
+            // ADR-011: attach the approval binding with a live session-graph
+            // intent resolver — approve/verify/consume now run at the runtime
+            // choke point (records persist through the supplied repository).
+            let sessions = executor.sessions_handle();
+            let resolver = std::sync::Arc::new(
+                crate::execution_engine::application::service_impl::SessionGraphResolver::new(
+                    sessions,
+                ),
+            );
+            let service = crate::approval::application::ApprovalServiceImpl::new(
+                binding.repository,
+                resolver,
+                binding.run_key,
+                std::time::Duration::from_secs(binding.ttl_seconds),
+            );
+            executor = executor.with_approval_service(std::sync::Arc::new(service));
+        }
         Ok(Box::new(executor))
     }
 }

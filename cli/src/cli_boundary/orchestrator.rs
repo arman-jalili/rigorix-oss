@@ -303,6 +303,7 @@ pub async fn build_orchestrator_with_budget(
         }
     };
     let hook_runner = load_hook_runner(repo_root.as_str());
+    let approval_binding = rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env(std::path::Path::new(&repo_root));
     let execution = ParallelExecutionFactoryImpl
         .create(ParallelExecutionFactoryConfig {
             executor_config: ParallelExecutorConfig {
@@ -314,6 +315,7 @@ pub async fn build_orchestrator_with_budget(
                 max_failures_before_abort: 0,
                 enable_fallback: true,
                 enable_validation: true,
+                approval_repo_path: None,
             },
             register_event_handlers: true,
             enable_progress_callbacks: true,
@@ -321,6 +323,7 @@ pub async fn build_orchestrator_with_budget(
             event_bus: Some(Arc::clone(&event_bus)),
             permission_enforcer,
             hook_runner,
+            approval_binding,
         })
         .await
         .map_err(|e| CliError::General(format!("execution: {e}")))?;
