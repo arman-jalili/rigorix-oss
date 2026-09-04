@@ -502,8 +502,23 @@ impl ParallelExecutionServiceImpl {
                 .unwrap_or(false)
             {
                 match self.verify_before_dispatch(node_id).await {
-                    Ok(true) => {}
-                    Ok(false) => {
+                    Ok((true, _)) => {}
+                    Ok((false, digests)) => {
+                        if let Some((expected, actual)) = digests {
+                            let step_name = graph
+                                .get_node(node_id)
+                                .map(|n| n.name.clone())
+                                .unwrap_or_default();
+                            self.publish_event(ExecutionEvent::IntentMismatchDetected {
+                                execution_id: dag_id,
+                                node_id: node_id.to_string(),
+                                step_name,
+                                expected,
+                                actual,
+                                timestamp: chrono::Utc::now(),
+                            })
+                            .await;
+                        }
                         self.halt_intent_mismatch(dag_id, graph, node_id, total_nodes)
                             .await?;
                         approval_blocked = true;
@@ -635,8 +650,23 @@ impl ParallelExecutionServiceImpl {
                     .unwrap_or(false)
                 {
                     match self.verify_before_dispatch(next_id).await {
-                        Ok(true) => {}
-                        Ok(false) => {
+                        Ok((true, _)) => {}
+                        Ok((false, digests)) => {
+                            if let Some((expected, actual)) = digests {
+                                let step_name = graph
+                                    .get_node(next_id)
+                                    .map(|n| n.name.clone())
+                                    .unwrap_or_default();
+                                self.publish_event(ExecutionEvent::IntentMismatchDetected {
+                                    execution_id: dag_id,
+                                    node_id: next_id.to_string(),
+                                    step_name,
+                                    expected,
+                                    actual,
+                                    timestamp: chrono::Utc::now(),
+                                })
+                                .await;
+                            }
                             self.halt_intent_mismatch(dag_id, graph, next_id, total_nodes)
                                 .await?;
                             approval_blocked = true;
@@ -704,29 +734,48 @@ impl ParallelExecutionServiceImpl {
     /// Returns `Ok(true)` to dispatch (`Matched`), `Ok(false)` to HALT
     /// (`Mismatched` / `Invalid` / missing record — the tool is never called),
     /// or an internal error when the approval service itself fails (fail-closed).
-    async fn verify_before_dispatch(&self, node_id: Uuid) -> Result<bool, ExecutionError> {
+    /// ADR-011 choke point — verify a gated node's intent before dispatch.
+    ///
+    /// Returns `(dispatch, mismatch_digests)`:
+    /// - `(true, _)` — verified (`Matched`) — dispatch
+    /// - `(false, None)` — invalid / missing record — HALT
+    /// - `(false, Some((expected, actual)))` — intent mismatch — HALT with the
+    ///   digests for the audit event. The tool is never called on `false`.
+    async fn verify_before_dispatch(
+        &self,
+        node_id: Uuid,
+    ) -> Result<(bool, Option<(String, String)>), ExecutionError> {
         let Some(binding) = &self.approval_binding else {
-            return Ok(true); // legacy gate — no binding
+            return Ok((true, None)); // legacy gate — no binding
         };
         match binding.service.verify_intent(node_id).await {
             Ok(IntentVerification::Matched) => {
                 tracing::info!(node_id = %node_id, "dispatch: intent MATCHED — verified against approved record");
-                Ok(true)
+                Ok((true, None))
+            }
+            Ok(IntentVerification::Mismatched { expected, actual }) => {
+                tracing::error!(
+                    node_id = %node_id,
+                    expected = %expected.0,
+                    actual = %actual.0,
+                    "dispatch HALT: INTENT MISMATCH — re-approval required"
+                );
+                Ok((false, Some((expected.0, actual.0))))
             }
             Ok(verdict) => {
                 tracing::error!(
                     node_id = %node_id,
                     verdict = ?verdict,
-                    "dispatch HALT: approval invalid or intent mismatch — re-approval required"
+                    "dispatch HALT: approval invalid — re-approval required"
                 );
-                Ok(false)
+                Ok((false, None))
             }
             Err(ApprovalServiceError::NotFound(_)) => {
                 tracing::warn!(
                     node_id = %node_id,
                     "dispatch HALT: no approval record (legacy or invalidated) — re-approval required"
                 );
-                Ok(false)
+                Ok((false, None))
             }
             Err(e) => Err(ExecutionError::InternalError {
                 detail: format!("Approval verification failed: {e}"),
@@ -782,6 +831,17 @@ impl ParallelExecutionServiceImpl {
             Err(e) => {
                 tracing::warn!(node_id = %node_id, error = %e, "consume failed (non-fatal)")
             }
+        }
+    }
+
+    /// Publish an execution event (best-effort — evidence must never block the run).
+    async fn publish_event(&self, event: ExecutionEvent) {
+        if let Err(e) = self
+            .event_bus
+            .publish(crate::event_system::application::dto::PublishEventInput { event })
+            .await
+        {
+            tracing::warn!(error = %e, "event publish failed — evidence may be incomplete");
         }
     }
 

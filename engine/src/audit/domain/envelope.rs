@@ -115,6 +115,54 @@ pub struct AuditEnvelope {
     /// "tampered" (GAP-M-12).
     #[serde(default)]
     pub evidence_degraded: bool,
+
+    /// Signed approval decisions, in approval order (ADR-011 R3).
+    ///
+    /// Additive and serde-defaulted: absent in pre-approval envelopes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub approval_events: Vec<ApprovalRecordRef>,
+
+    /// Post-execution scope violations — non-blocking evidence (ADR-011 R5).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scope_violations: Vec<ScopeViolationRef>,
+
+    /// Reference + summary of the decision context shown to the approver;
+    /// the full payload is opt-in and stored locally (R4 privacy pattern).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision_context_ref: Option<String>,
+}
+
+/// A signed reference to a human approval decision (ADR-011 R3).
+///
+/// Summary fields only — the full record and decision payload live in the
+/// local store; the envelope proves the decision happened and what it bound.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApprovalRecordRef {
+    /// Node id that was approved.
+    pub node_id: uuid::Uuid,
+    /// Human step name.
+    pub step_name: String,
+    /// Intent hash the approval is bound to.
+    pub intent_hash: String,
+    /// Identity subject who approved (captured fact).
+    pub approver_id: String,
+    /// Role / policy id (captured fact).
+    pub authority: Option<String>,
+    /// When the human approved.
+    pub decided_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// A reference to a recorded effect-scope violation (ADR-011 R5).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScopeViolationRef {
+    /// Node id whose execution produced the violation.
+    pub node_id: uuid::Uuid,
+    /// Human step name.
+    pub step_name: String,
+    /// Effects outside the declared scope (from the git-diff oracle).
+    pub out_of_scope: Vec<String>,
+    /// When the violation was detected.
+    pub detected_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// A reference to a scoring result included in the audit envelope.

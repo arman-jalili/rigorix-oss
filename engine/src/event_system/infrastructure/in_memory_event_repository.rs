@@ -115,6 +115,9 @@ impl PersistedEventRepository for InMemoryEventRepository {
                         | ExecutionEvent::AuditEnvelopeQueued { execution_id, .. }
                         | ExecutionEvent::AuditEnvelopeDropped { execution_id, .. }
                         | ExecutionEvent::CircuitBreakerStateChanged { execution_id, .. }
+                        | ExecutionEvent::ApprovalRecorded { execution_id, .. }
+                        | ExecutionEvent::IntentMismatchDetected { execution_id, .. }
+                        | ExecutionEvent::ScopeViolationRecorded { execution_id, .. }
                         | ExecutionEvent::AuditEnvelopeCreated { execution_id, .. } => {
                             if execution_id != eid {
                                 return false;
@@ -153,6 +156,9 @@ impl PersistedEventRepository for InMemoryEventRepository {
                             "circuit_breaker_state_changed"
                         }
                         ExecutionEvent::AuditEnvelopeCreated { .. } => "audit_envelope_created",
+                        ExecutionEvent::ApprovalRecorded { .. } => "approval_recorded",
+                        ExecutionEvent::IntentMismatchDetected { .. } => "intent_mismatch_detected",
+                        ExecutionEvent::ScopeViolationRecorded { .. } => "scope_violation_recorded",
                     };
                     if variant_name != event_type {
                         return false;
@@ -178,6 +184,9 @@ impl PersistedEventRepository for InMemoryEventRepository {
                     ExecutionEvent::AuditEnvelopeDropped { timestamp, .. } => timestamp,
                     ExecutionEvent::CircuitBreakerStateChanged { timestamp, .. } => timestamp,
                     ExecutionEvent::AuditEnvelopeCreated { timestamp, .. } => timestamp,
+                    ExecutionEvent::ApprovalRecorded { timestamp, .. }
+                    | ExecutionEvent::IntentMismatchDetected { timestamp, .. }
+                    | ExecutionEvent::ScopeViolationRecorded { timestamp, .. } => timestamp,
                 };
                 if let Some(after) = &input.after_timestamp
                     && ts < after
@@ -249,6 +258,9 @@ impl PersistedEventRepository for InMemoryEventRepository {
                 ExecutionEvent::AuditEnvelopeDropped { timestamp, .. } => timestamp,
                 ExecutionEvent::CircuitBreakerStateChanged { timestamp, .. } => timestamp,
                 ExecutionEvent::AuditEnvelopeCreated { timestamp, .. } => timestamp,
+                ExecutionEvent::ApprovalRecorded { timestamp, .. }
+                | ExecutionEvent::IntentMismatchDetected { timestamp, .. }
+                | ExecutionEvent::ScopeViolationRecorded { timestamp, .. } => timestamp,
             };
             ts >= &older_than
         });
