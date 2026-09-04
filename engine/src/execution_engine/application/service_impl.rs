@@ -35,6 +35,7 @@ use crate::approval::application::ApprovalService;
 use crate::approval::application::IntentVerification;
 use crate::approval::application::dto::ApproveInput as ApprovalApproveInput;
 use crate::approval::domain::ApprovalError as ApprovalServiceError;
+use crate::approval::infrastructure::effect_scope::{ChangeSnapshot, GitDiffEffectOracle};
 use crate::event_system::application::EventBusService;
 use crate::event_system::domain::ExecutionEvent;
 use crate::execution_engine::domain::{
@@ -481,6 +482,13 @@ impl ParallelExecutionServiceImpl {
         let max_concurrent = config.max_concurrent_executions.max(1) as usize;
         let event_bus = &self.event_bus;
         let mut approval_blocked = false;
+        // ADR-011 R5: pre-dispatch effect baseline (git oracle).
+        let scope_baseline: Option<ChangeSnapshot> = match &config.approval_repo_path {
+            Some(repo) => GitDiffEffectOracle
+                .snapshot(std::path::Path::new(repo))
+                .ok(),
+            None => None,
+        };
 
         // Phase 1: Initial dispatch — fill the pipeline up to max_concurrent
         while join_set.len() < max_concurrent {
@@ -625,6 +633,11 @@ impl ParallelExecutionServiceImpl {
                 .unwrap_or(false)
             {
                 self.consume_on_terminal(node_id).await;
+                if let Some(baseline) = &scope_baseline
+                    && let Some(repo) = &config.approval_repo_path
+                {
+                    self.effect_scope_check(node_id, repo, baseline).await;
+                }
             }
 
             // Mark completed in graph to release dependents
@@ -817,6 +830,57 @@ impl ParallelExecutionServiceImpl {
             self.notify_progress(dag_id, node_id, state, total_nodes);
         }
         Ok(())
+    }
+
+    /// ADR-011 R5: post-execution effect-scope verification (evidence only).
+    ///
+    /// Compares the run's net git changes against the approved record's
+    /// declared scope and forwards any violation to the binding (non-blocking;
+    /// the blocking check is R2 verification at the choke point).
+    async fn effect_scope_check(&self, node_id: Uuid, repo_path: &str, baseline: &ChangeSnapshot) {
+        let Some(binding) = &self.approval_binding else {
+            return;
+        };
+        let Ok(Some(record)) = binding.service.get_approval(node_id).await else {
+            return;
+        };
+        // Declared scope lives in the canonical intent payload captured at
+        // approval time. No declared scope ⇒ nothing to verify against.
+        let declared: Vec<String> = record
+            .intent_payload
+            .get("declared_scope")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|s| s.as_str().map(|x| x.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if declared.is_empty() {
+            return;
+        }
+        let oracle = GitDiffEffectOracle;
+        let Ok(post) = oracle.snapshot(std::path::Path::new(repo_path)) else {
+            return;
+        };
+        let effects = oracle.diff(baseline, &post);
+        if effects.is_empty() {
+            return;
+        }
+        if let Some(violation) = crate::approval::domain::ScopeViolation::detect(
+            record.node_id,
+            record.step_name.clone(),
+            &declared,
+            &effects,
+            chrono::Utc::now(),
+        ) {
+            tracing::warn!(
+                node_id = %node_id,
+                out_of_scope = ?violation.out_of_scope,
+                "effect-scope violation recorded (non-blocking evidence)"
+            );
+            let _ = binding.service.record_scope_violation(violation).await;
+        }
     }
 
     /// Single-use settlement: consume the approval once the node reaches a

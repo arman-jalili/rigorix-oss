@@ -68,6 +68,14 @@ pub struct ParallelExecutorConfig {
 
     /// Whether to run post-execution validation rules on nodes.
     pub enable_validation: bool,
+
+    /// ADR-011 R5: repository path for the effect-scope oracle (git-diff).
+    ///
+    /// When set AND an approval binding is attached, post-execution effect-
+    /// scope verification compares the run's changed paths against each
+    /// approved record's declared scope. `None` disables the runtime oracle.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval_repo_path: Option<String>,
 }
 
 impl Default for ParallelExecutorConfig {
@@ -81,6 +89,7 @@ impl Default for ParallelExecutorConfig {
             max_failures_before_abort: 0, // Unlimited by default
             enable_fallback: true,
             enable_validation: true,
+            approval_repo_path: None,
         }
     }
 }
