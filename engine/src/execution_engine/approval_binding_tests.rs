@@ -425,3 +425,183 @@ async fn test_factory_attached_binding_captures_verifies_consumes() {
     assert_eq!(record.status, ApprovalStatus::Consumed);
     let _ = std::fs::remove_file(&marker);
 }
+
+// ── Producer proofs: ApprovalRecorded + ScopeViolationRecorded reach the bus ─
+
+use crate::event_system::application::dto::DrainPersistedInput;
+use crate::event_system::domain::ExecutionEvent as EngineEvent;
+
+fn init_git(repo: &PathBuf) {
+    use std::process::Command;
+    for args in [
+        vec!["init", "-q", "-b", "main"],
+        vec!["config", "user.email", "t@t"],
+        vec!["config", "user.name", "t"],
+    ] {
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(&args)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{args:?}");
+    }
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["add", "-A"])
+        .status()
+        .unwrap();
+    assert!(out.success());
+}
+
+/// The R3 + R5 producers are real: after a bound approve→run cycle the event
+/// bus carries ApprovalRecorded (from the approve capture) and
+/// ScopeViolationRecorded (from the git-diff oracle on the out-of-scope
+/// side-effect). These drained events are exactly what the audit envelope
+/// derives `approval_events[]` / `scope_violations[]` from.
+#[tokio::test]
+async fn test_bound_cycle_publishes_approval_and_scope_events() {
+    let dag_id = Uuid::new_v4();
+    let node_id = Uuid::new_v4();
+    let repo_dir = std::env::temp_dir().join(format!("approval-scope-repo-{dag_id}"));
+    let _ = std::fs::remove_dir_all(&repo_dir);
+    std::fs::create_dir_all(repo_dir.join("docs")).unwrap();
+    std::fs::write(repo_dir.join("docs/readme.md"), "x").unwrap();
+    init_git(&repo_dir);
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&repo_dir)
+        .args(["commit", "-q", "-m", "base"])
+        .status()
+        .unwrap();
+    assert!(out.success());
+
+    // Node declares docs/ scope but the command side-effects src/leak.ts —
+    // outside the declared scope (the R5 git-diff oracle must flag it).
+    let side_effect = repo_dir.join("src/leak.ts");
+    std::fs::create_dir_all(repo_dir.join("src")).unwrap();
+    let graph = {
+        let mut g = TaskGraph::new();
+        let intent = serde_json::json!({
+            "command": format!("touch {}", side_effect.display()),
+            "declared_scope": ["docs/"]
+        });
+        g.add_unchecked(
+            TaskNode::new(
+                node_id,
+                "run_script",
+                "run_command",
+                vec![],
+                intent.to_string(),
+            )
+            .with_requires_approval(true),
+        )
+        .unwrap();
+        g.seal().unwrap();
+        g
+    };
+
+    let repo = Arc::new(InMemoryApprovalRepository::new());
+    let bus = Arc::new(
+        crate::event_system::application::event_bus_service_impl::EventBusServiceImpl::default(),
+    );
+    let config = ParallelExecutionFactoryConfig {
+        executor_config: ParallelExecutorConfig {
+            approval_repo_path: Some(repo_dir.to_str().unwrap().to_string()),
+            ..ParallelExecutorConfig::default()
+        },
+        event_bus: Some(bus.clone()),
+        approval_binding: Some(ApprovalBindingSetup {
+            repository: repo.clone(),
+            run_key: b"engine-run-key".to_vec(),
+            ttl_seconds: 3600,
+        }),
+        ..ParallelExecutionFactoryConfig::default()
+    };
+    let executor: Box<dyn ParallelExecutionService> = ParallelExecutionFactoryImpl::new()
+        .create(config)
+        .await
+        .unwrap();
+
+    executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            graph: Some(graph.clone()),
+            config_override: None,
+        })
+        .await
+        .unwrap();
+    let approve = executor
+        .approve_node(ExecApproveNodeInput {
+            dag_id,
+            step_names: vec!["run_script".to_string()],
+            approver_id: Some("tester@org".into()),
+            authority: Some("role:operator".into()),
+            decision_context: None,
+            token_claims_ref: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(approve.approved, vec!["run_script".to_string()]);
+    executor
+        .resume_execution(ResumeExecutionInput { dag_id })
+        .await
+        .unwrap();
+    let state = executor
+        .get_execution_state(GetExecutionStateInput { dag_id })
+        .await
+        .unwrap();
+    assert!(state.is_complete);
+    assert!(side_effect.exists(), "command ran (the R5 side-effect)");
+
+    // Both producers must have published onto the bus.
+    use crate::event_system::application::EventBusService;
+    let bus_dyn: Arc<dyn EventBusService> = bus.clone();
+    let drained = bus_dyn
+        .drain_persisted(DrainPersistedInput { clear: false })
+        .await
+        .unwrap();
+    let mut saw_approval = false;
+    let mut saw_scope = false;
+    for pe in &drained.events {
+        match &pe.event {
+            EngineEvent::ApprovalRecorded {
+                step_name,
+                approver_id,
+                intent_hash,
+                ..
+            } => {
+                saw_approval = true;
+                assert_eq!(step_name, "run_script");
+                assert_eq!(approver_id, "tester@org");
+                assert!(!intent_hash.is_empty());
+            }
+            EngineEvent::ScopeViolationRecorded {
+                step_name,
+                out_of_scope,
+                ..
+            } => {
+                saw_scope = true;
+                assert_eq!(step_name, "run_script");
+                assert!(
+                    out_of_scope.iter().any(|p| p.ends_with("src/leak.ts")),
+                    "{out_of_scope:?}"
+                );
+            }
+            _ => {}
+        }
+    }
+    assert!(
+        saw_approval,
+        "ApprovalRecorded must be published by the bound approve path"
+    );
+    assert!(
+        saw_scope,
+        "ScopeViolationRecorded must be published by the R5 oracle hook"
+    );
+
+    let record = repo.load(node_id).await.unwrap().expect("record");
+    assert_eq!(record.status, ApprovalStatus::Consumed);
+    let _ = std::fs::remove_dir_all(&repo_dir);
+}
