@@ -20,6 +20,8 @@
 //!   holds records in memory and logs a warning (same pattern as the
 //!   evaluation repository)
 
+pub mod effect_scope;
 pub mod repository;
 
+pub use effect_scope::{ChangeSnapshot, GitDiffEffectOracle};
 pub use repository::ApprovalRepository;
