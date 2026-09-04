@@ -471,6 +471,9 @@ impl EngineFacade for EngineFacadeImpl {
             .approve_execution(ApproveExecutionInput {
                 execution_id: *execution_id.as_uuid(),
                 step_names,
+                approver_id: None,
+                authority: None,
+                token_claims_ref: None,
             })
             .await
             .map_err(|e| EngineFacadeError::Internal(e.to_string()))?;

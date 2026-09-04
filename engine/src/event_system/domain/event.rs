@@ -590,6 +590,48 @@ impl ExecutionEvent {
     /// tool usage, errors) and `None` for informational events.
     pub fn payload_json(&self) -> Option<serde_json::Value> {
         match self {
+            ExecutionEvent::ApprovalRecorded {
+                node_id,
+                step_name,
+                intent_hash,
+                approver_id,
+                authority,
+                decided_at,
+                decision_context_ref,
+                ..
+            } => Some(serde_json::json!({
+                "node_id": node_id,
+                "step_name": step_name,
+                "intent_hash": intent_hash,
+                "approver_id": approver_id,
+                "authority": authority,
+                "decided_at": decided_at.to_rfc3339(),
+                "decision_context_ref": decision_context_ref,
+            })),
+            ExecutionEvent::IntentMismatchDetected {
+                node_id,
+                step_name,
+                expected,
+                actual,
+                ..
+            } => Some(serde_json::json!({
+                "node_id": node_id,
+                "step_name": step_name,
+                "expected": expected,
+                "actual": actual,
+            })),
+            ExecutionEvent::ScopeViolationRecorded {
+                node_id,
+                step_name,
+                out_of_scope,
+                timestamp,
+                ..
+            } => Some(serde_json::json!({
+                "node_id": node_id,
+                "step_name": step_name,
+                "out_of_scope": out_of_scope,
+                "detected_at": timestamp.to_rfc3339(),
+            })),
             ExecutionEvent::NodeCompleted {
                 node_id,
                 node_name,
@@ -662,9 +704,6 @@ impl ExecutionEvent {
             | ExecutionEvent::AuditEnvelopeQueued { .. }
             | ExecutionEvent::AuditEnvelopeDropped { .. }
             | ExecutionEvent::CircuitBreakerStateChanged { .. }
-            | ExecutionEvent::ApprovalRecorded { .. }
-            | ExecutionEvent::IntentMismatchDetected { .. }
-            | ExecutionEvent::ScopeViolationRecorded { .. }
             | ExecutionEvent::AuditEnvelopeCreated { .. } => None,
         }
     }

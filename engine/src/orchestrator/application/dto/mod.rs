@@ -193,6 +193,20 @@ pub struct ApproveExecutionInput {
 
     /// Step (node) names to approve.
     pub step_names: Vec<String>,
+
+    // ── ADR-011 approval binding (optional) ───────────────────────────────
+    // With the binding enabled the approving identity is a required captured
+    // fact (R3). When omitted the orchestrator falls back to the run's own
+    // author identity if one was recorded; otherwise the engine denies.
+    /// Human identity subject approving (see identity module).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approver_id: Option<String>,
+    /// Role / policy id (captured fact, not a judgment).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authority: Option<String>,
+    /// IdP token/claims presented at approval (credential-substitution check).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_claims_ref: Option<String>,
 }
 
 /// Output from approving steps of a paused execution.

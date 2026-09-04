@@ -104,11 +104,11 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
             model_version: input.model_version,
             planning_prompt: input.planning_prompt_content,
             file_paths: input.file_paths,
-            events: input.events,
+            events: input.events.clone(),
             scoring_results: input.scoring_results,
-            approval_events: Vec::new(),
-            scope_violations: Vec::new(),
-            decision_context_ref: None,
+            approval_events: Self::approval_refs_from_events(&input.events),
+            scope_violations: Self::scope_refs_from_events(&input.events),
+            decision_context_ref: Self::decision_context_ref_from_events(&input.events),
             signature: None,
             // GAP-M-12: an unsigned run is explicitly degraded evidence.
             // Approval-bearing runs must request signing; this marker makes
@@ -357,5 +357,162 @@ mod tests {
             Some("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2")
         );
         assert_eq!(envelope.git_branch.as_deref(), Some("main"));
+    }
+}
+
+impl AuditEnvelopeFactoryImpl {
+    /// ADR-011 R3: derive signed approval refs from drained events whose
+    /// payload carries the ApprovalRecorded fields (see
+    /// `ExecutionEvent::payload_json`).
+    fn approval_refs_from_events(
+        events: &[crate::audit::domain::ExecutionEventRef],
+    ) -> Vec<crate::audit::domain::ApprovalRecordRef> {
+        let mut out = Vec::new();
+        for e in events {
+            if e.event_type != "approval_recorded" {
+                continue;
+            }
+            let Some(payload) = &e.payload else { continue };
+            let Some(node_id) = payload.get("node_id").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let Ok(node_id) = uuid::Uuid::parse_str(node_id) else {
+                continue;
+            };
+            let Some(step_name) = payload.get("step_name").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let Some(intent_hash) = payload.get("intent_hash").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let Some(approver_id) = payload.get("approver_id").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let decided_at = payload
+                .get("decided_at")
+                .and_then(|v| v.as_str())
+                .and_then(|ts| chrono::DateTime::parse_from_rfc3339(ts).ok())
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .unwrap_or_else(chrono::Utc::now);
+            out.push(crate::audit::domain::ApprovalRecordRef {
+                node_id,
+                step_name: step_name.to_string(),
+                intent_hash: intent_hash.to_string(),
+                approver_id: approver_id.to_string(),
+                authority: payload
+                    .get("authority")
+                    .and_then(|v| v.as_str())
+                    .map(|a| a.to_string()),
+                decided_at,
+            });
+        }
+        out
+    }
+
+    /// ADR-011 R5: derive scope-violation refs from drained events.
+    fn scope_refs_from_events(
+        events: &[crate::audit::domain::ExecutionEventRef],
+    ) -> Vec<crate::audit::domain::ScopeViolationRef> {
+        let mut out = Vec::new();
+        for e in events {
+            if e.event_type != "scope_violation_recorded" {
+                continue;
+            }
+            let Some(payload) = &e.payload else { continue };
+            let Some(node_id) = payload.get("node_id").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let Ok(node_id) = uuid::Uuid::parse_str(node_id) else {
+                continue;
+            };
+            let Some(step_name) = payload.get("step_name").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let out_of_scope: Vec<String> = payload
+                .get("out_of_scope")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|x| x.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let detected_at = payload
+                .get("detected_at")
+                .and_then(|v| v.as_str())
+                .and_then(|ts| chrono::DateTime::parse_from_rfc3339(ts).ok())
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .unwrap_or_else(chrono::Utc::now);
+            out.push(crate::audit::domain::ScopeViolationRef {
+                node_id,
+                step_name: step_name.to_string(),
+                out_of_scope,
+                detected_at,
+            });
+        }
+        out
+    }
+
+    fn decision_context_ref_from_events(
+        events: &[crate::audit::domain::ExecutionEventRef],
+    ) -> Option<String> {
+        events.iter().find_map(|e| {
+            if e.event_type != "approval_recorded" {
+                return None;
+            }
+            e.payload
+                .as_ref()
+                .and_then(|p| p.get("decision_context_ref"))
+                .and_then(|v| v.as_str())
+                .map(|x| x.to_string())
+        })
+    }
+}
+
+#[cfg(test)]
+mod population_tests {
+    use super::*;
+    use crate::audit::domain::{EventStatus, ExecutionEventRef};
+
+    fn approval_ref_event() -> ExecutionEventRef {
+        ExecutionEventRef {
+            event_type: "approval_recorded".to_string(),
+            summary: "Approval recorded: risky_step by user@org".to_string(),
+            occurred_at: chrono::Utc::now(),
+            correlation_id: Some(uuid::Uuid::new_v4()),
+            status: EventStatus::Success,
+            payload: Some(serde_json::json!({
+                "node_id": uuid::Uuid::new_v4().to_string(),
+                "step_name": "risky_step",
+                "intent_hash": "abc123",
+                "approver_id": "user@org",
+                "authority": "role:operator",
+                "decided_at": chrono::Utc::now().to_rfc3339(),
+                "decision_context_ref": "deploy to prod",
+            })),
+        }
+    }
+
+    #[test]
+    fn envelope_derives_approval_refs_from_drained_events() {
+        let events = vec![approval_ref_event()];
+        let refs = AuditEnvelopeFactoryImpl::approval_refs_from_events(&events);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].step_name, "risky_step");
+        assert_eq!(refs[0].intent_hash, "abc123");
+        assert_eq!(refs[0].approver_id, "user@org");
+        assert_eq!(refs[0].authority.as_deref(), Some("role:operator"));
+        assert_eq!(
+            AuditEnvelopeFactoryImpl::decision_context_ref_from_events(&events).as_deref(),
+            Some("deploy to prod")
+        );
+    }
+
+    #[test]
+    fn envelope_ignores_unrelated_events() {
+        let mut events = vec![approval_ref_event()];
+        events[0].event_type = "node_completed".to_string();
+        assert!(AuditEnvelopeFactoryImpl::approval_refs_from_events(&events).is_empty());
+        assert!(AuditEnvelopeFactoryImpl::scope_refs_from_events(&events).is_empty());
     }
 }
