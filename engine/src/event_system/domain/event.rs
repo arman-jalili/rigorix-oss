@@ -275,6 +275,62 @@ pub enum ExecutionEvent {
         /// ISO 8601 timestamp of the event.
         timestamp: DateTime<Utc>,
     },
+
+    /// A human approved a step; the approval is bound to the exact execution
+    /// intent (ADR-011, R1+R3). Emitted at the moment of approval.
+    ApprovalRecorded {
+        /// Globally unique execution identifier.
+        execution_id: uuid::Uuid,
+        /// Node id that was approved.
+        node_id: String,
+        /// Human step name.
+        step_name: String,
+        /// Intent hash the approval is bound to.
+        intent_hash: String,
+        /// Identity subject who approved (captured fact).
+        approver_id: String,
+        /// Role / policy id (captured fact).
+        authority: Option<String>,
+        /// When the human approved.
+        decided_at: DateTime<Utc>,
+        /// Reference + summary of the decision context shown to the approver.
+        decision_context_ref: Option<String>,
+        /// ISO 8601 timestamp of the event.
+        timestamp: DateTime<Utc>,
+    },
+
+    /// Pre-dispatch verification failed — the executing intent no longer
+    /// matches what was approved. The node halts (never dispatches) and
+    /// re-approval is required (ADR-011, R2).
+    IntentMismatchDetected {
+        /// Globally unique execution identifier.
+        execution_id: uuid::Uuid,
+        /// Node id that was halted.
+        node_id: String,
+        /// Human step name.
+        step_name: String,
+        /// Recorded digest at approval time.
+        expected: String,
+        /// Re-derived digest at dispatch time.
+        actual: String,
+        /// ISO 8601 timestamp of the event.
+        timestamp: DateTime<Utc>,
+    },
+
+    /// Post-execution effect-scope evidence: recorded effects exceeded the
+    /// declared scope (ADR-011, R5 — non-blocking, first-class).
+    ScopeViolationRecorded {
+        /// Globally unique execution identifier.
+        execution_id: uuid::Uuid,
+        /// Node id whose execution produced the violation.
+        node_id: String,
+        /// Human step name.
+        step_name: String,
+        /// Effects outside the declared scope (from the git-diff oracle).
+        out_of_scope: Vec<String>,
+        /// ISO 8601 timestamp of the event.
+        timestamp: DateTime<Utc>,
+    },
 }
 
 /// A persisted execution event with a monotonic sequence number.
@@ -319,6 +375,9 @@ impl ExecutionEvent {
             ExecutionEvent::AuditEnvelopeQueued { .. } => "audit_envelope_queued",
             ExecutionEvent::AuditEnvelopeDropped { .. } => "audit_envelope_dropped",
             ExecutionEvent::CircuitBreakerStateChanged { .. } => "circuit_breaker_state_changed",
+            ExecutionEvent::ApprovalRecorded { .. } => "approval_recorded",
+            ExecutionEvent::IntentMismatchDetected { .. } => "intent_mismatch_detected",
+            ExecutionEvent::ScopeViolationRecorded { .. } => "scope_violation_recorded",
             ExecutionEvent::AuditEnvelopeCreated { .. } => "audit_envelope_created",
         }
     }
@@ -342,6 +401,9 @@ impl ExecutionEvent {
             | ExecutionEvent::AuditEnvelopeDropped { execution_id, .. }
             | ExecutionEvent::CircuitBreakerStateChanged { execution_id, .. }
             | ExecutionEvent::AuditEnvelopeCreated { execution_id, .. } => execution_id,
+            ExecutionEvent::ApprovalRecorded { execution_id, .. }
+            | ExecutionEvent::IntentMismatchDetected { execution_id, .. }
+            | ExecutionEvent::ScopeViolationRecorded { execution_id, .. } => execution_id,
         }
     }
 
@@ -363,13 +425,38 @@ impl ExecutionEvent {
             | ExecutionEvent::AuditEnvelopeQueued { timestamp, .. }
             | ExecutionEvent::AuditEnvelopeDropped { timestamp, .. }
             | ExecutionEvent::CircuitBreakerStateChanged { timestamp, .. }
-            | ExecutionEvent::AuditEnvelopeCreated { timestamp, .. } => timestamp,
+            | ExecutionEvent::AuditEnvelopeCreated { timestamp, .. }
+            | ExecutionEvent::ApprovalRecorded { timestamp, .. }
+            | ExecutionEvent::IntentMismatchDetected { timestamp, .. }
+            | ExecutionEvent::ScopeViolationRecorded { timestamp, .. } => timestamp,
         }
     }
 
     /// Returns a human-friendly summary string for this event.
     pub fn summary(&self) -> String {
         match self {
+            ExecutionEvent::ApprovalRecorded {
+                step_name,
+                approver_id,
+                ..
+            } => {
+                format!("Approval recorded: {step_name} by {approver_id}")
+            }
+            ExecutionEvent::IntentMismatchDetected { step_name, .. } => {
+                format!(
+                    "Intent mismatch: {step_name} halted before dispatch — re-approval required"
+                )
+            }
+            ExecutionEvent::ScopeViolationRecorded {
+                step_name,
+                out_of_scope,
+                ..
+            } => {
+                format!(
+                    "Scope violation on {step_name}: {} out-of-scope effect(s)",
+                    out_of_scope.len()
+                )
+            }
             ExecutionEvent::PlanningStarted { intent, .. } => {
                 format!(
                     "Planning started: {}",
@@ -575,6 +662,9 @@ impl ExecutionEvent {
             | ExecutionEvent::AuditEnvelopeQueued { .. }
             | ExecutionEvent::AuditEnvelopeDropped { .. }
             | ExecutionEvent::CircuitBreakerStateChanged { .. }
+            | ExecutionEvent::ApprovalRecorded { .. }
+            | ExecutionEvent::IntentMismatchDetected { .. }
+            | ExecutionEvent::ScopeViolationRecorded { .. }
             | ExecutionEvent::AuditEnvelopeCreated { .. } => None,
         }
     }

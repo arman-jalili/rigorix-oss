@@ -872,6 +872,18 @@ impl OrchestratorService for OrchestratorServiceImpl {
                                 timestamp,
                                 ..
                             } => *timestamp,
+                            | crate::event_system::domain::ExecutionEvent::ApprovalRecorded {
+                                timestamp,
+                                ..
+                            }
+                            | crate::event_system::domain::ExecutionEvent::IntentMismatchDetected {
+                                timestamp,
+                                ..
+                            }
+                            | crate::event_system::domain::ExecutionEvent::ScopeViolationRecorded {
+                                timestamp,
+                                ..
+                            } => *timestamp,
                         };
                         ExecutionEventInfo {
                             event_type: pe.event.event_type_name().to_string(),
@@ -1425,6 +1437,18 @@ impl OrchestratorService for OrchestratorServiceImpl {
                                 timestamp,
                                 ..
                             } => *timestamp,
+                            | crate::event_system::domain::ExecutionEvent::ApprovalRecorded {
+                                timestamp,
+                                ..
+                            }
+                            | crate::event_system::domain::ExecutionEvent::IntentMismatchDetected {
+                                timestamp,
+                                ..
+                            }
+                            | crate::event_system::domain::ExecutionEvent::ScopeViolationRecorded {
+                                timestamp,
+                                ..
+                            } => *timestamp,
                         };
                         ExecutionEventInfo {
                             event_type: pe.event.event_type_name().to_string(),
@@ -1754,6 +1778,9 @@ mod tests {
                     file_paths: vec![],
                     events: vec![],
                     scoring_results: std::collections::HashMap::new(),
+                    approval_events: Vec::new(),
+                    scope_violations: Vec::new(),
+                    decision_context_ref: None,
                     signature: None,
                     evidence_degraded: false,
                 },

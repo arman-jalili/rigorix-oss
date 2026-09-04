@@ -106,6 +106,9 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
             file_paths: input.file_paths,
             events: input.events,
             scoring_results: input.scoring_results,
+            approval_events: Vec::new(),
+            scope_violations: Vec::new(),
+            decision_context_ref: None,
             signature: None,
             // GAP-M-12: an unsigned run is explicitly degraded evidence.
             // Approval-bearing runs must request signing; this marker makes
