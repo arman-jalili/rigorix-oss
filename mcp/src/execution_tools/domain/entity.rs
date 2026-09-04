@@ -115,6 +115,7 @@ pub trait EngineFacade: Send + Sync {
         &self,
         execution_id: &ExecutionId,
         step_names: Vec<String>,
+        identity: Option<crate::execution_tools::domain::value::ApprovalIdentity>,
     ) -> Result<ApprovalResult, EngineFacadeError>;
 
     /// Get the per-node state of an execution after it ran or resumed.

@@ -161,6 +161,7 @@ mod tests {
             &self,
             execution_id: &ExecutionId,
             step_names: Vec<String>,
+            _identity: Option<crate::execution_tools::domain::value::ApprovalIdentity>,
         ) -> Result<crate::execution_tools::domain::value::ApprovalResult, EngineFacadeError>
         {
             Ok(crate::execution_tools::domain::value::ApprovalResult::new(

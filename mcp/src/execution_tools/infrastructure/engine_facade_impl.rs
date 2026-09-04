@@ -465,15 +465,16 @@ impl EngineFacade for EngineFacadeImpl {
         &self,
         execution_id: &ExecutionId,
         step_names: Vec<String>,
+        identity: Option<crate::execution_tools::domain::value::ApprovalIdentity>,
     ) -> Result<ApprovalResult, EngineFacadeError> {
         let output = self
             .orchestrator
             .approve_execution(ApproveExecutionInput {
                 execution_id: *execution_id.as_uuid(),
                 step_names,
-                approver_id: None,
-                authority: None,
-                token_claims_ref: None,
+                approver_id: identity.as_ref().and_then(|i| i.approver_id.clone()),
+                authority: identity.as_ref().and_then(|i| i.authority.clone()),
+                token_claims_ref: identity.as_ref().and_then(|i| i.token_claims_ref.clone()),
             })
             .await
             .map_err(|e| EngineFacadeError::Internal(e.to_string()))?;

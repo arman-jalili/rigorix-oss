@@ -454,9 +454,24 @@ impl AppState {
                     }));
                 }
 
+                use rigorix_mcp::execution_tools::domain::value::ApprovalIdentity;
+                let identity = ApprovalIdentity {
+                    approver_id: params["approver_id"].as_str().map(|s| s.to_string()),
+                    authority: params["authority"].as_str().map(|s| s.to_string()),
+                    token_claims_ref: params["token_claims_ref"].as_str().map(|s| s.to_string()),
+                };
+                let identity = (identity.approver_id.is_some()
+                    || identity.authority.is_some()
+                    || identity.token_claims_ref.is_some())
+                .then_some(identity);
+
                 let approval = self
                     .engine
-                    .approve_execution(&ExecutionId::from_uuid(execution_id), step_names)
+                    .approve_execution(
+                        &ExecutionId::from_uuid(execution_id),
+                        step_names,
+                        identity,
+                    )
                     .await
                     .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
 
