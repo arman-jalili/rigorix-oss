@@ -59,14 +59,26 @@ impl ExecutionIntent {
     /// - **Populated:** tool + intent from a sealed graph node
     /// - **Error:** node missing tool or intent
     pub fn from_node(node: &TaskNode) -> Self {
-        let intent = serde_json::from_str(&node.intent)
-            .unwrap_or_else(|_| Value::String(node.intent.clone()));
+        let parsed = serde_json::from_str::<Value>(&node.intent).ok();
+        let declared_scope = parsed
+            .as_ref()
+            .and_then(|v| v.get("declared_scope"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|s| s.as_str().map(|x| x.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let intent = parsed.unwrap_or_else(|| Value::String(node.intent.clone()));
         Self {
             tool: node.tool.clone(),
             intent,
-            // The declared effect scope is declared at approval time, not on
-            // the raw node; a bare sealed node declares no scope.
-            declared_scope: Vec::new(),
+            // The declared effect scope may be declared in the node's resolved
+            // payload (`declared_scope: [..]`) — e.g. set by the planner or
+            // the approve surface. A bare sealed node without one declares no
+            // scope (R5 then has nothing to verify against).
+            declared_scope,
         }
     }
 

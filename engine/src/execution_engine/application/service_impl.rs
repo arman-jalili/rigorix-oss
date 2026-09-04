@@ -639,7 +639,8 @@ impl ParallelExecutionServiceImpl {
                 if let Some(baseline) = &scope_baseline
                     && let Some(repo) = &config.approval_repo_path
                 {
-                    self.effect_scope_check(node_id, repo, baseline).await;
+                    self.effect_scope_check(dag_id, node_id, repo, baseline)
+                        .await;
                 }
             }
 
@@ -840,7 +841,13 @@ impl ParallelExecutionServiceImpl {
     /// Compares the run's net git changes against the approved record's
     /// declared scope and forwards any violation to the binding (non-blocking;
     /// the blocking check is R2 verification at the choke point).
-    async fn effect_scope_check(&self, node_id: Uuid, repo_path: &str, baseline: &ChangeSnapshot) {
+    async fn effect_scope_check(
+        &self,
+        dag_id: Uuid,
+        node_id: Uuid,
+        repo_path: &str,
+        baseline: &ChangeSnapshot,
+    ) {
         let Some(binding) = &self.approval_binding else {
             return;
         };
@@ -882,7 +889,21 @@ impl ParallelExecutionServiceImpl {
                 out_of_scope = ?violation.out_of_scope,
                 "effect-scope violation recorded (non-blocking evidence)"
             );
-            let _ = binding.service.record_scope_violation(violation).await;
+            let _ = binding
+                .service
+                .record_scope_violation(violation.clone())
+                .await;
+            // ADR-011 R5: publish ScopeViolationRecorded — the drained events
+            // are the source the audit envelope derives `scope_violations[]`
+            // from.
+            self.publish_event(ExecutionEvent::ScopeViolationRecorded {
+                execution_id: dag_id,
+                node_id: violation.node_id.to_string(),
+                step_name: violation.step_name.clone(),
+                out_of_scope: violation.out_of_scope.clone(),
+                timestamp: chrono::Utc::now(),
+            })
+            .await;
         }
     }
 
@@ -2852,6 +2873,29 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                         if !approved.contains(name) {
                             denied.push(name.clone());
                         }
+                    }
+                    // ADR-011 R3: publish ApprovalRecorded for every persisted
+                    // record — the drained events are the source the audit
+                    // envelope derives `approval_events[]` from.
+                    for record in &out.approval_records {
+                        let decision_context_ref =
+                            if record.decision_context.summary.trim().is_empty() {
+                                None
+                            } else {
+                                Some(record.decision_context.summary.clone())
+                            };
+                        self.publish_event(ExecutionEvent::ApprovalRecorded {
+                            execution_id: input.dag_id,
+                            node_id: record.node_id.to_string(),
+                            step_name: record.step_name.clone(),
+                            intent_hash: record.intent_hash.0.clone(),
+                            approver_id: record.approver_id.clone(),
+                            authority: record.authority.clone(),
+                            decided_at: record.decided_at,
+                            decision_context_ref,
+                            timestamp: chrono::Utc::now(),
+                        })
+                        .await;
                     }
                 }
                 None => {
