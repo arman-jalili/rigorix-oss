@@ -45,3 +45,21 @@ pub struct SequenceMatch {
     /// (`requires_approval = true`) or denied.
     pub later_step: String,
 }
+
+impl SequenceMatch {
+    /// Redacted decision summary (R6 / SpanPrivacy pattern).
+    ///
+    /// Names the rule, the action and the later matched step — step
+    /// parameter VALUES are never included by default. Full payloads are
+    /// opt-in and never leave the local store.
+    pub fn decision_summary(&self) -> String {
+        let action = match self.action {
+            RuleAction::Promote => "promoted",
+            RuleAction::Deny => "denied",
+        };
+        format!(
+            "rule '{}' {}: later step '{}' matched at {:?} — parameter values redacted",
+            self.rule_id, action, self.later_step, self.matched_indices
+        )
+    }
+}
