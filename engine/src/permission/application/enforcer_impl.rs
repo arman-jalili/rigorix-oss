@@ -51,6 +51,15 @@ impl PermissionEnforcerImpl {
     ///
     /// Canonicalizes both paths (resolving symlinks, relative paths)
     /// to prevent symlink escape attacks.
+    /// R5 (sequence-policy, F-20260904-06a): `.rigorix/**` is the
+    /// operator-controlled repository config directory (permissions/policy/
+    /// sequence rules). An executing agent must NEVER edit the rules it is
+    /// judged by — the engine's default permission posture denies agent
+    /// writes there regardless of workspace location.
+    fn is_protected_config_path(path: &str) -> bool {
+        path.split(['/', '\\']).any(|seg| seg == ".rigorix")
+    }
+
     fn is_within_workspace(path: &str, workspace_root: &str) -> bool {
         let canonical_path = match std::fs::canonicalize(path) {
             Ok(p) => p,
@@ -146,6 +155,19 @@ impl PermissionEnforcer for PermissionEnforcerImpl {
                 reason: "file writes are not allowed in read_only mode".to_string(),
             },
             PermissionMode::WorkspaceWrite => {
+                // R5: deny agent writes to the operator-controlled config
+                // dir FIRST — protected regardless of workspace location.
+                if Self::is_protected_config_path(path) {
+                    return PermissionOutcome::Denied {
+                        tool: "write_file".to_string(),
+                        active_mode: effective_mode.as_str().to_string(),
+                        required_mode: PermissionMode::DangerousFullAccess.as_str().to_string(),
+                        reason: format!(
+                            "path '{}' is under .rigorix/** — operator-controlled config, agent writes denied by default permission config (R5)",
+                            path
+                        ),
+                    };
+                }
                 let within_workspace = Self::is_within_workspace(path, workspace_root);
                 if within_workspace {
                     PermissionOutcome::Allowed
@@ -601,5 +623,53 @@ mod tests {
         for handle in handles {
             handle.await.unwrap();
         }
+    }
+    // -----------------------------------------------------------------------
+    // R5: .rigorix/** agent writes (sequence-policy module)
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_workspace_write_denies_rigorix_config_writes_by_default() {
+        // AC#13 posture: the default permission config (workspace_write)
+        // must deny agent file-writes into .rigorix/** — the operator-owned
+        // rules the agent is judged by. Relative, ./-prefixed, nested and
+        // absolute forms all resolve to the protected dir.
+        let dir = std::env::temp_dir().join(format!("rigorix-r5-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let root = dir.to_str().unwrap().to_string();
+
+        let enforcer = test_enforcer(&root);
+        for path in [
+            ".rigorix/sequence-policy.toml",
+            "./.rigorix/permissions.toml",
+            ".rigorix/sub/dir/policy.toml",
+            format!("{root}/.rigorix/policy.toml").as_str(),
+        ] {
+            let outcome = enforcer.check_file_write(path, &root, None).await;
+            assert!(
+                outcome.is_denied(),
+                ".rigorix write must be denied by default, got {outcome:?} for {path}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_workspace_write_allows_non_config_file_in_workspace() {
+        // The R5 guard is scoped: an ordinary workspace file is still writable
+        // under workspace_write (only .rigorix/** is operator-controlled).
+        let dir = std::env::temp_dir().join(format!("rigorix-r5-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(dir.join("notes")).expect("temp dir");
+        let root = dir.to_str().unwrap().to_string();
+
+        let enforcer = test_enforcer(&root);
+        let outcome = enforcer
+            .check_file_write(format!("{root}/notes/scratch.txt").as_str(), &root, None)
+            .await;
+        assert!(
+            outcome.is_allowed(),
+            "ordinary workspace writes stay allowed, got {outcome:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

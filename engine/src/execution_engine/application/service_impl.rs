@@ -159,6 +159,54 @@ async fn spawn_concurrent_node(
             }
         }
 
+        // File-path gating on the parallel path — same checks execute_tool
+        // applies on the single-node path (GAP-A-11 symmetry): a write tool
+        // is additionally checked against the file-write policy, which denies
+        // `.rigorix/**` (R5 — the operator config an agent must never edit)
+        // and out-of-workspace paths.
+        if enforce_permission
+            && let Some(ref enforcer) = permission
+            && matches!(
+                node_tool.as_str(),
+                "file_write" | "file_append" | "file_patch" | "edit_file"
+            )
+        {
+            let parsed: serde_json::Value =
+                serde_json::from_str(&node_intent).unwrap_or_default();
+            if let Some(path) = parsed["path"].as_str() {
+                let w_outcome = enforcer.check_file_write(path, ".", None).await;
+                if let crate::permission::domain::PermissionOutcome::Denied { ref reason, .. } =
+                    w_outcome
+                {
+                    let dur = start.elapsed().as_millis() as u64;
+                    let result = TaskResult::failure(
+                        node_id,
+                        &node_name,
+                        reason.clone(),
+                        "permission_denied".to_string(),
+                        dur,
+                        0,
+                    );
+                    if let Err(e) = eb
+                        .publish(crate::event_system::application::dto::PublishEventInput {
+                            event: ExecutionEvent::NodeCompleted {
+                                execution_id: exec_id,
+                                node_id: node_id.to_string(),
+                                node_name,
+                                duration_ms: dur,
+                                output: serde_json::json!(null),
+                                timestamp: chrono::Utc::now(),
+                            },
+                        })
+                        .await
+                    {
+                        tracing::warn!(error = %e, "event publish failed — evidence may be incomplete");
+                    }
+                    return (node_id, result);
+                }
+            }
+        }
+
         // ── PreToolUse hooks (parallel path) — same gating as execute_tool ──
         if let Some(ref hook_runner) = hook_runner {
             let abort = crate::hooks::domain::HookAbortSignal::default();

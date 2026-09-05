@@ -936,6 +936,103 @@ async fn test_factory_threads_permission_enforcer_read_only_gates_bash_write() {
         "allow-listed read tool must still complete"
     );
 }
+/// AC#13 (permission R5): a `workspace_write` agent file-write to
+/// `.rigorix/**` is denied by the DEFAULT permission config — the operator's
+/// sequence rules are never writable by the agent they judge.
+#[tokio::test]
+async fn test_default_permission_denies_rigorix_config_write() {
+    use crate::dag_engine::domain::{TaskGraph, TaskNode};
+    use crate::execution_engine::application::factory::{
+        ParallelExecutionFactory, ParallelExecutionFactoryConfig,
+    };
+    use crate::execution_engine::application::factory_impl::ParallelExecutionFactoryImpl;
+    use crate::permission::application::enforcer_factory_impl::PermissionEnforcerFactoryImpl;
+    use crate::permission::application::factory::PermissionEnforcerFactory;
+
+    // Default posture: PermissionConfig::default() (workspace_write mode).
+    let enforcer = PermissionEnforcerFactoryImpl
+        .create_default()
+        .await
+        .expect("default enforcer construction");
+
+    let service = ParallelExecutionFactoryImpl::new()
+        .create(ParallelExecutionFactoryConfig {
+            permission_enforcer: Some(Arc::from(enforcer)),
+            ..Default::default()
+        })
+        .await
+        .expect("factory create");
+
+    let dag_id = Uuid::new_v4();
+    // Agent tries to overwrite the operator's sequence-policy rules.
+    let rule_write = TaskNode::new(
+        Uuid::new_v4(),
+        "write_rule",
+        "file_write",
+        vec![],
+        r#"{"path": ".rigorix/sequence-policy.toml", "content": "evil"}"#,
+    );
+    // Control: an ordinary workspace write under the same mode stays allowed.
+    let scratch = std::env::current_dir()
+        .expect("cwd")
+        .join(format!("rigorix-r5-control-{}.txt", Uuid::new_v4()))
+        .display()
+        .to_string();
+    let scratch_write = TaskNode::new(
+        Uuid::new_v4(),
+        "write_scratch",
+        "file_write",
+        vec![],
+        format!(r#"{{"path": "{}", "content": "ok"}}"#, scratch),
+    );
+    let mut graph = TaskGraph::new();
+    graph.add_unchecked(rule_write).unwrap();
+    graph.add_unchecked(scratch_write).unwrap();
+    graph.seal().unwrap();
+
+    let output = service
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            graph: Some(graph),
+            config_override: None,
+        })
+        .await
+        .unwrap();
+
+    let rule_node_id = output
+        .result
+        .execution_states
+        .iter()
+        .find(|(_, s)| s.node_name == "write_rule")
+        .map(|(id, _)| *id)
+        .expect("write_rule node");
+    let rule_result = output
+        .result
+        .node_results
+        .get(&rule_node_id)
+        .expect("rule write result");
+    assert!(!rule_result.success, "rule file write must be denied");
+    assert_eq!(
+        rule_result.failure_type.as_deref(),
+        Some("permission_denied"),
+        "denial surfaces as the structured permission_denied failure"
+    );
+    assert!(
+        !std::path::Path::new(".rigorix/sequence-policy.toml").exists()
+            || std::fs::read_to_string(".rigorix/sequence-policy.toml")
+                .map(|c| !c.contains("evil"))
+                .unwrap_or(true),
+        "the operator rule file must be untouched"
+    );
+
+    // Control leg: same-mode ordinary write completed.
+    let state = service
+        .get_execution_state(GetExecutionStateInput { dag_id })
+        .await
+        .unwrap();
+    assert_eq!(state.completed_count, 1, "scratch write completes");
+    let _ = std::fs::remove_file(&scratch);
+}
 
 #[tokio::test]
 async fn test_approval_gate_rejects_unknown_step_name() {
