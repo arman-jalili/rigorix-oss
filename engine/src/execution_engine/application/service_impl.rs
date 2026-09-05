@@ -401,10 +401,7 @@ enum SequencePolicyVerdict {
     Promote,
     /// The node completes a forbidden sequence under a `deny` rule — fail the
     /// node before dispatch (its tool is never called).
-    Deny {
-        rule_id: String,
-        later_step: String,
-    },
+    Deny { rule_id: String, later_step: String },
 }
 
 // ---------------------------------------------------------------------------
@@ -591,7 +588,10 @@ impl ParallelExecutionServiceImpl {
                         .await?;
                     break;
                 }
-                SequencePolicyVerdict::Deny { rule_id, later_step } => {
+                SequencePolicyVerdict::Deny {
+                    rule_id,
+                    later_step,
+                } => {
                     let node_name = graph
                         .get_node(node_id)
                         .map(|n| n.name.clone())
@@ -617,6 +617,9 @@ impl ParallelExecutionServiceImpl {
                     }
                     // Release dependents exactly like a dispatched failure.
                     let _ = graph.mark_completed(node_id);
+                    // NEVER fall through to dispatch: a denied node's tool is
+                    // never called. Continue the fill loop.
+                    continue;
                 }
             }
 
@@ -791,7 +794,10 @@ impl ParallelExecutionServiceImpl {
                             .await?;
                         break;
                     }
-                    SequencePolicyVerdict::Deny { rule_id, later_step } => {
+                    SequencePolicyVerdict::Deny {
+                        rule_id,
+                        later_step,
+                    } => {
                         let node_name = graph
                             .get_node(next_id)
                             .map(|n| n.name.clone())
@@ -814,6 +820,8 @@ impl ParallelExecutionServiceImpl {
                             self.notify_progress(dag_id, denied_id, state, total_nodes);
                         }
                         let _ = graph.mark_completed(next_id);
+                        // NEVER fall through to dispatch (tool never called).
+                        continue;
                     }
                 }
 
@@ -1123,11 +1131,12 @@ impl ParallelExecutionServiceImpl {
         // Snapshot the completed prefix + next step under the sessions lock
         // (no awaits held). Missing session / node ⇒ nothing to gate.
         let (prefix, next) = {
-            let sessions = self.sessions.lock().map_err(|e| {
-                ExecutionError::InternalError {
+            let sessions = self
+                .sessions
+                .lock()
+                .map_err(|e| ExecutionError::InternalError {
                     detail: format!("Lock error: {e}"),
-                }
-            })?;
+                })?;
             let Some(session) = sessions.get(&dag_id) else {
                 return Ok(SequencePolicyVerdict::Dispatch);
             };
@@ -1165,7 +1174,7 @@ impl ParallelExecutionServiceImpl {
                     detail: format!(
                         "Sequence policy evaluation failed — run halted before dispatch (fail closed): {e}"
                     ),
-                })
+                });
             }
         };
 
@@ -1177,8 +1186,7 @@ impl ParallelExecutionServiceImpl {
                 });
             }
         }
-        if matches.iter().any(|m| m.action == RuleAction::Promote) && !approved.contains(&node_id)
-        {
+        if matches.iter().any(|m| m.action == RuleAction::Promote) && !approved.contains(&node_id) {
             return Ok(SequencePolicyVerdict::Promote);
         }
         Ok(SequencePolicyVerdict::Dispatch)
@@ -1203,18 +1211,13 @@ impl ParallelExecutionServiceImpl {
                 return None;
             }
         };
-        let Some(session) = sessions.get_mut(&dag_id) else {
-            return None;
-        };
-        let Some(state) = session.node_states.get_mut(&node_id) else {
-            return None;
-        };
+        let session = sessions.get_mut(&dag_id)?;
+        let state = session.node_states.get_mut(&node_id)?;
         let error = format!(
             "Sequence policy denied by rule '{rule_id}' — step '{later_step}' must not dispatch"
         );
         state.mark_failed("sequence_policy_denied".to_string(), error);
         let cloned = state.clone();
-        drop(sessions);
         Some((node_id, cloned))
     }
 
