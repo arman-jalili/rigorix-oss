@@ -65,6 +65,9 @@ impl ParallelExecutionFactory for ParallelExecutionFactoryImpl {
         if let Some(runner) = config.hook_runner {
             executor = executor.with_hook_runner(runner);
         }
+        if let Some(svc) = config.sequence_policy {
+            executor = executor.with_sequence_policy(svc);
+        }
         if let Some(binding) = config.approval_binding {
             // ADR-011: attach the approval binding with a live session-graph
             // intent resolver — approve/verify/consume now run at the runtime

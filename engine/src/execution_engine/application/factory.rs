@@ -92,6 +92,17 @@ pub struct ParallelExecutionFactoryConfig {
 
     /// ADR-011: optional approval binding (see [`ApprovalBindingSetup`]).
     pub approval_binding: Option<ApprovalBindingSetup>,
+
+    /// R3: optional sequence-policy prefix gate (see module doc §R3).
+    ///
+    /// When set, the dispatch loop evaluates the session's completed prefix
+    /// plus each ready node before dispatch: a matched `deny` rule fails the
+    /// node before its tool is called; a matched `promote` rule routes the
+    /// node into the existing approval pause. When `None`, no sequence-policy
+    /// gating is applied (status quo).
+    pub sequence_policy: Option<
+        std::sync::Arc<dyn crate::sequence_policy::application::service::SequencePolicyService>,
+    >,
 }
 
 impl Default for ParallelExecutionFactoryConfig {
@@ -105,6 +116,7 @@ impl Default for ParallelExecutionFactoryConfig {
             permission_enforcer: None,
             hook_runner: None,
             approval_binding: None,
+            sequence_policy: None,
         }
     }
 }

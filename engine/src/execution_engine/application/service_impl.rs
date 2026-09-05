@@ -47,6 +47,9 @@ use crate::recovery_recipes::application::context::RecoveryContext;
 use crate::recovery_recipes::application::dto::{AttemptRecoveryInput, RecipeForInput};
 use crate::recovery_recipes::application::service::RecoveryService;
 use crate::recovery_recipes::domain::FailureScenario;
+use crate::sequence_policy::application::dto::{DispatchedStep, PlannedStep};
+use crate::sequence_policy::application::service::SequencePolicyService;
+use crate::sequence_policy::domain::RuleAction;
 
 use super::dto::{
     AbortExecutionInput, AbortExecutionOutput, ApproveNodeInput, ApproveNodeOutput,
@@ -386,6 +389,24 @@ pub(crate) struct ApprovalBinding {
     pub(crate) service: Arc<dyn ApprovalService>,
 }
 
+/// R3 sequence-policy gate verdict for a ready node about to dispatch.
+///
+/// Produced by [`ParallelExecutionServiceImpl::sequence_policy_verdict`] and
+/// consumed by the two dispatch fill loops inside `run_dispatch_loop`.
+enum SequencePolicyVerdict {
+    /// No actionable match — dispatch unchanged.
+    Dispatch,
+    /// The node completes a forbidden sequence under a `promote` rule and is
+    /// not yet human-approved — route into the existing approval pause.
+    Promote,
+    /// The node completes a forbidden sequence under a `deny` rule — fail the
+    /// node before dispatch (its tool is never called).
+    Deny {
+        rule_id: String,
+        later_step: String,
+    },
+}
+
 // ---------------------------------------------------------------------------
 // ParallelExecutionServiceImpl
 // ---------------------------------------------------------------------------
@@ -429,6 +450,17 @@ pub struct ParallelExecutionServiceImpl {
     /// (`verify_intent`), consume on terminal outcome, and approval capture
     /// persists single-use records. `None` = legacy `session.approved` gate.
     approval_binding: Option<Arc<ApprovalBinding>>,
+
+    /// R3 sequence-policy prefix gate (opt-in).
+    ///
+    /// When present, `run_dispatch_loop` evaluates the session's completed
+    /// dispatch prefix plus each ready node before dispatch: a matched
+    /// `deny` rule fails the node deterministically BEFORE dispatch (its
+    /// tool is never called); a matched `promote` rule routes the node into
+    /// the existing approval pause by flipping `requires_approval` on the
+    /// live graph — the approval chain from ADR-011 composes unchanged.
+    /// `None` = gating disabled (status quo — no behavior change).
+    sequence_policy: Option<Arc<dyn SequencePolicyService>>,
 }
 
 impl ParallelExecutionServiceImpl {
@@ -536,6 +568,55 @@ impl ParallelExecutionServiceImpl {
                         break;
                     }
                     Err(e) => return Err(e),
+                }
+            }
+
+            // R3 sequence-policy prefix gate (opt-in; module doc §R3).
+            // Promotion flips the live node's requires_approval flag so the
+            // SAME approval pause/approve/resume chain as a pre-declared
+            // gated step applies; denial records a deterministic failure
+            // before the node's tool is ever called.
+            match self
+                .sequence_policy_verdict(dag_id, graph, node_id, approved)
+                .await?
+            {
+                SequencePolicyVerdict::Dispatch => {}
+                SequencePolicyVerdict::Promote => {
+                    if let Some(node) = graph.get_node_mut(node_id) {
+                        node.requires_approval = true;
+                    }
+                    graph.requeue_ready_node(node_id);
+                    approval_blocked = true;
+                    self.mark_awaiting_approval(dag_id, graph, total_nodes)
+                        .await?;
+                    break;
+                }
+                SequencePolicyVerdict::Deny { rule_id, later_step } => {
+                    let node_name = graph
+                        .get_node(node_id)
+                        .map(|n| n.name.clone())
+                        .unwrap_or_default();
+                    let task_result = TaskResult::failure(
+                        node_id,
+                        &node_name,
+                        format!(
+                            "Sequence policy denied by rule '{rule_id}' — step '{later_step}' must not dispatch"
+                        ),
+                        "sequence_policy_denied".to_string(),
+                        0,
+                        0,
+                    );
+                    node_results.insert(node_id, task_result);
+                    failed_count += 1;
+                    // Mirror the consumption-loop state update so observers
+                    // see the denial like any deterministic node failure.
+                    if let Some((denied_id, state)) =
+                        self.record_sequence_denial(dag_id, node_id, &rule_id, &later_step)
+                    {
+                        self.notify_progress(dag_id, denied_id, state, total_nodes);
+                    }
+                    // Release dependents exactly like a dispatched failure.
+                    let _ = graph.mark_completed(node_id);
                 }
             }
 
@@ -690,6 +771,49 @@ impl ParallelExecutionServiceImpl {
                             break;
                         }
                         Err(e) => return Err(e),
+                    }
+                }
+
+                // R3 sequence-policy prefix gate (opt-in; module doc §R3).
+                // Same semantics as the Phase-1 gate above.
+                match self
+                    .sequence_policy_verdict(dag_id, graph, next_id, approved)
+                    .await?
+                {
+                    SequencePolicyVerdict::Dispatch => {}
+                    SequencePolicyVerdict::Promote => {
+                        if let Some(node) = graph.get_node_mut(next_id) {
+                            node.requires_approval = true;
+                        }
+                        graph.requeue_ready_node(next_id);
+                        approval_blocked = true;
+                        self.mark_awaiting_approval(dag_id, graph, total_nodes)
+                            .await?;
+                        break;
+                    }
+                    SequencePolicyVerdict::Deny { rule_id, later_step } => {
+                        let node_name = graph
+                            .get_node(next_id)
+                            .map(|n| n.name.clone())
+                            .unwrap_or_default();
+                        let task_result = TaskResult::failure(
+                            next_id,
+                            &node_name,
+                            format!(
+                                "Sequence policy denied by rule '{rule_id}' — step '{later_step}' must not dispatch"
+                            ),
+                            "sequence_policy_denied".to_string(),
+                            0,
+                            0,
+                        );
+                        node_results.insert(next_id, task_result);
+                        failed_count += 1;
+                        if let Some((denied_id, state)) =
+                            self.record_sequence_denial(dag_id, next_id, &rule_id, &later_step)
+                        {
+                            self.notify_progress(dag_id, denied_id, state, total_nodes);
+                        }
+                        let _ = graph.mark_completed(next_id);
                     }
                 }
 
@@ -969,6 +1093,131 @@ impl ParallelExecutionServiceImpl {
         Ok(())
     }
 
+    /// R3 — run-time prefix gate (module doc §R3; AC#9).
+    ///
+    /// Builds the session's completed dispatch prefix (successful
+    /// completions in graph declaration order — deterministic for an
+    /// identical DAG + identical completed prefix) plus `node_id` as the
+    /// proposed next step and asks the policy service `evaluate_prefix`:
+    ///
+    /// - any match with action `deny` → `Deny` (outranks promote; a deny is
+    ///   absolute — human approval cannot override a forbidden sequence)
+    /// - any match with action `promote`, node not already human-approved →
+    ///   `Promote` (a previously promoted-and-approved node dispatches: its
+    ///   pause was already the human decision)
+    /// - otherwise → `Dispatch`
+    ///
+    /// An evaluation error fails CLOSED — the run halts before the node
+    /// dispatches (corrupt/over-cap rule config must never execute silently).
+    async fn sequence_policy_verdict(
+        &self,
+        dag_id: Uuid,
+        graph: &crate::dag_engine::domain::TaskGraph,
+        node_id: Uuid,
+        approved: &HashSet<Uuid>,
+    ) -> Result<SequencePolicyVerdict, ExecutionError> {
+        let Some(svc) = &self.sequence_policy else {
+            return Ok(SequencePolicyVerdict::Dispatch);
+        };
+
+        // Snapshot the completed prefix + next step under the sessions lock
+        // (no awaits held). Missing session / node ⇒ nothing to gate.
+        let (prefix, next) = {
+            let sessions = self.sessions.lock().map_err(|e| {
+                ExecutionError::InternalError {
+                    detail: format!("Lock error: {e}"),
+                }
+            })?;
+            let Some(session) = sessions.get(&dag_id) else {
+                return Ok(SequencePolicyVerdict::Dispatch);
+            };
+            let prefix = graph
+                .nodes()
+                .filter(|n| {
+                    session
+                        .node_states
+                        .get(&n.id)
+                        .map(|s| s.status == NodeStatus::Completed)
+                        .unwrap_or(false)
+                })
+                .map(|n| DispatchedStep {
+                    name: n.name.clone(),
+                    tool: n.tool.clone(),
+                    parameters: serde_json::from_str(&n.intent).unwrap_or_default(),
+                })
+                .collect::<Vec<_>>();
+            let node = match graph.get_node(node_id) {
+                Some(n) => n,
+                None => return Ok(SequencePolicyVerdict::Dispatch),
+            };
+            let next = PlannedStep {
+                name: node.name.clone(),
+                tool: node.tool.clone(),
+                parameters: serde_json::from_str(&node.intent).unwrap_or_default(),
+            };
+            (prefix, next)
+        };
+
+        let matches = match svc.evaluate_prefix(&prefix, &next).await {
+            Ok(m) => m,
+            Err(e) => {
+                return Err(ExecutionError::InternalError {
+                    detail: format!(
+                        "Sequence policy evaluation failed — run halted before dispatch (fail closed): {e}"
+                    ),
+                })
+            }
+        };
+
+        for m in &matches {
+            if m.action == RuleAction::Deny {
+                return Ok(SequencePolicyVerdict::Deny {
+                    rule_id: m.rule_id.clone(),
+                    later_step: m.later_step.clone(),
+                });
+            }
+        }
+        if matches.iter().any(|m| m.action == RuleAction::Promote) && !approved.contains(&node_id)
+        {
+            return Ok(SequencePolicyVerdict::Promote);
+        }
+        Ok(SequencePolicyVerdict::Dispatch)
+    }
+
+    /// Record an R3 sequence-policy denial as a deterministic pre-dispatch
+    /// node failure (no tool call, no `NodeStarted`). Shared by the two
+    /// dispatch fill loops.
+    ///
+    /// Returns the updated node state so the caller can notify progress.
+    fn record_sequence_denial(
+        &self,
+        dag_id: Uuid,
+        node_id: Uuid,
+        rule_id: &str,
+        later_step: &str,
+    ) -> Option<(Uuid, NodeExecutionState)> {
+        let mut sessions = match self.sessions.lock() {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!(error = %e, "sequence-policy denial: sessions lock poisoned");
+                return None;
+            }
+        };
+        let Some(session) = sessions.get_mut(&dag_id) else {
+            return None;
+        };
+        let Some(state) = session.node_states.get_mut(&node_id) else {
+            return None;
+        };
+        let error = format!(
+            "Sequence policy denied by rule '{rule_id}' — step '{later_step}' must not dispatch"
+        );
+        state.mark_failed("sequence_policy_denied".to_string(), error);
+        let cloned = state.clone();
+        drop(sessions);
+        Some((node_id, cloned))
+    }
+
     /// Create a new ParallelExecutionServiceImpl.
     pub fn new(
         config: ParallelExecutorConfig,
@@ -986,6 +1235,7 @@ impl ParallelExecutionServiceImpl {
             recovery_service: None,
             recovery_contexts: Mutex::new(HashMap::new()),
             approval_binding: None,
+            sequence_policy: None,
         }
     }
 
@@ -998,6 +1248,18 @@ impl ParallelExecutionServiceImpl {
     /// Set the permission enforcer for mode-based tool gating.
     pub fn with_permission_enforcer(mut self, enforcer: Arc<dyn PermissionEnforcer>) -> Self {
         self.permission_enforcer = Some(enforcer);
+        self
+    }
+
+    /// Set the R3 run-time sequence-policy prefix gate (dynamic plans).
+    ///
+    /// When set, the dispatch loop evaluates the completed prefix plus each
+    /// ready node before dispatch (`evaluate_prefix`) and applies the rule
+    /// action: `promote` → node enters the existing `AwaitingApproval` pause;
+    /// `deny` → node fails with `sequence_policy_denied` before its tool is
+    /// ever called. `None` (default) keeps the status-quo dispatch path.
+    pub fn with_sequence_policy(mut self, svc: Arc<dyn SequencePolicyService>) -> Self {
+        self.sequence_policy = Some(svc);
         self
     }
 
