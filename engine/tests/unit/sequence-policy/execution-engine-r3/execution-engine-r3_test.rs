@@ -14,7 +14,7 @@ use serde_json::json;
 #[test]
 fn test_execution_engine_r3_is_defined() {
     // Completed prefix: step A ("registration_remove") has already dispatched.
-    let prefix = vec![DispatchedStep {
+    let prefix = [DispatchedStep {
         name: "registration_remove".to_string(),
         tool: "registration_remove".to_string(),
         parameters: json!({ "event_id": "conf-2026" }),
