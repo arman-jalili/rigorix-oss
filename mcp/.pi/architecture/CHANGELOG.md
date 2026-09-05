@@ -41,6 +41,36 @@ Each entry follows this structure:
 - [ ] CHANGELOG entry added
 - [ ] Implementation updated
 - [ ] Canonical refs updated
+
+---
+
+## [2026-09-05] - Auth module implemented (epic: auth)
+
+### Changed
+- Module: auth
+  - AuthService (Application): AuthServiceImpl lifecycle (login/poll/status/refresh/logout/attest) + AuthServiceFactoryImpl
+  - IdpClient (Infrastructure): HttpIdpClient — OIDC discovery + device flow (RFC 8414/8628/6749/7009)
+  - KeychainStore (Infrastructure): KeychainStoreImpl — OS keychain (`keyring`) + explicit plaintext fallback
+  - TokenProvider (Infrastructure): InMemoryTokenProvider — short-TTL in-memory custody
+  - AuthHandler / SSE Auth (Interfaces): AuthToolHandlerImpl + SseAuthGateImpl (none/api_key/idp, fail-closed)
+  - Proofing: check_auth_contracts.sh + hardening stage 14
+  - Ops docs: runbook-auth.md, dr-plan-auth.md
+
+### Impact Analysis
+- Files affected:
+  - mcp/src/auth/** (contract freeze #820, components #821–#825, proofing #826, readiness #827)
+- Canonical refs to update:
+  - .pi/architecture/modules/auth.md
+- Validators required:
+  - ci, tests, security, architecture, canonical, operations
+
+### Status
+- [x] Architecture doc updated (module status → Implemented)
+- [x] CHANGELOG entry added
+- [x] Implementation updated
+- [x] Canonical refs updated
+
+---
 - [ ] Validators run
 ```
 
@@ -232,8 +262,9 @@ When making architecture changes:
 | 2026-07-12 | Full architecture enrichment — ADRs, diagrams, components, roadmap | Template Tools | ✅ Complete | 🔲 Pending |
 | 2026-07-12 | Full architecture enrichment — ADRs, diagrams, components, roadmap | Enterprise Proxy | ✅ Complete | 🔲 Pending |
 | 2026-07-12 | Implementation: EngineFacade, handlers, repository, tests | Execution Tools | ✅ Complete | ✅ All pass |
+| 2026-09-05 | Contract freeze + implementation (5 components) + proofing + readiness | Auth | ✅ Complete | ✅ All pass |
 
 ---
 
-*Last updated: 2026-07-12*
+*Last updated: 2026-09-05*
 *Framework version: 1.2.0*
