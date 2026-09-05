@@ -8,6 +8,7 @@
 //! RetryEvaluationServiceImpl implementations.
 
 use crate::event_system::application::event_bus_service_impl::EventBusServiceImpl;
+use async_trait::async_trait;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -2201,4 +2202,332 @@ async fn test_retry_with_skip_and_continue_strategy_index() {
     let decision2 = service.decide(&ctx2, &policy, None).await;
     assert!(decision2.is_terminal());
     assert!(matches!(decision2, RetryDecision::Skip { .. }));
+}
+
+// ---------------------------------------------------------------------------
+// R3 sequence-policy run-time prefix gate (AC#9)
+// ---------------------------------------------------------------------------
+//
+// Dynamic-plan semantics: step A completes, then step B is proposed (would
+// complete the forbidden pair). The dispatch loop's prefix gate evaluates the
+// session's completed prefix + B BEFORE B dispatches — promote routes B into
+// the existing approval pause; deny fails B pre-dispatch (tool never called).
+// Real in-process tools (file_append / file_write against the temp dir) prove
+// the "executes / never called" legs with observable side effects.
+
+use crate::sequence_policy::application::SequencePolicyServiceImpl;
+use crate::sequence_policy::domain::{
+    ParamMatchKind, ParamPredicate, RuleAction, SequencePolicyConfig, SequencePolicyError,
+    SequenceRule, StepPredicate,
+};
+use crate::sequence_policy::infrastructure::SequencePolicyRepository;
+
+/// In-memory rule-config double (no filesystem).
+struct R3PolicyRepo {
+    config: Option<SequencePolicyConfig>,
+}
+
+#[async_trait]
+impl SequencePolicyRepository for R3PolicyRepo {
+    async fn load_config(&self) -> Result<Option<SequencePolicyConfig>, SequencePolicyError> {
+        Ok(self.config.clone())
+    }
+}
+
+/// AC9 conference-style rule: append to X then write Y (remove-then-reassign
+/// shape) over the two concrete file paths, window 2.
+fn r3_config(action: RuleAction, path_a: &str, path_b: &str) -> SequencePolicyConfig {
+    SequencePolicyConfig {
+        fail_closed: true,
+        rules: vec![SequenceRule {
+            id: "r3-remove-then-reassign".to_string(),
+            name: "n".to_string(),
+            description: "d".to_string(),
+            steps: vec![
+                StepPredicate {
+                    tool: "file_append".to_string(),
+                    params: vec![ParamPredicate {
+                        pointer: "/path".to_string(),
+                        kind: ParamMatchKind::Exact,
+                        value: path_a.to_string(),
+                    }],
+                },
+                StepPredicate {
+                    tool: "file_write".to_string(),
+                    params: vec![ParamPredicate {
+                        pointer: "/path".to_string(),
+                        kind: ParamMatchKind::Exact,
+                        value: path_b.to_string(),
+                    }],
+                },
+            ],
+            window: Some(2),
+            action,
+        }],
+    }
+}
+
+fn r3_executor(action: RuleAction, path_a: &str, path_b: &str) -> ParallelExecutionServiceImpl {
+    let svc = SequencePolicyServiceImpl::new(Box::new(R3PolicyRepo {
+        config: Some(r3_config(action, path_a, path_b)),
+    }));
+    create_executor().with_sequence_policy(Arc::new(svc))
+}
+
+/// Unique per-run temp paths (parallel-safe; leftover files from crashed
+/// runs are removed so spy assertions observe only this run's side effects).
+fn r3_paths(tag: &str) -> (String, String) {
+    let dir = std::env::temp_dir();
+    let run = Uuid::new_v4();
+    let paths = (
+        dir.join(format!("rigorix-r3-{tag}-{run}-a.tmp"))
+            .display()
+            .to_string(),
+        dir.join(format!("rigorix-r3-{tag}-{run}-b.tmp"))
+            .display()
+            .to_string(),
+    );
+    let _ = std::fs::remove_file(&paths.0);
+    let _ = std::fs::remove_file(&paths.1);
+    paths
+}
+
+/// Sequential graph: step_a (file_append) → step_b (file_write). NEITHER node
+/// declares `requires_approval` — any pause is caused by the R3 gate alone.
+fn r3_chain_graph(
+    path_a: &str,
+    path_b: &str,
+) -> (crate::dag_engine::domain::TaskGraph, Uuid, Uuid) {
+    use crate::dag_engine::domain::{TaskGraph, TaskNode};
+    let a_id = Uuid::new_v4();
+    let b_id = Uuid::new_v4();
+    let a = TaskNode::new(
+        a_id,
+        "step_a",
+        "file_append",
+        vec![],
+        format!(r#"{{"path": "{}", "content": "a"}}"#, path_a),
+    );
+    let b = TaskNode::new(
+        b_id,
+        "step_b",
+        "file_write",
+        vec![a_id],
+        format!(r#"{{"path": "{}", "content": "b"}}"#, path_b),
+    );
+    let mut graph = TaskGraph::new();
+    graph.add_unchecked(a).unwrap();
+    graph.add_unchecked(b).unwrap();
+    graph.seal().unwrap();
+    (graph, a_id, b_id)
+}
+
+/// AC#9 (promote): step A completes, then B is proposed → B is promoted into
+/// the existing approval pause; approve → resume → B dispatches and executes
+/// (its side effect lands on disk).
+#[tokio::test]
+async fn test_r3_promote_pauses_dynamic_later_step_and_approve_executes_it() {
+    use crate::execution_engine::domain::NodeStatus;
+
+    let (path_a, path_b) = r3_paths("promote");
+    let executor = r3_executor(RuleAction::Promote, &path_a, &path_b);
+    let dag_id = Uuid::new_v4();
+    let (graph, _a_id, _b_id) = r3_chain_graph(&path_a, &path_b);
+
+    // 1. Execute: A (already ready) dispatches and completes; B is promoted
+    // at the dispatch boundary BEFORE its tool is called — run pauses.
+    let output = executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            graph: Some(graph),
+            config_override: None,
+        })
+        .await
+        .unwrap();
+    assert!(
+        output.approval_pending,
+        "promoted dynamic step must pause the run"
+    );
+    assert_eq!(output.pending_approval_steps, vec!["step_b".to_string()]);
+
+    let state = executor
+        .get_execution_state(GetExecutionStateInput { dag_id })
+        .await
+        .unwrap();
+    assert!(state.paused, "execution should be paused at the R3 gate");
+    assert!(!state.is_complete, "not terminal while gated");
+
+    let step_a = state
+        .node_states
+        .values()
+        .find(|s| s.node_name == "step_a")
+        .expect("step_a state");
+    assert_eq!(
+        step_a.status,
+        NodeStatus::Completed,
+        "completed prefix step A must have executed before the gate"
+    );
+    let step_b = state
+        .node_states
+        .values()
+        .find(|s| s.node_name == "step_b")
+        .expect("step_b state");
+    assert_eq!(
+        step_b.status,
+        NodeStatus::AwaitingApproval,
+        "promote rule must gate the later dynamic step"
+    );
+    assert!(
+        step_b.started_at.is_none(),
+        "promoted step must not dispatch pre-approval"
+    );
+    assert!(
+        !std::path::Path::new(&path_b).exists(),
+        "B's tool must not have been called before approval"
+    );
+    assert!(
+        std::path::Path::new(&path_a).exists(),
+        "A (the completed prefix step) must have executed"
+    );
+
+    // 2. Human approval → the promoted node becomes dispatchable again.
+    let approve = executor
+        .approve_node(ApproveNodeInput {
+            dag_id,
+            step_names: vec!["step_b".to_string()],
+            approver_id: None,
+            authority: None,
+            decision_context: None,
+            token_claims_ref: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(approve.approved, vec!["step_b".to_string()]);
+
+    // 3. Resume → B dispatches through the SAME approval machinery and its
+    // tool executes (side effect observed on disk); run completes.
+    executor
+        .resume_execution(ResumeExecutionInput { dag_id })
+        .await
+        .unwrap();
+    let state = executor
+        .get_execution_state(GetExecutionStateInput { dag_id })
+        .await
+        .unwrap();
+    assert!(!state.paused, "execution should resume after approval");
+    assert!(state.is_complete, "approved run must complete");
+    assert_eq!(state.completed_count, 2);
+
+    let content = tokio::fs::read_to_string(&path_b).await.unwrap();
+    assert_eq!(content, "b", "approved B tool must have executed");
+}
+
+/// AC#9 (deny): step A completes, then B is proposed → B is denied BEFORE
+/// dispatch: structured sequence_policy_denied failure, B's tool never called.
+#[tokio::test]
+async fn test_r3_deny_fails_dynamic_later_step_before_dispatch() {
+    use crate::execution_engine::domain::NodeStatus;
+
+    let (path_a, path_b) = r3_paths("deny");
+    let executor = r3_executor(RuleAction::Deny, &path_a, &path_b);
+    let dag_id = Uuid::new_v4();
+    let (graph, _a_id, b_id) = r3_chain_graph(&path_a, &path_b);
+
+    let output = executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            graph: Some(graph),
+            config_override: None,
+        })
+        .await
+        .unwrap();
+
+    // A executed; B failed with the structured denial — no approval involved.
+    assert!(!output.approval_pending);
+    assert_eq!(output.result.completed_count, 1, "A completes");
+    assert_eq!(output.result.failed_count, 1, "B fails deterministically");
+
+    let b_result = output
+        .result
+        .node_results
+        .get(&b_id)
+        .expect("denied B must carry a node result");
+    assert!(!b_result.success);
+    assert_eq!(
+        b_result.failure_type.as_deref(),
+        Some("sequence_policy_denied"),
+        "denial is a structured, typed node failure"
+    );
+    assert!(
+        b_result
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("r3-remove-then-reassign"),
+        "error names the matched rule"
+    );
+
+    let state = executor
+        .get_execution_state(GetExecutionStateInput { dag_id })
+        .await
+        .unwrap();
+    assert!(!state.paused);
+    assert!(state.is_complete);
+    let step_b = state
+        .node_states
+        .values()
+        .find(|s| s.node_name == "step_b")
+        .expect("step_b state");
+    assert_eq!(step_b.status, NodeStatus::Failed);
+    assert!(
+        step_b.started_at.is_none(),
+        "denied tool must NEVER be called"
+    );
+
+    // Spy assertion: B's file was never created; A's file exists.
+    assert!(
+        std::path::Path::new(&path_a).exists(),
+        "A must have executed"
+    );
+    assert!(
+        !std::path::Path::new(&path_b).exists(),
+        "denied B's tool must not have written its file"
+    );
+}
+
+/// AC#9 (no-match control): with the policy service present but no rule
+/// matching the actual pair, dispatch is unchanged — B executes normally.
+#[tokio::test]
+async fn test_r3_non_matching_rule_does_not_gate_dispatch() {
+    let (path_a, path_b) = r3_paths("control");
+    // Rule predicates point at DIFFERENT paths → nothing matches.
+    let svc = SequencePolicyServiceImpl::new(Box::new(R3PolicyRepo {
+        config: Some(r3_config(
+            RuleAction::Deny,
+            "/tmp/never-a.tmp",
+            "/tmp/never-b.tmp",
+        )),
+    }));
+    let executor = create_executor().with_sequence_policy(Arc::new(svc));
+    let dag_id = Uuid::new_v4();
+    let (graph, _a_id, b_id) = r3_chain_graph(&path_a, &path_b);
+
+    let output = executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            graph: Some(graph),
+            config_override: None,
+        })
+        .await
+        .unwrap();
+    assert!(!output.approval_pending, "no match → no pause");
+    assert_eq!(output.result.completed_count, 2);
+
+    let b_result = output.result.node_results.get(&b_id).unwrap();
+    assert!(b_result.success, "non-matching rule must not gate dispatch");
+    assert_eq!(
+        tokio::fs::read_to_string(&path_b).await.unwrap(),
+        "b",
+        "B executes normally when no rule matches"
+    );
 }
