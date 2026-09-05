@@ -45,6 +45,7 @@
 //! - MCP protocol handler contracts are framework-agnostic
 
 pub mod audit_tools;
+pub mod auth;
 pub mod enterprise_proxy;
 pub mod execution_tools;
 pub mod mcp_server;
