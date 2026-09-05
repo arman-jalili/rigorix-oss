@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: "enterprise-proxy"
+  epic: "auth"
   component: "Contract Freeze"
-  module: "enterprise-proxy"
+  module: "auth"
   status: planned
   priority: critical
   dependencies: []
@@ -29,11 +29,11 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/enterprise-proxy.md"
+    - module: ".pi/architecture/modules/auth.md"
 
   acceptance_criteria:
-    - "All component interfaces defined as interfaces/types"
-    - "DTO schemas documented"
+    - "All component interfaces defined as stubs (TODO bodies)"
+    - "DTO schemas documented with field names and types"
     - "API contracts frozen and reviewed"
     - "Implementation PRs reference these contracts"
 
@@ -45,27 +45,29 @@ guardian_issue:
     Define the contract before any implementation. Every implementation issue
     depends on this contract being frozen first. The contract should include:
     interfaces, types, DTOs, event schemas, API paths, error formats.
-    
 
   file_changes:
-    - "create: src/enterprise-proxy/domain/"
-    - "create: src/enterprise-proxy/application/"
-    - "create: src/enterprise-proxy/infrastructure/"
-    - "create: src/enterprise-proxy/interfaces/"
+    - "create: src/auth/domain/"
+    - "create: src/auth/application/"
+    - "create: src/auth/infrastructure/"
+    - "create: src/auth/interfaces/"
 ---
 
-# Contract Freeze: enterprise-proxy
+# Contract Freeze: auth
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the enterprise-proxy
+Define and freeze all public interfaces, contracts, and schemas for the auth
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- EnterpriseProxy (Aggregate Root)
-- SchemaCache (Domain Service)
+- AuthService (Application)
+- IdpClient (Infrastructure)
+- KeychainStore (Infrastructure)
+- TokenProvider (Infrastructure)
+- AuthHandler / SSE Auth (Interfaces)
 
 ## What Must Be Frozen
 
@@ -89,10 +91,14 @@ must satisfy contracts, not the other way around.
 
 | # | Criterion | How to Verify |
 |---|-----------|---------------|
-| 1 | All component interfaces defined | Check src/<group>/<module>/domain/ and application/ |
+| 1 | All component interfaces defined as stubs (TODO bodies) | Check src/<module>/domain/ and application/ |
 | 2 | Contracts reviewed and frozen | PR approval |
-| 3 | DTO schemas documented | OpenAPI / TypeSpec / equivalent |
+| 3 | DTO schemas documented with field names and types | OpenAPI / record types |
 | 4 | Implementation depends on contracts | No implementation without interface |
+
+
+
+
 
 ## Implementation
 
