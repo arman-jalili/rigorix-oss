@@ -67,6 +67,28 @@ pub enum OrchestratorError {
         execution_completed: bool,
     },
 
+    /// A matched sequence-policy `deny` rule refused the runbook before any
+    /// step executed (R2 plan-time denial — the forbidden sequence never
+    /// executes; the later matched step's tool is never called).
+    #[error(
+        "Sequence policy denied step '{later_step}' (rule '{rule_id}'): the plan was refused before any step executed"
+    )]
+    SequencePolicyDenied {
+        /// Name of the later matched step that would have been denied.
+        later_step: String,
+        /// Stable id of the `deny` rule that matched.
+        rule_id: String,
+    },
+
+    /// Sequence-policy evaluation failed. Fail-closed: the plan is refused
+    /// rather than executed ungated (corrupt/over-cap rule config, or an
+    /// unexpected evaluation error).
+    #[error("Sequence policy evaluation failed (fail closed): {detail}")]
+    SequencePolicyEvaluationFailed {
+        /// Underlying evaluation error detail.
+        detail: String,
+    },
+
     /// An internal orchestrator error occurred.
     #[error("Internal orchestrator error: {detail}")]
     Internal {

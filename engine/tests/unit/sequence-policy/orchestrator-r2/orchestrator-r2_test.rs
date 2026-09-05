@@ -82,7 +82,7 @@ fn test_r2_deny_contract_never_calls_the_tool() {
 fn test_r2_predicates_describe_the_pairs_an_operator_authors() {
     // The deny rule's later predicate is a plain StepPredicate pair — the
     // config schema the operator writes is frozen.
-    let rule_steps = vec![
+    let rule_steps = [
         StepPredicate {
             tool: "registration_remove".to_string(),
             params: vec![],

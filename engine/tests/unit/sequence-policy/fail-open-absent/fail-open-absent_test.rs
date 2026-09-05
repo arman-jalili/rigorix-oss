@@ -19,8 +19,7 @@ fn test_fail_open_absent_is_defined() {
 
     // A missing optional config file is Ok(None) — not an error.
     let absent: Result<Option<SequencePolicyConfig>, SequencePolicyError> = Ok(None);
-    assert!(absent.is_ok());
-    assert!(absent.expect("ok").is_none());
+    assert!(matches!(&absent, Ok(None)));
 }
 
 #[test]

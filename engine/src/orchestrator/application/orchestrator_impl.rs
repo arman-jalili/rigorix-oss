@@ -49,6 +49,8 @@ use crate::quality_gates::application::service::QualityGateService;
 use crate::scored_evaluation::application::ScoredEvaluationService;
 use crate::scored_evaluation::application::dto::EvaluateInput as ScoredEvalInput;
 use crate::scored_evaluation::domain::Rubric;
+use crate::sequence_policy::application::dto::PlannedStep;
+use crate::sequence_policy::application::service::SequencePolicyService;
 use crate::state_persistence::application::{dto as state_dto, service as state_svc};
 
 pub struct OrchestratorServiceImpl {
@@ -65,6 +67,7 @@ pub struct OrchestratorServiceImpl {
     scored_evaluation_service: Option<Arc<dyn ScoredEvaluationService>>,
     policy_engine: Option<Arc<dyn PolicyEngineService>>,
     validation_loop_service: Option<Arc<dyn ValidationLoopService>>,
+    sequence_policy_service: Option<Arc<dyn SequencePolicyService>>,
     current_execution: Arc<RwLock<Option<CurrentExecutionState>>>,
 }
 
@@ -104,6 +107,7 @@ impl OrchestratorServiceImpl {
             scored_evaluation_service: None,
             policy_engine: None,
             validation_loop_service: None,
+            sequence_policy_service: None,
             current_execution: Arc::new(RwLock::new(None)),
         }
     }
@@ -135,6 +139,18 @@ impl OrchestratorServiceImpl {
     /// Set the policy engine for post-execution policy evaluation.
     pub fn with_policy_engine(mut self, engine: Arc<dyn PolicyEngineService>) -> Self {
         self.policy_engine = Some(engine);
+        self
+    }
+
+    /// Set the sequence-policy service for R2 plan-time evaluation of ordered
+    /// runbooks (`run_from_template` / `plan_from_template`).
+    ///
+    /// Evaluation runs **before** the DAG graph is sealed: a `promote` match
+    /// flags the later matched step `requires_approval = true` (the existing
+    /// approval pause/resume chain decides); a `deny` match refuses the plan.
+    /// When unset (default) the runbook executes unchanged — no gating.
+    pub fn with_sequence_policy(mut self, svc: Arc<dyn SequencePolicyService>) -> Self {
+        self.sequence_policy_service = Some(svc);
         self
     }
 
@@ -392,6 +408,73 @@ impl OrchestratorServiceImpl {
             source_module: "orchestrator".into(),
         })?;
         Ok(graph)
+    }
+
+    /// R2 — plan-time sequence-policy evaluation over an ordered runbook.
+    ///
+    /// Module spec: the graph-build insertion point — evaluation happens on
+    /// the ordered step list **before** `build_graph_from_steps` seals the
+    /// graph, so matched later steps are promoted at the same call site that
+    /// already applies `step.requires_approval`.
+    ///
+    /// Returns:
+    /// - `Ok(None)` — no service configured, or no rule matched (runbook
+    ///   executes with its declared approval flags, unchanged).
+    /// - `Ok(Some(steps))` — at least one `promote` rule matched; the later
+    ///   matched step(s) have `requires_approval = true` set.
+    /// - `Err(SequencePolicyDenied)` — a `deny` rule matched: the plan is
+    ///   refused before any step executes (fail closed; the denied step's
+    ///   tool is never called). Deny wins over promote deterministically.
+    /// - `Err(SequencePolicyEvaluationFailed)` — evaluation itself failed
+    ///   (corrupt/over-cap config or internal): also fail closed.
+    async fn apply_plan_time_sequence_policy(
+        &self,
+        steps: &[super::dto::TemplateStepDef],
+    ) -> Result<Option<Vec<super::dto::TemplateStepDef>>, OrchestratorError> {
+        let Some(svc) = &self.sequence_policy_service else {
+            return Ok(None);
+        };
+        let planned: Vec<PlannedStep> = steps
+            .iter()
+            .map(|s| PlannedStep {
+                name: s.name.clone(),
+                tool: s.tool.clone(),
+                parameters: s.parameters.clone(),
+            })
+            .collect();
+        let matches = svc.evaluate_plan(&planned).await.map_err(|e| {
+            OrchestratorError::SequencePolicyEvaluationFailed {
+                detail: e.to_string(),
+            }
+        })?;
+        if matches.is_empty() {
+            return Ok(None);
+        }
+
+        let mut promoted: Vec<String> = Vec::new();
+        for m in &matches {
+            match m.action {
+                crate::sequence_policy::domain::RuleAction::Deny => {
+                    return Err(OrchestratorError::SequencePolicyDenied {
+                        later_step: m.later_step.clone(),
+                        rule_id: m.rule_id.clone(),
+                    });
+                }
+                crate::sequence_policy::domain::RuleAction::Promote => {
+                    promoted.push(m.later_step.clone());
+                }
+            }
+        }
+        if promoted.is_empty() {
+            return Ok(None);
+        }
+        let mut enforced = steps.to_vec();
+        for def in &mut enforced {
+            if promoted.iter().any(|name| name == &def.name) {
+                def.requires_approval = true;
+            }
+        }
+        Ok(Some(enforced))
     }
 
     /// Extract file paths from task result outputs.
@@ -1073,6 +1156,15 @@ impl OrchestratorService for OrchestratorServiceImpl {
         let started_at = chrono::Utc::now();
         tracing::info!(%execution_id, template=%input.template_name, "run_from_template");
 
+        // Sequence-policy (R2) plan-time gate — evaluate the ordered runbook
+        // BEFORE any state is written or step executes. Promote matches flip
+        // the later step to `requires_approval = true` (reusing the approval
+        // pause/resume chain below); deny matches refuse the whole runbook
+        // fail-closed — the forbidden sequence never executes and the denied
+        // step's tool is never called. An evaluation error refuses the plan
+        // too (fail closed on corrupt/over-cap rule config).
+        let enforced_steps = self.apply_plan_time_sequence_policy(&input.steps).await?;
+
         // Init current execution state
         *self.current_execution.write().await = Some(CurrentExecutionState {
             execution_id,
@@ -1081,8 +1173,11 @@ impl OrchestratorService for OrchestratorServiceImpl {
             started_at,
         });
 
-        // 1. Build DAG directly from pre-resolved steps
-        let graph = self.build_graph_from_steps(&input.steps)?;
+        // 1. Build DAG directly from pre-resolved steps (enforced steps when
+        // a promote rule matched — the later step is built approval-gated).
+        let steps: &[super::dto::TemplateStepDef] =
+            enforced_steps.as_deref().unwrap_or(&input.steps);
+        let graph = self.build_graph_from_steps(steps)?;
         let node_order: Vec<String> = graph.nodes().map(|n| n.name.clone()).collect();
 
         let pmeta = PlanningMetadata {
@@ -1568,7 +1663,12 @@ impl OrchestratorService for OrchestratorServiceImpl {
         &self,
         input: PlanFromTemplateInput,
     ) -> Result<PlanOnlyOutput, OrchestratorError> {
-        let graph = self.build_graph_from_steps(&input.steps)?;
+        // Same R2 gate as `run_from_template` — a preview must show the same
+        // promotion/denial decisions as the run it precedes.
+        let enforced_steps = self.apply_plan_time_sequence_policy(&input.steps).await?;
+        let steps: &[super::dto::TemplateStepDef] =
+            enforced_steps.as_deref().unwrap_or(&input.steps);
+        let graph = self.build_graph_from_steps(steps)?;
         Ok(PlanOnlyOutput {
             plan: serde_json::json!({
                 "template_name": input.template_name,
@@ -1743,6 +1843,10 @@ impl OrchestratorService for OrchestratorServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sequence_policy::domain::{
+        ParamMatchKind, ParamPredicate, RuleAction, SequencePolicyConfig, SequenceRule,
+        StepPredicate,
+    };
 
     /// Captures the `BuildEnvelopeInput` the orchestrator sends to audit.
     ///
@@ -2183,6 +2287,295 @@ mod tests {
         assert_eq!(approve.approved, vec!["deploy".to_string()]);
         assert!(approve.still_pending.is_empty());
         assert!(approve.resumed, "execution should resume after approval");
+    }
+
+    // ── Sequence-policy R2 (plan-time) integration tests ────────────────────
+    // ISSUE-SEQUENCE-POLICY-6 (#844): the orchestrator evaluates an ordered
+    // runbook BEFORE the DAG graph is sealed (module spec: Orchestrator —
+    // Graph Build insertion point). These run the canonical conference rule
+    // (remove conf-2026 then add conf-2026) through the REAL executor and the
+    // REAL sequence-policy service: promote pauses the later step at the
+    // approval gate, approve executes it, a declined step is never dispatched,
+    // and a deny rule refuses the runbook before any step executes.
+
+    /// In-memory sequence-policy repository serving a fixed rule config.
+    struct FixedPolicyRepo {
+        config: Option<crate::sequence_policy::domain::SequencePolicyConfig>,
+    }
+
+    #[async_trait]
+    impl crate::sequence_policy::infrastructure::repository::SequencePolicyRepository
+        for FixedPolicyRepo
+    {
+        async fn load_config(
+            &self,
+        ) -> Result<
+            Option<crate::sequence_policy::domain::SequencePolicyConfig>,
+            crate::sequence_policy::domain::SequencePolicyError,
+        > {
+            Ok(self.config.clone())
+        }
+    }
+
+    /// The canonical conference rule with the given action (module spec
+    /// §Configuration): remove(conf-2026) → add(conf-2026), window 3.
+    fn conference_policy(action: RuleAction) -> SequencePolicyConfig {
+        let param = || ParamPredicate {
+            pointer: "/event_id".to_string(),
+            kind: ParamMatchKind::Exact,
+            value: "conf-2026".to_string(),
+        };
+        SequencePolicyConfig {
+            fail_closed: true,
+            rules: vec![SequenceRule {
+                id: "registration-remove-then-reassign".to_string(),
+                name: "No remove-then-reassign of a full event seat".to_string(),
+                description: "conference seat".to_string(),
+                steps: vec![
+                    StepPredicate {
+                        tool: "registration_remove".to_string(),
+                        params: vec![param()],
+                    },
+                    StepPredicate {
+                        tool: "registration_add".to_string(),
+                        params: vec![param()],
+                    },
+                ],
+                window: Some(3),
+                action,
+            }],
+        }
+    }
+
+    /// Orchestrator with a REAL execution engine + REAL sequence-policy
+    /// service evaluating the canonical conference rule.
+    fn real_orchestrator_with_conference_policy(action: RuleAction) -> OrchestratorServiceImpl {
+        use crate::event_system::application::event_bus_service_impl::EventBusServiceImpl;
+        use crate::execution_engine::application::service_impl::{
+            ParallelExecutionServiceImpl, RetryEvaluationServiceImpl,
+        };
+        use crate::execution_engine::domain::ParallelExecutorConfig;
+        use crate::sequence_policy::application::service_impl::SequencePolicyServiceImpl;
+
+        let executor: Arc<dyn exec_svc::ParallelExecutionService> =
+            Arc::new(ParallelExecutionServiceImpl::new(
+                ParallelExecutorConfig::default(),
+                Box::new(RetryEvaluationServiceImpl::new()),
+                Arc::new(EventBusServiceImpl::default()),
+            ));
+        let policy = Arc::new(SequencePolicyServiceImpl::new(Box::new(FixedPolicyRepo {
+            config: Some(conference_policy(action)),
+        })));
+        OrchestratorServiceImpl::new(
+            OrchestratorConfig::default(),
+            Arc::new(super::super::orchestrator_mocks::MockPlanningService::new()),
+            executor,
+            Arc::new(super::super::orchestrator_mocks::MockStateService::new()),
+            Arc::new(super::super::orchestrator_mocks::MockCancellationService),
+            Arc::new(super::super::orchestrator_mocks::MockEventBusService::new()),
+            None,
+            Arc::new(super::super::orchestrator_mocks::MockBudgetService),
+            None,
+        )
+        .with_sequence_policy(policy)
+    }
+
+    /// The remove-then-add runbook: BOTH steps declare `requires_approval =
+    /// false` — without the promote rule nothing would pause.
+    fn conference_runbook() -> Vec<crate::orchestrator::dto::TemplateStepDef> {
+        let step = |name: &str| crate::orchestrator::dto::TemplateStepDef {
+            name: name.to_string(),
+            tool: name.to_string(),
+            description: name.to_string(),
+            parameters: serde_json::json!({ "event_id": "conf-2026" }),
+            requires_approval: false,
+            timeout_secs: None,
+            evaluate_score: false,
+        };
+        vec![step("registration_remove"), step("registration_add")]
+    }
+
+    /// AC#6 (promote leg): a remove-then-add runbook is paused by the promote
+    /// rule — the later step is built `requires_approval = true` — and only an
+    /// explicit approval executes it.
+    #[tokio::test]
+    async fn test_sequence_policy_promote_pauses_runbook_and_approve_executes_later_step() {
+        use crate::execution_engine::domain::NodeStatus;
+        let orch = real_orchestrator_with_conference_policy(RuleAction::Promote);
+        let input = RunFromTemplateInput {
+            steps: conference_runbook(),
+            repo_root: "/tmp/t".into(),
+            execution_id: None,
+            template_name: "conf-registration".into(),
+            repository: None,
+            author: None,
+            enforcement_preset: None,
+        };
+
+        // 1. First run pauses at the promoted step — the runbook declares no
+        // approval flags, so the pause is caused by the promote rule.
+        let out = orch.run_from_template(input).await.unwrap();
+        assert_eq!(
+            out.record.status,
+            ExecutionStatus::PendingApproval,
+            "promoted runbook must pause, got {:?}",
+            out.record.status
+        );
+
+        // 2. The remove step WAS dispatched; the promoted add step was NOT —
+        // it sits at the approval gate the promote rule added.
+        let st = orch.execution_state(out.execution_id).await.unwrap();
+        let remove = st
+            .node_states
+            .values()
+            .find(|s| s.node_name == "registration_remove")
+            .expect("remove node state");
+        assert!(
+            remove.started_at.is_some(),
+            "the earlier (remove) step must execute before the pause"
+        );
+        let add = st
+            .node_states
+            .values()
+            .find(|s| s.node_name == "registration_add")
+            .expect("add node state");
+        assert_eq!(
+            add.status,
+            NodeStatus::AwaitingApproval,
+            "promote rule must gate the later step"
+        );
+        assert!(
+            add.started_at.is_none(),
+            "add must not dispatch pre-approval"
+        );
+        assert!(st.paused);
+        assert!(!st.is_complete);
+
+        // 3. Approve the add step → execution resumes and the add tool is
+        // dispatched (executes).
+        let approve = orch
+            .approve_execution(ApproveExecutionInput {
+                execution_id: out.execution_id,
+                step_names: vec!["registration_add".into()],
+                approver_id: None,
+                authority: None,
+                token_claims_ref: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(approve.approved, vec!["registration_add".to_string()]);
+        assert!(approve.resumed, "execution must resume after approval");
+
+        let st2 = orch.execution_state(out.execution_id).await.unwrap();
+        let add2 = st2
+            .node_states
+            .values()
+            .find(|s| s.node_name == "registration_add")
+            .expect("add node state after approval");
+        assert_eq!(
+            add2.status,
+            NodeStatus::Failed,
+            "approved add must be dispatched (tool attempted)"
+        );
+        assert!(add2.started_at.is_some(), "approved add step must execute");
+    }
+
+    /// AC#6 (reject leg): when the human does not approve, the promoted later
+    /// step is never dispatched — the runbook is cut short (skipped).
+    #[tokio::test]
+    async fn test_sequence_policy_declined_later_step_is_never_dispatched() {
+        use crate::execution_engine::domain::NodeStatus;
+        let orch = real_orchestrator_with_conference_policy(RuleAction::Promote);
+        let out = orch
+            .run_from_template(RunFromTemplateInput {
+                steps: conference_runbook(),
+                repo_root: "/tmp/t".into(),
+                execution_id: None,
+                template_name: "conf-registration".into(),
+                repository: None,
+                author: None,
+                enforcement_preset: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(out.record.status, ExecutionStatus::PendingApproval);
+
+        // A decline (nothing approval-worthy is approved) leaves the run
+        // paused — the promoted add step is never dispatched.
+        let decline = orch
+            .approve_execution(ApproveExecutionInput {
+                execution_id: out.execution_id,
+                step_names: vec!["no_such_step".into()],
+                approver_id: None,
+                authority: None,
+                token_claims_ref: None,
+            })
+            .await
+            .unwrap();
+        assert!(decline.approved.is_empty(), "declined: nothing approved");
+        assert!(
+            !decline.resumed,
+            "run stays paused when steps remain pending"
+        );
+
+        let st = orch.execution_state(out.execution_id).await.unwrap();
+        let add = st
+            .node_states
+            .values()
+            .find(|s| s.node_name == "registration_add")
+            .expect("add node state");
+        assert_eq!(
+            add.status,
+            NodeStatus::AwaitingApproval,
+            "declined step remains pending — skipped, never executed"
+        );
+        assert!(
+            add.started_at.is_none(),
+            "declined add tool must never be called"
+        );
+        assert!(st.paused, "run remains resumable pending a human decision");
+    }
+
+    /// AC#7: a `deny` rule refuses the runbook before any step executes — the
+    /// denied later step's tool is never called (no node is dispatched).
+    #[tokio::test]
+    async fn test_sequence_policy_deny_refuses_runbook_before_any_step() {
+        let orch = real_orchestrator_with_conference_policy(RuleAction::Deny);
+        let eid = Uuid::new_v4();
+        let err = orch
+            .run_from_template(RunFromTemplateInput {
+                steps: conference_runbook(),
+                repo_root: "/tmp/t".into(),
+                execution_id: Some(eid),
+                template_name: "conf-registration".into(),
+                repository: None,
+                author: None,
+                enforcement_preset: None,
+            })
+            .await
+            .unwrap_err();
+        match &err {
+            OrchestratorError::SequencePolicyDenied {
+                later_step,
+                rule_id,
+            } => {
+                assert_eq!(later_step, "registration_add");
+                assert_eq!(rule_id, "registration-remove-then-reassign");
+                assert!(
+                    err.to_string().contains("Sequence policy denied"),
+                    "structured deny error: {err}"
+                );
+            }
+            other => panic!("expected SequencePolicyDenied, got {other}"),
+        }
+
+        // Fail-closed: the refusal happened before the graph was built, so no
+        // engine session exists and nothing could have been dispatched.
+        let state = orch.execution_state(eid).await;
+        assert!(
+            state.is_err(),
+            "no engine session ⇒ no step of the denied runbook executed"
+        );
     }
 
     /// GAP-M-13: planning_prompt_content is populated only when
