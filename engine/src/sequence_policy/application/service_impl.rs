@@ -30,19 +30,17 @@
 //!   index; `window = None` means adjacent (span == steps.len() - 1)
 //! - Windows are found by earliest extension from each qualifying start index,
 //!   scanning rules in config order — deterministic for identical input
-//! - An invalid regex in a parameter predicate surfaces as
-//!   `SequencePolicyError::InvalidConfig` (fail closed); per-load compilation
-//!   lands with the Matcher hardening (ISSUE-SEQUENCE-POLICY-5)
+//! - Matching is delegated to the crate-internal `Matcher`
+//!   (application/matcher.rs), which the Matcher component issue tests
+//!   directly (window semantics + determinism property)
 
 use async_trait::async_trait;
-use serde_json::Value;
 
-use crate::sequence_policy::domain::{
-    SequenceMatch, SequencePolicyError, SequenceRule, StepPredicate,
-};
+use crate::sequence_policy::domain::{SequenceMatch, SequencePolicyError, SequenceRule};
 use crate::sequence_policy::infrastructure::repository::SequencePolicyRepository;
 
 use super::dto::{DispatchedStep, PlannedStep};
+use super::matcher::{Matcher, StepView};
 use super::service::SequencePolicyService;
 
 /// Default `SequencePolicyService` implementation.
@@ -53,12 +51,16 @@ use super::service::SequencePolicyService;
 ///   P3)
 pub struct SequencePolicyServiceImpl {
     repository: Box<dyn SequencePolicyRepository>,
+    matcher: Matcher,
 }
 
 impl SequencePolicyServiceImpl {
     /// Create the service over the given rule-config repository.
     pub fn new(repository: Box<dyn SequencePolicyRepository>) -> Self {
-        Self { repository }
+        Self {
+            repository,
+            matcher: Matcher::new(),
+        }
     }
 
     /// Load the rule config for this run. `Ok(None)` (no config file) is
@@ -78,15 +80,7 @@ impl SequencePolicyService for SequencePolicyServiceImpl {
         steps: &[PlannedStep],
     ) -> Result<Vec<SequenceMatch>, SequencePolicyError> {
         let rules = self.load_rules().await?;
-        let views: Vec<StepView<'_>> = steps
-            .iter()
-            .map(|s| StepView {
-                name: &s.name,
-                tool: &s.tool,
-                params: &s.parameters,
-            })
-            .collect();
-        match_rules(&rules, &views)
+        Ok(self.matcher.find_matches(&rules, steps)?)
     }
 
     async fn evaluate_prefix(
@@ -113,7 +107,7 @@ impl SequencePolicyService for SequencePolicyServiceImpl {
         // Only windows that COMPLETE on the next node are actionable: a window
         // that finished entirely inside the completed prefix was already acted
         // on at the dispatch of its own later step.
-        let matches = match_rules(&rules, &views)?;
+        let matches = self.matcher.find_matches(&rules, &views)?;
         Ok(matches
             .into_iter()
             .filter(|m| m.matched_indices.last() == Some(&next_idx))
@@ -121,104 +115,12 @@ impl SequencePolicyService for SequencePolicyServiceImpl {
     }
 }
 
-/// Borrowed view of a step's matching-relevant data (name, tool, parameters).
-struct StepView<'a> {
-    name: &'a str,
-    tool: &'a str,
-    params: &'a Value,
-}
-
-/// Evaluate every rule against the ordered step list, in config order.
-/// Deterministic for identical input: rules are scanned in order, and for each
-/// rule every qualifying start index is extended to its earliest completion.
-fn match_rules(
-    rules: &[SequenceRule],
-    steps: &[StepView<'_>],
-) -> Result<Vec<SequenceMatch>, SequencePolicyError> {
-    let mut matches = Vec::new();
-    for rule in rules {
-        matches.extend(match_rule(rule, steps)?);
-    }
-    Ok(matches)
-}
-
-/// Find every window in `steps` satisfying a single rule.
-fn match_rule(
-    rule: &SequenceRule,
-    steps: &[StepView<'_>],
-) -> Result<Vec<SequenceMatch>, SequencePolicyError> {
-    // A sequence rule needs at least an ordered pair — single-predicate rules
-    // are per-action policy, not sequence policy.
-    if rule.steps.len() < 2 || steps.len() < rule.steps.len() {
-        return Ok(Vec::new());
-    }
-    let predicate_count = rule.steps.len();
-    let mut matches = Vec::new();
-
-    for start in 0..steps.len() {
-        if !predicate_matches(&rule.steps[0], &steps[start])? {
-            continue;
-        }
-        // Greedily extend to the earliest position of each later predicate.
-        let mut indices = vec![start];
-        let mut current = start;
-        let mut complete = true;
-        for k in 1..predicate_count {
-            let mut found = None;
-            for (t, step) in steps.iter().enumerate().skip(current + 1) {
-                if predicate_matches(&rule.steps[k], step)? {
-                    found = Some(t);
-                    break;
-                }
-            }
-            match found {
-                Some(t) => {
-                    indices.push(t);
-                    current = t;
-                }
-                None => {
-                    complete = false;
-                    break;
-                }
-            }
-        }
-        if !complete {
-            continue;
-        }
-
-        let span = current - start;
-        let in_window = match rule.window {
-            // `window = None` → adjacent chain (span == steps.len() - 1).
-            None => span == predicate_count - 1,
-            Some(max_gap) => span as u32 <= max_gap,
-        };
-        if in_window {
-            matches.push(SequenceMatch {
-                rule_id: rule.id.clone(),
-                action: rule.action,
-                matched_indices: indices,
-                later_step: steps[current].name.to_string(),
-            });
-        }
-    }
-    Ok(matches)
-}
-
-/// Whether a step predicate matches one step view. Delegates the
-/// tool + parameter matching to the domain component (`StepPredicate::matches`,
-/// domain/rule.rs) — single source of truth for predicate semantics.
-fn predicate_matches(
-    predicate: &StepPredicate,
-    step: &StepView<'_>,
-) -> Result<bool, SequencePolicyError> {
-    predicate.matches(step.tool, step.params)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::sequence_policy::domain::{
-        ParamMatchKind, ParamPredicate, RuleAction, SafetyCaps, SequencePolicyConfig,
+        ParamMatchKind, ParamPredicate, RuleAction, SafetyCaps, SequencePolicyConfig, SequenceRule,
+        StepPredicate,
     };
     use serde_json::json;
 

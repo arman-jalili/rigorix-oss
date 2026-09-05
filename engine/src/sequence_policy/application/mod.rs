@@ -26,6 +26,7 @@
 
 pub mod dto;
 pub mod factory;
+mod matcher;
 pub mod service;
 pub mod service_impl;
 
