@@ -205,6 +205,9 @@ impl EventBusService for EventBusServiceImpl {
                         | ExecutionEvent::ApprovalRecorded { execution_id, .. }
                         | ExecutionEvent::IntentMismatchDetected { execution_id, .. }
                         | ExecutionEvent::ScopeViolationRecorded { execution_id, .. }
+                        | ExecutionEvent::SequenceRuleMatched { execution_id, .. }
+                        | ExecutionEvent::SequencePolicyDenied { execution_id, .. }
+                        | ExecutionEvent::SequencePolicyConfigError { execution_id, .. }
                         | ExecutionEvent::AuditEnvelopeCreated { execution_id, .. } => {
                             if execution_id != eid {
                                 return false;
@@ -249,6 +252,11 @@ impl EventBusService for EventBusServiceImpl {
                         ExecutionEvent::ApprovalRecorded { .. } => "approval_recorded",
                         ExecutionEvent::IntentMismatchDetected { .. } => "intent_mismatch_detected",
                         ExecutionEvent::ScopeViolationRecorded { .. } => "scope_violation_recorded",
+                        ExecutionEvent::SequenceRuleMatched { .. } => "sequence_rule_matched",
+                        ExecutionEvent::SequencePolicyDenied { .. } => "sequence_policy_denied",
+                        ExecutionEvent::SequencePolicyConfigError { .. } => {
+                            "sequence_policy_config_error"
+                        }
                     };
                     if variant_name != event_type {
                         return false;
@@ -278,7 +286,10 @@ impl EventBusService for EventBusServiceImpl {
                         ExecutionEvent::AuditEnvelopeCreated { timestamp, .. } => timestamp,
                         ExecutionEvent::ApprovalRecorded { timestamp, .. }
                         | ExecutionEvent::IntentMismatchDetected { timestamp, .. }
-                        | ExecutionEvent::ScopeViolationRecorded { timestamp, .. } => timestamp,
+                        | ExecutionEvent::ScopeViolationRecorded { timestamp, .. }
+                        | ExecutionEvent::SequenceRuleMatched { timestamp, .. }
+                        | ExecutionEvent::SequencePolicyDenied { timestamp, .. }
+                        | ExecutionEvent::SequencePolicyConfigError { timestamp, .. } => timestamp,
                     };
                     if ts < after {
                         return false;
@@ -307,7 +318,10 @@ impl EventBusService for EventBusServiceImpl {
                         ExecutionEvent::AuditEnvelopeCreated { timestamp, .. } => timestamp,
                         ExecutionEvent::ApprovalRecorded { timestamp, .. }
                         | ExecutionEvent::IntentMismatchDetected { timestamp, .. }
-                        | ExecutionEvent::ScopeViolationRecorded { timestamp, .. } => timestamp,
+                        | ExecutionEvent::ScopeViolationRecorded { timestamp, .. }
+                        | ExecutionEvent::SequenceRuleMatched { timestamp, .. }
+                        | ExecutionEvent::SequencePolicyDenied { timestamp, .. }
+                        | ExecutionEvent::SequencePolicyConfigError { timestamp, .. } => timestamp,
                     };
                     if ts > before {
                         return false;

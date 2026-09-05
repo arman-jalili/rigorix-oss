@@ -327,6 +327,7 @@ pub async fn build_orchestrator_with_budget(
             permission_enforcer,
             hook_runner,
             approval_binding,
+            sequence_policy: None,
         })
         .await
         .map_err(|e| CliError::General(format!("execution: {e}")))?;

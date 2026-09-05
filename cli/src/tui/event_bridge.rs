@@ -391,7 +391,10 @@ pub(crate) fn event_to_vm_command(event: &ExecutionEvent) -> Option<VmCommand> {
         | ExecutionEvent::AuditEnvelopeCreated { .. }
         | ExecutionEvent::ApprovalRecorded { .. }
         | ExecutionEvent::IntentMismatchDetected { .. }
-        | ExecutionEvent::ScopeViolationRecorded { .. } => None,
+        | ExecutionEvent::ScopeViolationRecorded { .. }
+        | ExecutionEvent::SequenceRuleMatched { .. }
+        | ExecutionEvent::SequencePolicyDenied { .. }
+        | ExecutionEvent::SequencePolicyConfigError { .. } => None,
     }
 }
 

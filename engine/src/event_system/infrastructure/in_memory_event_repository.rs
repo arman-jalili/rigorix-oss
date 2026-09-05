@@ -118,6 +118,9 @@ impl PersistedEventRepository for InMemoryEventRepository {
                         | ExecutionEvent::ApprovalRecorded { execution_id, .. }
                         | ExecutionEvent::IntentMismatchDetected { execution_id, .. }
                         | ExecutionEvent::ScopeViolationRecorded { execution_id, .. }
+                        | ExecutionEvent::SequenceRuleMatched { execution_id, .. }
+                        | ExecutionEvent::SequencePolicyDenied { execution_id, .. }
+                        | ExecutionEvent::SequencePolicyConfigError { execution_id, .. }
                         | ExecutionEvent::AuditEnvelopeCreated { execution_id, .. } => {
                             if execution_id != eid {
                                 return false;
@@ -159,6 +162,11 @@ impl PersistedEventRepository for InMemoryEventRepository {
                         ExecutionEvent::ApprovalRecorded { .. } => "approval_recorded",
                         ExecutionEvent::IntentMismatchDetected { .. } => "intent_mismatch_detected",
                         ExecutionEvent::ScopeViolationRecorded { .. } => "scope_violation_recorded",
+                        ExecutionEvent::SequenceRuleMatched { .. } => "sequence_rule_matched",
+                        ExecutionEvent::SequencePolicyDenied { .. } => "sequence_policy_denied",
+                        ExecutionEvent::SequencePolicyConfigError { .. } => {
+                            "sequence_policy_config_error"
+                        }
                     };
                     if variant_name != event_type {
                         return false;
@@ -186,7 +194,10 @@ impl PersistedEventRepository for InMemoryEventRepository {
                     ExecutionEvent::AuditEnvelopeCreated { timestamp, .. } => timestamp,
                     ExecutionEvent::ApprovalRecorded { timestamp, .. }
                     | ExecutionEvent::IntentMismatchDetected { timestamp, .. }
-                    | ExecutionEvent::ScopeViolationRecorded { timestamp, .. } => timestamp,
+                    | ExecutionEvent::ScopeViolationRecorded { timestamp, .. }
+                    | ExecutionEvent::SequenceRuleMatched { timestamp, .. }
+                    | ExecutionEvent::SequencePolicyDenied { timestamp, .. }
+                    | ExecutionEvent::SequencePolicyConfigError { timestamp, .. } => timestamp,
                 };
                 if let Some(after) = &input.after_timestamp
                     && ts < after
@@ -260,7 +271,10 @@ impl PersistedEventRepository for InMemoryEventRepository {
                 ExecutionEvent::AuditEnvelopeCreated { timestamp, .. } => timestamp,
                 ExecutionEvent::ApprovalRecorded { timestamp, .. }
                 | ExecutionEvent::IntentMismatchDetected { timestamp, .. }
-                | ExecutionEvent::ScopeViolationRecorded { timestamp, .. } => timestamp,
+                | ExecutionEvent::ScopeViolationRecorded { timestamp, .. }
+                | ExecutionEvent::SequenceRuleMatched { timestamp, .. }
+                | ExecutionEvent::SequencePolicyDenied { timestamp, .. }
+                | ExecutionEvent::SequencePolicyConfigError { timestamp, .. } => timestamp,
             };
             ts >= &older_than
         });

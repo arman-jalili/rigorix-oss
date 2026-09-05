@@ -1170,6 +1170,13 @@ impl ParallelExecutionServiceImpl {
         let matches = match svc.evaluate_prefix(&prefix, &next).await {
             Ok(m) => m,
             Err(e) => {
+                // R6: record the fail-closed halt (GAP-M-14 — never silent).
+                self.publish_event(ExecutionEvent::SequencePolicyConfigError {
+                    execution_id: dag_id,
+                    detail: e.to_string(),
+                    timestamp: chrono::Utc::now(),
+                })
+                .await;
                 return Err(ExecutionError::InternalError {
                     detail: format!(
                         "Sequence policy evaluation failed — run halted before dispatch (fail closed): {e}"
@@ -1178,15 +1185,43 @@ impl ParallelExecutionServiceImpl {
             }
         };
 
+        // R6 evidence: record the runtime gate decision as first-class
+        // events BEFORE acting on it (envelope `sequence_policy_findings[]`
+        // derives from these). Summaries are pre-redacted (SpanPrivacy).
         for m in &matches {
             if m.action == RuleAction::Deny {
+                self.publish_event(ExecutionEvent::SequencePolicyDenied {
+                    execution_id: dag_id,
+                    rule_id: m.rule_id.clone(),
+                    later_step: m.later_step.clone(),
+                    reason: format!(
+                        "rule '{}' denies step '{}' before dispatch",
+                        m.rule_id, m.later_step
+                    ),
+                    timestamp: chrono::Utc::now(),
+                })
+                .await;
                 return Ok(SequencePolicyVerdict::Deny {
                     rule_id: m.rule_id.clone(),
                     later_step: m.later_step.clone(),
                 });
             }
         }
+        // A previously promoted-and-approved node dispatches on resume — its
+        // promotion was already recorded when it was first gated.
         if matches.iter().any(|m| m.action == RuleAction::Promote) && !approved.contains(&node_id) {
+            for m in matches.iter().filter(|m| m.action == RuleAction::Promote) {
+                self.publish_event(ExecutionEvent::SequenceRuleMatched {
+                    execution_id: dag_id,
+                    rule_id: m.rule_id.clone(),
+                    action: "promote".to_string(),
+                    later_step: m.later_step.clone(),
+                    matched_indices: m.matched_indices.clone(),
+                    summary: m.decision_summary(),
+                    timestamp: chrono::Utc::now(),
+                })
+                .await;
+            }
             return Ok(SequencePolicyVerdict::Promote);
         }
         Ok(SequencePolicyVerdict::Dispatch)

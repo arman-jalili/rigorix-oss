@@ -126,6 +126,17 @@ pub struct AuditEnvelope {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scope_violations: Vec<ScopeViolationRef>,
 
+    /// Sequence-policy decisions recorded during the run (R6): every matched
+    /// rule — promoted later step or dispatch-boundary deny — as a redacted
+    /// finding. Answers "why did the run pause / why was this step denied"
+    /// from the signed record.
+    ///
+    /// Additive and serde-defaulted: absent in pre-sequence-policy envelopes.
+    /// Summaries redact parameter values by default (SpanPrivacy pattern);
+    /// full payloads are opt-in and never leave the local store.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sequence_policy_findings: Vec<SequencePolicyFindingRef>,
+
     /// Reference + summary of the decision context shown to the approver;
     /// the full payload is opt-in and stored locally (R4 privacy pattern).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -150,6 +161,28 @@ pub struct ApprovalRecordRef {
     pub authority: Option<String>,
     /// When the human approved.
     pub decided_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// A redacted reference to a sequence-policy decision (R6).
+///
+/// Summary fields only — the rule id, action taken, the concrete matched
+/// step indices, and a decision summary that NEVER carries step parameter
+/// values (SpanPrivacy default; the full payload is opt-in and local).
+/// Derived from `sequence_rule_matched` / `sequence_policy_denied` events
+/// at envelope build time.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SequencePolicyFindingRef {
+    /// Stable id of the rule that matched.
+    pub rule_id: String,
+    /// Action taken: `"promote"` (later step paused for a human) or
+    /// `"deny"` (step denied before dispatch).
+    pub action: String,
+    /// Name of the later matched step — the step the rule gated.
+    pub later_step: String,
+    /// Indices (into the evaluated ordered step list) of the matched steps.
+    pub matched_indices: Vec<usize>,
+    /// Redacted decision summary (parameter values never included).
+    pub summary: String,
 }
 
 /// A reference to a recorded effect-scope violation (ADR-011 R5).

@@ -108,6 +108,7 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
             scoring_results: input.scoring_results,
             approval_events: Self::approval_refs_from_events(&input.events),
             scope_violations: Self::scope_refs_from_events(&input.events),
+            sequence_policy_findings: Self::sequence_policy_findings_from_events(&input.events),
             decision_context_ref: Self::decision_context_ref_from_events(&input.events),
             signature: None,
             // GAP-M-12: an unsigned run is explicitly degraded evidence.
@@ -410,6 +411,56 @@ impl AuditEnvelopeFactoryImpl {
     }
 
     /// ADR-011 R5: derive scope-violation refs from drained events.
+    /// R6: derive redacted sequence-policy findings from the run's events
+    /// (`sequence_rule_matched` / `sequence_policy_denied`). Summaries are
+    /// pre-redacted at the source (SpanPrivacy default — parameter values
+    /// never enter event payloads).
+    fn sequence_policy_findings_from_events(
+        events: &[crate::audit::domain::ExecutionEventRef],
+    ) -> Vec<crate::audit::domain::SequencePolicyFindingRef> {
+        let mut out = Vec::new();
+        for e in events {
+            if e.event_type != "sequence_rule_matched" && e.event_type != "sequence_policy_denied" {
+                continue;
+            }
+            let Some(payload) = &e.payload else { continue };
+            let Some(rule_id) = payload.get("rule_id").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let Some(later_step) = payload.get("later_step").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let action = payload
+                .get("action")
+                .and_then(|v| v.as_str())
+                .unwrap_or("deny")
+                .to_string();
+            let matched_indices = payload
+                .get("matched_indices")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|x| x.as_u64())
+                        .map(|i| i as usize)
+                        .collect()
+                })
+                .unwrap_or_default();
+            let summary = payload
+                .get("summary")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            out.push(crate::audit::domain::SequencePolicyFindingRef {
+                rule_id: rule_id.to_string(),
+                action,
+                later_step: later_step.to_string(),
+                matched_indices,
+                summary,
+            });
+        }
+        out
+    }
+
     fn scope_refs_from_events(
         events: &[crate::audit::domain::ExecutionEventRef],
     ) -> Vec<crate::audit::domain::ScopeViolationRef> {

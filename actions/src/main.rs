@@ -405,6 +405,7 @@ async fn build_action_orchestrator(
             permission_enforcer,
             hook_runner,
             approval_binding,
+            sequence_policy: None,
         })
         .await
         .map_err(|e| format!("execution: {e}"))?;

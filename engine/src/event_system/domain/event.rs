@@ -331,6 +331,57 @@ pub enum ExecutionEvent {
         /// ISO 8601 timestamp of the event.
         timestamp: DateTime<Utc>,
     },
+
+    /// A sequence-policy rule matched at plan time (R2) or the runtime
+    /// dispatch boundary (R3): the later step was promoted (`requires_approval`
+    /// flipped — the existing approval pause decides) or denied. First-class
+    /// evidence — the envelope's `sequence_policy_findings[]` answer "why did
+    /// the run pause / why was this step denied".
+    SequenceRuleMatched {
+        /// Globally unique execution identifier.
+        execution_id: uuid::Uuid,
+        /// Stable id of the rule that matched.
+        rule_id: String,
+        /// Action taken: `"promote"` or `"deny"`.
+        action: String,
+        /// Name of the later matched step (the gated step).
+        later_step: String,
+        /// Indices (into the evaluated ordered step list) of the matched
+        /// concrete steps, in rule order.
+        matched_indices: Vec<usize>,
+        /// Redacted decision summary — parameter VALUES are never captured
+        /// (SpanPrivacy default; full payload opt-in only).
+        summary: String,
+        /// ISO 8601 timestamp of the event.
+        timestamp: DateTime<Utc>,
+    },
+
+    /// A runtime (R3) dispatch-boundary deny: the step completing a forbidden
+    /// sequence was denied BEFORE dispatch — its tool was never called.
+    SequencePolicyDenied {
+        /// Globally unique execution identifier.
+        execution_id: uuid::Uuid,
+        /// Stable id of the rule that matched.
+        rule_id: String,
+        /// Name of the later matched step that was denied.
+        later_step: String,
+        /// Human-readable reason (names the rule; never parameter values).
+        reason: String,
+        /// ISO 8601 timestamp of the event.
+        timestamp: DateTime<Utc>,
+    },
+
+    /// Sequence-policy evaluation failed (corrupt / over-cap rule config or
+    /// internal) — the run halts fail-closed. Recorded so the refusal is
+    /// never silent (GAP-M-14 pattern).
+    SequencePolicyConfigError {
+        /// Globally unique execution identifier.
+        execution_id: uuid::Uuid,
+        /// What failed (the config error detail).
+        detail: String,
+        /// ISO 8601 timestamp of the event.
+        timestamp: DateTime<Utc>,
+    },
 }
 
 /// A persisted execution event with a monotonic sequence number.
@@ -376,6 +427,9 @@ impl ExecutionEvent {
             ExecutionEvent::AuditEnvelopeDropped { .. } => "audit_envelope_dropped",
             ExecutionEvent::CircuitBreakerStateChanged { .. } => "circuit_breaker_state_changed",
             ExecutionEvent::ApprovalRecorded { .. } => "approval_recorded",
+            ExecutionEvent::SequenceRuleMatched { .. } => "sequence_rule_matched",
+            ExecutionEvent::SequencePolicyDenied { .. } => "sequence_policy_denied",
+            ExecutionEvent::SequencePolicyConfigError { .. } => "sequence_policy_config_error",
             ExecutionEvent::IntentMismatchDetected { .. } => "intent_mismatch_detected",
             ExecutionEvent::ScopeViolationRecorded { .. } => "scope_violation_recorded",
             ExecutionEvent::AuditEnvelopeCreated { .. } => "audit_envelope_created",
@@ -403,7 +457,10 @@ impl ExecutionEvent {
             | ExecutionEvent::AuditEnvelopeCreated { execution_id, .. } => execution_id,
             ExecutionEvent::ApprovalRecorded { execution_id, .. }
             | ExecutionEvent::IntentMismatchDetected { execution_id, .. }
-            | ExecutionEvent::ScopeViolationRecorded { execution_id, .. } => execution_id,
+            | ExecutionEvent::ScopeViolationRecorded { execution_id, .. }
+            | ExecutionEvent::SequenceRuleMatched { execution_id, .. }
+            | ExecutionEvent::SequencePolicyDenied { execution_id, .. }
+            | ExecutionEvent::SequencePolicyConfigError { execution_id, .. } => execution_id,
         }
     }
 
@@ -428,13 +485,26 @@ impl ExecutionEvent {
             | ExecutionEvent::AuditEnvelopeCreated { timestamp, .. }
             | ExecutionEvent::ApprovalRecorded { timestamp, .. }
             | ExecutionEvent::IntentMismatchDetected { timestamp, .. }
-            | ExecutionEvent::ScopeViolationRecorded { timestamp, .. } => timestamp,
+            | ExecutionEvent::ScopeViolationRecorded { timestamp, .. }
+            | ExecutionEvent::SequenceRuleMatched { timestamp, .. }
+            | ExecutionEvent::SequencePolicyDenied { timestamp, .. }
+            | ExecutionEvent::SequencePolicyConfigError { timestamp, .. } => timestamp,
         }
     }
 
     /// Returns a human-friendly summary string for this event.
     pub fn summary(&self) -> String {
         match self {
+            ExecutionEvent::SequenceRuleMatched { summary, .. } => summary.clone(),
+            ExecutionEvent::SequencePolicyDenied {
+                rule_id,
+                later_step,
+                reason,
+                ..
+            } => format!("Sequence policy denied: {later_step} by rule '{rule_id}' — {reason}"),
+            ExecutionEvent::SequencePolicyConfigError { detail, .. } => {
+                format!("Sequence policy config error: {detail}")
+            }
             ExecutionEvent::ApprovalRecorded {
                 step_name,
                 approver_id,
@@ -590,6 +660,33 @@ impl ExecutionEvent {
     /// tool usage, errors) and `None` for informational events.
     pub fn payload_json(&self) -> Option<serde_json::Value> {
         match self {
+            ExecutionEvent::SequenceRuleMatched {
+                rule_id,
+                action,
+                later_step,
+                matched_indices,
+                summary,
+                ..
+            } => Some(serde_json::json!({
+                "rule_id": rule_id,
+                "action": action,
+                "later_step": later_step,
+                "matched_indices": matched_indices,
+                "summary": summary,
+            })),
+            ExecutionEvent::SequencePolicyDenied {
+                rule_id,
+                later_step,
+                reason,
+                ..
+            } => Some(serde_json::json!({
+                "rule_id": rule_id,
+                "later_step": later_step,
+                "reason": reason,
+            })),
+            ExecutionEvent::SequencePolicyConfigError { detail, .. } => Some(serde_json::json!({
+                "detail": detail,
+            })),
             ExecutionEvent::ApprovalRecorded {
                 node_id,
                 step_name,

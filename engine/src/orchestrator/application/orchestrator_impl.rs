@@ -432,6 +432,7 @@ impl OrchestratorServiceImpl {
     async fn apply_plan_time_sequence_policy(
         &self,
         steps: &[super::dto::TemplateStepDef],
+        execution_id: Option<uuid::Uuid>,
     ) -> Result<
         (
             Option<Vec<super::dto::TemplateStepDef>>,
@@ -471,6 +472,31 @@ impl OrchestratorServiceImpl {
                 }
                 crate::sequence_policy::domain::RuleAction::Promote => {
                     promoted.push(m.later_step.clone());
+                    // R6 evidence: every plan-time promotion is a first-class
+                    // event before anything executes — the envelope derives
+                    // `sequence_policy_findings[]` from it. Summary is
+                    // pre-redacted (SpanPrivacy — parameter values never
+                    // captured). Plan PREVIEW (None execution id) records no
+                    // events: the finding data travels in PlanOnlyOutput.
+                    if let Some(execution_id) = execution_id {
+                        self.event_bus
+                            .publish(event_app::PublishEventInput {
+                                event: crate::event_system::domain::ExecutionEvent::SequenceRuleMatched {
+                                    execution_id,
+                                    rule_id: m.rule_id.clone(),
+                                    action: "promote".to_string(),
+                                    later_step: m.later_step.clone(),
+                                    matched_indices: m.matched_indices.clone(),
+                                    summary: m.decision_summary(),
+                                    timestamp: chrono::Utc::now(),
+                                },
+                            })
+                            .await
+                            .map_err(|e| OrchestratorError::Internal {
+                                detail: format!("Sequence-policy evidence publish failed: {e}"),
+                                source_module: "orchestrator".into(),
+                            })?;
+                    }
                     findings.push(super::dto::SequencePolicyFinding {
                         rule_id: m.rule_id.clone(),
                         later_step: m.later_step.clone(),
@@ -980,6 +1006,18 @@ impl OrchestratorService for OrchestratorServiceImpl {
                             | crate::event_system::domain::ExecutionEvent::ScopeViolationRecorded {
                                 timestamp,
                                 ..
+                            }
+                            | crate::event_system::domain::ExecutionEvent::SequenceRuleMatched {
+                                timestamp,
+                                ..
+                            }
+                            | crate::event_system::domain::ExecutionEvent::SequencePolicyDenied {
+                                timestamp,
+                                ..
+                            }
+                            | crate::event_system::domain::ExecutionEvent::SequencePolicyConfigError {
+                                timestamp,
+                                ..
                             } => *timestamp,
                         };
                         ExecutionEventInfo {
@@ -1178,8 +1216,9 @@ impl OrchestratorService for OrchestratorServiceImpl {
         // fail-closed — the forbidden sequence never executes and the denied
         // step's tool is never called. An evaluation error refuses the plan
         // too (fail closed on corrupt/over-cap rule config).
-        let (enforced_steps, _findings) =
-            self.apply_plan_time_sequence_policy(&input.steps).await?;
+        let (enforced_steps, _findings) = self
+            .apply_plan_time_sequence_policy(&input.steps, Some(execution_id))
+            .await?;
 
         // Init current execution state
         *self.current_execution.write().await = Some(CurrentExecutionState {
@@ -1559,6 +1598,18 @@ impl OrchestratorService for OrchestratorServiceImpl {
                             | crate::event_system::domain::ExecutionEvent::ScopeViolationRecorded {
                                 timestamp,
                                 ..
+                            }
+                            | crate::event_system::domain::ExecutionEvent::SequenceRuleMatched {
+                                timestamp,
+                                ..
+                            }
+                            | crate::event_system::domain::ExecutionEvent::SequencePolicyDenied {
+                                timestamp,
+                                ..
+                            }
+                            | crate::event_system::domain::ExecutionEvent::SequencePolicyConfigError {
+                                timestamp,
+                                ..
                             } => *timestamp,
                         };
                         ExecutionEventInfo {
@@ -1681,7 +1732,9 @@ impl OrchestratorService for OrchestratorServiceImpl {
     ) -> Result<PlanOnlyOutput, OrchestratorError> {
         // Same R2 gate as `run_from_template` — a preview must show the same
         // promotion/denial decisions as the run it precedes.
-        let (enforced_steps, findings) = self.apply_plan_time_sequence_policy(&input.steps).await?;
+        let (enforced_steps, findings) = self
+            .apply_plan_time_sequence_policy(&input.steps, None)
+            .await?;
         let steps: &[super::dto::TemplateStepDef] =
             enforced_steps.as_deref().unwrap_or(&input.steps);
         let graph = self.build_graph_from_steps(steps)?;
@@ -1900,6 +1953,7 @@ mod tests {
                     events: vec![],
                     scoring_results: std::collections::HashMap::new(),
                     approval_events: Vec::new(),
+                    sequence_policy_findings: Vec::new(),
                     scope_violations: Vec::new(),
                     decision_context_ref: None,
                     signature: None,
@@ -2750,6 +2804,118 @@ mod tests {
         assert!(
             remove.started_at.is_some() && add.started_at.is_some(),
             "both runbook steps must dispatch unchanged (no pause, no denial)"
+        );
+    }
+
+    /// AC#12: the matched rule + promotion are recorded as first-class
+    /// envelope events — the run's drained events carry `sequence_rule_matched`
+    /// (rule id, action, later step, matched indices) and the envelope's
+    /// `sequence_policy_findings[]` derives redacted decision summaries
+    /// (SpanPrivacy: parameter VALUES never captured by default).
+    #[tokio::test]
+    async fn test_sequence_policy_promotion_recorded_in_envelope_events_redacted() {
+        use crate::audit::application::envelope_factory_impl::AuditEnvelopeFactoryImpl;
+        use crate::audit::application::factory::AuditEnvelopeFactory;
+        use crate::event_system::application::event_bus_service_impl::EventBusServiceImpl;
+        use crate::execution_engine::application::service_impl::{
+            ParallelExecutionServiceImpl, RetryEvaluationServiceImpl,
+        };
+        use crate::execution_engine::domain::ParallelExecutorConfig;
+        use crate::sequence_policy::application::service_impl::SequencePolicyServiceImpl;
+
+        // Real engine + policy service + REAL shared event bus so the
+        // promotion evidence lands in the run's drained events.
+        let captured = Arc::new(std::sync::Mutex::new(None));
+        let bus: Arc<dyn event_app::EventBusService> = Arc::new(EventBusServiceImpl::default());
+        let executor: Arc<dyn exec_svc::ParallelExecutionService> =
+            Arc::new(ParallelExecutionServiceImpl::new(
+                ParallelExecutorConfig::default(),
+                Box::new(RetryEvaluationServiceImpl::new()),
+                Arc::clone(&bus),
+            ));
+        let policy = Arc::new(SequencePolicyServiceImpl::new(Box::new(FixedPolicyRepo {
+            config: Some(conference_policy(RuleAction::Promote)),
+        })));
+        let orch = OrchestratorServiceImpl::new(
+            OrchestratorConfig::default(),
+            Arc::new(super::super::orchestrator_mocks::MockPlanningService::new()),
+            executor,
+            Arc::new(super::super::orchestrator_mocks::MockStateService::new()),
+            Arc::new(super::super::orchestrator_mocks::MockCancellationService),
+            Arc::clone(&bus),
+            Some(Arc::new(CapturingAuditService {
+                captured: captured.clone(),
+            })),
+            Arc::new(super::super::orchestrator_mocks::MockBudgetService),
+            None,
+        )
+        .with_sequence_policy(policy);
+
+        // The promote rule pauses the runbook at the later step; the R2 gate
+        // published the SequenceRuleMatched evidence BEFORE any step ran.
+        let out = orch
+            .run_from_template(RunFromTemplateInput {
+                steps: conference_runbook(),
+                repo_root: "/tmp/t".into(),
+                execution_id: None,
+                template_name: "conf-registration".into(),
+                repository: None,
+                author: None,
+                enforcement_preset: None,
+            })
+            .await
+            .expect("promoted runbook pauses (not an error)");
+        assert_eq!(out.record.status, ExecutionStatus::PendingApproval);
+
+        // 1. The run's events carry the structured match — rule, action,
+        // later step, indices — and NO parameter values anywhere.
+        let input = captured
+            .lock()
+            .unwrap()
+            .take()
+            .expect("audit service must receive the envelope input");
+        let matched = input
+            .events
+            .iter()
+            .find(|e| e.event_type == "sequence_rule_matched")
+            .expect("promotion must be recorded as an envelope event");
+        let payload = matched
+            .payload
+            .as_ref()
+            .expect("match event carries a structured payload");
+        assert_eq!(
+            payload["rule_id"], "registration-remove-then-reassign",
+            "envelope event names the matched rule"
+        );
+        assert_eq!(payload["later_step"], "registration_add");
+        assert_eq!(payload["action"], "promote");
+        assert_eq!(payload["matched_indices"], serde_json::json!([0, 1]));
+        let event_json = serde_json::to_string(payload).expect("serialize event payload");
+        assert!(
+            !event_json.contains("conf-2026"),
+            "SpanPrivacy: parameter values must not leak into the event payload: {event_json}"
+        );
+
+        // 2. The envelope derives the redacted sequence_policy_findings[].
+        let envelope = AuditEnvelopeFactoryImpl::new(None)
+            .build_envelope(input)
+            .await
+            .expect("envelope build");
+        assert_eq!(envelope.sequence_policy_findings.len(), 1);
+        let finding = &envelope.sequence_policy_findings[0];
+        assert_eq!(finding.rule_id, "registration-remove-then-reassign");
+        assert_eq!(finding.action, "promote");
+        assert_eq!(finding.later_step, "registration_add");
+        assert_eq!(finding.matched_indices, vec![0, 1]);
+        assert!(
+            finding.summary.contains("registration_add")
+                && finding.summary.contains("parameter values redacted"),
+            "decision summary is redacted by default: {}",
+            finding.summary
+        );
+        assert!(
+            !finding.summary.contains("conf-2026"),
+            "redacted summary must not carry parameter values"
         );
     }
 
