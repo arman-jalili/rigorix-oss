@@ -56,6 +56,21 @@ const fn default_fail_closed() -> bool {
     true
 }
 
+impl Default for SafetyCaps {
+    /// Concrete default caps (the values the frozen contract tests use as
+    /// the example cap set): 100 rules / 8 step predicates per rule / window
+    /// 5 / 8 regex predicates per file. Operators who need more can extend
+    /// the caps surface; these defaults keep the rule engine bounded.
+    fn default() -> Self {
+        Self {
+            max_rules_per_file: 100,
+            max_steps_per_rule: 8,
+            max_window: 5,
+            max_regex_predicates_per_file: 8,
+        }
+    }
+}
+
 impl Default for SequencePolicyConfig {
     fn default() -> Self {
         Self {
@@ -77,7 +92,185 @@ impl SequencePolicyConfig {
     /// # Implementation
     /// TODO: enforced in the fail-closed / fail-open-absent issues (config
     /// load + parse land in `infrastructure/repository/toml_repository.rs`).
-    pub fn validate(&self, _caps: &SafetyCaps) -> Result<(), SequencePolicyError> {
-        todo!("ISSUE fail-closed/fail-open: enforce SafetyCaps over self.rules")
+    pub fn validate(&self, caps: &SafetyCaps) -> Result<(), SequencePolicyError> {
+        if self.rules.len() as u32 > caps.max_rules_per_file {
+            return Err(SequencePolicyError::RuleExceedsCaps {
+                rule: "<config>".to_string(),
+                detail: format!(
+                    "{} rules exceeds cap max_rules_per_file={}",
+                    self.rules.len(),
+                    caps.max_rules_per_file
+                ),
+            });
+        }
+
+        // Regex parameter predicates are a ReDoS / resource-exhaustion
+        // surface — counted across the whole file (module spec §Security).
+        let mut regex_predicates: u32 = 0;
+        for rule in &self.rules {
+            if rule.steps.len() as u32 > caps.max_steps_per_rule {
+                return Err(SequencePolicyError::RuleExceedsCaps {
+                    rule: rule.id.clone(),
+                    detail: format!(
+                        "{} step predicates exceeds cap max_steps_per_rule={}",
+                        rule.steps.len(),
+                        caps.max_steps_per_rule
+                    ),
+                });
+            }
+            if let Some(window) = rule.window
+                && window > caps.max_window
+            {
+                return Err(SequencePolicyError::RuleExceedsCaps {
+                    rule: rule.id.clone(),
+                    detail: format!("window {window} exceeds cap max_window={}", caps.max_window),
+                });
+            }
+            for step in &rule.steps {
+                regex_predicates += step
+                    .params
+                    .iter()
+                    .filter(|p| matches!(p.kind, super::rule::ParamMatchKind::Regex))
+                    .count() as u32;
+            }
+        }
+        if regex_predicates > caps.max_regex_predicates_per_file {
+            return Err(SequencePolicyError::RuleExceedsCaps {
+                rule: "<config>".to_string(),
+                detail: format!(
+                    "{regex_predicates} regex predicates exceeds cap max_regex_predicates_per_file={}",
+                    caps.max_regex_predicates_per_file
+                ),
+            });
+        }
+        Ok(())
+    }
+
+    /// Load-time convenience: validate against the concrete default caps.
+    pub fn validate_with_default_caps(&self) -> Result<(), SequencePolicyError> {
+        self.validate(&SafetyCaps::default())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sequence_policy::domain::{
+        ParamMatchKind, ParamPredicate, RuleAction, StepPredicate,
+    };
+
+    fn rule(id: &str, steps: usize) -> SequenceRule {
+        SequenceRule {
+            id: id.to_string(),
+            name: "n".to_string(),
+            description: "d".to_string(),
+            steps: (0..steps)
+                .map(|i| StepPredicate {
+                    tool: format!("tool_{i}"),
+                    params: vec![],
+                })
+                .collect(),
+            window: None,
+            action: RuleAction::Promote,
+        }
+    }
+
+    fn caps() -> SafetyCaps {
+        SafetyCaps {
+            max_rules_per_file: 2,
+            max_steps_per_rule: 3,
+            max_window: 5,
+            max_regex_predicates_per_file: 1,
+        }
+    }
+
+    #[test]
+    fn empty_config_validates() {
+        let config = SequencePolicyConfig::default();
+        assert!(config.validate_with_default_caps().is_ok());
+    }
+
+    #[test]
+    fn over_cap_rule_count_is_rejected() {
+        let config = SequencePolicyConfig {
+            fail_closed: true,
+            rules: vec![rule("r1", 2), rule("r2", 2), rule("r3", 2)],
+        };
+        let err = config.validate(&caps()).unwrap_err();
+        assert!(matches!(&err,
+            SequencePolicyError::RuleExceedsCaps { rule, .. } if rule == "<config>"
+        ));
+        assert!(!err.is_retriable());
+    }
+
+    #[test]
+    fn over_cap_steps_per_rule_is_rejected() {
+        let config = SequencePolicyConfig {
+            fail_closed: true,
+            rules: vec![rule("r1", 4)],
+        };
+        let err = config.validate(&caps()).unwrap_err();
+        assert!(matches!(&err,
+            SequencePolicyError::RuleExceedsCaps { rule, .. } if rule == "r1"
+        ));
+        assert!(err.to_string().contains("exceeds safety caps"));
+    }
+
+    #[test]
+    fn over_cap_window_is_rejected() {
+        let mut r = rule("r1", 2);
+        r.window = Some(6);
+        let config = SequencePolicyConfig {
+            fail_closed: true,
+            rules: vec![r],
+        };
+        let err = config.validate(&caps()).unwrap_err();
+        assert!(matches!(&err,
+            SequencePolicyError::RuleExceedsCaps { rule, .. } if rule == "r1"
+        ));
+    }
+
+    #[test]
+    fn over_cap_regex_predicates_are_rejected() {
+        // Two regex predicates > max_regex_predicates_per_file = 1.
+        let mut r = rule("r1", 1);
+        r.steps[0].params = vec![
+            ParamPredicate {
+                pointer: "/a".to_string(),
+                kind: ParamMatchKind::Regex,
+                value: ".*".to_string(),
+            },
+            ParamPredicate {
+                pointer: "/b".to_string(),
+                kind: ParamMatchKind::Regex,
+                value: "^x".to_string(),
+            },
+        ];
+        let config = SequencePolicyConfig {
+            fail_closed: true,
+            rules: vec![r],
+        };
+        let err = config.validate(&caps()).unwrap_err();
+        assert!(matches!(&err,
+            SequencePolicyError::RuleExceedsCaps { rule, .. } if rule == "<config>"
+        ));
+    }
+
+    #[test]
+    fn within_caps_validates_ok() {
+        let mut r = rule("r1", 2);
+        r.window = Some(3);
+        r.steps[0].params = vec![ParamPredicate {
+            pointer: "/a".to_string(),
+            kind: ParamMatchKind::Exact,
+            value: "x".to_string(),
+        }];
+        let config = SequencePolicyConfig {
+            fail_closed: true,
+            rules: vec![r],
+        };
+        assert!(config.validate(&caps()).is_ok());
+        // Default caps accept the same config.
+        assert!(config.validate_with_default_caps().is_ok());
     }
 }

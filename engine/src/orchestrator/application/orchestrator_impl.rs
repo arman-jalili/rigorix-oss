@@ -2595,6 +2595,81 @@ mod tests {
         );
     }
 
+    /// AC#10: a CORRUPT rule config refuses the plan end-to-end — real TOML
+    /// repository over a corrupt operator file → service load error → R2
+    /// gate propagates the evaluation failure and no step executes.
+    #[tokio::test]
+    async fn test_sequence_policy_corrupt_config_refuses_run_no_steps_execute() {
+        use crate::event_system::application::event_bus_service_impl::EventBusServiceImpl;
+        use crate::execution_engine::application::service_impl::{
+            ParallelExecutionServiceImpl, RetryEvaluationServiceImpl,
+        };
+        use crate::execution_engine::domain::ParallelExecutorConfig;
+        use crate::sequence_policy::application::service_impl::SequencePolicyServiceImpl;
+        use crate::sequence_policy::infrastructure::TomlSequencePolicyRepository;
+
+        // Corrupt operator file (unterminated rule table) on disk — the
+        // repository must surface Err, and the R2 gate must refuse the plan.
+        let path = std::env::temp_dir().join(format!("rigorix-sp-corrupt-{}.toml", Uuid::new_v4()));
+        tokio::fs::write(&path, "fail_closed = true\n[[rules]]\nid = 'unterminated")
+            .await
+            .expect("write corrupt config");
+
+        let executor: Arc<dyn exec_svc::ParallelExecutionService> =
+            Arc::new(ParallelExecutionServiceImpl::new(
+                ParallelExecutorConfig::default(),
+                Box::new(RetryEvaluationServiceImpl::new()),
+                Arc::new(EventBusServiceImpl::default()),
+            ));
+        let policy = Arc::new(SequencePolicyServiceImpl::new(Box::new(
+            TomlSequencePolicyRepository::new(&path),
+        )));
+        let orch = OrchestratorServiceImpl::new(
+            OrchestratorConfig::default(),
+            Arc::new(super::super::orchestrator_mocks::MockPlanningService::new()),
+            executor,
+            Arc::new(super::super::orchestrator_mocks::MockStateService::new()),
+            Arc::new(super::super::orchestrator_mocks::MockCancellationService),
+            Arc::new(super::super::orchestrator_mocks::MockEventBusService::new()),
+            None,
+            Arc::new(super::super::orchestrator_mocks::MockBudgetService),
+            None,
+        )
+        .with_sequence_policy(policy);
+        let eid = Uuid::new_v4();
+
+        let err = orch
+            .run_from_template(RunFromTemplateInput {
+                steps: conference_runbook(),
+                repo_root: "/tmp/t".into(),
+                execution_id: Some(eid),
+                template_name: "conf-registration".into(),
+                repository: None,
+                author: None,
+                enforcement_preset: None,
+            })
+            .await
+            .unwrap_err();
+        match &err {
+            OrchestratorError::SequencePolicyEvaluationFailed { detail } => {
+                assert!(
+                    detail.contains("Rule config invalid"),
+                    "evaluation failure must surface the config error: {detail}"
+                );
+            }
+            other => panic!("expected SequencePolicyEvaluationFailed, got {other}"),
+        }
+
+        // Fail closed before graph build: no engine session ⇒ no step of the
+        // corrupt-config runbook ever executed.
+        let state = orch.execution_state(eid).await;
+        assert!(
+            state.is_err(),
+            "no engine session ⇒ no steps executed under a corrupt rule file"
+        );
+        let _ = tokio::fs::remove_file(&path).await;
+    }
+
     /// AC#8 (engine side): plan preview surfaces the R2 decision as a
     /// structured finding BEFORE a run — a matched promote sequence reports
     /// the rule + later step and builds the later step approval-gated.
