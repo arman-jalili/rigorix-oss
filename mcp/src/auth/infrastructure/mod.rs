@@ -25,9 +25,11 @@ pub mod idp_client_impl;
 pub mod keychain_store;
 pub mod keychain_store_impl;
 pub mod token_provider;
+pub mod token_provider_impl;
 
 pub use idp_client::{DeviceAuthorization, IdpClient, IdpMetadata, TokenPoll, TokenResponse};
 pub use idp_client_impl::HttpIdpClient;
 pub use keychain_store::KeychainStore;
 pub use keychain_store_impl::KeychainStoreImpl;
 pub use token_provider::TokenProvider;
+pub use token_provider_impl::InMemoryTokenProvider;
