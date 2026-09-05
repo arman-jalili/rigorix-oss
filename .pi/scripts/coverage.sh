@@ -18,7 +18,7 @@
 set -uo pipefail
 
 COVERAGE_THRESHOLD="${COVERAGE_THRESHOLD:-60}"
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GATE=0
 LCOV=0
 
@@ -38,11 +38,10 @@ fi
 cd "$ROOT"
 
 echo "═══ Workspace coverage (cargo llvm-cov) ═══"
+SUMMARY="$(cargo llvm-cov --workspace --summary-only)"
 if [ "$LCOV" -eq 1 ]; then
   mkdir -p target
-  SUMMARY="$(cargo llvm-cov --workspace --summary-only --lcov --output-path target/coverage.lcov)"
-else
-  SUMMARY="$(cargo llvm-cov --workspace --summary-only)"
+  cargo llvm-cov --workspace --lcov --output-path target/coverage.lcov >/dev/null 2>&1
 fi
 
 # Print the per-file table + TOTAL row (summary tail), then extract the
