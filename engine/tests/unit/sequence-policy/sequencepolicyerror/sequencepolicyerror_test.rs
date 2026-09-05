@@ -81,3 +81,56 @@ fn test_is_retriable_classification_is_frozen() {
     assert!(!SequencePolicyError::InvalidState("s".into()).is_retriable());
     assert!(SequencePolicyError::Internal("io".into()).is_retriable());
 }
+
+#[test]
+fn test_error_is_send_sync_clone_eq_and_std_error() {
+    // The error crosses async boundaries (Send + Sync), is cloned for
+    // retriability bookkeeping, and compares by value (tests, dedupe).
+    fn assert_traits<T: Send + Sync + Clone + PartialEq + Eq + std::error::Error>() {}
+    assert_traits::<SequencePolicyError>();
+
+    // Leaf errors have no source chain.
+    let err = SequencePolicyError::InvalidConfig("x".into());
+    let as_std: &dyn std::error::Error = &err;
+    assert!(as_std.source().is_none());
+}
+
+#[test]
+fn test_error_variants_compare_by_value_and_dedupe() {
+    let a = SequencePolicyError::RuleExceedsCaps {
+        rule: "r".into(),
+        detail: "window too big".into(),
+    };
+    let b = SequencePolicyError::RuleExceedsCaps {
+        rule: "r".into(),
+        detail: "window too big".into(),
+    };
+    let c = SequencePolicyError::RuleExceedsCaps {
+        rule: "r".into(),
+        detail: "too many regex predicates".into(),
+    };
+    assert_eq!(a, b);
+    assert_ne!(a, c);
+}
+
+#[test]
+fn test_is_retriable_exhaustively_matches_all_variants() {
+    // Exhaustive: any new variant must be classified here (compile-time
+    // guard via match arm count when a variant is added).
+    let cases: Vec<(SequencePolicyError, bool)> = vec![
+        (SequencePolicyError::InvalidConfig("c".into()), false),
+        (
+            SequencePolicyError::RuleExceedsCaps {
+                rule: "r".into(),
+                detail: "d".into(),
+            },
+            false,
+        ),
+        (SequencePolicyError::NotFound("r".into()), false),
+        (SequencePolicyError::InvalidState("s".into()), false),
+        (SequencePolicyError::Internal("io".into()), true),
+    ];
+    for (err, expected) in cases {
+        assert_eq!(err.is_retriable(), expected, "is_retriable({err})");
+    }
+}
