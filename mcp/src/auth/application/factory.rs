@@ -21,6 +21,7 @@ use crate::auth::domain::{AuthError, IdpConfig};
 use crate::auth::infrastructure::{IdpClient, KeychainStore, TokenProvider};
 
 use super::service::AuthService;
+use super::service_impl::AuthServiceImpl;
 
 /// Factory for composing an [`AuthService`] from its ports.
 ///
@@ -42,4 +43,48 @@ pub trait AuthServiceFactory: Send + Sync {
         tokens: Arc<dyn TokenProvider>,
         attestation: Arc<dyn IdentityAttestationService>,
     ) -> Result<Arc<dyn AuthService>, AuthError>;
+}
+
+// ---------------------------------------------------------------------------
+// AuthServiceFactoryImpl
+// ---------------------------------------------------------------------------
+
+/// Default [`AuthServiceFactory`] implementation.
+///
+/// ISSUE-AUTH-1 — composes [`AuthServiceImpl`] from the injected ports.
+/// The factory is a thin composition root; construction errors surface as
+/// `AuthError::Configuration` (e.g. an empty/invalid port set).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AuthServiceFactoryImpl;
+
+impl AuthServiceFactoryImpl {
+    /// Create the factory.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait]
+impl AuthServiceFactory for AuthServiceFactoryImpl {
+    async fn create(
+        &self,
+        config: IdpConfig,
+        idp_client: Arc<dyn IdpClient>,
+        keychain: Arc<dyn KeychainStore>,
+        tokens: Arc<dyn TokenProvider>,
+        attestation: Arc<dyn IdentityAttestationService>,
+    ) -> Result<Arc<dyn AuthService>, AuthError> {
+        if config.issuer().is_empty() || config.client_id().is_empty() {
+            return Err(AuthError::Configuration(
+                "cannot compose AuthService with an empty IdP configuration".into(),
+            ));
+        }
+        Ok(Arc::new(AuthServiceImpl::new(
+            config,
+            idp_client,
+            keychain,
+            tokens,
+            attestation,
+        )))
+    }
 }
