@@ -2670,6 +2670,89 @@ mod tests {
         let _ = tokio::fs::remove_file(&path).await;
     }
 
+    /// AC#11: NO config file → the run executes UNCHANGED — the same
+    /// remove-then-add runbook that a rule file would pause/refuse runs to
+    /// completion with zero gating (fail-open-absent, status quo).
+    #[tokio::test]
+    async fn test_sequence_policy_absent_config_run_executes_unchanged() {
+        use crate::event_system::application::event_bus_service_impl::EventBusServiceImpl;
+        use crate::execution_engine::application::service_impl::{
+            ParallelExecutionServiceImpl, RetryEvaluationServiceImpl,
+        };
+        use crate::execution_engine::domain::ParallelExecutorConfig;
+        use crate::sequence_policy::application::service_impl::SequencePolicyServiceImpl;
+        use crate::sequence_policy::infrastructure::TomlSequencePolicyRepository;
+
+        // Absent config: repository path points at a file that does not exist
+        // → Ok(None) → no rules → no gating (never an error).
+        let absent = std::env::temp_dir().join(format!(
+            "rigorix-sp-absent-{}/sequence-policy.toml",
+            Uuid::new_v4()
+        ));
+
+        let executor: Arc<dyn exec_svc::ParallelExecutionService> =
+            Arc::new(ParallelExecutionServiceImpl::new(
+                ParallelExecutorConfig::default(),
+                Box::new(RetryEvaluationServiceImpl::new()),
+                Arc::new(EventBusServiceImpl::default()),
+            ));
+        let policy = Arc::new(SequencePolicyServiceImpl::new(Box::new(
+            TomlSequencePolicyRepository::new(&absent),
+        )));
+        let orch = OrchestratorServiceImpl::new(
+            OrchestratorConfig::default(),
+            Arc::new(super::super::orchestrator_mocks::MockPlanningService::new()),
+            executor,
+            Arc::new(super::super::orchestrator_mocks::MockStateService::new()),
+            Arc::new(super::super::orchestrator_mocks::MockCancellationService),
+            Arc::new(super::super::orchestrator_mocks::MockEventBusService::new()),
+            None,
+            Arc::new(super::super::orchestrator_mocks::MockBudgetService),
+            None,
+        )
+        .with_sequence_policy(policy);
+
+        // The SAME conference runbook the rules would pause (promote) or
+        // refuse (deny) — with no config file it must run UNCHANGED.
+        let out = orch
+            .run_from_template(RunFromTemplateInput {
+                steps: conference_runbook(),
+                repo_root: "/tmp/t".into(),
+                execution_id: None,
+                template_name: "conf-registration".into(),
+                repository: None,
+                author: None,
+                enforcement_preset: None,
+            })
+            .await
+            .expect("absent config must not refuse the run");
+        assert_ne!(
+            out.record.status,
+            ExecutionStatus::PendingApproval,
+            "no rule file ⇒ nothing pauses the run"
+        );
+
+        let st = orch.execution_state(out.execution_id).await.expect("state");
+        assert!(!st.paused, "no gating without a rule file");
+        assert!(st.is_complete, "run completes end-to-end");
+
+        // Both steps were dispatched exactly as without any policy service —
+        // the remove-then-add pair ran unchanged.
+        let states = st.node_states;
+        let remove = states
+            .values()
+            .find(|s| s.node_name == "registration_remove")
+            .expect("remove node state");
+        let add = states
+            .values()
+            .find(|s| s.node_name == "registration_add")
+            .expect("add node state");
+        assert!(
+            remove.started_at.is_some() && add.started_at.is_some(),
+            "both runbook steps must dispatch unchanged (no pause, no denial)"
+        );
+    }
+
     /// AC#8 (engine side): plan preview surfaces the R2 decision as a
     /// structured finding BEFORE a run — a matched promote sequence reports
     /// the rule + later step and builds the later step approval-gated.
