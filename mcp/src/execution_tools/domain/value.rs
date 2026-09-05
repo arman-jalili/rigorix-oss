@@ -450,6 +450,23 @@ pub struct ValidationResult {
     /// Optional estimated cost of execution.
     #[serde(default)]
     estimated_cost: Option<CostEstimate>,
+
+    /// Structured sequence-policy findings from R2 plan-time evaluation
+    /// (module sequence-policy AC#8): matched rules and the action applied
+    /// to their later step, surfaced by `rigorix_validate_plan` BEFORE a run.
+    #[serde(default)]
+    findings: Vec<SequencePolicyFinding>,
+}
+
+/// One structured sequence-policy finding (R2 plan-time evaluation).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SequencePolicyFinding {
+    /// Stable id of the rule that matched.
+    pub rule_id: String,
+    /// Name of the later matched step the rule gates.
+    pub later_step: String,
+    /// Action applied to the later step: `"promote"` or `"deny"`.
+    pub action: String,
 }
 
 impl ValidationResult {
@@ -465,7 +482,14 @@ impl ValidationResult {
             warnings,
             errors,
             estimated_cost,
+            findings: Vec::new(),
         }
+    }
+
+    /// Attach structured sequence-policy findings.
+    pub fn with_findings(mut self, findings: Vec<SequencePolicyFinding>) -> Self {
+        self.findings = findings;
+        self
     }
 
     /// Whether the plan is valid.
@@ -486,6 +510,11 @@ impl ValidationResult {
     /// Optional cost estimate.
     pub fn estimated_cost(&self) -> Option<&CostEstimate> {
         self.estimated_cost.as_ref()
+    }
+
+    /// Structured sequence-policy findings.
+    pub fn findings(&self) -> &[SequencePolicyFinding] {
+        &self.findings
     }
 }
 

@@ -85,6 +85,30 @@ pub struct PlanOnlyOutput {
 
     /// The proposed TaskGraph structure.
     pub graph: serde_json::Value,
+
+    /// Structured sequence-policy findings from R2 plan-time evaluation.
+    ///
+    /// Populated when a sequence-policy service is configured and a rule
+    /// matched a `promote` sequence — surfaced to plan consumers (e.g. MCP
+    /// `rigorix_validate_plan`) so the gating decision is visible **before**
+    /// a run starts. Empty when no service is configured or no rule matched.
+    /// (A matched `deny` rule refuses the plan instead — it is reported as an
+    /// `OrchestratorError::SequencePolicyDenied`, never as a silent pass.)
+    #[serde(default)]
+    pub sequence_findings: Vec<SequencePolicyFinding>,
+}
+
+/// One matched sequence from plan-time evaluation (R2), surfaced to plan
+/// preview consumers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SequencePolicyFinding {
+    /// Stable id of the rule that matched.
+    pub rule_id: String,
+    /// Name of the later matched step that the rule gates.
+    pub later_step: String,
+    /// Action applied to the later step: `"promote"` (the step is built
+    /// `requires_approval = true`) or `"deny"`.
+    pub action: String,
 }
 
 // ---------------------------------------------------------------------------

@@ -514,6 +514,7 @@ mod tests {
                 rigorix_engine::orchestrator::application::dto::PlanOnlyOutput {
                     plan: serde_json::json!({"steps": []}),
                     graph: serde_json::json!({"nodes": []}),
+                    sequence_findings: Vec::new(),
                 },
             )
         }
@@ -595,6 +596,7 @@ mod tests {
                 rigorix_engine::orchestrator::application::dto::PlanOnlyOutput {
                     plan: serde_json::json!({"mode": "from_template"}),
                     graph: serde_json::json!({"nodes": []}),
+                    sequence_findings: Vec::new(),
                 },
             )
         }
