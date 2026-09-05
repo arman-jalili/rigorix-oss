@@ -1178,7 +1178,8 @@ impl OrchestratorService for OrchestratorServiceImpl {
         // fail-closed — the forbidden sequence never executes and the denied
         // step's tool is never called. An evaluation error refuses the plan
         // too (fail closed on corrupt/over-cap rule config).
-        let (enforced_steps, _findings) = self.apply_plan_time_sequence_policy(&input.steps).await?;
+        let (enforced_steps, _findings) =
+            self.apply_plan_time_sequence_policy(&input.steps).await?;
 
         // Init current execution state
         *self.current_execution.write().await = Some(CurrentExecutionState {
@@ -2603,8 +2604,7 @@ mod tests {
         let policy = Arc::new(SequencePolicyServiceImpl::new(Box::new(FixedPolicyRepo {
             config: Some(conference_policy(RuleAction::Promote)),
         })));
-        let orch =
-            OrchestratorServiceImpl::default_test().with_sequence_policy(policy);
+        let orch = OrchestratorServiceImpl::default_test().with_sequence_policy(policy);
 
         let out = orch
             .plan_from_template(PlanFromTemplateInput {
@@ -2644,8 +2644,7 @@ mod tests {
         let policy = Arc::new(SequencePolicyServiceImpl::new(Box::new(FixedPolicyRepo {
             config: Some(conference_policy(RuleAction::Deny)),
         })));
-        let orch =
-            OrchestratorServiceImpl::default_test().with_sequence_policy(policy);
+        let orch = OrchestratorServiceImpl::default_test().with_sequence_policy(policy);
 
         let err = orch
             .plan_from_template(PlanFromTemplateInput {
