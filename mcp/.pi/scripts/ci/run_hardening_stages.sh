@@ -232,6 +232,11 @@ run_stage "13" "enterprise-proxy_proofing" \
     "${SCRIPTS_DIR}/stage_enterprise-proxy_proofing.sh" \
     "always"
 
+# Stage 14: auth Proofing
+run_stage "14" "auth_proofing" \
+    "${SCRIPTS_DIR}/stage_auth_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""
