@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-PROOFING"
-  epic: "approval"
+  epic: "sequence-policy"
   component: "Proofing & CI Enforcement"
-  module: "approval"
+  module: "sequence-policy"
   status: planned
   priority: critical
   dependencies: []
@@ -26,7 +26,7 @@ guardian_issue:
       - Updated CI stage configuration
 
   canonical_references:
-    - module: ".pi/architecture/modules/approval.md"
+    - module: ".pi/architecture/modules/sequence-policy.md"
 
   acceptance_criteria:
     - "All proofing scripts created and executable"
@@ -47,11 +47,11 @@ guardian_issue:
     every build for zero token cost.
 
   file_changes:
-    - "create: .pi/scripts/ci/check_approval_contracts.sh"
+    - "create: .pi/scripts/ci/check_sequence-policy_contracts.sh"
     - "modify: .pi/scripts/ci/run_hardening_stages.sh"
 ---
 
-# Proofing & CI Enforcement: approval
+# Proofing & CI Enforcement: sequence-policy
 
 ## Intent
 
@@ -69,10 +69,12 @@ automatic — no human review needed for routine checks.
 
 ### Coverage Threshold Check (real coverage)
 - Coverage is measured by the REAL workspace tool: `cargo llvm-cov` via
-  `.pi/scripts/coverage.sh --gate` (repo-wide gate, default 60%; ci.yml Stage 3b)
-- Do NOT create a per-module `*_coverage.sh` script — heuristic grep-based
-  module coverage scripts were removed repo-wide in #780 (coverage-theater);
-  the llvm-cov `target/coverage.lcov` artifact provides the per-file breakdown
+  `.pi/scripts/coverage.sh --gate` (repo-wide line-coverage gate, default
+  60%; wired in ci.yml Stage 3b / local-ci Stage 4b)
+- Do NOT create a per-module `*_coverage.sh` script — the heuristic
+  grep-based module coverage scripts were removed repo-wide in #780 as
+  coverage-theater; the llvm-cov `target/coverage.lcov` artifact provides
+  the per-file breakdown instead
 
 ### CI Integration
 Each check becomes a CI stage in the hardening pipeline — it runs automatically
@@ -82,16 +84,16 @@ on every PR. No LLM cost. No human review. Just pass or fail.
 
 | Script | Purpose | Location |
 |--------|---------|----------|
-| check_approval_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
-| stage_approval_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
+| check_sequence-policy_contracts.sh | Validate contract implementation | .pi/scripts/ci/ |
+| stage_sequence-policy_proofing.sh | CI stage wrapper | .pi/scripts/ci/ |
 
 ## CI Pipeline Update
 
 Add the new stage to `run_hardening_stages.sh`:
 
 ```bash
-run_stage "11" "approval_proofing" \
-    "${SCRIPTS_DIR}/stage_approval_proofing.sh" \
+run_stage "11" "sequence-policy_proofing" \
+    "${SCRIPTS_DIR}/stage_sequence-policy_proofing.sh" \
     "always"
 ```
 

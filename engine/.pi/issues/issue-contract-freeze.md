@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: "approval"
+  epic: "sequence-policy"
   component: "Contract Freeze"
-  module: "approval"
+  module: "sequence-policy"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/approval.md"
+    - module: ".pi/architecture/modules/sequence-policy.md"
 
   acceptance_criteria:
     - "All component interfaces defined as stubs (TODO bodies)"
@@ -47,30 +47,34 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/approval/domain/"
-    - "create: src/approval/application/"
-    - "create: src/approval/infrastructure/"
-    - "create: src/approval/interfaces/"
+    - "create: src/sequence-policy/domain/"
+    - "create: src/sequence-policy/application/"
+    - "create: src/sequence-policy/infrastructure/"
+    - "create: src/sequence-policy/interfaces/"
 ---
 
-# Contract Freeze: approval
+# Contract Freeze: sequence-policy
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the approval
+Define and freeze all public interfaces, contracts, and schemas for the sequence-policy
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- ExecutionIntent
-- IntentHash
-- ApprovalRecord
-- DecisionContext
-- ScopeViolation
-- ApprovalService
-- ApproveInput / ApproveOutput
-- ApprovalError
+- SequenceRule
+- SequencePolicyService
+- SequencePolicyError
+- StepPredicate
+- Matcher
+- Orchestrator (R2)
+- MCP surface
+- Execution Engine (R3)
+- Fail-closed
+- Fail-open-absent
+- Audit (R6)
+- Permission (R5)
 
 ## What Must Be Frozen
 
@@ -106,21 +110,20 @@ must satisfy contracts, not the other way around.
 
 | # | Component | Criterion | Verify In |
 |---|-----------|-----------|-----------|
-| 1 | ExecutionIntent | `from_node` on sealed node produces canonical intent; `canonical_bytes` deterministic (property test) | unit test |
-| 2 | IntentHash | Same tool+intent+scope → same hash; any byte change → different hash | unit test |
-| 3 | ApprovalRecord | Serde round-trip preserves all fields; status transitions valid (Pending → Consumed/Expired/Superseded) | unit test |
-| 4 | ApprovalService | approve → dispatch identical intent → executes; envelope contains signed `ApprovalRecorded` | integration test |
-| 5 | ApprovalService | approve → intent mutated (simulated upstream change / tampered state) → **HALT before dispatch**, `IntentMismatch`, tool never called (spy tool asserts) | integration test |
-| 6 | ApprovalService | Cross-process: pause in A, tamper persisted intent in state file, resume in B → halted, re-approval required | integration test |
-| 7 | ApprovalService | Retry path: failed approved node retries with same intent → per-attempt verify passes; a failed attempt does NOT consume; consume happens once on terminal outcome | integration test |
-| 8 | ApprovalService | Replay: consumed approval replayed against same step → rejected (single-use + nonce) | integration test |
-| 9 | ApprovalService | TTL: approval expires between approve and dispatch → `Invalid(Expired)`, no dispatch | unit test |
-| 10 | ApprovalService | Migration: persisted `approved` without records → invalidated on hydrate, re-approval required | integration test |
-| 11 | ScopeViolation | File tool outside declared scope → `scope_violation` flagged in envelope | integration test |
-| 12 | ScopeViolation | `run_command` side-effect on `src/auth.ts` (script) → caught by **git-diff oracle** → `scope_violation` | integration test |
-| 13 | DecisionContext | approve with decision_context → envelope contains context ref + summary; full payload opt-in | integration test |
-| 14 | DecisionContext | api_key inside decision_context → redacted in summary (SpanPrivacy reuse) | unit test |
-| 15 | ApprovalError | All variants, `Display`, `is_retriable()` (IntentMismatch → non-retriable) | unit test |
+| 1 | SequenceRule | TOML parse → rule with ordered predicates + action; serde round-trip preserves all fields | unit test |
+| 2 | StepPredicate | Tool glob + param exact/glob/regex match correctly; non-matching params do not match | unit test |
+| 3 | Matcher | Adjacent pair match; windowed match (gap ≤ window); out-of-window does not match | unit test |
+| 4 | Matcher | Determinism property test: same ordered plan + rules → same match set | unit test (property) |
+| 5 | SequencePolicyService | `evaluate_plan` finds remove-then-add pair in a runbook; returns later step id | unit test |
+| 6 | Orchestrator (R2) | Runbook containing remove-then-add: later step is built `requires_approval=true`; run pauses; approve → executes; reject → skipped | integration test |
+| 7 | Orchestrator (R2) | `deny` rule: later step fails with `SequencePolicyDenied`, tool never called (spy tool asserts) | integration test |
+| 8 | MCP surface | `rigorix_validate_plan` on a plan with a matched sequence returns a structured finding before run | integration test |
+| 9 | Execution Engine (R3) | Dynamic plan completes step A, then proposes B (would complete) → B promoted/denied per rule | integration test |
+| 10 | Fail-closed | Corrupt rule config → plan refused, no steps execute | integration test |
+| 11 | Fail-open-absent | No config file → run executes unchanged | integration test |
+| 12 | Audit (R6) | Matched rule + promotion recorded in envelope events; decision summaries redact parameter values by default (SpanPrivacy pattern) | integration test |
+| 13 | Permission (R5) | `workspace_write` agent file-write to `.rigorix/**` denied by default permission config | integration test |
+| 14 | SequencePolicyError | All variants, `Display`, `is_retriable()` | unit test |
 
 
 

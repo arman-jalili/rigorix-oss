@@ -122,3 +122,56 @@ mod scored_evaluation {
         mod scoringresult_test;
     }
 }
+#[path = "sequence-policy"]
+mod sequence_policy {
+    #[path = "audit-r6"]
+    mod audit_r6 {
+        #[path = "audit-r6_test.rs"]
+        mod audit_r6_test;
+    }
+    #[path = "execution-engine-r3"]
+    mod execution_engine_r3 {
+        #[path = "execution-engine-r3_test.rs"]
+        mod execution_engine_r3_test;
+    }
+    #[path = "fail-closed"]
+    mod fail_closed {
+        #[path = "fail-closed_test.rs"]
+        mod fail_closed_test;
+    }
+    #[path = "fail-open-absent"]
+    mod fail_open_absent {
+        #[path = "fail-open-absent_test.rs"]
+        mod fail_open_absent_test;
+    }
+    mod matcher {
+        mod matcher_test;
+    }
+    #[path = "mcp-surface"]
+    mod mcp_surface {
+        #[path = "mcp-surface_test.rs"]
+        mod mcp_surface_test;
+    }
+    #[path = "orchestrator-r2"]
+    mod orchestrator_r2 {
+        #[path = "orchestrator-r2_test.rs"]
+        mod orchestrator_r2_test;
+    }
+    #[path = "permission-r5"]
+    mod permission_r5 {
+        #[path = "permission-r5_test.rs"]
+        mod permission_r5_test;
+    }
+    mod sequencepolicyerror {
+        mod sequencepolicyerror_test;
+    }
+    mod sequencepolicyservice {
+        mod sequencepolicyservice_test;
+    }
+    mod sequencerule {
+        mod sequencerule_test;
+    }
+    mod steppredicate {
+        mod steppredicate_test;
+    }
+}
