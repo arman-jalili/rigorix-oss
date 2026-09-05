@@ -115,3 +115,117 @@ pub struct SequenceRule {
     #[serde(default)]
     pub action: RuleAction,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The canonical conference rule exactly as an operator authors it in
+    /// `.rigorix/sequence-policy.toml` (module spec §Configuration).
+    const CONFERENCE_RULE_TOML: &str = r#"
+[[rules]]
+id = "registration-remove-then-reassign"
+name = "No remove-then-reassign of a full event seat"
+description = "Removing an attendee to free a seat, then registering the requester, is never autonomous"
+steps = [
+  { tool = "registration_remove", params = [{ pointer = "/event_id", kind = "exact", value = "conf-2026" }] },
+  { tool = "registration_add",    params = [{ pointer = "/event_id", kind = "exact", value = "conf-2026" }] },
+]
+window = 3
+action = "promote"
+"#;
+
+    /// Wrapper struct mirroring the `[[rules]]` table under `[sequence_policy]`.
+    #[derive(serde::Deserialize)]
+    struct RulesFile {
+        #[serde(default)]
+        rules: Vec<SequenceRule>,
+    }
+
+    #[test]
+    fn toml_parse_yields_rule_with_ordered_predicates_and_action() {
+        let file: RulesFile =
+            toml::from_str(CONFERENCE_RULE_TOML).expect("operator TOML parses into SequenceRule");
+        assert_eq!(file.rules.len(), 1);
+        let rule = &file.rules[0];
+
+        assert_eq!(rule.id, "registration-remove-then-reassign");
+        assert_eq!(rule.name, "No remove-then-reassign of a full event seat");
+        // Ordered predicates preserved in rule order.
+        assert_eq!(rule.steps.len(), 2);
+        assert_eq!(rule.steps[0].tool, "registration_remove");
+        assert_eq!(rule.steps[1].tool, "registration_add");
+        // Param predicates (JSON pointer + kind + value) survive the parse.
+        assert_eq!(rule.steps[0].params[0].pointer, "/event_id");
+        assert_eq!(rule.steps[0].params[0].kind, ParamMatchKind::Exact);
+        assert_eq!(rule.steps[0].params[0].value, "conf-2026");
+        assert_eq!(rule.window, Some(3));
+        assert_eq!(rule.action, RuleAction::Promote);
+    }
+
+    #[test]
+    fn toml_round_trip_preserves_all_fields() {
+        let file: RulesFile = toml::from_str(CONFERENCE_RULE_TOML).expect("parse");
+        let rule = &file.rules[0];
+
+        // Serialize back to TOML and re-parse — every field must survive.
+        let encoded = toml::to_string(rule).expect("serialize to TOML");
+        let decoded: SequenceRule = toml::from_str(&encoded).expect("re-parse TOML");
+        assert_eq!(decoded, *rule);
+    }
+
+    #[test]
+    fn toml_parse_defaults_action_to_promote_and_params_to_empty() {
+        // Action omitted → promote (safe default). Param predicate omitted →
+        // tool-only match. Window omitted → adjacent-pair semantics.
+        let minimal: SequenceRule = toml::from_str(
+            r#"
+id = "tool-only-pair"
+name = "n"
+description = "d"
+steps = [
+  { tool = "registration_remove" },
+  { tool = "registration_add" },
+]
+"#,
+        )
+        .expect("minimal rule parses");
+        assert_eq!(minimal.action, RuleAction::Promote);
+        assert_eq!(minimal.window, None);
+        assert!(minimal.steps[0].params.is_empty());
+        assert!(minimal.steps[1].params.is_empty());
+    }
+
+    #[test]
+    fn toml_parse_supports_deny_action_and_glob_and_regex_kinds() {
+        let deny: SequenceRule = toml::from_str(
+            r#"
+id = "hard-deny"
+name = "n"
+description = "d"
+steps = [
+  { tool = "registration_*", params = [{ pointer = "/event_id", kind = "glob", value = "conf-*" }] },
+  { tool = "registration_add" },
+]
+action = "deny"
+"#,
+        )
+        .expect("deny rule parses");
+        assert_eq!(deny.action, RuleAction::Deny);
+        assert_eq!(deny.steps[0].params[0].kind, ParamMatchKind::Glob);
+
+        let regex_rule: SequenceRule = toml::from_str(
+            r#"
+id = "regex-param"
+name = "n"
+description = "d"
+steps = [
+  { tool = "user_delete", params = [{ pointer = "/email", kind = "regex", value = "^admin@.*" }] },
+  { tool = "user_create" },
+]
+"#,
+        )
+        .expect("regex rule parses");
+        assert_eq!(regex_rule.steps[0].params[0].kind, ParamMatchKind::Regex);
+    }
+}
