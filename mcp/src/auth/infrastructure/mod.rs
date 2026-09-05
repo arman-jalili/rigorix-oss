@@ -21,9 +21,11 @@
 //! - Secrets cross boundaries only as `Secret<T>` wrappers
 
 pub mod idp_client;
+pub mod idp_client_impl;
 pub mod keychain_store;
 pub mod token_provider;
 
 pub use idp_client::{DeviceAuthorization, IdpClient, IdpMetadata, TokenPoll, TokenResponse};
+pub use idp_client_impl::HttpIdpClient;
 pub use keychain_store::KeychainStore;
 pub use token_provider::TokenProvider;
