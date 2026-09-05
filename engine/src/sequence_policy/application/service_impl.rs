@@ -38,7 +38,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::sequence_policy::domain::{
-    ParamMatchKind, ParamPredicate, SequenceMatch, SequencePolicyError, SequenceRule, StepPredicate,
+    SequenceMatch, SequencePolicyError, SequenceRule, StepPredicate,
 };
 use crate::sequence_policy::infrastructure::repository::SequencePolicyRepository;
 
@@ -204,105 +204,22 @@ fn match_rule(
     Ok(matches)
 }
 
-/// Whether a step predicate matches one step view (tool + parameter
-/// predicates). An invalid regex in a parameter predicate is a config error
-/// (fail closed).
+/// Whether a step predicate matches one step view. Delegates the
+/// tool + parameter matching to the domain component (`StepPredicate::matches`,
+/// domain/rule.rs) — single source of truth for predicate semantics.
 fn predicate_matches(
     predicate: &StepPredicate,
     step: &StepView<'_>,
 ) -> Result<bool, SequencePolicyError> {
-    if !tool_matches(&predicate.tool, step.tool) {
-        return Ok(false);
-    }
-    for pp in &predicate.params {
-        match json_pointer_lookup(step.params, &pp.pointer) {
-            // The pointed-to parameter is absent → the predicate does not
-            // match (non-matching params must not match).
-            None => return Ok(false),
-            Some(actual) => {
-                if !value_matches(actual, pp)? {
-                    return Ok(false);
-                }
-            }
-        }
-    }
-    Ok(true)
-}
-
-/// Exact or glob (`*` wildcard) tool-name match.
-fn tool_matches(pattern: &str, tool: &str) -> bool {
-    if !pattern.contains('*') {
-        return pattern == tool;
-    }
-    let p: Vec<char> = pattern.chars().collect();
-    let t: Vec<char> = tool.chars().collect();
-    let (mut pi, mut ti) = (0usize, 0usize);
-    let mut star: Option<usize> = None;
-    let mut backtrack_ti = 0usize;
-    while ti < t.len() {
-        if pi < p.len() && (p[pi] == '*' || p[pi] == t[ti]) {
-            if p[pi] == '*' {
-                star = Some(pi);
-                backtrack_ti = ti;
-                pi += 1;
-            } else {
-                pi += 1;
-                ti += 1;
-            }
-        } else if let Some(star_pi) = star {
-            pi = star_pi + 1;
-            backtrack_ti += 1;
-            ti = backtrack_ti;
-        } else {
-            return false;
-        }
-    }
-    while pi < p.len() && p[pi] == '*' {
-        pi += 1;
-    }
-    pi == p.len()
-}
-
-/// Resolve a JSON pointer (`/a/b`) against a value object. Array-index
-/// segments are not part of the frozen step-parameter schema.
-fn json_pointer_lookup<'a>(value: &'a Value, pointer: &str) -> Option<&'a Value> {
-    if pointer.is_empty() {
-        return Some(value);
-    }
-    let mut current = value;
-    for segment in pointer.split('/').skip(1) {
-        match current {
-            Value::Object(map) => current = map.get(segment)?,
-            _ => return None,
-        }
-    }
-    Some(current)
-}
-
-/// Apply a parameter predicate's kind (exact / glob / regex) to an actual
-/// value. Invalid regex patterns surface as a config error (fail closed).
-fn value_matches(actual: &Value, predicate: &ParamPredicate) -> Result<bool, SequencePolicyError> {
-    let text = match actual {
-        Value::String(s) => s.clone(),
-        other => other.to_string(),
-    };
-    match predicate.kind {
-        ParamMatchKind::Exact => Ok(text == predicate.value),
-        ParamMatchKind::Glob => Ok(tool_matches(&predicate.value, &text)),
-        ParamMatchKind::Regex => match regex::Regex::new(&predicate.value) {
-            Ok(re) => Ok(re.is_match(&text)),
-            Err(e) => Err(SequencePolicyError::InvalidConfig(format!(
-                "regex predicate '{}' failed to compile: {e}",
-                predicate.value
-            ))),
-        },
-    }
+    predicate.matches(step.tool, step.params)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sequence_policy::domain::{RuleAction, SafetyCaps, SequencePolicyConfig};
+    use crate::sequence_policy::domain::{
+        ParamMatchKind, ParamPredicate, RuleAction, SafetyCaps, SequencePolicyConfig,
+    };
     use serde_json::json;
 
     /// In-memory test repository serving a fixed config / outcome.
