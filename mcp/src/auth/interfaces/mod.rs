@@ -19,3 +19,6 @@
 
 pub mod mcp;
 pub mod sse_auth;
+pub mod sse_auth_impl;
+
+pub use sse_auth_impl::SseAuthGateImpl;

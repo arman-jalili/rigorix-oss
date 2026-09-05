@@ -153,3 +153,11 @@ pub trait AuthToolHandler: Send + Sync {
     /// Returns `{ status: "logged_out" }`.
     async fn handle_auth_logout(&self, params: Value) -> Result<Value, AuthError>;
 }
+
+// ---------------------------------------------------------------------------
+// Handler implementation (ISSUE-AUTH-5)
+// ---------------------------------------------------------------------------
+
+pub mod handler_impl;
+
+pub use handler_impl::AuthToolHandlerImpl;
