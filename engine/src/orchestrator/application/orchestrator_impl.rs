@@ -417,11 +417,13 @@ impl OrchestratorServiceImpl {
     /// graph, so matched later steps are promoted at the same call site that
     /// already applies `step.requires_approval`.
     ///
-    /// Returns:
-    /// - `Ok(None)` — no service configured, or no rule matched (runbook
-    ///   executes with its declared approval flags, unchanged).
-    /// - `Ok(Some(steps))` — at least one `promote` rule matched; the later
-    ///   matched step(s) have `requires_approval = true` set.
+    /// Returns `(enforced, findings)`:
+    /// - `enforced: None` — no service configured, or no rule matched
+    ///   (runbook executes with its declared approval flags, unchanged).
+    /// - `enforced: Some(steps)` — at least one `promote` rule matched; the
+    ///   later matched step(s) have `requires_approval = true` set.
+    /// - `findings` — structured `SequencePolicyFinding`s for every matched
+    ///   `promote` rule (surfaced by plan preview to MCP `validate_plan`).
     /// - `Err(SequencePolicyDenied)` — a `deny` rule matched: the plan is
     ///   refused before any step executes (fail closed; the denied step's
     ///   tool is never called). Deny wins over promote deterministically.
@@ -430,9 +432,15 @@ impl OrchestratorServiceImpl {
     async fn apply_plan_time_sequence_policy(
         &self,
         steps: &[super::dto::TemplateStepDef],
-    ) -> Result<Option<Vec<super::dto::TemplateStepDef>>, OrchestratorError> {
+    ) -> Result<
+        (
+            Option<Vec<super::dto::TemplateStepDef>>,
+            Vec<super::dto::SequencePolicyFinding>,
+        ),
+        OrchestratorError,
+    > {
         let Some(svc) = &self.sequence_policy_service else {
-            return Ok(None);
+            return Ok((None, Vec::new()));
         };
         let planned: Vec<PlannedStep> = steps
             .iter()
@@ -448,10 +456,11 @@ impl OrchestratorServiceImpl {
             }
         })?;
         if matches.is_empty() {
-            return Ok(None);
+            return Ok((None, Vec::new()));
         }
 
         let mut promoted: Vec<String> = Vec::new();
+        let mut findings: Vec<super::dto::SequencePolicyFinding> = Vec::new();
         for m in &matches {
             match m.action {
                 crate::sequence_policy::domain::RuleAction::Deny => {
@@ -462,11 +471,16 @@ impl OrchestratorServiceImpl {
                 }
                 crate::sequence_policy::domain::RuleAction::Promote => {
                     promoted.push(m.later_step.clone());
+                    findings.push(super::dto::SequencePolicyFinding {
+                        rule_id: m.rule_id.clone(),
+                        later_step: m.later_step.clone(),
+                        action: "promote".to_string(),
+                    });
                 }
             }
         }
         if promoted.is_empty() {
-            return Ok(None);
+            return Ok((None, findings));
         }
         let mut enforced = steps.to_vec();
         for def in &mut enforced {
@@ -474,7 +488,7 @@ impl OrchestratorServiceImpl {
                 def.requires_approval = true;
             }
         }
-        Ok(Some(enforced))
+        Ok((Some(enforced), findings))
     }
 
     /// Extract file paths from task result outputs.
@@ -1082,6 +1096,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
         Ok(PlanOnlyOutput {
             plan: serde_json::to_value(&result.planning_result).unwrap_or_default(),
             graph: serde_json::to_value(&result.graph).unwrap_or_default(),
+            sequence_findings: Vec::new(),
         })
     }
 
@@ -1163,7 +1178,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
         // fail-closed — the forbidden sequence never executes and the denied
         // step's tool is never called. An evaluation error refuses the plan
         // too (fail closed on corrupt/over-cap rule config).
-        let enforced_steps = self.apply_plan_time_sequence_policy(&input.steps).await?;
+        let (enforced_steps, _findings) = self.apply_plan_time_sequence_policy(&input.steps).await?;
 
         // Init current execution state
         *self.current_execution.write().await = Some(CurrentExecutionState {
@@ -1665,7 +1680,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
     ) -> Result<PlanOnlyOutput, OrchestratorError> {
         // Same R2 gate as `run_from_template` — a preview must show the same
         // promotion/denial decisions as the run it precedes.
-        let enforced_steps = self.apply_plan_time_sequence_policy(&input.steps).await?;
+        let (enforced_steps, findings) = self.apply_plan_time_sequence_policy(&input.steps).await?;
         let steps: &[super::dto::TemplateStepDef] =
             enforced_steps.as_deref().unwrap_or(&input.steps);
         let graph = self.build_graph_from_steps(steps)?;
@@ -1676,6 +1691,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 "mode": "from_template",
             }),
             graph: serde_json::to_value(&graph).unwrap_or_default(),
+            sequence_findings: findings,
         })
     }
 
@@ -2576,6 +2592,79 @@ mod tests {
             state.is_err(),
             "no engine session ⇒ no step of the denied runbook executed"
         );
+    }
+
+    /// AC#8 (engine side): plan preview surfaces the R2 decision as a
+    /// structured finding BEFORE a run — a matched promote sequence reports
+    /// the rule + later step and builds the later step approval-gated.
+    #[tokio::test]
+    async fn test_plan_from_template_reports_promote_finding_before_run() {
+        use crate::sequence_policy::application::service_impl::SequencePolicyServiceImpl;
+        let policy = Arc::new(SequencePolicyServiceImpl::new(Box::new(FixedPolicyRepo {
+            config: Some(conference_policy(RuleAction::Promote)),
+        })));
+        let orch =
+            OrchestratorServiceImpl::default_test().with_sequence_policy(policy);
+
+        let out = orch
+            .plan_from_template(PlanFromTemplateInput {
+                steps: conference_runbook(),
+                repo_root: "/tmp/t".into(),
+                template_name: "conf-registration".into(),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(
+            out.sequence_findings.len(),
+            1,
+            "plan preview must carry the promote finding"
+        );
+        let f = &out.sequence_findings[0];
+        assert_eq!(f.rule_id, "registration-remove-then-reassign");
+        assert_eq!(f.later_step, "registration_add");
+        assert_eq!(f.action, "promote");
+
+        // The promoted step is built approval-gated in the preview graph —
+        // the same graph the run would execute.
+        let graph_json = serde_json::to_value(&out.graph).unwrap_or_default();
+        let text = serde_json::to_string(&graph_json).unwrap_or_default();
+        assert!(
+            text.contains("registration_add") && text.contains("true"),
+            "preview graph must gate the later step, got: {text}"
+        );
+    }
+
+    /// AC#8 (engine side): plan preview of a denied sequence refuses the
+    /// plan before the run — no preview graph is produced for a forbidden
+    /// composition.
+    #[tokio::test]
+    async fn test_plan_from_template_refuses_denied_sequence() {
+        use crate::sequence_policy::application::service_impl::SequencePolicyServiceImpl;
+        let policy = Arc::new(SequencePolicyServiceImpl::new(Box::new(FixedPolicyRepo {
+            config: Some(conference_policy(RuleAction::Deny)),
+        })));
+        let orch =
+            OrchestratorServiceImpl::default_test().with_sequence_policy(policy);
+
+        let err = orch
+            .plan_from_template(PlanFromTemplateInput {
+                steps: conference_runbook(),
+                repo_root: "/tmp/t".into(),
+                template_name: "conf-registration".into(),
+            })
+            .await
+            .unwrap_err();
+        match &err {
+            OrchestratorError::SequencePolicyDenied {
+                later_step,
+                rule_id,
+            } => {
+                assert_eq!(later_step, "registration_add");
+                assert_eq!(rule_id, "registration-remove-then-reassign");
+            }
+            other => panic!("expected SequencePolicyDenied, got {other}"),
+        }
     }
 
     /// GAP-M-13: planning_prompt_content is populated only when

@@ -23,7 +23,7 @@ mod tests {
     use crate::execution_tools::domain::error::EngineFacadeError;
     use crate::execution_tools::domain::value::{
         BudgetStatus, EnforcementStatus, ExecutionId, ExecutionResult, ExecutionStatus,
-        PlanTemplate, StepDefinition, StepResult, ValidationResult,
+        PlanTemplate, SequencePolicyFinding, StepDefinition, StepResult, ValidationResult,
     };
     use crate::execution_tools::infrastructure::in_memory_repository::InMemoryExecutionRepository;
     use crate::execution_tools::infrastructure::repository::ExecutionRepository;
@@ -91,6 +91,21 @@ mod tests {
                 vec!["Blocked by policy".into()],
                 None,
             )));
+            self
+        }
+
+        fn with_validate_findings(mut self) -> Self {
+            self.validate_result = Some(Ok(ValidationResult::new(
+                true,
+                vec!["Sequence policy: step 'registration_add' requires approval by rule 'registration-remove-then-reassign'".into()],
+                vec![],
+                None,
+            )
+            .with_findings(vec![SequencePolicyFinding {
+                rule_id: "registration-remove-then-reassign".into(),
+                later_step: "registration_add".into(),
+                action: "promote".into(),
+            }])));
             self
         }
 
@@ -345,6 +360,41 @@ mod tests {
         assert!(result.is_ok());
         let tc = result.unwrap();
         assert!(tc.is_error);
+    }
+
+    /// sequence-policy AC#8: `rigorix_validate_plan` surfaces a matched
+    /// sequence as a structured machine-readable finding (rule_id, later
+    /// step, action) in the tool response BEFORE a run.
+    #[tokio::test]
+    async fn test_validate_handler_surfaces_sequence_policy_findings() {
+        let engine: SharedEngineFacade = Arc::new(MockEngineFacade::new().with_validate_findings());
+        let handler = ValidatePlanHandlerImpl::new(engine);
+
+        let input = ValidateInput {
+            plan: make_test_plan(),
+        };
+
+        let result = handler.handle(input).await;
+        assert!(result.is_ok());
+        let tc = result.unwrap();
+        assert!(
+            !tc.is_error,
+            "promote finding is a warning, not a rejection"
+        );
+
+        let output: serde_json::Value =
+            serde_json::from_str(&tc.content[0].text).expect("valid JSON");
+        let findings = output["sequence_findings"]
+            .as_array()
+            .expect("structured sequence_findings array");
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0]["rule_id"], "registration-remove-then-reassign");
+        assert_eq!(findings[0]["later_step"], "registration_add");
+        assert_eq!(findings[0]["action"], "promote");
+        assert!(
+            tc.content[0].text.contains("requires approval by rule"),
+            "human-readable warning accompanies the structured finding"
+        );
     }
 
     #[tokio::test]

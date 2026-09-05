@@ -26,7 +26,7 @@ use crate::execution_tools::domain::entity::EngineFacade;
 use crate::execution_tools::domain::error::EngineFacadeError;
 use crate::execution_tools::domain::value::{
     ApprovalResult, BudgetStatus, CostBreakdown, EnforcementStatus, ExecutionId, ExecutionResult,
-    ExecutionStatus, PlanTemplate, StepResult, ValidationResult,
+    ExecutionStatus, PlanTemplate, SequencePolicyFinding, StepResult, ValidationResult,
 };
 
 use super::repository::ExecutionRepository;
@@ -86,7 +86,7 @@ impl EngineFacadeImpl {
         orchestrator: Arc<dyn OrchestratorService>,
         enforcer: Arc<dyn rigorix_engine::enforcement::application::ExecutionEnforcer>,
     ) -> Self {
-        use super::in_memory_repository::InMemoryExecutionRepository;
+        use crate::execution_tools::infrastructure::in_memory_repository::InMemoryExecutionRepository;
         Self::new(
             orchestrator,
             enforcer,
@@ -337,7 +337,13 @@ impl EngineFacade for EngineFacadeImpl {
             template_name,
         };
 
-        let _plan_output = timeout(
+        // R2 sequence-policy gate runs inside the orchestrator preview. A
+        // matched `deny` rule REFUSES the preview with a structured
+        // `SequencePolicyDenied` — surfaced here as an invalid validation
+        // result with a structured finding (never a silent pass, never a raw
+        // error). A matched `promote` rule returns plan-time findings that
+        // the tool reports as warnings + machine-readable findings.
+        let plan_output = timeout(
             self.config.validate_timeout,
             self.orchestrator.plan_from_template(input),
         )
@@ -345,10 +351,49 @@ impl EngineFacade for EngineFacadeImpl {
         .map_err(|_| EngineFacadeError::Timeout {
             operation: "validate_plan".into(),
             duration_secs: self.config.validate_timeout.as_secs(),
-        })?
-        .map_err(map_orchestrator_error)?;
+        })?;
 
-        Ok(ValidationResult::new(true, vec![], vec![], None))
+        let plan_output = match plan_output {
+            Ok(out) => out,
+            Err(OrchestratorError::SequencePolicyDenied {
+                later_step,
+                rule_id,
+            }) => {
+                let message = format!(
+                    "Sequence policy denied step '{later_step}' (rule '{rule_id}'): \
+                     the plan was refused before any step executed"
+                );
+                return Ok(ValidationResult::new(false, vec![], vec![message], None)
+                    .with_findings(vec![SequencePolicyFinding {
+                        rule_id,
+                        later_step,
+                        action: "deny".to_string(),
+                    }]));
+            }
+            Err(e) => return Err(map_orchestrator_error(e)),
+        };
+
+        // Promote findings → human warnings + machine-readable findings.
+        let mut findings: Vec<SequencePolicyFinding> = Vec::new();
+        let mut warnings: Vec<String> = Vec::new();
+        for f in plan_output.sequence_findings {
+            let verb = if f.action == "promote" {
+                "requires approval"
+            } else {
+                "is denied"
+            };
+            findings.push(SequencePolicyFinding {
+                rule_id: f.rule_id.clone(),
+                later_step: f.later_step.clone(),
+                action: f.action.clone(),
+            });
+            warnings.push(format!(
+                "Sequence policy: step '{}' {} by rule '{}'",
+                f.later_step, verb, f.rule_id
+            ));
+        }
+
+        Ok(ValidationResult::new(true, warnings, vec![], None).with_findings(findings))
     }
 
     async fn check_enforcement(&self) -> Result<EnforcementStatus, EngineFacadeError> {
@@ -584,5 +629,265 @@ mod tests {
             !defs[2].requires_approval,
             "step-2 must not require approval"
         );
+    }
+
+    // ── sequence-policy AC#8: rigorix_validate_plan structured findings ────
+    // The facade delegates to the orchestrator's plan_from_template (R2
+    // gate). These tests drive EngineFacadeImpl.validate_plan end-to-end
+    // against a stub orchestrator that reproduces the engine's two gate
+    // outcomes (promote findings / deny refusal) and assert the MCP surface
+    // translation: promote → valid + warning + machine finding; deny →
+    // invalid + structured deny finding (never a silent pass).
+
+    use rigorix_engine::orchestrator::application::dto::SequencePolicyFinding as EngineFinding;
+
+    /// Orchestrator double whose `plan_from_template` reproduces the R2 gate
+    /// outcomes of a real `OrchestratorServiceImpl` (which is not reachable
+    /// from this crate — its service mocks are engine-internal).
+    struct PlanStubOrchestrator {
+        bus: rigorix_engine::event_system::application::event_bus_service_impl::EventBusServiceImpl,
+        outcome: PlanOutcome,
+    }
+
+    enum PlanOutcome {
+        Promote(Vec<EngineFinding>),
+        Denied { later_step: String, rule_id: String },
+    }
+
+    impl PlanStubOrchestrator {
+        fn promote(findings: Vec<EngineFinding>) -> Arc<dyn OrchestratorService> {
+            let bus: rigorix_engine::event_system::application::event_bus_service_impl::EventBusServiceImpl =
+                rigorix_engine::event_system::application::event_bus_service_impl::EventBusServiceImpl::default();
+            Arc::new(Self {
+                bus,
+                outcome: PlanOutcome::Promote(findings),
+            })
+        }
+
+        fn denied(later_step: &str, rule_id: &str) -> Arc<dyn OrchestratorService> {
+            let bus: rigorix_engine::event_system::application::event_bus_service_impl::EventBusServiceImpl =
+                rigorix_engine::event_system::application::event_bus_service_impl::EventBusServiceImpl::default();
+            Arc::new(Self {
+                bus,
+                outcome: PlanOutcome::Denied {
+                    later_step: later_step.to_string(),
+                    rule_id: rule_id.to_string(),
+                },
+            })
+        }
+    }
+
+    #[async_trait]
+    impl OrchestratorService for PlanStubOrchestrator {
+        async fn run(
+            &self,
+            _: rigorix_engine::orchestrator::application::dto::RunInput,
+        ) -> Result<rigorix_engine::orchestrator::application::dto::RunOutput, OrchestratorError>
+        {
+            unimplemented!("validate_plan only exercises plan_from_template")
+        }
+        async fn plan_only(
+            &self,
+            _: rigorix_engine::orchestrator::application::dto::PlanOnlyInput,
+        ) -> Result<rigorix_engine::orchestrator::application::dto::PlanOnlyOutput, OrchestratorError>
+        {
+            unimplemented!("validate_plan only exercises plan_from_template")
+        }
+        async fn cancel(
+            &self,
+            _: rigorix_engine::orchestrator::application::dto::CancelInput,
+        ) -> Result<rigorix_engine::orchestrator::application::dto::CancelOutput, OrchestratorError>
+        {
+            unimplemented!("validate_plan only exercises plan_from_template")
+        }
+        async fn status(
+            &self,
+        ) -> Result<rigorix_engine::orchestrator::application::dto::StatusOutput, OrchestratorError>
+        {
+            unimplemented!("validate_plan only exercises plan_from_template")
+        }
+        async fn run_from_template(
+            &self,
+            _: rigorix_engine::orchestrator::application::dto::RunFromTemplateInput,
+        ) -> Result<rigorix_engine::orchestrator::application::dto::RunOutput, OrchestratorError>
+        {
+            unimplemented!("validate_plan only exercises plan_from_template")
+        }
+        async fn plan_from_template(
+            &self,
+            _: rigorix_engine::orchestrator::application::dto::PlanFromTemplateInput,
+        ) -> Result<rigorix_engine::orchestrator::application::dto::PlanOnlyOutput, OrchestratorError>
+        {
+            match &self.outcome {
+                PlanOutcome::Promote(findings) => Ok(
+                    rigorix_engine::orchestrator::application::dto::PlanOnlyOutput {
+                        plan: serde_json::json!({}),
+                        graph: serde_json::json!({}),
+                        sequence_findings: findings.clone(),
+                    },
+                ),
+                PlanOutcome::Denied {
+                    later_step,
+                    rule_id,
+                } => Err(OrchestratorError::SequencePolicyDenied {
+                    later_step: later_step.clone(),
+                    rule_id: rule_id.clone(),
+                }),
+            }
+        }
+        fn event_bus(&self) -> &dyn rigorix_engine::event_system::application::EventBusService {
+            &self.bus
+        }
+        async fn approve_execution(
+            &self,
+            _: rigorix_engine::orchestrator::application::dto::ApproveExecutionInput,
+        ) -> Result<
+            rigorix_engine::orchestrator::application::dto::ApproveExecutionOutput,
+            OrchestratorError,
+        > {
+            unimplemented!("validate_plan only exercises plan_from_template")
+        }
+        async fn execution_state(
+            &self,
+            _: Uuid,
+        ) -> Result<
+            rigorix_engine::execution_engine::application::dto::GetExecutionStateOutput,
+            OrchestratorError,
+        > {
+            unimplemented!("validate_plan only exercises plan_from_template")
+        }
+    }
+
+    /// Enforcer double — `validate_plan` never consults enforcement.
+    struct PlanStubEnforcer;
+    #[async_trait]
+    impl rigorix_engine::enforcement::application::ExecutionEnforcer for PlanStubEnforcer {
+        async fn evaluate_tool_call(
+            &self,
+            _: rigorix_engine::enforcement::application::dto::EvaluateToolCallInput,
+        ) -> Result<
+            rigorix_engine::enforcement::application::dto::EvaluateToolCallOutput,
+            rigorix_engine::enforcement::domain::EnforcementError,
+        > {
+            unimplemented!()
+        }
+        async fn track_resource_usage(
+            &self,
+            _: rigorix_engine::enforcement::application::dto::TrackResourceUsageInput,
+        ) -> Result<
+            rigorix_engine::enforcement::application::dto::TrackResourceUsageOutput,
+            rigorix_engine::enforcement::domain::EnforcementError,
+        > {
+            unimplemented!()
+        }
+        async fn get_budget_status(
+            &self,
+            _: rigorix_engine::enforcement::application::dto::GetBudgetStatusInput,
+        ) -> Result<
+            rigorix_engine::enforcement::application::dto::GetBudgetStatusOutput,
+            rigorix_engine::enforcement::domain::EnforcementError,
+        > {
+            unimplemented!()
+        }
+        async fn check_execution_limits(
+            &self,
+            _: rigorix_engine::enforcement::application::dto::CheckExecutionLimitsInput,
+        ) -> Result<
+            rigorix_engine::enforcement::application::dto::CheckExecutionLimitsOutput,
+            rigorix_engine::enforcement::domain::EnforcementError,
+        > {
+            unimplemented!()
+        }
+        async fn reload_config(
+            &self,
+        ) -> Result<
+            rigorix_engine::enforcement::application::dto::ReloadConfigOutput,
+            rigorix_engine::enforcement::domain::EnforcementError,
+        > {
+            unimplemented!()
+        }
+        fn has_active_warnings(&self) -> bool {
+            false
+        }
+        fn active_warnings(
+            &self,
+        ) -> Vec<rigorix_engine::enforcement::application::dto::ActiveWarning> {
+            Vec::new()
+        }
+    }
+
+    fn validate_facade(orchestrator: Arc<dyn OrchestratorService>) -> EngineFacadeImpl {
+        use crate::execution_tools::infrastructure::in_memory_repository::InMemoryExecutionRepository;
+        EngineFacadeImpl::new(
+            orchestrator,
+            Arc::new(PlanStubEnforcer),
+            Arc::new(InMemoryExecutionRepository::new()),
+            EngineFacadeConfig::default(),
+        )
+    }
+
+    /// AC#8 — promote: validate_plan returns valid=true, a human warning and
+    /// a structured machine-readable finding BEFORE any run.
+    #[tokio::test]
+    async fn test_validate_plan_reports_promote_sequence_finding() {
+        let finding = EngineFinding {
+            rule_id: "registration-remove-then-reassign".into(),
+            later_step: "registration_add".into(),
+            action: "promote".into(),
+        };
+        let facade = validate_facade(PlanStubOrchestrator::promote(vec![finding]));
+
+        let result = facade
+            .validate_plan(plan_with_approval_flags(&[false, false]))
+            .await;
+        let validation = result.expect("promote plan validates");
+        assert!(validation.is_valid());
+        assert!(
+            validation
+                .warnings()
+                .iter()
+                .any(|w| { w.contains("registration_add") && w.contains("requires approval") }),
+            "human-readable promotion warning: {:?}",
+            validation.warnings()
+        );
+        assert_eq!(validation.findings().len(), 1);
+        assert_eq!(
+            validation.findings()[0].rule_id,
+            "registration-remove-then-reassign"
+        );
+        assert_eq!(validation.findings()[0].later_step, "registration_add");
+        assert_eq!(validation.findings()[0].action, "promote");
+    }
+
+    /// AC#8 — deny: validate_plan on a forbidden composition returns an
+    /// INVALID result with a structured deny finding — the run is refused
+    /// before anything executes, surfaced as data not as a raw error.
+    #[tokio::test]
+    async fn test_validate_plan_denied_sequence_is_invalid_with_finding() {
+        let facade = validate_facade(PlanStubOrchestrator::denied(
+            "registration_add",
+            "registration-remove-then-reassign",
+        ));
+
+        let result = facade
+            .validate_plan(plan_with_approval_flags(&[false, false]))
+            .await;
+        let validation = result.expect("deny surfaces as structured invalid result");
+        assert!(!validation.is_valid(), "denied plan must not validate");
+        assert!(
+            validation
+                .errors()
+                .iter()
+                .any(|e| e.contains("Sequence policy denied")),
+            "structured error: {:?}",
+            validation.errors()
+        );
+        assert_eq!(validation.findings().len(), 1);
+        assert_eq!(
+            validation.findings()[0].rule_id,
+            "registration-remove-then-reassign"
+        );
+        assert_eq!(validation.findings()[0].later_step, "registration_add");
+        assert_eq!(validation.findings()[0].action, "deny");
     }
 }

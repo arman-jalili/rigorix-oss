@@ -101,7 +101,7 @@ impl ValidatePlanHandler for ValidatePlanHandlerImpl {
             .await
             .map_err(HandlerError::EngineError)?;
 
-        let content = serde_json::json!({
+        let mut content = serde_json::json!({
             "valid": result.is_valid(),
             "warnings": result.warnings(),
             "errors": result.errors(),
@@ -112,6 +112,14 @@ impl ValidatePlanHandler for ValidatePlanHandlerImpl {
                 })
             }),
         });
+
+        // Structured sequence-policy findings (R2 plan-time): machine-readable
+        // `{rule_id, later_step, action}` entries so a matched sequence is
+        // visible to the agent BEFORE a run (module sequence-policy AC#8).
+        let findings = result.findings();
+        if !findings.is_empty() {
+            content["sequence_findings"] = serde_json::to_value(findings).unwrap_or_default();
+        }
 
         Ok(ToolCallResult {
             content: vec![crate::execution_tools::domain::error::ToolContentItem {
