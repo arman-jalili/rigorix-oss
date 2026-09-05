@@ -2,9 +2,9 @@
 
 ## Module Status
 
-**Status:** Planned
-**Last reviewed:** 2026-08-28
-**Blueprint Source:** Requirements v1 — 2026-08-28 (approved, NOT YET BUILT)
+**Status:** Implemented (epic: auth — #819)
+**Last reviewed:** 2026-09-05
+**Blueprint Source:** Requirements v1 — 2026-08-28 (approved, BUILT via #820–#827, MRs #828–#834)
 
 ## Description
 
@@ -207,6 +207,36 @@ bind_address = "127.0.0.1"
 auth = "none"
 ```
 
+## Implementation Status
+
+All components from this blueprint are implemented per the contract freeze
+(#820) and the per-component issues. Behavior is validated by unit,
+integration, and contract-shape tests plus deterministic proofing
+(`check_auth_contracts.sh`, hardening stage 14).
+
+| Component | Implementation | File | Issue |
+|-----------|----------------|------|-------|
+| AuthService (Application) | `AuthServiceImpl` (login/poll/status/refresh/logout/attest), `AuthServiceFactoryImpl` | `src/auth/application/{service_impl,factory}.rs` | #821 |
+| IdpClient (Infrastructure) | `HttpIdpClient` — OIDC discovery + device flow (RFC 8628/6749/7009/8414) | `src/auth/infrastructure/idp_client_impl.rs` | #822 |
+| KeychainStore (Infrastructure) | `KeychainStoreImpl` — OS keychain (`keyring`) + explicit plaintext fallback | `src/auth/infrastructure/keychain_store_impl.rs` | #823 |
+| TokenProvider (Infrastructure) | `InMemoryTokenProvider` — short-TTL in-memory custody | `src/auth/infrastructure/token_provider_impl.rs` | #824 |
+| AuthHandler / SSE Auth (Interfaces) | `AuthToolHandlerImpl`, `SseAuthGateImpl` (none/api_key/idp, fail-closed) | `src/auth/interfaces/` | #825 |
+| Proofing & CI | `check_auth_contracts.sh`, hardening stage 14 | `.pi/scripts/ci/` | #826 |
+| Architecture readiness | `docs/runbook-auth.md`, `docs/dr-plan-auth.md` | `docs/` | #827 |
+
+**Operability notes (post-implementation):**
+
+- Tool output is always redacted (SpanPrivacy); the raw token never crosses
+  any serialized surface (`Secret<T>` renders `***REDACTED***`)
+- Access tokens are short-TTL and in-memory only; refresh authority stays in
+  the OS keychain with the human (ADR-008)
+- IdP outage degrades attestation to `IdentitySource::Unverified` (fail-open
+  for local dev); the non-localhost SSE gate fails closed (it protects a
+  network-exposed gateway, not the agent)
+- Tool registration and SSE transport middleware wiring remain transport
+  concerns of the gateway (SSE transport is currently removed per GAP-A-10;
+  the gate is ready for its return)
+
 ## Implementation Sequence
 
 | # | Item | Description | Depends On |
@@ -221,6 +251,10 @@ auth = "none"
 | 8 | SSE auth middleware | Optional gate for non-localhost binds | 7 |
 | 9 | Execution/Audit wiring | run author, approve approver_id, envelope identity | 6, approval module |
 
+**Delivery status:** rows 1–8 shipped in the auth epic (#820–#827, MRs
+#828–#834). Row 9 is downstream integration work in the execution/audit
+modules (the claim/attestation boundary is frozen and ready).
+
 ## Integration with Execution Tools
 
 - `rigorix_run` gains an optional `identity` parameter (or derives it from the active session): the `IdentityClaim` becomes the envelope's `identity` block and replaces the self-asserted `author` when present
@@ -228,10 +262,10 @@ auth = "none"
 
 ---
 
-*Last updated: 2026-08-28*
-*Module version: 1.0.0 (Planned)*
+*Last updated: 2026-09-05*
+*Module version: 2.0.0 (Implemented)*
 
 ---
 
-**Status:** Planned
-**Implementation priority:** P1 — after approval binding core (consumes engine identity contract)
+**Status:** Implemented (epic: auth — #819)
+**Implementation priority:** P1 — delivered via #820–#827 (MRs #828–#834); row 9 (Execution/Audit wiring) is downstream integration work in the execution/audit modules
