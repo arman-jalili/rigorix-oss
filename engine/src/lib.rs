@@ -53,6 +53,7 @@ pub mod recovery_recipes;
 pub mod repo_engine;
 pub mod risk_gating;
 pub mod scored_evaluation;
+pub mod sequence_policy;
 pub mod state_persistence;
 pub mod template_generation;
 pub mod templates;
