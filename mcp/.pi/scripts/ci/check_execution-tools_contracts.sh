@@ -49,7 +49,11 @@ fi
 # Verify all EngineFacade trait methods are implemented
 if [ -n "$IMPLEMENTATIONS" ]; then
     METHOD_COUNT=$(grep -c 'async fn ' "${MODULE_SRC}/domain/entity.rs" 2>/dev/null || echo 0)
-    IMPL_COUNT=$(grep -c 'async fn ' "${INFRA}/engine_facade_impl.rs" 2>/dev/null || echo 0)
+    # Count async fns INSIDE the `impl EngineFacade for` region only — a
+    # raw whole-file grep also counts async test fns in the `mod tests`
+    # module, which made the check spuriously fail as the test suite grew.
+    IMPL_COUNT=$(sed -n '/^impl EngineFacade for EngineFacadeImpl {/,/^}/p' \
+        "${INFRA}/engine_facade_impl.rs" | grep -c 'async fn ' || echo 0)
     if [ "$METHOD_COUNT" -eq "$IMPL_COUNT" ]; then
         pass "EngineFacade: $METHOD_COUNT trait methods → $IMPL_COUNT impl methods"
     else
