@@ -1012,12 +1012,19 @@ async fn build_real_engine(
     };
     // Hooks: optional `.rigorix/hooks.toml` → PreToolUse/PostToolUse interception.
     let hook_runner = load_mcp_hook_runner(repo_root);
+    // ADR-013 R3/R2: operator-authored `.rigorix/sequence-policy.toml` gates
+    // the dispatch prefix (executor R3) and the plan (orchestrator R2 below).
+    let sequence_policy =
+        rigorix_engine::execution_engine::application::factory::SequencePolicySetup::from_env(
+            std::path::Path::new(repo_root),
+        );
     let execution_service: Arc<dyn ParallelExecutionService> = Arc::from(
         ParallelExecutionFactoryImpl::new()
             .create(ParallelExecutionFactoryConfig {
                 permission_enforcer,
                 hook_runner,
                 approval_binding: rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env(std::path::Path::new(repo_root)),
+                sequence_policy: sequence_policy.clone(),
                 ..ParallelExecutionFactoryConfig::default()
             })
             .await?,
@@ -1178,6 +1185,10 @@ async fn build_real_engine(
                 tracing::warn!("Failed to read {}: {}", se_config_path.display(), e);
             }
         }
+    }
+
+    if let Some(policy) = sequence_policy {
+        builder = builder.with_sequence_policy(policy);
     }
 
     let orchestrator = builder.build().await?;
