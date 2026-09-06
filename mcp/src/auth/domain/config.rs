@@ -11,8 +11,10 @@
 //!
 //! # Contract (Frozen)
 //!
-//! - `issuer` must be a valid HTTPS URL (validated on construction) — the
-//!   IdP endpoint is always TLS (matches enterprise proxy policy)
+//! - `issuer` must be a valid HTTPS URL (validated on construction); plain
+//!   HTTP is accepted only for loopback addresses (`127.0.0.1`, `localhost`,
+//!   `[::1]`) — local mock IdPs during development/demo. Matches the
+//!   client-layer transport policy (idp_client_impl::validate_endpoint_url).
 //! - `client_id` is required and non-empty
 //! - `client_secret` is stored as `Secret<String>` — never logged, always
 //!   redacted; optional (public clients per RFC 6749 §2.1)
@@ -22,6 +24,25 @@ use serde::{Deserialize, Serialize};
 
 use super::error::AuthError;
 use super::value::Secret;
+
+/// True when `url` is HTTPS — the production transport for IdP endpoints.
+fn is_https(url: &str) -> bool {
+    url.starts_with("https://")
+}
+
+/// True when `url` is plain HTTP bound to a loopback address — accepted for
+/// local mock IdPs during development/demo only (mirrors the client-layer
+/// `HttpIdpClient::validate_endpoint_url` policy).
+fn is_loopback_http(url: &str) -> bool {
+    url.starts_with("http://127.0.0.1")
+        || url.starts_with("http://localhost")
+        || url.starts_with("http://[::1]")
+}
+
+/// IdP endpoint transport policy: HTTPS always, plus plain HTTP to loopback.
+fn is_allowed_transport(issuer: &str) -> bool {
+    is_https(issuer) || is_loopback_http(issuer)
+}
 
 /// Default access-token TTL in seconds (900 = 15 minutes, ADR-008).
 pub const DEFAULT_ACCESS_TOKEN_TTL_SECS: u64 = 900;
@@ -66,9 +87,10 @@ impl IdpConfig {
                 "IdP client_id cannot be empty".into(),
             ));
         }
-        if !issuer.starts_with("https://") {
+        if !is_allowed_transport(&issuer) {
             return Err(AuthError::Configuration(format!(
-                "IdP issuer must be an HTTPS URL, got: {issuer}"
+                "IdP issuer must be HTTPS (plain HTTP is only accepted for \
+                 loopback addresses — local mock IdPs), got: {issuer}"
             )));
         }
         Ok(Self {
@@ -114,6 +136,19 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, AuthError::Configuration(_)));
+    }
+
+    #[test]
+    fn accepts_loopback_http_for_local_mock_idps() {
+        for issuer in [
+            "http://127.0.0.1:8080",
+            "http://localhost:8080",
+            "http://[::1]:8080",
+        ] {
+            let cfg = IdpConfig::new(issuer.into(), "rigorix-cli".into(), None, None)
+                .unwrap_or_else(|e| panic!("loopback issuer {issuer} must be accepted: {e}"));
+            assert_eq!(cfg.issuer(), issuer);
+        }
     }
 
     #[test]
