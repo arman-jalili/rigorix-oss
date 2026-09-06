@@ -67,8 +67,18 @@ impl SequencePolicyServiceImpl {
     /// mapped to an empty rule set — fail-open-absent.
     async fn load_rules(&self) -> Result<Vec<SequenceRule>, SequencePolicyError> {
         match self.repository.load_config().await? {
-            Some(config) => Ok(config.rules),
-            None => Ok(Vec::new()),
+            Some(config) => {
+                tracing::debug!(
+                    rules = config.rules.len(),
+                    fail_closed = config.fail_closed,
+                    "sequence_policy: rule config loaded"
+                );
+                Ok(config.rules)
+            }
+            None => {
+                tracing::debug!("sequence_policy: no rule file — fail-open-absent, no gating");
+                Ok(Vec::new())
+            }
         }
     }
 }
@@ -80,7 +90,16 @@ impl SequencePolicyService for SequencePolicyServiceImpl {
         steps: &[PlannedStep],
     ) -> Result<Vec<SequenceMatch>, SequencePolicyError> {
         let rules = self.load_rules().await?;
-        Ok(self.matcher.find_matches(&rules, steps)?)
+        let matches = self.matcher.find_matches(&rules, steps)?;
+        if !matches.is_empty() {
+            tracing::info!(
+                rules = rules.len(),
+                steps = steps.len(),
+                matches = matches.len(),
+                "sequence_policy: plan-time matched sequence(s) — later steps gated"
+            );
+        }
+        Ok(matches)
     }
 
     async fn evaluate_prefix(
@@ -108,10 +127,19 @@ impl SequencePolicyService for SequencePolicyServiceImpl {
         // that finished entirely inside the completed prefix was already acted
         // on at the dispatch of its own later step.
         let matches = self.matcher.find_matches(&rules, &views)?;
-        Ok(matches
+        let actionable: Vec<SequenceMatch> = matches
             .into_iter()
             .filter(|m| m.matched_indices.last() == Some(&next_idx))
-            .collect())
+            .collect();
+        if !actionable.is_empty() {
+            tracing::info!(
+                rules = rules.len(),
+                prefix_len = prefix.len(),
+                matches = actionable.len(),
+                "sequence_policy: dispatch-boundary matched sequence(s) — node gated"
+            );
+        }
+        Ok(actionable)
     }
 }
 

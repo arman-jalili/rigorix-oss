@@ -50,7 +50,13 @@ impl SequencePolicyRepository for TomlSequencePolicyRepository {
         // quo). Any other read failure is a load error (fail closed).
         let text = match tokio::fs::read_to_string(&self.config_path).await {
             Ok(text) => text,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                tracing::debug!(
+                    path = %self.config_path.display(),
+                    "sequence_policy: config file absent — fail-open-absent"
+                );
+                return Ok(None);
+            }
             Err(e) => {
                 return Err(SequencePolicyError::InvalidConfig(format!(
                     "failed to read {}: {e}",

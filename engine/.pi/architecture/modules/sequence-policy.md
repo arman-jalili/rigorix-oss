@@ -476,11 +476,16 @@ engine/src/sequence_policy/
 
 ---
 
-*Last updated: 2026-09-04*
-*Module version: 0.1.0 (proposed)*
+*Last updated: 2026-09-05*
+*Module version: 1.0.0 (implemented)*
 
 ---
 
-**Status:** Proposed — NOT YET BUILT. Architecture packet only; no code changes.
-**Implementation priority:** P0 hook demo → P1 contract freeze + plan-time (R2) → P1 run-time prefix (R3) → P2 evidence + config hardening (R5) → P3 enterprise rule type (gated on F-20260904-02/F-20260904-04).
-**Epic:** epic-sequence-policy-epic (tracking issue pending creation).
+**Status:** Implemented — plan-time gate (R2), run-time prefix gate (R3),
+fail-closed/absent config handling, permission hardening (R5), audit evidence
+(R6), and proofing are all in `src/sequence_policy/` + the orchestrator /
+execution-engine choke points. See the epic tracking issue (#837) and the
+14-row Acceptance Criteria table below for per-criterion tests.
+**Remaining (P3, gated):** enterprise-managed rules via the signed policy
+bundle seam (F-20260904-04); hooks P0 demo parity (agent-native boundary);
+ADR-011 remains separate.

@@ -1,3 +1,39 @@
+## [2026-09-05] — Sequence Policy implemented (epic ISSUE-SEQUENCE-POLICY, tracking #837)
+
+### Added
+- **Sequence-policy module (R1–R6)**: declarative ordered-step rules in
+  `.rigorix/sequence-policy.toml` with deterministic matching — tool
+  exact/glob + JSON-pointer param predicates (exact/glob/regex), windowed
+  matching, `promote` (default) / `deny` actions. See the module doc AC table
+  (14 rows, each with unit/integration test).
+- **R2 plan-time gate**: orchestrator `run_from_template`/`plan_from_template`
+  evaluate the ordered runbook before anything executes — promote builds the
+  later step `requires_approval = true` (existing approval pause/approve/
+  resume), deny refuses the runbook (`SequencePolicyDenied`, no step runs).
+  Plan preview (`rigorix_validate_plan`) surfaces findings pre-run (AC#8).
+- **R3 run-time prefix gate**: `run_dispatch_loop` (shared by execute_graph
+  and resume_execution) evaluates the completed dispatch prefix + the next
+  ready node — promote routes into `AwaitingApproval`, deny fails the node
+  before its tool is called (structured `sequence_policy_denied`), eval
+  errors halt fail-closed. Optional service (`with_sequence_policy`);
+  `None` = status quo.
+- **Config hardening (AC#10/11)**: `TomlSequencePolicyRepository` — missing
+  file = `Ok(None)` (fail-open-absent, no gating); corrupt/over-cap = `Err`
+  (fail closed, plan refused). `SafetyCaps` defaults (100 rules / 8 steps per
+  rule / window 5 / 8 regex predicates) + `SequencePolicyConfig::validate`.
+- **R5 permission**: default permission config denies `workspace_write` agent
+  writes into `.rigorix/**` (operator rules are never agent-writable); the
+  parallel dispatch path now applies the file-write gate (was single-node
+  only). AC#13 integration test.
+- **R6 audit evidence**: `ExecutionEvent::SequenceRuleMatched /
+  SequencePolicyDenied / SequencePolicyConfigError`; envelope gains additive
+  `sequence_policy_findings[]` derived at build time with **redacted**
+  summaries (SpanPrivacy default — parameter values never captured). AC#12.
+- **Proofing**: contract check + real llvm-cov coverage wired as hardening
+  stage 36 `sequence-policy_proofing` (`.pi/scripts/ci/`).
+- Module status flipped Proposed → Implemented; runbook + DR plan +
+  observability (structured tracing on evaluate_plan/evaluate_prefix/load).
+
 ## [2026-09-02] — Approval binding production flip (ADR-011, env-driven)
 
 ### Added
