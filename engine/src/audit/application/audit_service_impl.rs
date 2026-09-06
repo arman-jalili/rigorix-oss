@@ -33,6 +33,13 @@ pub struct AuditServiceImpl {
     queue: Box<dyn AuditQueue>,
     /// Whether audit is enabled.
     enabled: bool,
+    /// R7 / local read-back: optional durable envelope store (e.g.
+    /// `.rigorix/audit`). When set, every built envelope is ALSO persisted
+    /// locally — the signed trail that cross-run policy (sequence-policy R7)
+    /// and offline read-back consume. `None` = remote-send only (status quo).
+    local_repository: Option<
+        std::sync::Arc<dyn crate::audit::infrastructure::repository::AuditEnvelopeRepository>,
+    >,
     /// Default retry configuration.
     max_retries: u32,
     backoff_base_secs: u64,
@@ -55,7 +62,18 @@ impl AuditServiceImpl {
             max_retries: 3,
             backoff_base_secs: 1,
             backoff_max_secs: 60,
+            local_repository: None,
         }
+    }
+
+    /// Attach a durable local envelope store (R7 cross-run policy input +
+    /// offline read-back). Save failures are logged, never fatal.
+    pub fn with_local_repository(
+        mut self,
+        repo: std::sync::Arc<dyn crate::audit::infrastructure::repository::AuditEnvelopeRepository>,
+    ) -> Self {
+        self.local_repository = Some(repo);
+        self
     }
 
     /// Create a new audit service with custom retry config.
@@ -76,6 +94,7 @@ impl AuditServiceImpl {
             max_retries,
             backoff_base_secs,
             backoff_max_secs,
+            local_repository: None,
         }
     }
 
@@ -110,6 +129,16 @@ impl AuditService for AuditServiceImpl {
         let envelope = self.envelope_factory.build_envelope(input).await?;
         let event_count = envelope.events.len();
         let signed = envelope.signature.is_some();
+
+        // R7 / offline read-back: persist to the local store when wired.
+        if let Some(repo) = &self.local_repository
+            && let Err(e) = repo.save(&envelope).await
+        {
+            tracing::warn!(
+                execution_id = %envelope.execution_id,
+                "audit: local envelope persistence failed ({e}) — cross-run policy history may be incomplete"
+            );
+        }
 
         // Try to send
         let deliver_input = DeliverEnvelopeInput {

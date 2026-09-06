@@ -335,6 +335,7 @@ impl EngineFacade for EngineFacadeImpl {
             steps: steps_def,
             repo_root: self.config.repo_root.clone(),
             template_name,
+            author: None,
         };
 
         // R2 sequence-policy gate runs inside the orchestrator preview. A

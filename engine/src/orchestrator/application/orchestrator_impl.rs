@@ -433,6 +433,7 @@ impl OrchestratorServiceImpl {
         &self,
         steps: &[super::dto::TemplateStepDef],
         execution_id: Option<uuid::Uuid>,
+        principal: Option<&str>,
     ) -> Result<
         (
             Option<Vec<super::dto::TemplateStepDef>>,
@@ -451,7 +452,7 @@ impl OrchestratorServiceImpl {
                 parameters: s.parameters.clone(),
             })
             .collect();
-        let matches = svc.evaluate_plan(&planned).await.map_err(|e| {
+        let matches = svc.evaluate_plan(&planned, principal).await.map_err(|e| {
             OrchestratorError::SequencePolicyEvaluationFailed {
                 detail: e.to_string(),
             }
@@ -1217,7 +1218,11 @@ impl OrchestratorService for OrchestratorServiceImpl {
         // step's tool is never called. An evaluation error refuses the plan
         // too (fail closed on corrupt/over-cap rule config).
         let (enforced_steps, _findings) = self
-            .apply_plan_time_sequence_policy(&input.steps, Some(execution_id))
+            .apply_plan_time_sequence_policy(
+                &input.steps,
+                Some(execution_id),
+                input.author.as_deref(),
+            )
             .await?;
 
         // Init current execution state
@@ -1733,7 +1738,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
         // Same R2 gate as `run_from_template` — a preview must show the same
         // promotion/denial decisions as the run it precedes.
         let (enforced_steps, findings) = self
-            .apply_plan_time_sequence_policy(&input.steps, None)
+            .apply_plan_time_sequence_policy(&input.steps, None, input.author.as_deref())
             .await?;
         let steps: &[super::dto::TemplateStepDef] =
             enforced_steps.as_deref().unwrap_or(&input.steps);
@@ -2414,6 +2419,7 @@ mod tests {
                 ],
                 window: Some(3),
                 action,
+                history: None,
             }],
         }
     }
@@ -2935,6 +2941,7 @@ mod tests {
                 steps: conference_runbook(),
                 repo_root: "/tmp/t".into(),
                 template_name: "conf-registration".into(),
+                author: None,
             })
             .await
             .unwrap();
@@ -2975,6 +2982,7 @@ mod tests {
                 steps: conference_runbook(),
                 repo_root: "/tmp/t".into(),
                 template_name: "conf-registration".into(),
+                author: None,
             })
             .await
             .unwrap_err();
@@ -3158,6 +3166,154 @@ mod tests {
                 assert!(detail.contains("2 of 2 calls"), "should name the budget");
             }
             e => panic!("expected Internal budget error, got {e:?}"),
+        }
+    }
+
+    /// R7 SCENE 9 (issue #871): two separate runs, minutes apart — run 1
+    /// removes a registrant (envelope persisted to the signed local trail),
+    /// run 2 adds the requester. Each run passes its own within-run gate; the
+    /// R7 history rule refuses run 2 AT PLAN TIME because the SAME principal
+    /// removed within the window. Uses the REAL EnvelopeHistoryAdapter over a
+    /// real envelope repository seeded with run 1's envelope.
+    #[tokio::test]
+    async fn test_r7_cross_run_same_principal_remove_then_add_refused_at_plan_time() {
+        use crate::audit::application::dto::BuildEnvelopeInput;
+        use crate::audit::application::envelope_factory_impl::AuditEnvelopeFactoryImpl;
+        use crate::audit::application::factory::AuditEnvelopeFactory;
+        use crate::audit::domain::envelope::{EventStatus, ExecutionEventRef};
+        use crate::audit::infrastructure::local_audit_repository::LocalAuditEnvelopeRepository;
+        use crate::event_system::application::event_bus_service_impl::EventBusServiceImpl;
+        use crate::execution_engine::application::service_impl::{
+            ParallelExecutionServiceImpl, RetryEvaluationServiceImpl,
+        };
+        use crate::execution_engine::domain::ParallelExecutorConfig;
+        use crate::sequence_policy::application::service_impl::SequencePolicyServiceImpl;
+        use crate::sequence_policy::domain::{HistoryPredicate, RuleAction};
+        use crate::sequence_policy::infrastructure::{EnvelopeHistoryAdapter, ExecutionHistory};
+        use serde_json::json;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        // ── Run 1's signed envelope: jeff@corp removed a registrant. ──
+        let repo: std::sync::Arc<
+            dyn crate::audit::infrastructure::repository::AuditEnvelopeRepository,
+        > = std::sync::Arc::new(LocalAuditEnvelopeRepository::new(dir.path().to_path_buf()));
+        let factory = AuditEnvelopeFactoryImpl::default();
+        let run1 = factory
+            .build_envelope(BuildEnvelopeInput {
+                execution_id: uuid::Uuid::new_v4(),
+                template_id: "attendance-remove".to_string(),
+                planning_prompt: "run 1".to_string(),
+                events: vec![ExecutionEventRef {
+                    event_type: "node_completed".to_string(),
+                    summary: "remove completed".to_string(),
+                    occurred_at: chrono::Utc::now(),
+                    correlation_id: None,
+                    status: EventStatus::Success,
+                    payload: Some(json!({ "step_name": "registration_remove" })),
+                }],
+                source: Some("rigorix_demo".to_string()),
+                total_tokens: 0,
+                duration_ms: 10,
+                git_commit: None,
+                git_branch: None,
+                model_version: None,
+                planning_prompt_content: None,
+                file_paths: vec![],
+                metadata: None,
+                scoring_results: std::collections::HashMap::new(),
+                sign: false,
+                repository: None,
+                author: Some("jeff@corp".to_string()),
+                identity: None,
+            })
+            .await
+            .expect("run-1 envelope");
+        repo.save(&run1).await.expect("run-1 envelope saved");
+
+        // ── R7 rule: adding a seat is DENIED when the same principal removed
+        // one within 15 minutes (single current-run predicate + history). ──
+        let policy_cfg = crate::sequence_policy::domain::SequencePolicyConfig {
+            fail_closed: true,
+            rules: vec![crate::sequence_policy::domain::SequenceRule {
+                id: "no-cross-run-remove-reassign".to_string(),
+                name: "No cross-run remove-then-reassign".to_string(),
+                description: "d".to_string(),
+                steps: vec![crate::sequence_policy::domain::StepPredicate {
+                    tool: "registration_add".to_string(),
+                    params: vec![crate::sequence_policy::domain::ParamPredicate {
+                        pointer: "/event_id".to_string(),
+                        kind: crate::sequence_policy::domain::ParamMatchKind::Exact,
+                        value: "conf-2026".to_string(),
+                    }],
+                }],
+                window: None,
+                action: RuleAction::Deny,
+                history: Some(HistoryPredicate {
+                    prior_node: "registration_remove".to_string(),
+                    same_principal: true,
+                    window_secs: 900,
+                }),
+            }],
+        };
+        let policy = std::sync::Arc::new(
+            SequencePolicyServiceImpl::new(Box::new(FixedPolicyRepo {
+                config: Some(policy_cfg),
+            }))
+            .with_history(std::sync::Arc::new(EnvelopeHistoryAdapter::new(repo))),
+        );
+
+        // ── Run 2: jeff's agent tries to add him to the full event. ──
+        let executor: Arc<dyn exec_svc::ParallelExecutionService> =
+            Arc::new(ParallelExecutionServiceImpl::new(
+                ParallelExecutorConfig::default(),
+                Box::new(RetryEvaluationServiceImpl::new()),
+                Arc::new(EventBusServiceImpl::default()),
+            ));
+        let orch = OrchestratorServiceImpl::new(
+            OrchestratorConfig::default(),
+            Arc::new(super::super::orchestrator_mocks::MockPlanningService::new()),
+            executor,
+            Arc::new(super::super::orchestrator_mocks::MockStateService::new()),
+            Arc::new(super::super::orchestrator_mocks::MockCancellationService),
+            Arc::new(super::super::orchestrator_mocks::MockEventBusService::new()),
+            None,
+            Arc::new(super::super::orchestrator_mocks::MockBudgetService),
+            None,
+        )
+        .with_sequence_policy(policy);
+
+        let step = crate::orchestrator::dto::TemplateStepDef {
+            name: "registration_add".to_string(),
+            tool: "registration_add".to_string(),
+            description: "add jeff".to_string(),
+            parameters: json!({ "event_id": "conf-2026" }),
+            requires_approval: false,
+            timeout_secs: None,
+            evaluate_score: false,
+        };
+        let err = orch
+            .run_from_template(RunFromTemplateInput {
+                steps: vec![step],
+                repo_root: dir.path().to_string_lossy().into_owned(),
+                execution_id: Some(uuid::Uuid::new_v4()),
+                template_name: "attendance-add".into(),
+                repository: None,
+                author: Some("jeff@corp".to_string()),
+                enforcement_preset: None,
+            })
+            .await
+            .expect_err("run 2 must be refused at plan time (cross-run R7)");
+
+        match err {
+            OrchestratorError::SequencePolicyDenied {
+                later_step,
+                rule_id,
+            } => {
+                assert_eq!(later_step, "registration_add");
+                assert_eq!(rule_id, "no-cross-run-remove-reassign");
+            }
+            other => panic!("expected SequencePolicyDenied from the cross-run rule, got {other:?}"),
         }
     }
 }

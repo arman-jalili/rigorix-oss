@@ -498,12 +498,17 @@ pub async fn build_orchestrator_with_budget(
     let sender: Arc<dyn AuditSender> =
         Arc::new(AuditSenderImpl::new(None, audit_backend_url).with_api_key(audit_backend_key));
     let queue: Box<dyn AuditQueue> = Box::new(AuditQueueImpl::default());
-    let audit = Arc::new(AuditServiceImpl::new(
-        envelope_factory,
-        sender,
-        queue,
-        audit_enabled,
-    )) as Arc<dyn rigorix_engine::audit::application::service::AuditService>;
+    let mut audit_service = AuditServiceImpl::new(envelope_factory, sender, queue, audit_enabled);
+    // R7: persist envelopes to `.rigorix/audit` (cross-run policy history +
+    // offline read-back). Same directory the CliServices read-back repo uses.
+    let audit_dir = rigorix_dir.join("audit");
+    if std::fs::create_dir_all(&audit_dir).is_ok() {
+        audit_service = audit_service.with_local_repository(std::sync::Arc::new(
+            rigorix_engine::audit::infrastructure::LocalAuditEnvelopeRepository::new(audit_dir),
+        ));
+    }
+    let audit = Arc::new(audit_service)
+        as Arc<dyn rigorix_engine::audit::application::service::AuditService>;
 
     // ── 8. ScoredEvaluationService (optional) ──────────────────────────
     let scored_evaluation_config_path = rigorix_dir.join("scored_evaluation.toml");

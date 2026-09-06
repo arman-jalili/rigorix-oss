@@ -1196,12 +1196,26 @@ async fn build_real_engine(
         .clone()
         .or_else(|| std::env::var("RIGORIX_HMAC_KEY").ok())
         .filter(|k| !k.is_empty());
-    let audit_service: Arc<dyn AuditService> = Arc::new(AuditServiceImpl::new(
-        Box::new(AuditEnvelopeFactoryImpl::new(hmac_key)),
-        audit_sender,
-        Box::new(AuditQueueImpl::default()),
-        audit_url.is_some(),
-    ));
+    let audit_service: Arc<dyn AuditService> = {
+        let mut service = AuditServiceImpl::new(
+            Box::new(AuditEnvelopeFactoryImpl::new(hmac_key)),
+            audit_sender,
+            Box::new(AuditQueueImpl::default()),
+            audit_url.is_some(),
+        );
+        // R7: persist every built envelope to `<repo_root>/.rigorix/audit` —
+        // the signed trail that cross-run policy reads (SequencePolicySetup::
+        // from_env wires the EnvelopeHistoryAdapter over the same directory).
+        let audit_dir = std::path::PathBuf::from(repo_root)
+            .join(".rigorix")
+            .join("audit");
+        if std::fs::create_dir_all(&audit_dir).is_ok() {
+            service = service.with_local_repository(std::sync::Arc::new(
+                rigorix_engine::audit::infrastructure::LocalAuditEnvelopeRepository::new(audit_dir),
+            ));
+        }
+        Arc::new(service)
+    };
 
     if audit_url.is_some() {
         tracing::info!("Audit backend configured via rigorix.toml");

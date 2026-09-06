@@ -38,6 +38,9 @@ pub struct SafetyCaps {
     pub max_window: u32,
     /// Maximum number of regex parameter predicates across the file.
     pub max_regex_predicates_per_file: u32,
+    /// Maximum R7 `history.window_secs` look-back (default 7 days) — keeps
+    /// history scans bounded and stops a stale conflict from denying today.
+    pub max_history_window_secs: u64,
 }
 
 /// The loaded sequence-policy rule set.
@@ -67,6 +70,7 @@ impl Default for SafetyCaps {
             max_steps_per_rule: 8,
             max_window: 5,
             max_regex_predicates_per_file: 8,
+            max_history_window_secs: 604_800,
         }
     }
 }
@@ -126,6 +130,23 @@ impl SequencePolicyConfig {
                     detail: format!("window {window} exceeds cap max_window={}", caps.max_window),
                 });
             }
+            if let Some(hist) = &rule.history {
+                if hist.prior_node.trim().is_empty() {
+                    return Err(SequencePolicyError::InvalidConfig(format!(
+                        "rule '{}': history.prior_node cannot be empty",
+                        rule.id
+                    )));
+                }
+                if hist.window_secs > caps.max_history_window_secs {
+                    return Err(SequencePolicyError::RuleExceedsCaps {
+                        rule: rule.id.clone(),
+                        detail: format!(
+                            "history.window_secs {} exceeds cap max_history_window_secs={}",
+                            hist.window_secs, caps.max_history_window_secs
+                        ),
+                    });
+                }
+            }
             for step in &rule.steps {
                 regex_predicates += step
                     .params
@@ -172,6 +193,7 @@ mod tests {
                 .collect(),
             window: None,
             action: RuleAction::Promote,
+            history: None,
         }
     }
 
@@ -181,6 +203,7 @@ mod tests {
             max_steps_per_rule: 3,
             max_window: 5,
             max_regex_predicates_per_file: 1,
+            max_history_window_secs: 60,
         }
     }
 
