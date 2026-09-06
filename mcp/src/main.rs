@@ -1143,11 +1143,18 @@ async fn build_real_engine(
         rigorix_engine::execution_engine::application::factory::SequencePolicySetup::from_env(
             std::path::Path::new(repo_root),
         );
+    // ── Event bus (shared: the executor publishes into it AND the
+    //    orchestrator drains it for the audit envelope — a split bus makes
+    //    engine envelopes evidence-empty) ──
+    let event_bus: Arc<dyn EventBusService> =
+        Arc::new(EventBusServiceImpl::new(EventBusConfig::default()));
+
     let execution_service: Arc<dyn ParallelExecutionService> = Arc::from(
         ParallelExecutionFactoryImpl::new()
             .create(ParallelExecutionFactoryConfig {
                 permission_enforcer,
                 hook_runner,
+                event_bus: Some(Arc::clone(&event_bus)),
                 approval_binding: rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env(std::path::Path::new(repo_root)),
                 sequence_policy: sequence_policy.clone(),
                 ..ParallelExecutionFactoryConfig::default()
@@ -1166,10 +1173,6 @@ async fn build_real_engine(
     // ── Cancellation service ──
     let cancellation_service: Arc<dyn CancellationService> =
         Arc::new(CancellationManagerImpl::default());
-
-    // ── Event bus ──
-    let event_bus: Arc<dyn EventBusService> =
-        Arc::new(EventBusServiceImpl::new(EventBusConfig::default()));
 
     // ── Budget service (configurable via rigorix.toml; each runbook step
     //    consumes one call — a tight budget makes rigorix_run refuse) ──

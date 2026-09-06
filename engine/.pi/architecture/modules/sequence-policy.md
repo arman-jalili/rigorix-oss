@@ -23,7 +23,34 @@ This directly answers the "conference registration" composition case raised in i
 
 > **A forbidden sequence never executes silently.** If an ordered plan contains steps `A → B` matching a rule, then `B` requires human approval before dispatch (promote), or is denied outright (deny mode). The decision is deterministic, derived from the same ordered step list the executor will run, and recorded into the signed envelope.
 
-## Requirements (R1–R6)
+> **R7 extends the property across runs:** a rule with a `history` predicate additionally consults the **signed prior-execution trail** — *"remove X" in run 1, "add Jeff" in run 2, minutes apart* — each run passes its own within-run gate, but the second is refused at plan time because the same principal acted within the window. Policy input == signed evidence: tampering with the trail to evade a rule breaks the envelope HMAC.
+
+## Requirements (R1–R7)
+
+### R7 — Cross-Run Conflicting-Action Rules (audit trail as policy input)
+
+A rule may carry an optional `history` predicate inside its `[[rules]]` table:
+
+```toml
+[[rules]]
+id = "no-cross-run-remove-reassign"
+action = "deny"
+steps = [{ tool = "registration_add", params = [{ pointer = "/event_id", kind = "exact", value = "conf-2026" }] }]
+history = { prior_node = "registration_remove", same_principal = true, window_secs = 900 }
+```
+
+Semantics (frozen):
+- The rule fires only when the **current run's** `steps[]` match **AND** the signed prior-execution history shows an action glob-matching `prior_node` — by the **same principal** when `same_principal = true`, completed within `window_secs` — before this run.
+- `same_principal = true` with an unknown current-run principal **never** matches (no false denial).
+- History is read once per evaluation over the widest required window; a missing history store is empty (status quo), a read failure is fail-closed.
+- A single-step current-run predicate is legal **only** when `history` is present (cross-run is a per-action gate; the within-run matcher still requires an ordered pair).
+- Principal = the run's `author` (falls back to attested `identity.subject` on the envelope). The runtime prefix gate (R3) has no per-run principal and passes `None` — same-principal history rules therefore evaluate at plan time (R2).
+- **History source**: the composition roots persist every built envelope to `<repo_root>/.rigorix/audit` (`AuditServiceImpl::with_local_repository`); `EnvelopeHistoryAdapter` reads it through the audit module's repository interface. Policy never writes the trail.
+
+| Cap | Default |
+|-----|---------|
+| `max_history_window_secs` | 604 800 (7 days) |
+| `history.prior_node` | non-empty |
 
 ### R1 — Declarative Sequence Rules
 

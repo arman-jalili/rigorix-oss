@@ -54,10 +54,11 @@ impl EnvelopeHistoryAdapter {
     }
 }
 
-/// Extract the executed node names from one envelope's event refs.
-///
-/// Node-completion events carry `payload.step_name`; duplicate names within
-/// one envelope collapse to the last occurrence (per-node completion).
+/// Extract executed actions from one envelope: per-node completions (event
+/// refs carrying `payload.step_name`) when present, falling back to a
+/// single RUN-LEVEL action identified by `template_id` — the signed trail
+/// records node events only for evidence-bearing runs (approval/scope/
+/// sequence), so plain runs are represented by the template that executed.
 fn actions_from_envelope(envelope: &AuditEnvelope) -> Vec<HistoryAction> {
     let principal = envelope
         .author
@@ -78,6 +79,13 @@ fn actions_from_envelope(envelope: &AuditEnvelope) -> Vec<HistoryAction> {
             node: step_name.to_string(),
             principal: principal.clone(),
             at: ev.occurred_at,
+        });
+    }
+    if out.is_empty() && !envelope.template_id.is_empty() {
+        out.push(HistoryAction {
+            node: envelope.template_id.clone(),
+            principal,
+            at: envelope.timestamp,
         });
     }
     out
@@ -179,6 +187,37 @@ mod tests {
                 a.node == "remove_attendance" && a.principal.as_deref() == Some("jeff@corp")
             }),
             "prior actions must include the saved node + principal: {actions:?}"
+        );
+    }
+
+    /// Plain runs (no evidence events) surface as a RUN-LEVEL action under
+    /// the template id — what the cross-run rule matches in the demo.
+    #[tokio::test]
+    async fn adapter_plain_run_surfaces_template_level_action() {
+        use crate::audit::application::factory::AuditEnvelopeFactory;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let repo: std::sync::Arc<
+            dyn crate::audit::infrastructure::repository::AuditEnvelopeRepository,
+        > = std::sync::Arc::new(LocalAuditEnvelopeRepository::new(dir.path().to_path_buf()));
+
+        let factory = AuditEnvelopeFactoryImpl::default();
+        let mut input = completed_envelope_input("ignored_node", "jeff@corp");
+        input.template_id = "attendance-remove".to_string();
+        input.events.clear(); // no evidence events — plain run
+        let envelope = factory.build_envelope(input).await.expect("build");
+        repo.save(&envelope).await.expect("save");
+
+        let adapter = EnvelopeHistoryAdapter::new(repo);
+        let actions = adapter
+            .prior_actions(chrono::Utc::now() - chrono::Duration::hours(1))
+            .await
+            .expect("history read");
+        assert!(
+            actions
+                .iter()
+                .any(|a| a.node == "attendance-remove"
+                    && a.principal.as_deref() == Some("jeff@corp")),
+            "plain run must surface the template id as the action: {actions:?}"
         );
     }
 

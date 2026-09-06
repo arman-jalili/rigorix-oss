@@ -47,6 +47,7 @@ fn test_safety_caps_are_part_of_the_config_contract() {
         max_steps_per_rule: 8,
         max_window: 5,
         max_regex_predicates_per_file: 8,
+        max_history_window_secs: 604_800,
     };
     let over_cap = SequencePolicyError::RuleExceedsCaps {
         rule: "registration-remove-then-reassign".into(),
