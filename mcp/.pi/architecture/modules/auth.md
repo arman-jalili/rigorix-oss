@@ -95,6 +95,15 @@ This module is **not** an access-control gate on the agent's tool calls — the 
 - SSE auth middleware: when `mcp.sse.bind_address` is non-localhost AND `mcp.sse.auth = "idp" | "api_key"` is set, the SSE transport requires a valid bearer token before routing any tool call
 - When auth is not configured, SSE binds localhost-only (existing ADR-005 default) — no behavior change
 
+**Runtime status (2026-09-06):** the `rigorix_auth_*` tool handlers are wired into
+the stdio composition root (`mcp/src/main.rs` → `build_auth_handler`) — they
+appear in `tools/list` only when an IdP is configured via the canonical env
+surface (`RIGORIX_IDP_ISSUER` + `RIGORIX_IDP_CLIENT_ID`; see §Config). The SSE
+auth gate (`sse_auth.rs`) ships and is contract-tested, but the server is
+stdio-only (GAP-A-10: SSE transport removed), so no runtime path constructs
+`SseAuthGateImpl` — it is dormant until an SSE transport returns. The
+`mcp.sse.*` config surface is likewise inactive.
+
 ## Domain Events
 
 | Event | Description | Payload | Consumers |

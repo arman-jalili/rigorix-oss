@@ -90,6 +90,11 @@ struct AppState {
     validate_plan_handler: Box<dyn ValidatePlanHandler>,
     check_enforcement_handler: Box<dyn CheckEnforcementHandler>,
 
+    // Auth tools (ADR-008) — Some only when an IdP is configured
+    // (RIGORIX_IDP_ISSUER + RIGORIX_IDP_CLIENT_ID); None keeps the tools
+    // out of the live surface entirely.
+    auth_handler: Option<Box<dyn rigorix_mcp::auth::interfaces::mcp::AuthToolHandler>>,
+
     // Audit tools
     read_audit_handler: Box<dyn ReadAuditHandler>,
     list_audits_handler: Box<dyn ListAuditsHandler>,
@@ -180,6 +185,7 @@ impl AppState {
         engine: SharedEngineFacade,
         template_repo: SharedTemplateRepository,
         audit_hmac_key: Option<String>,
+        auth_handler: Option<Box<dyn rigorix_mcp::auth::interfaces::mcp::AuthToolHandler>>,
     ) -> Self {
         // ── Audit service (in-memory) ──
         let audit_storage = std::sync::Arc::new(
@@ -206,6 +212,7 @@ impl AppState {
             plan_handler: Box::new(PlanHandlerImpl::new(engine.clone())),
             validate_plan_handler: Box::new(ValidatePlanHandlerImpl::new(engine.clone())),
             check_enforcement_handler: Box::new(CheckEnforcementHandlerImpl::new(engine.clone())),
+            auth_handler,
 
             // Audit handlers
             read_audit_handler: Box::new(ReadAuditHandlerImpl::new(
@@ -634,6 +641,22 @@ impl AppState {
                 Ok(rigorix_mcp::usage_guide::interfaces::mcp::handle_get_usage_guide())
             }
 
+            // Auth tools (ADR-008) — optional; present only when an IdP is
+            // configured (RIGORIX_IDP_ISSUER + RIGORIX_IDP_CLIENT_ID).
+            "rigorix_auth_login" | "rigorix_auth_status" | "rigorix_auth_logout" => {
+                let Some(handler) = &self.auth_handler else {
+                    return Err(serde_json::json!({
+                        "error": "auth tools are not configured — set RIGORIX_IDP_ISSUER and RIGORIX_IDP_CLIENT_ID (see .pi/architecture/modules/auth.md)"
+                    }));
+                };
+                let result = match tool_name {
+                    "rigorix_auth_login" => handler.handle_auth_login(params.clone()).await,
+                    "rigorix_auth_status" => handler.handle_auth_status(params.clone()).await,
+                    _ => handler.handle_auth_logout(params.clone()).await,
+                };
+                result.map_err(|e| serde_json::json!({ "error": e.to_string() }))
+            }
+
             _ => Err(serde_json::json!({
                 "error": format!("Unknown tool: {}", tool_name)
             })),
@@ -792,6 +815,108 @@ fn mock_classifier() -> Box<dyn rigorix_engine::planning::domain::classification
 }
 
 /// Build a real EngineFacadeImpl by constructing all required engine sub-services.
+/// ADR-008: optional OIDC device-flow surface — `rigorix_auth_login`,
+/// `rigorix_auth_status`, `rigorix_auth_logout`.
+///
+/// Enabled by the canonical env surface (`RIGORIX_IDP_ISSUER` +
+/// `RIGORIX_IDP_CLIENT_ID`, mirrors `.rigorix/auth.toml` `[auth]`; optional
+/// `RIGORIX_IDP_CLIENT_SECRET`, `RIGORIX_IDP_ACCESS_TOKEN_TTL_SECS`).
+/// Returns `None` when unconfigured or any piece fails to initialize —
+/// auth tools then stay out of the live surface (no behavior change).
+///
+/// Keychain: OS keychain by default; headless/CI can opt into the explicit
+/// plaintext fallback with `RIGORIX_AUTH_PLAINTEXT_DIR` (never automatic).
+async fn build_auth_handler() -> Option<Box<dyn rigorix_mcp::auth::interfaces::mcp::AuthToolHandler>>
+{
+    use rigorix_mcp::auth::application::factory::{AuthServiceFactory, AuthServiceFactoryImpl};
+    use rigorix_mcp::auth::domain::config::IdpConfig;
+    use rigorix_mcp::auth::infrastructure::{
+        HttpIdpClient, InMemoryTokenProvider, KeychainStoreImpl,
+    };
+    use rigorix_mcp::auth::interfaces::mcp::AuthToolHandlerImpl;
+    use std::sync::Arc;
+
+    let issuer = std::env::var("RIGORIX_IDP_ISSUER").ok()?;
+    let client_id = std::env::var("RIGORIX_IDP_CLIENT_ID").ok()?;
+    if issuer.trim().is_empty() || client_id.trim().is_empty() {
+        tracing::info!("auth: RIGORIX_IDP_* present but empty — rigorix_auth_* disabled");
+        return None;
+    }
+    let client_secret = std::env::var("RIGORIX_IDP_CLIENT_SECRET").ok();
+    let ttl = std::env::var("RIGORIX_IDP_ACCESS_TOKEN_TTL_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok());
+    let config = match IdpConfig::new(issuer, client_id, client_secret, ttl) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("auth: invalid IdP config — rigorix_auth_* disabled ({e})");
+            return None;
+        }
+    };
+    let idp: Arc<dyn rigorix_mcp::auth::infrastructure::idp_client::IdpClient> =
+        match HttpIdpClient::new(config.issuer()) {
+            Ok(c) => Arc::new(c),
+            Err(e) => {
+                tracing::warn!("auth: IdP client init failed — rigorix_auth_* disabled ({e})");
+                return None;
+            }
+        };
+    // Keychain: OS default; explicit plaintext dir opt-in for headless/CI.
+    let keychain: Arc<dyn rigorix_mcp::auth::infrastructure::keychain_store::KeychainStore> =
+        match std::env::var("RIGORIX_AUTH_PLAINTEXT_DIR")
+            .ok()
+            .filter(|d| !d.trim().is_empty())
+        {
+            Some(dir) => match KeychainStoreImpl::plaintext(dir) {
+                Ok(k) => {
+                    tracing::warn!(
+                        "auth: explicit PLAINTEXT keychain fallback enabled (RIGORIX_AUTH_PLAINTEXT_DIR) — degraded mode"
+                    );
+                    Arc::new(k)
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "auth: plaintext store init failed ({e}) — rigorix_auth_* disabled"
+                    );
+                    return None;
+                }
+            },
+            None => match KeychainStoreImpl::keychain() {
+                Ok(k) => Arc::new(k),
+                Err(e) => {
+                    tracing::warn!(
+                        "auth: OS keychain unavailable ({e}) — set RIGORIX_AUTH_PLAINTEXT_DIR for a headless/CI run, or rigorix_auth_* stays disabled"
+                    );
+                    return None;
+                }
+            },
+        };
+    let tokens: Arc<dyn rigorix_mcp::auth::infrastructure::token_provider::TokenProvider> =
+        Arc::new(InMemoryTokenProvider::new());
+    // ADR-012 seam: the engine's identity attestation service. Default
+    // offline verifier (NullVerifier) — a JWKS-backed verifier is a later
+    // slice; identity claims are structural until then.
+    let attestation: Arc<
+        dyn rigorix_engine::identity::application::service::IdentityAttestationService,
+    > = Arc::new(
+        rigorix_engine::identity::application::service_impl::IdentityAttestationServiceImpl::new(),
+    );
+
+    match AuthServiceFactoryImpl::new()
+        .create(config, idp, keychain, tokens, attestation)
+        .await
+    {
+        Ok(service) => {
+            tracing::info!("auth: rigorix_auth_login/status/logout ENABLED (ADR-008)");
+            Some(Box::new(AuthToolHandlerImpl::new(service)))
+        }
+        Err(e) => {
+            tracing::warn!("auth: service composition failed — rigorix_auth_* disabled ({e})");
+            None
+        }
+    }
+}
+
 async fn build_real_engine(
     repo_root: &str,
 ) -> Result<SharedEngineFacade, Box<dyn std::error::Error + Send + Sync>> {
@@ -1435,6 +1560,11 @@ async fn handle_list_tools(id: &RequestId) -> JsonRpcMessage {
         }
     }
 
+    // Auth tools (ADR-008) — appended only when an IdP is configured.
+    if app_state().auth_handler.is_some() {
+        tools.extend(rigorix_mcp::auth::interfaces::mcp::auth_tool_descriptors());
+    }
+
     let result = serde_json::json!({ "tools": tools });
     JsonRpcMessage::success(id.clone(), result)
 }
@@ -1802,7 +1932,12 @@ async fn main() {
         .audit_hmac_key
         .or_else(|| std::env::var("RIGORIX_HMAC_KEY").ok())
         .filter(|k| !k.is_empty());
-    let _ = APP_STATE.set(AppState::new(engine, template_repo, audit_hmac_key));
+    let _ = APP_STATE.set(AppState::new(
+        engine,
+        template_repo,
+        audit_hmac_key,
+        build_auth_handler().await,
+    ));
 
     let cancel = CancellationToken::new();
 
