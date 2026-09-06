@@ -1096,7 +1096,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     file_paths: Self::extract_file_paths(&record.task_results),
                     metadata: None,
                     scoring_results: self.collect_scoring_results(record.execution_id).await,
-                    sign: false,
+                    sign: true,
                     repository: input.repository.clone(),
                     author: input.author.clone(),
                     identity: input.identity.as_ref().map(IdentityRef::from_claim),
@@ -1690,7 +1690,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     file_paths: Self::extract_file_paths(&record.task_results),
                     metadata: None,
                     scoring_results: self.collect_scoring_results(record.execution_id).await,
-                    sign: false,
+                    sign: true,
                     repository: input.repository.clone(),
                     author: input.author.clone(),
                     // run_from_template is the MCP auth-module path — the attested
@@ -2903,7 +2903,7 @@ mod tests {
         );
 
         // 2. The envelope derives the redacted sequence_policy_findings[].
-        let envelope = AuditEnvelopeFactoryImpl::new(None)
+        let envelope = AuditEnvelopeFactoryImpl::new(Some("test-key".to_string()))
             .build_envelope(input)
             .await
             .expect("envelope build");
@@ -3198,7 +3198,7 @@ mod tests {
         let repo: std::sync::Arc<
             dyn crate::audit::infrastructure::repository::AuditEnvelopeRepository,
         > = std::sync::Arc::new(LocalAuditEnvelopeRepository::new(dir.path().to_path_buf()));
-        let factory = AuditEnvelopeFactoryImpl::default();
+        let factory = AuditEnvelopeFactoryImpl::new(Some("test-key".to_string()));
         let run1 = factory
             .build_envelope(BuildEnvelopeInput {
                 execution_id: uuid::Uuid::new_v4(),
@@ -3222,7 +3222,7 @@ mod tests {
                 file_paths: vec![],
                 metadata: None,
                 scoring_results: std::collections::HashMap::new(),
-                sign: false,
+                sign: true,
                 repository: None,
                 author: Some("jeff@corp".to_string()),
                 identity: None,

@@ -36,6 +36,7 @@ fn conference_rule() -> SequenceRule {
         ],
         window: Some(3),
         action: RuleAction::Promote,
+        history: None,
     }
 }
 

@@ -7,6 +7,12 @@ Blueprint Source: Guardian Framework v1.2
 
 **Status:** Proposed
 **Date:** 2026-09-04
+**Scope note (2026-09-06, R7):** the ADR originally scoped matching to ONE
+run's ordered step list. R7 (#871) extends the module to cross-run
+conflicting-action rules: a rule with a `history` predicate consults the
+signed prior-execution trail (.rigorix/audit envelopes) at the same plan-time
+gate — same principal, windowed, deny/promote as within-run. Same bounded
+context (sequence_policy module); see modules/sequence-policy.md §R7.
 
 **Tech Stack:** Rust
 
