@@ -173,6 +173,10 @@ pub struct PlanFromTemplateInput {
 
     /// Template name for metadata.
     pub template_name: String,
+
+    /// Principal (author/attested identity) — lets the R2 gate evaluate R7
+    /// same-principal history rules during plan preview/validation.
+    pub author: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

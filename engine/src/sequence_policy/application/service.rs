@@ -48,14 +48,22 @@ pub trait SequencePolicyService: Send + Sync {
     /// `requires_approval = true`; a matched `deny` rule means it must fail
     /// before dispatch.
     ///
+    /// `principal` is the current run's initiating identity (envelope
+    /// `author` / attested claim subject). R7 rules with
+    /// `history.same_principal = true` match only prior actions by this
+    /// principal; `None` never yields a same-principal match (no false
+    /// denial).
+    ///
     /// # Errors
     /// - `SequencePolicyError::InvalidConfig` / `RuleExceedsCaps` — rule
     ///   config corrupt or over-cap → **fail closed**, plan refused, no steps
     ///   execute
-    /// - `SequencePolicyError::Internal` — evaluation failed unexpectedly
+    /// - `SequencePolicyError::Internal` — evaluation (incl. history read)
+    ///   failed unexpectedly → also fail closed
     async fn evaluate_plan(
         &self,
         steps: &[PlannedStep],
+        principal: Option<&str>,
     ) -> Result<Vec<SequenceMatch>, SequencePolicyError>;
 
     /// Evaluate a dispatch prefix plus the next node (run-time, R3).
@@ -64,6 +72,11 @@ pub trait SequencePolicyService: Send + Sync {
     /// shared by `execute_graph` and `resume_execution`) when the next step
     /// would complete a forbidden sequence over the completed prefix.
     ///
+    /// `principal` follows the same R7 semantics as [`Self::evaluate_plan`];
+    /// the executor does not currently track a per-run principal, so
+    /// callers pass `None` — same-principal history rules therefore evaluate
+    /// at plan time (R2), not mid-dispatch (documented in the module spec).
+    ///
     /// # Errors
     /// - Fail-closed: any error halts the run with `SequencePolicyError` —
     ///   the node is not dispatched
@@ -71,5 +84,6 @@ pub trait SequencePolicyService: Send + Sync {
         &self,
         prefix: &[DispatchedStep],
         next: &PlannedStep,
+        principal: Option<&str>,
     ) -> Result<Vec<SequenceMatch>, SequencePolicyError>;
 }

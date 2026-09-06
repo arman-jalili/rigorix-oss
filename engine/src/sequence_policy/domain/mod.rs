@@ -27,10 +27,13 @@
 
 pub mod config;
 pub mod error;
+pub mod history;
 pub mod rule;
 pub mod sequence_match;
 
 pub use config::{SafetyCaps, SequencePolicyConfig};
 pub use error::SequencePolicyError;
+pub use history::HistoryAction;
+pub use rule::HistoryPredicate;
 pub use rule::{ParamMatchKind, ParamPredicate, RuleAction, SequenceRule, StepPredicate};
 pub use sequence_match::SequenceMatch;

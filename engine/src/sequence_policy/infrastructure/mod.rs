@@ -16,6 +16,8 @@
 //!   hooks/permissions); rules changed between runs apply to the next plan
 //!   evaluation — prior decisions stand (documented in the module spec)
 
+mod history;
 pub mod repository;
 
+pub use history::{EnvelopeHistoryAdapter, ExecutionHistory};
 pub use repository::{SequencePolicyRepository, TomlSequencePolicyRepository};

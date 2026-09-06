@@ -273,13 +273,31 @@ impl SequencePolicySetup {
             "sequence_policy: R3 prefix gate armed — rules read per-run from {} (absent file = no gating)",
             path.display()
         );
-        Some(std::sync::Arc::new(
+        let mut service =
             crate::sequence_policy::application::service_impl::SequencePolicyServiceImpl::new(
                 Box::new(
                     crate::sequence_policy::infrastructure::TomlSequencePolicyRepository::new(path),
                 ),
+            );
+        // R7: attach the signed-execution-history port over the same repo's
+        // `.rigorix/audit` envelope store — cross-run rules read prior runs'
+        // signed evidence. A missing audit dir yields empty history (status
+        // quo); the audit dir itself is created by the composition roots when
+        // they persist envelopes.
+        service = service.with_history(std::sync::Arc::new(
+            crate::sequence_policy::infrastructure::EnvelopeHistoryAdapter::new(
+                std::sync::Arc::new(
+                    crate::audit::infrastructure::LocalAuditEnvelopeRepository::new(
+                        repo_root.join(".rigorix").join("audit"),
+                    ),
+                ),
             ),
-        ))
+        ));
+        tracing::info!(
+            "sequence_policy: R7 cross-run history armed over {}/.rigorix/audit",
+            repo_root.display()
+        );
+        Some(std::sync::Arc::new(service))
     }
 }
 

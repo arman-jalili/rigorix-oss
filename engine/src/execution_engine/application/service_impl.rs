@@ -1215,7 +1215,7 @@ impl ParallelExecutionServiceImpl {
             (prefix, next)
         };
 
-        let matches = match svc.evaluate_prefix(&prefix, &next).await {
+        let matches = match svc.evaluate_prefix(&prefix, &next, None).await {
             Ok(m) => m,
             Err(e) => {
                 // R6: record the fail-closed halt (GAP-M-14 — never silent).

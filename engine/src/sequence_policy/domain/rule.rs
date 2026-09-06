@@ -119,7 +119,9 @@ impl StepPredicate {
 }
 
 /// Exact or glob (`*` wildcard) string match.
-fn tool_matches(pattern: &str, text: &str) -> bool {
+///
+/// `pub(crate)`: also used by R7 history matching (prior node names).
+pub(crate) fn tool_matches(pattern: &str, text: &str) -> bool {
     if !pattern.contains('*') {
         return pattern == text;
     }
@@ -221,6 +223,39 @@ pub struct SequenceRule {
     /// Action on match: `promote` (default) or `deny`.
     #[serde(default)]
     pub action: RuleAction,
+
+    /// R7: optional cross-run predicate. When present, the rule fires ONLY
+    /// if the within-run `steps[]` match AND the signed execution history
+    /// shows a prior action matching [`HistoryPredicate::prior_node`] —
+    /// by the same principal (when `same_principal`), within
+    /// [`HistoryPredicate::window_secs`] of the evaluation — before this run.
+    /// Absent = the pre-R7 within-run behavior (status quo).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history: Option<HistoryPredicate>,
+}
+
+/// R7: cross-run predicate — fires when a PRIOR, already-completed run
+/// (visible in the signed audit trail) contains a conflicting action by the
+/// same principal, minutes apart. This is the case a single-plan checkpoint
+/// cannot see: "remove X" run 1 + "add Jeff" run 2 each pass their own gate.
+///
+/// Operator TOML (inside a `[[rules]]` table):
+///
+/// ```toml
+/// history = { prior_node = "remove_attendance", same_principal = true, window_secs = 900 }
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistoryPredicate {
+    /// Glob over prior executed node names (e.g. `"remove_attendance"` or
+    /// `"remove_*"`). The rule's own `steps[]` match the CURRENT run; this
+    /// matches the signed history of runs that already completed.
+    pub prior_node: String,
+    /// When `true`, only history actions whose principal equals the current
+    /// run's principal satisfy the predicate. When the current run has no
+    /// principal, the predicate cannot match (never a false denial).
+    pub same_principal: bool,
+    /// Look-back window (seconds) over the signed history.
+    pub window_secs: u64,
 }
 
 #[cfg(test)]
@@ -248,6 +283,32 @@ action = "promote"
     struct RulesFile {
         #[serde(default)]
         rules: Vec<SequenceRule>,
+    }
+
+    #[test]
+    #[test]
+    fn toml_parse_yields_rule_with_history_predicate() {
+        // R7 operator schema: a single current-run predicate + the history
+        // predicate (prior conflicting action by the same principal).
+        let file: RulesFile = toml::from_str(
+            r#"
+[[rules]]
+id = "no-cross-run-remove-reassign"
+name = "No cross-run remove-then-reassign"
+description = "same principal removed within the window"
+steps = [{ tool = "registration_add", params = [{ pointer = "/event_id", kind = "exact", value = "conf-2026" }] }]
+action = "deny"
+history = { prior_node = "registration_remove", same_principal = true, window_secs = 900 }
+"#,
+        )
+        .expect("R7 operator TOML parses");
+        let rule = &file.rules[0];
+        let h = rule.history.as_ref().expect("history predicate present");
+        assert_eq!(h.prior_node, "registration_remove");
+        assert!(h.same_principal);
+        assert_eq!(h.window_secs, 900);
+        assert_eq!(rule.steps.len(), 1, "cross-run rule is single-predicate");
+        assert_eq!(rule.action, RuleAction::Deny);
     }
 
     #[test]

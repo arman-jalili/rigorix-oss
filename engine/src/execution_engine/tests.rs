@@ -2360,6 +2360,7 @@ fn r3_config(action: RuleAction, path_a: &str, path_b: &str) -> SequencePolicyCo
             ],
             window: Some(2),
             action,
+            history: None,
         }],
     }
 }

@@ -118,8 +118,15 @@ fn find_matches_for_rule<S: StepLike>(
     steps: &[S],
 ) -> Result<Vec<SequenceMatch>, SequencePolicyError> {
     // A sequence rule needs at least an ordered pair — single-predicate rules
-    // are per-action policy, not sequence policy.
-    if rule.steps.len() < 2 || steps.len() < rule.steps.len() {
+    // are per-action policy, not sequence policy. EXCEPTION (R7): a rule with
+    // a `history` predicate matches the current run's action AND the signed
+    // prior-execution trail — the cross-run case ("remove X" in run 1,
+    // "add Jeff" in run 2) is a single current-run action gated by history.
+    if rule.steps.is_empty()
+        || steps.is_empty()
+        || steps.len() < rule.steps.len()
+        || (rule.steps.len() < 2 && rule.history.is_none())
+    {
         return Ok(Vec::new());
     }
     let predicate_count = rule.steps.len();
@@ -204,6 +211,7 @@ mod tests {
             steps: tools.iter().map(|t| tool_predicate(t)).collect(),
             window,
             action,
+            history: None,
         }
     }
 
