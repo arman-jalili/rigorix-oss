@@ -307,6 +307,13 @@ pub async fn build_orchestrator_with_budget(
         rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env(
             std::path::Path::new(&repo_root),
         );
+    // ADR-013 R3: operator-authored .rigorix/sequence-policy.toml gates the
+    // dispatch prefix (absent file = no gating). Shared by the executor
+    // (R3) and the orchestrator builder (R2 plan-time) below.
+    let sequence_policy =
+        rigorix_engine::execution_engine::application::factory::SequencePolicySetup::from_env(
+            std::path::Path::new(&repo_root),
+        );
     let execution = ParallelExecutionFactoryImpl
         .create(ParallelExecutionFactoryConfig {
             executor_config: ParallelExecutorConfig {
@@ -327,7 +334,7 @@ pub async fn build_orchestrator_with_budget(
             permission_enforcer,
             hook_runner,
             approval_binding,
-            sequence_policy: None,
+            sequence_policy: sequence_policy.clone(),
         })
         .await
         .map_err(|e| CliError::General(format!("execution: {e}")))?;
@@ -594,6 +601,12 @@ pub async fn build_orchestrator_with_budget(
     };
 
     // ── Wire everything ────────────────────────────────────────────────
+    // ADR-013 R2: plan-time sequence-policy gate — the same operator-authored
+    // rule file the executor reads at R3 (per-run reads keep both fresh).
+    let sequence_policy =
+        rigorix_engine::execution_engine::application::factory::SequencePolicySetup::from_env(
+            std::path::Path::new(&repo_root),
+        );
     let mut builder = OrchestratorBuilderImpl::new(orch_domain_config)
         .with_repo_root(repo_root)
         .with_cancellation_service(Arc::from(cancellation))
@@ -606,6 +619,10 @@ pub async fn build_orchestrator_with_budget(
 
     if let Some(se_svc) = scored_evaluation_svc {
         builder = builder.with_scored_evaluation_service(se_svc);
+    }
+
+    if let Some(policy) = sequence_policy {
+        builder = builder.with_sequence_policy(policy);
     }
 
     let orchestrator = builder.build().await.map_err(CliError::Engine)?;

@@ -43,6 +43,9 @@ pub struct OrchestratorBuilderImpl {
     budget_service: Option<Arc<dyn crate::budget_tracking::application::LlmBudgetService>>,
     code_graph_service: Option<Arc<dyn CodeGraphService>>,
     scored_evaluation_service: Option<Arc<dyn ScoredEvaluationService>>,
+    // R2 (ADR-013): plan-time sequence-policy gate.
+    sequence_policy_service:
+        Option<Arc<dyn crate::sequence_policy::application::service::SequencePolicyService>>,
 }
 
 impl OrchestratorBuilderImpl {
@@ -181,6 +184,7 @@ impl OrchestratorBuilder for OrchestratorBuilderImpl {
             budget_service: None,
             code_graph_service: None,
             scored_evaluation_service: None,
+            sequence_policy_service: None,
         }
     }
 
@@ -202,6 +206,14 @@ impl OrchestratorBuilder for OrchestratorBuilderImpl {
 
     fn with_code_graph_service(mut self, svc: Arc<dyn CodeGraphService>) -> Self {
         self.code_graph_service = Some(svc);
+        self
+    }
+
+    fn with_sequence_policy(
+        mut self,
+        svc: Arc<dyn crate::sequence_policy::application::service::SequencePolicyService>,
+    ) -> Self {
+        self.sequence_policy_service = Some(svc);
         self
     }
 
@@ -250,6 +262,7 @@ impl OrchestratorBuilder for OrchestratorBuilderImpl {
             })?;
         let code_graph_service = self.code_graph_service;
         let scored_evaluation_service = self.scored_evaluation_service;
+        let sequence_policy_service = self.sequence_policy_service;
 
         let mut orchestrator = OrchestratorServiceImpl::new(
             config,
@@ -265,6 +278,9 @@ impl OrchestratorBuilder for OrchestratorBuilderImpl {
 
         if let Some(se_svc) = scored_evaluation_service {
             orchestrator = orchestrator.with_scored_evaluation_service(se_svc);
+        }
+        if let Some(policy) = sequence_policy_service {
+            orchestrator = orchestrator.with_sequence_policy(policy);
         }
 
         Ok(Box::new(orchestrator))
@@ -363,5 +379,96 @@ mod tests {
             "builder with audit should succeed: {:?}",
             result.err()
         );
+    }
+}
+
+#[cfg(test)]
+mod sequence_policy_builder_tests {
+    use super::*;
+    use crate::orchestrator::application::orchestrator_mocks;
+
+    #[tokio::test]
+    async fn test_builder_with_sequence_policy_refuses_denied_runbook() {
+        use crate::orchestrator::domain::OrchestratorError;
+        use crate::orchestrator::dto::{RunFromTemplateInput, TemplateStepDef};
+        use crate::sequence_policy::application::service_impl::SequencePolicyServiceImpl;
+        use crate::sequence_policy::infrastructure::TomlSequencePolicyRepository;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let rigorix = dir.path().join(".rigorix");
+        tokio::fs::create_dir_all(&rigorix)
+            .await
+            .expect("create .rigorix");
+        let path = rigorix.join("sequence-policy.toml");
+        tokio::fs::write(
+            &path,
+            r#"fail_closed = true
+
+[[rules]]
+id = "no-remove-reassign"
+name = "No remove-then-reassign"
+description = "deny remove-then-reassign of a full seat"
+steps = [
+  { tool = "registration_remove", params = [{ pointer = "/event_id", kind = "exact", value = "conf-2026" }] },
+  { tool = "registration_add",    params = [{ pointer = "/event_id", kind = "exact", value = "conf-2026" }] },
+]
+window = 3
+action = "deny"
+"#,
+        )
+        .await
+        .expect("write rule file");
+
+        let policy: Arc<dyn crate::sequence_policy::application::service::SequencePolicyService> =
+            Arc::new(SequencePolicyServiceImpl::new(Box::new(
+                TomlSequencePolicyRepository::new(&path),
+            )));
+
+        let step = |name: &str| TemplateStepDef {
+            name: name.to_string(),
+            tool: name.to_string(),
+            description: name.to_string(),
+            parameters: serde_json::json!({ "event_id": "conf-2026" }),
+            requires_approval: false,
+            timeout_secs: None,
+            evaluate_score: false,
+        };
+
+        let orch = OrchestratorBuilderImpl::new(OrchestratorConfig::default())
+            .with_repo_root(dir.path().to_string_lossy().into_owned())
+            .with_planning_pipeline(Arc::new(orchestrator_mocks::MockPlanningService::new()))
+            .with_execution_service(Arc::new(orchestrator_mocks::MockExecutionService))
+            .with_state_manager(Arc::new(orchestrator_mocks::MockStateService::new()))
+            .with_cancellation_service(Arc::new(orchestrator_mocks::MockCancellationService))
+            .with_event_bus(Arc::new(orchestrator_mocks::MockEventBusService::new()))
+            .with_budget_service(Arc::new(orchestrator_mocks::MockBudgetService))
+            .with_sequence_policy(policy)
+            .build()
+            .await
+            .expect("builder must succeed with the policy attached");
+
+        let err = orch
+            .run_from_template(RunFromTemplateInput {
+                steps: vec![step("registration_remove"), step("registration_add")],
+                repo_root: dir.path().to_string_lossy().into_owned(),
+                execution_id: None,
+                template_name: "conf-registration".into(),
+                repository: None,
+                author: None,
+                enforcement_preset: None,
+            })
+            .await
+            .expect_err("deny rule must refuse the runbook at plan time");
+
+        match err {
+            OrchestratorError::SequencePolicyDenied {
+                later_step,
+                rule_id,
+            } => {
+                assert_eq!(later_step, "registration_add");
+                assert_eq!(rule_id, "no-remove-reassign");
+            }
+            other => panic!("expected SequencePolicyDenied through the builder, got {other:?}"),
+        }
     }
 }

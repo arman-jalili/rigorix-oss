@@ -385,6 +385,12 @@ async fn build_action_orchestrator(
         rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env(
             std::path::Path::new(repo_root),
         );
+    // ADR-013 R3/R2: operator-authored .rigorix/sequence-policy.toml gates
+    // the dispatch prefix (executor) and the plan (orchestrator builder).
+    let sequence_policy =
+        rigorix_engine::execution_engine::application::factory::SequencePolicySetup::from_env(
+            std::path::Path::new(repo_root),
+        );
     let execution = ParallelExecutionFactoryImpl
         .create(ParallelExecutionFactoryConfig {
             executor_config: ParallelExecutorConfig {
@@ -405,7 +411,7 @@ async fn build_action_orchestrator(
             permission_enforcer,
             hook_runner,
             approval_binding,
-            sequence_policy: None,
+            sequence_policy: sequence_policy.clone(),
         })
         .await
         .map_err(|e| format!("execution: {e}"))?;
@@ -456,14 +462,19 @@ async fn build_action_orchestrator(
                 let planning_arc: Arc<dyn PlanningPipelineService> = Arc::from(planning);
                 let validation_loop = build_validation_loop(planning_arc.clone()).await;
 
-                let orchestrator = OrchestratorBuilderImpl::new(orch_domain_config)
+                let mut builder = OrchestratorBuilderImpl::new(orch_domain_config)
                     .with_repo_root(repo_root.to_string())
                     .with_cancellation_service(Arc::from(cancellation))
                     .with_event_bus(Arc::clone(&event_bus))
                     .with_state_manager(Arc::clone(&state_manager))
                     .with_budget_service(Arc::from(budget))
                     .with_execution_service(Arc::from(execution))
-                    .with_planning_pipeline(planning_arc)
+                    .with_planning_pipeline(planning_arc);
+                if let Some(policy) = sequence_policy {
+                    builder = builder.with_sequence_policy(policy);
+                }
+
+                let orchestrator = builder
                     .build()
                     .await
                     .map_err(|e| format!("orchestrator build: {e}"))?;

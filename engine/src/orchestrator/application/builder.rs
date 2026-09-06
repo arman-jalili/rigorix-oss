@@ -77,6 +77,20 @@ pub trait OrchestratorBuilder: Send + Sync {
     where
         Self: Sized;
 
+    /// Inject the sequence-policy service (R2 plan-time gate, ADR-013).
+    ///
+    /// Optional — if omitted, no plan-time sequence gating is applied
+    /// (status quo). When set, `validate_plan` / plan build consults the
+    /// operator-authored `.rigorix/sequence-policy.toml` rules: a matched
+    /// `deny` refuses the runbook (fail-closed), a matched `promote` builds
+    /// the later step with `requires_approval = true`.
+    fn with_sequence_policy(
+        self,
+        svc: Arc<dyn crate::sequence_policy::application::service::SequencePolicyService>,
+    ) -> Self
+    where
+        Self: Sized;
+
     /// Build the `OrchestratorService`.
     ///
     /// Validates configuration and wires all dependencies.

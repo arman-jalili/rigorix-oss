@@ -224,3 +224,149 @@ impl ApprovalBindingSetup {
         })
     }
 }
+
+/// R3 sequence-policy setup (ADR-013) — arms the runtime prefix gate.
+///
+/// Loads the operator-authored rule file (`.rigorix/sequence-policy.toml`,
+/// same trust surface as `policy.toml` / `permissions.toml`) and builds a
+/// `SequencePolicyService` that reads it per run. Absent file = fail-open-
+/// absent (no gating — status quo); a present file gates the dispatch
+/// prefix (deny fails before the tool is called, promote routes into the
+/// approval pause).
+pub struct SequencePolicySetup;
+
+impl SequencePolicySetup {
+    /// Build the sequence-policy service over the repo's rule file.
+    ///
+    /// Default config path: `<repo_root>/.rigorix/sequence-policy.toml`
+    /// (override with `RIGORIX_SEQUENCE_POLICY_PATH`). Disable entirely
+    /// with `RIGORIX_SEQUENCE_POLICY=0|false|no` (the file alone is the
+    /// operator's opt-in, so the default is enabled-attempt — an absent
+    /// file yields no rules and zero behavior change).
+    ///
+    /// Corrupt / over-cap files are NOT rejected here: the repository
+    /// surfaces them per-run as `SequencePolicyError` and the evaluation
+    /// choke points fail closed (plan refused / run halted before dispatch)
+    /// — matching the frozen loading semantics.
+    pub fn from_env(
+        repo_root: &std::path::Path,
+    ) -> Option<
+        std::sync::Arc<dyn crate::sequence_policy::application::service::SequencePolicyService>,
+    > {
+        let flag = std::env::var("RIGORIX_SEQUENCE_POLICY").ok();
+        let disabled = matches!(
+            flag.as_deref(),
+            Some("0") | Some("false") | Some("FALSE") | Some("no") | Some("NO")
+        );
+        if disabled {
+            tracing::info!(
+                "sequence_policy: disabled via RIGORIX_SEQUENCE_POLICY=0 — no R3 prefix gating"
+            );
+            return None;
+        }
+        let path = std::env::var("RIGORIX_SEQUENCE_POLICY_PATH")
+            .ok()
+            .filter(|p| !p.is_empty())
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| repo_root.join(".rigorix").join("sequence-policy.toml"));
+        tracing::info!(
+            "sequence_policy: R3 prefix gate armed — rules read per-run from {} (absent file = no gating)",
+            path.display()
+        );
+        Some(std::sync::Arc::new(
+            crate::sequence_policy::application::service_impl::SequencePolicyServiceImpl::new(
+                Box::new(
+                    crate::sequence_policy::infrastructure::TomlSequencePolicyRepository::new(path),
+                ),
+            ),
+        ))
+    }
+}
+
+#[cfg(test)]
+mod sequence_policy_setup_tests {
+    use super::*;
+
+    /// All `from_env` cases read the same env vars, so they share one lock
+    /// to stay deterministic under the parallel test harness.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn write_policy_file(dir: &std::path::Path, action: &str) -> std::path::PathBuf {
+        let rigorix = dir.join(".rigorix");
+        std::fs::create_dir_all(&rigorix).expect("create .rigorix");
+        let path = rigorix.join("sequence-policy.toml");
+        std::fs::write(
+            &path,
+            format!(
+                r#"fail_closed = true
+
+[[rules]]
+id = "no-remove-reassign"
+name = "No remove-then-reassign"
+description = "deny remove-then-reassign of a full seat"
+steps = [
+  {{ tool = "registration_remove", params = [{{ pointer = "/event_id", kind = "exact", value = "conf-2026" }}] }},
+  {{ tool = "registration_add",    params = [{{ pointer = "/event_id", kind = "exact", value = "conf-2026" }}] }},
+]
+window = 3
+action = "{action}"
+"#
+            ),
+        )
+        .expect("write rule file");
+        path
+    }
+
+    /// ADR-013 wiring: `from_env` arms the R3 gate even when the rule file is
+    /// absent — the per-run repository read keeps that case fail-open-absent
+    /// (status quo), so arming is safe and picks up a later-created file.
+    #[test]
+    fn absent_policy_file_still_arms_gate() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let svc = SequencePolicySetup::from_env(dir.path());
+        assert!(
+            svc.is_some(),
+            "absent rule file must still arm the gate (per-run fail-open)"
+        );
+    }
+
+    #[test]
+    fn present_policy_file_arms_gate() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_policy_file(dir.path(), "deny");
+        let svc = SequencePolicySetup::from_env(dir.path());
+        assert!(svc.is_some(), "rule file present → service attached");
+    }
+
+    #[test]
+    fn disabled_env_returns_none() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_policy_file(dir.path(), "deny");
+        unsafe { std::env::set_var("RIGORIX_SEQUENCE_POLICY", "0") };
+        let svc = SequencePolicySetup::from_env(dir.path());
+        unsafe { std::env::remove_var("RIGORIX_SEQUENCE_POLICY") };
+        assert!(
+            svc.is_none(),
+            "RIGORIX_SEQUENCE_POLICY=0 must disable the gate"
+        );
+    }
+
+    #[test]
+    fn path_override_points_at_explicit_file() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let custom = dir.path().join("policies").join("seq.toml");
+        std::fs::create_dir_all(custom.parent().unwrap()).expect("parent dir");
+        std::fs::write(&custom, b"fail_closed = true\n").expect("write custom");
+        unsafe { std::env::set_var("RIGORIX_SEQUENCE_POLICY_PATH", &custom) };
+        let svc = SequencePolicySetup::from_env(dir.path());
+        unsafe { std::env::remove_var("RIGORIX_SEQUENCE_POLICY_PATH") };
+        assert!(
+            svc.is_some(),
+            "path override must point the repository at the explicit file"
+        );
+    }
+}
