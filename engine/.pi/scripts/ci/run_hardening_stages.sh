@@ -345,6 +345,11 @@ run_stage "35" "approval_proofing" \
     "${SCRIPTS_DIR}/stage_approval_proofing.sh" \
     "always"
 
+# Stage 36: Sequence-Policy Proofing
+run_stage "36" "sequence-policy_proofing" \
+    "${SCRIPTS_DIR}/stage_sequence-policy_proofing.sh" \
+    "always"
+
 # ── Summary ──
 
 echo ""
