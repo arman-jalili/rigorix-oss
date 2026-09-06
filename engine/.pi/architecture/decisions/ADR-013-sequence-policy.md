@@ -5,7 +5,7 @@ Canonical Reference: .pi/architecture/decisions/ADR-013-sequence-policy.md
 Blueprint Source: Guardian Framework v1.2
 -->
 
-**Status:** Proposed
+**Status:** Accepted (locally validated)
 **Date:** 2026-09-04
 **Scope note (2026-09-06, R7):** the ADR originally scoped matching to ONE
 run's ordered step list. R7 (#871) extends the module to cross-run
@@ -147,3 +147,21 @@ Implementation files should reference: `.pi/architecture/decisions/ADR-013-seque
 
 *Decision date: 2026-09-04*
 *Decision makers: pending — proposed for review (epic: epic-sequence-policy-epic)*
+
+
+## Validation Evidence (2026-09-06 — local, full-stack)
+
+Status moved from Proposed to **Accepted (locally validated)** after an
+end-to-end run on the unreleased local build (not published crates) against
+a real infrastructure stack:
+
+- **conference-demo** (github.com/arman-jalili/conference-demo, private):
+  docker postgres conference registry + docker Keycloak (RFC 8628 device
+  flow), driven through rigorix-mcp over stdio — exit 0, every scene DB-verified.
+- Coverage of this ADR in that run: Sequence policy R2/R3/R7: same-plan remove→reassign denied at plan time (scene 3); the legit transfer policy-promoted to a human (scene 4); cross-run remove→add refused from the signed history in a later run (scene 8) — envelope records the promote finding..
+- Engine lib 2020/2020; workspace clippy `-D warnings`; mcp conformance 7/7;
+  local CI 107/107 (the record for the parent epic).
+- Still NOT validated: a public/enterprise deployment (this repo's "ship
+  gate") — crates.io publish and a production dashboard+IdP session remain
+  future work. Local-only acceptance is the honest ceiling of this flip.
+

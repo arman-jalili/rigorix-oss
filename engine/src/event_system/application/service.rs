@@ -67,7 +67,10 @@ pub trait EventBusService: Send + Sync {
     /// After draining, the buffer is cleared (unless `clear: false` is specified).
     ///
     /// Designed to be called once at execution end to populate `ExecutionRecord`.
-    /// Calling drain a second time returns `EventSystemError::AlreadyDrained`.
+    /// Each clear drain opens a new window: a long-lived server (the MCP
+    /// process) shares one bus across many executions, so drains are
+    /// repeatable and return only the events published since the previous
+    /// clear drain.
     async fn drain_persisted(
         &self,
         input: DrainPersistedInput,

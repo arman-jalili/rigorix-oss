@@ -1,6 +1,6 @@
 # ADR-008: Auth Client Flow — OIDC Device Flow, Keychain Custody, SSE Transport Auth
 
-**Status:** Proposed
+**Status:** Accepted (locally validated)
 **Date:** 2026-08-28
 
 **Tech Stack:** Rust (mcp crate)
@@ -104,3 +104,21 @@ Implementation files should reference: `.pi/architecture/modules/auth.md`
 
 *Decision date: 2026-08-28*
 *Decision makers: Rigorix maintainers (with industry review)*
+
+
+## Validation Evidence (2026-09-06 — local, full-stack)
+
+Status moved from Proposed to **Accepted (locally validated)** after an
+end-to-end run on the unreleased local build (not published crates) against
+a real infrastructure stack:
+
+- **conference-demo** (github.com/arman-jalili/conference-demo, private):
+  docker postgres conference registry + docker Keycloak (RFC 8628 device
+  flow), driven through rigorix-mcp over stdio — exit 0, every scene DB-verified.
+- Coverage of this ADR in that run: Auth client flow: full RFC 8628 device flow against Keycloak 25 (device authorize → login POST → consent OAUTH_GRANT → token); RIGORIX_IDP_ISSUER/CLIENT_ID wiring (scene 1); auth-module test suite 19/19..
+- Engine lib 2020/2020; workspace clippy `-D warnings`; mcp conformance 7/7;
+  local CI 107/107 (the record for the parent epic).
+- Still NOT validated: a public/enterprise deployment (this repo's "ship
+  gate") — crates.io publish and a production dashboard+IdP session remain
+  future work. Local-only acceptance is the honest ceiling of this flip.
+
