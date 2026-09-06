@@ -10,7 +10,7 @@
 
 use async_trait::async_trait;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::{Mutex, broadcast};
 
 use crate::event_system::domain::{EventSystemError, ExecutionEvent, PersistedEvent};
@@ -39,11 +39,8 @@ pub struct EventBusServiceImpl {
     /// Monotonically increasing sequence counter (1-indexed).
     sequence: AtomicU64,
 
-    /// Number of events drained from the buffer (for statistics).
+    /// Events drained in the most recent window (for statistics).
     drained_count: AtomicU64,
-
-    /// Whether the buffer has been drained (prevents double-drain).
-    drained: AtomicBool,
 
     /// Configuration for capacity limits.
     config: EventBusConfig,
@@ -59,7 +56,6 @@ impl EventBusServiceImpl {
             persisted: Arc::new(Mutex::new(Vec::with_capacity(config.buffer_capacity))),
             sequence: AtomicU64::new(0),
             drained_count: AtomicU64::new(0),
-            drained: AtomicBool::new(false),
             config,
         }
     }
@@ -148,19 +144,15 @@ impl EventBusService for EventBusServiceImpl {
         &self,
         input: DrainPersistedInput,
     ) -> Result<DrainPersistedOutput, EventSystemError> {
-        // Check if already drained
-        if self.drained.load(Ordering::SeqCst) {
-            return Err(EventSystemError::AlreadyDrained {
-                count: self.drained_count.load(Ordering::SeqCst),
-            });
-        }
-
+        // Per-run windows: a long-lived server (the MCP process) runs many
+        // executions over ONE shared bus, so each clear drain must open a
+        // NEW window for the next run's events. The one-shot "double drain
+        // errors" contract silently emptied every envelope after the first
+        // run in a process.
         let mut buffer = self.persisted.lock().await;
         let events = if input.clear {
-            let events = buffer.clone();
-            buffer.clear();
-            self.drained.store(true, Ordering::SeqCst);
-            events
+            
+            std::mem::take(&mut *buffer)
         } else {
             buffer.clone()
         };
@@ -496,7 +488,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_double_drain_returns_error() {
+    async fn test_repeat_drains_open_per_run_windows() {
         let bus = EventBusServiceImpl::default();
         let eid = uuid::Uuid::new_v4();
 
@@ -506,18 +498,33 @@ mod tests {
         .await
         .unwrap();
 
-        bus.drain_persisted(DrainPersistedInput { clear: true })
+        // Run 1's drain: returns + clears run 1's events.
+        let first = bus
+            .drain_persisted(DrainPersistedInput { clear: true })
             .await
             .unwrap();
+        assert_eq!(first.count, 1);
 
-        let result = bus
+        // A second drain on an empty buffer is NOT an error (new window).
+        let empty = bus
             .drain_persisted(DrainPersistedInput { clear: true })
-            .await;
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            EventSystemError::AlreadyDrained { .. }
-        ));
+            .await
+            .unwrap();
+        assert_eq!(empty.count, 0);
+
+        // Run 2 publishes; its drain returns ONLY run 2's events — the
+        // one-shot contract silently emptied every later envelope in a
+        // long-lived server process (the MCP bus is shared across runs).
+        bus.publish(PublishEventInput {
+            event: sample_event(eid),
+        })
+        .await
+        .unwrap();
+        let second = bus
+            .drain_persisted(DrainPersistedInput { clear: true })
+            .await
+            .unwrap();
+        assert_eq!(second.count, 1);
     }
 
     #[tokio::test]
