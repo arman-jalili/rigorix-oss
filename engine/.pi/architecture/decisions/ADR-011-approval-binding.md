@@ -1,6 +1,6 @@
 # ADR-011: Approval Binding — Consequence-Bound Human Sign-Off
 
-**Status:** Proposed
+**Status:** Accepted (locally validated)
 **Date:** 2026-08-28
 
 **Tech Stack:** Rust
@@ -132,3 +132,21 @@ Implementation files should reference: `.pi/architecture/modules/approval.md`
 
 *Decision date: 2026-08-28*
 *Decision makers: Rigorix maintainers (with industry review)*
+
+
+## Validation Evidence (2026-09-06 — local, full-stack)
+
+Status moved from Proposed to **Accepted (locally validated)** after an
+end-to-end run on the unreleased local build (not published crates) against
+a real infrastructure stack:
+
+- **conference-demo** (github.com/arman-jalili/conference-demo, private):
+  docker postgres conference registry + docker Keycloak (RFC 8628 device
+  flow), driven through rigorix-mcp over stdio — exit 0, every scene DB-verified.
+- Coverage of this ADR in that run: Approval binding: the waitlist-transfer run paused at the policy-promoted step and resumed only via an identity-attested approve_execution (scene 5); approvals.json store; single-use semantics engine-tested..
+- Engine lib 2020/2020; workspace clippy `-D warnings`; mcp conformance 7/7;
+  local CI 107/107 (the record for the parent epic).
+- Still NOT validated: a public/enterprise deployment (this repo's "ship
+  gate") — crates.io publish and a production dashboard+IdP session remain
+  future work. Local-only acceptance is the honest ceiling of this flip.
+

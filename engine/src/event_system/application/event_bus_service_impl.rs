@@ -151,7 +151,6 @@ impl EventBusService for EventBusServiceImpl {
         // run in a process.
         let mut buffer = self.persisted.lock().await;
         let events = if input.clear {
-            
             std::mem::take(&mut *buffer)
         } else {
             buffer.clone()
