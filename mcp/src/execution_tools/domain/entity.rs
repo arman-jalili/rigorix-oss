@@ -52,6 +52,7 @@ pub trait EngineFacade: Send + Sync {
         plan: PlanTemplate,
         repository: Option<String>,
         author: Option<String>,
+        identity: Option<rigorix_engine::identity::IdentityRef>,
     ) -> Result<ExecutionResult, EngineFacadeError>;
 
     /// Validate a plan against enforcement policies.
@@ -65,6 +66,7 @@ pub trait EngineFacade: Send + Sync {
     async fn validate_plan(
         &self,
         plan: PlanTemplate,
+        identity: Option<rigorix_engine::identity::IdentityRef>,
     ) -> Result<ValidationResult, EngineFacadeError>;
 
     /// Check current enforcement status.

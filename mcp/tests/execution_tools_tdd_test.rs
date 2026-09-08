@@ -76,6 +76,7 @@ impl EngineFacade for TddMockEngine {
         _plan: PlanTemplate,
         _repository: Option<String>,
         _author: Option<String>,
+        _identity: Option<rigorix_engine::identity::IdentityRef>,
     ) -> Result<ExecutionResult, EngineFacadeError> {
         self.execute_result
             .clone()
@@ -85,6 +86,7 @@ impl EngineFacade for TddMockEngine {
     async fn validate_plan(
         &self,
         _plan: PlanTemplate,
+        _identity: Option<rigorix_engine::identity::IdentityRef>,
     ) -> Result<ValidationResult, EngineFacadeError> {
         self.validate_result
             .clone()
@@ -177,7 +179,7 @@ fn test_enginefacade_is_defined() {
 #[tokio::test]
 async fn test_enginefacade_executes_plan() {
     let engine = Arc::new(TddMockEngine::with_defaults());
-    let result = engine.execute(make_plan(), None, None).await;
+    let result = engine.execute(make_plan(), None, None, None).await;
     assert!(result.is_ok(), "EngineFacade should execute a plan");
     let exec = result.unwrap();
     assert_eq!(*exec.status(), ExecutionStatus::Completed);
@@ -187,7 +189,7 @@ async fn test_enginefacade_executes_plan() {
 #[tokio::test]
 async fn test_enginefacade_validates_plan() {
     let engine = Arc::new(TddMockEngine::with_defaults());
-    let result = engine.validate_plan(make_plan()).await;
+    let result = engine.validate_plan(make_plan(), None).await;
     assert!(result.is_ok());
     assert!(result.unwrap().is_valid());
 }
@@ -225,6 +227,7 @@ async fn test_executehandler_handles_execution() {
             execution_id: None,
             repository: None,
             author: None,
+            identity: None,
         })
         .await;
 
@@ -250,7 +253,12 @@ async fn test_validateplanhandler_handles_validation() {
     let engine: SharedEngineFacade = Arc::new(TddMockEngine::with_defaults());
     let handler = ValidatePlanHandlerImpl::new(engine);
 
-    let result = handler.handle(ValidateInput { plan: make_plan() }).await;
+    let result = handler
+        .handle(ValidateInput {
+            plan: make_plan(),
+            identity: None,
+        })
+        .await;
 
     assert!(result.is_ok());
     let tc = result.unwrap();

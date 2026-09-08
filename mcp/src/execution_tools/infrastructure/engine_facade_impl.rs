@@ -110,6 +110,9 @@ fn plan_to_step_defs(plan: &PlanTemplate) -> Vec<TemplateStepDef> {
             // Propagate the plan's frozen-contract approval flag so the
             // engine can pause for human sign-off.
             requires_approval: s.requires_approval(),
+            // L1 (F-20260907-05): propagate the identity-gate flag so the
+            // engine refuses flagged steps for unauthenticated callers.
+            require_identity: s.require_identity(),
             timeout_secs: s.timeout_secs(),
             evaluate_score: s.evaluate_score(),
         })
@@ -251,6 +254,7 @@ impl EngineFacade for EngineFacadeImpl {
         plan: PlanTemplate,
         repository: Option<String>,
         author: Option<String>,
+        identity: Option<rigorix_engine::identity::IdentityRef>,
     ) -> Result<ExecutionResult, EngineFacadeError> {
         // Optional enforcement pre-check
         if self.config.enforcement_enabled {
@@ -278,6 +282,7 @@ impl EngineFacade for EngineFacadeImpl {
             template_name,
             repository,
             author,
+            identity,
             enforcement_preset: None,
         };
 
@@ -327,15 +332,21 @@ impl EngineFacade for EngineFacadeImpl {
     async fn validate_plan(
         &self,
         plan: PlanTemplate,
+        identity: Option<rigorix_engine::identity::IdentityRef>,
     ) -> Result<ValidationResult, EngineFacadeError> {
         let steps_def = plan_to_step_defs(&plan);
         let template_name = plan.name().to_string();
 
+        let (author, identity) = match &identity {
+            Some(id) => (None, Some(id.clone())),
+            None => (None, None),
+        };
         let input = PlanFromTemplateInput {
             steps: steps_def,
             repo_root: self.config.repo_root.clone(),
             template_name,
-            author: None,
+            author,
+            identity,
         };
 
         // R2 sequence-policy gate runs inside the orchestrator preview. A
@@ -609,6 +620,32 @@ mod tests {
         .expect("valid plan")
     }
 
+    fn plan_with_require_identity(identity_flags: &[bool]) -> PlanTemplate {
+        let steps: Vec<StepDefinition> = identity_flags
+            .iter()
+            .enumerate()
+            .map(|(i, flag)| {
+                StepDefinition::new(
+                    format!("step-{}", i),
+                    "bash".into(),
+                    serde_json::json!({}),
+                    false,
+                    format!("Step {}", i),
+                    None,
+                )
+                .with_require_identity(*flag)
+            })
+            .collect();
+        PlanTemplate::new(
+            "identity-plan".into(),
+            "test".into(),
+            steps,
+            None,
+            HashMap::new(),
+        )
+        .expect("valid plan")
+    }
+
     #[test]
     fn test_plan_to_step_defs_propagates_requires_approval() {
         // Regression test: the facade previously hardcoded
@@ -629,6 +666,20 @@ mod tests {
         assert!(
             !defs[2].requires_approval,
             "step-2 must not require approval"
+        );
+    }
+
+    #[test]
+    fn test_plan_to_step_defs_propagates_require_identity() {
+        let plan = plan_with_require_identity(&[false, true]);
+        let defs = plan_to_step_defs(&plan);
+        assert!(
+            !defs[0].require_identity,
+            "step-0 must NOT require identity"
+        );
+        assert!(
+            defs[1].require_identity,
+            "step-1 MUST propagate require_identity"
         );
     }
 
@@ -839,7 +890,7 @@ mod tests {
         let facade = validate_facade(PlanStubOrchestrator::promote(vec![finding]));
 
         let result = facade
-            .validate_plan(plan_with_approval_flags(&[false, false]))
+            .validate_plan(plan_with_approval_flags(&[false, false]), None)
             .await;
         let validation = result.expect("promote plan validates");
         assert!(validation.is_valid());
@@ -871,7 +922,7 @@ mod tests {
         ));
 
         let result = facade
-            .validate_plan(plan_with_approval_flags(&[false, false]))
+            .validate_plan(plan_with_approval_flags(&[false, false]), None)
             .await;
         let validation = result.expect("deny surfaces as structured invalid result");
         assert!(!validation.is_valid(), "denied plan must not validate");

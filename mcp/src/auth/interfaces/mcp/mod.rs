@@ -148,6 +148,15 @@ pub trait AuthToolHandler: Send + Sync {
     /// Returns `{ status, claim_summary, source }` (all redacted).
     async fn handle_auth_status(&self, params: Value) -> Result<Value, AuthError>;
 
+    /// Return the ACTIVE session identity as an engine `IdentityRef`
+    /// (L1/L2, F-20260907-05): `Some` only when the session holds an attested
+    /// claim (source = idp_token | local_principal). `None` when
+    /// unauthenticated. Used by rigorix_run / rigorix_validate_plan to gate
+    /// `require_identity` steps and to bind the sequence-policy principal.
+    async fn current_engine_identity(&self) -> Option<rigorix_engine::identity::IdentityRef> {
+        None
+    }
+
     /// Handle `rigorix_auth_logout` — clear identity material.
     ///
     /// Returns `{ status: "logged_out" }`.

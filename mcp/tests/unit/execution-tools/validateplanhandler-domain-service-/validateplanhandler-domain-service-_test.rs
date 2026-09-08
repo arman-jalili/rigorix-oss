@@ -28,6 +28,7 @@ impl EngineFacade for MockEngineForValidator {
         _plan: PlanTemplate,
         _repository: Option<String>,
         _author: Option<String>,
+        _identity: Option<rigorix_engine::identity::IdentityRef>,
     ) -> Result<ExecutionResult, EngineFacadeError> {
         Ok(ExecutionResult::new(
             uuid::Uuid::nil(),
@@ -38,7 +39,11 @@ impl EngineFacade for MockEngineForValidator {
             String::new(),
         ))
     }
-    async fn validate_plan(&self, _p: PlanTemplate) -> Result<ValidationResult, EngineFacadeError> {
+    async fn validate_plan(
+        &self,
+        _p: PlanTemplate,
+        _i: Option<rigorix_engine::identity::IdentityRef>,
+    ) -> Result<ValidationResult, EngineFacadeError> {
         Ok(ValidationResult::new(true, vec![], vec![], None))
     }
     async fn check_enforcement(&self) -> Result<EnforcementStatus, EngineFacadeError> {
@@ -119,6 +124,9 @@ fn test_validateplanhandler_validates_plan() {
         HashMap::new(),
     )
     .unwrap();
-    let result = rt.block_on(handler.handle(ValidateInput { plan }));
+    let result = rt.block_on(handler.handle(ValidateInput {
+        plan,
+        identity: None,
+    }));
     assert!(result.is_ok());
 }

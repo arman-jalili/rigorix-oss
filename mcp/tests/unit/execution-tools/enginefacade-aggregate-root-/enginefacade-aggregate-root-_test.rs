@@ -25,6 +25,7 @@ impl EngineFacade for EngineFacadeTddContract {
         _plan: PlanTemplate,
         _repository: Option<String>,
         _author: Option<String>,
+        _identity: Option<rigorix_engine::identity::IdentityRef>,
     ) -> Result<ExecutionResult, EngineFacadeError> {
         Ok(ExecutionResult::new(
             uuid::Uuid::nil(),
@@ -45,6 +46,7 @@ impl EngineFacade for EngineFacadeTddContract {
     async fn validate_plan(
         &self,
         _plan: PlanTemplate,
+        _identity: Option<rigorix_engine::identity::IdentityRef>,
     ) -> Result<ValidationResult, EngineFacadeError> {
         Ok(ValidationResult::new(true, vec![], vec![], None))
     }
@@ -144,7 +146,7 @@ fn test_enginefacade_executes_plan() {
         HashMap::new(),
     )
     .unwrap();
-    let result = rt.block_on(engine.execute(plan, None, None));
+    let result = rt.block_on(engine.execute(plan, None, None, None));
     assert!(result.is_ok());
     assert_eq!(*result.unwrap().status(), ExecutionStatus::Completed);
 }
@@ -168,7 +170,7 @@ fn test_enginefacade_validates_plan() {
         HashMap::new(),
     )
     .unwrap();
-    let result = rt.block_on(engine.validate_plan(plan));
+    let result = rt.block_on(engine.validate_plan(plan, None));
     assert!(result.is_ok());
     assert!(result.unwrap().is_valid());
 }

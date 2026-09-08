@@ -157,6 +157,19 @@ pub struct TemplateNode {
     #[serde(default)]
     pub requires_approval: bool,
 
+    /// Whether this node requires an ATTESTED caller identity (L1 identity
+    /// gate, F-20260907-05).
+    ///
+    /// When `true`, the run is refused at plan time unless the caller
+    /// presents an identity claim whose source is `idp_token` or
+    /// `local_principal` — `unverified` (no login) is refused. Consequential
+    /// steps (seat mutations, destructive actions) declare this; benign
+    /// read/verify steps leave it false. Additive field — absent in existing
+    /// templates and defaults to `false` (unknown fields are ignored by the
+    /// TOML parser, so older engines run newer templates unchanged).
+    #[serde(default)]
+    pub require_identity: bool,
+
     /// Optional documentation intended for the LLM planning context.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intent: Option<String>,

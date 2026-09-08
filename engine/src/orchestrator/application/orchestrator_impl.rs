@@ -410,6 +410,19 @@ impl OrchestratorServiceImpl {
         Ok(graph)
     }
 
+    /// L1 identity gate (F-20260907-05): refuse at plan time when ANY step
+    /// declares `require_identity = true` and the caller has no attested
+    /// identity (no claim, or source = `Unverified`). Fail closed — the step
+    /// never dispatches. Runs before the sequence-policy gate so the error
+    /// names the missing identity.
+    fn enforce_identity_requirement(
+        &self,
+        steps: &[super::dto::TemplateStepDef],
+        identity: Option<&crate::identity::domain::IdentityRef>,
+    ) -> Result<(), OrchestratorError> {
+        check_identity_gate(steps, identity)
+    }
+
     /// R2 — plan-time sequence-policy evaluation over an ordered runbook.
     ///
     /// Module spec: the graph-build insertion point — evaluation happens on
@@ -1210,6 +1223,13 @@ impl OrchestratorService for OrchestratorServiceImpl {
         let started_at = chrono::Utc::now();
         tracing::info!(%execution_id, template=%input.template_name, "run_from_template");
 
+        // L1 identity gate (F-20260907-05) — run BEFORE the sequence-policy
+        // gate so the error names the missing identity rather than a
+        // possibly-confusing sequence denial. Steps declaring
+        // `require_identity = true` refuse an unauthenticated / unverified
+        // caller at plan time; the step's tool is never called.
+        self.enforce_identity_requirement(&input.steps, input.identity.as_ref())?;
+
         // Sequence-policy (R2) plan-time gate — evaluate the ordered runbook
         // BEFORE any state is written or step executes. Promote matches flip
         // the later step to `requires_approval = true` (reusing the approval
@@ -1217,12 +1237,16 @@ impl OrchestratorService for OrchestratorServiceImpl {
         // fail-closed — the forbidden sequence never executes and the denied
         // step's tool is never called. An evaluation error refuses the plan
         // too (fail closed on corrupt/over-cap rule config).
+        // L2 (F-20260907-05): the policy principal is the ATTESTED claim's
+        // subject when present (caller-supplied `author` stays display-only
+        // for policy purposes).
+        let principal = input
+            .identity
+            .as_ref()
+            .map(|i| i.subject.as_str())
+            .or(input.author.as_deref());
         let (enforced_steps, _findings) = self
-            .apply_plan_time_sequence_policy(
-                &input.steps,
-                Some(execution_id),
-                input.author.as_deref(),
-            )
+            .apply_plan_time_sequence_policy(&input.steps, Some(execution_id), principal)
             .await?;
 
         // Init current execution state
@@ -1735,10 +1759,19 @@ impl OrchestratorService for OrchestratorServiceImpl {
         &self,
         input: PlanFromTemplateInput,
     ) -> Result<PlanOnlyOutput, OrchestratorError> {
+        // L1 identity gate — a preview must show the same refusal the run it
+        // precedes would hit (require_identity without attested caller).
+        self.enforce_identity_requirement(&input.steps, input.identity.as_ref())?;
         // Same R2 gate as `run_from_template` — a preview must show the same
-        // promotion/denial decisions as the run it precedes.
+        // promotion/denial decisions as the run it precedes. L2: principal
+        // prefers the attested claim's subject.
+        let principal = input
+            .identity
+            .as_ref()
+            .map(|i| i.subject.as_str())
+            .or(input.author.as_deref());
         let (enforced_steps, findings) = self
-            .apply_plan_time_sequence_policy(&input.steps, None, input.author.as_deref())
+            .apply_plan_time_sequence_policy(&input.steps, None, principal)
             .await?;
         let steps: &[super::dto::TemplateStepDef] =
             enforced_steps.as_deref().unwrap_or(&input.steps);
@@ -2321,6 +2354,7 @@ mod tests {
                 description: name.into(),
                 parameters: serde_json::json!({}),
                 requires_approval,
+                require_identity: false,
                 timeout_secs: None,
                 evaluate_score: false,
             }
@@ -2333,6 +2367,7 @@ mod tests {
             template_name: "approval-test".into(),
             repository: None,
             author: None,
+            identity: None,
             enforcement_preset: None,
         };
 
@@ -2465,6 +2500,7 @@ mod tests {
             tool: name.to_string(),
             description: name.to_string(),
             parameters: serde_json::json!({ "event_id": "conf-2026" }),
+            require_identity: false,
             requires_approval: false,
             timeout_secs: None,
             evaluate_score: false,
@@ -2485,6 +2521,7 @@ mod tests {
             execution_id: None,
             template_name: "conf-registration".into(),
             repository: None,
+            identity: None,
             author: None,
             enforcement_preset: None,
         };
@@ -2570,6 +2607,7 @@ mod tests {
                 execution_id: None,
                 template_name: "conf-registration".into(),
                 repository: None,
+                identity: None,
                 author: None,
                 enforcement_preset: None,
             })
@@ -2626,6 +2664,7 @@ mod tests {
                 execution_id: Some(eid),
                 template_name: "conf-registration".into(),
                 repository: None,
+                identity: None,
                 author: None,
                 enforcement_preset: None,
             })
@@ -2705,6 +2744,7 @@ mod tests {
                 execution_id: Some(eid),
                 template_name: "conf-registration".into(),
                 repository: None,
+                identity: None,
                 author: None,
                 enforcement_preset: None,
             })
@@ -2781,6 +2821,7 @@ mod tests {
                 execution_id: None,
                 template_name: "conf-registration".into(),
                 repository: None,
+                identity: None,
                 author: None,
                 enforcement_preset: None,
             })
@@ -2866,6 +2907,7 @@ mod tests {
                 execution_id: None,
                 template_name: "conf-registration".into(),
                 repository: None,
+                identity: None,
                 author: None,
                 enforcement_preset: None,
             })
@@ -2941,6 +2983,7 @@ mod tests {
                 steps: conference_runbook(),
                 repo_root: "/tmp/t".into(),
                 template_name: "conf-registration".into(),
+                identity: None,
                 author: None,
             })
             .await
@@ -2982,6 +3025,7 @@ mod tests {
                 steps: conference_runbook(),
                 repo_root: "/tmp/t".into(),
                 template_name: "conf-registration".into(),
+                identity: None,
                 author: None,
             })
             .await
@@ -3050,6 +3094,7 @@ mod tests {
                 tool: "bash".into(),
                 description: "validate".into(),
                 parameters: serde_json::json!({}),
+                require_identity: false,
                 requires_approval: false,
                 timeout_secs: None,
                 evaluate_score: false,
@@ -3059,6 +3104,7 @@ mod tests {
                 tool: "bash".into(),
                 description: "backup".into(),
                 parameters: serde_json::json!({}),
+                require_identity: false,
                 requires_approval: false,
                 timeout_secs: None,
                 evaluate_score: false,
@@ -3068,6 +3114,7 @@ mod tests {
                 tool: "bash".into(),
                 description: "migrate".into(),
                 parameters: serde_json::json!({}),
+                require_identity: false,
                 requires_approval: true,
                 timeout_secs: None,
                 evaluate_score: false,
@@ -3141,6 +3188,7 @@ mod tests {
             tool: "bash".into(),
             description: name.into(),
             parameters: serde_json::json!({}),
+            require_identity: false,
             requires_approval: false,
             timeout_secs: None,
             evaluate_score: false,
@@ -3151,6 +3199,7 @@ mod tests {
             execution_id: None,
             template_name: "budget-test".into(),
             repository: None,
+            identity: None,
             author: None,
             enforcement_preset: None,
         };
@@ -3288,6 +3337,7 @@ mod tests {
             tool: "registration_add".to_string(),
             description: "add jeff".to_string(),
             parameters: json!({ "event_id": "conf-2026" }),
+            require_identity: false,
             requires_approval: false,
             timeout_secs: None,
             evaluate_score: false,
@@ -3299,6 +3349,7 @@ mod tests {
                 execution_id: Some(uuid::Uuid::new_v4()),
                 template_name: "attendance-add".into(),
                 repository: None,
+                identity: None,
                 author: Some("jeff@corp".to_string()),
                 enforcement_preset: None,
             })
@@ -3315,5 +3366,103 @@ mod tests {
             }
             other => panic!("expected SequencePolicyDenied from the cross-run rule, got {other:?}"),
         }
+    }
+}
+
+/// L1 identity gate core (F-20260907-05): refuse at plan time when ANY
+/// step declares `require_identity = true` and the caller has no attested
+/// identity (no claim, or source = `Unverified`). Fail closed — the step
+/// never dispatches. Free function so the gate is unit-testable without a
+/// full orchestrator instance.
+fn check_identity_gate(
+    steps: &[super::dto::TemplateStepDef],
+    identity: Option<&crate::identity::domain::IdentityRef>,
+) -> Result<(), OrchestratorError> {
+    let attested = identity
+        .filter(|i| {
+            !matches!(
+                i.source,
+                crate::identity::domain::IdentitySource::Unverified
+            )
+        })
+        .is_some();
+    for step in steps {
+        if step.require_identity && !attested {
+            return Err(OrchestratorError::IdentityRequired {
+                step: step.name.clone(),
+                status: if identity.is_some() {
+                    "unverified".to_string()
+                } else {
+                    "unauthenticated".to_string()
+                },
+            });
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod identity_gate_tests {
+    use super::*;
+    use crate::identity::domain::{IdentityRef, IdentitySource};
+    use crate::orchestrator::application::dto::{RunFromTemplateInput, TemplateStepDef};
+
+    fn step(name: &str, require_identity: bool) -> TemplateStepDef {
+        TemplateStepDef {
+            name: name.to_string(),
+            tool: "run_command".into(),
+            description: name.into(),
+            parameters: serde_json::json!({}),
+            requires_approval: false,
+            require_identity,
+            timeout_secs: None,
+            evaluate_score: false,
+        }
+    }
+
+    fn ref_with(source: IdentitySource) -> IdentityRef {
+        IdentityRef {
+            subject: "demo@corp.demo".into(),
+            issuer: "local".into(),
+            source,
+            authority: None,
+            expires_at: None,
+        }
+    }
+
+    #[test]
+    fn no_identity_refuses_flagged_step() {
+        let err = check_identity_gate(&[step("registration_remove", true)], None).unwrap_err();
+        assert!(
+            matches!(err, OrchestratorError::IdentityRequired { ref step, ref status } if step == "registration_remove" && status == "unauthenticated"),
+            "unexpected: {err:?}"
+        );
+    }
+
+    #[test]
+    fn unverified_identity_refuses_flagged_step() {
+        let err = check_identity_gate(
+            &[step("registration_add", true)],
+            Some(&ref_with(IdentitySource::Unverified)),
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, OrchestratorError::IdentityRequired { ref status, .. } if status == "unverified")
+        );
+    }
+
+    #[test]
+    fn attested_identity_allows_flagged_step() {
+        for src in [IdentitySource::IdpToken, IdentitySource::LocalPrincipal] {
+            assert!(
+                check_identity_gate(&[step("registration_remove", true)], Some(&ref_with(src)))
+                    .is_ok()
+            );
+        }
+    }
+
+    #[test]
+    fn unflaggged_steps_run_without_identity() {
+        assert!(check_identity_gate(&[step("verify_attendance", false)], None).is_ok());
     }
 }

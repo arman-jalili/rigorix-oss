@@ -77,6 +77,23 @@ impl AuthToolHandler for AuthToolHandlerImpl {
         }))
     }
 
+    async fn current_engine_identity(&self) -> Option<rigorix_engine::identity::IdentityRef> {
+        use rigorix_engine::identity::IdentitySource;
+        // StatusOutput.source is already the engine IdentitySource type.
+        let out: StatusOutput = self.service.status(&StatusInput::default()).await.ok()?;
+        if matches!(out.source, IdentitySource::Unverified) {
+            return None; // unauthenticated / explicitly degraded — no attested identity
+        }
+        let claim = out.claim_summary?;
+        Some(rigorix_engine::identity::IdentityRef {
+            subject: claim.subject,
+            issuer: claim.issuer,
+            source: out.source,
+            authority: claim.authority,
+            expires_at: claim.expires_at,
+        })
+    }
+
     async fn handle_auth_logout(&self, params: Value) -> Result<Value, AuthError> {
         let _ = params;
         let output: LogoutOutput = self.service.logout(&LogoutInput::default()).await?;

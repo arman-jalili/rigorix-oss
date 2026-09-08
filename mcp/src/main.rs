@@ -288,6 +288,18 @@ impl AppState {
         })
     }
 
+    /// Active session identity (L1/L2, F-20260907-05): the engine
+    /// IdentityRef from the auth handler when an attested claim exists;
+    /// None when unauthenticated. Server-side truth — rigorix_run /
+    /// rigorix_execute / rigorix_validate_plan inject this; caller-supplied
+    /// `author` stays display-only for policy purposes.
+    async fn session_identity(&self) -> Option<rigorix_engine::identity::IdentityRef> {
+        match &self.auth_handler {
+            Some(handler) => handler.current_engine_identity().await,
+            None => None,
+        }
+    }
+
     /// Route a tool call by name to the appropriate handler.
     async fn handle_tool_call(
         &self,
@@ -323,6 +335,11 @@ impl AppState {
                 let template_name_for_audit = template_name
                     .or_else(|| input.plan.as_ref().map(|p| p.name().to_string()))
                     .unwrap_or_else(|| "unknown".to_string());
+
+                // L2 (F-20260907-05): bind the run to the ATTESTED session
+                // identity — caller-supplied params never set the policy
+                // principal.
+                input.identity = self.session_identity().await;
 
                 let result = self
                     .execute_handler
@@ -392,6 +409,7 @@ impl AppState {
                         .and_then(|s| uuid::Uuid::parse_str(s).ok()),
                     repository: params["repository"].as_str().map(|s| s.to_string()),
                     author: params["author"].as_str().map(|s| s.to_string()),
+                    identity: self.session_identity().await,
                 };
 
                 let result = self
@@ -423,8 +441,13 @@ impl AppState {
                 Ok(json_result)
             }
             "rigorix_validate_plan" => {
-                let input = serde_json::from_value(params.clone())
-                    .map_err(|e| serde_json::json!({"error": format!("Invalid input: {}", e)}))?;
+                let mut input: rigorix_mcp::execution_tools::application::dto::ValidateInput =
+                    serde_json::from_value(params.clone()).map_err(
+                        |e| serde_json::json!({"error": format!("Invalid input: {}", e)}),
+                    )?;
+                // L1: preview must refuse require_identity steps the same way
+                // the run would — inject the attested session identity.
+                input.identity = self.session_identity().await;
                 let result = self
                     .validate_plan_handler
                     .handle(input)
@@ -1071,6 +1094,7 @@ async fn build_real_engine(
                         retry: Default::default(),
                         validate: vec![],
                         requires_approval: false,
+                        require_identity: false,
                         intent: None,
                     }],
                     tags: vec![],
@@ -1101,6 +1125,7 @@ async fn build_real_engine(
                         retry: Default::default(),
                         validate: vec![],
                         requires_approval: false,
+                        require_identity: false,
                         intent: None,
                     }],
                     tags: vec![],

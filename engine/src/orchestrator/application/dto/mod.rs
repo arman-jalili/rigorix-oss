@@ -123,6 +123,10 @@ pub struct TemplateStepDef {
     pub description: String,
     pub parameters: serde_json::Value,
     pub requires_approval: bool,
+    /// L1 identity gate (F-20260907-05): step refuses to run without an
+    /// attested caller identity (idp_token / local_principal).
+    #[serde(default)]
+    pub require_identity: bool,
     pub timeout_secs: Option<u64>,
     /// Whether to run scored evaluation on this step's output.
     #[serde(default)]
@@ -155,6 +159,15 @@ pub struct RunFromTemplateInput {
     /// Author identity for audit (e.g. email or username).
     pub author: Option<String>,
 
+    /// Attested caller identity (L1 identity gate / L2 principal hygiene,
+    /// F-20260907-05). When present, steps declaring `require_identity` may
+    /// run, and the SEQUENCE-POLICY principal is this claim's subject (the
+    /// caller-supplied `author` stays display-only for policy purposes).
+    /// `None` or source = unverified → `require_identity` steps are refused
+    /// at plan time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<crate::identity::domain::IdentityRef>,
+
     /// Optional enforcement preset override.
     pub enforcement_preset: Option<String>,
 }
@@ -177,6 +190,12 @@ pub struct PlanFromTemplateInput {
     /// Principal (author/attested identity) — lets the R2 gate evaluate R7
     /// same-principal history rules during plan preview/validation.
     pub author: Option<String>,
+
+    /// Attested caller identity — same semantics as `RunFromTemplateInput`:
+    /// `require_identity` steps refused at preview when absent/unverified;
+    /// sequence-policy principal prefers this claim's subject.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<crate::identity::domain::IdentityRef>,
 }
 
 // ---------------------------------------------------------------------------

@@ -89,6 +89,21 @@ pub enum OrchestratorError {
         detail: String,
     },
 
+    /// A step declares `require_identity = true` but the caller has no
+    /// attested identity (no session claim, or source = unverified).
+    /// Refused at plan time — the step's tool is never called. L1 identity
+    /// gate (F-20260907-05): an unauthenticated caller cannot run
+    /// consequential steps; the error names the login path.
+    #[error(
+        "Step '{step}' requires an attested identity but the caller is {status} — run rigorix_auth_login (or execute as a local principal) first"
+    )]
+    IdentityRequired {
+        /// Name of the step that requires an attested identity.
+        step: String,
+        /// Identity status at refusal time ("unauthenticated" / "unverified").
+        status: String,
+    },
+
     /// An internal orchestrator error occurred.
     #[error("Internal orchestrator error: {detail}")]
     Internal {

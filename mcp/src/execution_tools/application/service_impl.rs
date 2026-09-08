@@ -45,7 +45,12 @@ impl ExecuteHandler for ExecuteHandlerImpl {
         // Execute the plan through EngineFacade
         let result = self
             .engine
-            .execute(plan, input.repository.clone(), input.author.clone())
+            .execute(
+                plan,
+                input.repository.clone(),
+                input.author.clone(),
+                input.identity.clone(),
+            )
             .await
             .map_err(HandlerError::EngineError)?;
 
@@ -97,7 +102,7 @@ impl ValidatePlanHandler for ValidatePlanHandlerImpl {
     async fn handle(&self, input: ValidateInput) -> Result<ToolCallResult, HandlerError> {
         let result = self
             .engine
-            .validate_plan(input.plan)
+            .validate_plan(input.plan, input.identity.clone())
             .await
             .map_err(HandlerError::EngineError)?;
 
@@ -205,10 +210,13 @@ impl PlanHandler for PlanHandlerImpl {
                 HandlerError::InvalidArguments(format!("Failed to convert template: {}", e))
             })?;
 
-        // 2. Validate against enforcement policies
+        // 2. Validate against enforcement policies (plan preview path — no
+        // session identity available here; require_identity steps are gated
+        // on the rigorix_run / rigorix_validate_plan tool surface where the
+        // attested session identity is injected).
         let validation = self
             .engine
-            .validate_plan(exec_plan.clone())
+            .validate_plan(exec_plan.clone(), None)
             .await
             .map_err(HandlerError::EngineError)?;
 

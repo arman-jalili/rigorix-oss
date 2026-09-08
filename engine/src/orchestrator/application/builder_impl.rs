@@ -430,6 +430,7 @@ action = "deny"
             description: name.to_string(),
             parameters: serde_json::json!({ "event_id": "conf-2026" }),
             requires_approval: false,
+            require_identity: false,
             timeout_secs: None,
             evaluate_score: false,
         };
@@ -455,6 +456,7 @@ action = "deny"
                 template_name: "conf-registration".into(),
                 repository: None,
                 author: None,
+                identity: None,
                 enforcement_preset: None,
             })
             .await

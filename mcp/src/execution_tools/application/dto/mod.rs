@@ -124,6 +124,12 @@ pub struct ExecuteInput {
     /// Author identity for audit (e.g. email or username).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
+
+    /// ATTESTED caller identity — injected server-side from the active auth
+    /// session (never honored from caller params; F-20260907-05 L1/L2).
+    /// Gates `require_identity` steps and binds the policy principal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<rigorix_engine::identity::IdentityRef>,
 }
 
 // ---------------------------------------------------------------------------
@@ -137,6 +143,12 @@ pub struct ExecuteInput {
 pub struct ValidateInput {
     /// The plan to validate (structured plan with steps).
     pub plan: PlanTemplate,
+
+    /// ATTESTED caller identity — injected server-side from the active auth
+    /// session (F-20260907-05 L1): `require_identity` steps are refused at
+    /// preview when absent/unverified.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<rigorix_engine::identity::IdentityRef>,
 }
 
 // ---------------------------------------------------------------------------

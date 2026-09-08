@@ -30,6 +30,7 @@ impl EngineFacade for MockEngineForHandler {
         _plan: PlanTemplate,
         _repository: Option<String>,
         _author: Option<String>,
+        _identity: Option<rigorix_engine::identity::IdentityRef>,
     ) -> Result<ExecutionResult, EngineFacadeError> {
         Ok(ExecutionResult::new(
             uuid::Uuid::nil(),
@@ -46,7 +47,11 @@ impl EngineFacade for MockEngineForHandler {
             "rigorix://audit/test".into(),
         ))
     }
-    async fn validate_plan(&self, _p: PlanTemplate) -> Result<ValidationResult, EngineFacadeError> {
+    async fn validate_plan(
+        &self,
+        _p: PlanTemplate,
+        _i: Option<rigorix_engine::identity::IdentityRef>,
+    ) -> Result<ValidationResult, EngineFacadeError> {
         Ok(ValidationResult::new(true, vec![], vec![], None))
     }
     async fn check_enforcement(&self) -> Result<EnforcementStatus, EngineFacadeError> {
@@ -147,6 +152,7 @@ fn test_executehandler_handles_execution() {
         execution_id: None,
         repository: None,
         author: None,
+        identity: None,
     }));
     assert!(result.is_ok());
     assert!(!result.unwrap().is_error);

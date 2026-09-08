@@ -709,6 +709,7 @@ mod tests {
                     retry: Default::default(),
                     validate: vec![],
                     requires_approval: false,
+                    require_identity: false,
                     intent: None,
                 },
                 TemplateNode {
@@ -725,6 +726,7 @@ mod tests {
                     retry: Default::default(),
                     validate: vec![],
                     requires_approval: true,
+                    require_identity: false,
                     intent: None,
                 },
             ],
