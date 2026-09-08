@@ -272,6 +272,10 @@ jobs:
         with:
           repository: arman-jalili/rigorix-sdk
           token: ${{ secrets.RIGORIX_SDK_TOKEN }}
+          # Pinned to the SDK fixture/parity PR head (f5e3fa6) so this branch
+          # is green before + after that PR merges. Flip back to the default
+          # branch once rigorix-sdk#1 lands on main.
+          ref: f5e3fa6c67b1fd21147013c440ff367d77e90e3e
           path: rigorix-sdk
       - name: 🧪 Conformance tests (engine output vs SDK schemas)
         env:
