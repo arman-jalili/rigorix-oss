@@ -264,7 +264,7 @@ async fn rich_envelope_conforms_and_is_deterministic() {
     broken["events"][1]["status"] = serde_json::json!("failure"); // lowercase
     let compiled = jsonschema::validator_for(&schema()).expect("schema compiles");
     assert!(
-        compiled.is_valid(&broken) == false,
+        !compiled.is_valid(&broken),
         "lowercase EventStatus must violate the schema"
     );
 

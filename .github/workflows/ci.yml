@@ -246,10 +246,50 @@ jobs:
             [ -f ".pi/scripts/$v" ] && echo "--- $v ---" && bash ".pi/scripts/$v"
           done
 
+  # ── Stage 6b: SDK-schema conformance (contract-sync) ─────────
+  #
+  # F-20260907-01/02 (contract-sync milestone 1): validates REAL engine
+  # output against rigorix-sdk schemas (schemas/envelope.json | policy.json |
+  # claims.json v1 @ rigorix-sdk main). rigorix-sdk is same-owner private —
+  # checked out with the RIGORIX_SDK_TOKEN secret. Runs the feature-gated
+  # conformance suite (engine [[test]] conformance, required-features).
+  #
+  # The independent-HMAC proof (engine-signed envelope verified byte-exact by
+  # rigorix-verifier) runs in rigorix-sdk CI via the committed
+  # schemas/fixtures/envelope corpus + the verifier fixture test.
+  conformance:
+    name: 📐 SDK-schema conformance
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          cache-key: conformance-${{ runner.os }}
+      - name: 🔑 Checkout rigorix-sdk (same-owner private, schema source of truth)
+        uses: actions/checkout@v4
+        with:
+          repository: arman-jalili/rigorix-sdk
+          token: ${{ secrets.RIGORIX_SDK_TOKEN }}
+          path: rigorix-sdk
+      - name: 🧪 Conformance tests (engine output vs SDK schemas)
+        env:
+          RIGORIX_SDK_SCHEMAS: ${{ github.workspace }}/rigorix-sdk/schemas
+        run: |
+          cargo test -p rigorix-engine --features conformance --test conformance
+      - name: 🔁 Independent-HMAC proof (engine fixtures via rigorix-verifier)
+        # Strategy A: the engine's own canonicalization must be reproducible
+        # byte-exact by the SDK's protocol-only verifier. Runs the verifier
+        # suite — its engine_signed_fixtures_verify_byte_exact test validates
+        # every committed schemas/fixtures/envelope/*.json.
+        run: |
+          cargo test --manifest-path rigorix-sdk/rust/Cargo.toml -p rigorix-verifier
+
   # ── Stage 7: Final Gate ───────────────────────────────────────
   gate:
     name: 🚪 Final Gate
-    needs: [lint, build, test, audit, docs, integration]
+    needs: [lint, build, test, audit, docs, integration, conformance]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -260,19 +300,22 @@ jobs:
           echo "Audit:       ${{ needs.audit.result }}"
           echo "Docs:        ${{ needs.docs.result }}"
           echo "Integration: ${{ needs.integration.result }}"
+          echo "Conformance: ${{ needs.conformance.result }}"
       - name: ✅ All mandatory stages passed
         if: |
           needs.lint.result == 'success' &&
           needs.build.result == 'success' &&
           needs.test.result == 'success' &&
-          needs.audit.result == 'success'
+          needs.audit.result == 'success' &&
+          needs.conformance.result == 'success'
         run: echo "✅ All mandatory stages passed"
       - name: ❌ Some mandatory stages failed
         if: |
           needs.lint.result != 'success' ||
           needs.build.result != 'success' ||
           needs.test.result != 'success' ||
-          needs.audit.result != 'success'
+          needs.audit.result != 'success' ||
+          needs.conformance.result != 'success'
         run: |
           echo "❌ Mandatory stage(s) failed"
           exit 1
