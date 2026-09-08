@@ -1,6 +1,6 @@
 [package]
 name = "rigorix-mcp"
-version = "1.4.2"
+version = "1.4.3"
 edition = "2024"
 description = "MCP Gateway server for Rigorix — protocol types, transports, session management, tool routing, resource/prompt providers"
 license = "MIT OR Apache-2.0"
