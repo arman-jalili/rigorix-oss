@@ -117,20 +117,18 @@ impl AuditService for AuditServiceImpl {
         &self,
         input: BuildEnvelopeInput,
     ) -> Result<BuildEnvelopeOutput, AuditError> {
-        if !self.enabled {
-            return Ok(BuildEnvelopeOutput {
-                envelope: self.envelope_factory.build_envelope(input).await?,
-                signed: false,
-                event_count: 0,
-            });
-        }
-
-        // Build the envelope
+        // Build the envelope (always — the caller needs it back for the
+        // run response/read-back even when remote delivery is disabled).
         let envelope = self.envelope_factory.build_envelope(input).await?;
         let event_count = envelope.events.len();
         let signed = envelope.signature.is_some();
 
-        // R7 / offline read-back: persist to the local store when wired.
+        // R7 / offline read-back: persist to the local store when wired —
+        // INDEPENDENT of remote-backend enablement. The signed local trail
+        // is the cross-run policy history (`EnvelopeHistoryAdapter` over
+        // `<repo_root>/.rigorix/audit`); coupling it to a configured backend
+        // URL silently disabled R7 (envelope never saved → empty history →
+        // no-cross-run rules never fire).
         if let Some(repo) = &self.local_repository
             && let Err(e) = repo.save(&envelope).await
         {
@@ -138,6 +136,16 @@ impl AuditService for AuditServiceImpl {
                 execution_id = %envelope.execution_id,
                 "audit: local envelope persistence failed ({e}) — cross-run policy history may be incomplete"
             );
+        }
+
+        // Remote delivery is gated on `enabled` (a backend URL configured);
+        // the local signed trail is NOT.
+        if !self.enabled {
+            return Ok(BuildEnvelopeOutput {
+                envelope,
+                signed,
+                event_count,
+            });
         }
 
         // Try to send
@@ -278,14 +286,51 @@ mod tests {
             enabled: false,
             ..AuditServiceImpl::default_test()
         };
-        // Should succeed even without sender configured since audit is disabled
+        // Disabled audit still BUILDS the envelope (needed for the run
+        // response/read-back); only remote delivery is skipped.
         let mut input = sample_input();
         input.sign = false;
+        let exec_id = input.execution_id;
         let result = service.build_and_send(input).await;
         assert!(result.is_ok());
         let output = result.unwrap();
-        assert_eq!(output.event_count, 0); // events counted only when enabled
         assert!(!output.signed);
+        assert_eq!(
+            output.envelope.execution_id, exec_id,
+            "envelope must still be built when delivery is disabled"
+        );
+    }
+
+    /// R7 regression (conference-demo live session, 2026-09-08): the signed
+    /// local trail must persist even when NO remote backend is configured —
+    /// cross-run policy reads it. Before the fix, `!enabled` returned before
+    /// the local save and R7 history was always empty.
+    #[tokio::test]
+    async fn test_local_trail_persists_when_backend_disabled() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let repo = std::sync::Arc::new(
+            crate::audit::infrastructure::LocalAuditEnvelopeRepository::new(
+                dir.path().to_path_buf(),
+            ),
+        );
+        let mut service = AuditServiceImpl::default_test();
+        service.enabled = false; // no remote backend configured
+        service.local_repository = Some(repo);
+        let input = sample_input(); // signed (default sample signs)
+        service
+            .build_and_send(input.clone())
+            .await
+            .expect("build_and_send succeeds");
+        let files: Vec<_> = std::fs::read_dir(dir.path())
+            .expect("read audit dir")
+            .filter_map(|e| e.ok())
+            .collect();
+        assert_eq!(files.len(), 1, "envelope must be persisted locally");
+        let saved = std::fs::read_to_string(files[0].path()).expect("read envelope");
+        assert!(
+            saved.contains("\"signature\":"),
+            "saved envelope must carry the HMAC signature"
+        );
     }
 
     #[tokio::test]

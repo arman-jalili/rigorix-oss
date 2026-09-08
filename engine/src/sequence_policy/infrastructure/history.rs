@@ -60,10 +60,15 @@ impl EnvelopeHistoryAdapter {
 /// records node events only for evidence-bearing runs (approval/scope/
 /// sequence), so plain runs are represented by the template that executed.
 fn actions_from_envelope(envelope: &AuditEnvelope) -> Vec<HistoryAction> {
+    // L2 (F-20260907-05): prefer the ATTESTED claim subject — the same
+    // identity the run admission binds as its policy principal — falling
+    // back to the display author for pre-identity envelopes. A mismatch
+    // here (author vs claim subject) silently disabled same-principal R7.
     let principal = envelope
-        .author
-        .clone()
-        .or_else(|| envelope.identity.as_ref().map(|i| i.subject.clone()));
+        .identity
+        .as_ref()
+        .map(|i| i.subject.clone())
+        .or_else(|| envelope.author.clone());
     let mut seen: Vec<String> = Vec::new();
     let mut out = Vec::new();
     for ev in &envelope.events {

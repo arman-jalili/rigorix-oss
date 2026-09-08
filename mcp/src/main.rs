@@ -925,28 +925,26 @@ async fn build_auth_handler() -> Option<Box<dyn rigorix_mcp::auth::interfaces::m
     let attestation: Arc<
         dyn rigorix_engine::identity::application::service::IdentityAttestationService,
     > = {
-        let verifier: Box<dyn rigorix_engine::identity::infrastructure::TokenVerifier> =
-            match idp.discover().await {
-                Ok(meta) => match meta.jwks_uri {
-                    Some(jwks_url) => Box::new(
-                        rigorix_engine::identity::infrastructure::JwksVerifier::new(jwks_url),
-                    ),
-                    None => {
-                        tracing::warn!(
-                            "auth: IdP discovery returned no jwks_uri — claims degrade to unverified"
-                        );
-                        Box::new(
-                            rigorix_engine::identity::infrastructure::NullVerifier::new(),
-                        )
-                    }
-                },
-                Err(e) => {
+        let verifier: Box<dyn rigorix_engine::identity::infrastructure::TokenVerifier> = match idp
+            .discover()
+            .await
+        {
+            Ok(meta) => match meta.jwks_uri {
+                Some(jwks_url) => Box::new(
+                    rigorix_engine::identity::infrastructure::JwksVerifier::new(jwks_url),
+                ),
+                None => {
                     tracing::warn!(
-                        "auth: IdP discovery failed ({e}) — claims degrade to unverified"
+                        "auth: IdP discovery returned no jwks_uri — claims degrade to unverified"
                     );
                     Box::new(rigorix_engine::identity::infrastructure::NullVerifier::new())
                 }
-            };
+            },
+            Err(e) => {
+                tracing::warn!("auth: IdP discovery failed ({e}) — claims degrade to unverified");
+                Box::new(rigorix_engine::identity::infrastructure::NullVerifier::new())
+            }
+        };
         Arc::new(
             rigorix_engine::identity::application::service_impl::IdentityAttestationServiceImpl::with_verifier(
                 verifier,

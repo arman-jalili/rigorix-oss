@@ -1717,9 +1717,11 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     sign: true,
                     repository: input.repository.clone(),
                     author: input.author.clone(),
-                    // run_from_template is the MCP auth-module path — the attested
-                    // claim lands here once the auth flow feeds it (identity epic).
-                    identity: None,
+                    // L2 (F-20260907-05): stamp the ATTESTED claim on the signed
+                    // envelope so cross-run policy history binds by identity
+                    // subject (same principal across runs), not caller/git
+                    // display strings. Author stays as display-only.
+                    identity: input.identity.clone(),
                 })
                 .await;
         }

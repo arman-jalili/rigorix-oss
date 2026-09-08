@@ -2492,7 +2492,7 @@ dependencies = [
 
 [[package]]
 name = "rigorix-engine"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "async-trait",
  "base64",
@@ -2528,7 +2528,7 @@ dependencies = [
 
 [[package]]
 name = "rigorix-mcp"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "async-trait",
  "axum",
