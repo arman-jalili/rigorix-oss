@@ -110,6 +110,13 @@ struct AppState {
     audit_storage:
         std::sync::Arc<rigorix_mcp::audit_tools::infrastructure::InMemoryAuditQueryService>,
 
+    // The ENGINE audit service (local signed-trail + delivery) so the
+    // approval-resume path can re-dispatch a FINAL envelope — the pause
+    // snapshot written to .rigorix/audit must not stand in for a completed
+    // runbook (F-20260907-05 follow-up, 2026-09-08).
+    engine_audit:
+        Option<std::sync::Arc<dyn rigorix_engine::audit::application::service::AuditService>>,
+
     // HMAC key used to sign envelopes stored for the read_audit cycle.
     audit_hmac_key: Option<String>,
 
@@ -186,6 +193,9 @@ impl AppState {
         template_repo: SharedTemplateRepository,
         audit_hmac_key: Option<String>,
         auth_handler: Option<Box<dyn rigorix_mcp::auth::interfaces::mcp::AuthToolHandler>>,
+        engine_audit: Option<
+            std::sync::Arc<dyn rigorix_engine::audit::application::service::AuditService>,
+        >,
     ) -> Self {
         // ── Audit service (in-memory) ──
         let audit_storage = std::sync::Arc::new(
@@ -234,6 +244,7 @@ impl AppState {
             validate_template_handler: Box::new(ValidateTemplateHandlerImpl::new()),
             audit_storage,
             audit_hmac_key,
+            engine_audit,
             mcp_service: {
                 // Wire the mcp_server library module to the same handlers used
                 // by the stdio server, so its protocol surface is live.
@@ -547,12 +558,89 @@ impl AppState {
                     let envelope = build_envelope_from_run(
                         &refreshed,
                         execution_id,
-                        stored_template,
+                        stored_template.clone(),
                         &self.audit_hmac_key,
                         Some(run_started),
                     );
                     let _ = self.audit_storage.store(envelope);
-                    final_state = Some(state);
+                    final_state = Some(state.clone());
+
+                    // F-20260907-05 follow-up (2026-09-08): re-dispatch a FINAL
+                    // engine envelope so the signed local trail (.rigorix/audit)
+                    // reflects the COMPLETED runbook — the pause-point snapshot
+                    // written when the run paused must not stand in for a
+                    // completed run. Same execution_id => LocalAuditEnvelope
+                    // Repository.save overwrites the pause file.
+                    if let Some(audit) = &self.engine_audit {
+                        use rigorix_engine::audit::application::dto::BuildEnvelopeInput;
+                        use rigorix_engine::audit::domain::{EventStatus, ExecutionEventRef};
+                        let mut events: Vec<ExecutionEventRef> = state
+                            .node_states
+                            .values()
+                            .filter(|s| s.status == "completed" || s.status == "failed")
+                            .map(|s| {
+                                let ok = s.status == "completed";
+                                ExecutionEventRef {
+                                    event_type: if ok {
+                                        "node_completed".to_string()
+                                    } else {
+                                        "node_failed".to_string()
+                                    },
+                                    summary: format!("step {}", s.node_name),
+                                    occurred_at: chrono::Utc::now(),
+                                    correlation_id: None,
+                                    status: if ok {
+                                        EventStatus::Success
+                                    } else {
+                                        EventStatus::Failure
+                                    },
+                                    payload: Some(serde_json::json!({
+                                        "step_name": s.node_name,
+                                    })),
+                                }
+                            })
+                            .collect();
+                        // Approval evidence: the attested approver binding.
+                        if let Some(claim) = session_claim.as_ref() {
+                            for step in approval.approved_steps() {
+                                events.push(ExecutionEventRef {
+                                    event_type: "approval_recorded".to_string(),
+                                    summary: format!("approval bound to attested identity"),
+                                    occurred_at: chrono::Utc::now(),
+                                    correlation_id: None,
+                                    status: EventStatus::Success,
+                                    payload: Some(serde_json::json!({
+                                        "step_name": step,
+                                        "approver_id": claim.subject,
+                                        "authority": claim.authority,
+                                        "decided_at": chrono::Utc::now().to_rfc3339(),
+                                    })),
+                                });
+                            }
+                        }
+                        let _ = audit
+                            .build_and_send(BuildEnvelopeInput {
+                                execution_id,
+                                template_id: stored_template.clone(),
+                                planning_prompt: String::new(),
+                                events,
+                                source: Some("rigorix_mcp".to_string()),
+                                repository: None,
+                                author: None,
+                                identity: session_claim.clone(),
+                                total_tokens: 0,
+                                duration_ms: state.total_duration_ms,
+                                git_commit: None,
+                                git_branch: None,
+                                model_version: None,
+                                planning_prompt_content: None,
+                                file_paths: Vec::new(),
+                                metadata: None,
+                                sign: true,
+                                scoring_results: Default::default(),
+                            })
+                            .await;
+                    }
                 }
 
                 Ok(serde_json::json!({
@@ -1011,7 +1099,13 @@ async fn build_auth_handler() -> Option<Box<dyn rigorix_mcp::auth::interfaces::m
 
 async fn build_real_engine(
     repo_root: &str,
-) -> Result<SharedEngineFacade, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<
+    (
+        SharedEngineFacade,
+        Option<std::sync::Arc<dyn rigorix_engine::audit::application::service::AuditService>>,
+    ),
+    Box<dyn std::error::Error + Send + Sync>,
+> {
     use std::sync::Arc;
 
     use rigorix_engine::budget_tracking::application::llm_budget_impl::LlmBudgetImpl;
@@ -1336,7 +1430,7 @@ async fn build_real_engine(
         .with_state_manager(state_manager)
         .with_cancellation_service(cancellation_service)
         .with_event_bus(event_bus)
-        .with_audit_service(audit_service)
+        .with_audit_service(audit_service.clone())
         .with_budget_service(budget_service);
 
     if se_config_path.exists() {
@@ -1484,7 +1578,7 @@ async fn build_real_engine(
         },
     );
 
-    Ok(Arc::new(engine))
+    Ok((Arc::new(engine), Some(audit_service)))
 }
 
 // Build the intent formatter — LLM-based when provider env vars are set,
@@ -2022,10 +2116,10 @@ async fn main() {
 
     // ── Build real engine facade ──
     let repo_root = std::env::var("RIGORIX_REPO_ROOT").unwrap_or_else(|_| ".".to_string());
-    let engine = match build_real_engine(&repo_root).await {
-        Ok(e) => {
+    let (engine, engine_audit) = match build_real_engine(&repo_root).await {
+        Ok((e, audit)) => {
             tracing::info!("EngineFacadeImpl initialized with real rigorix-engine");
-            e
+            (e, audit)
         }
         Err(e) => {
             tracing::error!("Failed to build real engine: {}. Exiting.", e);
@@ -2048,6 +2142,7 @@ async fn main() {
         template_repo,
         audit_hmac_key,
         build_auth_handler().await,
+        engine_audit,
     ));
 
     let cancel = CancellationToken::new();
