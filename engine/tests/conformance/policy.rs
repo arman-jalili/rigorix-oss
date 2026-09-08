@@ -7,9 +7,9 @@
 //! `SequencePolicyConfig` with engine serde, and validates against the SDK
 //! schema. Covers the R7 `history` rule (cross-run predicate).
 
-use rigorix_engine::sequence_policy::infrastructure::repository::SequencePolicyRepository;
-use rigorix_engine::sequence_policy::infrastructure::TomlSequencePolicyRepository;
 use rigorix_engine::sequence_policy::domain::SequencePolicyConfig;
+use rigorix_engine::sequence_policy::infrastructure::TomlSequencePolicyRepository;
+use rigorix_engine::sequence_policy::infrastructure::repository::SequencePolicyRepository;
 
 use crate::{assert_valid, load_schema};
 
@@ -32,13 +32,20 @@ async fn real_conference_policy_conforms_to_schema() {
 
     // Root semantics match the operator file: fail_closed = true (the file
     // declares it explicitly) and the ordered rule set is non-empty.
-    assert!(config.fail_closed, "conference-demo declares fail_closed = true");
+    assert!(
+        config.fail_closed,
+        "conference-demo declares fail_closed = true"
+    );
     assert_eq!(config.rules.len(), 3, "conference-demo has three rules");
 
     // Serialize through engine serde (the export surface the Execution API /
     // enterprise policy-bundle alignment consumes) → validate vs policy.json.
     let value = serde_json::to_value(&config).expect("SequencePolicyConfig serializes");
-    assert_valid(&load_schema("policy.json"), &value, "parsed SequencePolicyConfig");
+    assert_valid(
+        &load_schema("policy.json"),
+        &value,
+        "parsed SequencePolicyConfig",
+    );
 
     // Rules semantics match the file: deny action on the composition attack,
     // promote on the critical transfer, and the R7 cross-run history rule.
@@ -69,5 +76,9 @@ async fn export_surface_serializes_deterministically() {
     assert_eq!(a, b, "policy export must be deterministic");
 
     let value: serde_json::Value = serde_json::from_str(&a).expect("parse");
-    assert_valid(&load_schema("policy.json"), &value, "deterministic policy export");
+    assert_valid(
+        &load_schema("policy.json"),
+        &value,
+        "deterministic policy export",
+    );
 }

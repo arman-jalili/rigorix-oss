@@ -27,7 +27,11 @@ fn base_claim() -> IdentityClaim {
 fn idp_token_claim_conforms() {
     let claim = base_claim();
     let value = serde_json::to_value(&claim).expect("engine serde");
-    assert_valid(&load_schema("claims.json"), &value, "IdentityClaim (idp_token)");
+    assert_valid(
+        &load_schema("claims.json"),
+        &value,
+        "IdentityClaim (idp_token)",
+    );
 }
 
 #[test]

@@ -132,7 +132,10 @@ async fn minimal_unsigned_envelope_conforms() {
     let factory = AuditEnvelopeFactoryImpl::new(None);
     let envelope = factory.build_envelope(minimal_input()).await.unwrap();
     assert!(envelope.signature.is_none());
-    assert!(envelope.evidence_degraded, "unsigned must be marked degraded");
+    assert!(
+        envelope.evidence_degraded,
+        "unsigned must be marked degraded"
+    );
 
     let schema = schema();
     let value = serde_json::to_value(&envelope).expect("engine serde");
@@ -145,7 +148,11 @@ async fn minimal_unsigned_envelope_conforms() {
         ..envelope
     };
     let value = serde_json::to_value(&legacy).expect("engine serde");
-    assert_valid(&schema, &value, "minimal unsigned (evidence_degraded=false)");
+    assert_valid(
+        &schema,
+        &value,
+        "minimal unsigned (evidence_degraded=false)",
+    );
 }
 
 /// An HMAC-signed envelope (schema shape (b)) — fixed fixture key, signature
@@ -164,7 +171,10 @@ async fn hmac_signed_envelope_conforms_and_verifies() {
     assert_valid(&schema(), &value, "hmac-signed envelope");
 
     // Engine-side verify (byte-exact reproduction with the same key).
-    factory.verify_signature(&envelope).await.expect("engine verifies own HMAC");
+    factory
+        .verify_signature(&envelope)
+        .await
+        .expect("engine verifies own HMAC");
 }
 
 /// The RICH envelope (schema shape (c)): identity + approval_events +
@@ -231,8 +241,16 @@ async fn rich_envelope_conforms_and_is_deterministic() {
     let envelope = factory.build_envelope(input).await.unwrap();
 
     // Factory derivation must have populated the rich additive blocks.
-    assert_eq!(envelope.approval_events.len(), 1, "approval derived from events");
-    assert_eq!(envelope.scope_violations.len(), 1, "scope violation derived");
+    assert_eq!(
+        envelope.approval_events.len(),
+        1,
+        "approval derived from events"
+    );
+    assert_eq!(
+        envelope.scope_violations.len(),
+        1,
+        "scope violation derived"
+    );
     assert_eq!(
         envelope.sequence_policy_findings.len(),
         1,
@@ -269,5 +287,8 @@ async fn rich_envelope_conforms_and_is_deterministic() {
     );
 
     // Engine verify round-trips on the rich envelope too.
-    factory.verify_signature(&envelope).await.expect("engine verifies rich HMAC");
+    factory
+        .verify_signature(&envelope)
+        .await
+        .expect("engine verifies rich HMAC");
 }

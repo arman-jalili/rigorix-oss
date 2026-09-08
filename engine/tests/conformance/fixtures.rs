@@ -18,7 +18,7 @@ use rigorix_engine::audit::application::factory::AuditEnvelopeFactory;
 use rigorix_engine::audit::domain::{EventStatus, ExecutionEventRef};
 use rigorix_engine::identity::domain::{IdentityClaim, IdentityRef, IdentitySource};
 
-use crate::envelope::{approval_event, scope_violation_event, sequence_rule_event, FIXTURE_KEY};
+use crate::envelope::{FIXTURE_KEY, approval_event, scope_violation_event, sequence_rule_event};
 
 fn identity_claim() -> IdentityClaim {
     IdentityClaim {
@@ -135,20 +135,23 @@ async fn write_real_signed_fixtures() {
         .expect("rich envelope");
     // 4. Sequence-policy finding variant (deny recorded).
     let mut denied_input = base_input();
-    denied_input.events = vec![sequence_rule_event(), ExecutionEventRef {
-        event_type: "sequence_policy_denied".to_string(),
-        summary: "dispatch denied by rule".to_string(),
-        occurred_at: chrono::Utc::now(),
-        correlation_id: None,
-        status: EventStatus::Failure,
-        payload: Some(serde_json::json!({
-            "rule_id": "no-remove-then-reassign",
-            "later_step": "run_command",
-            "action": "deny",
-            "matched_indices": [0, 2],
-            "summary": "composed remove→add denied before dispatch",
-        })),
-    }];
+    denied_input.events = vec![
+        sequence_rule_event(),
+        ExecutionEventRef {
+            event_type: "sequence_policy_denied".to_string(),
+            summary: "dispatch denied by rule".to_string(),
+            occurred_at: chrono::Utc::now(),
+            correlation_id: None,
+            status: EventStatus::Failure,
+            payload: Some(serde_json::json!({
+                "rule_id": "no-remove-then-reassign",
+                "later_step": "run_command",
+                "action": "deny",
+                "matched_indices": [0, 2],
+                "summary": "composed remove→add denied before dispatch",
+            })),
+        },
+    ];
     let denied = factory
         .build_envelope(denied_input)
         .await
@@ -175,6 +178,10 @@ async fn write_real_signed_fixtures() {
         let json = serde_json::to_string_pretty(envelope).expect("serialize fixture");
         let path = dir.join(format!("{name}.json"));
         std::fs::write(&path, format!("{json}\n")).expect("write fixture");
-        eprintln!("wrote {} (signature={})", path.display(), envelope.signature.is_some());
+        eprintln!(
+            "wrote {} (signature={})",
+            path.display(),
+            envelope.signature.is_some()
+        );
     }
 }
