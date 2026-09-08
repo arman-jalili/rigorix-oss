@@ -71,6 +71,10 @@ fn engine_template_to_plan_template(tmpl: &EngineTemplate) -> Result<PlanTemplat
                     .iter()
                     .any(|v| matches!(v, ValidationRule::ScoredEvaluation)),
             );
+            // L1 identity gate (F-20260907-05): propagate the node's
+            // require_identity flag so rigorix_run refuses the step for
+            // unauthenticated callers (conference-demo seat mutations).
+            sd = sd.with_require_identity(node.require_identity);
             sd
         })
         .collect();

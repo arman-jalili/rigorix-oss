@@ -427,6 +427,11 @@ pub struct StepDefinition {
     /// Whether human approval is required before execution.
     requires_approval: bool,
 
+    /// L1 identity gate (F-20260907-05): step refuses to run without an
+    /// attested caller identity. Additive — absent defaults to false.
+    #[serde(default)]
+    require_identity: bool,
+
     /// Human-readable description of the step's purpose.
     description: String,
 
@@ -456,6 +461,7 @@ impl StepDefinition {
             requires_approval,
             description,
             timeout_secs,
+            require_identity: false,
             evaluate_score: false,
         }
     }
@@ -498,6 +504,18 @@ impl StepDefinition {
     /// Set whether to run scored evaluation.
     pub fn set_evaluate_score(&mut self, val: bool) {
         self.evaluate_score = val;
+    }
+
+    /// Mark this step as requiring an attested caller identity
+    /// (L1 identity gate, F-20260907-05).
+    pub fn with_require_identity(mut self, val: bool) -> Self {
+        self.require_identity = val;
+        self
+    }
+
+    /// Whether this step requires an attested caller identity.
+    pub fn require_identity(&self) -> bool {
+        self.require_identity
     }
 }
 

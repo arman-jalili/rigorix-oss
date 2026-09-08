@@ -916,14 +916,43 @@ async fn build_auth_handler() -> Option<Box<dyn rigorix_mcp::auth::interfaces::m
         };
     let tokens: Arc<dyn rigorix_mcp::auth::infrastructure::token_provider::TokenProvider> =
         Arc::new(InMemoryTokenProvider::new());
-    // ADR-012 seam: the engine's identity attestation service. Default
-    // offline verifier (NullVerifier) — a JWKS-backed verifier is a later
-    // slice; identity claims are structural until then.
+    // ADR-012 seam: the engine's identity attestation service. When the IdP
+    // is reachable we wire the JWKS-backed verifier so device-flow tokens
+    // attest with source = idp_token (real verification); if discovery fails
+    // or no jwks_uri is advertised we fall back to the offline NullVerifier
+    // (claims degrade to Unverified — explicit, never silent; L1 identity
+    // gate then refuses require_identity steps, which is the safe posture).
     let attestation: Arc<
         dyn rigorix_engine::identity::application::service::IdentityAttestationService,
-    > = Arc::new(
-        rigorix_engine::identity::application::service_impl::IdentityAttestationServiceImpl::new(),
-    );
+    > = {
+        let verifier: Box<dyn rigorix_engine::identity::infrastructure::TokenVerifier> =
+            match idp.discover().await {
+                Ok(meta) => match meta.jwks_uri {
+                    Some(jwks_url) => Box::new(
+                        rigorix_engine::identity::infrastructure::JwksVerifier::new(jwks_url),
+                    ),
+                    None => {
+                        tracing::warn!(
+                            "auth: IdP discovery returned no jwks_uri — claims degrade to unverified"
+                        );
+                        Box::new(
+                            rigorix_engine::identity::infrastructure::NullVerifier::new(),
+                        )
+                    }
+                },
+                Err(e) => {
+                    tracing::warn!(
+                        "auth: IdP discovery failed ({e}) — claims degrade to unverified"
+                    );
+                    Box::new(rigorix_engine::identity::infrastructure::NullVerifier::new())
+                }
+            };
+        Arc::new(
+            rigorix_engine::identity::application::service_impl::IdentityAttestationServiceImpl::with_verifier(
+                verifier,
+            ),
+        )
+    };
 
     match AuthServiceFactoryImpl::new()
         .create(config, idp, keychain, tokens, attestation)
