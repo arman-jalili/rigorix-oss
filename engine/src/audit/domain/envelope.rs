@@ -18,6 +18,37 @@ use serde::{Deserialize, Serialize};
 
 use crate::identity::domain::IdentityRef;
 
+/// Deterministic map serialization for canonical envelope bytes.
+///
+/// The envelope HMAC (GAP-A-06, `compute_signature`) is over the serialized
+/// canonical form, so every map-typed field MUST serialize byte-identically
+/// on every process. `std::collections::HashMap` iteration order is
+/// randomized per process (RandomState), so a bare derive would emit
+/// nondeterministic keys — breaking byte-exact HMAC reproduction by
+/// independent verifiers (rigorix-sdk rigorix-verifier, Strategy A).
+///
+/// This `serialize_with` helper emits map keys in sorted order (the JSON
+/// shape is unchanged — object key order is not semantic), making the
+/// canonical bytes reproducible everywhere. Applied to `scoring_results`
+/// and `ScoreDimension` maps (the only HashMap-typed envelope fields).
+mod sorted_map {
+    use serde::Serialize;
+    use std::collections::BTreeMap;
+
+    pub fn serialize<S, K, V>(
+        value: &std::collections::HashMap<K, V>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+        K: Ord + serde::Serialize,
+        V: serde::Serialize,
+    {
+        let ordered: BTreeMap<&K, &V> = value.iter().collect();
+        ordered.serialize(serializer)
+    }
+}
+
 /// Typed envelope containing execution audit data.
 ///
 /// Built at execution completion by the orchestration layer and sent to
@@ -100,7 +131,11 @@ pub struct AuditEnvelope {
     ///
     /// Populated when scored evaluation nodes are present in the DAG.
     /// Used for compliance provenance and quality audit evidence.
-    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "std::collections::HashMap::is_empty",
+        serialize_with = "sorted_map::serialize"
+    )]
     pub scoring_results: std::collections::HashMap<String, ScoringResultRef>,
 
     /// HMAC signature for envelope integrity verification.
@@ -211,6 +246,7 @@ pub struct ScoringResultRef {
     pub backend: String,
 
     /// Map of dimension name to score dimension reference.
+    #[serde(serialize_with = "sorted_map::serialize")]
     pub dimensions: std::collections::HashMap<String, ScoreDimensionRef>,
 
     /// Duration of the evaluation in milliseconds.

@@ -9,6 +9,11 @@ documentation = "https://docs.rs/rigorix-engine"
 
 [features]
 live-tests = []
+# Contract-sync conformance (F-20260907-01/02): validates real engine output
+# against rigorix-sdk schemas (schemas/envelope.json|policy.json|claims.json).
+# CI conformance job checks out rigorix-sdk (RIGORIX_SDK_TOKEN) and sets
+# RIGORIX_SDK_SCHEMAS; runs: cargo test -p rigorix-engine --features conformance
+conformance = []
 
 [dependencies]
 serde.workspace = true
@@ -42,6 +47,9 @@ prometheus = "0.14.0"
 tempfile.workspace = true
 wiremock = "0.6"
 criterion = { version = "0.5", features = ["html_reports"] }
+# JSON-Schema validation for the conformance suite (same validator the
+# rigorix-sdk rigorix-verifier uses). Dev-only — never in the published crate.
+jsonschema = "0.26"
 
 [[bench]]
 name = "dag_engine"
@@ -52,3 +60,11 @@ harness = false
 [[test]]
 name = "unit"
 path = "tests/unit/mod.rs"
+
+# Contract-sync conformance suite (F-20260907-01/02) — only built when the
+# `conformance` feature is on (default `cargo test` stays fast; the CI
+# conformance job enables it with RIGORIX_SDK_SCHEMAS set).
+[[test]]
+name = "conformance"
+path = "tests/conformance/mod.rs"
+required-features = ["conformance"]
