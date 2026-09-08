@@ -484,16 +484,14 @@ impl AppState {
                     }));
                 }
 
-                use rigorix_mcp::execution_tools::domain::value::ApprovalIdentity;
-                let identity = ApprovalIdentity {
-                    approver_id: params["approver_id"].as_str().map(|s| s.to_string()),
-                    authority: params["authority"].as_str().map(|s| s.to_string()),
-                    token_claims_ref: params["token_claims_ref"].as_str().map(|s| s.to_string()),
-                };
-                let identity = (identity.approver_id.is_some()
-                    || identity.authority.is_some()
-                    || identity.token_claims_ref.is_some())
-                .then_some(identity);
+                // L2 (F-20260907-05): bind the approval to the ATTESTED session
+                // identity — never to caller-claimable params. Auth configured
+                // + unattested session → refused (approval needs a principal).
+                let auth_configured = self.auth_handler.is_some();
+                let session_claim = self.session_identity().await;
+                let identity =
+                    resolve_approval_identity(params, session_claim.as_ref(), auth_configured)
+                        .map_err(|e| serde_json::json!({"error": e}))?;
 
                 let approval = self
                     .engine
@@ -692,6 +690,50 @@ impl AppState {
 // =========================================================================
 
 // ── Helpers ──────────────────────────────────────────────────────────────
+
+/// L2 approval binding (F-20260907-05): resolve the identity recorded on an
+/// approval from the ATTESTED session, never from caller-claimable params.
+///
+/// - No auth configured (legacy/local flows): caller-supplied params pass
+///   through unchanged (no IdP to attest against).
+/// - Auth configured + no attested session: REFUSE — an approval must bind
+///   to a real attested principal (run rigorix_auth_login).
+/// - Auth configured + attested session: approver_id = the claim's subject
+///   (server truth), token_claims_ref = a server-derived verified reference
+///   (`oidc-device:<issuer>#<subject>`). Caller-supplied approver_id /
+///   token_claims_ref are ignored as identity; `authority` remains
+///   display-only metadata.
+fn resolve_approval_identity(
+    params: &serde_json::Value,
+    claim: Option<&rigorix_engine::identity::IdentityRef>,
+    auth_configured: bool,
+) -> Result<Option<rigorix_mcp::execution_tools::domain::value::ApprovalIdentity>, String> {
+    use rigorix_mcp::execution_tools::domain::value::ApprovalIdentity;
+
+    if !auth_configured {
+        let identity = ApprovalIdentity {
+            approver_id: params["approver_id"].as_str().map(|s| s.to_string()),
+            authority: params["authority"].as_str().map(|s| s.to_string()),
+            token_claims_ref: params["token_claims_ref"].as_str().map(|s| s.to_string()),
+        };
+        return Ok((identity.approver_id.is_some()
+            || identity.authority.is_some()
+            || identity.token_claims_ref.is_some())
+        .then_some(identity));
+    }
+
+    let claim = claim.ok_or_else(|| {
+        "approval requires an attested identity — run rigorix_auth_login first".to_string()
+    })?;
+    Ok(Some(ApprovalIdentity {
+        // Server truth: the attested subject — never the caller's string.
+        approver_id: Some(claim.subject.clone()),
+        // Display-only provenance (e.g. "device-flow:…") — captured fact.
+        authority: params["authority"].as_str().map(|s| s.to_string()),
+        // Verified reference derived from the attested claim.
+        token_claims_ref: Some(format!("oidc-device:{}#{}", claim.issuer, claim.subject)),
+    }))
+}
 
 /// Build a REAL audit envelope from an execution run's JSON result.
 ///
@@ -2057,4 +2099,76 @@ async fn main() {
     run_stdio_server(cancel).await;
 
     tracing::info!("MCP Server shut down gracefully");
+}
+
+#[cfg(test)]
+mod approval_binding_tests {
+    use super::*;
+    use chrono::{DateTime, Utc};
+    use rigorix_engine::identity::{IdentityRef, IdentitySource};
+    use rigorix_mcp::execution_tools::domain::value::ApprovalIdentity;
+
+    fn claim(subject: &str) -> IdentityRef {
+        IdentityRef {
+            subject: subject.to_string(),
+            issuer: "http://idp/realms/rigorix".to_string(),
+            source: IdentitySource::IdpToken,
+            authority: None,
+            expires_at: None,
+        }
+    }
+
+    fn params(approver: Option<&str>) -> serde_json::Value {
+        let mut v = serde_json::json!({});
+        if let Some(a) = approver {
+            v["approver_id"] = serde_json::Value::String(a.to_string());
+        }
+        v
+    }
+
+    #[test]
+    fn no_auth_legacy_passthrough() {
+        let p = params(Some("organizer@corp.demo"));
+        let id = resolve_approval_identity(&p, None, false).unwrap();
+        assert_eq!(
+            id.unwrap().approver_id.as_deref(),
+            Some("organizer@corp.demo")
+        );
+    }
+
+    #[test]
+    fn auth_configured_without_session_refuses() {
+        let p = params(Some("organizer@corp.demo"));
+        let err = resolve_approval_identity(&p, None, true).unwrap_err();
+        assert!(err.contains("rigorix_auth_login"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn auth_binds_subject_and_ignores_caller_approver() {
+        let p = params(Some("organizer@corp.demo")); // spoof attempt
+        let id = resolve_approval_identity(&p, Some(&claim("sub-123")), true)
+            .unwrap()
+            .expect("bound");
+        assert_eq!(
+            id.approver_id.as_deref(),
+            Some("sub-123"),
+            "server truth wins"
+        );
+        let ref_ = id.token_claims_ref.unwrap();
+        assert!(
+            ref_.contains("http://idp/realms/rigorix") && ref_.contains("sub-123"),
+            "verified ref: {ref_}"
+        );
+    }
+
+    #[test]
+    fn auth_authority_stays_display_only() {
+        let mut p = params(Some("organizer@corp.demo"));
+        p["authority"] = serde_json::json!("device-flow:kc");
+        let id = resolve_approval_identity(&p, Some(&claim("sub-1")), true)
+            .unwrap()
+            .unwrap();
+        assert_eq!(id.authority.as_deref(), Some("device-flow:kc"));
+        assert_eq!(id.approver_id.as_deref(), Some("sub-1"));
+    }
 }
