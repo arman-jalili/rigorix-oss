@@ -85,3 +85,13 @@ bash .pi/scripts/validate-canonical.sh
 | Closed | 3 — `feature/audit-evidence` | ✅ PR #761 merged `5eb95f43`; #723 #755 #734 #752 closed |
 | Closed | 4 — approval gates | ✅ #749 #756 #757 on main `5e5f3efe`; **#758 M-15 deferred to approval epic** (state-format co-location, documented on issue) |
 | Open | 5–20 | Not started |
+
+---
+
+## Contract-Sync Batch (2026-09-08) — rigorix-sdk b23492e
+
+| Branch | Issues | Tier | Component | Notes |
+|--------|--------|------|-----------|-------|
+| `feat/contract-conformance-876-877` | #876 F-20260907-01, #877 F-20260907-02 | — | audit/envelope + sequence_policy + identity vs SDK schemas | Companion conformance issues; shared CI schema-fetch wiring; cross-repo SDK PR for fixtures + verifier parity |
+
+Status: branch `feat/contract-conformance-876-877` created 2026-09-08.
