@@ -1,0 +1,49 @@
+# Operator-authored sequence policy for the conference seat registry.
+#
+# Authored by platform/security operators — the permission enforcer DENIES
+# agent writes into .rigorix/** (R5), so only a human edits this file.
+# Rules are read per run; edits apply to the next plan evaluation.
+
+fail_closed = true
+
+# R2 — the composition attack IN ONE RUN (Demo's exact question):
+# "remove alice to free a seat, then register me" must never run autonomously.
+[[rules]]
+id = "no-remove-then-reassign"
+name = "No remove-then-reassign of a full event seat"
+description = "Removing an attendee to free a seat, then registering the requester, is never autonomous"
+steps = [
+  { tool = "run_command", params = [{ pointer = "/command", kind = "glob", value = "*remove_attendance.sh*" }] },
+  { tool = "run_command", params = [{ pointer = "/command", kind = "glob", value = "*add_attendance.sh*" }] },
+]
+window = 4
+action = "deny"
+
+# Policy-driven approval (promote): a waitlist seat transfer is a CRITICAL
+# action — the transfer step pauses for a human even though no template
+# declares requires_approval. The pause is composition-aware: only a
+# transfer that follows the waitlist verification is routed to approval.
+[[rules]]
+id = "transfer-seat-is-critical"
+name = "Seat transfer is a critical action"
+description = "A waitlist transfer hands a paid seat to a new attendee — human approval required"
+steps = [
+  { tool = "run_command", params = [{ pointer = "/command", kind = "glob", value = "*verify_waitlist.sh*" }] },
+  { tool = "run_command", params = [{ pointer = "/command", kind = "glob", value = "*transfer_seat.sh*" }] },
+]
+window = 4
+action = "promote"
+
+# R7 — the cross-run case (two separate runs, minutes apart): a registration
+# ADD is denied when the SAME principal REMOVED a registrant within the
+# window — read from the signed execution history (.rigorix/audit). Each run
+# passes its own within-run gate; the second is refused at plan time.
+[[rules]]
+id = "no-cross-run-remove-reassign"
+name = "No cross-run remove-then-reassign"
+description = "Same principal removed a registrant within 15 minutes — adding the requester is denied at plan time"
+steps = [
+  { tool = "run_command", params = [{ pointer = "/command", kind = "glob", value = "*add_attendance.sh*" }] },
+]
+action = "deny"
+history = { prior_node = "attendance-remove", same_principal = true, window_secs = 900 }
