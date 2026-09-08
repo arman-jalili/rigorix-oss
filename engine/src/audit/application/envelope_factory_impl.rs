@@ -54,10 +54,12 @@ impl AuditEnvelopeFactoryImpl {
                 detail: format!("HMAC key error: {e}"),
             })?;
 
-        // Canonical form: the FULL envelope serialized as sorted-key JSON.
-        // serde_json::Map is BTreeMap-backed (no preserve_order feature), so
-        // HashMap fields serialize deterministically. The signature field is
-        // excluded so signing and verification hash identical bytes.
+        // Canonical form: the FULL envelope serialized as JSON. Map-typed
+        // fields (scoring_results, ScoreDimension dimensions) serialize with
+        // sorted keys via `sorted_map` (envelope.rs), so canonical bytes are
+        // byte-identical across processes — an independent verifier must be
+        // able to reproduce the HMAC exactly (Strategy A). The signature field
+        // is nulled so signing and verification hash identical bytes.
         let mut canonical_envelope = envelope.clone();
         canonical_envelope.signature = None;
         let canonical =
