@@ -1,6 +1,6 @@
 [package]
 name = "rigorix-engine"
-version = "1.4.1"
+version = "1.4.2"
 edition = "2024"
 description = "Template-driven DAG execution engine with bounded autonomy"
 license = "MIT OR Apache-2.0"
