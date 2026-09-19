@@ -286,7 +286,6 @@ action = "promote"
     }
 
     #[test]
-    #[test]
     fn toml_parse_yields_rule_with_history_predicate() {
         // R7 operator schema: a single current-run predicate + the history
         // predicate (prior conflicting action by the same principal).

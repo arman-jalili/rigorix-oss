@@ -3240,7 +3240,7 @@ mod tests {
         use crate::execution_engine::domain::ParallelExecutorConfig;
         use crate::sequence_policy::application::service_impl::SequencePolicyServiceImpl;
         use crate::sequence_policy::domain::{HistoryPredicate, RuleAction};
-        use crate::sequence_policy::infrastructure::{EnvelopeHistoryAdapter, ExecutionHistory};
+        use crate::sequence_policy::infrastructure::EnvelopeHistoryAdapter;
         use serde_json::json;
 
         let dir = tempfile::tempdir().expect("tempdir");
@@ -3407,7 +3407,7 @@ fn check_identity_gate(
 mod identity_gate_tests {
     use super::*;
     use crate::identity::domain::{IdentityRef, IdentitySource};
-    use crate::orchestrator::application::dto::{RunFromTemplateInput, TemplateStepDef};
+    use crate::orchestrator::application::dto::TemplateStepDef;
 
     fn step(name: &str, require_identity: bool) -> TemplateStepDef {
         TemplateStepDef {
