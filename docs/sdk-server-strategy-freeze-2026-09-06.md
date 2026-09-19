@@ -43,8 +43,12 @@ forward path: rigorix-enterprise `findings/contract-sync-server-plan-2026-09-06.
 1. **Contract sync substrate:** drift CI — schema snapshot of MCP tool descriptors +
    envelope/plan payloads must match rigorix-sdk `schemas/`. Fixtures (real envelopes
    from conference-demo `.rigorix/audit`) become the conformance corpus.
-2. **Catalog design:** freeze the `rigorix.*` method catalog in rigorix-sdk `schemas/api/`
-   over the synced contracts (draft sketch exists).
+2. **Catalog design:** ✅ DONE (2026-09-19) — rigorix-sdk froze the `rigorix.*` catalog in
+   `schemas/api/catalog.json` (+ `catalog.schema.json`, `errors.json`) under
+   `docs/adr/ADR-0001-native-api-catalog.md`. It fixes JSON-RPC 2.0 over `POST /rpc`,
+   dot-separated lowerCamelCase names mapped 1:1 to the MCP tools, three auth levels, and
+   the identity invariant (caller-supplied identity is display-only; authorization is the
+   attested session). rigorix-server below is now the next step.
 3. **`rigorix-server` crate:** reference execution server. Reuses engine orchestrator,
    event bus, approval binding, identity/keychain, audit writer, enterprise-proxy
    JsonRpc types. New dependency: an HTTP stack (axum) — the first since GAP-A-10.
