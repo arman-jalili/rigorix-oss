@@ -605,7 +605,7 @@ impl AppState {
                             for step in approval.approved_steps() {
                                 events.push(ExecutionEventRef {
                                     event_type: "approval_recorded".to_string(),
-                                    summary: format!("approval bound to attested identity"),
+                                    summary: "approval bound to attested identity".to_string(),
                                     occurred_at: chrono::Utc::now(),
                                     correlation_id: None,
                                     status: EventStatus::Success,
