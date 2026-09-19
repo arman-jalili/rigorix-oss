@@ -11,8 +11,8 @@ Effect-identity matching for sequence policy: bounded relation predicates and ef
 
 ## Status
 
-- [x] Proposed
-- [ ] Accepted
+- [ ] Proposed
+- [x] Accepted
 - [ ] Deprecated
 - [ ] Superseded by ADR-XXX
 

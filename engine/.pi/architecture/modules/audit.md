@@ -113,6 +113,16 @@ All fields are additive with `#[serde(default, skip_serializing_if = ...)]` — 
 
 **Privacy:** `identity` and `decision_context` follow the `planning_prompt` opt-in pattern — full payloads stored locally, redacted summaries in the envelope (SpanPrivacy).
 
+### Effect Key (Contract Amendment, ADR-014)
+
+The envelope carries one additive field for effect-identity matching (sequence-policy R8):
+
+| Field | Type | Source | Notes |
+|-------|------|--------|-------|
+| `effect_key` | `Option<String>` | Domain integration (supplied with the step) | Opaque canonical effect identity for the run/effect, recorded as a **one-way hash keyed by the domain secret** — never raw parameters |
+
+`#[serde(default, skip_serializing_if = "Option::is_none")]` — an envelope without it is valid and never matches an effect-keyed history rule. Entity resolution lives **outside** rigorix (ADR-014 Layer 1); this module stores and compares the opaque key, it does not compute it. Effect-keyed rules have a retention dependency: pruning below the longest rule window silently disables them.
+
 ### AuditSender
 
 **Purpose:** Deliver envelopes via HTTP with retry logic

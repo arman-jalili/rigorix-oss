@@ -25,7 +25,7 @@ This directly answers the "conference registration" composition case raised in i
 
 > **R7 extends the property across runs:** a rule with a `history` predicate additionally consults the **signed prior-execution trail** — *"remove X" in run 1, "add Jeff" in run 2, minutes apart* — each run passes its own within-run gate, but the second is refused at plan time because the same principal acted within the window. Policy input == signed evidence: tampering with the trail to evade a rule breaks the envelope HMAC.
 
-## Requirements (R1–R7)
+## Requirements (R1–R8)
 
 ### R7 — Cross-Run Conflicting-Action Rules (audit trail as policy input)
 
@@ -51,6 +51,55 @@ Semantics (frozen):
 |-----|---------|
 | `max_history_window_secs` | 604 800 (7 days) |
 | `history.prior_node` | non-empty |
+
+### R8 — Effect-Identity Rules (bounded relation predicate + effect-keyed history)
+
+[ADR-014](../decisions/ADR-014-effect-identity-matching.md). Two bounded, deterministic
+predicates that express the requester-variation class — *each step allowed, the effect
+identical* — without importing domain semantics into the matcher.
+
+**Within a run (value-identity predicate).** A `ParamPredicate` may match a value
+**against an earlier matched step's pointer** instead of a declared literal:
+
+```toml
+[[rules]]
+id = "same-beneficiary-twice"
+action = "deny"
+steps = [
+  { tool = "pay", params = [{ pointer = "/beneficiary" }] },
+  { tool = "pay", params = [{ pointer = "/beneficiary", kind = "equals_step", step = 0 }] },
+]
+```
+
+`kind = "equals_step"` compares the current step's pointer value to the pointer value of
+an earlier matched step in the **same run**. Structural only: it compares values the run
+already carries — no domain knowledge, no fuzzy matching, no reordering (existing
+ordered-step window semantics apply unchanged).
+
+**Across runs (effect-keyed history).** `HistoryPredicate` gains an optional effect-key
+match:
+
+```toml
+history = { effect_key = true, same_principal = true, window_secs = 900 }
+```
+
+Semantics: the rule fires when the current run's `steps[]` match **and** a prior
+completed run recorded the **same effect key**, by the same principal, inside the window.
+The effect key is a domain-supplied, opaque value recorded on the envelope as a **one-way
+hash keyed by the domain secret** — cross-run comparison is possible without recording
+raw parameters (SpanPrivacy preserved).
+
+**Layering (ADR-014).** Entity resolution — joining a beneficiary/registry/PSP identity
+to a canonical key — happens **outside rigorix**, in the domain integration, and is
+supplied with the step. Aggregation, counters and anomaly detection run offline over the
+exported trail (Layer 3) and never enter the enforcement path (ADR-004). This module
+compares opaque keys and values it already holds; it does not know what a "beneficiary"
+is.
+
+**Retention coupling (load-bearing).** `effect_key`-keyed history is only as good as the
+retained trail: pruning below the longest rule window silently disables these rules and
+must be validated (Acceptance Criteria #17). Where no canonical key exists the rule
+degrades to detection, **not** a control.
 
 ### R1 — Declarative Sequence Rules
 
@@ -108,7 +157,7 @@ This module follows Clean Architecture with 3 DDD layers (no `interfaces/` — A
 | Component | Description | Framework? |
 |-----------|-------------|------------|
 | SequenceRule | Aggregate: id, name, ordered step predicates `[A, B, …]`, window, action (`promote`/`deny`) | ❌ No |
-| StepPredicate | Matcher: tool name (exact/glob) + optional parameter predicates (JSON pointer → exact/glob/regex) | ❌ No |
+| StepPredicate | Matcher: tool name (exact/glob) + optional parameter predicates (JSON pointer → exact/glob/regex, or value-identity `equals_step` against an earlier matched step — R8) | ❌ No |
 | RuleAction | Enum: `Promote`, `Deny` | ❌ No |
 | SequenceMatch | A matched window within a plan/prefix: rule id, matched step indices, later step id | ❌ No |
 | SequencePolicyConfig | Loaded rule set with safety caps (max rules, max window size, regex count) | ❌ No |
@@ -338,6 +387,9 @@ No persisted artifacts exist before this module — **no migration**. When rules
 | 12 | Audit (R6) | Matched rule + promotion recorded in envelope events; decision summaries redact parameter values by default (SpanPrivacy pattern) | integration test |
 | 13 | Permission (R5) | `workspace_write` agent file-write to `.rigorix/**` denied by default permission config | integration test |
 | 14 | SequencePolicyError | All variants, `Display`, `is_retriable()` | unit test |
+| 15 | Matcher (R8) | `equals_step` matches when pointer values are equal and not when they differ; obeys adjacency/window and never matches across a reordering | unit test |
+| 16 | Matcher (R8) | Effect-keyed history fires on equal keys inside the window for the same principal; does not fire outside the window or for a different key; envelope without `effect_key` never matches | unit test |
+| 17 | Retention (R8) | Retention shorter than the longest rule window is detectable (validator or documented test) — no silent disablement | validator / test |
 
 ## Dependencies
 
@@ -386,6 +438,8 @@ match sequence_policy.evaluate_prefix(completed_prefix, next_node).await {
 ### Audit — Envelope Extension
 
 New envelope field: `sequence_policy_findings[]` — each entry carries rule id, matched step indices, action taken, and a **redacted summary** (full param values opt-in, following the `planning_prompt` privacy pattern). Additive, serde-defaulted — backward compatible.
+
+ADR-014 also adds one additive envelope field: `effect_key` — the domain-supplied, keyed-hash (one-way) canonical effect identity for a step, so effect-keyed history rules (R8) can compare across runs without recording raw parameters. `Option`, serde-defaulted; an envelope without it remains valid and never matches an effect-keyed rule.
 
 ### Event System — Event Type Extension
 

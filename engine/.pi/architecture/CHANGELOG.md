@@ -1,3 +1,22 @@
+## [2026-09-19] — ADR-014 accepted (effect-identity matching) + catalog frozen
+
+### Added
+- **ADR-014 accepted**: bounded effect-identity matching for sequence policy —
+  a within-run **value-identity predicate** (`equals_step`: match a pointer
+  against an earlier matched step's pointer) and **effect-keyed history**
+  (`HistoryPredicate.effect_key`: match a prior run's keyed-hash effect key).
+  Layering: entity resolution stays outside rigorix; aggregation stays offline.
+  Module docs updated: `modules/sequence-policy.md` (R8) and `modules/audit.md`
+  (envelope `effect_key`, keyed-hash, retention coupling). Implementation
+  tracked on `feat/adr-014-effect-identity`.
+
+### Changed
+- **Catalog freeze (cross-repo)**: rigorix-sdk froze the native `rigorix.*`
+  API catalog (ADR-0001: JSON-RPC 2.0 over `POST /rpc`, 19 methods, identity
+  invariant, error taxonomy). OSS sdk-server strategy freeze item 2 marked
+  done. The envelope revision ambiguity is resolved: the schema is envelope
+  **format v2**; consumers key on `$id`.
+
 ## [2026-09-05] — Sequence Policy implemented (epic ISSUE-SEQUENCE-POLICY, tracking #837)
 
 ### Added
