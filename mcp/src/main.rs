@@ -2199,9 +2199,7 @@ async fn main() {
 #[cfg(test)]
 mod approval_binding_tests {
     use super::*;
-    use chrono::{DateTime, Utc};
     use rigorix_engine::identity::{IdentityRef, IdentitySource};
-    use rigorix_mcp::execution_tools::domain::value::ApprovalIdentity;
 
     fn claim(subject: &str) -> IdentityRef {
         IdentityRef {
