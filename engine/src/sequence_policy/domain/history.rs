@@ -24,4 +24,9 @@ pub struct HistoryAction {
     pub principal: Option<String>,
     /// When the action completed (envelope / event timestamp).
     pub at: DateTime<Utc>,
+    /// R8 / ADR-014: the domain-supplied effect key recorded on the prior
+    /// envelope (one-way keyed hash), if any. `None` for effect-less runs —
+    /// which never satisfy an effect-keyed history predicate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effect_key: Option<String>,
 }

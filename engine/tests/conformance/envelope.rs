@@ -54,6 +54,7 @@ fn minimal_input() -> BuildEnvelopeInput {
         repository: None,
         author: None,
         identity: None,
+        effect_key: None,
         total_tokens: 1000,
         duration_ms: 5000,
         git_commit: None,

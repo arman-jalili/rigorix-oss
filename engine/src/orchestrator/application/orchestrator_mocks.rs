@@ -510,6 +510,7 @@ impl crate::audit::application::AuditService for MockAuditService {
                 repository: None,
                 author: None,
                 identity: None,
+                effect_key: None,
             },
             signed: false,
             event_count: 0,

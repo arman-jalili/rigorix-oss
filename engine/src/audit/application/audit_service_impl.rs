@@ -277,6 +277,7 @@ mod tests {
             repository: None,
             author: None,
             identity: None,
+            effect_key: None,
         }
     }
 

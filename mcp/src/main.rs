@@ -628,6 +628,7 @@ impl AppState {
                                 repository: None,
                                 author: None,
                                 identity: session_claim.clone(),
+                                effect_key: None,
                                 total_tokens: 0,
                                 duration_ms: state.total_duration_ms,
                                 git_commit: None,

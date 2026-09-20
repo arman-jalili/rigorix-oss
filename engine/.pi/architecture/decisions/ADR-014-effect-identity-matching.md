@@ -75,6 +75,12 @@ in the domain.
      parameters.
    - `HistoryPredicate` gains an optional effect-key match: "a prior completed run
      recorded this same effect key, for this principal, inside `window_secs`".
+   - **Reserved carrier:** the current run's effect key is read from the matched
+     step's parameters at the reserved pointer **`/effect_key`** (a string).
+     Entity resolution happens outside rigorix (Layer 1); this layer only reads
+     the opaque key. An envelope/step without it never matches an effect-keyed
+     rule. The field is populated at the envelope boundary
+     (`BuildEnvelopeInput.effect_key`) by the composition root / domain adapter.
 
 **Layer 3 — outside rigorix (analytics).** Aggregation, counters over many
 dimensions, scoring and anomaly detection run over the exported trail, offline, and

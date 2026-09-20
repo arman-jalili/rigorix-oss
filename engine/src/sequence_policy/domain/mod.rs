@@ -35,5 +35,6 @@ pub use config::{SafetyCaps, SequencePolicyConfig};
 pub use error::SequencePolicyError;
 pub use history::HistoryAction;
 pub use rule::HistoryPredicate;
+pub(crate) use rule::effect_key_of;
 pub use rule::{ParamMatchKind, ParamPredicate, RuleAction, SequenceRule, StepPredicate};
 pub use sequence_match::SequenceMatch;

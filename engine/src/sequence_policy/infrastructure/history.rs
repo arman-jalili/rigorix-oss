@@ -71,6 +71,7 @@ fn actions_from_envelope(envelope: &AuditEnvelope) -> Vec<HistoryAction> {
         .or_else(|| envelope.author.clone());
     let mut seen: Vec<String> = Vec::new();
     let mut out = Vec::new();
+    let effect_key = envelope.effect_key.clone();
     for ev in &envelope.events {
         let Some(payload) = &ev.payload else { continue };
         let Some(step_name) = payload.get("step_name").and_then(|v| v.as_str()) else {
@@ -84,6 +85,7 @@ fn actions_from_envelope(envelope: &AuditEnvelope) -> Vec<HistoryAction> {
             node: step_name.to_string(),
             principal: principal.clone(),
             at: ev.occurred_at,
+            effect_key: effect_key.clone(),
         });
     }
     if out.is_empty() && !envelope.template_id.is_empty() {
@@ -91,6 +93,7 @@ fn actions_from_envelope(envelope: &AuditEnvelope) -> Vec<HistoryAction> {
             node: envelope.template_id.clone(),
             principal,
             at: envelope.timestamp,
+            effect_key,
         });
     }
     out
@@ -162,6 +165,7 @@ mod tests {
             repository: None,
             author: Some(author.to_string()),
             identity: None,
+            effect_key: None,
         }
     }
 

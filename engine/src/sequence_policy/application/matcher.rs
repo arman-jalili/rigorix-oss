@@ -133,7 +133,7 @@ fn find_matches_for_rule<S: StepLike>(
     let mut matches = Vec::new();
 
     for start in 0..steps.len() {
-        if !predicate_matches(&rule.steps[0], &steps[start])? {
+        if !predicate_matches(&rule.steps[0], &steps[start], steps, &[])? {
             continue;
         }
         // Greedily extend to the earliest position of each later predicate.
@@ -143,7 +143,7 @@ fn find_matches_for_rule<S: StepLike>(
         for k in 1..predicate_count {
             let mut found = None;
             for (t, step) in steps.iter().enumerate().skip(current + 1) {
-                if predicate_matches(&rule.steps[k], step)? {
+                if predicate_matches(&rule.steps[k], step, steps, &indices)? {
                     found = Some(t);
                     break;
                 }
@@ -182,18 +182,26 @@ fn find_matches_for_rule<S: StepLike>(
 }
 
 /// Whether a step predicate matches one step. Delegates the tool + parameter
-/// matching to the domain component (`StepPredicate::matches`).
+/// matching to the domain component (`StepPredicate::matches_in_context`),
+/// passing the parameter objects of the already-matched earlier steps so
+/// `equals_step` (R8) can compare against them.
 fn predicate_matches<S: StepLike>(
     predicate: &StepPredicate,
     step: &S,
+    steps: &[S],
+    indices: &[usize],
 ) -> Result<bool, SequencePolicyError> {
-    predicate.matches(step.step_tool(), step.step_parameters())
+    let earlier: Vec<&Value> = indices
+        .iter()
+        .map(|i| steps[*i].step_parameters())
+        .collect();
+    predicate.matches_in_context(step.step_tool(), step.step_parameters(), &earlier)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sequence_policy::domain::RuleAction;
+    use crate::sequence_policy::domain::{ParamMatchKind, ParamPredicate, RuleAction};
     use serde_json::json;
 
     fn tool_predicate(tool: &str) -> StepPredicate {
@@ -382,5 +390,134 @@ mod tests {
         let matches = matcher.find_matches(&rules, &steps).expect("match");
         let rule_ids: Vec<&str> = matches.iter().map(|m| m.rule_id.as_str()).collect();
         assert_eq!(rule_ids, vec!["r2", "r1"], "config order wins");
+    }
+
+    // ── R8 / ADR-014: value-identity (`equals_step`) predicate (AC #15) ────
+
+    fn param_equals_step(pointer: &str, step: usize) -> ParamPredicate {
+        ParamPredicate {
+            pointer: pointer.to_string(),
+            kind: ParamMatchKind::EqualsStep,
+            value: None,
+            step: Some(step),
+        }
+    }
+
+    fn plan_with_params(steps: &[(&str, serde_json::Value)]) -> Vec<PlannedStep> {
+        steps
+            .iter()
+            .enumerate()
+            .map(|(i, (tool, params))| PlannedStep {
+                name: format!("{tool}-{i}"),
+                tool: tool.to_string(),
+                parameters: params.clone(),
+            })
+            .collect()
+    }
+
+    /// The ADR-014 example: a second action whose `/beneficiary` equals an
+    /// earlier matched step's `/beneficiary` (symbol vs. IČO naming the same
+    /// payee), even though the literal strings may be produced differently.
+    fn same_effect_rule() -> SequenceRule {
+        SequenceRule {
+            id: "same-beneficiary-twice".to_string(),
+            name: "same beneficiary twice".to_string(),
+            description: "d".to_string(),
+            steps: vec![
+                StepPredicate {
+                    tool: "resolve".to_string(),
+                    params: vec![],
+                },
+                StepPredicate {
+                    tool: "payout".to_string(),
+                    params: vec![param_equals_step("/beneficiary", 0)],
+                },
+            ],
+            window: Some(5),
+            action: RuleAction::Deny,
+            history: None,
+        }
+    }
+
+    #[test]
+    fn equals_step_matches_equal_pointer_values_and_rejects_different() {
+        // AC #15 — equal pointer values match.
+        let matcher = Matcher::new();
+        let rule = same_effect_rule();
+        let steps = plan_with_params(&[
+            ("resolve", json!({ "beneficiary": "acct-1" })),
+            ("payout", json!({ "beneficiary": "acct-1" })),
+        ]);
+        let m = matcher
+            .find_matches(std::slice::from_ref(&rule), &steps)
+            .expect("match");
+        assert_eq!(m.len(), 1, "equal beneficiary must match: {m:?}");
+        assert_eq!(m[0].later_step, "payout-1");
+
+        // Different pointer values do not match.
+        let steps = plan_with_params(&[
+            ("resolve", json!({ "beneficiary": "acct-1" })),
+            ("payout", json!({ "beneficiary": "acct-2" })),
+        ]);
+        assert!(
+            matcher
+                .find_matches(std::slice::from_ref(&rule), &steps)
+                .expect("match")
+                .is_empty(),
+            "different beneficiary must not match"
+        );
+    }
+
+    #[test]
+    fn equals_step_obeys_window_and_never_matches_across_reordering() {
+        // AC #15 — the referenced earlier step must genuinely be earlier.
+        let matcher = Matcher::new();
+        let rule = same_effect_rule();
+
+        // Windowed (gap ≤ 5) still matches.
+        let steps = plan_with_params(&[
+            ("resolve", json!({ "beneficiary": "acct-1" })),
+            ("noop", json!({})),
+            ("payout", json!({ "beneficiary": "acct-1" })),
+        ]);
+        assert_eq!(
+            matcher
+                .find_matches(std::slice::from_ref(&rule), &steps)
+                .expect("match")
+                .len(),
+            1,
+            "gap within window must still match"
+        );
+
+        // Reordered: payout first, then resolve — the referenced step 0
+        // ("resolve") is not earlier for the payout, so nothing matches.
+        let steps = plan_with_params(&[
+            ("payout", json!({ "beneficiary": "acct-1" })),
+            ("resolve", json!({ "beneficiary": "acct-1" })),
+        ]);
+        assert!(
+            matcher
+                .find_matches(std::slice::from_ref(&rule), &steps)
+                .expect("match")
+                .is_empty(),
+            "reordering must not match"
+        );
+    }
+
+    #[test]
+    fn equals_step_without_step_index_is_a_config_error() {
+        // Fail-closed: a malformed relation predicate is a config error, the
+        // caller (repository validation) refuses the ruleset.
+        let matcher = Matcher::new();
+        let mut rule = same_effect_rule();
+        rule.steps[1].params[0].step = None;
+        let steps = plan_with_params(&[
+            ("resolve", json!({ "beneficiary": "acct-1" })),
+            ("payout", json!({ "beneficiary": "acct-1" })),
+        ]);
+        let err = matcher
+            .find_matches(std::slice::from_ref(&rule), &steps)
+            .expect_err("missing step index must fail closed");
+        assert!(matches!(err, SequencePolicyError::InvalidConfig(_)));
     }
 }

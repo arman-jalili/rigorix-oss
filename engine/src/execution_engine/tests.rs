@@ -2346,7 +2346,8 @@ fn r3_config(action: RuleAction, path_a: &str, path_b: &str) -> SequencePolicyCo
                     params: vec![ParamPredicate {
                         pointer: "/path".to_string(),
                         kind: ParamMatchKind::Exact,
-                        value: path_a.to_string(),
+                        value: Some(path_a.to_string()),
+                        step: None,
                     }],
                 },
                 StepPredicate {
@@ -2354,7 +2355,8 @@ fn r3_config(action: RuleAction, path_a: &str, path_b: &str) -> SequencePolicyCo
                     params: vec![ParamPredicate {
                         pointer: "/path".to_string(),
                         kind: ParamMatchKind::Exact,
-                        value: path_b.to_string(),
+                        value: Some(path_b.to_string()),
+                        step: None,
                     }],
                 },
             ],

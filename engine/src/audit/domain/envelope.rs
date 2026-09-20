@@ -87,6 +87,14 @@ pub struct AuditEnvelope {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub identity: Option<IdentityRef>,
 
+    /// R8 / ADR-014: domain-supplied canonical effect identity for this run,
+    /// recorded as a **one-way keyed hash** — never raw parameters (SpanPrivacy).
+    /// Additive and serde-defaulted: absent in effect-less envelopes, which
+    /// never match an effect-keyed history rule. Entity resolution happens
+    /// outside rigorix; this layer only stores the opaque key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effect_key: Option<String>,
+
     /// Total number of LLM tokens consumed during this execution.
     ///
     /// Used for cost estimation and AI ROI analytics in the Enterprise dashboard.
