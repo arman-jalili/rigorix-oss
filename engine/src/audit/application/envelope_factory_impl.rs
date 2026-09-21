@@ -99,6 +99,7 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
             repository: input.repository,
             author: input.author,
             identity: input.identity,
+            effect_key: input.effect_key,
             total_tokens: input.total_tokens,
             duration_ms: input.duration_ms,
             git_commit: input.git_commit,
@@ -187,6 +188,7 @@ mod tests {
             repository: None,
             author: None,
             identity: None,
+            effect_key: None,
         }
     }
 

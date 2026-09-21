@@ -147,12 +147,44 @@ impl SequencePolicyConfig {
                     });
                 }
             }
-            for step in &rule.steps {
-                regex_predicates += step
-                    .params
-                    .iter()
-                    .filter(|p| matches!(p.kind, super::rule::ParamMatchKind::Regex))
-                    .count() as u32;
+            for (idx, step) in rule.steps.iter().enumerate() {
+                for p in &step.params {
+                    if matches!(p.kind, super::rule::ParamMatchKind::Regex) {
+                        regex_predicates += 1;
+                    }
+                    // Literal kinds require a value — a missing one is a
+                    // typo, not an empty-string match (fail closed).
+                    if !matches!(p.kind, super::rule::ParamMatchKind::EqualsStep)
+                        && p.value.is_none()
+                    {
+                        return Err(SequencePolicyError::InvalidConfig(format!(
+                            "rule '{}': parameter predicate '{}' (kind {:?}) requires `value`",
+                            rule.id, p.pointer, p.kind
+                        )));
+                    }
+                    // R8 / ADR-014: a value-identity predicate is only valid
+                    // when it references an EARLIER step of the same rule —
+                    // fail closed otherwise (operator config error).
+                    if matches!(p.kind, super::rule::ParamMatchKind::EqualsStep) {
+                        match p.step {
+                            Some(target) if target < idx => {}
+                            Some(target) => {
+                                return Err(SequencePolicyError::InvalidConfig(format!(
+                                    "rule '{}': equals_step predicate '{}' references step {target}, \
+                                     which is not an earlier step (must be < {idx})",
+                                    rule.id, p.pointer
+                                )));
+                            }
+                            None => {
+                                return Err(SequencePolicyError::InvalidConfig(format!(
+                                    "rule '{}': equals_step predicate '{}' requires `step` (earlier \
+                                     matched step index)",
+                                    rule.id, p.pointer
+                                )));
+                            }
+                        }
+                    }
+                }
             }
         }
         if regex_predicates > caps.max_regex_predicates_per_file {
@@ -261,12 +293,14 @@ mod tests {
             ParamPredicate {
                 pointer: "/a".to_string(),
                 kind: ParamMatchKind::Regex,
-                value: ".*".to_string(),
+                value: Some(".*".to_string()),
+                step: None,
             },
             ParamPredicate {
                 pointer: "/b".to_string(),
                 kind: ParamMatchKind::Regex,
-                value: "^x".to_string(),
+                value: Some("^x".to_string()),
+                step: None,
             },
         ];
         let config = SequencePolicyConfig {
@@ -286,7 +320,8 @@ mod tests {
         r.steps[0].params = vec![ParamPredicate {
             pointer: "/a".to_string(),
             kind: ParamMatchKind::Exact,
-            value: "x".to_string(),
+            value: Some("x".to_string()),
+            step: None,
         }];
         let config = SequencePolicyConfig {
             fail_closed: true,
@@ -295,5 +330,95 @@ mod tests {
         assert!(config.validate(&caps()).is_ok());
         // Default caps accept the same config.
         assert!(config.validate_with_default_caps().is_ok());
+    }
+
+    #[test]
+    fn equals_step_validation_accepts_earlier_reference_and_rejects_bad_ones() {
+        // R8: a value-identity predicate must reference an EARLIER step.
+        let mut ok = rule("r1", 2);
+        ok.steps[1].params = vec![ParamPredicate {
+            pointer: "/beneficiary".to_string(),
+            kind: ParamMatchKind::EqualsStep,
+            value: None,
+            step: Some(0),
+        }];
+        let config = SequencePolicyConfig {
+            fail_closed: true,
+            rules: vec![ok],
+        };
+        assert!(
+            config.validate(&caps()).is_ok(),
+            "earlier reference is valid"
+        );
+
+        // Missing `step` → fail closed.
+        let mut missing = rule("r1", 2);
+        missing.steps[1].params = vec![ParamPredicate {
+            pointer: "/beneficiary".to_string(),
+            kind: ParamMatchKind::EqualsStep,
+            value: None,
+            step: None,
+        }];
+        let err = SequencePolicyConfig {
+            fail_closed: true,
+            rules: vec![missing],
+        }
+        .validate(&caps())
+        .unwrap_err();
+        assert!(matches!(err, SequencePolicyError::InvalidConfig(_)));
+
+        // Forward / self reference → fail closed.
+        let mut forward = rule("r1", 2);
+        forward.steps[1].params = vec![ParamPredicate {
+            pointer: "/beneficiary".to_string(),
+            kind: ParamMatchKind::EqualsStep,
+            value: None,
+            step: Some(1),
+        }];
+        let err = SequencePolicyConfig {
+            fail_closed: true,
+            rules: vec![forward],
+        }
+        .validate(&caps())
+        .unwrap_err();
+        assert!(matches!(err, SequencePolicyError::InvalidConfig(_)));
+    }
+
+    #[test]
+    fn literal_predicate_without_value_fails_closed() {
+        // A missing `value` on a literal kind is a typo, not an empty-string
+        // match — validation refuses it (fail closed). Only equals_step may
+        // omit `value`.
+        let mut r = rule("r1", 2);
+        r.steps[0].params = vec![ParamPredicate {
+            pointer: "/event_id".to_string(),
+            kind: ParamMatchKind::Exact,
+            value: None,
+            step: None,
+        }];
+        let err = SequencePolicyConfig {
+            fail_closed: true,
+            rules: vec![r],
+        }
+        .validate(&caps())
+        .unwrap_err();
+        assert!(matches!(err, SequencePolicyError::InvalidConfig(_)));
+
+        // Explicit empty value is allowed (operator intent, not a typo).
+        let mut ok = rule("r1", 2);
+        ok.steps[0].params = vec![ParamPredicate {
+            pointer: "/event_id".to_string(),
+            kind: ParamMatchKind::Exact,
+            value: Some(String::new()),
+            step: None,
+        }];
+        assert!(
+            SequencePolicyConfig {
+                fail_closed: true,
+                rules: vec![ok],
+            }
+            .validate(&caps())
+            .is_ok()
+        );
     }
 }

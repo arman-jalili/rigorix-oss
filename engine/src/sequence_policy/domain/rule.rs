@@ -58,18 +58,33 @@ pub enum ParamMatchKind {
     Glob,
     /// Regular-expression match over the value.
     Regex,
+    /// R8 / ADR-014: value at `pointer` equals the value at the same pointer in
+    /// an **earlier matched step** of this run (`ParamPredicate.step`).
+    /// Structural only — no domain semantics, no fuzzy matching.
+    #[serde(rename = "equals_step")]
+    EqualsStep,
 }
 
 /// One parameter predicate: a JSON pointer into the step's parameter object
-/// plus a value predicate (exact / glob / regex).
+/// plus a value predicate (exact / glob / regex / equals_step).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ParamPredicate {
     /// JSON pointer into the step parameters, e.g. `"/event_id"`.
     pub pointer: String,
-    /// How `value` is compared (exact | glob | regex).
+    /// How `value` is compared (exact | glob | regex | equals_step).
     pub kind: ParamMatchKind,
-    /// Expected value string for the predicate.
-    pub value: String,
+    /// Expected value string for the predicate. Unused by `equals_step`
+    /// (which compares against another step's value instead).
+    /// Expected value string for `exact` / `glob` / `regex` predicates.
+    /// Required for those kinds (a missing value is a fail-closed config
+    /// error); unused and omitted for `equals_step`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    /// R8: for `kind = "equals_step"` — index into the rule's `steps[]`
+    /// identifying the earlier matched step whose `pointer` value must equal
+    /// this one. Absent for literal predicates.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step: Option<usize>,
 }
 
 /// A step predicate: matches a tool name (exact or glob) plus optional
@@ -101,13 +116,25 @@ impl StepPredicate {
     /// - `SequencePolicyError::InvalidConfig` — a `regex` parameter predicate
     ///   fails to compile (operator config error; fail closed)
     pub fn matches(&self, tool: &str, parameters: &Value) -> Result<bool, SequencePolicyError> {
+        self.matches_in_context(tool, parameters, &[])
+    }
+
+    /// R8 variant of [`Self::matches`] with the parameter objects of the
+    /// already-matched earlier steps (indexed by `ParamPredicate.step` for
+    /// `equals_step` predicates). `earlier` is empty for literal-only rules.
+    pub fn matches_in_context(
+        &self,
+        tool: &str,
+        parameters: &Value,
+        earlier: &[&Value],
+    ) -> Result<bool, SequencePolicyError> {
         if !tool_matches(&self.tool, tool) {
             return Ok(false);
         }
         for pp in &self.params {
             match json_pointer_lookup(parameters, &pp.pointer) {
                 Some(actual) => {
-                    if !value_matches(actual, pp)? {
+                    if !value_matches(actual, pp, earlier)? {
                         return Ok(false);
                     }
                 }
@@ -172,22 +199,82 @@ fn json_pointer_lookup<'a>(value: &'a Value, pointer: &str) -> Option<&'a Value>
 
 /// Apply a parameter predicate's kind (exact / glob / regex) to an actual
 /// value. Invalid regex patterns surface as a config error (fail closed).
-fn value_matches(actual: &Value, predicate: &ParamPredicate) -> Result<bool, SequencePolicyError> {
-    let text = match actual {
+fn value_matches(
+    actual: &Value,
+    predicate: &ParamPredicate,
+    earlier: &[&Value],
+) -> Result<bool, SequencePolicyError> {
+    let text = value_to_text(actual);
+    match predicate.kind {
+        ParamMatchKind::Exact => Ok(text == literal_value(predicate)?),
+        ParamMatchKind::Glob => Ok(tool_matches(literal_value(predicate)?, &text)),
+        ParamMatchKind::Regex => {
+            let pattern = literal_value(predicate)?;
+            match regex::Regex::new(pattern) {
+                Ok(re) => Ok(re.is_match(&text)),
+                Err(e) => Err(SequencePolicyError::InvalidConfig(format!(
+                    "regex predicate '{}' failed to compile: {e}",
+                    predicate.pointer
+                ))),
+            }
+        }
+        ParamMatchKind::EqualsStep => {
+            let idx = predicate.step.ok_or_else(|| {
+                SequencePolicyError::InvalidConfig(format!(
+                    "equals_step predicate '{}' requires `step` (earlier matched step index)",
+                    predicate.pointer
+                ))
+            })?;
+            let other = earlier.get(idx).ok_or_else(|| {
+                SequencePolicyError::InvalidConfig(format!(
+                    "equals_step predicate '{}' references step {idx}, which is not an earlier \
+                     matched step",
+                    predicate.pointer
+                ))
+            })?;
+            let other_text = json_pointer_lookup(other, &predicate.pointer)
+                .map(value_to_text)
+                .ok_or_else(|| {
+                    SequencePolicyError::InvalidConfig(format!(
+                        "equals_step predicate '{}': earlier step {idx} has no value at that \
+                         pointer",
+                        predicate.pointer
+                    ))
+                })?;
+            Ok(text == other_text)
+        }
+    }
+}
+
+/// Render a JSON value as the string form used by literal predicates.
+fn value_to_text(value: &Value) -> String {
+    match value {
         Value::String(s) => s.clone(),
         other => other.to_string(),
-    };
-    match predicate.kind {
-        ParamMatchKind::Exact => Ok(text == predicate.value),
-        ParamMatchKind::Glob => Ok(tool_matches(&predicate.value, &text)),
-        ParamMatchKind::Regex => match regex::Regex::new(&predicate.value) {
-            Ok(re) => Ok(re.is_match(&text)),
-            Err(e) => Err(SequencePolicyError::InvalidConfig(format!(
-                "regex predicate '{}' failed to compile: {e}",
-                predicate.value
-            ))),
-        },
     }
+}
+
+/// The literal value an `exact` / `glob` / `regex` predicate requires. A
+/// missing value is a config error (fail closed) — never a silent empty match.
+fn literal_value(predicate: &ParamPredicate) -> Result<&str, SequencePolicyError> {
+    predicate.value.as_deref().ok_or_else(|| {
+        SequencePolicyError::InvalidConfig(format!(
+            "parameter predicate '{}' with kind {:?} requires `value`",
+            predicate.pointer, predicate.kind
+        ))
+    })
+}
+
+/// R8 / ADR-014: the reserved step-parameter pointer carrying the
+/// **domain-supplied canonical effect key** for the step. Entity resolution
+/// happens outside rigorix; this layer only compares the opaque key.
+/// History matching compares this key (as recorded on prior envelopes) to the
+/// envelope `effect_key` recorded for a prior run.
+pub const EFFECT_KEY_POINTER: &str = "/effect_key";
+
+/// Read the domain-supplied effect key from a step's parameter object.
+pub(crate) fn effect_key_of(parameters: &Value) -> Option<&str> {
+    json_pointer_lookup(parameters, EFFECT_KEY_POINTER).and_then(|v| v.as_str())
 }
 
 /// One declarative rule over an ordered step sequence.
@@ -256,6 +343,12 @@ pub struct HistoryPredicate {
     pub same_principal: bool,
     /// Look-back window (seconds) over the signed history.
     pub window_secs: u64,
+    /// R8 / ADR-014: when `true`, the history match additionally requires a
+    /// prior run that recorded the **same effect key** (`eff=`, envelope
+    /// `effect_key`) as the current step's domain-supplied key
+    /// (`/effect_key`). Additive; defaults `false` (principal+node only).
+    #[serde(default)]
+    pub effect_key: bool,
 }
 
 #[cfg(test)]
@@ -326,7 +419,7 @@ history = { prior_node = "registration_remove", same_principal = true, window_se
         // Param predicates (JSON pointer + kind + value) survive the parse.
         assert_eq!(rule.steps[0].params[0].pointer, "/event_id");
         assert_eq!(rule.steps[0].params[0].kind, ParamMatchKind::Exact);
-        assert_eq!(rule.steps[0].params[0].value, "conf-2026");
+        assert_eq!(rule.steps[0].params[0].value.as_deref(), Some("conf-2026"));
         assert_eq!(rule.window, Some(3));
         assert_eq!(rule.action, RuleAction::Promote);
     }
@@ -409,7 +502,8 @@ steps = [
         ParamPredicate {
             pointer: pointer.to_string(),
             kind,
-            value: value.to_string(),
+            value: Some(value.to_string()),
+            step: None,
         }
     }
 

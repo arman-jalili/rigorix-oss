@@ -106,12 +106,13 @@ impl SequencePolicyServiceImpl {
     /// read once per evaluation over the widest required window. A missing
     /// history port means history rules never match (status quo). A read
     /// failure fails closed.
-    async fn filter_matches_by_history(
+    async fn filter_matches_by_history<S: super::matcher::StepLike>(
         &self,
         rules: &[SequenceRule],
         matches: Vec<SequenceMatch>,
         principal: Option<&str>,
         now: DateTime<Utc>,
+        steps: &[S],
     ) -> Result<Vec<SequenceMatch>, SequencePolicyError> {
         // Only matches whose rule carries a history predicate need checking.
         let has_history = |rule_id: &str| -> bool {
@@ -163,11 +164,28 @@ impl SequencePolicyServiceImpl {
                     return true; // within-run only — unaffected by history
                 };
                 let cutoff = now - chrono::Duration::seconds(h.window_secs as i64);
+                // R8: the current step's domain-supplied effect key, when the
+                // rule requires an effect-key match. Read from the reserved
+                // step-parameter pointer `/effect_key` on the matched (later)
+                // step — entity resolution happens outside rigorix.
+                let current_effect: Option<&str> = if h.effect_key {
+                    m.matched_indices
+                        .last()
+                        .and_then(|i| steps.get(*i))
+                        .and_then(|s| {
+                            crate::sequence_policy::domain::effect_key_of(s.step_parameters())
+                        })
+                } else {
+                    None
+                };
                 prior.iter().any(|a| {
                     a.at >= cutoff
                         && tool_matches(&h.prior_node, &a.node)
                         && (!h.same_principal
                             || (principal.is_some() && a.principal.as_deref() == principal))
+                        && (!h.effect_key
+                            || (current_effect.is_some()
+                                && a.effect_key.as_deref() == current_effect))
                 })
             })
             .collect::<Vec<_>>();
@@ -191,7 +209,7 @@ impl SequencePolicyService for SequencePolicyServiceImpl {
         let rules = self.load_rules().await?;
         let matches = self.matcher.find_matches(&rules, steps)?;
         let matches = self
-            .filter_matches_by_history(&rules, matches, principal, Utc::now())
+            .filter_matches_by_history(&rules, matches, principal, Utc::now(), steps)
             .await?;
         if !matches.is_empty() {
             tracing::info!(
@@ -231,7 +249,7 @@ impl SequencePolicyService for SequencePolicyServiceImpl {
         // on at the dispatch of its own later step.
         let matches = self.matcher.find_matches(&rules, &views)?;
         let matches = self
-            .filter_matches_by_history(&rules, matches, principal, Utc::now())
+            .filter_matches_by_history(&rules, matches, principal, Utc::now(), &views)
             .await?;
         let actionable: Vec<SequenceMatch> = matches
             .into_iter()
@@ -292,7 +310,8 @@ mod tests {
                     params: vec![ParamPredicate {
                         pointer: "/event_id".to_string(),
                         kind: ParamMatchKind::Exact,
-                        value: "conf-2026".to_string(),
+                        value: Some("conf-2026".to_string()),
+                        step: None,
                     }],
                 },
                 StepPredicate {
@@ -300,7 +319,8 @@ mod tests {
                     params: vec![ParamPredicate {
                         pointer: "/event_id".to_string(),
                         kind: ParamMatchKind::Exact,
-                        value: "conf-2026".to_string(),
+                        value: Some("conf-2026".to_string()),
+                        step: None,
                     }],
                 },
             ],
@@ -358,7 +378,8 @@ mod tests {
                 params: vec![ParamPredicate {
                     pointer: "/event_id".to_string(),
                     kind: ParamMatchKind::Exact,
-                    value: "conf-2026".to_string(),
+                    value: Some("conf-2026".to_string()),
+                    step: None,
                 }],
             }],
             window: None,
@@ -367,6 +388,7 @@ mod tests {
                 prior_node: "registration_remove".to_string(),
                 same_principal: true,
                 window_secs: 900,
+                effect_key: false,
             }),
         }
     }
@@ -392,6 +414,7 @@ mod tests {
             node: "registration_remove".to_string(),
             principal: Some("jeff@corp".to_string()),
             at: chrono::Utc::now() - chrono::Duration::seconds(secs_ago),
+            effect_key: None,
         }
     }
 
@@ -686,5 +709,128 @@ mod tests {
             max_history_window_secs: 604_800,
         };
         assert!(caps.max_window >= 1);
+    }
+
+    // ── R8 / ADR-014: effect-keyed history (AC #16) ───────────────────────
+
+    /// A single-action rule gated by an effect-key match across runs: the
+    /// current payout's `/effect_key` must equal a prior run's recorded key,
+    /// same principal, inside the window.
+    fn effect_rule() -> SequenceRule {
+        SequenceRule {
+            id: "same-effect-cross-run".to_string(),
+            name: "No repeated effect across runs".to_string(),
+            description: "d".to_string(),
+            steps: vec![StepPredicate {
+                tool: "payout".to_string(),
+                params: vec![],
+            }],
+            window: None,
+            action: RuleAction::Deny,
+            history: Some(HistoryPredicate {
+                prior_node: "payout".to_string(),
+                same_principal: true,
+                window_secs: 900,
+                effect_key: true,
+            }),
+        }
+    }
+
+    fn effect_svc(actions: Vec<HistoryAction>) -> SequencePolicyServiceImpl {
+        SequencePolicyServiceImpl::new(Box::new(StubRepository {
+            outcome: Ok(Some(SequencePolicyConfig {
+                fail_closed: true,
+                rules: vec![effect_rule()],
+            })),
+        }))
+        .with_history(std::sync::Arc::new(FakeHistory {
+            actions: std::sync::Mutex::new(actions),
+        }))
+    }
+
+    fn planned_effect(name: &str, tool: &str, effect_key: &str) -> PlannedStep {
+        PlannedStep {
+            name: name.to_string(),
+            tool: tool.to_string(),
+            parameters: json!({ "effect_key": effect_key }),
+        }
+    }
+
+    fn prior_effect(secs_ago: i64, effect_key: Option<&str>) -> HistoryAction {
+        HistoryAction {
+            node: "payout".to_string(),
+            principal: Some("jeff@corp".to_string()),
+            at: Utc::now() - chrono::Duration::seconds(secs_ago),
+            effect_key: effect_key.map(|s| s.to_string()),
+        }
+    }
+
+    /// AC #16 — equal effect key, same principal, inside the window fires.
+    #[tokio::test]
+    async fn effect_keyed_history_fires_on_equal_key_within_window() {
+        let svc = effect_svc(vec![prior_effect(120, Some("eff-abc"))]);
+        let runbook = vec![planned_effect("pay", "payout", "eff-abc")];
+        let m = svc
+            .evaluate_plan(&runbook, Some("jeff@corp"))
+            .await
+            .expect("evaluate");
+        assert_eq!(m.len(), 1, "equal effect key must fire: {m:?}");
+    }
+
+    /// AC #16 — a different key does not fire.
+    #[tokio::test]
+    async fn effect_keyed_history_ignores_different_key() {
+        let svc = effect_svc(vec![prior_effect(120, Some("eff-zzz"))]);
+        let runbook = vec![planned_effect("pay", "payout", "eff-abc")];
+        assert!(
+            svc.evaluate_plan(&runbook, Some("jeff@corp"))
+                .await
+                .expect("evaluate")
+                .is_empty()
+        );
+    }
+
+    /// AC #4 — a prior envelope without an effect key never matches.
+    #[tokio::test]
+    async fn effect_keyed_history_ignores_envelope_without_key() {
+        let svc = effect_svc(vec![prior_effect(120, None)]);
+        let runbook = vec![planned_effect("pay", "payout", "eff-abc")];
+        assert!(
+            svc.evaluate_plan(&runbook, Some("jeff@corp"))
+                .await
+                .expect("evaluate")
+                .is_empty()
+        );
+    }
+
+    /// AC #16 — a prior action outside the window does not fire.
+    #[tokio::test]
+    async fn effect_keyed_history_ignores_outside_window() {
+        let svc = effect_svc(vec![prior_effect(3_600, Some("eff-abc"))]); // 1h > 900s
+        let runbook = vec![planned_effect("pay", "payout", "eff-abc")];
+        assert!(
+            svc.evaluate_plan(&runbook, Some("jeff@corp"))
+                .await
+                .expect("evaluate")
+                .is_empty()
+        );
+    }
+
+    /// The current step carries no `/effect_key` → an effect-keyed rule cannot
+    /// match (no false denial).
+    #[tokio::test]
+    async fn effect_keyed_history_requires_current_step_key() {
+        let svc = effect_svc(vec![prior_effect(120, Some("eff-abc"))]);
+        let runbook = vec![PlannedStep {
+            name: "pay".to_string(),
+            tool: "payout".to_string(),
+            parameters: json!({}),
+        }];
+        assert!(
+            svc.evaluate_plan(&runbook, Some("jeff@corp"))
+                .await
+                .expect("evaluate")
+                .is_empty()
+        );
     }
 }

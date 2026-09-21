@@ -63,7 +63,8 @@ fn test_rule_predicates_are_data_not_agent_judgment() {
         params: vec![ParamPredicate {
             pointer: "/event_id".to_string(),
             kind: ParamMatchKind::Exact,
-            value: "conf-2026".to_string(),
+            value: Some("conf-2026".to_string()),
+            step: None,
         }],
     };
     let encoded = serde_json::to_string(&predicate).expect("serialize");

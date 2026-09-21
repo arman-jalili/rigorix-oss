@@ -1113,6 +1113,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     repository: input.repository.clone(),
                     author: input.author.clone(),
                     identity: input.identity.as_ref().map(IdentityRef::from_claim),
+                    effect_key: None,
                 })
                 .await;
         }
@@ -1722,6 +1723,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     // subject (same principal across runs), not caller/git
                     // display strings. Author stays as display-only.
                     identity: input.identity.clone(),
+                    effect_key: None,
                 })
                 .await;
         }
@@ -1983,6 +1985,7 @@ mod tests {
                     repository: None,
                     author: None,
                     identity: None,
+                    effect_key: None,
                     total_tokens: 0,
                     duration_ms: 0,
                     git_commit: None,
@@ -2436,7 +2439,8 @@ mod tests {
         let param = || ParamPredicate {
             pointer: "/event_id".to_string(),
             kind: ParamMatchKind::Exact,
-            value: "conf-2026".to_string(),
+            value: Some("conf-2026".to_string()),
+            step: None,
         };
         SequencePolicyConfig {
             fail_closed: true,
@@ -3277,6 +3281,7 @@ mod tests {
                 repository: None,
                 author: Some("jeff@corp".to_string()),
                 identity: None,
+                effect_key: None,
             })
             .await
             .expect("run-1 envelope");
@@ -3295,7 +3300,8 @@ mod tests {
                     params: vec![crate::sequence_policy::domain::ParamPredicate {
                         pointer: "/event_id".to_string(),
                         kind: crate::sequence_policy::domain::ParamMatchKind::Exact,
-                        value: "conf-2026".to_string(),
+                        value: Some("conf-2026".to_string()),
+                        step: None,
                     }],
                 }],
                 window: None,
@@ -3304,6 +3310,7 @@ mod tests {
                     prior_node: "registration_remove".to_string(),
                     same_principal: true,
                     window_secs: 900,
+                    effect_key: false,
                 }),
             }],
         };

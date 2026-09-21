@@ -14,7 +14,8 @@ fn removal_predicate() -> StepPredicate {
         params: vec![ParamPredicate {
             pointer: "/event_id".to_string(),
             kind: ParamMatchKind::Exact,
-            value: "conf-2026".to_string(),
+            value: Some("conf-2026".to_string()),
+            step: None,
         }],
     }
 }
@@ -26,7 +27,7 @@ fn test_steppredicate_is_defined() {
     assert_eq!(predicate.params.len(), 1);
     let param = &predicate.params[0];
     assert_eq!(param.pointer, "/event_id");
-    assert_eq!(param.value, "conf-2026");
+    assert_eq!(param.value.as_deref(), Some("conf-2026"));
     // Exact / glob / regex are the three frozen comparison kinds.
     assert_eq!(param.kind, ParamMatchKind::Exact);
 }

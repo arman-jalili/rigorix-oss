@@ -37,6 +37,7 @@ fn envelope_input(identity: Option<IdentityRef>) -> BuildEnvelopeInput {
         repository: None,
         author: Some("legacy-author".to_string()),
         identity,
+        effect_key: None,
         total_tokens: 0,
         duration_ms: 0,
         git_commit: None,

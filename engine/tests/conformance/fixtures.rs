@@ -50,6 +50,7 @@ fn base_input() -> BuildEnvelopeInput {
         repository: Some("arman-jalili/conference-demo".to_string()),
         author: Some("user@org".to_string()),
         identity: None,
+        effect_key: None,
         total_tokens: 3200,
         duration_ms: 48200,
         git_commit: Some("1f6a4c9e2b8d4f0a3c5e7b9d1a2c4e6f8a0b2d4c6".to_string()),

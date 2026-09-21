@@ -53,6 +53,12 @@ pub struct BuildEnvelopeInput {
     /// identity block (never the raw token).
     pub identity: Option<IdentityRef>,
 
+    /// R8 / ADR-014: domain-supplied canonical effect identity for this run,
+    /// recorded as a one-way keyed hash (never raw parameters). `None` for
+    /// effect-less runs (backward compatible).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effect_key: Option<String>,
+
     /// Total number of LLM tokens consumed during this execution.
     pub total_tokens: u32,
 

@@ -22,7 +22,8 @@ fn conference_rule() -> SequenceRule {
                 params: vec![ParamPredicate {
                     pointer: "/event_id".to_string(),
                     kind: ParamMatchKind::Exact,
-                    value: "conf-2026".to_string(),
+                    value: Some("conf-2026".to_string()),
+                    step: None,
                 }],
             },
             StepPredicate {
@@ -30,7 +31,8 @@ fn conference_rule() -> SequenceRule {
                 params: vec![ParamPredicate {
                     pointer: "/event_id".to_string(),
                     kind: ParamMatchKind::Exact,
-                    value: "conf-2026".to_string(),
+                    value: Some("conf-2026".to_string()),
+                    step: None,
                 }],
             },
         ],
