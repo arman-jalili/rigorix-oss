@@ -2266,3 +2266,54 @@ mod approval_binding_tests {
         assert_eq!(id.approver_id.as_deref(), Some("sub-1"));
     }
 }
+
+/// Catalog drift: every MCP tool maps 1:1 to a frozen `rigorix.*` catalog
+/// method (ADR-0001 D9). Runs only when `RIGORIX_SDK_SCHEMAS` points at a
+/// rigorix-sdk checkout (same env as the engine conformance job); the OSS CI
+/// conformance job sets it and runs this test.
+#[cfg(test)]
+mod catalog_drift_tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn mcp_tools_map_one_to_one_to_the_frozen_catalog() {
+        let Ok(dir) = std::env::var("RIGORIX_SDK_SCHEMAS") else {
+            eprintln!("RIGORIX_SDK_SCHEMAS unset — skipping catalog drift check");
+            return;
+        };
+        let path = std::path::Path::new(&dir).join("api/catalog.json");
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let catalog: serde_json::Value = serde_json::from_str(&text).expect("catalog parses");
+
+        let catalog_tools: BTreeSet<String> = catalog["methods"]
+            .as_array()
+            .expect("methods array")
+            .iter()
+            .filter_map(|m| m["mcpTool"].as_str().map(str::to_string))
+            .collect();
+
+        // The stdio server's tool surface = the core descriptors + the auth
+        // descriptors (registered separately). Enterprise proxy tools are a
+        // seam, not catalog methods.
+        let mut mcp_tools: BTreeSet<String> = all_tool_descriptors()
+            .iter()
+            .filter_map(|d| d["name"].as_str().map(str::to_string))
+            .collect();
+        for d in [
+            rigorix_mcp::auth::interfaces::mcp::rigorix_auth_login_tool_descriptor(),
+            rigorix_mcp::auth::interfaces::mcp::rigorix_auth_status_tool_descriptor(),
+            rigorix_mcp::auth::interfaces::mcp::rigorix_auth_logout_tool_descriptor(),
+        ] {
+            if let Some(name) = d["name"].as_str() {
+                mcp_tools.insert(name.to_string());
+            }
+        }
+
+        assert_eq!(
+            mcp_tools, catalog_tools,
+            "MCP tools must map 1:1 to catalog methods (ADR-0001 D9); catalog={catalog_tools:?} mcp={mcp_tools:?}"
+        );
+    }
+}

@@ -58,3 +58,17 @@ forward path: rigorix-enterprise `findings/contract-sync-server-plan-2026-09-06.
 Note for future sessions: this freeze supersedes nothing in the code — it is a pointer
 for where the SDK/server work is planned. Start by reading rigorix-sdk docs before
 opening any SDK/server issue.
+
+---
+
+## Status update — 2026-09-21
+
+- **Catalog freeze: done** (item 2). rigorix-sdk `schemas/api/catalog.json` +
+  ADR-0001 (19 `rigorix.*` methods). OSS CI now enforces the MCP↔catalog
+  adapter table (`catalog_drift_tests`).
+- **ADR-014 effect-identity: released 1.5.0** — value-identity predicate
+  (`equals_step`) + effect-keyed history + envelope `effect_key`; conformance
+  fixture `envelope-effect-key-signed.json` proves byte-exact HMAC parity.
+- **Remaining workstreams (C: servers/clients, D: cleanups)** are captured in
+  [`docs/next-workstreams-2026-09-21.md`](./next-workstreams-2026-09-21.md).
+  Next: C1 (SSE spec) → C2 `rigorix-server` + C3 enterprise Execution API.

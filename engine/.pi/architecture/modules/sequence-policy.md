@@ -100,8 +100,10 @@ is.
 
 **Retention coupling (load-bearing).** `effect_key`-keyed history is only as good as the
 retained trail: pruning below the longest rule window silently disables these rules and
-must be validated (Acceptance Criteria #17). Where no canonical key exists the rule
-degrades to detection, **not** a control.
+must be validated (Acceptance Criteria #17):
+`SequencePolicyConfig::validate_retention` refuses an `effect_key` rule whose window
+outlives the configured audit retention. Where no canonical key exists the rule degrades
+to detection, **not** a control.
 
 ### R1 — Declarative Sequence Rules
 
