@@ -203,13 +203,44 @@ impl SequencePolicyConfig {
     pub fn validate_with_default_caps(&self) -> Result<(), SequencePolicyError> {
         self.validate(&SafetyCaps::default())
     }
+
+    /// R8 / ADR-014 (AC #17): retention must cover every effect-keyed rule's
+    /// look-back window, or the rule **silently stops firing** once old
+    /// envelopes are pruned from the signed trail. The composition root calls
+    /// this when an audit retention policy is configured; `None` means
+    /// unlimited retention and is always valid.
+    ///
+    /// # Errors
+    /// - `SequencePolicyError::InvalidConfig` — an `effect_key`-gated rule's
+    ///   `window_secs` exceeds the configured retention.
+    pub fn validate_retention(
+        &self,
+        retention_secs: Option<u64>,
+    ) -> Result<(), SequencePolicyError> {
+        let Some(retention) = retention_secs else {
+            return Ok(());
+        };
+        for rule in &self.rules {
+            if let Some(hist) = &rule.history
+                && hist.effect_key
+                && hist.window_secs > retention
+            {
+                return Err(SequencePolicyError::InvalidConfig(format!(
+                    "rule '{}': effect-keyed history window {}s exceeds audit retention {}s — the \
+                     rule would silently stop firing once old envelopes are pruned",
+                    rule.id, hist.window_secs, retention
+                )));
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::sequence_policy::domain::{
-        ParamMatchKind, ParamPredicate, RuleAction, StepPredicate,
+        HistoryPredicate, ParamMatchKind, ParamPredicate, RuleAction, StepPredicate,
     };
 
     fn rule(id: &str, steps: usize) -> SequenceRule {
@@ -386,9 +417,6 @@ mod tests {
 
     #[test]
     fn literal_predicate_without_value_fails_closed() {
-        // A missing `value` on a literal kind is a typo, not an empty-string
-        // match — validation refuses it (fail closed). Only equals_step may
-        // omit `value`.
         let mut r = rule("r1", 2);
         r.steps[0].params = vec![ParamPredicate {
             pointer: "/event_id".to_string(),
@@ -420,5 +448,48 @@ mod tests {
             .validate(&caps())
             .is_ok()
         );
+    }
+
+    #[test]
+    fn retention_must_cover_effect_keyed_windows() {
+        // AC #17: an effect-keyed rule whose window outlives the audit
+        // retention would silently stop firing — refuse it.
+        let mut r = rule("r1", 2);
+        r.history = Some(HistoryPredicate {
+            prior_node: "*".to_string(),
+            same_principal: true,
+            window_secs: 900,
+            effect_key: true,
+        });
+        let config = SequencePolicyConfig {
+            fail_closed: true,
+            rules: vec![r],
+        };
+        // Unlimited retention → fine.
+        assert!(config.validate_retention(None).is_ok());
+        // Retention ≥ window → fine.
+        assert!(config.validate_retention(Some(900)).is_ok());
+        assert!(config.validate_retention(Some(86_400)).is_ok());
+        // Retention < window → fail closed.
+        let err = config.validate_retention(Some(600)).unwrap_err();
+        assert!(matches!(err, SequencePolicyError::InvalidConfig(_)));
+    }
+
+    #[test]
+    fn retention_ignores_non_effect_keyed_rules() {
+        // A node+principal history rule (no effect key) has no retention
+        // coupling — it never depends on the effect-key record.
+        let mut r = rule("r1", 2);
+        r.history = Some(HistoryPredicate {
+            prior_node: "payout".to_string(),
+            same_principal: true,
+            window_secs: 900,
+            effect_key: false,
+        });
+        let config = SequencePolicyConfig {
+            fail_closed: true,
+            rules: vec![r],
+        };
+        assert!(config.validate_retention(Some(60)).is_ok());
     }
 }

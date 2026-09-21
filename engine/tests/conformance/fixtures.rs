@@ -107,7 +107,7 @@ fn rich_input() -> BuildEnvelopeInput {
     input
 }
 
-/// Write 5 real signed fixtures (one per variant) to `RIGORIX_FIXTURE_OUT`.
+/// Write 6 real signed fixtures (one per variant) to `RIGORIX_FIXTURE_OUT`.
 #[tokio::test]
 #[ignore = "env-gated fixture generation (RIGORIX_FIXTURE_OUT); run explicitly"]
 async fn write_real_signed_fixtures() {
@@ -164,13 +164,22 @@ async fn write_real_signed_fixtures() {
         .build_envelope(pre_identity_input)
         .await
         .expect("pre-identity envelope");
+    // 6. Effect-keyed (ADR-014): the run's canonical effect key recorded as a
+    //    one-way hash (never raw parameters).
+    let mut effect_input = base_input();
+    effect_input.effect_key = Some("eff:acme".to_string());
+    let effect = factory
+        .build_envelope(effect_input)
+        .await
+        .expect("effect-key envelope");
 
-    let variants: [(&str, &rigorix_engine::audit::domain::AuditEnvelope); 5] = [
+    let variants: [(&str, &rigorix_engine::audit::domain::AuditEnvelope); 6] = [
         ("envelope-minimal-signed", &signed),
         ("envelope-unsigned-degraded", &degraded),
         ("envelope-rich-signed", &rich),
         ("envelope-sequence-denied-signed", &denied),
         ("envelope-rich-pre-identity", &pre_identity),
+        ("envelope-effect-key-signed", &effect),
     ];
 
     let dir = std::path::Path::new(&out_dir);

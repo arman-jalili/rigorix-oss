@@ -245,4 +245,42 @@ mod tests {
             .expect("missing dir must yield empty history");
         assert!(actions.is_empty());
     }
+
+    /// AC #17: pruning the trail drops effect-key evidence — the effect-keyed
+    /// rule can no longer fire. This is exactly why
+    /// `SequencePolicyConfig::validate_retention` refuses an effect-keyed
+    /// window longer than the configured retention (no silent disablement).
+    #[tokio::test]
+    async fn pruned_trail_drops_effect_key_evidence() {
+        use crate::audit::application::factory::AuditEnvelopeFactory;
+        use crate::audit::infrastructure::repository::AuditEnvelopeRepository;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let repo: std::sync::Arc<dyn AuditEnvelopeRepository> =
+            std::sync::Arc::new(LocalAuditEnvelopeRepository::new(dir.path().to_path_buf()));
+        let factory = AuditEnvelopeFactoryImpl::default();
+        let mut input = completed_envelope_input("payout", "operator@corp");
+        input.effect_key = Some("eff:acme".to_string());
+        let envelope = factory.build_envelope(input).await.expect("build");
+        repo.save(&envelope).await.expect("save");
+
+        let adapter = EnvelopeHistoryAdapter::new(repo.clone());
+        let since = chrono::Utc::now() - chrono::Duration::hours(1);
+        let before = adapter.prior_actions(since).await.expect("read");
+        assert!(
+            before
+                .iter()
+                .any(|a| a.effect_key.as_deref() == Some("eff:acme")),
+            "the effect key must be visible before pruning: {before:?}"
+        );
+
+        // Retention shorter than the rule window: prune everything.
+        repo.prune(chrono::Utc::now() + chrono::Duration::seconds(1))
+            .await
+            .expect("prune");
+        let after = adapter.prior_actions(since).await.expect("read");
+        assert!(
+            after.is_empty(),
+            "pruned trail must drop the effect-key evidence: {after:?}"
+        );
+    }
 }

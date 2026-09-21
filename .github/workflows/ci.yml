@@ -281,6 +281,12 @@ jobs:
           RIGORIX_SDK_SCHEMAS: ${{ github.workspace }}/rigorix-sdk/schemas
         run: |
           cargo test -p rigorix-engine --features conformance --test conformance
+      - name: 🔗 MCP ↔ catalog drift (ADR-0001 adapter table)
+        # Every MCP tool must map 1:1 to a frozen rigorix.* catalog method.
+        env:
+          RIGORIX_SDK_SCHEMAS: ${{ github.workspace }}/rigorix-sdk/schemas
+        run: |
+          cargo test -p rigorix-mcp --bin rigorix-mcp catalog_drift_tests
       - name: 🔁 Independent-HMAC proof (engine fixtures via rigorix-verifier)
         # Strategy A: the engine's own canonicalization must be reproducible
         # byte-exact by the SDK's protocol-only verifier. Runs the verifier
