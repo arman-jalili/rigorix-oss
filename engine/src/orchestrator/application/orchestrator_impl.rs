@@ -265,6 +265,28 @@ impl OrchestratorServiceImpl {
         Some(formatted.output)
     }
 
+    /// R8 / ADR-014: the run's domain-supplied effect key, recovered from the
+    /// planning parameters (`step_N` → params JSON) — the first step that
+    /// carries the reserved `/effect_key`. Entity resolution happens outside
+    /// rigorix; recording the key on the envelope lets effect-keyed history
+    /// rules compare it across runs.
+    fn run_effect_key(parameters: &std::collections::HashMap<String, String>) -> Option<String> {
+        let mut steps: Vec<(&String, &String)> = parameters
+            .iter()
+            .filter(|(k, _)| k.starts_with("step_"))
+            .collect();
+        // step_10 must sort after step_9 — sort by the numeric suffix.
+        steps.sort_by_key(|(k, _)| {
+            k.trim_start_matches("step_")
+                .parse::<usize>()
+                .unwrap_or(usize::MAX)
+        });
+        steps.into_iter().find_map(|(_, raw)| {
+            let value: serde_json::Value = serde_json::from_str(raw).ok()?;
+            crate::sequence_policy::domain::effect_key_of(&value).map(str::to_string)
+        })
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn build_record(
         &self,
@@ -1113,7 +1135,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     repository: input.repository.clone(),
                     author: input.author.clone(),
                     identity: input.identity.as_ref().map(IdentityRef::from_claim),
-                    effect_key: None,
+                    effect_key: Self::run_effect_key(&record.planning.parameters),
                 })
                 .await;
         }
@@ -1723,7 +1745,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     // subject (same principal across runs), not caller/git
                     // display strings. Author stays as display-only.
                     identity: input.identity.clone(),
-                    effect_key: None,
+                    effect_key: Self::run_effect_key(&record.planning.parameters),
                 })
                 .await;
         }
@@ -2083,6 +2105,53 @@ mod tests {
         let json = serde_json::to_string(&identity_ref).expect("serialize identity ref");
         assert!(!json.contains("token_ref"));
         assert!(!json.contains("keychain"));
+    }
+
+    /// ADR-014 (R8): a step's domain-supplied `/effect_key` is recorded on the
+    /// signed envelope, so effect-keyed history rules can compare it across
+    /// runs (entity resolution happens outside rigorix).
+    #[tokio::test]
+    async fn test_run_from_template_records_effect_key_on_envelope() {
+        let captured = Arc::new(std::sync::Mutex::new(None));
+        let orch = OrchestratorServiceImpl::default_test().with_audit_service(Arc::new(
+            CapturingAuditService {
+                captured: captured.clone(),
+            },
+        ));
+
+        let step = crate::orchestrator::dto::TemplateStepDef {
+            name: "payout".to_string(),
+            tool: "run_command".to_string(),
+            description: "pay the vendor".to_string(),
+            parameters: serde_json::json!({ "command": "true", "effect_key": "benef-acme" }),
+            require_identity: false,
+            requires_approval: false,
+            timeout_secs: None,
+            evaluate_score: false,
+        };
+        orch.run_from_template(RunFromTemplateInput {
+            steps: vec![step],
+            repo_root: "/tmp/t".into(),
+            execution_id: Some(uuid::Uuid::new_v4()),
+            template_name: "payout".into(),
+            repository: None,
+            identity: None,
+            author: Some("user@org".to_string()),
+            enforcement_preset: None,
+        })
+        .await
+        .expect("run_from_template should succeed");
+
+        let input = captured
+            .lock()
+            .unwrap()
+            .take()
+            .expect("audit service must receive the built envelope input");
+        assert_eq!(
+            input.effect_key.as_deref(),
+            Some("benef-acme"),
+            "the step's /effect_key must be recorded on the envelope"
+        );
     }
 
     #[tokio::test]

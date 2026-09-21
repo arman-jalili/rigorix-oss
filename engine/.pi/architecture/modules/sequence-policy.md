@@ -87,7 +87,9 @@ Semantics: the rule fires when the current run's `steps[]` match **and** a prior
 completed run recorded the **same effect key**, by the same principal, inside the window.
 The effect key is a domain-supplied, opaque value recorded on the envelope as a **one-way
 hash keyed by the domain secret** — cross-run comparison is possible without recording
-raw parameters (SpanPrivacy preserved).
+raw parameters (SpanPrivacy preserved). The engine records the **first step's
+`/effect_key`** on the envelope (recovered from the run's planning parameters), so
+cross-run comparison needs no separate input.
 
 **Layering (ADR-014).** Entity resolution — joining a beneficiary/registry/PSP identity
 to a canonical key — happens **outside rigorix**, in the domain integration, and is
