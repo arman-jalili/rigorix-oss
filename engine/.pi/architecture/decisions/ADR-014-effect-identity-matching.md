@@ -91,7 +91,8 @@ feed reviewed findings back as policy. They do not run in the enforcement path.
 - Entity resolution or identity joining of any kind inside this layer.
 - Fuzzy / similarity matching on effect keys.
 - Aggregations, group-by, per-target counters, thresholds over many dimensions.
-- Any scoring or model inference in the enforcement decision (see ADR-004).
+- Any scoring or model inference in the enforcement decision (ADR-013, ADR-011,
+  ADR-007).
 
 ## Alternatives Considered
 
@@ -167,9 +168,10 @@ Implementation files should reference: `.pi/architecture/decisions/ADR-014-effec
 
 ## References
 
-- Related ADRs: ADR-013 (sequence policy), ADR-011 (approval binding), ADR-012
-  (identity attestation), ADR-004 (deterministic policy — no model inference at
-  enforcement time)
+- Related ADRs: ADR-013 (sequence policy — no LLM judgment in the enforcement
+  path), ADR-011 (approval binding — rejected JANUS-style decision machines),
+  ADR-012 (identity attestation), ADR-007 (risk gating — LLM-determined risk
+  rejected as non-deterministic)
 - Related documents: `.pi/architecture/modules/audit.md`
 
 ---
