@@ -16,7 +16,9 @@ use crate::cli_boundary::output::{self, LogFormatter};
 
 #[test]
 fn test_parse_args_defaults_to_tui() {
-    let (cmd, _format) = parse_args();
+    // Hermetic: parse an explicit argv — never the process arguments — so a
+    // test-harness flag (e.g. `cargo test --quiet`) cannot reach clap.
+    let (cmd, _format) = parse_args_from(["rigorix"]);
     assert!(matches!(
         cmd,
         CliCommand::Tui {

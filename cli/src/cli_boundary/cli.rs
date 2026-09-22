@@ -276,7 +276,20 @@ pub struct CliArgs {
 /// - `--format` and `-v` are consumed before command resolution.
 ///   Returns the resolved command and the format parsed from `--format`.
 pub fn parse_args() -> (CliCommand, Format) {
-    let args = CliArgs::parse();
+    parse_args_from(std::env::args_os())
+}
+
+/// Parse CLI arguments from an explicit iterator.
+///
+/// Hermetic entry point for tests and embedders: it never reads the process
+/// arguments, so a test-harness flag (e.g. `cargo test --quiet`) cannot leak
+/// into clap's parser. The first item is treated as the program name.
+pub fn parse_args_from<I, T>(args: I) -> (CliCommand, Format)
+where
+    I: IntoIterator<Item = T>,
+    T: Into<std::ffi::OsString> + Clone,
+{
+    let args = CliArgs::parse_from(args);
     let format = args.format;
 
     let command = {
