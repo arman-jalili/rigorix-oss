@@ -1,0 +1,100 @@
+{
+  "fail_closed": true,
+  "rules": [
+    {
+      "id": "seat-remove-then-reassign",
+      "name": "No remove-then-reassign of a full event seat",
+      "description": "Removing an attendee to free a seat, then registering the same beneficiary, is never autonomous",
+      "steps": [
+        {
+          "tool": "run_command",
+          "params": [
+            {
+              "pointer": "/command",
+              "kind": "glob",
+              "value": "*remove_attendance.sh*"
+            }
+          ]
+        },
+        {
+          "tool": "run_command",
+          "params": [
+            {
+              "pointer": "/command",
+              "kind": "glob",
+              "value": "*add_attendance.sh*"
+            },
+            {
+              "pointer": "/beneficiary",
+              "kind": "equals_step",
+              "step": 0
+            }
+          ]
+        }
+      ],
+      "window": 4,
+      "action": "deny"
+    },
+    {
+      "id": "transfer-seat-is-critical",
+      "name": "Seat transfer is a critical action",
+      "description": "A waitlist transfer hands a paid seat to a new attendee — human approval required",
+      "steps": [
+        {
+          "tool": "run_command",
+          "params": [
+            {
+              "pointer": "/command",
+              "kind": "glob",
+              "value": "*verify_waitlist.sh*"
+            }
+          ]
+        },
+        {
+          "tool": "run_command",
+          "params": [
+            {
+              "pointer": "/command",
+              "kind": "glob",
+              "value": "*transfer_seat.sh*"
+            }
+          ]
+        }
+      ],
+      "window": 4,
+      "action": "promote"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "payout-guard",
+      "name": "Payout commands must be attested and carry effect data",
+      "description": "A raw run_command must not reach the payout script without identity + effect key",
+      "match": {
+        "tool": "run_command",
+        "params": [
+          {
+            "pointer": "/command",
+            "kind": "glob",
+            "value": "*execute_payout.sh*"
+          }
+        ]
+      },
+      "require_identity": true,
+      "require_params": ["/beneficiary", "/effect_key"],
+      "action": "deny"
+    },
+    {
+      "id": "review-large-transfer",
+      "name": "Large transfers need sign-off",
+      "description": "Transfers carrying an amount must pause for a human",
+      "match": {
+        "tool": "run_command",
+        "params": []
+      },
+      "require_identity": false,
+      "require_params": ["/amount"],
+      "action": "promote"
+    }
+  ]
+}

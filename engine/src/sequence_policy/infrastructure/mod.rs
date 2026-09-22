@@ -6,7 +6,8 @@
 //! Issue: #838 (sequence-policy epic — contract freeze)
 //!
 //! Rule-config loading from `.rigorix/sequence-policy.toml` (filesystem),
-//! authored by platform/security operators (R5). All persistence is hidden
+//! authored by platform/security operators (R5), plus an enterprise-exported
+//! `policy.json` v1 bundle source (#889, OSS-C5). All persistence is hidden
 //! behind `SequencePolicyRepository` — no caller touches the file format.
 //!
 //! # Contract (Frozen)
@@ -20,4 +21,7 @@ mod history;
 pub mod repository;
 
 pub use history::{EnvelopeHistoryAdapter, ExecutionHistory};
-pub use repository::{SequencePolicyRepository, TomlSequencePolicyRepository};
+pub use repository::{
+    BundleSequencePolicyRepository, PrecedenceSequencePolicyRepository, SequencePolicyPrecedence,
+    SequencePolicyRepository, TomlSequencePolicyRepository,
+};

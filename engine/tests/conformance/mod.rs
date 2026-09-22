@@ -26,6 +26,7 @@ mod claims;
 mod envelope;
 mod fixtures;
 mod policy;
+mod policy_bundle;
 
 use std::path::PathBuf;
 

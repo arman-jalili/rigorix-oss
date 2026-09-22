@@ -540,6 +540,47 @@ action = "promote"
 
 Safety caps (mirrors `EnforcementConfig::validate`): max rules per file, max predicates per rule, max `window`, max regex predicates (regex count is a denial-of-service surface).
 
+### Enterprise bundle ingestion (#889 / OSS-C5)
+
+Enterprise is the policy **source of truth** and exports a `policy.json` v1
+bundle (`rigorix.policy.bundle` / `GET /api/v1/policies/bundle`) whose root
+surface is exactly the serde shape of `SequencePolicyConfig`:
+
+```json
+{ "fail_closed": true, "rules": [ /* sequenceRule */ ], "requirements": [ /* stepRequirement */ ] }
+```
+
+`BundleSequencePolicyRepository` loads that bundle — from an in-process JSON
+value (`from_value`, e.g. fetched by a composition root or the C2 server),
+from a file (`from_file`), or from the environment
+(`RIGORIX_SEQUENCE_POLICY_BUNDLE` inline JSON →
+`RIGORIX_SEQUENCE_POLICY_BUNDLE_PATH`). It parses **straight into
+`SequencePolicyConfig`** and runs the SAME `validate_with_default_caps()`
+path the TOML repository uses — there is no parallel validator to diverge.
+
+Degradation is explicit:
+
+| Source state | Result |
+|--------------|--------|
+| no bundle configured / empty / missing file | `Ok(None)` — status quo (fail-open-absent) |
+| bundle present but not a `policy.json` v1 object, unparseable, or over caps | `Err` — fail closed |
+
+`PrecedenceSequencePolicyRepository` reconciles a local TOML with a fetched
+bundle. Sources are whole-config alternatives, never merged:
+
+| Both present? | Precedence | Result |
+|---|---|---|
+| no | any | `Ok(None)` |
+| one | any | that config |
+| both | `EnterpriseWins` (**default**) | bundle wins; differing local logged |
+| both | `LocalWins` | local wins (explicit override), bundle logged |
+| both | `RefuseOnConflict` | equal → bundle; differing → `Err` (fail closed) |
+
+`RIGORIX_SEQUENCE_POLICY_PRECEDENCE` = `enterprise` (default) | `local` |
+`refuse`. `SequencePolicySetup::from_env` builds this precedence repository for
+the MCP and (C2) server composition roots. A malformed source fails closed
+regardless of precedence.
+
 ## Security Considerations
 
 | Concern | Mitigation | Validator |
@@ -588,7 +629,9 @@ engine/src/sequence_policy/
     ├── mod.rs
     └── repository/
         ├── mod.rs
-        └── toml_repository.rs      # .rigorix/sequence-policy.toml → SequencePolicyConfig
+        ├── toml_repository.rs      # .rigorix/sequence-policy.toml → SequencePolicyConfig
+        ├── bundle_repository.rs    # enterprise policy.json v1 bundle → SequencePolicyConfig (#889)
+        └── precedence_repository.rs # local TOML vs bundle precedence (#889)
 ```
 
 **Note:** No `interfaces/` directory initially — the module exposes its API through the application service trait, consumed by `orchestrator` (plan-time) and `execution_engine` (dispatch prefix). MCP/HTTP surfacing lives in the MCP crate (execution-tools), following the `execution-tools.md` layer-mapping convention.
