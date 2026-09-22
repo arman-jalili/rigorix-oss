@@ -82,3 +82,68 @@ async fn export_surface_serializes_deterministically() {
         "deterministic policy export",
     );
 }
+
+#[tokio::test]
+async fn operator_step_requirements_conform_to_schema() {
+    // R9 / ADR-015: a config carrying [[requirements]] entries must serialize
+    // (engine serde — the export surface the enterprise policy bundle
+    // consumes) and validate against the SDK policy schema. Covers the
+    // attestation+params `deny` shape and the `promote` shape.
+    use rigorix_engine::sequence_policy::domain::{
+        ParamMatchKind, ParamPredicate, RequirementAction, StepPredicate, StepRequirement,
+    };
+
+    let config = SequencePolicyConfig {
+        fail_closed: true,
+        rules: Vec::new(),
+        requirements: vec![
+            StepRequirement {
+                id: "payout-guard".to_string(),
+                name: "Payout commands must be attested and carry effect data".to_string(),
+                description: "raw run_command must not reach the payout script".to_string(),
+                r#match: StepPredicate {
+                    tool: "run_command".to_string(),
+                    params: vec![ParamPredicate {
+                        pointer: "/command".to_string(),
+                        kind: ParamMatchKind::Glob,
+                        value: Some("*execute_payout.sh*".to_string()),
+                        step: None,
+                    }],
+                },
+                require_identity: true,
+                require_params: vec!["/beneficiary".to_string(), "/effect_key".to_string()],
+                action: RequirementAction::Deny,
+            },
+            StepRequirement {
+                id: "review-large-transfer".to_string(),
+                name: "Large transfers need sign-off".to_string(),
+                description: String::new(),
+                r#match: StepPredicate {
+                    tool: "run_command".to_string(),
+                    params: vec![],
+                },
+                require_identity: false,
+                require_params: vec!["/amount".to_string()],
+                action: RequirementAction::Promote,
+            },
+        ],
+    };
+
+    let value = serde_json::to_value(&config).expect("SequencePolicyConfig serializes");
+    assert_valid(
+        &load_schema("policy.json"),
+        &value,
+        "config with step requirements",
+    );
+
+    let reqs = value["requirements"]
+        .as_array()
+        .expect("requirements array");
+    assert_eq!(reqs.len(), 2);
+    assert_eq!(reqs[0]["id"], "payout-guard");
+    assert_eq!(reqs[0]["match"]["tool"], "run_command");
+    assert_eq!(reqs[0]["require_identity"], true);
+    assert_eq!(reqs[0]["require_params"][0], "/beneficiary");
+    assert_eq!(reqs[0]["action"], "deny");
+    assert_eq!(reqs[1]["action"], "promote");
+}
