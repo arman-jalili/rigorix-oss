@@ -1,3 +1,16 @@
+## [2026-09-22] — release 1.6.0 (operator step requirements, ADR-015)
+
+### Added
+- **R9 operator-controlled step requirements** (rigorix-oss #886): `[[requirements]]`
+  in `.rigorix/sequence-policy.toml` — a `StepPredicate` match + `require_identity`
+  / `require_params` obligations + `deny`/`promote`, evaluated at plan time for
+  every plan (intent, template, `rigorix_execute`), independent of plan-declared
+  flags. Closes the composed-plan bypass (GAP-A-28).
+- Envelope `requirement_findings[]` evidence; `rigorix_validate_plan` surfaces
+  requirement findings.
+- rigorix-sdk `schemas/policy.json` + `envelope.json` describe the new shapes;
+  engine conformance covers them (#887).
+
 ## [2026-09-22] — ADR-015 implemented (operator-controlled step requirements)
 
 ### Added
