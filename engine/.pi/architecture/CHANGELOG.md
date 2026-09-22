@@ -1,3 +1,17 @@
+## [2026-09-21] — ADR-015 proposed (operator-controlled step requirements)
+
+### Added
+- **ADR-015 proposed**: `[[requirements]]` operator policy — a `StepPredicate`
+  match plus `require_identity` / `require_params` obligations, evaluated at plan
+  time for **every** plan (intent, template, `rigorix_execute`), independent of
+  what the plan declares. Closes the composed-plan bypass where an agent omits
+  the flags/parameters the engine's gates rely on (live finding, payouts-demo).
+- Module docs updated: sequence-policy **R9** (+ components, AC 18–22), identity
+  (operator-driven attestation), orchestrator (plan-time gate), audit
+  (`requirement_findings[]` evidence).
+- Gap ledger **GAP-A-28** (High) recorded. Implementation tracked as an engine
+  issue + SDK `policy.json` schema issue.
+
 ## [2026-09-19] — ADR-014 accepted (effect-identity matching) + catalog frozen
 
 ### Added

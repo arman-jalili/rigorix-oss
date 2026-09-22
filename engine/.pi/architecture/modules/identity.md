@@ -333,6 +333,7 @@ sequenceDiagram
 | Identity spoofing | Identity is an attributed claim, documented as such; authority is a captured fact | security-validator |
 | Raw token leakage | `token_ref` only; redacted summaries; SpanPrivacy | security-validator |
 | Offline degradation abused | Degradation is explicit (`IdentitySource::Unverified`) — never silent; envelope marks it | security-validator |
+| A composed plan omits `require_identity` | Operator-controlled step requirements (ADR-015) mandate attestation by tool/parameter pattern, independent of what the plan declares | architecture-validator |
 | Expired claim reuse | `is_valid()` enforced at approval binding (TTL) | security-validator |
 | OSS drifting into authorization | Contract boundary: OSS attests, Enterprise authorizes — no scope evaluation in OSS | architecture-validator |
 

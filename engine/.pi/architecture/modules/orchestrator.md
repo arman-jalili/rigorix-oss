@@ -41,6 +41,13 @@ UserIntent + Config
 └─────────────────────────────────────────────────────────┘
 ```
 
+**Plan-time gate (before any dispatch).** For `run` and `run_from_template`, the
+ordered steps are checked before the graph is built: (1) plan-declared
+`require_identity` (L1, ADR-012), (2) operator sequence policy (R1–R8,
+ADR-013), and (3) operator step requirements — attestation + parameter
+obligations (R9, ADR-015). Any refusal happens at plan time, named and
+actionable; nothing is dispatched.
+
 ### Cancellation Path
 
 ```
