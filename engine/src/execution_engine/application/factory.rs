@@ -244,6 +244,14 @@ impl SequencePolicySetup {
     /// operator's opt-in, so the default is enabled-attempt — an absent
     /// file yields no rules and zero behavior change).
     ///
+    /// #889 (OSS-C5): an enterprise-exported `policy.json` v1 bundle is a
+    /// first-class source alongside the local TOML
+    /// (`RIGORIX_SEQUENCE_POLICY_BUNDLE` / `RIGORIX_SEQUENCE_POLICY_BUNDLE_PATH`).
+    /// Enterprise is the source of truth; the local-vs-bundle precedence is
+    /// explicit and fail-closed (`RIGORIX_SEQUENCE_POLICY_PRECEDENCE`:
+    /// `enterprise` default | `local` | `refuse`). Both sources are parsed and
+    /// validated through the SAME `SequencePolicyConfig` validator.
+    ///
     /// Corrupt / over-cap files are NOT rejected here: the repository
     /// surfaces them per-run as `SequencePolicyError` and the evaluation
     /// choke points fail closed (plan refused / run halted before dispatch)
@@ -269,15 +277,43 @@ impl SequencePolicySetup {
             .filter(|p| !p.is_empty())
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| repo_root.join(".rigorix").join("sequence-policy.toml"));
+
+        // #889 (OSS-C5): reconcile the local operator TOML with an
+        // enterprise-exported policy bundle. Enterprise is the source of
+        // truth; precedence is explicit (default: enterprise wins) and every
+        // malformed source fails closed via the per-run repository read.
+        let local_repo =
+            crate::sequence_policy::infrastructure::TomlSequencePolicyRepository::new(path.clone());
+        let bundle_repo =
+            crate::sequence_policy::infrastructure::BundleSequencePolicyRepository::from_env();
+        let bundle_source = if bundle_repo.is_configured() {
+            tracing::info!(
+                "sequence_policy: enterprise policy bundle source armed — local TOML {} is a \
+                 fallback/override per RIGORIX_SEQUENCE_POLICY_PRECEDENCE",
+                path.display()
+            );
+            Some(Box::new(bundle_repo)
+                as Box<
+                    dyn crate::sequence_policy::infrastructure::SequencePolicyRepository,
+                >)
+        } else {
+            None
+        };
+        let precedence =
+            crate::sequence_policy::infrastructure::SequencePolicyPrecedence::from_env();
+        let repository =
+            crate::sequence_policy::infrastructure::PrecedenceSequencePolicyRepository::new(
+                Some(Box::new(local_repo)),
+                bundle_source,
+                precedence,
+            );
         tracing::info!(
             "sequence_policy: R3 prefix gate armed — rules read per-run from {} (absent file = no gating)",
             path.display()
         );
         let mut service =
             crate::sequence_policy::application::service_impl::SequencePolicyServiceImpl::new(
-                Box::new(
-                    crate::sequence_policy::infrastructure::TomlSequencePolicyRepository::new(path),
-                ),
+                Box::new(repository),
             );
         // R7: attach the signed-execution-history port over the same repo's
         // `.rigorix/audit` envelope store — cross-run rules read prior runs'

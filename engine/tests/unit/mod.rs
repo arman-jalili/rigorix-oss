@@ -162,6 +162,11 @@ mod sequence_policy {
         #[path = "permission-r5_test.rs"]
         mod permission_r5_test;
     }
+    #[path = "policy-bundle"]
+    mod policy_bundle {
+        #[path = "policy-bundle_test.rs"]
+        mod policy_bundle_test;
+    }
     mod sequencepolicyerror {
         mod sequencepolicyerror_test;
     }

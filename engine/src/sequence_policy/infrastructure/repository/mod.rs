@@ -14,13 +14,23 @@
 //!   trust surface as `policy.toml` / `permissions.toml`; executing agents are
 //!   denied `.rigorix/**` writes by the default permission config (R5,
 //!   permission issue)
+//! - #889 (OSS-C5): the operator TOML is the local source; an
+//!   enterprise-exported `policy.json` v1 bundle is a first-class
+//!   `BundleSequencePolicyRepository` source, reconciled by
+//!   `PrecedenceSequencePolicyRepository`
 
+pub mod bundle_repository;
+pub mod precedence_repository;
 pub mod toml_repository;
 
 use async_trait::async_trait;
 
 use crate::sequence_policy::domain::{SequencePolicyConfig, SequencePolicyError};
 
+pub use bundle_repository::BundleSequencePolicyRepository;
+pub use precedence_repository::{
+    PRECEDENCE_ENV, PrecedenceSequencePolicyRepository, SequencePolicyPrecedence,
+};
 pub use toml_repository::TomlSequencePolicyRepository;
 
 /// Repository for the sequence-policy rule config.
