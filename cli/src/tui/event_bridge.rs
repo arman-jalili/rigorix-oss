@@ -394,7 +394,9 @@ pub(crate) fn event_to_vm_command(event: &ExecutionEvent) -> Option<VmCommand> {
         | ExecutionEvent::ScopeViolationRecorded { .. }
         | ExecutionEvent::SequenceRuleMatched { .. }
         | ExecutionEvent::SequencePolicyDenied { .. }
-        | ExecutionEvent::SequencePolicyConfigError { .. } => None,
+        | ExecutionEvent::SequencePolicyConfigError { .. }
+        | ExecutionEvent::RequirementUnmet { .. }
+        | ExecutionEvent::RequirementPromoted { .. } => None,
     }
 }
 

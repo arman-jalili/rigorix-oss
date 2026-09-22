@@ -475,6 +475,12 @@ pub struct ValidationResult {
     /// to their later step, surfaced by `rigorix_validate_plan` BEFORE a run.
     #[serde(default)]
     findings: Vec<SequencePolicyFinding>,
+
+    /// Structured R9 operator-controlled step-requirement findings (ADR-015):
+    /// matched `[[requirements]]` obligations and the action applied. Pointer
+    /// NAMES only — parameter values are never surfaced.
+    #[serde(default)]
+    requirement_findings: Vec<RequirementFinding>,
 }
 
 /// One structured sequence-policy finding (R2 plan-time evaluation).
@@ -486,6 +492,20 @@ pub struct SequencePolicyFinding {
     pub later_step: String,
     /// Action applied to the later step: `"promote"` or `"deny"`.
     pub action: String,
+}
+
+/// One structured R9 step-requirement finding (ADR-015).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RequirementFinding {
+    /// Stable id of the requirement that fired.
+    pub requirement_id: String,
+    /// Name of the matched step that failed the requirement.
+    pub step: String,
+    /// Action applied: `"deny"` (plan refused) or `"promote"`.
+    pub action: String,
+    /// Unmet obligation names — pointer names and/or `"identity"` (never
+    /// parameter values).
+    pub unmet: Vec<String>,
 }
 
 impl ValidationResult {
@@ -502,7 +522,19 @@ impl ValidationResult {
             errors,
             estimated_cost,
             findings: Vec::new(),
+            requirement_findings: Vec::new(),
         }
+    }
+
+    /// Attach structured R9 step-requirement findings.
+    pub fn with_requirement_findings(mut self, findings: Vec<RequirementFinding>) -> Self {
+        self.requirement_findings = findings;
+        self
+    }
+
+    /// Structured R9 step-requirement findings.
+    pub fn requirement_findings(&self) -> &[RequirementFinding] {
+        &self.requirement_findings
     }
 
     /// Attach structured sequence-policy findings.

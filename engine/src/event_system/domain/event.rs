@@ -382,6 +382,47 @@ pub enum ExecutionEvent {
         /// ISO 8601 timestamp of the event.
         timestamp: DateTime<Utc>,
     },
+
+    /// An R9 operator-controlled step requirement (ADR-015) was unmet for a
+    /// matched step and the plan was refused (`deny`). Parameter VALUES are
+    /// never captured — only the requirement id, the step, and the unmet
+    /// pointer NAMES / `"identity"` (SpanPrivacy).
+    RequirementUnmet {
+        /// Globally unique execution identifier.
+        execution_id: uuid::Uuid,
+        /// Stable id of the requirement that fired.
+        requirement_id: String,
+        /// Name of the matched step that failed the requirement.
+        step: String,
+        /// Unmet obligations — pointer names and/or `"identity"`.
+        unmet: Vec<String>,
+        /// Action taken: always `"deny"` for an unmet requirement.
+        action: String,
+        /// Redacted decision summary — parameter VALUES are never captured.
+        summary: String,
+        /// ISO 8601 timestamp of the event.
+        timestamp: DateTime<Utc>,
+    },
+
+    /// An R9 operator-controlled step requirement (ADR-015) promoted a
+    /// matched step (`requires_approval = true`) instead of refusing it.
+    /// Parameter VALUES are never captured.
+    RequirementPromoted {
+        /// Globally unique execution identifier.
+        execution_id: uuid::Uuid,
+        /// Stable id of the requirement that fired.
+        requirement_id: String,
+        /// Name of the matched step that was promoted.
+        step: String,
+        /// Unmet parameter pointer names (never values) that caused promotion.
+        unmet: Vec<String>,
+        /// Action taken: `"promote"`.
+        action: String,
+        /// Redacted decision summary — parameter VALUES are never captured.
+        summary: String,
+        /// ISO 8601 timestamp of the event.
+        timestamp: DateTime<Utc>,
+    },
 }
 
 /// A persisted execution event with a monotonic sequence number.
@@ -430,6 +471,8 @@ impl ExecutionEvent {
             ExecutionEvent::SequenceRuleMatched { .. } => "sequence_rule_matched",
             ExecutionEvent::SequencePolicyDenied { .. } => "sequence_policy_denied",
             ExecutionEvent::SequencePolicyConfigError { .. } => "sequence_policy_config_error",
+            ExecutionEvent::RequirementUnmet { .. } => "requirement_unmet",
+            ExecutionEvent::RequirementPromoted { .. } => "requirement_promoted",
             ExecutionEvent::IntentMismatchDetected { .. } => "intent_mismatch_detected",
             ExecutionEvent::ScopeViolationRecorded { .. } => "scope_violation_recorded",
             ExecutionEvent::AuditEnvelopeCreated { .. } => "audit_envelope_created",
@@ -460,7 +503,9 @@ impl ExecutionEvent {
             | ExecutionEvent::ScopeViolationRecorded { execution_id, .. }
             | ExecutionEvent::SequenceRuleMatched { execution_id, .. }
             | ExecutionEvent::SequencePolicyDenied { execution_id, .. }
-            | ExecutionEvent::SequencePolicyConfigError { execution_id, .. } => execution_id,
+            | ExecutionEvent::SequencePolicyConfigError { execution_id, .. }
+            | ExecutionEvent::RequirementUnmet { execution_id, .. }
+            | ExecutionEvent::RequirementPromoted { execution_id, .. } => execution_id,
         }
     }
 
@@ -488,7 +533,9 @@ impl ExecutionEvent {
             | ExecutionEvent::ScopeViolationRecorded { timestamp, .. }
             | ExecutionEvent::SequenceRuleMatched { timestamp, .. }
             | ExecutionEvent::SequencePolicyDenied { timestamp, .. }
-            | ExecutionEvent::SequencePolicyConfigError { timestamp, .. } => timestamp,
+            | ExecutionEvent::SequencePolicyConfigError { timestamp, .. }
+            | ExecutionEvent::RequirementUnmet { timestamp, .. }
+            | ExecutionEvent::RequirementPromoted { timestamp, .. } => timestamp,
         }
     }
 
@@ -505,6 +552,24 @@ impl ExecutionEvent {
             ExecutionEvent::SequencePolicyConfigError { detail, .. } => {
                 format!("Sequence policy config error: {detail}")
             }
+            ExecutionEvent::RequirementUnmet {
+                requirement_id,
+                step,
+                unmet,
+                ..
+            } => format!(
+                "Step requirement '{requirement_id}' refused step '{step}' — unmet: {}",
+                unmet.join(", ")
+            ),
+            ExecutionEvent::RequirementPromoted {
+                requirement_id,
+                step,
+                unmet,
+                ..
+            } => format!(
+                "Step requirement '{requirement_id}' promoted step '{step}' — unmet: {}",
+                unmet.join(", ")
+            ),
             ExecutionEvent::ApprovalRecorded {
                 step_name,
                 approver_id,
@@ -686,6 +751,28 @@ impl ExecutionEvent {
             })),
             ExecutionEvent::SequencePolicyConfigError { detail, .. } => Some(serde_json::json!({
                 "detail": detail,
+            })),
+            ExecutionEvent::RequirementUnmet {
+                requirement_id,
+                step,
+                unmet,
+                action,
+                summary,
+                ..
+            }
+            | ExecutionEvent::RequirementPromoted {
+                requirement_id,
+                step,
+                unmet,
+                action,
+                summary,
+                ..
+            } => Some(serde_json::json!({
+                "requirement_id": requirement_id,
+                "step": step,
+                "unmet": unmet,
+                "action": action,
+                "summary": summary,
             })),
             ExecutionEvent::ApprovalRecorded {
                 node_id,

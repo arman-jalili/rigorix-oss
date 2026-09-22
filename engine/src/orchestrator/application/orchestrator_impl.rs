@@ -553,6 +553,132 @@ impl OrchestratorServiceImpl {
         Ok((Some(enforced), findings))
     }
 
+    /// R9 / ADR-015 — plan-time operator step-requirement gate.
+    ///
+    /// Runs after the sequence-policy gate over the (possibly sequence-
+    /// enforced) ordered step list, so every plan — including agent-composed
+    /// `rigorix_execute` plans — is subject to the operator's obligations
+    /// regardless of what the plan declares.
+    ///
+    /// Returns `(enforced, findings)`:
+    /// - `Err(IdentityRequired)` — a matched step's `require_identity`
+    ///   obligation is unmet (absent or `Unverified` caller). Never
+    ///   promotable.
+    /// - `Err(RequirementUnmet)` — a matched step is missing a required
+    ///   parameter and the requirement's action is `deny` (default).
+    /// - `enforced: Some(steps)` — at least one `promote` requirement matched;
+    ///   the matched step(s) have `requires_approval = true` set.
+    /// - `findings` — redacted evidence for every fired requirement.
+    async fn apply_plan_time_requirements(
+        &self,
+        steps: &[super::dto::TemplateStepDef],
+        execution_id: Option<uuid::Uuid>,
+        identity: Option<&crate::identity::domain::IdentityRef>,
+    ) -> Result<
+        (
+            Option<Vec<super::dto::TemplateStepDef>>,
+            Vec<super::dto::RequirementPolicyFinding>,
+        ),
+        OrchestratorError,
+    > {
+        let Some(svc) = &self.sequence_policy_service else {
+            return Ok((None, Vec::new()));
+        };
+        let attested = identity
+            .map(|i| {
+                !matches!(
+                    i.source,
+                    crate::identity::domain::IdentitySource::Unverified
+                )
+            })
+            .unwrap_or(false);
+        let planned: Vec<PlannedStep> = steps
+            .iter()
+            .map(|s| PlannedStep {
+                name: s.name.clone(),
+                tool: s.tool.clone(),
+                parameters: s.parameters.clone(),
+            })
+            .collect();
+        let findings = svc
+            .evaluate_requirements(&planned, attested)
+            .await
+            .map_err(|e| OrchestratorError::SequencePolicyEvaluationFailed {
+                detail: e.to_string(),
+            })?;
+        if findings.is_empty() {
+            return Ok((None, Vec::new()));
+        }
+
+        let status = if identity.is_some() {
+            "unverified"
+        } else {
+            "unauthenticated"
+        };
+        let mut promoted: Vec<String> = Vec::new();
+        let mut out: Vec<super::dto::RequirementPolicyFinding> = Vec::new();
+        for f in &findings {
+            match f.action {
+                crate::sequence_policy::domain::RequirementAction::Deny => {
+                    // Attestation is never promotable — a human approval cannot
+                    // substitute for an identity (ADR-015).
+                    if f.unmet_identity {
+                        return Err(OrchestratorError::IdentityRequired {
+                            step: f.step.clone(),
+                            status: status.to_string(),
+                        });
+                    }
+                    return Err(OrchestratorError::RequirementUnmet {
+                        requirement_id: f.requirement_id.clone(),
+                        step: f.step.clone(),
+                        unmet: f.unmet_params.clone(),
+                    });
+                }
+                crate::sequence_policy::domain::RequirementAction::Promote => {
+                    promoted.push(f.step.clone());
+                    // R9 evidence: promotion is a first-class event. Plan
+                    // PREVIEW (None execution id) records no events — the
+                    // finding data travels in PlanOnlyOutput.
+                    if let Some(execution_id) = execution_id {
+                        self.event_bus
+                            .publish(event_app::PublishEventInput {
+                                event: crate::event_system::domain::ExecutionEvent::RequirementPromoted {
+                                    execution_id,
+                                    requirement_id: f.requirement_id.clone(),
+                                    step: f.step.clone(),
+                                    unmet: f.unmet_params.clone(),
+                                    action: "promote".to_string(),
+                                    summary: f.decision_summary(),
+                                    timestamp: chrono::Utc::now(),
+                                },
+                            })
+                            .await
+                            .map_err(|e| OrchestratorError::Internal {
+                                detail: format!("Requirement evidence publish failed: {e}"),
+                                source_module: "orchestrator".into(),
+                            })?;
+                    }
+                    out.push(super::dto::RequirementPolicyFinding {
+                        requirement_id: f.requirement_id.clone(),
+                        step: f.step.clone(),
+                        action: "promote".to_string(),
+                        unmet: f.unmet_params.clone(),
+                    });
+                }
+            }
+        }
+        if promoted.is_empty() {
+            return Ok((None, out));
+        }
+        let mut enforced = steps.to_vec();
+        for def in &mut enforced {
+            if promoted.iter().any(|name| name == &def.name) {
+                def.requires_approval = true;
+            }
+        }
+        Ok((Some(enforced), out))
+    }
+
     /// Extract file paths from task result outputs.
     /// Uses simple heuristics to find file path patterns in node output text.
     fn extract_file_paths(task_results: &[TaskResult]) -> Vec<String> {
@@ -1055,6 +1181,14 @@ impl OrchestratorService for OrchestratorServiceImpl {
                                 timestamp,
                                 ..
                             } => *timestamp,
+                            | crate::event_system::domain::ExecutionEvent::RequirementUnmet {
+                                timestamp,
+                                ..
+                            }
+                            | crate::event_system::domain::ExecutionEvent::RequirementPromoted {
+                                timestamp,
+                                ..
+                            } => *timestamp,
                         };
                         ExecutionEventInfo {
                             event_type: pe.event.event_type_name().to_string(),
@@ -1172,6 +1306,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
             plan: serde_json::to_value(&result.planning_result).unwrap_or_default(),
             graph: serde_json::to_value(&result.graph).unwrap_or_default(),
             sequence_findings: Vec::new(),
+            requirement_findings: Vec::new(),
         })
     }
 
@@ -1271,6 +1406,19 @@ impl OrchestratorService for OrchestratorServiceImpl {
         let (enforced_steps, _findings) = self
             .apply_plan_time_sequence_policy(&input.steps, Some(execution_id), principal)
             .await?;
+        // R9 (ADR-015) operator requirements run after the sequence-policy
+        // gate over the sequence-enforced step list, so the operator's
+        // obligations cannot be escaped by an agent-composed plan that omits
+        // plan-declared flags/parameters.
+        let sequence_steps: &[super::dto::TemplateStepDef] =
+            enforced_steps.as_deref().unwrap_or(&input.steps);
+        let (requirement_steps, _requirement_findings) = self
+            .apply_plan_time_requirements(
+                sequence_steps,
+                Some(execution_id),
+                input.identity.as_ref(),
+            )
+            .await?;
 
         // Init current execution state
         *self.current_execution.write().await = Some(CurrentExecutionState {
@@ -1281,9 +1429,12 @@ impl OrchestratorService for OrchestratorServiceImpl {
         });
 
         // 1. Build DAG directly from pre-resolved steps (enforced steps when
-        // a promote rule matched — the later step is built approval-gated).
-        let steps: &[super::dto::TemplateStepDef] =
-            enforced_steps.as_deref().unwrap_or(&input.steps);
+        // a promote rule/requirement matched — the later step is built
+        // approval-gated).
+        let steps: &[super::dto::TemplateStepDef] = requirement_steps
+            .as_deref()
+            .or(enforced_steps.as_deref())
+            .unwrap_or(&input.steps);
         let graph = self.build_graph_from_steps(steps)?;
         let node_order: Vec<String> = graph.nodes().map(|n| n.name.clone()).collect();
 
@@ -1663,6 +1814,14 @@ impl OrchestratorService for OrchestratorServiceImpl {
                                 timestamp,
                                 ..
                             } => *timestamp,
+                            | crate::event_system::domain::ExecutionEvent::RequirementUnmet {
+                                timestamp,
+                                ..
+                            }
+                            | crate::event_system::domain::ExecutionEvent::RequirementPromoted {
+                                timestamp,
+                                ..
+                            } => *timestamp,
                         };
                         ExecutionEventInfo {
                             event_type: pe.event.event_type_name().to_string(),
@@ -1799,8 +1958,15 @@ impl OrchestratorService for OrchestratorServiceImpl {
         let (enforced_steps, findings) = self
             .apply_plan_time_sequence_policy(&input.steps, None, principal)
             .await?;
-        let steps: &[super::dto::TemplateStepDef] =
+        let sequence_steps: &[super::dto::TemplateStepDef] =
             enforced_steps.as_deref().unwrap_or(&input.steps);
+        let (requirement_steps, requirement_findings) = self
+            .apply_plan_time_requirements(sequence_steps, None, input.identity.as_ref())
+            .await?;
+        let steps: &[super::dto::TemplateStepDef] = requirement_steps
+            .as_deref()
+            .or(enforced_steps.as_deref())
+            .unwrap_or(&input.steps);
         let graph = self.build_graph_from_steps(steps)?;
         Ok(PlanOnlyOutput {
             plan: serde_json::json!({
@@ -1810,6 +1976,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
             }),
             graph: serde_json::to_value(&graph).unwrap_or_default(),
             sequence_findings: findings,
+            requirement_findings,
         })
     }
 
@@ -1978,8 +2145,8 @@ impl OrchestratorService for OrchestratorServiceImpl {
 mod tests {
     use super::*;
     use crate::sequence_policy::domain::{
-        ParamMatchKind, ParamPredicate, RuleAction, SequencePolicyConfig, SequenceRule,
-        StepPredicate,
+        ParamMatchKind, ParamPredicate, RequirementAction, RuleAction, SequencePolicyConfig,
+        SequenceRule, StepPredicate, StepRequirement,
     };
 
     /// Captures the `BuildEnvelopeInput` the orchestrator sends to audit.
@@ -2019,6 +2186,7 @@ mod tests {
                     scoring_results: std::collections::HashMap::new(),
                     approval_events: Vec::new(),
                     sequence_policy_findings: Vec::new(),
+                    requirement_findings: Vec::new(),
                     scope_violations: Vec::new(),
                     decision_context_ref: None,
                     signature: None,
@@ -2513,6 +2681,7 @@ mod tests {
         };
         SequencePolicyConfig {
             fail_closed: true,
+            requirements: Vec::new(),
             rules: vec![SequenceRule {
                 id: "registration-remove-then-reassign".to_string(),
                 name: "No remove-then-reassign of a full event seat".to_string(),
@@ -2581,6 +2750,106 @@ mod tests {
             evaluate_score: false,
         };
         vec![step("registration_remove"), step("registration_add")]
+    }
+
+    /// R9 (ADR-015): a requirement over a `run_command` reaching the payout
+    /// script — must be attested and carry canonical effect parameters.
+    fn payout_requirement(action: RequirementAction) -> SequencePolicyConfig {
+        SequencePolicyConfig {
+            fail_closed: true,
+            requirements: vec![StepRequirement {
+                id: "payout-guard".to_string(),
+                name: "Payout commands must be attested and carry canonical effect data"
+                    .to_string(),
+                description: "raw run_command must not reach the payout script".to_string(),
+                r#match: StepPredicate {
+                    tool: "run_command".to_string(),
+                    params: vec![ParamPredicate {
+                        pointer: "/command".to_string(),
+                        kind: ParamMatchKind::Glob,
+                        value: Some("*execute_payout.sh*".to_string()),
+                        step: None,
+                    }],
+                },
+                require_identity: true,
+                require_params: vec!["/beneficiary".to_string(), "/effect_key".to_string()],
+                action,
+            }],
+            rules: Vec::new(),
+        }
+    }
+
+    /// The composed-plan bypass this requirement closes: a raw `run_command`
+    /// that invokes the payout script, optionally carrying the parameters the
+    /// plan is supposed to declare.
+    fn payout_runbook(include_params: bool) -> Vec<crate::orchestrator::dto::TemplateStepDef> {
+        let mut parameters = serde_json::json!({
+            "command": "bash .rigorix/scripts/execute_payout.sh acct 100"
+        });
+        if include_params {
+            parameters["beneficiary"] = serde_json::json!("acct-1");
+            parameters["effect_key"] = serde_json::json!("eff-1");
+        }
+        vec![crate::orchestrator::dto::TemplateStepDef {
+            name: "payout".to_string(),
+            tool: "run_command".to_string(),
+            description: "payout".to_string(),
+            parameters,
+            requires_approval: false,
+            require_identity: false,
+            timeout_secs: None,
+            evaluate_score: false,
+        }]
+    }
+
+    /// Orchestrator with a REAL execution engine + a sequence-policy service
+    /// evaluating the given R9 requirement config.
+    fn real_orchestrator_with_requirement(config: SequencePolicyConfig) -> OrchestratorServiceImpl {
+        use crate::event_system::application::event_bus_service_impl::EventBusServiceImpl;
+        use crate::execution_engine::application::service_impl::{
+            ParallelExecutionServiceImpl, RetryEvaluationServiceImpl,
+        };
+        use crate::execution_engine::domain::ParallelExecutorConfig;
+        use crate::sequence_policy::application::service_impl::SequencePolicyServiceImpl;
+
+        let executor: Arc<dyn exec_svc::ParallelExecutionService> =
+            Arc::new(ParallelExecutionServiceImpl::new(
+                ParallelExecutorConfig::default(),
+                Box::new(RetryEvaluationServiceImpl::new()),
+                Arc::new(EventBusServiceImpl::default()),
+            ));
+        let policy = Arc::new(SequencePolicyServiceImpl::new(Box::new(FixedPolicyRepo {
+            config: Some(config),
+        })));
+        OrchestratorServiceImpl::new(
+            OrchestratorConfig::default(),
+            Arc::new(super::super::orchestrator_mocks::MockPlanningService::new()),
+            executor,
+            Arc::new(super::super::orchestrator_mocks::MockStateService::new()),
+            Arc::new(super::super::orchestrator_mocks::MockCancellationService),
+            Arc::new(super::super::orchestrator_mocks::MockEventBusService::new()),
+            None,
+            Arc::new(super::super::orchestrator_mocks::MockBudgetService),
+            None,
+        )
+        .with_sequence_policy(policy)
+    }
+
+    fn payout_input(
+        orphan: bool,
+        include_params: bool,
+        identity: Option<crate::identity::domain::IdentityRef>,
+    ) -> RunFromTemplateInput {
+        RunFromTemplateInput {
+            steps: payout_runbook(include_params),
+            repo_root: "/tmp/t".into(),
+            execution_id: if orphan { None } else { Some(Uuid::new_v4()) },
+            template_name: "payout".into(),
+            repository: None,
+            identity,
+            author: None,
+            enforcement_preset: None,
+        }
     }
 
     /// AC#6 (promote leg): a remove-then-add runbook is paused by the promote
@@ -3042,6 +3311,175 @@ mod tests {
         );
     }
 
+    /// AC 18: an operator `require_identity` refuses an unauthenticated plan
+    /// even though the matched step does not declare `require_identity`, and
+    /// is never promotable.
+    #[tokio::test]
+    async fn test_requirement_identity_refuses_unauthenticated_composed_plan() {
+        // `promote` action still cannot substitute for an identity.
+        let orch =
+            real_orchestrator_with_requirement(payout_requirement(RequirementAction::Promote));
+        let err = orch
+            .run_from_template(payout_input(false, true, None))
+            .await
+            .expect_err("identity requirement must refuse");
+        assert!(
+            matches!(err, OrchestratorError::IdentityRequired { ref step, ref status } if step == "payout" && status == "unauthenticated"),
+            "unexpected: {err:?}"
+        );
+    }
+
+    /// AC 19/20: an operator `require_params` deny refuses a raw composed
+    /// `run_command` that omits the canonical parameters; when the parameters
+    /// are present the same plan is allowed.
+    #[tokio::test]
+    async fn test_requirement_params_deny_refuses_composed_plan_and_allows_when_present() {
+        let mut cfg = payout_requirement(RequirementAction::Deny);
+        cfg.requirements[0].require_identity = false; // isolate the params
+        let orch = real_orchestrator_with_requirement(cfg);
+
+        let err = orch
+            .run_from_template(payout_input(false, false, None))
+            .await
+            .expect_err("missing required params must refuse");
+        assert!(
+            matches!(err, OrchestratorError::RequirementUnmet { ref requirement_id, ref step, ref unmet }
+                if requirement_id == "payout-guard"
+                    && step == "payout"
+                    && unmet == &vec!["/beneficiary".to_string(), "/effect_key".to_string()]),
+            "unexpected: {err:?}"
+        );
+
+        // Same command WITH the canonical parameters passes the operator gate.
+        let out = orch
+            .run_from_template(payout_input(false, true, None))
+            .await
+            .expect("satisfied requirement must not refuse");
+        assert!(out.record.status != ExecutionStatus::PendingApproval);
+    }
+
+    /// AC 19/21: `promote` promotes the matched step (approval pause) and the
+    /// signed envelope records a redacted `requirement_findings[]` entry —
+    /// pointer NAMES only, never parameter values.
+    #[tokio::test]
+    async fn test_requirement_promote_pauses_and_envelope_records_finding() {
+        use crate::audit::application::envelope_factory_impl::AuditEnvelopeFactoryImpl;
+        use crate::audit::application::factory::AuditEnvelopeFactory;
+        use crate::event_system::application::event_bus_service_impl::EventBusServiceImpl;
+        use crate::execution_engine::application::service_impl::{
+            ParallelExecutionServiceImpl, RetryEvaluationServiceImpl,
+        };
+        use crate::execution_engine::domain::ParallelExecutorConfig;
+        use crate::sequence_policy::application::service_impl::SequencePolicyServiceImpl;
+
+        let captured = Arc::new(std::sync::Mutex::new(None));
+        let bus: Arc<dyn event_app::EventBusService> = Arc::new(EventBusServiceImpl::default());
+        let executor: Arc<dyn exec_svc::ParallelExecutionService> =
+            Arc::new(ParallelExecutionServiceImpl::new(
+                ParallelExecutorConfig::default(),
+                Box::new(RetryEvaluationServiceImpl::new()),
+                Arc::clone(&bus),
+            ));
+        let mut cfg = payout_requirement(RequirementAction::Promote);
+        cfg.requirements[0].require_identity = false;
+        let policy = Arc::new(SequencePolicyServiceImpl::new(Box::new(FixedPolicyRepo {
+            config: Some(cfg),
+        })));
+        let orch = OrchestratorServiceImpl::new(
+            OrchestratorConfig::default(),
+            Arc::new(super::super::orchestrator_mocks::MockPlanningService::new()),
+            executor,
+            Arc::new(super::super::orchestrator_mocks::MockStateService::new()),
+            Arc::new(super::super::orchestrator_mocks::MockCancellationService),
+            Arc::clone(&bus),
+            Some(Arc::new(CapturingAuditService {
+                captured: captured.clone(),
+            })),
+            Arc::new(super::super::orchestrator_mocks::MockBudgetService),
+            None,
+        )
+        .with_sequence_policy(policy);
+
+        let out = orch
+            .run_from_template(payout_input(false, false, None))
+            .await
+            .expect("promote requirement pauses (not an error)");
+        assert_eq!(out.record.status, ExecutionStatus::PendingApproval);
+
+        let input = captured
+            .lock()
+            .unwrap()
+            .take()
+            .expect("audit service must receive the envelope input");
+        let promoted = input
+            .events
+            .iter()
+            .find(|e| e.event_type == "requirement_promoted")
+            .expect("promotion must be recorded as an envelope event");
+        let payload = promoted
+            .payload
+            .as_ref()
+            .expect("promote event carries a payload");
+        assert_eq!(payload["requirement_id"], "payout-guard");
+        assert_eq!(payload["action"], "promote");
+        assert_eq!(
+            payload["unmet"],
+            serde_json::json!(["/beneficiary", "/effect_key"])
+        );
+        let event_json = serde_json::to_string(payload).expect("serialize payload");
+        assert!(
+            !event_json.contains("acct-1") && !event_json.contains("eff-1"),
+            "SpanPrivacy: parameter values must not leak: {event_json}"
+        );
+
+        let envelope = AuditEnvelopeFactoryImpl::new(Some("test-key".to_string()))
+            .build_envelope(input)
+            .await
+            .expect("envelope build");
+        assert_eq!(envelope.requirement_findings.len(), 1);
+        let finding = &envelope.requirement_findings[0];
+        assert_eq!(finding.requirement_id, "payout-guard");
+        assert_eq!(finding.step, "payout");
+        assert_eq!(finding.action, "promote");
+        assert_eq!(
+            finding.unmet,
+            vec!["/beneficiary".to_string(), "/effect_key".to_string()]
+        );
+        assert!(!finding.summary.contains("acct-1"));
+    }
+
+    /// AC 20: the plan preview (`rigorix_validate_plan` engine side) surfaces
+    /// requirement findings for an agent-composed plan WITHOUT executing it.
+    #[tokio::test]
+    async fn test_plan_from_template_reports_requirement_promote_finding() {
+        let mut cfg = payout_requirement(RequirementAction::Promote);
+        cfg.requirements[0].require_identity = false;
+        use crate::sequence_policy::application::service_impl::SequencePolicyServiceImpl;
+        let policy = Arc::new(SequencePolicyServiceImpl::new(Box::new(FixedPolicyRepo {
+            config: Some(cfg),
+        })));
+        let orch = OrchestratorServiceImpl::default_test().with_sequence_policy(policy);
+        let out = orch
+            .plan_from_template(PlanFromTemplateInput {
+                steps: payout_runbook(false),
+                repo_root: "/tmp/t".into(),
+                template_name: "payout".into(),
+                identity: None,
+                author: None,
+            })
+            .await
+            .expect("preview succeeds with a promote finding");
+        assert_eq!(out.requirement_findings.len(), 1);
+        let f = &out.requirement_findings[0];
+        assert_eq!(f.requirement_id, "payout-guard");
+        assert_eq!(f.step, "payout");
+        assert_eq!(f.action, "promote");
+        assert_eq!(
+            f.unmet,
+            vec!["/beneficiary".to_string(), "/effect_key".to_string()]
+        );
+    }
+
     /// AC#8 (engine side): plan preview surfaces the R2 decision as a
     /// structured finding BEFORE a run — a matched promote sequence reports
     /// the rule + later step and builds the later step approval-gated.
@@ -3360,6 +3798,7 @@ mod tests {
         // one within 15 minutes (single current-run predicate + history). ──
         let policy_cfg = crate::sequence_policy::domain::SequencePolicyConfig {
             fail_closed: true,
+            requirements: Vec::new(),
             rules: vec![crate::sequence_policy::domain::SequenceRule {
                 id: "no-cross-run-remove-reassign".to_string(),
                 name: "No cross-run remove-then-reassign".to_string(),

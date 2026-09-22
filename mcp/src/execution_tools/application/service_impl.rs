@@ -126,6 +126,16 @@ impl ValidatePlanHandler for ValidatePlanHandlerImpl {
             content["sequence_findings"] = serde_json::to_value(findings).unwrap_or_default();
         }
 
+        // Structured R9 operator step-requirement findings (ADR-015):
+        // machine-readable `{requirement_id, step, action, unmet}` entries so
+        // a matched operator obligation is visible to the agent BEFORE a run.
+        // Only pointer NAMES are surfaced — never parameter values.
+        let requirement_findings = result.requirement_findings();
+        if !requirement_findings.is_empty() {
+            content["requirement_findings"] =
+                serde_json::to_value(requirement_findings).unwrap_or_default();
+        }
+
         Ok(ToolCallResult {
             content: vec![crate::execution_tools::domain::error::ToolContentItem {
                 r#type: "json".into(),

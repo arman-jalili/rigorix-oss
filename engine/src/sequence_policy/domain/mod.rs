@@ -28,12 +28,14 @@
 pub mod config;
 pub mod error;
 pub mod history;
+pub mod requirement;
 pub mod rule;
 pub mod sequence_match;
 
 pub use config::{SafetyCaps, SequencePolicyConfig};
 pub use error::SequencePolicyError;
 pub use history::HistoryAction;
+pub use requirement::{RequirementAction, RequirementFinding, StepRequirement};
 pub use rule::HistoryPredicate;
 pub(crate) use rule::effect_key_of;
 pub use rule::{ParamMatchKind, ParamPredicate, RuleAction, SequenceRule, StepPredicate};

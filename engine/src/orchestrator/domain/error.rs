@@ -89,6 +89,24 @@ pub enum OrchestratorError {
         detail: String,
     },
 
+    /// An R9 operator-controlled step requirement (ADR-015) was unmet for a
+    /// matched step and the requirement's action is `deny`. Fail-closed: the
+    /// plan is refused before any step executes. Parameter VALUES are never
+    /// included — only the requirement id, the step, and the unmet pointer
+    /// names.
+    #[error(
+        "Step '{step}' does not meet operator requirement '{requirement_id}' (fail closed): missing {}",
+        .unmet.join(", ")
+    )]
+    RequirementUnmet {
+        /// Stable id of the requirement that fired.
+        requirement_id: String,
+        /// Name of the matched step that failed the requirement.
+        step: String,
+        /// Unmet obligation names — pointer names and/or "identity".
+        unmet: Vec<String>,
+    },
+
     /// A step declares `require_identity = true` but the caller has no
     /// attested identity (no session claim, or source = unverified).
     /// Refused at plan time — the step's tool is never called. L1 identity

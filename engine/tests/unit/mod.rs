@@ -174,4 +174,9 @@ mod sequence_policy {
     mod steppredicate {
         mod steppredicate_test;
     }
+    #[path = "step-requirement"]
+    mod step_requirement {
+        #[path = "step-requirement_test.rs"]
+        mod step_requirement_test;
+    }
 }

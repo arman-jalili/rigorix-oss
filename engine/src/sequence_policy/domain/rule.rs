@@ -183,7 +183,9 @@ pub(crate) fn tool_matches(pattern: &str, text: &str) -> bool {
 
 /// Resolve a JSON pointer (`/a/b`) against a value object. Array-index
 /// segments are not part of the frozen step-parameter schema.
-fn json_pointer_lookup<'a>(value: &'a Value, pointer: &str) -> Option<&'a Value> {
+///
+/// `pub(crate)`: also used by R9 step requirements (`pointer_present`).
+pub(crate) fn json_pointer_lookup<'a>(value: &'a Value, pointer: &str) -> Option<&'a Value> {
     if pointer.is_empty() {
         return Some(value);
     }
