@@ -25,7 +25,7 @@ This directly answers the "conference registration" composition case raised in i
 
 > **R7 extends the property across runs:** a rule with a `history` predicate additionally consults the **signed prior-execution trail** — *"remove X" in run 1, "add Jeff" in run 2, minutes apart* — each run passes its own within-run gate, but the second is refused at plan time because the same principal acted within the window. Policy input == signed evidence: tampering with the trail to evade a rule breaks the envelope HMAC.
 
-## Requirements (R1–R8)
+## Requirements (R1–R9)
 
 ### R7 — Cross-Run Conflicting-Action Rules (audit trail as policy input)
 
@@ -105,6 +105,50 @@ must be validated (Acceptance Criteria #17):
 outlives the configured audit retention. Where no canonical key exists the rule degrades
 to detection, **not** a control.
 
+### R9 — Operator-Controlled Step Requirements (ADR-015)
+
+Obligations, not just forbidden sequences. A `[[requirements]]` block in the same
+operator file selects steps with a `StepPredicate` and states what each matched step
+**MUST** satisfy — independent of what the (agent-authored) plan declares:
+
+```toml
+[[requirements]]
+id = "payout-guard"
+name = "Payout commands must be attested and carry canonical effect data"
+match = { tool = "run_command", params = [{ pointer = "/command", kind = "glob", value = "*execute_payout.sh*" }] }
+require_identity = true
+require_params = ["/beneficiary", "/effect_key"]
+action = "deny"   # deny (default) | promote
+```
+
+Semantics (frozen):
+- Evaluated at **plan time**, for every plan (intent, template, MCP `rigorix_execute`)
+  — the plan is not trusted to declare its own constraints.
+- `require_identity = true` → the caller MUST present an attested identity
+  (`idp_token` / `local_principal`). Unmet → refuse (`IdentityRequired`). Attestation
+  is **never promotable** — a human approval cannot stand in for an identity.
+- `require_params = [pointer, …]` → each pointer MUST resolve to a present, non-null
+  value in the step's parameters.
+- Unmet + `action = "deny"` → refuse the plan before dispatch (`RequirementUnmet`),
+  naming the requirement, the step, and the unmet part. Unmet + `action = "promote"` →
+  set `requires_approval = true` on the matched step (existing approval machinery).
+- These are **additional** to plan-declared `require_identity`; both are enforced.
+
+**Why it exists.** Plan-declared flags (`require_identity`) and canonical parameters
+(`/beneficiary`, `/effect_key`) are agent-controllable. Requirements are operator-owned.
+This closes the composed-plan bypass: a raw `run_command` that omits the parameters the
+matcher needs (so R8/effect-key rules cannot fire) is refused by the operator's
+requirement even though no sequence rule matches.
+
+Evidence: additive `requirement_findings[]` on the signed envelope +
+`ExecutionEvent::RequirementUnmet` / `RequirementPromoted`. Pointer **names** may be
+recorded; parameter **values** stay redacted (SpanPrivacy).
+
+Fail-closed: malformed requirements refuse the plan (same posture as corrupt rules);
+an absent requirement set is the status quo. `SafetyCaps` bound the count and the
+required pointers. **Non-goal:** required-companion-step obligations ("only allowed if
+the plan also contains a step matching R") — a follow-up extension.
+
 ### R1 — Declarative Sequence Rules
 
 A rule describes an **ordered pair (or windowed chain)** of step predicates. Predicates match on `tool` (exact or glob) and optionally on parameter values (JSON pointer + exact/glob/regex value predicate). Rules carry an `action`:
@@ -163,6 +207,7 @@ This module follows Clean Architecture with 3 DDD layers (no `interfaces/` — A
 | SequenceRule | Aggregate: id, name, ordered step predicates `[A, B, …]`, window, action (`promote`/`deny`) | ❌ No |
 | StepPredicate | Matcher: tool name (exact/glob) + optional parameter predicates (JSON pointer → exact/glob/regex, or value-identity `equals_step` against an earlier matched step — R8) | ❌ No |
 | RuleAction | Enum: `Promote`, `Deny` | ❌ No |
+| StepRequirement | R9 obligation: a `StepPredicate` match + `require_identity` + `require_params` + action (`deny`/`promote`); produces `RequirementFinding` | ❌ No |
 | SequenceMatch | A matched window within a plan/prefix: rule id, matched step indices, later step id | ❌ No |
 | SequencePolicyConfig | Loaded rule set with safety caps (max rules, max window size, regex count) | ❌ No |
 | SequencePolicyError | Typed error enum (thiserror), `is_retriable()` | ❌ No |
@@ -394,6 +439,11 @@ No persisted artifacts exist before this module — **no migration**. When rules
 | 15 | Matcher (R8) | `equals_step` matches when pointer values are equal and not when they differ; obeys adjacency/window and never matches across a reordering | unit test |
 | 16 | Matcher (R8) | Effect-keyed history fires on equal keys inside the window for the same principal; does not fire outside the window or for a different key; envelope without `effect_key` never matches | unit test |
 | 17 | Retention (R8) | Retention shorter than the longest rule window is detectable (validator or documented test) — no silent disablement | validator / test |
+| 18 | StepRequirement (R9) | `require_identity` refuses an unauthenticated plan even when the matched step omits `require_identity`; never promotable | unit + integration |
+| 19 | StepRequirement (R9) | `require_params` refuses a step missing a pointer, allows it when present; `promote` sets `requires_approval` on the matched step | unit + integration |
+| 20 | StepRequirement (R9) | Requirements apply to `rigorix_execute` agent-composed plans, not only templates; `rigorix_validate_plan` surfaces findings | integration |
+| 21 | Audit (R9) | `requirement_findings[]` recorded additively; parameter values redacted | integration |
+| 22 | Config (R9) | Malformed requirements fail closed; absent = status quo; `SafetyCaps` bound count + pointers | unit |
 
 ## Dependencies
 

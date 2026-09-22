@@ -123,6 +123,21 @@ The envelope carries one additive field for effect-identity matching (sequence-p
 
 `#[serde(default, skip_serializing_if = "Option::is_none")]` — an envelope without it is valid and never matches an effect-keyed history rule. Entity resolution lives **outside** rigorix (ADR-014 Layer 1); this module stores and compares the opaque key, it does not compute it. Effect-keyed rules have a retention dependency: pruning below the longest rule window silently disables them.
 
+### Step Requirement Evidence (Contract Amendment, ADR-015)
+
+The envelope carries one additive block for operator-controlled step requirements
+(sequence-policy R9):
+
+| Field | Type | Source | Notes |
+|-------|------|--------|-------|
+| `requirement_findings` | `Vec<RequirementFindingRef>` | SequencePolicyService | One ref per unmet requirement: `requirement_id`, `step`, `action`, `unmet` (pointer names / `identity`), `summary` |
+
+`#[serde(default, skip_serializing_if = "Vec::is_empty")]` — additive and
+backward compatible; an envelope without it is valid. Pointer **names** may be
+recorded; parameter **values** stay redacted (SpanPrivacy). Requirement config is
+operator-owned, so a finding is evidence of an operator policy decision, not of
+plan data.
+
 ### AuditSender
 
 **Purpose:** Deliver envelopes via HTTP with retry logic

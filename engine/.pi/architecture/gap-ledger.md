@@ -352,3 +352,17 @@ All other rows **validated correct**:
 | M-15 | ✅ **RESOLVED (#758)** | canonicalize: `exec_node_states` is the single persisted representation (coarse `node_states` → `#[serde(skip_serializing)]` derived view rebuilt on hydrate; final states now persist exec states too; `update_node_state` syncs into exec). Full API removal still rides the approval epic's `approval_records` format change |
 
 **Remaining open after batch 21:** deferred to approval epic: M-15 (#758) · backlog: L-08-global (#777). All A-rows + M-09/M-03/M-04/L-06/M-12 resolved.
+
+
+
+## Addendum 2026-09-21 — operator-controlled step requirements (ADR-015)
+
+> Live-session finding (payouts-demo under Codex, 2026-09-22): an agent composed a
+> `run_command` that invoked the payout script without the parameters the matcher
+> needs and escaped both R8 and the effect-key rule. Tracked as the ADR-015 engine
+> issue.
+
+| ID | Severity | Finding | Recommended Action | Status |
+|----|----------|---------|--------------------|--------|
+| GAP-A-28 | H | Step-level controls are **plan-declared**: `require_identity` and the canonical parameters the matcher needs (`/beneficiary`, `/effect_key`) are authored by the plan — agent-controlled for composed runs (`rigorix_execute`). Sequence policy expresses only negative constraints over values that are **present**, so a raw `run_command` omitting those parameters is invisible to every rule. | Implement ADR-015 operator-controlled step requirements (attestation + parameter obligations) evaluated at plan time for every plan. | Open |
+
