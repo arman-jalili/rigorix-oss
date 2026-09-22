@@ -293,3 +293,51 @@ async fn rich_envelope_conforms_and_is_deterministic() {
         .await
         .expect("engine verifies rich HMAC");
 }
+
+/// R9 / ADR-015: a `requirement_unmet` event payload — the shape
+/// `envelope_factory_impl::requirement_findings_from_events` derives from.
+pub(crate) fn requirement_event() -> ExecutionEventRef {
+    ExecutionEventRef {
+        event_type: "requirement_unmet".to_string(),
+        summary: "operator requirement 'payout-guard' denied step 'pay'".to_string(),
+        occurred_at: chrono::Utc::now(),
+        correlation_id: None,
+        status: EventStatus::Failure,
+        payload: Some(serde_json::json!({
+            "requirement_id": "payout-guard",
+            "step": "pay",
+            "action": "deny",
+            "unmet": ["identity", "/effect_key"],
+            "summary": "operator requirement 'payout-guard' denied step 'pay' (missing: attested identity, required parameter '/effect_key')",
+        })),
+    }
+}
+
+/// R9 / ADR-015: an envelope carrying `requirement_findings` conforms to the
+/// SDK schema (additive block; names-only redaction).
+#[tokio::test]
+async fn requirement_findings_conform_to_schema() {
+    let factory = AuditEnvelopeFactoryImpl::new(None);
+    let mut input = minimal_input();
+    input.events = vec![requirement_event()];
+    let envelope = factory.build_envelope(input).await.expect("build");
+
+    assert_eq!(
+        envelope.requirement_findings.len(),
+        1,
+        "the requirement event must populate requirement_findings"
+    );
+    let f = &envelope.requirement_findings[0];
+    assert_eq!(f.requirement_id, "payout-guard");
+    assert_eq!(f.step, "pay");
+    assert_eq!(f.action, "deny");
+    assert_eq!(f.unmet, vec!["identity", "/effect_key"]);
+    // Names only — parameter values are never captured.
+    assert!(
+        !f.summary.contains('='),
+        "summary must not contain parameter values"
+    );
+
+    let value = serde_json::to_value(&envelope).expect("engine serde");
+    assert_valid(&schema(), &value, "envelope with requirement_findings");
+}
