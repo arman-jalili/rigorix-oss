@@ -15,20 +15,22 @@ Status at capture:
 
 ---
 
-## E. Engine hardening — operator-controlled step requirements (ADR-015) — IN PROGRESS
+## E. Engine hardening — operator-controlled step requirements (ADR-015) — ENGINE LANDED
 
 > Live finding (payouts-demo under Codex, 2026-09-22): an agent composed a
 > `run_command` that omitted the parameters the matcher needs (`/beneficiary`,
 > `/effect_key`), escaping R8 and effect-keyed history. Root cause: step-level
 > controls (`require_identity`, canonical parameters) are **plan-declared** — and
-> the plan is agent-authored for composed runs. Decision: `ADR-015` (proposed).
+> the plan is agent-authored for composed runs. Decision: `ADR-015` (**accepted**).
 
 New operator policy `[[requirements]]` in `.rigorix/sequence-policy.toml`:
 `match` (a `StepPredicate`) + `require_identity` / `require_params` obligations +
 `deny`/`promote` action, evaluated at plan time for **every** plan, independent
 of plan-declared flags. Module docs, identity/orchestrator/audit docs, the ADR,
-and gap ledger **GAP-A-28** are updated. Implementation: engine issue (OSS) +
-SDK `policy.json` schema issue + enterprise bundle/enforcement issue.
+and gap ledger **GAP-A-28** are updated. The **engine implementation landed**
+(`StepRequirement`, config validation, service evaluation, plan-time gate, event
++ envelope evidence, `rigorix_validate_plan` surface). Remaining: SDK
+`policy.json` schema + enterprise bundle/enforcement issue.
 
 Sibling backlog: required-**companion-step** obligations ("only allowed if the
 plan also contains a step matching R") — explicitly a follow-up, not ADR-015.

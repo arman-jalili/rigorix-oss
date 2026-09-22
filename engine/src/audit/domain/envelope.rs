@@ -180,6 +180,14 @@ pub struct AuditEnvelope {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sequence_policy_findings: Vec<SequencePolicyFindingRef>,
 
+    /// R9 operator-controlled step-requirement outcomes (ADR-015): every
+    /// matched step that failed a `[[requirements]]` obligation — refused
+    /// (`deny`) or promoted (`promote`). Additive and serde-defaulted: absent
+    /// in pre-requirements envelopes. Pointer **names** may be recorded;
+    /// parameter **values** never are (SpanPrivacy).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requirement_findings: Vec<RequirementFindingRef>,
+
     /// Reference + summary of the decision context shown to the approver;
     /// the full payload is opt-in and stored locally (R4 privacy pattern).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -224,6 +232,28 @@ pub struct SequencePolicyFindingRef {
     pub later_step: String,
     /// Indices (into the evaluated ordered step list) of the matched steps.
     pub matched_indices: Vec<usize>,
+    /// Redacted decision summary (parameter values never included).
+    pub summary: String,
+}
+
+/// A redacted reference to an R9 step-requirement outcome (ADR-015).
+///
+/// Summary fields only — the requirement id, the matched step, the action
+/// taken, the unmet obligation NAMES (pointer names / `"identity"`), and a
+/// redacted summary. Parameter **values** never appear (SpanPrivacy).
+/// Derived from `requirement_unmet` / `requirement_promoted` events at
+/// envelope build time.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RequirementFindingRef {
+    /// Stable id of the requirement that fired.
+    pub requirement_id: String,
+    /// Name of the matched step that failed the requirement.
+    pub step: String,
+    /// Action taken: `"deny"` (refused) or `"promote"` (approval-gated).
+    pub action: String,
+    /// Unmet obligation names — pointer names and/or `"identity"` (never
+    /// parameter values).
+    pub unmet: Vec<String>,
     /// Redacted decision summary (parameter values never included).
     pub summary: String,
 }

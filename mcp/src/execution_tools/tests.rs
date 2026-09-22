@@ -23,7 +23,8 @@ mod tests {
     use crate::execution_tools::domain::error::EngineFacadeError;
     use crate::execution_tools::domain::value::{
         BudgetStatus, EnforcementStatus, ExecutionId, ExecutionResult, ExecutionStatus,
-        PlanTemplate, SequencePolicyFinding, StepDefinition, StepResult, ValidationResult,
+        PlanTemplate, RequirementFinding, SequencePolicyFinding, StepDefinition, StepResult,
+        ValidationResult,
     };
     use crate::execution_tools::infrastructure::in_memory_repository::InMemoryExecutionRepository;
     use crate::execution_tools::infrastructure::repository::ExecutionRepository;
@@ -105,6 +106,22 @@ mod tests {
                 rule_id: "registration-remove-then-reassign".into(),
                 later_step: "registration_add".into(),
                 action: "promote".into(),
+            }])));
+            self
+        }
+
+        fn with_validate_requirement_findings(mut self) -> Self {
+            self.validate_result = Some(Ok(ValidationResult::new(
+                true,
+                vec!["Operator requirement: step 'pay' requires approval by requirement 'payout-guard'".into()],
+                vec![],
+                None,
+            )
+            .with_requirement_findings(vec![RequirementFinding {
+                requirement_id: "payout-guard".into(),
+                step: "pay".into(),
+                action: "promote".into(),
+                unmet: vec!["/beneficiary".into(), "/effect_key".into()],
             }])));
             self
         }
@@ -400,6 +417,47 @@ mod tests {
         assert!(
             tc.content[0].text.contains("requires approval by rule"),
             "human-readable warning accompanies the structured finding"
+        );
+    }
+
+    /// ADR-015 / AC 20: `rigorix_validate_plan` surfaces an operator step
+    /// requirement finding (`requirement_id`, `step`, `action`, unmet pointer
+    /// NAMES) in the tool response BEFORE a run.
+    #[tokio::test]
+    async fn test_validate_handler_surfaces_requirement_findings() {
+        let engine: SharedEngineFacade =
+            Arc::new(MockEngineFacade::new().with_validate_requirement_findings());
+        let handler = ValidatePlanHandlerImpl::new(engine);
+
+        let input = ValidateInput {
+            plan: make_test_plan(),
+            identity: None,
+        };
+
+        let tc = handler.handle(input).await.expect("handler ok");
+        assert!(
+            !tc.is_error,
+            "promote finding is a warning, not a rejection"
+        );
+
+        let output: serde_json::Value =
+            serde_json::from_str(&tc.content[0].text).expect("valid JSON");
+        let findings = output["requirement_findings"]
+            .as_array()
+            .expect("structured requirement_findings array");
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0]["requirement_id"], "payout-guard");
+        assert_eq!(findings[0]["step"], "pay");
+        assert_eq!(findings[0]["action"], "promote");
+        assert_eq!(
+            findings[0]["unmet"],
+            serde_json::json!(["/beneficiary", "/effect_key"])
+        );
+        assert!(
+            tc.content[0]
+                .text
+                .contains("requires approval by requirement"),
+            "human-readable warning accompanies the structured requirement finding"
         );
     }
 

@@ -26,7 +26,8 @@ use crate::execution_tools::domain::entity::EngineFacade;
 use crate::execution_tools::domain::error::EngineFacadeError;
 use crate::execution_tools::domain::value::{
     ApprovalResult, BudgetStatus, CostBreakdown, EnforcementStatus, ExecutionId, ExecutionResult,
-    ExecutionStatus, PlanTemplate, SequencePolicyFinding, StepResult, ValidationResult,
+    ExecutionStatus, PlanTemplate, RequirementFinding, SequencePolicyFinding, StepResult,
+    ValidationResult,
 };
 
 use super::repository::ExecutionRepository;
@@ -382,11 +383,29 @@ impl EngineFacade for EngineFacadeImpl {
                         action: "deny".to_string(),
                     }]));
             }
+            Err(OrchestratorError::RequirementUnmet {
+                requirement_id,
+                step,
+                unmet,
+            }) => {
+                let message = format!(
+                    "Operator requirement '{requirement_id}' refused step '{step}': missing {}",
+                    unmet.join(", ")
+                );
+                return Ok(ValidationResult::new(false, vec![], vec![message], None)
+                    .with_requirement_findings(vec![RequirementFinding {
+                        requirement_id,
+                        step,
+                        action: "deny".to_string(),
+                        unmet,
+                    }]));
+            }
             Err(e) => return Err(map_orchestrator_error(e)),
         };
 
         // Promote findings → human warnings + machine-readable findings.
         let mut findings: Vec<SequencePolicyFinding> = Vec::new();
+        let mut requirement_findings: Vec<RequirementFinding> = Vec::new();
         let mut warnings: Vec<String> = Vec::new();
         for f in plan_output.sequence_findings {
             let verb = if f.action == "promote" {
@@ -404,8 +423,27 @@ impl EngineFacade for EngineFacadeImpl {
                 f.later_step, verb, f.rule_id
             ));
         }
+        for f in plan_output.requirement_findings {
+            let verb = if f.action == "promote" {
+                "requires approval"
+            } else {
+                "is denied"
+            };
+            requirement_findings.push(RequirementFinding {
+                requirement_id: f.requirement_id.clone(),
+                step: f.step.clone(),
+                action: f.action.clone(),
+                unmet: f.unmet.clone(),
+            });
+            warnings.push(format!(
+                "Operator requirement: step '{}' {} by requirement '{}'",
+                f.step, verb, f.requirement_id
+            ));
+        }
 
-        Ok(ValidationResult::new(true, warnings, vec![], None).with_findings(findings))
+        Ok(ValidationResult::new(true, warnings, vec![], None)
+            .with_findings(findings)
+            .with_requirement_findings(requirement_findings))
     }
 
     async fn check_enforcement(&self) -> Result<EnforcementStatus, EngineFacadeError> {
@@ -776,6 +814,7 @@ mod tests {
                         plan: serde_json::json!({}),
                         graph: serde_json::json!({}),
                         sequence_findings: findings.clone(),
+                        requirement_findings: Vec::new(),
                     },
                 ),
                 PlanOutcome::Denied {

@@ -2336,6 +2336,7 @@ impl SequencePolicyRepository for R3PolicyRepo {
 fn r3_config(action: RuleAction, path_a: &str, path_b: &str) -> SequencePolicyConfig {
     SequencePolicyConfig {
         fail_closed: true,
+        requirements: Vec::new(),
         rules: vec![SequenceRule {
             id: "r3-remove-then-reassign".to_string(),
             name: "n".to_string(),

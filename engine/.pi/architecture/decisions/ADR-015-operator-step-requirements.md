@@ -11,8 +11,8 @@ Operator-controlled step requirements: attestation and parameter obligations ind
 
 ## Status
 
-- [x] Proposed
-- [ ] Accepted
+- [ ] Proposed
+- [x] Accepted
 - [ ] Deprecated
 - [ ] Superseded by ADR-XXX
 

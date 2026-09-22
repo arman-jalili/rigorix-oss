@@ -515,6 +515,7 @@ mod tests {
                     plan: serde_json::json!({"steps": []}),
                     graph: serde_json::json!({"nodes": []}),
                     sequence_findings: Vec::new(),
+                    requirement_findings: Vec::new(),
                 },
             )
         }
@@ -597,6 +598,7 @@ mod tests {
                     plan: serde_json::json!({"mode": "from_template"}),
                     graph: serde_json::json!({"nodes": []}),
                     sequence_findings: Vec::new(),
+                    requirement_findings: Vec::new(),
                 },
             )
         }

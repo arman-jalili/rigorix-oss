@@ -38,7 +38,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
 use crate::sequence_policy::domain::{
-    SequenceMatch, SequencePolicyError, SequenceRule, rule::tool_matches,
+    RequirementFinding, SequenceMatch, SequencePolicyError, SequenceRule, rule::tool_matches,
 };
 use crate::sequence_policy::infrastructure::ExecutionHistory;
 use crate::sequence_policy::infrastructure::repository::SequencePolicyRepository;
@@ -265,6 +265,49 @@ impl SequencePolicyService for SequencePolicyServiceImpl {
         }
         Ok(actionable)
     }
+
+    async fn evaluate_requirements(
+        &self,
+        steps: &[PlannedStep],
+        identity_attested: bool,
+    ) -> Result<Vec<RequirementFinding>, SequencePolicyError> {
+        // R9 / ADR-015: operator-controlled obligations over matched steps.
+        // Fail-closed on a corrupt/over-cap config (same posture as rules);
+        // absent config = status quo. Deterministic order: requirement config
+        // order, then step order.
+        let config = match self.repository.load_config().await? {
+            Some(config) => config,
+            None => return Ok(Vec::new()),
+        };
+        if config.requirements.is_empty() {
+            return Ok(Vec::new());
+        }
+        if !config.fail_closed {
+            // Requirements are a fail-closed control; a config that opts out
+            // of fail-closed still evaluates (the obligations are explicit),
+            // but the flag is recorded for operators.
+            tracing::debug!("sequence_policy: fail_closed=false but requirements are present");
+        }
+        let mut findings = Vec::new();
+        for req in &config.requirements {
+            for step in steps {
+                if let Some(finding) =
+                    req.evaluate(&step.name, &step.tool, &step.parameters, identity_attested)?
+                {
+                    findings.push(finding);
+                }
+            }
+        }
+        if !findings.is_empty() {
+            tracing::info!(
+                requirements = config.requirements.len(),
+                steps = steps.len(),
+                findings = findings.len(),
+                "sequence_policy: plan-time step requirement finding(s)"
+            );
+        }
+        Ok(findings)
+    }
 }
 
 #[cfg(test)]
@@ -293,6 +336,7 @@ mod tests {
     fn conference_config() -> SequencePolicyConfig {
         SequencePolicyConfig {
             fail_closed: true,
+            requirements: Vec::new(),
             rules: vec![conference_rule()],
         }
     }
@@ -396,6 +440,7 @@ mod tests {
     fn history_config() -> SequencePolicyConfig {
         SequencePolicyConfig {
             fail_closed: true,
+            requirements: Vec::new(),
             rules: vec![history_rule()],
         }
     }
@@ -548,6 +593,7 @@ mod tests {
     async fn adjacent_default_only_matches_consecutive_steps() {
         let config = SequencePolicyConfig {
             fail_closed: true,
+            requirements: Vec::new(),
             rules: vec![SequenceRule {
                 id: "adjacent-pair".to_string(),
                 name: "n".to_string(),
@@ -668,6 +714,7 @@ mod tests {
         // registration_* matches registration_remove / registration_add.
         let config = SequencePolicyConfig {
             fail_closed: true,
+            requirements: Vec::new(),
             rules: vec![SequenceRule {
                 id: "glob-pair".to_string(),
                 name: "n".to_string(),
@@ -707,6 +754,8 @@ mod tests {
             max_window: 5,
             max_regex_predicates_per_file: 8,
             max_history_window_secs: 604_800,
+            max_requirements_per_file: 100,
+            max_required_params_per_requirement: 16,
         };
         assert!(caps.max_window >= 1);
     }
@@ -740,6 +789,7 @@ mod tests {
         SequencePolicyServiceImpl::new(Box::new(StubRepository {
             outcome: Ok(Some(SequencePolicyConfig {
                 fail_closed: true,
+                requirements: Vec::new(),
                 rules: vec![effect_rule()],
             })),
         }))

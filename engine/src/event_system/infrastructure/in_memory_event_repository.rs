@@ -121,6 +121,8 @@ impl PersistedEventRepository for InMemoryEventRepository {
                         | ExecutionEvent::SequenceRuleMatched { execution_id, .. }
                         | ExecutionEvent::SequencePolicyDenied { execution_id, .. }
                         | ExecutionEvent::SequencePolicyConfigError { execution_id, .. }
+                        | ExecutionEvent::RequirementUnmet { execution_id, .. }
+                        | ExecutionEvent::RequirementPromoted { execution_id, .. }
                         | ExecutionEvent::AuditEnvelopeCreated { execution_id, .. } => {
                             if execution_id != eid {
                                 return false;
@@ -167,6 +169,8 @@ impl PersistedEventRepository for InMemoryEventRepository {
                         ExecutionEvent::SequencePolicyConfigError { .. } => {
                             "sequence_policy_config_error"
                         }
+                        ExecutionEvent::RequirementUnmet { .. } => "requirement_unmet",
+                        ExecutionEvent::RequirementPromoted { .. } => "requirement_promoted",
                     };
                     if variant_name != event_type {
                         return false;
@@ -197,7 +201,9 @@ impl PersistedEventRepository for InMemoryEventRepository {
                     | ExecutionEvent::ScopeViolationRecorded { timestamp, .. }
                     | ExecutionEvent::SequenceRuleMatched { timestamp, .. }
                     | ExecutionEvent::SequencePolicyDenied { timestamp, .. }
-                    | ExecutionEvent::SequencePolicyConfigError { timestamp, .. } => timestamp,
+                    | ExecutionEvent::SequencePolicyConfigError { timestamp, .. }
+                    | ExecutionEvent::RequirementUnmet { timestamp, .. }
+                    | ExecutionEvent::RequirementPromoted { timestamp, .. } => timestamp,
                 };
                 if let Some(after) = &input.after_timestamp
                     && ts < after
@@ -274,7 +280,9 @@ impl PersistedEventRepository for InMemoryEventRepository {
                 | ExecutionEvent::ScopeViolationRecorded { timestamp, .. }
                 | ExecutionEvent::SequenceRuleMatched { timestamp, .. }
                 | ExecutionEvent::SequencePolicyDenied { timestamp, .. }
-                | ExecutionEvent::SequencePolicyConfigError { timestamp, .. } => timestamp,
+                | ExecutionEvent::SequencePolicyConfigError { timestamp, .. }
+                | ExecutionEvent::RequirementUnmet { timestamp, .. }
+                | ExecutionEvent::RequirementPromoted { timestamp, .. } => timestamp,
             };
             ts >= &older_than
         });

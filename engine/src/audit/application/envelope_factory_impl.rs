@@ -112,6 +112,7 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
             approval_events: Self::approval_refs_from_events(&input.events),
             scope_violations: Self::scope_refs_from_events(&input.events),
             sequence_policy_findings: Self::sequence_policy_findings_from_events(&input.events),
+            requirement_findings: Self::requirement_findings_from_events(&input.events),
             decision_context_ref: Self::decision_context_ref_from_events(&input.events),
             signature: None,
             // GAP-M-12: an unsigned run is explicitly degraded evidence.
@@ -459,6 +460,56 @@ impl AuditEnvelopeFactoryImpl {
                 action,
                 later_step: later_step.to_string(),
                 matched_indices,
+                summary,
+            });
+        }
+        out
+    }
+
+    /// R9 / ADR-015: derive redacted requirement findings from the run's
+    /// events (`requirement_unmet` / `requirement_promoted`). Summaries are
+    /// pre-redacted at the source (SpanPrivacy default — parameter values
+    /// never enter event payloads).
+    fn requirement_findings_from_events(
+        events: &[crate::audit::domain::ExecutionEventRef],
+    ) -> Vec<crate::audit::domain::RequirementFindingRef> {
+        let mut out = Vec::new();
+        for e in events {
+            if e.event_type != "requirement_unmet" && e.event_type != "requirement_promoted" {
+                continue;
+            }
+            let Some(payload) = &e.payload else { continue };
+            let Some(requirement_id) = payload.get("requirement_id").and_then(|v| v.as_str())
+            else {
+                continue;
+            };
+            let Some(step) = payload.get("step").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let action = payload
+                .get("action")
+                .and_then(|v| v.as_str())
+                .unwrap_or("deny")
+                .to_string();
+            let unmet = payload
+                .get("unmet")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let summary = payload
+                .get("summary")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            out.push(crate::audit::domain::RequirementFindingRef {
+                requirement_id: requirement_id.to_string(),
+                step: step.to_string(),
+                action,
+                unmet,
                 summary,
             });
         }

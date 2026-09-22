@@ -96,6 +96,14 @@ pub struct PlanOnlyOutput {
     /// `OrchestratorError::SequencePolicyDenied`, never as a silent pass.)
     #[serde(default)]
     pub sequence_findings: Vec<SequencePolicyFinding>,
+
+    /// Structured R9 operator-controlled step-requirement findings from
+    /// plan-time evaluation (ADR-015). Populated when a `[[requirements]]`
+    /// obligation matched a step — surfaced to plan consumers so the operator
+    /// obligation is visible **before** a run starts. Empty when no service is
+    /// configured or every matched step satisfies its requirements.
+    #[serde(default)]
+    pub requirement_findings: Vec<RequirementPolicyFinding>,
 }
 
 /// One matched sequence from plan-time evaluation (R2), surfaced to plan
@@ -109,6 +117,22 @@ pub struct SequencePolicyFinding {
     /// Action applied to the later step: `"promote"` (the step is built
     /// `requires_approval = true`) or `"deny"`.
     pub action: String,
+}
+
+/// One R9 operator-controlled step-requirement outcome (ADR-015), surfaced to
+/// plan preview consumers (`rigorix_validate_plan`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RequirementPolicyFinding {
+    /// Stable id of the requirement that fired.
+    pub requirement_id: String,
+    /// Name of the matched step that failed the requirement.
+    pub step: String,
+    /// Action applied: `"deny"` (plan refused) or `"promote"` (step built
+    /// `requires_approval = true`).
+    pub action: String,
+    /// Unmet obligation names — pointer names and/or `"identity"` (never
+    /// parameter values).
+    pub unmet: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------

@@ -23,6 +23,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::error::SequencePolicyError;
+use super::requirement::{StepRequirement, invalid_match_predicate};
 use super::rule::SequenceRule;
 
 /// Safety caps for the loaded rule set (mirrors `EnforcementConfig::validate`
@@ -41,6 +42,11 @@ pub struct SafetyCaps {
     /// Maximum R7 `history.window_secs` look-back (default 7 days) — keeps
     /// history scans bounded and stops a stale conflict from denying today.
     pub max_history_window_secs: u64,
+    /// Maximum number of `[[requirements]]` entries per config file (R9).
+    pub max_requirements_per_file: u32,
+    /// Maximum required JSON pointers per requirement (R9) — bounds the
+    /// pointer-resolution work an operator config can impose on a plan.
+    pub max_required_params_per_requirement: u32,
 }
 
 /// The loaded sequence-policy rule set.
@@ -53,6 +59,12 @@ pub struct SequencePolicyConfig {
     /// The ordered rule set (empty → no sequence gating).
     #[serde(default)]
     pub rules: Vec<SequenceRule>,
+    /// R9 operator-controlled step requirements (empty → no requirements).
+    /// Additive to `rules`; evaluated at plan time for every plan. Skipped
+    /// when empty so pre-R9 configs serialize unchanged (additive/absent =
+    /// status quo).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requirements: Vec<StepRequirement>,
 }
 
 const fn default_fail_closed() -> bool {
@@ -71,6 +83,8 @@ impl Default for SafetyCaps {
             max_window: 5,
             max_regex_predicates_per_file: 8,
             max_history_window_secs: 604_800,
+            max_requirements_per_file: 100,
+            max_required_params_per_requirement: 16,
         }
     }
 }
@@ -79,6 +93,7 @@ impl Default for SequencePolicyConfig {
     fn default() -> Self {
         Self {
             fail_closed: true,
+            requirements: Vec::new(),
             rules: Vec::new(),
         }
     }
@@ -196,6 +211,81 @@ impl SequencePolicyConfig {
                 ),
             });
         }
+
+        // ── R9 operator-controlled step requirements (ADR-015) ──────────
+        // Fail-closed validation: a malformed requirement refuses the plan
+        // (same posture as corrupt rules). An absent requirement set
+        // (`requirements: []`) is the status quo.
+        if self.requirements.len() as u32 > caps.max_requirements_per_file {
+            return Err(SequencePolicyError::RuleExceedsCaps {
+                rule: "<config>".to_string(),
+                detail: format!(
+                    "{} requirements exceeds cap max_requirements_per_file={}",
+                    self.requirements.len(),
+                    caps.max_requirements_per_file
+                ),
+            });
+        }
+        let mut seen_requirement_ids: Vec<&str> = Vec::new();
+        for req in &self.requirements {
+            if req.id.trim().is_empty() {
+                return Err(SequencePolicyError::InvalidConfig(
+                    "requirement with empty `id`".to_string(),
+                ));
+            }
+            if seen_requirement_ids.contains(&req.id.as_str()) {
+                return Err(SequencePolicyError::InvalidConfig(format!(
+                    "duplicate requirement id '{}'",
+                    req.id
+                )));
+            }
+            seen_requirement_ids.push(&req.id);
+
+            // A requirement with neither obligation is a no-op — a typo, not
+            // an operator intent (fail closed).
+            if !req.require_identity && req.require_params.is_empty() {
+                return Err(SequencePolicyError::InvalidConfig(format!(
+                    "requirement '{}': must set at least one of require_identity / require_params",
+                    req.id
+                )));
+            }
+            if req.require_params.len() as u32 > caps.max_required_params_per_requirement {
+                return Err(SequencePolicyError::RuleExceedsCaps {
+                    rule: req.id.clone(),
+                    detail: format!(
+                        "{} required params exceeds cap max_required_params_per_requirement={}",
+                        req.require_params.len(),
+                        caps.max_required_params_per_requirement
+                    ),
+                });
+            }
+            for pointer in &req.require_params {
+                if !pointer.starts_with('/') {
+                    return Err(SequencePolicyError::InvalidConfig(format!(
+                        "requirement '{}': required parameter pointer '{}' must start with '/'",
+                        req.id, pointer
+                    )));
+                }
+            }
+
+            // The reused StepPredicate matcher is validated like a rule step;
+            // `equals_step` has no earlier-step context on a single-step
+            // requirement and is rejected (fail closed).
+            if let Some(detail) = invalid_match_predicate(&req.r#match) {
+                return Err(SequencePolicyError::InvalidConfig(format!(
+                    "requirement '{}': {detail}",
+                    req.id
+                )));
+            }
+            for p in &req.r#match.params {
+                if p.value.is_none() {
+                    return Err(SequencePolicyError::InvalidConfig(format!(
+                        "requirement '{}': match parameter predicate '{}' (kind {:?}) requires `value`",
+                        req.id, p.pointer, p.kind
+                    )));
+                }
+            }
+        }
         Ok(())
     }
 
@@ -240,7 +330,8 @@ impl SequencePolicyConfig {
 mod tests {
     use super::*;
     use crate::sequence_policy::domain::{
-        HistoryPredicate, ParamMatchKind, ParamPredicate, RuleAction, StepPredicate,
+        HistoryPredicate, ParamMatchKind, ParamPredicate, RequirementAction, RuleAction,
+        StepPredicate, StepRequirement,
     };
 
     fn rule(id: &str, steps: usize) -> SequenceRule {
@@ -267,6 +358,8 @@ mod tests {
             max_window: 5,
             max_regex_predicates_per_file: 1,
             max_history_window_secs: 60,
+            max_requirements_per_file: 2,
+            max_required_params_per_requirement: 2,
         }
     }
 
@@ -280,6 +373,7 @@ mod tests {
     fn over_cap_rule_count_is_rejected() {
         let config = SequencePolicyConfig {
             fail_closed: true,
+            requirements: Vec::new(),
             rules: vec![rule("r1", 2), rule("r2", 2), rule("r3", 2)],
         };
         let err = config.validate(&caps()).unwrap_err();
@@ -293,6 +387,7 @@ mod tests {
     fn over_cap_steps_per_rule_is_rejected() {
         let config = SequencePolicyConfig {
             fail_closed: true,
+            requirements: Vec::new(),
             rules: vec![rule("r1", 4)],
         };
         let err = config.validate(&caps()).unwrap_err();
@@ -308,6 +403,7 @@ mod tests {
         r.window = Some(6);
         let config = SequencePolicyConfig {
             fail_closed: true,
+            requirements: Vec::new(),
             rules: vec![r],
         };
         let err = config.validate(&caps()).unwrap_err();
@@ -336,6 +432,7 @@ mod tests {
         ];
         let config = SequencePolicyConfig {
             fail_closed: true,
+            requirements: Vec::new(),
             rules: vec![r],
         };
         let err = config.validate(&caps()).unwrap_err();
@@ -356,6 +453,7 @@ mod tests {
         }];
         let config = SequencePolicyConfig {
             fail_closed: true,
+            requirements: Vec::new(),
             rules: vec![r],
         };
         assert!(config.validate(&caps()).is_ok());
@@ -375,6 +473,7 @@ mod tests {
         }];
         let config = SequencePolicyConfig {
             fail_closed: true,
+            requirements: Vec::new(),
             rules: vec![ok],
         };
         assert!(
@@ -392,6 +491,7 @@ mod tests {
         }];
         let err = SequencePolicyConfig {
             fail_closed: true,
+            requirements: Vec::new(),
             rules: vec![missing],
         }
         .validate(&caps())
@@ -408,6 +508,7 @@ mod tests {
         }];
         let err = SequencePolicyConfig {
             fail_closed: true,
+            requirements: Vec::new(),
             rules: vec![forward],
         }
         .validate(&caps())
@@ -426,6 +527,7 @@ mod tests {
         }];
         let err = SequencePolicyConfig {
             fail_closed: true,
+            requirements: Vec::new(),
             rules: vec![r],
         }
         .validate(&caps())
@@ -443,6 +545,7 @@ mod tests {
         assert!(
             SequencePolicyConfig {
                 fail_closed: true,
+                requirements: Vec::new(),
                 rules: vec![ok],
             }
             .validate(&caps())
@@ -463,6 +566,7 @@ mod tests {
         });
         let config = SequencePolicyConfig {
             fail_closed: true,
+            requirements: Vec::new(),
             rules: vec![r],
         };
         // Unlimited retention → fine.
@@ -488,8 +592,121 @@ mod tests {
         });
         let config = SequencePolicyConfig {
             fail_closed: true,
+            requirements: Vec::new(),
             rules: vec![r],
         };
         assert!(config.validate_retention(Some(60)).is_ok());
+    }
+
+    // ── R9 operator-controlled step requirements (ADR-015, AC 22) ─────────
+
+    fn requirement(id: &str) -> StepRequirement {
+        StepRequirement {
+            id: id.to_string(),
+            name: "n".to_string(),
+            description: "d".to_string(),
+            r#match: StepPredicate {
+                tool: "run_command".to_string(),
+                params: vec![],
+            },
+            require_identity: true,
+            require_params: vec![],
+            action: RequirementAction::Deny,
+        }
+    }
+
+    fn config_with_requirements(requirements: Vec<StepRequirement>) -> SequencePolicyConfig {
+        SequencePolicyConfig {
+            fail_closed: true,
+            requirements,
+            rules: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn requirement_without_obligation_fails_closed() {
+        let mut r = requirement("empty");
+        r.require_identity = false;
+        let err = config_with_requirements(vec![r])
+            .validate(&caps())
+            .unwrap_err();
+        assert!(matches!(err, SequencePolicyError::InvalidConfig(_)));
+        assert!(!err.is_retriable());
+    }
+
+    #[test]
+    fn duplicate_requirement_id_fails_closed() {
+        let err = config_with_requirements(vec![requirement("dupe"), requirement("dupe")])
+            .validate(&caps())
+            .unwrap_err();
+        assert!(matches!(err, SequencePolicyError::InvalidConfig(_)));
+    }
+
+    #[test]
+    fn requirement_pointer_must_start_with_slash() {
+        let mut r = requirement("ptr");
+        r.require_identity = false;
+        r.require_params = vec!["beneficiary".to_string()];
+        let err = config_with_requirements(vec![r])
+            .validate(&caps())
+            .unwrap_err();
+        assert!(matches!(err, SequencePolicyError::InvalidConfig(_)));
+    }
+
+    #[test]
+    fn requirement_too_many_pointers_exceeds_caps() {
+        let mut r = requirement("many");
+        r.require_identity = false;
+        r.require_params = vec![
+            "/a".to_string(),
+            "/b".to_string(),
+            "/c".to_string(), // cap max_required_params_per_requirement = 2
+        ];
+        let err = config_with_requirements(vec![r])
+            .validate(&caps())
+            .unwrap_err();
+        assert!(matches!(&err,
+            SequencePolicyError::RuleExceedsCaps { rule, .. } if rule == "many"
+        ));
+    }
+
+    #[test]
+    fn requirement_count_over_cap_exceeds_caps() {
+        let err = config_with_requirements(vec![
+            requirement("r1"),
+            requirement("r2"),
+            requirement("r3"), // cap max_requirements_per_file = 2
+        ])
+        .validate(&caps())
+        .unwrap_err();
+        assert!(matches!(&err,
+            SequencePolicyError::RuleExceedsCaps { rule, .. } if rule == "<config>"
+        ));
+    }
+
+    #[test]
+    fn requirement_equals_step_match_fails_closed() {
+        let mut r = requirement("eq");
+        r.r#match.params = vec![ParamPredicate {
+            pointer: "/beneficiary".to_string(),
+            kind: ParamMatchKind::EqualsStep,
+            value: None,
+            step: Some(0),
+        }];
+        let err = config_with_requirements(vec![r])
+            .validate(&caps())
+            .unwrap_err();
+        assert!(matches!(err, SequencePolicyError::InvalidConfig(_)));
+    }
+
+    #[test]
+    fn valid_requirement_passes_validation_and_is_defaulted_absent() {
+        let mut r = requirement("payout-guard");
+        r.require_identity = true;
+        r.require_params = vec!["/beneficiary".to_string()];
+        assert!(config_with_requirements(vec![r]).validate(&caps()).is_ok());
+        // Absent requirements = status quo.
+        assert!(SequencePolicyConfig::default().validate(&caps()).is_ok());
+        assert!(SequencePolicyConfig::default().requirements.is_empty());
     }
 }

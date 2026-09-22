@@ -34,7 +34,7 @@
 
 use async_trait::async_trait;
 
-use crate::sequence_policy::domain::{SequenceMatch, SequencePolicyError};
+use crate::sequence_policy::domain::{RequirementFinding, SequenceMatch, SequencePolicyError};
 
 use super::dto::{DispatchedStep, PlannedStep};
 
@@ -86,4 +86,28 @@ pub trait SequencePolicyService: Send + Sync {
         next: &PlannedStep,
         principal: Option<&str>,
     ) -> Result<Vec<SequenceMatch>, SequencePolicyError>;
+
+    /// Evaluate R9 operator-controlled step requirements (ADR-015) over an
+    /// ordered step list (plan-time, every plan).
+    ///
+    /// Each `[[requirements]]` entry is matched against every planned step
+    /// (reusing the frozen `StepPredicate` matcher). A matched step that does
+    /// not satisfy an obligation yields a [`RequirementFinding`]; satisfied
+    /// or non-matching steps yield nothing. Findings are returned in
+    /// deterministic order — requirement config order, then step order.
+    ///
+    /// `identity_attested` is `true` only when the caller presents an
+    /// `idp_token` / `local_principal` claim. A `require_identity` requirement
+    /// is unmet otherwise and is always reported with
+    /// [`crate::sequence_policy::domain::RequirementAction::Deny`] (never
+    /// promotable).
+    ///
+    /// # Errors
+    /// - `SequencePolicyError::InvalidConfig` — a corrupt config (including a
+    ///   malformed `regex` match predicate) → **fail closed**, plan refused
+    async fn evaluate_requirements(
+        &self,
+        steps: &[PlannedStep],
+        identity_attested: bool,
+    ) -> Result<Vec<RequirementFinding>, SequencePolicyError>;
 }

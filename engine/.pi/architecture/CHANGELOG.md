@@ -1,3 +1,38 @@
+## [2026-09-22] — ADR-015 implemented (operator-controlled step requirements)
+
+### Added
+- **R9 operator-controlled step requirements**: `[[requirements]]` in
+  `.rigorix/sequence-policy.toml` — a reused `StepPredicate` match plus
+  `require_identity` / `require_params` obligations, evaluated at plan time for
+  **every** plan (intent, template, MCP `rigorix_execute`), independent of the
+  agent-authored plan. New domain `StepRequirement` / `RequirementAction` /
+  `RequirementFinding`; `SequencePolicyConfig.requirements` + fail-closed
+  validation + `SafetyCaps` count/pointer caps; `TomlSequencePolicyRepository`
+  parses `[[requirements]]`; `SequencePolicyService::evaluate_requirements`.
+- **Plan-time gate**: orchestrator `apply_plan_time_requirements` runs after the
+  sequence-policy gate — `require_identity` unmet refuses (`IdentityRequired`,
+  never promotable); `require_params` unmet denies (`RequirementUnmet`) or
+  promotes (`requires_approval = true`). Closes the composed-plan bypass.
+- **Evidence**: `ExecutionEvent::RequirementUnmet` / `RequirementPromoted`;
+  additive envelope `requirement_findings[]` (pointer **names** only; parameter
+  values redacted per SpanPrivacy); `rigorix_validate_plan` surfaces
+  `requirement_findings` to the agent pre-run.
+- Tests: R9 unit suite (`step-requirement_test.rs`, AC 18–22 + determinism) and
+  orchestrator integration tests (identity refuses composed plan, params
+  deny/allow, promote + envelope evidence, plan-preview finding).
+- **ADR-015 → Accepted**.
+
+### Impact Analysis
+- Files affected:
+  - engine/src/sequence_policy/domain/requirement.rs (new)
+  - engine/src/sequence_policy/domain/{config,mod}.rs
+  - engine/src/sequence_policy/application/{service,service_impl}.rs
+  - engine/src/orchestrator/application/{orchestrator_impl,dto/mod}.rs
+  - engine/src/orchestrator/domain/error.rs
+  - engine/src/event_system/domain/event.rs (+ bus/repository match sites)
+  - engine/src/audit/{domain/envelope,application/envelope_factory_impl}.rs
+  - mcp/src/execution_tools/** (validate_plan surface + error taxonomy)
+
 ## [2026-09-21] — ADR-015 proposed (operator-controlled step requirements)
 
 ### Added
