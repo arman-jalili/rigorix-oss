@@ -21,17 +21,9 @@
 //! rigorix-mcp (stdio mode)
 //! ```
 
-use std::sync::Arc;
-
-use rigorix_engine::configuration::domain::config::Config;
 use rigorix_mcp::enterprise_proxy::interfaces::mcp::ENTERPRISE_TOOL_PREFIX;
-use rigorix_mcp::host::{
-    APP_STATE, AppState, all_tool_descriptors, app_state, build_auth_handler, build_real_engine,
-    error_type_name, load_toml_config,
-};
+use rigorix_mcp::host::{all_tool_descriptors, app_state, error_type_name};
 use rigorix_mcp::mcp_server::domain::value::{JsonRpcError, JsonRpcMessage, RequestId};
-use rigorix_mcp::template_tools::domain::entity::SharedTemplateRepository;
-use rigorix_mcp::template_tools::infrastructure::FilesystemTemplateRepository;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::signal;
 use tokio_util::sync::CancellationToken;
@@ -231,7 +223,7 @@ async fn handle_call_tool(id: &RequestId, params: &serde_json::Value) -> JsonRpc
                 "content": [
                     {
                         "type": "text",
-                        "text": error["error"].as_str().unwrap_or("Unknown error")
+                        "text": error.message
                     }
                 ],
                 "isError": true
@@ -448,36 +440,13 @@ async fn main() {
         eprintln!("Failed to initialize tracing: {e}");
     }
 
-    // ── Build real engine facade ──
+    // ── Build the shared host composition (engine facade + handlers) ──
     let repo_root = std::env::var("RIGORIX_REPO_ROOT").unwrap_or_else(|_| ".".to_string());
-    let (engine, engine_audit) = match build_real_engine(&repo_root).await {
-        Ok((e, audit)) => {
-            tracing::info!("EngineFacadeImpl initialized with real rigorix-engine");
-            (e, audit)
-        }
-        Err(e) => {
-            tracing::error!("Failed to build real engine: {}. Exiting.", e);
-            return;
-        }
-    };
-
-    // ── Initialize app state ──
-    let template_repo: SharedTemplateRepository =
-        Arc::new(FilesystemTemplateRepository::new(".rigorix/templates"));
-    // Same resolution as build_real_engine: rigorix.toml audit_hmac_key or
-    // RIGORIX_HMAC_KEY env — used to sign the envelopes read back via
-    // rigorix_read_audit so the evidence is real, not a sample.
-    let audit_hmac_key = load_toml_config::<Config>(&repo_root, "rigorix.toml")
-        .audit_hmac_key
-        .or_else(|| std::env::var("RIGORIX_HMAC_KEY").ok())
-        .filter(|k| !k.is_empty());
-    let _ = APP_STATE.set(AppState::new(
-        engine,
-        template_repo,
-        audit_hmac_key,
-        build_auth_handler().await,
-        engine_audit,
-    ));
+    if let Err(e) = rigorix_mcp::host::init_host(&repo_root).await {
+        tracing::error!("Failed to build real engine: {e}. Exiting.");
+        return;
+    }
+    tracing::info!("EngineFacadeImpl initialized with real rigorix-engine");
 
     let cancel = CancellationToken::new();
 

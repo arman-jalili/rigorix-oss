@@ -76,6 +76,49 @@ pub enum EngineFacadeError {
     /// Internal synchronization or state error.
     #[error("Internal error: {0}")]
     Internal(String),
+
+    /// A matched sequence-policy `deny` rule refused the run before any step
+    /// executed (R2 plan-time denial). Structured so the native API can emit
+    /// `denied_by_sequence` with `data.rule_id` + `data.step` (ADR-0001 D6)
+    /// instead of re-parsing the display string. (#888 OSS-C2)
+    #[error(
+        "Sequence policy denied step '{step}' (rule '{rule_id}'): the plan was refused before any step executed"
+    )]
+    SequencePolicyDenied {
+        /// Stable id of the `deny` rule that matched.
+        rule_id: String,
+        /// Name of the later matched (refused) step.
+        step: String,
+    },
+
+    /// An R9 operator-controlled step requirement (ADR-015) was unmet for a
+    /// matched step with a `deny` action — the plan is refused before any step
+    /// executes. Pointer NAMES only; parameter values are never carried.
+    #[error(
+        "Step '{step}' does not meet operator requirement '{requirement_id}' (fail closed): missing {}",
+        .unmet.join(", ")
+    )]
+    RequirementUnmet {
+        /// Stable id of the requirement that fired.
+        requirement_id: String,
+        /// Name of the matched step that failed the requirement.
+        step: String,
+        /// Unmet obligation names (pointer names and/or "identity").
+        unmet: Vec<String>,
+    },
+
+    /// A step declares `require_identity = true` but the caller has no
+    /// attested identity. Refused at plan time; the native API maps this to
+    /// `identity_required` (ADR-0001 D6).
+    #[error(
+        "Step '{step}' requires an attested identity but the caller is {status} — run rigorix_auth_login (or execute as a local principal) first"
+    )]
+    IdentityRequired {
+        /// Name of the step that requires an attested identity.
+        step: String,
+        /// Identity status at refusal time ("unauthenticated" / "unverified").
+        status: String,
+    },
 }
 
 // ---------------------------------------------------------------------------

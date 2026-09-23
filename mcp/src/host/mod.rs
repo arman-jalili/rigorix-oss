@@ -21,6 +21,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+pub mod error;
+
+use error::HostError;
+
 use rigorix_engine::configuration::domain::config::Config;
 use rigorix_engine::permission::domain::mode::PermissionMode;
 
@@ -55,6 +59,7 @@ use rigorix_mcp::template_tools::application::service_impl::{
     ValidateTemplateHandlerImpl,
 };
 use rigorix_mcp::template_tools::domain::entity::SharedTemplateRepository;
+use rigorix_mcp::template_tools::infrastructure::FilesystemTemplateRepository;
 
 use rigorix_mcp::enterprise_proxy::domain::entity::SharedEnterpriseProxy;
 use rigorix_mcp::enterprise_proxy::domain::value::ProxyConfig;
@@ -273,19 +278,13 @@ impl AppState {
     async fn resolve_template_to_execution_plan(
         &self,
         template_name: &str,
-    ) -> Result<rigorix_mcp::execution_tools::domain::value::PlanTemplate, serde_json::Value> {
+    ) -> Result<rigorix_mcp::execution_tools::domain::value::PlanTemplate, HostError> {
         let template = self.template_repo.get(template_name).await.map_err(|e| {
-            serde_json::json!({"error": format!(
-                "Template '{}' not found: {}",
-                template_name, e
-            )})
+            HostError::invalid_params(format!("Template '{template_name}' not found: {e}"))
         })?;
         let json = serde_json::to_value(&template).unwrap_or_default();
         serde_json::from_value(json).map_err(|e| {
-            serde_json::json!({"error": format!(
-                "Failed to convert template '{}': {}",
-                template_name, e
-            )})
+            HostError::invalid_params(format!("Failed to convert template '{template_name}': {e}"))
         })
     }
 
@@ -306,14 +305,13 @@ impl AppState {
         &self,
         tool_name: &str,
         params: &serde_json::Value,
-    ) -> Result<serde_json::Value, serde_json::Value> {
+    ) -> Result<serde_json::Value, HostError> {
         match tool_name {
             // Execution tools
             "rigorix_execute" => {
                 let mut input: rigorix_mcp::execution_tools::application::dto::ExecuteInput =
-                    serde_json::from_value(params.clone()).map_err(
-                        |e| serde_json::json!({"error": format!("Invalid input: {}", e)}),
-                    )?;
+                    serde_json::from_value(params.clone())
+                        .map_err(|e| HostError::invalid_params(format!("Invalid input: {e}")))?;
 
                 // Resolve template → plan if template_name is provided
                 let template_name = if let Some(ref name) = input.template_name {
@@ -328,9 +326,9 @@ impl AppState {
 
                 // Require at least a plan or template_name
                 if input.plan.is_none() {
-                    return Err(serde_json::json!({
-                        "error": "Either 'plan' or 'template_name' must be provided"
-                    }));
+                    return Err(HostError::invalid_params(
+                        "Either 'plan' or 'template_name' must be provided",
+                    ));
                 }
 
                 let template_name_for_audit = template_name
@@ -346,7 +344,7 @@ impl AppState {
                     .execute_handler
                     .handle(input)
                     .await
-                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                    .map_err(HostError::from)?;
                 let json_result: serde_json::Value =
                     serde_json::from_str(&result.content[0].text).unwrap_or_default();
 
@@ -370,9 +368,8 @@ impl AppState {
             }
             "rigorix_plan" => {
                 let input: rigorix_mcp::execution_tools::application::dto::PlanInput =
-                    serde_json::from_value(params.clone()).map_err(
-                        |e| serde_json::json!({"error": format!("Invalid input: {}", e)}),
-                    )?;
+                    serde_json::from_value(params.clone())
+                        .map_err(|e| HostError::invalid_params(format!("Invalid input: {e}")))?;
 
                 // Load full template (with version, tags, timestamps)
                 let template = self
@@ -380,17 +377,17 @@ impl AppState {
                     .get(&input.template_name)
                     .await
                     .map_err(|e| {
-                        serde_json::json!({"error": format!(
-                            "Template '{}' not found: {}",
-                            input.template_name, e
-                        )})
+                        HostError::invalid_params(format!(
+                            "Template '{}' not found: {e}",
+                            input.template_name
+                        ))
                     })?;
 
                 let result = self
                     .plan_handler
                     .handle(&template)
                     .await
-                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                    .map_err(HostError::from)?;
 
                 Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
             }
@@ -417,7 +414,7 @@ impl AppState {
                     .execute_handler
                     .handle(exec_input)
                     .await
-                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                    .map_err(HostError::from)?;
                 let json_result: serde_json::Value =
                     serde_json::from_str(&result.content[0].text).unwrap_or_default();
 
@@ -443,9 +440,8 @@ impl AppState {
             }
             "rigorix_validate_plan" => {
                 let mut input: rigorix_mcp::execution_tools::application::dto::ValidateInput =
-                    serde_json::from_value(params.clone()).map_err(
-                        |e| serde_json::json!({"error": format!("Invalid input: {}", e)}),
-                    )?;
+                    serde_json::from_value(params.clone())
+                        .map_err(|e| HostError::invalid_params(format!("Invalid input: {e}")))?;
                 // L1: preview must refuse require_identity steps the same way
                 // the run would — inject the attested session identity.
                 input.identity = self.session_identity().await;
@@ -453,7 +449,7 @@ impl AppState {
                     .validate_plan_handler
                     .handle(input)
                     .await
-                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                    .map_err(HostError::from)?;
                 Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
             }
             "rigorix_check_enforcement" => {
@@ -461,7 +457,7 @@ impl AppState {
                     .check_enforcement_handler
                     .handle()
                     .await
-                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                    .map_err(HostError::from)?;
                 Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
             }
             "rigorix_approve_execution" => {
@@ -470,19 +466,17 @@ impl AppState {
                 let execution_id = params["execution_id"]
                     .as_str()
                     .and_then(|s| uuid::Uuid::parse_str(s).ok())
-                    .ok_or_else(
-                        || serde_json::json!({"error": "Invalid or missing execution_id"}),
-                    )?;
+                    .ok_or_else(|| HostError::invalid_params("Invalid or missing execution_id"))?;
                 let step_names: Vec<String> = params["step_names"]
                     .as_array()
-                    .ok_or_else(|| serde_json::json!({"error": "Missing step_names array"}))?
+                    .ok_or_else(|| HostError::invalid_params("Missing step_names array"))?
                     .iter()
                     .filter_map(|v| v.as_str().map(|s| s.to_string()))
                     .collect();
                 if step_names.is_empty() {
-                    return Err(serde_json::json!({
-                        "error": "step_names must contain at least one step name"
-                    }));
+                    return Err(HostError::invalid_params(
+                        "step_names must contain at least one step name",
+                    ));
                 }
 
                 // L2 (F-20260907-05): bind the approval to the ATTESTED session
@@ -492,13 +486,13 @@ impl AppState {
                 let session_claim = self.session_identity().await;
                 let identity =
                     resolve_approval_identity(params, session_claim.as_ref(), auth_configured)
-                        .map_err(|e| serde_json::json!({"error": e}))?;
+                        .map_err(HostError::invalid_params)?;
 
                 let approval = self
                     .engine
                     .approve_execution(&ExecutionId::from_uuid(execution_id), step_names, identity)
                     .await
-                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                    .map_err(HostError::from)?;
 
                 // After a resumed approval, refresh the audit envelope with the
                 // FINAL run state (all steps, statuses) so rigorix_read_audit
@@ -659,12 +653,12 @@ impl AppState {
             // Audit tools
             "rigorix_read_audit" => {
                 let input = serde_json::from_value(params.clone())
-                    .map_err(|e| serde_json::json!({"error": format!("Invalid input: {}", e)}))?;
+                    .map_err(|e| HostError::invalid_params(format!("Invalid input: {e}")))?;
                 let result = self
                     .read_audit_handler
                     .handle(input)
                     .await
-                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                    .map_err(HostError::from)?;
                 // The handler may return markdown (text format) or JSON — pass
                 // the text through, only parsing when it is actually JSON.
                 let text = &result.content[0].text;
@@ -673,66 +667,66 @@ impl AppState {
             }
             "rigorix_list_audits" => {
                 let input = serde_json::from_value(params.clone())
-                    .map_err(|e| serde_json::json!({"error": format!("Invalid input: {}", e)}))?;
+                    .map_err(|e| HostError::invalid_params(format!("Invalid input: {e}")))?;
                 let result = self
                     .list_audits_handler
                     .handle(input)
                     .await
-                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                    .map_err(HostError::from)?;
                 let text = &result.content[0].text;
                 Ok(serde_json::from_str(text)
                     .unwrap_or_else(|_| serde_json::Value::String(text.clone())))
             }
             "rigorix_audit_summary" => {
                 let input = serde_json::from_value(params.clone())
-                    .map_err(|e| serde_json::json!({"error": format!("Invalid input: {}", e)}))?;
+                    .map_err(|e| HostError::invalid_params(format!("Invalid input: {e}")))?;
                 let result = self
                     .audit_summary_handler
                     .handle(input)
                     .await
-                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                    .map_err(HostError::from)?;
                 Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
             }
 
             // Template tools
             "rigorix_list_templates" => {
                 let filter = serde_json::from_value(params.clone())
-                    .map_err(|e| serde_json::json!({"error": format!("Invalid input: {}", e)}))?;
+                    .map_err(|e| HostError::invalid_params(format!("Invalid input: {e}")))?;
                 let result = self
                     .list_templates_handler
                     .handle(&filter)
                     .await
-                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                    .map_err(HostError::from)?;
                 Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
             }
             "rigorix_get_template" => {
                 let input = serde_json::from_value(params.clone())
-                    .map_err(|e| serde_json::json!({"error": format!("Invalid input: {}", e)}))?;
+                    .map_err(|e| HostError::invalid_params(format!("Invalid input: {e}")))?;
                 let result = self
                     .get_template_handler
                     .handle(&input)
                     .await
-                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                    .map_err(HostError::from)?;
                 Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
             }
             "rigorix_create_template" => {
                 let input = serde_json::from_value(params.clone())
-                    .map_err(|e| serde_json::json!({"error": format!("Invalid input: {}", e)}))?;
+                    .map_err(|e| HostError::invalid_params(format!("Invalid input: {e}")))?;
                 let result = self
                     .create_template_handler
                     .handle(&input)
                     .await
-                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                    .map_err(HostError::from)?;
                 Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
             }
             "rigorix_validate_template" => {
                 let input = serde_json::from_value(params.clone())
-                    .map_err(|e| serde_json::json!({"error": format!("Invalid input: {}", e)}))?;
+                    .map_err(|e| HostError::invalid_params(format!("Invalid input: {e}")))?;
                 let result = self
                     .validate_template_handler
                     .handle(&input)
                     .await
-                    .map_err(|e| serde_json::json!({"error": e.to_string()}))?;
+                    .map_err(HostError::from)?;
                 Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
             }
 
@@ -745,21 +739,19 @@ impl AppState {
             // configured (RIGORIX_IDP_ISSUER + RIGORIX_IDP_CLIENT_ID).
             "rigorix_auth_login" | "rigorix_auth_status" | "rigorix_auth_logout" => {
                 let Some(handler) = &self.auth_handler else {
-                    return Err(serde_json::json!({
-                        "error": "auth tools are not configured — set RIGORIX_IDP_ISSUER and RIGORIX_IDP_CLIENT_ID (see .pi/architecture/modules/auth.md)"
-                    }));
+                    return Err(HostError::not_authenticated(
+                        "auth tools are not configured — set RIGORIX_IDP_ISSUER and RIGORIX_IDP_CLIENT_ID (see .pi/architecture/modules/auth.md)",
+                    ));
                 };
                 let result = match tool_name {
                     "rigorix_auth_login" => handler.handle_auth_login(params.clone()).await,
                     "rigorix_auth_status" => handler.handle_auth_status(params.clone()).await,
                     _ => handler.handle_auth_logout(params.clone()).await,
                 };
-                result.map_err(|e| serde_json::json!({ "error": e.to_string() }))
+                result.map_err(HostError::from)
             }
 
-            _ => Err(serde_json::json!({
-                "error": format!("Unknown tool: {}", tool_name)
-            })),
+            _ => Err(HostError::method_not_found(tool_name)),
         }
     }
 }
@@ -1631,6 +1623,38 @@ pub fn error_type_name(
 
 // Global application state — initialized once in main()
 pub static APP_STATE: std::sync::OnceLock<AppState> = std::sync::OnceLock::new();
+
+/// Build and install the global host state from a repo root.
+///
+/// Shared composition entry point for the stdio MCP binary and the native API
+/// server (#888 OSS-C2): both adapters dispatch through the SAME
+/// [`AppState::handle_tool_call`]. Idempotent — a second call is a no-op.
+///
+/// # Errors
+/// Returns the engine-build error when the real engine facade cannot be
+/// constructed.
+pub async fn init_host(
+    repo_root: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let (engine, engine_audit) = build_real_engine(repo_root).await?;
+    let template_repo: SharedTemplateRepository =
+        Arc::new(FilesystemTemplateRepository::new(".rigorix/templates"));
+    // Same resolution as build_real_engine: rigorix.toml audit_hmac_key or
+    // RIGORIX_HMAC_KEY env — used to sign the envelopes read back via
+    // rigorix_read_audit so the evidence is real, not a sample.
+    let audit_hmac_key = load_toml_config::<Config>(repo_root, "rigorix.toml")
+        .audit_hmac_key
+        .or_else(|| std::env::var("RIGORIX_HMAC_KEY").ok())
+        .filter(|k| !k.is_empty());
+    let _ = APP_STATE.set(AppState::new(
+        engine,
+        template_repo,
+        audit_hmac_key,
+        build_auth_handler().await,
+        engine_audit,
+    ));
+    Ok(())
+}
 
 pub fn app_state() -> &'static AppState {
     APP_STATE
