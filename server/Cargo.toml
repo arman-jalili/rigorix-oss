@@ -1,0 +1,33 @@
+[package]
+name = "rigorix-server"
+version = "0.1.0"
+edition = "2024"
+description = "OSS reference execution host — axum JSON-RPC 2.0 + SSE over the frozen rigorix.* catalog"
+license = "MIT OR Apache-2.0"
+authors = ["Arman Wolkensteiner-Jalili and Rigorix contributors"]
+repository = "https://github.com/arman-jalili/rigorix-oss"
+documentation = "https://docs.rs/rigorix-server"
+publish = false
+
+[[bin]]
+name = "rigorix-server"
+path = "src/main.rs"
+
+[dependencies]
+rigorix-engine = { path = "../engine", version = "1.6.0" }
+rigorix-mcp = { path = "../mcp", version = "1.6.0" }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+
+# First HTTP dependency since GAP-A-10. Keep the transport thin; the catalog is
+# the contract (see docs/sdk-server-strategy-freeze-2026-09-06.md).
+axum = { version = "0.8", features = ["macros"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }

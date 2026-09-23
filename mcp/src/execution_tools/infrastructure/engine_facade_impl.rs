@@ -213,6 +213,32 @@ fn map_orchestrator_error(err: OrchestratorError) -> EngineFacadeError {
         OrchestratorError::PlanningFailed { detail, .. } => {
             EngineFacadeError::Internal(format!("Planning failed: {detail}"))
         }
+        // #888 OSS-C2: keep the structured orchestrator variants structured so
+        // the native API can emit the ADR-0001 D6 taxonomy (denied_by_sequence
+        // with rule_id + step, policy_violation, identity_required) instead of
+        // flattening them into an opaque Internal string.
+        OrchestratorError::SequencePolicyDenied {
+            later_step,
+            rule_id,
+        } => EngineFacadeError::SequencePolicyDenied {
+            rule_id: rule_id.clone(),
+            step: later_step.clone(),
+        },
+        OrchestratorError::RequirementUnmet {
+            requirement_id,
+            step,
+            unmet,
+        } => EngineFacadeError::RequirementUnmet {
+            requirement_id: requirement_id.clone(),
+            step: step.clone(),
+            unmet: unmet.clone(),
+        },
+        OrchestratorError::IdentityRequired { step, status } => {
+            EngineFacadeError::IdentityRequired {
+                step: step.clone(),
+                status: status.clone(),
+            }
+        }
         _ => EngineFacadeError::Internal(err.to_string()),
     }
 }

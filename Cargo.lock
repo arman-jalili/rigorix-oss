@@ -2552,6 +2552,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "rigorix-server"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "rigorix-engine",
+ "rigorix-mcp",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "ring"
 version = "0.17.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"

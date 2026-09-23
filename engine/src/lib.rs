@@ -23,6 +23,11 @@
 //! - `infrastructure/` — Repository interfaces
 //! - `interfaces/` — API contracts (HTTP, events)
 
+/// The rigorix-engine crate version, exposed for hosts (e.g. the native API
+/// `rigorix.system.version`) that report the engine version without depending
+/// on their own package version.
+pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub mod approval;
 pub mod audit;
 pub mod backend;
