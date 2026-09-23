@@ -12,8 +12,10 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 
-use rigorix_server::backend::{HostBackend, MethodBackend};
+use rigorix_server::backend::HostBackend;
+use rigorix_server::events::{EventHub, events_handler};
 use rigorix_server::rpc;
+use rigorix_server::state::ServerState;
 
 #[tokio::main]
 async fn main() {
@@ -34,12 +36,13 @@ async fn main() {
 
     let bind =
         std::env::var("RIGORIX_SERVER_BIND").unwrap_or_else(|_| "127.0.0.1:3001".to_string());
-    let backend: Arc<dyn MethodBackend> = Arc::new(HostBackend);
+    let state = ServerState::new(Arc::new(HostBackend), Arc::new(EventHub::new()));
 
     let app = Router::new()
         .route("/health", get(|| async { "ok" }))
         .route("/rpc", post(rpc_handler))
-        .with_state(backend);
+        .route("/events", get(events_handler))
+        .with_state(state);
 
     let listener = match tokio::net::TcpListener::bind(&bind).await {
         Ok(listener) => listener,
@@ -48,7 +51,7 @@ async fn main() {
             std::process::exit(1);
         }
     };
-    tracing::info!("rigorix-server listening on http://{bind} (POST /rpc)");
+    tracing::info!("rigorix-server listening on http://{bind} (POST /rpc, GET /events)");
 
     if let Err(e) = axum::serve(listener, app).await {
         tracing::error!("server error: {e}");
@@ -59,12 +62,12 @@ async fn main() {
 ///
 /// Always HTTP 200 for a well-formed envelope; notifications yield an empty
 /// body. Malformed JSON yields a `-32700` error object.
-async fn rpc_handler(State(backend): State<Arc<dyn MethodBackend>>, body: Bytes) -> Response {
+async fn rpc_handler(State(state): State<ServerState>, body: Bytes) -> Response {
     let value: serde_json::Value = match serde_json::from_slice(&body) {
         Ok(value) => value,
         Err(_) => return Json(rpc::parse_error()).into_response(),
     };
-    match rpc::handle_value(value, backend.as_ref()).await {
+    match rpc::handle_value(value, state.backend.as_ref()).await {
         Some(response) => Json(response).into_response(),
         None => StatusCode::OK.into_response(),
     }

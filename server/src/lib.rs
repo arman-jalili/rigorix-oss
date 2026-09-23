@@ -14,11 +14,16 @@
 //! | [`backend`] | [`MethodBackend`] seam; [`HostBackend`] delegates to `rigorix-mcp` |
 //! | [`rpc`] | JSON-RPC 2.0 codec: single, batch, notification; errors |
 //! | [`version`] | `rigorix.system.version` result |
+//! | [`events`] | `GET /events` SSE push hub (ADR-0001 D8) |
 
 pub mod backend;
 pub mod catalog;
+pub mod events;
 pub mod rpc;
+pub mod state;
 pub mod version;
 
 pub use backend::{HostBackend, MethodBackend};
 pub use catalog::{AuthLevel, CATALOG, CatalogEntry};
+pub use events::{EventHub, EventKind, ServerEvent};
+pub use state::ServerState;

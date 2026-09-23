@@ -28,6 +28,9 @@ thiserror = { workspace = true }
 # First HTTP dependency since GAP-A-10. Keep the transport thin; the catalog is
 # the contract (see docs/sdk-server-strategy-freeze-2026-09-06.md).
 axum = { version = "0.8", features = ["macros"] }
+# SSE live stream + bounded broadcast backpressure
+tokio-stream = { version = "0.1", features = ["sync"] }
+futures = "0.3"
 
 [dev-dependencies]
 tempfile = { workspace = true }
