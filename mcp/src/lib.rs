@@ -44,10 +44,15 @@
 //! - Repository interfaces abstract all persistence concerns
 //! - MCP protocol handler contracts are framework-agnostic
 
+// Allow composition code that referred to the crate by name (moved from the
+// binary in #888 PR A) to keep resolving inside the library.
+extern crate self as rigorix_mcp;
+
 pub mod audit_tools;
 pub mod auth;
 pub mod enterprise_proxy;
 pub mod execution_tools;
+pub mod host;
 pub mod mcp_server;
 pub mod template_tools;
 pub mod usage_guide;
