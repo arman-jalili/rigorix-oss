@@ -132,7 +132,11 @@ else
         case "$module" in
             # usage_guide = interface-only content module (static usage-docs
             # tool endpoint; no domain/application logic by design)
-            shared|common|config|lib|usage_guide) continue ;;
+            # host = composition root (engine facade + handler wiring shared by
+            # the stdio binary and rigorix-server; #888 OSS-C2). Not a bounded
+            # context — it has no domain/application logic of its own, exactly
+            # like main.rs (which this check never inspects).
+            shared|common|config|lib|usage_guide|host) continue ;;
         esac
         MODULES+=("$module")
     done < <(find "$SRC_DIR" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null | sort -z)
