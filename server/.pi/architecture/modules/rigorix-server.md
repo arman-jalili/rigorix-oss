@@ -1,6 +1,6 @@
 # Module: rigorix-server
 
-**Status:** Partial (PR B — transport + catalog + auth + version)
+**Status:** Implemented (JSON-RPC 2.0 + SSE; C1 payload validation pending)
 **Crate:** `server/` (`rigorix-server` binary)
 **Issue:** #888 (OSS-C2)
 **ADR:** rigorix-sdk ADR-0001 (native API catalog), D1/D3/D4/D5/D6/D7/D9/D10
@@ -54,10 +54,27 @@ truth.
 shared composition before the server binds (`RIGORIX_SERVER_BIND`, default
 `127.0.0.1:3001`).
 
-## Not yet implemented (planned PRs)
+## Push channel (`GET /events`, ADR-0001 D8)
 
-- **PR C** execution methods (already delegated; dedicated typed tests pending).
-- **PR D** audit/template methods tests.
-- **PR E** `GET /events` SSE (`approval_required`, `run_progress`,
-  `policy_changed`; Last-Event-ID replay, heartbeat, backpressure). Blocked on
-  SDK-C1. The legacy MCP SSE path is **not** resurrected (GAP-A-10).
+- Emits `approval_required`, `run_progress`, `policy_changed`; payloads reuse
+  `envelope.json` event refs (`event_type`, `status`, `payload.step_name`, …).
+- `Last-Event-ID` header or `?last_event_id=` replays from a bounded ring
+  buffer before the live stream.
+- 15s keep-alive heartbeat.
+- Bounded per-subscriber broadcast (backpressure): a slow consumer lags and
+  drops events rather than stalling execution; reconnect with `Last-Event-ID`
+  replays. Mirrors `AuditEnvelopeDropped`.
+- The legacy MCP SSE endpoint is **not** resurrected (GAP-A-10).
+
+> **C1 note:** `schemas/api/events.json` (SDK-C1) is not yet published. This
+> implementation is faithful to ADR-0001 D8; when C1 lands, only the payload
+> schema validation is added.
+
+## Not yet implemented / follow-ups
+
+- **C1 reconciliation**: validate event payloads against
+  `rigorix-sdk/schemas/api/events.json` once published.
+- **Engine wiring**: the `EventHub` is an in-process transport; publishing
+  live engine progress/approval/policy events from the engine event bus is a
+  follow-up.
+- MCP Streamable HTTP (an adapter over this surface) — later.
