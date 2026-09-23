@@ -1633,9 +1633,7 @@ pub static APP_STATE: std::sync::OnceLock<AppState> = std::sync::OnceLock::new()
 /// # Errors
 /// Returns the engine-build error when the real engine facade cannot be
 /// constructed.
-pub async fn init_host(
-    repo_root: &str,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub async fn init_host(repo_root: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (engine, engine_audit) = build_real_engine(repo_root).await?;
     let template_repo: SharedTemplateRepository =
         Arc::new(FilesystemTemplateRepository::new(".rigorix/templates"));

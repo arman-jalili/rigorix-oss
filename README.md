@@ -271,6 +271,10 @@ rigorix-oss/
 │   │                    #   Claude Code / Cursor / Aider to the engine
 │   ├── src/             # 6 bounded-context modules
 │   └── .pi/             # Architecture docs
+├── server/              # OSS reference execution host (rigorix-server) —
+│   │                    #   JSON-RPC 2.0 + SSE over the frozen rigorix.* API
+│   ├── src/             # transport, catalog, backend seam, version
+│   └── .pi/             # Architecture docs
 ├── actions/             # GitHub Action — thin adapter over engine
 │   ├── src/             # 9 bounded-context modules
 │   └── .pi/             # Architecture docs
