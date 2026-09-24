@@ -1,3 +1,24 @@
+## [2026-09-23] — ADR-016 accepted (audit integrity: ledger / projection / cache)
+
+### Added
+- **ADR-016 — audit integrity model.** The signed trail is split by trust role into
+  a **ledger** (external anchor: append-only, per-producer sequence + chain, reads
+  signed by the anchor), a **projection** (a verified history read the guard
+  consumes), and a **cache** (local FS: tamper-evident, untrusted for decisions).
+- **Two principles:** evidence authority ≥ rule authority; no symmetric secret
+  across a trust boundary (HMAC stays local; the anchor signs asymmetrically).
+- **Deployment modes:** `local_unanchored` (OSS default — deny-class cross-run
+  rules refuse when unanchored, with a recorded opt-in) and `anchored`
+  (fail-closed; the anchor-signed history slice is verified before matching).
+- **Additive envelope fields** `producer_id` / `sequence` / `prev_hash` /
+  `history_integrity`; anchor-signed **receipt**, **history slice**, and
+  **compaction checkpoint** (GDPR erasure as recorded, provable compaction).
+- **Phase D deferred:** trusted-execution-boundary hardening (enclave/HSM host key,
+  anchor-side observation) — out of scope until a requirement to defend a host
+  compromised *before* evidence exists.
+- Tracks **GAP-A-30** (audit integrity) and gives **GAP-A-29** (retention) a
+  foundation.
+
 ## [2026-09-22] — release 1.6.0 (operator step requirements, ADR-015)
 
 ### Added
