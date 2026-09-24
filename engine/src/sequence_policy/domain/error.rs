@@ -56,6 +56,23 @@ pub enum SequencePolicyError {
     #[error("Invalid state: {0}")]
     InvalidState(String),
 
+    /// ADR-016 (GAP-A-30): a deny-class cross-run rule matched on
+    /// `local_unanchored` history and no recorded `allow_unanchored` opt-in is
+    /// present, so enforcement FAILS CLOSED rather than denying on evidence the
+    /// engine cannot authenticate. Structured (rule + step) so the native API
+    /// surfaces a structured refusal, not an opaque internal error.
+    #[error(
+        "Cross-run deny rule '{rule_id}' refused step '{step}': local history is unanchored \
+         (fail closed); set RIGORIX_HISTORY_POLICY=allow_unanchored to accept best-effort \
+         evaluation, or configure an anchor (ADR-016)"
+    )]
+    HistoryUnanchored {
+        /// Stable id of the deny-class rule that matched.
+        rule_id: String,
+        /// Name of the later matched (refused) step.
+        step: String,
+    },
+
     /// Unexpected internal failure (storage, IO, …). Retriable.
     #[error("Internal error: {0}")]
     Internal(String),

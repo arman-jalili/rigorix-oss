@@ -227,12 +227,10 @@ impl SequencePolicyServiceImpl {
                     .is_some_and(|r| r.action == RuleAction::Deny && r.history.is_some())
             });
             if let Some(m) = denying {
-                return Err(SequencePolicyError::InvalidState(format!(
-                    "deny-class cross-run rule '{}' matched on unanchored local history — \
-                     refusing (fail closed); set RIGORIX_HISTORY_POLICY=allow_unanchored to \
-                     accept best-effort evaluation, or configure an anchor (ADR-016)",
-                    m.rule_id
-                )));
+                return Err(SequencePolicyError::HistoryUnanchored {
+                    rule_id: m.rule_id.clone(),
+                    step: m.later_step.clone(),
+                });
             }
         }
         Ok(kept)
@@ -538,7 +536,8 @@ mod tests {
             .await
             .expect_err("unanchored deny-class history must fail closed");
         assert!(
-            matches!(err, SequencePolicyError::InvalidState(_)),
+            matches!(&err, SequencePolicyError::HistoryUnanchored { rule_id, .. }
+                if rule_id == "no-cross-run-remove-reassign"),
             "unexpected: {err:?}"
         );
     }

@@ -89,6 +89,21 @@ pub enum OrchestratorError {
         detail: String,
     },
 
+    /// ADR-016 (GAP-A-30): a deny-class cross-run rule would fire on
+    /// `local_unanchored` history and no recorded `allow_unanchored` opt-in is
+    /// present — the plan is refused (fail closed) because the engine cannot
+    /// authenticate the evidence. Structured (rule + step) so the native API
+    /// surfaces a structured refusal rather than an opaque evaluation failure.
+    #[error(
+        "Cross-run deny rule '{rule_id}' refused step '{step}': local history is unanchored (fail closed)"
+    )]
+    HistoryUnanchoredRefused {
+        /// Stable id of the deny-class rule that matched.
+        rule_id: String,
+        /// Name of the later matched (refused) step.
+        step: String,
+    },
+
     /// An R9 operator-controlled step requirement (ADR-015) was unmet for a
     /// matched step and the requirement's action is `deny`. Fail-closed: the
     /// plan is refused before any step executes. Parameter VALUES are never

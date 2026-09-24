@@ -238,6 +238,12 @@ impl AuditQueryService for InMemoryAuditQueryService {
             .cloned()
             .collect();
 
+        // ADR-016 verify-on-read (F3): a tampered record fails the whole
+        // listing (fail closed) rather than being served alongside valid ones.
+        for envelope in &results {
+            self.verify_envelope(envelope)?;
+        }
+
         // Sort by completion time, newest first
         results.sort_by(|a, b| b.completed_at().cmp(a.completed_at()));
 
@@ -266,6 +272,11 @@ impl AuditQueryService for InMemoryAuditQueryService {
             .values()
             .filter(|a| a.completed_at() >= &since && a.completed_at() <= &until)
             .collect();
+
+        // ADR-016 verify-on-read (F3): refuse to summarize tampered evidence.
+        for envelope in &filtered {
+            self.verify_envelope(envelope)?;
+        }
 
         let total_executions = filtered.len() as u64;
         let success_count = filtered
@@ -507,6 +518,62 @@ mod tests {
         assert!(
             svc.read_audit(&exec).await.is_err(),
             "tampered envelope must be refused on read"
+        );
+    }
+
+    /// ADR-016 (GAP-A-30) F3: `list_audits` and `audit_summary` verify on read
+    /// too — a tampered record fails the listing/summary (fail closed), never
+    /// getting folded into aggregate evidence.
+    #[tokio::test]
+    async fn list_and_summary_reject_tampered_envelope() {
+        use crate::audit_tools::domain::value::ExecutionStep;
+        let key = "phase-a-mcp-key";
+        let svc = InMemoryAuditQueryService::new().with_hmac_key(Some(key.to_string()));
+        let id = Uuid::new_v4();
+        let steps = vec![ExecutionStep::new(
+            "validate".into(),
+            true,
+            None,
+            serde_json::json!({}),
+            5,
+        )];
+        let env = InMemoryAuditQueryService::build_from_run(
+            id,
+            ExecutionStatus::Completed,
+            Some("t".into()),
+            17,
+            steps.clone(),
+            Some(key),
+        );
+        svc.store(env.clone()).unwrap();
+        let filter = AuditFilter::with_all(None, None, None, None, 50, None);
+        assert!(svc.list_audits(filter.clone()).await.is_ok());
+
+        // Tamper with a field but keep the old signature.
+        let tampered = AuditEnvelope::new(
+            env.execution_id(),
+            env.status().clone(),
+            env.template_name().map(str::to_string),
+            env.started_at().to_owned(),
+            env.completed_at().to_owned(),
+            99_999,
+            steps,
+            env.tokens_used(),
+            env.hmac().to_string(),
+            env.events().to_vec(),
+        );
+        svc.store(tampered).unwrap();
+
+        assert!(
+            svc.list_audits(filter).await.is_err(),
+            "tampered record must fail the listing"
+        );
+        let now = Utc::now();
+        assert!(
+            svc.audit_summary(now - Duration::hours(1), now + Duration::hours(1))
+                .await
+                .is_err(),
+            "tampered record must fail the summary"
         );
     }
 

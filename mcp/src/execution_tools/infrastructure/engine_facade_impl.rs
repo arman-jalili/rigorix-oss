@@ -224,6 +224,12 @@ fn map_orchestrator_error(err: OrchestratorError) -> EngineFacadeError {
             rule_id: rule_id.clone(),
             step: later_step.clone(),
         },
+        OrchestratorError::HistoryUnanchoredRefused { rule_id, step } => {
+            EngineFacadeError::HistoryUnanchoredRefused {
+                rule_id: rule_id.clone(),
+                step: step.clone(),
+            }
+        }
         OrchestratorError::RequirementUnmet {
             requirement_id,
             step,
