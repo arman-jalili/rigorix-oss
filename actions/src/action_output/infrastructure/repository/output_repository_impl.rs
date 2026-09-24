@@ -174,10 +174,10 @@ impl OutputRepository for OutputRepositoryImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::sync::Mutex;
-
-    /// Ensure tests don't run in parallel when modifying env vars
-    static ENV_LOCK: Mutex<()> = Mutex::const_new(());
+    // One shared, process-wide env lock — NOT a module-local one (see
+    // `crate::test_env`). A module-local lock still races against other
+    // modules mutating the same process-global env vars.
+    use crate::test_env::ENV_LOCK;
 
     #[tokio::test]
     async fn test_resolve_path_rejects_traversal() {

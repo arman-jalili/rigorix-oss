@@ -89,9 +89,10 @@ impl crate::action_output::infrastructure::repository::EnvRepository for EnvRepo
 mod tests {
     use super::*;
     use crate::action_output::infrastructure::repository::EnvRepository;
-    use tokio::sync::Mutex;
-
-    static ENV_LOCK: Mutex<()> = Mutex::const_new(());
+    // One shared, process-wide env lock — NOT a module-local one (see
+    // `crate::test_env`); a module-local lock still races against
+    // `output_repository_impl` mutating the same `GITHUB_STEP_SUMMARY`.
+    use crate::test_env::ENV_LOCK;
 
     #[tokio::test]
     async fn test_read_env_var_present() {
@@ -106,6 +107,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_env_var_missing() {
+        let _lock = ENV_LOCK.lock().await;
         // SAFETY: test-only env manipulation
         unsafe { std::env::remove_var("RIGORIX_TEST_MISSING") };
         let repo = EnvRepositoryImpl::new();

@@ -51,3 +51,19 @@ pub mod ci_integration;
 pub mod diff_analyzer; // Phase 1: Contract Freeze (issue-contract-freeze)
 pub mod policy_evaluator;
 pub mod security_config; // Phase 1: Contract Freeze (issue-contract-freeze) // Phase 1: Contract Freeze (issue-contract-freeze) // Phase 1: Contract Freeze (issue-contract-freeze) // Phase 1: Contract Freeze (issue-contract-freeze)
+
+// ── Test support ──
+/// Process-wide lock serializing tests that mutate process-global environment
+/// variables.
+///
+/// `std::env` is per-**process**, not per-module: two test modules that each
+/// declare their own env mutex still race when the harness runs them in
+/// parallel. This single shared lock is the serialization point. (Observed as a
+/// flaky `GITHUB_STEP_SUMMARY` failure in the coverage job on #893 —
+/// `output_repository_impl` and `env_repository_impl` set the same var under
+/// two different locks.)
+#[cfg(test)]
+pub(crate) mod test_env {
+    /// Held by every test that calls `std::env::set_var` / `remove_var`.
+    pub static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+}
