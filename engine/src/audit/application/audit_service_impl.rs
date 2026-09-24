@@ -185,11 +185,36 @@ impl AuditService for AuditServiceImpl {
         if let Some(repo) = &self.local_repository {
             chain_guard = Some(self.chain_lock.lock().await);
             let existing = repo.list(None, None, Some(u32::MAX)).await?;
-            let (sequence, prev_hash) =
-                crate::audit::application::chain::next_link_from(&existing, &self.producer_id)?;
+            // ADR-016: one execution may emit more than one envelope — a
+            // pause-point snapshot, then a re-dispatched FINAL envelope after
+            // approval (MCP host, F-20260907-05). The local store keeps ONE
+            // envelope per `execution_id` (`{execution_id}.json`), so the
+            // re-emission REPLACES that chain link and MUST reuse the sequence
+            // and `prev_hash` of the link it replaces: a fresh sequence would
+            // leave a hole where the replaced link was, and `verify_chain`
+            // would read the store as an interior deletion. Only a prior
+            // envelope already chained for THIS producer is reused; a legacy
+            // (unchained) prior falls through to a fresh link and is
+            // overwritten harmlessly (it never held a sequence).
             input.producer_id = Some(self.producer_id.clone());
-            input.sequence = Some(sequence);
-            input.prev_hash = prev_hash;
+            let prior = existing.iter().find(|e| {
+                e.execution_id == input.execution_id
+                    && e.producer_id.as_deref() == Some(self.producer_id.as_str())
+            });
+            match prior {
+                Some(prior) => {
+                    input.sequence = prior.sequence;
+                    input.prev_hash = prior.prev_hash.clone();
+                }
+                None => {
+                    let (sequence, prev_hash) = crate::audit::application::chain::next_link_from(
+                        &existing,
+                        &self.producer_id,
+                    )?;
+                    input.sequence = Some(sequence);
+                    input.prev_hash = prev_hash;
+                }
+            }
         }
         // ADR-016: the run-wide history-policy opt-in is a SIGNED field, so the
         // regime under which the evidence was produced is auditable.
