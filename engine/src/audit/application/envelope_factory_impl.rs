@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use hmac::{Hmac, KeyInit};
 use sha2::{Digest, Sha256};
 
-use crate::audit::domain::{AuditEnvelope, AuditError};
+use crate::audit::domain::{AuditEnvelope, AuditError, HistoryIntegrity};
 
 use super::dto::BuildEnvelopeInput;
 use super::factory::AuditEnvelopeFactory;
@@ -42,6 +42,34 @@ impl AuditEnvelopeFactoryImpl {
         hex
     }
 
+    /// Serialize the canonical bytes an envelope's HMAC is computed over.
+    ///
+    /// ADR-016: the **same** canonical form defines the local chain — `prev_hash`
+    /// is SHA-256 over these bytes (never a different serialization), so the
+    /// chain and the signature cannot disagree. The `signature` field is nulled
+    /// so signing and verification hash identical bytes; map fields serialize
+    /// with sorted keys (see `envelope.rs`) for cross-process reproducibility.
+    pub fn canonical_envelope_bytes(envelope: &AuditEnvelope) -> Result<Vec<u8>, AuditError> {
+        let mut canonical_envelope = envelope.clone();
+        canonical_envelope.signature = None;
+        let canonical =
+            serde_json::to_string(&canonical_envelope).map_err(|e| AuditError::Internal {
+                detail: format!("Canonical envelope serialization failed: {e}"),
+            })?;
+        Ok(canonical.into_bytes())
+    }
+
+    /// SHA-256 (hex) of an envelope's canonical bytes — the value a successor
+    /// stores in `prev_hash` (ADR-016 local chain).
+    pub fn envelope_hash(envelope: &AuditEnvelope) -> Result<String, AuditError> {
+        use sha2::digest::FixedOutput;
+        let bytes = Self::canonical_envelope_bytes(envelope)?;
+        let mut hasher = Sha256::new();
+        hasher.update(&bytes);
+        let result = hasher.finalize_fixed();
+        Ok(result.iter().map(|b| format!("{b:02x}")).collect())
+    }
+
     /// Compute HMAC-SHA256 signature over the full canonical envelope.
     ///
     /// GAP-A-06: previously only 7 scalar fields were signed — event contents,
@@ -54,19 +82,7 @@ impl AuditEnvelopeFactoryImpl {
                 detail: format!("HMAC key error: {e}"),
             })?;
 
-        // Canonical form: the FULL envelope serialized as JSON. Map-typed
-        // fields (scoring_results, ScoreDimension dimensions) serialize with
-        // sorted keys via `sorted_map` (envelope.rs), so canonical bytes are
-        // byte-identical across processes — an independent verifier must be
-        // able to reproduce the HMAC exactly (Strategy A). The signature field
-        // is nulled so signing and verification hash identical bytes.
-        let mut canonical_envelope = envelope.clone();
-        canonical_envelope.signature = None;
-        let canonical =
-            serde_json::to_string(&canonical_envelope).map_err(|e| AuditError::Internal {
-                detail: format!("Canonical envelope serialization failed: {e}"),
-            })?;
-        mac.update(canonical.as_bytes());
+        mac.update(&Self::canonical_envelope_bytes(envelope)?);
 
         let result = mac.finalize().into_bytes();
         let hex: String = result.iter().map(|b| format!("{:02x}", b)).collect();
@@ -119,6 +135,15 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
             // Approval-bearing runs must request signing; this marker makes
             // the absence of a signature observable downstream.
             evidence_degraded: !input.sign,
+            // ADR-016 Phase A: every envelope built by the OSS factory is
+            // tagged `local_unanchored`. `None` is reserved for legacy
+            // (pre-chain) envelopes reconstructed from an older store, which
+            // the guard grandfathers (no behavior change).
+            history_integrity: Some(HistoryIntegrity::LocalUnanchored),
+            producer_id: input.producer_id,
+            sequence: input.sequence,
+            prev_hash: input.prev_hash,
+            history_policy: input.history_policy,
         };
 
         // Optionally apply HMAC signing
@@ -190,6 +215,10 @@ mod tests {
             author: None,
             identity: None,
             effect_key: None,
+            producer_id: None,
+            sequence: None,
+            prev_hash: None,
+            history_policy: None,
         }
     }
 

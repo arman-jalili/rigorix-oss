@@ -168,6 +168,11 @@ mod tests {
             author: None,
             identity: None,
             effect_key: None,
+            producer_id: None,
+            sequence: None,
+            prev_hash: None,
+            history_integrity: None,
+            history_policy: None,
         }
     }
 

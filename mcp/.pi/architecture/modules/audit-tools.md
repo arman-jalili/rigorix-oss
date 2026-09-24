@@ -265,7 +265,7 @@ Service that queries audit records from rigorix-engine and formats them for MCP.
 - Read-only — never creates, modifies, or deletes audit data
 - Always queries rigorix-engine directly (no local cache)
 - Returns NotFound error for unknown execution IDs (not a panic)
-- AuditEnvelope HMAC integrity is validated by rigorix-engine, not the gateway
+- AuditEnvelope HMAC integrity is **verified on read** by the store: when an HMAC key is configured, `read_audit` recomputes the record's HMAC and refuses a mismatch (ADR-016 verify-on-read); the gateway never serves tampered evidence
 
 **Key Methods:**
 ```rust
@@ -289,6 +289,11 @@ impl AuditQueryServiceImpl {
 ### ReadAuditHandler (Domain Service)
 
 Handles `rigorix_read_audit` tool calls: retrieves audit by execution ID.
+
+**ADR-016 verify-on-read:** the backing `InMemoryAuditQueryService` stores the
+HMAC key (`with_hmac_key`) and `read_audit` recomputes the envelope's HMAC,
+rejecting a mismatch with `AuditError::Internal` — a tampered in-memory record is
+never returned. With no key configured (tests), verification is skipped.
 
 ```rust
 pub struct ReadAuditHandler {

@@ -1270,6 +1270,12 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     author: input.author.clone(),
                     identity: input.identity.as_ref().map(IdentityRef::from_claim),
                     effect_key: Self::run_effect_key(&record.planning.parameters),
+                    // ADR-016: chain link + history-policy opt-in are resolved
+                    // by `AuditServiceImpl::build_and_send` before signing.
+                    producer_id: None,
+                    sequence: None,
+                    prev_hash: None,
+                    history_policy: None,
                 })
                 .await;
         }
@@ -1905,6 +1911,12 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     // display strings. Author stays as display-only.
                     identity: input.identity.clone(),
                     effect_key: Self::run_effect_key(&record.planning.parameters),
+                    // ADR-016: chain link + history-policy opt-in are resolved
+                    // by `AuditServiceImpl::build_and_send` before signing.
+                    producer_id: None,
+                    sequence: None,
+                    prev_hash: None,
+                    history_policy: None,
                 })
                 .await;
         }
@@ -2191,6 +2203,11 @@ mod tests {
                     decision_context_ref: None,
                     signature: None,
                     evidence_degraded: false,
+                    producer_id: None,
+                    sequence: None,
+                    prev_hash: None,
+                    history_integrity: None,
+                    history_policy: None,
                 },
                 signed: false,
                 event_count: 0,
@@ -3789,6 +3806,10 @@ mod tests {
                 author: Some("jeff@corp".to_string()),
                 identity: None,
                 effect_key: None,
+                producer_id: None,
+                sequence: None,
+                prev_hash: None,
+                history_policy: None,
             })
             .await
             .expect("run-1 envelope");
@@ -3826,7 +3847,11 @@ mod tests {
             SequencePolicyServiceImpl::new(Box::new(FixedPolicyRepo {
                 config: Some(policy_cfg),
             }))
-            .with_history(std::sync::Arc::new(EnvelopeHistoryAdapter::new(repo))),
+            .with_history(std::sync::Arc::new(EnvelopeHistoryAdapter::new(repo)))
+            // ADR-016: this test exercises R7 matching; opt into best-effort
+            // local (unanchored) history so the deny match is returned rather
+            // than refused by the default fail-closed regime.
+            .with_unanchored_history_allowed(true),
         );
 
         // ── Run 2: jeff's agent tries to add him to the full event. ──

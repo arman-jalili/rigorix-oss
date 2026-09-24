@@ -194,7 +194,10 @@ impl AppState {
     ) -> Self {
         // ── Audit service (in-memory) ──
         let audit_storage = std::sync::Arc::new(
-            rigorix_mcp::audit_tools::infrastructure::InMemoryAuditQueryService::new(),
+            rigorix_mcp::audit_tools::infrastructure::InMemoryAuditQueryService::new()
+                // ADR-016: verify the HMAC of stored audit records on read —
+                // a tampered envelope is refused, not returned.
+                .with_hmac_key(audit_hmac_key.clone()),
         );
         let audit_query: SharedAuditQueryService = audit_storage.clone();
         let formatter: Arc<dyn AuditFormatter> = Arc::new(AuditFormatterImpl::new());
@@ -613,6 +616,10 @@ impl AppState {
                                 author: None,
                                 identity: session_claim.clone(),
                                 effect_key: None,
+                                producer_id: None,
+                                sequence: None,
+                                prev_hash: None,
+                                history_policy: None,
                                 total_tokens: 0,
                                 duration_ms: state.total_duration_ms,
                                 git_commit: None,

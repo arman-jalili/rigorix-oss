@@ -39,14 +39,15 @@ Records execution audit trails via typed envelopes for governance, replay, and e
 audit/
 ├── domain/                      # Domain entities and interfaces (frozen contracts)
 │   ├── mod.rs
-│   ├── envelope.rs              # AuditEnvelope, ExecutionEventRef, EventStatus, CircuitBreakerState
-│   ├── error.rs                 # AuditError (7 variants)
+│   ├── envelope.rs              # AuditEnvelope, ExecutionEventRef, EventStatus, CircuitBreakerState, HistoryIntegrity, HistoryPolicy
+│   ├── error.rs                 # AuditError (8 variants)
 │   └── event/                   # AuditEvent payload schemas
 ├── application/                 # Service traits and implementations
 │   ├── service.rs               # AuditService, AuditSender, AuditQueue, CircuitBreaker traits
 │   ├── factory.rs               # AuditEnvelopeFactory, CircuitBreakerFactory traits
 │   ├── dto/                     # Input/output DTOs for all operations
-│   ├── audit_service_impl.rs    # AuditServiceImpl — orchestrator
+│   ├── audit_service_impl.rs    # AuditServiceImpl — orchestrator + chain link assignment
+│   ├── chain.rs                 # ADR-016 local chain: next_link_from + verify_chain
 │   ├── audit_sender_impl.rs     # AuditSenderImpl — HTTP delivery with reqwest
 │   ├── audit_queue_impl.rs      # AuditQueueImpl — bounded VecDeque
 │   ├── circuit_breaker_impl.rs  # CircuitBreakerImpl — atomic state machine
@@ -137,6 +138,38 @@ backward compatible; an envelope without it is valid. Pointer **names** may be
 recorded; parameter **values** stay redacted (SpanPrivacy). Requirement config is
 operator-owned, so a finding is evidence of an operator policy decision, not of
 plan data.
+
+### Audit Integrity Chain (Contract Amendment, ADR-016 Phase A)
+
+ADR-016 makes the local cache **tamper-evident and honest**. Additive,
+serde-defaulted fields join the envelope and are covered by the HMAC
+(canonical bytes) and checked by `application/chain.rs`:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `producer_id` | `Option<String>` | the chain this envelope belongs to (`RIGORIX_AUDIT_PRODUCER_ID`, default `local`) |
+| `sequence` | `Option<u64>` | monotonic per-producer number (genesis `0`) |
+| `prev_hash` | `Option<String>` | SHA-256 of the predecessor's **canonical bytes** (`signature` nulled) — the same form the HMAC signs, so chain and signature cannot disagree |
+| `history_integrity` | `Option<HistoryIntegrity>` | `local_unanchored` (Phase A OSS default) or `anchored` (Phase C) |
+| `history_policy` | `Option<HistoryPolicy>` | the recorded `allow_unanchored` opt-in, when the operator accepts best-effort local history |
+
+`AuditEnvelopeFactoryImpl` tags every built envelope `local_unanchored` and
+copies the chain link. `AuditServiceImpl::build_and_send` resolves
+`sequence`/`prev_hash` from the local store **before signing** (under an
+in-process lock), so the link is authenticated. `chain::verify_chain` detects
+interior deletion/reorder/insertion and `prev_hash` mismatches;
+`chain::next_link_from` computes the next link. Legacy envelopes (`producer_id`
+/ `sequence` = `None`) are grandfathered — no chain claim, no behavior change.
+
+**Verify-on-read.** The cross-run guard (`EnvelopeHistoryAdapter`) verifies each
+envelope's HMAC (when the HMAC key is available) and the chain before trusting
+any action; a failure fails closed. A deny-class cross-run rule that would fire
+on `local_unanchored` history additionally **refuses** unless
+`RIGORIX_HISTORY_POLICY=allow_unanchored` is set
+(`SequencePolicyServiceImpl::with_unanchored_history_allowed`); that opt-in is
+recorded in the envelope (`history_policy`). MCP `rigorix_read_audit` recomputes
+the stored record's HMAC and rejects a mismatch. **Tail deletion is not
+detectable locally** (ADR-016 boundary) — only the anchor (Phase C) closes it.
 
 ### AuditSender
 
@@ -262,7 +295,7 @@ base * 2^attempt + jitter"]
 
 | Concern | Mitigation | Validator |
 |---------|------------|-----------|
-| Envelope tampering | HMAC-SHA256 signature field for integrity verification | security-validator |
+| Envelope tampering | HMAC-SHA256 signature + ADR-016 verify-on-read; local per-producer chain detects interior deletion/reorder/insertion; deny-class cross-run rules refuse unanchored history by default | security-validator |
 | Sensitive data in events | Event payload reviewed; no Secret values in events | security-validator |
 | Circuit breaker bypass | Atomic counters prevent race conditions | operations-validator |
 | Approval evidence forgery | `approval_events` bound to intent hashes; covered by envelope HMAC when signing on | security-validator |

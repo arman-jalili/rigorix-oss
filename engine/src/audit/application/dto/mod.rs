@@ -59,6 +59,27 @@ pub struct BuildEnvelopeInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effect_key: Option<String>,
 
+    /// ADR-016 (GAP-A-30): local chain link resolved by the audit service
+    /// before signing — the producer this envelope belongs to. `None` for a
+    /// legacy / un-wired build (no chain).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub producer_id: Option<String>,
+
+    /// ADR-016: monotonic per-producer sequence number (`None` = no chain).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence: Option<u64>,
+
+    /// ADR-016: SHA-256 of the predecessor's canonical bytes (`None` = genesis
+    /// or no chain). Computed by the audit service from the local store and
+    /// signed into the envelope.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prev_hash: Option<String>,
+
+    /// ADR-016: the recorded `allow_unanchored` opt-in (best-effort local
+    /// history). `None` = the fail-closed default for deny-class rules.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history_policy: Option<crate::audit::domain::HistoryPolicy>,
+
     /// Total number of LLM tokens consumed during this execution.
     pub total_tokens: u32,
 
