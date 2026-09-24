@@ -21,6 +21,7 @@
 
 pub mod bundle_repository;
 pub mod precedence_repository;
+pub mod retention_repository;
 pub mod toml_repository;
 
 use async_trait::async_trait;
@@ -31,6 +32,7 @@ pub use bundle_repository::BundleSequencePolicyRepository;
 pub use precedence_repository::{
     PRECEDENCE_ENV, PrecedenceSequencePolicyRepository, SequencePolicyPrecedence,
 };
+pub use retention_repository::{AUDIT_RETENTION_ENV, RetentionCoupledSequencePolicyRepository};
 pub use toml_repository::TomlSequencePolicyRepository;
 
 /// Repository for the sequence-policy rule config.

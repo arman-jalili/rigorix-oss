@@ -307,6 +307,18 @@ impl SequencePolicySetup {
                 bundle_source,
                 precedence,
             );
+        // GAP-A-29 (#895) / ADR-014: enforce the retention coupling on the
+        // real load path. `validate_retention` is reused (never a parallel
+        // check) and applied uniformly to whichever source precedence selects
+        // — local TOML, enterprise bundle, or both. An effect-keyed rule whose
+        // window outlives the configured audit retention refuses evaluation
+        // (fail closed) instead of silently degrading once envelopes are
+        // pruned. Unset `RIGORIX_AUDIT_RETENTION_SECS` = unlimited = status
+        // quo.
+        let repository =
+            crate::sequence_policy::infrastructure::RetentionCoupledSequencePolicyRepository::from_env(
+                Box::new(repository),
+            );
         tracing::info!(
             "sequence_policy: R3 prefix gate armed — rules read per-run from {} (absent file = no gating)",
             path.display()

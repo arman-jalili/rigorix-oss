@@ -249,7 +249,10 @@ mod tests {
     /// AC #17: pruning the trail drops effect-key evidence — the effect-keyed
     /// rule can no longer fire. This is exactly why
     /// `SequencePolicyConfig::validate_retention` refuses an effect-keyed
-    /// window longer than the configured retention (no silent disablement).
+    /// window longer than the configured retention (no silent disablement),
+    /// and why GAP-A-29 wires it at composition
+    /// (`RetentionCoupledSequencePolicyRepository` via
+    /// `SequencePolicySetup::from_env`).
     #[tokio::test]
     async fn pruned_trail_drops_effect_key_evidence() {
         use crate::audit::application::factory::AuditEnvelopeFactory;
