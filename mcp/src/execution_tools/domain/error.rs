@@ -91,6 +91,24 @@ pub enum EngineFacadeError {
         step: String,
     },
 
+    /// ADR-016 (GAP-A-30): a deny-class cross-run rule would fire on
+    /// `local_unanchored` history with no recorded `allow_unanchored` opt-in —
+    /// the plan is refused (fail closed) because the evidence cannot be
+    /// authenticated. Structured so the native API surfaces
+    /// `policy_violation` (-32010) with `data.rule_id` / `data.step` and
+    /// `data.details.reason = "history_unanchored"` instead of an opaque
+    /// `internal_error`. A dedicated `history_unanchored_refused` taxonomy code
+    /// is a companion errors.json follow-up.
+    #[error(
+        "Cross-run deny rule '{rule_id}' refused step '{step}': local history is unanchored (fail closed)"
+    )]
+    HistoryUnanchoredRefused {
+        /// Stable id of the deny-class rule that matched.
+        rule_id: String,
+        /// Name of the later matched (refused) step.
+        step: String,
+    },
+
     /// An R9 operator-controlled step requirement (ADR-015) was unmet for a
     /// matched step with a `deny` action — the plan is refused before any step
     /// executes. Pointer NAMES only; parameter values are never carried.

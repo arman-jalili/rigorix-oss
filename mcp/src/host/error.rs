@@ -200,6 +200,16 @@ impl HostError {
                 Self::new(ErrorType::DeniedBySequence, error.to_string())
                     .with_sequence(rule_id.clone(), step.clone())
             }
+            // ADR-016: a deny-class cross-run rule refused because the local
+            // history is unanchored. Not a rule denial (`denied_by_sequence`),
+            // but a structured policy refusal: `-32010 policy_violation` with
+            // `data.rule_id`/`data.step` and `reason=history_unanchored`
+            // (previously an opaque `-32603 internal_error`).
+            EngineFacadeError::HistoryUnanchoredRefused { rule_id, step } => {
+                Self::new(ErrorType::PolicyViolation, error.to_string())
+                    .with_sequence(rule_id.clone(), step.clone())
+                    .with_details(serde_json::json!({ "reason": "history_unanchored" }))
+            }
             EngineFacadeError::IdentityRequired { step, status } => {
                 Self::new(ErrorType::IdentityRequired, error.to_string())
                     .with_details(serde_json::json!({ "step": step, "status": status }))
@@ -367,6 +377,31 @@ mod tests {
         assert_eq!(rpc["data"]["type"], "denied_by_sequence");
         assert_eq!(rpc["data"]["rule_id"], "no-repeat-beneficiary-payout");
         assert_eq!(rpc["data"]["step"], "pay_b");
+    }
+
+    /// ADR-016 (GAP-A-30): the unanchored refusal is a structured
+    /// `policy_violation` (-32010) with `rule_id`/`step` and an explicit
+    /// `reason` — never the opaque `internal_error` it regressed to.
+    #[test]
+    fn history_unanchored_refused_is_structured_policy_violation() {
+        let error = EngineFacadeError::HistoryUnanchoredRefused {
+            rule_id: "no-repeat-beneficiary-payout".to_string(),
+            step: "pay_b".to_string(),
+        };
+        let host = HostError::from_engine_facade(&error);
+        assert_eq!(host.error_type, ErrorType::PolicyViolation);
+        assert_eq!(
+            host.rule_id.as_deref(),
+            Some("no-repeat-beneficiary-payout")
+        );
+        assert_eq!(host.step.as_deref(), Some("pay_b"));
+
+        let rpc = host.to_jsonrpc_error();
+        assert_eq!(rpc["code"], -32010);
+        assert_eq!(rpc["data"]["type"], "policy_violation");
+        assert_eq!(rpc["data"]["rule_id"], "no-repeat-beneficiary-payout");
+        assert_eq!(rpc["data"]["step"], "pay_b");
+        assert_eq!(rpc["data"]["details"]["reason"], "history_unanchored");
     }
 
     #[test]

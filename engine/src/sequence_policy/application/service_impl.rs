@@ -38,7 +38,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
 use crate::sequence_policy::domain::{
-    RequirementFinding, SequenceMatch, SequencePolicyError, SequenceRule, rule::tool_matches,
+    RequirementFinding, RuleAction, SequenceMatch, SequencePolicyError, SequenceRule,
+    rule::tool_matches,
 };
 use crate::sequence_policy::infrastructure::ExecutionHistory;
 use crate::sequence_policy::infrastructure::repository::SequencePolicyRepository;
@@ -60,6 +61,10 @@ pub struct SequencePolicyServiceImpl {
     repository: Box<dyn SequencePolicyRepository>,
     matcher: Matcher,
     history: Option<std::sync::Arc<dyn ExecutionHistory>>,
+    /// ADR-016: recorded `allow_unanchored` opt-in. When `false` (default), a
+    /// deny-class cross-run rule whose history match rests on unanchored
+    /// evidence FAILS CLOSED rather than denying on unverifiable input.
+    allow_unanchored_history: bool,
 }
 
 impl SequencePolicyServiceImpl {
@@ -69,12 +74,25 @@ impl SequencePolicyServiceImpl {
             repository,
             matcher: Matcher::new(),
             history: None,
+            allow_unanchored_history: false,
         }
     }
 
     /// R7: attach the signed-execution-history port (envelope-backed).
     pub fn with_history(mut self, history: std::sync::Arc<dyn ExecutionHistory>) -> Self {
         self.history = Some(history);
+        self
+    }
+
+    /// ADR-016: record the `RIGORIX_HISTORY_POLICY=allow_unanchored` opt-in.
+    ///
+    /// With it unset (default), a deny-class cross-run rule that would fire on
+    /// `local_unanchored` (unanchored, possibly unverified) history refuses the
+    /// plan instead of denying on evidence the engine cannot authenticate. The
+    /// opt-in is also written into each envelope by the audit service, so the
+    /// regime is auditable (AC #4).
+    pub fn with_unanchored_history_allowed(mut self, allowed: bool) -> Self {
+        self.allow_unanchored_history = allowed;
         self
     }
 
@@ -194,6 +212,26 @@ impl SequencePolicyServiceImpl {
                 prior = prior.len(),
                 "sequence_policy: cross-run history predicate filtered a within-run match"
             );
+        }
+
+        // ADR-016 (GAP-A-30): a deny-class cross-run rule that fires on
+        // unanchored local history must not silently deny on evidence the
+        // engine cannot authenticate. Without the recorded `allow_unanchored`
+        // opt-in, fail closed (AC #4). Promote-class rules are unaffected:
+        // they widen approval, not denial.
+        if !self.allow_unanchored_history && !history.is_anchored() {
+            let denying = kept.iter().find(|m| {
+                rules
+                    .iter()
+                    .find(|r| r.id == m.rule_id)
+                    .is_some_and(|r| r.action == RuleAction::Deny && r.history.is_some())
+            });
+            if let Some(m) = denying {
+                return Err(SequencePolicyError::HistoryUnanchored {
+                    rule_id: m.rule_id.clone(),
+                    step: m.later_step.clone(),
+                });
+            }
         }
         Ok(kept)
     }
@@ -452,6 +490,9 @@ mod tests {
         .with_history(std::sync::Arc::new(FakeHistory {
             actions: std::sync::Mutex::new(actions),
         }))
+        // These tests exercise R7/R8 matching itself; ADR-016's unanchored
+        // refusal is covered separately. Opt into best-effort local mode.
+        .with_unanchored_history_allowed(true)
     }
 
     fn history_at(secs_ago: i64) -> HistoryAction {
@@ -476,6 +517,47 @@ mod tests {
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].rule_id, "no-cross-run-remove-reassign");
         assert_eq!(matches[0].action, RuleAction::Deny);
+    }
+
+    /// ADR-016 (GAP-A-30) AC #4: a deny-class cross-run rule that would fire
+    /// on UNANCHORED local history refuses by default (fail closed) unless the
+    /// recorded `allow_unanchored` opt-in is present.
+    #[tokio::test]
+    async fn deny_class_cross_run_refuses_on_unanchored_history_by_default() {
+        let svc = SequencePolicyServiceImpl::new(Box::new(StubRepository {
+            outcome: Ok(Some(history_config())),
+        }))
+        .with_history(std::sync::Arc::new(FakeHistory {
+            actions: std::sync::Mutex::new(vec![history_at(120)]),
+        }));
+        let runbook = vec![planned("add", "registration_add", "conf-2026")];
+        let err = svc
+            .evaluate_plan(&runbook, Some("jeff@corp"))
+            .await
+            .expect_err("unanchored deny-class history must fail closed");
+        assert!(
+            matches!(&err, SequencePolicyError::HistoryUnanchored { rule_id, .. }
+                if rule_id == "no-cross-run-remove-reassign"),
+            "unexpected: {err:?}"
+        );
+    }
+
+    /// ADR-016: a deny-class rule that does NOT match refuses nothing — the
+    /// regime only bites when unanchored evidence would actually deny.
+    #[tokio::test]
+    async fn deny_class_cross_run_does_not_refuse_when_history_does_not_match() {
+        let svc = SequencePolicyServiceImpl::new(Box::new(StubRepository {
+            outcome: Ok(Some(history_config())),
+        }))
+        .with_history(std::sync::Arc::new(FakeHistory {
+            actions: std::sync::Mutex::new(vec![]),
+        }));
+        let runbook = vec![planned("add", "registration_add", "conf-2026")];
+        let matches = svc
+            .evaluate_plan(&runbook, Some("jeff@corp"))
+            .await
+            .expect("no unanchored denial to refuse");
+        assert!(matches.is_empty());
     }
 
     /// Different principal's prior remove does NOT deny this run.
@@ -796,6 +878,7 @@ mod tests {
         .with_history(std::sync::Arc::new(FakeHistory {
             actions: std::sync::Mutex::new(actions),
         }))
+        .with_unanchored_history_allowed(true)
     }
 
     fn planned_effect(name: &str, tool: &str, effect_key: &str) -> PlannedStep {

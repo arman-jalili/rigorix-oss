@@ -13,6 +13,8 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
+use crate::audit::application::chain;
+use crate::audit::application::factory::AuditEnvelopeFactory;
 use crate::audit::domain::envelope::AuditEnvelope;
 use crate::sequence_policy::domain::{HistoryAction, SequencePolicyError};
 
@@ -30,6 +32,16 @@ pub trait ExecutionHistory: Send + Sync {
         &self,
         since: DateTime<Utc>,
     ) -> Result<Vec<HistoryAction>, SequencePolicyError>;
+
+    /// ADR-016: whether this history is authenticated by an external anchor.
+    ///
+    /// `false` for the local cache (Phase A) — a deny-class cross-run rule
+    /// must then rely on a recorded `allow_unanchored` opt-in or refuse
+    /// ([`crate::sequence_policy::application::SequencePolicyServiceImpl::with_unanchored_history_allowed`]).
+    /// Phase C's anchor-signed adapter overrides this to `true`.
+    fn is_anchored(&self) -> bool {
+        false
+    }
 }
 
 /// Envelope-backed history: extracts per-node completions from the signed
@@ -43,6 +55,12 @@ pub trait ExecutionHistory: Send + Sync {
 ///   `identity.subject` when present.
 pub struct EnvelopeHistoryAdapter {
     repo: std::sync::Arc<dyn crate::audit::infrastructure::repository::AuditEnvelopeRepository>,
+    /// ADR-016 verify-on-read: optional envelope verifier (the HMAC factory).
+    /// When present, every envelope's signature AND the local chain are
+    /// verified before any action is used; a failure fails closed. When
+    /// absent, the history is unverifiable — deny-class rules then refuse
+    /// unless the operator recorded `allow_unanchored`.
+    verifier: Option<std::sync::Arc<dyn AuditEnvelopeFactory>>,
 }
 
 impl EnvelopeHistoryAdapter {
@@ -50,7 +68,19 @@ impl EnvelopeHistoryAdapter {
     pub fn new(
         repo: std::sync::Arc<dyn crate::audit::infrastructure::repository::AuditEnvelopeRepository>,
     ) -> Self {
-        Self { repo }
+        Self {
+            repo,
+            verifier: None,
+        }
+    }
+
+    /// ADR-016: verify every envelope's HMAC (and the local chain) on read.
+    ///
+    /// The composition root wires the same HMAC factory the envelopes were
+    /// built with. A verification failure fails the read closed.
+    pub fn with_verifier(mut self, verifier: std::sync::Arc<dyn AuditEnvelopeFactory>) -> Self {
+        self.verifier = Some(verifier);
+        self
     }
 }
 
@@ -105,10 +135,47 @@ impl ExecutionHistory for EnvelopeHistoryAdapter {
         &self,
         since: DateTime<Utc>,
     ) -> Result<Vec<HistoryAction>, SequencePolicyError> {
-        match self.repo.list(Some(since), None, Some(500)).await {
+        // ADR-016: read the WHOLE store (not a windowed slice) so chain
+        // continuity — including the genesis head — can be verified. The
+        // `since` filter is applied after verification.
+        match self.repo.list(None, None, Some(u32::MAX)).await {
             Ok(envelopes) => {
+                // Verify-on-read (ADR-016, AC #1): a tampered signed envelope
+                // (when a verifier is wired) fails closed. Legacy unsigned
+                // envelopes (no integrity tag) are grandfathered — there is no
+                // signature to verify; a Phase A TAGGED envelope must be
+                // signed, so an unsigned tagged one fails closed.
+                if let Some(verifier) = &self.verifier {
+                    for envelope in &envelopes {
+                        if envelope.signature.is_none() {
+                            if envelope.history_integrity.is_some() {
+                                return Err(SequencePolicyError::Internal(format!(
+                                    "history envelope {} is tagged {:?} but unsigned - \
+                                     refusing unverifiable evidence",
+                                    envelope.execution_id, envelope.history_integrity
+                                )));
+                            }
+                            continue; // legacy, grandfathered
+                        }
+                        verifier.verify_signature(envelope).await.map_err(|e| {
+                            SequencePolicyError::Internal(format!(
+                                "history envelope {} failed signature verification: {e}",
+                                envelope.execution_id
+                            ))
+                        })?;
+                    }
+                }
+                // Chain verification (ADR-016, AC #2): interior deletion,
+                // reorder, insertion, or a prev_hash mismatch fails closed.
+                chain::verify_chain(&envelopes).map_err(|e| {
+                    SequencePolicyError::Internal(format!("history chain invalid: {e}"))
+                })?;
+
                 let mut actions: Vec<HistoryAction> = Vec::new();
                 for envelope in envelopes {
+                    if envelope.timestamp < since {
+                        continue;
+                    }
                     actions.extend(actions_from_envelope(&envelope));
                 }
                 Ok(actions)
@@ -166,6 +233,10 @@ mod tests {
             author: Some(author.to_string()),
             identity: None,
             effect_key: None,
+            producer_id: None,
+            sequence: None,
+            prev_hash: None,
+            history_policy: None,
         }
     }
 

@@ -79,6 +79,15 @@ pub enum AuditError {
         /// Error detail for diagnostics.
         detail: String,
     },
+
+    /// ADR-016 (GAP-A-30) local per-producer chain verification failed — an
+    /// interior envelope was deleted, reordered, or inserted, or a `prev_hash`
+    /// does not match its predecessor's canonical bytes.
+    #[error("Audit chain verification failed: {detail}")]
+    ChainBroken {
+        /// Which producer/sequence broke and why.
+        detail: String,
+    },
 }
 impl AuditError {
     pub fn is_retriable(&self) -> bool {

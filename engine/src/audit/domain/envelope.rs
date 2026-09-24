@@ -18,6 +18,37 @@ use serde::{Deserialize, Serialize};
 
 use crate::identity::domain::IdentityRef;
 
+/// ADR-016: which integrity regime produced an envelope's evidence.
+///
+/// - `LocalUnanchored` — the OSS default: the local cache is tamper-evident
+///   (HMAC + per-producer chain) but not authenticated by an external anchor.
+///   Deny-class cross-run rules refuse on this evidence unless the operator
+///   records an explicit `allow_unanchored` opt-in.
+/// - `Anchored` — Phase C: the evidence is authenticated by the enterprise
+///   anchor (asymmetric signature). Not produced in Phase A.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryIntegrity {
+    /// Local cache only — tamper-evident, not anchor-authenticated.
+    LocalUnanchored,
+    /// Anchor-authenticated evidence (Phase C; not produced in Phase A).
+    Anchored,
+}
+
+/// ADR-016: a recorded history-policy opt-in.
+///
+/// The only value today — `allow_unanchored` — records that the operator
+/// explicitly accepted best-effort evaluation over unanchored local history
+/// (local dev / demos), instead of the fail-closed default for deny-class
+/// cross-run rules. Recording it in the envelope makes the regime an
+/// auditor-visible fact, not a hidden runtime flag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryPolicy {
+    /// Accept best-effort evaluation over `local_unanchored` history.
+    AllowUnanchored,
+}
+
 /// Deterministic map serialization for canonical envelope bytes.
 ///
 /// The envelope HMAC (GAP-A-06, `compute_signature`) is over the serialized
@@ -158,6 +189,34 @@ pub struct AuditEnvelope {
     /// "tampered" (GAP-M-12).
     #[serde(default)]
     pub evidence_degraded: bool,
+
+    /// ADR-016 / GAP-A-30 (Phase A): the chain this envelope belongs to.
+    /// Additive and serde-defaulted; `None` in legacy (pre-chain) envelopes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub producer_id: Option<String>,
+
+    /// ADR-016: monotonic per-producer sequence number. `None` in legacy
+    /// envelopes, which are grandfathered (chain-of-one / unknown predecessor).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence: Option<u64>,
+
+    /// ADR-016: SHA-256 of the predecessor's canonical bytes (the SAME
+    /// canonical form the HMAC signs — `signature` nulled). `None` for the
+    /// genesis envelope of a producer and for legacy envelopes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prev_hash: Option<String>,
+
+    /// ADR-016: which integrity regime produced this evidence. `None` in
+    /// legacy envelopes (no integrity claim) — the migration boundary: the
+    /// stricter unanchored regime applies once tagged envelopes exist.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history_integrity: Option<HistoryIntegrity>,
+
+    /// ADR-016: the recorded `allow_unanchored` opt-in, when the operator
+    /// accepted best-effort evaluation over unanchored local history. Adds to
+    /// the signed bytes, so the regime is auditable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history_policy: Option<HistoryPolicy>,
 
     /// Signed approval decisions, in approval order (ADR-011 R3).
     ///

@@ -147,6 +147,12 @@ impl AuditEnvelope {
         &self.hmac
     }
 
+    /// Clear the HMAC in place — the canonical form signed/verified is the
+    /// envelope with an empty `hmac` (ADR-016 verify-on-read).
+    pub(crate) fn clear_hmac(&mut self) {
+        self.hmac = String::new();
+    }
+
     /// Execution events.
     pub fn events(&self) -> &[ExecutionEvent] {
         &self.events
