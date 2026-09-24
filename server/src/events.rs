@@ -5,6 +5,11 @@
 //! (`event_type`, `status`, `payload.step_name`, …). Clients that cannot hold
 //! a stream fall back to polling `rigorix.audit.read`.
 //!
+//! **Production publisher:** [`crate::event_bridge`] subscribes to the engine
+//! `EventBusService` the host composition already builds and forwards every
+//! run-relevant `ExecutionEvent` into this hub (#900), so `GET /events` is live
+//! during real runs — the hub is not inert.
+//!
 //! Transport guarantees:
 //! - **Replay**: a subscriber may send `Last-Event-ID` (header) or
 //!   `?last_event_id=` (query) — later events are replayed from a bounded ring

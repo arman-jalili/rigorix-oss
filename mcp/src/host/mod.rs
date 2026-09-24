@@ -112,6 +112,11 @@ pub struct AppState {
     engine_audit:
         Option<std::sync::Arc<dyn rigorix_engine::audit::application::service::AuditService>>,
 
+    // ADR-0001 D8 / #900: the engine event bus the native server bridges into
+    // its SSE `EventHub`, so `GET /events` is live during real runs.
+    engine_event_bus:
+        std::sync::Arc<dyn rigorix_engine::event_system::application::service::EventBusService>,
+
     // HMAC key used to sign envelopes stored for the read_audit cycle.
     audit_hmac_key: Option<String>,
 
@@ -191,6 +196,9 @@ impl AppState {
         engine_audit: Option<
             std::sync::Arc<dyn rigorix_engine::audit::application::service::AuditService>,
         >,
+        engine_event_bus: std::sync::Arc<
+            dyn rigorix_engine::event_system::application::service::EventBusService,
+        >,
     ) -> Self {
         // ── Audit service (in-memory) ──
         let audit_storage = std::sync::Arc::new(
@@ -243,6 +251,7 @@ impl AppState {
             audit_storage,
             audit_hmac_key,
             engine_audit,
+            engine_event_bus,
             mcp_service: {
                 // Wire the mcp_server library module to the same handlers used
                 // by the stdio server, so its protocol surface is live.
@@ -761,6 +770,17 @@ impl AppState {
             _ => Err(HostError::method_not_found(tool_name)),
         }
     }
+
+    /// The engine event bus (ADR-0001 D8 / #900). The native server bridges
+    /// this into its SSE `EventHub` so `GET /events` emits live run events —
+    /// the SAME bus the orchestrator/executor publish into (never a second
+    /// source).
+    pub fn engine_event_bus(
+        &self,
+    ) -> std::sync::Arc<dyn rigorix_engine::event_system::application::service::EventBusService>
+    {
+        std::sync::Arc::clone(&self.engine_event_bus)
+    }
 }
 
 // =========================================================================
@@ -1093,6 +1113,7 @@ pub async fn build_real_engine(
     (
         SharedEngineFacade,
         Option<std::sync::Arc<dyn rigorix_engine::audit::application::service::AuditService>>,
+        std::sync::Arc<dyn rigorix_engine::event_system::application::service::EventBusService>,
     ),
     Box<dyn std::error::Error + Send + Sync>,
 > {
@@ -1418,7 +1439,7 @@ pub async fn build_real_engine(
         .with_execution_service(Arc::clone(&execution_service))
         .with_state_manager(state_manager)
         .with_cancellation_service(cancellation_service)
-        .with_event_bus(event_bus)
+        .with_event_bus(Arc::clone(&event_bus))
         .with_audit_service(audit_service.clone())
         .with_budget_service(budget_service);
 
@@ -1567,7 +1588,7 @@ pub async fn build_real_engine(
         },
     );
 
-    Ok((Arc::new(engine), Some(audit_service)))
+    Ok((Arc::new(engine), Some(audit_service), event_bus))
 }
 
 // Build the intent formatter — LLM-based when provider env vars are set,
@@ -1641,7 +1662,7 @@ pub static APP_STATE: std::sync::OnceLock<AppState> = std::sync::OnceLock::new()
 /// Returns the engine-build error when the real engine facade cannot be
 /// constructed.
 pub async fn init_host(repo_root: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let (engine, engine_audit) = build_real_engine(repo_root).await?;
+    let (engine, engine_audit, engine_event_bus) = build_real_engine(repo_root).await?;
     let template_repo: SharedTemplateRepository =
         Arc::new(FilesystemTemplateRepository::new(".rigorix/templates"));
     // Same resolution as build_real_engine: rigorix.toml audit_hmac_key or
@@ -1657,6 +1678,7 @@ pub async fn init_host(repo_root: &str) -> Result<(), Box<dyn std::error::Error 
         audit_hmac_key,
         build_auth_handler().await,
         engine_audit,
+        engine_event_bus,
     ));
     Ok(())
 }
