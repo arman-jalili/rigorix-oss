@@ -48,6 +48,15 @@ fi
 # TOTAL line-coverage percentage from the final line.
 echo "$SUMMARY" | tail -12
 COVERAGE="$(echo "$SUMMARY" | tail -1 | grep -oE '[0-9]+\.[0-9]+%' | head -1 | sed 's/%//')"
+# Honest failure: without `set -e`, a failed `cargo llvm-cov` (e.g. a failing
+# test) leaves $COVERAGE empty, and the awk comparison below then dies with a
+# confusing syntax error plus a bogus "% < 60%" message. Fail explicitly.
+if ! [[ "$COVERAGE" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+  echo "" >&2
+  echo "✗ Could not determine line coverage (extracted: '${COVERAGE}') —" >&2
+  echo "  \`cargo llvm-cov --workspace\` likely failed; see the test output above." >&2
+  exit 1
+fi
 echo ""
 echo "Line coverage: ${COVERAGE}% (threshold: ${COVERAGE_THRESHOLD}%)"
 

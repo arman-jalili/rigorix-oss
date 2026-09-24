@@ -20,6 +20,10 @@ COPY engine/Cargo.toml engine/
 COPY cli/Cargo.toml cli/
 COPY actions/Cargo.toml actions/
 COPY mcp/Cargo.toml mcp/
+# `server` is a workspace member: cargo loads EVERY member manifest even when
+# building `-p rigorix-actions`, so its manifest (and src, to resolve targets)
+# must be present or the workspace fails to load (#888 PR B regression).
+COPY server/Cargo.toml server/
 
 # Copy source code
 COPY engine/src engine/src/
@@ -27,6 +31,7 @@ COPY engine/benches engine/benches/
 COPY cli/src cli/src/
 COPY actions/src actions/src/
 COPY mcp/src mcp/src/
+COPY server/src server/src/
 
 # Build release binary
 RUN cargo build --release -p rigorix-actions --bin rigorix-action
