@@ -2557,6 +2557,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "axum",
+ "chrono",
  "futures",
  "rigorix-engine",
  "rigorix-mcp",
@@ -2568,6 +2569,7 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

@@ -34,3 +34,5 @@ futures = "0.3"
 
 [dev-dependencies]
 tempfile = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }

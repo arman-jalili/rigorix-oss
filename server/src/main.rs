@@ -36,7 +36,16 @@ async fn main() {
 
     let bind =
         std::env::var("RIGORIX_SERVER_BIND").unwrap_or_else(|_| "127.0.0.1:3001".to_string());
-    let state = ServerState::new(Arc::new(HostBackend), Arc::new(EventHub::new()));
+
+    // ADR-0001 D8 / #900: bridge the engine event bus the host already built
+    // into the SSE hub, so `GET /events` emits live run events (never a second
+    // event source). Kept alive for the process lifetime.
+    let hub = Arc::new(EventHub::new());
+    let _event_bridge = rigorix_server::event_bridge::spawn_event_bridge(
+        rigorix_mcp::host::app_state().engine_event_bus(),
+        Arc::clone(&hub),
+    );
+    let state = ServerState::new(Arc::new(HostBackend), hub);
 
     let app = Router::new()
         .route("/health", get(|| async { "ok" }))
