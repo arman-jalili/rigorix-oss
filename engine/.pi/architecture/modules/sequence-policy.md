@@ -99,11 +99,19 @@ compares opaque keys and values it already holds; it does not know what a "benef
 is.
 
 **Retention coupling (load-bearing).** `effect_key`-keyed history is only as good as the
-retained trail: pruning below the longest rule window silently disables these rules and
-must be validated (Acceptance Criteria #17):
-`SequencePolicyConfig::validate_retention` refuses an `effect_key` rule whose window
-outlives the configured audit retention. Where no canonical key exists the rule degrades
-to detection, **not** a control.
+retained trail: pruning below the longest rule window silently disables these rules, so
+the coupling is **enforced at composition** (GAP-A-29, Acceptance Criteria #17).
+`SequencePolicySetup::from_env` wraps the composed repository in
+`RetentionCoupledSequencePolicyRepository` and, when `RIGORIX_AUDIT_RETENTION_SECS` is
+set, calls `SequencePolicyConfig::validate_retention` on every load — an `effect_key`
+rule whose `window_secs` outlives the configured retention is **refused (fail closed)**,
+not silently disabled. The knob unset (or empty) means unlimited retention and every
+window is valid (status quo). The domain validator is the **single** retention
+predicate; the wrapper adds no parallel check and applies uniformly to the local TOML
+and enterprise bundle sources. Actual pruning (`AuditEnvelopeRepository::prune`) still
+has no production caller — the coupling is what stops the first pruning mechanism
+(manual or scheduled) from silently disabling rules. Where no canonical key exists the
+rule degrades to detection, **not** a control.
 
 ### R9 — Operator-Controlled Step Requirements (ADR-015)
 
@@ -438,7 +446,7 @@ No persisted artifacts exist before this module — **no migration**. When rules
 | 14 | SequencePolicyError | All variants, `Display`, `is_retriable()` | unit test |
 | 15 | Matcher (R8) | `equals_step` matches when pointer values are equal and not when they differ; obeys adjacency/window and never matches across a reordering | unit test |
 | 16 | Matcher (R8) | Effect-keyed history fires on equal keys inside the window for the same principal; does not fire outside the window or for a different key; envelope without `effect_key` never matches | unit test |
-| 17 | Retention (R8) | Retention shorter than the longest rule window is detectable (validator or documented test) — no silent disablement | validator / test |
+| 17 | Retention (R8) | The retention coupling **runs at composition**: with `RIGORIX_AUDIT_RETENTION_SECS` set, the real load path (`SequencePolicySetup::from_env` → `RetentionCoupledSequencePolicyRepository` → `validate_retention`) refuses an effect-keyed window longer than retention; unset = unlimited (`Ok`); non-effect-keyed rules unaffected. A callerless validator no longer satisfies this criterion | integration test |
 | 18 | StepRequirement (R9) | `require_identity` refuses an unauthenticated plan even when the matched step omits `require_identity`; never promotable | unit + integration |
 | 19 | StepRequirement (R9) | `require_params` refuses a step missing a pointer, allows it when present; `promote` sets `requires_approval` on the matched step | unit + integration |
 | 20 | StepRequirement (R9) | Requirements apply to `rigorix_execute` agent-composed plans, not only templates; `rigorix_validate_plan` surfaces findings | integration |
@@ -540,6 +548,25 @@ action = "promote"
 
 Safety caps (mirrors `EnforcementConfig::validate`): max rules per file, max predicates per rule, max `window`, max regex predicates (regex count is a denial-of-service surface).
 
+### Audit retention coupling (ADR-014 / GAP-A-29)
+
+R8 `effect_key`-keyed history is only as good as the retained signed trail. The
+composition root reads `RIGORIX_AUDIT_RETENTION_SECS` (seconds) and wraps the composed
+repository in `RetentionCoupledSequencePolicyRepository`, which runs the single domain
+predicate `SequencePolicyConfig::validate_retention` on every per-run load:
+
+| `RIGORIX_AUDIT_RETENTION_SECS` | Behavior |
+|--------------------------------|----------|
+| unset / empty | unlimited retention → every window valid (`Ok`), status quo |
+| a non-negative integer | that many seconds; an `effect_key` rule with `window_secs` greater than it is **refused (fail closed)** at plan/dispatch evaluation |
+| anything else | **fail closed** — a configured control must not silently degrade to unlimited |
+
+There is no second retention validator: the wrapper only invokes the domain method. It
+wraps the **composed** repository, so the check applies identically to local TOML,
+enterprise bundle, and precedence-resolved configs. Enforcement of the actual
+pruning/retention loop is out of scope (GAP-A-29); this coupling ensures that the first
+pruning mechanism cannot silently disable effect-keyed rules.
+
 ### Enterprise bundle ingestion (#889 / OSS-C5)
 
 Enterprise is the policy **source of truth** and exports a `policy.json` v1
@@ -590,6 +617,7 @@ regardless of precedence.
 | Regex ReDoS in parameter predicates | Safety caps on regex predicates; exact/glob preferred; regex compiled once per load | security-validator |
 | Match bypass via step reordering | Rules match ordered windows; promotion happens at the single graph-build / dispatch points | operations-validator |
 | Config parse failure silently ignored | Fail-closed at plan time (`InvalidConfig` / `RuleExceedsCaps`); absent file ≠ error | operations-validator |
+| Pruning the trail silently disables effect-keyed rules | ADR-014 retention coupling enforced at load (`RIGORIX_AUDIT_RETENTION_SECS`, fail closed when a window exceeds retention) | security-validator |
 | Event publish failure loses evidence | GAP-M-14 pattern: warn-log + explicit marker, never silent | operations-validator |
 | Parameter values leak into summaries | Default redaction (SpanPrivacy pattern); full payload opt-in | security-validator |
 | Opaque `run_command` or agent-native composition | Out of scope for this module — hooks (P0) + audit reconstruction; documented boundary | security-validator |
@@ -599,7 +627,7 @@ regardless of precedence.
 | Test Type | Coverage Target | Files |
 |-----------|-----------------|-------|
 | Unit | 90% | `engine/src/sequence_policy/` — per-component test modules |
-| Integration | 80% | `engine/src/sequence_policy/tests/` + orchestrator/execution-engine integration tests |
+| Integration | 80% | `engine/src/sequence_policy/tests/` + orchestrator/execution-engine integration tests; composition-level retention coupling: `engine/tests/retention_coupling_integration.rs` |
 
 **Key Test Scenarios:** see Acceptance Criteria table (14 scenarios) — conference pair promotion, deny path, window semantics, determinism property, dynamic-prefix gate, fail-closed config, redaction, `.rigorix/**` write denial.
 
@@ -631,7 +659,8 @@ engine/src/sequence_policy/
         ├── mod.rs
         ├── toml_repository.rs      # .rigorix/sequence-policy.toml → SequencePolicyConfig
         ├── bundle_repository.rs    # enterprise policy.json v1 bundle → SequencePolicyConfig (#889)
-        └── precedence_repository.rs # local TOML vs bundle precedence (#889)
+        ├── precedence_repository.rs # local TOML vs bundle precedence (#889)
+        └── retention_repository.rs # ADR-014 retention coupling at load — RIGORIX_AUDIT_RETENTION_SECS (GAP-A-29, #895)
 ```
 
 **Note:** No `interfaces/` directory initially — the module exposes its API through the application service trait, consumed by `orchestrator` (plan-time) and `execution_engine` (dispatch prefix). MCP/HTTP surfacing lives in the MCP crate (execution-tools), following the `execution-tools.md` layer-mapping convention.

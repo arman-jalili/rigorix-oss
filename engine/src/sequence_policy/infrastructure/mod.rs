@@ -22,6 +22,7 @@ pub mod repository;
 
 pub use history::{EnvelopeHistoryAdapter, ExecutionHistory};
 pub use repository::{
-    BundleSequencePolicyRepository, PrecedenceSequencePolicyRepository, SequencePolicyPrecedence,
-    SequencePolicyRepository, TomlSequencePolicyRepository,
+    AUDIT_RETENTION_ENV, BundleSequencePolicyRepository, PrecedenceSequencePolicyRepository,
+    RetentionCoupledSequencePolicyRepository, SequencePolicyPrecedence, SequencePolicyRepository,
+    TomlSequencePolicyRepository,
 };

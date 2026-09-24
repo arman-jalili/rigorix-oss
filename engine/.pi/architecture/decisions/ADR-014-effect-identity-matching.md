@@ -161,8 +161,13 @@ Implementation files should reference: `.pi/architecture/decisions/ADR-014-effec
 - [ ] An envelope produced without an effect key remains valid and never matches an
       effect-keyed rule.
 - [ ] Missing or unreadable history continues to fail closed.
-- [ ] Retention shorter than the longest rule window is detectable by a validator or
-      documented test (no silent disablement).
+- [ ] Retention shorter than the longest rule window is **enforced at composition**
+      (GAP-A-29): when `RIGORIX_AUDIT_RETENTION_SECS` is configured, the real config-load
+      path (`SequencePolicySetup::from_env` → `RetentionCoupledSequencePolicyRepository` →
+      `SequencePolicyConfig::validate_retention`) refuses an `effect_key` rule whose
+      `window_secs` outlives retention (fail closed); with retention unset it is unlimited
+      (`Ok`, status quo). A validator with no caller does **not** satisfy this criterion
+      (no silent disablement).
 - [ ] No aggregation, counting or scoring appears in the matcher (enforced by test
       naming + review).
 

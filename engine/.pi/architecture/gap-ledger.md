@@ -365,6 +365,18 @@ All other rows **validated correct**:
 | ID | Severity | Finding | Recommended Action | Status |
 |----|----------|---------|--------------------|--------|
 | GAP-A-28 | H | Step-level controls are **plan-declared**: `require_identity` and the canonical parameters the matcher needs (`/beneficiary`, `/effect_key`) are authored by the plan — agent-controlled for composed runs (`rigorix_execute`). Sequence policy expresses only negative constraints over values that are **present**, so a raw `run_command` omitting those parameters is invisible to every rule. | Implement ADR-015 operator-controlled step requirements (attestation + parameter obligations) evaluated at plan time for every plan. | Open |
-| GAP-A-29 | M | ADR-014's retention coupling is **unenforced**: `SequencePolicyConfig::validate_retention` (`engine/src/sequence_policy/domain/config.rs:306`) is correct but has no production caller, no audit-retention configuration exists, and the audit repo's `prune()` (`audit/infrastructure/local_audit_repository.rs:184`) has no production caller either — so pruning below the longest effect-keyed window still silently disables those rules. AC #17's "detectable (validator **or** documented test)" wording let a callerless validator satisfy it. | Wire the validator fail-closed at config load when retention is configured (issue #895); retention + signed checkpoints per ADR-016. | Open |
+| GAP-A-29 | M | ADR-014's retention coupling is **unenforced**: `SequencePolicyConfig::validate_retention` (`engine/src/sequence_policy/domain/config.rs:306`) is correct but has no production caller, no audit-retention configuration exists, and the audit repo's `prune()` (`audit/infrastructure/local_audit_repository.rs:184`) has no production caller either — so pruning below the longest effect-keyed window still silently disables those rules. AC #17's "detectable (validator **or** documented test)" wording let a callerless validator satisfy it. | Wire the validator fail-closed at config load when retention is configured (issue #895); retention + signed checkpoints per ADR-016. | ✅ **Resolved (#895)** |
 | GAP-A-30 | H | The audit trail has **no chain/sequence** and **nothing verifies its signature at runtime** (`verify_signature` has no production caller; the cross-run guard reads local envelopes and trusts them). Deletion/reorder/insertion is undetectable, the tail can be deleted with no trace, and an HMAC-key holder can re-sign or forge — while ADR-013/014 cross-run rules present as enforcement. Enterprise ingestion verifies only its own record HMAC, not the envelope signature. | ADR-016: ledger / projection / cache; per-producer chain (`sequence`/`prev_hash`) + anchor-signed reads; mode-scoped fail-closed (Phases A–C); Phase D deferred. | Open |
+
+**GAP-A-29 resolution (#895).** `SequencePolicySetup::from_env` now reads
+`RIGORIX_AUDIT_RETENTION_SECS` and wraps the composed repository in
+`RetentionCoupledSequencePolicyRepository`, which calls the existing
+`SequencePolicyConfig::validate_retention` on every load — fail closed when an
+effect-keyed window exceeds a configured retention, unlimited/`Ok` when unset. The
+validator is reused (no parallel check) and applies to both the local TOML and
+enterprise bundle sources. Composition-level integration tests live in
+`engine/tests/retention_coupling_integration.rs`; AC #17 in `sequence-policy.md` and
+ADR-014 now require the check to **run at composition**. The actual pruning loop
+(`prune()`), retention enforcement, and signed checkpoints remain tracked under
+GAP-A-30 / ADR-016.
 
