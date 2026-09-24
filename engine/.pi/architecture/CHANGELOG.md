@@ -1,3 +1,72 @@
+## [2026-09-24] — release 1.7.0 (audit integrity Phase A + live server events)
+
+### Added
+- **ADR-016 Phase A — audit integrity (GAP-A-30)** (#898): additive signed envelope
+  chain fields `producer_id` / `sequence` / `prev_hash` / `history_integrity` /
+  `history_policy` (serde-defaulted; legacy envelopes grandfathered). `prev_hash`
+  is SHA-256 of the predecessor's canonical bytes — the **same** form the HMAC
+  signs (`signature` nulled), so the chain and the signature can never disagree.
+  - New `audit::application::chain` (`next_link_from` + `verify_chain`) detects
+    interior deletion, reorder, insertion (non-contiguous sequence from genesis 0)
+    and `prev_hash` mismatch; scope boundary: tail deletion is closed only by the
+    anchor (Phase C).
+  - `AuditServiceImpl::build_and_send` resolves and signs the chain link **before**
+    signing, under an in-process lock (no duplicate sequence).
+  - Cross-run history is verified on read (HMAC + chain) and fails closed; a Phase A
+    tagged-but-unsigned envelope is refused, legacy unsigned/unchained envelopes are
+    grandfathered.
+  - **Behavior change (fail-closed):** a deny-class cross-run rule whose match rests
+    on `local_unanchored` history now **refuses** as a structured `policy_violation`
+    (`-32010`, `data.rule_id`/`data.step`, `reason=history_unanchored`) instead of
+    denying. Operators record `RIGORIX_HISTORY_POLICY=allow_unanchored` to accept
+    best-effort evaluation; the opt-in is written into each envelope as
+    `history_policy`. Promote-class rules are unaffected.
+  - `rigorix_read_audit`, `rigorix_list_audits` and `audit_summary` recompute each
+    stored HMAC and reject tampered evidence.
+- **GAP-A-29 retention coupling** (#895): `RetentionCoupledSequencePolicyRepository`
+  reuses the existing `SequencePolicyConfig::validate_retention` on the real
+  config-load path (local TOML, enterprise bundle, and their precedence composition);
+  `RIGORIX_AUDIT_RETENTION_SECS` (unset/empty = unlimited; unparseable = fail closed).
+- **`GET /events` live SSE** (#900, `rigorix-server`): `server::event_bridge` subscribes
+  to the SAME engine `EventBusService` the orchestrator publishes into and forwards
+  run-relevant events under the three frozen ADR-0001 D8 names
+  (`run_progress` / `approval_required` / `policy_changed`) into the SSE hub.
+  `Last-Event-ID` replay, bounded backpressure (lag drops + logs, never stalls
+  execution), payloads reuse the envelope event-ref shape.
+- **Enterprise policy bundle ingestion** (#889): `BundleSequencePolicyRepository`
+  (`RIGORIX_SEQUENCE_POLICY_BUNDLE` / `_PATH`) validates the enterprise `policy.json`
+  v1 bundle against the same validator + safety caps; `PrecedenceSequencePolicyRepository`
+  (`RIGORIX_SEQUENCE_POLICY_PRECEDENCE`) resolves local-vs-bundle conflicts (sources
+  are never merged) and fails closed.
+
+### Changed
+- `rigorix-mcp` host composition extracted from `main.rs` into `mcp/src/host/mod.rs`
+  (library), so `rigorix-server` (#888) reuses the same app state, tool dispatch and
+  engine construction — one composition root, not two.
+- Structured error taxonomy carried end-to-end: `EngineFacadeError` variants map to
+  the `errors.json` taxonomy (`-32010` carries `data.rule_id` / `data.step`).
+
+### Fixed
+- **Audit local-chain gap on same-execution re-emission.** A run that pauses for
+  approval emits a pause-point snapshot, then (on approval) the MCP host
+  re-dispatches a FINAL envelope for the **same** `execution_id` — which the local
+  store overwrites (`{execution_id}.json`). Phase A had assigned the re-emission a
+  *fresh* sequence, orphaning the replaced link so `verify_chain` read the store as
+  an interior deletion (surfaced by the conference-demo pause → approve scene).
+  The re-emission now **reuses the sequence and `prev_hash` of the link it
+  replaces**, so the chain stays contiguous while the completed evidence still
+  supersedes the pause snapshot. Regression test:
+  `reemission_for_same_execution_reuses_its_chain_link`.
+- Actions Docker build context (add the `server` workspace member) and a test
+  environment-variable race (single shared `ENV_LOCK`); the action image build now
+  runs on pull requests (#896).
+
+### Notes
+- ADR-016 **Phase B** (enterprise append-only ledger + signed checkpoints, #207) and
+  **Phase C** (anchored mode, #899) remain open. The companion SDK integrity contract
+  (rigorix-sdk #12) froze the envelope chain fields, `envelope_hash`, chain/checkpoint
+  verification and the Ed25519 anchor artifacts.
+
 ## [2026-09-23] — ADR-016 accepted (audit integrity: ledger / projection / cache)
 
 ### Added
