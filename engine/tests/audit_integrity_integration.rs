@@ -172,6 +172,56 @@ async fn interior_deletion_is_detected_on_read() {
     assert!(err.to_string().contains("chain"), "{err}");
 }
 
+/// F-20260907-05 × ADR-016: one execution may emit twice — a pause-point
+/// snapshot, then a re-dispatched FINAL envelope after approval (the MCP host
+/// refreshes the local trail post-approval). The local store keeps ONE envelope
+/// per `execution_id`, so the re-emission must REUSE the sequence/`prev_hash` of
+/// the link it replaces: a fresh sequence would orphan the replaced link and
+/// read back as an interior deletion.
+#[tokio::test]
+async fn reemission_for_same_execution_reuses_its_chain_link() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let repo: Arc<dyn AuditEnvelopeRepository> =
+        Arc::new(LocalAuditEnvelopeRepository::new(dir.path().to_path_buf()));
+    let service = audit_service(dir.path());
+
+    // A prior execution occupies genesis (sequence 0).
+    build_n(&service, &["a"]).await;
+
+    // A second execution emits its pause-point snapshot (sequence 1).
+    let paused = input("transfer_seat");
+    let paused_id = paused.execution_id;
+    service
+        .build_and_send(paused)
+        .await
+        .expect("pause snapshot");
+
+    // The SAME execution re-emits with the completed evidence.
+    let mut completed = input("transfer_seat");
+    completed.execution_id = paused_id;
+    service
+        .build_and_send(completed)
+        .await
+        .expect("completed re-emission");
+
+    let envelopes = repo.list(None, None, Some(u32::MAX)).await.expect("list");
+    assert_eq!(envelopes.len(), 2, "one envelope per execution_id");
+    let reemitted = envelopes
+        .iter()
+        .find(|e| e.execution_id == paused_id)
+        .expect("re-emitted envelope");
+    assert_eq!(
+        reemitted.sequence,
+        Some(1),
+        "re-emission reuses the replaced link's sequence"
+    );
+    // The chain still verifies — no hole where the replaced link was.
+    guard(repo)
+        .prior_actions(since())
+        .await
+        .expect("chain valid after re-emission");
+}
+
 /// AC #6: a legacy (unchained) store is grandfathered — no behavior change.
 /// No verifier is wired for legacy data (there is nothing to verify).
 #[tokio::test]
