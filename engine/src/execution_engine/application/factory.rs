@@ -327,44 +327,59 @@ impl SequencePolicySetup {
             crate::sequence_policy::application::service_impl::SequencePolicyServiceImpl::new(
                 Box::new(repository),
             );
-        // R7: attach the signed-execution-history port over the same repo's
-        // `.rigorix/audit` envelope store — cross-run rules read prior runs'
-        // signed evidence. A missing audit dir yields empty history (status
-        // quo); the audit dir itself is created by the composition roots when
-        // they persist envelopes.
-        let mut history = crate::sequence_policy::infrastructure::EnvelopeHistoryAdapter::new(
-            std::sync::Arc::new(
-                crate::audit::infrastructure::LocalAuditEnvelopeRepository::new(
-                    repo_root.join(".rigorix").join("audit"),
-                ),
-            ),
-        );
-        // ADR-016 verify-on-read (GAP-A-30): when the same HMAC key the audit
-        // service signs with is available, each envelope is verified (and the
-        // local chain is checked) before cross-run policy trusts it. Absent
-        // key ⇒ unverifiable history — deny-class rules then refuse unless the
-        // operator records `RIGORIX_HISTORY_POLICY=allow_unanchored`.
-        let hmac_key = std::env::var("RIGORIX_HMAC_KEY")
-            .ok()
-            .filter(|k| !k.is_empty());
-        if let Some(key) = hmac_key {
-            history = history.with_verifier(std::sync::Arc::new(
-                crate::audit::application::envelope_factory_impl::AuditEnvelopeFactoryImpl::new(
-                    Some(key),
-                ),
+        // ADR-016 Phase C: prefer the anchor-signed projection when an anchor
+        // is configured. `AnchoredHistoryAdapter::is_anchored()` is `true` only
+        // because every read is signature-verified; an unreachable anchor or a
+        // forged slice is an error, so a consequential (deny-class) run fails
+        // closed. No anchor ⇒ the Phase A local adapter, unchanged.
+        let anchor = crate::audit::infrastructure::anchor::runtime();
+        if anchor.mode() == crate::audit::domain::anchor::AnchorMode::Anchored {
+            service = service.with_history(std::sync::Arc::new(
+                crate::sequence_policy::infrastructure::AnchoredHistoryAdapter::new(anchor),
             ));
+            tracing::info!(
+                "sequence_policy: R7 cross-run history armed in ANCHORED mode (ADR-016 Phase C)"
+            );
+        } else {
+            // R7: attach the signed-execution-history port over the same repo's
+            // `.rigorix/audit` envelope store — cross-run rules read prior runs'
+            // signed evidence. A missing audit dir yields empty history (status
+            // quo); the audit dir itself is created by the composition roots when
+            // they persist envelopes.
+            let mut history = crate::sequence_policy::infrastructure::EnvelopeHistoryAdapter::new(
+                std::sync::Arc::new(
+                    crate::audit::infrastructure::LocalAuditEnvelopeRepository::new(
+                        repo_root.join(".rigorix").join("audit"),
+                    ),
+                ),
+            );
+            // ADR-016 verify-on-read (GAP-A-30): when the same HMAC key the audit
+            // service signs with is available, each envelope is verified (and the
+            // local chain is checked) before cross-run policy trusts it. Absent
+            // key ⇒ unverifiable history — deny-class rules then refuse unless the
+            // operator records `RIGORIX_HISTORY_POLICY=allow_unanchored`.
+            let hmac_key = std::env::var("RIGORIX_HMAC_KEY")
+                .ok()
+                .filter(|k| !k.is_empty());
+            if let Some(key) = hmac_key {
+                history = history.with_verifier(std::sync::Arc::new(
+                    crate::audit::application::envelope_factory_impl::AuditEnvelopeFactoryImpl::new(
+                        Some(key),
+                    ),
+                ));
+            }
+            service = service.with_history(std::sync::Arc::new(history));
+            // ADR-016: record/apply the `allow_unanchored` opt-in. The audit service
+            // reads the same resolver, so the guard's behavior and the signed
+            // envelope field cannot diverge.
+            service = service.with_unanchored_history_allowed(
+                crate::audit::application::audit_service_impl::resolve_history_policy().is_some(),
+            );
+            tracing::info!(
+                "sequence_policy: R7 cross-run history armed over {}/.rigorix/audit",
+                repo_root.display()
+            );
         }
-        service = service.with_history(std::sync::Arc::new(history));
-        // ADR-016: record/apply the `allow_unanchored` opt-in. The audit service
-        // reads the same resolver, so the guard's behavior and the signed
-        // envelope field cannot diverge.
-        service = service.with_unanchored_history_allowed(
-            crate::audit::application::audit_service_impl::resolve_history_policy().is_some(),
-        );
-        tracing::info!(
-            "sequence_policy: R7 cross-run history armed over {}/.rigorix/audit",
-            repo_root.display()
-        );
         Some(std::sync::Arc::new(service))
     }
 }

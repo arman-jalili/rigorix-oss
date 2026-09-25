@@ -14,9 +14,11 @@
 //! | [`backend`] | [`MethodBackend`] seam; [`HostBackend`] delegates to `rigorix-mcp` |
 //! | [`rpc`] | JSON-RPC 2.0 codec: single, batch, notification; errors |
 //! | [`version`] | `rigorix.system.version` result |
+//! | [`anchor`] | ADR-016 anchor mode/head surface (#899) |
 //! | [`events`] | `GET /events` SSE push hub (ADR-0001 D8) |
 //! | [`event_bridge`] | engine `EventBusService` → [`events::EventHub`] bridge (#900) |
 
+pub mod anchor;
 pub mod backend;
 pub mod catalog;
 pub mod event_bridge;

@@ -635,7 +635,10 @@ async fn build_action_orchestrator(
         .filter(|k| !k.is_empty());
     let envelope_factory: Box<
         dyn rigorix_engine::audit::application::factory::AuditEnvelopeFactory,
-    > = Box::new(AuditEnvelopeFactoryImpl::new(hmac_key));
+    > = Box::new(
+        AuditEnvelopeFactoryImpl::new(hmac_key)
+            .with_anchor(rigorix_engine::audit::infrastructure::anchor::runtime()),
+    );
     let queue: Box<dyn AuditQueue> = Box::new(AuditQueueImpl::default());
 
     let (sender, audit_enabled): (Arc<dyn AuditSender>, bool) =

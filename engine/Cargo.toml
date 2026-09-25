@@ -30,6 +30,9 @@ hmac = { workspace = true }
 hex = "0.4"
 base64 = "0.22"
 ring = "0.17"
+# ADR-016 Phase C: verify the anchor's Ed25519 signature over a history slice
+# (asymmetric — the host holds only the public key).
+ed25519-dalek = "2"
 reqwest.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

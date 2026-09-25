@@ -218,6 +218,13 @@ pub struct AuditEnvelope {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub history_policy: Option<HistoryPolicy>,
 
+    /// ADR-016 Phase C: the **verified** anchor ledger head this evidence was
+    /// decided against. `Some` only in `anchored` mode (bound into the signed
+    /// bytes so an auditor can prove which ledger state a decision used);
+    /// `None` for `local_unanchored` and legacy envelopes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor_head: Option<String>,
+
     /// Signed approval decisions, in approval order (ADR-011 R3).
     ///
     /// Additive and serde-defaulted: absent in pre-approval envelopes.
