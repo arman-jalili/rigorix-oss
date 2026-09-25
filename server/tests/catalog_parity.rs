@@ -6,26 +6,16 @@
 //! every in-code method must be *declared* in `rigorix-sdk/schemas/api/catalog.json`
 //! and its `auth` / `mcpTool` fields must match — never a set/count equality.
 //!
-//! The canonical guard is `rigorix-verifier::verify_catalog_subset` (SDK). This
-//! test re-checks the **same relation** (membership of every candidate method in
-//! `catalog.json#methods`) rather than taking a cross-repo compile dependency on
-//! the private SDK crate, which the publishable OSS workspace must not carry.
-//! The SDK catalog is deliberately larger (it also declares the enterprise-side
-//! `rigorix.auth.verify`, which OSS does not implement).
+//! The canonical guard is `rigorix-verifier::verify_catalog_subset` (SDK) — a
+//! **published** crates.io crate consumed as a dev-dependency (NOT path/git), so
+//! there is ONE implementation of the closed-namespace relation shared by the
+//! OSS, SDK, and enterprise guards. The SDK catalog is deliberately larger (it
+//! also declares the enterprise-side `rigorix.auth.verify`, which OSS does not
+//! implement).
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use rigorix_server::catalog::{AuthLevel, CATALOG, find};
-
-/// Methods in `candidate` that are NOT declared in the SDK catalog — the
-/// subset violation (mirrors `VerifyError::UndeclaredMethod`).
-fn undeclared_methods<'a>(candidate: &[&'a str], declared: &BTreeSet<&str>) -> Vec<&'a str> {
-    candidate
-        .iter()
-        .copied()
-        .filter(|name| !declared.contains(name))
-        .collect()
-}
 
 #[test]
 fn catalog_has_nineteen_unique_frozen_methods() {
@@ -92,12 +82,14 @@ fn every_mcp_tool_maps_one_to_one_to_a_catalog_method() {
 /// (demonstrated with a synthetic OSS method the SDK does not declare).
 #[test]
 fn subset_check_detects_an_undeclared_method() {
-    let declared: BTreeSet<&str> = ["rigorix.plan", "rigorix.run"].into_iter().collect();
-    assert!(undeclared_methods(&["rigorix.plan", "rigorix.run"], &declared).is_empty());
-    assert_eq!(
-        undeclared_methods(&["rigorix.plan", "rigorix.auth.bogus"], &declared),
-        vec!["rigorix.auth.bogus"],
-        "an OSS method absent from the SDK catalog is a subset violation"
+    // Declared methods pass...
+    assert!(rigorix_verifier::verify_catalog_subset(&["rigorix.plan", "rigorix.run"]).is_ok());
+    // ...an OSS method absent from the frozen catalog is a subset violation.
+    let err = rigorix_verifier::verify_catalog_subset(&["rigorix.plan", "rigorix.auth.bogus"])
+        .expect_err("an undeclared method must be rejected");
+    assert!(
+        matches!(&err, rigorix_verifier::VerifyError::UndeclaredMethod(m) if m == "rigorix.auth.bogus"),
+        "unexpected: {err:?}"
     );
 }
 
@@ -107,8 +99,28 @@ fn subset_check_detects_an_undeclared_method() {
 /// larger by design and OSS must not implement `rigorix.auth.verify`.
 #[test]
 fn oss_catalog_is_a_subset_of_the_sdk_catalog() {
+    // The shared guard (ADR-0001 D3): every OSS method must be DECLARED in the
+    // frozen `rigorix.*` catalog. `rigorix-verifier` resolves the corpus from
+    // `RIGORIX_SDK_SCHEMAS` (CI conformance job) or the embedded
+    // `rigorix-schemas` copy — never from the repo layout.
+    let oss_names: Vec<&str> = CATALOG.iter().map(|entry| entry.name).collect();
+    rigorix_verifier::verify_catalog_subset(&oss_names).unwrap_or_else(|e| {
+        panic!(
+            "OSS catalog declares method(s) absent from the frozen rigorix.* catalog \
+             (ADR-0001 D3 — a server implements a SUBSET and MUST NOT extend the \
+             namespace): {e}"
+        )
+    });
+
+    // Field drift (name/auth/mcpTool) for the methods OSS DOES implement
+    // requires the SDK checkout — the CI conformance job sets
+    // RIGORIX_SDK_SCHEMAS. Without it, the shared subset guard above has still
+    // run against the embedded corpus.
     let Ok(dir) = std::env::var("RIGORIX_SDK_SCHEMAS") else {
-        eprintln!("RIGORIX_SDK_SCHEMAS unset — skipping SDK catalog subset check");
+        eprintln!(
+            "RIGORIX_SDK_SCHEMAS unset — subset guard ran against the embedded corpus; \
+             skipping field-drift check"
+        );
         return;
     };
     let path = std::path::Path::new(&dir).join("api/catalog.json");
@@ -123,22 +135,12 @@ fn oss_catalog_is_a_subset_of_the_sdk_catalog() {
         let mcp_tool = method["mcpTool"].as_str().map(str::to_string);
         sdk_methods.insert(name, (auth, mcp_tool));
     }
-    let declared: BTreeSet<&str> = sdk_methods.keys().map(String::as_str).collect();
-
-    // The subset relation: every OSS method must be DECLARED in the SDK catalog.
-    let oss_names: Vec<&str> = CATALOG.iter().map(|entry| entry.name).collect();
-    let undeclared = undeclared_methods(&oss_names, &declared);
-    assert!(
-        undeclared.is_empty(),
-        "OSS catalog declares method(s) absent from the frozen rigorix.* catalog \
-         (ADR-0001 D3 — a server implements a SUBSET and MUST NOT extend the namespace): {undeclared:?}"
-    );
 
     // Field drift for the methods OSS does implement (name/auth/mcpTool).
     for entry in CATALOG {
         let (auth, mcp_tool) = sdk_methods
             .get(entry.name)
-            .expect("declared by the subset check above");
+            .expect("declared by the shared subset guard above");
         assert_eq!(
             entry.auth.as_str(),
             auth.as_str(),
