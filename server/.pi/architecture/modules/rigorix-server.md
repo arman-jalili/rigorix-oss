@@ -37,7 +37,7 @@ server/
 |---------|----------|
 | Transport | JSON-RPC 2.0; HTTP 200 for a well-formed envelope; notifications no body |
 | Errors | `rigorix_mcp::host::error::HostError` → `errors.json` (`data.type`, codes) |
-| Catalog | exactly the 19 frozen methods; MCP tools map 1:1 (ADR-0001 D9) |
+| Catalog | a **19-method subset** of the frozen `rigorix.*` catalog — never an extension (ADR-0001 D3); MCP tools map 1:1 (D9) |
 | Auth | public / session / admin per catalog entry (D4) |
 | Identity | session-derived (D5); the composed host injects the attested `IdentityRef` |
 | Version | `rigorix.system.version` returns name/engine/api/schemas/capabilities |

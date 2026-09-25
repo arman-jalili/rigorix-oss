@@ -1,8 +1,11 @@
 //! The frozen `rigorix.*` method catalog (#888 OSS-C2).
 //!
 //! Mirrors `rigorix-sdk/schemas/api/catalog.json` (ADR-0001 D9): every catalog
-//! method, its auth level (D4), and its MCP tool mapping. The server serves
-//! exactly this set — no raw step-execution method exists.
+//! method, its auth level (D4), and its MCP tool mapping. The server serves a
+//! **subset** of the one closed `rigorix.*` catalog (ADR-0001 D3) — it MUST NOT
+//! extend the namespace, and it deliberately omits the enterprise-side
+//! `rigorix.auth.verify`. `server/tests/catalog_parity.rs` enforces the subset
+//! relation against the SDK catalog (CI conformance job, `RIGORIX_SDK_SCHEMAS`).
 //!
 //! `rigorix.policy.bundle` is enterprise-only/admin and has **no** MCP tool;
 //! the OSS host refuses it (`not_enabled`) rather than fabricating a local
