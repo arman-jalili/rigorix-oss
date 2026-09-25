@@ -287,6 +287,14 @@ jobs:
           RIGORIX_SDK_SCHEMAS: ${{ github.workspace }}/rigorix-sdk/schemas
         run: |
           cargo test -p rigorix-mcp --bin rigorix-mcp catalog_drift_tests
+      - name: 📚 Server catalog subset (ADR-0001 D3)
+        # The OSS server catalog must be a SUBSET of the frozen rigorix.* catalog
+        # (never equality: the SDK also declares enterprise `rigorix.auth.verify`).
+        # Run WITH the schemas so the check does not silently skip.
+        env:
+          RIGORIX_SDK_SCHEMAS: ${{ github.workspace }}/rigorix-sdk/schemas
+        run: |
+          cargo test -p rigorix-server --test catalog_parity oss_catalog_is_a_subset_of_the_sdk_catalog -- --nocapture
       - name: 🔁 Independent-HMAC proof (engine fixtures via rigorix-verifier)
         # Strategy A: the engine's own canonicalization must be reproducible
         # byte-exact by the SDK's protocol-only verifier. Runs the verifier
