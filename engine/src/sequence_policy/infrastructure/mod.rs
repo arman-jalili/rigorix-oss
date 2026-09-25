@@ -18,9 +18,11 @@
 //!   evaluation — prior decisions stand (documented in the module spec)
 
 mod history;
+mod history_anchored;
 pub mod repository;
 
 pub use history::{EnvelopeHistoryAdapter, ExecutionHistory};
+pub use history_anchored::AnchoredHistoryAdapter;
 pub use repository::{
     AUDIT_RETENTION_ENV, BundleSequencePolicyRepository, PrecedenceSequencePolicyRepository,
     RetentionCoupledSequencePolicyRepository, SequencePolicyPrecedence, SequencePolicyRepository,

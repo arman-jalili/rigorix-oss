@@ -1399,7 +1399,10 @@ pub async fn build_real_engine(
         .filter(|k| !k.is_empty());
     let audit_service: Arc<dyn AuditService> = {
         let mut service = AuditServiceImpl::new(
-            Box::new(AuditEnvelopeFactoryImpl::new(hmac_key)),
+            Box::new(
+                AuditEnvelopeFactoryImpl::new(hmac_key)
+                    .with_anchor(rigorix_engine::audit::infrastructure::anchor::runtime()),
+            ),
             audit_sender,
             Box::new(AuditQueueImpl::default()),
             audit_url.is_some(),

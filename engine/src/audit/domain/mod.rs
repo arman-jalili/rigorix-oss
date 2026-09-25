@@ -14,6 +14,7 @@
 //! - All validation must happen in the application layer (service traits)
 //! - All persistence must happen behind repository interfaces
 
+pub mod anchor;
 pub mod envelope;
 pub mod error;
 pub mod event;

@@ -166,4 +166,9 @@ async fn system_version_reports_engine_and_api_versions() {
             .as_array()
             .is_some_and(|c| !c.is_empty())
     );
+    // ADR-016 Phase C (#899): the active history mode + anchor surface are
+    // reported. With no anchor configured this is the OSS default.
+    assert_eq!(result["history_integrity"], "local_unanchored");
+    assert!(result["anchor"].is_object(), "anchor status reported");
+    assert!(result["anchor"]["head"].is_null());
 }

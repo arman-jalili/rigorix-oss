@@ -516,6 +516,7 @@ impl crate::audit::application::AuditService for MockAuditService {
                 sequence: None,
                 prev_hash: None,
                 history_integrity: None,
+                anchor_head: None,
                 history_policy: None,
             },
             signed: false,

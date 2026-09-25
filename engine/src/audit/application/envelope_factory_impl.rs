@@ -24,12 +24,29 @@ pub struct AuditEnvelopeFactoryImpl {
     /// Optional HMAC signing key.
     /// If `None`, envelopes are not signed.
     signing_key: Option<String>,
+    /// ADR-016 Phase C: the anchor runtime, when the host is anchored. When
+    /// present and anchored, envelopes are tagged `history_integrity = anchored`
+    /// and carry the verified `anchor_head`.
+    anchor: Option<std::sync::Arc<crate::audit::infrastructure::anchor::AnchorRuntime>>,
 }
 
 impl AuditEnvelopeFactoryImpl {
     /// Create a new factory with optional HMAC signing.
     pub fn new(signing_key: Option<String>) -> Self {
-        Self { signing_key }
+        Self {
+            signing_key,
+            anchor: None,
+        }
+    }
+
+    /// ADR-016 Phase C: attach the anchor runtime so built envelopes record the
+    /// active mode and the verified head.
+    pub fn with_anchor(
+        mut self,
+        anchor: std::sync::Arc<crate::audit::infrastructure::anchor::AnchorRuntime>,
+    ) -> Self {
+        self.anchor = Some(anchor);
+        self
     }
 
     /// Compute the SHA-256 hash of the planning prompt.
@@ -106,6 +123,18 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
     async fn build_envelope(&self, input: BuildEnvelopeInput) -> Result<AuditEnvelope, AuditError> {
         let planning_hash = Self::compute_planning_hash(&input.planning_prompt);
 
+        // ADR-016 Phase C: tag the regime and bind the verified anchor head.
+        // Anchored iff the runtime is anchored; the head is the last slice the
+        // guard verified (set by AnchoredHistoryAdapter).
+        let (history_integrity, anchor_head) = match &self.anchor {
+            Some(runtime)
+                if runtime.mode() == crate::audit::domain::anchor::AnchorMode::Anchored =>
+            {
+                (Some(HistoryIntegrity::Anchored), runtime.head())
+            }
+            _ => (Some(HistoryIntegrity::LocalUnanchored), None),
+        };
+
         let mut envelope = AuditEnvelope {
             execution_id: input.execution_id,
             timestamp: chrono::Utc::now(),
@@ -135,11 +164,11 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
             // Approval-bearing runs must request signing; this marker makes
             // the absence of a signature observable downstream.
             evidence_degraded: !input.sign,
-            // ADR-016 Phase A: every envelope built by the OSS factory is
-            // tagged `local_unanchored`. `None` is reserved for legacy
-            // (pre-chain) envelopes reconstructed from an older store, which
-            // the guard grandfathers (no behavior change).
-            history_integrity: Some(HistoryIntegrity::LocalUnanchored),
+            // ADR-016 Phase A/C: tagged by the active regime. `None` is
+            // reserved for legacy (pre-chain) envelopes reconstructed from an
+            // older store, which the guard grandfathers (no behavior change).
+            history_integrity,
+            anchor_head,
             producer_id: input.producer_id,
             sequence: input.sequence,
             prev_hash: input.prev_hash,
@@ -231,6 +260,53 @@ mod tests {
         assert_eq!(envelope.template_id, "test-template");
         assert!(envelope.signature.is_none());
         assert_eq!(envelope.events.len(), 1);
+    }
+
+    /// ADR-016 Phase C: an anchored factory tags `history_integrity = anchored`
+    /// and binds the verified head; the default factory stays local_unanchored.
+    #[tokio::test]
+    async fn anchored_factory_tags_mode_and_head() {
+        use crate::audit::domain::HistoryIntegrity;
+        use crate::audit::infrastructure::anchor::{AnchorError, AnchorRuntime, AnchorSliceSource};
+        use ed25519_dalek::SigningKey;
+
+        struct NoopSource;
+        #[async_trait::async_trait]
+        impl AnchorSliceSource for NoopSource {
+            async fn fetch_slice(
+                &self,
+                _scope: &str,
+                _since: chrono::DateTime<chrono::Utc>,
+            ) -> Result<crate::audit::domain::anchor::HistorySlice, AnchorError> {
+                Err(AnchorError::Unreachable("noop".into()))
+            }
+        }
+
+        let signing = SigningKey::from_bytes(&[7u8; 32]);
+        let runtime = AnchorRuntime::anchored(
+            std::sync::Arc::new(NoopSource),
+            hex::encode(signing.verifying_key().to_bytes()),
+            "test-anchor",
+            "local",
+        );
+        runtime.set_head(&"ab".repeat(32));
+        let envelope = AuditEnvelopeFactoryImpl::default()
+            .with_anchor(runtime)
+            .build_envelope(sample_input())
+            .await
+            .unwrap();
+        assert_eq!(envelope.history_integrity, Some(HistoryIntegrity::Anchored));
+        assert_eq!(envelope.anchor_head, Some("ab".repeat(32)));
+
+        let local = AuditEnvelopeFactoryImpl::default()
+            .build_envelope(sample_input())
+            .await
+            .unwrap();
+        assert_eq!(
+            local.history_integrity,
+            Some(HistoryIntegrity::LocalUnanchored)
+        );
+        assert!(local.anchor_head.is_none());
     }
 
     #[tokio::test]

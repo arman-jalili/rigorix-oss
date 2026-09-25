@@ -490,9 +490,10 @@ pub async fn build_orchestrator_with_budget(
     // ── 7. AuditService (optional) ─────────────────────────────────────
     let envelope_factory: Box<
         dyn rigorix_engine::audit::application::factory::AuditEnvelopeFactory,
-    > = Box::new(AuditEnvelopeFactoryImpl::new(resolve_hmac_key(
-        engine_config.audit_hmac_key.as_ref(),
-    )));
+    > = Box::new(
+        AuditEnvelopeFactoryImpl::new(resolve_hmac_key(engine_config.audit_hmac_key.as_ref()))
+            .with_anchor(rigorix_engine::audit::infrastructure::anchor::runtime()),
+    );
     let audit_backend_url = engine_config.audit_backend_url.clone();
     let audit_backend_key = engine_config.audit_backend_key.clone();
     let sender: Arc<dyn AuditSender> =

@@ -560,6 +560,132 @@ mod tests {
         assert!(matches.is_empty());
     }
 
+    // ── ADR-016 Phase C: anchored-mode service behavior (#899) ──────────
+
+    struct MockAnchorSource {
+        slice: Option<crate::audit::domain::anchor::HistorySlice>,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::audit::infrastructure::anchor::AnchorSliceSource for MockAnchorSource {
+        async fn fetch_slice(
+            &self,
+            _scope: &str,
+            _since: DateTime<Utc>,
+        ) -> Result<
+            crate::audit::domain::anchor::HistorySlice,
+            crate::audit::infrastructure::anchor::AnchorError,
+        > {
+            self.slice.clone().ok_or_else(|| {
+                crate::audit::infrastructure::anchor::AnchorError::Unreachable(
+                    "connection refused".into(),
+                )
+            })
+        }
+    }
+
+    fn signed_anchor_slice(
+        actions: Vec<crate::audit::domain::anchor::HistoryActionRef>,
+    ) -> crate::audit::domain::anchor::HistorySlice {
+        use ed25519_dalek::Signer;
+        let signing = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
+        let mut slice = crate::audit::domain::anchor::HistorySlice {
+            scope: "local".into(),
+            since: Utc::now() - chrono::Duration::days(1),
+            actions,
+            head_hash: "ab".repeat(32),
+            sig: None,
+        };
+        slice.sig = Some(hex::encode(
+            signing.sign(&slice.signing_bytes().unwrap()).to_bytes(),
+        ));
+        slice
+    }
+
+    fn anchored_svc(
+        slice: Option<crate::audit::domain::anchor::HistorySlice>,
+    ) -> SequencePolicyServiceImpl {
+        let signing = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
+        let runtime = crate::audit::infrastructure::anchor::AnchorRuntime::anchored(
+            std::sync::Arc::new(MockAnchorSource { slice }),
+            hex::encode(signing.verifying_key().to_bytes()),
+            "test-anchor",
+            "local",
+        );
+        SequencePolicyServiceImpl::new(Box::new(StubRepository {
+            outcome: Ok(Some(history_config())),
+        }))
+        .with_history(std::sync::Arc::new(
+            crate::sequence_policy::infrastructure::AnchoredHistoryAdapter::new(runtime),
+        ))
+    }
+
+    /// ADR-016 Phase C AC #3: in `anchored` mode a valid signed slice is
+    /// consumed (no fail-closed refusal) and the deny-class rule is enforced.
+    #[tokio::test]
+    async fn anchored_valid_slice_enforces_consequential_rule() {
+        let svc = anchored_svc(Some(signed_anchor_slice(vec![
+            crate::audit::domain::anchor::HistoryActionRef {
+                node: "registration_remove".into(),
+                principal: Some("jeff@corp".into()),
+                at: Utc::now() - chrono::Duration::seconds(120),
+                effect_key: None,
+            },
+        ])));
+        let runbook = vec![planned("add", "registration_add", "conf-2026")];
+        let matches = svc
+            .evaluate_plan(&runbook, Some("jeff@corp"))
+            .await
+            .expect("anchored evidence is authenticated — evaluated, not refused");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].action, RuleAction::Deny);
+    }
+
+    /// ADR-016 Phase C AC #1: a forged slice is rejected before matching.
+    #[tokio::test]
+    async fn anchored_forged_slice_fails_closed() {
+        use ed25519_dalek::Signer;
+        let signing = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
+        let mut slice = crate::audit::domain::anchor::HistorySlice {
+            scope: "local".into(),
+            since: Utc::now() - chrono::Duration::days(1),
+            actions: vec![crate::audit::domain::anchor::HistoryActionRef {
+                node: "registration_remove".into(),
+                principal: Some("jeff@corp".into()),
+                at: Utc::now() - chrono::Duration::seconds(120),
+                effect_key: None,
+            }],
+            head_hash: "ab".repeat(32),
+            sig: None,
+        };
+        slice.sig = Some(hex::encode(
+            signing.sign(&slice.signing_bytes().unwrap()).to_bytes(),
+        ));
+        slice.head_hash = "ff".repeat(32); // tamper after signing
+        let svc = anchored_svc(Some(slice));
+        let runbook = vec![planned("add", "registration_add", "conf-2026")];
+        assert!(
+            svc.evaluate_plan(&runbook, Some("jeff@corp"))
+                .await
+                .is_err(),
+            "forged anchor evidence must fail closed"
+        );
+    }
+
+    /// ADR-016 Phase C AC #2: in anchored mode a consequential run is refused
+    /// when the anchor is unreachable.
+    #[tokio::test]
+    async fn anchored_unreachable_anchor_fails_closed() {
+        let svc = anchored_svc(None);
+        let runbook = vec![planned("add", "registration_add", "conf-2026")];
+        assert!(
+            svc.evaluate_plan(&runbook, Some("jeff@corp"))
+                .await
+                .is_err(),
+            "unreachable anchor must refuse a consequential run"
+        );
+    }
+
     /// Different principal's prior remove does NOT deny this run.
     #[tokio::test]
     async fn cross_run_other_principal_prior_remove_does_not_deny() {
