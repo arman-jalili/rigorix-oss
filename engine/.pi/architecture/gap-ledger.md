@@ -366,7 +366,7 @@ All other rows **validated correct**:
 |----|----------|---------|--------------------|--------|
 | GAP-A-28 | H | Step-level controls are **plan-declared**: `require_identity` and the canonical parameters the matcher needs (`/beneficiary`, `/effect_key`) are authored by the plan — agent-controlled for composed runs (`rigorix_execute`). Sequence policy expresses only negative constraints over values that are **present**, so a raw `run_command` omitting those parameters is invisible to every rule. | Implement ADR-015 operator-controlled step requirements (attestation + parameter obligations) evaluated at plan time for every plan. | Open |
 | GAP-A-29 | M | ADR-014's retention coupling is **unenforced**: `SequencePolicyConfig::validate_retention` (`engine/src/sequence_policy/domain/config.rs:306`) is correct but has no production caller, no audit-retention configuration exists, and the audit repo's `prune()` (`audit/infrastructure/local_audit_repository.rs:184`) has no production caller either — so pruning below the longest effect-keyed window still silently disables those rules. AC #17's "detectable (validator **or** documented test)" wording let a callerless validator satisfy it. | Wire the validator fail-closed at config load when retention is configured (issue #895); retention + signed checkpoints per ADR-016. | ✅ **Resolved (#895)** |
-| GAP-A-30 | H | The audit trail has **no chain/sequence** and **nothing verifies its signature at runtime** (`verify_signature` has no production caller; the cross-run guard reads local envelopes and trusts them). Deletion/reorder/insertion is undetectable, the tail can be deleted with no trace, and an HMAC-key holder can re-sign or forge — while ADR-013/014 cross-run rules present as enforcement. Enterprise ingestion verifies only its own record HMAC, not the envelope signature. | ADR-016: ledger / projection / cache; per-producer chain (`sequence`/`prev_hash`) + anchor-signed reads; mode-scoped fail-closed (Phases A–C); Phase D deferred. | ⬜ **Partial — Phase A landed (#898)** |
+| GAP-A-30 | H | The audit trail has **no chain/sequence** and **nothing verifies its signature at runtime** (`verify_signature` has no production caller; the cross-run guard reads local envelopes and trusts them). Deletion/reorder/insertion is undetectable, the tail can be deleted with no trace, and an HMAC-key holder can re-sign or forge — while ADR-013/014 cross-run rules present as enforcement. Enterprise ingestion verifies only its own record HMAC, not the envelope signature. | ADR-016: ledger / projection / cache; per-producer chain (`sequence`/`prev_hash`) + anchor-signed reads; mode-scoped fail-closed (Phases A–C); Phase D deferred. | ✅ **Resolved (Phases A–C: #898, #207/#210, #899/#908)** |
 
 **GAP-A-29 resolution (#895).** `SequencePolicySetup::from_env` now reads
 `RIGORIX_AUDIT_RETENTION_SECS` and wraps the composed repository in
@@ -390,7 +390,34 @@ insertion / `prev_hash` mismatch) and the cross-run guard
 (fail closed). Deny-class cross-run rules refuse `local_unanchored` history
 unless `RIGORIX_HISTORY_POLICY=allow_unanchored` is recorded in the envelope;
 MCP `rigorix_read_audit` recomputes the stored HMAC and rejects a mismatch.
-**Remaining (open):** Phase B (enterprise ledger / anchor-signed reads) and
-Phase C (anchored mode) — including **tail-deletion detection**, which a purely
-local chain cannot provide. Phase D stays deferred (ADR-016).
+
+**GAP-A-30 Phase B resolution (enterprise #207 / PR #210).** The enterprise
+
+audit ledger landed: the canonical envelope mirror models the ADR-014/015/016
+fields; append-only `sequence`/`prev_hash` chain (genesis 0, contiguous; rejects
+duplicate/fork/replay/uncovered gap); `LedgerService` `append` / `head` /
+`history_slice` / `compact` / `verify`; Ed25519 anchor-signed receipts + history
+slices + compaction checkpoints (`ANCHOR_SIGNING_KEY`); the only purge path is
+compaction (GDPR erasure as a recorded, provable checkpoint). `hard_delete_expired`
+was removed. The SDK `schemas/api/{ledger-receipt,history-slice,compaction-checkpoint}.json`
+fixtures verify byte-exact against the enterprise signer.
+
+**GAP-A-30 Phase C resolution (OSS #899 / PR #908).** Anchored mode landed in the
+guard: `AnchoredHistoryAdapter` fetches the anchor-signed projection and verifies
+the Ed25519 signature **before** matching (`verify_slice`); an unreachable anchor
+or a forged slice is an `Err`, which the sequence-policy service **fails closed**
+on; the matcher is unchanged. Mode selection is `RIGORIX_ANCHOR_URL` +
+`RIGORIX_ANCHOR_PUBLIC_KEY` (unset ⇒ the Phase A local path, unchanged). The
+envelope gains the additive, signed `anchor_head` and is tagged
+`history_integrity = anchored`; `rigorix.system.version` reports the mode +
+anchor identity/head. The frozen contract companion (SDK #31/#32) declares
+`anchor_head` in `envelope.json` and all three verifiers at the engine position,
+proved byte-exact by an engine-signed anchored fixture — so **tail deletion is now
+detectable** against an external anchor.
+
+**Remaining (open):** none for GAP-A-30. **Phase D** (trusted-execution-boundary
+hardening — HSM/enclave host key, anchor-side observation) stays deferred per
+ADR-016 (trigger: a requirement to defend a host compromised *before* evidence
+exists). Retention *enforcement* (the `prune()` loop) remains a Phase-B/compaction
+concern tracked via ADR-016; the config-time validator is wired (GAP-A-29).
 

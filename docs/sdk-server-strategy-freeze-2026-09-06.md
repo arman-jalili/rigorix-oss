@@ -72,3 +72,22 @@ opening any SDK/server issue.
 - **Remaining workstreams (C: servers/clients, D: cleanups)** are captured in
   [`docs/next-workstreams-2026-09-21.md`](./next-workstreams-2026-09-21.md).
   Next: C1 (SSE spec) → C2 `rigorix-server` + C3 enterprise Execution API.
+
+## Status update — 2026-09-25 (delivered)
+
+The freeze is essentially fully delivered:
+
+- **Strategy A (D-2):** schemas + **Rust/Python/TypeScript verifiers**, published as
+  `rigorix-schemas` + `rigorix-verifier` on crates.io; consumed by OSS + enterprise.
+- **D-3 (one catalog):** `rigorix.*` catalog frozen and now **closed/subset-modeled**
+  (23 methods); `verify_catalog_subset` guards OSS, SDK and enterprise; OSS
+  `rigorix-server` (#888/#900) + enterprise Execution API (#206/#208) both serve it.
+- **D-4 (SSE):** ADR-0002 spec + live `GET /events`.
+- **D-5 (sequencing):** contract sync → catalog → **both servers** → **clients**
+  (Rust #26 + TypeScript #27) — complete.
+- **Beyond the freeze:** ADR-015 (1.6.0 + enterprise), **ADR-016** audit integrity
+  Phases **A** (#898, 1.7.0) / **B** (enterprise #207) / **C** (#899) shipped, with
+  Phase D deferred. GAP-A-29 + GAP-A-30 resolved.
+
+Open items are the demo/operator cleanups (**D1** key rotation, **D3** public
+same-effect scene, **D4** payouts-demo visibility) — see the workstreams doc.

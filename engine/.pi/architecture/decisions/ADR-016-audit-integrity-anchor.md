@@ -16,6 +16,12 @@ Audit integrity model: ledger / projection / cache, deployment modes, and the tr
 - [ ] Deprecated
 - [ ] Superseded by ADR-XXX
 
+**Implementation status (2026-09-25):** Phases **A**, **B** and **C** are
+**implemented** — Phase A in OSS (#898, released 1.7.0), Phase B in the enterprise
+(#207/#210), Phase C in OSS (#899/#908), with the envelope contract frozen and
+independently verifiable (Rust/Python/TypeScript) in rigorix-sdk. **Phase D remains
+deferred** (see below).
+
 ## Context
 
 The signed audit trail (`.rigorix/audit`, Strategy A) is used for two things: it is
@@ -209,19 +215,19 @@ will be erased), and the erasure is provable rather than silent.
 
 ## Implementation
 
-**Phase A — local honesty + contract (OSS + SDK, no anchor).**
+**Phase A — local honesty + contract (OSS + SDK, no anchor).** ✅ **Implemented** (#898).
 Freeze the contract (this ADR + SDK schemas); add `verify-on-read` in the guard and
 `rigorix_read_audit`; add the local chain (`sequence`/`prev_hash`) and verify it;
 tag envelopes `local_unanchored`; make deny-class cross-run rules refuse by default
 when unanchored. Wire the ADR-014 retention validator (GAP-A-29) fail-closed.
 
-**Phase B — the ledger (enterprise Execution API), no policy.**
+**Phase B — the ledger (enterprise Execution API), no policy.** ✅ **Implemented** (#207/#210).
 Verify the envelope at ingestion; assign/verify `sequence`; store `prev_hash`;
 append-only; write-ahead registration (the existing `RunRegistration` lifecycle, plus
 a "registered, evidence overdue" state); anchor-signed history reads; payload
 erasure + signed compaction checkpoints.
 
-**Phase C — anchored mode (OSS `rigorix-server` + engine).**
+**Phase C — anchored mode (OSS `rigorix-server` + engine).** ✅ **Implemented** (#899/#908).
 `AnchoredHistoryAdapter` behind `ExecutionHistory`, verifying the anchor's
 signature; `history_integrity = anchored`; fail closed for consequential runs when
 the anchor is unreachable; `rigorix.system.version` reports the mode.

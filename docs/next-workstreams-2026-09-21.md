@@ -15,6 +15,33 @@ Status at capture:
 
 ---
 
+## Status update — 2026-09-25 (this backlog is complete)
+
+All items below are delivered; the file is retained as the record.
+
+| Item | Status |
+|------|--------|
+| **E** ADR-015 operator step requirements | ✅ engine (1.6.0) + SDK `policy.json` + enterprise bundle ingestion (#203/#204/#205) |
+| **C1** SSE push semantics | ✅ SDK ADR-0002 + `events.json` (#10); live `GET /events` (#900) |
+| **C2** `rigorix-server` (OSS reference host) | ✅ #888 (+ the event-bus bridge #900) |
+| **C3** Enterprise Execution API (Phase 5) | ✅ #206 (#208) |
+| **C4** SDK clients | ✅ Rust (#26) + TypeScript (#27) |
+| **C5** Enterprise conformance AC | ✅ bundle round-trip (#889) + integrity fixtures |
+| **D1** rotate `rgx_live_sk_…` | ⏳ operator action (uncommitted local demo config) |
+| **D2** `payouts-demo` reset caveat | ✅ narrowed (DEMO-D2) |
+| **D3** public same-effect scene | ⏳ conference-demo #1 |
+| **D4** `payouts-demo` visibility | ⏳ decision |
+
+Beyond this backlog: **ADR-016** (audit integrity) was accepted and shipped
+end-to-end — Phase A (#898, released **1.7.0**), Phase B (enterprise #207/#210),
+Phase C (#899/#908), with the contract frozen + verifiers in **rigorix-sdk**
+(Rust/Python/TypeScript) and the `rigorix-schemas` / `rigorix-verifier` crates
+published. **Phase D** is deferred per the ADR. The `rigorix.*` catalog is a
+**closed, subset-modeled** namespace (23 methods) guarded across OSS/SDK/enterprise
+by `verify_catalog_subset`.
+
+---
+
 ## E. Engine hardening — operator-controlled step requirements (ADR-015) — ENGINE LANDED
 
 > Live finding (payouts-demo under Codex, 2026-09-22): an agent composed a

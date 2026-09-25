@@ -1,3 +1,40 @@
+## [2026-09-25] — ADR-016 Phase C completed (anchored mode) + Phase B ledger (GAP-A-30 closed)
+
+### Added
+- **ADR-016 Phase C — anchored mode (GAP-A-30, #899/#908).** The engine can now run
+  against an **external anchor** instead of trusting local history:
+  - `audit::domain::anchor` — frozen `HistorySlice` / `HistoryActionRef` / `AnchorMode`
+    mirror of the SDK wire struct; `audit::infrastructure::anchor` — `AnchorRuntime`,
+    the `AnchorSliceSource` port, `HttpAnchorClient` (`RIGORIX_ANCHOR_URL`), and
+    `verify_slice` (Ed25519 over the `sig`-nulled canonical bytes).
+  - `AnchoredHistoryAdapter` behind the `ExecutionHistory` port verifies the anchor's
+    signature **before** matching; an unreachable anchor or forged slice is an `Err`,
+    which the sequence-policy service **fails closed** on. The matcher is unchanged.
+  - Mode selection in `SequencePolicySetup::from_env` (`RIGORIX_ANCHOR_URL` +
+    `RIGORIX_ANCHOR_PUBLIC_KEY`); with neither set the Phase A local path is unchanged.
+  - Envelope binding: additive signed `anchor_head` (serde skip-if-none, so local
+    chain/HMAC bytes are unchanged) and `history_integrity = anchored` tagging via
+    `AuditEnvelopeFactoryImpl::with_anchor`.
+  - `rigorix.system.version` reports `history_integrity` + `anchor.{id,head}`.
+- **ADR-016 Phase B — enterprise audit ledger** (rigorix-enterprise #207/#210):
+  append-only `sequence`/`prev_hash` chain, `LedgerService` (`append`/`head`/
+  `history_slice`/`compact`/`verify`), Ed25519 anchor receipts/slices/checkpoints,
+  compaction as the only purge path (GDPR), and the ADR-016 Phase B catalog methods
+  `rigorix.audit.head` / `.history` / `.overdue` (declared in the SDK catalog).
+- **Frozen contract + verifiers** (rigorix-sdk): `envelope.json` gained the Phase C
+  `anchor_head` at the engine struct position; the Rust/Python/TypeScript verifiers
+  verify the engine-signed **anchored** fixture byte-exact. `rigorix-schemas` +
+  `rigorix-verifier` are now published crates, consumed by OSS + enterprise via
+  crates.io (`verify_catalog_subset`, `verify_chain`, `verify_signature`).
+
+### Notes
+- **GAP-A-30 is resolved** (ADR-016 Phases A–C). Phase **D** (trusted-execution-
+  boundary hardening — HSM/enclave host key, anchor-side observation) stays deferred
+  per ADR-016 (trigger: a requirement to defend a host compromised *before* evidence
+  exists).
+- This entry is **unreleased** (targets `1.8.0`); `1.7.0` shipped Phase A + live
+  server events.
+
 ## [2026-09-24] — release 1.7.0 (audit integrity Phase A + live server events)
 
 ### Added
@@ -62,8 +99,9 @@
   runs on pull requests (#896).
 
 ### Notes
-- ADR-016 **Phase B** (enterprise append-only ledger + signed checkpoints, #207) and
-  **Phase C** (anchored mode, #899) remain open. The companion SDK integrity contract
+- ADR-016 Phase B (enterprise append-only ledger + signed checkpoints, #207) and
+  Phase C (anchored mode, #899) were **open at the time of 1.7.0** and have since
+  **landed** — see the 2026-09-25 entry above. The companion SDK integrity contract
   (rigorix-sdk #12) froze the envelope chain fields, `envelope_hash`, chain/checkpoint
   verification and the Ed25519 anchor artifacts.
 

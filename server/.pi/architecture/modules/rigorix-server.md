@@ -40,7 +40,7 @@ server/
 | Catalog | a **19-method subset** of the frozen `rigorix.*` catalog — never an extension (ADR-0001 D3); MCP tools map 1:1 (D9) |
 | Auth | public / session / admin per catalog entry (D4) |
 | Identity | session-derived (D5); the composed host injects the attested `IdentityRef` |
-| Version | `rigorix.system.version` returns name/engine/api/schemas/capabilities |
+| Version | `rigorix.system.version` returns name/engine/api/schemas/capabilities + ADR-016 Phase C `history_integrity` (`local_unanchored` \| `anchored`) and, when anchored, `anchor.{id,head}` (`server/src/version.rs`) |
 
 ## Delegation
 
@@ -55,7 +55,6 @@ shared composition before the server binds (`RIGORIX_SERVER_BIND`, default
 `127.0.0.1:3001`).
 
 ## Push channel (`GET /events`, ADR-0001 D8)
-
 - Emits `approval_required`, `run_progress`, `policy_changed`; payloads reuse
   `envelope.json` event refs (`event_type`, `status`, `payload.step_name`, …).
 - **Live publisher (`event_bridge.rs`, #900):** subscribes to the engine
