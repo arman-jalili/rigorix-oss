@@ -1,4 +1,4 @@
-## [2026-09-25] — ADR-016 Phase C completed (anchored mode) + Phase B ledger (GAP-A-30 closed)
+## [2026-09-25] — release 1.8.0 (ADR-016 Phase C anchored mode + Phase B ledger)
 
 ### Added
 - **ADR-016 Phase C — anchored mode (GAP-A-30, #899/#908).** The engine can now run
@@ -32,8 +32,10 @@
   boundary hardening — HSM/enclave host key, anchor-side observation) stays deferred
   per ADR-016 (trigger: a requirement to defend a host compromised *before* evidence
   exists).
-- This entry is **unreleased** (targets `1.8.0`); `1.7.0` shipped Phase A + live
-  server events.
+- This is the **1.8.0** release (engine + mcp + cli); `1.7.0` shipped Phase A + live
+  server events. Version policy: `engine` / `mcp` / `cli` share the release train;
+  `rigorix-schemas` / `rigorix-verifier` (rigorix-sdk) version independently;
+  `rigorix-server` is unpublished (0.1.0).
 
 ## [2026-09-24] — release 1.7.0 (audit integrity Phase A + live server events)
 
