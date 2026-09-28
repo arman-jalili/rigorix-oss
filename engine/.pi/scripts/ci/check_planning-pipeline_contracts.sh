@@ -273,9 +273,14 @@ done
 echo ""
 echo "--- Tests ---"
 
-if grep -q "#\[cfg(test)\]" "$SRC/mod.rs" 2>/dev/null || [ -f "$SRC/tests.rs" ]; then
-    TEST_COUNT=$(grep -c '#\[tokio::test\]\|#\[test\]' "$SRC/tests.rs" 2>/dev/null || echo 0)
-    if [ "$TEST_COUNT" -ge 40 ]; then
+if grep -q "#\[cfg(test)\]" "$SRC/mod.rs" 2>/dev/null || [ -f "$SRC/tests.rs" ] || [ -d "$SRC/tests" ]; then
+    # #917: in-module tests may be externalized into a `tests/` submodule dir.
+    if [ -d "$SRC/tests" ]; then
+        TEST_COUNT=$(grep -rh '#\[tokio::test\]\|#\[test\]' "$SRC/tests" 2>/dev/null | wc -l | tr -d ' ' || true)
+    else
+        TEST_COUNT=$(grep -c '#\[tokio::test\]\|#\[test\]' "$SRC/tests.rs" 2>/dev/null || echo 0)
+    fi
+    if [ "${TEST_COUNT:-0}" -ge 40 ]; then
         log_pass "Tests exist ($TEST_COUNT test functions)"
     else
         log_fail "Fewer than 40 tests ($TEST_COUNT found)"

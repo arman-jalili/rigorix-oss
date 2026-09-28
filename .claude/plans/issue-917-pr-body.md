@@ -43,5 +43,8 @@ cargo fmt --all --check                 ✅
   `use super::*;`.
 - Parent `mod.rs` declarations were already `#[cfg(test)] pub(crate) mod tests;`
   — unchanged.
+- CI follow-up (Phase 9): `engine/.pi/scripts/ci/check_planning-pipeline_contracts.sh`
+  counted tests only in `$SRC/tests.rs`; it now also counts `$SRC/tests/**` so the
+  externalized planning tests are recognized (99 test functions).
 
 Refs #917 #914
