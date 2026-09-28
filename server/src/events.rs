@@ -33,7 +33,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use axum::extract::{Query, State};
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use futures::StreamExt;
@@ -168,11 +168,26 @@ pub struct EventsQuery {
 }
 
 /// `GET /events` — SSE stream of the three D8 events.
+///
+/// ADR-0001 D4 / #913: this stream carries the **same** session gate as
+/// `POST /rpc` (see `crate::rpc`). With an IdP configured, an unattested
+/// caller is refused (`401`) **before** subscribing; the local/legacy
+/// no-IdP mode is preserved (mirrors the stdio MCP host). Auth is resolved
+/// **once at connect** — the stream is long-lived, so per-event checks would
+/// be both wrong and costly.
 pub async fn events_handler(
     State(state): State<ServerState>,
     headers: HeaderMap,
     Query(query): Query<EventsQuery>,
 ) -> Response {
+    if state.backend.auth_configured().await && !state.backend.is_authenticated().await {
+        return (
+            StatusCode::UNAUTHORIZED,
+            "A session is required for the event stream — run rigorix.auth.login",
+        )
+            .into_response();
+    }
+
     let last_event_id = headers
         .get("last-event-id")
         .and_then(|value| value.to_str().ok())
@@ -269,6 +284,82 @@ mod tests {
         }
         let err = rx.try_recv().expect_err("receiver must lag");
         assert!(matches!(err, broadcast::error::TryRecvError::Lagged(_)));
+    }
+
+    #[tokio::test]
+    async fn events_handler_refuses_unauthenticated_when_idp_configured() {
+        struct Gated;
+        #[async_trait::async_trait]
+        impl crate::backend::MethodBackend for Gated {
+            async fn dispatch(
+                &self,
+                _method: &str,
+                _params: Value,
+            ) -> Result<Value, rigorix_mcp::host::error::HostError> {
+                Ok(json!({}))
+            }
+            async fn auth_configured(&self) -> bool {
+                true
+            }
+            async fn is_authenticated(&self) -> bool {
+                false
+            }
+        }
+        let state = crate::state::ServerState::new(
+            std::sync::Arc::new(Gated),
+            std::sync::Arc::new(EventHub::new()),
+        );
+        let response = events_handler(
+            State(state),
+            HeaderMap::new(),
+            Query(EventsQuery::default()),
+        )
+        .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "unauthenticated caller must be refused when an IdP is configured"
+        );
+    }
+
+    #[tokio::test]
+    async fn events_handler_allows_authenticated_when_idp_configured() {
+        struct Gated;
+        #[async_trait::async_trait]
+        impl crate::backend::MethodBackend for Gated {
+            async fn dispatch(
+                &self,
+                _method: &str,
+                _params: Value,
+            ) -> Result<Value, rigorix_mcp::host::error::HostError> {
+                Ok(json!({}))
+            }
+            async fn auth_configured(&self) -> bool {
+                true
+            }
+            async fn is_authenticated(&self) -> bool {
+                true
+            }
+        }
+        let state = crate::state::ServerState::new(
+            std::sync::Arc::new(Gated),
+            std::sync::Arc::new(EventHub::new()),
+        );
+        let response = events_handler(
+            State(state),
+            HeaderMap::new(),
+            Query(EventsQuery::default()),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok()),
+            Some("text/event-stream"),
+            "an authenticated caller gets the SSE stream"
+        );
     }
 
     #[tokio::test]

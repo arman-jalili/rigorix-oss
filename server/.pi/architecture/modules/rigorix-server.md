@@ -71,6 +71,12 @@ shared composition before the server binds (`RIGORIX_SERVER_BIND`, default
   drops events rather than stalling execution; reconnect with `Last-Event-ID`
   replays. Mirrors `AuditEnvelopeDropped`.
 - The legacy MCP SSE endpoint is **not** resurrected (GAP-A-10).
+- **Auth (ADR-0001 D4, #913):** `GET /events` applies the **same** session gate
+  as `POST /rpc` (`crate::rpc::handle_value`): with an IdP configured, an
+  unattested caller is refused (`401 Unauthorized`) before subscribing; the
+  local/legacy no-IdP mode is preserved (mirrors the stdio MCP host). Auth is
+  resolved **once at connect** — the stream is long-lived, so per-event checks
+  would be both wrong and costly.
 
 > **C1 note:** `schemas/api/events.json` (SDK-C1) is published; the engine-event
 > mapping table is implemented in `server/src/event_bridge.rs` and tested
