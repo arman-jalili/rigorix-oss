@@ -50,8 +50,7 @@ fn unverified_identity_refuses_flagged_step() {
 fn attested_identity_allows_flagged_step() {
     for src in [IdentitySource::IdpToken, IdentitySource::LocalPrincipal] {
         assert!(
-            check_identity_gate(&[step("registration_remove", true)], Some(&ref_with(src)))
-                .is_ok()
+            check_identity_gate(&[step("registration_remove", true)], Some(&ref_with(src))).is_ok()
         );
     }
 }

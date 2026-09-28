@@ -24,8 +24,7 @@ async fn test_planning_failure() {
         async fn plan(
             &self,
             _: planning_dto::PlanInput,
-        ) -> Result<planning_dto::PlanOutput, crate::planning::domain::PlanningError>
-        {
+        ) -> Result<planning_dto::PlanOutput, crate::planning::domain::PlanningError> {
             Err(crate::planning::domain::PlanningError::NoMatchingTemplate {
                 intent_preview: "test".into(),
                 templates_evaluated: 0,
@@ -81,18 +80,14 @@ async fn test_planning_failure() {
         async fn request_clarification(
             &self,
             _: planning_dto::RequestClarificationInput,
-        ) -> Result<
-            planning_dto::RequestClarificationOutput,
-            crate::planning::domain::PlanningError,
-        > {
+        ) -> Result<planning_dto::RequestClarificationOutput, crate::planning::domain::PlanningError>
+        {
             unimplemented!()
         }
         async fn available_templates(
             &self,
-        ) -> Result<
-            planning_dto::AvailableTemplatesOutput,
-            crate::planning::domain::PlanningError,
-        > {
+        ) -> Result<planning_dto::AvailableTemplatesOutput, crate::planning::domain::PlanningError>
+        {
             unimplemented!()
         }
         fn execution_id(&self) -> Uuid {

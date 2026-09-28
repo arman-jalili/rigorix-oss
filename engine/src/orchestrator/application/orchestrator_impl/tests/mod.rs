@@ -188,8 +188,7 @@ fn payout_requirement(action: RequirementAction) -> SequencePolicyConfig {
         fail_closed: true,
         requirements: vec![StepRequirement {
             id: "payout-guard".to_string(),
-            name: "Payout commands must be attested and carry canonical effect data"
-                .to_string(),
+            name: "Payout commands must be attested and carry canonical effect data".to_string(),
             description: "raw run_command must not reach the payout script".to_string(),
             r#match: StepPredicate {
                 tool: "run_command".to_string(),
@@ -281,8 +280,53 @@ fn payout_input(
     }
 }
 
-mod policies;
-mod run;
-mod plan;
+/// Records which plan-time gate ran, so the composed `PolicyPipeline` order
+/// can be asserted (AC #4, #916).
+pub(crate) struct RecordingPolicy {
+    pub(crate) order: std::sync::Mutex<Vec<&'static str>>,
+}
+
+#[async_trait::async_trait]
+impl crate::sequence_policy::application::service::SequencePolicyService for RecordingPolicy {
+    async fn evaluate_plan(
+        &self,
+        _steps: &[crate::sequence_policy::application::dto::PlannedStep],
+        _principal: Option<&str>,
+    ) -> Result<
+        Vec<crate::sequence_policy::domain::SequenceMatch>,
+        crate::sequence_policy::domain::SequencePolicyError,
+    > {
+        self.order.lock().unwrap().push("evaluate_plan");
+        Ok(Vec::new())
+    }
+
+    async fn evaluate_prefix(
+        &self,
+        _prefix: &[crate::sequence_policy::application::dto::DispatchedStep],
+        _next: &crate::sequence_policy::application::dto::PlannedStep,
+        _principal: Option<&str>,
+    ) -> Result<
+        Vec<crate::sequence_policy::domain::SequenceMatch>,
+        crate::sequence_policy::domain::SequencePolicyError,
+    > {
+        Ok(Vec::new())
+    }
+
+    async fn evaluate_requirements(
+        &self,
+        _steps: &[crate::sequence_policy::application::dto::PlannedStep],
+        _identity_attested: bool,
+    ) -> Result<
+        Vec<crate::sequence_policy::domain::RequirementFinding>,
+        crate::sequence_policy::domain::SequencePolicyError,
+    > {
+        self.order.lock().unwrap().push("evaluate_requirements");
+        Ok(Vec::new())
+    }
+}
+
 mod approval;
 mod dispatch;
+mod plan;
+mod policies;
+mod run;

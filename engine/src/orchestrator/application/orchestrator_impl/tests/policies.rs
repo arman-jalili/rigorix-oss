@@ -393,8 +393,7 @@ async fn test_sequence_policy_promotion_recorded_in_envelope_events_redacted() {
 #[tokio::test]
 async fn test_requirement_identity_refuses_unauthenticated_composed_plan() {
     // `promote` action still cannot substitute for an identity.
-    let orch =
-        real_orchestrator_with_requirement(payout_requirement(RequirementAction::Promote));
+    let orch = real_orchestrator_with_requirement(payout_requirement(RequirementAction::Promote));
     let err = orch
         .run_from_template(payout_input(false, true, None))
         .await
@@ -699,4 +698,29 @@ async fn test_r7_cross_run_same_principal_remove_then_add_refused_at_plan_time()
         }
         other => panic!("expected SequencePolicyDenied from the cross-run rule, got {other:?}"),
     }
+}
+
+/// AC#4 (#916): the composed `PolicyPipeline` runs the R2 sequence-policy gate
+/// BEFORE the R9 operator-requirement gate (the ordering is security-relevant:
+/// requirements evaluate the sequence-enforced step list).
+#[tokio::test]
+async fn policy_pipeline_runs_sequence_policy_before_requirements() {
+    let policy = Arc::new(RecordingPolicy {
+        order: std::sync::Mutex::new(Vec::new()),
+    });
+    let orch = OrchestratorServiceImpl::default_test().with_sequence_policy(policy.clone());
+    let _ = orch
+        .plan_from_template(PlanFromTemplateInput {
+            steps: payout_runbook(true),
+            repo_root: "/tmp/t".into(),
+            template_name: "payout".into(),
+            identity: None,
+            author: None,
+        })
+        .await;
+    assert_eq!(
+        *policy.order.lock().unwrap(),
+        vec!["evaluate_plan", "evaluate_requirements"],
+        "sequence policy must run before operator requirements"
+    );
 }
