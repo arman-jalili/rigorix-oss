@@ -1,96 +1,92 @@
 # Issue Implementation Groups
 
-**Generated:** 2026-09-25
-**Total Issues:** 2
-**Source:** `.claude/plans/issues-fetched.json` (open issues #907, #899)
-**Epics:** `audit integrity (ADR-016)` · `server mode — C (D-3)`
+**Generated:** 2026-09-26
+**Total Issues:** 6 (fresh fetch; #899/#907 merged + closed)
+**Source:** `.claude/plans/issues-fetched.json`
 
 ---
 
 ## Grouping Strategy
 
-Issues are grouped by:
-1. **Component** — same module/files affected (2–5 issues per batch)
-2. **Priority** — Critical > High > Medium > Low
-3. **Dependency** — blocking relationships
+Grouped by component / priority / dependency. The batch is dominated by a
+**tracking umbrella** (#914) with two children, one independent security fix,
+and two blocked/deferred items.
 
-The two open issues touch **disjoint components** — `engine/sequence_policy` +
-`server/` (anchor mode, #899) vs. `server/tests/catalog_parity.rs`
-(catalog-subset guard, #907). No component batch is possible. Each is a
-single-issue branch (`issue/{number}`), ordered by readiness.
-
----
+| # | Issue | Priority | Component | Readiness |
+|---|-------|----------|-----------|-----------|
+| 1 | **#913** OSS-SERVER-SSE-AUTH | Medium | `server/src/events.rs` | ✅ **READY** — dep #900 merged |
+| 2 | **#917** OSS-REFACTOR-TESTS | Low | engine test modules | ✅ **READY** — Tier 0, pure move |
+| 3 | **#916** OSS-REFACTOR-ORCHESTRATOR | Medium | `engine/src/orchestrator` | ⏳ after #917 |
+| 4 | **#914** OSS-REFACTOR-PROGRAM | Medium | umbrella (tracking) | 📋 tracking — no code PR of its own |
+| 5 | **#912** OSS-ANCHOR-WIRE-E2E | High | engine + server + CI | ⛔ **BLOCKED** — enterprise `#215` (ENT-ANCHOR-ENDPOINT) still OPEN |
+| 6 | **#915** OSS-MCP-STREAMABLE-HTTP | Low | `server/` transport | ⛔ **DEFERRED** — trigger-gated ("do not build speculatively") |
 
 ## Batch Order (implement top → bottom)
 
-| # | Branch | Issue | Tier | Component | Readiness |
-|---|--------|-------|------|-----------|-----------|
-| 1 | `issue/899` | #899 OSS-AUDIT-C | High / moderate | `engine/sequence_policy` + `server/` | **READY** — deps met |
-| 2 | `issue/907` | #907 OSS-CATALOG-SUBSET-VERIFIER | Low / simple | `server/tests/catalog_parity.rs` | **BLOCKED** — crate not on crates.io |
+| # | Branch | Issues | Notes |
+|---|--------|--------|-------|
+| 1 | `issue/913` | #913 | Single. Apply the `POST /rpc` session gate to `GET /events` (fail closed when an IdP is configured; preserve no-IdP local mode). |
+| 2 | `issue/917` | #917 | Single. Externalize the 3 in-module test files (>1000 LOC) as `tests/` submodules — pure move, test count invariant. |
+| 3 | `issue/916` | #916 | Single. Split `orchestrator_impl.rs` (4166 LOC) — depends on #917 landing first. |
 
-### Why not one batch?
-#899 is an adapter/feature change across the engine seam and the server host;
-#907 is a single test-file refactor. Bundling would span two unrelated review
-surfaces and violate the "same module/files" rule.
+### Why single-issue branches (not batches)
+#913 is a security fix in `server/`; #917/#916 are mechanical engine refactors
+with strict "no behaviour change" invariants. Different components + different
+review surfaces → `issue/{number}` each.
 
 ---
 
 ## Dependency Graph (must-land-before)
 
 ```
-ADR-016 (accepted) ─┐
-OSS-AUDIT-A (done) ─┼─► #899 OSS-AUDIT-C (anchor client + AnchoredHistoryAdapter)
-ENT-AUDIT-B (done) ─┤      deps: ENT-AUDIT-B ledger (#210), #888 server (#888 CLOSED)
-#888 OSS-C2 (done) ─┘
-                          ⚠ NOT gated on the SDK verifier crate (Ed25519 verify is
-                            implemented against the ADR-016 slice contract)
+#900 / #888 (GET /events + bridge, MERGED) ──► #913 SSE auth  ✅ ready
+                                                    
+#914 umbrella ──► #917 (Tier 0, pure move) ──► #916 (Tier 1 orchestrator)
+                                                    
+SDK #34 (0.2.0, CLOSED) ─┐
+                         ├─► #912 anchor wire E2E  ⛔ needs enterprise #215 OPEN
+ENT-ANCHOR-ENDPOINT #215 ┘
 
-SDK-SCHEMAS-PUBLISH #18 ─► SDK-VERIFIER-PUBLISH #19 (issue CLOSED 2026-09-25T15:39Z)
-                              ⚠ crates.io sparse index: `rigorix-verifier` NoSuchKey
-                              ⚠ crates.io API: "crate `rigorix-verifier` does not exist"
-                              │
-                              └─► #907 OSS-CATALOG-SUBSET-VERIFIER  ⛔ BLOCKED
+ADR-0001 D4 + #888 (MERGED) ──► #915 Streamable HTTP  ⛔ trigger-gated
 ```
 
-- **#899** depends on #888 (merged), OSS-AUDIT-A (Phase A, present) and
-  ENT-AUDIT-B (landed in enterprise `#210`, commit `4a8c29f`). Its
-  `AnchoredHistoryAdapter` verifies the ADR-016 `HistorySlice` contract
-  (Ed25519, `sig` nulled for canonical bytes) which is already frozen; it can
-  be built/tested with a locally generated keypair + mock anchor.
-- **#907** acceptance criterion #1 requires a **published crates.io**
-  dev-dependency. SDK issue #19 is closed but the crate is not yet resolvable.
-  Until the publish propagates, adding the dep would break a fresh public
-  `cargo test` (violates AC #4/#5).
+## Deferred / Blocked rationale
 
-## Critical Path
-
-`#899` (independent, ready) → then re-evaluate `#907` once crates.io lists
-`rigorix-verifier`. If the SDK instead exposes the relation only via the JSON
-corpus (no crate), close #907 as **won't-do** per its implementation notes.
+- **#912** — its own prerequisite table says `ENT-ANCHOR-ENDPOINT (#215)` **must
+  land first** to reconcile the OSS `HttpAnchorClient` (`GET /v1/history`, bare
+  `HistorySlice`) with the enterprise server (`POST /rpc`, JSON-RPC envelope).
+  `#215` is **OPEN**. SDK #34 (0.2.0, knows `anchor_head`) is CLOSED. Do not
+  start until #215 merges.
+- **#915** — explicitly trigger-gated: build only on a demonstrated GUI-agent
+  need. No trigger present → leave open, do not implement.
+- **#914** — umbrella: its AC is satisfied by the child PRs (#916/#917) +
+  inventory accuracy. No standalone code PR; update the inventory if LOC drifts.
 
 ---
 
 ## Per-Batch Validation (standard)
 
-Each batch before MR:
-
 ```bash
-cargo build
-cargo test --all
-cargo clippy --all-targets -- -D warnings
-cargo fmt --check
+cargo build --workspace
+cargo test  --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+bash .pi/scripts/validate-ci.sh
 bash .pi/scripts/validate-tests.sh
-bash .pi/scripts/validate-architecture.sh
-bash .pi/scripts/validate-canonical.sh
+bash .pi/scripts/validate-security.sh
+bash .pi/scripts/validate-operations.sh
 ```
 
-#899 additionally: `validate-security.sh` (Ed25519 verify, fail-closed) and the
-`engine/tests/audit_integrity_integration.rs` suite must stay green (Phase A
-regression, AC #4).
+#917 additionally proves the **`#[test]` count is invariant** before/after the
+move (`cargo test -p rigorix-engine -- --list | wc -l`).
 
 ## Status Tracking
 
 | Issue | Branch | Status |
 |-------|--------|--------|
-| #899 | `issue/899` | ready — planned |
-| #907 | `issue/907` | blocked — crates.io publish not propagated |
+| #913 | `issue/913` | ready — planned |
+| #917 | `issue/917` | ready — planned (Tier 0) |
+| #916 | `issue/916` | planned (after #917) |
+| #914 | — | tracking umbrella |
+| #912 | — | blocked by enterprise #215 |
+| #915 | — | deferred (trigger-gated) |
