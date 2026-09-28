@@ -2701,9 +2701,9 @@ dependencies = [
 
 [[package]]
 name = "rigorix-schemas"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f06a524230b9b17d815c1aa6fd824395013d474147e853402e76c8042cb2cba4"
+checksum = "defa8ad98193030df73419aded26e67062eee73867e3fc98d7c9bd18b82ab7e9"
 dependencies = [
  "serde_json",
 ]
@@ -2732,9 +2732,9 @@ dependencies = [
 
 [[package]]
 name = "rigorix-verifier"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe4ba7472a624352451886d175b09142e8b69191d861cc5f725371eb39a51b6f"
+checksum = "fe089210fdb84e0f5305b1dded2b21d61b345953f7ed2c9dd3114717aa08e9dd"
 dependencies = [
  "chrono",
  "ed25519-dalek",
