@@ -1,0 +1,50 @@
+# ADR-016 anchored-path E2E demo (#912) — throwaway Postgres + enterprise anchor.
+#
+# A *small* stack: disposable Postgres + the enterprise anchor (built from the
+# sibling repo), exposing the OSS-compatible `GET /v1/history`. The OSS live
+# assertion runs on the host via `demo/anchor-e2e/run.sh` (fast path) or:
+#
+#   docker compose up -d --build postgres enterprise
+#   demo/anchor-e2e/seed-remote.sh          # team + API key + prior evidence
+#   RIGORIX_E2E_ANCHOR_URL=http://127.0.0.1:3000 \
+#   RIGORIX_E2E_ANCHOR_PUBLIC_KEY=ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c \
+#   RIGORIX_E2E_ANCHOR_TOKEN=rgx_dev_sk_e2e_secret_value \
+#     cargo test -p rigorix-engine --test anchored_wire_live -- --nocapture
+#   docker compose down -v
+#
+# DEV/TEST ONLY (fixture API-key hash). ENTERPRISE_DIR defaults to the sibling
+# checkout; override it if your enterprise repo lives elsewhere.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: rigorix
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rigorix"]
+      interval: 3s
+      retries: 20
+      timeout: 3s
+    ports:
+      - "55432:5432"
+
+  enterprise:
+    build:
+      context: ${ENTERPRISE_DIR:-../../rigorix-enterprise}/core
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/rigorix
+      DEFAULT_TEAM_ID: 00000000-0000-0000-0000-000000000001
+      EXPORT_DIR: /app/exports
+      RUST_LOG: info
+    ports:
+      - "3000:3000"
+    volumes:
+      - enterprise-exports:/app/exports
+
+volumes:
+  enterprise-exports:

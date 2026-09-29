@@ -1,0 +1,45 @@
+# Anchored-path live E2E (ADR-016 Phase C, #912).
+#
+# The in-process wire test (`engine/tests/anchored_wire_e2e.rs`) runs in the
+# normal Integration stage. This workflow adds the **cross-repo** run: a real
+# enterprise anchor + throwaway Postgres, then the OSS `anchored_wire_live`
+# assertions. It needs the enterprise repo, so it is dispatched/scheduled —
+# not on every PR — and skips cleanly when `ENTERPRISE_REPO_TOKEN` is unset.
+name: Anchor E2E
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly, Monday 06:00 UTC — catches wire drift against the enterprise.
+    - cron: "0 6 * * 1"
+
+jobs:
+  anchor-e2e:
+    name: 🔗 Anchor E2E (enterprise + Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check out the enterprise anchor
+        env:
+          ENTERPRISE_REPO_TOKEN: ${{ secrets.ENTERPRISE_REPO_TOKEN }}
+        run: |
+          if [ -z "${ENTERPRISE_REPO_TOKEN}" ]; then
+            echo "ENTERPRISE_REPO_TOKEN unset — skipping the live anchor E2E"
+            echo "skip=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          git clone --depth 1 \
+            "https://x-access-token:${ENTERPRISE_REPO_TOKEN}@github.com/arman-jalili/rigorix-enterprise.git" \
+            "$RUNNER_TEMP/rigorix-enterprise"
+
+      - name: Live anchored-path E2E
+        if: env.skip != '1'
+        env:
+          ENTERPRISE_DIR: ${{ runner.temp }}/rigorix-enterprise
+        run: demo/anchor-e2e/run.sh
