@@ -17,6 +17,6 @@ LANG_SCRIPT="${SCRIPT_DIR}/languages/${LANG}/validate-architecture.sh"
 if [ -f "$LANG_SCRIPT" ]; then
     exec bash "$LANG_SCRIPT" "$@"
 else
-    echo "No architecture validator for language: C.UTF-8"
+    echo "No architecture validator for language: ${LANG_DETECTED}"
     exit 0
 fi
