@@ -100,7 +100,12 @@ for scope in "." "${CRATE_ROOTS[@]}"; do
         scoped_modules=$((scoped_modules + 1))
         MODULES_TOTAL=$((MODULES_TOTAL + 1))
         name=$(basename "$mf" .md)
-        if find "${search_dirs[@]}" -name "*${name}*" -name '*.rs' 2>/dev/null | grep -q .; then
+        # Module doc names use kebab-case (cli-boundary) while Rust paths use
+        # snake_case (cli_boundary) — normalise and match on both name + path.
+        pattern=$(echo "$name" | sed 's/-/_/g')
+        if find "${search_dirs[@]}" -name '*.rs' -path "*${pattern}*" 2>/dev/null | grep -q . \
+           || find "${search_dirs[@]}" -name "*${pattern}*" -name '*.rs' 2>/dev/null | grep -q . \
+           || find "${search_dirs[@]}" -name "*${name}*" -name '*.rs' 2>/dev/null | grep -q .; then
             scoped_mapped=$((scoped_mapped + 1))
             MAPPED_TOTAL=$((MAPPED_TOTAL + 1))
         fi
