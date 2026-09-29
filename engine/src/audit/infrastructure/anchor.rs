@@ -13,6 +13,11 @@
 //! Ed25519 signature verifies against the configured public key. Any failure
 //! (unreachable, unsigned, forged, scope mismatch) is an error, which the
 //! `AnchoredHistoryAdapter` propagates as a fail-closed refusal.
+//!
+//! Auth: when the anchor's edge enforces it (the enterprise `GET /v1/history`
+//! requires an `rgx_` API key or a JWT), set `RIGORIX_ANCHOR_TOKEN`; the client
+//! then presents `Authorization: Bearer <token>` on every request. Unset ⇒ no
+//! credential is sent (for anchors that are open or fronted by other auth).
 
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
@@ -33,6 +38,10 @@ pub const ANCHOR_PUBLIC_KEY_ENV: &str = "RIGORIX_ANCHOR_PUBLIC_KEY";
 /// Environment variable: history scope requested from the anchor
 /// (defaults to `default`).
 pub const ANCHOR_SCOPE_ENV: &str = "RIGORIX_ANCHOR_SCOPE";
+/// Environment variable: bearer credential presented to the anchor (an `rgx_`
+/// API key or a JWT). Required when the anchor's `/v1/history` edge enforces
+/// auth (e.g. the enterprise Execution API). Unset ⇒ no `Authorization` header.
+pub const ANCHOR_TOKEN_ENV: &str = "RIGORIX_ANCHOR_TOKEN";
 
 /// Anchor read/verification failure. Every variant is fail-closed.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -172,8 +181,11 @@ impl AnchorRuntime {
             .ok()
             .filter(|v| !v.trim().is_empty())
             .unwrap_or_else(|| "default".into());
+        let token = std::env::var(ANCHOR_TOKEN_ENV)
+            .ok()
+            .filter(|v| !v.trim().is_empty());
         Self::anchored(
-            Arc::new(HttpAnchorClient::new(url.clone())),
+            Arc::new(HttpAnchorClient::new_with_token(url.clone(), token)),
             key,
             url,
             scope,
@@ -248,11 +260,20 @@ impl AnchorRuntime {
 pub struct HttpAnchorClient {
     base_url: String,
     http: reqwest::Client,
+    auth_token: Option<String>,
 }
 
 impl HttpAnchorClient {
-    /// Create a client for `base_url` with a bounded request timeout.
+    /// Create a client for `base_url` with a bounded request timeout and **no**
+    /// anchor credential (for anchors that do not require auth).
     pub fn new(base_url: impl Into<String>) -> Self {
+        Self::new_with_token(base_url, None)
+    }
+
+    /// Create a client that presents `Authorization: Bearer <token>` on every
+    /// request. The enterprise `GET /v1/history` edge requires an `rgx_` API key
+    /// or a JWT; `None` sends no credential.
+    pub fn new_with_token(base_url: impl Into<String>, auth_token: Option<String>) -> Self {
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(10))
             .build()
@@ -260,6 +281,7 @@ impl HttpAnchorClient {
         Self {
             base_url: base_url.into(),
             http,
+            auth_token,
         }
     }
 }
@@ -273,10 +295,15 @@ impl AnchorSliceSource for HttpAnchorClient {
     ) -> Result<HistorySlice, AnchorError> {
         let url = format!("{}/v1/history", self.base_url.trim_end_matches('/'));
         let since = since.to_rfc3339();
-        let response = self
+        let mut request = self
             .http
             .get(url)
-            .query(&[("scope", scope), ("since", since.as_str())])
+            .query(&[("scope", scope), ("since", since.as_str())]);
+        // The anchor's edge may require auth (enterprise: `rgx_` key or JWT).
+        if let Some(token) = &self.auth_token {
+            request = request.bearer_auth(token);
+        }
+        let response = request
             .send()
             .await
             .map_err(|e| AnchorError::Unreachable(e.to_string()))?;
@@ -375,5 +402,50 @@ mod tests {
             verify_slice(&slice, &key),
             Err(AnchorError::SignatureInvalid(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn sends_bearer_credential_when_configured() {
+        use wiremock::matchers::{header, method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let (slice, _key) = signed_slice(&"ab".repeat(32));
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/history"))
+            .and(query_param("scope", "local"))
+            .and(header("authorization", "Bearer rgx_test_key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&slice))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = HttpAnchorClient::new_with_token(server.uri(), Some("rgx_test_key".into()));
+        let out = client
+            .fetch_slice("local", Utc.timestamp_opt(0, 0).unwrap())
+            .await
+            .expect("fetch with credential");
+        assert_eq!(out.scope, "local");
+    }
+
+    #[tokio::test]
+    async fn sends_no_credential_when_unconfigured() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let (slice, _key) = signed_slice(&"ab".repeat(32));
+        let server = MockServer::start().await;
+        // Matches only when NO Authorization header is present.
+        Mock::given(method("GET"))
+            .and(path("/v1/history"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&slice))
+            .mount(&server)
+            .await;
+
+        let out = HttpAnchorClient::new(server.uri())
+            .fetch_slice("local", Utc.timestamp_opt(0, 0).unwrap())
+            .await
+            .expect("fetch without credential");
+        assert_eq!(out.scope, "local");
     }
 }
