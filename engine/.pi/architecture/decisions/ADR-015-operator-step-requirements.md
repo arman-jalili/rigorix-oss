@@ -97,10 +97,12 @@ caps bound the count and required pointers.
 ### Non-goals (explicit)
 
 - No domain knowledge in the engine (no "beneficiary" concept).
-- No **required-companion-step** obligation ("only allowed if the plan also
-  contains a step matching R"). That is a natural follow-up; this ADR is scoped to
-  *attestation* and *parameter presence* on a matched step so the change stays
-  small and testable.
+- No **required-companion-step** obligation in *this* ADR ("only allowed if the
+  plan also contains a step matching R") — this ADR is scoped to *attestation*
+  and *parameter presence* on a matched step so the change stays small and
+  testable. **Update (ADR-017 R3, 2026-10-01):** the companion-step obligation is
+  now scheduled — it is a requirement, not a follow-up. See
+  `ADR-017-consequence-gating.md` R3 and `ISSUE-PG-07`.
 - No scoring/model inference in the gate (ADR-004/007/011/013).
 - No replacement of plan-declared `require_identity` — requirements are
   **additional** operator constraints; both are enforced.

@@ -1,3 +1,43 @@
+## [2026-10-01] — ADR-017 proposed (consequence gating: dispatch-time preconditions)
+
+### Added
+- **ADR-017 — consequence gating.** A distinct enforcement property: a
+  consequential step's dispatch depends on the **present standing of its
+  authority**, revalidated at the moment of consequence (T₀ → ΔN → Tₙ). Today the
+  engine proves the same *intent* reaches dispatch (ADR-011) and reasons over what
+  the plan *declares* (ADR-013/015); it cannot re-read an authoritative source at
+  dispatch, cannot stop a failure from releasing dependents, and cannot require a
+  companion check. Verified absent in source (2026-10-01).
+  - **R1 dispatch-time preconditions** — operator-authored
+    `.rigorix/preconditions.toml`: a `StepPredicate` match + `require_params` + a
+    deterministic argv check (JSON stdin; exit 0 = authority stands), evaluated at
+    the ADR-011 choke point before `spawn_concurrent_node`; fail closed on
+    non-zero / timeout / spawn error / unarmed.
+  - **R2 step-outcome gating** — `[gating].release_dependents_on_failure`
+    (default true = today's behavior); when false a failed/denied step does not
+    release its dependents.
+  - **R3 required-companion-step obligation** — closes ADR-015's explicit
+    non-goal via `require_companion_step` on `[[requirements]]`.
+  - **Evidence** — additive envelope `precondition_findings[]` (`outcome` /
+    `exit_code` / `inputs_hash` / `checked_at`; no parameter values).
+- **Gaps recorded:** GAP-A-31 (dispatch-time precondition), A-32 (step-outcome
+  gating), A-33 (companion-step obligation), A-34 (fail-open arming / unreachable
+  abort threshold).
+- **Module doc:** `.pi/architecture/modules/consequence-gating.md` — 11 planned
+  components + 17 acceptance criteria. Guardian generates the issue series from
+  it: `/architect --epic "consequence gating"` (contract freeze + one issue per
+  component + proofing + readiness). The payouts falsifier is tracked in this
+  repo as `engine/.pi/issues/issue-consequence-gating-demo.md`.
+- **Cross-repo:** rigorix-sdk #39 (contract freeze), rigorix-enterprise #225
+  (evidence ingestion).
+
+### Notes
+- **Proposed — not implemented.** Phase A (SDK contract + R1 domain/gate) is the
+  first target; contract-first per D-011/D-012. Do not present as shipped.
+- External signal: Tim Zlomke (Moral Clarity AI), “runtime AI governance,
+  T₀ → ΔN → Tₙ” (2026-10-01). The response is the falsifier (ISSUE-PG-09), not a
+  claim.
+
 ## [2026-09-25] — release 1.8.0 (ADR-016 Phase C anchored mode + Phase B ledger)
 
 ### Added
