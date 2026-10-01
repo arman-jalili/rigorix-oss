@@ -294,18 +294,19 @@ rigorix-oss/
 Rigorix treats CI as continuous verification rather than compilation and testing. Beyond formatting, linting, unit tests, and security scanning, every architectural capability is validated through proofing scripts that verify contracts, architecture readiness, documentation consistency, policy enforcement, and execution guarantees.
 
 ```
-📦 85 automated verification steps
+📦 113 automated verification steps across 5 crates (engine · mcp · cli · actions · server)
 
-  Lint (12)     — formatting, clippy, CI validation × 3 crates
-  Build (9)     — release build, static analysis, package × 3 crates
-  Test (53)     — cargo test, unit/integration stages, 30 module proofing scripts
-  Security (7)  — cargo audit, secret scan, stage security, security validation
-  Docs (13)     — canonical, architecture, readiness, ubiquitous language × all crates
-  Integration (2) — integration and operations validation
+  Lint (18)        — formatting, clippy, CI validation × 5 crates
+  Build (13)       — build/check, static analysis, package × 5 crates
+  Test (57)        — cargo test, unit/integration stages, module proofing scripts
+  Security (10)    — cargo audit, secret scan, per-crate security validation
+  Docs (12)        — canonical, architecture, readiness × all crates
+  Integration (2)  — integration and operations validation
+  Coverage (1)     — workspace line coverage, gated ≥60%
 ```
 
 ```bash
-# Run the full CI suite (85 steps, ~8 min)
+# Run the full CI suite (113 steps, ~8 min)
 bash .pi/scripts/local-ci.sh
 
 # Run a specific stage
@@ -318,8 +319,10 @@ bash .pi/scripts/local-ci.sh --stage=integration  # integration only
 
 # Run a specific crate
 bash .pi/scripts/local-ci.sh --crate=engine
+bash .pi/scripts/local-ci.sh --crate=mcp
 bash .pi/scripts/local-ci.sh --crate=cli
 bash .pi/scripts/local-ci.sh --crate=actions
+bash .pi/scripts/local-ci.sh --crate=server
 
 # Quick mode — skip release builds, use cargo check instead
 bash .pi/scripts/local-ci.sh --quick

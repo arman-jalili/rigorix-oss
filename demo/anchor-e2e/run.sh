@@ -34,7 +34,9 @@ API_KEY_SECRET="${API_KEY_SECRET:-rgx_dev_sk_e2e_secret_value}"
 # Dev anchor seed [7u8;32] → this public key (enterprise Ed25519AnchorSigner).
 ANCHOR_PUBLIC_KEY="${ANCHOR_PUBLIC_KEY:-ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c}"
 DATABASE_URL="postgres://postgres:postgres@127.0.0.1:${PG_PORT}/rigorix"
-ENT_LOG="$(mktemp "${TMPDIR:-/tmp}/rigorix-ent.XXXXXX.log")"
+# NOTE: portable mktemp — BSD/macOS requires the XXXXXX template to end the
+# name (a trailing `.log` suffix makes it treat the path as literal).
+ENT_LOG="$(mktemp "${TMPDIR:-/tmp}/rigorix-ent.XXXXXX")"
 
 ENT_PID=""
 cleanup() {
@@ -72,6 +74,7 @@ mkdir -p /tmp/rigorix-e2e-exports
 DATABASE_URL="$DATABASE_URL" \
 DEFAULT_TEAM_ID='00000000-0000-0000-0000-000000000001' \
 EXPORT_DIR=/tmp/rigorix-e2e-exports \
+PORT="$ENT_PORT" \
 RUST_LOG=info \
 "$ENT_BIN" >"$ENT_LOG" 2>&1 &
 ENT_PID=$!
@@ -90,11 +93,15 @@ docker exec "$PG_CONTAINER" psql -U postgres -d rigorix -f /tmp/seed.sql >/dev/n
 
 echo "==> [5/6] seed producer '${ANCHOR_SCOPE}' prior evidence (genesis sequence 0)"
 ENVELOPE="$(python3 - "$ANCHOR_SCOPE" <<'PY'
-import json, sys, uuid
+import datetime, json, sys, uuid
 scope = sys.argv[1]
+# The live assertion reads history with `since = now - 24h`, so the prior
+# evidence MUST be timestamped at run time (a hardcoded date goes stale and
+# yields an empty slice after 24h).
+now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 print(json.dumps({
   "execution_id": str(uuid.uuid4()),
-  "timestamp": "2026-09-29T18:00:00Z",
+  "timestamp": now,
   "template_id": "e2e",
   "planning_hash": "ab" * 32,
   "source": "rigorix_cli",
@@ -106,7 +113,7 @@ print(json.dumps({
   "events": [{
     "event_type": "node_completed",
     "summary": "registration_remove",
-    "occurred_at": "2026-09-29T18:00:00Z",
+    "occurred_at": now,
     "correlation_id": None,
     "status": "success",
     "payload": {"step_name": "registration_remove"},
