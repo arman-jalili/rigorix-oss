@@ -13,8 +13,7 @@
 //! - **Corrupt / over safety caps** → `Err(PreconditionError::ConfigInvalid)`
 //!   — fail-closed at dispatch; the matching step is refused
 //!
-//! The method body is a `todo!()` stub — parsing behavior lands with the
-//! PreconditionRepository implementation issue.
+//! Behavior lands here (ISSUE-CONSEQUENCE-GATING-2).
 
 use std::path::PathBuf;
 
@@ -49,9 +48,121 @@ impl TomlPreconditionRepository {
 #[async_trait]
 impl PreconditionRepository for TomlPreconditionRepository {
     async fn load_config(&self) -> Result<Option<PreconditionConfig>, PreconditionError> {
-        todo!(
-            "ISSUE-CONSEQUENCE-GATING-2: read + parse {:?}, enforce SafetyCaps, missing ⇒ Ok(None)",
-            self.config_path
-        )
+        // A MISSING file is fail-open-absent: `Ok(None)` → no preconditions →
+        // no gating (status quo). Any other read failure is fail closed.
+        let text = match tokio::fs::read_to_string(&self.config_path).await {
+            Ok(text) => text,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                tracing::debug!(
+                    path = %self.config_path.display(),
+                    "precondition: config file absent — fail-open-absent"
+                );
+                return Ok(None);
+            }
+            Err(error) => {
+                return Err(PreconditionError::ConfigInvalid(format!(
+                    "failed to read {}: {error}",
+                    self.config_path.display()
+                )));
+            }
+        };
+
+        // Parse the operator schema: `[[preconditions]]` + optional `[gating]`.
+        let config: PreconditionConfig = toml::from_str(&text).map_err(|error| {
+            PreconditionError::ConfigInvalid(format!(
+                "parse error in {}: {error}",
+                self.config_path.display()
+            ))
+        })?;
+
+        // Enforce the safety caps and structural validity — an over-cap or
+        // malformed file refuses a matching step like a corrupt one.
+        config.validate_with_default_caps()?;
+        Ok(Some(config))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Write `content` to a unique temp file and return its path.
+    fn temp_file(content: &str) -> std::path::PathBuf {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("preconditions.toml");
+        std::fs::write(&path, content).expect("write temp config");
+        // Leak the dir so the file survives for the async read; removed by the
+        // OS temp cleaner.
+        std::mem::forget(dir);
+        path
+    }
+
+    const VALID: &str = r#"
+[[preconditions]]
+id = "beneficiary-eligible"
+match = { tool = "payment_execute" }
+require_params = ["/beneficiary", "/amount"]
+command = ["/opt/rigorix/checks/beneficiary-eligible"]
+timeout_ms = 5000
+
+[gating]
+release_dependents_on_failure = false
+"#;
+
+    #[tokio::test]
+    async fn missing_file_is_none() {
+        let repository =
+            TomlPreconditionRepository::new("/nonexistent/does-not-exist/preconditions.toml");
+        assert!(matches!(repository.load_config().await, Ok(None)));
+    }
+
+    #[tokio::test]
+    async fn valid_file_loads_all_fields() {
+        let repository = TomlPreconditionRepository::new(temp_file(VALID));
+        let config = repository
+            .load_config()
+            .await
+            .expect("load")
+            .expect("present");
+        assert_eq!(config.preconditions.len(), 1);
+        assert_eq!(config.preconditions[0].id, "beneficiary-eligible");
+        assert!(!config.gating.release_dependents_on_failure);
+    }
+
+    #[tokio::test]
+    async fn malformed_file_fails_closed() {
+        let repository = TomlPreconditionRepository::new(temp_file("this is not = valid toml [["));
+        let error = repository.load_config().await.expect_err("fail closed");
+        assert!(matches!(error, PreconditionError::ConfigInvalid(_)));
+        assert!(!error.is_retriable());
+    }
+
+    #[tokio::test]
+    async fn over_cap_file_fails_closed() {
+        // 101 preconditions exceeds the default max_preconditions_per_file=100.
+        let mut content = String::new();
+        for i in 0..=100 {
+            content.push_str(&format!(
+                "[[preconditions]]\nid = \"p{i}\"\nmatch = {{ tool = \"payment_execute\" }}\ncommand = [\"/opt/rigorix/checks/p{i}\"]\n"
+            ));
+        }
+        let repository = TomlPreconditionRepository::new(temp_file(&content));
+        let error = repository.load_config().await.expect_err("fail closed");
+        assert!(matches!(error, PreconditionError::ConfigInvalid(_)));
+    }
+
+    #[tokio::test]
+    async fn structural_invalidity_fails_closed() {
+        // Empty argv[0] is a structural error, not an implicit no-op.
+        let repository = TomlPreconditionRepository::new(temp_file(
+            r#"
+[[preconditions]]
+id = "empty-command"
+match = { tool = "payment_execute" }
+command = []
+"#,
+        ));
+        let error = repository.load_config().await.expect_err("fail closed");
+        assert!(matches!(error, PreconditionError::ConfigInvalid(_)));
     }
 }
