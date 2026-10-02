@@ -202,7 +202,10 @@ impl PreconditionRunner for ProcessPreconditionRunner {
                 // the JSON value itself is unchanged.
                 let mut body = payload;
                 body.push(b'\n');
-                stdin.write_all(&body).await?;
+                // A check may legitimately ignore stdin (or exit before reading
+                // it), so a broken pipe is NOT a failure — the exit code is the
+                // verdict. Writing errors are deliberately non-fatal here.
+                let _ = stdin.write_all(&body).await;
                 // Close stdin to signal EOF to the check.
                 drop(stdin);
             }
@@ -376,5 +379,22 @@ mod tests {
             .expect_err("spawn");
         assert!(matches!(error, PreconditionError::Spawn { .. }));
         assert!(!error.is_retriable());
+    }
+
+    #[tokio::test]
+    async fn check_that_ignores_stdin_is_judged_by_exit_code() {
+        // Regression: a check that exits without reading stdin closes the pipe.
+        // A large payload deterministically fills the pipe buffer so the write
+        // fails with EPIPE; that must NOT be reported as a spawn failure — the
+        // exit code is the verdict.
+        let runner = runner_outside_workspace();
+        let mut big = input();
+        big.parameters = json!({ "blob": "x".repeat(1_000_000) });
+        let run = runner
+            .run(&precondition("p1", vec!["/bin/sh", "-c", "exit 7"]), &big)
+            .await
+            .expect("run must be judged by exit code, not a broken pipe");
+        assert_eq!(run.outcome, PreconditionOutcome::Failed);
+        assert_eq!(run.exit_code, Some(7));
     }
 }
