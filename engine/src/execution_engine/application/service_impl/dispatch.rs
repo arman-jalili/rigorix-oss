@@ -111,6 +111,44 @@ impl ParallelExecutionServiceImpl {
                 }
             }
 
+            // R1 dispatch-time precondition gate (ADR-017): after ADR-011
+            // approval verification, before the R3 sequence-policy gate.
+            match self.precondition_verdict(dag_id, graph, node_id).await? {
+                PreconditionVerdict::Dispatch => {}
+                PreconditionVerdict::Deny {
+                    precondition_id,
+                    outcome,
+                } => {
+                    let node_name = graph
+                        .get_node(node_id)
+                        .map(|n| n.name.clone())
+                        .unwrap_or_default();
+                    let task_result = TaskResult::failure(
+                        node_id,
+                        &node_name,
+                        format!(
+                            "Precondition '{precondition_id}' refused step before dispatch ({})",
+                            outcome.as_str()
+                        ),
+                        "precondition_denied".to_string(),
+                        0,
+                        0,
+                    );
+                    node_results.insert(node_id, task_result);
+                    failed_count += 1;
+                    if let Some((denied_id, state)) =
+                        self.record_precondition_denial(dag_id, node_id, &precondition_id, outcome)
+                    {
+                        self.notify_progress(dag_id, denied_id, state, total_nodes);
+                    }
+                    // Release dependents exactly like a dispatched failure.
+                    let _ = graph.mark_completed(node_id);
+                    // NEVER fall through to dispatch: a denied node's tool is
+                    // never called. Continue the fill loop.
+                    continue;
+                }
+            }
+
             // R3 sequence-policy prefix gate (opt-in; module doc §R3).
             // Promotion flips the live node's requires_approval flag so the
             // SAME approval pause/approve/resume chain as a pre-declared
@@ -317,6 +355,44 @@ impl ParallelExecutionServiceImpl {
                             break;
                         }
                         Err(e) => return Err(e),
+                    }
+                }
+
+                // R1 dispatch-time precondition gate (ADR-017).
+                match self.precondition_verdict(dag_id, graph, next_id).await? {
+                    PreconditionVerdict::Dispatch => {}
+                    PreconditionVerdict::Deny {
+                        precondition_id,
+                        outcome,
+                    } => {
+                        let node_name = graph
+                            .get_node(next_id)
+                            .map(|n| n.name.clone())
+                            .unwrap_or_default();
+                        let task_result = TaskResult::failure(
+                            next_id,
+                            &node_name,
+                            format!(
+                                "Precondition '{precondition_id}' refused step before dispatch ({})",
+                                outcome.as_str()
+                            ),
+                            "precondition_denied".to_string(),
+                            0,
+                            0,
+                        );
+                        node_results.insert(next_id, task_result);
+                        failed_count += 1;
+                        if let Some((denied_id, state)) = self.record_precondition_denial(
+                            dag_id,
+                            next_id,
+                            &precondition_id,
+                            outcome,
+                        ) {
+                            self.notify_progress(dag_id, denied_id, state, total_nodes);
+                        }
+                        let _ = graph.mark_completed(next_id);
+                        // NEVER fall through to dispatch (tool never called).
+                        continue;
                     }
                 }
 
@@ -795,6 +871,83 @@ impl ParallelExecutionServiceImpl {
             "Sequence policy denied by rule '{rule_id}' — step '{later_step}' must not dispatch"
         );
         state.mark_failed("sequence_policy_denied".to_string(), error);
+        let cloned = state.clone();
+        Some((node_id, cloned))
+    }
+
+    /// R1 dispatch-time precondition verdict for one ready node (ADR-017).
+    ///
+    /// Returns `Dispatch` when no gate is wired or the gate allows dispatch.
+    /// A `Deny` verdict means the tool must never be called. An unarmed gate
+    /// (`NotArmed`) is a fail-closed refusal mapped to `Deny { error }`; any
+    /// other gate error halts the run fail-closed (mirrors sequence policy).
+    pub(super) async fn precondition_verdict(
+        &self,
+        dag_id: Uuid,
+        graph: &crate::dag_engine::domain::TaskGraph,
+        node_id: Uuid,
+    ) -> Result<PreconditionVerdict, ExecutionError> {
+        let Some(gate) = &self.precondition_gate else {
+            return Ok(PreconditionVerdict::Dispatch);
+        };
+        let Some(node) = graph.get_node(node_id) else {
+            return Ok(PreconditionVerdict::Dispatch);
+        };
+        let step = DispatchStep {
+            name: node.name.clone(),
+            tool: node.tool.clone(),
+            parameters: serde_json::from_str(&node.intent).unwrap_or_default(),
+        };
+        match gate.assess(dag_id, &step).await {
+            Ok(verdict) => Ok(verdict),
+            Err(PreconditionError::NotArmed {
+                precondition_id,
+                detail,
+            }) => {
+                tracing::warn!(
+                    precondition = %precondition_id,
+                    %detail,
+                    "precondition gate unarmed — refusing step (fail closed)"
+                );
+                Ok(PreconditionVerdict::Deny {
+                    precondition_id,
+                    outcome: PreconditionOutcome::Error,
+                })
+            }
+            Err(error) => Err(ExecutionError::InternalError {
+                detail: format!(
+                    "Precondition evaluation failed — run halted before dispatch (fail closed): {error}"
+                ),
+            }),
+        }
+    }
+
+    /// Record an R1 precondition denial as a deterministic pre-dispatch node
+    /// failure (no tool call, no `NodeStarted`). Shared by the two dispatch
+    /// fill loops.
+    ///
+    /// Returns the updated node state so the caller can notify progress.
+    pub(super) fn record_precondition_denial(
+        &self,
+        dag_id: Uuid,
+        node_id: Uuid,
+        precondition_id: &str,
+        outcome: PreconditionOutcome,
+    ) -> Option<(Uuid, NodeExecutionState)> {
+        let mut sessions = match self.sessions.lock() {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!(error = %e, "precondition denial: sessions lock poisoned");
+                return None;
+            }
+        };
+        let session = sessions.get_mut(&dag_id)?;
+        let state = session.node_states.get_mut(&node_id)?;
+        let error = format!(
+            "Precondition '{precondition_id}' refused step before dispatch ({})",
+            outcome.as_str()
+        );
+        state.mark_failed("precondition_denied".to_string(), error);
         let cloned = state.clone();
         Some((node_id, cloned))
     }

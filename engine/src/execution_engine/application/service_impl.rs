@@ -43,6 +43,8 @@ use crate::execution_engine::domain::{
 };
 use crate::hooks::application::service::HookRunnerService;
 use crate::permission::application::enforcer::PermissionEnforcer;
+use crate::precondition::application::{DispatchGate, DispatchStep};
+use crate::precondition::domain::{PreconditionError, PreconditionOutcome, PreconditionVerdict};
 use crate::recovery_recipes::application::context::RecoveryContext;
 use crate::recovery_recipes::application::dto::{AttemptRecoveryInput, RecipeForInput};
 use crate::recovery_recipes::application::service::RecoveryService;
@@ -511,6 +513,14 @@ pub struct ParallelExecutionServiceImpl {
     /// live graph — the approval chain from ADR-011 composes unchanged.
     /// `None` = gating disabled (status quo — no behavior change).
     sequence_policy: Option<Arc<dyn SequencePolicyService>>,
+
+    /// R1 dispatch-time precondition gate (opt-in, ADR-017).
+    ///
+    /// When present, `run_dispatch_loop` assesses each ready node after the
+    /// ADR-011 approval verification and before `spawn_concurrent_node`: a
+    /// `Deny` verdict marks the node failed and its tool is never called.
+    /// `None` = no dispatch-time precondition gating (status quo).
+    precondition_gate: Option<Arc<dyn DispatchGate>>,
 }
 
 impl ParallelExecutionServiceImpl {
@@ -532,6 +542,7 @@ impl ParallelExecutionServiceImpl {
             recovery_contexts: Mutex::new(HashMap::new()),
             approval_binding: None,
             sequence_policy: None,
+            precondition_gate: None,
         }
     }
 
@@ -556,6 +567,19 @@ impl ParallelExecutionServiceImpl {
     /// ever called. `None` (default) keeps the status-quo dispatch path.
     pub fn with_sequence_policy(mut self, svc: Arc<dyn SequencePolicyService>) -> Self {
         self.sequence_policy = Some(svc);
+        self
+    }
+
+    /// Set the R1 dispatch-time precondition gate (ADR-017).
+    ///
+    /// When set, the dispatch loop assesses each ready node at the single
+    /// choke point (after ADR-011 approval verification, before
+    /// `spawn_concurrent_node`). A `Deny` verdict records a deterministic
+    /// `precondition_denied` node failure and **never** calls the tool. An
+    /// unarmed gate refuses matching steps (`NotArmed`, fail closed). `None`
+    /// (default) keeps the status-quo dispatch path.
+    pub fn with_precondition_gate(mut self, gate: Arc<dyn DispatchGate>) -> Self {
+        self.precondition_gate = Some(gate);
         self
     }
 
