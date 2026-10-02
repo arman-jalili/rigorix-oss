@@ -29,6 +29,7 @@ pub mod companion;
 pub mod dto;
 pub mod factory;
 pub mod gate;
+pub mod gate_impl;
 pub mod hardening;
 pub mod service;
 pub mod service_impl;
@@ -40,6 +41,7 @@ pub use companion::{
 pub use dto::{DispatchStep, PreconditionCheckInput};
 pub use factory::PreconditionFactory;
 pub use gate::DispatchGate;
+pub use gate_impl::PreconditionDispatchGate;
 pub use hardening::HardeningConfig;
 pub use service::PreconditionService;
 pub use service_impl::PreconditionServiceImpl;
