@@ -396,7 +396,8 @@ pub(crate) fn event_to_vm_command(event: &ExecutionEvent) -> Option<VmCommand> {
         | ExecutionEvent::SequencePolicyDenied { .. }
         | ExecutionEvent::SequencePolicyConfigError { .. }
         | ExecutionEvent::RequirementUnmet { .. }
-        | ExecutionEvent::RequirementPromoted { .. } => None,
+        | ExecutionEvent::RequirementPromoted { .. }
+        | ExecutionEvent::PreconditionChecked { .. } => None,
     }
 }
 

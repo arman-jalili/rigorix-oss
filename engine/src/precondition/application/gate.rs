@@ -29,7 +29,7 @@
 
 use async_trait::async_trait;
 
-use crate::precondition::domain::{PreconditionError, PreconditionVerdict};
+use crate::precondition::domain::{PreconditionError, PreconditionFinding, PreconditionVerdict};
 
 use super::dto::DispatchStep;
 
@@ -62,4 +62,18 @@ pub trait DispatchGate: Send + Sync {
     /// - `PreconditionError::ConfigInvalid` — configured but corrupt /
     ///   over-cap (fail closed)
     async fn is_armed(&self) -> Result<bool, PreconditionError>;
+
+    /// Assess the step and return the redacted findings for every check that
+    /// ran, alongside the verdict.
+    ///
+    /// The execution engine publishes a `PreconditionChecked` event per
+    /// finding, from which the envelope `precondition_findings[]` is derived.
+    /// The default implementation preserves verdict-only gates.
+    async fn assess_with_findings(
+        &self,
+        execution_id: uuid::Uuid,
+        step: &DispatchStep,
+    ) -> Result<(PreconditionVerdict, Vec<PreconditionFinding>), PreconditionError> {
+        Ok((self.assess(execution_id, step).await?, Vec::new()))
+    }
 }

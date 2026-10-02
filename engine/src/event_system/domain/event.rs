@@ -423,6 +423,30 @@ pub enum ExecutionEvent {
         /// ISO 8601 timestamp of the event.
         timestamp: DateTime<Utc>,
     },
+
+    /// A dispatch-time precondition was evaluated at the ADR-017 choke point.
+    /// Records the outcome, exit code, and a one-way inputs hash — never
+    /// parameter values or stdout (SpanPrivacy). The envelope
+    /// `precondition_findings[]` derives from these events.
+    PreconditionChecked {
+        /// Globally unique execution identifier.
+        execution_id: uuid::Uuid,
+        /// Stable id of the precondition that was evaluated.
+        precondition_id: String,
+        /// Name of the matched (gated) step.
+        step: String,
+        /// The distinct outcome: `"passed" | "failed" | "error"`.
+        outcome: String,
+        /// Process exit code, when a process actually ran.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        exit_code: Option<i32>,
+        /// One-way hash of the check inputs (never the inputs).
+        inputs_hash: String,
+        /// Redacted decision summary (parameter values never included).
+        summary: String,
+        /// ISO 8601 timestamp of the event.
+        timestamp: DateTime<Utc>,
+    },
 }
 
 /// A persisted execution event with a monotonic sequence number.
@@ -473,6 +497,7 @@ impl ExecutionEvent {
             ExecutionEvent::SequencePolicyConfigError { .. } => "sequence_policy_config_error",
             ExecutionEvent::RequirementUnmet { .. } => "requirement_unmet",
             ExecutionEvent::RequirementPromoted { .. } => "requirement_promoted",
+            ExecutionEvent::PreconditionChecked { .. } => "precondition_checked",
             ExecutionEvent::IntentMismatchDetected { .. } => "intent_mismatch_detected",
             ExecutionEvent::ScopeViolationRecorded { .. } => "scope_violation_recorded",
             ExecutionEvent::AuditEnvelopeCreated { .. } => "audit_envelope_created",
@@ -505,7 +530,8 @@ impl ExecutionEvent {
             | ExecutionEvent::SequencePolicyDenied { execution_id, .. }
             | ExecutionEvent::SequencePolicyConfigError { execution_id, .. }
             | ExecutionEvent::RequirementUnmet { execution_id, .. }
-            | ExecutionEvent::RequirementPromoted { execution_id, .. } => execution_id,
+            | ExecutionEvent::RequirementPromoted { execution_id, .. }
+            | ExecutionEvent::PreconditionChecked { execution_id, .. } => execution_id,
         }
     }
 
@@ -535,7 +561,8 @@ impl ExecutionEvent {
             | ExecutionEvent::SequencePolicyDenied { timestamp, .. }
             | ExecutionEvent::SequencePolicyConfigError { timestamp, .. }
             | ExecutionEvent::RequirementUnmet { timestamp, .. }
-            | ExecutionEvent::RequirementPromoted { timestamp, .. } => timestamp,
+            | ExecutionEvent::RequirementPromoted { timestamp, .. }
+            | ExecutionEvent::PreconditionChecked { timestamp, .. } => timestamp,
         }
     }
 
@@ -570,6 +597,12 @@ impl ExecutionEvent {
                 "Step requirement '{requirement_id}' promoted step '{step}' — unmet: {}",
                 unmet.join(", ")
             ),
+            ExecutionEvent::PreconditionChecked {
+                precondition_id,
+                step,
+                outcome,
+                ..
+            } => format!("Precondition '{precondition_id}' {outcome} for step '{step}'"),
             ExecutionEvent::ApprovalRecorded {
                 step_name,
                 approver_id,
@@ -773,6 +806,24 @@ impl ExecutionEvent {
                 "unmet": unmet,
                 "action": action,
                 "summary": summary,
+            })),
+            ExecutionEvent::PreconditionChecked {
+                precondition_id,
+                step,
+                outcome,
+                exit_code,
+                inputs_hash,
+                summary,
+                timestamp,
+                ..
+            } => Some(serde_json::json!({
+                "precondition_id": precondition_id,
+                "step": step,
+                "outcome": outcome,
+                "exit_code": exit_code,
+                "inputs_hash": inputs_hash,
+                "summary": summary,
+                "checked_at": timestamp.to_rfc3339(),
             })),
             ExecutionEvent::ApprovalRecorded {
                 node_id,

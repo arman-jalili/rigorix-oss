@@ -74,3 +74,74 @@ fn test_decision_summary_redacts_values() {
     assert!(summary.contains("exit 1"));
     assert!(!summary.contains("acct-"));
 }
+
+#[tokio::test]
+async fn test_envelope_precondition_findings_records_evidence_and_redacts_values() {
+    // AC #12: the signed envelope derives `precondition_findings[]` from the
+    // run's `precondition_checked` events, carrying outcome + exit code +
+    // inputs hash + timestamp, and NEVER parameter values or stdout.
+    use rigorix_engine::audit::application::dto::BuildEnvelopeInput;
+    use rigorix_engine::audit::application::envelope_factory_impl::AuditEnvelopeFactoryImpl;
+    use rigorix_engine::audit::application::factory::AuditEnvelopeFactory;
+    use rigorix_engine::audit::domain::{EventStatus, ExecutionEventRef};
+
+    let factory = AuditEnvelopeFactoryImpl::default();
+    let input = BuildEnvelopeInput {
+        execution_id: uuid::Uuid::nil(),
+        template_id: "payments".to_string(),
+        planning_prompt: String::new(),
+        events: vec![ExecutionEventRef {
+            event_type: "precondition_checked".to_string(),
+            summary: "Precondition 'beneficiary-eligible' failed for step 'pay'".to_string(),
+            occurred_at: Utc::now(),
+            correlation_id: None,
+            status: EventStatus::Failure,
+            payload: Some(json!({
+                "precondition_id": "beneficiary-eligible",
+                "step": "pay",
+                "outcome": "failed",
+                "exit_code": 3,
+                "inputs_hash": "sha256:deadbeef",
+                "summary": "precondition 'beneficiary-eligible' failed step 'pay' (exit 3)",
+                "checked_at": "2026-10-01T00:00:00Z",
+                // These must NOT be copied into the finding (SpanPrivacy):
+                "parameters": { "beneficiary": "acct-secret" },
+                "stdout": "secret output"
+            })),
+        }],
+        source: None,
+        total_tokens: 0,
+        duration_ms: 0,
+        git_commit: None,
+        git_branch: None,
+        model_version: None,
+        planning_prompt_content: None,
+        file_paths: vec![],
+        metadata: None,
+        scoring_results: std::collections::HashMap::new(),
+        sign: false,
+        repository: None,
+        author: None,
+        identity: None,
+        effect_key: None,
+        producer_id: None,
+        sequence: None,
+        prev_hash: None,
+        history_policy: None,
+    };
+
+    let envelope = factory.build_envelope(input).await.expect("envelope");
+    assert_eq!(envelope.precondition_findings.len(), 1);
+    let finding = &envelope.precondition_findings[0];
+    assert_eq!(finding.precondition_id, "beneficiary-eligible");
+    assert_eq!(finding.step, "pay");
+    assert_eq!(finding.outcome, "failed");
+    assert_eq!(finding.exit_code, Some(3));
+    assert_eq!(finding.inputs_hash, "sha256:deadbeef");
+    assert!(finding.checked_at.to_rfc3339().starts_with("2026-10-01"));
+
+    // SpanPrivacy: no parameter values, no stdout.
+    let serialized = serde_json::to_string(finding).expect("serialize");
+    assert!(!serialized.contains("acct-secret"));
+    assert!(!serialized.contains("secret output"));
+}

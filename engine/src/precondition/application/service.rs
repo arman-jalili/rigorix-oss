@@ -34,7 +34,7 @@
 
 use async_trait::async_trait;
 
-use crate::precondition::domain::{PreconditionError, PreconditionVerdict};
+use crate::precondition::domain::{PreconditionError, PreconditionFinding, PreconditionVerdict};
 
 use super::dto::DispatchStep;
 
@@ -68,4 +68,19 @@ pub trait PreconditionService: Send + Sync {
     /// # Errors
     /// - `PreconditionError::ConfigInvalid` — config present but corrupt
     async fn is_configured(&self) -> Result<bool, PreconditionError>;
+
+    /// Evaluate and return the redacted findings for every matching
+    /// precondition (both passed and refused) alongside the verdict.
+    ///
+    /// Findings carry `precondition_id`, `step`, `outcome`, `exit_code`,
+    /// `inputs_hash`, `checked_at`, and a redacted summary — never parameter
+    /// values or stdout (SpanPrivacy). The default implementation preserves
+    /// verdict-only implementors by returning no findings.
+    async fn evaluate_with_findings(
+        &self,
+        execution_id: uuid::Uuid,
+        step: &DispatchStep,
+    ) -> Result<(PreconditionVerdict, Vec<PreconditionFinding>), PreconditionError> {
+        Ok((self.evaluate(execution_id, step).await?, Vec::new()))
+    }
 }
