@@ -141,8 +141,9 @@ impl ParallelExecutionServiceImpl {
                     {
                         self.notify_progress(dag_id, denied_id, state, total_nodes);
                     }
-                    // Release dependents exactly like a dispatched failure.
-                    let _ = graph.mark_completed(node_id);
+                    // ADR-017 R2: release dependents, or stop the failure.
+                    self.release_or_skip_dependents(graph, dag_id, node_id, total_nodes, true)
+                        .await;
                     // NEVER fall through to dispatch: a denied node's tool is
                     // never called. Continue the fill loop.
                     continue;
@@ -196,8 +197,9 @@ impl ParallelExecutionServiceImpl {
                     {
                         self.notify_progress(dag_id, denied_id, state, total_nodes);
                     }
-                    // Release dependents exactly like a dispatched failure.
-                    let _ = graph.mark_completed(node_id);
+                    // ADR-017 R2: release dependents, or stop the failure.
+                    self.release_or_skip_dependents(graph, dag_id, node_id, total_nodes, true)
+                        .await;
                     // NEVER fall through to dispatch: a denied node's tool is
                     // never called. Continue the fill loop.
                     continue;
@@ -309,8 +311,10 @@ impl ParallelExecutionServiceImpl {
                 }
             }
 
-            // Mark completed in graph to release dependents
-            let _ = graph.mark_completed(node_id);
+            // ADR-017 R2: release dependents, or stop the failure so its
+            // transitive dependents are Skipped and never dispatched.
+            self.release_or_skip_dependents(graph, dag_id, node_id, total_nodes, !success)
+                .await;
 
             // Phase 3: Dispatch newly ready nodes (a slot just opened)
             while join_set.len() < max_concurrent {
@@ -390,7 +394,8 @@ impl ParallelExecutionServiceImpl {
                         ) {
                             self.notify_progress(dag_id, denied_id, state, total_nodes);
                         }
-                        let _ = graph.mark_completed(next_id);
+                        self.release_or_skip_dependents(graph, dag_id, next_id, total_nodes, true)
+                            .await;
                         // NEVER fall through to dispatch (tool never called).
                         continue;
                     }
@@ -438,7 +443,8 @@ impl ParallelExecutionServiceImpl {
                         {
                             self.notify_progress(dag_id, denied_id, state, total_nodes);
                         }
-                        let _ = graph.mark_completed(next_id);
+                        self.release_or_skip_dependents(graph, dag_id, next_id, total_nodes, true)
+                            .await;
                         // NEVER fall through to dispatch (tool never called).
                         continue;
                     }
@@ -968,5 +974,56 @@ impl ParallelExecutionServiceImpl {
         state.mark_failed("precondition_denied".to_string(), error);
         let cloned = state.clone();
         Some((node_id, cloned))
+    }
+
+    /// ADR-017 R2: release a terminal node's dependents, or — when
+    /// `release_dependents_on_failure = false` and the node failed — mark the
+    /// failed node's transitive dependents `Skipped` and never dispatch them.
+    ///
+    /// The default gating mode (`release = true`) preserves today's behavior:
+    /// `mark_completed` releases dependents. With `release = false`, the failed
+    /// node and its transitive dependents are recorded as completed without
+    /// decrementing any dependent's in-degree, so none enter the ready queue.
+    pub(super) async fn release_or_skip_dependents(
+        &self,
+        graph: &mut crate::dag_engine::domain::TaskGraph,
+        dag_id: Uuid,
+        node_id: Uuid,
+        total_nodes: u32,
+        is_failure: bool,
+    ) {
+        if !is_failure || self.gating_mode.release_dependents_on_failure {
+            let _ = graph.mark_completed(node_id);
+            return;
+        }
+
+        let skipped = graph.transitive_dependents(node_id);
+        let _ = graph.mark_completed_without_release(node_id);
+        for dep in &skipped {
+            let _ = graph.mark_completed_without_release(*dep);
+        }
+
+        let mut updates: Vec<(Uuid, NodeExecutionState)> = Vec::new();
+        match self.sessions.lock() {
+            Ok(mut sessions) => {
+                if let Some(session) = sessions.get_mut(&dag_id) {
+                    for dep in &skipped {
+                        if let Some(state) = session.node_states.get_mut(dep) {
+                            state.mark_skipped("dependency_failed".to_string());
+                            updates.push((*dep, state.clone()));
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!(
+                    error = %e,
+                    "gating: sessions lock poisoned while skipping dependents"
+                );
+            }
+        }
+        for (dep, state) in updates {
+            self.notify_progress(dag_id, dep, state, total_nodes);
+        }
     }
 }

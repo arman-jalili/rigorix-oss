@@ -44,7 +44,9 @@ use crate::execution_engine::domain::{
 use crate::hooks::application::service::HookRunnerService;
 use crate::permission::application::enforcer::PermissionEnforcer;
 use crate::precondition::application::{DispatchGate, DispatchStep};
-use crate::precondition::domain::{PreconditionError, PreconditionOutcome, PreconditionVerdict};
+use crate::precondition::domain::{
+    GatingMode, PreconditionError, PreconditionOutcome, PreconditionVerdict,
+};
 use crate::recovery_recipes::application::context::RecoveryContext;
 use crate::recovery_recipes::application::dto::{AttemptRecoveryInput, RecipeForInput};
 use crate::recovery_recipes::application::service::RecoveryService;
@@ -521,6 +523,12 @@ pub struct ParallelExecutionServiceImpl {
     /// `Deny` verdict marks the node failed and its tool is never called.
     /// `None` = no dispatch-time precondition gating (status quo).
     precondition_gate: Option<Arc<dyn DispatchGate>>,
+
+    /// ADR-017 R2 step-outcome gating. When
+    /// `release_dependents_on_failure = false`, a failed/denied node does not
+    /// release its transitive dependents: they are marked `Skipped` and never
+    /// dispatched. Default = today's behavior (release).
+    gating_mode: GatingMode,
 }
 
 impl ParallelExecutionServiceImpl {
@@ -543,6 +551,7 @@ impl ParallelExecutionServiceImpl {
             approval_binding: None,
             sequence_policy: None,
             precondition_gate: None,
+            gating_mode: GatingMode::default(),
         }
     }
 
@@ -580,6 +589,17 @@ impl ParallelExecutionServiceImpl {
     /// (default) keeps the status-quo dispatch path.
     pub fn with_precondition_gate(mut self, gate: Arc<dyn DispatchGate>) -> Self {
         self.precondition_gate = Some(gate);
+        self
+    }
+
+    /// Set ADR-017 R2 step-outcome gating (`[gating] release_dependents_on_failure`).
+    ///
+    /// When `release_dependents_on_failure = false`, a failed or denied node
+    /// does **not** release its transitive dependents: they are marked
+    /// `Skipped` and never dispatched. The default (`true`) preserves today's
+    /// behavior.
+    pub fn with_gating_mode(mut self, gating_mode: GatingMode) -> Self {
+        self.gating_mode = gating_mode;
         self
     }
 
