@@ -322,6 +322,59 @@ impl TaskGraph {
         Ok(())
     }
 
+    /// Return the transitive dependents of `node_id` (BFS over the graph's
+    /// dependent edges), excluding `node_id` itself. Breadth-first and
+    /// deduplicated, so the result is deterministic.
+    pub fn transitive_dependents(&self, node_id: Uuid) -> Vec<Uuid> {
+        let mut seen: HashSet<Uuid> = HashSet::new();
+        let mut order: Vec<Uuid> = Vec::new();
+        let mut queue: VecDeque<Uuid> = VecDeque::new();
+        if let Some(deps) = self.execution_state.dependents.get(&node_id) {
+            for dep in deps {
+                if seen.insert(*dep) {
+                    order.push(*dep);
+                    queue.push_back(*dep);
+                }
+            }
+        }
+        while let Some(current) = queue.pop_front() {
+            if let Some(deps) = self.execution_state.dependents.get(&current) {
+                for dep in deps {
+                    if seen.insert(*dep) {
+                        order.push(*dep);
+                        queue.push_back(*dep);
+                    }
+                }
+            }
+        }
+        order
+    }
+
+    /// Mark `node_id` as completed **without** releasing its dependents into
+    /// the ready queue.
+    ///
+    /// Used by step-outcome gating (`release_dependents_on_failure = false`):
+    /// a failed node's transitive dependents are recorded here and marked
+    /// `Skipped`, so they are never dispatched. Their in-degree is left
+    /// untouched — completion is recorded directly so `is_execution_complete`
+    /// is still reachable.
+    ///
+    /// # Errors
+    /// - `DagError::TaskNotFound` if the node ID does not exist
+    /// - `DagError::InvalidGraph` if the graph has not been sealed
+    pub fn mark_completed_without_release(&mut self, node_id: Uuid) -> Result<(), DagError> {
+        if !self.sealed {
+            return Err(DagError::InvalidGraph {
+                reason: "Cannot mark nodes as completed before sealing".to_string(),
+            });
+        }
+        if !self.node_index.contains_key(&node_id) {
+            return Err(DagError::TaskNotFound { id: node_id });
+        }
+        self.execution_state.completed.insert(node_id);
+        Ok(())
+    }
+
     /// Return the IDs of nodes whose dependencies are all satisfied.
     ///
     /// Returns an empty Vec if the graph has not been sealed.

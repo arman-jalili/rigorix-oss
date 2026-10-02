@@ -32,3 +32,69 @@ fn test_gatingmode_false_round_trips() {
     assert_eq!(decoded, mode);
     assert!(!decoded.releases_dependents_on_failure());
 }
+
+// ── AC #13: release_dependents_on_failure=false stops the failure ──────────
+
+/// Build A → B → C.
+fn chain() -> (
+    rigorix_engine::dag_engine::domain::TaskGraph,
+    uuid::Uuid,
+    uuid::Uuid,
+    uuid::Uuid,
+) {
+    use rigorix_engine::dag_engine::domain::{TaskGraph, TaskNode};
+    let (a, b, c) = (
+        uuid::Uuid::new_v4(),
+        uuid::Uuid::new_v4(),
+        uuid::Uuid::new_v4(),
+    );
+    let mut graph = TaskGraph::new();
+    graph
+        .add_unchecked(TaskNode::new(a, "a", "tool", vec![], "{}"))
+        .unwrap();
+    graph
+        .add_unchecked(TaskNode::new(b, "b", "tool", vec![a], "{}"))
+        .unwrap();
+    graph
+        .add_unchecked(TaskNode::new(c, "c", "tool", vec![b], "{}"))
+        .unwrap();
+    graph.seal().unwrap();
+    (graph, a, b, c)
+}
+
+#[test]
+fn test_release_false_stops_transitive_dependents_without_releasing() {
+    let (mut graph, a, b, c) = chain();
+
+    // The transitive dependents of the failed node.
+    let mut expected = vec![b, c];
+    let mut actual = graph.transitive_dependents(a);
+    actual.sort();
+    expected.sort();
+    assert_eq!(actual, expected);
+
+    // Simulate A's dispatch, then `release_dependents_on_failure = false`:
+    // record A and its dependents as completed WITHOUT releasing them.
+    graph.pop_ready_node();
+    graph.mark_completed_without_release(a).unwrap();
+    for dep in &[b, c] {
+        graph.mark_completed_without_release(*dep).unwrap();
+    }
+    let ready = graph.ready_nodes();
+    assert!(
+        !ready.contains(&b) && !ready.contains(&c),
+        "dependents must never enter the ready queue"
+    );
+    assert!(graph.is_execution_complete());
+}
+
+#[test]
+fn test_release_true_releases_dependents_into_the_ready_queue() {
+    let (mut graph, a, b, _c) = chain();
+    graph.pop_ready_node();
+    graph.mark_completed(a).unwrap();
+    assert!(
+        graph.ready_nodes().contains(&b),
+        "default behavior releases the direct dependent"
+    );
+}

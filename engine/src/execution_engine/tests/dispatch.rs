@@ -391,3 +391,114 @@ async fn test_r3_non_matching_rule_does_not_gate_dispatch() {
         "B executes normally when no rule matches"
     );
 }
+
+// ── ADR-017 R2: step-outcome gating (AC #13) ───────────────────────────────
+
+/// Build A → B → C where A fails (unknown tool); B and C depend transitively.
+fn failing_chain() -> (crate::dag_engine::domain::TaskGraph, Uuid, Uuid, Uuid) {
+    use crate::dag_engine::domain::{TaskGraph, TaskNode};
+    let a = Uuid::new_v4();
+    let b = Uuid::new_v4();
+    let c = Uuid::new_v4();
+    let mut graph = TaskGraph::new();
+    graph
+        .add_unchecked(TaskNode::new(
+            a,
+            "a",
+            "definitely_unknown_tool",
+            vec![],
+            "{}",
+        ))
+        .unwrap();
+    graph
+        .add_unchecked(TaskNode::new(
+            b,
+            "b",
+            "definitely_unknown_tool",
+            vec![a],
+            "{}",
+        ))
+        .unwrap();
+    graph
+        .add_unchecked(TaskNode::new(
+            c,
+            "c",
+            "definitely_unknown_tool",
+            vec![b],
+            "{}",
+        ))
+        .unwrap();
+    graph.seal().unwrap();
+    (graph, a, b, c)
+}
+
+#[tokio::test]
+async fn gating_mode_false_skips_failed_nodes_transitive_dependents() {
+    use crate::execution_engine::domain::NodeStatus;
+    use crate::precondition::domain::GatingMode;
+
+    let (graph, a, b, c) = failing_chain();
+    let executor = create_executor().with_gating_mode(GatingMode {
+        release_dependents_on_failure: false,
+    });
+    let dag_id = Uuid::new_v4();
+    executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            graph: Some(graph),
+            config_override: None,
+        })
+        .await
+        .unwrap();
+
+    let state = executor
+        .get_execution_state(GetExecutionStateInput { dag_id })
+        .await
+        .unwrap();
+    let states: std::collections::HashMap<_, _> = state.node_states.into_iter().collect();
+    assert_eq!(
+        states[&a].status,
+        NodeStatus::Failed,
+        "A must fail (unknown tool)"
+    );
+    assert_eq!(
+        states[&b].status,
+        NodeStatus::Skipped,
+        "B must be Skipped, never dispatched"
+    );
+    assert_eq!(
+        states[&c].status,
+        NodeStatus::Skipped,
+        "C (transitive dependent) must be Skipped, never dispatched"
+    );
+}
+
+#[tokio::test]
+async fn gating_mode_default_releases_dependents_on_failure() {
+    use crate::execution_engine::domain::NodeStatus;
+
+    let (graph, a, b, _c) = failing_chain();
+    // Default gating mode (release_dependents_on_failure = true).
+    let executor = create_executor();
+    let dag_id = Uuid::new_v4();
+    executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            graph: Some(graph),
+            config_override: None,
+        })
+        .await
+        .unwrap();
+
+    let state = executor
+        .get_execution_state(GetExecutionStateInput { dag_id })
+        .await
+        .unwrap();
+    let states: std::collections::HashMap<_, _> = state.node_states.into_iter().collect();
+    assert_eq!(states[&a].status, NodeStatus::Failed);
+    assert_eq!(
+        states[&b].status,
+        NodeStatus::Failed,
+        "default behavior releases B (it dispatches and fails too)"
+    );
+}
