@@ -85,3 +85,22 @@ fn test_command_is_an_argv_array_never_a_shell_string() {
     }));
     assert!(err.is_err(), "a shell string must not be a valid command");
 }
+
+#[test]
+fn test_precondition_matches_via_reused_steppredicate() {
+    // AC #1 behavior: the parsed precondition matches with the frozen
+    // ADR-013 predicate semantics (tool exact/glob + param predicates).
+    let config: PreconditionConfig = toml::from_str(PRECONDITION_TOML).expect("parse");
+    let precondition = &config.preconditions[0];
+    let params = json!({ "beneficiary": "acct-1", "amount": 100 });
+    assert!(precondition.matches("payment_execute", &params).expect("m"));
+    assert!(!precondition.matches("payment_cancel", &params).expect("m"));
+
+    let glob: Precondition = serde_json::from_value(json!({
+        "id": "glob",
+        "match": { "tool": "payment_*" },
+        "command": ["/opt/rigorix/checks/glob"]
+    }))
+    .expect("glob parses");
+    assert!(glob.matches("payment_execute", &json!({})).expect("m"));
+}

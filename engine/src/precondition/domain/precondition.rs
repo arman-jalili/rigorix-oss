@@ -127,13 +127,17 @@ impl Precondition {
     ///
     /// # Errors
     /// - `PreconditionError::Match` — the predicate could not be evaluated
-    ///
-    /// # Implementation
-    /// TODO: ISSUE-CONSEQUENCE-GATING-1 — delegate to
-    /// `StepPredicate::matches`, mapping `SequencePolicyError` to
-    /// `PreconditionError::Match`.
-    pub fn matches(&self, _tool: &str, _parameters: &Value) -> Result<bool, PreconditionError> {
-        todo!("ISSUE-CONSEQUENCE-GATING-1: delegate match to StepPredicate::matches")
+    ///   (fail closed)
+    pub fn matches(&self, tool: &str, parameters: &Value) -> Result<bool, PreconditionError> {
+        // Reuse the frozen ADR-013 matcher (tool exact/glob + JSON-pointer
+        // parameter predicates). A malformed operator predicate is a
+        // fail-closed `Match` error, never a silent non-match.
+        self.r#match
+            .matches(tool, parameters)
+            .map_err(|error| PreconditionError::Match {
+                precondition_id: self.id.clone(),
+                detail: error.to_string(),
+            })
     }
 }
 
@@ -252,5 +256,60 @@ mod tests {
         assert!(config.fail_closed);
         assert!(config.is_empty());
         assert!(config.gating.release_dependents_on_failure);
+    }
+
+    fn eligible() -> Precondition {
+        serde_json::from_value(json!({
+            "id": "beneficiary-eligible",
+            "match": {
+                "tool": "payment_execute",
+                "params": [
+                    { "pointer": "/beneficiary", "kind": "exact", "value": "acct-1" }
+                ]
+            },
+            "require_params": ["/beneficiary", "/amount"],
+            "command": ["/opt/rigorix/checks/beneficiary-eligible"]
+        }))
+        .expect("precondition parses")
+    }
+
+    #[test]
+    fn matches_tool_and_parameter_predicates() {
+        let precondition = eligible();
+        assert!(
+            precondition
+                .matches("payment_execute", &json!({ "beneficiary": "acct-1" }))
+                .expect("match")
+        );
+        // Wrong parameter value → no match.
+        assert!(
+            !precondition
+                .matches("payment_execute", &json!({ "beneficiary": "acct-2" }))
+                .expect("match")
+        );
+        // Wrong tool → no match.
+        assert!(
+            !precondition
+                .matches("payment_cancel", &json!({ "beneficiary": "acct-1" }))
+                .expect("match")
+        );
+    }
+
+    #[test]
+    fn invalid_operator_regex_is_a_fail_closed_match_error() {
+        let precondition: Precondition = serde_json::from_value(json!({
+            "id": "bad-regex",
+            "match": {
+                "tool": "payment_execute",
+                "params": [{ "pointer": "/beneficiary", "kind": "regex", "value": "(unclosed" }]
+            },
+            "command": ["/opt/rigorix/checks/bad-regex"]
+        }))
+        .expect("precondition parses");
+        let err = precondition
+            .matches("payment_execute", &json!({ "beneficiary": "acct-1" }))
+            .expect_err("fail closed");
+        assert!(matches!(err, PreconditionError::Match { .. }));
+        assert!(!err.is_retriable());
     }
 }
