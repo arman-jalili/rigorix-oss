@@ -16,7 +16,7 @@
 
 use async_trait::async_trait;
 
-use crate::precondition::domain::{PreconditionError, PreconditionVerdict};
+use crate::precondition::domain::{PreconditionError, PreconditionFinding, PreconditionVerdict};
 
 use super::dto::DispatchStep;
 use super::gate::DispatchGate;
@@ -90,5 +90,24 @@ impl DispatchGate for PreconditionDispatchGate {
             return Ok(false);
         }
         self.service.is_configured().await
+    }
+
+    async fn assess_with_findings(
+        &self,
+        execution_id: uuid::Uuid,
+        step: &DispatchStep,
+    ) -> Result<(PreconditionVerdict, Vec<PreconditionFinding>), PreconditionError> {
+        if !self.armed {
+            return Err(PreconditionError::NotArmed {
+                precondition_id: "<gate>".to_string(),
+                detail: self
+                    .unarmed_detail
+                    .clone()
+                    .unwrap_or_else(|| "configured but not armed".to_string()),
+            });
+        }
+        self.service
+            .evaluate_with_findings(execution_id, step)
+            .await
     }
 }

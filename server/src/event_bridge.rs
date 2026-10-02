@@ -66,6 +66,7 @@ pub fn kind_for(event: &ExecutionEvent) -> Option<EventKind> {
         | ExecutionEvent::SequencePolicyConfigError { .. }
         | ExecutionEvent::RequirementUnmet { .. }
         | ExecutionEvent::RequirementPromoted { .. }
+        | ExecutionEvent::PreconditionChecked { .. }
         | ExecutionEvent::ScopeViolationRecorded { .. } => Some(EventKind::PolicyChanged),
 
         // ── not pushed (audit delivery / circuit breaker) ───────────────
@@ -252,6 +253,26 @@ fn describe(event: &ExecutionEvent) -> (EventStatus, String, Value) {
             EventStatus::Skipped,
             format!("requirement '{requirement_id}' promoted step '{step}'"),
             json!({ "requirement_id": requirement_id, "action": "promote", "step_name": step, "unmet": unmet }),
+        ),
+        ExecutionEvent::PreconditionChecked {
+            precondition_id,
+            step,
+            outcome,
+            exit_code,
+            ..
+        } => (
+            if outcome == "passed" {
+                EventStatus::Success
+            } else {
+                EventStatus::Failure
+            },
+            format!("precondition '{precondition_id}' {outcome} for step '{step}'"),
+            json!({
+                "precondition_id": precondition_id,
+                "step_name": step,
+                "outcome": outcome,
+                "exit_code": exit_code,
+            }),
         ),
 
         // ── not pushed — describe conservatively for completeness ───────

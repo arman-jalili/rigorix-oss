@@ -2,7 +2,7 @@
 //!
 //! @canonical .pi/architecture/modules/consequence-gating.md#preconditionservice
 //! Implements: ISSUE-CONSEQUENCE-GATING-4 — match → require_params → run → verdict
-//! Issue: #942; contract frozen in #938
+//! Issue: #942; evidence findings via #944; contract frozen in #938
 //!
 //! Evaluation contract (v1):
 //!
@@ -22,12 +22,19 @@
 //! corrupt config (`Err`) is propagated (fail closed). A runner failure
 //! (timeout / spawn / trust boundary) is an indeterminate `error` and refuses —
 //! never a pass.
+//!
+//! Every matching check also produces a redacted [`PreconditionFinding`]
+//! (`outcome` / `exit_code` / `inputs_hash` / `checked_at`; no parameter values
+//! or stdout) for the signed envelope.
 
 use async_trait::async_trait;
+use chrono::Utc;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 use crate::precondition::domain::{
-    Precondition, PreconditionError, PreconditionOutcome, PreconditionVerdict,
+    Precondition, PreconditionConfig, PreconditionError, PreconditionFinding, PreconditionOutcome,
+    PreconditionVerdict,
 };
 use crate::precondition::infrastructure::PreconditionRunner;
 use crate::precondition::infrastructure::repository::PreconditionRepository;
@@ -64,46 +71,52 @@ fn pointer_present(parameters: &Value, pointer: &str) -> bool {
         .is_some_and(|value| !value.is_null())
 }
 
+/// One-way hash of the check inputs (never the inputs themselves).
+fn inputs_hash(input: &PreconditionCheckInput) -> String {
+    let bytes = serde_json::to_vec(input).unwrap_or_default();
+    let digest = Sha256::digest(&bytes);
+    format!("sha256:{}", hex::encode(digest))
+}
+
 impl PreconditionServiceImpl {
-    /// Evaluate the matching preconditions over the loaded config.
+    /// Evaluate the matching preconditions over the loaded config, collecting
+    /// one redacted finding per check that ran.
     async fn evaluate_with_config(
         &self,
-        config: &crate::precondition::domain::PreconditionConfig,
+        config: &PreconditionConfig,
         execution_id: uuid::Uuid,
         step: &DispatchStep,
-    ) -> Result<PreconditionVerdict, PreconditionError> {
+    ) -> Result<(PreconditionVerdict, Vec<PreconditionFinding>), PreconditionError> {
+        let mut findings = Vec::new();
         for precondition in &config.preconditions {
             if !precondition.matches(&step.tool, &step.parameters)? {
                 // AC #8: a non-matching step spawns nothing and is unaffected.
                 continue;
             }
-            if let Some(denial) = self
+            let (verdict, finding) = self
                 .evaluate_match(precondition, execution_id, step)
-                .await?
-            {
-                return Ok(denial);
+                .await?;
+            if let Some(finding) = finding {
+                findings.push(finding);
+            }
+            if let Some(verdict) = verdict {
+                return Ok((verdict, findings));
             }
         }
-        Ok(PreconditionVerdict::Dispatch)
+        Ok((PreconditionVerdict::Dispatch, findings))
     }
 
-    /// Evaluate one matched precondition. `Ok(None)` = passed.
+    /// Evaluate one matched precondition.
+    ///
+    /// Returns `(Some(verdict), finding)` when the check refused, and
+    /// `(None, finding)` when it passed.
     async fn evaluate_match(
         &self,
         precondition: &Precondition,
         execution_id: uuid::Uuid,
         step: &DispatchStep,
-    ) -> Result<Option<PreconditionVerdict>, PreconditionError> {
-        // AC #7: presence-only obligation, enforced BEFORE the command runs.
-        for pointer in &precondition.require_params {
-            if !pointer_present(&step.parameters, pointer) {
-                return Ok(Some(PreconditionVerdict::Deny {
-                    precondition_id: precondition.id.clone(),
-                    outcome: PreconditionOutcome::Failed,
-                }));
-            }
-        }
-
+    ) -> Result<(Option<PreconditionVerdict>, Option<PreconditionFinding>), PreconditionError> {
+        let checked_at = Utc::now();
         let input = PreconditionCheckInput {
             precondition_id: precondition.id.clone(),
             execution_id,
@@ -111,12 +124,56 @@ impl PreconditionServiceImpl {
             tool: step.tool.clone(),
             parameters: step.parameters.clone(),
         };
+        let hash = inputs_hash(&input);
+
+        // AC #7: presence-only obligation, enforced BEFORE the command runs.
+        for pointer in &precondition.require_params {
+            if !pointer_present(&step.parameters, pointer) {
+                let finding = PreconditionFinding {
+                    precondition_id: precondition.id.clone(),
+                    step: step.name.clone(),
+                    outcome: PreconditionOutcome::Failed,
+                    exit_code: None,
+                    inputs_hash: hash,
+                    checked_at,
+                    summary: Some(format!(
+                        "precondition '{}' refused step '{}': required parameter '{}' absent",
+                        precondition.id, step.name, pointer
+                    )),
+                };
+                return Ok((
+                    Some(PreconditionVerdict::Deny {
+                        precondition_id: precondition.id.clone(),
+                        outcome: PreconditionOutcome::Failed,
+                    }),
+                    Some(finding),
+                ));
+            }
+        }
+
         match self.runner.run(precondition, &input).await {
-            Ok(run) if !run.outcome.refuses() => Ok(None),
-            Ok(run) => Ok(Some(PreconditionVerdict::Deny {
-                precondition_id: precondition.id.clone(),
-                outcome: run.outcome,
-            })),
+            Ok(run) => {
+                let finding = PreconditionFinding {
+                    precondition_id: precondition.id.clone(),
+                    step: step.name.clone(),
+                    outcome: run.outcome,
+                    exit_code: run.exit_code,
+                    inputs_hash: hash,
+                    checked_at,
+                    summary: None,
+                };
+                if run.outcome.refuses() {
+                    Ok((
+                        Some(PreconditionVerdict::Deny {
+                            precondition_id: precondition.id.clone(),
+                            outcome: run.outcome,
+                        }),
+                        Some(finding),
+                    ))
+                } else {
+                    Ok((None, Some(finding)))
+                }
+            }
             Err(error) => {
                 // Timeout / spawn / trust boundary are indeterminate: refuse
                 // (`error`), never pass.
@@ -125,10 +182,25 @@ impl PreconditionServiceImpl {
                     %error,
                     "precondition check indeterminate — refusing"
                 );
-                Ok(Some(PreconditionVerdict::Deny {
+                let finding = PreconditionFinding {
                     precondition_id: precondition.id.clone(),
+                    step: step.name.clone(),
                     outcome: PreconditionOutcome::Error,
-                }))
+                    exit_code: None,
+                    inputs_hash: hash,
+                    checked_at,
+                    summary: Some(format!(
+                        "precondition '{}' indeterminate for step '{}' ({})",
+                        precondition.id, step.name, error
+                    )),
+                };
+                Ok((
+                    Some(PreconditionVerdict::Deny {
+                        precondition_id: precondition.id.clone(),
+                        outcome: PreconditionOutcome::Error,
+                    }),
+                    Some(finding),
+                ))
             }
         }
     }
@@ -141,10 +213,18 @@ impl PreconditionService for PreconditionServiceImpl {
         execution_id: uuid::Uuid,
         step: &DispatchStep,
     ) -> Result<PreconditionVerdict, PreconditionError> {
+        Ok(self.evaluate_with_findings(execution_id, step).await?.0)
+    }
+
+    async fn evaluate_with_findings(
+        &self,
+        execution_id: uuid::Uuid,
+        step: &DispatchStep,
+    ) -> Result<(PreconditionVerdict, Vec<PreconditionFinding>), PreconditionError> {
         match self.repository.load_config().await? {
             Some(config) => self.evaluate_with_config(&config, execution_id, step).await,
             // Fail-open-absent: no config file → no gating (status quo).
-            None => Ok(PreconditionVerdict::Dispatch),
+            None => Ok((PreconditionVerdict::Dispatch, Vec::new())),
         }
     }
 

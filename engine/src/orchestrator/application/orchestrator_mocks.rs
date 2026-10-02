@@ -504,6 +504,7 @@ impl crate::audit::application::AuditService for MockAuditService {
                 approval_events: Vec::new(),
                 sequence_policy_findings: Vec::new(),
                 requirement_findings: Vec::new(),
+                precondition_findings: Vec::new(),
                 scope_violations: Vec::new(),
                 decision_context_ref: None,
                 signature: None,

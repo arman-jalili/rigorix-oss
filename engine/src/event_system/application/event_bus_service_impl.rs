@@ -201,6 +201,7 @@ impl EventBusService for EventBusServiceImpl {
                         | ExecutionEvent::SequencePolicyConfigError { execution_id, .. }
                         | ExecutionEvent::RequirementUnmet { execution_id, .. }
                         | ExecutionEvent::RequirementPromoted { execution_id, .. }
+                        | ExecutionEvent::PreconditionChecked { execution_id, .. }
                         | ExecutionEvent::AuditEnvelopeCreated { execution_id, .. } => {
                             if execution_id != eid {
                                 return false;
@@ -252,6 +253,7 @@ impl EventBusService for EventBusServiceImpl {
                         }
                         ExecutionEvent::RequirementUnmet { .. } => "requirement_unmet",
                         ExecutionEvent::RequirementPromoted { .. } => "requirement_promoted",
+                        ExecutionEvent::PreconditionChecked { .. } => "precondition_checked",
                     };
                     if variant_name != event_type {
                         return false;
@@ -286,7 +288,8 @@ impl EventBusService for EventBusServiceImpl {
                         | ExecutionEvent::SequencePolicyDenied { timestamp, .. }
                         | ExecutionEvent::SequencePolicyConfigError { timestamp, .. }
                         | ExecutionEvent::RequirementUnmet { timestamp, .. }
-                        | ExecutionEvent::RequirementPromoted { timestamp, .. } => timestamp,
+                        | ExecutionEvent::RequirementPromoted { timestamp, .. }
+                        | ExecutionEvent::PreconditionChecked { timestamp, .. } => timestamp,
                     };
                     if ts < after {
                         return false;
@@ -320,7 +323,8 @@ impl EventBusService for EventBusServiceImpl {
                         | ExecutionEvent::SequencePolicyDenied { timestamp, .. }
                         | ExecutionEvent::SequencePolicyConfigError { timestamp, .. }
                         | ExecutionEvent::RequirementUnmet { timestamp, .. }
-                        | ExecutionEvent::RequirementPromoted { timestamp, .. } => timestamp,
+                        | ExecutionEvent::RequirementPromoted { timestamp, .. }
+                        | ExecutionEvent::PreconditionChecked { timestamp, .. } => timestamp,
                     };
                     if ts > before {
                         return false;

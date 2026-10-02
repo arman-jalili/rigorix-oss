@@ -158,6 +158,7 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
             scope_violations: Self::scope_refs_from_events(&input.events),
             sequence_policy_findings: Self::sequence_policy_findings_from_events(&input.events),
             requirement_findings: Self::requirement_findings_from_events(&input.events),
+            precondition_findings: Self::precondition_findings_from_events(&input.events),
             decision_context_ref: Self::decision_context_ref_from_events(&input.events),
             signature: None,
             // GAP-M-12: an unsigned run is explicitly degraded evidence.
@@ -615,6 +616,63 @@ impl AuditEnvelopeFactoryImpl {
                 step: step.to_string(),
                 action,
                 unmet,
+                summary,
+            });
+        }
+        out
+    }
+
+    /// ADR-017: derive redacted precondition findings from the run's
+    /// `precondition_checked` events. Parameter values and stdout never enter
+    /// the event payload (SpanPrivacy default).
+    fn precondition_findings_from_events(
+        events: &[crate::audit::domain::ExecutionEventRef],
+    ) -> Vec<crate::audit::domain::PreconditionFindingRef> {
+        let mut out = Vec::new();
+        for e in events {
+            if e.event_type != "precondition_checked" {
+                continue;
+            }
+            let Some(payload) = &e.payload else { continue };
+            let Some(precondition_id) = payload.get("precondition_id").and_then(|v| v.as_str())
+            else {
+                continue;
+            };
+            let Some(step) = payload.get("step").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let outcome = payload
+                .get("outcome")
+                .and_then(|v| v.as_str())
+                .unwrap_or("error")
+                .to_string();
+            let exit_code = payload
+                .get("exit_code")
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32);
+            let inputs_hash = payload
+                .get("inputs_hash")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let checked_at = payload
+                .get("checked_at")
+                .and_then(|v| v.as_str())
+                .and_then(|ts| chrono::DateTime::parse_from_rfc3339(ts).ok())
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .unwrap_or_else(chrono::Utc::now);
+            let summary = payload
+                .get("summary")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            out.push(crate::audit::domain::PreconditionFindingRef {
+                precondition_id: precondition_id.to_string(),
+                step: step.to_string(),
+                outcome,
+                exit_code,
+                inputs_hash,
+                checked_at,
                 summary,
             });
         }

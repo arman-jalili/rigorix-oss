@@ -898,8 +898,26 @@ impl ParallelExecutionServiceImpl {
             tool: node.tool.clone(),
             parameters: serde_json::from_str(&node.intent).unwrap_or_default(),
         };
-        match gate.assess(dag_id, &step).await {
-            Ok(verdict) => Ok(verdict),
+        match gate.assess_with_findings(dag_id, &step).await {
+            Ok((verdict, findings)) => {
+                // Evidence (ADR-017): record every check that ran as a
+                // first-class event; the envelope `precondition_findings[]`
+                // derives from these. Summaries are pre-redacted (SpanPrivacy).
+                for finding in &findings {
+                    self.publish_event(ExecutionEvent::PreconditionChecked {
+                        execution_id: dag_id,
+                        precondition_id: finding.precondition_id.clone(),
+                        step: finding.step.clone(),
+                        outcome: finding.outcome.as_str().to_string(),
+                        exit_code: finding.exit_code,
+                        inputs_hash: finding.inputs_hash.clone(),
+                        summary: finding.decision_summary(),
+                        timestamp: finding.checked_at,
+                    })
+                    .await;
+                }
+                Ok(verdict)
+            }
             Err(PreconditionError::NotArmed {
                 precondition_id,
                 detail,

@@ -254,6 +254,14 @@ pub struct AuditEnvelope {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub requirement_findings: Vec<RequirementFindingRef>,
 
+    /// ADR-017 dispatch-time precondition outcomes: every check that ran at the
+    /// dispatch choke point — `passed`, `failed`, or `error` — with its exit
+    /// code, a one-way inputs hash, and the timestamp. Additive and
+    /// serde-defaulted: absent in pre-consequence-gating envelopes. Parameter
+    /// **values** and raw stdout never appear (SpanPrivacy).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub precondition_findings: Vec<PreconditionFindingRef>,
+
     /// Reference + summary of the decision context shown to the approver;
     /// the full payload is opt-in and stored locally (R4 privacy pattern).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -320,6 +328,32 @@ pub struct RequirementFindingRef {
     /// Unmet obligation names — pointer names and/or `"identity"` (never
     /// parameter values).
     pub unmet: Vec<String>,
+    /// Redacted decision summary (parameter values never included).
+    pub summary: String,
+}
+
+/// A redacted reference to a dispatch-time precondition outcome (ADR-017).
+///
+/// Summary fields only — the precondition id, the matched step, the distinct
+/// outcome (`passed` / `failed` / `error`), the process exit code when one
+/// ran, a one-way inputs hash, the check timestamp, and a redacted summary.
+/// Parameter **values** and raw stdout never appear (SpanPrivacy). Derived
+/// from `precondition_checked` events at envelope build time.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreconditionFindingRef {
+    /// Stable id of the precondition that ran.
+    pub precondition_id: String,
+    /// Name of the matched (gated) step.
+    pub step: String,
+    /// Distinct outcome: `"passed" | "failed" | "error"`.
+    pub outcome: String,
+    /// Process exit code, when a process actually ran.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    /// One-way hash of the check inputs (never the inputs).
+    pub inputs_hash: String,
+    /// When the check was evaluated.
+    pub checked_at: chrono::DateTime<chrono::Utc>,
     /// Redacted decision summary (parameter values never included).
     pub summary: String,
 }

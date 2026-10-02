@@ -589,6 +589,10 @@ impl OrchestratorService for OrchestratorServiceImpl {
                             | crate::event_system::domain::ExecutionEvent::RequirementPromoted {
                                 timestamp,
                                 ..
+                            }
+                            | crate::event_system::domain::ExecutionEvent::PreconditionChecked {
+                                timestamp,
+                                ..
                             } => *timestamp,
                         };
                         ExecutionEventInfo {
@@ -1219,6 +1223,10 @@ impl OrchestratorService for OrchestratorServiceImpl {
                                 ..
                             }
                             | crate::event_system::domain::ExecutionEvent::RequirementPromoted {
+                                timestamp,
+                                ..
+                            }
+                            | crate::event_system::domain::ExecutionEvent::PreconditionChecked {
                                 timestamp,
                                 ..
                             } => *timestamp,
