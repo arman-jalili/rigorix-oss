@@ -53,7 +53,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::sequence_policy::domain::StepPredicate;
+use crate::sequence_policy::domain::{ParamMatchKind, StepPredicate};
 
 use super::error::PreconditionError;
 use super::gating::GatingMode;
@@ -213,21 +213,114 @@ impl PreconditionConfig {
     /// with `/`, timeout within `max_timeout_ms`).
     ///
     /// # Errors
-    /// - `PreconditionError::ConfigInvalid` — a structurally invalid entry
-    ///
-    /// # Implementation
-    /// TODO: ISSUE-CONSEQUENCE-GATING-2 — enforce `SafetyCaps` over
-    /// `self.preconditions` (fail closed).
-    pub fn validate(&self, _caps: &SafetyCaps) -> Result<(), PreconditionError> {
-        todo!("ISSUE-CONSEQUENCE-GATING-2: enforce SafetyCaps over self.preconditions")
+    /// - `PreconditionError::ConfigInvalid` — a structurally invalid or
+    ///   over-cap entry (fail closed)
+    pub fn validate(&self, caps: &SafetyCaps) -> Result<(), PreconditionError> {
+        if self.preconditions.len() as u32 > caps.max_preconditions_per_file {
+            return Err(PreconditionError::ConfigInvalid(format!(
+                "{} preconditions exceeds cap max_preconditions_per_file={}",
+                self.preconditions.len(),
+                caps.max_preconditions_per_file
+            )));
+        }
+        let mut seen_ids: Vec<&str> = Vec::with_capacity(self.preconditions.len());
+        for precondition in &self.preconditions {
+            if precondition.id.trim().is_empty() {
+                return Err(PreconditionError::ConfigInvalid(
+                    "precondition with empty `id`".to_string(),
+                ));
+            }
+            if seen_ids.contains(&precondition.id.as_str()) {
+                return Err(PreconditionError::ConfigInvalid(format!(
+                    "duplicate precondition id '{}'",
+                    precondition.id
+                )));
+            }
+            seen_ids.push(&precondition.id);
+
+            // The check program is `command[0]`; an empty argv cannot run and
+            // is a config typo, not an implicit no-op (fail closed).
+            if precondition.command.is_empty() {
+                return Err(PreconditionError::ConfigInvalid(format!(
+                    "precondition '{}': command must contain at least the program (argv[0])",
+                    precondition.id
+                )));
+            }
+            if precondition.command.len() as u32 > caps.max_argv_args {
+                return Err(PreconditionError::ConfigInvalid(format!(
+                    "precondition '{}': {} argv elements exceed cap max_argv_args={}",
+                    precondition.id,
+                    precondition.command.len(),
+                    caps.max_argv_args
+                )));
+            }
+            if precondition.timeout_ms == 0 || precondition.timeout_ms > caps.max_timeout_ms {
+                return Err(PreconditionError::ConfigInvalid(format!(
+                    "precondition '{}': timeout_ms {} must be in 1..={}",
+                    precondition.id, precondition.timeout_ms, caps.max_timeout_ms
+                )));
+            }
+            if precondition.require_params.len() as u32 > caps.max_require_params {
+                return Err(PreconditionError::ConfigInvalid(format!(
+                    "precondition '{}': {} required params exceed cap max_require_params={}",
+                    precondition.id,
+                    precondition.require_params.len(),
+                    caps.max_require_params
+                )));
+            }
+            for pointer in &precondition.require_params {
+                if !pointer.starts_with('/') {
+                    return Err(PreconditionError::ConfigInvalid(format!(
+                        "precondition '{}': required parameter pointer '{}' must start with '/'",
+                        precondition.id, pointer
+                    )));
+                }
+            }
+
+            // Validate the reused StepPredicate. A literal kind needs a value;
+            // a regex must compile; `equals_step` needs an earlier matched step
+            // of a sequence rule and is invalid for a single-step precondition
+            // (fail closed).
+            for predicate in &precondition.r#match.params {
+                match predicate.kind {
+                    ParamMatchKind::Exact | ParamMatchKind::Glob => {
+                        if predicate.value.is_none() {
+                            return Err(PreconditionError::ConfigInvalid(format!(
+                                "precondition '{}': parameter predicate '{}' (kind {:?}) requires `value`",
+                                precondition.id, predicate.pointer, predicate.kind
+                            )));
+                        }
+                    }
+                    ParamMatchKind::Regex => {
+                        let Some(pattern) = predicate.value.as_deref() else {
+                            return Err(PreconditionError::ConfigInvalid(format!(
+                                "precondition '{}': regex predicate '{}' requires `value`",
+                                precondition.id, predicate.pointer
+                            )));
+                        };
+                        regex::Regex::new(pattern).map_err(|error| {
+                            PreconditionError::ConfigInvalid(format!(
+                                "precondition '{}': regex predicate '{}' failed to compile: {error}",
+                                precondition.id, predicate.pointer
+                            ))
+                        })?;
+                    }
+                    ParamMatchKind::EqualsStep => {
+                        return Err(PreconditionError::ConfigInvalid(format!(
+                            "precondition '{}': match predicate '{}' uses equals_step, which requires \
+                             an earlier matched step and is not valid for a single-step precondition",
+                            precondition.id, predicate.pointer
+                        )));
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Load-time convenience: validate against the concrete default caps.
-    ///
-    /// # Implementation
-    /// TODO: ISSUE-CONSEQUENCE-GATING-2.
     pub fn validate_with_default_caps(&self) -> Result<(), PreconditionError> {
-        todo!("ISSUE-CONSEQUENCE-GATING-2: validate against SafetyCaps::default()")
+        self.validate(&SafetyCaps::default())
     }
 }
 
@@ -311,5 +404,111 @@ mod tests {
             .expect_err("fail closed");
         assert!(matches!(err, PreconditionError::Match { .. }));
         assert!(!err.is_retriable());
+    }
+
+    fn base() -> Precondition {
+        serde_json::from_value(json!({
+            "id": "base",
+            "match": { "tool": "payment_execute" },
+            "command": ["/opt/rigorix/checks/base"]
+        }))
+        .expect("base parses")
+    }
+
+    #[test]
+    fn validate_accepts_a_within_caps_config() {
+        let config = PreconditionConfig {
+            fail_closed: true,
+            preconditions: vec![base(), eligible()],
+            gating: GatingMode::default(),
+        };
+        assert!(config.validate_with_default_caps().is_ok());
+        assert!(!config.is_empty());
+    }
+
+    #[test]
+    fn validate_rejects_duplicate_ids_and_empty_command() {
+        let duplicate = PreconditionConfig {
+            preconditions: vec![base(), base()],
+            ..PreconditionConfig::default()
+        };
+        assert!(matches!(
+            duplicate.validate_with_default_caps(),
+            Err(PreconditionError::ConfigInvalid(_))
+        ));
+
+        let mut empty = base();
+        empty.command = Vec::new();
+        assert!(matches!(
+            PreconditionConfig {
+                preconditions: vec![empty],
+                ..PreconditionConfig::default()
+            }
+            .validate_with_default_caps(),
+            Err(PreconditionError::ConfigInvalid(_))
+        ));
+    }
+
+    #[test]
+    fn validate_rejects_over_cap_argv_and_timeout() {
+        let caps = SafetyCaps {
+            max_argv_args: 2,
+            max_timeout_ms: 1_000,
+            ..SafetyCaps::default()
+        };
+        let mut long_argv = base();
+        long_argv.command = vec!["a".into(), "b".into(), "c".into()];
+        assert!(matches!(
+            PreconditionConfig {
+                preconditions: vec![long_argv],
+                ..PreconditionConfig::default()
+            }
+            .validate(&caps),
+            Err(PreconditionError::ConfigInvalid(_))
+        ));
+
+        let mut slow = base();
+        slow.timeout_ms = 5_000;
+        assert!(matches!(
+            PreconditionConfig {
+                preconditions: vec![slow],
+                ..PreconditionConfig::default()
+            }
+            .validate(&caps),
+            Err(PreconditionError::ConfigInvalid(_))
+        ));
+    }
+
+    #[test]
+    fn validate_rejects_bad_pointer_and_equals_step() {
+        let mut bad_pointer = base();
+        bad_pointer.require_params = vec!["beneficiary".to_string()];
+        assert!(matches!(
+            PreconditionConfig {
+                preconditions: vec![bad_pointer],
+                ..PreconditionConfig::default()
+            }
+            .validate_with_default_caps(),
+            Err(PreconditionError::ConfigInvalid(_))
+        ));
+
+        let mut equals_step: Precondition = serde_json::from_value(json!({
+            "id": "eq",
+            "match": {
+                "tool": "payment_execute",
+                "params": [{ "pointer": "/beneficiary", "kind": "equals_step", "step": 0 }]
+            },
+            "command": ["/opt/rigorix/checks/eq"]
+        }))
+        .expect("parses");
+        equals_step.require_params.clear();
+        assert!(matches!(
+            PreconditionConfig {
+                preconditions: vec![equals_step],
+                ..PreconditionConfig::default()
+            }
+            .validate_with_default_caps(),
+            Err(PreconditionError::ConfigInvalid(_))
+        ));
     }
 }
