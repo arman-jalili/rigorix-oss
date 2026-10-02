@@ -3,51 +3,55 @@
 //! @canonical .pi/architecture/modules/consequence-gating.md#command-contract
 //! @canonical .pi/architecture/decisions/ADR-017-consequence-gating.md
 //! Implements: Contract Freeze — PreconditionRunner trait + ProcessPreconditionRunner
-//! Issue: #938 (consequence-gating epic — contract freeze); behavior closed in
-//!   ISSUE-CONSEQUENCE-GATING-3 (PreconditionRunner)
+//! Issue: #941 (ISSUE-CONSEQUENCE-GATING-3); contract frozen in #938
 //!
 //! The runner executes one precondition's `command` deterministically. The
 //! contract is frozen (ADR-017 §R1):
 //!
 //! - **argv only**: `command` is an argv array, never a shell; no string
-//!   interpolation of step values into argv
+//!   interpolation of step values into argv. The engine never wraps the command
+//!   in a shell (the operator may still choose to run `sh` explicitly).
 //! - **stdin**: the JSON object `{ "precondition_id", "execution_id", "step",
 //!   "tool", "parameters" }` (see
 //!   [`PreconditionCheckInput`](crate::precondition::application::PreconditionCheckInput))
 //! - **env**: `RIGORIX_PRECONDITION_ID`, `RIGORIX_EXECUTION_ID`,
 //!   `RIGORIX_STEP_NAME`, `RIGORIX_TOOL`
-//! - **exit 0** → `passed`; **non-zero** → `failed`;
-//!   **timeout / spawn failure** → `error`
+//! - **exit 0** → `passed`; **non-zero** → `failed`; a signal termination →
+//!   `error`
 //! - **trust boundary**: `command[0]` must resolve **outside the
 //!   agent-writable workspace**; if it resolves inside, the run is refused with
-//!   `error` (a check the agent can edit is no check)
-//! - `failed` and `error` are recorded distinctly; both refuse — there is no
-//!   allow-on-error mode
+//!   [`PreconditionError::TrustBoundary`] (a check the agent can edit is no
+//!   check)
+//! - **timeout / spawn failure** → [`PreconditionError::Timeout`] /
+//!   [`PreconditionError::Spawn`] (indeterminate → refuse, never pass)
 //! - stdout is captured only when the precondition sets `capture_output = true`
-//!   (truncated, redacted); it is never captured by default
-//!
-//! # Implementation
-//! Method bodies are `todo!()` stubs — behavior lands in the
-//! PreconditionRunner implementation issue.
+//!   (truncated to [`MAX_CAPTURED_STDOUT_BYTES`]); it is never captured by
+//!   default
 
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 
 use async_trait::async_trait;
+use tokio::io::AsyncWriteExt;
+use tokio::process::Command;
 
 use crate::precondition::application::PreconditionCheckInput;
 use crate::precondition::domain::{Precondition, PreconditionError, PreconditionOutcome};
 
+/// Maximum number of stdout bytes recorded when `capture_output = true`.
+pub const MAX_CAPTURED_STDOUT_BYTES: usize = 4_096;
+
 /// The result of running one precondition check.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreconditionRun {
-    /// The distinct outcome: `passed` (exit 0), `failed` (non-zero), `error`
-    /// (timeout / spawn / trust boundary).
+    /// The distinct outcome: `passed` (exit 0), `failed` (non-zero exit or
+    /// signal), or `error` (signal termination).
     pub outcome: PreconditionOutcome,
-    /// Process exit code, when a process actually ran. `None` for a
-    /// pre-spawn refusal.
+    /// Process exit code, when the process exited normally. `None` for a
+    /// signal termination.
     pub exit_code: Option<i32>,
-    /// Captured (truncated, redacted) stdout — present only when the
-    /// precondition sets `capture_output = true`.
+    /// Captured (truncated) stdout — present only when the precondition sets
+    /// `capture_output = true`.
     pub stdout: Option<String>,
 }
 
@@ -59,14 +63,15 @@ pub trait PreconditionRunner: Send + Sync {
     /// # Returns
     /// - `Ok(PreconditionRun { outcome: Passed, .. })` — exit 0
     /// - `Ok(PreconditionRun { outcome: Failed, .. })` — non-zero exit
-    /// - `Ok(PreconditionRun { outcome: Error, .. })` — timeout / spawn /
-    ///   trust-boundary (indeterminate → refuse)
+    /// - `Ok(PreconditionRun { outcome: Error, .. })` — signal termination
     ///
     /// # Errors
     /// - `PreconditionError::TrustBoundary` — `command[0]` resolves inside the
     ///   agent-writable workspace (fail closed)
-    /// - `PreconditionError::Spawn` — the process could not be spawned
-    /// - `PreconditionError::Timeout` — the wall-clock timeout elapsed
+    /// - `PreconditionError::Spawn` — the program could not be resolved or the
+    ///   process could not be spawned (fail closed)
+    /// - `PreconditionError::Timeout` — the wall-clock timeout elapsed (fail
+    ///   closed)
     async fn run(
         &self,
         precondition: &Precondition,
@@ -81,7 +86,6 @@ pub trait PreconditionRunner: Send + Sync {
 pub struct ProcessPreconditionRunner {
     /// Root of the agent-writable workspace. A `command[0]` resolving inside
     /// this root is refused.
-    #[allow(dead_code)] // consumed by the upcoming `run` implementation
     workspace_root: PathBuf,
 }
 
@@ -99,15 +103,298 @@ impl ProcessPreconditionRunner {
     }
 }
 
+/// Resolve `program` (argv[0]) to an absolute, canonical path.
+///
+/// - A path (contains `/`) is canonicalized directly.
+/// - A bare name is searched on `PATH`.
+///
+/// A program that cannot be resolved is a [`PreconditionError::Spawn`] (fail
+/// closed) — never an implicit pass.
+fn resolve_program(program: &str, precondition_id: &str) -> Result<PathBuf, PreconditionError> {
+    let spawn_error = |detail: String| PreconditionError::Spawn {
+        precondition_id: precondition_id.to_string(),
+        detail,
+    };
+    if program.contains('/') {
+        return std::fs::canonicalize(program)
+            .map_err(|error| spawn_error(format!("cannot resolve program '{program}': {error}")));
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path) {
+            let candidate = dir.join(program);
+            if candidate.is_file()
+                && let Ok(canonical) = std::fs::canonicalize(&candidate)
+            {
+                return Ok(canonical);
+            }
+        }
+    }
+    Err(spawn_error(format!(
+        "program '{program}' not found on PATH"
+    )))
+}
+
+/// Refuse a resolved program that lives inside the agent-writable workspace.
+///
+/// The workspace root is canonicalized when it exists so symlinked workspaces
+/// are handled; if it cannot be canonicalized the lexical root is used as a
+/// best-effort boundary (the program is already canonical).
+fn ensure_outside_workspace(
+    program: &Path,
+    workspace_root: &Path,
+    precondition_id: &str,
+) -> Result<(), PreconditionError> {
+    let workspace =
+        std::fs::canonicalize(workspace_root).unwrap_or_else(|_| workspace_root.to_path_buf());
+    if program.starts_with(&workspace) {
+        return Err(PreconditionError::TrustBoundary {
+            precondition_id: precondition_id.to_string(),
+            command: program.display().to_string(),
+        });
+    }
+    Ok(())
+}
+
 #[async_trait]
 impl PreconditionRunner for ProcessPreconditionRunner {
     async fn run(
         &self,
-        _precondition: &Precondition,
-        _input: &PreconditionCheckInput,
+        precondition: &Precondition,
+        input: &PreconditionCheckInput,
     ) -> Result<PreconditionRun, PreconditionError> {
-        todo!(
-            "ISSUE-CONSEQUENCE-GATING-3: trust-boundary check, spawn argv (no shell), JSON stdin, env, wall-clock timeout, exit mapping"
-        )
+        let Some(program) = precondition.command.first() else {
+            return Err(PreconditionError::Spawn {
+                precondition_id: precondition.id.clone(),
+                detail: "command is empty (missing argv[0])".to_string(),
+            });
+        };
+
+        // Trust boundary BEFORE spawn: a check the agent can edit is no check.
+        let resolved = resolve_program(program, &precondition.id)?;
+        ensure_outside_workspace(&resolved, &self.workspace_root, &precondition.id)?;
+
+        let payload = serde_json::to_vec(input).map_err(|error| PreconditionError::Spawn {
+            precondition_id: precondition.id.clone(),
+            detail: format!("failed to serialize check input: {error}"),
+        })?;
+
+        let mut child = Command::new(&resolved)
+            .args(&precondition.command[1..])
+            .env("RIGORIX_PRECONDITION_ID", &precondition.id)
+            .env("RIGORIX_EXECUTION_ID", input.execution_id.to_string())
+            .env("RIGORIX_STEP_NAME", &input.step)
+            .env("RIGORIX_TOOL", &input.tool)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|error| PreconditionError::Spawn {
+                precondition_id: precondition.id.clone(),
+                detail: format!("failed to spawn '{}': {error}", resolved.display()),
+            })?;
+
+        let stdin = child.stdin.take();
+        let timeout = std::time::Duration::from_millis(precondition.timeout_ms);
+        let wait = async move {
+            if let Some(mut stdin) = stdin {
+                // Trailing newline so line-oriented checks see a complete line;
+                // the JSON value itself is unchanged.
+                let mut body = payload;
+                body.push(b'\n');
+                // A check may legitimately ignore stdin (or exit before reading
+                // it), so a broken pipe is NOT a failure — the exit code is the
+                // verdict. Writing errors are deliberately non-fatal here.
+                let _ = stdin.write_all(&body).await;
+                // Close stdin to signal EOF to the check.
+                drop(stdin);
+            }
+            child.wait_with_output().await
+        };
+
+        let output = match tokio::time::timeout(timeout, wait).await {
+            Ok(Ok(output)) => output,
+            Ok(Err(error)) => {
+                return Err(PreconditionError::Spawn {
+                    precondition_id: precondition.id.clone(),
+                    detail: format!("check I/O failed: {error}"),
+                });
+            }
+            Err(_elapsed) => {
+                // `kill_on_drop` terminates the child as the future is dropped.
+                return Err(PreconditionError::Timeout {
+                    precondition_id: precondition.id.clone(),
+                    timeout_ms: precondition.timeout_ms,
+                });
+            }
+        };
+
+        let exit_code = output.status.code();
+        let outcome = match exit_code {
+            Some(0) => PreconditionOutcome::Passed,
+            Some(_) => PreconditionOutcome::Failed,
+            // Killed by a signal — indeterminate, refuse.
+            None => PreconditionOutcome::Error,
+        };
+        let stdout = precondition.capture_output.then(|| {
+            let text = String::from_utf8_lossy(&output.stdout);
+            text.chars().take(MAX_CAPTURED_STDOUT_BYTES).collect()
+        });
+        Ok(PreconditionRun {
+            outcome,
+            exit_code,
+            stdout,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::precondition::domain::{FailureAction, Precondition};
+    use serde_json::json;
+
+    fn input() -> PreconditionCheckInput {
+        PreconditionCheckInput {
+            precondition_id: "p1".to_string(),
+            execution_id: uuid::Uuid::nil(),
+            step: "pay".to_string(),
+            tool: "payment_execute".to_string(),
+            parameters: json!({ "beneficiary": "acct-1" }),
+        }
+    }
+
+    fn precondition(id: &str, command: Vec<&str>) -> Precondition {
+        Precondition {
+            id: id.to_string(),
+            r#match: serde_json::from_value(json!({ "tool": "payment_execute" })).unwrap(),
+            require_params: vec![],
+            command: command.into_iter().map(str::to_string).collect(),
+            timeout_ms: 5_000,
+            failure: FailureAction::Deny,
+            capture_output: false,
+        }
+    }
+
+    fn runner_outside_workspace() -> ProcessPreconditionRunner {
+        // A real directory that does not contain /bin/sh.
+        ProcessPreconditionRunner::new(std::env::temp_dir())
+    }
+
+    #[tokio::test]
+    async fn exit_zero_is_passed() {
+        let runner = runner_outside_workspace();
+        let run = runner
+            .run(
+                &precondition("p1", vec!["/bin/sh", "-c", "exit 0"]),
+                &input(),
+            )
+            .await
+            .expect("run");
+        assert_eq!(run.outcome, PreconditionOutcome::Passed);
+        assert_eq!(run.exit_code, Some(0));
+    }
+
+    #[tokio::test]
+    async fn non_zero_exit_is_failed() {
+        let runner = runner_outside_workspace();
+        let run = runner
+            .run(
+                &precondition("p1", vec!["/bin/sh", "-c", "exit 3"]),
+                &input(),
+            )
+            .await
+            .expect("run");
+        assert_eq!(run.outcome, PreconditionOutcome::Failed);
+        assert_eq!(run.exit_code, Some(3));
+    }
+
+    #[tokio::test]
+    async fn json_stdin_and_env_are_set() {
+        let runner = runner_outside_workspace();
+        // Fails (exit 9) unless stdin has a line AND the env vars are set.
+        let command = vec![
+            "/bin/sh",
+            "-c",
+            "read -r line || exit 9; [ \"$RIGORIX_PRECONDITION_ID\" = p1 ] || exit 9; \
+             [ \"$RIGORIX_STEP_NAME\" = pay ] || exit 9; \
+             [ \"$RIGORIX_TOOL\" = payment_execute ] || exit 9; \
+             [ -n \"$RIGORIX_EXECUTION_ID\" ] || exit 9",
+        ];
+        let run = runner
+            .run(&precondition("p1", command), &input())
+            .await
+            .expect("run");
+        assert_eq!(run.outcome, PreconditionOutcome::Passed);
+    }
+
+    #[tokio::test]
+    async fn argv_is_not_shell_interpolated() {
+        let runner = runner_outside_workspace();
+        let mut precondition = precondition(
+            "p1",
+            vec!["/bin/sh", "-c", "printf '%s' \"$1\"", "sh", "a;b"],
+        );
+        precondition.capture_output = true;
+        let run = runner.run(&precondition, &input()).await.expect("run");
+        assert_eq!(run.outcome, PreconditionOutcome::Passed);
+        assert_eq!(run.stdout.as_deref(), Some("a;b"));
+    }
+
+    #[tokio::test]
+    async fn command_inside_workspace_is_refused() {
+        let workspace = tempfile::tempdir().expect("tempdir");
+        let check = workspace.path().join("check.sh");
+        std::fs::write(&check, "#!/bin/sh\nexit 0\n").expect("write check");
+        let runner = ProcessPreconditionRunner::new(workspace.path());
+        let precondition = precondition("p1", vec![check.to_str().unwrap()]);
+        let error = runner
+            .run(&precondition, &input())
+            .await
+            .expect_err("trust boundary");
+        assert!(matches!(error, PreconditionError::TrustBoundary { .. }));
+        assert!(!error.is_retriable());
+    }
+
+    #[tokio::test]
+    async fn timeout_maps_to_refuse_error() {
+        let runner = runner_outside_workspace();
+        let mut precondition = precondition("p1", vec!["/bin/sh", "-c", "sleep 5"]);
+        precondition.timeout_ms = 100;
+        let error = runner
+            .run(&precondition, &input())
+            .await
+            .expect_err("timeout");
+        assert!(matches!(error, PreconditionError::Timeout { .. }));
+        assert!(!error.is_retriable());
+    }
+
+    #[tokio::test]
+    async fn spawn_failure_maps_to_refuse_error() {
+        let runner = runner_outside_workspace();
+        let precondition = precondition("p1", vec!["/nonexistent/rigorix-check-xyz"]);
+        let error = runner
+            .run(&precondition, &input())
+            .await
+            .expect_err("spawn");
+        assert!(matches!(error, PreconditionError::Spawn { .. }));
+        assert!(!error.is_retriable());
+    }
+
+    #[tokio::test]
+    async fn check_that_ignores_stdin_is_judged_by_exit_code() {
+        // Regression: a check that exits without reading stdin closes the pipe.
+        // A large payload deterministically fills the pipe buffer so the write
+        // fails with EPIPE; that must NOT be reported as a spawn failure — the
+        // exit code is the verdict.
+        let runner = runner_outside_workspace();
+        let mut big = input();
+        big.parameters = json!({ "blob": "x".repeat(1_000_000) });
+        let run = runner
+            .run(&precondition("p1", vec!["/bin/sh", "-c", "exit 7"]), &big)
+            .await
+            .expect("run must be judged by exit code, not a broken pipe");
+        assert_eq!(run.outcome, PreconditionOutcome::Failed);
+        assert_eq!(run.exit_code, Some(7));
     }
 }
