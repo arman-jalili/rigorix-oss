@@ -53,6 +53,7 @@ pub mod permission;
 pub mod plan_validation;
 pub mod planning;
 pub mod policy_engine;
+pub mod precondition;
 pub mod quality_gates;
 pub mod recovery_recipes;
 pub mod repo_engine;

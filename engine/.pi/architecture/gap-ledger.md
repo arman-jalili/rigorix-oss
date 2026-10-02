@@ -421,3 +421,28 @@ ADR-016 (trigger: a requirement to defend a host compromised *before* evidence
 exists). Retention *enforcement* (the `prune()` loop) remains a Phase-B/compaction
 concern tracked via ADR-016; the config-time validator is wired (GAP-A-29).
 
+---
+
+# Addendum 2026-10-01 — consequence gating (ADR-017)
+
+> Design finding validated against source (2026-10-01). GAP-A-31…34 are **open** —
+> ADR-017 is **proposed**, not implemented. Code is truth.
+
+| ID | Severity | Finding | Recommended Action | Status |
+|----|----------|---------|--------------------|--------|
+| GAP-A-31 | H | **No dispatch-time precondition.** No `precondition`/`revalidate`/authoritative-source concept exists in any crate; every gate is plan-time (policy, requirements), approval-time (intent binding), or accounting (budget). Approval freshness is **time-based** (TTL default 3600s, `approval/application/service_impl.rs`; `factory.rs`), not authority-based — an approval at T₀ dispatches at Tₙ on stale authority. | ADR-017 R1: operator-authored `.rigorix/preconditions.toml`, deterministic argv check at the ADR-011 choke point, fail closed. | ⬜ Open (ADR-017 Phase A) |
+| GAP-A-32 | M | **Step outcomes do not gate dependents.** `run_dispatch_loop` marks every node completed to “release dependents” even on failure/denial (`execution_engine/application/service_impl/dispatch.rs` ~162 sequence denial, ~274 completion): a failed recheck does not stop the step after it. | ADR-017 R2: `[gating].release_dependents_on_failure`. | ⬜ Open (ADR-017 Phase D) |
+| GAP-A-33 | M | **Companion-step obligation is a non-goal.** ADR-015 §Non-goals defers it as “a natural follow-up”; a consequential step cannot require that its check is present in the plan. | ADR-017 R3: `require_companion_step` on `[[requirements]]`; close the non-goal. | ⬜ Open (ADR-017 Phase E) |
+| GAP-A-34 | M | **Fail-open arming + unreachable abort lever.** Binding silently disables without `RIGORIX_HMAC_KEY` (warn only, `execution_engine/application/factory.rs:193-200`); `max_failures_before_abort` is 0/unlimited (`parallel_executor.rs:89`) and hardcoded at `cli/src/cli_boundary/orchestrator.rs:325` + `actions/src/main.rs:402` (MCP uses `Default`) — not config-reachable. | ADR-017 Phase C: fail-closed arming for consequential runs; wire the threshold from `rigorix.toml`. | ⬜ Open (ADR-017 Phase C) |
+
+**Validation (2026-10-01, code is truth):**
+- `grep -rniE 'precondition|revalidat|authority' engine/src mcp/src cli/src actions/src server/src` → **0** matches. ✅ GAP-A-31.
+- `dispatch.rs` release-dependents sites confirmed (~162 sequence denial, ~274 completion). ✅ GAP-A-32.
+- ADR-015 §Non-goals confirmed. ✅ GAP-A-33.
+- `factory.rs:193-200` warn-and-disable; `parallel_executor.rs:89` default 0; cli/actions hardcode 0. ✅ GAP-A-34.
+
+**Related:** ADR-017 · module doc `.pi/architecture/modules/consequence-gating.md`
+(Guardian generates the issue series via `/architect --epic "consequence gating"`)
+· cross-repo rigorix-sdk #39 (contract freeze), rigorix-enterprise #225 (evidence
+ingestion) · demo tracked at `.pi/issues/issue-consequence-gating-demo.md`.
+

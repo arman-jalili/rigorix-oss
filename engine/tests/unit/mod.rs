@@ -185,3 +185,47 @@ mod sequence_policy {
         mod step_requirement_test;
     }
 }
+#[path = "consequence-gating"]
+mod consequence_gating {
+    #[path = "companionstepobligation"]
+    mod companionstepobligation {
+        #[path = "companionstepobligation_test.rs"]
+        mod companionstepobligation_test;
+    }
+    #[path = "dispatchgate"]
+    mod dispatchgate {
+        #[path = "dispatchgate_test.rs"]
+        mod dispatchgate_test;
+    }
+    #[path = "gatingmode"]
+    mod gatingmode {
+        #[path = "gatingmode_test.rs"]
+        mod gatingmode_test;
+    }
+    #[path = "hardeningconfig"]
+    mod hardeningconfig {
+        #[path = "hardeningconfig_test.rs"]
+        mod hardeningconfig_test;
+    }
+    mod precondition {
+        mod precondition_test;
+    }
+    mod preconditionerror {
+        mod preconditionerror_test;
+    }
+    mod preconditionfinding {
+        mod preconditionfinding_test;
+    }
+    mod preconditionrepository {
+        mod preconditionrepository_test;
+    }
+    mod preconditionrunner {
+        mod preconditionrunner_test;
+    }
+    mod preconditionservice {
+        mod preconditionservice_test;
+    }
+    mod preconditionsurfaces {
+        mod preconditionsurfaces_test;
+    }
+}

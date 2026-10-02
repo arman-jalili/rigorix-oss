@@ -1,111 +1,88 @@
 ---
 guardian_issue:
-  id: "ISSUE-CONTRACT-FREEZE"
-  epic: "consequence-gating"
-  component: "Contract Freeze"
+  id: "ISSUE-CONSEQUENCE-GATING-5"
+  epic: "TBD"
+  component: "DispatchGate"
   module: "consequence-gating"
   status: planned
-  priority: critical
-  dependencies: []
+  priority: high
+  dependencies:
+    - "PreconditionService"
 
   in_scope:
-    - Define public interfaces for all components in this epic
-    - Define DTOs, schemas, and API contracts
-    - Document event payloads and topics
-    - Create interface stubs with no implementation
-    - Freeze: no implementation changes without contract change
+    - "Refused step's tool is never called (spy asserts); node marked failed"
+    - "Configured-but-unarmed precondition refuses a matching step (`unarmed`)"
 
   out_of_scope:
-    - Any implementation logic
-    - Database schema changes
-    - Infrastructure setup
-
-  affected_layers:
-    domain:
-      - Interface definitions for domain services
-    application:
-      - Input/output DTO definitions
-    api:
-      - REST/event contracts
+    - Changes to upstream components (PreconditionService)
+    - UI/frontend changes
+    - Deployment pipeline configuration
 
   canonical_references:
     - module: ".pi/architecture/modules/consequence-gating.md"
+    - acceptance_criteria: ".pi/architecture/modules/consequence-gating.md#acceptance-criteria"
 
   acceptance_criteria:
-    - "All component interfaces defined as stubs (TODO bodies)"
-    - "DTO schemas documented with field names and types"
-    - "API contracts frozen and reviewed"
-    - "Implementation PRs reference these contracts"
+    - "Refused step's tool is never called (spy asserts); node marked failed"
+    - "Configured-but-unarmed precondition refuses a matching step (`unarmed`)"
 
   validators:
+    - ci
+    - tests
+    - security
     - architecture
     - canonical
 
   implementation_notes: |
-    Define the contract before any implementation. Every implementation issue
-    depends on this contract being frozen first. The contract should include:
-    interfaces, types, DTOs, event schemas, API paths, error formats.
+    Read .pi/architecture/modules/consequence-gating.md BEFORE implementing.
+    All Acceptance Criteria in that file must be satisfied before this issue is closed.
+    Component focus: DispatchGate.
+    CONCRETE IMPLEMENTATIONS MUST BE CREATED — interface stubs from the contract freeze
+    are not sufficient. Each domain service/aggregate needs a concrete .impl.rs file.
 
   file_changes:
     - "create: src/consequence-gating/domain/"
     - "create: src/consequence-gating/application/"
     - "create: src/consequence-gating/infrastructure/"
-    - "create: src/consequence-gating/interfaces/"
+    - "modify: src/consequence-gating/interfaces/"
+    -     - "update: tests/unit/ (failing tests already generated — make them pass)"
 ---
 
-# Contract Freeze: consequence-gating
+# ISSUE-CONSEQUENCE-GATING-5: Implement DispatchGate — consequence-gating
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the consequence-gating
-epic before any implementation begins. This prevents architecture drift — implementation
-must satisfy contracts, not the other way around.
+Implement **DispatchGate** for the `consequence-gating` module.
 
-## Included Components
+> ⚠️ **Read before implementing:** `.pi/architecture/modules/consequence-gating.md`
+> Every item in the **Acceptance Criteria** section of that file must be satisfied
+> before this issue is closed — including adapter, mapper, and WireMock items.
 
-- Precondition
-- PreconditionRepository
-- PreconditionRunner
-- PreconditionService
-- DispatchGate
-- PreconditionFinding
-- GatingMode
-- CompanionStepObligation
-- PreconditionError
-- PreconditionSurfaces
-- HardeningConfig
+## Architecture Context
 
-## What Must Be Frozen
+- **Module:** consequence-gating
+- **Component:** DispatchGate
+- **Status:** planned
+- **Dependencies:** PreconditionService
 
-### Interfaces
-- Service interfaces for every component
-- Repository/DAO interfaces
-- Factory interfaces
+## In Scope (this component)
 
-### Contracts
-- Input/output DTO schemas
-- API endpoint contracts (method, path, request/response)
-- Event payload schemas
-- Error response formats
+- Refused step's tool is never called (spy asserts); node marked failed
+- Configured-but-unarmed precondition refuses a matching step (`unarmed`)
 
-### Out of Bounds (no contracts needed)
-- Internal implementation details
-- Database column names (hidden behind repository)
-- Framework-specific annotations
+## Acceptance Criteria (this issue)
 
-## Acceptance Criteria
+These acceptance criteria must be satisfied before this issue can be closed:
 
-| # | Criterion | How to Verify |
-|---|-----------|---------------|
-| 1 | All component interfaces defined as stubs (TODO bodies) | Check src/<module>/domain/ and application/ |
-| 2 | Contracts reviewed and frozen | PR approval |
-| 3 | DTO schemas documented with field names and types | OpenAPI / record types |
-| 4 | Implementation depends on contracts | No implementation without interface |
+| # | Criterion | Verify In |
+|---|-----------|-----------|
+| 10 | Refused step's tool is never called (spy asserts); node marked failed | integration test |
+| 11 | Configured-but-unarmed precondition refuses a matching step (`unarmed`) | integration test |
 
-## Full Module Acceptance Criteria (for reference)
+## Full Module Acceptance Criteria
 
-> These are the complete ACs for the module. The contract freeze must define the interfaces
-> so every row below can be implemented in subsequent issues.
+> All items below must pass before the **epic** is closed.
+> Items may be split across multiple issues — verify your component's items before creating the MR.
 
 | # | Component | Criterion | Verify In |
 |---|-----------|-----------|-----------|
@@ -127,7 +104,7 @@ must satisfy contracts, not the other way around.
 | 16 | PreconditionSurfaces | `rigorix_validate_plan` surfaces findings; refusal maps to structured `policy_violation` | integration test |
 | 17 | HardeningConfig | `max_failures_before_abort` settable from `rigorix.toml` and changes dispatch | integration test |
 
-## Full Implementation Sequence (for reference)
+## Implementation Sequence (from module doc)
 
 - 1. Contract freeze (rigorix-sdk #39): `rigorix-sdk/schemas/policy.json` (preconditions + `[gating]`) + `schemas/envelope.json` (`precondition_findings[]`) + `schemas/api/errors.json` + a signed fixture verified byte-exact in Rust/Python/TypeScript/Java/Go.
 - 2. Domain: `engine/src/precondition/domain/{precondition,gating,error}.rs` + safety caps and fail-closed config validation.
@@ -144,11 +121,24 @@ must satisfy contracts, not the other way around.
 
 ## Implementation
 
-> **Agent:** Create interface-only files. No implementation. Use Clean Architecture layers:
-> 1. Read the architecture module to understand each component's role
-> 2. Place domain interfaces in domain/, service interfaces in application/, API contracts in interfaces/http/
-> 3. DTOs with proper validation decorators go in application/
-> 4. Event schemas go in domain/event/
-> 5. Repository interfaces go in infrastructure/repository/
->
-> The goal is a reviewed, frozen contract that implementation issues can depend on.
+> **Agent instructions:**
+> 1. Open `.pi/architecture/modules/consequence-gating.md` — read the full Acceptance Criteria table
+> 2. Identify which rows are your responsibility for **DispatchGate**
+> 3. Create concrete implementation files (`.impl.rs`) in `src/consequence-gating/` — the interface stubs from the contract freeze are NOT enough
+> 4. Each domain aggregate/service must have a working implementation with business logic
+> 5. Verify each AC row is satisfied in `src/` before marking done
+> 6. Run validators and create MR
+
+### Steps
+
+1. Read canonical architecture references
+2. Run the pre-generated failing tests: `cd tests/unit && cargo test`
+3. Verify tests FAIL (Red phase)
+4. Implement domain entities and interfaces
+5. Implement application service/handler
+6. Add infrastructure connections
+7. Run tests again — they should PASS (Green phase)
+8. Refactor if needed (Refactor phase)
+9. Write integration tests
+10. Run all validators
+11. Create MR
