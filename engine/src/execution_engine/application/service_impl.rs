@@ -603,6 +603,18 @@ impl ParallelExecutionServiceImpl {
         self
     }
 
+    /// Test-only: whether a precondition gate is attached.
+    #[cfg(test)]
+    pub(crate) fn precondition_gate_present(&self) -> bool {
+        self.precondition_gate.is_some()
+    }
+
+    /// Test-only: the attached ADR-017 R2 gating mode.
+    #[cfg(test)]
+    pub(crate) fn gating_mode_value(&self) -> GatingMode {
+        self.gating_mode
+    }
+
     /// Share the session map (ADR-011: session-graph intent resolver).
     pub(crate) fn sessions_handle(&self) -> Arc<Mutex<HashMap<Uuid, ExecutionSession>>> {
         Arc::clone(&self.sessions)

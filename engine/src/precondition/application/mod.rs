@@ -34,6 +34,7 @@ pub mod gate_impl;
 pub mod hardening;
 pub mod service;
 pub mod service_impl;
+pub mod setup;
 pub mod surfaces;
 
 pub use companion::{
@@ -47,4 +48,5 @@ pub use gate_impl::PreconditionDispatchGate;
 pub use hardening::HardeningConfig;
 pub use service::PreconditionService;
 pub use service_impl::PreconditionServiceImpl;
+pub use setup::PreconditionSetup;
 pub use surfaces::{PreconditionPolicyViolation, PreconditionSurfaces, PreconditionSurfacesImpl};

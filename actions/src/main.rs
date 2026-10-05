@@ -412,6 +412,7 @@ async fn build_action_orchestrator(
             hook_runner,
             approval_binding,
             sequence_policy: sequence_policy.clone(),
+            precondition: None,
         })
         .await
         .map_err(|e| format!("execution: {e}"))?;
