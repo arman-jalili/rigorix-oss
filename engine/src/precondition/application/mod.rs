@@ -1,6 +1,6 @@
 //! Application layer interfaces for the Consequence Gating bounded context.
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#ddd-layers
+//! @canonical .pi/architecture/modules/precondition.md#ddd-layers
 //! Implements: Contract Freeze — PreconditionService, DispatchGate,
 //!   CompanionStepObligation, PreconditionSurfaces, HardeningConfig,
 //!   PreconditionFactory, DispatchStep / PreconditionCheckInput DTOs

@@ -1,7 +1,7 @@
 //! PreconditionService — the application service that matches a step, enforces
 //! `require_params` presence, runs the check, and returns a verdict.
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#preconditionservice
+//! @canonical .pi/architecture/modules/precondition.md#preconditionservice
 //! @canonical .pi/architecture/decisions/ADR-017-consequence-gating.md
 //! Implements: Contract Freeze — PreconditionService trait
 //! Issue: #938 (consequence-gating epic — contract freeze); behavior closed in

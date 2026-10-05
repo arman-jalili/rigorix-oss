@@ -1,6 +1,6 @@
 //! DispatchGate — the single dispatch choke point contract (ADR-017 §R1).
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#dispatch-integration
+//! @canonical .pi/architecture/modules/precondition.md#dispatch-integration
 //! @canonical .pi/architecture/decisions/ADR-017-consequence-gating.md
 //! Implements: Contract Freeze — DispatchGate trait + fail-closed arming
 //! Issue: #938 (consequence-gating epic — contract freeze); behavior closed in

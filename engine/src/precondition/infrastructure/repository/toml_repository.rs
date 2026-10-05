@@ -1,6 +1,6 @@
 //! TomlPreconditionRepository — `.rigorix/preconditions.toml` → config.
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#config
+//! @canonical .pi/architecture/modules/precondition.md#config
 //! Implements: Contract Freeze — TomlPreconditionRepository stub
 //! Issue: #938 (consequence-gating epic — contract freeze); load/parse
 //!   behavior closed in ISSUE-CONSEQUENCE-GATING-2

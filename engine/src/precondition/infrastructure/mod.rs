@@ -1,6 +1,6 @@
 //! Infrastructure layer interfaces for the Consequence Gating bounded context.
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#ddd-layers
+//! @canonical .pi/architecture/modules/precondition.md#ddd-layers
 //! Implements: Contract Freeze — PreconditionRepository + PreconditionRunner
 //! Issue: #938 (consequence-gating epic — contract freeze)
 //!

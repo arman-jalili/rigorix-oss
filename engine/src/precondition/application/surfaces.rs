@@ -1,7 +1,7 @@
 //! PreconditionSurfaces — MCP/HTTP error taxonomy for consequential refusals
 //! (ADR-017 §Phase A surfaces).
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#surfaces
+//! @canonical .pi/architecture/modules/precondition.md#surfaces
 //! @canonical .pi/architecture/decisions/ADR-017-consequence-gating.md
 //! Implements: Contract Freeze — PreconditionSurfaces + structured
 //!   `policy_violation` payload

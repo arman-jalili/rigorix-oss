@@ -24,7 +24,7 @@
 - **Docs:** `docs/runbook-precondition.md`,
   `docs/dr-plan-precondition.md`; module doc components marked
   implemented.
-- **CI:** hardening stage 37 `check_consequence-gating_contracts.sh`.
+- **CI:** hardening stage 37 `check_precondition_contracts.sh`.
 - **Cross-repo note:** the payouts falsifier (`engine/tests/precondition_e2e.rs`
   + `demo/consequence-gating/run.sh`) remains tracked in
   `engine/.pi/issues/issue-consequence-gating-demo.md`.

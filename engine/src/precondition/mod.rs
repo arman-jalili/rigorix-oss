@@ -1,6 +1,6 @@
 //! Consequence Gating — dispatch-time preconditions and step-outcome gating.
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md
+//! @canonical .pi/architecture/modules/precondition.md
 //! @canonical .pi/architecture/decisions/ADR-017-consequence-gating.md
 //! Implements: Contract Freeze — consequence-gating module root
 //! Issue: #938 (consequence-gating epic — contract freeze, tracking #937)
@@ -15,7 +15,7 @@
 //!
 //! It does **not** close the gap between the check and the action; it narrows
 //! it, refuses on a negative answer, and preserves the determination in the
-//! signed envelope (`.pi/architecture/modules/consequence-gating.md#honest-boundary`).
+//! signed envelope (`.pi/architecture/modules/precondition.md#honest-boundary`).
 //!
 //! # Architecture
 //!
@@ -45,14 +45,14 @@
 //!
 //! # Contract Freeze Notice
 //!
-//! ALL files in this module are frozen contracts.
+//! ALL files in this module began as frozen contracts.
 //! - No implementation changes without explicit contract change approval
 //! - Implementation PRs MUST reference these interfaces
 //! - DTO schemas serve as the canonical data contract
-//! - Domain/application/infrastructure method bodies are `todo!()` stubs —
-//!   behavior lands in the implementation issues
-//!   (ISSUE-CONSEQUENCE-GATING-1 … -11 and the integration issues for the
-//!   dispatch gate, evidence, R2/R3, surfaces, and hardening)
+//! - Implementation is complete: the domain/application/infrastructure
+//!   behavior is landed (no `todo!()` stubs remain), tracked by
+//!   ISSUE-CONSEQUENCE-GATING-1 … -11 and the integration issues for the
+//!   dispatch gate, evidence, R2/R3, surfaces, and hardening
 //!
 //! # Related Components
 //!

@@ -1,7 +1,7 @@
 //! CompanionStepObligation — R3 required-companion-step obligation, closing the
 //! ADR-015 non-goal.
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#r3
+//! @canonical .pi/architecture/modules/precondition.md#r3
 //! @canonical .pi/architecture/decisions/ADR-017-consequence-gating.md
 //! Implements: Contract Freeze — CompanionStepObligation + CompanionFinding
 //! Issue: #938 (consequence-gating epic — contract freeze); behavior closed in

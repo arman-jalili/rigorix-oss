@@ -1,6 +1,6 @@
 //! Domain entities and interfaces for the Consequence Gating bounded context.
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#ddd-layers
+//! @canonical .pi/architecture/modules/precondition.md#ddd-layers
 //! @canonical .pi/architecture/decisions/ADR-017-consequence-gating.md
 //! Implements: Contract Freeze — Precondition, FailureAction, SafetyCaps,
 //!   PreconditionConfig, GatingMode, PreconditionError, PreconditionOutcome,

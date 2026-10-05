@@ -80,7 +80,7 @@ is the only external dependency). Failover = running the engine elsewhere:
 
 ## RTO/RPO Verification (routine)
 
-- On every proofing run, `check_consequence-gating_contracts.sh` (hardening
+- On every proofing run, `check_precondition_contracts.sh` (hardening
   stage 37) verifies the module surface is implemented with no frozen stubs.
 - `validate-architecture-readiness.sh` confirms the runbook + DR plan +
   canonical refs + observability are present.

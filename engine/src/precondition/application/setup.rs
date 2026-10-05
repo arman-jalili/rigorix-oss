@@ -1,6 +1,6 @@
 //! PreconditionSetup — composition-root wiring for the ADR-017 gate.
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#dispatch-integration
+//! @canonical .pi/architecture/modules/precondition.md#dispatch-integration
 //! @canonical .pi/architecture/decisions/ADR-017-consequence-gating.md
 //! Implements: ISSUE-PF-ACT-1 — arm the dispatch-time precondition gate from
 //!   `.rigorix/preconditions.toml` at composition time

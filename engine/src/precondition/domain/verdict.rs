@@ -1,7 +1,7 @@
 //! PreconditionVerdict — the dispatch-gate decision for one about-to-dispatch
 //! node (ADR-017 §R1).
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#dispatch-integration
+//! @canonical .pi/architecture/modules/precondition.md#dispatch-integration
 //! @canonical .pi/architecture/decisions/ADR-017-consequence-gating.md
 //! Implements: Contract Freeze — PreconditionVerdict (Dispatch | Deny)
 //! Issue: #938 (consequence-gating epic — contract freeze); behavior closed in

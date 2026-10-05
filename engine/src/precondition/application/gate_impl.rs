@@ -1,6 +1,6 @@
 //! PreconditionDispatchGate — the concrete dispatch choke-point gate.
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#dispatch-integration
+//! @canonical .pi/architecture/modules/precondition.md#dispatch-integration
 //! Implements: ISSUE-CONSEQUENCE-GATING-5 — gate + fail-closed arming
 //! Issue: #943; contract frozen in #938
 //!

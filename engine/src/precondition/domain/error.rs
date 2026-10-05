@@ -1,7 +1,7 @@
 //! PreconditionError — typed error enum for every consequence-gating failure
 //! mode.
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#fail-modes
+//! @canonical .pi/architecture/modules/precondition.md#fail-modes
 //! @canonical .pi/architecture/decisions/ADR-017-consequence-gating.md
 //! Implements: Contract Freeze — PreconditionError enum + `Display` +
 //!   `is_retriable()` (all variants non-retriable)

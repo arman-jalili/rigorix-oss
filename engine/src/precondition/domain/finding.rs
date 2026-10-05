@@ -1,8 +1,8 @@
 //! PreconditionFinding — the signed-envelope evidence shape and the canonical
 //! `PreconditionChecked` event payload (ADR-017 §R1 evidence).
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#evidence
-//! @canonical .pi/architecture/modules/consequence-gating.md#fail-modes
+//! @canonical .pi/architecture/modules/precondition.md#evidence
+//! @canonical .pi/architecture/modules/precondition.md#fail-modes
 //! @canonical .pi/architecture/decisions/ADR-017-consequence-gating.md
 //! Implements: Contract Freeze — PreconditionOutcome, PreconditionFinding,
 //!   PreconditionChecked

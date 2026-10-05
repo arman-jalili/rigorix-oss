@@ -1,6 +1,6 @@
 //! PreconditionServiceImpl — the concrete dispatch-time precondition service.
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#preconditionservice
+//! @canonical .pi/architecture/modules/precondition.md#preconditionservice
 //! Implements: ISSUE-CONSEQUENCE-GATING-4 — match → require_params → run → verdict
 //! Issue: #942; evidence findings via #944; contract frozen in #938
 //!
