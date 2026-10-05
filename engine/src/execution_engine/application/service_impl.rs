@@ -35,6 +35,7 @@ use crate::approval::application::dto::ApproveInput as ApprovalApproveInput;
 use crate::approval::application::{ApprovalService, IntentVerification, ResolvedNode};
 use crate::approval::domain::ApprovalError as ApprovalServiceError;
 use crate::approval::infrastructure::effect_scope::{ChangeSnapshot, GitDiffEffectOracle};
+use crate::dag_engine::domain::GatingMode;
 use crate::event_system::application::EventBusService;
 use crate::event_system::domain::ExecutionEvent;
 use crate::execution_engine::domain::{
@@ -44,9 +45,7 @@ use crate::execution_engine::domain::{
 use crate::hooks::application::service::HookRunnerService;
 use crate::permission::application::enforcer::PermissionEnforcer;
 use crate::precondition::application::{DispatchGate, DispatchStep};
-use crate::precondition::domain::{
-    GatingMode, PreconditionError, PreconditionOutcome, PreconditionVerdict,
-};
+use crate::precondition::domain::{PreconditionError, PreconditionOutcome, PreconditionVerdict};
 use crate::recovery_recipes::application::context::RecoveryContext;
 use crate::recovery_recipes::application::dto::{AttemptRecoveryInput, RecipeForInput};
 use crate::recovery_recipes::application::service::RecoveryService;

@@ -1,10 +1,13 @@
 //! GatingMode — `[gating]` step-outcome gating (ADR-017 §R2).
 //!
 //! @canonical .pi/architecture/modules/precondition.md#r2
+//! @canonical .pi/architecture/modules/dag-engine.md#domain
 //! @canonical .pi/architecture/decisions/ADR-017-consequence-gating.md
 //! Implements: Contract Freeze — GatingMode (`release_dependents_on_failure`)
 //! Issue: #938 (consequence-gating epic — contract freeze); behavior closed in
-//!   ISSUE-CONSEQUENCE-GATING-7 (GatingMode)
+//!   ISSUE-CONSEQUENCE-GATING-7 (GatingMode); relocated to the DAG engine domain
+//!   by ISSUE-PF-REL-1 (#972) — R2 is a graph/executor concern, not a
+//!   precondition concern.
 //!
 //! Today the dispatch loop releases dependents unconditionally: a failed or
 //! denied step does not stop what depends on it. `GatingMode` makes that a

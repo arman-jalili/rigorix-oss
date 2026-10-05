@@ -434,8 +434,8 @@ fn failing_chain() -> (crate::dag_engine::domain::TaskGraph, Uuid, Uuid, Uuid) {
 
 #[tokio::test]
 async fn gating_mode_false_skips_failed_nodes_transitive_dependents() {
+    use crate::dag_engine::domain::GatingMode;
     use crate::execution_engine::domain::NodeStatus;
-    use crate::precondition::domain::GatingMode;
 
     let (graph, a, b, c) = failing_chain();
     let executor = create_executor().with_gating_mode(GatingMode {

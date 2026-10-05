@@ -24,7 +24,6 @@
 //! ├── domain/             # Pure business logic — zero framework imports
 //! │   ├── precondition.rs # Precondition + FailureAction + SafetyCaps +
 //! │   │                     PreconditionConfig + validate()
-//! │   ├── gating.rs       # GatingMode (release_dependents_on_failure)
 //! │   ├── finding.rs      # PreconditionOutcome + PreconditionFinding +
 //! │   │                     PreconditionChecked (event payload)
 //! │   ├── verdict.rs      # PreconditionVerdict (Dispatch | Deny)

@@ -55,8 +55,8 @@ use serde_json::Value;
 
 use crate::sequence_policy::domain::{ParamMatchKind, StepPredicate};
 
+use super::GatingMode;
 use super::error::PreconditionError;
-use super::gating::GatingMode;
 
 /// Default wall-clock timeout for a precondition check (milliseconds).
 pub const DEFAULT_TIMEOUT_MS: u64 = 5_000;

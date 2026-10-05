@@ -27,13 +27,16 @@
 
 pub mod error;
 pub mod finding;
-pub mod gating;
 pub mod precondition;
 pub mod verdict;
 
 pub use error::PreconditionError;
 pub use finding::{PreconditionChecked, PreconditionFinding, PreconditionOutcome};
-pub use gating::{GatingMode, default_release_dependents_on_failure};
+// ADR-017 R2 (`[gating].release_dependents_on_failure`) is an execution/graph
+// concern: `GatingMode` now lives in `dag_engine::domain` (ISSUE-PF-REL-1). It is
+// re-exported here because the operator config model (`PreconditionConfig.gating`)
+// is parsed with it, but execution_engine reads the type from `dag_engine`.
+pub use crate::dag_engine::domain::{GatingMode, default_release_dependents_on_failure};
 pub use precondition::{
     DEFAULT_TIMEOUT_MS, FailureAction, Precondition, PreconditionConfig, SafetyCaps,
 };

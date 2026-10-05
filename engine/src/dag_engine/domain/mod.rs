@@ -17,9 +17,11 @@
 
 pub mod error;
 pub mod event;
+pub mod gating;
 pub mod graph;
 pub mod plan;
 
 pub use error::*;
+pub use gating::*;
 pub use graph::*;
 pub use plan::*;
