@@ -25,7 +25,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::precondition::domain::{PreconditionOutcome, PreconditionVerdict};
+use crate::precondition::domain::{PreconditionFinding, PreconditionOutcome, PreconditionVerdict};
 
 /// The structured payload attached to a `policy_violation` refusal.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,6 +71,45 @@ pub trait PreconditionSurfaces: Send + Sync {
     /// The `rigorix.system.version` capability string this surface advertises.
     fn capability(&self) -> &'static str {
         "precondition_gating"
+    }
+}
+
+/// Concrete, stateless surfaces adapter.
+pub struct PreconditionSurfacesImpl;
+
+impl PreconditionSurfaces for PreconditionSurfacesImpl {}
+
+impl PreconditionSurfacesImpl {
+    /// The JSON-RPC `data` object for a structured `policy_violation` refusal
+    /// (the shape `rigorix_validate_plan` / runtime refusals return).
+    pub fn policy_violation_data(violation: &PreconditionPolicyViolation) -> serde_json::Value {
+        serde_json::json!({
+            "type": "policy_violation",
+            "precondition_id": violation.precondition_id,
+            "step": violation.step,
+            "outcome": violation.outcome.as_str(),
+            "retryable": false,
+        })
+    }
+
+    /// The redacted `precondition_findings[]` entries for plan validation.
+    ///
+    /// Carries the evidence fields only — never parameter values or stdout.
+    pub fn findings_json(findings: &[PreconditionFinding]) -> Vec<serde_json::Value> {
+        findings
+            .iter()
+            .map(|finding| {
+                serde_json::json!({
+                    "precondition_id": finding.precondition_id,
+                    "step": finding.step,
+                    "outcome": finding.outcome.as_str(),
+                    "exit_code": finding.exit_code,
+                    "inputs_hash": finding.inputs_hash,
+                    "checked_at": finding.checked_at.to_rfc3339(),
+                    "summary": finding.decision_summary(),
+                })
+            })
+            .collect()
     }
 }
 

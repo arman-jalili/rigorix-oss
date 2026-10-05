@@ -47,4 +47,4 @@ pub use gate_impl::PreconditionDispatchGate;
 pub use hardening::HardeningConfig;
 pub use service::PreconditionService;
 pub use service_impl::PreconditionServiceImpl;
-pub use surfaces::{PreconditionPolicyViolation, PreconditionSurfaces};
+pub use surfaces::{PreconditionPolicyViolation, PreconditionSurfaces, PreconditionSurfacesImpl};
