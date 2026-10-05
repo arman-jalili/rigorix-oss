@@ -1,15 +1,15 @@
-# Runbook: consequence-gating Module
+# Runbook: precondition Module
 
 <!--
-Canonical Reference: .pi/architecture/modules/consequence-gating.md
+Canonical Reference: .pi/architecture/modules/precondition.md
 ADR: .pi/architecture/decisions/ADR-017-consequence-gating.md
 Last Updated: 2026-10-02
 -->
 
 ## Overview
 
-The `consequence-gating` module (the `precondition` bounded context,
-`engine/src/precondition/`) makes a consequential step's dispatch depend on the
+The `precondition` module (`engine/src/precondition/`) makes a
+consequential step's dispatch depend on the
 **present standing of its authority**, revalidated at the moment of consequence
 (T₀ → ΔN → Tₙ), and makes a failed step stop what depends on it. It is a small,
 deterministic, fail-closed primitive:

@@ -18,8 +18,8 @@ guardian_issue:
     - Deployment pipeline configuration
 
   canonical_references:
-    - module: ".pi/architecture/modules/consequence-gating.md"
-    - acceptance_criteria: ".pi/architecture/modules/consequence-gating.md#acceptance-criteria"
+    - module: ".pi/architecture/modules/precondition.md"
+    - acceptance_criteria: ".pi/architecture/modules/precondition.md#acceptance-criteria"
 
   acceptance_criteria:
     - "TOML parse → precondition with all fields; serde round-trip preserves them"
@@ -32,7 +32,7 @@ guardian_issue:
     - canonical
 
   implementation_notes: |
-    Read .pi/architecture/modules/consequence-gating.md BEFORE implementing.
+    Read .pi/architecture/modules/precondition.md BEFORE implementing.
     All Acceptance Criteria in that file must be satisfied before this issue is closed.
     Component focus: Precondition.
     CONCRETE IMPLEMENTATIONS MUST BE CREATED — interface stubs from the contract freeze
@@ -52,7 +52,7 @@ guardian_issue:
 
 Implement **Precondition** for the `consequence-gating` module.
 
-> ⚠️ **Read before implementing:** `.pi/architecture/modules/consequence-gating.md`
+> ⚠️ **Read before implementing:** `.pi/architecture/modules/precondition.md`
 > Every item in the **Acceptance Criteria** section of that file must be satisfied
 > before this issue is closed — including adapter, mapper, and WireMock items.
 
@@ -118,7 +118,7 @@ These acceptance criteria must be satisfied before this issue can be closed:
 ## Implementation
 
 > **Agent instructions:**
-> 1. Open `.pi/architecture/modules/consequence-gating.md` — read the full Acceptance Criteria table
+> 1. Open `.pi/architecture/modules/precondition.md` — read the full Acceptance Criteria table
 > 2. Identify which rows are your responsibility for **Precondition**
 > 3. Create concrete implementation files (`.impl.rs`) in `src/consequence-gating/` — the interface stubs from the contract freeze are NOT enough
 > 4. Each domain aggregate/service must have a working implementation with business logic

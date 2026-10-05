@@ -32,7 +32,7 @@ guardian_issue:
       - Verify proofing scripts + validators in CI
 
   canonical_references:
-    - module: ".pi/architecture/modules/consequence-gating.md"
+    - module: ".pi/architecture/modules/precondition.md"
 
   acceptance_criteria:
     - "Runbook created and reviewed"
@@ -61,7 +61,7 @@ guardian_issue:
     - "create: docs/runbook-consequence-gating.md"
     - "create: docs/dr-plan-consequence-gating.md"
     - "modify: .pi/architecture/CHANGELOG.md"
-    - "modify: .pi/architecture/modules/consequence-gating.md"
+    - "modify: .pi/architecture/modules/precondition.md"
 ---
 
 # Architecture Readiness: consequence-gating

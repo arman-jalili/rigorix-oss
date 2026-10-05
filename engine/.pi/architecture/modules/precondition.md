@@ -1,18 +1,18 @@
-# Consequence Gating Architecture
+# Precondition Architecture
 
 <!--
-Canonical Reference: .pi/architecture/modules/consequence-gating.md
+Canonical Reference: .pi/architecture/modules/precondition.md
 Blueprint Source: Guardian Framework v1.2
 Generated: NEVER (this is the source)
 ADR: .pi/architecture/decisions/ADR-017-consequence-gating.md
-Epic: /architect --epic "consequence gating"
+Epic: /architect --epic "precondition"
 
 IMPORTANT — Guardian invocation:
   This module belongs to the **engine** crate. The architect resolves
   `.pi/architecture/modules` relative to the invocation cwd, so run:
-      cd engine && /architect --epic "consequence gating"
+      cd engine && /architect --epic "precondition"
   When the session cwd is the repo root, the root discovery symlink
-  `.pi/architecture/modules/consequence-gating.md` resolves to this file so a
+  `.pi/architecture/modules/precondition.md` resolves to this file so a
   root invocation also picks up THIS module (not module-template).
   Implementation paths in §Implementation Sequence are repo-root relative.
 -->
@@ -86,7 +86,7 @@ depends: none
 
 **Implementation File:** `src/precondition/domain/precondition.rs`
 
-**Canonical Reference:** `.pi/architecture/modules/consequence-gating.md#precondition`
+**Canonical Reference:** `.pi/architecture/modules/precondition.md#precondition`
 
 **Dependencies:**
 - `sequence_policy::domain::StepPredicate` (reused, not forked)
@@ -102,7 +102,7 @@ depends: Precondition
 
 **Implementation File:** `src/precondition/infrastructure/toml_repository.rs`
 
-**Canonical Reference:** `.pi/architecture/modules/consequence-gating.md#config`
+**Canonical Reference:** `.pi/architecture/modules/precondition.md#config`
 
 **Dependencies:**
 - Precondition
@@ -118,7 +118,7 @@ depends: Precondition
 
 **Implementation File:** `src/precondition/infrastructure/runner.rs`
 
-**Canonical Reference:** `.pi/architecture/modules/consequence-gating.md#command-contract`
+**Canonical Reference:** `.pi/architecture/modules/precondition.md#command-contract`
 
 **Dependencies:**
 - Precondition
@@ -134,7 +134,7 @@ depends: Precondition, PreconditionRunner
 
 **Implementation File:** `src/precondition/application/service_impl.rs`
 
-**Canonical Reference:** `.pi/architecture/modules/consequence-gating.md#dispatch-integration`
+**Canonical Reference:** `.pi/architecture/modules/precondition.md#dispatch-integration`
 
 **Dependencies:**
 - Precondition
@@ -151,7 +151,7 @@ depends: PreconditionService
 
 **Implementation File:** `src/execution_engine/application/service_impl/dispatch.rs`
 
-**Canonical Reference:** `.pi/architecture/modules/consequence-gating.md#dispatch-integration`
+**Canonical Reference:** `.pi/architecture/modules/precondition.md#dispatch-integration`
 
 **Dependencies:**
 - PreconditionService
@@ -167,7 +167,7 @@ depends: DispatchGate
 
 **Implementation File:** `src/audit/application/envelope_factory_impl.rs`
 
-**Canonical Reference:** `.pi/architecture/modules/consequence-gating.md#evidence`
+**Canonical Reference:** `.pi/architecture/modules/precondition.md#evidence`
 
 **Dependencies:**
 - DispatchGate
@@ -183,7 +183,7 @@ depends: DispatchGate
 
 **Implementation File:** `src/precondition/domain/gating.rs`
 
-**Canonical Reference:** `.pi/architecture/modules/consequence-gating.md#r2`
+**Canonical Reference:** `.pi/architecture/modules/precondition.md#r2`
 
 **Dependencies:**
 - DispatchGate
@@ -199,7 +199,7 @@ depends: Precondition
 
 **Implementation File:** `src/sequence_policy/domain/requirement.rs`
 
-**Canonical Reference:** `.pi/architecture/modules/consequence-gating.md#r3`
+**Canonical Reference:** `.pi/architecture/modules/precondition.md#r3`
 
 **Dependencies:**
 - Precondition (StepPredicate reuse)
@@ -215,7 +215,7 @@ depends: none
 
 **Implementation File:** `src/precondition/domain/error.rs`
 
-**Canonical Reference:** `.pi/architecture/modules/consequence-gating.md#fail-modes`
+**Canonical Reference:** `.pi/architecture/modules/precondition.md#fail-modes`
 
 **Dependencies:**
 - none
@@ -231,7 +231,7 @@ depends: DispatchGate, PreconditionFinding
 
 **Implementation File:** `mcp/src/execution_tools/`
 
-**Canonical Reference:** `.pi/architecture/modules/consequence-gating.md#surfaces`
+**Canonical Reference:** `.pi/architecture/modules/precondition.md#surfaces`
 
 **Dependencies:**
 - DispatchGate
@@ -248,7 +248,7 @@ depends: DispatchGate
 
 **Implementation File:** `src/configuration/domain/config.rs`
 
-**Canonical Reference:** `.pi/architecture/modules/consequence-gating.md#fail-modes`
+**Canonical Reference:** `.pi/architecture/modules/precondition.md#fail-modes`
 
 **Dependencies:**
 - DispatchGate
@@ -311,8 +311,8 @@ release_dependents_on_failure = false
 > ISSUE-CONSEQUENCE-GATING-1…11). The 17 acceptance criteria are covered by
 > `engine/tests/unit/consequence-gating/` plus the execution-engine integration
 > tests (`gating_mode`, dispatch gate). Operability is documented in
-> `engine/docs/runbook-consequence-gating.md` and
-> `engine/docs/dr-plan-consequence-gating.md`. CI hardening stage 37
+> `engine/docs/runbook-precondition.md` and
+> `engine/docs/dr-plan-precondition.md`. CI hardening stage 37
 > (`check_consequence-gating_contracts.sh`) enforces the contracts automatically.
 
 1. Contract freeze (rigorix-sdk #39): `rigorix-sdk/schemas/policy.json` (preconditions + `[gating]`) + `schemas/envelope.json` (`precondition_findings[]`) + `schemas/api/errors.json` + a signed fixture verified byte-exact in Rust/Python/TypeScript/Java/Go.
