@@ -68,12 +68,15 @@ Three behaviors:
 1. **No module startup is required** — the module is stateless between runs.
    The config is read per dispatch through the injected repository; the answer
    is never cached across T₀→Tₙ.
-2. **Wiring** — build a `PreconditionServiceImpl` over a
-   `TomlPreconditionRepository` (`<repo>/.rigorix/preconditions.toml`) and a
-   `ProcessPreconditionRunner` (workspace root), wrap it in a
-   `PreconditionDispatchGate` (armed; `unarmed(...)` when arming failed), and
-   attach it with
-   `ParallelExecutionServiceImpl::with_precondition_gate(gate)`.
+2. **Wiring** — composition roots call
+   `PreconditionSetup::from_env(repo_root)`, which loads
+   `<repo>/.rigorix/preconditions.toml`, builds a `PreconditionServiceImpl` over
+   a `TomlPreconditionRepository` + `ProcessPreconditionRunner`, wraps it in a
+   `PreconditionDispatchGate` (armed; `PreconditionSetup::unarmed(...)` when the
+   config is malformed — fail closed), and reports the parsed `[gating]` mode.
+   The factory attaches both via
+   `ParallelExecutionServiceImpl::with_precondition_gate(gate)` and
+   `with_gating_mode(mode)`.
 3. **Gating mode** — attach `with_gating_mode(GatingMode { release_dependents_on_failure })`
    from the config `[gating]` table.
 4. **Hardening** — `max_failures_before_abort` is read from `rigorix.toml`
@@ -82,6 +85,27 @@ Three behaviors:
 5. **Health/observability** — the engine's health service and Prometheus
    metrics cover the executor; the module emits `tracing` diagnostics (debug on
    indeterminate checks, warn on unarmed refusals).
+
+## Enabling Preconditions at the Composition Roots
+
+R1/R2 are wired into every supported execution composition root; creating
+`.rigorix/preconditions.toml` is the operator's switch:
+
+| Root | File | Behavior |
+|------|------|----------|
+| MCP host / `rigorix-server` | `mcp/src/host/mod.rs` (`build_real_engine`, reached via `init_host`) | `PreconditionSetup::from_env(repo_root)`; the server inherits the wiring through `rigorix_mcp::host::init_host` |
+| CLI | `cli/src/cli_boundary/orchestrator.rs` | `PreconditionSetup::from_env(resolved project root)` |
+| GitHub Action | `actions/src/main.rs` | `PreconditionSetup::from_env(repo_root)` (same operator file; no `rigorix.toml` dependency) |
+
+- **File absent** → no gate is attached; behavior is unchanged (fail-open-absent).
+- **File valid** → an armed gate plus the `[gating]` mode are attached to the executor.
+- **File malformed / over-cap** → the root arms `PreconditionSetup::unarmed(...)`:
+  every assessed step is refused (`NotArmed`, fail closed) while the process keeps
+  running, so a broken operator file can never silently downgrade to no gating.
+
+To enable: create `.rigorix/preconditions.toml` (see the reference below), make
+sure the check program lives outside the agent-writable workspace, and re-run.
+No environment variable is required.
 
 ## Graceful Shutdown
 

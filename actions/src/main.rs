@@ -391,6 +391,24 @@ async fn build_action_orchestrator(
         rigorix_engine::execution_engine::application::factory::SequencePolicySetup::from_env(
             std::path::Path::new(repo_root),
         );
+    // ADR-017 R1/R2: operator-authored `.rigorix/preconditions.toml` arms the
+    // dispatch-time precondition gate. Malformed config is fail-closed: arm an
+    // unarmed (refuse-everything) gate instead of silently dispatching.
+    let precondition = match rigorix_engine::precondition::PreconditionSetup::from_env(
+        std::path::Path::new(repo_root),
+    ) {
+        Ok(setup) => setup,
+        Err(error) => {
+            tracing::error!(
+                %error,
+                "precondition config invalid — arming fail-closed refusal gate (ADR-017)"
+            );
+            Some(rigorix_engine::precondition::PreconditionSetup::unarmed(
+                std::path::Path::new(repo_root),
+                error.to_string(),
+            ))
+        }
+    };
     let execution = ParallelExecutionFactoryImpl
         .create(ParallelExecutionFactoryConfig {
             executor_config: ParallelExecutorConfig {
@@ -412,7 +430,7 @@ async fn build_action_orchestrator(
             hook_runner,
             approval_binding,
             sequence_policy: sequence_policy.clone(),
-            precondition: None,
+            precondition,
         })
         .await
         .map_err(|e| format!("execution: {e}"))?;
