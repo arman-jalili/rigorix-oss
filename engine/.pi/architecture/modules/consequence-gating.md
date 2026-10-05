@@ -77,7 +77,7 @@ determination in the signed envelope.
 
 ### Precondition
 
-status: planned
+status: implemented
 depends: none
 
 **Purpose:** Domain model of one operator-authored authority check: `id`, a reused `StepPredicate` match, `require_params` (ADR-015 presence obligation), an argv `command`, `timeout_ms`, `failure`, `capture_output`, plus `SafetyCaps` validation.
@@ -93,7 +93,7 @@ depends: none
 
 ### PreconditionRepository
 
-status: planned
+status: implemented
 depends: Precondition
 
 **Purpose:** Load and validate `.rigorix/preconditions.toml`: missing file = `Ok(None)` (fail-open-absent); malformed or over-cap = `Err` (fail closed). Applies count/argv/timeout caps.
@@ -109,7 +109,7 @@ depends: Precondition
 
 ### PreconditionRunner
 
-status: planned
+status: implemented
 depends: Precondition
 
 **Purpose:** Execute a precondition's `command` deterministically: argv only (no shell), step parameters as JSON on stdin, documented env vars, wall-clock timeout, exit-code mapping. Timeout and spawn failure map to refuse, never pass. The command path must resolve **outside the agent-writable workspace** (trust boundary — see §Security Considerations).
@@ -125,7 +125,7 @@ depends: Precondition
 
 ### PreconditionService
 
-status: planned
+status: implemented
 depends: Precondition, PreconditionRunner
 
 **Purpose:** For the node about to dispatch: match preconditions, enforce `require_params` presence (fail closed), run the check, and return `Dispatch` or `Deny{precondition_id, outcome}`. Deterministic; no LLM; no retries that change the verdict.
@@ -142,7 +142,7 @@ depends: Precondition, PreconditionRunner
 
 ### DispatchGate
 
-status: planned
+status: implemented
 depends: PreconditionService
 
 **Purpose:** Wire the precondition verdict into `run_dispatch_loop` at the single choke point, after ADR-011 approval verification and before `spawn_concurrent_node`. On refuse: deterministic node failure, tool never called, dependents released per `GatingMode`. Enforce fail-closed arming (configured-but-unarmed refuses a matching step).
@@ -158,7 +158,7 @@ depends: PreconditionService
 
 ### PreconditionFinding
 
-status: planned
+status: implemented
 depends: DispatchGate
 
 **Purpose:** Additive envelope `precondition_findings[]` (`precondition_id`, `step`, `outcome`, `exit_code`, `inputs_hash`, `checked_at`, `summary`) derived from a `PreconditionChecked` event. No parameter values or stdout by default (SpanPrivacy).
@@ -174,7 +174,7 @@ depends: DispatchGate
 
 ### GatingMode
 
-status: planned
+status: implemented
 depends: DispatchGate
 
 **Purpose:** `[gating].release_dependents_on_failure` (default true = today). When false, a failed/denied step does not release its transitive dependents; they are marked `Skipped` and never dispatched.
@@ -190,7 +190,7 @@ depends: DispatchGate
 
 ### CompanionStepObligation
 
-status: planned
+status: implemented
 depends: Precondition
 
 **Purpose:** Extend ADR-015 `[[requirements]]` with `require_companion_step` — a matched step requires the plan to contain a step matching the companion predicate. Unmet → deny (default) or promote, with `requirement_findings[]`. Closes the ADR-015 non-goal.
@@ -206,7 +206,7 @@ depends: Precondition
 
 ### PreconditionError
 
-status: planned
+status: implemented
 depends: none
 
 **Purpose:** Typed error enum (`ConfigInvalid`, `NotArmed`, `Match`, `Spawn`, `Timeout`, `Denied`), `Display`, `is_retriable()` (all false — a denied authority is not retriable).
@@ -222,7 +222,7 @@ depends: none
 
 ### PreconditionSurfaces
 
-status: planned
+status: implemented
 depends: DispatchGate, PreconditionFinding
 
 **Purpose:** `rigorix_validate_plan` surfaces precondition findings pre-run; runtime refusal maps to a structured `policy_violation` (`data.precondition_id`, `data.step`, `data.outcome`); `rigorix.system.version` advertises the capability. No new `rigorix.*` method.
@@ -239,7 +239,7 @@ depends: DispatchGate, PreconditionFinding
 
 ### HardeningConfig
 
-status: planned
+status: implemented
 depends: DispatchGate
 
 **Purpose:** Make `max_failures_before_abort` reachable from `rigorix.toml` (currently 0/unlimited and hardcoded at cli/actions) and refuse rather than silently degrade when binding/preconditions cannot arm for a consequential run.
@@ -305,6 +305,15 @@ release_dependents_on_failure = false
 | Non-matching step | Unaffected |
 
 ## Implementation Sequence
+
+> **Status (2026-10-02): implemented.** All 11 components live in
+> `engine/src/precondition/` (contract freeze #938 + implementation issues
+> ISSUE-CONSEQUENCE-GATING-1…11). The 17 acceptance criteria are covered by
+> `engine/tests/unit/consequence-gating/` plus the execution-engine integration
+> tests (`gating_mode`, dispatch gate). Operability is documented in
+> `engine/docs/runbook-consequence-gating.md` and
+> `engine/docs/dr-plan-consequence-gating.md`. CI hardening stage 37
+> (`check_consequence-gating_contracts.sh`) enforces the contracts automatically.
 
 1. Contract freeze (rigorix-sdk #39): `rigorix-sdk/schemas/policy.json` (preconditions + `[gating]`) + `schemas/envelope.json` (`precondition_findings[]`) + `schemas/api/errors.json` + a signed fixture verified byte-exact in Rust/Python/TypeScript/Java/Go.
 2. Domain: `engine/src/precondition/domain/{precondition,gating,error}.rs` + safety caps and fail-closed config validation.

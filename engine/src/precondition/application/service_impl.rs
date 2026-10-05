@@ -87,6 +87,12 @@ impl PreconditionServiceImpl {
         execution_id: uuid::Uuid,
         step: &DispatchStep,
     ) -> Result<(PreconditionVerdict, Vec<PreconditionFinding>), PreconditionError> {
+        tracing::debug!(
+            step = %step.name,
+            tool = %step.tool,
+            configured = config.preconditions.len(),
+            "precondition: evaluating dispatch gate"
+        );
         let mut findings = Vec::new();
         for precondition in &config.preconditions {
             if !precondition.matches(&step.tool, &step.parameters)? {
