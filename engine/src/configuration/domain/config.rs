@@ -85,6 +85,13 @@ pub struct Config {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub budget_max_tokens: Option<u32>,
 
+    /// ADR-017 hardening: maximum node failures before the run aborts
+    /// (optional). `None` / `0` = unlimited (today's behavior). Reachable from
+    /// `rigorix.toml` as the top-level `max_failures_before_abort` key and
+    /// threaded into `ParallelExecutorConfig` by the composition roots.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_failures_before_abort: Option<u32>,
+
     /// Permission mode for tool execution gating (optional).
     ///
     /// One of `read_only`, `workspace_write` (default), or

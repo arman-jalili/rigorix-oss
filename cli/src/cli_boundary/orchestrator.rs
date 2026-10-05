@@ -322,7 +322,9 @@ pub async fn build_orchestrator_with_budget(
                 enable_cancellation: true,
                 enable_enforcement: true,
                 max_total_retries_per_session: engine_config.orchestrator.max_retries,
-                max_failures_before_abort: 0,
+                // ADR-017 hardening: `max_failures_before_abort` from
+                // rigorix.toml (None/0 = unlimited, today's behavior).
+                max_failures_before_abort: engine_config.max_failures_before_abort.unwrap_or(0),
                 enable_fallback: true,
                 enable_validation: true,
                 approval_repo_path: None,
