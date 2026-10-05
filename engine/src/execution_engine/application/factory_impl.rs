@@ -33,21 +33,12 @@ impl ParallelExecutionFactoryImpl {
     pub fn new() -> Self {
         Self
     }
-}
 
-impl Default for ParallelExecutionFactoryImpl {
-    #[tracing::instrument(skip_all)]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[async_trait]
-impl ParallelExecutionFactory for ParallelExecutionFactoryImpl {
-    async fn create(
-        &self,
-        config: ParallelExecutionFactoryConfig,
-    ) -> Result<Box<dyn ParallelExecutionService>, ExecutionError> {
+    /// Build the concrete executor with the full config applied (no boxing).
+    ///
+    /// Factored out of [`ParallelExecutionFactory::create`] so tests and
+    /// callers can inspect the attached wiring without a trait-object downcast.
+    fn build_executor(config: ParallelExecutionFactoryConfig) -> ParallelExecutionServiceImpl {
         // GAP-A-19: the production retry loop is driven by structured failure
         // classification (with policy fallback for unclassified failures).
         let retry_service = Box::new(RetryEvaluationServiceImpl::with_classifier(
@@ -68,6 +59,14 @@ impl ParallelExecutionFactory for ParallelExecutionFactoryImpl {
         if let Some(svc) = config.sequence_policy {
             executor = executor.with_sequence_policy(svc);
         }
+        // ADR-017 R1/R2: attach the operator-authored precondition gate and
+        // step-outcome gating mode when the composition root armed them.
+        // `None` keeps the status-quo dispatch path (no gate).
+        if let Some(setup) = config.precondition {
+            executor = executor
+                .with_gating_mode(setup.gating_mode)
+                .with_precondition_gate(setup.gate);
+        }
         if let Some(binding) = config.approval_binding {
             // ADR-011: attach the approval binding with a live session-graph
             // intent resolver — approve/verify/consume now run at the runtime
@@ -86,7 +85,24 @@ impl ParallelExecutionFactory for ParallelExecutionFactoryImpl {
             );
             executor = executor.with_approval_service(std::sync::Arc::new(service));
         }
-        Ok(Box::new(executor))
+        executor
+    }
+}
+
+impl Default for ParallelExecutionFactoryImpl {
+    #[tracing::instrument(skip_all)]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl ParallelExecutionFactory for ParallelExecutionFactoryImpl {
+    async fn create(
+        &self,
+        config: ParallelExecutionFactoryConfig,
+    ) -> Result<Box<dyn ParallelExecutionService>, ExecutionError> {
+        Ok(Box::new(Self::build_executor(config)))
     }
 }
 
@@ -118,5 +134,60 @@ impl RetryEvaluationFactory for RetryEvaluationFactoryImpl {
         _config: RetryEvaluationFactoryConfig,
     ) -> Result<Box<dyn RetryEvaluationService>, ExecutionError> {
         Ok(Box::new(RetryEvaluationServiceImpl::new()))
+    }
+}
+
+#[cfg(test)]
+mod precondition_wiring_tests {
+    use super::*;
+
+    /// ACT-1: a factory built with a `PreconditionSetup` produces an executor
+    /// that actually holds the gate and the `[gating]` mode (the dormant-gate
+    /// gap this epic closes).
+    #[tokio::test]
+    async fn factory_attaches_precondition_gate_and_gating_mode() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let rigorix = dir.path().join(".rigorix");
+        std::fs::create_dir_all(&rigorix).expect("create .rigorix");
+        std::fs::write(
+            rigorix.join("preconditions.toml"),
+            r#"
+[[preconditions]]
+id = "guard"
+match = { tool = "payment_execute" }
+command = ["/bin/true"]
+
+[gating]
+release_dependents_on_failure = false
+"#,
+        )
+        .expect("write fixture");
+
+        let setup = crate::precondition::PreconditionSetup::from_env(dir.path())
+            .expect("from_env")
+            .expect("fixture present");
+        let config = ParallelExecutionFactoryConfig {
+            precondition: Some(setup),
+            ..Default::default()
+        };
+
+        let executor = ParallelExecutionFactoryImpl::build_executor(config);
+        assert!(
+            executor.precondition_gate_present(),
+            "the factory must attach the gate when a setup is configured"
+        );
+        assert!(
+            !executor.gating_mode_value().release_dependents_on_failure,
+            "the factory must apply the [gating] mode from the setup"
+        );
+    }
+
+    #[test]
+    fn factory_config_default_leaves_gate_unset() {
+        assert!(
+            ParallelExecutionFactoryConfig::default()
+                .precondition
+                .is_none()
+        );
     }
 }

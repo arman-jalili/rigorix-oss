@@ -43,6 +43,49 @@ impl TomlPreconditionRepository {
     pub fn config_path(&self) -> &std::path::Path {
         &self.config_path
     }
+
+    /// Synchronous load used by composition roots to arm the gate at startup.
+    ///
+    /// Semantics are identical to [`PreconditionRepository::load_config`]:
+    /// missing file → `Ok(None)` (fail-open-absent); corrupt / over-cap →
+    /// `Err(PreconditionError::ConfigInvalid)` (fail closed); otherwise the
+    /// validated config. The per-dispatch async path still re-reads the file
+    /// (ADR-017 forbids caching the authority across the T₀→Tₙ gap).
+    pub fn load_config_blocking(&self) -> Result<Option<PreconditionConfig>, PreconditionError> {
+        let text = match std::fs::read_to_string(&self.config_path) {
+            Ok(text) => text,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                tracing::debug!(
+                    path = %self.config_path.display(),
+                    "precondition: config file absent — fail-open-absent"
+                );
+                return Ok(None);
+            }
+            Err(error) => {
+                return Err(PreconditionError::ConfigInvalid(format!(
+                    "failed to read {}: {error}",
+                    self.config_path.display()
+                )));
+            }
+        };
+        parse_config(&self.config_path, &text).map(Some)
+    }
+}
+
+/// Parse + validate an operator precondition config (shared by the sync and
+/// async load paths so arming and per-dispatch reads cannot diverge).
+fn parse_config(
+    path: &std::path::Path,
+    text: &str,
+) -> Result<PreconditionConfig, PreconditionError> {
+    // Parse the operator schema: `[[preconditions]]` + optional `[gating]`.
+    let config: PreconditionConfig = toml::from_str(text).map_err(|error| {
+        PreconditionError::ConfigInvalid(format!("parse error in {}: {error}", path.display()))
+    })?;
+    // Enforce the safety caps and structural validity — an over-cap or
+    // malformed file refuses a matching step like a corrupt one.
+    config.validate_with_default_caps()?;
+    Ok(config)
 }
 
 #[async_trait]
@@ -68,17 +111,7 @@ impl PreconditionRepository for TomlPreconditionRepository {
         };
 
         // Parse the operator schema: `[[preconditions]]` + optional `[gating]`.
-        let config: PreconditionConfig = toml::from_str(&text).map_err(|error| {
-            PreconditionError::ConfigInvalid(format!(
-                "parse error in {}: {error}",
-                self.config_path.display()
-            ))
-        })?;
-
-        // Enforce the safety caps and structural validity — an over-cap or
-        // malformed file refuses a matching step like a corrupt one.
-        config.validate_with_default_caps()?;
-        Ok(Some(config))
+        parse_config(&self.config_path, &text).map(Some)
     }
 }
 

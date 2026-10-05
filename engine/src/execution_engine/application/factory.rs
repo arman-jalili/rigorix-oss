@@ -103,6 +103,14 @@ pub struct ParallelExecutionFactoryConfig {
     pub sequence_policy: Option<
         std::sync::Arc<dyn crate::sequence_policy::application::service::SequencePolicyService>,
     >,
+
+    /// ADR-017: optional dispatch-time precondition gate + R2 gating mode.
+    ///
+    /// When set, the factory attaches the armed gate and gating mode to the
+    /// executor; the composition roots build it from the operator config via
+    /// [`crate::precondition::PreconditionSetup::from_env`]. `None` (default)
+    /// preserves today's behavior (no gate — status quo).
+    pub precondition: Option<crate::precondition::PreconditionSetup>,
 }
 
 impl Default for ParallelExecutionFactoryConfig {
@@ -117,6 +125,7 @@ impl Default for ParallelExecutionFactoryConfig {
             hook_runner: None,
             approval_binding: None,
             sequence_policy: None,
+            precondition: None,
         }
     }
 }
