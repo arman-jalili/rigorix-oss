@@ -178,6 +178,13 @@ impl PreconditionRunner for ProcessPreconditionRunner {
             detail: format!("failed to serialize check input: {error}"),
         })?;
 
+        tracing::debug!(
+            precondition = %precondition.id,
+            program = %resolved.display(),
+            timeout_ms = precondition.timeout_ms,
+            "precondition: spawning check (argv-only, no shell)"
+        );
+
         let mut child = Command::new(&resolved)
             .args(&precondition.command[1..])
             .env("RIGORIX_PRECONDITION_ID", &precondition.id)

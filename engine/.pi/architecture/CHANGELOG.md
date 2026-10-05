@@ -1,3 +1,38 @@
+## [2026-10-02] — consequence gating implemented (ADR-017)
+
+### Added
+- **Consequence gating shipped** (`engine/src/precondition/`), closing the
+  ADR-017 validation matrix:
+  - **R1 dispatch-time preconditions** — `Precondition` / `PreconditionConfig`
+    (+ `SafetyCaps`); `.rigorix/preconditions.toml` repository (missing ⇒
+    `Ok(None)`, malformed/over-cap ⇒ `Err`); argv-only `PreconditionRunner`
+    (JSON stdin, `RIGORIX_*` env, wall-clock timeout, trust boundary);
+    `PreconditionService` (match → `require_params` → run → `Dispatch`/`Deny`).
+  - **Dispatch gate** — `PreconditionDispatchGate` wired at the ADR-011 choke
+    point (after approval verification, before `spawn_concurrent_node`) in both
+    dispatch fill loops; a refusal marks the node failed and never calls the
+    tool.
+  - **Evidence** — `ExecutionEvent::PreconditionChecked` + envelope
+    `precondition_findings[]` (`outcome` / `exit_code` / `inputs_hash` /
+    `checked_at`; no parameter values or stdout).
+  - **R2 step-outcome gating** — `[gating].release_dependents_on_failure=false`
+    marks a failed/denied node's transitive dependents `Skipped`, never
+    dispatched.
+  - **R3 companion step** — `CompanionStepObligationService`.
+  - **Hardening** — `Config.max_failures_before_abort` settable from
+    `rigorix.toml`; fail-closed arming (`NotArmed`) never silently degrades.
+- **Docs:** `docs/runbook-consequence-gating.md`,
+  `docs/dr-plan-consequence-gating.md`; module doc components marked
+  implemented.
+- **CI:** hardening stage 37 `check_consequence-gating_contracts.sh`.
+- **Cross-repo note:** the payouts falsifier (`engine/tests/precondition_e2e.rs`
+  + `demo/consequence-gating/run.sh`) remains tracked in
+  `engine/.pi/issues/issue-consequence-gating-demo.md`.
+
+### Notes
+- ADR-017 is implemented in OSS; the honest boundary is documented (the check
+  narrows, not closes, the check→action window).
+
 ## [2026-10-01] — ADR-017 proposed (consequence gating: dispatch-time preconditions)
 
 ### Added
@@ -32,8 +67,7 @@
   (evidence ingestion).
 
 ### Notes
-- **Proposed — not implemented.** Phase A (SDK contract + R1 domain/gate) is the
-  first target; contract-first per D-011/D-012. Do not present as shipped.
+- **Superseded:** ADR-017 was implemented 2026-10-02 (see the entry above).
 - External signal: Tim Zlomke (Moral Clarity AI), “runtime AI governance,
   T₀ → ΔN → Tₙ” (2026-10-01). The response is the falsifier (ISSUE-PG-09), not a
   claim.
