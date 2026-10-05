@@ -26,6 +26,7 @@
 //!   ISSUE-CONSEQUENCE-GATING-4/-5/-8/-9/-10/-11)
 
 pub mod companion;
+pub mod companion_impl;
 pub mod dto;
 pub mod factory;
 pub mod gate;
@@ -38,6 +39,7 @@ pub mod surfaces;
 pub use companion::{
     CompanionAction, CompanionFinding, CompanionStepObligation, CompanionStepObligationService,
 };
+pub use companion_impl::CompanionStepObligationServiceImpl;
 pub use dto::{DispatchStep, PreconditionCheckInput};
 pub use factory::PreconditionFactory;
 pub use gate::DispatchGate;
