@@ -38,3 +38,34 @@ fn test_hardeningconfig_threshold_changes_abort_behavior() {
         .aborts_after(u32::MAX)
     );
 }
+
+// ── AC #17: reachable from rigorix.toml and changes dispatch ───────────────
+
+#[test]
+fn test_max_failures_before_abort_settable_from_rigorix_toml() {
+    use rigorix_engine::configuration::domain::Config;
+    use rigorix_engine::execution_engine::domain::ParallelExecutorConfig;
+
+    // Operator sets the top-level key in rigorix.toml.
+    let config: Config = toml::from_str("max_failures_before_abort = 3\n")
+        .expect("rigorix.toml with max_failures_before_abort parses");
+    assert_eq!(config.max_failures_before_abort, Some(3));
+
+    // Map to the epic's hardening contract and the executor threshold the
+    // dispatch loop reads.
+    let hardening = HardeningConfig {
+        max_failures_before_abort: config.max_failures_before_abort,
+    };
+    assert!(hardening.aborts_after(3));
+    assert!(!hardening.aborts_after(2));
+
+    let executor = ParallelExecutorConfig {
+        max_failures_before_abort: hardening.effective_max_failures_before_abort(),
+        ..ParallelExecutorConfig::default()
+    };
+    assert_eq!(executor.max_failures_before_abort, 3);
+
+    // Absent key → unlimited (today's behavior).
+    let absent: Config = toml::from_str("").expect("empty config parses");
+    assert_eq!(absent.max_failures_before_abort, None);
+}
