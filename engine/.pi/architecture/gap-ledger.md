@@ -441,7 +441,7 @@ concern tracked via ADR-016; the config-time validator is wired (GAP-A-29).
 - ADR-015 §Non-goals confirmed. ✅ GAP-A-33.
 - `factory.rs:193-200` warn-and-disable; `parallel_executor.rs:89` default 0; cli/actions hardcode 0. ✅ GAP-A-34.
 
-**Related:** ADR-017 · module doc `.pi/architecture/modules/consequence-gating.md`
+**Related:** ADR-017 · module doc `.pi/architecture/modules/precondition.md`
 (Guardian generates the issue series via `/architect --epic "consequence gating"`)
 · cross-repo rigorix-sdk #39 (contract freeze), rigorix-enterprise #225 (evidence
 ingestion) · demo tracked at `.pi/issues/issue-consequence-gating-demo.md`.

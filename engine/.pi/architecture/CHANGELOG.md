@@ -21,8 +21,8 @@
   - **R3 companion step** — `CompanionStepObligationService`.
   - **Hardening** — `Config.max_failures_before_abort` settable from
     `rigorix.toml`; fail-closed arming (`NotArmed`) never silently degrades.
-- **Docs:** `docs/runbook-consequence-gating.md`,
-  `docs/dr-plan-consequence-gating.md`; module doc components marked
+- **Docs:** `docs/runbook-precondition.md`,
+  `docs/dr-plan-precondition.md`; module doc components marked
   implemented.
 - **CI:** hardening stage 37 `check_consequence-gating_contracts.sh`.
 - **Cross-repo note:** the payouts falsifier (`engine/tests/precondition_e2e.rs`
@@ -58,7 +58,7 @@
 - **Gaps recorded:** GAP-A-31 (dispatch-time precondition), A-32 (step-outcome
   gating), A-33 (companion-step obligation), A-34 (fail-open arming / unreachable
   abort threshold).
-- **Module doc:** `.pi/architecture/modules/consequence-gating.md` — 11 planned
+- **Module doc:** `.pi/architecture/modules/precondition.md` — 11 planned
   components + 17 acceptance criteria. Guardian generates the issue series from
   it: `/architect --epic "consequence gating"` (contract freeze + one issue per
   component + proofing + readiness). The payouts falsifier is tracked in this

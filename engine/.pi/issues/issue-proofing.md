@@ -26,7 +26,7 @@ guardian_issue:
       - Updated CI stage configuration
 
   canonical_references:
-    - module: ".pi/architecture/modules/consequence-gating.md"
+    - module: ".pi/architecture/modules/precondition.md"
 
   acceptance_criteria:
     - "All proofing scripts created and executable"

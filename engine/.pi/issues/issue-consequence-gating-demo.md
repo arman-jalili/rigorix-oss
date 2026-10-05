@@ -21,7 +21,7 @@ guardian_issue:
     - "New engine behavior (this issue only demonstrates)"
 
   canonical_references:
-    - module: ".pi/architecture/modules/consequence-gating.md"
+    - module: ".pi/architecture/modules/precondition.md"
     - adr: ".pi/architecture/decisions/ADR-017-consequence-gating.md"
     - demo: "demo/anchor-e2e/run.sh (pattern for a one-command harness)"
 

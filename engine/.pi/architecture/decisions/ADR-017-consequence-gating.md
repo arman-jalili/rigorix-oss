@@ -298,7 +298,7 @@ status flip.
   `engine/src/execution_engine/application/factory.rs`,
   `engine/src/audit/domain/envelope.rs`,
   `engine/src/sequence_policy/infrastructure/history.rs`.
-- **Module doc:** `.pi/architecture/modules/consequence-gating.md` (11 planned
+- **Module doc:** `.pi/architecture/modules/precondition.md` (11 planned
   components; Guardian generates the issue series via
   `/architect --epic "consequence gating"`).
 - **Cross-repo:** rigorix-sdk #39 (contract freeze), rigorix-enterprise #225

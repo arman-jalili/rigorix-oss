@@ -1,14 +1,14 @@
-# Disaster Recovery Plan: consequence-gating Module
+# Disaster Recovery Plan: precondition Module
 
 <!--
-Canonical Reference: .pi/architecture/modules/consequence-gating.md
+Canonical Reference: .pi/architecture/modules/precondition.md
 ADR: .pi/architecture/decisions/ADR-017-consequence-gating.md
 Last Updated: 2026-10-02
 -->
 
 ## Scope
 
-This DR plan covers the `consequence-gating` module (`engine/src/precondition/`)
+This DR plan covers the `precondition` module (`engine/src/precondition/`)
 — dispatch-time preconditions (R1), step-outcome gating (R2), and the
 required-companion-step obligation (R3).
 

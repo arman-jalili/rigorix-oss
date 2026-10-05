@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/consequence-gating.md"
+    - module: ".pi/architecture/modules/precondition.md"
 
   acceptance_criteria:
     - "All component interfaces defined as stubs (TODO bodies)"
