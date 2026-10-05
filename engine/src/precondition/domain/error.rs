@@ -117,6 +117,22 @@ impl PreconditionError {
     pub fn is_retriable(&self) -> bool {
         false
     }
+
+    /// Stable machine-readable error code (for the host error taxonomy).
+    ///
+    /// Distinct per variant so MCP/HTTP hosts can map a precondition failure
+    /// to a structured refusal without parsing `Display`.
+    pub fn error_code(&self) -> &'static str {
+        match self {
+            PreconditionError::ConfigInvalid(_) => "PRECONDITION_CONFIG_INVALID",
+            PreconditionError::NotArmed { .. } => "PRECONDITION_NOT_ARMED",
+            PreconditionError::Match { .. } => "PRECONDITION_MATCH",
+            PreconditionError::Spawn { .. } => "PRECONDITION_SPAWN",
+            PreconditionError::Timeout { .. } => "PRECONDITION_TIMEOUT",
+            PreconditionError::Denied { .. } => "PRECONDITION_DENIED",
+            PreconditionError::TrustBoundary { .. } => "PRECONDITION_TRUST_BOUNDARY",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -170,5 +186,18 @@ mod tests {
             assert!(!rendered.is_empty());
             assert!(rendered.contains("Precondition") || rendered.contains("precondition"));
         }
+    }
+
+    #[test]
+    fn error_codes_are_distinct_and_non_empty() {
+        let mut codes: Vec<&str> = all_variants().iter().map(|v| v.error_code()).collect();
+        for code in &codes {
+            assert!(!code.is_empty());
+            assert!(code.starts_with("PRECONDITION_"));
+        }
+        codes.sort_unstable();
+        let before = codes.len();
+        codes.dedup();
+        assert_eq!(before, codes.len(), "each variant needs a distinct code");
     }
 }
