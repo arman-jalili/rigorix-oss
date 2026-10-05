@@ -51,6 +51,7 @@ fn requirement() -> StepRequirement {
         },
         require_identity: true,
         require_params: vec!["/beneficiary".to_string(), "/effect_key".to_string()],
+        require_companion_step: None,
         action: RequirementAction::Deny,
     }
 }
@@ -293,5 +294,84 @@ match = { tool = "run_command" }
     let repo = TomlSequencePolicyRepository::new(&path);
     let err = repo.load_config().await.expect_err("fail closed");
     assert!(matches!(err, SequencePolicyError::InvalidConfig(_)));
+    let _ = std::fs::remove_file(&path);
+}
+
+// ── ADR-017 R3: companion-step obligation via [[requirements]] ────────────
+
+#[tokio::test]
+async fn require_companion_step_refuses_plan_without_companion() {
+    let mut req = requirement();
+    req.require_identity = false;
+    req.require_params = Vec::new();
+    req.require_companion_step = Some(StepPredicate {
+        tool: "authority_recheck".to_string(),
+        params: vec![],
+    });
+    let svc = service(config_with(vec![req]));
+
+    // No companion in the plan → a requirement finding carrying the missing
+    // companion on the shared requirement_findings[] surface.
+    let findings = svc
+        .evaluate_requirements(&[payout_step(payout_command())], false)
+        .await
+        .expect("evaluate");
+    assert_eq!(findings.len(), 1, "one companion finding: {findings:?}");
+    let f = &findings[0];
+    assert_eq!(f.requirement_id, "payout-guard");
+    assert_eq!(f.unmet_companion.as_deref(), Some("authority_recheck"));
+    assert!(
+        f.unmet_list()
+            .iter()
+            .any(|u| u.contains("authority_recheck"))
+    );
+    assert_eq!(f.action, RequirementAction::Deny);
+
+    // Companion present → no finding.
+    let present = svc
+        .evaluate_requirements(
+            &[
+                payout_step(payout_command()),
+                PlannedStep {
+                    name: "recheck".to_string(),
+                    tool: "authority_recheck".to_string(),
+                    parameters: json!({}),
+                },
+            ],
+            false,
+        )
+        .await
+        .expect("evaluate");
+    assert!(present.is_empty(), "companion present ⇒ no finding");
+}
+
+#[tokio::test]
+async fn companion_only_requirement_parses_from_toml() {
+    let toml = r#"
+fail_closed = true
+
+[[requirements]]
+id = "payout-needs-recheck"
+name = "Payout needs a recheck"
+match = { tool = "run_command" }
+require_companion_step = { tool = "authority_recheck" }
+action = "deny"
+"#;
+    let path = std::env::temp_dir().join(format!("rigorix-r3-{}.toml", uuid::Uuid::new_v4()));
+    std::fs::write(&path, toml).expect("write");
+    let repo = TomlSequencePolicyRepository::new(&path);
+    let config = repo
+        .load_config()
+        .await
+        .expect("load")
+        .expect("config present");
+    assert_eq!(config.requirements.len(), 1);
+    assert_eq!(
+        config.requirements[0]
+            .require_companion_step
+            .as_ref()
+            .map(|p| p.tool.as_str()),
+        Some("authority_recheck")
+    );
     let _ = std::fs::remove_file(&path);
 }

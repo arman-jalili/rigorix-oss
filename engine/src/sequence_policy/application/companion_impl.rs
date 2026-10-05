@@ -1,8 +1,10 @@
 //! CompanionStepObligationServiceImpl — concrete R3 companion-step evaluator.
 //!
 //! @canonical .pi/architecture/modules/precondition.md#r3
+//! @canonical .pi/architecture/modules/sequence-policy.md#r9--operator-controlled-step-requirements-adr-015
 //! Implements: ISSUE-CONSEQUENCE-GATING-8 — `require_companion_step` evaluation
-//! Issue: #946; contract frozen in #938
+//! Issue: #946; contract frozen in #938; relocated to `sequence_policy` by
+//!   ISSUE-PF-REL-2 (#973)
 //!
 //! Evaluates a set of operator-authored companion obligations over a
 //! fully-materialized plan. For each obligation whose `match` predicate
@@ -12,14 +14,14 @@
 //!
 //! Evaluation is deterministic: obligations in config order, then steps in
 //! plan order. A malformed operator predicate is a fail-closed
-//! [`PreconditionError::Match`].
+//! [`SequencePolicyError`].
 
 use async_trait::async_trait;
 
-use crate::precondition::domain::PreconditionError;
+use crate::sequence_policy::domain::SequencePolicyError;
 
 use super::companion::{CompanionFinding, CompanionStepObligation, CompanionStepObligationService};
-use super::dto::DispatchStep;
+use super::dto::PlannedStep;
 
 /// Concrete companion-step obligation evaluator.
 pub struct CompanionStepObligationServiceImpl {
@@ -42,19 +44,12 @@ impl CompanionStepObligationServiceImpl {
 impl CompanionStepObligationService for CompanionStepObligationServiceImpl {
     async fn evaluate_plan(
         &self,
-        steps: &[DispatchStep],
-    ) -> Result<Vec<CompanionFinding>, PreconditionError> {
+        steps: &[PlannedStep],
+    ) -> Result<Vec<CompanionFinding>, SequencePolicyError> {
         let mut findings = Vec::new();
         for obligation in &self.obligations {
             for step in steps {
-                let matches = obligation
-                    .r#match
-                    .matches(&step.tool, &step.parameters)
-                    .map_err(|error| PreconditionError::Match {
-                        precondition_id: obligation.id.clone(),
-                        detail: error.to_string(),
-                    })?;
-                if !matches {
+                if !obligation.r#match.matches(&step.tool, &step.parameters)? {
                     continue;
                 }
 
@@ -62,14 +57,10 @@ impl CompanionStepObligationService for CompanionStepObligationServiceImpl {
                 // obligation (plan-time, pre-side-effect).
                 let mut companion_present = false;
                 for candidate in steps {
-                    let companion = obligation
+                    if obligation
                         .require_companion_step
-                        .matches(&candidate.tool, &candidate.parameters)
-                        .map_err(|error| PreconditionError::Match {
-                            precondition_id: obligation.id.clone(),
-                            detail: error.to_string(),
-                        })?;
-                    if companion {
+                        .matches(&candidate.tool, &candidate.parameters)?
+                    {
                         companion_present = true;
                         break;
                     }

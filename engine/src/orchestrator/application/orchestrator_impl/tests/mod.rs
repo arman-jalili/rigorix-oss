@@ -202,6 +202,7 @@ fn payout_requirement(action: RequirementAction) -> SequencePolicyConfig {
             },
             require_identity: true,
             require_params: vec!["/beneficiary".to_string(), "/effect_key".to_string()],
+            require_companion_step: None,
             action,
         }],
         rules: Vec::new(),

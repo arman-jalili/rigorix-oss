@@ -129,6 +129,11 @@ mod sequence_policy {
         #[path = "audit-r6_test.rs"]
         mod audit_r6_test;
     }
+    #[path = "companionstepobligation"]
+    mod companionstepobligation {
+        #[path = "companionstepobligation_test.rs"]
+        mod companionstepobligation_test;
+    }
     #[path = "execution-engine-r3"]
     mod execution_engine_r3 {
         #[path = "execution-engine-r3_test.rs"]
@@ -191,11 +196,6 @@ mod sequence_policy {
 #[allow(clippy::module_inception)]
 #[path = "precondition"]
 mod precondition {
-    #[path = "companionstepobligation"]
-    mod companionstepobligation {
-        #[path = "companionstepobligation_test.rs"]
-        mod companionstepobligation_test;
-    }
     #[path = "dispatchgate"]
     mod dispatchgate {
         #[path = "dispatchgate_test.rs"]

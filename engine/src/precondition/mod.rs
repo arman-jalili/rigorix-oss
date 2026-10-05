@@ -30,9 +30,8 @@
 //! │   └── error.rs        # PreconditionError enum (thiserror, all non-retriable)
 //! ├── application/        # Matching + verdict service; gate orchestration
 //! │   ├── service.rs      # PreconditionService trait
-//! │   ├── service_impl.rs # Stub impl — evaluate / is_configured
+//! │   ├── service_impl.rs # Concrete impl — evaluate / is_configured
 //! │   ├── gate.rs         # DispatchGate choke-point trait + fail-closed arming
-//! │   ├── companion.rs    # R3 CompanionStepObligation contract
 //! │   ├── surfaces.rs     # PreconditionSurfaces + structured policy_violation
 //! │   ├── hardening.rs    # HardeningConfig (max_failures_before_abort)
 //! │   ├── factory.rs      # PreconditionFactory interface
@@ -56,7 +55,8 @@
 //! # Related Components
 //!
 //! - `sequence_policy` — `StepPredicate` reuse (R1 matching); `[[requirements]]`
-//!   companion-step extension (R3)
+//!   companion-step extension (R3) — the evaluator itself now lives in
+//!   `sequence_policy::application::companion` (ISSUE-PF-REL-2)
 //! - `execution_engine` — the single dispatch choke point (ADR-011); the
 //!   `DispatchGate` lands there after `verify_before_dispatch`, before
 //!   `spawn_concurrent_node`
