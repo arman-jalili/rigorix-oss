@@ -1,6 +1,6 @@
 //! Boundary DTOs for the Consequence Gating module.
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#command-contract
+//! @canonical .pi/architecture/modules/precondition.md#command-contract
 //! @canonical .pi/architecture/decisions/ADR-017-consequence-gating.md
 //! Implements: Contract Freeze — DispatchStep, PreconditionCheckInput
 //! Issue: #938 (consequence-gating epic — contract freeze)

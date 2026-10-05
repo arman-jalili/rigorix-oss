@@ -1,6 +1,6 @@
 //! CompanionStepObligationServiceImpl — concrete R3 companion-step evaluator.
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#r3
+//! @canonical .pi/architecture/modules/precondition.md#r3
 //! Implements: ISSUE-CONSEQUENCE-GATING-8 — `require_companion_step` evaluation
 //! Issue: #946; contract frozen in #938
 //!

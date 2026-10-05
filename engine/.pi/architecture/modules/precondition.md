@@ -309,11 +309,11 @@ release_dependents_on_failure = false
 > **Status (2026-10-02): implemented.** All 11 components live in
 > `engine/src/precondition/` (contract freeze #938 + implementation issues
 > ISSUE-CONSEQUENCE-GATING-1…11). The 17 acceptance criteria are covered by
-> `engine/tests/unit/consequence-gating/` plus the execution-engine integration
+> `engine/tests/unit/precondition/` plus the execution-engine integration
 > tests (`gating_mode`, dispatch gate). Operability is documented in
 > `engine/docs/runbook-precondition.md` and
 > `engine/docs/dr-plan-precondition.md`. CI hardening stage 37
-> (`check_consequence-gating_contracts.sh`) enforces the contracts automatically.
+> (`check_precondition_contracts.sh`) enforces the contracts automatically.
 
 1. Contract freeze (rigorix-sdk #39): `rigorix-sdk/schemas/policy.json` (preconditions + `[gating]`) + `schemas/envelope.json` (`precondition_findings[]`) + `schemas/api/errors.json` + a signed fixture verified byte-exact in Rust/Python/TypeScript/Java/Go.
 2. Domain: `engine/src/precondition/domain/{precondition,gating,error}.rs` + safety caps and fail-closed config validation.

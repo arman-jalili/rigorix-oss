@@ -1,6 +1,6 @@
 //! PreconditionRunner — deterministic argv execution of an operator check.
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#command-contract
+//! @canonical .pi/architecture/modules/precondition.md#command-contract
 //! @canonical .pi/architecture/decisions/ADR-017-consequence-gating.md
 //! Implements: Contract Freeze — PreconditionRunner trait + ProcessPreconditionRunner
 //! Issue: #941 (ISSUE-CONSEQUENCE-GATING-3); contract frozen in #938

@@ -1,7 +1,7 @@
 //! HardeningConfig — `max_failures_before_abort` reachable from `rigorix.toml`
 //! and fail-closed arming (ADR-017 §Phase C).
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#fail-modes
+//! @canonical .pi/architecture/modules/precondition.md#fail-modes
 //! @canonical .pi/architecture/decisions/ADR-017-consequence-gating.md
 //! Implements: Contract Freeze — HardeningConfig
 //! Issue: #938 (consequence-gating epic — contract freeze); behavior closed in

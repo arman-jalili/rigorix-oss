@@ -1,8 +1,8 @@
 //! Precondition — the domain model of one operator-authored dispatch-time
 //! authority check.
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#precondition
-//! @canonical .pi/architecture/modules/consequence-gating.md#config
+//! @canonical .pi/architecture/modules/precondition.md#precondition
+//! @canonical .pi/architecture/modules/precondition.md#config
 //! @canonical .pi/architecture/decisions/ADR-017-consequence-gating.md
 //! Implements: Contract Freeze — Precondition, FailureAction, SafetyCaps,
 //!   PreconditionConfig

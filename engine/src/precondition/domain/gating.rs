@@ -1,6 +1,6 @@
 //! GatingMode — `[gating]` step-outcome gating (ADR-017 §R2).
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#r2
+//! @canonical .pi/architecture/modules/precondition.md#r2
 //! @canonical .pi/architecture/decisions/ADR-017-consequence-gating.md
 //! Implements: Contract Freeze — GatingMode (`release_dependents_on_failure`)
 //! Issue: #938 (consequence-gating epic — contract freeze); behavior closed in

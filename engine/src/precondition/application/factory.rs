@@ -1,7 +1,7 @@
 //! PreconditionFactory — factory interface for constructing precondition
 //! service instances.
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#ddd-layers
+//! @canonical .pi/architecture/modules/precondition.md#ddd-layers
 //! Implements: Contract Freeze — PreconditionFactory trait
 //! Issue: #938 (consequence-gating epic — contract freeze); implementation with
 //!   ISSUE-CONSEQUENCE-GATING-4

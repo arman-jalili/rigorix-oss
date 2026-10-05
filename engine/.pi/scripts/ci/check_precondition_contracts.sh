@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # ============================================================================
-# check_consequence-gating_contracts.sh
+# check_precondition_contracts.sh
 #
-# Validates that every contract interface from the consequence-gating module
+# Validates that every contract interface from the precondition module
 # (the `precondition` bounded context) has a concrete implementation. Uses
 # grep/find to detect trait definitions and their implementing structs — no
 # frameworks, no dependencies.
 #
-# Usage: bash .pi/scripts/ci/check_consequence-gating_contracts.sh [--help]
+# Usage: bash .pi/scripts/ci/check_precondition_contracts.sh [--help]
 #
 # Exit codes: 0 = all contracts implemented, 1 = violations found
 # ============================================================================
@@ -31,12 +31,12 @@ log_pass() { echo "  ✓ PASS: $1"; PASS=$((PASS + 1)); }
 log_fail() { echo "  ✗ FAIL: $1"; ERRORS+=("$1"); FAIL=$((FAIL + 1)); }
 
 if [ ! -d "$PRE_DIR" ]; then
-    echo "consequence-gating module (src/precondition) not found at $PRE_DIR" >&2
+    echo "precondition module (src/precondition) not found at $PRE_DIR" >&2
     exit 1
 fi
 
 echo ""
-echo "═══ Consequence-Gating Contract Implementation Check ═══"
+echo "═══ Precondition Contract Implementation Check ═══"
 echo "Source: $PRE_DIR"
 echo ""
 
@@ -257,9 +257,9 @@ if [ ${#ERRORS[@]} -gt 0 ]; then
         echo "  - $err"
     done
     echo ""
-    echo "Some consequence-gating contracts are missing implementations."
+    echo "Some precondition contracts are missing implementations."
     exit 1
 fi
 
-echo "All consequence-gating contracts have implementations."
+echo "All precondition contracts have implementations."
 exit 0

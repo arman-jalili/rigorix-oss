@@ -1,6 +1,6 @@
 //! ACT-3: end-to-end composition reachability test for the ADR-017 gate.
 //!
-//! @canonical .pi/architecture/modules/consequence-gating.md#acceptance-criteria
+//! @canonical .pi/architecture/modules/precondition.md#acceptance-criteria
 //! Implements: ISSUE-PF-ACT-3 — prove the factory-armed precondition gate is
 //!   reachable from operator config and produces refusal + envelope evidence.
 //! Issue: #969 (epic EPIC-PRECONDITION-FOLLOWUPS)

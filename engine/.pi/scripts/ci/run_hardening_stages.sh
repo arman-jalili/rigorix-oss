@@ -350,9 +350,9 @@ run_stage "36" "sequence-policy_proofing" \
     "${SCRIPTS_DIR}/stage_sequence-policy_proofing.sh" \
     "always"
 
-# Stage 37: Consequence-Gating Proofing
-run_stage "37" "consequence-gating_proofing" \
-    "${SCRIPTS_DIR}/stage_consequence-gating_proofing.sh" \
+# Stage 37: Precondition Proofing
+run_stage "37" "precondition_proofing" \
+    "${SCRIPTS_DIR}/stage_precondition_proofing.sh" \
     "always"
 
 # ── Summary ──

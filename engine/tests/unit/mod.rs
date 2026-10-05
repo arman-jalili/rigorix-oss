@@ -185,8 +185,12 @@ mod sequence_policy {
         mod step_requirement_test;
     }
 }
-#[path = "consequence-gating"]
-mod consequence_gating {
+// The outer module mirrors the renamed `engine/tests/unit/precondition/` dir;
+// the inner `precondition` group is the module's own unit tests (same name by
+// design), so silence the module-inception lint locally.
+#[allow(clippy::module_inception)]
+#[path = "precondition"]
+mod precondition {
     #[path = "companionstepobligation"]
     mod companionstepobligation {
         #[path = "companionstepobligation_test.rs"]
