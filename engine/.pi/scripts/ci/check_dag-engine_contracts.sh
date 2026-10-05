@@ -187,6 +187,14 @@ else
     log_fail "NodeDiff struct not found"
 fi
 
+# ADR-017 R2 (ISSUE-PF-REL-1): the step-outcome gating mode lives in the DAG
+# engine domain, not the precondition module.
+if grep -q 'pub struct GatingMode' "$DOMAIN_DIR/gating.rs" 2>/dev/null; then
+    log_pass "GatingMode struct exists (ADR-017 R2)"
+else
+    log_fail "GatingMode struct not found in domain/gating.rs"
+fi
+
 # ---------------------------------------------------------------------------
 # Check 5: DTOs exist
 # ---------------------------------------------------------------------------

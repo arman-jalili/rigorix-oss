@@ -132,6 +132,23 @@ else
     log_fail "SequencePolicyError enum not found"
 fi
 
+# ADR-017 R3 (ISSUE-PF-REL-2): the companion-step obligation is an ADR-015
+# [[requirements]] extension owned by sequence_policy, not precondition.
+if grep -q 'pub trait CompanionStepObligationService' "$SP_DIR/application/companion.rs" 2>/dev/null; then
+    if grep -q 'impl CompanionStepObligationService for CompanionStepObligationServiceImpl' "$SP_DIR/application/companion_impl.rs" 2>/dev/null; then
+        log_pass "CompanionStepObligationService → CompanionStepObligationServiceImpl"
+    else
+        log_fail "CompanionStepObligationServiceImpl does not implement CompanionStepObligationService"
+    fi
+else
+    log_fail "CompanionStepObligationService trait not found in application/companion.rs"
+fi
+if grep -q 'pub struct CompanionStepObligation' "$SP_DIR/application/companion.rs" 2>/dev/null; then
+    log_pass "CompanionStepObligation exists"
+else
+    log_fail "CompanionStepObligation struct not found"
+fi
+
 # ---------------------------------------------------------------------------
 # Check 5: DTO contracts
 # ---------------------------------------------------------------------------

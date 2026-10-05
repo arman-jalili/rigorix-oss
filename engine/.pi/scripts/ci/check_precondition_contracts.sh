@@ -83,16 +83,6 @@ else
     log_fail "DispatchGate trait not found in application/gate.rs"
 fi
 
-if grep -q 'pub trait CompanionStepObligationService' "$PRE_DIR/application/companion.rs" 2>/dev/null; then
-    if grep -q 'impl CompanionStepObligationService for CompanionStepObligationServiceImpl' "$PRE_DIR/application/companion_impl.rs" 2>/dev/null; then
-        log_pass "CompanionStepObligationService → CompanionStepObligationServiceImpl"
-    else
-        log_fail "CompanionStepObligationServiceImpl does not implement CompanionStepObligationService"
-    fi
-else
-    log_fail "CompanionStepObligationService trait not found in application/companion.rs"
-fi
-
 if grep -q 'pub trait PreconditionSurfaces' "$PRE_DIR/application/surfaces.rs" 2>/dev/null; then
     if grep -q 'impl PreconditionSurfaces for PreconditionSurfacesImpl' "$PRE_DIR/application/surfaces.rs" 2>/dev/null; then
         log_pass "PreconditionSurfaces → PreconditionSurfacesImpl"
@@ -160,12 +150,6 @@ for type in FailureAction SafetyCaps PreconditionConfig; do
         log_fail "$type not found in domain/precondition.rs"
     fi
 done
-
-if grep -q 'pub struct GatingMode' "$PRE_DIR/domain/gating.rs" 2>/dev/null; then
-    log_pass "GatingMode exists"
-else
-    log_fail "GatingMode struct not found in domain/gating.rs"
-fi
 
 if grep -q 'pub enum PreconditionError' "$PRE_DIR/domain/error.rs" 2>/dev/null; then
     log_pass "PreconditionError enum exists"
