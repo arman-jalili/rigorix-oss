@@ -1341,6 +1341,24 @@ pub async fn build_real_engine(
         rigorix_engine::execution_engine::application::factory::SequencePolicySetup::from_env(
             std::path::Path::new(repo_root),
         );
+    // ADR-017 R1/R2: operator-authored `.rigorix/preconditions.toml` arms the
+    // dispatch-time precondition gate. A malformed file is fail-closed: arm an
+    // unarmed (refuse-everything) gate instead of silently dispatching.
+    let precondition = match rigorix_engine::precondition::PreconditionSetup::from_env(
+        std::path::Path::new(repo_root),
+    ) {
+        Ok(setup) => setup,
+        Err(error) => {
+            tracing::error!(
+                %error,
+                "precondition config invalid — arming fail-closed refusal gate (ADR-017)"
+            );
+            Some(rigorix_engine::precondition::PreconditionSetup::unarmed(
+                std::path::Path::new(repo_root),
+                error.to_string(),
+            ))
+        }
+    };
     // ── Event bus (shared: the executor publishes into it AND the
     //    orchestrator drains it for the audit envelope — a split bus makes
     //    engine envelopes evidence-empty) ──
@@ -1355,6 +1373,7 @@ pub async fn build_real_engine(
                 event_bus: Some(Arc::clone(&event_bus)),
                 approval_binding: rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env(std::path::Path::new(repo_root)),
                 sequence_policy: sequence_policy.clone(),
+                precondition,
                 ..ParallelExecutionFactoryConfig::default()
             })
             .await?,
@@ -1863,4 +1882,47 @@ pub async fn resolve_resource(uri: &str) -> Result<String, String> {
     }
 
     Err(format!("unknown Rigorix resource: {uri}"))
+}
+
+/// ACT-2 smoke: the shared composition root (`build_real_engine`, reached by
+/// `init_host` for both the stdio MCP binary and `rigorix-server`) accepts the
+/// operator precondition config without breaking engine construction.
+#[cfg(test)]
+mod precondition_composition_smoke_tests {
+    use super::*;
+
+    async fn build_with_config(content: &str) -> Result<(), String> {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let rigorix = dir.path().join(".rigorix");
+        std::fs::create_dir_all(&rigorix).expect("create .rigorix");
+        std::fs::write(rigorix.join("preconditions.toml"), content).expect("write fixture");
+        build_real_engine(dir.path().to_str().expect("utf8"))
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    #[tokio::test]
+    async fn valid_precondition_config_composes() {
+        let content = r#"
+[[preconditions]]
+id = "guard"
+match = { tool = "payment_execute" }
+command = ["/bin/true"]
+
+[gating]
+release_dependents_on_failure = false
+"#;
+        build_with_config(content)
+            .await
+            .expect("valid config must not break composition");
+    }
+
+    #[tokio::test]
+    async fn malformed_precondition_config_still_composes_fail_closed() {
+        // The root arms an unarmed refusal gate rather than failing startup.
+        build_with_config("not = valid [[").await.expect(
+            "malformed config must not break composition — the root arms a fail-closed gate",
+        );
+    }
 }
