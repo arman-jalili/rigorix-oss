@@ -88,6 +88,11 @@ pub struct StepRequirement {
     /// non-null value in the matched step's parameters. Defaults empty.
     #[serde(default)]
     pub require_params: Vec<String>,
+    /// ADR-017 R3 (ISSUE-PF-REL-2): when set, the plan MUST also contain a step
+    /// matching this predicate; unmet → `action`. Extends the ADR-015
+    /// `[[requirements]]` surface without changing existing semantics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub require_companion_step: Option<StepPredicate>,
     /// Action for unmet parameter obligations: `deny` (default) or `promote`.
     #[serde(default)]
     pub action: RequirementAction,
@@ -138,6 +143,7 @@ impl StepRequirement {
             step: step_name.to_string(),
             unmet_identity,
             unmet_params,
+            unmet_companion: None,
             action,
         }))
     }
@@ -160,6 +166,11 @@ pub struct RequirementFinding {
     pub unmet_identity: bool,
     /// Pointer names whose value was missing / null (never their values).
     pub unmet_params: Vec<String>,
+    /// ADR-017 R3 (ISSUE-PF-REL-2): the required companion-step tool pattern
+    /// that was absent from the plan, when a `require_companion_step`
+    /// obligation was unmet. `None` for identity/parameter obligations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unmet_companion: Option<String>,
     /// Effective action: `deny` (including every unmet identity) or `promote`.
     pub action: RequirementAction,
 }
@@ -174,6 +185,9 @@ impl RequirementFinding {
         for p in &self.unmet_params {
             unmet.push(format!("required parameter '{p}'"));
         }
+        if let Some(companion) = &self.unmet_companion {
+            unmet.push(format!("required companion step '{companion}'"));
+        }
         format!(
             "operator requirement '{}' {} step '{}' (missing: {})",
             self.requirement_id,
@@ -184,6 +198,19 @@ impl RequirementFinding {
             self.step,
             unmet.join(", ")
         )
+    }
+
+    /// The unmet obligation descriptors, including an absent companion step.
+    ///
+    /// Reused by the orchestrator when recording `RequirementUnmet` /
+    /// `RequirementPromoted` evidence, so companion refusals flow through the
+    /// shared `requirement_findings[]` array.
+    pub fn unmet_list(&self) -> Vec<String> {
+        let mut out = self.unmet_params.clone();
+        if let Some(companion) = &self.unmet_companion {
+            out.push(format!("companion_step:{companion}"));
+        }
+        out
     }
 }
 
@@ -230,6 +257,7 @@ mod tests {
             },
             require_identity: true,
             require_params: vec!["/beneficiary".to_string(), "/effect_key".to_string()],
+            require_companion_step: None,
             action: RequirementAction::Deny,
         }
     }

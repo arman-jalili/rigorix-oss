@@ -2,23 +2,27 @@
 //! ADR-015 non-goal.
 //!
 //! @canonical .pi/architecture/modules/precondition.md#r3
+//! @canonical .pi/architecture/modules/sequence-policy.md#r9--operator-controlled-step-requirements-adr-015
 //! @canonical .pi/architecture/decisions/ADR-017-consequence-gating.md
+//! @canonical .pi/architecture/decisions/ADR-015-operator-step-requirements.md
 //! Implements: Contract Freeze — CompanionStepObligation + CompanionFinding
 //! Issue: #938 (consequence-gating epic — contract freeze); behavior closed in
-//!   ISSUE-CONSEQUENCE-GATING-9 (CompanionStepObligation)
+//!   ISSUE-CONSEQUENCE-GATING-9 (CompanionStepObligation); relocated into
+//!   `sequence_policy` as an ADR-015 `[[requirements]]` extension by
+//!   ISSUE-PF-REL-2 (#973)
 //!
 //! ADR-015 listed the **required-companion-step** obligation ("a matched step
 //! is only allowed if the plan also contains a step matching R") as a follow-up.
 //! It is a requirement, not a follow-up: a consequential step must be able to
 //! require that its check is present in the same plan.
 //!
-//! Extends the ADR-015 `[[requirements]]` surface:
+//! It is an extension of the ADR-015 `[[requirements]]` surface:
 //!
 //! ```toml
 //! [[requirements]]
 //! id = "payout-needs-recheck"
 //! match = { tool = "payment_execute" }
-//! require_companion_step = { match = { tool = "authority_recheck" } }
+//! require_companion_step = { tool = "authority_recheck" }
 //! action = "deny"        # deny (default) | promote
 //! ```
 //!
@@ -31,15 +35,16 @@
 //!   the matched step and reuses the ADR-011 pause/resume chain
 //! - A [`CompanionFinding`] records ids and step names only — parameter VALUES
 //!   never appear (SpanPrivacy)
-//! - This contract is wired into `sequence_policy::domain::requirement` by the
-//!   implementation issue; the domain shape is frozen here so the issue and its
-//!   service depend on one schema
+//! - Companion findings are projected into [`RequirementFinding`] so they reuse
+//!   the ADR-015 `requirement_findings[]` evidence path
 
 use serde::{Deserialize, Serialize};
 
-use crate::sequence_policy::domain::StepPredicate;
+use crate::sequence_policy::domain::{
+    RequirementAction, RequirementFinding, SequencePolicyError, StepPredicate, StepRequirement,
+};
 
-use super::dto::DispatchStep;
+use super::dto::PlannedStep;
 
 /// Action taken when a required companion step is absent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -66,6 +71,26 @@ pub struct CompanionStepObligation {
     /// Action when the companion is absent: `deny` (default) or `promote`.
     #[serde(default)]
     pub action: CompanionAction,
+}
+
+impl CompanionStepObligation {
+    /// Build the companion obligation from an ADR-015 [`StepRequirement`] that
+    /// declares `require_companion_step`. `None` when the requirement has no
+    /// companion obligation.
+    pub fn from_requirement(requirement: &StepRequirement) -> Option<Self> {
+        requirement
+            .require_companion_step
+            .clone()
+            .map(|require_companion_step| Self {
+                id: requirement.id.clone(),
+                r#match: requirement.r#match.clone(),
+                require_companion_step,
+                action: match requirement.action {
+                    RequirementAction::Deny => CompanionAction::Deny,
+                    RequirementAction::Promote => CompanionAction::Promote,
+                },
+            })
+    }
 }
 
 /// A recorded, redacted companion-step outcome for one matched step.
@@ -95,6 +120,23 @@ impl CompanionFinding {
             self.required_companion
         )
     }
+
+    /// Project into the ADR-015 [`RequirementFinding`] so companion refusals
+    /// are carried in the shared `requirement_findings[]` evidence array.
+    pub fn to_requirement_finding(&self) -> RequirementFinding {
+        RequirementFinding {
+            requirement_id: self.obligation_id.clone(),
+            requirement_name: format!("companion-step obligation '{}'", self.obligation_id),
+            step: self.step.clone(),
+            unmet_identity: false,
+            unmet_params: Vec::new(),
+            unmet_companion: Some(self.required_companion.clone()),
+            action: match self.action {
+                CompanionAction::Deny => RequirementAction::Deny,
+                CompanionAction::Promote => RequirementAction::Promote,
+            },
+        }
+    }
 }
 
 /// Application service for R3 companion-step obligations.
@@ -107,12 +149,12 @@ pub trait CompanionStepObligationService: Send + Sync {
     /// order). An empty result means every matched step had its companion.
     ///
     /// # Errors
-    /// - `crate::precondition::domain::PreconditionError::ConfigInvalid` — a
-    ///   corrupt obligation config → fail closed
+    /// - [`SequencePolicyError::InvalidConfig`] — a corrupt obligation config
+    ///   → fail closed
     async fn evaluate_plan(
         &self,
-        steps: &[DispatchStep],
-    ) -> Result<Vec<CompanionFinding>, crate::precondition::domain::PreconditionError>;
+        steps: &[PlannedStep],
+    ) -> Result<Vec<CompanionFinding>, SequencePolicyError>;
 }
 
 #[cfg(test)]
@@ -157,5 +199,23 @@ mod tests {
         let summary = finding.decision_summary();
         assert!(summary.contains("payout-needs-recheck"));
         assert!(summary.contains("authority_recheck"));
+    }
+
+    #[test]
+    fn finding_projects_into_requirement_finding() {
+        let finding = CompanionFinding {
+            obligation_id: "payout-needs-recheck".to_string(),
+            step: "pay".to_string(),
+            required_companion: "authority_recheck".to_string(),
+            action: CompanionAction::Promote,
+        };
+        let requirement = finding.to_requirement_finding();
+        assert_eq!(requirement.requirement_id, "payout-needs-recheck");
+        assert_eq!(
+            requirement.unmet_companion.as_deref(),
+            Some("authority_recheck")
+        );
+        assert_eq!(requirement.action, RequirementAction::Promote);
+        assert!(requirement.decision_summary().contains("authority_recheck"));
     }
 }

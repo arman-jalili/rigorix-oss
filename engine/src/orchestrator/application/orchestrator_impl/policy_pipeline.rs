@@ -211,7 +211,7 @@ impl OrchestratorServiceImpl {
                     return Err(OrchestratorError::RequirementUnmet {
                         requirement_id: f.requirement_id.clone(),
                         step: f.step.clone(),
-                        unmet: f.unmet_params.clone(),
+                        unmet: f.unmet_list(),
                     });
                 }
                 crate::sequence_policy::domain::RequirementAction::Promote => {
@@ -226,7 +226,7 @@ impl OrchestratorServiceImpl {
                                     execution_id,
                                     requirement_id: f.requirement_id.clone(),
                                     step: f.step.clone(),
-                                    unmet: f.unmet_params.clone(),
+                                    unmet: f.unmet_list(),
                                     action: "promote".to_string(),
                                     summary: f.decision_summary(),
                                     timestamp: chrono::Utc::now(),
@@ -242,7 +242,7 @@ impl OrchestratorServiceImpl {
                         requirement_id: f.requirement_id.clone(),
                         step: f.step.clone(),
                         action: "promote".to_string(),
-                        unmet: f.unmet_params.clone(),
+                        unmet: f.unmet_list(),
                     });
                 }
             }

@@ -112,6 +112,7 @@ async fn operator_step_requirements_conform_to_schema() {
                 },
                 require_identity: true,
                 require_params: vec!["/beneficiary".to_string(), "/effect_key".to_string()],
+                require_companion_step: None,
                 action: RequirementAction::Deny,
             },
             StepRequirement {
@@ -124,6 +125,7 @@ async fn operator_step_requirements_conform_to_schema() {
                 },
                 require_identity: false,
                 require_params: vec!["/amount".to_string()],
+                require_companion_step: None,
                 action: RequirementAction::Promote,
             },
         ],

@@ -44,6 +44,8 @@ use crate::sequence_policy::domain::{
 use crate::sequence_policy::infrastructure::ExecutionHistory;
 use crate::sequence_policy::infrastructure::repository::SequencePolicyRepository;
 
+use super::companion::{CompanionStepObligation, CompanionStepObligationService};
+use super::companion_impl::CompanionStepObligationServiceImpl;
 use super::dto::{DispatchedStep, PlannedStep};
 use super::matcher::{Matcher, StepView};
 use super::service::SequencePolicyService;
@@ -335,6 +337,24 @@ impl SequencePolicyService for SequencePolicyServiceImpl {
                     findings.push(finding);
                 }
             }
+        }
+        // ADR-017 R3 (ISSUE-PF-REL-2): companion-step obligations are the same
+        // ADR-015 `[[requirements]]` surface. Their findings are projected into
+        // `RequirementFinding` so they reuse the shared `requirement_findings[]`
+        // evidence path and the existing deny/promote handling.
+        let companion_obligations: Vec<CompanionStepObligation> = config
+            .requirements
+            .iter()
+            .filter_map(CompanionStepObligation::from_requirement)
+            .collect();
+        if !companion_obligations.is_empty() {
+            let evaluator = CompanionStepObligationServiceImpl::new(companion_obligations);
+            let companion_findings = evaluator.evaluate_plan(steps).await?;
+            findings.extend(
+                companion_findings
+                    .into_iter()
+                    .map(|finding| finding.to_requirement_finding()),
+            );
         }
         if !findings.is_empty() {
             tracing::info!(

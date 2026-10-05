@@ -2,14 +2,13 @@
 //!
 //! @canonical .pi/architecture/modules/precondition.md#ddd-layers
 //! Implements: Contract Freeze — PreconditionService, DispatchGate,
-//!   CompanionStepObligation, PreconditionSurfaces, HardeningConfig,
-//!   PreconditionFactory, DispatchStep / PreconditionCheckInput DTOs
+//!   PreconditionSurfaces, HardeningConfig, PreconditionFactory,
+//!   DispatchStep / PreconditionCheckInput DTOs
 //! Issue: #938 (consequence-gating epic — contract freeze)
 //!
 //! This module defines:
 //! - The `PreconditionService` use-case trait (match → run → Dispatch/Deny)
 //! - The `DispatchGate` choke-point trait + fail-closed arming
-//! - The R3 `CompanionStepObligation` contract
 //! - The `PreconditionSurfaces` error taxonomy (`policy_violation`)
 //! - `HardeningConfig` (`max_failures_before_abort`)
 //! - The `PreconditionFactory` construction interface
@@ -25,8 +24,6 @@
 //! - No implementation logic — only contract signatures (behavior lands in
 //!   ISSUE-CONSEQUENCE-GATING-4/-5/-8/-9/-10/-11)
 
-pub mod companion;
-pub mod companion_impl;
 pub mod dto;
 pub mod factory;
 pub mod gate;
@@ -37,10 +34,6 @@ pub mod service_impl;
 pub mod setup;
 pub mod surfaces;
 
-pub use companion::{
-    CompanionAction, CompanionFinding, CompanionStepObligation, CompanionStepObligationService,
-};
-pub use companion_impl::CompanionStepObligationServiceImpl;
 pub use dto::{DispatchStep, PreconditionCheckInput};
 pub use factory::PreconditionFactory;
 pub use gate::DispatchGate;

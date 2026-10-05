@@ -24,12 +24,18 @@
 //! - No implementation logic — only contract signatures (behavior lands in
 //!   ISSUE-SEQUENCE-POLICY-2 and ISSUE-SEQUENCE-POLICY-5)
 
+pub mod companion;
+pub mod companion_impl;
 pub mod dto;
 pub mod factory;
 mod matcher;
 pub mod service;
 pub mod service_impl;
 
+pub use companion::{
+    CompanionAction, CompanionFinding, CompanionStepObligation, CompanionStepObligationService,
+};
+pub use companion_impl::CompanionStepObligationServiceImpl;
 pub use dto::{DispatchedStep, PlannedStep};
 pub use factory::SequencePolicyFactory;
 pub use service::SequencePolicyService;

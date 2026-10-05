@@ -241,11 +241,14 @@ impl SequencePolicyConfig {
             }
             seen_requirement_ids.push(&req.id);
 
-            // A requirement with neither obligation is a no-op — a typo, not
-            // an operator intent (fail closed).
-            if !req.require_identity && req.require_params.is_empty() {
+            // A requirement with no obligation at all is a no-op — a typo,
+            // not an operator intent (fail closed).
+            if !req.require_identity
+                && req.require_params.is_empty()
+                && req.require_companion_step.is_none()
+            {
                 return Err(SequencePolicyError::InvalidConfig(format!(
-                    "requirement '{}': must set at least one of require_identity / require_params",
+                    "requirement '{}': must set at least one of require_identity / require_params / require_companion_step",
                     req.id
                 )));
             }
@@ -283,6 +286,25 @@ impl SequencePolicyConfig {
                         "requirement '{}': match parameter predicate '{}' (kind {:?}) requires `value`",
                         req.id, p.pointer, p.kind
                     )));
+                }
+            }
+
+            // ADR-017 R3 companion predicate: same matcher validation as
+            // `match` (a malformed companion predicate must fail closed).
+            if let Some(companion) = &req.require_companion_step {
+                if let Some(detail) = invalid_match_predicate(companion) {
+                    return Err(SequencePolicyError::InvalidConfig(format!(
+                        "requirement '{}': require_companion_step: {detail}",
+                        req.id
+                    )));
+                }
+                for p in &companion.params {
+                    if p.value.is_none() {
+                        return Err(SequencePolicyError::InvalidConfig(format!(
+                            "requirement '{}': require_companion_step parameter predicate '{}' (kind {:?}) requires `value`",
+                            req.id, p.pointer, p.kind
+                        )));
+                    }
                 }
             }
         }
@@ -611,6 +633,7 @@ mod tests {
             },
             require_identity: true,
             require_params: vec![],
+            require_companion_step: None,
             action: RequirementAction::Deny,
         }
     }
