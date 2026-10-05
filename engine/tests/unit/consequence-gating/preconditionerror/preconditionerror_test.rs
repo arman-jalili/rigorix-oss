@@ -76,3 +76,29 @@ fn test_all_variants_are_non_retriable() {
         );
     }
 }
+
+#[test]
+fn test_error_codes_are_distinct_and_stable() {
+    let codes: Vec<&str> = all_variants().iter().map(|v| v.error_code()).collect();
+    for code in &codes {
+        assert!(code.starts_with("PRECONDITION_"), "unexpected code: {code}");
+    }
+    let mut sorted = codes.clone();
+    sorted.sort_unstable();
+    let total = sorted.len();
+    sorted.dedup();
+    assert_eq!(total, sorted.len(), "codes must be distinct per variant");
+}
+
+#[test]
+fn test_error_is_std_error_send_sync_clone_eq() {
+    fn assert_traits<T: std::error::Error + Send + Sync + Clone + PartialEq + 'static>() {}
+    assert_traits::<PreconditionError>();
+
+    let err = PreconditionError::Denied {
+        precondition_id: "p".to_string(),
+        step: "pay".to_string(),
+    };
+    let boxed: Box<dyn std::error::Error + Send + Sync> = Box::new(err.clone());
+    assert_eq!(boxed.to_string(), err.to_string());
+}
