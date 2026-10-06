@@ -1,3 +1,21 @@
+## [2026-10-06] — release 1.9.0 (ADR-017 consequence gating)
+
+### Added
+- **Consequence gating is available in the released toolchain**
+  (`rigorix-engine` / `rigorix-mcp` / `rigorix-cli` 1.9.0): dispatch-time
+  preconditions (R1), step-outcome gating (R2), companion-step obligation (R3),
+  signed `precondition_findings[]` evidence, surfaces, and
+  `max_failures_before_abort` from `rigorix.toml`. The gate is armed from
+  `.rigorix/preconditions.toml` in every composition root (MCP host / CLI /
+  GitHub Action); malformed config arms a fail-closed refusal gate.
+  Implemented across #952–#981 (epic #937, follow-ups #966).
+- **Release train:** `engine` / `mcp` / `cli` → 1.9.0.
+
+### Fixed
+- **Release `verify` gate:** it required `rigorix-actions` to match the tag, but
+  `actions` is not on the release train (it remains 1.4.0) — this blocked every
+  prior release run. The gate now checks `engine` / `cli` / `mcp` only.
+
 ## [2026-10-02] — consequence gating implemented (ADR-017)
 
 ### Added

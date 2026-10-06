@@ -28,7 +28,10 @@ jobs:
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           echo "Tag version: $TAG_VERSION"
 
-          for crate in engine cli actions mcp; do
+          # NOTE: `actions` is NOT on the engine/mcp/cli release train (it stays
+          # on its own line); requiring it to match the tag made every prior
+          # release fail at this gate.
+          for crate in engine cli mcp; do
             CRATE_VERSION=$(grep '^version' "$crate/Cargo.toml" | head -1 | sed 's/version = "//;s/"//')
             echo "$crate: $CRATE_VERSION"
             if [[ "$CRATE_VERSION" != "$TAG_VERSION" ]]; then
