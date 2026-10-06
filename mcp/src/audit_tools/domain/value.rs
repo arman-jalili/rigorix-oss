@@ -71,10 +71,29 @@ pub struct AuditEnvelope {
 
     /// Ordered list of execution events captured during this run.
     events: Vec<ExecutionEvent>,
+
+    /// ADR-017 dispatch-time precondition outcomes captured during the run
+    /// (ISSUE-EVIDENCE-PRESERVATION). Additive and serde-defaulted: absent in
+    /// pre-fix envelopes. Mirrors the engine envelope's field of the same name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    precondition_findings: Vec<PreconditionFinding>,
+
+    /// ADR-013 sequence-policy decisions captured during the run
+    /// (ISSUE-EVIDENCE-PRESERVATION). Additive and serde-defaulted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    sequence_policy_findings: Vec<SequencePolicyFinding>,
+
+    /// ADR-015 operator step-requirement outcomes captured during the run
+    /// (ISSUE-EVIDENCE-PRESERVATION). Additive and serde-defaulted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    requirement_findings: Vec<RequirementFinding>,
 }
 
 impl AuditEnvelope {
-    /// Create a new AuditEnvelope.
+    /// Create a new AuditEnvelope with no finding arrays.
+    ///
+    /// Kept for signature stability; finding-bearing envelopes use
+    /// [`AuditEnvelope::new_with_findings`].
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         execution_id: Uuid,
@@ -88,6 +107,44 @@ impl AuditEnvelope {
         hmac: String,
         events: Vec<ExecutionEvent>,
     ) -> Self {
+        Self::new_with_findings(
+            execution_id,
+            status,
+            template_name,
+            started_at,
+            completed_at,
+            duration_ms,
+            steps,
+            tokens_used,
+            hmac,
+            events,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        )
+    }
+
+    /// Create a new AuditEnvelope carrying the ADR-013/015/017 finding arrays.
+    ///
+    /// The three arrays are part of the signed canonical form (see
+    /// `compute_hmac`), so a finding-bearing envelope cannot be tampered with
+    /// without breaking the signature (ISSUE-EVIDENCE-PRESERVATION AC #5).
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_findings(
+        execution_id: Uuid,
+        status: ExecutionStatus,
+        template_name: Option<String>,
+        started_at: DateTime<Utc>,
+        completed_at: DateTime<Utc>,
+        duration_ms: u64,
+        steps: Vec<ExecutionStep>,
+        tokens_used: Option<u64>,
+        hmac: String,
+        events: Vec<ExecutionEvent>,
+        precondition_findings: Vec<PreconditionFinding>,
+        sequence_policy_findings: Vec<SequencePolicyFinding>,
+        requirement_findings: Vec<RequirementFinding>,
+    ) -> Self {
         Self {
             execution_id,
             status,
@@ -99,6 +156,9 @@ impl AuditEnvelope {
             tokens_used,
             hmac,
             events,
+            precondition_findings,
+            sequence_policy_findings,
+            requirement_findings,
         }
     }
 
@@ -156,6 +216,211 @@ impl AuditEnvelope {
     /// Execution events.
     pub fn events(&self) -> &[ExecutionEvent] {
         &self.events
+    }
+
+    /// ADR-017 dispatch-time precondition findings (may be empty).
+    pub fn precondition_findings(&self) -> &[PreconditionFinding] {
+        &self.precondition_findings
+    }
+
+    /// ADR-013 sequence-policy findings (may be empty).
+    pub fn sequence_policy_findings(&self) -> &[SequencePolicyFinding] {
+        &self.sequence_policy_findings
+    }
+
+    /// ADR-015 step-requirement findings (may be empty).
+    pub fn requirement_findings(&self) -> &[RequirementFinding] {
+        &self.requirement_findings
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Finding value objects (ADR-013 / ADR-015 / ADR-017)
+// ---------------------------------------------------------------------------
+
+/// A redacted ADR-017 dispatch-time precondition outcome.
+///
+/// Summary fields only — parameter values and raw stdout never appear
+/// (SpanPrivacy). Mirrors the engine envelope's `PreconditionFindingRef` so the
+/// MCP read surface can show the same signed evidence.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PreconditionFinding {
+    precondition_id: String,
+    step: String,
+    outcome: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    exit_code: Option<i32>,
+    inputs_hash: String,
+    checked_at: DateTime<Utc>,
+    summary: String,
+}
+
+impl PreconditionFinding {
+    /// Create a new precondition finding.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        precondition_id: String,
+        step: String,
+        outcome: String,
+        exit_code: Option<i32>,
+        inputs_hash: String,
+        checked_at: DateTime<Utc>,
+        summary: String,
+    ) -> Self {
+        Self {
+            precondition_id,
+            step,
+            outcome,
+            exit_code,
+            inputs_hash,
+            checked_at,
+            summary,
+        }
+    }
+
+    /// Stable id of the precondition that ran.
+    pub fn precondition_id(&self) -> &str {
+        &self.precondition_id
+    }
+
+    /// Name of the matched (gated) step.
+    pub fn step(&self) -> &str {
+        &self.step
+    }
+
+    /// Distinct outcome: `"passed" | "failed" | "error"`.
+    pub fn outcome(&self) -> &str {
+        &self.outcome
+    }
+
+    /// Process exit code, when a process actually ran.
+    pub fn exit_code(&self) -> Option<i32> {
+        self.exit_code
+    }
+
+    /// One-way hash of the check inputs (never the inputs).
+    pub fn inputs_hash(&self) -> &str {
+        &self.inputs_hash
+    }
+
+    /// When the check was evaluated.
+    pub fn checked_at(&self) -> &DateTime<Utc> {
+        &self.checked_at
+    }
+
+    /// Redacted decision summary.
+    pub fn summary(&self) -> &str {
+        &self.summary
+    }
+}
+
+/// A redacted ADR-013/R6 sequence-policy decision.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SequencePolicyFinding {
+    rule_id: String,
+    action: String,
+    later_step: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    matched_indices: Vec<usize>,
+    summary: String,
+}
+
+impl SequencePolicyFinding {
+    /// Create a new sequence-policy finding.
+    pub fn new(
+        rule_id: String,
+        action: String,
+        later_step: String,
+        matched_indices: Vec<usize>,
+        summary: String,
+    ) -> Self {
+        Self {
+            rule_id,
+            action,
+            later_step,
+            matched_indices,
+            summary,
+        }
+    }
+
+    /// Stable id of the rule that matched.
+    pub fn rule_id(&self) -> &str {
+        &self.rule_id
+    }
+
+    /// Action taken: `"promote"` or `"deny"`.
+    pub fn action(&self) -> &str {
+        &self.action
+    }
+
+    /// Name of the later matched step the rule gated.
+    pub fn later_step(&self) -> &str {
+        &self.later_step
+    }
+
+    /// Indices of the matched concrete steps.
+    pub fn matched_indices(&self) -> &[usize] {
+        &self.matched_indices
+    }
+
+    /// Redacted decision summary.
+    pub fn summary(&self) -> &str {
+        &self.summary
+    }
+}
+
+/// A redacted ADR-015/R9 step-requirement outcome.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RequirementFinding {
+    requirement_id: String,
+    step: String,
+    action: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    unmet: Vec<String>,
+    summary: String,
+}
+
+impl RequirementFinding {
+    /// Create a new step-requirement finding.
+    pub fn new(
+        requirement_id: String,
+        step: String,
+        action: String,
+        unmet: Vec<String>,
+        summary: String,
+    ) -> Self {
+        Self {
+            requirement_id,
+            step,
+            action,
+            unmet,
+            summary,
+        }
+    }
+
+    /// Stable id of the requirement that fired.
+    pub fn requirement_id(&self) -> &str {
+        &self.requirement_id
+    }
+
+    /// Name of the matched step that failed the requirement.
+    pub fn step(&self) -> &str {
+        &self.step
+    }
+
+    /// Action taken: `"deny"` or `"promote"`.
+    pub fn action(&self) -> &str {
+        &self.action
+    }
+
+    /// Unmet obligation names (never parameter values).
+    pub fn unmet(&self) -> &[String] {
+        &self.unmet
+    }
+
+    /// Redacted decision summary.
+    pub fn summary(&self) -> &str {
+        &self.summary
     }
 }
 

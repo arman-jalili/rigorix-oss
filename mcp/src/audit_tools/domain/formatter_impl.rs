@@ -73,6 +73,55 @@ impl AuditFormatter for AuditFormatterImpl {
             }
         }
 
+        // ADR-017 precondition findings
+        if !envelope.precondition_findings().is_empty() {
+            out.push_str("\n### Precondition Findings\n\n");
+            for f in envelope.precondition_findings() {
+                out.push_str(&format!(
+                    "- **{}** on step `{}` — {}",
+                    f.precondition_id(),
+                    f.step(),
+                    f.outcome()
+                ));
+                if let Some(code) = f.exit_code() {
+                    out.push_str(&format!(" (exit {}).", code));
+                } else {
+                    out.push('.');
+                }
+                if !f.summary().is_empty() {
+                    out.push_str(&format!(" {}", f.summary()));
+                }
+                out.push('\n');
+            }
+        }
+
+        // ADR-013 sequence-policy findings
+        if !envelope.sequence_policy_findings().is_empty() {
+            out.push_str("\n### Sequence Policy Findings\n\n");
+            for f in envelope.sequence_policy_findings() {
+                out.push_str(&format!(
+                    "- **{}** (`{}`) — step `{}`\n",
+                    f.rule_id(),
+                    f.action(),
+                    f.later_step()
+                ));
+            }
+        }
+
+        // ADR-015 requirement findings
+        if !envelope.requirement_findings().is_empty() {
+            out.push_str("\n### Requirement Findings\n\n");
+            for f in envelope.requirement_findings() {
+                out.push_str(&format!(
+                    "- **{}** (`{}`) — step `{}`; unmet: {}\n",
+                    f.requirement_id(),
+                    f.action(),
+                    f.step(),
+                    f.unmet().join(", ")
+                ));
+            }
+        }
+
         out
     }
 
@@ -100,6 +149,35 @@ impl AuditFormatter for AuditFormatterImpl {
                     "summary": e.summary(),
                     "occurred_at": e.occurred_at().to_rfc3339(),
                     "status": format!("{:?}", e.status()),
+                })
+            }).collect::<Vec<_>>(),
+            "precondition_findings": envelope.precondition_findings().iter().map(|f| {
+                serde_json::json!({
+                    "precondition_id": f.precondition_id(),
+                    "step": f.step(),
+                    "outcome": f.outcome(),
+                    "exit_code": f.exit_code(),
+                    "inputs_hash": f.inputs_hash(),
+                    "checked_at": f.checked_at().to_rfc3339(),
+                    "summary": f.summary(),
+                })
+            }).collect::<Vec<_>>(),
+            "sequence_policy_findings": envelope.sequence_policy_findings().iter().map(|f| {
+                serde_json::json!({
+                    "rule_id": f.rule_id(),
+                    "action": f.action(),
+                    "later_step": f.later_step(),
+                    "matched_indices": f.matched_indices(),
+                    "summary": f.summary(),
+                })
+            }).collect::<Vec<_>>(),
+            "requirement_findings": envelope.requirement_findings().iter().map(|f| {
+                serde_json::json!({
+                    "requirement_id": f.requirement_id(),
+                    "step": f.step(),
+                    "action": f.action(),
+                    "unmet": f.unmet(),
+                    "summary": f.summary(),
                 })
             }).collect::<Vec<_>>(),
         })
@@ -312,6 +390,66 @@ mod tests {
         );
         assert!(json["steps"].is_array());
         assert!(json["hmac"].as_str().unwrap() == "abc123hmac");
+    }
+
+    /// ISSUE-EVIDENCE-PRESERVATION AC #4: the read surface renders every
+    /// finding array — text and JSON — so `rigorix_read_audit` can show the
+    /// signed evidence that was previously absent entirely.
+    #[test]
+    fn test_format_audit_surfaces_findings() {
+        use crate::audit_tools::domain::value::{
+            PreconditionFinding, RequirementFinding, SequencePolicyFinding,
+        };
+
+        let now = Utc::now();
+        let env = AuditEnvelope::new_with_findings(
+            Uuid::nil(),
+            ExecutionStatus::Failed,
+            Some("precondition-demo".into()),
+            now - Duration::minutes(1),
+            now,
+            1000,
+            vec![],
+            None,
+            "sig".into(),
+            vec![],
+            vec![PreconditionFinding::new(
+                "preflight".into(),
+                "pay".into(),
+                "failed".into(),
+                Some(7),
+                "sha256:abc".into(),
+                now,
+                "precondition refused".into(),
+            )],
+            vec![SequencePolicyFinding::new(
+                "rule-1".into(),
+                "deny".into(),
+                "pay".into(),
+                vec![1],
+                "sequence denied".into(),
+            )],
+            vec![RequirementFinding::new(
+                "req-1".into(),
+                "pay".into(),
+                "deny".into(),
+                vec!["identity".into()],
+                "requirement unmet".into(),
+            )],
+        );
+
+        let f = AuditFormatterImpl::new();
+        let json = f.format_audit_json(&env);
+        assert_eq!(json["precondition_findings"][0]["outcome"], "failed");
+        assert_eq!(json["precondition_findings"][0]["exit_code"], 7);
+        assert_eq!(json["sequence_policy_findings"][0]["rule_id"], "rule-1");
+        assert_eq!(json["requirement_findings"][0]["unmet"][0], "identity");
+
+        let text = f.format_audit_text(&env);
+        assert!(text.contains("Precondition Findings"));
+        assert!(text.contains("preflight"));
+        assert!(text.contains("Sequence Policy Findings"));
+        assert!(text.contains("Requirement Findings"));
     }
 
     #[test]
