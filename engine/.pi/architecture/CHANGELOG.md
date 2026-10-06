@@ -1,3 +1,20 @@
+## [2026-10-06] — release 1.9.1 (evidence preservation on approval-resume)
+
+### Fixed
+- **Finding evidence survived only on the non-approval path.** On an
+  approval-gated run the MCP host re-emitted the FINAL audit envelope from a
+  `node_states` projection, dropping every finding array — so
+  `precondition_findings[]` (ADR-017), `sequence_policy_findings[]`
+  (ADR-013) and `requirement_findings[]` (ADR-015) were absent from both the
+  persisted `.rigorix/audit` trail and `rigorix_read_audit` for the
+  "approved at T₀, refused at Tₙ" scene. The resume path now reads the run's
+  REAL events from the shared event bus and derives the finding arrays from
+  them (merged over a de-duplicated node/approval floor); the MCP
+  `AuditEnvelope` models the three arrays, carries the real event stream, and
+  includes them in the HMAC canonical form. Regression:
+  `mcp/tests/evidence_preservation_test.rs` (#982, fix #983).
+- **Release train:** `engine` / `mcp` / `cli` → 1.9.1.
+
 ## [2026-10-06] — release 1.9.0 (ADR-017 consequence gating)
 
 ### Added
