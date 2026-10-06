@@ -446,3 +446,27 @@ concern tracked via ADR-016; the config-time validator is wired (GAP-A-29).
 · cross-repo rigorix-sdk #39 (contract freeze), rigorix-enterprise #225 (evidence
 ingestion) · demo tracked at `.pi/issues/issue-consequence-gating-demo.md`.
 
+---
+
+# Addendum 2026-10-06 — evidence preservation on the approval path (GAP-A-35)
+
+> Found during the ADR-017 demo build (installed 1.9.0). **Open** — fix tracked as
+> issue #982. Code is truth.
+
+| ID | Severity | Finding | Recommended Action | Status |
+|----|----------|---------|--------------------|--------|
+| GAP-A-35 | H | **The approval-resume re-emission drops ALL signed finding arrays.** The engine writes a finding-bearing envelope (initial run), then `mcp/src/host/mod.rs` overwrites it with a final envelope **synthesized from `state.node_states`** (`node_completed`/`node_failed` + `approval_recorded`) — never the finding events. So `precondition_findings[]` (ADR-017), `sequence_policy_findings[]` (ADR-013) and `requirement_findings[]` (ADR-015) are absent for the “approved at T₀ → refused at Tₙ” path. The MCP audit-tools `AuditEnvelope` (`mcp/src/audit_tools/domain/value.rs:42`) also has no finding fields, so `rigorix_read_audit` cannot surface them at all. | Preserve the real event stream in the final envelope (subscribe to the engine broadcast bus for the run/resume) and model + populate the finding arrays in the MCP audit-tools envelope. See #982. | ⬜ Open (#982) |
+
+**Reproduction (installed 1.9.0, identical check, only `requires_approval` differs):**
+- direct run → envelope `events=["precondition_checked"]`, `precondition_findings=[{outcome:"failed", exit_code:3, inputs_hash:"sha256:…", checked_at, summary}]`
+- approval-gated run → envelope `events=["node_failed"]`, `precondition_findings` **absent**
+
+**Why it was missed:** every existing assertion (`orchestrator_impl/tests/policies.rs:372`,
+`tests/approval.rs:401`) exercises the **engine** envelope builder, which receives
+the real events; the MCP tests assert plan-time `validate_plan` findings; the two
+writers (engine write vs MCP synthesis) were never tested as a composition;
+`rigorix_read_audit`’s model never had the fields; and the demos *printed*
+findings with `?? []` but never asserted `> 0`. Unit-green, integration-blind.
+
+**Related:** ADR-013 / ADR-015 / ADR-017 · issue #982.
+
