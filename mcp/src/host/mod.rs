@@ -372,6 +372,10 @@ impl AppState {
                         template_name_for_audit,
                         &self.audit_hmac_key,
                         None,
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
                     );
                     let _ = self.audit_storage.store(envelope);
                 }
@@ -444,6 +448,10 @@ impl AppState {
                         template_name,
                         &self.audit_hmac_key,
                         None,
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
                     );
                     let _ = self.audit_storage.store(envelope);
                 }
@@ -551,12 +559,35 @@ impl AppState {
                     // Use the REAL run start time from the engine session so
                     // the envelope's Started/Completed reflect the actual run.
                     let run_started = state.started_at.unwrap_or_else(chrono::Utc::now);
+
+                    // ISSUE-EVIDENCE-PRESERVATION: the resumed run's REAL
+                    // events live on the shared bus (approve does not drain
+                    // them). Query them so every finding array survives into
+                    // the read surface — previously the envelope was built
+                    // from node_states only, so precondition/sequence/
+                    // requirement findings were silently dropped.
+                    let real_refs = self.execution_event_refs(execution_id).await;
+                    let mcp_events: Vec<_> =
+                        real_refs.iter().map(mcp_event_from_audit_ref).collect();
+                    // Derive the finding arrays from the REAL events with the
+                    // same derivation the engine envelope factory uses.
+                    use rigorix_engine::audit::application::envelope_factory_impl::AuditEnvelopeFactoryImpl;
+                    let pre_findings =
+                        AuditEnvelopeFactoryImpl::precondition_findings_from_events(&real_refs);
+                    let seq_findings =
+                        AuditEnvelopeFactoryImpl::sequence_policy_findings_from_events(&real_refs);
+                    let req_findings =
+                        AuditEnvelopeFactoryImpl::requirement_findings_from_events(&real_refs);
                     let envelope = build_envelope_from_run(
                         &refreshed,
                         execution_id,
                         stored_template.clone(),
                         &self.audit_hmac_key,
                         Some(run_started),
+                        mcp_events,
+                        pre_findings.iter().map(mcp_precondition_finding).collect(),
+                        seq_findings.iter().map(mcp_sequence_finding).collect(),
+                        req_findings.iter().map(mcp_requirement_finding).collect(),
                     );
                     let _ = self.audit_storage.store(envelope);
                     final_state = Some(state.clone());
@@ -570,7 +601,12 @@ impl AppState {
                     if let Some(audit) = &self.engine_audit {
                         use rigorix_engine::audit::application::dto::BuildEnvelopeInput;
                         use rigorix_engine::audit::domain::{EventStatus, ExecutionEventRef};
-                        let mut events: Vec<ExecutionEventRef> = state
+                        // Synthesized node/approval projection — a defensive
+                        // floor merged UNDER the real events (de-duplicated),
+                        // so node/approval evidence is present even if the bus
+                        // window missed it. The finding arrays are derived from
+                        // the REAL events by the engine factory.
+                        let mut synthesized: Vec<ExecutionEventRef> = state
                             .node_states
                             .values()
                             .filter(|s| s.status == "completed" || s.status == "failed")
@@ -599,7 +635,7 @@ impl AppState {
                         // Approval evidence: the attested approver binding.
                         if let Some(claim) = session_claim.as_ref() {
                             for step in approval.approved_steps() {
-                                events.push(ExecutionEventRef {
+                                synthesized.push(ExecutionEventRef {
                                     event_type: "approval_recorded".to_string(),
                                     summary: "approval bound to attested identity".to_string(),
                                     occurred_at: chrono::Utc::now(),
@@ -614,6 +650,7 @@ impl AppState {
                                 });
                             }
                         }
+                        let events = merge_execution_event_refs(real_refs, synthesized);
                         let _ = audit
                             .build_and_send(BuildEnvelopeInput {
                                 execution_id,
@@ -781,6 +818,51 @@ impl AppState {
     {
         std::sync::Arc::clone(&self.engine_event_bus)
     }
+
+    /// Query the shared bus for an execution's REAL events, as audit refs.
+    ///
+    /// ISSUE-EVIDENCE-PRESERVATION: the approval-resume path must build its
+    /// final envelope from the run's actual event stream (findings included),
+    /// not a synthesized `node_states` projection. The resumed run's events
+    /// remain on the bus because the approval flow does not drain them.
+    ///
+    /// Best-effort: a query error yields an empty list so the caller's
+    /// synthesized floor still produces a valid (if less complete) envelope —
+    /// never a hard failure of the approval itself.
+    async fn execution_event_refs(
+        &self,
+        execution_id: uuid::Uuid,
+    ) -> Vec<rigorix_engine::audit::domain::ExecutionEventRef> {
+        use rigorix_engine::event_system::application::dto::QueryEventsInput;
+
+        match self
+            .engine_event_bus
+            .query_events(QueryEventsInput {
+                execution_id: Some(execution_id),
+                event_type: None,
+                after_sequence: None,
+                limit: None,
+                after_timestamp: None,
+                before_timestamp: None,
+            })
+            .await
+        {
+            Ok(out) => out
+                .events
+                .iter()
+                .map(|persisted| audit_ref_from_engine_event(&persisted.event))
+                .collect(),
+            Err(error) => {
+                tracing::warn!(
+                    %execution_id,
+                    %error,
+                    "could not query real execution events for the audit envelope — \
+                     falling back to the synthesized node/approval projection"
+                );
+                Vec::new()
+            }
+        }
+    }
 }
 
 // =========================================================================
@@ -840,12 +922,21 @@ fn resolve_approval_identity(
 /// with the configured HMAC key (when present) — replacing the old fabricated
 /// `create_sample` ("sample-hmac") so rigorix_read_audit returns honest
 /// evidence: steps that actually ran, with a verifiable signature.
+///
+/// `events` and the three finding arrays are the REAL evidence captured from
+/// the run's event stream (ISSUE-EVIDENCE-PRESERVATION); they are signed as
+/// part of the envelope so they cannot be stripped without breaking the HMAC.
+#[allow(clippy::too_many_arguments)]
 fn build_envelope_from_run(
     json_result: &serde_json::Value,
     exec_id: uuid::Uuid,
     template_name: String,
     hmac_key: &Option<String>,
     started_at: Option<chrono::DateTime<chrono::Utc>>,
+    events: Vec<rigorix_mcp::audit_tools::domain::value::ExecutionEvent>,
+    precondition_findings: Vec<rigorix_mcp::audit_tools::domain::value::PreconditionFinding>,
+    sequence_policy_findings: Vec<rigorix_mcp::audit_tools::domain::value::SequencePolicyFinding>,
+    requirement_findings: Vec<rigorix_mcp::audit_tools::domain::value::RequirementFinding>,
 ) -> rigorix_mcp::audit_tools::domain::value::AuditEnvelope {
     use rigorix_mcp::audit_tools::domain::value::ExecutionStep;
     use rigorix_mcp::execution_tools::domain::value::ExecutionStatus as McpStatus;
@@ -877,29 +968,145 @@ fn build_envelope_from_run(
         })
         .unwrap_or_default();
 
-    match started_at {
-        Some(start) => {
-            rigorix_mcp::audit_tools::infrastructure::InMemoryAuditQueryService::build_from_run_at(
-                exec_id,
-                status,
-                Some(template_name),
-                duration_ms,
-                steps,
-                hmac_key.as_deref(),
-                start,
-            )
-        }
-        None => {
-            rigorix_mcp::audit_tools::infrastructure::InMemoryAuditQueryService::build_from_run(
-                exec_id,
-                status,
-                Some(template_name),
-                duration_ms,
-                steps,
-                hmac_key.as_deref(),
-            )
+    rigorix_mcp::audit_tools::infrastructure::InMemoryAuditQueryService::build_from_run_full(
+        exec_id,
+        status,
+        Some(template_name),
+        duration_ms,
+        steps,
+        events,
+        hmac_key.as_deref(),
+        started_at.unwrap_or_else(chrono::Utc::now),
+        precondition_findings,
+        sequence_policy_findings,
+        requirement_findings,
+    )
+}
+
+/// Convert a REAL engine event into an audit `ExecutionEventRef`.
+///
+/// Unlike the old synthesized `node_states` projection, this carries the event
+/// type, summary, timestamp, correlation id and payload — so finding events
+/// (`precondition_checked`, `sequence_rule_matched`, `requirement_unmet`, …)
+/// survive into the envelope and derive their finding arrays.
+fn audit_ref_from_engine_event(
+    event: &rigorix_engine::event_system::domain::ExecutionEvent,
+) -> rigorix_engine::audit::domain::ExecutionEventRef {
+    use rigorix_engine::audit::domain::{EventStatus, ExecutionEventRef};
+    use rigorix_engine::orchestrator::domain::record::EventInfoStatus;
+
+    let status = match event.event_info_status() {
+        EventInfoStatus::Failure => EventStatus::Failure,
+        EventInfoStatus::Info | EventInfoStatus::Success => EventStatus::Success,
+    };
+    ExecutionEventRef {
+        event_type: event.event_type_name().to_string(),
+        summary: event.summary(),
+        occurred_at: *event.timestamp(),
+        correlation_id: Some(*event.execution_id()),
+        status,
+        payload: event.payload_json(),
+    }
+}
+
+/// Convert an audit `ExecutionEventRef` into the MCP-facing `ExecutionEvent`.
+fn mcp_event_from_audit_ref(
+    e: &rigorix_engine::audit::domain::ExecutionEventRef,
+) -> rigorix_mcp::audit_tools::domain::value::ExecutionEvent {
+    use rigorix_engine::audit::domain::EventStatus as AuditStatus;
+    use rigorix_mcp::audit_tools::domain::value::{EventStatus as McpEventStatus, ExecutionEvent};
+
+    let status = match e.status {
+        AuditStatus::Success => McpEventStatus::Success,
+        AuditStatus::Failure => McpEventStatus::Failure,
+        AuditStatus::Skipped => McpEventStatus::Skipped,
+        AuditStatus::Cancelled => McpEventStatus::Cancelled,
+    };
+    ExecutionEvent::new(
+        e.event_type.clone(),
+        e.summary.clone(),
+        e.occurred_at,
+        e.correlation_id,
+        status,
+    )
+}
+
+/// Convert an engine precondition finding into the MCP-facing value object.
+fn mcp_precondition_finding(
+    f: &rigorix_engine::audit::domain::PreconditionFindingRef,
+) -> rigorix_mcp::audit_tools::domain::value::PreconditionFinding {
+    rigorix_mcp::audit_tools::domain::value::PreconditionFinding::new(
+        f.precondition_id.clone(),
+        f.step.clone(),
+        f.outcome.clone(),
+        f.exit_code,
+        f.inputs_hash.clone(),
+        f.checked_at,
+        f.summary.clone(),
+    )
+}
+
+/// Convert an engine sequence-policy finding into the MCP-facing value object.
+fn mcp_sequence_finding(
+    f: &rigorix_engine::audit::domain::SequencePolicyFindingRef,
+) -> rigorix_mcp::audit_tools::domain::value::SequencePolicyFinding {
+    rigorix_mcp::audit_tools::domain::value::SequencePolicyFinding::new(
+        f.rule_id.clone(),
+        f.action.clone(),
+        f.later_step.clone(),
+        f.matched_indices.clone(),
+        f.summary.clone(),
+    )
+}
+
+/// Convert an engine requirement finding into the MCP-facing value object.
+fn mcp_requirement_finding(
+    f: &rigorix_engine::audit::domain::RequirementFindingRef,
+) -> rigorix_mcp::audit_tools::domain::value::RequirementFinding {
+    rigorix_mcp::audit_tools::domain::value::RequirementFinding::new(
+        f.requirement_id.clone(),
+        f.step.clone(),
+        f.action.clone(),
+        f.unmet.clone(),
+        f.summary.clone(),
+    )
+}
+
+/// Stable identity of an event for de-duplication when merging the REAL event
+/// stream with the synthesized node/approval projection.
+fn event_ref_identity(e: &rigorix_engine::audit::domain::ExecutionEventRef) -> String {
+    let subject = e
+        .payload
+        .as_ref()
+        .and_then(|p| {
+            p.get("step_name")
+                .or_else(|| p.get("node_name"))
+                .or_else(|| p.get("step"))
+                .or_else(|| p.get("node_id"))
+        })
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    format!("{}:{}", e.event_type, subject)
+}
+
+/// Merge the REAL run events with the synthesized node/approval projection,
+/// de-duplicated by `(event_type, subject)`.
+///
+/// Real events win; the synthesized projection only fills subjects the real
+/// stream did not carry (e.g. a bus window that missed the node events), so
+/// the signed envelope never regresses to an evidence-empty event list.
+fn merge_execution_event_refs(
+    real: Vec<rigorix_engine::audit::domain::ExecutionEventRef>,
+    synthesized: Vec<rigorix_engine::audit::domain::ExecutionEventRef>,
+) -> Vec<rigorix_engine::audit::domain::ExecutionEventRef> {
+    let mut seen: std::collections::HashSet<String> = real.iter().map(event_ref_identity).collect();
+    let mut merged = real;
+    for e in synthesized {
+        if seen.insert(event_ref_identity(&e)) {
+            merged.push(e);
         }
     }
+    merged
 }
 
 /// Load a deserializable config struct from a TOML file in the repo root.

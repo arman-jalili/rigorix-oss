@@ -12,7 +12,8 @@ use uuid::Uuid;
 use crate::audit_tools::domain::entity::AuditQueryService;
 use crate::audit_tools::domain::error::AuditError;
 use crate::audit_tools::domain::value::{
-    AuditEnvelope, AuditFilter, AuditSummary, ExecutionStep, TopFailure, TopTemplate,
+    AuditEnvelope, AuditFilter, AuditSummary, ExecutionEvent, ExecutionStep, PreconditionFinding,
+    RequirementFinding, SequencePolicyFinding, TopFailure, TopTemplate,
 };
 use crate::execution_tools::domain::value::{ExecutionId, ExecutionStatus};
 
@@ -147,35 +148,67 @@ impl InMemoryAuditQueryService {
         hmac_key: Option<&str>,
         started_at: chrono::DateTime<chrono::Utc>,
     ) -> AuditEnvelope {
-        let completed_at = started_at + chrono::Duration::milliseconds(duration_ms as i64);
-        let envelope = AuditEnvelope::new(
+        Self::build_from_run_full(
             execution_id,
-            status.clone(),
-            template_name.clone(),
-            started_at,
-            completed_at,
+            status,
+            template_name,
             duration_ms,
             steps,
-            None,
-            String::new(),
-            vec![],
-        );
+            Vec::new(),
+            hmac_key,
+            started_at,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        )
+    }
 
-        let hmac = hmac_key.map(|key| compute_hmac(&envelope, key));
-        match hmac {
-            Some(sig) => AuditEnvelope::new(
+    /// Build a REAL audit envelope from an actual run result and sign it,
+    /// including the ADR-013/015/017 finding arrays and the real event stream.
+    ///
+    /// ISSUE-EVIDENCE-PRESERVATION: the approval-resume path previously built
+    /// the read-back envelope from synthesized node/approval data, so every
+    /// finding array was empty. This constructor carries the findings derived
+    /// from the engine's REAL events, and — because the HMAC signs the full
+    /// serialized envelope (findings included) — the evidence cannot be
+    /// stripped without breaking the signature (AC #5).
+    #[allow(clippy::too_many_arguments)]
+    pub fn build_from_run_full(
+        execution_id: Uuid,
+        status: ExecutionStatus,
+        template_name: Option<String>,
+        duration_ms: u64,
+        steps: Vec<ExecutionStep>,
+        events: Vec<ExecutionEvent>,
+        hmac_key: Option<&str>,
+        started_at: chrono::DateTime<chrono::Utc>,
+        precondition_findings: Vec<PreconditionFinding>,
+        sequence_policy_findings: Vec<SequencePolicyFinding>,
+        requirement_findings: Vec<RequirementFinding>,
+    ) -> AuditEnvelope {
+        let completed_at = started_at + chrono::Duration::milliseconds(duration_ms as i64);
+        let build = |signature: String| {
+            AuditEnvelope::new_with_findings(
                 execution_id,
-                status,
-                template_name,
+                status.clone(),
+                template_name.clone(),
                 started_at,
                 completed_at,
                 duration_ms,
-                envelope.steps().to_vec(),
+                steps.clone(),
                 None,
-                sig,
-                vec![],
-            ),
-            None => envelope,
+                signature,
+                events.clone(),
+                precondition_findings.clone(),
+                sequence_policy_findings.clone(),
+                requirement_findings.clone(),
+            )
+        };
+
+        let unsigned = build(String::new());
+        match hmac_key.map(|key| compute_hmac(&unsigned, key)) {
+            Some(signature) => build(signature),
+            None => unsigned,
         }
     }
 }
@@ -631,5 +664,95 @@ mod tests {
             Some("other-key"),
         );
         assert_ne!(env.hmac(), other_key.hmac(), "different key must differ");
+    }
+
+    /// ISSUE-EVIDENCE-PRESERVATION AC #4/#5: a finding-bearing envelope keeps
+    /// every array and signs them — stripping the findings breaks the HMAC and
+    /// verify-on-read refuses to serve the tampered evidence.
+    #[tokio::test]
+    async fn build_from_run_full_preserves_and_signs_all_findings() {
+        use crate::audit_tools::domain::value::{
+            ExecutionStep, PreconditionFinding, RequirementFinding, SequencePolicyFinding,
+        };
+
+        let key = "evidence-key";
+        let id = Uuid::new_v4();
+        let checked_at = Utc::now();
+        let env = InMemoryAuditQueryService::build_from_run_full(
+            id,
+            ExecutionStatus::Failed,
+            Some("precondition-demo".into()),
+            42,
+            vec![ExecutionStep::new(
+                "pay".into(),
+                false,
+                Some("refused".into()),
+                serde_json::json!({}),
+                3,
+            )],
+            vec![],
+            Some(key),
+            Utc::now(),
+            vec![PreconditionFinding::new(
+                "preflight".into(),
+                "pay".into(),
+                "failed".into(),
+                Some(7),
+                "sha256:abc".into(),
+                checked_at,
+                "precondition refused".into(),
+            )],
+            vec![SequencePolicyFinding::new(
+                "rule-1".into(),
+                "deny".into(),
+                "pay".into(),
+                vec![0, 1],
+                "sequence denied".into(),
+            )],
+            vec![RequirementFinding::new(
+                "req-1".into(),
+                "pay".into(),
+                "deny".into(),
+                vec!["identity".into()],
+                "requirement unmet".into(),
+            )],
+        );
+
+        assert_eq!(env.precondition_findings().len(), 1);
+        assert_eq!(env.sequence_policy_findings().len(), 1);
+        assert_eq!(env.requirement_findings().len(), 1);
+        assert_eq!(env.precondition_findings()[0].outcome(), "failed");
+        assert_eq!(env.precondition_findings()[0].exit_code(), Some(7));
+        assert_eq!(env.precondition_findings()[0].inputs_hash(), "sha256:abc");
+        assert_eq!(env.sequence_policy_findings()[0].rule_id(), "rule-1");
+        assert_eq!(
+            env.requirement_findings()[0].unmet(),
+            &["identity".to_string()]
+        );
+        assert_eq!(env.hmac().len(), 64, "SHA-256 hex digest is 64 chars");
+
+        // The findings are inside the signed canonical form: re-storing the
+        // same envelope with the arrays stripped must fail verification.
+        let svc = InMemoryAuditQueryService::new().with_hmac_key(Some(key.to_string()));
+        svc.store(env.clone()).unwrap();
+        assert!(svc.read_audit(&ExecutionId::from_uuid(id)).await.is_ok());
+
+        let stripped = AuditEnvelope::new(
+            env.execution_id(),
+            env.status().clone(),
+            env.template_name().map(str::to_string),
+            env.started_at().to_owned(),
+            env.completed_at().to_owned(),
+            env.duration_ms(),
+            env.steps().to_vec(),
+            env.tokens_used(),
+            env.hmac().to_string(),
+            env.events().to_vec(),
+        );
+        svc.store(stripped).unwrap();
+        assert!(
+            svc.read_audit(&ExecutionId::from_uuid(id)).await.is_err(),
+            "stripping the finding arrays must break the HMAC (AC #5)"
+        );
     }
 }

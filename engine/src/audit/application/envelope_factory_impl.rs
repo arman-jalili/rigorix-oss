@@ -526,7 +526,7 @@ impl AuditEnvelopeFactoryImpl {
     /// (`sequence_rule_matched` / `sequence_policy_denied`). Summaries are
     /// pre-redacted at the source (SpanPrivacy default — parameter values
     /// never enter event payloads).
-    fn sequence_policy_findings_from_events(
+    pub fn sequence_policy_findings_from_events(
         events: &[crate::audit::domain::ExecutionEventRef],
     ) -> Vec<crate::audit::domain::SequencePolicyFindingRef> {
         let mut out = Vec::new();
@@ -576,7 +576,7 @@ impl AuditEnvelopeFactoryImpl {
     /// events (`requirement_unmet` / `requirement_promoted`). Summaries are
     /// pre-redacted at the source (SpanPrivacy default — parameter values
     /// never enter event payloads).
-    fn requirement_findings_from_events(
+    pub fn requirement_findings_from_events(
         events: &[crate::audit::domain::ExecutionEventRef],
     ) -> Vec<crate::audit::domain::RequirementFindingRef> {
         let mut out = Vec::new();
@@ -625,7 +625,7 @@ impl AuditEnvelopeFactoryImpl {
     /// ADR-017: derive redacted precondition findings from the run's
     /// `precondition_checked` events. Parameter values and stdout never enter
     /// the event payload (SpanPrivacy default).
-    fn precondition_findings_from_events(
+    pub fn precondition_findings_from_events(
         events: &[crate::audit::domain::ExecutionEventRef],
     ) -> Vec<crate::audit::domain::PreconditionFindingRef> {
         let mut out = Vec::new();
