@@ -38,4 +38,4 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 # OSS-CATALOG-SUBSET-VERIFIER (#907): the SHARED closed-namespace guard.
 # Published crates.io dependency (NOT path/git) so a fresh public clone builds.
-rigorix-verifier = "0.2"
+rigorix-verifier = "0.3"
