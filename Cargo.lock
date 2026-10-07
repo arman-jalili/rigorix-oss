@@ -2650,6 +2650,7 @@ dependencies = [
  "hmac 0.13.0",
  "indexmap",
  "jsonschema",
+ "libc",
  "prometheus",
  "rand 0.10.1",
  "regex",

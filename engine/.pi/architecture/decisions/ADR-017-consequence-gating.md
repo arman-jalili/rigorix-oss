@@ -192,13 +192,21 @@ lands.
 |---|---|---|---|
 | **default install** (today) | path containment (the check resolves outside the agent-writable workspace) + the `PreToolUse` hook | agent-mediated tool calls cannot touch the check or the authority | an **unmediated** write path to `$HOME` (another tool, a differently-privileged subprocess, a persisted script) |
 | **`--isolated`** (#985, *available*) | OS ownership/mode (root-owned `0555` check / `0444` authority) | the agent's **UID cannot write** the check or the authority | requires no passwordless `sudo` for the agent user (the setup checks this) |
-| **`require_immutable_check`** (#986, *planned*) | the engine, at dispatch | a writable check/authority is **refused** | a check writable by a *different* privileged identity |
+| **`require_immutable_check`** (#986, *available*) | the engine, at dispatch | a writable check/authority is **refused** | a check writable by a *different* privileged identity |
 | **attribution** (#987, *planned*) | the signed envelope | a forged/changed authority is **visible** (`authority_digest`) | detection, not prevention |
 
 `inputs_hash` binds the **step inputs the engine fed the check**, not the
 authority the check consulted. The remedy for that gap is #987's
 `authority_digest` (sha256 of the authority artifact), which rides the signed
 envelope alongside the check digest and the boundary facts.
+
+`require_immutable_check = true` (per precondition, additive, default `false`)
+turns the boundary assessment into a refusal: the runner assesses the resolved
+check — and any operator-declared `authority_path` — for writability by the
+engine's effective UID using POSIX owner/group/world mode. A writable, or
+unreadable, boundary fails closed with `PreconditionError::Boundary`. With the
+default `false` the assessment is traced but the run proceeds, so the demo's
+`$HOME` install is unaffected.
 
 The default row is the permanent caveat: **the default install is a policy +
 path + hook boundary, not a sandbox.** #985–#987 raise the boundary in modes the

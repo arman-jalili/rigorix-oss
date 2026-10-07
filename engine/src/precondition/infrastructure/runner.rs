@@ -22,6 +22,12 @@
 //!   agent-writable workspace**; if it resolves inside, the run is refused with
 //!   [`PreconditionError::TrustBoundary`] (a check the agent can edit is no
 //!   check)
+//! - **boundary strength** (`require_immutable_check`): when set, the resolved
+//!   check program and any declared `authority_path` are assessed for
+//!   writability by the engine's effective UID (POSIX owner/group/world mode);
+//!   a writable — or unreadable — boundary is refused with
+//!   [`PreconditionError::Boundary`]. Default `false`: the assessment is still
+//!   traced, but the run proceeds (the default boundary is path + hook)
 //! - **timeout / spawn failure** → [`PreconditionError::Timeout`] /
 //!   [`PreconditionError::Spawn`] (indeterminate → refuse, never pass)
 //! - stdout is captured only when the precondition sets `capture_output = true`
@@ -53,6 +59,13 @@ pub struct PreconditionRun {
     /// Captured (truncated) stdout — present only when the precondition sets
     /// `capture_output = true`.
     pub stdout: Option<String>,
+    /// Whether the resolved check program was writable by the engine's
+    /// effective UID. `None` when the assessment could not be made (non-unix,
+    /// or unreadable metadata with `require_immutable_check = false`).
+    pub check_writable: Option<bool>,
+    /// Whether the operator-declared `authority_path` was writable, when one
+    /// was declared. `None` when absent or unassessable.
+    pub authority_writable: Option<bool>,
 }
 
 /// Deterministic precondition-check runner.
@@ -155,6 +168,121 @@ fn ensure_outside_workspace(
     Ok(())
 }
 
+/// Whether `path` is writable by the engine's effective UID, from POSIX
+/// metadata (owner/group/world mode bits).
+///
+/// - `Ok(true)`  — owner-write, group-write (euid is the egid or in a
+///   supplementary group), or world-write
+/// - `Ok(false)` — none of the above
+/// - `Err(_)`    — metadata could not be read (the caller fails closed under
+///   `require_immutable_check`)
+///
+/// Root is deliberately **not** special-cased: the assessment reports the
+/// mode/ownership fact, and running the engine as root voids an immutability
+/// claim anyway.
+#[cfg(unix)]
+fn writable_by_euid(path: &Path) -> std::io::Result<bool> {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    let metadata = std::fs::metadata(path)?;
+    let mode = metadata.permissions().mode();
+    if mode & 0o002 != 0 {
+        return Ok(true);
+    }
+    let euid = unsafe { libc::geteuid() };
+    if metadata.uid() == euid && mode & 0o200 != 0 {
+        return Ok(true);
+    }
+    if mode & 0o020 != 0 && euid_in_group(metadata.gid()) {
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+/// Whether the engine's effective UID is the egid or in the file's group.
+#[cfg(unix)]
+fn euid_in_group(gid: u32) -> bool {
+    // SAFETY: `getgroups` is called with a buffer sized by the first call.
+    unsafe {
+        if gid == libc::getegid() {
+            return true;
+        }
+        let count = libc::getgroups(0, std::ptr::null_mut());
+        if count <= 0 {
+            return false;
+        }
+        let mut groups = vec![0 as libc::gid_t; count as usize];
+        let written = libc::getgroups(count, groups.as_mut_ptr());
+        if written < 0 {
+            return false;
+        }
+        groups.truncate(written as usize);
+        groups.contains(&gid)
+    }
+}
+
+/// Best-effort on non-unix: the boundary strength cannot be assessed, so the
+/// caller treats it as unknown (fail closed under `require_immutable_check`).
+#[cfg(not(unix))]
+fn writable_by_euid(_path: &Path) -> std::io::Result<bool> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "writability assessment requires unix metadata",
+    ))
+}
+
+/// Assess one boundary path and trace the fact. Under
+/// `require_immutable_check`, an unreadable/unknown assessment is a
+/// [`PreconditionError::Boundary`] (fail closed); otherwise it is `None` and
+/// the run proceeds unchanged.
+fn assess_boundary(
+    precondition: &Precondition,
+    path: &Path,
+    label: &str,
+) -> Result<Option<bool>, PreconditionError> {
+    match writable_by_euid(path) {
+        Ok(writable) => {
+            tracing::debug!(
+                precondition = %precondition.id,
+                path = %path.display(),
+                boundary = label,
+                writable,
+                "precondition: boundary writability assessment"
+            );
+            Ok(Some(writable))
+        }
+        Err(error) => {
+            if precondition.require_immutable_check {
+                return Err(PreconditionError::Boundary {
+                    precondition_id: precondition.id.clone(),
+                    path: path.display().to_string(),
+                    detail: format!("cannot assess {label} writability: {error}"),
+                });
+            }
+            tracing::warn!(
+                precondition = %precondition.id,
+                path = %path.display(),
+                boundary = label,
+                %error,
+                "precondition: boundary writability unknown; proceeding"
+            );
+            Ok(None)
+        }
+    }
+}
+
+/// The fail-closed refusal for a writable boundary under
+/// `require_immutable_check`.
+fn boundary_error(precondition: &Precondition, path: &Path, label: &str) -> PreconditionError {
+    PreconditionError::Boundary {
+        precondition_id: precondition.id.clone(),
+        path: path.display().to_string(),
+        detail: format!(
+            "{label} is writable by the engine's effective UID and require_immutable_check=true"
+        ),
+    }
+}
+
 #[async_trait]
 impl PreconditionRunner for ProcessPreconditionRunner {
     async fn run(
@@ -172,6 +300,25 @@ impl PreconditionRunner for ProcessPreconditionRunner {
         // Trust boundary BEFORE spawn: a check the agent can edit is no check.
         let resolved = resolve_program(program, &precondition.id)?;
         ensure_outside_workspace(&resolved, &self.workspace_root, &precondition.id)?;
+
+        // Boundary strength: is the check — and any declared authority —
+        // writable by the engine's UID? Recorded always; refused only when the
+        // operator opted in (`require_immutable_check`).
+        let check_writable = assess_boundary(precondition, &resolved, "check")?;
+        let authority_writable = match precondition.authority_path.as_deref() {
+            Some(path) => assess_boundary(precondition, Path::new(path), "authority")?,
+            None => None,
+        };
+        if precondition.require_immutable_check {
+            if check_writable == Some(true) {
+                return Err(boundary_error(precondition, &resolved, "check"));
+            }
+            if authority_writable == Some(true)
+                && let Some(path) = precondition.authority_path.as_deref()
+            {
+                return Err(boundary_error(precondition, Path::new(path), "authority"));
+            }
+        }
 
         let payload = serde_json::to_vec(input).map_err(|error| PreconditionError::Spawn {
             precondition_id: precondition.id.clone(),
@@ -251,6 +398,8 @@ impl PreconditionRunner for ProcessPreconditionRunner {
             outcome,
             exit_code,
             stdout,
+            check_writable,
+            authority_writable,
         })
     }
 }
@@ -280,6 +429,8 @@ mod tests {
             timeout_ms: 5_000,
             failure: FailureAction::Deny,
             capture_output: false,
+            require_immutable_check: false,
+            authority_path: None,
         }
     }
 
@@ -403,5 +554,87 @@ mod tests {
             .expect("run must be judged by exit code, not a broken pipe");
         assert_eq!(run.outcome, PreconditionOutcome::Failed);
         assert_eq!(run.exit_code, Some(7));
+    }
+
+    #[test]
+    fn metadata_error_is_fail_closed_under_immutable_flag() {
+        let mut required = precondition("p1", vec!["/bin/true"]);
+        required.require_immutable_check = true;
+        let error = assess_boundary(
+            &required,
+            Path::new("/nonexistent/rigorix-check-xyz"),
+            "check",
+        )
+        .expect_err("unknown boundary must fail closed under the flag");
+        assert!(matches!(error, PreconditionError::Boundary { .. }));
+        assert!(!error.is_retriable());
+
+        // Flag off → unknown is recorded (`None`), never fatal (default unchanged).
+        let permissive = precondition("p1", vec!["/bin/true"]);
+        assert_eq!(
+            assess_boundary(
+                &permissive,
+                Path::new("/nonexistent/rigorix-check-xyz"),
+                "check"
+            )
+            .expect("flag off must not fail closed"),
+            None
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn writable_check_is_refused_under_immutable_flag() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let check_home = tempfile::tempdir().expect("check home");
+        let check = check_home.path().join("check.sh");
+        std::fs::write(&check, "#!/bin/sh\nexit 0\n").expect("write check");
+        // Default 0644, owned by the test euid → owner-writable.
+        let runner = ProcessPreconditionRunner::new(workspace.path());
+        let mut precondition = precondition("p1", vec![check.to_str().unwrap()]);
+        precondition.require_immutable_check = true;
+        let error = runner
+            .run(&precondition, &input())
+            .await
+            .expect_err("writable check must be refused");
+        assert!(matches!(error, PreconditionError::Boundary { .. }));
+        assert!(!error.is_retriable());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn non_writable_check_passes_under_immutable_flag() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let workspace = tempfile::tempdir().expect("workspace");
+        let check_home = tempfile::tempdir().expect("check home");
+        let check = check_home.path().join("check.sh");
+        std::fs::write(&check, "#!/bin/sh\nexit 0\n").expect("write check");
+        std::fs::set_permissions(&check, std::fs::Permissions::from_mode(0o555))
+            .expect("chmod 0555");
+        let runner = ProcessPreconditionRunner::new(workspace.path());
+        let mut precondition = precondition("p1", vec![check.to_str().unwrap()]);
+        precondition.require_immutable_check = true;
+        let run = runner.run(&precondition, &input()).await.expect("run");
+        assert_eq!(run.outcome, PreconditionOutcome::Passed);
+        assert_eq!(run.check_writable, Some(false));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn writable_authority_is_refused_under_immutable_flag() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let authority_home = tempfile::tempdir().expect("authority home");
+        let authority = authority_home.path().join("authority.json");
+        std::fs::write(&authority, "{\"acme\":\"active\"}\n").expect("write authority");
+        let runner = ProcessPreconditionRunner::new(workspace.path());
+        let mut precondition = precondition("p1", vec!["/bin/sh", "-c", "exit 0"]);
+        precondition.require_immutable_check = true;
+        precondition.authority_path = Some(authority.display().to_string());
+        let error = runner
+            .run(&precondition, &input())
+            .await
+            .expect_err("writable authority must be refused");
+        assert!(matches!(error, PreconditionError::Boundary { .. }));
     }
 }
