@@ -470,3 +470,24 @@ findings with `?? []` but never asserted `> 0`. Unit-green, integration-blind.
 
 **Related:** ADR-013 / ADR-015 / ADR-017 · issue #982.
 
+
+---
+
+# Addendum 2026-10-07 — the precondition trust boundary is mode-dependent (GAP-A-36)
+
+> Found during the authority-boundary review. **Open, mitigated-by** — the
+> default install remains a policy + path + hook boundary; the strong modes are
+> tracked as #985–#987. Code is truth.
+
+| ID | Severity | Finding | Recommended Action | Status |
+|----|----------|---------|--------------------|--------|
+| GAP-A-36 | H | **The default precondition boundary is path containment + a `PreToolUse` hook, not isolation.** `ensure_outside_workspace` (`engine/src/precondition/infrastructure/runner.rs:143`) refuses a check that resolves *inside* the workspace, but says nothing about a check outside the workspace yet still writable by the agent's euid (e.g. the demo's `$HOME/.rigorix-authority-demo/check-beneficiary.mjs`). An **unmediated** write path to `$HOME` defeats it. Separately, the signed `precondition_findings[].inputs_hash` binds the check *inputs*, not the authority the check consulted — so a forged `authority.json` is invisible in the record. | Document the boundary as a mode → guarantee matrix (ADR-017 §Honest boundary, `modules/precondition.md`); raise the boundary in opt-in modes: `--isolated` OS ownership (#985), `require_immutable_check` engine refusal (#986), signed `authority_digest` attribution (#987). | ⬜ Open — **mitigated by #985–#987** |
+
+**Why it is "mitigated-by", not "closed":** the default install does not change.
+The default row's caveat is permanent, and only the opt-in rows (#985–#987) flip
+from *planned* to *available* as each issue lands. Recording it any other way
+would make the ledger stale the moment a mode ships.
+
+**Related:** ADR-017 §Honest boundary · `modules/precondition.md` §Security ·
+`engine/src/precondition/infrastructure/runner.rs` ·
+`engine/src/audit/domain/envelope.rs` · issues #984 (docs), #985, #986, #987.

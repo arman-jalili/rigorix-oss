@@ -181,6 +181,32 @@ determination is signed.* This is the same boundary discipline as ADR-016 (which
 scopes its Phase D out explicitly rather than over-claiming). A security reader
 should be able to rely on the claim without discovering a hidden gap.
 
+The temporal gap is not the only boundary. The boundary that protects the check
+and the authority it reads is itself **mode-dependent**, so it is documented as a
+**mode → guarantee matrix** rather than a single snapshot claim. Each row stays
+true in its own mode; the default row's caveat is **permanent** (the default does
+not change), and the other rows flip from *planned* to *available* as their issue
+lands.
+
+| Mode | Enforced by | Guarantee | Does **not** cover |
+|---|---|---|---|
+| **default install** (today) | path containment (the check resolves outside the agent-writable workspace) + the `PreToolUse` hook | agent-mediated tool calls cannot touch the check or the authority | an **unmediated** write path to `$HOME` (another tool, a differently-privileged subprocess, a persisted script) |
+| **`--isolated`** (#985, *planned*) | OS ownership/mode (root-owned `0555` check / `0444` authority) | the agent's **UID cannot write** the check or the authority | requires no passwordless `sudo` for the agent user (the setup checks this) |
+| **`require_immutable_check`** (#986, *planned*) | the engine, at dispatch | a writable check/authority is **refused** | a check writable by a *different* privileged identity |
+| **attribution** (#987, *planned*) | the signed envelope | a forged/changed authority is **visible** (`authority_digest`) | detection, not prevention |
+
+`inputs_hash` binds the **step inputs the engine fed the check**, not the
+authority the check consulted. The remedy for that gap is #987's
+`authority_digest` (sha256 of the authority artifact), which rides the signed
+envelope alongside the check digest and the boundary facts.
+
+The default row is the permanent caveat: **the default install is a policy +
+path + hook boundary, not a sandbox.** #985–#987 raise the boundary in modes the
+operator opts into; they do not change the default.
+
+> **Maintenance:** when #985 / #986 / #987 merge, flip that row's state from
+> *planned* to *available*. Never delete or weaken the default caveat.
+
 ### Non-goals (explicit)
 
 - **Not a workflow engine.** The primitive is exactly: *match a step, run a
