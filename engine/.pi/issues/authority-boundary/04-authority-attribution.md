@@ -64,6 +64,7 @@ verifier can compare against the operator's known-good digest.
 | 5 | SDK corpus regenerated from the engine (code is truth) and the parity/drift tests pass |
 | 6 | Absent fields = pre-attribution envelope (additive; absent ≠ tampered) |
 | 7 | Enterprise ingestion of the new fields tracked in the enterprise issue |
+| 8 | When this lands, flip the **attribution** row in the ADR-017 boundary matrix (#984) from *planned* → *available* |
 
 ## Files
 

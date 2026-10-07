@@ -64,6 +64,7 @@ unchanged.
 | 4 | Default (un-isolated) mode is byte-identical to today |
 | 5 | A documented check: as the agent UID, writing the check/authority fails (`EACCES`); the driver's Tₙ scene still refuses with the same signed evidence |
 | 6 | README/ARTICLE state: default = policy+hook boundary; `--isolated` = OS boundary |
+| 7 | When this lands, flip the **`--isolated`** row in the ADR-017 boundary matrix (#984) from *planned* → *available*; do not touch the default-mode caveat |
 
 ## Files
 

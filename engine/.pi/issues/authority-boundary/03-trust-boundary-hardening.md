@@ -56,6 +56,7 @@ Then:
 | 4 | Unit tests: writable → refused under the flag; non-writable → passes; metadata error → refused under the flag |
 | 5 | Non-unix builds compile (gate the new checks behind `cfg(unix)`, best-effort elsewhere) |
 | 6 | Docs: `modules/precondition.md` + ADR-017 note the strengthened boundary and the `require_immutable_check` knob |
+| 7 | When this lands, flip the **`require_immutable_check`** row in the ADR-017 boundary matrix (#984) from *planned* → *available* |
 
 ## Files
 
