@@ -370,7 +370,7 @@ as a mode → guarantee matrix (source of truth: ADR-017 §Honest boundary):
 | Mode | Enforced by | Guarantee | Does **not** cover |
 |---|---|---|---|
 | **default install** (today) | path containment + `PreToolUse` hook | agent-mediated tool calls cannot touch the check/authority | an **unmediated** write path to `$HOME` |
-| **`--isolated`** (#985, *planned*) | OS ownership/mode (root-owned `0555`/`0444`) | the agent's **UID cannot write** the check/authority | requires no passwordless `sudo` for the agent user |
+| **`--isolated`** (#985, *available*) | OS ownership/mode (root-owned `0555`/`0444`) | the agent's **UID cannot write** the check/authority | requires no passwordless `sudo` for the agent user |
 | **`require_immutable_check`** (#986, *planned*) | the engine, at dispatch | a writable check/authority is **refused** | a check writable by a *different* privileged identity |
 | **attribution** (#987, *planned*) | the signed envelope | a forged/changed authority is **visible** (`authority_digest`) | detection, not prevention |
 
