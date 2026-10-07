@@ -444,6 +444,17 @@ pub enum ExecutionEvent {
         inputs_hash: String,
         /// Redacted decision summary (parameter values never included).
         summary: String,
+        /// SHA-256 (`sha256:<hex>`) of the resolved check program bytes
+        /// (ADR-017 attribution, #987). Omitted when unreadable.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        check_digest: Option<String>,
+        /// SHA-256 (`sha256:<hex>`) of the operator-declared authority
+        /// artifact, when one was declared (ADR-017 attribution, #987).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        authority_digest: Option<String>,
+        /// Boundary fact (#986): the check was writable by the engine's euid.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        check_writable: Option<bool>,
         /// ISO 8601 timestamp of the event.
         timestamp: DateTime<Utc>,
     },
@@ -814,6 +825,9 @@ impl ExecutionEvent {
                 exit_code,
                 inputs_hash,
                 summary,
+                check_digest,
+                authority_digest,
+                check_writable,
                 timestamp,
                 ..
             } => Some(serde_json::json!({
@@ -823,6 +837,9 @@ impl ExecutionEvent {
                 "exit_code": exit_code,
                 "inputs_hash": inputs_hash,
                 "summary": summary,
+                "check_digest": check_digest,
+                "authority_digest": authority_digest,
+                "check_writable": check_writable,
                 "checked_at": timestamp.to_rfc3339(),
             })),
             ExecutionEvent::ApprovalRecorded {

@@ -358,6 +358,7 @@ release_dependents_on_failure = false
 | 15 | PreconditionError | All variants, `Display`, `is_retriable()` (all false) | unit test |
 | 16 | PreconditionSurfaces | `rigorix_validate_plan` surfaces findings; refusal maps to structured `policy_violation` | integration test |
 | 17 | HardeningConfig | `max_failures_before_abort` settable from `rigorix.toml` and changes dispatch | integration test |
+| 18 | Attribution | signed `precondition_findings[]` carries `check_digest` / `authority_digest` / `check_writable`; a changed authority changes the signed bytes | unit + envelope test |
 
 ---
 
@@ -381,7 +382,7 @@ as a mode → guarantee matrix (source of truth: ADR-017 §Honest boundary):
 | **default install** (today) | path containment + `PreToolUse` hook | agent-mediated tool calls cannot touch the check/authority | an **unmediated** write path to `$HOME` |
 | **`--isolated`** (#985, *available*) | OS ownership/mode (root-owned `0555`/`0444`) | the agent's **UID cannot write** the check/authority | requires no passwordless `sudo` for the agent user |
 | **`require_immutable_check`** (#986, *available*) | the engine, at dispatch | a writable check/authority is **refused** | a check writable by a *different* privileged identity |
-| **attribution** (#987, *planned*) | the signed envelope | a forged/changed authority is **visible** (`authority_digest`) | detection, not prevention |
+| **attribution** (#987, *available*) | the signed envelope | a forged/changed authority is **visible** (`authority_digest`) | detection, not prevention |
 
 The **default row is the permanent caveat**: the default install is a policy +
 path + hook boundary, not a sandbox. The other rows are opt-in upgrades.
@@ -394,6 +395,18 @@ any operator-declared `authority_path`) and assesses writability from POSIX
 owner/group/world mode. A writable — or unreadable — boundary fails closed with
 `PreconditionError::Boundary`. The default is unchanged: the assessment is
 traced, but the run proceeds.
+
+### Attribution — making a forged authority visible
+
+The signed `precondition_findings[]` entry binds the authority, not only the
+inputs: `check_digest` (sha256 of the resolved check program), `authority_digest`
+(sha256 of the operator-declared `authority_path`, when present), and
+`check_writable` (the boundary fact). The engine hashes the files at dispatch —
+the check need not cooperate, and raw contents are never promoted into evidence
+(SpanPrivacy: digests only). A forged or changed `authority.json` changes
+`authority_digest`, so an outsider can detect it against the operator's
+expected digest. These fields are additive and omitted when absent; an envelope
+without them is pre-attribution, not tampered.
 
 > **Maintenance:** flip a row's state from *planned* to *available* when its
 > issue merges; never delete the default caveat.

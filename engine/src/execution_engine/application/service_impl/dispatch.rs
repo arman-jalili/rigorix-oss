@@ -918,6 +918,9 @@ impl ParallelExecutionServiceImpl {
                         exit_code: finding.exit_code,
                         inputs_hash: finding.inputs_hash.clone(),
                         summary: finding.decision_summary(),
+                        check_digest: finding.check_digest.clone(),
+                        authority_digest: finding.authority_digest.clone(),
+                        check_writable: finding.check_writable,
                         timestamp: finding.checked_at,
                     })
                     .await;

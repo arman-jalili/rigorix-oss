@@ -1043,6 +1043,9 @@ fn mcp_precondition_finding(
         f.inputs_hash.clone(),
         f.checked_at,
         f.summary.clone(),
+        f.check_digest.clone(),
+        f.authority_digest.clone(),
+        f.check_writable,
     )
 }
 

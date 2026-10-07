@@ -66,6 +66,14 @@ pub struct PreconditionRun {
     /// Whether the operator-declared `authority_path` was writable, when one
     /// was declared. `None` when absent or unassessable.
     pub authority_writable: Option<bool>,
+    /// SHA-256 (`sha256:<hex>`) of the resolved check program bytes — the
+    /// immutable identity of the check that ran, for signed attribution
+    /// (ADR-017). `None` when the program could not be read.
+    pub check_digest: Option<String>,
+    /// SHA-256 (`sha256:<hex>`) of the operator-declared authority artifact,
+    /// when one was declared. Contents are never recorded (SpanPrivacy); only
+    /// the digest. `None` when absent or unreadable.
+    pub authority_digest: Option<String>,
 }
 
 /// Deterministic precondition-check runner.
@@ -166,6 +174,18 @@ fn ensure_outside_workspace(
         });
     }
     Ok(())
+}
+
+/// SHA-256 (`sha256:<hex>`) of a file's bytes, or `None` if it cannot be read.
+///
+/// Used for signed attribution: `check_digest` (the check program) and
+/// `authority_digest` (the artifact the check consults). Contents never enter
+/// the record — only the one-way digest (SpanPrivacy).
+fn sha256_file(path: &Path) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    let bytes = std::fs::read(path).ok()?;
+    let digest = Sha256::digest(&bytes);
+    Some(format!("sha256:{}", hex::encode(digest)))
 }
 
 /// Whether `path` is writable by the engine's effective UID, from POSIX
@@ -320,6 +340,20 @@ impl PreconditionRunner for ProcessPreconditionRunner {
             }
         }
 
+        // Signed attribution: bind the check program and the authority artifact
+        // by one-way digest. Best-effort — unreadable files omit the digest.
+        let check_digest = sha256_file(&resolved);
+        let authority_digest = precondition
+            .authority_path
+            .as_deref()
+            .and_then(|path| sha256_file(Path::new(path)));
+        tracing::debug!(
+            precondition = %precondition.id,
+            check_digest = ?check_digest,
+            authority_digest = ?authority_digest,
+            "precondition: attribution digests"
+        );
+
         let payload = serde_json::to_vec(input).map_err(|error| PreconditionError::Spawn {
             precondition_id: precondition.id.clone(),
             detail: format!("failed to serialize check input: {error}"),
@@ -400,6 +434,8 @@ impl PreconditionRunner for ProcessPreconditionRunner {
             stdout,
             check_writable,
             authority_writable,
+            check_digest,
+            authority_digest,
         })
     }
 }
@@ -636,5 +672,38 @@ mod tests {
             .await
             .expect_err("writable authority must be refused");
         assert!(matches!(error, PreconditionError::Boundary { .. }));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn digests_bind_the_check_and_authority_for_attribution() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let home = tempfile::tempdir().expect("check home");
+        let check = home.path().join("check.sh");
+        std::fs::write(&check, "#!/bin/sh\nexit 0\n").expect("write check");
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&check, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod +x");
+        }
+        let authority = home.path().join("authority.json");
+        std::fs::write(&authority, "{\"acme\":\"active\"}\n").expect("write authority");
+
+        let runner = ProcessPreconditionRunner::new(workspace.path());
+        let mut precondition = precondition("p1", vec![check.to_str().unwrap()]);
+        precondition.authority_path = Some(authority.display().to_string());
+
+        let run = runner.run(&precondition, &input()).await.expect("run");
+        assert_eq!(run.outcome, PreconditionOutcome::Passed);
+        let check_digest = run.check_digest.clone().expect("check digest");
+        let authority_digest = run.authority_digest.clone().expect("authority digest");
+        assert!(check_digest.starts_with("sha256:"));
+        assert!(authority_digest.starts_with("sha256:"));
+
+        // Tampering the authority changes its digest; the check digest is stable.
+        std::fs::write(&authority, "{\"acme\":\"frozen\"}\n").expect("tamper");
+        let run = runner.run(&precondition, &input()).await.expect("run");
+        assert_ne!(run.authority_digest, Some(authority_digest));
+        assert_eq!(run.check_digest, Some(check_digest));
     }
 }

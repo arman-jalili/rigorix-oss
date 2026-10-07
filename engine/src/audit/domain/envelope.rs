@@ -356,6 +356,22 @@ pub struct PreconditionFindingRef {
     pub checked_at: chrono::DateTime<chrono::Utc>,
     /// Redacted decision summary (parameter values never included).
     pub summary: String,
+    /// SHA-256 (`sha256:<hex>`) of the resolved check program bytes the
+    /// determination is attributed to (ADR-017, #987). Absent in
+    /// pre-attribution envelopes; a changed check changes this digest.
+    /// Contents are never recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_digest: Option<String>,
+    /// SHA-256 (`sha256:<hex>`) of the operator-declared authority artifact the
+    /// check consulted (ADR-017, #987). Absent when no `authority_path` was
+    /// declared or it could not be read. Absent ≠ tampered; a *changed* digest
+    /// is what makes a forged authority visible.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authority_digest: Option<String>,
+    /// Boundary fact (#986): the resolved check was writable by the engine's
+    /// effective UID at dispatch. Absent when unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_writable: Option<bool>,
 }
 
 /// A reference to a recorded effect-scope violation (ADR-011 R5).

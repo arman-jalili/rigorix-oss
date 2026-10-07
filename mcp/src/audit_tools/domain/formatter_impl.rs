@@ -160,6 +160,9 @@ impl AuditFormatter for AuditFormatterImpl {
                     "inputs_hash": f.inputs_hash(),
                     "checked_at": f.checked_at().to_rfc3339(),
                     "summary": f.summary(),
+                    "check_digest": f.check_digest(),
+                    "authority_digest": f.authority_digest(),
+                    "check_writable": f.check_writable(),
                 })
             }).collect::<Vec<_>>(),
             "sequence_policy_findings": envelope.sequence_policy_findings().iter().map(|f| {
@@ -421,6 +424,9 @@ mod tests {
                 "sha256:abc".into(),
                 now,
                 "precondition refused".into(),
+                Some("sha256:check".into()),
+                Some("sha256:authority".into()),
+                Some(true),
             )],
             vec![SequencePolicyFinding::new(
                 "rule-1".into(),

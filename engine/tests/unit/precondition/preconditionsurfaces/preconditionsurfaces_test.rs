@@ -68,6 +68,9 @@ fn test_findings_json_surfaces_evidence_and_redacts_values() {
         inputs_hash: "sha256:deadbeef".to_string(),
         checked_at: Utc::now(),
         summary: Some("precondition 'beneficiary-eligible' error for step 'pay'".to_string()),
+        check_digest: Some("sha256:check".to_string()),
+        authority_digest: Some("sha256:authority".to_string()),
+        check_writable: Some(false),
     };
     let surfaced = PreconditionSurfacesImpl::findings_json(&[finding]);
     assert_eq!(surfaced.len(), 1);

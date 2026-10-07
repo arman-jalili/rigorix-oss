@@ -20,6 +20,9 @@ fn finding(outcome: PreconditionOutcome, exit_code: Option<i32>) -> Precondition
         inputs_hash: "sha256:deadbeef".to_string(),
         checked_at: Utc::now(),
         summary: None,
+        check_digest: None,
+        authority_digest: None,
+        check_writable: None,
     }
 }
 
@@ -56,6 +59,9 @@ fn test_precondition_checked_event_payload_is_frozen() {
         exit_code: None,
         inputs_hash: "sha256:deadbeef".to_string(),
         summary: "precondition 'beneficiary-eligible' error step 'pay'".to_string(),
+        check_digest: None,
+        authority_digest: None,
+        check_writable: None,
         timestamp: Utc::now(),
     };
     let encoded = serde_json::to_string(&checked).expect("serialize");

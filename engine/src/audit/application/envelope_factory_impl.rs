@@ -666,6 +666,15 @@ impl AuditEnvelopeFactoryImpl {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
+            let check_digest = payload
+                .get("check_digest")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            let authority_digest = payload
+                .get("authority_digest")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            let check_writable = payload.get("check_writable").and_then(|v| v.as_bool());
             out.push(crate::audit::domain::PreconditionFindingRef {
                 precondition_id: precondition_id.to_string(),
                 step: step.to_string(),
@@ -674,6 +683,9 @@ impl AuditEnvelopeFactoryImpl {
                 inputs_hash,
                 checked_at,
                 summary,
+                check_digest,
+                authority_digest,
+                check_writable,
             });
         }
         out

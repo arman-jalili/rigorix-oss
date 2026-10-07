@@ -146,6 +146,9 @@ impl PreconditionServiceImpl {
                         "precondition '{}' refused step '{}': required parameter '{}' absent",
                         precondition.id, step.name, pointer
                     )),
+                    check_digest: None,
+                    authority_digest: None,
+                    check_writable: None,
                 };
                 return Ok((
                     Some(PreconditionVerdict::Deny {
@@ -167,6 +170,9 @@ impl PreconditionServiceImpl {
                     inputs_hash: hash,
                     checked_at,
                     summary: None,
+                    check_digest: run.check_digest.clone(),
+                    authority_digest: run.authority_digest.clone(),
+                    check_writable: run.check_writable,
                 };
                 if run.outcome.refuses() {
                     Ok((
@@ -199,6 +205,9 @@ impl PreconditionServiceImpl {
                         "precondition '{}' indeterminate for step '{}' ({})",
                         precondition.id, step.name, error
                     )),
+                    check_digest: None,
+                    authority_digest: None,
+                    check_writable: None,
                 };
                 Ok((
                     Some(PreconditionVerdict::Deny {

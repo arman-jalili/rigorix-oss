@@ -202,6 +202,9 @@ async fn armed_gate_refuses_matching_step_and_records_evidence() {
                 exit_code,
                 inputs_hash,
                 summary,
+                check_digest,
+                authority_digest,
+                check_writable,
                 timestamp,
             } => Some(ExecutionEventRef {
                 event_type: "precondition_checked".to_string(),
@@ -217,6 +220,9 @@ async fn armed_gate_refuses_matching_step_and_records_evidence() {
                     "inputs_hash": inputs_hash,
                     "checked_at": timestamp.to_rfc3339(),
                     "summary": summary,
+                    "check_digest": check_digest,
+                    "authority_digest": authority_digest,
+                    "check_writable": check_writable,
                 })),
             }),
             _ => None,
@@ -286,4 +292,73 @@ async fn absent_config_dispatches_unchanged() {
             .any(|e| matches!(e.event, ExecutionEvent::PreconditionChecked { .. })),
         "no gate => no precondition evidence"
     );
+}
+
+/// Build a `precondition_checked` event ref carrying the ADR-017 attribution
+/// fields (check digest, authority digest, boundary fact).
+fn precondition_checked_ref(authority_digest: &str) -> ExecutionEventRef {
+    let now = chrono::Utc::now();
+    ExecutionEventRef {
+        event_type: "precondition_checked".to_string(),
+        summary: "authority check".to_string(),
+        occurred_at: now,
+        correlation_id: Some(Uuid::new_v4()),
+        status: EventStatus::Failure,
+        payload: Some(serde_json::json!({
+            "precondition_id": "beneficiary-authorized",
+            "step": "payout_execute",
+            "outcome": "failed",
+            "exit_code": 3,
+            "inputs_hash": "sha256:inputs",
+            "checked_at": now.to_rfc3339(),
+            "summary": "denied",
+            "check_digest": "sha256:check",
+            "authority_digest": authority_digest,
+            "check_writable": true,
+        })),
+    }
+}
+
+/// #987: a changed authority is visible on the signed envelope. The finding
+/// carries the authority digest, and mutating it changes the canonical bytes
+/// (hence the HMAC) an outsider verifies.
+#[tokio::test]
+async fn authority_tampering_is_visible_on_the_signed_envelope() {
+    let dag_id = Uuid::new_v4();
+    let envelope = AuditEnvelopeFactoryImpl::new(Some("attribution-test-key".to_string()))
+        .build_envelope(envelope_input(
+            dag_id,
+            vec![precondition_checked_ref("sha256:authority-good")],
+        ))
+        .await
+        .expect("build envelope");
+
+    let finding = &envelope.precondition_findings[0];
+    assert_eq!(
+        finding.authority_digest.as_deref(),
+        Some("sha256:authority-good"),
+        "the signed finding must bind the authority digest"
+    );
+    assert_eq!(finding.check_digest.as_deref(), Some("sha256:check"));
+    assert_eq!(finding.check_writable, Some(true));
+
+    let before = AuditEnvelopeFactoryImpl::canonical_envelope_bytes(&envelope).expect("canonical");
+
+    // A forged/changed authority changes the digest -> changes the signed bytes.
+    let mut tampered = envelope.clone();
+    tampered.precondition_findings[0].authority_digest = Some("sha256:authority-forged".into());
+    let after = AuditEnvelopeFactoryImpl::canonical_envelope_bytes(&tampered).expect("canonical");
+    assert_ne!(
+        before, after,
+        "a changed authority digest must change the signed bytes"
+    );
+
+    // Absent fields = pre-attribution envelope (additive; absent != tampered).
+    let mut pre_attribution = envelope.clone();
+    pre_attribution.precondition_findings[0].authority_digest = None;
+    pre_attribution.precondition_findings[0].check_digest = None;
+    pre_attribution.precondition_findings[0].check_writable = None;
+    let stripped =
+        AuditEnvelopeFactoryImpl::canonical_envelope_bytes(&pre_attribution).expect("canonical");
+    assert_ne!(before, stripped);
 }

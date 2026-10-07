@@ -56,6 +56,8 @@ impl PreconditionRunner for RecordingRunner {
             stdout: None,
             check_writable: None,
             authority_writable: None,
+            check_digest: None,
+            authority_digest: None,
         })
     }
 }
