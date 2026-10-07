@@ -361,6 +361,27 @@ its own commit point. Rigorix's guarantee is narrower and honest: **when the
 check says no, the step is refused, and the determination is signed.** This is
 the same boundary discipline as ADR-016 (which scopes Phase D out explicitly).
 
+### Boundary strength is mode-dependent
+
+The temporal gap above is not the whole story: the boundary that protects the
+check and its authority depends on **how the operator installed it**. Documented
+as a mode → guarantee matrix (source of truth: ADR-017 §Honest boundary):
+
+| Mode | Enforced by | Guarantee | Does **not** cover |
+|---|---|---|---|
+| **default install** (today) | path containment + `PreToolUse` hook | agent-mediated tool calls cannot touch the check/authority | an **unmediated** write path to `$HOME` |
+| **`--isolated`** (#985, *planned*) | OS ownership/mode (root-owned `0555`/`0444`) | the agent's **UID cannot write** the check/authority | requires no passwordless `sudo` for the agent user |
+| **`require_immutable_check`** (#986, *planned*) | the engine, at dispatch | a writable check/authority is **refused** | a check writable by a *different* privileged identity |
+| **attribution** (#987, *planned*) | the signed envelope | a forged/changed authority is **visible** (`authority_digest`) | detection, not prevention |
+
+The **default row is the permanent caveat**: the default install is a policy +
+path + hook boundary, not a sandbox. The other rows are opt-in upgrades.
+`inputs_hash` hashes the check *inputs*, not the authority; #987's
+`authority_digest` binds the authority itself.
+
+> **Maintenance:** flip a row's state from *planned* to *available* when its
+> issue merges; never delete the default caveat.
+
 ## Scope Guard (keep the primitive tiny)
 
 The primitive is exactly: *match a step, run a check, refuse on failure, record
@@ -372,7 +393,7 @@ workflow scheduling. If a use case needs any of those, it is a different module.
 
 | Concern | Mitigation |
 |---------|------------|
-| Agent edits the check to defeat the gate | Config in `.rigorix/**` is denied to agent writes by default (ADR-013 R5; `permission/application/enforcer_impl.rs`). The **command program** must resolve outside the agent-writable workspace; the runner validates and refuses otherwise. |
+| Agent edits the check to defeat the gate | Config in `.rigorix/**` is denied to agent writes by default (ADR-013 R5; `permission/application/enforcer_impl.rs`). The **command program** must resolve outside the agent-writable workspace; the runner validates and refuses otherwise. This is a path + hook boundary, **not** a sandbox — see §Honest Boundary (mode → guarantee matrix) and ADR-017). |
 | Command injection | argv only, no shell, no string interpolation of step values into argv. |
 | Secret leakage into evidence | Never record parameter values (only `inputs_hash`); never record stdout unless `capture_output=true` (truncated, redacted). |
 | Flaky/slow check blocks work | Explicit `timeout_ms`; `error` outcome recorded distinctly from `failed`; operators must keep checks fast/reliable. Fail-closed is deliberate. |
