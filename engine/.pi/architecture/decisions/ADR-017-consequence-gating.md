@@ -191,7 +191,7 @@ lands.
 | Mode | Enforced by | Guarantee | Does **not** cover |
 |---|---|---|---|
 | **default install** (today) | path containment (the check resolves outside the agent-writable workspace) + the `PreToolUse` hook | agent-mediated tool calls cannot touch the check or the authority | an **unmediated** write path to `$HOME` (another tool, a differently-privileged subprocess, a persisted script) |
-| **`--isolated`** (#985, *planned*) | OS ownership/mode (root-owned `0555` check / `0444` authority) | the agent's **UID cannot write** the check or the authority | requires no passwordless `sudo` for the agent user (the setup checks this) |
+| **`--isolated`** (#985, *available*) | OS ownership/mode (root-owned `0555` check / `0444` authority) | the agent's **UID cannot write** the check or the authority | requires no passwordless `sudo` for the agent user (the setup checks this) |
 | **`require_immutable_check`** (#986, *planned*) | the engine, at dispatch | a writable check/authority is **refused** | a check writable by a *different* privileged identity |
 | **attribution** (#987, *planned*) | the signed envelope | a forged/changed authority is **visible** (`authority_digest`) | detection, not prevention |
 
