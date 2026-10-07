@@ -83,6 +83,21 @@ pub struct PreconditionFinding {
     /// Redacted decision summary (never parameter values or stdout).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
+    /// SHA-256 (`sha256:<hex>`) of the resolved check program bytes the
+    /// determination is attributed to (#987). Omitted when the program could
+    /// not be read. Never its contents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_digest: Option<String>,
+    /// SHA-256 (`sha256:<hex>`) of the operator-declared authority artifact the
+    /// check consulted (#987). Omitted when no `authority_path` was declared or
+    /// it could not be read. Detection, not prevention: a changed authority
+    /// changes this digest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authority_digest: Option<String>,
+    /// Boundary fact (#986): whether the resolved check was writable by the
+    /// engine's effective UID. `None` when unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_writable: Option<bool>,
 }
 
 impl PreconditionFinding {
@@ -132,6 +147,15 @@ pub struct PreconditionChecked {
     pub inputs_hash: String,
     /// Redacted decision summary.
     pub summary: String,
+    /// SHA-256 (`sha256:<hex>`) of the check program (ADR-017 attribution).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_digest: Option<String>,
+    /// SHA-256 (`sha256:<hex>`) of the authority artifact consulted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authority_digest: Option<String>,
+    /// Boundary fact: the check was writable by the engine's euid.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_writable: Option<bool>,
     /// ISO 8601 timestamp of the event.
     pub timestamp: DateTime<Utc>,
 }
@@ -149,6 +173,9 @@ mod tests {
             inputs_hash: "sha256:deadbeef".to_string(),
             checked_at: Utc::now(),
             summary: None,
+            check_digest: None,
+            authority_digest: None,
+            check_writable: None,
         }
     }
 

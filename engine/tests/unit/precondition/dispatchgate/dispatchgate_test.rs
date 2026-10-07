@@ -81,6 +81,8 @@ impl PreconditionRunner for FailingRunner {
             stdout: None,
             check_writable: None,
             authority_writable: None,
+            check_digest: None,
+            authority_digest: None,
         })
     }
 }

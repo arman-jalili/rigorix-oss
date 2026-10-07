@@ -701,6 +701,9 @@ mod tests {
                 "sha256:abc".into(),
                 checked_at,
                 "precondition refused".into(),
+                Some("sha256:check".into()),
+                Some("sha256:authority".into()),
+                Some(true),
             )],
             vec![SequencePolicyFinding::new(
                 "rule-1".into(),

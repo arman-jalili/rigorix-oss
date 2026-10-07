@@ -193,12 +193,17 @@ lands.
 | **default install** (today) | path containment (the check resolves outside the agent-writable workspace) + the `PreToolUse` hook | agent-mediated tool calls cannot touch the check or the authority | an **unmediated** write path to `$HOME` (another tool, a differently-privileged subprocess, a persisted script) |
 | **`--isolated`** (#985, *available*) | OS ownership/mode (root-owned `0555` check / `0444` authority) | the agent's **UID cannot write** the check or the authority | requires no passwordless `sudo` for the agent user (the setup checks this) |
 | **`require_immutable_check`** (#986, *available*) | the engine, at dispatch | a writable check/authority is **refused** | a check writable by a *different* privileged identity |
-| **attribution** (#987, *planned*) | the signed envelope | a forged/changed authority is **visible** (`authority_digest`) | detection, not prevention |
+| **attribution** (#987, *available*) | the signed envelope | a forged/changed authority is **visible** (`authority_digest`) | detection, not prevention |
 
 `inputs_hash` binds the **step inputs the engine fed the check**, not the
-authority the check consulted. The remedy for that gap is #987's
-`authority_digest` (sha256 of the authority artifact), which rides the signed
-envelope alongside the check digest and the boundary facts.
+authority the check consulted. #987 closes that gap: the signed
+`precondition_findings[]` entry also carries `check_digest` (sha256 of the
+resolved check program) and `authority_digest` (sha256 of the operator-declared
+`authority_path`), plus the `check_writable` boundary fact. A forged or changed
+`authority.json` therefore changes `authority_digest`, so a verifier can compare
+it against the operator's known-good digest. Absent fields mean a pre-attribution
+envelope — absent is **not** tampered; a *changed* digest is the signal.
+Detection only: prevention is the boundary itself (#985/#986).
 
 `require_immutable_check = true` (per precondition, additive, default `false`)
 turns the boundary assessment into a refusal: the runner assesses the resolved

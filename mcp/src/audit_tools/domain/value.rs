@@ -253,6 +253,12 @@ pub struct PreconditionFinding {
     inputs_hash: String,
     checked_at: DateTime<Utc>,
     summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    check_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    authority_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    check_writable: Option<bool>,
 }
 
 impl PreconditionFinding {
@@ -266,6 +272,9 @@ impl PreconditionFinding {
         inputs_hash: String,
         checked_at: DateTime<Utc>,
         summary: String,
+        check_digest: Option<String>,
+        authority_digest: Option<String>,
+        check_writable: Option<bool>,
     ) -> Self {
         Self {
             precondition_id,
@@ -275,6 +284,9 @@ impl PreconditionFinding {
             inputs_hash,
             checked_at,
             summary,
+            check_digest,
+            authority_digest,
+            check_writable,
         }
     }
 
@@ -311,6 +323,21 @@ impl PreconditionFinding {
     /// Redacted decision summary.
     pub fn summary(&self) -> &str {
         &self.summary
+    }
+
+    /// SHA-256 of the resolved check program (ADR-017 attribution, #987).
+    pub fn check_digest(&self) -> Option<&str> {
+        self.check_digest.as_deref()
+    }
+
+    /// SHA-256 of the authority artifact the check consulted (#987).
+    pub fn authority_digest(&self) -> Option<&str> {
+        self.authority_digest.as_deref()
+    }
+
+    /// Boundary fact (#986): the check was writable by the engine's euid.
+    pub fn check_writable(&self) -> Option<bool> {
+        self.check_writable
     }
 }
 
