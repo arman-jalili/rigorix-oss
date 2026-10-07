@@ -79,6 +79,8 @@ impl PreconditionRunner for FailingRunner {
             outcome: PreconditionOutcome::Failed,
             exit_code: Some(1),
             stdout: None,
+            check_writable: None,
+            authority_writable: None,
         })
     }
 }

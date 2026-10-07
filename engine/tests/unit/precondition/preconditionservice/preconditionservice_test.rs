@@ -54,6 +54,8 @@ impl PreconditionRunner for RecordingRunner {
             outcome: self.outcome,
             exit_code,
             stdout: None,
+            check_writable: None,
+            authority_writable: None,
         })
     }
 }

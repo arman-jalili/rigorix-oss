@@ -37,6 +37,9 @@ reqwest.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 regex.workspace = true
+# POSIX euid + supplementary-group checks for the precondition trust boundary
+# (`require_immutable_check`). Unix-only use; already in the dependency graph.
+libc = "0.2"
 indexmap = { version = "2", features = ["serde"] }
 rand = "0.10.1"
 tree-sitter = "0.25"

@@ -47,7 +47,7 @@ determination in the signed envelope.
 #### Domain Layer (`domain/`)
 | Component | Description | Framework? |
 |-----------|-------------|------------|
-| Precondition | StepPredicate match, require_params, command, timeout, failure, capture_output | ❌ No |
+| Precondition | StepPredicate match, require_params, command, timeout, failure, capture_output, require_immutable_check, authority_path | ❌ No |
 | GatingMode | `release_dependents_on_failure` | ❌ No |
 | PreconditionError | Typed errors; all non-retriable | ❌ No |
 
@@ -80,7 +80,7 @@ determination in the signed envelope.
 status: implemented
 depends: none
 
-**Purpose:** Domain model of one operator-authored authority check: `id`, a reused `StepPredicate` match, `require_params` (ADR-015 presence obligation), an argv `command`, `timeout_ms`, `failure`, `capture_output`, plus `SafetyCaps` validation.
+**Purpose:** Domain model of one operator-authored authority check: `id`, a reused `StepPredicate` match, `require_params` (ADR-015 presence obligation), an argv `command`, `timeout_ms`, `failure`, `capture_output`, `require_immutable_check`, `authority_path`, plus `SafetyCaps` validation.
 
 **DDD Layer:** `domain`
 
@@ -280,6 +280,12 @@ command = ["/opt/rigorix/checks/beneficiary-eligible"]  # must be outside the wo
 timeout_ms = 5000
 failure = "deny"
 capture_output = false
+# Opt-in boundary strength: refuse if the check (or authority_path) is writable
+# by the engine's effective UID. Default false (path + hook boundary).
+require_immutable_check = false
+# Optional: the authority artifact the check consults. Hashed into the signed
+# envelope (authority_digest, #987); never its contents.
+# authority_path = "/usr/local/lib/rigorix-authority-demo/authority.json"
 
 [gating]
 release_dependents_on_failure = false
@@ -302,6 +308,9 @@ release_dependents_on_failure = false
 | Command non-zero | Refuse (`failed`); tool never called |
 | Command timeout / spawn error | Refuse (`error`); tool never called |
 | Command path inside agent-writable workspace | Refuse (`error`); trust boundary |
+| `require_immutable_check=true` and the check/authority is writable by the engine's euid | Refuse (`error`, `Boundary`); fail closed |
+| `require_immutable_check=true` and writability metadata is unreadable | Refuse (`error`, `Boundary`); fail closed |
+| `require_immutable_check=false` (default) and the boundary is writable | Assessment traced; behavior unchanged |
 | Non-matching step | Unaffected |
 
 ## Implementation Sequence
@@ -371,13 +380,20 @@ as a mode → guarantee matrix (source of truth: ADR-017 §Honest boundary):
 |---|---|---|---|
 | **default install** (today) | path containment + `PreToolUse` hook | agent-mediated tool calls cannot touch the check/authority | an **unmediated** write path to `$HOME` |
 | **`--isolated`** (#985, *available*) | OS ownership/mode (root-owned `0555`/`0444`) | the agent's **UID cannot write** the check/authority | requires no passwordless `sudo` for the agent user |
-| **`require_immutable_check`** (#986, *planned*) | the engine, at dispatch | a writable check/authority is **refused** | a check writable by a *different* privileged identity |
+| **`require_immutable_check`** (#986, *available*) | the engine, at dispatch | a writable check/authority is **refused** | a check writable by a *different* privileged identity |
 | **attribution** (#987, *planned*) | the signed envelope | a forged/changed authority is **visible** (`authority_digest`) | detection, not prevention |
 
 The **default row is the permanent caveat**: the default install is a policy +
 path + hook boundary, not a sandbox. The other rows are opt-in upgrades.
 `inputs_hash` hashes the check *inputs*, not the authority; #987's
 `authority_digest` binds the authority itself.
+
+`require_immutable_check = true` (per precondition, default `false`) turns the
+boundary-strength assessment into a refusal: the runner resolves the check (and
+any operator-declared `authority_path`) and assesses writability from POSIX
+owner/group/world mode. A writable — or unreadable — boundary fails closed with
+`PreconditionError::Boundary`. The default is unchanged: the assessment is
+traced, but the run proceeds.
 
 > **Maintenance:** flip a row's state from *planned* to *available* when its
 > issue merges; never delete the default caveat.
@@ -394,6 +410,7 @@ workflow scheduling. If a use case needs any of those, it is a different module.
 | Concern | Mitigation |
 |---------|------------|
 | Agent edits the check to defeat the gate | Config in `.rigorix/**` is denied to agent writes by default (ADR-013 R5; `permission/application/enforcer_impl.rs`). The **command program** must resolve outside the agent-writable workspace; the runner validates and refuses otherwise. This is a path + hook boundary, **not** a sandbox — see §Honest Boundary (mode → guarantee matrix) and ADR-017). |
+| Boundary strength is opt-in | `require_immutable_check = true` assesses the resolved check and any declared `authority_path` with POSIX owner/group/world mode (`MetadataExt`/`PermissionsExt` + euid/getgroups). A writable — or unreadable — boundary refuses with `PreconditionError::Boundary` (fail closed). Default `false`: the assessment is traced, behavior unchanged. |
 | Command injection | argv only, no shell, no string interpolation of step values into argv. |
 | Secret leakage into evidence | Never record parameter values (only `inputs_hash`); never record stdout unless `capture_output=true` (truncated, redacted). |
 | Flaky/slow check blocks work | Explicit `timeout_ms`; `error` outcome recorded distinctly from `failed`; operators must keep checks fast/reliable. Fail-closed is deliberate. |

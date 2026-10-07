@@ -34,11 +34,12 @@
 //!
 //! # Contract (Frozen)
 //! - `id`, `match`, `require_params`, `command`, `timeout_ms`, `failure`,
-//!   `capture_output` are the complete config surface (serde round-trip
-//!   preserves every field)
+//!   `capture_output`, `require_immutable_check`, `authority_path` are the
+//!   complete config surface (serde round-trip preserves every field)
 //! - `timeout_ms` defaults to 5000; `failure` defaults to `deny` (the only v1
 //!   action); `capture_output` defaults to `false` (stdout is never recorded
-//!   by default — SpanPrivacy)
+//!   by default — SpanPrivacy); `require_immutable_check` defaults to `false`
+//!   (the default boundary is path + hook; immutability is opt-in)
 //! - `command` is an **argv array**, never a shell string; `command[0]` is the
 //!   check program and must resolve outside the agent-writable workspace
 //! - `require_params` are JSON pointers that must resolve to a present,
@@ -116,6 +117,24 @@ pub struct Precondition {
     /// (SpanPrivacy).
     #[serde(default)]
     pub capture_output: bool,
+    /// When `true`, refuse the matched step if the resolved check program — or
+    /// the operator-declared [`authority_path`](Self::authority_path) — is
+    /// writable by the engine's effective UID (POSIX owner/group/world mode).
+    /// Additive; defaults `false`.
+    ///
+    /// The default boundary is path containment + the `PreToolUse` hook, and
+    /// the demo's `$HOME` install is writable by design, so immutability is
+    /// opt-in. Under this flag, an unreadable/unknown assessment fails closed
+    /// ([`PreconditionError::Boundary`]).
+    #[serde(default)]
+    pub require_immutable_check: bool,
+    /// Optional operator-declared authority artifact the check consults (e.g.
+    /// the beneficiary file). The engine never records its contents; #987 binds
+    /// a one-way `authority_digest` of it into the signed envelope. When
+    /// [`require_immutable_check`](Self::require_immutable_check) is set, a
+    /// writable artifact refuses the step.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authority_path: Option<String>,
 }
 
 impl Precondition {

@@ -57,11 +57,15 @@ fn test_run_outcome_taxonomy_distinguishes_failed_from_error() {
         outcome: PreconditionOutcome::Failed,
         exit_code: Some(3),
         stdout: None,
+        check_writable: None,
+        authority_writable: None,
     };
     let error = PreconditionRun {
         outcome: PreconditionOutcome::Error,
         exit_code: None,
         stdout: None,
+        check_writable: None,
+        authority_writable: None,
     };
     assert!(failed.outcome.refuses());
     assert!(error.outcome.refuses());

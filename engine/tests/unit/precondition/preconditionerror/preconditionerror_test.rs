@@ -33,12 +33,17 @@ fn all_variants() -> Vec<PreconditionError> {
             precondition_id: "beneficiary-eligible".to_string(),
             command: "./check".to_string(),
         },
+        PreconditionError::Boundary {
+            precondition_id: "beneficiary-eligible".to_string(),
+            path: "/home/user/.rigorix-authority-demo/check.mjs".to_string(),
+            detail: "check is writable by the engine user".to_string(),
+        },
     ]
 }
 
 #[test]
 fn test_preconditionerror_is_defined() {
-    assert_eq!(all_variants().len(), 7);
+    assert_eq!(all_variants().len(), 8);
 }
 
 #[test]

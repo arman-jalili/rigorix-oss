@@ -18,8 +18,12 @@
 //!   refuses a matching step, it never degrades to "no gating"
 //! - `NotArmed` is fail-closed: configured-but-unarmed refuses a matching step
 //!   (`unarmed`), never a silent skip
-//! - `Spawn` / `Timeout` / `TrustBoundary` map to the `error` outcome:
-//!   indeterminate → refuse, never pass
+//! - `Spawn` / `Timeout` / `TrustBoundary` / `Boundary` map to the `error`
+//!   outcome: indeterminate → refuse, never pass
+//! - `TrustBoundary` is a path containment violation (the check resolves inside
+//!   the agent-writable workspace); `Boundary` is a boundary **strength**
+//!   violation (the check/authority is writable by the engine's euid while
+//!   `require_immutable_check = true`)
 //! - `Denied` maps to the `failed` outcome: the operator's check explicitly
 //!   returned non-zero
 //!
@@ -104,6 +108,24 @@ pub enum PreconditionError {
         /// The offending command program (`command[0]`).
         command: String,
     },
+
+    /// The resolved check program — or the operator-declared authority artifact
+    /// — is writable by the engine's effective UID while
+    /// `require_immutable_check = true`. Maps to the `error` outcome and
+    /// refuses the step (fail closed); an unreadable/unknown assessment under
+    /// the flag is raised here too. Non-retriable, like every other variant.
+    #[error(
+        "Precondition '{precondition_id}' boundary is not immutable: {path} is writable by the \
+         engine user ({detail})"
+    )]
+    Boundary {
+        /// Stable id of the precondition whose boundary is not immutable.
+        precondition_id: String,
+        /// The writable path (check program or authority artifact).
+        path: String,
+        /// Why the boundary was violated (writable, or metadata unreadable).
+        detail: String,
+    },
 }
 
 impl PreconditionError {
@@ -131,6 +153,7 @@ impl PreconditionError {
             PreconditionError::Timeout { .. } => "PRECONDITION_TIMEOUT",
             PreconditionError::Denied { .. } => "PRECONDITION_DENIED",
             PreconditionError::TrustBoundary { .. } => "PRECONDITION_TRUST_BOUNDARY",
+            PreconditionError::Boundary { .. } => "PRECONDITION_BOUNDARY",
         }
     }
 }
@@ -165,6 +188,11 @@ mod tests {
             PreconditionError::TrustBoundary {
                 precondition_id: "beneficiary-eligible".to_string(),
                 command: "./check".to_string(),
+            },
+            PreconditionError::Boundary {
+                precondition_id: "beneficiary-eligible".to_string(),
+                path: "/home/user/.rigorix-authority-demo/check.mjs".to_string(),
+                detail: "check is writable".to_string(),
             },
         ]
     }
