@@ -19,6 +19,7 @@ ENGINE_DIR="$SCRIPT_DIR/../../src/code_graph"
 
 PASS=0
 FAIL=0
+SKIPPED=0
 FAILURES=""
 
 check_impl() {
@@ -103,10 +104,20 @@ check_impl "FilesystemCodeGraphRepository" "infrastructure/repository/filesystem
 
 echo ""
 echo "--- HTTP API Contracts ---"
-check_impl "HTTP API contracts"      "interfaces/http/mod.rs"
-check_impl "ApiErrorResponse"        "interfaces/http/mod.rs"
-check_contains "Error codes"         "interfaces/http/mod.rs" "error_codes"
-check_contains "Status codes"        "interfaces/http/mod.rs" "status_codes"
+# Only meaningful for a module that actually exposes an HTTP surface. The
+# code_graph module is engine-internal — it has no interfaces/ directory at all
+# (HTTP lives in the mcp/server crates) — so the interface template's HTTP
+# section does not apply to it. Enforce the section when the surface exists, and
+# report an explicit skip otherwise: never a silent pass that hides the fact.
+if [ -d "$ENGINE_DIR/interfaces/http" ]; then
+    check_impl "HTTP API contracts"      "interfaces/http/mod.rs"
+    check_impl "ApiErrorResponse"        "interfaces/http/mod.rs"
+    check_contains "Error codes"         "interfaces/http/mod.rs" "error_codes"
+    check_contains "Status codes"        "interfaces/http/mod.rs" "status_codes"
+else
+    echo "  ⏭️  skipped — no HTTP surface in this module (engine-internal; HTTP lives in the mcp/server crates)"
+    SKIPPED=$((SKIPPED + 1))
+fi
 
 echo ""
 echo "--- Tests ---"
@@ -117,7 +128,7 @@ check_contains "Formatter tests"     "tests.rs" "test_formatter_mermaid"
 
 echo ""
 echo "============================================"
-echo " Results: $PASS passed, $FAIL failed"
+echo " Results: $PASS passed, $FAIL failed, $SKIPPED skipped"
 echo "============================================"
 
 if [ "$FAIL" -gt 0 ]; then

@@ -57,7 +57,12 @@ echo ""
 echo "--- Integration Tests ---"
 if [ -d "tests" ]; then
     # Try named integration test first, then all tests in tests/
-    if [ -f "tests/integration.rs" ] || ls tests/*integration* 1>/dev/null 2>&1; then
+    # A target named `integration` exists only for `tests/integration.rs`. A
+    # loose `tests/*integration*` glob used to stand in for it, which selected
+    # `cargo test --test integration` for files like
+    # `audit_integrity_integration.rs` — a target that does not exist, so cargo
+    # errored and the validator reported a false failure.
+    if [ -f "tests/integration.rs" ]; then
         if cargo test --test integration --quiet 2>/dev/null; then
             pass "Integration tests passed"
         else
@@ -67,7 +72,12 @@ if [ -d "tests" ]; then
         # Run all integration test files
         TEST_COUNT=$(find tests -name "*.rs" 2>/dev/null | wc -l | tr -d ' ')
         if [ "$TEST_COUNT" -gt 0 ]; then
-            if cargo test --test '*' --quiet 2>/dev/null; then
+            # `--tests`, not `--test '*'`: cargo *errors* ("target ... requires
+            # the features: ...") when an explicitly selected test target
+            # declares `required-features`, so the explicit form produced a
+            # false failure on feature-gated targets (the SDK conformance
+            # suite). `--tests` skips them the way a plain `cargo test` does.
+            if cargo test --tests --quiet 2>/dev/null; then
                 pass "Integration tests passed"
             else
                 fail "Integration tests failed"

@@ -42,7 +42,10 @@ echo "--- Integration Test Runner ---"
 if [ -d "tests" ]; then
     INT_TEST_FILES=$(find tests -name "*.rs" 2>/dev/null | wc -l | tr -d ' ')
     if [ "$INT_TEST_FILES" -gt 0 ]; then
-        if cargo test --test '*' --quiet 2>/dev/null; then
+        # `--tests`, not `--test '*'`: cargo errors when an explicitly selected
+        # target declares `required-features` that are not enabled, which made
+        # this validator report a false failure. `--tests` skips such targets.
+        if cargo test --tests --quiet 2>/dev/null; then
             pass "Integration tests passed ($INT_TEST_FILES test files)"
         else
             fail "Integration tests failed"
