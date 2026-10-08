@@ -14,8 +14,8 @@ name = "rigorix-server"
 path = "src/main.rs"
 
 [dependencies]
-rigorix-engine = { path = "../engine", version = "1.9.3" }
-rigorix-mcp = { path = "../mcp", version = "1.9.3" }
+rigorix-engine = { path = "../engine", version = "1.9.4" }
+rigorix-mcp = { path = "../mcp", version = "1.9.4" }
 
 serde = { workspace = true }
 serde_json = { workspace = true }

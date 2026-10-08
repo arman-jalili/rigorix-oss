@@ -1,4 +1,4 @@
-## [Unreleased] — evidence redaction + truthful boundary message
+## [2026-10-08] — release 1.9.4 (evidence redaction + truthful boundary message)
 
 ### Fixed
 - **Absolute paths no longer enter the signed record.** A boundary refusal's
@@ -23,7 +23,7 @@
   release, since it is a contract change.
 
 ### Release train
-- **Not yet released** — `engine` / `mcp` / `cli` pending.
+- `engine` / `mcp` / `cli` → 1.9.4.
 
 ## [2026-10-08] — release 1.9.3 (the check artifact, not argv[0])
 
