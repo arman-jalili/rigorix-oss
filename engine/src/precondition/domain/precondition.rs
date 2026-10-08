@@ -102,8 +102,11 @@ pub struct Precondition {
     #[serde(default)]
     pub require_params: Vec<String>,
     /// The check program and its arguments as an **argv array** — no shell, no
-    /// string interpolation. `command[0]` must resolve outside the
-    /// agent-writable workspace (trust boundary).
+    /// string interpolation. The check artifact — `command[0]`, and every argv
+    /// element that resolves to an existing regular file (the script an
+    /// interpreter executes, e.g. `["node", "check.mjs"]`) — must resolve
+    /// outside the agent-writable workspace (trust boundary). A file argument
+    /// inside the workspace is refused; pass agent-writable inputs on stdin.
     pub command: Vec<String>,
     /// Wall-clock timeout (milliseconds). Defaults to
     /// [`DEFAULT_TIMEOUT_MS`].
@@ -117,10 +120,11 @@ pub struct Precondition {
     /// (SpanPrivacy).
     #[serde(default)]
     pub capture_output: bool,
-    /// When `true`, refuse the matched step if the resolved check program — or
-    /// the operator-declared [`authority_path`](Self::authority_path) — is
-    /// writable by the engine's effective UID (POSIX owner/group/world mode).
-    /// Additive; defaults `false`.
+    /// When `true`, refuse the matched step if any resolved check artifact —
+    /// the program **and every interpreted file** — or the operator-declared
+    /// [`authority_path`](Self::authority_path) is writable by the engine's
+    /// effective UID (POSIX owner/group/world mode). Additive; defaults
+    /// `false`.
     ///
     /// The default boundary is path containment + the `PreToolUse` hook, and
     /// the demo's `$HOME` install is writable by design, so immutability is

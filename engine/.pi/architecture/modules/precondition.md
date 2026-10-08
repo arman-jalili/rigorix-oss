@@ -112,7 +112,7 @@ depends: Precondition
 status: implemented
 depends: Precondition
 
-**Purpose:** Execute a precondition's `command` deterministically: argv only (no shell), step parameters as JSON on stdin, documented env vars, wall-clock timeout, exit-code mapping. Timeout and spawn failure map to refuse, never pass. The command path must resolve **outside the agent-writable workspace** (trust boundary — see §Security Considerations).
+**Purpose:** Execute a precondition's `command` deterministically: argv only (no shell), step parameters as JSON on stdin, documented env vars, wall-clock timeout, exit-code mapping. Timeout and spawn failure map to refuse, never pass. The command path — and every argv element that resolves to an existing regular file (the script an interpreter executes) — must resolve **outside the agent-writable workspace** (trust boundary — see §Security Considerations).
 
 **DDD Layer:** `infrastructure`
 
@@ -308,6 +308,7 @@ release_dependents_on_failure = false
 | Command non-zero | Refuse (`failed`); tool never called |
 | Command timeout / spawn error | Refuse (`error`); tool never called |
 | Command path inside agent-writable workspace | Refuse (`error`); trust boundary |
+| Interpreted script / file argument inside agent-writable workspace | Refuse (`error`); the check artifact (not `command[0]` alone) must resolve outside |
 | `require_immutable_check=true` and the check/authority is writable by the engine's euid | Refuse (`error`, `Boundary`); fail closed |
 | `require_immutable_check=true` and writability metadata is unreadable | Refuse (`error`, `Boundary`); fail closed |
 | `require_immutable_check=false` (default) and the boundary is writable | Assessment traced; behavior unchanged |
@@ -327,7 +328,7 @@ release_dependents_on_failure = false
 1. Contract freeze (rigorix-sdk #39): `rigorix-sdk/schemas/policy.json` (preconditions + `[gating]`) + `schemas/envelope.json` (`precondition_findings[]`) + `schemas/api/errors.json` + a signed fixture verified byte-exact in Rust/Python/TypeScript/Java/Go.
 2. Domain: `engine/src/precondition/domain/{precondition,gating,error}.rs` + safety caps and fail-closed config validation.
 3. Infrastructure/config: `engine/src/precondition/infrastructure/toml_repository.rs` for `.rigorix/preconditions.toml` (missing ⇒ `Ok(None)`, malformed/over-cap ⇒ `Err`).
-4. Infrastructure/runner: `engine/src/precondition/infrastructure/runner.rs` — argv only, JSON stdin, env, wall-clock timeout, and the trust-boundary check that `command[0]` resolves outside the agent-writable workspace.
+4. Infrastructure/runner: `engine/src/precondition/infrastructure/runner.rs` — argv only, JSON stdin, env, wall-clock timeout, and the trust-boundary check that `command[0]` resolves outside the agent-writable workspace. Every argv element resolving to an existing regular file (e.g. the script for `["node", "check.mjs"]`) is part of the check: it must also resolve outside the workspace, and it is what `check_digest` / `check_writable` describe.
 5. Application: `engine/src/precondition/application/{service,service_impl}.rs` — match step, enforce `require_params` presence, run the check, return Dispatch/Deny.
 6. Dispatch gate: `engine/src/execution_engine/application/service_impl/dispatch.rs` (after ADR-011 `verify_before_dispatch`, before `spawn_concurrent_node`), plus `engine/src/execution_engine/application/factory.rs` and the composition roots `cli/src/cli_boundary/orchestrator.rs`, `actions/src/main.rs`, `server/src/**`.
 7. Evidence: `engine/src/event_system/domain/event.rs` (`PreconditionChecked`) + `engine/src/audit/domain/envelope.rs` + `engine/src/audit/application/envelope_factory_impl.rs` (SpanPrivacy: no values, no stdout by default).
@@ -425,6 +426,7 @@ workflow scheduling. If a use case needs any of those, it is a different module.
 | Agent edits the check to defeat the gate | Config in `.rigorix/**` is denied to agent writes by default (ADR-013 R5; `permission/application/enforcer_impl.rs`). The **command program** must resolve outside the agent-writable workspace; the runner validates and refuses otherwise. This is a path + hook boundary, **not** a sandbox — see §Honest Boundary (mode → guarantee matrix) and ADR-017). |
 | Boundary strength is opt-in | `require_immutable_check = true` assesses the resolved check and any declared `authority_path` with POSIX owner/group/world mode (`MetadataExt`/`PermissionsExt` + euid/getgroups). A writable — or unreadable — boundary refuses with `PreconditionError::Boundary` (fail closed). Default `false`: the assessment is traced, behavior unchanged. |
 | Command injection | argv only, no shell, no string interpolation of step values into argv. |
+| Interpreter/script bypass | the boundary, `check_digest` and `check_writable` attach to every argv element that resolves to an existing regular file (the check artifact), not `command[0]` alone. |
 | Secret leakage into evidence | Never record parameter values (only `inputs_hash`); never record stdout unless `capture_output=true` (truncated, redacted). |
 | Flaky/slow check blocks work | Explicit `timeout_ms`; `error` outcome recorded distinctly from `failed`; operators must keep checks fast/reliable. Fail-closed is deliberate. |
 | Silent downgrade | Configured-but-unarmed refuses (never skips). |

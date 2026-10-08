@@ -98,6 +98,13 @@ capture_output = false                           # default: never record stdout
 3. **Trust boundary — the check is part of the gate.** `command[0]` (the check
    program) must resolve **outside the agent-writable workspace**. If it resolves
    inside it, **refuse** (`error`). A check the agent can edit is no check. The
+   boundary covers **the check artifact, however invoked**: every argv element
+   that resolves to an existing regular file (for `command = ["node",
+   "check.mjs"]`, the script in `argv[1]`) must also resolve outside the
+   workspace; the run is refused if any does not, and that artifact is what
+   `check_digest` / `check_writable` describe — not the interpreter. Direct
+   invocation (`command = ["…/check"]`, shebang) remains the recommended form,
+   and a file argument to a direct check is part of the same trusted surface. The
    config itself is already protected: agent writes to `.rigorix/**` are denied
    by default (ADR-013 R5 — confirmed in `permission/application/
    enforcer_impl.rs:54-60,166`, test
@@ -213,12 +220,28 @@ unreadable, boundary fails closed with `PreconditionError::Boundary`. With the
 default `false` the assessment is traced but the run proceeds, so the demo's
 `$HOME` install is unaffected.
 
+**The check artifact, not the interpreter.** The boundary, `check_digest` and
+`check_writable` attach to the operator-authored artifact **however the check is
+invoked**. For `command = ["node", "check.mjs"]`, the interpreter (`node`) is
+not the check: every argv element that resolves to an existing regular file is
+treated as part of the check, so the script must resolve outside the workspace,
+its bytes are what `check_digest` binds, and its writability is what
+`check_writable` reports. A direct invocation
+(`command = ["…/check-beneficiary.mjs"]`, shebang) keeps a single unambiguous
+artifact and stays the recommended form. The corollary is deliberate: a file
+**argument** to a check is also treated as part of its trusted surface (the
+engine cannot distinguish code from data), so an agent-writable path argument is
+refused — pass agent-writable inputs on stdin (the engine already provides the
+step JSON there) rather than as argv paths.
+
 The default row is the permanent caveat: **the default install is a policy +
 path + hook boundary, not a sandbox.** #985–#987 raise the boundary in modes the
 operator opts into; they do not change the default.
 
 > **Maintenance:** when #985 / #986 / #987 merge, flip that row's state from
-> *planned* to *available*. Never delete or weaken the default caveat.
+> *planned* to *available*. #992 folds the interpreted-script shape (and any
+> file argument) of the check into the same boundary/digest/writability claim.
+> Never delete or weaken the default caveat.
 
 ### Non-goals (explicit)
 
