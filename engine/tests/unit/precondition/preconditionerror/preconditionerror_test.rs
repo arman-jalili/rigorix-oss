@@ -92,8 +92,14 @@ fn test_boundary_refusals_never_disclose_an_absolute_path() {
     ] {
         let rendered = variant.to_string();
         assert!(!rendered.contains('/'), "absolute path leaked: {rendered}");
-        assert!(rendered.contains("check.mjs"), "artifact not named: {rendered}");
-        assert!(rendered.contains("sha256:"), "path hash missing: {rendered}");
+        assert!(
+            rendered.contains("check.mjs"),
+            "artifact not named: {rendered}"
+        );
+        assert!(
+            rendered.contains("sha256:"),
+            "path hash missing: {rendered}"
+        );
     }
 
     // The trust boundary names the argument the engine actually checked, rather

@@ -446,18 +446,15 @@ impl PreconditionRunner for ProcessPreconditionRunner {
         let extra_artifacts = resolve_check_artifacts(&precondition.command[1..]);
         for (offset, artifact) in &extra_artifacts {
             // `command[1..]` — report the real argv position, not a list index.
-            ensure_outside_workspace(
-                artifact,
-                offset + 1,
-                &self.workspace_root,
-                &precondition.id,
-            )?;
+            ensure_outside_workspace(artifact, offset + 1, &self.workspace_root, &precondition.id)?;
         }
 
         // The artifacts whose bytes define the check: the interpreted files when
         // present, else the program itself.
-        let extra_paths: Vec<PathBuf> =
-            extra_artifacts.iter().map(|(_, path)| path.clone()).collect();
+        let extra_paths: Vec<PathBuf> = extra_artifacts
+            .iter()
+            .map(|(_, path)| path.clone())
+            .collect();
         let digest_artifacts: &[PathBuf] = if extra_paths.is_empty() {
             std::slice::from_ref(&resolved)
         } else {

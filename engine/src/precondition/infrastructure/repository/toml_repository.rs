@@ -95,10 +95,7 @@ fn parse_config(
             %error,
             "precondition: config file failed to parse"
         );
-        PreconditionError::ConfigInvalid(format!(
-            "parse error in {}: {error}",
-            redacted_path(path)
-        ))
+        PreconditionError::ConfigInvalid(format!("parse error in {}: {error}", redacted_path(path)))
     })?;
     // Enforce the safety caps and structural validity — an over-cap or
     // malformed file refuses a matching step like a corrupt one.
