@@ -1,3 +1,48 @@
+## [2026-10-08] — release 1.9.3 (the check artifact, not argv[0])
+
+### Fixed
+- **Interpreter-based checks bypassed the trust boundary and mis-bound
+  attribution** (ADR-017, #992). The boundary, `check_digest` and
+  `check_writable` were all computed from `command[0]`, so a check invoked as
+  `command = ["node", "check.mjs"]` attached all three to the *interpreter*:
+  the script in `argv[1]` was never validated, so an agent-writable script
+  decided the verdict (`["node", ".rigorix/check.mjs"]` passed the boundary
+  because `node` resolves outside the workspace). Worse, `check_writable`
+  reported the interpreter's writability (`false`), so the signed envelope
+  **asserted an immutable boundary the operator did not have** — misleading,
+  not merely incomplete. ADR-017's claim *“a check the agent can edit is no
+  check”* did not hold for the most natural way to write a check.
+
+  Every argv element that resolves to an existing regular file is now treated
+  as part of the check: it must resolve outside the workspace or the run fails
+  closed with `PreconditionError::TrustBoundary`; its bytes are what
+  `check_digest` binds; and the worst artifact's writability is what
+  `check_writable` reports (so `require_immutable_check = true` refuses a
+  writable script behind a root-owned interpreter). A **single** artifact keeps
+  the plain file digest, so direct invocations bind byte-identically to 1.9.2
+  and no existing envelope changes.
+
+### Changed
+- **Docs:** ADR-017 §Evaluation contract and §Honest boundary now state that the
+  boundary attaches to **the check artifact, however the check is invoked** —
+  direct invocation (`command = ["…/check.mjs"]`, shebang) stays the recommended
+  form. The code/data ambiguity in argv is called out as a deliberate corollary:
+  a file *argument* is part of the trusted surface too, so pass agent-writable
+  inputs on stdin rather than as argv paths. `GAP-A-37` → mitigated.
+
+### Notes
+- **No wire change.** `precondition_findings[]` keeps its fields and meaning;
+  absent `check_digest`/`check_writable` still means "pre-attribution", not
+  "tampered". No SDK release required.
+- **CI:** `validate-tests.sh` / `validate-integration.sh` no longer report a
+  false failure on feature-gated test targets (`cargo test --tests` instead of
+  `--test '*'`, which cargo errors on), and
+  `validate-code-graph-contracts.sh` applies its HTTP contract section only to
+  modules that actually expose an HTTP surface.
+
+### Release train
+- `engine` / `mcp` / `cli` → 1.9.3.
+
 ## [2026-10-07] — release 1.9.2 (precondition boundary hardening + signed attribution)
 
 ### Added
