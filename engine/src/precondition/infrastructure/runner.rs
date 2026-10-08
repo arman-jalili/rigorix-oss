@@ -46,6 +46,7 @@ use tokio::process::Command;
 
 use crate::precondition::application::PreconditionCheckInput;
 use crate::precondition::domain::{Precondition, PreconditionError, PreconditionOutcome};
+use crate::precondition::infrastructure::{described_program, redacted_path, sha256_hex};
 
 /// Maximum number of stdout bytes recorded when `capture_output = true`.
 pub const MAX_CAPTURED_STDOUT_BYTES: usize = 4_096;
@@ -140,8 +141,19 @@ fn resolve_program(program: &str, precondition_id: &str) -> Result<PathBuf, Prec
         detail,
     };
     if program.contains('/') {
-        return std::fs::canonicalize(program)
-            .map_err(|error| spawn_error(format!("cannot resolve program '{program}': {error}")));
+        return std::fs::canonicalize(program).map_err(|error| {
+            // The configured string can be absolute; the record gets the
+            // redacted form, the local log gets the real one.
+            tracing::warn!(
+                program = %program,
+                %error,
+                "precondition: configured program cannot be resolved"
+            );
+            spawn_error(format!(
+                "cannot resolve program '{}': {error}",
+                described_program(program)
+            ))
+        });
     }
     if let Some(path) = std::env::var_os("PATH") {
         for dir in std::env::split_paths(&path) {
@@ -153,8 +165,10 @@ fn resolve_program(program: &str, precondition_id: &str) -> Result<PathBuf, Prec
             }
         }
     }
+    tracing::warn!(program = %program, "precondition: program not found on PATH");
     Err(spawn_error(format!(
-        "program '{program}' not found on PATH"
+        "program '{}' not found on PATH",
+        described_program(program)
     )))
 }
 
@@ -190,14 +204,19 @@ fn resolve_existing_file(argument: &str) -> Option<PathBuf> {
 /// The check artifacts in `argv[1..]`: every argument that resolves to an
 /// existing regular file (typically the script an interpreter executes).
 /// Order-preserving and de-duplicated by canonical path.
-fn resolve_check_artifacts(arguments: &[String]) -> Vec<PathBuf> {
+///
+/// Returns each artifact with its index **within `arguments`**, so a refusal can
+/// name the argv position the operator actually wrote (`command[index + 1]`).
+/// The index must not be derived from the filtered list: dropping an argument
+/// that is not a file would shift every later position.
+fn resolve_check_artifacts(arguments: &[String]) -> Vec<(usize, PathBuf)> {
     let mut seen = std::collections::HashSet::new();
     let mut artifacts = Vec::new();
-    for argument in arguments {
+    for (index, argument) in arguments.iter().enumerate() {
         if let Some(path) = resolve_existing_file(argument)
             && seen.insert(path.clone())
         {
-            artifacts.push(path);
+            artifacts.push((index, path));
         }
     }
     artifacts
@@ -228,22 +247,35 @@ fn check_artifacts_digest(artifacts: &[PathBuf]) -> Option<String> {
     }
 }
 
-/// Refuse a resolved program that lives inside the agent-writable workspace.
+/// Refuse a check artifact that lives inside the agent-writable workspace.
 ///
 /// The workspace root is canonicalized when it exists so symlinked workspaces
 /// are handled; if it cannot be canonicalized the lexical root is used as a
-/// best-effort boundary (the program is already canonical).
+/// best-effort boundary (the artifact is already canonical).
+///
+/// `argument_index` is the artifact's position in `command`, so the refusal
+/// names the argument the engine actually checked. The signed error carries the
+/// artifact **redacted** ([`redacted_path`]); the full path is logged locally.
 fn ensure_outside_workspace(
-    program: &Path,
+    artifact: &Path,
+    argument_index: usize,
     workspace_root: &Path,
     precondition_id: &str,
 ) -> Result<(), PreconditionError> {
     let workspace =
         std::fs::canonicalize(workspace_root).unwrap_or_else(|_| workspace_root.to_path_buf());
-    if program.starts_with(&workspace) {
+    if artifact.starts_with(&workspace) {
+        tracing::warn!(
+            precondition = %precondition_id,
+            argument = argument_index,
+            path = %artifact.display(),
+            "precondition: trust boundary refused — argument resolves inside the \
+             agent-writable workspace"
+        );
         return Err(PreconditionError::TrustBoundary {
             precondition_id: precondition_id.to_string(),
-            command: program.display().to_string(),
+            argument_index,
+            artifact: redacted_path(artifact),
         });
     }
     Ok(())
@@ -255,10 +287,7 @@ fn ensure_outside_workspace(
 /// `authority_digest` (the artifact the check consults). Contents never enter
 /// the record — only the one-way digest (SpanPrivacy).
 fn sha256_file(path: &Path) -> Option<String> {
-    use sha2::{Digest, Sha256};
-    let bytes = std::fs::read(path).ok()?;
-    let digest = Sha256::digest(&bytes);
-    Some(format!("sha256:{}", hex::encode(digest)))
+    std::fs::read(path).ok().map(|bytes| sha256_hex(&bytes))
 }
 
 /// Whether `path` is writable by the engine's effective UID, from POSIX
@@ -346,9 +375,16 @@ fn assess_boundary(
         }
         Err(error) => {
             if precondition.require_immutable_check {
+                tracing::warn!(
+                    precondition = %precondition.id,
+                    path = %path.display(),
+                    boundary = label,
+                    "precondition: boundary writability unreadable; refusing \
+                     (require_immutable_check)"
+                );
                 return Err(PreconditionError::Boundary {
                     precondition_id: precondition.id.clone(),
-                    path: path.display().to_string(),
+                    artifact: redacted_path(path),
                     detail: format!("cannot assess {label} writability: {error}"),
                 });
             }
@@ -367,9 +403,15 @@ fn assess_boundary(
 /// The fail-closed refusal for a writable boundary under
 /// `require_immutable_check`.
 fn boundary_error(precondition: &Precondition, path: &Path, label: &str) -> PreconditionError {
+    tracing::warn!(
+        precondition = %precondition.id,
+        path = %path.display(),
+        boundary = label,
+        "precondition: boundary is writable and require_immutable_check=true — refusing"
+    );
     PreconditionError::Boundary {
         precondition_id: precondition.id.clone(),
-        path: path.display().to_string(),
+        artifact: redacted_path(path),
         detail: format!(
             "{label} is writable by the engine's effective UID and require_immutable_check=true"
         ),
@@ -392,7 +434,7 @@ impl PreconditionRunner for ProcessPreconditionRunner {
 
         // Trust boundary BEFORE spawn: a check the agent can edit is no check.
         let resolved = resolve_program(program, &precondition.id)?;
-        ensure_outside_workspace(&resolved, &self.workspace_root, &precondition.id)?;
+        ensure_outside_workspace(&resolved, 0, &self.workspace_root, &precondition.id)?;
 
         // ISSUE-INTERPRETER-CHECK-BOUNDARY: `argv[0]` is not necessarily the
         // check. For `["node", "check.mjs"]` the guarantee must attach to the
@@ -402,16 +444,24 @@ impl PreconditionRunner for ProcessPreconditionRunner {
         // digest binds it. A direct invocation (`command = ["…/check"]`) has no
         // extra artifacts and is unchanged.
         let extra_artifacts = resolve_check_artifacts(&precondition.command[1..]);
-        for artifact in &extra_artifacts {
-            ensure_outside_workspace(artifact, &self.workspace_root, &precondition.id)?;
+        for (offset, artifact) in &extra_artifacts {
+            // `command[1..]` — report the real argv position, not a list index.
+            ensure_outside_workspace(
+                artifact,
+                offset + 1,
+                &self.workspace_root,
+                &precondition.id,
+            )?;
         }
 
         // The artifacts whose bytes define the check: the interpreted files when
         // present, else the program itself.
-        let digest_artifacts: &[PathBuf] = if extra_artifacts.is_empty() {
+        let extra_paths: Vec<PathBuf> =
+            extra_artifacts.iter().map(|(_, path)| path.clone()).collect();
+        let digest_artifacts: &[PathBuf] = if extra_paths.is_empty() {
             std::slice::from_ref(&resolved)
         } else {
-            &extra_artifacts
+            &extra_paths
         };
 
         // Boundary strength: is every check artifact — the program and any
@@ -422,7 +472,7 @@ impl PreconditionRunner for ProcessPreconditionRunner {
         let mut writable_artifact: Option<&Path> = None;
         let mut unknown = false;
         for artifact in
-            std::iter::once(resolved.as_path()).chain(extra_artifacts.iter().map(PathBuf::as_path))
+            std::iter::once(resolved.as_path()).chain(extra_paths.iter().map(PathBuf::as_path))
         {
             match assess_boundary(precondition, artifact, "check")? {
                 Some(true) => {
@@ -494,9 +544,17 @@ impl PreconditionRunner for ProcessPreconditionRunner {
             .stderr(Stdio::null())
             .kill_on_drop(true)
             .spawn()
-            .map_err(|error| PreconditionError::Spawn {
-                precondition_id: precondition.id.clone(),
-                detail: format!("failed to spawn '{}': {error}", resolved.display()),
+            .map_err(|error| {
+                tracing::warn!(
+                    precondition = %precondition.id,
+                    path = %resolved.display(),
+                    %error,
+                    "precondition: check failed to spawn"
+                );
+                PreconditionError::Spawn {
+                    precondition_id: precondition.id.clone(),
+                    detail: format!("failed to spawn '{}': {error}", redacted_path(&resolved)),
+                }
             })?;
 
         let stdin = child.stdin.take();

@@ -31,11 +31,12 @@ fn all_variants() -> Vec<PreconditionError> {
         },
         PreconditionError::TrustBoundary {
             precondition_id: "beneficiary-eligible".to_string(),
-            command: "./check".to_string(),
+            argument_index: 1,
+            artifact: "check.mjs (path sha256:abc123)".to_string(),
         },
         PreconditionError::Boundary {
             precondition_id: "beneficiary-eligible".to_string(),
-            path: "/home/user/.rigorix-authority-demo/check.mjs".to_string(),
+            artifact: "check.mjs (path sha256:abc123)".to_string(),
             detail: "check is writable by the engine user".to_string(),
         },
     ]
@@ -68,6 +69,44 @@ fn test_all_variants_display() {
         }
         .to_string()
         .contains("unarmed")
+    );
+}
+
+#[test]
+fn test_boundary_refusals_never_disclose_an_absolute_path() {
+    // ADR-017 §Honest boundary: a refusal enters the signed record, which is
+    // ingested server-side and can be shared with an auditor, so it names the
+    // artifact by basename + one-way path hash — never the operator's absolute
+    // path (that leaks a username and directory layout).
+    for variant in [
+        PreconditionError::TrustBoundary {
+            precondition_id: "beneficiary-eligible".to_string(),
+            argument_index: 1,
+            artifact: "check.mjs (path sha256:abc123)".to_string(),
+        },
+        PreconditionError::Boundary {
+            precondition_id: "beneficiary-eligible".to_string(),
+            artifact: "check.mjs (path sha256:abc123)".to_string(),
+            detail: "check is writable by the engine user".to_string(),
+        },
+    ] {
+        let rendered = variant.to_string();
+        assert!(!rendered.contains('/'), "absolute path leaked: {rendered}");
+        assert!(rendered.contains("check.mjs"), "artifact not named: {rendered}");
+        assert!(rendered.contains("sha256:"), "path hash missing: {rendered}");
+    }
+
+    // The trust boundary names the argument the engine actually checked, rather
+    // than blaming `command[0]` when the violation is in `argv[1]`.
+    let rendered = PreconditionError::TrustBoundary {
+        precondition_id: "beneficiary-eligible".to_string(),
+        argument_index: 1,
+        artifact: "check.mjs (path sha256:abc123)".to_string(),
+    }
+    .to_string();
+    assert!(
+        rendered.contains("argument 1"),
+        "message must name the offending position: {rendered}"
     );
 }
 

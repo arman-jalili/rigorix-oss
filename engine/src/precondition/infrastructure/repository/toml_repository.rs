@@ -20,6 +20,7 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 
 use crate::precondition::domain::{PreconditionConfig, PreconditionError};
+use crate::precondition::infrastructure::redacted_path;
 
 use super::PreconditionRepository;
 
@@ -62,9 +63,15 @@ impl TomlPreconditionRepository {
                 return Ok(None);
             }
             Err(error) => {
+                // Absolute-path-free in the record; full path in the local log.
+                tracing::warn!(
+                    path = %self.config_path.display(),
+                    %error,
+                    "precondition: config file could not be read"
+                );
                 return Err(PreconditionError::ConfigInvalid(format!(
                     "failed to read {}: {error}",
-                    self.config_path.display()
+                    redacted_path(&self.config_path)
                 )));
             }
         };
@@ -80,7 +87,18 @@ fn parse_config(
 ) -> Result<PreconditionConfig, PreconditionError> {
     // Parse the operator schema: `[[preconditions]]` + optional `[gating]`.
     let config: PreconditionConfig = toml::from_str(text).map_err(|error| {
-        PreconditionError::ConfigInvalid(format!("parse error in {}: {error}", path.display()))
+        // A composition root forwards this Display into the fail-closed gate's
+        // `unarmed_detail`, which lands in the signed record for every refused
+        // step — so the config path must be redacted here, not at the boundary.
+        tracing::warn!(
+            path = %path.display(),
+            %error,
+            "precondition: config file failed to parse"
+        );
+        PreconditionError::ConfigInvalid(format!(
+            "parse error in {}: {error}",
+            redacted_path(path)
+        ))
     })?;
     // Enforce the safety caps and structural validity — an over-cap or
     // malformed file refuses a matching step like a corrupt one.
@@ -103,9 +121,15 @@ impl PreconditionRepository for TomlPreconditionRepository {
                 return Ok(None);
             }
             Err(error) => {
+                // Absolute-path-free in the record; full path in the local log.
+                tracing::warn!(
+                    path = %self.config_path.display(),
+                    %error,
+                    "precondition: config file could not be read"
+                );
                 return Err(PreconditionError::ConfigInvalid(format!(
                     "failed to read {}: {error}",
-                    self.config_path.display()
+                    redacted_path(&self.config_path)
                 )));
             }
         };

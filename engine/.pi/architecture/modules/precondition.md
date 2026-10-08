@@ -427,7 +427,7 @@ workflow scheduling. If a use case needs any of those, it is a different module.
 | Boundary strength is opt-in | `require_immutable_check = true` assesses the resolved check and any declared `authority_path` with POSIX owner/group/world mode (`MetadataExt`/`PermissionsExt` + euid/getgroups). A writable — or unreadable — boundary refuses with `PreconditionError::Boundary` (fail closed). Default `false`: the assessment is traced, behavior unchanged. |
 | Command injection | argv only, no shell, no string interpolation of step values into argv. |
 | Interpreter/script bypass | the boundary, `check_digest` and `check_writable` attach to every argv element that resolves to an existing regular file (the check artifact), not `command[0]` alone. |
-| Secret leakage into evidence | Never record parameter values (only `inputs_hash`); never record stdout unless `capture_output=true` (truncated, redacted). |
+| Path layout leakage into evidence | Never record parameter values (only `inputs_hash`); never record stdout unless `capture_output=true` (truncated, redacted). **No absolute path** in any message that can reach the signed record: trust-boundary / boundary-strength refusals, `Spawn` and `ConfigInvalid` name the artifact by basename + one-way path hash (`check.mjs (path sha256:…)`), and the full path goes to the local log. Redaction happens at error **construction**, so a config error cannot leak the path through a fail-closed gate's `unarmed_detail` into every refusal. See ADR-017 §Evidence redaction. |
 | Flaky/slow check blocks work | Explicit `timeout_ms`; `error` outcome recorded distinctly from `failed`; operators must keep checks fast/reliable. Fail-closed is deliberate. |
 | Silent downgrade | Configured-but-unarmed refuses (never skips). |
 

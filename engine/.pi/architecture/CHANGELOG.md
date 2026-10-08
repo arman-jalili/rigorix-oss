@@ -1,3 +1,30 @@
+## [Unreleased] — evidence redaction + truthful boundary message
+
+### Fixed
+- **Absolute paths no longer enter the signed record.** A boundary refusal's
+  summary carried the artifact's full path — and because a composition root
+  (mcp / cli / actions) forwards `PreconditionError::to_string()` into the
+  fail-closed gate's `unarmed_detail`, a *config* error carried the operator's
+  absolute config path into **every** refusal in that host, not just the one
+  that hit the boundary. Every message that can reach the signed envelope now
+  names the artifact by basename plus a one-way hash of its path
+  (`check.mjs (path sha256:…)`); the full path goes to the local log only.
+  Covers `TrustBoundary`, `Boundary`, `Spawn` and `ConfigInvalid`.
+- **The trust-boundary refusal names the argument it actually checked**
+  (`argument 1` for the script in `command[1]`) instead of saying "the
+  command", which misattributed the violation to `argv[0]` whenever the
+  offending artifact was the interpreted script.
+
+### Docs
+- ADR-017 gains §Evidence redaction — the decision, the per-variant site table,
+  and why redaction belongs at error construction. The same section records the
+  open **attribution-absence reason code** (pre-attribution / refused before the
+  check ran / unreadable artifact) as scheduled with the next `rigorix-sdk`
+  release, since it is a contract change.
+
+### Release train
+- **Not yet released** — `engine` / `mcp` / `cli` pending.
+
 ## [2026-10-08] — release 1.9.3 (the check artifact, not argv[0])
 
 ### Fixed

@@ -243,6 +243,51 @@ operator opts into; they do not change the default.
 > file argument) of the check into the same boundary/digest/writability claim.
 > Never delete or weaken the default caveat.
 
+### Evidence redaction — no absolute paths in the signed record
+
+Every precondition failure becomes `precondition_findings[].summary`, and that
+envelope is signed, ingested server-side, and shareable with an auditor. An
+**absolute path** in a summary therefore leaks a username and the operator's
+directory layout into evidence. That is the same class of data `authority_path`
+is already handled to avoid — a digest, never the path.
+
+**Decision.** No precondition message that can reach the signed record carries
+an absolute path. Each names the artifact by **basename plus a one-way hash of
+its path** (`check.mjs (path sha256:…)`): enough to identify it across records
+and to tell two artifacts apart, without disclosing where they live. The full
+path goes to the operator's local log.
+
+| Site | Signed record | Local log |
+|---|---|---|
+| trust-boundary refusal (`TrustBoundary`) | `argument 1 … check.mjs (path sha256:…)` | full path (`tracing::warn!`) |
+| boundary-strength refusal (`Boundary`) | `check.mjs (path sha256:…)` | full path |
+| `Spawn` (unresolvable program / spawn failure) | redacted program reference | full path |
+| `ConfigInvalid` (read / parse) | `preconditions.toml (path sha256:…)` | full path |
+
+Redaction happens where the error is **constructed**, not where it is recorded.
+A composition root (mcp / cli / actions) forwards `PreconditionError::to_string()`
+into the fail-closed gate's `unarmed_detail`, so a config error would otherwise
+put the operator's absolute config path into the `NotArmed` detail — and from
+there into **every** refusal in that host, not only the one that hit the
+boundary.
+
+The trust-boundary refusal also names the **argument position** the engine
+actually checked (`argument 1` for the script in `command[1]`), instead of
+saying "the command" — which misattributed the violation to `argv[0]` whenever
+the offending artifact was the interpreted script.
+
+This is evidence hygiene, not secrecy: the path remains available to the
+operator locally, and the hash is stable enough to correlate records.
+
+**Open — scheduled with the next SDK release.** `check_digest` /
+`authority_digest` / `check_writable` are absent for three distinct reasons: a
+pre-attribution envelope, a refusal *before* the check ran (trust boundary), or
+an unreadable artifact. The record cannot currently distinguish them. A
+structured reason code on the finding is the fix; because it is a contract
+change it ships with the next `rigorix-sdk` release. Until then a consumer (for
+example the enterprise Audit Explorer) must render the finding's `summary`
+wherever an attribution block is missing, rather than showing nothing.
+
 ### Non-goals (explicit)
 
 - **Not a workflow engine.** The primitive is exactly: *match a step, run a

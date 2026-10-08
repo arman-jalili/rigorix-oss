@@ -24,6 +24,11 @@
 //!   the agent-writable workspace); `Boundary` is a boundary **strength**
 //!   violation (the check/authority is writable by the engine's euid while
 //!   `require_immutable_check = true`)
+//! - **Both boundary variants are redacted.** Neither carries an absolute path:
+//!   each names the offending artifact by basename plus a one-way hash of its
+//!   path, so a refusal can be ingested server-side or shown to an auditor
+//!   without leaking the operator's username or directory layout. The full path
+//!   is written to the local log only (SpanPrivacy; ADR-017 §Honest boundary).
 //! - `Denied` maps to the `failed` outcome: the operator's check explicitly
 //!   returned non-zero
 //!
@@ -95,18 +100,28 @@ pub enum PreconditionError {
         step: String,
     },
 
-    /// The check program resolves **inside the agent-writable workspace** — a
-    /// check the agent can edit is no check. Maps to the `error` outcome and
-    /// refuses the step (ADR-017 §R1 trust boundary).
+    /// The check artifact at `argument_index` resolves **inside the
+    /// agent-writable workspace** — a check the agent can edit is no check.
+    /// Maps to the `error` outcome and refuses the step (ADR-017 §R1 trust
+    /// boundary).
+    ///
+    /// Names the argument the engine actually checked — `command[0]`, or the
+    /// interpreted artifact in `command[1..]` — rather than saying "the
+    /// command", which would misattribute the violation to `argv[0]`.
     #[error(
-        "Precondition '{precondition_id}' command resolves inside the agent-writable \
-         workspace: {command}"
+        "Precondition '{precondition_id}' argument {argument_index} resolves inside the \
+         agent-writable workspace: {artifact}"
     )]
     TrustBoundary {
-        /// Stable id of the precondition whose command violated the boundary.
+        /// Stable id of the precondition whose argument violated the boundary.
         precondition_id: String,
-        /// The offending command program (`command[0]`).
-        command: String,
+        /// Position of the offending element in `command` (argv index): `0` for
+        /// the program itself, `1..` for an interpreted artifact.
+        argument_index: usize,
+        /// Redaction-safe reference to the offending artifact — basename plus a
+        /// one-way hash of its path. The absolute path never enters the signed
+        /// record (SpanPrivacy); it goes to the operator's local log.
+        artifact: String,
     },
 
     /// The resolved check program — or the operator-declared authority artifact
@@ -115,14 +130,15 @@ pub enum PreconditionError {
     /// refuses the step (fail closed); an unreadable/unknown assessment under
     /// the flag is raised here too. Non-retriable, like every other variant.
     #[error(
-        "Precondition '{precondition_id}' boundary is not immutable: {path} is writable by the \
+        "Precondition '{precondition_id}' boundary is not immutable: {artifact} is writable by the \
          engine user ({detail})"
     )]
     Boundary {
         /// Stable id of the precondition whose boundary is not immutable.
         precondition_id: String,
-        /// The writable path (check program or authority artifact).
-        path: String,
+        /// Redaction-safe reference to the writable artifact — basename plus a
+        /// one-way hash of its path (SpanPrivacy; never the absolute path).
+        artifact: String,
         /// Why the boundary was violated (writable, or metadata unreadable).
         detail: String,
     },
@@ -187,11 +203,12 @@ mod tests {
             },
             PreconditionError::TrustBoundary {
                 precondition_id: "beneficiary-eligible".to_string(),
-                command: "./check".to_string(),
+                argument_index: 0,
+                artifact: "check (path sha256:0000)".to_string(),
             },
             PreconditionError::Boundary {
                 precondition_id: "beneficiary-eligible".to_string(),
-                path: "/home/user/.rigorix-authority-demo/check.mjs".to_string(),
+                artifact: "check.mjs (path sha256:0000)".to_string(),
                 detail: "check is writable".to_string(),
             },
         ]
