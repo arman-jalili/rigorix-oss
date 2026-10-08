@@ -1,3 +1,28 @@
+## [2026-10-07] — release 1.9.2 (precondition boundary hardening + signed attribution)
+
+### Added
+- **`require_immutable_check` + `authority_path`** (ADR-017, #986): the runner
+  assesses the resolved check — and any operator-declared `authority_path` — for
+  writability by the engine's effective UID (POSIX owner/group/world mode). With
+  `require_immutable_check = true`, a writable (or unreadable) boundary fails
+  closed with `PreconditionError::Boundary`. The default (`false`) only traces the
+  assessment, so existing installs are unchanged.
+- **Signed attribution** (ADR-017, #987): `precondition_findings[]` now carries
+  `check_digest` (sha256 of the resolved check program), `authority_digest`
+  (sha256 of the declared authority artifact) and the `check_writable` boundary
+  fact — additive, omitted when absent. A forged or changed authority becomes
+  visible in the signed record. SpanPrivacy: digests only, never contents.
+
+### Changed
+- **Docs:** ADR-017 §Honest boundary and `modules/precondition.md` document the
+  trust boundary as a **mode → guarantee matrix** (default / `--isolated` /
+  `require_immutable_check` / attribution) instead of a single snapshot claim;
+  the default caveat (path + hook, not a sandbox) is permanent. `GAP-A-36`
+  records the residual as mitigated-by #985–#987.
+
+### Release train
+- `engine` / `mcp` / `cli` → 1.9.2.
+
 ## [2026-10-06] — release 1.9.1 (evidence preservation on approval-resume)
 
 ### Fixed
