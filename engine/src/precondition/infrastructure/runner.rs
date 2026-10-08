@@ -21,7 +21,10 @@
 //! - **trust boundary**: `command[0]` must resolve **outside the
 //!   agent-writable workspace**; if it resolves inside, the run is refused with
 //!   [`PreconditionError::TrustBoundary`] (a check the agent can edit is no
-//!   check)
+//!   check). The same applies to every argv element that resolves to an
+//!   existing regular file — for `command = ["node", "check.mjs"]` the script
+//!   **is** the check, so the boundary, `check_writable` and `check_digest`
+//!   cover it, not the interpreter (ISSUE-INTERPRETER-CHECK-BOUNDARY)
 //! - **boundary strength** (`require_immutable_check`): when set, the resolved
 //!   check program and any declared `authority_path` are assessed for
 //!   writability by the engine's effective UID (POSIX owner/group/world mode);
@@ -153,6 +156,76 @@ fn resolve_program(program: &str, precondition_id: &str) -> Result<PathBuf, Prec
     Err(spawn_error(format!(
         "program '{program}' not found on PATH"
     )))
+}
+
+/// Resolve one argv argument to an existing regular file, if it is one.
+///
+/// A path (absolute, or relative to the inherited CWD) is canonicalized
+/// directly; a bare name is also searched on `PATH` (an interpreter may be
+/// invoked as `["node", "check.mjs"]` or with a bare script name on `PATH`).
+/// Non-files (flags, inline code, values) return `None` and are ignored — they
+/// are not check artifacts.
+fn resolve_existing_file(argument: &str) -> Option<PathBuf> {
+    let candidate = Path::new(argument);
+    if candidate.is_file()
+        && let Ok(canonical) = std::fs::canonicalize(candidate)
+    {
+        return Some(canonical);
+    }
+    if !argument.contains('/')
+        && let Some(path) = std::env::var_os("PATH")
+    {
+        for dir in std::env::split_paths(&path) {
+            let candidate = dir.join(argument);
+            if candidate.is_file()
+                && let Ok(canonical) = std::fs::canonicalize(&candidate)
+            {
+                return Some(canonical);
+            }
+        }
+    }
+    None
+}
+
+/// The check artifacts in `argv[1..]`: every argument that resolves to an
+/// existing regular file (typically the script an interpreter executes).
+/// Order-preserving and de-duplicated by canonical path.
+fn resolve_check_artifacts(arguments: &[String]) -> Vec<PathBuf> {
+    let mut seen = std::collections::HashSet::new();
+    let mut artifacts = Vec::new();
+    for argument in arguments {
+        if let Some(path) = resolve_existing_file(argument)
+            && seen.insert(path.clone())
+        {
+            artifacts.push(path);
+        }
+    }
+    artifacts
+}
+
+/// One-way `sha256:<hex>` binding the check artifact(s) that define the check.
+///
+/// A single artifact (the common case: a direct invocation, or one interpreted
+/// file) keeps the plain file digest, so `check_digest` still equals
+/// `sha256sum` of the check. Multiple artifacts are bound deterministically as
+/// `sha256(("path\0sha256:<hex>\n")*)`.
+fn check_artifacts_digest(artifacts: &[PathBuf]) -> Option<String> {
+    match artifacts {
+        [] => None,
+        [single] => sha256_file(single),
+        many => {
+            use sha2::{Digest, Sha256};
+            let mut hasher = Sha256::new();
+            for path in many {
+                let digest = sha256_file(path)?;
+                hasher.update(path.to_string_lossy().as_bytes());
+                hasher.update(b"\0");
+                hasher.update(digest.as_bytes());
+                hasher.update(b"\n");
+            }
+            Some(format!("sha256:{}", hex::encode(hasher.finalize())))
+        }
+    }
 }
 
 /// Refuse a resolved program that lives inside the agent-writable workspace.
@@ -321,28 +394,72 @@ impl PreconditionRunner for ProcessPreconditionRunner {
         let resolved = resolve_program(program, &precondition.id)?;
         ensure_outside_workspace(&resolved, &self.workspace_root, &precondition.id)?;
 
-        // Boundary strength: is the check — and any declared authority —
-        // writable by the engine's UID? Recorded always; refused only when the
-        // operator opted in (`require_immutable_check`).
-        let check_writable = assess_boundary(precondition, &resolved, "check")?;
+        // ISSUE-INTERPRETER-CHECK-BOUNDARY: `argv[0]` is not necessarily the
+        // check. For `["node", "check.mjs"]` the guarantee must attach to the
+        // script in `argv[1]`, not the interpreter. Every argv element that
+        // resolves to an existing regular file is a check artifact: the trust
+        // boundary covers it, its writability is assessed, and the attribution
+        // digest binds it. A direct invocation (`command = ["…/check"]`) has no
+        // extra artifacts and is unchanged.
+        let extra_artifacts = resolve_check_artifacts(&precondition.command[1..]);
+        for artifact in &extra_artifacts {
+            ensure_outside_workspace(artifact, &self.workspace_root, &precondition.id)?;
+        }
+
+        // The artifacts whose bytes define the check: the interpreted files when
+        // present, else the program itself.
+        let digest_artifacts: &[PathBuf] = if extra_artifacts.is_empty() {
+            std::slice::from_ref(&resolved)
+        } else {
+            &extra_artifacts
+        };
+
+        // Boundary strength: is every check artifact — the program and any
+        // interpreted file — writable by the engine's UID? Recorded always;
+        // refused only when the operator opted in (`require_immutable_check`).
+        // The verdict is the *worst* artifact: writable if any is writable, and
+        // unknown if none is known-writable but any is unassessable.
+        let mut writable_artifact: Option<&Path> = None;
+        let mut unknown = false;
+        for artifact in
+            std::iter::once(resolved.as_path()).chain(extra_artifacts.iter().map(PathBuf::as_path))
+        {
+            match assess_boundary(precondition, artifact, "check")? {
+                Some(true) => {
+                    writable_artifact.get_or_insert(artifact);
+                }
+                Some(false) => {}
+                None => unknown = true,
+            }
+        }
+        let check_writable = if writable_artifact.is_some() {
+            Some(true)
+        } else if unknown {
+            None
+        } else {
+            Some(false)
+        };
+        if precondition.require_immutable_check
+            && let Some(path) = writable_artifact
+        {
+            return Err(boundary_error(precondition, path, "check"));
+        }
+
         let authority_writable = match precondition.authority_path.as_deref() {
             Some(path) => assess_boundary(precondition, Path::new(path), "authority")?,
             None => None,
         };
-        if precondition.require_immutable_check {
-            if check_writable == Some(true) {
-                return Err(boundary_error(precondition, &resolved, "check"));
-            }
-            if authority_writable == Some(true)
-                && let Some(path) = precondition.authority_path.as_deref()
-            {
-                return Err(boundary_error(precondition, Path::new(path), "authority"));
-            }
+        if precondition.require_immutable_check
+            && authority_writable == Some(true)
+            && let Some(path) = precondition.authority_path.as_deref()
+        {
+            return Err(boundary_error(precondition, Path::new(path), "authority"));
         }
 
-        // Signed attribution: bind the check program and the authority artifact
-        // by one-way digest. Best-effort — unreadable files omit the digest.
-        let check_digest = sha256_file(&resolved);
+        // Signed attribution: bind the check artifact(s) and the authority
+        // artifact by one-way digest. Best-effort — unreadable files omit the
+        // digest.
+        let check_digest = check_artifacts_digest(digest_artifacts);
         let authority_digest = precondition
             .authority_path
             .as_deref()
@@ -705,5 +822,147 @@ mod tests {
         let run = runner.run(&precondition, &input()).await.expect("run");
         assert_ne!(run.authority_digest, Some(authority_digest));
         assert_eq!(run.check_digest, Some(check_digest));
+    }
+
+    /// A shell check script on disk that exits with `code`.
+    fn script(dir: &Path, name: &str, code: u8) -> PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, format!("#!/bin/sh\nexit {code}\n")).expect("write script");
+        path
+    }
+
+    /// ISSUE-INTERPRETER-CHECK-BOUNDARY criterion 1: the script an interpreter
+    /// executes is the check; when it lives inside the workspace the run is
+    /// refused even though the interpreter (`/bin/sh`) is outside.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn interpreted_script_inside_workspace_is_refused() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let check = script(workspace.path(), "check.sh", 0);
+        let runner = ProcessPreconditionRunner::new(workspace.path());
+        let precondition = precondition("p1", vec!["/bin/sh", check.to_str().unwrap()]);
+        let error = runner
+            .run(&precondition, &input())
+            .await
+            .expect_err("an interpreted workspace script must be refused");
+        assert!(matches!(error, PreconditionError::TrustBoundary { .. }));
+        assert!(!error.is_retriable());
+    }
+
+    /// ISSUE-INTERPRETER-CHECK-BOUNDARY criterion 4: an interpreter invocation
+    /// whose script resolves outside the workspace runs unchanged.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn interpreted_script_outside_workspace_passes() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let check_home = tempfile::tempdir().expect("check home");
+        let check = script(check_home.path(), "check.sh", 0);
+        let runner = ProcessPreconditionRunner::new(workspace.path());
+        let run = runner
+            .run(
+                &precondition("p1", vec!["/bin/sh", check.to_str().unwrap()]),
+                &input(),
+            )
+            .await
+            .expect("run");
+        assert_eq!(run.outcome, PreconditionOutcome::Passed);
+    }
+
+    /// ISSUE-INTERPRETER-CHECK-BOUNDARY criterion 2: `check_digest` binds the
+    /// interpreted script, not the interpreter — a rewritten check changes the
+    /// digest, and a direct invocation of the same script binds identically.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn interpreted_digest_binds_the_script_not_the_interpreter() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let check_home = tempfile::tempdir().expect("check home");
+        let check = script(check_home.path(), "check.sh", 0);
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&check, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod +x");
+        }
+        let runner = ProcessPreconditionRunner::new(workspace.path());
+
+        let interpreted = runner
+            .run(
+                &precondition("p1", vec!["/bin/sh", check.to_str().unwrap()]),
+                &input(),
+            )
+            .await
+            .expect("run");
+        let digest = interpreted.check_digest.clone().expect("digest");
+
+        // The digest binds the script: direct invocation binds identically.
+        let direct = runner
+            .run(&precondition("p1", vec![check.to_str().unwrap()]), &input())
+            .await
+            .expect("direct run");
+        assert_eq!(direct.check_digest, Some(digest.clone()));
+
+        // A rewritten check changes the digest.
+        std::fs::write(&check, "#!/bin/sh\nexit 7\n").expect("rewrite");
+        let rewritten = runner
+            .run(
+                &precondition("p1", vec!["/bin/sh", check.to_str().unwrap()]),
+                &input(),
+            )
+            .await
+            .expect("run");
+        assert_eq!(rewritten.outcome, PreconditionOutcome::Failed);
+        assert_ne!(rewritten.check_digest, Some(digest));
+    }
+
+    /// ISSUE-INTERPRETER-CHECK-BOUNDARY criteria 3 & 5: `check_writable`
+    /// reflects the interpreted script (not the non-writable interpreter), and
+    /// `require_immutable_check` refuses it.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn interpreted_writable_script_is_refused_under_immutable_flag() {
+        use std::os::unix::fs::PermissionsExt;
+        let workspace = tempfile::tempdir().expect("workspace");
+        let check_home = tempfile::tempdir().expect("check home");
+        let check = script(check_home.path(), "check.sh", 0);
+        std::fs::set_permissions(&check, std::fs::Permissions::from_mode(0o755)).expect("chmod +w");
+        let runner = ProcessPreconditionRunner::new(workspace.path());
+
+        // Default: the run proceeds, but the recorded fact reflects the script.
+        let observed = runner
+            .run(
+                &precondition("p1", vec!["/bin/sh", check.to_str().unwrap()]),
+                &input(),
+            )
+            .await
+            .expect("run");
+        assert_eq!(observed.check_writable, Some(true));
+
+        // Opt-in: the writable interpreted script refuses the step.
+        let mut strict = precondition("p1", vec!["/bin/sh", check.to_str().unwrap()]);
+        strict.require_immutable_check = true;
+        let error = runner
+            .run(&strict, &input())
+            .await
+            .expect_err("writable interpreted script must be refused");
+        assert!(matches!(error, PreconditionError::Boundary { .. }));
+    }
+
+    /// ISSUE-INTERPRETER-CHECK-BOUNDARY criterion 3: a non-writable interpreted
+    /// script records `check_writable = false` (the interpreter does not mask
+    /// the real artifact).
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn interpreted_non_writable_script_passes_under_immutable_flag() {
+        use std::os::unix::fs::PermissionsExt;
+        let workspace = tempfile::tempdir().expect("workspace");
+        let check_home = tempfile::tempdir().expect("check home");
+        let check = script(check_home.path(), "check.sh", 0);
+        std::fs::set_permissions(&check, std::fs::Permissions::from_mode(0o555))
+            .expect("chmod a-w");
+        let runner = ProcessPreconditionRunner::new(workspace.path());
+        let mut strict = precondition("p1", vec!["/bin/sh", check.to_str().unwrap()]);
+        strict.require_immutable_check = true;
+        let run = runner.run(&strict, &input()).await.expect("run");
+        assert_eq!(run.outcome, PreconditionOutcome::Passed);
+        assert_eq!(run.check_writable, Some(false));
     }
 }

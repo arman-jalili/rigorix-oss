@@ -498,7 +498,7 @@ would make the ledger stale the moment a mode ships.
 
 | ID | Severity | Finding | Recommended Action | Status |
 |----|----------|---------|--------------------|--------|
-| GAP-A-37 | H | **For an interpreter-based check (`command = ["node", "<script>"]`), the trust boundary, `check_digest` and `check_writable` all describe `command[0]` — the interpreter — not the check.** `resolve_program` / `ensure_outside_workspace` / `sha256_file` / `assess_boundary` operate on `command.first()` only (`runner.rs:134,327,328,344`). So the script in `argv[1]` is never validated: `["node", ".rigorix/check.mjs"]` passes the boundary (node resolves outside the workspace) while the agent-writable script decides the verdict. Worse, `check_writable` then records the *interpreter's* writability (`false`), so the signed envelope asserts an immutable boundary the operator does not have — the record is misleading, not merely incomplete. ADR-017's claim *“a check the agent can edit is no check”* does not hold for this shape. | Apply the boundary + digest + writability assessment to every argv element that resolves to a file (or add `check_path`, or fail closed when `argv[1]` resolves inside the workspace). See #992. | ⬜ Open (#992) |
+| GAP-A-37 | H | **For an interpreter-based check (`command = ["node", "<script>"]`), the trust boundary, `check_digest` and `check_writable` all describe `command[0]` — the interpreter — not the check.** `resolve_program` / `ensure_outside_workspace` / `sha256_file` / `assess_boundary` operate on `command.first()` only (`runner.rs:134,327,328,344`). So the script in `argv[1]` is never validated: `["node", ".rigorix/check.mjs"]` passes the boundary (node resolves outside the workspace) while the agent-writable script decides the verdict. Worse, `check_writable` then records the *interpreter's* writability (`false`), so the signed envelope asserts an immutable boundary the operator does not have — the record is misleading, not merely incomplete. ADR-017's claim *“a check the agent can edit is no check”* does not hold for this shape. | Apply the boundary + digest + writability assessment to every argv element that resolves to a file (or add `check_path`, or fail closed when `argv[1]` resolves inside the workspace). See #992. | ✅ Mitigated (#992) |
 
 **Found:** validating `authority-demo` — its check was invoked as
 `["node", "<check>.mjs"]`, and the signed finding reported `check_writable:
@@ -506,6 +506,14 @@ false` with a `check_digest` that did not match the check. The demo now invokes
 the script directly (`command = ["<check>.mjs"]`, shebang); that is the
 workaround this issue replaces, not a fix — the engine still accepts the
 interpreter shape silently.
+
+**Resolved (2026-10-08, #992):** the runner now resolves **every argv element
+that is an existing regular file** as a check artifact — the trust boundary
+refuses any that resolves inside the workspace, `check_writable` is the *worst*
+artifact, and `check_digest` binds the interpreted file (a direct invocation of
+the same script yields the identical digest). A direct invocation stays the
+recommended form; a file argument to a check is part of the same trusted
+surface.
 
 **Related:** ADR-017 §Honest boundary · #985/#986/#987 · issue #992 ·
 workaround in `authority-demo/.rigorix/scripts/setup-authority.sh`.
