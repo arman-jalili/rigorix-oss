@@ -200,9 +200,6 @@
 
 ### Notes
 - **Superseded:** ADR-017 was implemented 2026-10-02 (see the entry above).
-- External signal: Tim Zlomke (Moral Clarity AI), “runtime AI governance,
-  T₀ → ΔN → Tₙ” (2026-10-01). The response is the falsifier (ISSUE-PG-09), not a
-  claim.
 
 ## [2026-09-25] — release 1.8.0 (ADR-016 Phase C anchored mode + Phase B ledger)
 

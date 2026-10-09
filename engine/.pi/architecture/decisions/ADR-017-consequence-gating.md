@@ -413,6 +413,3 @@ status flip.
 - **Gaps:** GAP-A-31 (dispatch-time precondition — this ADR), GAP-A-32
   (step-outcome gating), GAP-A-33 (companion-step obligation), GAP-A-34
   (fail-open arming / unreachable abort threshold).
-- **External signal:** Tim Zlomke (Moral Clarity AI), "T₀ → ΔN → Tₙ — does the
-  authority for this exact consequence still stand?" (2026-10-01). This ADR is
-  the examination response: freeze the property, define the falsifier, run it.
