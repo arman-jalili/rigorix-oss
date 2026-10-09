@@ -33,8 +33,8 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::precondition::domain::{
-    Precondition, PreconditionConfig, PreconditionError, PreconditionFinding, PreconditionOutcome,
-    PreconditionVerdict,
+    AttributionReason, Precondition, PreconditionConfig, PreconditionError, PreconditionFinding,
+    PreconditionOutcome, PreconditionVerdict,
 };
 use crate::precondition::infrastructure::PreconditionRunner;
 use crate::precondition::infrastructure::repository::PreconditionRepository;
@@ -149,6 +149,7 @@ impl PreconditionServiceImpl {
                     check_digest: None,
                     authority_digest: None,
                     check_writable: None,
+                    attribution: Some(AttributionReason::RefusedBeforeCheck),
                 };
                 return Ok((
                     Some(PreconditionVerdict::Deny {
@@ -162,6 +163,17 @@ impl PreconditionServiceImpl {
 
         match self.runner.run(precondition, &input).await {
             Ok(run) => {
+                // ISSUE-ATTRIBUTION-ABSENCE-REASON: the check ran, so the
+                // digests are present unless one could not be read. A declared
+                // authority whose digest is missing is an unreadable artifact,
+                // not a pre-attribution record.
+                let attribution = if run.check_digest.is_none()
+                    || (precondition.authority_path.is_some() && run.authority_digest.is_none())
+                {
+                    AttributionReason::ArtifactUnreadable
+                } else {
+                    AttributionReason::Recorded
+                };
                 let finding = PreconditionFinding {
                     precondition_id: precondition.id.clone(),
                     step: step.name.clone(),
@@ -173,6 +185,7 @@ impl PreconditionServiceImpl {
                     check_digest: run.check_digest.clone(),
                     authority_digest: run.authority_digest.clone(),
                     check_writable: run.check_writable,
+                    attribution: Some(attribution),
                 };
                 if run.outcome.refuses() {
                     Ok((
@@ -208,6 +221,10 @@ impl PreconditionServiceImpl {
                     check_digest: None,
                     authority_digest: None,
                     check_writable: None,
+                    // Trust-boundary / boundary-strength refusals, timeout, and
+                    // spawn failure all leave no recorded attribution; the
+                    // summary carries the specific cause.
+                    attribution: Some(AttributionReason::RefusedBeforeCheck),
                 };
                 Ok((
                     Some(PreconditionVerdict::Deny {

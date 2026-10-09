@@ -259,6 +259,8 @@ pub struct PreconditionFinding {
     authority_digest: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     check_writable: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    attribution: Option<String>,
 }
 
 impl PreconditionFinding {
@@ -275,6 +277,7 @@ impl PreconditionFinding {
         check_digest: Option<String>,
         authority_digest: Option<String>,
         check_writable: Option<bool>,
+        attribution: Option<String>,
     ) -> Self {
         Self {
             precondition_id,
@@ -287,6 +290,7 @@ impl PreconditionFinding {
             check_digest,
             authority_digest,
             check_writable,
+            attribution,
         }
     }
 
@@ -338,6 +342,11 @@ impl PreconditionFinding {
     /// Boundary fact (#986): the check was writable by the engine's euid.
     pub fn check_writable(&self) -> Option<bool> {
         self.check_writable
+    }
+
+    /// Structured attribution reason (ISSUE-ATTRIBUTION-ABSENCE-REASON).
+    pub fn attribution(&self) -> Option<&str> {
+        self.attribution.as_deref()
     }
 }
 

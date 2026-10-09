@@ -1046,6 +1046,7 @@ fn mcp_precondition_finding(
         f.check_digest.clone(),
         f.authority_digest.clone(),
         f.check_writable,
+        f.attribution.clone(),
     )
 }
 

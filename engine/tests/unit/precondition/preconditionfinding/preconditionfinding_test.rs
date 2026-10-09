@@ -7,7 +7,7 @@
 
 use chrono::Utc;
 use rigorix_engine::precondition::domain::{
-    PreconditionChecked, PreconditionFinding, PreconditionOutcome,
+    AttributionReason, PreconditionChecked, PreconditionFinding, PreconditionOutcome,
 };
 use serde_json::json;
 
@@ -23,6 +23,7 @@ fn finding(outcome: PreconditionOutcome, exit_code: Option<i32>) -> Precondition
         check_digest: None,
         authority_digest: None,
         check_writable: None,
+        attribution: None,
     }
 }
 
@@ -62,6 +63,7 @@ fn test_precondition_checked_event_payload_is_frozen() {
         check_digest: None,
         authority_digest: None,
         check_writable: None,
+        attribution: None,
         timestamp: Utc::now(),
     };
     let encoded = serde_json::to_string(&checked).expect("serialize");
@@ -110,6 +112,7 @@ async fn test_envelope_precondition_findings_records_evidence_and_redacts_values
                 "inputs_hash": "sha256:deadbeef",
                 "summary": "precondition 'beneficiary-eligible' failed step 'pay' (exit 3)",
                 "checked_at": "2026-10-01T00:00:00Z",
+                "attribution": "recorded",
                 // These must NOT be copied into the finding (SpanPrivacy):
                 "parameters": { "beneficiary": "acct-secret" },
                 "stdout": "secret output"
@@ -145,9 +148,46 @@ async fn test_envelope_precondition_findings_records_evidence_and_redacts_values
     assert_eq!(finding.exit_code, Some(3));
     assert_eq!(finding.inputs_hash, "sha256:deadbeef");
     assert!(finding.checked_at.to_rfc3339().starts_with("2026-10-01"));
+    assert_eq!(finding.attribution.as_deref(), Some("recorded"));
 
     // SpanPrivacy: no parameter values, no stdout.
     let serialized = serde_json::to_string(finding).expect("serialize");
     assert!(!serialized.contains("acct-secret"));
     assert!(!serialized.contains("secret output"));
+}
+
+#[test]
+fn attribution_reason_states_are_distinct_and_optional() {
+    // ISSUE-ATTRIBUTION-ABSENCE-REASON AC #7: all states + the legacy-absent
+    // case (a pre-attribution finding omits the key, so old bytes are stable).
+    assert_eq!(AttributionReason::Recorded.as_str(), "recorded");
+    assert_eq!(
+        AttributionReason::RefusedBeforeCheck.as_str(),
+        "refused_before_check"
+    );
+    assert_eq!(
+        AttributionReason::ArtifactUnreadable.as_str(),
+        "artifact_unreadable"
+    );
+
+    for reason in [
+        AttributionReason::Recorded,
+        AttributionReason::RefusedBeforeCheck,
+        AttributionReason::ArtifactUnreadable,
+    ] {
+        let mut candidate = finding(PreconditionOutcome::Failed, Some(1));
+        candidate.attribution = Some(reason);
+        let value = serde_json::to_value(&candidate).expect("serialize");
+        assert_eq!(value["attribution"], reason.as_str());
+    }
+
+    let legacy = finding(PreconditionOutcome::Passed, Some(0));
+    let value = serde_json::to_value(&legacy).expect("serialize");
+    assert!(
+        value.get("attribution").is_none(),
+        "a legacy finding must omit attribution (absent ≠ tampered)"
+    );
+
+    let encoded = serde_json::to_string(&AttributionReason::RefusedBeforeCheck).expect("serialize");
+    assert_eq!(encoded, "\"refused_before_check\"");
 }

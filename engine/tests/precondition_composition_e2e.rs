@@ -205,6 +205,7 @@ async fn armed_gate_refuses_matching_step_and_records_evidence() {
                 check_digest,
                 authority_digest,
                 check_writable,
+                attribution,
                 timestamp,
             } => Some(ExecutionEventRef {
                 event_type: "precondition_checked".to_string(),
@@ -223,6 +224,7 @@ async fn armed_gate_refuses_matching_step_and_records_evidence() {
                     "check_digest": check_digest,
                     "authority_digest": authority_digest,
                     "check_writable": check_writable,
+                    "attribution": attribution,
                 })),
             }),
             _ => None,
