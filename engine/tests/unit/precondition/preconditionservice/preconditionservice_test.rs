@@ -13,8 +13,8 @@ use rigorix_engine::precondition::application::{
     DispatchStep, PreconditionCheckInput, PreconditionService, PreconditionServiceImpl,
 };
 use rigorix_engine::precondition::domain::{
-    GatingMode, Precondition, PreconditionConfig, PreconditionError, PreconditionOutcome,
-    PreconditionVerdict,
+    AttributionReason, GatingMode, Precondition, PreconditionConfig, PreconditionError,
+    PreconditionOutcome, PreconditionVerdict,
 };
 use rigorix_engine::precondition::infrastructure::repository::PreconditionRepository;
 use rigorix_engine::precondition::infrastructure::{PreconditionRun, PreconditionRunner};
@@ -75,6 +75,29 @@ impl PreconditionRunner for FailingRunner {
         Err(PreconditionError::Timeout {
             precondition_id: precondition.id.clone(),
             timeout_ms: 100,
+        })
+    }
+}
+
+/// Returns a run whose attribution digests are present, so the service records
+/// `recorded` (ISSUE-ATTRIBUTION-ABSENCE-REASON).
+struct DigestRunner;
+
+#[async_trait]
+impl PreconditionRunner for DigestRunner {
+    async fn run(
+        &self,
+        _precondition: &Precondition,
+        _input: &PreconditionCheckInput,
+    ) -> Result<PreconditionRun, PreconditionError> {
+        Ok(PreconditionRun {
+            outcome: PreconditionOutcome::Failed,
+            exit_code: Some(1),
+            stdout: None,
+            check_writable: Some(false),
+            authority_writable: None,
+            check_digest: Some("sha256:check".to_string()),
+            authority_digest: Some("sha256:authority".to_string()),
         })
     }
 }
@@ -334,4 +357,90 @@ async fn is_configured_reports_precondition_presence() {
     assert!(configured.is_configured().await.expect("configured"));
     let empty = service(Ok(Some(config(vec![]))), Box::new(FailingRunner));
     assert!(!empty.is_configured().await.expect("configured"));
+}
+
+#[tokio::test]
+async fn recorded_attribution_when_the_check_ran_with_digests() {
+    let svc = service(
+        Ok(Some(config(vec![precondition(
+            "p1",
+            "payment_execute",
+            &[],
+        )]))),
+        Box::new(DigestRunner),
+    );
+    let (verdict, findings) = svc
+        .evaluate_with_findings(uuid::Uuid::nil(), &step("payment_execute", json!({})))
+        .await
+        .expect("evaluate");
+    assert!(matches!(verdict, PreconditionVerdict::Deny { .. }));
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].attribution, Some(AttributionReason::Recorded));
+    assert_eq!(findings[0].check_digest.as_deref(), Some("sha256:check"));
+}
+
+#[tokio::test]
+async fn artifact_unreadable_when_a_digest_is_missing() {
+    // The check ran (a determinate outcome) but the runner could not read an
+    // artifact: the reason is `artifact_unreadable`, not an absent block.
+    let svc = service(
+        Ok(Some(config(vec![precondition(
+            "p1",
+            "payment_execute",
+            &[],
+        )]))),
+        Box::new(RecordingRunner {
+            calls: Arc::new(Mutex::new(Vec::new())),
+            outcome: PreconditionOutcome::Failed,
+        }),
+    );
+    let (_, findings) = svc
+        .evaluate_with_findings(uuid::Uuid::nil(), &step("payment_execute", json!({})))
+        .await
+        .expect("evaluate");
+    assert_eq!(
+        findings[0].attribution,
+        Some(AttributionReason::ArtifactUnreadable)
+    );
+}
+
+#[tokio::test]
+async fn missing_required_param_is_refused_before_check() {
+    let svc = service(
+        Ok(Some(config(vec![precondition(
+            "p1",
+            "payment_execute",
+            &["/beneficiary"],
+        )]))),
+        Box::new(DigestRunner),
+    );
+    let (_, findings) = svc
+        .evaluate_with_findings(uuid::Uuid::nil(), &step("payment_execute", json!({})))
+        .await
+        .expect("evaluate");
+    assert_eq!(
+        findings[0].attribution,
+        Some(AttributionReason::RefusedBeforeCheck)
+    );
+    assert_eq!(findings[0].check_digest, None);
+}
+
+#[tokio::test]
+async fn indeterminate_runner_failure_is_refused_before_check() {
+    let svc = service(
+        Ok(Some(config(vec![precondition(
+            "p1",
+            "payment_execute",
+            &[],
+        )]))),
+        Box::new(FailingRunner),
+    );
+    let (_, findings) = svc
+        .evaluate_with_findings(uuid::Uuid::nil(), &step("payment_execute", json!({})))
+        .await
+        .expect("evaluate");
+    assert_eq!(
+        findings[0].attribution,
+        Some(AttributionReason::RefusedBeforeCheck)
+    );
 }

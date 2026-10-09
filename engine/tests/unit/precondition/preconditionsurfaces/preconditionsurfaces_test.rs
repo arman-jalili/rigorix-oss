@@ -9,7 +9,7 @@ use rigorix_engine::precondition::application::{
     PreconditionPolicyViolation, PreconditionSurfaces, PreconditionSurfacesImpl,
 };
 use rigorix_engine::precondition::domain::{
-    PreconditionFinding, PreconditionOutcome, PreconditionVerdict,
+    AttributionReason, PreconditionFinding, PreconditionOutcome, PreconditionVerdict,
 };
 
 #[test]
@@ -71,6 +71,7 @@ fn test_findings_json_surfaces_evidence_and_redacts_values() {
         check_digest: Some("sha256:check".to_string()),
         authority_digest: Some("sha256:authority".to_string()),
         check_writable: Some(false),
+        attribution: Some(AttributionReason::Recorded),
     };
     let surfaced = PreconditionSurfacesImpl::findings_json(&[finding]);
     assert_eq!(surfaced.len(), 1);
@@ -79,6 +80,7 @@ fn test_findings_json_surfaces_evidence_and_redacts_values() {
     assert_eq!(entry["step"], "pay");
     assert_eq!(entry["outcome"], "error");
     assert_eq!(entry["inputs_hash"], "sha256:deadbeef");
+    assert_eq!(entry["attribution"], "recorded");
     assert!(entry["checked_at"].is_string());
 
     let serialized = serde_json::to_string(entry).expect("serialize");

@@ -704,6 +704,7 @@ mod tests {
                 Some("sha256:check".into()),
                 Some("sha256:authority".into()),
                 Some(true),
+                Some("recorded".into()),
             )],
             vec![SequencePolicyFinding::new(
                 "rule-1".into(),

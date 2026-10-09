@@ -163,6 +163,7 @@ impl AuditFormatter for AuditFormatterImpl {
                     "check_digest": f.check_digest(),
                     "authority_digest": f.authority_digest(),
                     "check_writable": f.check_writable(),
+                    "attribution": f.attribution(),
                 })
             }).collect::<Vec<_>>(),
             "sequence_policy_findings": envelope.sequence_policy_findings().iter().map(|f| {
@@ -427,6 +428,7 @@ mod tests {
                 Some("sha256:check".into()),
                 Some("sha256:authority".into()),
                 Some(true),
+                Some("recorded".into()),
             )],
             vec![SequencePolicyFinding::new(
                 "rule-1".into(),
