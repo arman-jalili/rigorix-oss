@@ -108,16 +108,31 @@ echo "--- CI Status ---"
 
 case "$PLATFORM" in
 	github)
-		STATUS_CHECKS=$(echo "$PR_INFO" | jq -r '.statusCheckRollup[]?.status // "unknown"' 2>/dev/null || echo "unknown")
+		# `statusCheckRollup` mixes CheckRun entries (`status` + `conclusion`) with
+		# StatusContext entries (`state`). Reading `.status` alone always yields
+		# COMPLETED for a finished check, so comparing it to SUCCESS made this gate
+		# fail every green PR. Aggregate the real verdict instead.
+		STATUS_CHECKS=$(echo "$PR_INFO" | jq -r '
+			[ .statusCheckRollup[]?
+			  | if (.conclusion? // null) != null then .conclusion
+			    else (.state // .status // "unknown")
+			    end ]
+			| map(ascii_downcase)
+			| if length == 0 then "unknown"
+			  elif any(. == "pending" or . == "queued" or . == "in_progress" or . == "expected") then "pending"
+			  elif all(. == "success" or . == "neutral" or . == "skipped") then "success"
+			  else "failure"
+			  end
+		' 2>/dev/null || echo "unknown")
 		;;
 	gitlab)
-		STATUS_CHECKS=$(echo "$MR_INFO" | jq -r '.head_pipeline.status // "unknown"' 2>/dev/null || echo "unknown")
+		STATUS_CHECKS=$(echo "$MR_INFO" | jq -r '.head_pipeline.status // "unknown"' 2>/dev/null | tr '[:upper:]' '[:lower:]' || echo "unknown")
 		;;
 esac
 
-if [ "$STATUS_CHECKS" = "SUCCESS" ] || [ "$STATUS_CHECKS" = "success" ] || [ "$STATUS_CHECKS" = "passed" ]; then
+if [ "$STATUS_CHECKS" = "success" ] || [ "$STATUS_CHECKS" = "passed" ]; then
 	pass "CI checks passed"
-elif [ "$STATUS_CHECKS" = "IN_PROGRESS" ] || [ "$STATUS_CHECKS" = "pending" ] || [ "$STATUS_CHECKS" = "running" ]; then
+elif [ "$STATUS_CHECKS" = "pending" ] || [ "$STATUS_CHECKS" = "in_progress" ] || [ "$STATUS_CHECKS" = "running" ] || [ "$STATUS_CHECKS" = "queued" ]; then
 	warn "CI checks in progress"
 	echo "  Wait for completion and re-run"
 else

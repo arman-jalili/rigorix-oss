@@ -37,7 +37,10 @@ echo "Processing $COUNT issues..."
 # ---------------------------------------------------------------------------
 # Generate Groups
 # ---------------------------------------------------------------------------
-cat > "$OUTPUT_FILE" << 'EOF'
+# The delimiter is UNQUOTED on purpose: `$(date)` and `$COUNT` below must
+# expand. With << 'EOF' the file was written containing the literal text
+# "$(date)" and "$COUNT".
+cat > "$OUTPUT_FILE" << EOF
 # Issue Implementation Groups
 
 **Generated:** $(date)
