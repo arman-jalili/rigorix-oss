@@ -68,9 +68,26 @@ this is the same order as #987 → SDK 0.3.0). Sequence:
    (`service_impl.rs` finding construction; `runner.rs` refusal paths;
    `sha256_file` returning `None`).
 3. `rigorix-enterprise`: ingest + serve it; the console renders it.
-4. Enterprise conformance mirror must be updated with the SDK change — serde
-   drops unknown fields, so a missed mirror update silently diverges the HMAC
-   bytes (this bit us on the 0.3.0 bump).
+4. Enterprise conformance mirror (`core/tests/conformance/mod.rs`
+   `CanonicalPreconditionFindingRef`) must be updated with the SDK change.
+   Verified behaviour: this is a **test-only** mirror — production ingestion
+   stores `precondition_findings` as raw `serde_json::Value`
+   (`audit_ingestion/domain/value.rs`), so there is no field loss in
+   production. A missed mirror update makes the conformance gate **fail
+   loudly** (`HMAC verification failed (canonical form mismatch)`), which is the
+   gate doing its job. Add the field with `skip_serializing_if = "Option::is_none"`
+   and declare it **last**; that form is forward- *and* backward-compatible
+   (verified 34/34 against both the pre-#994 and post-#994 SDK schemas), so it
+   can land ahead of the SDK ref bump.
+
+**Update (post-verification):** the mirror fix (item 4) has landed, and the SDK
+contract change (item 1) is merged on `rigorix-sdk` main (`#42`) but **not yet
+released** — the SDK version is still the already-published `0.3.0`, so it must
+be bumped to `0.4.0` before any publish. Items 2 and 3 are held behind that
+release for a demonstrated reason: the **published** `rigorix-verifier@0.3.0`
+rejects an envelope carrying `attribution` (`signature mismatch`), so an engine
+release emitting it before the SDK release would make every published verifier
+reject valid envelopes.
 
 ## Interim behaviour (until this + the SDK ship)
 

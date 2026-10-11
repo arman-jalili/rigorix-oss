@@ -291,9 +291,15 @@ machine-readable `attribution` reason (`recorded` | `refused_before_check` |
 ("pre-attribution engine" — absent is **not** tampered), while a new engine
 always sets it. The `rigorix-sdk` contract change (`preconditionFindingRef`) and
 the engine population (finding construction; the trust-boundary / boundary /
-timeout / spawn refusal path; an unreadable digest) ship together, and the
-enterprise conformance mirror must move in lockstep — serde drops unknown
-fields, so a missed mirror silently diverges the HMAC bytes.
+timeout / spawn refusal path; an unreadable digest) ship together with the
+enterprise conformance mirror. The mirror
+(`CanonicalPreconditionFindingRef`) must carry the field **last** and
+`skip_serializing_if = "Option::is_none"`: field order is the canonical form,
+and that form is forward- and backward-compatible (verified against the schemas
+both before and after the contract change). Note the blast radius is the
+**gate**, not production — enterprise ingestion stores `precondition_findings`
+as raw JSON, so a missed mirror update fails the conformance test loudly
+(`canonical form mismatch`) rather than corrupting ingested records.
 
 ### Non-goals (explicit)
 
