@@ -51,6 +51,14 @@ async fn main() {
         .route("/health", get(|| async { "ok" }))
         .route("/rpc", post(rpc_handler))
         .route("/events", get(events_handler))
+        // #915 / ADR-0001 D4: the optional MCP Streamable HTTP adapter over the
+        // frozen catalog. Same governed dispatch + auth as `/rpc`.
+        .route(
+            "/mcp",
+            post(rigorix_server::mcp_http::post_handler)
+                .get(rigorix_server::mcp_http::get_handler)
+                .delete(rigorix_server::mcp_http::delete_handler),
+        )
         .with_state(state);
 
     let listener = match tokio::net::TcpListener::bind(&bind).await {
@@ -60,7 +68,9 @@ async fn main() {
             std::process::exit(1);
         }
     };
-    tracing::info!("rigorix-server listening on http://{bind} (POST /rpc, GET /events)");
+    tracing::info!(
+        "rigorix-server listening on http://{bind} (POST /rpc, GET /events, MCP Streamable HTTP at /mcp)"
+    );
 
     if let Err(e) = axum::serve(listener, app).await {
         tracing::error!("server error: {e}");

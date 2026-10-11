@@ -33,6 +33,9 @@ pub fn system_version() -> Value {
             "jsonrpc-2.0",
             "batch",
             "mcp-parity",
+            // #915 / ADR-0001 D4: the optional MCP Streamable HTTP adapter
+            // (POST /mcp) is mounted; clients can probe it without a new method.
+            "mcp-streamable-http",
         ],
     })
 }
