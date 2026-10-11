@@ -1,3 +1,37 @@
+## [2026-10-11] — release 1.9.5 (structured attribution reason)
+
+### Added
+- **`attribution` on precondition findings** (ADR-017,
+  ISSUE-ATTRIBUTION-ABSENCE-REASON / #994): `precondition_findings[]` now
+  carries the structured reason attribution is present or absent — `recorded` |
+  `refused_before_check` | `artifact_unreadable`. Previously a single empty
+  state covered three different situations (a pre-attribution engine, a refusal
+  *before* the check ran, an unreadable artifact), so a consumer could not tell
+  "the check never ran" from "this record predates attribution" without
+  parsing the localized `summary`. Additive and optional (serde-defaulted,
+  omitted when absent): a missing field keeps its old meaning — a
+  pre-attribution engine — and absent remains **not** tampered (GAP-M-12).
+  Carried through the event → envelope (`PreconditionFindingRef`) → MCP read
+  surface, and surfaced by `rigorix_validate_plan`.
+
+### Changed
+- **`rigorix-verifier` pin → `0.4`** (`server`, dev-only) and the SDK contract
+  is now `rigorix-sdk` 0.4.0.
+
+### Notes
+- **Verifying 1.9.5 envelopes needs `rigorix-verifier` 0.4.0.** The HMAC is over
+  the struct field order, so a 0.3.0 verifier **cannot** verify an envelope
+  carrying `attribution` — it drops the unknown field and reports a signature
+  mismatch (reproduced against the published `rigorix-verifier@0.3.0`). 0.4.0
+  verifies both old and new envelopes. Consumers on crates.io / npm / PyPI must
+  upgrade before consuming envelopes from 1.9.5.
+- **Surfaces (not on the release train):** `rigorix-server` gained an optional
+  MCP Streamable HTTP adapter at `POST /mcp`, mapped onto the frozen catalog
+  through the same governed `rpc::invoke` path as `POST /rpc` (#915).
+
+### Release train
+- `engine` / `mcp` / `cli` → 1.9.5.
+
 ## [2026-10-08] — release 1.9.4 (evidence redaction + truthful boundary message)
 
 ### Fixed

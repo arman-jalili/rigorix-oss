@@ -2615,7 +2615,7 @@ dependencies = [
 
 [[package]]
 name = "rigorix-cli"
-version = "1.9.4"
+version = "1.9.5"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2639,7 +2639,7 @@ dependencies = [
 
 [[package]]
 name = "rigorix-engine"
-version = "1.9.4"
+version = "1.9.5"
 dependencies = [
  "async-trait",
  "base64",
@@ -2677,7 +2677,7 @@ dependencies = [
 
 [[package]]
 name = "rigorix-mcp"
-version = "1.9.4"
+version = "1.9.5"
 dependencies = [
  "async-trait",
  "axum",
@@ -2702,9 +2702,9 @@ dependencies = [
 
 [[package]]
 name = "rigorix-schemas"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5432e88f3eeffdbec269e23d3f15c418deadaee005d44b12b81f320f18835d2c"
+checksum = "15a80f140fb9baf697c486a1e7dc8849361ead7f08d1e0c9d3220b765a8b42af"
 dependencies = [
  "serde_json",
 ]
@@ -2734,9 +2734,9 @@ dependencies = [
 
 [[package]]
 name = "rigorix-verifier"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2ccc606b49de49dcfa833f0debde523e60e056b8af9c39685d045ae17090e83"
+checksum = "7a6fb8de4fabeffe50099d81d591dfc08099e9965e472bd0fbd4229074f5a2a4"
 dependencies = [
  "chrono",
  "ed25519-dalek",

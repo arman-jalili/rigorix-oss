@@ -14,8 +14,8 @@ name = "rigorix-server"
 path = "src/main.rs"
 
 [dependencies]
-rigorix-engine = { path = "../engine", version = "1.9.4" }
-rigorix-mcp = { path = "../mcp", version = "1.9.4" }
+rigorix-engine = { path = "../engine", version = "1.9.5" }
+rigorix-mcp = { path = "../mcp", version = "1.9.5" }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -41,4 +41,4 @@ chrono = { workspace = true }
 tower = { version = "0.5", features = ["util"] }
 # OSS-CATALOG-SUBSET-VERIFIER (#907): the SHARED closed-namespace guard.
 # Published crates.io dependency (NOT path/git) so a fresh public clone builds.
-rigorix-verifier = "0.3"
+rigorix-verifier = "0.4"
