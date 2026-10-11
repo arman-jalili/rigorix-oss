@@ -372,6 +372,11 @@ pub struct PreconditionFindingRef {
     /// effective UID at dispatch. Absent when unknown.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub check_writable: Option<bool>,
+    /// Structured attribution reason (ISSUE-ATTRIBUTION-ABSENCE-REASON):
+    /// `recorded` | `refused_before_check` | `artifact_unreadable`. Additive
+    /// and optional; absent only in pre-attribution (old-engine) envelopes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attribution: Option<String>,
 }
 
 /// A reference to a recorded effect-scope violation (ADR-011 R5).

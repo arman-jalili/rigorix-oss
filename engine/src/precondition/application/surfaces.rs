@@ -107,6 +107,7 @@ impl PreconditionSurfacesImpl {
                     "inputs_hash": finding.inputs_hash,
                     "checked_at": finding.checked_at.to_rfc3339(),
                     "summary": finding.decision_summary(),
+                    "attribution": finding.attribution.map(|reason| reason.as_str()),
                 })
             })
             .collect()

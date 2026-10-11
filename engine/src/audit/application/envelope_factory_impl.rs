@@ -675,6 +675,10 @@ impl AuditEnvelopeFactoryImpl {
                 .and_then(|v| v.as_str())
                 .map(str::to_string);
             let check_writable = payload.get("check_writable").and_then(|v| v.as_bool());
+            let attribution = payload
+                .get("attribution")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
             out.push(crate::audit::domain::PreconditionFindingRef {
                 precondition_id: precondition_id.to_string(),
                 step: step.to_string(),
@@ -686,6 +690,7 @@ impl AuditEnvelopeFactoryImpl {
                 check_digest,
                 authority_digest,
                 check_writable,
+                attribution,
             });
         }
         out

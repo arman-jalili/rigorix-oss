@@ -921,6 +921,9 @@ impl ParallelExecutionServiceImpl {
                         check_digest: finding.check_digest.clone(),
                         authority_digest: finding.authority_digest.clone(),
                         check_writable: finding.check_writable,
+                        attribution: finding
+                            .attribution
+                            .map(|reason| reason.as_str().to_string()),
                         timestamp: finding.checked_at,
                     })
                     .await;

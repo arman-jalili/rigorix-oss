@@ -455,6 +455,10 @@ pub enum ExecutionEvent {
         /// Boundary fact (#986): the check was writable by the engine's euid.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         check_writable: Option<bool>,
+        /// Structured attribution reason (ISSUE-ATTRIBUTION-ABSENCE-REASON):
+        /// `recorded` | `refused_before_check` | `artifact_unreadable`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        attribution: Option<String>,
         /// ISO 8601 timestamp of the event.
         timestamp: DateTime<Utc>,
     },
@@ -828,6 +832,7 @@ impl ExecutionEvent {
                 check_digest,
                 authority_digest,
                 check_writable,
+                attribution,
                 timestamp,
                 ..
             } => Some(serde_json::json!({
@@ -840,6 +845,7 @@ impl ExecutionEvent {
                 "check_digest": check_digest,
                 "authority_digest": authority_digest,
                 "check_writable": check_writable,
+                "attribution": attribution,
                 "checked_at": timestamp.to_rfc3339(),
             })),
             ExecutionEvent::ApprovalRecorded {

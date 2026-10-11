@@ -209,7 +209,9 @@ resolved check program) and `authority_digest` (sha256 of the operator-declared
 `authority_path`), plus the `check_writable` boundary fact. A forged or changed
 `authority.json` therefore changes `authority_digest`, so a verifier can compare
 it against the operator's known-good digest. Absent fields mean a pre-attribution
-envelope — absent is **not** tampered; a *changed* digest is the signal.
+envelope — absent is **not** tampered; a *changed* digest is the signal. The
+`attribution` reason distinguishes an old record from a refusal *before* the
+check ran and from an unreadable artifact (see §Evidence redaction below).
 Detection only: prevention is the boundary itself (#985/#986).
 
 `require_immutable_check = true` (per precondition, additive, default `false`)
@@ -279,14 +281,25 @@ the offending artifact was the interpreted script.
 This is evidence hygiene, not secrecy: the path remains available to the
 operator locally, and the hash is stable enough to correlate records.
 
-**Open — scheduled with the next SDK release.** `check_digest` /
-`authority_digest` / `check_writable` are absent for three distinct reasons: a
-pre-attribution envelope, a refusal *before* the check ran (trust boundary), or
-an unreadable artifact. The record cannot currently distinguish them. A
-structured reason code on the finding is the fix; because it is a contract
-change it ships with the next `rigorix-sdk` release. Until then a consumer (for
-example the enterprise Audit Explorer) must render the finding's `summary`
-wherever an attribution block is missing, rather than showing nothing.
+**Resolved — structured attribution reason (ISSUE-ATTRIBUTION-ABSENCE-REASON).**
+`check_digest` / `authority_digest` / `check_writable` could be absent for three
+distinct reasons: a pre-attribution envelope, a refusal *before* the check ran
+(trust boundary / boundary strength), or an unreadable artifact. A
+machine-readable `attribution` reason (`recorded` | `refused_before_check` |
+`artifact_unreadable`) now distinguishes them without parsing the localized
+`summary`. It is additive and optional: absent keeps its old meaning
+("pre-attribution engine" — absent is **not** tampered), while a new engine
+always sets it. The `rigorix-sdk` contract change (`preconditionFindingRef`) and
+the engine population (finding construction; the trust-boundary / boundary /
+timeout / spawn refusal path; an unreadable digest) ship together with the
+enterprise conformance mirror. The mirror
+(`CanonicalPreconditionFindingRef`) must carry the field **last** and
+`skip_serializing_if = "Option::is_none"`: field order is the canonical form,
+and that form is forward- and backward-compatible (verified against the schemas
+both before and after the contract change). Note the blast radius is the
+**gate**, not production — enterprise ingestion stores `precondition_findings`
+as raw JSON, so a missed mirror update fails the conformance test loudly
+(`canonical form mismatch`) rather than corrupting ingested records.
 
 ### Non-goals (explicit)
 

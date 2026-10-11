@@ -58,6 +58,40 @@ impl PreconditionOutcome {
     }
 }
 
+/// Structured reason the ADR-017 attribution digests are present or absent
+/// (ISSUE-ATTRIBUTION-ABSENCE-REASON).
+///
+/// Before this, an absent `check_digest` / `authority_digest` meant three
+/// different things; a consumer could not tell a boundary refusal (the
+/// interesting case) from an old record. New engines always set this, so
+/// absence itself means "written by a pre-attribution engine".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AttributionReason {
+    /// The check ran (passed or failed) and attribution was collected.
+    Recorded,
+    /// A trust-boundary / boundary-strength refusal, a missing required
+    /// parameter, or an unarmed gate — nothing was hashed or executed. The
+    /// digests are omitted; the summary carries the reason.
+    RefusedBeforeCheck,
+    /// The check (or its authority) existed but a digest could not be computed
+    /// (unreadable artifact / permissions / race). A weaker signal than a
+    /// clean refusal; any digest that *could* be computed is still present.
+    ArtifactUnreadable,
+}
+
+impl AttributionReason {
+    /// Canonical lowercase wire string
+    /// (`"recorded" | "refused_before_check" | "artifact_unreadable"`).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AttributionReason::Recorded => "recorded",
+            AttributionReason::RefusedBeforeCheck => "refused_before_check",
+            AttributionReason::ArtifactUnreadable => "artifact_unreadable",
+        }
+    }
+}
+
 /// A recorded, redacted precondition determination for one matched step.
 ///
 /// Summary fields only — the precondition id, the step, the outcome, the exit
@@ -98,6 +132,11 @@ pub struct PreconditionFinding {
     /// engine's effective UID. `None` when unknown.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub check_writable: Option<bool>,
+    /// Structured attribution reason (ISSUE-ATTRIBUTION-ABSENCE-REASON).
+    /// Additive and optional: absent ⇒ a pre-attribution engine; a new engine
+    /// always sets it. Serialized last to keep existing canonical bytes stable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attribution: Option<AttributionReason>,
 }
 
 impl PreconditionFinding {
@@ -156,6 +195,10 @@ pub struct PreconditionChecked {
     /// Boundary fact: the check was writable by the engine's euid.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub check_writable: Option<bool>,
+    /// Structured attribution reason (ISSUE-ATTRIBUTION-ABSENCE-REASON).
+    /// Wire string: `recorded` | `refused_before_check` | `artifact_unreadable`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attribution: Option<String>,
     /// ISO 8601 timestamp of the event.
     pub timestamp: DateTime<Utc>,
 }
@@ -176,6 +219,7 @@ mod tests {
             check_digest: None,
             authority_digest: None,
             check_writable: None,
+            attribution: None,
         }
     }
 
