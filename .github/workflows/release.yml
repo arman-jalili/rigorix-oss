@@ -42,8 +42,8 @@ jobs:
           echo "✅ All versions match tag"
 
   # ── Publish each crate in dependency order ────────────────────
-  # Each publish step uses a resilient script that skips if the
-  # version is already on crates.io (idempotent replay).
+  # Each step delegates to .github/scripts/publish-crate.sh, which asks the
+  # registry directly and treats "already exists" as success (idempotent replay).
   publish-engine:
     name: 📦 Publish engine
     needs: [verify]
@@ -53,13 +53,9 @@ jobs:
       - uses: ./.github/actions/setup
 
       - name: Publish rigorix-engine (skip if exists)
-        run: |
-          VERSION=$(grep '^version' engine/Cargo.toml | head -1 | sed 's/version = "//;s/"//')
-          if cargo search rigorix-engine 2>/dev/null | grep -q "^rigorix-engine = \"$VERSION\""; then
-            echo "⏭️ rigorix-engine v$VERSION already published, skipping"
-          else
-            cargo publish -p rigorix-engine --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          fi
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: bash .github/scripts/publish-crate.sh rigorix-engine engine/Cargo.toml
 
   publish-cli:
     name: 📦 Publish CLI
@@ -70,13 +66,9 @@ jobs:
       - uses: ./.github/actions/setup
 
       - name: Publish rigorix-cli (skip if exists)
-        run: |
-          VERSION=$(grep '^version' cli/Cargo.toml | head -1 | sed 's/version = "//;s/"//')
-          if cargo search rigorix-cli 2>/dev/null | grep -q "^rigorix-cli = \"$VERSION\""; then
-            echo "⏭️ rigorix-cli v$VERSION already published, skipping"
-          else
-            cargo publish -p rigorix-cli --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          fi
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: bash .github/scripts/publish-crate.sh rigorix-cli cli/Cargo.toml
 
   publish-mcp:
     name: 📦 Publish MCP
@@ -87,13 +79,9 @@ jobs:
       - uses: ./.github/actions/setup
 
       - name: Publish rigorix-mcp (skip if exists)
-        run: |
-          VERSION=$(grep '^version' mcp/Cargo.toml | head -1 | sed 's/version = "//;s/"//')
-          if cargo search rigorix-mcp 2>/dev/null | grep -q "^rigorix-mcp = \"$VERSION\""; then
-            echo "⏭️ rigorix-mcp v$VERSION already published, skipping"
-          else
-            cargo publish -p rigorix-mcp --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          fi
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: bash .github/scripts/publish-crate.sh rigorix-mcp mcp/Cargo.toml
 
   publish-actions:
     name: 📦 Publish actions
@@ -104,13 +92,9 @@ jobs:
       - uses: ./.github/actions/setup
 
       - name: Publish rigorix-actions (skip if exists)
-        run: |
-          VERSION=$(grep '^version' actions/Cargo.toml | head -1 | sed 's/version = "//;s/"//')
-          if cargo search rigorix-actions 2>/dev/null | grep -q "^rigorix-actions = \"$VERSION\""; then
-            echo "⏭️ rigorix-actions v$VERSION already published, skipping"
-          else
-            cargo publish -p rigorix-actions --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          fi
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: bash .github/scripts/publish-crate.sh rigorix-actions actions/Cargo.toml
 
   # ── Create GitHub Release ─────────────────────────────────────
   github-release:
