@@ -17,12 +17,14 @@
 //! | [`anchor`] | ADR-016 anchor mode/head surface (#899) |
 //! | [`events`] | `GET /events` SSE push hub (ADR-0001 D8) |
 //! | [`event_bridge`] | engine `EventBusService` → [`events::EventHub`] bridge (#900) |
+//! | [`mcp_http`] | MCP Streamable HTTP adapter over the frozen catalog (#915) |
 
 pub mod anchor;
 pub mod backend;
 pub mod catalog;
 pub mod event_bridge;
 pub mod events;
+pub mod mcp_http;
 pub mod rpc;
 pub mod state;
 pub mod version;
@@ -31,4 +33,5 @@ pub use backend::{HostBackend, MethodBackend};
 pub use catalog::{AuthLevel, CATALOG, CatalogEntry};
 pub use event_bridge::{kind_for, spawn_event_bridge};
 pub use events::{EventHub, EventKind, ServerEvent};
+pub use mcp_http::McpSessions;
 pub use state::ServerState;

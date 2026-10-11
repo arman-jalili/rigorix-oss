@@ -108,12 +108,34 @@ pub async fn handle_single(value: Value, backend: &dyn MethodBackend) -> Option<
     };
     let params = object.get("params").cloned().unwrap_or(Value::Null);
 
-    let Some(entry) = catalog::find(&method) else {
-        return respond(
-            is_notification,
-            error(id, &HostError::method_not_found(&method)),
-        );
-    };
+    let result = invoke(&method, params, backend).await;
+
+    respond(
+        is_notification,
+        match result {
+            Ok(result) => success(id, result),
+            Err(host_error) => error(id, &host_error),
+        },
+    )
+}
+
+/// Resolve, authorize, and dispatch a frozen catalog method.
+///
+/// This is the SINGLE governed entry point behind both `POST /rpc`
+/// ([`handle_single`]) and the MCP Streamable HTTP `tools/call` adapter
+/// ([`crate::mcp_http`]). Sharing it guarantees the two transports enforce the
+/// **same** auth level (ADR-0001 D4) and take the **same** dispatch path — there
+/// is no second dialect and no raw-step bypass.
+///
+/// Unknown methods yield `method_not_found`; `admin` methods are refused
+/// (`not_enabled`) in OSS; `session` methods are refused when an IdP is
+/// configured and the caller is unattested (local/no-IdP mode is preserved).
+pub async fn invoke(
+    method: &str,
+    params: Value,
+    backend: &dyn MethodBackend,
+) -> Result<Value, HostError> {
+    let entry = catalog::find(method).ok_or_else(|| HostError::method_not_found(method))?;
 
     // ── Auth level (ADR-0001 D4) ──
     match entry.auth {
@@ -123,41 +145,23 @@ pub async fn handle_single(value: Value, backend: &dyn MethodBackend) -> Option<
             // the stdio MCP host. With an IdP configured, an unattested caller
             // is refused.
             if backend.auth_configured().await && !backend.is_authenticated().await {
-                return respond(
-                    is_notification,
-                    error(
-                        id,
-                        &HostError::not_authenticated(
-                            "A session is required for this method — run rigorix.auth.login",
-                        ),
-                    ),
-                );
+                return Err(HostError::not_authenticated(
+                    "A session is required for this method — run rigorix.auth.login",
+                ));
             }
         }
         AuthLevel::Admin => {
-            return respond(
-                is_notification,
-                error(
-                    id,
-                    &HostError::not_enabled(format!("{method} is an enterprise-only method")),
-                ),
-            );
+            return Err(HostError::not_enabled(format!(
+                "{method} is an enterprise-only method"
+            )));
         }
     }
 
-    let result = if method == "rigorix.system.version" {
+    if method == "rigorix.system.version" {
         Ok(crate::version::system_version())
     } else {
-        backend.dispatch(&method, params).await
-    };
-
-    respond(
-        is_notification,
-        match result {
-            Ok(result) => success(id, result),
-            Err(host_error) => error(id, &host_error),
-        },
-    )
+        backend.dispatch(method, params).await
+    }
 }
 
 /// Notifications produce no response.

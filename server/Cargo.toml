@@ -24,6 +24,8 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
+# MCP Streamable HTTP session ids (#915) — unguessable ids, workspace-pinned.
+uuid = { workspace = true }
 
 # First HTTP dependency since GAP-A-10. Keep the transport thin; the catalog is
 # the contract (see docs/sdk-server-strategy-freeze-2026-09-06.md).
@@ -34,8 +36,9 @@ futures = "0.3"
 
 [dev-dependencies]
 tempfile = { workspace = true }
-uuid = { workspace = true }
 chrono = { workspace = true }
+# Drive the axum router in-process for the MCP Streamable HTTP integration test.
+tower = { version = "0.5", features = ["util"] }
 # OSS-CATALOG-SUBSET-VERIFIER (#907): the SHARED closed-namespace guard.
 # Published crates.io dependency (NOT path/git) so a fresh public clone builds.
 rigorix-verifier = "0.3"

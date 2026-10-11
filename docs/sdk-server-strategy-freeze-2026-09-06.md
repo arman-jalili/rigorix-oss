@@ -82,7 +82,10 @@ The freeze is essentially fully delivered:
 - **D-3 (one catalog):** `rigorix.*` catalog frozen and now **closed/subset-modeled**
   (23 methods); `verify_catalog_subset` guards OSS, SDK and enterprise; OSS
   `rigorix-server` (#888/#900) + enterprise Execution API (#206/#208) both serve it.
-- **D-4 (SSE):** ADR-0002 spec + live `GET /events`.
+- **D-4 (SSE):** ADR-0002 spec + live `GET /events`. The optional **MCP
+  Streamable HTTP** adapter (#915) is now mounted at `POST /mcp` (trigger-gated;
+  it reuses the frozen catalog + the same governed auth/dispatch as `/rpc`, and
+  exposes **no** raw-step surface).
 - **D-5 (sequencing):** contract sync → catalog → **both servers** → **clients**
   (Rust #26 + TypeScript #27) — complete.
 - **Beyond the freeze:** ADR-015 (1.6.0 + enterprise), **ADR-016** audit integrity
