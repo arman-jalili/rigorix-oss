@@ -23,7 +23,7 @@
 .pi/scripts/validate-secret-logs.sh	secret-in-log	gating	yes	security	tracing a secret-ish identifier must be redacted
 .pi/scripts/validate-ci.sh	ci	gating	no	build	gates via the CI lint+build+test jobs; aggregate fmt/clippy/test/audit
 .pi/scripts/validate-tests.sh	tests	gating	no	testing	gates via the CI test job and conformance
-.pi/scripts/validate-security.sh	deps-secrets	advisory	no	security	cargo audit + ad-hoc secret scan (run directly by the CI audit job)
+.pi/scripts/validate-security.sh	deps-secrets	advisory	no	security	cargo audit + ad-hoc secret scan; WARN-only. Installed in all 5 trees; resolves its crate(s) from its OWN path, so it is cwd-independent (tree root = every crate). Advisory because its heuristics are noisy — the real dependency audit + secret scan gate in the CI audit job
 .pi/scripts/validate-architecture.sh	architecture	advisory	no	architecture	module-layering heuristic
 .pi/scripts/validate-architecture-readiness.sh	architecture	advisory	no	architecture	release-readiness heuristic
 .pi/scripts/validate-canonical.sh	canonical	advisory	no	architecture	@canonical reference check
