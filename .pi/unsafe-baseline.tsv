@@ -1,0 +1,6 @@
+# location	kind	class	severity	reason
+# Generated/maintained by .pi/scripts/validate-unsafe-sites.sh --update
+# Every entry is an explicit decision: production `unsafe` is either
+# removed or recorded here with the reason it is tolerated.
+engine/src/precondition/infrastructure/runner.rs:314	unsafe	libc	medium	libc::geteuid/getgroups to read the real uid/groups for the precondition runner; the existing SAFETY note covers the only pointer (a buffer sized by the first getgroups call) and every call is fallible-by-return, not UB
+engine/src/precondition/infrastructure/runner.rs:328	unsafe	libc	medium	libc::geteuid/getgroups to read the real uid/groups for the precondition runner; the existing SAFETY note covers the only pointer (a buffer sized by the first getgroups call) and every call is fallible-by-return, not UB

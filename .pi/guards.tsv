@@ -1,0 +1,32 @@
+# Self-owned guard registry (ISSUE-SELF-OWNED-VULN-CHECKS).
+#
+# Every root .pi/scripts/validate-*.sh must appear here. `validate-guards.sh`
+# fails the build if a guard script exists but is not registered, so a new guard
+# cannot be silently left unclassified.
+#
+# Columns (tab-separated):
+#   guard      path to the guard script, relative to the repo root
+#   class      the pattern class it owns
+#   tier       gating | advisory
+#              gating   = a non-zero exit fails a mandatory build path
+#              advisory = informational; it does not stop a merge
+#   run_here   yes | no
+#              yes = `validate-guards.sh` runs it (in the ci.yml `audit` job)
+#              no  = it gates elsewhere (noted) or is advisory
+#   owner      the team accountable for the class
+#   notes      how it gates / what it does
+#
+# guard	class	tier	run_here	owner	notes
+.pi/scripts/validate-guards.sh	guards	advisory	no	security	meta: registry integrity; runs the gating set below
+.pi/scripts/validate-panic-sites.sh	panic-surface	gating	yes	security	new production panic is removed or baselined (ratchet)
+.pi/scripts/validate-unsafe-sites.sh	unsafe	gating	yes	security	new production unsafe is removed or baselined (ratchet)
+.pi/scripts/validate-secret-logs.sh	secret-in-log	gating	yes	security	tracing a secret-ish identifier must be redacted
+.pi/scripts/validate-ci.sh	ci	gating	no	build	gates via the CI lint+build+test jobs; aggregate fmt/clippy/test/audit
+.pi/scripts/validate-tests.sh	tests	gating	no	testing	gates via the CI test job and conformance
+.pi/scripts/validate-security.sh	deps-secrets	advisory	no	security	cargo audit + ad-hoc secret scan (run directly by the CI audit job)
+.pi/scripts/validate-architecture.sh	architecture	advisory	no	architecture	module-layering heuristic
+.pi/scripts/validate-architecture-readiness.sh	architecture	advisory	no	architecture	release-readiness heuristic
+.pi/scripts/validate-canonical.sh	canonical	advisory	no	architecture	@canonical reference check
+.pi/scripts/validate-ubiquitous-language.sh	domain	advisory	no	domain	glossary drift check
+.pi/scripts/validate-operations.sh	operations	advisory	no	ops	production-readiness heuristic
+.pi/scripts/validate-integration.sh	integration	advisory	no	integration	integration heuristic

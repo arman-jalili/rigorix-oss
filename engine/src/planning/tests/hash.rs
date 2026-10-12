@@ -18,12 +18,14 @@ fn test_planning_hash_deterministic_across_parameter_order() {
         "template-id",
         &params1,
         &intent.input,
-    );
+    )
+    .expect("valid SHA-256 hex");
     let hash2 = crate::planning::application::pipeline_impl::compute_planning_hash(
         "template-id",
         &params2,
         &intent.input,
-    );
+    )
+    .expect("valid SHA-256 hex");
 
     // Different parameter order should produce the same hash
     assert_eq!(
@@ -39,12 +41,14 @@ fn test_planning_hash_different_intent_produces_different_hash() {
         "template-id",
         &params,
         "read file",
-    );
+    )
+    .expect("valid SHA-256 hex");
     let hash2 = crate::planning::application::pipeline_impl::compute_planning_hash(
         "template-id",
         &params,
         "write file",
-    );
+    )
+    .expect("valid SHA-256 hex");
     assert_ne!(
         hash1, hash2,
         "Different intents must produce different hashes"
@@ -55,7 +59,8 @@ fn test_planning_hash_different_intent_produces_different_hash() {
 fn test_planning_hash_format() {
     let params = HashMap::new();
     let hash =
-        crate::planning::application::pipeline_impl::compute_planning_hash("t", &params, "test");
+        crate::planning::application::pipeline_impl::compute_planning_hash("t", &params, "test")
+            .expect("valid SHA-256 hex");
     assert_eq!(
         hash.as_str().len(),
         64,
@@ -74,12 +79,14 @@ fn test_planning_hash_different_templates_produce_different_hash() {
         "template-a",
         &params,
         "test",
-    );
+    )
+    .expect("valid SHA-256 hex");
     let hash2 = crate::planning::application::pipeline_impl::compute_planning_hash(
         "template-b",
         &params,
         "test",
-    );
+    )
+    .expect("valid SHA-256 hex");
     assert_ne!(
         hash1, hash2,
         "Different template IDs must produce different hashes"
@@ -97,7 +104,8 @@ fn test_planning_result_creation() {
 
     let hash = PlanningHash::new(
         "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789".to_string(),
-    );
+    )
+    .expect("valid SHA-256 hex");
 
     let result = PlanningResult::new(
         Uuid::new_v4(),
@@ -119,16 +127,21 @@ fn test_planning_result_creation() {
 }
 
 #[test]
-#[should_panic(expected = "exactly 64 hex characters")]
-fn test_planning_hash_invalid_length_panics() {
-    PlanningHash::new("too-short".to_string());
+fn test_planning_hash_invalid_length_is_a_typed_refusal() {
+    let err = PlanningHash::new("too-short".to_string())
+        .expect_err("a short hash must be refused, not panic");
+    assert!(
+        err.to_string().contains("exactly 64 hex characters"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]
 fn test_planning_result_tracks_timestamps() {
     let hash = PlanningHash::new(
         "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789".to_string(),
-    );
+    )
+    .expect("valid SHA-256 hex");
 
     let result = PlanningResult::new(
         Uuid::new_v4(),

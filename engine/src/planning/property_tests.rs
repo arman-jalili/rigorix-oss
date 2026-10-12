@@ -8,7 +8,9 @@ use crate::planning::application::pipeline_impl::compute_planning_hash;
 use std::collections::HashMap;
 
 fn hash(intent: &str, template_id: &str, params: &HashMap<String, String>) -> String {
-    compute_planning_hash(template_id, params, intent).0
+    compute_planning_hash(template_id, params, intent)
+        .expect("valid SHA-256 hex")
+        .0
 }
 
 #[test]

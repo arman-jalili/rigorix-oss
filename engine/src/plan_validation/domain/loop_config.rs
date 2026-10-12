@@ -99,23 +99,32 @@ impl Default for ValidationLoopConfig {
     }
 }
 
+/// Error returned by [`ValidationLoopConfig::new`] for an invalid iteration count.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ValidationLoopConfigError {
+    /// `max_iterations` must be at least 1 (one initial attempt).
+    #[error("ValidationLoopConfig: max_iterations must be >= 1")]
+    ZeroIterations,
+}
+
 impl ValidationLoopConfig {
     /// Create a new validation loop configuration with the specified max iterations.
     ///
     /// All other fields use their defaults (Package quality, 50K tokens, caching enabled).
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `max_iterations` is 0 (at least one attempt is required).
-    pub fn new(max_iterations: u32) -> Self {
-        assert!(
-            max_iterations >= 1,
-            "ValidationLoopConfig: max_iterations must be >= 1"
-        );
-        Self {
+    /// Returns [`ValidationLoopConfigError::ZeroIterations`] if `max_iterations`
+    /// is 0. This was an `assert!`, which aborted the process rather than
+    /// returning a typed refusal (ISSUE-PRODUCTION-PANIC-SURFACE).
+    pub fn new(max_iterations: u32) -> Result<Self, ValidationLoopConfigError> {
+        if max_iterations == 0 {
+            return Err(ValidationLoopConfigError::ZeroIterations);
+        }
+        Ok(Self {
             max_iterations,
             ..Default::default()
-        }
+        })
     }
 
     /// Returns `true` if retries are still available for the given iteration number.
@@ -148,13 +157,13 @@ mod tests {
 
     #[test]
     fn test_new_with_max_iterations() {
-        let config = ValidationLoopConfig::new(5);
+        let config = ValidationLoopConfig::new(5).expect("valid config");
         assert_eq!(config.max_iterations, 5);
     }
 
     #[test]
     fn test_can_retry() {
-        let config = ValidationLoopConfig::new(3);
+        let config = ValidationLoopConfig::new(3).expect("valid config");
         assert!(config.can_retry(1));
         assert!(config.can_retry(2));
         assert!(!config.can_retry(3));
@@ -163,22 +172,22 @@ mod tests {
 
     #[test]
     fn test_max_retries() {
-        let config = ValidationLoopConfig::new(3);
+        let config = ValidationLoopConfig::new(3).expect("valid config");
         assert_eq!(config.max_retries(), 2);
 
-        let single = ValidationLoopConfig::new(1);
+        let single = ValidationLoopConfig::new(1).expect("valid config");
         assert_eq!(single.max_retries(), 0);
     }
 
     #[test]
-    #[should_panic(expected = "max_iterations must be >= 1")]
-    fn test_zero_iterations_panics() {
-        ValidationLoopConfig::new(0);
+    fn test_zero_iterations_is_a_typed_refusal() {
+        let err = ValidationLoopConfig::new(0).expect_err("zero must be refused, not panic");
+        assert_eq!(err, ValidationLoopConfigError::ZeroIterations);
     }
 
     #[test]
     fn test_serialization_roundtrip() {
-        let config = ValidationLoopConfig::new(5);
+        let config = ValidationLoopConfig::new(5).expect("valid config");
         let json = serde_json::to_string(&config).unwrap();
         let deserialized: ValidationLoopConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.max_iterations, 5);

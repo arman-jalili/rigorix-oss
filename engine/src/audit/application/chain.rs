@@ -63,10 +63,20 @@ pub fn next_link_from(
 pub fn verify_chain(envelopes: &[AuditEnvelope]) -> Result<(), AuditError> {
     use std::collections::HashMap;
 
-    let mut by_producer: HashMap<&str, Vec<&AuditEnvelope>> = HashMap::new();
+    // Carry `(sequence, envelope)` together: the filter that keeps only chained
+    // envelopes is the same step that extracts `sequence`, so the invariant is in
+    // the type and this verification path — the one that deliberately processes
+    // FOREIGN envelopes — never re-`expect`s on hostile input
+    // (ISSUE-PRODUCTION-PANIC-SURFACE).
+    let mut by_producer: HashMap<&str, Vec<(u64, &AuditEnvelope)>> = HashMap::new();
     for envelope in envelopes {
-        if let (Some(producer), Some(_)) = (envelope.producer_id.as_deref(), envelope.sequence) {
-            by_producer.entry(producer).or_default().push(envelope);
+        if let (Some(producer), Some(sequence)) =
+            (envelope.producer_id.as_deref(), envelope.sequence)
+        {
+            by_producer
+                .entry(producer)
+                .or_default()
+                .push((sequence, envelope));
         }
     }
 
@@ -75,12 +85,14 @@ pub fn verify_chain(envelopes: &[AuditEnvelope]) -> Result<(), AuditError> {
     producers.sort_unstable();
 
     for producer in producers {
-        let chain = by_producer.get_mut(producer).expect("key present");
-        chain.sort_by_key(|e| e.sequence.expect("filtered on Some(sequence)"));
+        let Some(chain) = by_producer.get_mut(producer) else {
+            continue;
+        };
+        chain.sort_by_key(|(sequence, _)| *sequence);
 
         // Genesis must be present: sequence 0 for the producer's first
         // envelope. A group that starts later means the head was deleted.
-        let base = chain[0].sequence.expect("filtered on Some(sequence)");
+        let (base, first) = chain[0];
         if base != 0 {
             return Err(AuditError::ChainBroken {
                 detail: format!(
@@ -92,7 +104,7 @@ pub fn verify_chain(envelopes: &[AuditEnvelope]) -> Result<(), AuditError> {
 
         // Genesis has no predecessor: a non-empty `prev_hash` at sequence 0 means
         // content was moved to the genesis slot (a reorder).
-        if chain[0].prev_hash.is_some() {
+        if first.prev_hash.is_some() {
             return Err(AuditError::ChainBroken {
                 detail: format!(
                     "producer '{producer}': genesis envelope carries a prev_hash — \
@@ -101,10 +113,9 @@ pub fn verify_chain(envelopes: &[AuditEnvelope]) -> Result<(), AuditError> {
             });
         }
 
-        for (index, envelope) in chain.iter().enumerate() {
+        for (index, (actual, _)) in chain.iter().enumerate() {
             let expected = index as u64;
-            let actual = envelope.sequence.expect("filtered on Some(sequence)");
-            if actual != expected {
+            if *actual != expected {
                 return Err(AuditError::ChainBroken {
                     detail: format!(
                         "producer '{producer}': expected sequence {expected}, found {actual} — \
@@ -115,9 +126,9 @@ pub fn verify_chain(envelopes: &[AuditEnvelope]) -> Result<(), AuditError> {
         }
 
         for pair in chain.windows(2) {
-            let (prev, next) = (pair[0], pair[1]);
+            let (_, prev) = pair[0];
+            let (next_sequence, next) = pair[1];
             let expected = AuditEnvelopeFactoryImpl::envelope_hash(prev)?;
-            let next_sequence = next.sequence.expect("filtered on Some(sequence)");
             match next.prev_hash.as_deref() {
                 Some(actual) if actual == expected => {}
                 Some(actual) => {

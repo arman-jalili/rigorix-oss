@@ -255,7 +255,7 @@ mod tests {
             "tpl-1".to_string(),
             0.95,
             HashMap::new(),
-            PlanningHash::new("a".repeat(64)),
+            PlanningHash::new("a".repeat(64)).expect("valid SHA-256 hex"),
             false,
             1,
             10,

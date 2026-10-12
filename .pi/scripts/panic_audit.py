@@ -164,6 +164,22 @@ def span_end(masked_lines, start):
     return start
 
 
+def production_mask(masked_lines):
+    """Boolean per line: True when the line is PRODUCTION code.
+
+    Lines inside a `#[cfg(test)]` item or a `#[test]`-style function are False.
+    Shared by every self-owned scanner so the test-exclusion rule cannot drift
+    between classes (ISSUE-SELF-OWNED-VULN-CHECKS).
+    """
+    prod = [True] * len(masked_lines)
+    for i, line in enumerate(masked_lines):
+        if "#[cfg(test)]" in line or any(a in line for a in TEST_ATTRS):
+            end = span_end(masked_lines, i)
+            for k in range(i, min(end + 1, len(masked_lines))):
+                prod[k] = False
+    return prod
+
+
 def collect_test_only_files(root):
     """Files pulled in by an out-of-line `#[cfg(test)] mod x;` declaration."""
     test_files = set()
@@ -223,16 +239,7 @@ def main(root):
             masked = mask_code(text)
             ml = masked.split("\n")
             ol = text.split("\n")
-            prod = [True] * len(ml)
-            for i, line in enumerate(ml):
-                if "#[cfg(test)]" in line:
-                    end = span_end(ml, i)
-                    for k in range(i, min(end + 1, len(ml))):
-                        prod[k] = False
-                if any(a in line for a in TEST_ATTRS):
-                    end = span_end(ml, i)
-                    for k in range(i, min(end + 1, len(ml))):
-                        prod[k] = False
+            prod = production_mask(ml)
             for i, orig in enumerate(ol):
                 if not prod[i]:
                     continue
