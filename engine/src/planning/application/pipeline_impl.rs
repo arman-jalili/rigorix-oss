@@ -397,7 +397,7 @@ impl PlanningPipelineImpl {
         template_id: &str,
         parameters: &HashMap<String, String>,
         intent: &UserIntent,
-    ) -> PlanningHash {
+    ) -> Result<PlanningHash, PlanningError> {
         compute_planning_hash(template_id, parameters, &intent.input)
     }
 
@@ -546,7 +546,7 @@ impl PlanningPipelineService for PlanningPipelineImpl {
                         &template.template_id,
                         &extracted.parameters,
                         &intent,
-                    );
+                    )?;
 
                     let planning_result = PlanningResult::new(
                         self.execution_id,
@@ -588,7 +588,7 @@ impl PlanningPipelineService for PlanningPipelineImpl {
                             &template.template_id,
                             &extracted.parameters,
                             &intent,
-                        );
+                        )?;
 
                         let planning_result = PlanningResult::new(
                             self.execution_id,
@@ -888,7 +888,7 @@ pub fn compute_planning_hash(
     template_id: &str,
     parameters: &HashMap<String, String>,
     intent_input: &str,
-) -> PlanningHash {
+) -> Result<PlanningHash, PlanningError> {
     let mut hasher = Sha256::new();
 
     // Normalise inputs: template_id + sorted parameters + intent input

@@ -47,7 +47,22 @@ preserve line counts exactly.
 | medium | 10 |
 | low | 23 |
 
-## The actionable class: poisoned-lock panics (`server`)
+> **Update — ISSUE-PRODUCTION-PANIC-SURFACE (#997):** three classes below have
+> been removed, not re-baselined:
+>
+> * the 8 poisoned-lock `server` sites now recover via
+>   `lock().unwrap_or_else(|e| e.into_inner())`, with a test that poisons each
+>   lock and asserts later access still works;
+> * the 2 validating constructors (`PlanningHash::new`,
+>   `ValidationLoopConfig::new`) now return `Result`;
+> * the 5 `chain.rs` invariant `expect`s are gone — the pair `(sequence, envelope)`
+>   is carried in the map's value type, so the verification path never re-`expect`s
+>   on foreign input.
+>
+> The enforced baseline (`.pi/panic-baseline.tsv`) is therefore **26 sites**.
+> The sections below are retained as the record of what was found.
+
+## The actionable class: poisoned-lock panics (`server`) — resolved in #997
 
 `.lock().expect(...)` panics when a mutex is **poisoned** — i.e. when any thread
 panicked while holding it. The failure mode is not graceful degradation: the
@@ -72,7 +87,7 @@ lock). The fix is mechanical: recover from poisoning
 (`lock().unwrap_or_else(|e| e.into_inner())`, since the data is a plain map) or
 propagate a typed error.
 
-## Panics that should be `Result` (`api`)
+## Panics that should be `Result` (`api`) — resolved in #997
 
 Both are *documented* panics (`# Panics`), so they are intentional — but they are
 validating constructors, and a validator that aborts the process instead of
@@ -95,7 +110,7 @@ decision is explicit rather than accidental.
 | `mcp/src/engine_wiring.rs:31` | `panic!` | **medium** | fail-fast at composition: without an engine the host cannot serve; logs then panics |
 | `mcp/src/host/mod.rs:1922` | `expect` | **medium** | app_state() before init_app_state() — programmer error; panics instead of a typed error |
 
-## Fragile internal invariants (`invariant`)
+## Fragile internal invariants (`invariant`) — `chain.rs` resolved in #997
 
 Safe today, but they encode an invariant with a `.expect(...)` instead of a type,
 so a refactor turns them into panics. `chain.rs` deserves the most care: it is

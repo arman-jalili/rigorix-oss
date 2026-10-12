@@ -23,6 +23,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::dag_engine::domain::TaskGraph;
+use crate::planning::domain::error::PlanningError;
 
 // ---------------------------------------------------------------------------
 // PlanningHash — Deterministic Replay Identifier
@@ -44,16 +45,22 @@ pub struct PlanningHash(pub String);
 impl PlanningHash {
     /// Create a new PlanningHash from a hex-encoded SHA-256 digest.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `hash` is not exactly 64 hex characters.
-    pub fn new(hash: String) -> Self {
-        assert_eq!(
-            hash.len(),
-            64,
-            "PlanningHash must be exactly 64 hex characters (SHA-256)"
-        );
-        Self(hash)
+    /// Returns [`PlanningError::InvalidState`] when `hash` is not exactly 64 hex
+    /// characters. This was an `assert!`, which aborted the process instead of
+    /// failing the operation (ISSUE-PRODUCTION-PANIC-SURFACE).
+    pub fn new(hash: String) -> Result<Self, PlanningError> {
+        if hash.len() != 64 {
+            return Err(PlanningError::InvalidState {
+                detail: format!(
+                    "PlanningHash must be exactly 64 hex characters (SHA-256); got {}",
+                    hash.len()
+                ),
+                phase: "planning_hash".to_string(),
+            });
+        }
+        Ok(Self(hash))
     }
 
     /// Return the inner hash string.

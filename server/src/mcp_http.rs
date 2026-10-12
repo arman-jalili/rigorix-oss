@@ -84,21 +84,28 @@ struct Session {
 /// restart only forces a re-`initialize`.
 #[derive(Debug, Default)]
 pub struct McpSessions {
-    // PANIC-AUDIT (high, docs/panic-audit-2026-10-12.md, ISSUE-PRODUCTION-PANIC-SURFACE):
-    // every access below is `.lock().expect("session lock")`. A mutex is POISONED by any
-    // panic while held, and `expect` then panics on every later request — turning a
-    // one-off fault into a permanent one for the whole /mcp surface. The guarded data is
-    // a plain map, so recover with `unwrap_or_else(|e| e.into_inner())` (or map to a typed
-    // error) rather than propagating the poison. Every site is listed in
-    // .pi/panic-baseline.tsv.
+    // Invariant: the guard is always taken through `McpSessions::lock`, which
+    // recovers from poisoning (ISSUE-PRODUCTION-PANIC-SURFACE).
     inner: Mutex<HashMap<String, Session>>,
 }
 
 impl McpSessions {
+    /// Lock the session map, recovering from poisoning.
+    ///
+    /// A mutex is poisoned when a thread panicked while holding it. For a plain
+    /// map there is no cross-entry invariant to protect, so continuing with the
+    /// recovered guard keeps a one-off fault request-scoped instead of making
+    /// every later `/mcp` request panic too (ISSUE-PRODUCTION-PANIC-SURFACE).
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, Session>> {
+        self.inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     /// Create a session and return its unguessable id.
     pub fn create(&self, protocol_version: impl Into<String>) -> String {
         let id = uuid::Uuid::new_v4().to_string();
-        self.inner.lock().expect("session lock").insert(
+        self.lock().insert(
             id.clone(),
             Session {
                 protocol_version: protocol_version.into(),
@@ -110,12 +117,12 @@ impl McpSessions {
 
     /// Whether the id names a live session.
     pub fn contains(&self, id: &str) -> bool {
-        self.inner.lock().expect("session lock").contains_key(id)
+        self.lock().contains_key(id)
     }
 
     /// Mark a session fully initialized (after `notifications/initialized`).
     pub fn mark_initialized(&self, id: &str) -> bool {
-        match self.inner.lock().expect("session lock").get_mut(id) {
+        match self.lock().get_mut(id) {
             Some(session) => {
                 session.initialized = true;
                 true
@@ -126,25 +133,19 @@ impl McpSessions {
 
     /// Terminate a session. Returns whether it existed.
     pub fn terminate(&self, id: &str) -> bool {
-        self.inner
-            .lock()
-            .expect("session lock")
-            .remove(id)
-            .is_some()
+        self.lock().remove(id).is_some()
     }
 
     /// The protocol version negotiated for a live session, if any.
     pub fn protocol_version(&self, id: &str) -> Option<String> {
-        self.inner
-            .lock()
-            .expect("session lock")
+        self.lock()
             .get(id)
             .map(|session| session.protocol_version.clone())
     }
 
     /// Number of live sessions.
     pub fn len(&self) -> usize {
-        self.inner.lock().expect("session lock").len()
+        self.lock().len()
     }
 
     /// Whether there are no live sessions.
@@ -604,6 +605,34 @@ mod tests {
         assert!(sessions.terminate(&id));
         assert!(!sessions.contains(&id));
         assert!(!sessions.terminate(&id));
+    }
+
+    #[test]
+    fn poisoned_session_lock_is_recovered() {
+        let sessions = McpSessions::default();
+        // Poison the lock by panicking while holding it (ISSUE-PRODUCTION-PANIC-SURFACE).
+        let poisoned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = sessions.lock();
+            panic!("poison the session lock");
+        }));
+        assert!(poisoned.is_err(), "the lock must actually be poisoned");
+
+        // Every later access must still work: a one-off fault stays request-scoped
+        // instead of turning every later /mcp request into a panic.
+        let recovered = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let id = sessions.create("2025-03-26");
+            assert!(sessions.contains(&id));
+            assert!(sessions.mark_initialized(&id));
+            assert_eq!(
+                sessions.protocol_version(&id).as_deref(),
+                Some("2025-03-26")
+            );
+            assert!(sessions.terminate(&id));
+        }));
+        assert!(
+            recovered.is_ok(),
+            "a poisoned lock must be recovered, not re-panicked"
+        );
     }
 
     #[test]

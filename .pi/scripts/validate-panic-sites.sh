@@ -46,27 +46,18 @@ findings = json.load(open(current_path))
 
 # Classify a site so the baseline records *why* it is tolerated, not just where
 # it is. Order matters: first match wins.
+#
+# The poisoned-lock class (server), the validating-constructor class
+# (planning/plan_validation) and the chain invariant were removed by
+# ISSUE-PRODUCTION-PANIC-SURFACE; a panic re-appearing in those files is a NEW
+# decision and intentionally falls through to "unclassified — triage required".
 RULES = [
-    (r"^server/src/events\.rs$", "lock", "high",
-     "Mutex lock().expect — panics if the lock is POISONED, i.e. any panic while "
-     "held makes every later call panic too (cascading failure, not a degraded path)"),
-    (r"^server/src/mcp_http\.rs$", "lock", "high",
-     "Mutex lock().expect — poisoned-lock panic in the MCP Streamable HTTP "
-     "session store; one panic while held turns every later /mcp request into a panic"),
     (r"^mcp/src/engine_wiring\.rs$", "startup", "medium",
      "fail-fast at composition: without an engine the host cannot serve; logs then panics"),
     (r"^mcp/src/host/mod\.rs$", "startup", "medium",
      "app_state() before init_app_state() — programmer error; panics instead of a typed error"),
     (r"^engine/src/execution_engine/application/factory\.rs$", "startup", "medium",
      "fail-fast at composition: approval store must open"),
-    (r"^engine/src/audit/application/chain\.rs$", "invariant", "medium",
-     "internal invariant (filtered on Some(sequence)); holds today, but this is the "
-     "path that verifies FOREIGN envelopes, so a drift becomes a panic on hostile input"),
-    (r"^engine/src/planning/domain/result\.rs$", "api", "medium",
-     "documented panic in a constructor (assert_eq! len==64); a Result would make a "
-     "bad hash a typed refusal instead of a crash"),
-    (r"^engine/src/plan_validation/domain/loop_config\.rs$", "api", "medium",
-     "documented panic in a constructor (assert! max_iterations >= 1)"),
     (r"^engine/src/cancellation/", "invariant", "low",
      "tokio watch::Receiver::borrow() — panics only on a same-task conflicting borrow"),
     (r"^engine/src/approval/domain/(intent|hash)\.rs$", "const", "low",

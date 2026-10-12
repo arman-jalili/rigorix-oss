@@ -88,10 +88,8 @@ pub const DEFAULT_BROADCAST_CAPACITY: usize = 64;
 pub struct EventHub {
     next_id: AtomicU64,
     replay_capacity: usize,
-    // PANIC-AUDIT (high, docs/panic-audit-2026-10-12.md, ISSUE-PRODUCTION-PANIC-SURFACE):
-    // accessed as `.lock().expect("event replay lock")` in this file. A poisoned mutex
-    // makes every later access panic, so one fault permanently bricks SSE replay.
-    // Recover the inner value on poison (`unwrap_or_else(|e| e.into_inner())`).
+    // Invariant: the guard is always taken through `EventHub::lock_replay`,
+    // which recovers from poisoning (ISSUE-PRODUCTION-PANIC-SURFACE).
     replay: Mutex<VecDeque<ServerEvent>>,
     tx: broadcast::Sender<ServerEvent>,
 }
@@ -119,13 +117,25 @@ impl EventHub {
         }
     }
 
+    /// Lock the replay ring, recovering from poisoning.
+    ///
+    /// A mutex is poisoned when a thread panicked while holding it. The ring is a
+    /// plain `VecDeque`, so recovering the guard keeps one bad publish from
+    /// bricking SSE replay for the life of the process
+    /// (ISSUE-PRODUCTION-PANIC-SURFACE).
+    fn lock_replay(&self) -> std::sync::MutexGuard<'_, VecDeque<ServerEvent>> {
+        self.replay
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     /// Publish an event; returns its assigned id.
     pub fn publish(&self, event: EventKind, data: Value) -> u64 {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst) + 1;
         let server_event = ServerEvent { id, event, data };
 
         {
-            let mut replay = self.replay.lock().expect("event replay lock");
+            let mut replay = self.lock_replay();
             replay.push_back(server_event.clone());
             while replay.len() > self.replay_capacity {
                 replay.pop_front();
@@ -148,7 +158,7 @@ impl EventHub {
     ) -> (Vec<ServerEvent>, broadcast::Receiver<ServerEvent>) {
         let receiver = self.tx.subscribe();
         let replay: Vec<ServerEvent> = {
-            let replay = self.replay.lock().expect("event replay lock");
+            let replay = self.lock_replay();
             replay
                 .iter()
                 .filter(|event| last_event_id.is_none_or(|last| event.id > last))
@@ -239,6 +249,32 @@ mod tests {
         assert_eq!(EventKind::ApprovalRequired.as_str(), "approval_required");
         assert_eq!(EventKind::RunProgress.as_str(), "run_progress");
         assert_eq!(EventKind::PolicyChanged.as_str(), "policy_changed");
+    }
+
+    #[test]
+    fn poisoned_replay_lock_is_recovered() {
+        let hub = EventHub::new();
+        // Poison the lock by panicking while holding it (ISSUE-PRODUCTION-PANIC-SURFACE).
+        let poisoned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = hub.lock_replay();
+            panic!("poison the replay lock");
+        }));
+        assert!(poisoned.is_err(), "the lock must actually be poisoned");
+
+        // Publish + replay must still work: SSE replay is not bricked forever.
+        let recovered = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let id = hub.publish(
+                EventKind::RunProgress,
+                json!({"event_type": "node_completed"}),
+            );
+            assert_eq!(id, 1);
+            let (replay, _rx) = hub.subscribe(None);
+            assert_eq!(replay.len(), 1);
+        }));
+        assert!(
+            recovered.is_ok(),
+            "a poisoned lock must be recovered, not re-panicked"
+        );
     }
 
     #[test]
