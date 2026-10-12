@@ -17,6 +17,14 @@ IMPORTANT — Guardian invocation:
   Implementation paths in §Implementation Sequence are repo-root relative.
 -->
 
+> **Published specification.** Consequence Gating is published as a versioned,
+> citable specification with enumerated non-claims and a falsifiable validation
+> protocol: [`docs/spec/consequence-gating-v1.md`](../../../../docs/spec/consequence-gating-v1.md)
+> (protocol: [`docs/spec/validation-protocol-v1.md`](../../../../docs/spec/validation-protocol-v1.md),
+> vocabulary: [`docs/spec/terminology.md`](../../../../docs/spec/terminology.md)).
+> This module doc is the implementation view; the specification is the
+> claim-bounding view.
+
 ## Overview
 
 Consequence gating makes a consequential step's dispatch depend on the **present
