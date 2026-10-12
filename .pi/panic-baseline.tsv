@@ -1,0 +1,45 @@
+# location	kind	class	severity	reason
+# Generated/maintained by .pi/scripts/validate-panic-sites.sh --update
+# Every entry is an explicit decision: a panic that can reach production is either
+# removed (return a Result) or recorded here with the reason it is tolerated.
+actions/src/action_output/application/output_variable_impl.rs:50	expect	const	low	compile-time regex, covered by validate_name tests
+engine/src/approval/domain/hash.rs:44	expect	const	low	infallible in practice (serde_json on an owned struct / HMAC accepts any key length)
+engine/src/approval/domain/intent.rs:108	expect	const	low	infallible in practice (serde_json on an owned struct / HMAC accepts any key length)
+engine/src/audit/application/chain.rs:106	expect	invariant	medium	internal invariant (filtered on Some(sequence)); holds today, but this is the path that verifies FOREIGN envelopes, so a drift becomes a panic on hostile input
+engine/src/audit/application/chain.rs:120	expect	invariant	medium	internal invariant (filtered on Some(sequence)); holds today, but this is the path that verifies FOREIGN envelopes, so a drift becomes a panic on hostile input
+engine/src/audit/application/chain.rs:78	expect	invariant	medium	internal invariant (filtered on Some(sequence)); holds today, but this is the path that verifies FOREIGN envelopes, so a drift becomes a panic on hostile input
+engine/src/audit/application/chain.rs:79	expect	invariant	medium	internal invariant (filtered on Some(sequence)); holds today, but this is the path that verifies FOREIGN envelopes, so a drift becomes a panic on hostile input
+engine/src/audit/application/chain.rs:83	expect	invariant	medium	internal invariant (filtered on Some(sequence)); holds today, but this is the path that verifies FOREIGN envelopes, so a drift becomes a panic on hostile input
+engine/src/cancellation/application/cancellation_service_impl.rs:128	borrow()	invariant	low	tokio watch::Receiver::borrow() — panics only on a same-task conflicting borrow
+engine/src/cancellation/application/cancellation_service_impl.rs:161	borrow()	invariant	low	tokio watch::Receiver::borrow() — panics only on a same-task conflicting borrow
+engine/src/cancellation/application/cancellation_service_impl.rs:227	borrow()	invariant	low	tokio watch::Receiver::borrow() — panics only on a same-task conflicting borrow
+engine/src/cancellation/application/cancellation_service_impl.rs:269	borrow()	invariant	low	tokio watch::Receiver::borrow() — panics only on a same-task conflicting borrow
+engine/src/cancellation/application/cancellation_service_impl.rs:275	borrow()	invariant	low	tokio watch::Receiver::borrow() — panics only on a same-task conflicting borrow
+engine/src/execution_engine/application/factory.rs:222	expect	startup	medium	fail-fast at composition: approval store must open
+engine/src/plan_validation/domain/loop_config.rs:111	assert!	api	medium	documented panic in a constructor (assert! max_iterations >= 1)
+engine/src/planning/domain/result.rs:51	assert!	api	medium	documented panic in a constructor (assert_eq! len==64); a Result would make a bad hash a typed refusal instead of a crash
+mcp/src/audit_tools/infrastructure/in_memory_audit_service.rs:393	expect	const	low	HMAC accepts any key length, so new_from_slice cannot fail here
+mcp/src/audit_tools/interfaces/mcp/mod.rs:116	expect	const	low	serde_json::from_str on a compile-time schema const (test-enforced)
+mcp/src/audit_tools/interfaces/mcp/mod.rs:125	expect	const	low	serde_json::from_str on a compile-time schema const (test-enforced)
+mcp/src/audit_tools/interfaces/mcp/mod.rs:134	expect	const	low	serde_json::from_str on a compile-time schema const (test-enforced)
+mcp/src/engine_wiring.rs:31	panic!	startup	medium	fail-fast at composition: without an engine the host cannot serve; logs then panics
+mcp/src/execution_tools/interfaces/mcp/mod.rs:188	expect	const	low	serde_json::from_str on a compile-time schema const (test-enforced)
+mcp/src/execution_tools/interfaces/mcp/mod.rs:197	expect	const	low	serde_json::from_str on a compile-time schema const (test-enforced)
+mcp/src/execution_tools/interfaces/mcp/mod.rs:206	expect	const	low	serde_json::from_str on a compile-time schema const (test-enforced)
+mcp/src/execution_tools/interfaces/mcp/mod.rs:249	expect	const	low	serde_json::from_str on a compile-time schema const (test-enforced)
+mcp/src/execution_tools/interfaces/mcp/mod.rs:258	expect	const	low	serde_json::from_str on a compile-time schema const (test-enforced)
+mcp/src/execution_tools/interfaces/mcp/mod.rs:267	expect	const	low	serde_json::from_str on a compile-time schema const (test-enforced)
+mcp/src/host/mod.rs:1922	expect	startup	medium	app_state() before init_app_state() — programmer error; panics instead of a typed error
+mcp/src/template_tools/interfaces/mcp/mod.rs:185	expect	const	low	serde_json::from_str on a compile-time schema const (test-enforced)
+mcp/src/template_tools/interfaces/mcp/mod.rs:194	expect	const	low	serde_json::from_str on a compile-time schema const (test-enforced)
+mcp/src/template_tools/interfaces/mcp/mod.rs:203	expect	const	low	serde_json::from_str on a compile-time schema const (test-enforced)
+mcp/src/template_tools/interfaces/mcp/mod.rs:212	expect	const	low	serde_json::from_str on a compile-time schema const (test-enforced)
+mcp/src/usage_guide/interfaces/mcp/mod.rs:29	expect	const	low	serde_json::from_str on a compile-time schema const (test-enforced)
+server/src/events.rs:128	expect	lock	high	Mutex lock().expect — panics if the lock is POISONED, i.e. any panic while held makes every later call panic too (cascading failure, not a degraded path)
+server/src/events.rs:151	expect	lock	high	Mutex lock().expect — panics if the lock is POISONED, i.e. any panic while held makes every later call panic too (cascading failure, not a degraded path)
+server/src/mcp_http.rs:101	expect	lock	high	Mutex lock().expect — poisoned-lock panic in the MCP Streamable HTTP session store; one panic while held turns every later /mcp request into a panic
+server/src/mcp_http.rs:113	expect	lock	high	Mutex lock().expect — poisoned-lock panic in the MCP Streamable HTTP session store; one panic while held turns every later /mcp request into a panic
+server/src/mcp_http.rs:118	expect	lock	high	Mutex lock().expect — poisoned-lock panic in the MCP Streamable HTTP session store; one panic while held turns every later /mcp request into a panic
+server/src/mcp_http.rs:131	expect	lock	high	Mutex lock().expect — poisoned-lock panic in the MCP Streamable HTTP session store; one panic while held turns every later /mcp request into a panic
+server/src/mcp_http.rs:140	expect	lock	high	Mutex lock().expect — poisoned-lock panic in the MCP Streamable HTTP session store; one panic while held turns every later /mcp request into a panic
+server/src/mcp_http.rs:147	expect	lock	high	Mutex lock().expect — poisoned-lock panic in the MCP Streamable HTTP session store; one panic while held turns every later /mcp request into a panic

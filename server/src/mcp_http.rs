@@ -84,6 +84,13 @@ struct Session {
 /// restart only forces a re-`initialize`.
 #[derive(Debug, Default)]
 pub struct McpSessions {
+    // PANIC-AUDIT (high, docs/panic-audit-2026-10-12.md, ISSUE-PRODUCTION-PANIC-SURFACE):
+    // every access below is `.lock().expect("session lock")`. A mutex is POISONED by any
+    // panic while held, and `expect` then panics on every later request — turning a
+    // one-off fault into a permanent one for the whole /mcp surface. The guarded data is
+    // a plain map, so recover with `unwrap_or_else(|e| e.into_inner())` (or map to a typed
+    // error) rather than propagating the poison. Every site is listed in
+    // .pi/panic-baseline.tsv.
     inner: Mutex<HashMap<String, Session>>,
 }
 

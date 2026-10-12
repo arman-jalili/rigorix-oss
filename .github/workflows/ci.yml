@@ -191,6 +191,14 @@ jobs:
             exit 1
           fi
           echo "✅ No secrets detected"
+      # A Rust panic aborts the process: in a runner/host there is no caller to
+      # catch it, so one reachable panic takes down the whole execution instead
+      # of failing a step. This gate keeps that surface explicit and reviewed —
+      # it fails on any panic site that is not in .pi/panic-baseline.tsv, and on
+      # stale entries (see the baseline's own header for the rules).
+      - name: Panic surface (production panics are explicit and baselined)
+        shell: bash
+        run: bash .pi/scripts/validate-panic-sites.sh
       # NOTE: the "Root + per-crate scripts" convention loop is deliberately
       # NOT run here. It takes ~20 min (runs every proofing/stage script,
       # each of which may execute full test suites) and blew the job's

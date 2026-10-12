@@ -88,6 +88,10 @@ pub const DEFAULT_BROADCAST_CAPACITY: usize = 64;
 pub struct EventHub {
     next_id: AtomicU64,
     replay_capacity: usize,
+    // PANIC-AUDIT (high, docs/panic-audit-2026-10-12.md, ISSUE-PRODUCTION-PANIC-SURFACE):
+    // accessed as `.lock().expect("event replay lock")` in this file. A poisoned mutex
+    // makes every later access panic, so one fault permanently bricks SSE replay.
+    // Recover the inner value on poison (`unwrap_or_else(|e| e.into_inner())`).
     replay: Mutex<VecDeque<ServerEvent>>,
     tx: broadcast::Sender<ServerEvent>,
 }
