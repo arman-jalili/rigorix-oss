@@ -65,13 +65,11 @@ impl SecretMaskingService for SecretMaskerImpl {
             // In CI, use GitHub Actions workflow command
             println!("::add-mask::{}", secret);
         } else {
-            // In local dev, log that masking would occur
-            let hint = if secret.len() > 8 {
-                format!("{}...", &secret[..8])
-            } else {
-                "****".to_string()
-            };
-            tracing::info!(secret_hint = %hint, "Masking secret (CI only)");
+            // Local dev: say that masking happened, but log nothing derived from
+            // the secret. A prefix is a disclosure and lands in logs; even a
+            // length is avoidable here (ISSUE-SELF-OWNED-VULN-CHECKS,
+            // secret-in-log class).
+            tracing::info!("Masking secret (CI only)");
         }
 
         Ok(())

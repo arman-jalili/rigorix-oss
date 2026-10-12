@@ -28,6 +28,23 @@ BASELINE="$ROOT/.pi/panic-baseline.tsv"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
+if [ "${1:-}" = "--self-test" ]; then
+  # AC5: the gate must catch a planted regression. Seed a fixture with an
+  # unwrap and assert the scanner reports it.
+  TMP="$(mktemp -d)"
+  trap 'rm -rf "$TMP"' EXIT
+  mkdir -p "$TMP/crate/src"
+  printf 'pub fn f(x: Option<i32>) -> i32 {\n    x.unwrap()\n}\n' \
+    > "$TMP/crate/src/regression.rs"
+  found="$(python3 "$SCANNER" "$TMP" --json | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
+  if [ "$found" -lt 1 ]; then
+    echo -e "${RED}❌ self-test: scanner missed a planted unwrap${NC}" >&2
+    exit 1
+  fi
+  echo -e "${GREEN}✅ self-test: scanner caught the planted unwrap${NC}"
+  exit 0
+fi
+
 if [ ! -f "$SCANNER" ]; then
   echo -e "${RED}❌ missing scanner: $SCANNER${NC}" >&2
   exit 1

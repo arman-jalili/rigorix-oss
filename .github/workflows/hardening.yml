@@ -235,7 +235,18 @@ jobs:
           fi
           echo "✅ No secrets"
 
-      - name: Security scripts (root + per-crate, all conventions)
+      # GATING: the self-owned classes (panic / unsafe / secret-in-log) run with
+      # REAL exit codes — no `continue-on-error`, no `|| true`. .pi/guards.tsv is
+      # the single list of which guards gate; the rest are advisory
+      # (docs/security-guards.md).
+      - name: Self-owned guards (gating)
+        shell: bash
+        run: bash .pi/scripts/validate-guards.sh
+      - name: Guard self-tests (gating)
+        shell: bash
+        run: bash .pi/scripts/validate-guards.sh --self-test
+
+      - name: Advisory scripts (root + per-crate — do NOT gate)
         continue-on-error: true
         shell: bash
         run: |
@@ -329,7 +340,8 @@ jobs:
         if: |
           needs.lint.result != 'success' ||
           needs.unit.result != 'success' ||
-          needs.build.result != 'success'
+          needs.build.result != 'success' ||
+          needs.security.result != 'success'
         run: |
           echo "❌ Mandatory hardening stage(s) failed"
           exit 1
