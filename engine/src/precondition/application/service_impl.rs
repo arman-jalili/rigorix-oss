@@ -34,10 +34,10 @@ use sha2::{Digest, Sha256};
 
 use crate::precondition::domain::{
     AttributionReason, Precondition, PreconditionConfig, PreconditionError, PreconditionFinding,
-    PreconditionOutcome, PreconditionVerdict,
+    PreconditionOutcome, PreconditionVerdict, ProviderSpec,
 };
-use crate::precondition::infrastructure::PreconditionRunner;
 use crate::precondition::infrastructure::repository::PreconditionRepository;
+use crate::precondition::infrastructure::{HttpProviderClient, PreconditionRunner, ProviderClient};
 
 use super::dto::{DispatchStep, PreconditionCheckInput};
 use super::service::PreconditionService;
@@ -52,6 +52,7 @@ use super::service::PreconditionService;
 pub struct PreconditionServiceImpl {
     repository: Box<dyn PreconditionRepository>,
     runner: Box<dyn PreconditionRunner>,
+    provider: Box<dyn ProviderClient>,
 }
 
 impl PreconditionServiceImpl {
@@ -60,7 +61,18 @@ impl PreconditionServiceImpl {
         repository: Box<dyn PreconditionRepository>,
         runner: Box<dyn PreconditionRunner>,
     ) -> Self {
-        Self { repository, runner }
+        Self {
+            repository,
+            runner,
+            provider: Box::new(HttpProviderClient),
+        }
+    }
+
+    /// Override the external determination client (tests inject a
+    /// deterministic stub; production uses [`HttpProviderClient`]).
+    pub fn with_provider_client(mut self, provider: Box<dyn ProviderClient>) -> Self {
+        self.provider = provider;
+        self
     }
 }
 
@@ -112,6 +124,107 @@ impl PreconditionServiceImpl {
         Ok((PreconditionVerdict::Dispatch, findings))
     }
 
+    /// Evaluate one matched **provider** precondition.
+    ///
+    /// A provider permit is evidence, not authority (spec §2.7): it passes
+    /// *this* precondition only, and the caller still evaluates every other
+    /// matching precondition. `Deny` and `Unknown` refuse. A provider that
+    /// could not be consulted refuses with `error`.
+    async fn evaluate_provider(
+        &self,
+        precondition: &Precondition,
+        spec: &ProviderSpec,
+        input: &PreconditionCheckInput,
+        hash: String,
+    ) -> Result<(Option<PreconditionVerdict>, Option<PreconditionFinding>), PreconditionError> {
+        match self.provider.determine(spec, input).await {
+            Ok(observation) => {
+                let outcome = if observation.determination.permits() {
+                    PreconditionOutcome::Passed
+                } else {
+                    PreconditionOutcome::Failed
+                };
+                let version = observation
+                    .provider_version
+                    .as_deref()
+                    .map(|value| format!(", version {value}"))
+                    .unwrap_or_default();
+                let summary = format!(
+                    "precondition '{}' provider '{}' {} step '{}' at {} (endpoint {}, request {}, response {}{})",
+                    precondition.id,
+                    spec.id,
+                    observation.determination.as_str(),
+                    input.step,
+                    observation.observed_at.to_rfc3339(),
+                    observation.endpoint_redacted,
+                    observation.request_digest,
+                    observation.response_digest,
+                    version,
+                );
+                let finding = PreconditionFinding {
+                    precondition_id: precondition.id.clone(),
+                    step: input.step.clone(),
+                    outcome,
+                    exit_code: None,
+                    inputs_hash: hash,
+                    checked_at: observation.observed_at,
+                    summary: Some(summary),
+                    // For a provider the check artifact is the request we sent
+                    // and the authority artifact is the response we received;
+                    // these are the two digests that bind the determination
+                    // into the signed record (in-contract fields — no SDK
+                    // schema change needed).
+                    check_digest: Some(observation.request_digest),
+                    authority_digest: Some(observation.response_digest),
+                    check_writable: None,
+                    attribution: Some(AttributionReason::Recorded),
+                };
+                if outcome.refuses() {
+                    Ok((
+                        Some(PreconditionVerdict::Deny {
+                            precondition_id: precondition.id.clone(),
+                            outcome,
+                        }),
+                        Some(finding),
+                    ))
+                } else {
+                    Ok((None, Some(finding)))
+                }
+            }
+            Err(error) => {
+                tracing::debug!(
+                    precondition = %precondition.id,
+                    provider = %spec.id,
+                    %error,
+                    "provider determination indeterminate — refusing"
+                );
+                let finding = PreconditionFinding {
+                    precondition_id: precondition.id.clone(),
+                    step: input.step.clone(),
+                    outcome: PreconditionOutcome::Error,
+                    exit_code: None,
+                    inputs_hash: hash,
+                    checked_at: Utc::now(),
+                    summary: Some(format!(
+                        "precondition '{}' provider '{}' indeterminate for step '{}' ({})",
+                        precondition.id, spec.id, input.step, error
+                    )),
+                    check_digest: None,
+                    authority_digest: None,
+                    check_writable: None,
+                    attribution: Some(AttributionReason::RefusedBeforeCheck),
+                };
+                Ok((
+                    Some(PreconditionVerdict::Deny {
+                        precondition_id: precondition.id.clone(),
+                        outcome: PreconditionOutcome::Error,
+                    }),
+                    Some(finding),
+                ))
+            }
+        }
+    }
+
     /// Evaluate one matched precondition.
     ///
     /// Returns `(Some(verdict), finding)` when the check refused, and
@@ -159,6 +272,17 @@ impl PreconditionServiceImpl {
                     Some(finding),
                 ));
             }
+        }
+
+        // ISSUE-PRECONDITION-PROVIDERS: a provider precondition consults the
+        // operator's external determination service at the SAME enforcement
+        // point as a check program. Non-inheritance: the determination enters
+        // the same place a check result does — a permit never bypasses the
+        // other matching preconditions, and a deny/unknown refuses.
+        if let Some(spec) = &precondition.provider {
+            return self
+                .evaluate_provider(precondition, spec, &input, hash)
+                .await;
         }
 
         match self.runner.run(precondition, &input).await {

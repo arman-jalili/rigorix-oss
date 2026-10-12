@@ -226,6 +226,11 @@ mod precondition {
     mod preconditionrunner {
         mod preconditionrunner_test;
     }
+    #[path = "provider"]
+    mod provider {
+        #[path = "provider_test.rs"]
+        mod provider_test;
+    }
     mod preconditionservice {
         mod preconditionservice_test;
     }

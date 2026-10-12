@@ -142,6 +142,21 @@ pub enum PreconditionError {
         /// Why the boundary was violated (writable, or metadata unreadable).
         detail: String,
     },
+
+    /// The operator-declared external determination service could not be
+    /// consulted, or returned something the engine cannot map to a
+    /// determination. Maps to the `error` outcome and refuses the step — never
+    /// a pass (ISSUE-PRECONDITION-PROVIDERS). Unreachable, timeout, non-2xx,
+    /// unparseable, unset credential, and unknown determination vocabulary all
+    /// land here, fail-closed.
+    #[error("Precondition '{precondition_id}' provider determination unavailable: {detail}")]
+    Provider {
+        /// Stable id of the precondition whose provider could not be consulted.
+        precondition_id: String,
+        /// Redaction-safe detail: never a credential, an absolute path, or a
+        /// response body.
+        detail: String,
+    },
 }
 
 impl PreconditionError {
@@ -170,6 +185,7 @@ impl PreconditionError {
             PreconditionError::Denied { .. } => "PRECONDITION_DENIED",
             PreconditionError::TrustBoundary { .. } => "PRECONDITION_TRUST_BOUNDARY",
             PreconditionError::Boundary { .. } => "PRECONDITION_BOUNDARY",
+            PreconditionError::Provider { .. } => "PRECONDITION_PROVIDER",
         }
     }
 }
@@ -210,6 +226,10 @@ mod tests {
                 precondition_id: "beneficiary-eligible".to_string(),
                 artifact: "check.mjs (path sha256:0000)".to_string(),
                 detail: "check is writable".to_string(),
+            },
+            PreconditionError::Provider {
+                precondition_id: "standing".to_string(),
+                detail: "endpoint unreachable".to_string(),
             },
         ]
     }

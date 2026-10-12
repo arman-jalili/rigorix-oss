@@ -17,6 +17,14 @@ IMPORTANT — Guardian invocation:
   Implementation paths in §Implementation Sequence are repo-root relative.
 -->
 
+> **Published specification.** Consequence Gating is published as a versioned,
+> citable specification with enumerated non-claims and a falsifiable validation
+> protocol: [`docs/spec/consequence-gating-v1.md`](../../../../docs/spec/consequence-gating-v1.md)
+> (protocol: [`docs/spec/validation-protocol-v1.md`](../../../../docs/spec/validation-protocol-v1.md),
+> vocabulary: [`docs/spec/terminology.md`](../../../../docs/spec/terminology.md)).
+> This module doc is the implementation view; the specification is the
+> claim-bounding view.
+
 ## Overview
 
 Consequence gating makes a consequential step's dispatch depend on the **present
@@ -312,6 +320,9 @@ release_dependents_on_failure = false
 | `require_immutable_check=true` and the check/authority is writable by the engine's euid | Refuse (`error`, `Boundary`); fail closed |
 | `require_immutable_check=true` and writability metadata is unreadable | Refuse (`error`, `Boundary`); fail closed |
 | `require_immutable_check=false` (default) and the boundary is writable | Assessment traced; behavior unchanged |
+| Provider unreachable / timeout / non-2xx / unparseable / unknown determination | **refuse** (`error`); fail closed |
+| Provider permits but our own rule refuses | **refuse** (non-inheritance) |
+| Provider denies but our own rule permits | **refuse** (non-inheritance) |
 | Non-matching step | Unaffected |
 
 ## Implementation Sequence

@@ -341,6 +341,23 @@ Each crate has its own `.pi/architecture/` directory with:
 - **ADRs** — Architecture Decision Records explaining key design choices
 - **Diagrams** — System context, data flow, deployment
 
+### Published specifications
+
+Versioned, citable specifications with enumerated non-claims and a falsifiable
+validation protocol live in [`docs/spec/`](docs/spec/):
+
+- [Consequence Gating v1.0](docs/spec/consequence-gating-v1.md) — dispatch-time
+  preconditions: jurisdiction, evaluation contract, evidence model, interfaces,
+  failure semantics, non-claims
+- [Validation Protocol v1.0](docs/spec/validation-protocol-v1.md) — falsifiable
+  cases with stated failure conditions
+- [Terminology](docs/spec/terminology.md) — the normative vocabulary
+
+> **Claim ceiling.** Public claims are bounded by these specifications. A passing
+> test is *engineering verification* (L1) under a stated fixture; it does not
+> silently inherit standing as *protocol validation* (L2) or *independent
+> evidence* (L3). See [docs/spec/README.md](docs/spec/README.md) §Claim ceilings.
+
 ---
 
 ## Contributing
