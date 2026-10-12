@@ -58,6 +58,7 @@ use crate::sequence_policy::domain::{ParamMatchKind, StepPredicate};
 
 use super::GatingMode;
 use super::error::PreconditionError;
+use super::provider::ProviderSpec;
 
 /// Default wall-clock timeout for a precondition check (milliseconds).
 pub const DEFAULT_TIMEOUT_MS: u64 = 5_000;
@@ -107,7 +108,16 @@ pub struct Precondition {
     /// interpreter executes, e.g. `["node", "check.mjs"]`) — must resolve
     /// outside the agent-writable workspace (trust boundary). A file argument
     /// inside the workspace is refused; pass agent-writable inputs on stdin.
+    ///
+    /// Empty when the precondition declares a [`provider`](Self::provider)
+    /// instead (exactly one check form is required).
+    #[serde(default)]
     pub command: Vec<String>,
+    /// Operator-declared external determination service (ISSUE-PRECONDITION-
+    /// PROVIDERS). A precondition declares **exactly one** check: an argv
+    /// `command` or a `provider`, never both.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<ProviderSpec>,
     /// Wall-clock timeout (milliseconds). Defaults to
     /// [`DEFAULT_TIMEOUT_MS`].
     #[serde(default = "default_timeout_ms")]
@@ -261,11 +271,14 @@ impl PreconditionConfig {
             }
             seen_ids.push(&precondition.id);
 
-            // The check program is `command[0]`; an empty argv cannot run and
-            // is a config typo, not an implicit no-op (fail closed).
-            if precondition.command.is_empty() {
+            // Exactly one check form: an argv `command` or a `provider`. Zero
+            // checks is a no-op masquerading as a rule; two is ambiguous. Both
+            // are config errors, not silent behavior (fail closed).
+            let has_command = !precondition.command.is_empty();
+            let has_provider = precondition.provider.is_some();
+            if has_command == has_provider {
                 return Err(PreconditionError::ConfigInvalid(format!(
-                    "precondition '{}': command must contain at least the program (argv[0])",
+                    "precondition '{}': declare exactly one check — an argv `command` or a `provider`",
                     precondition.id
                 )));
             }
@@ -282,6 +295,11 @@ impl PreconditionConfig {
                     "precondition '{}': timeout_ms {} must be in 1..={}",
                     precondition.id, precondition.timeout_ms, caps.max_timeout_ms
                 )));
+            }
+            if let Some(provider) = &precondition.provider {
+                provider
+                    .validate(caps.max_timeout_ms)
+                    .map_err(PreconditionError::ConfigInvalid)?;
             }
             if precondition.require_params.len() as u32 > caps.max_require_params {
                 return Err(PreconditionError::ConfigInvalid(format!(

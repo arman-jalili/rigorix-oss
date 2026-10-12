@@ -176,6 +176,30 @@ action = "deny"        # deny (default) | promote
 Unmet (no step in the plan matches) → deny (default) or promote, exactly like
 ADR-015's other obligations, with a `requirement_findings[]` entry.
 
+### R4 — External determination providers (ISSUE-PRECONDITION-PROVIDERS)
+
+A precondition MAY be satisfied by an operator-configured external
+**determination service** (HTTP) instead of an argv program (`provider = { id,
+endpoint, method, timeout_ms, credential_ref }`). It is evaluated at the **same**
+enforcement point (R1 step 2) with the same fail-closed posture.
+
+**Non-inheritance (normative).** The provider's permitting answer is **evidence,
+not authority**: it enters the same place an argv check result does. A permitting
+provider result SHALL NOT satisfy the step on its own — every other matching
+precondition is still evaluated, and a denying provider result also refuses.
+There is deliberately no "provider says allow" short-circuit. The determination
+vocabulary is mapped explicitly, and an unknown or newer determination is
+`unknown`; **unknown never becomes authority**. Unreachable, timeout, non-2xx,
+unparseable, and unknown all refuse (`error`).
+
+The findings bind the determination with in-contract fields: for a provider
+precondition `check_digest` is the one-way hash of the **request** bytes and
+`authority_digest` of the **response** bytes, while the provider id, redacted
+endpoint, determination, and `observed_at` go into the redacted `summary`. The
+provider is treated as an untrusted input source: bounded body, per-request
+deadline, no redirects, and the credential value (read from the environment
+named by `credential_ref`) is never logged or recorded.
+
 ### Honest boundary — what this does **not** guarantee
 
 A precondition **narrows** the window between the check and the consequence; it

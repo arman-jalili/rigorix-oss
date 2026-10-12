@@ -16,11 +16,13 @@
 //!   wall-clock timeout; timeout / spawn / trust-boundary map to `error`
 //!   (refuse), never pass
 
+pub mod provider_client;
 pub mod repository;
 pub mod runner;
 
 use std::path::Path;
 
+pub use provider_client::{HttpProviderClient, MAX_RESPONSE_BYTES, ProviderClient};
 pub use runner::{PreconditionRun, PreconditionRunner, ProcessPreconditionRunner};
 
 /// One-way `sha256:<hex>` of arbitrary bytes.

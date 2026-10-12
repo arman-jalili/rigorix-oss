@@ -320,6 +320,9 @@ release_dependents_on_failure = false
 | `require_immutable_check=true` and the check/authority is writable by the engine's euid | Refuse (`error`, `Boundary`); fail closed |
 | `require_immutable_check=true` and writability metadata is unreadable | Refuse (`error`, `Boundary`); fail closed |
 | `require_immutable_check=false` (default) and the boundary is writable | Assessment traced; behavior unchanged |
+| Provider unreachable / timeout / non-2xx / unparseable / unknown determination | **refuse** (`error`); fail closed |
+| Provider permits but our own rule refuses | **refuse** (non-inheritance) |
+| Provider denies but our own rule permits | **refuse** (non-inheritance) |
 | Non-matching step | Unaffected |
 
 ## Implementation Sequence

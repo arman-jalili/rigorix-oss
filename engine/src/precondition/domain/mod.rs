@@ -28,6 +28,7 @@
 pub mod error;
 pub mod finding;
 pub mod precondition;
+pub mod provider;
 pub mod verdict;
 
 pub use error::PreconditionError;
@@ -42,4 +43,5 @@ pub use crate::dag_engine::domain::{GatingMode, default_release_dependents_on_fa
 pub use precondition::{
     DEFAULT_TIMEOUT_MS, FailureAction, Precondition, PreconditionConfig, SafetyCaps,
 };
+pub use provider::{ProviderDetermination, ProviderMethod, ProviderObservation, ProviderSpec};
 pub use verdict::PreconditionVerdict;

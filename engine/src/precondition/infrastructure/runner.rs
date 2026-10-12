@@ -634,6 +634,7 @@ mod tests {
             r#match: serde_json::from_value(json!({ "tool": "payment_execute" })).unwrap(),
             require_params: vec![],
             command: command.into_iter().map(str::to_string).collect(),
+            provider: None,
             timeout_ms: 5_000,
             failure: FailureAction::Deny,
             capture_output: false,
