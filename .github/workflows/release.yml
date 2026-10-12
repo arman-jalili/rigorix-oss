@@ -100,7 +100,13 @@ jobs:
   github-release:
     name: 🏷️ GitHub Release
     needs: [publish-engine, publish-cli, publish-mcp, publish-actions]
-    if: always()
+    # Announce the release only once every crate is actually on crates.io.
+    # Previously `if: always()`, which meant a failed publish still produced a
+    # release page advertising crates that did not exist in the registry — the
+    # v1.9.5 runs did exactly that before the skip-guard was fixed. `success()`
+    # is the default for a job with `needs`; it is written out so the intent
+    # survives future edits.
+    if: success()
     runs-on: ubuntu-latest
     permissions:
       contents: write
