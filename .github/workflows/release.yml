@@ -99,8 +99,12 @@ jobs:
   # ── Create GitHub Release ─────────────────────────────────────
   github-release:
     name: 🏷️ GitHub Release
-    needs: [publish-engine, publish-cli, publish-mcp, publish-actions]
-    # Announce the release only once every crate is actually on crates.io.
+    # `needs` lists the release train only. `publish-actions` is deliberately
+    # absent: `rigorix-actions` has its own cadence (it is not in the `verify`
+    # gate's crate list either), so a failure there must not block announcing a
+    # release whose three train crates all shipped.
+    needs: [publish-engine, publish-cli, publish-mcp]
+    # Announce the release only once every train crate is actually on crates.io.
     # Previously `if: always()`, which meant a failed publish still produced a
     # release page advertising crates that did not exist in the registry — the
     # v1.9.5 runs did exactly that before the skip-guard was fixed. `success()`
@@ -116,15 +120,25 @@ jobs:
       - name: Generate changelog
         shell: bash
         run: |
-          echo "# Rigorix ${{ github.ref_name }}" > release-notes.md
-          echo "" >> release-notes.md
-          echo "See [CHANGELOG](.pi/architecture/CHANGELOG.md) for details." >> release-notes.md
-          echo "" >> release-notes.md
-          echo "## Crates Published" >> release-notes.md
-          echo "- [rigorix-engine](https://crates.io/crates/rigorix-engine)" >> release-notes.md
-          echo "- [rigorix-mcp](https://crates.io/crates/rigorix-mcp)" >> release-notes.md
-          echo "- [rigorix-cli](https://crates.io/crates/rigorix-cli)" >> release-notes.md
-          echo "- [rigorix-actions](https://crates.io/crates/rigorix-actions)" >> release-notes.md
+          # Name the exact version and crates this tag actually published.
+          # The notes previously listed `rigorix-actions` under "Crates
+          # Published" for a `v1.9.5` tag although that crate is at 1.4.0 — a
+          # reader would infer a version that does not exist on crates.io.
+          VERSION="${GITHUB_REF_NAME#v}"
+          {
+            echo "# Rigorix ${{ github.ref_name }}"
+            echo ""
+            echo "Release train: \`engine\` / \`mcp\` / \`cli\` → \`$VERSION\`."
+            echo ""
+            echo "See [CHANGELOG](.pi/architecture/CHANGELOG.md) for details."
+            echo ""
+            echo "## Crates published to crates.io"
+            echo "- [rigorix-engine $VERSION](https://crates.io/crates/rigorix-engine/$VERSION)"
+            echo "- [rigorix-mcp $VERSION](https://crates.io/crates/rigorix-mcp/$VERSION)"
+            echo "- [rigorix-cli $VERSION](https://crates.io/crates/rigorix-cli/$VERSION)"
+            echo ""
+            echo "\`rigorix-actions\` is not part of this release train (its own cadence)."
+          } > release-notes.md
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
