@@ -24,6 +24,7 @@ pub mod circuit_breaker_impl;
 pub mod dto;
 pub mod envelope_factory_impl;
 pub mod factory;
+pub mod projection;
 pub mod service;
 
 pub use audit_queue_impl::*;

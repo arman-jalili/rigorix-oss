@@ -15,9 +15,11 @@
 //! - All persistence must happen behind repository interfaces
 
 pub mod anchor;
+pub mod authority_fact;
 pub mod envelope;
 pub mod error;
 pub mod event;
 
+pub use authority_fact::*;
 pub use envelope::*;
 pub use error::AuditError;
