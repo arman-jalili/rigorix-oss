@@ -138,11 +138,20 @@ impl SchemaCache {
     /// Update the cache with fresh enterprise metadata.
     ///
     /// Replaces all cached data with the provided metadata.
-    /// Sets `last_fetched` to the current time.
-    pub fn update(&mut self, metadata: EnterpriseMetadata) {
+    /// Sets `last_fetched` to `now`.
+    pub fn update_at(&mut self, metadata: EnterpriseMetadata, now: DateTime<Utc>) {
         self.metadata = Some(metadata.clone());
         self.schemas = metadata.tools;
-        self.last_fetched = Some(Utc::now());
+        self.last_fetched = Some(now);
+    }
+
+    /// Update the cache with fresh enterprise metadata, stamped at the current
+    /// time.
+    ///
+    /// Replaces all cached data with the provided metadata.
+    /// Sets `last_fetched` to the current time.
+    pub fn update(&mut self, metadata: EnterpriseMetadata) {
+        self.update_at(metadata, Utc::now());
     }
 
     /// Get the list of cached tool schemas.
@@ -160,8 +169,21 @@ impl SchemaCache {
     /// Returns `true` if no data has been fetched, or if the time since
     /// last fetch exceeds `ttl`.
     pub fn is_stale(&self, ttl: chrono::Duration) -> bool {
+        self.is_stale_at(Utc::now(), ttl)
+    }
+
+    /// Check if the cache is stale as of `now`, based on TTL.
+    ///
+    /// Returns `true` if no data has been fetched, or if the time since last
+    /// fetch **exceeds** `ttl`.
+    ///
+    /// The comparison is **strict** (`elapsed > ttl`), so a cache fetched at
+    /// exactly `now` is *not* stale even for a zero `ttl`. This exists so the
+    /// max-age boundary can be exercised deterministically with an injected
+    /// clock instead of racing wall time.
+    pub fn is_stale_at(&self, now: DateTime<Utc>, ttl: chrono::Duration) -> bool {
         match self.last_fetched {
-            Some(t) => Utc::now() - t > ttl,
+            Some(t) => now - t > ttl,
             None => true,
         }
     }

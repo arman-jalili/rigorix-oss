@@ -157,6 +157,9 @@ fn test_schema_cache_clear() {
 
 #[test]
 fn test_schema_cache_is_stale() {
+    // Wall-clock path: no assertion here depends on the clock advancing between
+    // two statements. The max-age boundary itself is covered by the
+    // injected-clock test below.
     let mut cache = SchemaCache::new();
 
     // Empty cache is always stale
@@ -173,9 +176,46 @@ fn test_schema_cache_is_stale() {
     // Just updated — should not be stale
     assert!(!cache.is_stale(chrono::Duration::hours(1)));
     assert!(!cache.is_stale(chrono::Duration::seconds(3600)));
+}
 
-    // Already elapsed — stale
-    assert!(cache.is_stale(chrono::Duration::seconds(0)));
+#[test]
+fn test_schema_cache_staleness_boundary_is_deterministic() {
+    // The max-age boundary is exercised with an INJECTED clock, so the outcome
+    // does not depend on wall time elapsing between `update_at` and
+    // `is_stale_at`.
+    let t0 = Utc::now();
+    let metadata = EnterpriseMetadata {
+        version: "1.0.0".into(),
+        tools: vec![],
+        capabilities: HashMap::new(),
+        server_name: "Enterprise Server".into(),
+    };
+
+    let mut cache = SchemaCache::new();
+    // Empty cache is stale regardless of the window.
+    assert!(cache.is_stale_at(t0, chrono::Duration::seconds(1)));
+
+    cache.update_at(metadata, t0);
+
+    // Large window: fresh at t0, still fresh just inside, stale just outside.
+    assert!(!cache.is_stale_at(t0, chrono::Duration::hours(1)));
+    assert!(!cache.is_stale_at(
+        t0 + chrono::Duration::seconds(3599),
+        chrono::Duration::seconds(3600)
+    ));
+    assert!(cache.is_stale_at(
+        t0 + chrono::Duration::seconds(3601),
+        chrono::Duration::seconds(3600)
+    ));
+
+    // Zero window: `is_stale_at` compares strictly (`elapsed > ttl`), so at the
+    // exact instant of the fetch it is NOT stale, and any elapsed time makes it
+    // stale. This states the `>`-vs-`>=` choice instead of pinning it by race.
+    assert!(!cache.is_stale_at(t0, chrono::Duration::seconds(0)));
+    assert!(cache.is_stale_at(
+        t0 + chrono::Duration::milliseconds(1),
+        chrono::Duration::seconds(0)
+    ));
 }
 
 // -----------------------------------------------------------------------
