@@ -256,8 +256,15 @@ jobs:
               [ -f "$script" ] && (cd "$crate" && bash ".pi/scripts/ci/$(basename "$script")")
             done
           done
+          # Run the PER-CRATE copies, not the repo-root dispatcher. From the
+          # repo root the root copy has no `src/` to inspect, so it skipped out
+          # with a green summary while the real check never ran. Each crate's own
+          # copy resolves its tree from its own path (see the preamble in
+          # languages/rust/validate-*.sh).
           for v in validate-integration.sh validate-operations.sh; do
-            [ -f ".pi/scripts/$v" ] && echo "--- $v ---" && bash ".pi/scripts/$v"
+            for crate in engine mcp cli actions; do
+              [ -f "$crate/.pi/scripts/$v" ] && echo "--- $crate $v ---" && bash "$crate/.pi/scripts/$v"
+            done
           done
 
   # ── Stage 6b: SDK-schema conformance (contract-sync) ─────────

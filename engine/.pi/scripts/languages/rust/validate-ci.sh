@@ -8,6 +8,20 @@
 # ============================================================================
 set -euo pipefail
 
+# ---------------------------------------------------------------------------
+# Resolve the tree this validator belongs to, rather than trusting the caller's
+# cwd. The hardening discovery loop and the CI integration job both invoke these
+# from the repository root without `cd`, where a cwd-relative `src/` does not
+# exist — so the checks either failed spuriously or passed while silently
+# skipping the work they claim to do.
+# ---------------------------------------------------------------------------
+_TREE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+cd "$_TREE_ROOT" || exit 1
+if [ -f Cargo.toml ] && [ ! -d src ]; then
+    echo "⏭️  Workspace root (no src/) — the per-crate copies validate each crate."
+    exit 0
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PARENT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
