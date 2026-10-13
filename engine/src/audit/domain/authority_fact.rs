@@ -115,10 +115,26 @@ impl AuthorityFact {
     /// This is the shape that carries "we looked and there is no record": it is
     /// `NOT_ESTABLISHED`, has no outcome, and is never rendered as a refusal.
     pub fn not_established(subject: impl Into<String>, scope: impl Into<String>) -> Self {
+        Self::not_established_at(subject, scope, Utc::now())
+    }
+
+    /// A fact explicitly recording that no record establishes it, **as of** a
+    /// given instant.
+    ///
+    /// `as_of` is the point in history the absence is asserted against (the
+    /// chain head the projection was taken at). It is a parameter rather than
+    /// `Utc::now()` because re-derivation must be byte-identical: a projection
+    /// containing a `NOT_ESTABLISHED` fact would otherwise fail its own
+    /// verification every time it was re-derived.
+    pub fn not_established_at(
+        subject: impl Into<String>,
+        scope: impl Into<String>,
+        as_of: DateTime<Utc>,
+    ) -> Self {
         Self {
             subject: subject.into(),
             scope: scope.into(),
-            established_at: Utc::now(),
+            established_at: as_of,
             epistemic_status: EpistemicStatus::NotEstablished,
             outcome: None,
             authority_digest: None,
