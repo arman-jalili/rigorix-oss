@@ -5,7 +5,11 @@
 //! a tampered projection changes the digest, the claim ceiling is machine
 //! readable, and no absolute path / username appears in the output.
 
-use rigorix_engine::audit::application::projection::ProjectAuthorityFacts;
+use rigorix_engine::audit::application::envelope_factory_impl::AuditEnvelopeFactoryImpl;
+use rigorix_engine::audit::application::projection::{
+    ProjectAuthorityFacts, ProjectionVerificationError, verify_authority_fact_bundle,
+};
+use rigorix_engine::audit::domain::authority_fact::{AuthorityFactBundle, AuthorityFactProjection};
 use rigorix_engine::audit::domain::envelope::AuditEnvelope;
 
 fn envelope(sequence: u64, producer: &str, precondition_id: &str, outcome: &str) -> AuditEnvelope {
@@ -113,4 +117,159 @@ fn no_absolute_paths_or_username_in_the_canonical_bytes() {
     assert!(!text.contains("/Users/"), "username/path leak: {text}");
     assert!(!text.contains("/home/"), "username/path leak: {text}");
     assert!(!text.contains("file://"), "path leak: {text}");
+}
+
+// ---------------------------------------------------------------------------
+// Re-derivation verification — the design that replaces a signature
+// ---------------------------------------------------------------------------
+//
+// A signed projection would prove only "the holder of a key asserted this".
+// Re-derivation proves "this is what the anchored history says", which also
+// catches a signer asserting facts the chain does not support.
+
+/// A genuinely **linked** chain: each envelope's `prev_hash` is the hash of its
+/// predecessor, which is what `verify_chain` requires. `history()` above is
+/// deliberately unlinked — the earlier tests exercise the projection, not the
+/// chain.
+fn chained_history() -> Vec<AuditEnvelope> {
+    let mut out: Vec<AuditEnvelope> = Vec::new();
+    for (sequence, outcome) in [(0_u64, "passed"), (1, "passed"), (2, "failed")] {
+        let mut envelope = envelope(sequence, "local", "beneficiary-eligible", outcome);
+        if let Some(previous) = out.last() {
+            envelope.prev_hash =
+                Some(AuditEnvelopeFactoryImpl::envelope_hash(previous).expect("hash"));
+        }
+        out.push(envelope);
+    }
+    out
+}
+
+fn bundle_with(subjects: &[String]) -> AuthorityFactBundle {
+    let envelopes = chained_history();
+    let projection = ProjectAuthorityFacts::project(&envelopes, subjects);
+    AuthorityFactBundle {
+        projection,
+        envelopes,
+        subjects_without_record: subjects.to_vec(),
+    }
+}
+
+#[test]
+fn an_intact_bundle_verifies_by_re_derivation() {
+    assert_eq!(verify_authority_fact_bundle(&bundle_with(&[])), Ok(()));
+}
+
+/// The property a signature over the projection could NOT provide: a projection
+/// asserting facts the chain does not support is caught, because the check
+/// re-derives rather than trusting the artifact.
+#[test]
+fn a_forged_digest_is_detected() {
+    let mut bundle = bundle_with(&[]);
+    bundle.projection.facts[0].authority_digest = Some("sha256:forged".to_string());
+
+    assert_eq!(
+        verify_authority_fact_bundle(&bundle),
+        Err(ProjectionVerificationError::FactsDiffer {
+            claimed: 3,
+            derived: 3,
+        }),
+        "a forged digest must be caught even though the fact count matches",
+    );
+}
+
+#[test]
+fn a_dropped_fact_is_detected() {
+    let mut bundle = bundle_with(&[]);
+    bundle.projection.facts.pop();
+
+    assert_eq!(
+        verify_authority_fact_bundle(&bundle),
+        Err(ProjectionVerificationError::FactsDiffer {
+            claimed: 2,
+            derived: 3,
+        }),
+    );
+}
+
+/// `subjects_without_record` drives the `NOT_ESTABLISHED` facts, so dropping it
+/// would silently make the check incomplete. Carrying it in the bundle is what
+/// makes re-derivation reproducible.
+#[test]
+fn a_projection_that_omits_an_asked_about_subject_is_detected() {
+    let subjects = vec!["authority:revocation".to_string()];
+    let mut bundle = bundle_with(&subjects);
+    // The consumer strips the absence fact but the bundle still claims it asked:
+    // re-derivation puts it back, so the mismatch is visible.
+    bundle
+        .projection
+        .facts
+        .retain(|fact| fact.subject != "authority:revocation");
+
+    assert_eq!(
+        verify_authority_fact_bundle(&bundle),
+        Err(ProjectionVerificationError::FactsDiffer {
+            claimed: 3,
+            derived: 4,
+        }),
+    );
+}
+
+#[test]
+fn a_tampered_anchor_reference_is_detected() {
+    let mut bundle = bundle_with(&[]);
+    assert!(
+        bundle.projection.anchor_ref.is_some(),
+        "chained history anchors"
+    );
+    bundle.projection.anchor_ref = None;
+
+    assert_eq!(
+        verify_authority_fact_bundle(&bundle),
+        Err(ProjectionVerificationError::AnchorDiffers),
+    );
+}
+
+/// Unverified history re-derives to unverified facts, so the chain is checked
+/// FIRST — a broken chain is reported as such, not as a fact mismatch.
+#[test]
+fn a_broken_chain_is_rejected_before_re_derivation() {
+    let mut bundle = bundle_with(&[]);
+    bundle.envelopes[2].prev_hash = Some("deadbeef".to_string());
+
+    assert!(
+        matches!(
+            verify_authority_fact_bundle(&bundle),
+            Err(ProjectionVerificationError::Chain(_))
+        ),
+        "a broken chain must be reported as a chain failure",
+    );
+}
+
+#[test]
+fn an_interior_deletion_is_rejected() {
+    let mut bundle = bundle_with(&[]);
+    bundle.envelopes.remove(1);
+
+    assert!(matches!(
+        verify_authority_fact_bundle(&bundle),
+        Err(ProjectionVerificationError::Chain(_))
+    ));
+}
+
+/// The bundle is a report, not a gate: it serializes with the projection and the
+/// history it came from, so a third party has everything the check needs.
+#[test]
+fn the_bundle_round_trips_through_json() {
+    let bundle = bundle_with(&[]);
+    let json = serde_json::to_string(&bundle).expect("serialize");
+    let back: AuthorityFactBundle = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(back.projection.facts, bundle.projection.facts);
+    assert_eq!(back.envelopes.len(), bundle.envelopes.len());
+    assert_eq!(verify_authority_fact_bundle(&back), Ok(()));
+}
+
+#[test]
+fn the_projection_is_the_one_the_bundle_carries() {
+    let projection: AuthorityFactProjection = bundle_with(&[]).projection;
+    assert_eq!(projection.spec, "rigorix-authority-fact-projection");
 }

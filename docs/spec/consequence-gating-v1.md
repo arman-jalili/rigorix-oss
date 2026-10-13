@@ -222,6 +222,42 @@ facts for an external determination consumer. That projection reports *what was
 established, when, and how it can be verified*; it SHALL NOT assert present
 standing (NC-4). The projection is the producer side of the same seam as §4.2.
 
+The projection SHALL be exported as a **bundle**: the projection, the history it
+was derived from, and the subjects the consumer asked about
+(`subjects_without_record`, which drives the `NOT_ESTABLISHED` facts and is
+required for re-derivation to be reproducible).
+
+#### 4.3.1 Verification SHALL be by re-derivation, not by signature
+
+A verifier SHALL check a bundle by re-deriving it, not by trusting a signature:
+
+1. verify the envelope chain (`verify_chain`) — unverified history re-derives to
+   unverified facts, so this is checked first;
+2. re-derive the projection from that verified history with the same derivation
+   the producer used;
+3. compare the **facts** and the **anchor reference** exactly.
+
+The `generated_at` timestamp SHALL NOT be compared: it records when the
+projection was produced and is not reproducible. Everything that carries a claim
+is compared.
+
+This is a stronger property than a signature over the projection. A signature
+proves only that a key holder asserted the artifact; it cannot detect a signer
+asserting facts the anchored history does not support. Re-derivation can.
+
+#### 4.3.2 A signed projection is a permitted optimisation, with a condition
+
+A signed (cached) projection MAY be added later to make verification O(1) and to
+avoid disclosing the history. If it is added, the signature SHALL be anchored to
+the chain: otherwise verification degrades from "consistent with the anchored
+chain" to "asserted by a key holder", which is a weaker claim and MUST NOT be
+presented as equivalent. The signature is an optimisation in front of the
+re-derivation, never a replacement for it.
+
+The disclosure cost is explicit and accepted: a bundle carries the envelopes, so
+an isolated signature would avoid handing a third party the full history merely
+to answer a question about one authority.
+
 ### 4.4 What these interfaces do NOT do
 
 - They do not transfer constitutional judgment. The exchange of governed state

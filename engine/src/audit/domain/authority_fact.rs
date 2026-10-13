@@ -24,6 +24,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::audit::domain::envelope::AuditEnvelope;
+
 /// The one-way link from a fact to the record it is attributed to.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EvidenceRef {
@@ -238,6 +240,33 @@ impl AuthorityFactProjection {
             hex::encode(Sha256::digest(self.canonical_bytes()))
         )
     }
+}
+
+/// A projection packaged with the history it was derived from.
+///
+/// **Why a bundle and not just a projection.** Under the re-derivation design
+/// ([`verify_authority_fact_bundle`](crate::audit::application::verify_authority_fact_bundle))
+/// a third party does not have to trust a signature: they re-derive the
+/// projection from the history and check that it matches. That is a stronger
+/// property than "signed by a key holder", because it detects a signer asserting
+/// facts the anchored chain does not support.
+///
+/// The cost is size and disclosure: the bundle carries the envelopes, so the
+/// consumer sees the history rather than only the summary. A signed-cache
+/// optimisation is documented as deferred on ISSUE-AUTHORITY-FACT-PROJECTION; if
+/// it is ever added it **must** be anchored, or the guarantee degrades from
+/// "consistent with the anchored chain" to "asserted by a key holder".
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthorityFactBundle {
+    /// The projection under test.
+    pub projection: AuthorityFactProjection,
+    /// The signed history the projection was derived from.
+    pub envelopes: Vec<AuditEnvelope>,
+    /// The subjects the consumer asked about that had no record. Carried so that
+    /// re-derivation is reproducible: without it the `NOT_ESTABLISHED` facts
+    /// cannot be regenerated and the check would silently be incomplete.
+    #[serde(default)]
+    pub subjects_without_record: Vec<String>,
 }
 
 /// Recursively sort object keys so serialization is deterministic.

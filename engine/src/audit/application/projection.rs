@@ -13,8 +13,10 @@
 
 use chrono::Utc;
 
+use crate::audit::application::verify_chain;
 use crate::audit::domain::authority_fact::{
-    AnchorRef, AuthorityFact, AuthorityFactProjection, EpistemicStatus, EvidenceRef,
+    AnchorRef, AuthorityFact, AuthorityFactBundle, AuthorityFactProjection, EpistemicStatus,
+    EvidenceRef,
 };
 use crate::audit::domain::envelope::AuditEnvelope;
 
@@ -88,6 +90,82 @@ impl ProjectAuthorityFacts {
 
         AuthorityFactProjection::new(facts, anchor_ref(envelopes), Utc::now())
     }
+}
+
+/// Why a bundle failed verification.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectionVerificationError {
+    /// The envelope chain is not intact — a gap, a reorder, an insertion, or a
+    /// broken `prev_hash`.
+    Chain(String),
+    /// Re-deriving from the bundled history produced different facts than the
+    /// projection claims.
+    FactsDiffer {
+        /// How many facts the projection claims.
+        claimed: usize,
+        /// How many facts re-derivation produced.
+        derived: usize,
+    },
+    /// Re-derivation produced a different anchor reference.
+    AnchorDiffers,
+}
+
+impl std::fmt::Display for ProjectionVerificationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Chain(detail) => write!(f, "envelope chain is not intact: {detail}"),
+            Self::FactsDiffer { claimed, derived } => write!(
+                f,
+                "re-derivation disagrees with the projection: {claimed} fact(s) claimed, \
+                 {derived} derived"
+            ),
+            Self::AnchorDiffers => write!(f, "re-derivation disagrees on the anchor reference"),
+        }
+    }
+}
+
+impl std::error::Error for ProjectionVerificationError {}
+
+/// Verify a projection by re-deriving it from the bundled history.
+///
+/// This is the re-derivation design: verification does not trust a signature, it
+/// re-runs the derivation against history that must first be an intact chain.
+/// That detects a signer asserting facts the anchored history does not support —
+/// which a signature over the projection could not detect.
+///
+/// `generated_at` is deliberately **not** compared. It records when the
+/// projection was produced, so it is not reproducible; everything that carries a
+/// claim — the facts and the anchor reference — is compared exactly.
+///
+/// # Errors
+/// - [`ProjectionVerificationError::Chain`] — the bundled history is not an
+///   intact chain, so there is nothing trustworthy to re-derive from.
+/// - [`ProjectionVerificationError::FactsDiffer`] /
+///   [`ProjectionVerificationError::AnchorDiffers`] — the projection does not
+///   match what the history says.
+pub fn verify_authority_fact_bundle(
+    bundle: &AuthorityFactBundle,
+) -> Result<(), ProjectionVerificationError> {
+    // 1. The history must be genuine before anything derived from it means
+    //    anything. Unverified history re-derives to unverified facts.
+    verify_chain(&bundle.envelopes)
+        .map_err(|error| ProjectionVerificationError::Chain(error.to_string()))?;
+
+    // 2. Re-derive with the same pure function the producer used.
+    let derived =
+        ProjectAuthorityFacts::project(&bundle.envelopes, &bundle.subjects_without_record);
+
+    // 3. Everything that carries a claim must match exactly.
+    if derived.facts != bundle.projection.facts {
+        return Err(ProjectionVerificationError::FactsDiffer {
+            claimed: bundle.projection.facts.len(),
+            derived: derived.facts.len(),
+        });
+    }
+    if derived.anchor_ref != bundle.projection.anchor_ref {
+        return Err(ProjectionVerificationError::AnchorDiffers);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -25,7 +25,8 @@ guardian_issue:
     - "A projection command/API: given identity + scope + run/time window, emit a fact set"
     - "Facts carry provenance: attributable source, established_at, evidence refs, epistemic status"
     - "Chain position + anchor reference so a third party can verify lineage"
-    - "Offline verification with the PUBLISHED verifiers (rust/python/typescript) — no engine needed"
+    - "A bundle: the projection + the history it was derived from + the subjects asked about"
+    - "Verification by RE-DERIVATION (chain-verify, re-derive, compare facts and anchor)"
     - "An explicit machine-readable claim ceiling on the projection itself"
     - "Redaction applied at construction (no absolute paths, no usernames, no secrets)"
 
@@ -34,6 +35,7 @@ guardian_issue:
     - "Becoming an authority source of record for identity or delegation legality"
     - "Any new signing key or trust root (reuse anchored mode)"
     - "Guaranteeing the operator's authority artifact is externally true"
+    - "A SIGNED/cached projection — permitted later, but ONLY if anchored to the chain. Deferred, not rejected: see the design note in the body."
 
   affected_layers:
     domain:
@@ -58,13 +60,15 @@ guardian_issue:
     - last_sync: "2026-10-12"
 
   acceptance_criteria:
-    - "Projection is verifiable offline by the published rust/python/typescript verifiers, with no engine and no operator-held key in anchored mode"
+    - "The projection + its history round-trip as a bundle (JSON)"
+    - "An intact bundle verifies by re-derivation; a forged digest, a dropped fact, an omitted asked-about subject and a tampered anchor are each DETECTED"
+    - "A broken chain (broken link, interior deletion) is rejected BEFORE re-derivation — unverified history yields no trustworthy facts"
     - "Output distinguishes ESTABLISHED from NOT_ESTABLISHED; absence of a revocation record is never reported as non-revocation"
     - "Every fact carries attributable source, established_at and evidence references"
     - "The projection carries an explicit machine-readable claim ceiling (behavior under fixture vs externally proven fact)"
     - "Zero absolute paths / usernames / secrets in the projection (redaction at construction)"
-    - "Chain position + anchor reference are included and independently checkable"
-    - "A tampered projection is DETECTED by the published verifiers (negative test)"
+    - "The verification procedure is specified (spec 4.3.1) and the signed-cache alternative is recorded with its anchoring condition (spec 4.3.2)"
+    - "A CLI command emits a bundle; the MCP tool is deferred pending a frozen-catalog change"
     - "validate-ci.sh / validate-tests.sh / validate-security.sh / validate-canonical.sh pass"
 
   validators:
@@ -143,6 +147,51 @@ supply facts with provenance; they supply the judgement. That split is the same
 discipline that already governs our own evidence (the `recorded` /
 `refused_before_check` / `artifact_unreadable` distinction exists precisely so that
 absences are not overloaded).
+
+## Design decision — verification by re-derivation, not by signature
+
+Two designs were considered for making the projection checkable offline.
+**Design 1 (re-derivation) is implemented; design 2 (signing) is documented here as
+a deferred optimisation, not a rejected idea.**
+
+| | Design 1 — re-derivation (chosen) | Design 2 — signed projection (deferred) |
+|---|---|---|
+| What it proves | "this is what the **anchored history** says" | "the holder of **key K** asserts this" |
+| Verifier work | re-run the derivation | canonicalize + `verify_ed25519` (already in all 5 languages) |
+| Artifact size | the envelopes (large) | a small self-contained artifact |
+| Disclosure | the full history slice | just the summary |
+| Verification cost | O(n) over envelopes | O(1) |
+| SDK change | none | a new frozen canonical form + a `verify_*` |
+
+**Why design 1 wins for now.** A signature cannot detect a signer asserting facts
+the chain does not support — it answers *who said it*, not *whether it is so*. If
+the projection is signed by the operator's engine key (which the operator holds),
+then the operator can emit a projection that is not derivable from the chain and
+verification still passes. Anchored mode's entire premise is that the anchor key
+is one the operator does **not** hold, so reaching design 1's strength by signing
+would require the anchor service to sign projections — a contract change on the
+anchoring side, plus a new frozen canonical form. That is the exact coordination
+the 0.3.0→0.4.0 sequence cost us once already.
+
+**Real advantages of design 2, which are why it stays on the table.** It matches
+the SDK's established shape (`verify_ledger_receipt`, `verify_history_slice`,
+`verify_compaction_checkpoint` are all typed signed artifacts with a dedicated
+`verify_*`); it is O(1) instead of O(n); and it does not hand a third party the
+entire history merely to answer a question about one authority. Design 1's
+disclosure cost is real and is accepted explicitly.
+
+**The condition if design 2 is ever added** (recorded in spec §4.3.2): the
+signature SHALL be anchored to the chain, and it is an optimisation *in front of*
+re-derivation — never a replacement for it. Unanchored, it would silently
+downgrade the guarantee from "consistent with the anchored chain" to "asserted by
+a key holder", which must not be presented as equivalent.
+
+**What this means for the original AC.** The AC said "verifiable offline by the
+published verifiers". The published verifiers verify *envelopes and typed signed
+artifacts*; none of them derives a projection, so that AC could not be satisfied
+as written without either publishing the derivation to every language or adding a
+signed artifact type. The AC is now: verify by re-derivation (engine-side, no SDK
+change), with the signed variant specified and conditionally permitted.
 
 ## Dependencies
 
