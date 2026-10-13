@@ -66,8 +66,10 @@ supplies facts and a determination; it does not supply authority (spec §2.7).
 ### attribution
 The optional fields binding a finding to the artifacts it touched: `check_digest`,
 `authority_digest`, `check_writable`, and the `attribution` reason
-(`recorded` | `refused_before_check` | `artifact_unreadable`). Absent attribution
-means **pre-attribution**, not tampered.
+(`recorded` | `refused_before_check` | `artifact_unreadable`). For a check program
+the digests bind the resolved check artifact and the authority artifact; for a
+provider they bind the request and the response bytes (spec §4.2). Absent
+attribution means **pre-attribution**, not tampered.
 
 ### standing (present standing)
 Whether authority holds **now**. Rigorix does not assert standing (spec NC-1,

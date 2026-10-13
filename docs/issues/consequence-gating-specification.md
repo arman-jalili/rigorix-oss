@@ -64,6 +64,8 @@ guardian_issue:
     - "The authority demo is explicitly classified as fixture-relative engineering evidence, not independent validation"
     - "Terminology appendix defines the terms we overload today (determination, authority, record, verified, evidence)"
     - "Every claim in the spec maps to a reproducible artifact or is marked as non-claim"
+    - "FOLDED FINDING A: the evidence-field table defines `check_digest`/`authority_digest` for the provider path, so a reader cannot mistake a provider request hash for a resolved check artifact"
+    - "FOLDED FINDING B: the provider body cap is specified as bounding what the engine ALLOCATES, not merely what it records"
 
   validators:
     - ci
@@ -113,6 +115,8 @@ guardian_issue:
     - "create: docs/spec/validation-protocol-v1.md"
     - "create: docs/spec/terminology.md"
     - "create: docs/spec/README.md"
+    - "create: engine/tests/provider_transport_cap.rs (folded finding B)"
+    - "modify: engine/src/precondition/infrastructure/provider_client.rs (folded finding B)"
     - "modify: README.md (link the specification, bound the public claims)"
     - "modify: engine/.pi/architecture/modules/consequence-gating.md (point at the spec)"
 
@@ -233,6 +237,39 @@ structure: specification, protocol, terminology, and index.
 | 6 | Authority demo classified as layer-1 fixture-relative evidence | review |
 | 7 | Terminology appendix resolves our overloaded terms | review |
 | 8 | Every claim maps to a reproducible artifact or is marked a non-claim | `validate-canonical.sh` |
+| 9 | FOLDED FINDING A — the field table defines `check_digest`/`authority_digest` for a provider (request/response bytes), not only for a check program | review |
+| 10 | FOLDED FINDING B — the provider body cap is specified as bounding allocation, not only the recorded evidence | `validate-tests.sh` |
+
+## Folded findings (2026-10-12 verification of PR #1003)
+
+Two defects were found by verifying the implementation against this specification.
+Both are folded into this issue rather than filed separately, because both are
+*this specification being wrong or silent* rather than missing features:
+
+**Finding A — the evidence table did not define the provider mapping.**
+The implementation binds a provider's request bytes as `check_digest` and its
+response bytes as `authority_digest` (a deliberate choice to avoid an SDK schema
+change). But §3.1 defined those fields only in terms of a *check program* —
+"sha256 of the resolved check artifact" — and §4.2 said the bytes "SHALL be bound
+into the record as digests" without naming the fields. A reader applying §3.1
+would therefore read a provider request hash as "the resolved check artifact".
+That is exactly the vocabulary drift this specification and its terminology
+appendix exist to prevent.
+
+*Resolution:* §3.1 now defines both fields in terms of the input-side and
+authority-side artifact, naming the provider case; §4.2 names the fields it
+mandates; the terminology entry for `attribution` states both cases.
+
+**Finding B — "bounded body" was true of the evidence, not of memory.**
+The provider client read the response with a full-buffering call and checked the
+cap afterwards, so an oversized body was refused *after* being allocated in full.
+The module documentation claimed a "bounded body". A provider is an untrusted
+input source; the cap must bound allocation.
+
+*Resolution:* the client now rejects on a declared `content_length` and enforces
+the cap inside a streaming read loop, so it never buffers beyond the cap. Covered
+by `engine/tests/provider_transport_cap.rs` against a real HTTP server (the
+provider unit tests inject a stub client and never exercised the transport).
 
 ## Implementation
 

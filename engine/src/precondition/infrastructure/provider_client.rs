@@ -8,7 +8,9 @@
 //! The client is deliberately conservative — it treats the provider as an
 //! **untrusted input source**:
 //!
-//! - **bounded body** — a response larger than [`MAX_RESPONSE_BYTES`] is refused;
+//! - **bounded body** — the cap is enforced *while reading*, so an oversized
+//!   response is refused without first being buffered in full (see
+//!   `MAX_RESPONSE_BYTES`);
 //! - **deadline** — the operator's `timeout_ms` is applied per request;
 //! - **no redirects** — `Policy::none()`; a provider cannot bounce the engine to
 //!   an arbitrary host;
@@ -32,6 +34,10 @@ use crate::precondition::infrastructure::sha256_hex;
 
 /// Maximum response body the client will read (bytes). A larger body is refused
 /// (fail closed) — a determination service must answer tersely.
+///
+/// Enforced *during* the read, not after it: [`reqwest::Response::bytes`] would
+/// buffer an arbitrarily large body before the cap could be applied, which would
+/// bound the recorded evidence but not the engine's memory.
 pub const MAX_RESPONSE_BYTES: usize = 64 * 1024;
 
 /// Consult an external determination service.
@@ -137,7 +143,7 @@ impl ProviderClient for HttpProviderClient {
         // Never forward the raw transport error: a reqwest error string can
         // carry the URL (and its query). The engine gets a fixed, redacted
         // reason; the operator gets the full detail in the local log.
-        let response = match request.send().await {
+        let mut response = match request.send().await {
             Ok(response) => response,
             Err(error) => {
                 tracing::warn!(
@@ -153,21 +159,41 @@ impl ProviderClient for HttpProviderClient {
         };
 
         let status = response.status();
-        let bytes = match response.bytes().await {
-            Ok(bytes) => bytes,
-            Err(error) => {
-                tracing::warn!(provider = %spec.id, %error, "provider body unreadable");
-                return Err(fail("provider response could not be read".to_string()));
-            }
-        };
-        let response_digest = sha256_hex(&bytes);
 
-        if bytes.len() > MAX_RESPONSE_BYTES {
+        // Enforce the cap DURING the read, not after it. `Response::bytes()`
+        // buffers the whole body first, so a hostile or misconfigured provider
+        // could make the engine allocate an unbounded buffer before we ever got
+        // to refuse it — the cap would then bound the *evidence*, not the
+        // *memory*. A provider is an untrusted input source, so bound what we
+        // allocate. `content_length` is a cheap early exit when the provider
+        // declares a size; the streaming loop is the actual guarantee, because
+        // a chunked response omits it.
+        if let Some(declared) = response.content_length()
+            && declared > MAX_RESPONSE_BYTES as u64
+        {
             return Err(fail(format!(
-                "provider response is {} bytes, over the {MAX_RESPONSE_BYTES}-byte cap",
-                bytes.len()
+                "provider response declares {declared} bytes, over the {MAX_RESPONSE_BYTES}-byte cap"
             )));
         }
+        let mut bytes: Vec<u8> = Vec::new();
+        loop {
+            match response.chunk().await {
+                Ok(Some(chunk)) => {
+                    if bytes.len() + chunk.len() > MAX_RESPONSE_BYTES {
+                        return Err(fail(format!(
+                            "provider response exceeds the {MAX_RESPONSE_BYTES}-byte cap"
+                        )));
+                    }
+                    bytes.extend_from_slice(&chunk);
+                }
+                Ok(None) => break,
+                Err(error) => {
+                    tracing::warn!(provider = %spec.id, %error, "provider body unreadable");
+                    return Err(fail("provider response could not be read".to_string()));
+                }
+            }
+        }
+        let response_digest = sha256_hex(&bytes);
 
         // Non-2xx → indeterminate, but the bytes were bound (Unknown).
         if !status.is_success() {

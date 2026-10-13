@@ -138,8 +138,8 @@ the signed audit envelope, carrying at minimum:
 | `inputs_hash` | a digest binding the step inputs the engine fed the check |
 | `checked_at` | when the check ran |
 | `summary` | a human-readable, redacted summary |
-| `check_digest` | sha256 of the resolved check artifact (attribution; optional) |
-| `authority_digest` | sha256 of the operator-declared authority artifact (attribution; optional) |
+| `check_digest` | sha256 of the artifact the determination was bound to on the *input* side — the resolved check artifact for a check program, or the exact request bytes for a provider (§4.2) (attribution; optional) |
+| `authority_digest` | sha256 of the artifact the determination was bound to on the *authority* side — the operator-declared authority artifact for a check program, or the exact response bytes for a provider (§4.2) (attribution; optional) |
 | `check_writable` | the boundary fact (attribution; optional) |
 | `attribution` | `recorded` \| `refused_before_check` \| `artifact_unreadable` (optional) |
 
@@ -204,8 +204,12 @@ resolve outside the agent-writable workspace.
 
 A precondition MAY be satisfied by an operator-configured external service
 (HTTP), evaluated at the same enforcement point as the check program. The
-service's request and response bytes SHALL be bound into the record as digests,
-the endpoint SHALL be recorded redacted, and the determination vocabulary SHALL
+service's request and response bytes SHALL be bound into the record as digests —
+the request digest as `check_digest` and the response digest as
+`authority_digest` (§3.1). For a provider those two fields carry the request and
+the response respectively, because there is no local check artifact: the request
+is the input-side artifact and the response is the authority-side artifact. The
+endpoint SHALL be recorded redacted, and the determination vocabulary SHALL
 be mapped explicitly. An unknown or newer vocabulary SHALL map to `error`
 (unknown), and unknown SHALL NOT become authority. The provider result enters the
 same place an operator check result does; it is governed by §2.7
