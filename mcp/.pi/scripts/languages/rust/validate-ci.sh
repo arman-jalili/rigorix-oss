@@ -18,11 +18,6 @@ if [ -f Cargo.toml ] && [ ! -d src ]; then
     exit 0
 fi
 
-# Change to MCP subdirectory if running from workspace root and src/mcp is not directly accessible
-if [ ! -d "src/mcp_server" ] && [ -d "mcp" ] && [ -f "mcp/Cargo.toml" ]; then
-    cd mcp
-fi
-
 PASS_COUNT=0
 ERRORS=()
 WARNINGS=()
@@ -45,8 +40,19 @@ echo ""
 # Cargo.toml detection
 # ---------------------------------------------------------------------------
 echo "--- Project Detection ---"
+# Scope the cargo commands to this crate when the manifest names a package, so
+# a per-tree copy validates only its own crate instead of the whole workspace.
+CRATE_NAME=""
 if [ -f "Cargo.toml" ]; then
-    pass "Cargo.toml found"
+    CRATE_NAME=$(grep -E '^name[[:space:]]*=' Cargo.toml | head -1 | sed -E 's/^name[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')
+fi
+SCOPE_FLAG=""
+if [ -n "$CRATE_NAME" ]; then
+    SCOPE_FLAG="-p $CRATE_NAME"
+fi
+
+if [ -f "Cargo.toml" ]; then
+    pass "Cargo.toml found (crate: ${CRATE_NAME:-workspace})"
     # Extract workspace info if available
     if grep -q '^\[workspace\]' Cargo.toml; then
         echo "  Workspace project detected"
@@ -74,7 +80,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Build ---"
-if cargo build --quiet 2>/dev/null; then
+if cargo build $SCOPE_FLAG --quiet 2>/dev/null; then
     pass "Build succeeded"
 else
     fail "Build failed"
@@ -85,7 +91,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Tests ---"
-if cargo test --quiet 2>/dev/null; then
+if cargo test $SCOPE_FLAG --quiet 2>/dev/null; then
     pass "All tests passed"
 else
     fail "Tests failed"
@@ -97,7 +103,7 @@ fi
 echo ""
 echo "--- Lint ---"
 if command -v cargo &>/dev/null && cargo clippy --version &>/dev/null; then
-    if cargo clippy --all-targets -- -D warnings 2>/dev/null; then
+    if cargo clippy $SCOPE_FLAG --all-targets -- -D warnings 2>/dev/null; then
         pass "Clippy passed"
     else
         fail "Clippy found issues"
@@ -112,7 +118,7 @@ fi
 echo ""
 echo "--- Format ---"
 if command -v cargo &>/dev/null && cargo fmt --version &>/dev/null; then
-    if cargo fmt --check 2>/dev/null; then
+    if cargo fmt $SCOPE_FLAG --check 2>/dev/null; then
         pass "Format check passed"
     else
         fail "Format check failed (run 'cargo fmt')"
@@ -127,7 +133,7 @@ fi
 echo ""
 echo "--- Security Audit ---"
 if command -v cargo &>/dev/null && cargo audit --version &>/dev/null; then
-    AUDIT_OUT=$(cargo audit 2>&1 || true)
+    AUDIT_OUT=$(cargo audit 2>/dev/null || true)
     if echo "$AUDIT_OUT" | grep -q "No advisabilities found\|No known vulnerabilities\|info"; then
         pass "No known vulnerabilities"
     else

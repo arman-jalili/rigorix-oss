@@ -18,11 +18,6 @@ if [ -f Cargo.toml ] && [ ! -d src ]; then
     exit 0
 fi
 
-# Change to MCP subdirectory if running from workspace root and src/mcp is not directly accessible
-if [ ! -d "src/mcp_server" ] && [ -d "mcp" ] && [ -f "mcp/Cargo.toml" ]; then
-    cd mcp
-fi
-
 PASS_COUNT=0
 ERRORS=()
 WARNINGS=()
@@ -61,7 +56,7 @@ echo "--- Unit Tests ---"
 if cargo test --lib --quiet 2>/dev/null; then
     pass "Library unit tests passed"
 else
-    LIB_SOURCES=$(find src -name "*.rs" 2>/dev/null | wc -l | tr -d ' ')
+    LIB_SOURCES=$(find src -name "*.rs" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$LIB_SOURCES" -eq 0 ]; then
         pass "No library source files (skipped)"
     else
@@ -75,17 +70,35 @@ fi
 echo ""
 echo "--- Integration Tests ---"
 if [ -d "tests" ]; then
-    # Count test files
-    TEST_COUNT=$(find tests -name "*.rs" 2>/dev/null | wc -l 2>/dev/null | tr -d '[:space:]' || echo 0)
-    if [ "${TEST_COUNT:-0}" -gt 0 ]; then
-        # Run all tests — this includes integration tests in tests/
-        if cargo test --quiet 2>/dev/null; then
-            pass "Integration tests passed ($TEST_COUNT test files)"
+    # Try named integration test first, then all tests in tests/
+    # A target named `integration` exists only for `tests/integration.rs`. A
+    # loose `tests/*integration*` glob used to stand in for it, which selected
+    # `cargo test --test integration` for files like
+    # `audit_integrity_integration.rs` — a target that does not exist, so cargo
+    # errored and the validator reported a false failure.
+    if [ -f "tests/integration.rs" ]; then
+        if cargo test --test integration --quiet 2>/dev/null; then
+            pass "Integration tests passed"
         else
             fail "Integration tests failed"
         fi
     else
-        pass "No integration test files found"
+        # Run all integration test files
+        TEST_COUNT=$(find tests -name "*.rs" 2>/dev/null | wc -l | tr -d ' ') || true
+        if [ "$TEST_COUNT" -gt 0 ]; then
+            # `--tests`, not `--test '*'`: cargo *errors* ("target ... requires
+            # the features: ...") when an explicitly selected test target
+            # declares `required-features`, so the explicit form produced a
+            # false failure on feature-gated targets (the SDK conformance
+            # suite). `--tests` skips them the way a plain `cargo test` does.
+            if cargo test --tests --quiet 2>/dev/null; then
+                pass "Integration tests passed"
+            else
+                fail "Integration tests failed"
+            fi
+        else
+            pass "Integration test files found but empty or skipped"
+        fi
     fi
 else
     pass "No tests/ directory (no integration tests to run)"
@@ -99,7 +112,7 @@ echo "--- Doctests ---"
 if cargo test --doc --quiet 2>/dev/null; then
     pass "Doctests passed"
 else
-    DOCS=$(grep -rl '//!\|///' src/ 2>/dev/null | wc -l | tr -d ' ')
+    DOCS=$(grep -rl '//!\|///' src/ 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$DOCS" -eq 0 ]; then
         pass "No doc comments found (no doctests to run)"
     else
@@ -108,23 +121,18 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Coverage
 # ---------------------------------------------------------------------------
-echo ""
-echo "--- Coverage ---"
-if command -v cargo &>/dev/null && cargo tarpaulin --version &>/dev/null; then
-    TARP_OUT=$(cargo tarpaulin --out Html 2>&1 || true)
-    COVERAGE_PCT=$(echo "$TARP_OUT" | grep -oE '[0-9]+(\.[0-9]+)?%' | head -1 | tr -d '%' || echo "")
+# Coverage (cargo-llvm-cov — the tool the CI coverage stage and .pi/scripts/coverage.sh use).
+# Informational per crate: the GATING coverage check is the workspace-wide
+# `.pi/scripts/coverage.sh --gate` (threshold 60%) in the CI `coverage` stage.
+if command -v cargo &>/dev/null && cargo llvm-cov --version &>/dev/null; then
+    # The TOTAL row columns are regions / functions / lines / branches — take LINES.
+    LLCV_OUT=$(cargo llvm-cov --summary-only 2>/dev/null || true)
+    COVERAGE_PCT=$(echo "$LLCV_OUT" | awk '/^TOTAL/ {print $10}' | tr -d '%' || echo "")
     if [ -n "$COVERAGE_PCT" ]; then
-        # Compare coverage against 80% threshold using awk
-        MEETS_THRESHOLD=$(echo "$COVERAGE_PCT" | awk '{print ($1 >= 80) ? "yes" : "no"}')
-        if [ "$MEETS_THRESHOLD" = "yes" ]; then
-            pass "Code coverage: ${COVERAGE_PCT}% (≥ 80%)"
-        else
-            fail "Code coverage: ${COVERAGE_PCT}% (< 80%)"
-        fi
+        pass "Code coverage (lines): ${COVERAGE_PCT}% (workspace gate: coverage.sh --gate)"
     else
-        warn "Could not extract coverage percentage from tarpaulin output"
+        warn "Could not extract coverage percentage from llvm-cov output"
     fi
 elif command -v grcov &>/dev/null; then
     # Use grcov as fallback
@@ -135,7 +143,7 @@ elif command -v grcov &>/dev/null; then
         pass "grcov coverage report generated"
     fi
 else
-    warn "No coverage tools available (cargo-tarpaulin / grcov), skipping coverage check"
+    warn "No coverage tools available (cargo-llvm-cov / grcov), skipping coverage check"
 fi
 
 # ---------------------------------------------------------------------------

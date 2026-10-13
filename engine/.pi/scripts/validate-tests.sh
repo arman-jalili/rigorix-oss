@@ -11,12 +11,12 @@ detect_language() {
     else echo "unknown"; fi
 }
 
-LANG=$(detect_language)
-LANG_SCRIPT="${SCRIPT_DIR}/languages/${LANG}/validate-tests.sh"
+LANG_DETECTED=$(detect_language)
+LANG_SCRIPT="${SCRIPT_DIR}/languages/${LANG_DETECTED}/validate-tests.sh"
 
 if [ -f "$LANG_SCRIPT" ]; then
     exec bash "$LANG_SCRIPT" "$@"
 else
-    echo "No test validator for language: C.UTF-8"
+    echo "No test validator for language: ${LANG_DETECTED}"
     exit 0
 fi

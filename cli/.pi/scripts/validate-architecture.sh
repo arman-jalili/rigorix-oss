@@ -11,12 +11,12 @@ detect_language() {
     else echo "unknown"; fi
 }
 
-LANG=$(detect_language)
-LANG_SCRIPT="${SCRIPT_DIR}/languages/${LANG}/validate-architecture.sh"
+LANG_DETECTED=$(detect_language)
+LANG_SCRIPT="${SCRIPT_DIR}/languages/${LANG_DETECTED}/validate-architecture.sh"
 
 if [ -f "$LANG_SCRIPT" ]; then
     exec bash "$LANG_SCRIPT" "$@"
 else
-    echo "No architecture validator for language: C.UTF-8"
+    echo "No architecture validator for language: ${LANG_DETECTED}"
     exit 0
 fi

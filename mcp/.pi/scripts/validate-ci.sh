@@ -8,7 +8,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PI_SCRIPT_DIR="$SCRIPT_DIR"
 
 detect_language() {
     if [ -f "poetry.lock" ]; then
@@ -27,12 +26,12 @@ detect_language() {
 }
 
 LANG_DETECTED=$(detect_language)
-LANG_SCRIPT="${PI_SCRIPT_DIR}/languages/${LANG_DETECTED}/validate-ci.sh"
+LANG_SCRIPT="${SCRIPT_DIR}/languages/${LANG_DETECTED}/validate-ci.sh"
 
 if [ -f "$LANG_SCRIPT" ]; then
     exec bash "$LANG_SCRIPT" "$@"
 else
-    echo "No CI validator for language: C.UTF-8"
+    echo "No CI validator for language: ${LANG_DETECTED}"
     echo "Create: $LANG_SCRIPT"
     exit 0
 fi
