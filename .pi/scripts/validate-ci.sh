@@ -31,7 +31,7 @@ LANG_SCRIPT="${SCRIPT_DIR}/languages/${LANG_DETECTED}/validate-ci.sh"
 if [ -f "$LANG_SCRIPT" ]; then
     exec bash "$LANG_SCRIPT" "$@"
 else
-    echo "No CI validator for language: C.UTF-8"
+    echo "No CI validator for language: ${LANG_DETECTED}"
     echo "Create: $LANG_SCRIPT"
     exit 0
 fi

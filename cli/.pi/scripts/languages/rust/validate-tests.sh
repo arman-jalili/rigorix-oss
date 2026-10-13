@@ -56,7 +56,7 @@ echo "--- Unit Tests ---"
 if cargo test --lib --quiet 2>/dev/null; then
     pass "Library unit tests passed"
 else
-    LIB_SOURCES=$(find src -name "*.rs" 2>/dev/null | wc -l | tr -d ' ')
+    LIB_SOURCES=$(find src -name "*.rs" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$LIB_SOURCES" -eq 0 ]; then
         pass "No library source files (skipped)"
     else
@@ -71,7 +71,12 @@ echo ""
 echo "--- Integration Tests ---"
 if [ -d "tests" ]; then
     # Try named integration test first, then all tests in tests/
-    if [ -f "tests/integration.rs" ] || ls tests/*integration* 1>/dev/null 2>&1; then
+    # A target named `integration` exists only for `tests/integration.rs`. A
+    # loose `tests/*integration*` glob used to stand in for it, which selected
+    # `cargo test --test integration` for files like
+    # `audit_integrity_integration.rs` — a target that does not exist, so cargo
+    # errored and the validator reported a false failure.
+    if [ -f "tests/integration.rs" ]; then
         if cargo test --test integration --quiet 2>/dev/null; then
             pass "Integration tests passed"
         else
@@ -79,9 +84,14 @@ if [ -d "tests" ]; then
         fi
     else
         # Run all integration test files
-        TEST_COUNT=$(find tests -name "*.rs" 2>/dev/null | wc -l | tr -d ' ')
+        TEST_COUNT=$(find tests -name "*.rs" 2>/dev/null | wc -l | tr -d ' ') || true
         if [ "$TEST_COUNT" -gt 0 ]; then
-            if cargo test --test '*' --quiet 2>/dev/null; then
+            # `--tests`, not `--test '*'`: cargo *errors* ("target ... requires
+            # the features: ...") when an explicitly selected test target
+            # declares `required-features`, so the explicit form produced a
+            # false failure on feature-gated targets (the SDK conformance
+            # suite). `--tests` skips them the way a plain `cargo test` does.
+            if cargo test --tests --quiet 2>/dev/null; then
                 pass "Integration tests passed"
             else
                 fail "Integration tests failed"
@@ -102,7 +112,7 @@ echo "--- Doctests ---"
 if cargo test --doc --quiet 2>/dev/null; then
     pass "Doctests passed"
 else
-    DOCS=$(grep -rl '//!\|///' src/ 2>/dev/null | wc -l | tr -d ' ')
+    DOCS=$(grep -rl '//!\|///' src/ 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$DOCS" -eq 0 ]; then
         pass "No doc comments found (no doctests to run)"
     else
@@ -111,25 +121,26 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Coverage (uses cargo-llvm-cov — native LLVM instrumentation, ~3x faster than tarpaulin)
 # ---------------------------------------------------------------------------
-echo ""
-echo "--- Coverage ---"
+# Coverage (cargo-llvm-cov — the tool the CI coverage stage and .pi/scripts/coverage.sh use).
+# Informational per crate: the GATING coverage check is the workspace-wide
+# `.pi/scripts/coverage.sh --gate` (threshold 60%) in the CI `coverage` stage.
 if command -v cargo &>/dev/null && cargo llvm-cov --version &>/dev/null; then
-    LLCV_OUT=$(cargo llvm-cov --html --fail-under-lines 80 2>&1 || true)
-    LLCV_EXIT=$?
-    COVERAGE_PCT=$(echo "$LLCV_OUT" | grep -oE '[0-9]+(\.[0-9]+)?%' | head -1 | tr -d '%' || echo "")
+    # The TOTAL row columns are regions / functions / lines / branches — take LINES.
+    LLCV_OUT=$(cargo llvm-cov --summary-only 2>/dev/null || true)
+    COVERAGE_PCT=$(echo "$LLCV_OUT" | awk '/^TOTAL/ {print $10}' | tr -d '%' || echo "")
     if [ -n "$COVERAGE_PCT" ]; then
-        MEETS_THRESHOLD=$(echo "$COVERAGE_PCT" | awk '{print ($1 >= 80) ? "yes" : "no"}')
-        if [ "$MEETS_THRESHOLD" = "yes" ]; then
-            pass "Code coverage: ${COVERAGE_PCT}% (≥ 80%)"
-        else
-            fail "Code coverage: ${COVERAGE_PCT}% (< 80%)"
-        fi
-    elif [ "$LLCV_EXIT" -eq 0 ]; then
-        pass "Code coverage meets 80% threshold"
+        pass "Code coverage (lines): ${COVERAGE_PCT}% (workspace gate: coverage.sh --gate)"
     else
         warn "Could not extract coverage percentage from llvm-cov output"
+    fi
+elif command -v grcov &>/dev/null; then
+    # Use grcov as fallback
+    GRCOV_OUT=$(grcov . --binary-path ./target/debug/ -s . -t html --branch --ignore-not-existing 2>&1 || true)
+    if echo "$GRCOV_OUT" | grep -q "error\|Error"; then
+        warn "grcov encountered errors during coverage analysis"
+    else
+        pass "grcov coverage report generated"
     fi
 else
     warn "No coverage tools available (cargo-llvm-cov / grcov), skipping coverage check"

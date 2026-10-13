@@ -95,7 +95,7 @@ fi
 echo ""
 echo "--- Canonical References ---"
 if [ -d ".pi/architecture/modules" ]; then
-    MODULE_COUNT=$(find .pi/architecture/modules -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
+    MODULE_COUNT=$(find .pi/architecture/modules -name "*.md" 2>/dev/null | wc -l | tr -d ' ' || true)
     if [ "$MODULE_COUNT" -gt 0 ]; then
         pass "Architecture modules defined ($MODULE_COUNT module files)"
     else
@@ -113,7 +113,7 @@ echo "--- Domain Models ---"
 DOMAIN_MODELS=0
 for dir in src/domain src/models; do
     if [ -d "$dir" ]; then
-        MODELS=$(grep -rlE '^\s*(pub\s+)?struct\s' "$dir" 2>/dev/null | wc -l | tr -d ' ')
+        MODELS=$(grep -rlE '^\s*(pub\s+)?struct\s' "$dir" 2>/dev/null | wc -l | tr -d ' ' || true)
         DOMAIN_MODELS=$((DOMAIN_MODELS + MODELS))
     fi
 done
@@ -121,7 +121,7 @@ if [ "$DOMAIN_MODELS" -gt 0 ]; then
     pass "Domain models found ($DOMAIN_MODELS files with struct definitions)"
 else
     # Check all of src as fallback
-    ALL_MODELS=$(grep -rlE '^\s*(pub\s+)?struct\s' src/ 2>/dev/null | wc -l | tr -d ' ')
+    ALL_MODELS=$(grep -rlE '^\s*(pub\s+)?struct\s' src/ 2>/dev/null | wc -l | tr -d ' ' || true)
     if [ "$ALL_MODELS" -gt 0 ]; then
         pass "Struct definitions found in src/ ($ALL_MODELS files)"
     else

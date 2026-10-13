@@ -54,7 +54,7 @@ fi
 # ---------------------------------------------------------------------------
 echo "--- Integration Test Runner ---"
 if [ -d "tests" ]; then
-    INT_TEST_FILES=$(find tests -name "*.rs" 2>/dev/null | wc -l | tr -d ' ')
+    INT_TEST_FILES=$(find tests -name "*.rs" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$INT_TEST_FILES" -gt 0 ]; then
         # `--tests`, not `--test '*'`: cargo errors when an explicitly selected
         # target declares `required-features` that are not enabled, which made
@@ -87,7 +87,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Contract Tests ---"
-CONTRACT_TESTS=$(find . -name "*contract*test*.rs" -o -name "*test*contract*.rs" 2>/dev/null | wc -l | tr -d ' ')
+CONTRACT_TESTS=$(find . -name "*contract*test*.rs" -o -name "*test*contract*.rs" 2>/dev/null | wc -l | tr -d ' ') || true
 if [ "$CONTRACT_TESTS" -gt 0 ]; then
     pass "Contract test files found ($CONTRACT_TESTS)"
 else
@@ -118,7 +118,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Database Integration ---"
-DB_INTEG=$(find . -name "*_integration_test.rs" -o -name "*db*test*.rs" 2>/dev/null | wc -l | tr -d ' ')
+DB_INTEG=$(find . -name "*_integration_test.rs" -o -name "*db*test*.rs" 2>/dev/null | wc -l | tr -d ' ') || true
 if [ "$DB_INTEG" -gt 0 ]; then
     pass "Database integration test files found ($DB_INTEG)"
 else
