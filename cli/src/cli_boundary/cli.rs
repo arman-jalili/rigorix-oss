@@ -81,6 +81,29 @@ pub enum AuditAction {
         /// Second audit entry ID.
         id2: String,
     },
+    /// Emit an authority-fact projection bundle.
+    ///
+    /// The bundle carries the projection AND the signed history it was derived
+    /// from, so a third party can verify it by re-derivation without running the
+    /// engine. Note the disclosure: a bundle contains the envelopes — the
+    /// history — not only a summary.
+    Projection {
+        /// A subject the consumer asks about. Repeat for several; a subject with
+        /// no record becomes an explicit NOT_ESTABLISHED fact.
+        #[arg(long = "subject")]
+        subject: Vec<String>,
+        /// Write the bundle to this file instead of stdout.
+        #[arg(short = 'o', long)]
+        out: Option<std::path::PathBuf>,
+    },
+    /// Verify an authority-fact projection bundle by re-derivation.
+    ///
+    /// Exits non-zero if the bundled history is not an intact chain, or if
+    /// re-deriving from that history disagrees with the projection.
+    VerifyProjection {
+        /// Path to a bundle emitted by `audit projection`.
+        bundle: std::path::PathBuf,
+    },
 }
 
 /// Actions for the `config` subcommand.

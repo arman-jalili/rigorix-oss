@@ -258,6 +258,31 @@ The disclosure cost is explicit and accepted: a bundle carries the envelopes, so
 an isolated signature would avoid handing a third party the full history merely
 to answer a question about one authority.
 
+#### 4.3.3 Surface: CLI, not (yet) an MCP tool (decision, 2026-10-13)
+
+The projection SHALL be surfaced by the CLI (`audit projection` /
+`audit verify-projection`). It is deliberately NOT exposed as an MCP tool:
+
+- the projection is an EXPORT for an external determination consumer or an
+auditor, not a step an agent takes mid-run. Exposing it as a tool widens the
+agent-visible surface for something that is fundamentally an offline artifact;
+- an MCP tool is a change to the **frozen** method catalog, and that catalog is
+cross-repo: the SDK catalog contract SHALL land first, then both servers, then
+conformance. A verifier built against the old catalog will not accept the new
+method. The CLI already provides the reachability, so the three-repo contract
+change is not justified today.
+
+If a tool is added later, the following are fixed in advance so the decision
+cannot be reversed silently:
+
+- it is a governed method (`AuthLevel`), named `rigorix.audit.projection`,
+following the existing `rigorix.<component>.<verb>` catalog convention;
+- its description SHALL state that a bundle carries the **envelopes** — the
+caller receives the history, not only a summary. That is inherent to
+re-derivation (§4.3.1) and SHALL be declared, not discovered;
+- the sequencing is: SDK catalog → OSS server + MCP descriptor/routing →
+conformance, in that order.
+
 ### 4.4 What these interfaces do NOT do
 
 - They do not transfer constitutional judgment. The exchange of governed state

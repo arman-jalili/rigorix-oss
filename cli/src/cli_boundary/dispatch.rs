@@ -31,6 +31,10 @@ use serde_json::Value as JsonValue;
 
 use crate::cli_boundary::cli::{CliCommand, ConfigAction};
 use crate::cli_boundary::orchestrator::CliServices;
+use rigorix_engine::audit::application::projection::{
+    ProjectAuthorityFacts, verify_authority_fact_bundle,
+};
+use rigorix_engine::audit::domain::authority_fact::AuthorityFactBundle;
 
 // ---------------------------------------------------------------------------
 // Dispatch result type
@@ -674,6 +678,78 @@ async fn handle_audit(
                 (Ok(None), _) => DispatchResult::error(format!("audit entry not found: {id1}"), 1),
                 (_, Ok(None)) => DispatchResult::error(format!("audit entry not found: {id2}"), 1),
                 (Err(e), _) | (_, Err(e)) => DispatchResult::error(format!("audit diff: {e}"), 1),
+            }
+        }
+        crate::cli_boundary::cli::AuditAction::Projection { subject, out } => {
+            // A bundle must carry a complete, verifiable chain, so ask for the
+            // whole store rather than the default 100-entry window.
+            match svc.audit_repository.list(None, None, Some(u32::MAX)).await {
+                Ok(envelopes) => {
+                    let projection = ProjectAuthorityFacts::project(&envelopes, &subject);
+                    let fact_count = projection.facts.len();
+                    let bundle = AuthorityFactBundle {
+                        projection,
+                        envelopes,
+                        subjects_without_record: subject,
+                    };
+                    match out {
+                        Some(path) => match serde_json::to_string_pretty(&bundle) {
+                            Ok(json) => match std::fs::write(&path, &json) {
+                                Ok(()) => DispatchResult::success_with_data(
+                                    format!(
+                                        "wrote authority-fact bundle ({fact_count} fact(s)) to {}",
+                                        path.display()
+                                    ),
+                                    serde_json::json!({
+                                        "path": path.display().to_string(),
+                                        "facts": fact_count,
+                                    }),
+                                ),
+                                Err(e) => DispatchResult::error(format!("write bundle: {e}"), 1),
+                            },
+                            Err(e) => DispatchResult::error(format!("serialize bundle: {e}"), 1),
+                        },
+                        None => DispatchResult::success_with_data(
+                            format!(
+                                "authority-fact bundle ({fact_count} fact(s)) — verify by re-derivation with `audit verify-projection`"
+                            ),
+                            serde_json::to_value(&bundle).unwrap_or(JsonValue::Null),
+                        ),
+                    }
+                }
+                Err(e) => DispatchResult::error(format!("audit projection: {e}"), 1),
+            }
+        }
+        crate::cli_boundary::cli::AuditAction::VerifyProjection { bundle: path } => {
+            let text = match std::fs::read_to_string(&path) {
+                Ok(text) => text,
+                Err(e) => {
+                    return DispatchResult::error(
+                        format!("read bundle {}: {e}", path.display()),
+                        1,
+                    );
+                }
+            };
+            let bundle: AuthorityFactBundle = match serde_json::from_str(&text) {
+                Ok(bundle) => bundle,
+                Err(e) => return DispatchResult::error(format!("parse bundle: {e}"), 1),
+            };
+            match verify_authority_fact_bundle(&bundle) {
+                Ok(()) => DispatchResult::success_with_data(
+                    format!(
+                        "authority-fact bundle verified by re-derivation ({} fact(s))",
+                        bundle.projection.facts.len()
+                    ),
+                    serde_json::json!({
+                        "verified": true,
+                        "facts": bundle.projection.facts.len(),
+                        "projection_digest": bundle.projection.digest(),
+                    }),
+                ),
+                Err(e) => DispatchResult::error(
+                    format!("authority-fact bundle FAILED verification: {e}"),
+                    1,
+                ),
             }
         }
     }

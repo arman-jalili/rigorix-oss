@@ -29,6 +29,36 @@ fn test_parse_args_defaults_to_tui() {
 }
 
 #[test]
+fn test_parse_audit_projection_subcommand() {
+    let (cmd, _fmt) = parse_args_from([
+        "rigorix",
+        "audit",
+        "projection",
+        "--subject",
+        "authority:revocation-status",
+        "-o",
+        "bundle.json",
+    ]);
+    assert!(matches!(
+        cmd,
+        CliCommand::Audit {
+            action: AuditAction::Projection { .. }
+        }
+    ));
+}
+
+#[test]
+fn test_parse_audit_verify_projection_subcommand() {
+    let (cmd, _fmt) = parse_args_from(["rigorix", "audit", "verify-projection", "bundle.json"]);
+    assert!(matches!(
+        cmd,
+        CliCommand::Audit {
+            action: AuditAction::VerifyProjection { .. }
+        }
+    ));
+}
+
+#[test]
 fn test_format_variants() {
     let _ = Format::Pretty;
     let _ = Format::Json;

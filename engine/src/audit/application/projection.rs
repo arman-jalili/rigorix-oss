@@ -11,7 +11,7 @@
 //! yields an explicit `NOT_ESTABLISHED` fact — absence is recorded, never
 //! silence, and never promoted to a positive.
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 
 use crate::audit::application::verify_chain;
 use crate::audit::domain::authority_fact::{
@@ -77,8 +77,23 @@ impl ProjectAuthorityFacts {
             }
         }
 
+        // Absence is asserted *relative to the history we were given*, so stamp it
+        // at the chain head (or the epoch for an empty history) rather than
+        // `Utc::now()`. Otherwise re-derivation would produce a different
+        // `established_at` and every bundle carrying a NOT_ESTABLISHED fact would
+        // fail its own verification.
+        let as_of = envelopes
+            .iter()
+            .map(|envelope| envelope.timestamp)
+            .max()
+            .unwrap_or(DateTime::<Utc>::UNIX_EPOCH);
+
         for subject in subjects_without_record {
-            facts.push(AuthorityFact::not_established(subject.clone(), "unknown"));
+            facts.push(AuthorityFact::not_established_at(
+                subject.clone(),
+                "unknown",
+                as_of,
+            ));
         }
 
         // Deterministic ordering: chain position, then subject.
@@ -267,5 +282,20 @@ mod tests {
         let anchor = projection.anchor_ref.expect("anchor ref");
         assert_eq!(anchor.head_sequence, 2);
         assert_eq!(anchor.producer_id.as_deref(), Some("local"));
+    }
+
+    #[test]
+    fn an_absent_subject_re_derives_byte_identically_so_the_bundle_verifies() {
+        // Regression: `not_established` used to stamp `Utc::now()`, so a bundle
+        // carrying an absence failed its own re-derivation check.
+        let envelopes = vec![envelope(0, "local", "beneficiary-eligible", "passed")];
+        let subjects = vec!["authority:revocation-status".to_string()];
+        let projection = ProjectAuthorityFacts::project(&envelopes, &subjects);
+        let bundle = AuthorityFactBundle {
+            projection,
+            envelopes,
+            subjects_without_record: subjects,
+        };
+        verify_authority_fact_bundle(&bundle).expect("bundle verifies by re-derivation");
     }
 }
