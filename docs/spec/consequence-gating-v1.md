@@ -14,7 +14,7 @@ This document bounds what Consequence Gating is, what it does, and — normative
 against a fixed artifact. Prose caveats are not enough: a caveat that is not a
 structural part of the document is dropped when the document is summarized.
 
-The behavior specified here ships in Rigorix 1.9.0–1.9.5. This specification adds
+The behavior specified here ships in Rigorix 1.9.0–1.10.0. This specification adds
 no new behavior; it bounds the existing one.
 
 ---
