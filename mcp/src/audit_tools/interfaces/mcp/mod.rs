@@ -13,7 +13,8 @@
 //!
 //! # Contract (Frozen)
 //!
-//! - Tool names are frozen (rigorix_read_audit, rigorix_list_audits, rigorix_audit_summary)
+//! - Tool names are frozen (rigorix_read_audit, rigorix_list_audits, rigorix_audit_summary,
+//!   rigorix_audit_authority_facts)
 //! - Input schemas are documented but not enforced by types here
 //! - Output format follows MCP ToolResult specification
 //! - Error format follows AuditHandlerError type
@@ -25,6 +26,7 @@
 //! | tools/call | `rigorix_read_audit` | ReadAuditHandler | Read an audit record by execution ID |
 //! | tools/call | `rigorix_list_audits` | ListAuditsHandler | List recent audit records with filtering |
 //! | tools/call | `rigorix_audit_summary` | AuditSummaryHandler | Generate aggregate audit statistics |
+//! | tools/call | `rigorix_audit_authority_facts` | AuditAuthorityFactsHandler | Export a verifiable authority-fact bundle (DISCLOSES the envelopes) |
 
 use serde_json::json;
 
@@ -102,6 +104,31 @@ pub const RIGORIX_AUDIT_SUMMARY_INPUT_SCHEMA: &str = r#"{
     }
 }"#;
 
+/// JSON Schema for the `rigorix_audit_authority_facts` tool input.
+///
+/// Mirrors the frozen SDK `authorityFactsParams` `$defs` exactly. `subjects` is
+/// required and non-empty: a projection with no subjects carries no attestation.
+pub const RIGORIX_AUDIT_AUTHORITY_FACTS_INPUT_SCHEMA: &str = r#"{
+    "type": "object",
+    "description": "`rigorix.audit.authorityFacts` params. `subjects` are the authority subjects the caller asks about (e.g. `authority:beneficiary-eligible`); each with no record yields an explicit `NOT_ESTABLISHED` fact, which is required for re-derivation to be reproducible.",
+    "required": ["subjects"],
+    "properties": {
+        "subjects": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "string"
+            },
+            "description": "Authority subjects to project. Empty is not allowed: a projection with no subjects and no history carries no attestation."
+        },
+        "producer_id": {
+            "type": "string",
+            "description": "Restrict to one producer's chain (`envelope.producer_id`). Omit to project the caller's default scope."
+        }
+    },
+    "additionalProperties": false
+}"#;
+
 // ---------------------------------------------------------------------------
 // MCP Tool Descriptors
 // ---------------------------------------------------------------------------
@@ -132,6 +159,19 @@ pub fn rigorix_audit_summary_tool_descriptor() -> serde_json::Value {
         "name": "rigorix_audit_summary",
         "description": "Generate aggregate audit statistics over a time range. Returns total executions, success/failure counts, success rate, total duration, token usage, top failure patterns, and most frequently used templates.",
         "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_AUDIT_SUMMARY_INPUT_SCHEMA).expect("schema const is valid JSON (test-enforced)")
+    })
+}
+
+/// Descriptor for the `rigorix_audit_authority_facts` tool.
+///
+/// The name is byte-identical to `mcpTool` in the frozen SDK catalog. The
+/// description MUST state the disclosure: a bundle carries the signed envelopes,
+/// so the caller receives the history, not a summary.
+pub fn rigorix_audit_authority_facts_tool_descriptor() -> serde_json::Value {
+    json!({
+        "name": "rigorix_audit_authority_facts",
+        "description": "Export an authority-fact projection bundle (projection + the signed envelopes it was derived from + subjects without record) for offline third-party re-derivation (consequence-gating spec 4.3). DISCLOSES the envelopes: the caller receives the signed history, not a summary. Reports what was established, when, and how it can be verified; it never asserts present standing (NC-4). Verification is by re-derivation, not by signature.",
+        "inputSchema": serde_json::from_str::<serde_json::Value>(RIGORIX_AUDIT_AUTHORITY_FACTS_INPUT_SCHEMA).expect("schema const is valid JSON (test-enforced)")
     })
 }
 
@@ -183,4 +223,5 @@ pub const AUDIT_TOOL_NAMES: &[&str] = &[
     "rigorix_read_audit",
     "rigorix_list_audits",
     "rigorix_audit_summary",
+    "rigorix_audit_authority_facts",
 ];

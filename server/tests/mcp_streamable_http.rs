@@ -184,8 +184,9 @@ async fn tools_list_over_http_matches_the_governed_subset() {
         .iter()
         .filter_map(|tool| tool["name"].as_str())
         .collect();
-    assert_eq!(names.len(), 17);
+    assert_eq!(names.len(), 18);
     assert!(names.contains(&"rigorix_plan"));
+    assert!(names.contains(&"rigorix_audit_authority_facts"));
     assert!(!names.contains(&"rigorix_enterprise_call"));
 }
 

@@ -258,30 +258,33 @@ The disclosure cost is explicit and accepted: a bundle carries the envelopes, so
 an isolated signature would avoid handing a third party the full history merely
 to answer a question about one authority.
 
-#### 4.3.3 Surface: CLI, not (yet) an MCP tool (decision, 2026-10-13)
+#### 4.3.3 Surface: the CLI and the governed method (2026-10-13)
 
-The projection SHALL be surfaced by the CLI (`audit projection` /
-`audit verify-projection`). It is deliberately NOT exposed as an MCP tool:
+The projection is surfaced in two places:
 
-- the projection is an EXPORT for an external determination consumer or an
-auditor, not a step an agent takes mid-run. Exposing it as a tool widens the
-agent-visible surface for something that is fundamentally an offline artifact;
-- an MCP tool is a change to the **frozen** method catalog, and that catalog is
-cross-repo: the SDK catalog contract SHALL land first, then both servers, then
-conformance. A verifier built against the old catalog will not accept the new
-method. The CLI already provides the reachability, so the three-repo contract
-change is not justified today.
+- the **CLI** (`audit projection` / `audit verify-projection`), which needs no
+session and no engine process;
+- the governed method **`rigorix.audit.authorityFacts`** (auth `session`, MCP tool
+`rigorix_audit_authority_facts`).
 
-If a tool is added later, the following are fixed in advance so the decision
-cannot be reversed silently:
+An earlier revision of this section reserved the name `rigorix.audit.projection`
+and argued that the MCP surface should not exist, on the ground that the SDK
+catalog contract had to land first. That precondition has since been MET — the
+SDK catalog is published and the method is declared and frozen in it. The
+**catalog is authoritative**, so this section records the shipped name. The tool
+name is part of the published contract and SHALL NOT be renamed to match this
+document.
 
-- it is a governed method (`AuthLevel`), named `rigorix.audit.projection`,
-following the existing `rigorix.<component>.<verb>` catalog convention;
-- its description SHALL state that a bundle carries the **envelopes** — the
-caller receives the history, not only a summary. That is inherent to
-re-derivation (§4.3.1) and SHALL be declared, not discovered;
-- the sequencing is: SDK catalog → OSS server + MCP descriptor/routing →
-conformance, in that order.
+The disclosure cost is unchanged and remains explicit: a bundle carries the
+envelopes, so the caller receives the signed history, not only a summary. The
+tool's description SHALL state this. It is inherent to re-derivation (§4.3.1)
+and SHALL be declared, not discovered.
+
+Serving this over the agent-visible surface is a trade, not a free addition, and
+the trade was made by freezing the name and the auth level in the catalog. The
+one option that is not available is leaving a frozen name unimplemented: if the
+trade is later rejected, the correct action is to REMOVE the method in a new SDK
+release, not to let the catalog and the servers drift apart.
 
 ### 4.4 What these interfaces do NOT do
 

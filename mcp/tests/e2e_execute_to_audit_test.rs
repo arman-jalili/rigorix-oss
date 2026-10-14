@@ -222,7 +222,7 @@ fn test_e2e_tools_list_contains_all_tools() {
         .as_array()
         .expect("tools should be an array");
 
-    // Verify all 10 OSS tools are present
+    // Verify the OSS tools are present
     let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
 
     let expected: &[&str] = &[
@@ -233,6 +233,7 @@ fn test_e2e_tools_list_contains_all_tools() {
         "rigorix_read_audit",
         "rigorix_list_audits",
         "rigorix_audit_summary",
+        "rigorix_audit_authority_facts",
         "rigorix_list_templates",
         "rigorix_get_template",
         "rigorix_create_template",
@@ -251,8 +252,8 @@ fn test_e2e_tools_list_contains_all_tools() {
 
     assert_eq!(
         names.len(),
-        14,
-        "Should have exactly 14 tools, got {}",
+        15,
+        "Should have exactly 15 tools, got {}",
         names.len()
     );
 

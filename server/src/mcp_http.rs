@@ -526,7 +526,7 @@ mod tests {
             .filter_map(|entry| entry.mcp_tool)
             .collect();
         assert_eq!(exposed, expected);
-        assert_eq!(exposed.len(), 17, "17 governed tools");
+        assert_eq!(exposed.len(), 18, "18 governed tools");
         // Never expose admin/host-only/enterprise tools.
         assert!(!exposed.contains(&"rigorix_policy_bundle"));
         assert!(

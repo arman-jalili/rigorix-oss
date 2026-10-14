@@ -44,7 +44,7 @@ pub struct CatalogEntry {
     pub mcp_tool: Option<&'static str>,
 }
 
-/// The 19 frozen `rigorix.*` methods (catalog.json `methods`).
+/// The 20 frozen `rigorix.*` methods (catalog.json `methods`).
 pub const CATALOG: &[CatalogEntry] = &[
     CatalogEntry {
         name: "rigorix.plan",
@@ -90,6 +90,11 @@ pub const CATALOG: &[CatalogEntry] = &[
         name: "rigorix.audit.summary",
         auth: AuthLevel::Session,
         mcp_tool: Some("rigorix_audit_summary"),
+    },
+    CatalogEntry {
+        name: "rigorix.audit.authorityFacts",
+        auth: AuthLevel::Session,
+        mcp_tool: Some("rigorix_audit_authority_facts"),
     },
     CatalogEntry {
         name: "rigorix.template.list",

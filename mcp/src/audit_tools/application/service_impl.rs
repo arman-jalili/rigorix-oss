@@ -11,15 +11,23 @@ use chrono::{DateTime, Duration, Utc};
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::audit_tools::application::dto::{AuditSummaryInput, ListAuditsInput, ReadAuditInput};
+use crate::audit_tools::application::dto::{
+    AuditSummaryInput, AuthorityFactsInput, ListAuditsInput, ReadAuditInput,
+};
 use crate::audit_tools::application::service::{
-    AuditSummaryHandler, ListAuditsHandler, ReadAuditHandler,
+    AuditAuthorityFactsHandler, AuditSummaryHandler, ListAuditsHandler, ReadAuditHandler,
 };
 use crate::audit_tools::domain::entity::{AuditFormatter, SharedAuditQueryService};
 use crate::audit_tools::domain::error::AuditHandlerError;
 use crate::audit_tools::domain::value::AuditFilter;
 use crate::execution_tools::domain::error::ToolCallResult;
 use crate::execution_tools::domain::value::ExecutionId;
+
+use rigorix_engine::audit::application::projection::ProjectAuthorityFacts;
+use rigorix_engine::audit::domain::authority_fact::AuthorityFactBundle;
+use rigorix_engine::audit::infrastructure::repository::AuditEnvelopeRepository;
+
+use std::collections::BTreeSet;
 
 // ---------------------------------------------------------------------------
 // ReadAuditHandlerImpl
@@ -224,6 +232,92 @@ impl AuditSummaryHandler for AuditSummaryHandlerImpl {
             content: vec![crate::execution_tools::domain::error::ToolContentItem {
                 r#type: "text".into(),
                 text: formatted,
+            }],
+            is_error: false,
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AuditAuthorityFactsHandlerImpl
+// ---------------------------------------------------------------------------
+
+/// Projects signed audit history into a bundle a third party can verify offline.
+///
+/// Exposes the ENGINE's derivation (`ProjectAuthorityFacts`) verbatim. A second
+/// derivation here would be a second dialect, and the two would drift.
+pub struct AuditAuthorityFactsHandlerImpl {
+    repository: Arc<dyn AuditEnvelopeRepository>,
+}
+
+impl AuditAuthorityFactsHandlerImpl {
+    /// Create a handler over the signed-envelope history.
+    pub fn new(repository: Arc<dyn AuditEnvelopeRepository>) -> Self {
+        Self { repository }
+    }
+}
+
+#[async_trait]
+impl AuditAuthorityFactsHandler for AuditAuthorityFactsHandlerImpl {
+    async fn handle(
+        &self,
+        input: AuthorityFactsInput,
+    ) -> Result<ToolCallResult, AuditHandlerError> {
+        if input.subjects.is_empty() {
+            return Err(AuditHandlerError::InvalidArguments(
+                "subjects must not be empty: a projection with no subjects carries no attestation"
+                    .into(),
+            ));
+        }
+
+        // A bundle must carry a COMPLETE, verifiable chain, so ask for the whole
+        // store rather than the repository's default window. A truncated history
+        // would re-derive to different facts (and a broken chain).
+        let mut envelopes = self
+            .repository
+            .list(None, None, Some(u32::MAX))
+            .await
+            .map_err(|e| {
+                AuditHandlerError::Internal(format!("failed to read audit history: {e}"))
+            })?;
+
+        // `producer_id` is a scope filter on the transport contract, applied here
+        // so the engine's derivation signature stays free of a transport concern.
+        if let Some(producer) = input.producer_id.as_deref() {
+            envelopes.retain(|envelope| envelope.producer_id.as_deref() == Some(producer));
+        }
+
+        // Which of the requested subjects actually have a record? Project once
+        // with no absences and read the answered subjects off the result, rather
+        // than re-implementing the subject formatting here (a second dialect).
+        let answered = ProjectAuthorityFacts::project(&envelopes, &[]);
+        let recorded: BTreeSet<&str> = answered
+            .facts
+            .iter()
+            .map(|fact| fact.subject.as_str())
+            .collect();
+
+        let subjects_without_record: Vec<String> = input
+            .subjects
+            .iter()
+            .filter(|subject| !recorded.contains(subject.as_str()))
+            .cloned()
+            .collect();
+
+        let bundle = AuthorityFactBundle {
+            projection: ProjectAuthorityFacts::project(&envelopes, &subjects_without_record),
+            envelopes,
+            subjects_without_record,
+        };
+
+        let text = serde_json::to_string(&bundle).map_err(|e| {
+            AuditHandlerError::Internal(format!("failed to serialize authority-fact bundle: {e}"))
+        })?;
+
+        Ok(ToolCallResult {
+            content: vec![crate::execution_tools::domain::error::ToolContentItem {
+                r#type: "text".into(),
+                text,
             }],
             is_error: false,
         })
