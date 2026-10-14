@@ -21,7 +21,7 @@ use async_trait::async_trait;
 use crate::audit_tools::domain::error::AuditHandlerError;
 use crate::execution_tools::domain::error::ToolCallResult;
 
-use super::dto::{AuditSummaryInput, ListAuditsInput, ReadAuditInput};
+use super::dto::{AuditSummaryInput, AuthorityFactsInput, ListAuditsInput, ReadAuditInput};
 
 // ---------------------------------------------------------------------------
 // ReadAuditHandler — Domain Service
@@ -111,4 +111,41 @@ pub trait AuditSummaryHandler: Send + Sync {
     /// - `AuditHandlerError::InvalidArguments` if time range is invalid
     /// - `AuditHandlerError::AuditError` if AuditQueryService returns an error
     async fn handle(&self, input: AuditSummaryInput) -> Result<ToolCallResult, AuditHandlerError>;
+}
+
+// ---------------------------------------------------------------------------
+// AuditAuthorityFactsHandler — Domain Service
+// ---------------------------------------------------------------------------
+
+/// Domain service that handles `rigorix_audit_authority_facts` tool calls.
+///
+/// Projects the signed audit history into an authority-fact bundle a third party
+/// can verify by **re-derivation** (spec §4.3.1) — not by trusting a signature.
+///
+/// # Contract (Frozen)
+///
+/// - The bundle carries the signed history: the caller receives the `envelopes`,
+///   not a summary. That is inherent to re-derivation, and it is disclosed in the
+///   tool description rather than left to be discovered.
+/// - `subjects_without_record` names only the requested subjects that have **no**
+///   record. A subject that has one MUST NOT appear there: the verifier re-derives
+///   with that list verbatim, so the bundle would self-verify while asserting
+///   `NOT_ESTABLISHED` over an established fact.
+/// - The projection is the ENGINE's; this layer never re-derives.
+/// - Never panics — all errors go through AuditHandlerError
+#[async_trait]
+pub trait AuditAuthorityFactsHandler: Send + Sync {
+    /// Handle a `rigorix_audit_authority_facts` tool call.
+    ///
+    /// 1. Reads the whole signed history (a bundle must carry a complete chain)
+    /// 2. Applies the optional `producer_id` scope
+    /// 3. Projects via the engine and computes `subjects_without_record`
+    /// 4. Returns the bundle as MCP tool call content
+    ///
+    /// # Errors
+    /// - `AuditHandlerError::InvalidArguments` if `subjects` is empty
+    /// - `AuditHandlerError::Internal` if the history cannot be read or the
+    ///   bundle cannot be serialized
+    async fn handle(&self, input: AuthorityFactsInput)
+    -> Result<ToolCallResult, AuditHandlerError>;
 }

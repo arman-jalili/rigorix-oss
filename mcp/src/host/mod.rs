@@ -29,10 +29,11 @@ use rigorix_engine::configuration::domain::config::Config;
 use rigorix_engine::permission::domain::mode::PermissionMode;
 
 use rigorix_mcp::audit_tools::application::service::{
-    AuditSummaryHandler, ListAuditsHandler, ReadAuditHandler,
+    AuditAuthorityFactsHandler, AuditSummaryHandler, ListAuditsHandler, ReadAuditHandler,
 };
 use rigorix_mcp::audit_tools::application::service_impl::{
-    AuditSummaryHandlerImpl, ListAuditsHandlerImpl, ReadAuditHandlerImpl,
+    AuditAuthorityFactsHandlerImpl, AuditSummaryHandlerImpl, ListAuditsHandlerImpl,
+    ReadAuditHandlerImpl,
 };
 use rigorix_mcp::audit_tools::domain::entity::{
     AuditFormatter, AuditQueryService, SharedAuditQueryService,
@@ -94,6 +95,7 @@ pub struct AppState {
     read_audit_handler: Box<dyn ReadAuditHandler>,
     list_audits_handler: Box<dyn ListAuditsHandler>,
     audit_summary_handler: Box<dyn AuditSummaryHandler>,
+    audit_authority_facts_handler: Box<dyn AuditAuthorityFactsHandler>,
 
     // Template tools
     list_templates_handler: Box<dyn ListTemplatesHandler>,
@@ -199,6 +201,12 @@ impl AppState {
         engine_event_bus: std::sync::Arc<
             dyn rigorix_engine::event_system::application::service::EventBusService,
         >,
+        // The signed-envelope history (`<repo_root>/.rigorix/audit`). Injected
+        // rather than re-derived from a path here, so the projection reads the
+        // same store the engine signs into.
+        audit_history: std::sync::Arc<
+            dyn rigorix_engine::audit::infrastructure::repository::AuditEnvelopeRepository,
+        >,
     ) -> Self {
         // ── Audit service (in-memory) ──
         let audit_storage = std::sync::Arc::new(
@@ -240,6 +248,9 @@ impl AppState {
                 formatter.clone(),
             )),
             audit_summary_handler: Box::new(AuditSummaryHandlerImpl::new(audit_query, formatter)),
+            audit_authority_facts_handler: Box::new(AuditAuthorityFactsHandlerImpl::new(
+                audit_history,
+            )),
 
             // Template handlers
             list_templates_handler: Box::new(ListTemplatesHandlerImpl::new(template_repo.clone())),
@@ -739,6 +750,21 @@ impl AppState {
                     .await
                     .map_err(HostError::from)?;
                 Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
+            }
+            "rigorix_audit_authority_facts" => {
+                let input = serde_json::from_value(params.clone())
+                    .map_err(|e| HostError::invalid_params(format!("Invalid input: {e}")))?;
+                let result = self
+                    .audit_authority_facts_handler
+                    .handle(input)
+                    .await
+                    .map_err(HostError::from)?;
+                // Structured on purpose: the caller verifies the bundle by
+                // re-derivation, so a non-JSON payload must fail loudly rather
+                // than degrade into an unverifiable string.
+                serde_json::from_str(&result.content[0].text).map_err(|e| {
+                    HostError::internal(format!("authority-fact bundle is not valid JSON: {e}"))
+                })
             }
 
             // Template tools
@@ -1840,10 +1866,11 @@ pub fn all_tool_descriptors() -> Vec<serde_json::Value> {
         rigorix_mcp::execution_tools::interfaces::mcp::rigorix_validate_plan_tool_descriptor(),
         rigorix_mcp::execution_tools::interfaces::mcp::rigorix_check_enforcement_tool_descriptor(),
         rigorix_mcp::execution_tools::interfaces::mcp::rigorix_approve_execution_tool_descriptor(),
-        // Audit tools (3)
+        // Audit tools (4)
         rigorix_mcp::audit_tools::interfaces::mcp::rigorix_read_audit_tool_descriptor(),
         rigorix_mcp::audit_tools::interfaces::mcp::rigorix_list_audits_tool_descriptor(),
         rigorix_mcp::audit_tools::interfaces::mcp::rigorix_audit_summary_tool_descriptor(),
+        rigorix_mcp::audit_tools::interfaces::mcp::rigorix_audit_authority_facts_tool_descriptor(),
         // Template tools (4)
         rigorix_mcp::template_tools::interfaces::mcp::rigorix_list_templates_tool_descriptor(),
         rigorix_mcp::template_tools::interfaces::mcp::rigorix_get_template_tool_descriptor(),
@@ -1905,6 +1932,15 @@ pub async fn init_host(repo_root: &str) -> Result<(), Box<dyn std::error::Error 
         .audit_hmac_key
         .or_else(|| std::env::var("RIGORIX_HMAC_KEY").ok())
         .filter(|k| !k.is_empty());
+    let audit_history: std::sync::Arc<
+        dyn rigorix_engine::audit::infrastructure::repository::AuditEnvelopeRepository,
+    > = std::sync::Arc::new(
+        rigorix_engine::audit::infrastructure::LocalAuditEnvelopeRepository::new(
+            std::path::PathBuf::from(repo_root)
+                .join(".rigorix")
+                .join("audit"),
+        ),
+    );
     let _ = APP_STATE.set(AppState::new(
         engine,
         template_repo,
@@ -1912,6 +1948,7 @@ pub async fn init_host(repo_root: &str) -> Result<(), Box<dyn std::error::Error 
         build_auth_handler().await,
         engine_audit,
         engine_event_bus,
+        audit_history,
     ));
     Ok(())
 }

@@ -18,8 +18,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use rigorix_server::catalog::{AuthLevel, CATALOG, find};
 
 #[test]
-fn catalog_has_nineteen_unique_frozen_methods() {
-    assert_eq!(CATALOG.len(), 19, "the OSS server implements 19 methods");
+fn catalog_has_twenty_unique_frozen_methods() {
+    assert_eq!(CATALOG.len(), 20, "the OSS server implements 20 methods");
     let names: BTreeSet<&str> = CATALOG.iter().map(|entry| entry.name).collect();
     assert_eq!(names.len(), CATALOG.len(), "method names must be unique");
 }

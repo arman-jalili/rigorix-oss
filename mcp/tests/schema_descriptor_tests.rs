@@ -22,10 +22,11 @@ fn all_oss_tool_descriptor_schemas_are_valid_json() {
         rigorix_mcp::audit_tools::interfaces::mcp::rigorix_read_audit_tool_descriptor(),
         rigorix_mcp::audit_tools::interfaces::mcp::rigorix_list_audits_tool_descriptor(),
         rigorix_mcp::audit_tools::interfaces::mcp::rigorix_audit_summary_tool_descriptor(),
+        rigorix_mcp::audit_tools::interfaces::mcp::rigorix_audit_authority_facts_tool_descriptor(),
         rigorix_mcp::usage_guide::interfaces::mcp::rigorix_get_usage_guide_tool_descriptor(),
     ];
 
-    assert_eq!(descriptors.len(), 14, "all OSS tool descriptors enumerated");
+    assert_eq!(descriptors.len(), 15, "all OSS tool descriptors enumerated");
     for d in descriptors {
         let name = d
             .get("name")

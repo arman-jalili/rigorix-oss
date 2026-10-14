@@ -65,6 +65,16 @@ async fn host(root: &str) -> AppState {
         build_real_engine(root).await.expect("build real engine");
     let template_repo: SharedTemplateRepository =
         Arc::new(FilesystemTemplateRepository::new(".rigorix/templates"));
+    // The signed-envelope history the authority-fact projection reads.
+    let audit_history: Arc<
+        dyn rigorix_engine::audit::infrastructure::repository::AuditEnvelopeRepository,
+    > = Arc::new(
+        rigorix_engine::audit::infrastructure::LocalAuditEnvelopeRepository::new(
+            std::path::PathBuf::from(root)
+                .join(".rigorix")
+                .join("audit"),
+        ),
+    );
     AppState::new(
         engine,
         template_repo,
@@ -72,6 +82,7 @@ async fn host(root: &str) -> AppState {
         None,
         engine_audit,
         event_bus,
+        audit_history,
     )
 }
 

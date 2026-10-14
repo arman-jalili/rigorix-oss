@@ -267,7 +267,8 @@ description = "Read the specified file"
             "audit_tools": [
                 "rigorix_read_audit — Read an execution audit record",
                 "rigorix_list_audits — List all execution audits",
-                "rigorix_audit_summary — Get an audit summary with statistics"
+                "rigorix_audit_summary — Get an audit summary with statistics",
+                "rigorix_audit_authority_facts — Export an authority-fact projection bundle for offline third-party re-derivation. DISCLOSES the signed envelopes: the caller receives the history, not a summary"
             ],
             "enterprise_tools": [
                 "rigorix_enterprise_call — Proxy a tool call to an enterprise endpoint (requires ENTERPRISE_API_URL)",

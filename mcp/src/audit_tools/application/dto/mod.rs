@@ -202,6 +202,31 @@ pub struct TopTemplateDto {
 }
 
 // ---------------------------------------------------------------------------
+// AuthorityFacts DTOs
+// ---------------------------------------------------------------------------
+
+/// Input for the `rigorix_audit_authority_facts` tool call.
+///
+/// Mirrors the frozen SDK `authorityFactsParams` `$defs` exactly — it is the
+/// contract, not a local convention.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthorityFactsInput {
+    /// Authority subjects to project (e.g. `authority:beneficiary-eligible`).
+    ///
+    /// Required and non-empty: a projection with no subjects and no history
+    /// carries no attestation. Each subject with no record yields an explicit
+    /// `NOT_ESTABLISHED` fact, which is required for re-derivation to be
+    /// reproducible.
+    pub subjects: Vec<String>,
+
+    /// Restrict to one producer's chain (`envelope.producer_id`).
+    ///
+    /// Omit to project the caller's default scope.
+    #[serde(default)]
+    pub producer_id: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
 // Shared DTOs
 // ---------------------------------------------------------------------------
 
