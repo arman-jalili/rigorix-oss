@@ -55,6 +55,8 @@ cargo run -p rigorix-cli -- status
 | `rigorix generate <intent>` | Generate a reusable template from natural language |
 | `rigorix template {list\|show <id>}` | Browse or inspect templates |
 | `rigorix audit {list\|show\|diff}` | Browse audit trails |
+| `rigorix audit projection [--subject <s>]... [-o <file>]` | Emit an authority-fact projection bundle (carries the signed history, not just a summary) |
+| `rigorix audit verify-projection <bundle>` | Verify a bundle offline by re-derivation — no engine, no key; non-zero exit on failure |
 | `rigorix logs [--session-id <id>]` | View execution event logs |
 | `rigorix config {init\|show\|validate}` | Manage configuration |
 

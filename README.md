@@ -1,19 +1,35 @@
 # Rigorix
 
-[![Crates.io](https://img.shields.io/badge/crate-rigorix--cli-blue)](https://crates.io/crates/rigorix-cli)
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-green)](LICENSE-MIT)
+<!-- Badges: every package below is verified published (checked 2026-10-15).
+     The verifier badges are the ecosystem signal — the verifier is the artifact a
+     third party actually runs, in their own language. -->
+[![rigorix-verifier on crates.io](https://img.shields.io/crates/v/rigorix-verifier?label=rigorix-verifier%20%C2%B7%20crates.io)](https://crates.io/crates/rigorix-verifier)
+[![rigorix-verifier on npm](https://img.shields.io/npm/v/rigorix-verifier?label=rigorix-verifier%20%C2%B7%20npm)](https://www.npmjs.com/package/rigorix-verifier)
+[![rigorix-verifier on PyPI](https://img.shields.io/pypi/v/rigorix-verifier?label=rigorix-verifier%20%C2%B7%20PyPI)](https://pypi.org/project/rigorix-verifier/)
 [![CI](https://github.com/arman-jalili/rigorix-oss/actions/workflows/ci.yml/badge.svg)](https://github.com/arman-jalili/rigorix-oss/actions/workflows/ci.yml)
-[![Rust](https://img.shields.io/static/v1?label=rust&message=2024%20edition&color=orange)](https://doc.rust-lang.org/edition-guide/rust-2024/index.html)
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-green)](LICENSE-MIT)
 
-**The LLM generates code. Rigorix governs execution.**
+### Stop agents from turning individually-permitted actions into outcomes nobody approved.
 
-Coding agents can now write, edit, and ship software. The question organizations are starting to hit is not *can they?* — it's *what did the agent do, who approved it, and what was it allowed to touch?*
+**Rigorix is the governance layer underneath your agents.** It is for the teams that
+have to let autonomous agents act — money-out flows, CI/CD, clinical and other
+regulated pipelines — and must still be able to say, and prove, what those agents
+were permitted to do.
 
-Conversation history can't answer that. An API gateway can't either — that layer governs what flows *into* your AI, not what the agent does in your repository, your shell, your CI.
+Coding agents can now write, edit and ship software. The question organisations hit
+is not *can they?* — it is *what did the agent do, who approved it, and what was it
+allowed to touch?* Conversation history cannot answer that. An API gateway cannot
+either: it governs what flows *into* your model, not what the agent does in your
+repository, your shell, your CI.
 
-Rigorix is the enforcement layer for agent execution. Natural-language tasks are compiled into a reviewable plan, executed inside policy, permission, and budget boundaries, and every step is recorded in a signed, timestamped audit envelope. When an agent wants to do something risky, Rigorix doesn't ask — it refuses, or gates the step for human approval.
+Rigorix compiles a natural-language task into a reviewable plan, executes it inside
+policy, permission and budget boundaries, and records every step in a signed audit
+envelope. When an agent reaches for something risky, Rigorix does not warn — it
+refuses, or gates the step for human approval.
 
-Built for platform and security teams running agents at scale — not for developers who want a faster autocomplete.
+> **Not a faster autocomplete.** Rigorix is not an agent you chat with; it is the
+> layer the agent runs inside. `Claude Code`, `Cursor`, `Copilot`, `Aider` and
+> `Codex` all keep their own loop and plug into it over MCP.
 
 ---
 
@@ -29,16 +45,22 @@ cd payments-demo
 npm install && node .rigorix/run-demo.mjs
 ```
 
+<!-- Visual: a GIF/video of this refusal belongs here. Deliberately not committed
+     yet — see docs/assets/README.md for the required asset and how to record it.
+     A broken <img> would be worse than none. -->
+
 ---
 
 ## Works with the agents you already run
 
-Rigorix isn't a separate agent — it's a governance layer underneath yours. The [rigorix-mcp gateway](mcp/README.md) plugs Rigorix into any MCP-compatible coding assistant (Claude Code, Cursor, Aider) as a standard MCP server, exposing 14 built-in tools:
+Rigorix isn't a separate agent — it's a governance layer underneath yours. The [rigorix-mcp gateway](mcp/README.md) plugs Rigorix into any MCP-compatible coding assistant (Claude Code, Cursor, Aider) as a standard MCP server, exposing **15 built-in tools**:
 
-- **Execution** — `rigorix_execute`, `rigorix_run`, `rigorix_plan`, `rigorix_validate_plan`, `rigorix_check_enforcement`, `rigorix_approve_execution`
-- **Templates** — list, get, create, validate
-- **Audit** — read, list, summarize signed audit records (read-only — the gateway never modifies audit data)
-- **Usage guide** — `rigorix_get_usage_guide`, a self-documenting tool list and workflow patterns
+- **Execution (6)** — `rigorix_execute`, `rigorix_run`, `rigorix_plan`, `rigorix_validate_plan`, `rigorix_check_enforcement`, `rigorix_approve_execution`
+- **Templates (4)** — `rigorix_list_templates`, `rigorix_get_template`, `rigorix_create_template`, `rigorix_validate_template`
+- **Audit (4)** — `rigorix_read_audit`, `rigorix_list_audits`, `rigorix_audit_summary`, and `rigorix_audit_authority_facts` (read-only — the gateway never modifies audit data)
+- **Usage guide (1)** — `rigorix_get_usage_guide`, a self-documenting tool list and workflow patterns
+
+When an identity provider is configured (`RIGORIX_IDP_ISSUER` + `RIGORIX_IDP_CLIENT_ID`), **3 auth tools** are added — `rigorix_auth_login`, `rigorix_auth_status`, `rigorix_auth_logout` — for **18** in total. They are absent from `tools/list` otherwise, rather than present and failing.
 
 Your agent keeps its own loop; everything it does through Rigorix is planned, gated, and recorded.
 
@@ -102,19 +124,89 @@ The core idea: instead of an LLM deciding what to do at each step, the intent is
 
 ## How Rigorix compares
 
-| Dimension | Rigorix | Claude Code | Copilot / Cursor | Aider | SWE-Agent |
-|-----------|---------|-------------|------------------|-------|-----------|
-| **Execution** | Template-driven DAG | Agent loop | Agent loop | Agent loop | Agent loop |
-| **Safety** | Risk gating, budgets, permissions | Permission prompts | Permission prompts (Cursor) | Git auto-commit | Docker sandbox |
-| **PR governance** | Built-in policy.toml | External CI | ✗ | ✗ | ✗ |
-| **Audit** | HMAC-signed envelopes | Conversation history | Conversation history | Git log | Ephemeral containers |
-| **Quality gates** | Post-execution validation | ✗ | ✗ | ✗ | ✗ |
-| **Scored evaluation** | Multidimensional quality scoring with pluggable backends and policy-based merge gating | ✗ | ✗ | ✗ | ✗ |
-| **Self-correcting** | Validate loop (plan → verify → fix) | Retry loop | ✗ | Lint-then-fix loop | Retry loop |
+Rigorix is a governance layer, so its neighbours are the other governance layers —
+not the coding agents it sits underneath. `Claude Code`, `Cursor`, `Copilot`,
+`Aider` and `Codex` are **governed by** Rigorix; comparing them to it would be a
+category error.
 
-The distinction that matters: **CI/CD answers "did the agent break the rules" — Rigorix answers "could the agent break them."** One layer reports; the other refuses.
+**Every competitor cell below was read from the product's own site or repository
+on 2026-10-15.** Where a claim could not be established from the source, the cell
+says **not established** rather than inferring a weakness. Competitors ship
+weekly: treat this table as dated, not durable.
 
-Rigorix is designed for **deterministic, auditable, safely-bounded automation** — not open-ended agent loops. If you need a code assistant that chats with you, use Claude Code or Aider. If you need a pipeline that enforces policies and generates auditable code changes, use Rigorix.
+| | **Rigorix** | **Cordum** | **Mault** | **APERION** | **microsoft/agent-governance-toolkit** |
+|---|---|---|---|---|---|
+| **What it is** | governance layer under any MCP agent | "The Action Firewall for AI Agents" | "Governance for Coding Agents" | "Runtime AI Governance for Enterprise Agents" | "AI Agent Governance Toolkit" |
+| **Enforcement point** | compiled plan + per-step policy / permission / budget gate | pre-tool gate; policy, approval and redacted audit evidence before execution | deterministic rules "from keystroke to merge" | "in the path between your agents and every model and tool" | policy enforcement, zero-trust identity, execution sandboxing |
+| **Deterministic, no LLM in the enforcement path** | yes — the enforcement path is Rust, not a model | not established | **yes** — "No LLM in the enforcement path" | not established | not established |
+| **Signed record** | HMAC envelopes + chain anchor (ADR-016) | "redacted audit evidence" | "a signed record of every action"; "Signed, verifiable offline" | "a record bound to the human who owns it" | not established |
+| **Verifier you can run yourself** | **yes** — the open-source `rigorix-verifier` 0.5.0, published on crates.io, npm and PyPI, and implemented in Go and Java | not established | not established | not established | not established |
+| **Verification method** | **re-derivation from the anchored chain**, not trusting the producer's signature (spec §4.3.1) | not established | not established | not established | not established |
+| **Stated claim ceiling** | **yes** — the artifact never asserts present standing (NC-4) | not established | not established | not established | not established |
+| **Licence** | MIT / Apache-2.0 | source-available core | proprietary (commercial) | proprietary | MIT |
+| **Repository signal** | — | cordum.io | mault.ai | aperion.ai; `AperionAI/shield` 11 stars, licence **conflicting** (repo description says open-source, README badge says Proprietary) | 6,430 stars, MIT, "covers 10/10 OWASP Agentic Top 10", pushed 2026-10-15 |
+
+Sources, all read 2026-10-15: `cordum.io`, `mault.ai`, `aperion.ai`,
+`gh api repos/AperionAI/shield`, `gh api repos/microsoft/agent-governance-toolkit`.
+Rigorix's own cells are traced to: the published `rigorix-verifier` packages
+(crates.io / npm / PyPI),
+`docs/spec/consequence-gating-v1.md` §4.3.1 and NC-4, `ADR-016`, `ADR-017`.
+
+### What this table is not
+
+It is **not a benchmark**, and **no independent comparative evaluation has been
+performed** — every cell is a reading of vendor-published material, and the
+Rigorix column is a reading of our own artifacts. It establishes what each product
+publicly says about itself on these dimensions; it does not establish relative
+quality, and it should not be cited as if it did (L1/L2/L3 claim ceilings,
+`docs/spec/README.md`). If a cell here is wrong, the correction is a source and a
+commit — open an issue.
+
+The distinction that matters, and the one we do stand behind: **CI/CD answers "did
+the agent break the rules" — Rigorix answers "could the agent break them."** One
+layer reports; the other refuses.
+
+---
+
+## Consequence gating: a refusal you can prove (v1.10.0)
+
+The problem it solves: an agent's individual actions can each be permitted while
+the **sequence** is not. Rigorix evaluates the consequence before the action, and
+records both the decision and the evidence for it.
+
+**Technical.** Before a step runs, a precondition is evaluated *outside the
+agent-writable workspace* — an operator-supplied check program, or an external
+determination service whose request and response bytes are bound into the record as
+digests. A refusal is recorded in the signed envelope, not merely logged: for each
+fact the record carries what was established, when, under which scope, and which
+record established it. The envelope chain is hash-linked and anchored (ADR-016), and
+an **authority-fact projection** exports that history for a third party to check.
+
+The part that matters is *how* it is checked: by **re-derivation**, not by trusting
+a signature. The verifier replays the derivation against the anchored chain and
+compares the facts (spec §4.3.1). A signature proves only *who said it*;
+re-derivation proves *what the history actually supports* — it catches a signer
+asserting facts the chain does not back. Absence is explicit: a subject with no
+record yields a `NOT_ESTABLISHED` fact, and the artifact **never asserts present
+standing** (NC-4). Note the ceiling: this is engineering verification (L1), not
+protocol validation (L2) and not independent evidence (L3) — see
+[docs/spec/README.md](docs/spec/README.md).
+
+**Business.** This is the question an auditor or regulator actually asks. When an
+agent is stopped — or not stopped — you have to show what it was permitted to do,
+on what evidence, and that the answer can be checked by someone who does not trust
+you. Because the verifier is open source and published on **crates.io, npm and
+PyPI**, and implemented in **Go** and **Java** as well, the reviewer runs the check
+on their own machine, in their own language, with no round-trip to the vendor. The
+risk it removes is the unauditable refusal — the failure mode where nobody can
+reconstruct, months later, whether the control even worked.
+
+```bash
+# Export a bundle from the signed history…
+rigorix audit projection --subject authority:beneficiary-eligible -o bundle.json
+# …and verify it offline, by re-derivation, with no engine and no key.
+rigorix audit verify-projection bundle.json
+```
 
 ---
 
@@ -269,7 +361,7 @@ rigorix-oss/
 │   └── .pi/             # Architecture docs
 ├── mcp/                 # MCP gateway server (rigorix-mcp) — bridges
 │   │                    #   Claude Code / Cursor / Aider to the engine
-│   ├── src/             # 6 bounded-context modules
+│   ├── src/             # 8 bounded-context modules
 │   └── .pi/             # Architecture docs
 ├── server/              # OSS reference execution host (rigorix-server) —
 │   │                    #   JSON-RPC 2.0 + SSE over the frozen rigorix.* API
@@ -294,19 +386,23 @@ rigorix-oss/
 Rigorix treats CI as continuous verification rather than compilation and testing. Beyond formatting, linting, unit tests, and security scanning, every architectural capability is validated through proofing scripts that verify contracts, architecture readiness, documentation consistency, policy enforcement, and execution guarantees.
 
 ```
-📦 113 automated verification steps across 5 crates (engine · mcp · cli · actions · server)
+Rigorix runs its checks two ways, and both numbers below are derivable rather than
+estimated — re-derive them with `bash .pi/scripts/local-ci.sh --list` and
+`grep -c '^  [a-z_-]*:$' .github/workflows/ci.yml` after `jobs:`.
 
-  Lint (18)        — formatting, clippy, CI validation × 5 crates
-  Build (13)       — build/check, static analysis, package × 5 crates
-  Test (57)        — cargo test, unit/integration stages, module proofing scripts
-  Security (10)    — cargo audit, secret scan, per-crate security validation
-  Docs (12)        — canonical, architecture, readiness × all crates
-  Integration (2)  — integration and operations validation
-  Coverage (1)     — workspace line coverage, gated ≥60%
+  GitHub Actions   — 10 jobs (workspace, lint, build, test, coverage, audit,
+                     docs, integration, conformance, gate)
+  Local simulation — 114 steps discovered across 5 crates (engine · mcp · cli ·
+                     actions · server) from 180 scripts: 25 root + 87 engine +
+                     28 cli + 40 actions
+  Coverage         — workspace line coverage, gated ≥60%
 ```
 
+The local suite is the same script set CI runs per crate, so a green local run and
+a green pipeline measure the same thing.
+
 ```bash
-# Run the full CI suite (113 steps, ~8 min)
+# Run the full CI suite (114 steps, ~10 min)
 bash .pi/scripts/local-ci.sh
 
 # Run a specific stage
@@ -357,6 +453,18 @@ validation protocol live in [`docs/spec/`](docs/spec/):
 > test is *engineering verification* (L1) under a stated fixture; it does not
 > silently inherit standing as *protocol validation* (L2) or *independent
 > evidence* (L3). See [docs/spec/README.md](docs/spec/README.md) §Claim ceilings.
+
+---
+
+## Releases
+
+Release history lives in [CHANGELOG.md](CHANGELOG.md) — one entry per released version,
+newest first, each listing the pull requests merged and the issues closed in that
+window. It is deliberately **not** reproduced here: this page is the product page,
+and a version list belongs in the changelog.
+
+The release train is `rigorix-engine` / `rigorix-mcp` / `rigorix-cli`, which version
+together. `rigorix-actions` follows its own cadence and is not part of the train.
 
 ---
 

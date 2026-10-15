@@ -107,11 +107,13 @@ Shutdown is handled by dropping the service/repository instances:
 - Events emitted via `CodeGraphEvent` for audit trail
 
 ### Health
-- GET `/api/v1/code-graph/health` — Returns status, graph count, storage path
-- Uses `HealthResponse` schema from HTTP API contracts
+
+`code_graph` exposes no HTTP surface — it has no `interfaces/` layer. An earlier
+revision of this runbook documented `GET /api/v1/code-graph/health` and a
+`HealthResponse` schema "from HTTP API contracts"; neither exists in the code, so
+the claim was removed rather than implemented.
 
 ## Related Documents
 
 - [Architecture Module](../.pi/architecture/modules/code-graph.md)
 - [DR Plan](dr-plan-code-graph.md)
-- [API Contracts](../src/code_graph/interfaces/http/mod.rs)

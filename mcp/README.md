@@ -7,7 +7,7 @@
 
 **Model Context Protocol (MCP) gateway server for the Rigorix engine.**
 
-`rigorix-mcp` bridges AI coding assistants (Claude Code, Cursor, Aider, and any MCP-compatible client) with the Rigorix engine. It exposes 14 built-in OSS tools for plan execution, template management, and audit queries — plus optional enterprise proxy tools for API gateway integration.
+`rigorix-mcp` bridges AI coding assistants (Claude Code, Cursor, Aider, and any MCP-compatible client) with the Rigorix engine. It exposes **15 built-in OSS tools** for plan execution, template management, and audit queries — plus optional enterprise proxy tools for API gateway integration, and 3 auth tools when an identity provider is configured.
 
 ---
 
@@ -97,7 +97,7 @@ The crate follows Domain-Driven Design with Clean Architecture layers inside eac
 | **MCP Server** | Transport, sessions, tool registry, request routing | Foundation layer |
 | **Execution Tools** | Plan execution, validation, enforcement checking, human sign-off | 6 tools |
 | **Template Tools** | Template CRUD (TOML files on disk) | 4 tools |
-| **Audit Tools** | Read-only audit querying and formatting | 3 tools |
+| **Audit Tools** | Read-only audit querying, formatting, and authority-fact bundle export | 4 tools |
 | **Usage Guide** | Self-documenting tool list and workflow patterns | 1 tool |
 | **Enterprise Proxy** | Conditional enterprise API gateway (optional) | 2 tools |
 

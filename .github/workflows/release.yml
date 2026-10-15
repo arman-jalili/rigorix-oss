@@ -130,7 +130,12 @@ jobs:
             echo ""
             echo "Release train: \`engine\` / \`mcp\` / \`cli\` → \`$VERSION\`."
             echo ""
-            echo "See [CHANGELOG](.pi/architecture/CHANGELOG.md) for details."
+            # Point at the repo's changelog (CHANGELOG.md). This previously read
+            # `.pi/architecture/CHANGELOG.md`, which is the GUARDIAN framework's
+            # generated architecture change log (`DO NOT EDIT GENERATED FILES`),
+            # mirrored into 5 trees — every release therefore linked readers to a
+            # document that is not Rigorix's release history at all.
+            echo "See [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for release history."
             echo ""
             echo "## Crates published to crates.io"
             echo "- [rigorix-engine $VERSION](https://crates.io/crates/rigorix-engine/$VERSION)"

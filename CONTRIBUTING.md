@@ -195,6 +195,57 @@ Each crate has its own `.pi/architecture/` directory:
 
 ---
 
+## Release History and the Changelog
+
+Release history lives in [CHANGELOG.md](CHANGELOG.md) at the repo root. It follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+**The changelog is the only home for release history.** It is deliberately not
+reproduced in the README — the README is a product page and links to the changelog
+instead. Do not add a version list to `README.md`.
+
+### Format
+
+Newest first. One `## [x.y.z] - YYYY-MM-DD` heading per released version, with a
+link reference to the GitHub Release on the following line:
+
+```markdown
+## [1.10.0] - 2026-10-14
+
+[1.10.0]: https://github.com/arman-jalili/rigorix-oss/releases/tag/v1.10.0
+
+### Added
+- What changed ([#123](https://github.com/arman-jalili/rigorix-oss/pull/123))
+
+### Fixed
+- What was fixed ([#124](https://github.com/arman-jalili/rigorix-oss/pull/124))
+```
+
+Group entries under `Added` / `Changed` / `Fixed` / `Docs` / `Internal`, classified
+from the pull request's conventional-commit prefix. Each released version also lists
+the issues closed in its window.
+
+### The release train
+
+`rigorix-engine` / `rigorix-mcp` / `rigorix-cli` version together.
+`rigorix-actions` follows its own cadence and is **not** part of the train — never
+infer its version from a release-train tag.
+
+### This is enforced
+
+`.pi/scripts/validate-docs.sh` (gating, in `validate-guards.sh`) fails when the
+newest version in `CHANGELOG.md` disagrees with `engine/Cargo.toml`, or when any
+tracked doc links to a file that does not exist. Run it before opening a PR that
+touches docs:
+
+```bash
+bash .pi/scripts/validate-docs.sh
+bash .pi/scripts/validate-docs.sh --self-test   # prove the guard still bites
+```
+
+---
+
 ## Questions?
 
 Open a [GitHub Discussion](https://github.com/arman-jalili/rigorix-oss/discussions) or reach out to the maintainers.

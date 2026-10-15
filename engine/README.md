@@ -2,7 +2,7 @@
 
 **Template-driven DAG execution engine — all business logic lives here.**
 
-The engine is the core library containing **30 modules** — 27 full Clean Architecture bounded contexts plus 3 cross-cutting modules. It has zero CLI or GitHub-specific code; both the CLI and GitHub Action consume it as a library.
+The engine is the core library containing **35 modules** — 32 full Clean Architecture bounded contexts plus 3 cross-cutting modules (`backend`, `common`, `observability`). It has zero CLI or GitHub-specific code; both the CLI and GitHub Action consume it as a library.
 
 ---
 
