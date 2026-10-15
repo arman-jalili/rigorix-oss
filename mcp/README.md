@@ -50,10 +50,11 @@ The approval binds to a canonical `ExecutionIntent`, not to a node, and is
 re-verified at dispatch (ADR-011) — see [`engine/README.md`](../engine/README.md).
 
 **3 auth tools** — `rigorix_auth_login`, `rigorix_auth_status`,
-`rigorix_auth_logout` — are added to the surface **only when an identity provider
-is configured** (`RIGORIX_IDP_ISSUER` + `RIGORIX_IDP_CLIENT_ID`). Without one they
-are absent from `tools/list` entirely rather than present and failing, so the
-advertised surface is always the callable surface.
+`rigorix_auth_logout` — are appended to the **stdio** surface only when an identity
+provider is configured (`RIGORIX_IDP_ISSUER` + `RIGORIX_IDP_CLIENT_ID`); without
+one they are absent from `tools/list` rather than present and failing. On the
+**server** surface they are ordinary catalog entries at `auth: public`, because
+starting a login is the call you make *before* you have a session.
 
 ---
 

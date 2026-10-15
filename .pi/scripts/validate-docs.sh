@@ -116,6 +116,68 @@ def manifest_version():
     m = re.search(r'^\s*version\s*=\s*"([^"]+)"', text, re.M)
     return m.group(1) if m else None
 
+# --- check 3: a backticked CamelCase identifier must exist in the source ------ #
+# The rule this enforces: if a README names a type, that type is in the code.
+# Prose is unverifiable by construction; identifiers are not, so they are the
+# part that can be checked. Cross-crate references resolve workspace-wide.
+DECL_RE = re.compile(r'pub(?:\(crate\))?\s+(?:struct|enum|trait|type|const|fn|async fn)\s+([A-Za-z0-9_]+)')
+VARIANT_RE = re.compile(r'^\s{4}([A-Z][A-Za-z0-9_]*)\s*[({,]', re.M)
+UNIT_TOKENS = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "JSON",
+               "HTTP", "HTTPS", "TODO", "README", "OK", "SSE", "MCP", "CLI", "API",
+               "CI", "CD", "UUID", "HMAC", "SHA", "TLS", "ID", "ADR", "URL", "URI"}
+# Identifiers that are legitimately not ours: stdlib types, external product names,
+# and notation. Kept explicit and short — an entry here is a claim that the token
+# is not a reference to Rigorix code.
+EXTERNAL_TOKENS = {"Result", "Option", "Error", "String", "VecDeque", "AtomicU32",
+                   "AtomicU64", "RwLock", "Mutex", "Arc", "HashMap", "BTreeMap",
+                   "Value", "Codex", "Cursor", "Copilot", "Aider", "T_check", "T_action",
+                   "T0", "Tn", "Unreleased"}
+
+# The identifier rule applies to the product READMEs — the pages that make claims
+# to a reader. docs/** is deliberately out of scope here: those are internal
+# runbooks whose stale identifiers are a separate cleanup.
+def is_readme(rel):
+    return rel == "README.md" or (rel.endswith("README.md") and os.sep not in rel)
+
+def source_identifiers():
+    found, unresolved = set(), []
+    for crate in ("engine", "mcp", "cli", "actions", "server"):
+        base = os.path.join(root, crate, "src")
+        if not os.path.isdir(base):
+            continue
+        for dirpath, _, filenames in os.walk(base):
+            for fn in filenames:
+                if not fn.endswith(".rs"):
+                    continue
+                try:
+                    text = open(os.path.join(dirpath, fn), encoding="utf-8", errors="replace").read()
+                except OSError:
+                    continue
+                for m in DECL_RE.finditer(text):
+                    found.add(m.group(1))
+                for m in VARIANT_RE.finditer(text):
+                    found.add(m.group(1))
+    return found
+
+def unknown_identifiers():
+    known = source_identifiers()
+    bad = []
+    for rel in collect():
+        if not is_readme(rel):
+            continue
+        try:
+            text = open(os.path.join(root, rel), encoding="utf-8", errors="replace").read()
+        except OSError:
+            continue
+        for raw in re.findall(r'`([A-Z][A-Za-z0-9_]*)`', strip_fences(text)):
+            if raw in UNIT_TOKENS or raw in EXTERNAL_TOKENS or raw in known:
+                continue
+            # Backticked UPPER_CASE is an env var / constant name, checked below.
+            if raw.isupper():
+                continue
+            bad.append((rel, raw))
+    return bad
+
 if mode == "list":
     files = collect()
     print(f"docs in scope: {len(files)}")
@@ -150,6 +212,17 @@ elif versions[0] != version:
     fail = 1
 else:
     print(f"✅ changelog newest version matches the release train ({version})")
+
+unknown = unknown_identifiers()
+if unknown:
+    print(f"❌ {len(unknown)} backticked identifier(s) not found in the source:")
+    for rel, token in unknown[:30]:
+        print(f"   {rel}: `{token}`")
+    if len(unknown) > 30:
+        print(f"   … and {len(unknown) - 30} more")
+    fail = 1
+else:
+    print("✅ every backticked identifier exists in the source")
 
 sys.exit(fail)
 PY
@@ -188,7 +261,20 @@ self_test() {
         echo "self-test FAILED: a changelog/manifest mismatch did not fail the guard"; return 1
     fi
 
-    echo "✅ self-test: aligned passes, broken link bites, changelog mismatch bites"
+    # identifier check: a README naming a type that is not in the source must fail.
+    printf '# C\n\n## [1.2.3]\n' > "$tmp/CHANGELOG.md"
+    printf '# R\n\nUses `NoSuchTypeAnywhere`.\n' > "$tmp/README.md"
+    if run_check "$tmp" check "$tmp/CHANGELOG.md" "$tmp/MANIFEST.toml" >/dev/null 2>&1; then
+        echo "self-test FAILED: an unknown backticked identifier did not fail the guard"; return 1
+    fi
+    printf '# R\n\nNo identifiers here.\n' > "$tmp/README.md"
+    if run_check "$tmp" check "$tmp/CHANGELOG.md" "$tmp/MANIFEST.toml" >/dev/null 2>&1; then
+        :
+    else
+        echo "self-test FAILED: a README with no identifier claims should pass"; return 1
+    fi
+
+    echo "✅ self-test: aligned passes · broken link bites · changelog mismatch bites · unknown identifier bites"
     return 0
 }
 

@@ -50,10 +50,12 @@ Both modes end in the same place — a signed audit record.
 
 ### The audit trail is the open-core seam
 
-OSS ships a `FilesystemAuditBackend`. The enterprise product plugs in a
-`RigorixApiBackend` behind the same `AuditBackend` trait. The boundary is a trait,
-not a fork of the code — so the OSS action produces a complete, self-contained
-audit trail without an enterprise dependency.
+`audit_posting` defines an `AuditBackend` trait
+(`infrastructure/repository/mod.rs`) — the boundary between this action and any
+other audit sink. OSS ships one implementation, `FilesystemAuditBackendImpl`,
+which writes to the local `.rigorix/audit/` directory. `AuditBackendFactory`
+selects the backend, so a deployment can supply its own without forking the
+module.
 
 ### Security hardening is a module, not an afterthought
 
