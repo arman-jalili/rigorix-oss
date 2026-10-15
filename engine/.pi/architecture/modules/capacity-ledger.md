@@ -1,76 +1,216 @@
-# Module: capacity_ledger
+# Capacity Ledger Architecture
 
-**Bounded context:** `capacity_ledger` (new — ADR-018)
-**Layer:** engine (`engine/src/capacity_ledger/`)
-**Status:** planned
+<!--
+Canonical Reference: .pi/architecture/modules/capacity-ledger.md
+Blueprint Source: Guardian Framework v1.2
+Generated: NEVER (this is the source)
+-->
 
-## Responsibility
+## Overview
 
-Own the **model and the port** for contested, limited capacity shared across independent
-executions: what a resource is, what a reservation is, what a lease is, what the aggregate
-exposure is, and which atomic operations the engine may perform against them.
+Owns the **model and the port** for contested, limited capacity shared across independent
+executions: what a resource is, what a reservation is, what a lease is, what aggregate exposure
+is, and which atomic operations the engine may perform against them.
 
-It explicitly does **not** own storage. Storage is an adapter, because the engine has no
-database dependency and must not acquire one.
+It explicitly does **not** own storage. The engine has no database dependency and will not
+acquire one; storage is an adapter. See ADR-018.
 
-## Why a separate context
+**Guarantee ceiling:** the in-process adapter provides **single-execution atomicity**; only the
+HTTP adapter against a real contested store provides cross-session atomicity. No deployment may
+claim the second while running the first.
 
-| candidate host | why not |
-|---|---|
-| `budget_tracking` | scoped and named for LLM cost; a real reserve/commit/rollback implementation lives here, but its state is in-process and its language is tokens |
-| `enforcement` | a stateless evaluator (`ResourceBudget` is a counter with a threshold); making it stateful adds a second reason to change |
-| `sequence_policy` | answers *composition* ("have we done this before?", via `prior_actions` and effect keys), not *capacity* ("is there room left?") |
+## DDD Layers
 
-The new context is the only one whose reason to change is **distributed coordination**:
-atomicity, idempotency, leases, reclamation.
+| Layer | Purpose | Tech |
+|-------|---------|------|
+| `domain/` | Pure types, invariants, errors | Zero framework imports |
+| `application/` | Use cases over the port, RAII guard | Rust, async |
+| `infrastructure/` | Adapters: in-process, HTTP | std sync, reqwest |
+| `interfaces/` | The `CapacityLedger` port | Rust traits |
 
-## Layers
+**Dependency rule:** `domain ← application ← infrastructure` (inward); `interfaces/` is the
+contract consumed by `enforcement`.
 
-```
-engine/src/capacity_ledger/
-  domain/          Resource · Reservation · Grant · Lease · Exposure · LedgerError
-  application/     reserve · commit · release · exposure   (use cases over the port)
-  interfaces/      trait CapacityLedger                     (the contract)
-  infrastructure/
-    in_process.rs  InProcessLedger   — default; single-execution semantics
-    http.rs        HttpLedger        — opt-in; calls the enterprise ledger service
-```
+## Components by Layer
 
-## The contract
+#### Domain Layer (`domain/`)
+| Component | Description | Framework? |
+|-----------|-------------|------------|
+| Resource | `ResourceId` + `ResourceSpec` (name, hard_limit, window) | ❌ No |
+| Reservation | Reservation aggregate + `ReservationState` (outstanding/committed/released/expired) | ❌ No |
+| Grant | Opaque handle returned by reserve; binds resource, amount, lease, idempotency key | ❌ No |
+| Exposure | Aggregate view: committed vs outstanding kept distinct | ❌ No |
+| IdempotencyKey | Retry identity; makes double-reserve impossible by construction | ❌ No |
+| LedgerError | Typed: `Insufficient \| Contended \| Unavailable \| LeaseExpired` | ❌ No |
 
-See ADR-018 §"The port (normative)" for the signatures and invariants I1–I6.
-The invariants are the module's actual specification; the signatures are incidental.
+#### Application Layer (`application/`)
+| Component | Description | Type |
+|-----------|-------------|------|
+| CapacityLedgerService | reserve / commit / release / exposure use cases over the port | Service |
+| ReservationGuard | RAII: commit on success, release on drop | Guard |
 
-## Consumers
+#### Infrastructure Layer (`infrastructure/`)
+| Component | Description | Connects to |
+|-----------|-------------|-------------|
+| InProcessLedger | Default adapter; single-execution atomicity; no network, no DB | In-memory state |
+| HttpLedger | Opt-in adapter; bounded body, no redirects, deadline, redaction | Enterprise ledger service |
 
-- **`enforcement`** — before permitting, `reserve`; on `Insufficient` refuse; after the
-  effect `commit`; on failure/drop `release` (RAII, the ADR-008 pattern already proven in
-  `budget_tracking`). Wiring is tracked by its own issue and is verified by a
-  **reachability test**, not by unit tests alone.
-- **`budget_tracking`** — *optionally, later*: become a consumer of this port so OSS has one
-  budget system instead of two. Staged deliberately; the existing code is proven.
+#### Interfaces Layer (`interfaces/`)
+| Component | Description | 'use client'? |
+|-----------|-------------|---------------|
+| CapacityLedger | The port: reserve / commit / release / exposure + invariants I1–I6 | No |
 
-Unchanged: `sequence_policy`. Composition and capacity remain separate mechanisms.
+---
 
-## Configuration (opt-in)
+## Component Details
 
-A resource is only ledger-governed if declared. Absent declaration ⇒ today's behaviour.
-The wire/declaration surface is additive and must not change existing keys.
+### Resource
 
-## Testing strategy
+status: planned
+depends: none
 
-| level | what it proves |
-|---|---|
-| unit | domain invariants (lease arithmetic, exposure summation, state transitions) |
-| contract | **one conformance suite run against every adapter** — `InProcessLedger` and `HttpLedger` must satisfy I1–I6 identically |
-| concurrency | N concurrent reservations never exceed `hard_limit` (the naive-counter falsifier) |
-| recovery | lease expiry, reclaim, commit-after-expiry, idempotent retry |
-| **wiring** | the gate actually *calls* the port on the execution path — the "implemented but not wired" failure |
-| e2e | multi-replica enterprise run against a real Postgres, after all parts land |
+**Purpose:** A named, limited capacity. `ResourceId` is the identity; `ResourceSpec` carries
+`hard_limit` and the window over which exposure is aggregated. The engine attaches no domain
+meaning to a resource name — it is an operator-declared label.
 
-## Canonical references
+**Layer:** `domain/`
 
-- ADR-018: `.pi/architecture/decisions/ADR-018-distributed-capacity-ledger.md`
-- ADR-008: RAII reservation pattern (proven in `budget_tracking`)
-- ADR-016: the **audit** ledger — distinct from this one
-- Enterprise counterpart: `ADR-010-capacity-ledger-service`
+### Reservation
+
+status: planned
+depends: Resource
+
+**Purpose:** The aggregate. A held claim on capacity with a lease and exactly one terminal
+transition (committed, released, or expired). State transitions are enforced in the type, not
+by convention.
+
+**Layer:** `domain/`
+
+### Grant
+
+status: planned
+depends: Reservation
+
+**Purpose:** The opaque handle returned by `reserve`. Must not be constructible by a caller —
+otherwise a forged grant becomes a way to skip reservation.
+
+**Layer:** `domain/`
+
+### Exposure
+
+status: planned
+depends: Reservation
+
+**Purpose:** The aggregate view. **Committed and outstanding are separate fields, never summed
+into one number**: "what is actually spent" and "what is in flight" are different operational
+questions, and collapsing them destroys the ability to answer either.
+
+**Layer:** `domain/`
+
+### IdempotencyKey
+
+status: planned
+depends: none
+
+**Purpose:** Retry identity. Part of the reserve request so that a retried reservation cannot
+create a second one *by construction*. In a distributed system, network retries otherwise
+become the over-spend.
+
+**Layer:** `domain/`
+
+### LedgerError
+
+status: planned
+depends: none
+
+**Purpose:** Typed failures. `Insufficient` (no room) and `Unavailable` (control plane
+unreachable) must remain distinguishable — an outage and a full cap are different operational
+events, and the operator-facing surfaces depend on the distinction.
+
+**Layer:** `domain/`
+
+### CapacityLedgerService
+
+status: planned
+depends: CapacityLedger, Reservation, Grant, Exposure
+
+**Purpose:** The use cases over the port: reserve, commit, release, exposure. Contains no
+storage logic and no local counter — a local counter is precisely the naive-counter failure
+this module exists to replace.
+
+**Layer:** `application/`
+
+### ReservationGuard
+
+status: planned
+depends: CapacityLedgerService
+
+**Purpose:** RAII binding of a grant to a step's lifetime: commit on success, **release on
+drop**. Release-on-drop is not optional — if release happens only on an explicit error branch,
+a panic or early return leaks capacity until the lease expires.
+
+**Layer:** `application/`
+
+### InProcessLedger
+
+status: planned
+depends: CapacityLedger
+
+**Purpose:** The standalone default. Single-execution atomicity via the proven ADR-008
+discipline (shared state + RAII). No database, no network. Its guarantee is stated in code,
+because the temptation to describe it as "the distributed ledger" is high and wrong.
+
+**Layer:** `infrastructure/`
+
+### HttpLedger
+
+status: planned
+depends: CapacityLedger
+
+**Purpose:** Opt-in distributed mode. Reaches the enterprise ledger service over HTTP with the
+same transport discipline as the precondition provider client (bounded body, no redirect
+amplification, explicit deadline, credentials never logged). Maps every ambiguity to
+`Unavailable` so the caller fails closed.
+
+**Layer:** `infrastructure/`
+
+### CapacityLedger
+
+status: planned
+depends: none
+
+**Purpose:** The port. The invariants (I1 atomic/linearizable per resource+window, I2 idempotent,
+I3 leased, I4 fail-closed, I5 store clock, I6 no claim inflation) are the specification; the
+signatures are incidental. One contract suite runs against every adapter.
+
+**Layer:** `interfaces/`
+
+---
+
+## Acceptance Criteria
+
+| # | Criterion | Validator |
+|---|-----------|-----------|
+| 1 | Contract suite passes against **every** adapter | `validate-tests.sh` |
+| 2 | N concurrent reservations never exceed `hard_limit` | `validate-tests.sh` |
+| 3 | Retried reserve with same key yields one reservation | `validate-tests.sh` |
+| 4 | Unreachable ledger refuses (fail-closed) | `validate-integration.sh` |
+| 5 | Layer boundaries respected; no storage types in `domain/` | `validate-architecture.sh` |
+| 6 | Wiring proven by a reachability test that fails when the call is removed | `validate-integration.sh` |
+
+## Dependencies
+
+### Depends On
+
+- ADR-018 (design), ADR-008 (RAII pattern), `enforcement` (consumer seam)
+
+### Used By
+
+- `enforcement` (the decision path), and optionally `budget_tracking` (staged)
+
+## Related ADRs
+
+- ADR-018: distributed capacity ledger
+- ADR-008: RAII reservation pattern
+- ADR-016: the **audit** ledger — a different thing (append-only proof, not leased accounting)
+- Enterprise counterpart: ADR-010 `capacity-ledger-service`
