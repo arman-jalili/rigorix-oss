@@ -1,199 +1,131 @@
 # rigorix-actions
 
-**GitHub Actions adapter for Rigorix — PR governance and automated code generation in CI/CD.**
-
-A thin adapter over `rigorix-engine` that wraps the engine as a GitHub Action. All business logic lives in the engine; this crate adds only GitHub-specific I/O:
-
----
-
-## Operation Modes
-
-### Mode A — Reactive Governance
-
-Analyze PR diffs against configurable policy rules. Blocks or flags changes based on `.rigorix/policy.toml` (loaded from the **base branch** to prevent tampering).
+**The GitHub Action.** It is an adapter, not a second engine: the action maps
+workflow events onto `rigorix-engine` services, formats the results as
+GitHub-native output, and enforces policy against the diff under review.
 
 ```yaml
-# .github/workflows/rigorix-governance.yml
-on:
-  pull_request:
-    types: [opened, synchronize]
-
-jobs:
-  governance:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: rigorix/rigorix-action@v1
-        with:
-          mode: validate
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+- uses: arman-jalili/rigorix-oss/actions@v1.4.0
+  with:
+    mode: governance
 ```
 
-### Mode B — Active Execution
-
-Plan and execute DAG-based code generation with a self-correcting validation loop.
-
-```yaml
-# .github/workflows/rigorix-execute.yml
-on:
-  workflow_dispatch:
-    inputs:
-      intent:
-        description: 'What to do'
-        required: true
-
-jobs:
-  execute:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: rigorix/rigorix-action@v1
-        with:
-          mode: run
-          intent: ${{ github.event.inputs.intent }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-```
+> **Versioning note.** `rigorix-actions` follows its **own cadence** and is **not**
+> part of the `engine` / `mcp` / `cli` release train. Do not infer its version from
+> a release-train tag — it is currently **1.4.0**.
 
 ---
 
-## Module Structure
+## Two modes
 
-```
-actions/src/
-├── main.rs                          # Binary entry point
-├── lib.rs                           # Library root
-│
-├── shared/                          # Shared infrastructure
-│   ├── mod.rs
-│   └── github_client.rs             # GitHub REST API client (Octocrab)
-│
-├── action_input/                    # Phase 1: Input parsing
-│   ├── domain/                      # ActionInputs, ActionConfig, CommentCommand, CiEnvironment
-│   ├── application/                 # InputParsingService, CommentParsingService, CiDetectionService, ConfigLoadingService
-│   └── infrastructure/              # InputRepository, ConfigRepository, EventRepository
-│
-├── security_config/                 # Phase 0: Pre-flight security
-│   ├── domain/                      # SecurityContext, HmacKey, SecurityPolicy
-│   ├── application/                 # SecurityValidationService, ForkDetectionService, TokenValidationService, HmacSigningService
-│   └── infrastructure/              # ForkRepository, TokenRepository, HmacKeyRepository
-│
-├── diff_analyzer/                   # Phase 3: PR diff analysis
-│   ├── domain/                      # PrDiff, ChangedFile, DiffHunk, FileRisk, AiSignal
-│   ├── application/                 # DiffParsingService, PathValidationService, RiskClassificationService, AiSignalDetectionService
-│   └── infrastructure/              # DiffRepository
-│
-├── policy_evaluator/                # Phase 3: Policy enforcement
-│   ├── domain/                      # PolicyDocument, DenyRule, ReviewRule, FlagRule, PolicyResult
-│   ├── application/                 # PolicyLoadingService, PolicyEvaluationService, OrgPolicyMergingService
-│   └── infrastructure/              # PolicyRepository, OrgPolicyRepository
-│
-├── action_output/                   # Phase 3-4: GitHub-native output
-│   ├── domain/                      # FormattedOutput, WorkflowAnnotation, StepSummary, OutputVariable, PrComment
-│   ├── application/                 # OutputFormattingService, AnnotationWritingService, StepSummaryWritingService
-│   └── infrastructure/              # OutputRepository, SummaryRepository, GitHubClient
-│
-├── ci_integration/                  # Phase 4: CI primitives
-│   ├── domain/                      # StatusCheckState, PrComment
-│   ├── application/                 # StatusCheckService, PrCommentService
-│   └── infrastructure/              # StatusCheckRepository, PrCommentRepository
-│
-├── audit_posting/                   # Phase 4: Audit records
-│   ├── domain/                      # SignedAuditRecord
-│   ├── application/                 # AuditPostingService, AuditRecordQueue
-│   └── infrastructure/              # AuditBackend (filesystem + HTTP)
-│
-└── action_entrypoint/               # Phase 5: Event routing
-    ├── domain/                      # ActionContext, ActionMode, ActionOutput, GitHubEvent
-    ├── application/                 # ActionRouter, ModeResolver
-    └── infrastructure/              # ContextRepository
-```
+**Mode A — reactive governance.** Rigorix evaluates a pull request that already
+exists: the diff is analyzed, `policy.toml` rules are applied, and the result is a
+status check plus annotations and a step summary. This is the CI-shaped use: *did
+this change break the rules?*
+
+**Mode B — active execution.** Rigorix runs the agent inside the workflow: intent →
+plan → policy → execution → validation, with the same enforcement engine the CLI
+uses. This is the autonomy-shaped use: *what is the agent allowed to do here, and
+what did it do?*
+
+Both modes end in the same place — a signed audit record.
 
 ---
 
-## GitHub Action Inputs
+## Modules
 
-| Input | Description | Default |
-|-------|-------------|---------|
-| `mode` | Execution mode: `auto`, `run`, `plan`, `validate`, `status` | `auto` |
-| `intent` | Natural-language intent for planning/execution | — |
-| `github_token` | GitHub token for API calls (PR comments, status checks) | — |
-| `max_iterations` | Maximum validation loop iterations | `3` |
-| `max_llm_calls` | Maximum LLM API calls per execution | — |
-| `max_llm_tokens` | Maximum LLM tokens per execution | — |
-| `profile` | Configuration profile | — |
-| `permission_mode` | Permission mode for tool execution | — |
+9 bounded-context modules, each with an architecture document:
+
+| Module | Responsibility |
+|---|---|
+| `action_entrypoint` | Maps workflow events to engine orchestrator calls; the `main` entry |
+| `action_input` | Parses Action inputs and environment context into engine types |
+| `action_output` | GitHub-native output: annotations, step summaries, output variables |
+| `policy_evaluator` | **Mode A** enforcement — deny / review / flag rules against the diff |
+| `diff_analyzer` | Path validation, size limits, AI-generated signal detection |
+| `ci_integration` | Status checks, PR comments, issue labelling, workflow orchestration |
+| `audit_posting` | The audit trail, behind an `AuditBackend` seam |
+| `security_config` | Hardening: fork detection, key masking, path validation, policy integrity |
+| `shared` | Cross-module types and helpers |
+
+### The audit trail is the open-core seam
+
+`audit_posting` defines an `AuditBackend` trait
+(`infrastructure/repository/mod.rs`) — the boundary between this action and any
+other audit sink. OSS ships one implementation, `FilesystemAuditBackendImpl`,
+which writes to the local `.rigorix/audit/` directory. `AuditBackendFactory`
+selects the backend, so a deployment can supply its own without forking the
+module.
+
+### Security hardening is a module, not an afterthought
+
+`security_config` exists because a GitHub Action runs on hostile input: pull
+requests from forks, secrets in the environment, paths outside the workspace, and
+a policy file the diff under review could try to modify. It handles fork
+detection, API-key masking in output, path validation, and policy integrity
+checking. Secret masking is guarded in CI — a value that is secret-shaped must not
+reach a log line.
 
 ---
 
-## Phase 0 — Security Configuration
+## Policy
 
-Runs before any operation begins:
-
-- **Fork Detection** — Detects PRs from forked repos (prevents secret exposure)
-- **Secret Masking** — Masks sensitive values from logs
-- **Token Validation** — Validates GitHub token permissions
-- **HMAC Signing** — Signs audit records for integrity verification
-- **URL Allowlist** — Restricts outbound HTTP to approved endpoints
-
----
-
-## Phase 3 — Policy-Based Governance
-
-The `.rigorix/policy.toml` file (loaded from the **base branch**) defines rules:
+Enforcement is driven by `policy.toml` in the repository:
 
 ```toml
 [policy]
-version = "1.0.0"
+version = "1.0.0"          # the POLICY DOCUMENT version — not the crate version
 
 [policy.deny]
-paths = ["**/secret*", "**/*.pem"]
+paths = ["**/secret*", "**/*.pem", ".github/workflows/**"]
 
 [policy.review]
-paths = ["src/**"]
-max_additions = 500
-require_approval = ["src/core/**"]
+paths = ["src/auth/**", "**/payments/**"]
 
 [policy.flag]
-paths = ["*.generated.*"]
-ai_generated_threshold = 0.8
+paths = ["**/*.sql"]
 ```
 
-Three violation categories:
-| Level | Action | Use Case |
-|-------|--------|----------|
-| `deny` | Blocks the PR | Secrets, build artifacts |
-| `require_review` | Flags for human review | Large diffs, core module changes |
-| `flag` | Warns without blocking | Generated code, formatting issues |
+The `version` field is the schema version of the policy document. It is checked
+against the versions the evaluator supports, so an unsupported policy version is a
+typed error rather than a silently ignored rule.
 
 ---
 
-## Testing
+## Architecture
+
+```
+actions/src
+├── action_entrypoint/  workflow event → orchestrator
+├── action_input/       Action inputs → engine types
+├── action_output/      engine results → GitHub annotations/summaries
+├── policy_evaluator/   Mode A: policy vs diff
+├── diff_analyzer/      path/size/AI-signal analysis
+├── ci_integration/     status checks, comments, labels
+├── audit_posting/      AuditBackend seam (filesystem | API)
+├── security_config/    fork detection, masking, integrity
+└── shared/
+```
+
+Each module is a Clean Architecture bounded context with its own
+`domain` / `application` / `infrastructure` layers and frozen contracts.
+
+---
+
+## Development
 
 ```bash
-# Unit + integration tests
 cargo test -p rigorix-actions
-
-# With mock HTTP server (wiremock)
-cargo test -p rigorix-actions --features mock-server
+cargo clippy -p rigorix-actions -- -D warnings
+bash .pi/scripts/validate-architecture.sh
+cd actions && bash .pi/scripts/validate-tests.sh
 ```
 
----
-
-## Development Status
-
-All modules have concrete implementations with tests. The table below shows what exists per module.
-
-| Phase | Module | Services | Infrastructure | Tests | Status |
-|-------|--------|----------|---------------|-------|--------|
-| 0 | security_config | 5 impl files (fork, HMAC, masking, token, URL) | 1 repo impl | ✅ 6 test anno | ✅ **Implemented** |
-| 1 | action_input | 4 impl files (CI, comment, config, parser) | 1 repo impl | ✅ 5 test anno | ✅ **Implemented** |
-| 3 | diff_analyzer | 6 impl files (diff, pipeline, parser, limits, paths, risk) | — | ✅ 6 test anno | ✅ **Implemented** |
-| 3 | policy_evaluator | 10 impl files (rules, merge, docs, pipeline, eval, loader, reports, results, tamper) | — | ✅ 10 test anno | ✅ **Implemented** |
-| 3-4 | action_output | 5 impl files (annotations, format, vars, comments, summaries) | 3 repo impls | ✅ 8 test anno | ✅ **Implemented** |
-| 4 | ci_integration | 4 impl files (comments, status) | 2 repo impls | ✅ 25 test anno | ✅ **Implemented** |
-| 4 | audit_posting | 4 impl files (backend factory, posting, queue, record factory) | 2 backends (filesystem, HTTP) | ✅ 6 test anno | ✅ **Implemented** |
-| 5 | action_entrypoint | 3 impl files (context, mode, router) | 1 repo impl | ✅ 10 test anno | ✅ **Implemented** |
+Architecture: [`.pi/architecture/modules/`](.pi/architecture/modules/).
 
 ---
 
 ## License
 
-MIT OR Apache-2.0
+Licensed under either of MIT ([LICENSE-MIT](../LICENSE-MIT)) or Apache-2.0
+([LICENSE-APACHE](../LICENSE-APACHE)), at your option.

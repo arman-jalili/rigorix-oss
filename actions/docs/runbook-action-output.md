@@ -121,4 +121,3 @@ bash actions/.pi/scripts/ci/stage_action-output_proofing.sh
 - [Architecture doc](../.pi/architecture/modules/action-output.md)
 - [DR Plan](./dr-plan-action-output.md)
 - [CI Proofing Scripts](../.pi/scripts/ci/check_action-output_contracts.sh)
-- [Coverage Checker](../.pi/scripts/ci/check_action-output_coverage.sh)

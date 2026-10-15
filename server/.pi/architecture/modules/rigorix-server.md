@@ -8,9 +8,10 @@
 ## Purpose
 
 The OSS **reference execution host**: a single-tenant HTTP host that serves the
-frozen `rigorix.*` catalog (19 methods) over JSON-RPC 2.0 at `POST /rpc` and
-SSE at `GET /events` (live: the engine event bus is bridged into the hub, #900). It is the first live target for the
-`rigorix_enterprise_*` proxy seam.
+frozen `rigorix.*` catalog (20 methods; 18 exposed as governed MCP tools) over
+JSON-RPC 2.0 at `POST /rpc`, SSE at `GET /events`, and the optional MCP Streamable
+HTTP adapter at `/mcp` (live: the engine event bus is bridged into the hub, #900).
+It is the first live target for the `rigorix_enterprise_*` proxy seam.
 
 It is a **host, not a second engine**: every method delegates to the same
 composed host the stdio MCP binary uses (`rigorix_mcp::host::AppState::handle_tool_call`),
@@ -22,11 +23,16 @@ error taxonomy).
 ```
 server/
 ├── src/
-│   ├── main.rs        # axum bootstrap: POST /rpc, GET /health
+│   ├── main.rs        # axum bootstrap: POST /rpc, GET /events, /mcp, GET /health
 │   ├── lib.rs         # module root
 │   ├── backend.rs     # MethodBackend trait + HostBackend (delegates to rigorix-mcp)
-│   ├── catalog.rs     # the frozen 19-method table (name -> auth -> mcp tool)
+│   ├── catalog.rs     # the frozen 20-method table (name -> auth -> mcp tool)
 │   ├── rpc.rs         # JSON-RPC 2.0 codec: single/batch/notification + errors
+│   ├── mcp_http.rs    # optional MCP Streamable HTTP adapter (#915)
+│   ├── events.rs      # SSE hub (bounded replay)
+│   ├── event_bridge.rs# engine event bus -> hub
+│   ├── state.rs       # server state
+│   ├── anchor/        # ADR-016 anchor surface (mode + verified head)
 │   └── version.rs     # rigorix.system.version
 └── tests/             # rpc_transport, auth_levels, catalog_parity
 ```

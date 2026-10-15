@@ -108,5 +108,4 @@ Since `CodeGraphServiceImpl` stores graphs in-memory:
 
 - [Runbook](runbook-code-graph.md)
 - [Architecture Module](../.pi/architecture/modules/code-graph.md)
-- [API Contracts](../src/code_graph/interfaces/http/mod.rs)
 - [Repository Implementation](../src/code_graph/infrastructure/repository/filesystem_repository.rs)

@@ -264,11 +264,13 @@ and it does not affect the in-scope threat.
   `engine/src/sequence_policy/infrastructure/history.rs`,
   `engine/src/permission/application/enforcer_impl.rs` (R5),
   `mcp/src/host/mod.rs` (key resolution)
-- **Contract home:** `rigorix-sdk schemas/envelope.json` + `rust/rigorix-verifier`
+- **Contract home:** the published verifier packages (`rigorix-verifier` on
+  crates.io / npm / PyPI) and the envelope schema they share
 - **Enterprise:** `core/src/audit_ingestion/**` (ingestion, `envelope_jsonb`,
   repository), `core/.pi/architecture/modules/execution-api.md` (`RunRegistration`
   lifecycle)
 - **Gaps:** GAP-A-29 (retention coupling — validator unwired), GAP-A-30 (audit
   integrity — no chain/anchor; this ADR)
-- **Backlog / strategy:** `docs/sdk-server-strategy-freeze-2026-09-06.md` (D-2
-  Strategy A, D-3 server mode), `docs/next-workstreams-2026-09-21.md` (C series)
+- **Backlog / strategy:** the SDK/server split and the C-series follow-ups were
+  tracked in dated snapshot documents, since removed as superseded; the shipped
+  state is this ADR together with `docs/spec/consequence-gating-v1.md`

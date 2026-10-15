@@ -1,382 +1,360 @@
 # Rigorix
 
-[![Crates.io](https://img.shields.io/badge/crate-rigorix--cli-blue)](https://crates.io/crates/rigorix-cli)
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-green)](LICENSE-MIT)
+[![rigorix-verifier on crates.io](https://img.shields.io/crates/v/rigorix-verifier?label=rigorix-verifier%20%C2%B7%20crates.io)](https://crates.io/crates/rigorix-verifier)
+[![rigorix-verifier on npm](https://img.shields.io/npm/v/rigorix-verifier?label=rigorix-verifier%20%C2%B7%20npm)](https://www.npmjs.com/package/rigorix-verifier)
+[![rigorix-verifier on PyPI](https://img.shields.io/pypi/v/rigorix-verifier?label=rigorix-verifier%20%C2%B7%20PyPI)](https://pypi.org/project/rigorix-verifier/)
 [![CI](https://github.com/arman-jalili/rigorix-oss/actions/workflows/ci.yml/badge.svg)](https://github.com/arman-jalili/rigorix-oss/actions/workflows/ci.yml)
-[![Rust](https://img.shields.io/static/v1?label=rust&message=2024%20edition&color=orange)](https://doc.rust-lang.org/edition-guide/rust-2024/index.html)
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-green)](LICENSE-MIT)
 
-**The LLM generates code. Rigorix governs execution.**
+**AI agents are moving out of chat windows and into production systems — running
+migrations, modifying code, executing payments. Prompt engineering and network
+proxies cannot stop a rogue action, and they cannot see a *sequence* of
+individually-permitted actions that together do something nobody authorised.
+Rigorix is the deterministic execution boundary underneath your agents: it
+compiles intent into a reviewable plan, separates the moment of authorisation from
+the moment of consequence, refuses at dispatch when the operator's own check says
+no, and records every decision in a cryptographically anchored audit trail.**
 
-Coding agents can now write, edit, and ship software. The question organizations are starting to hit is not *can they?* — it's *what did the agent do, who approved it, and what was it allowed to touch?*
+That is the whole product in three sentences. If your agents can move money, ship
+code, or touch regulated data, Rigorix is the layer that decides what they are
+**allowed** to do and proves what they **did** — with no LLM in the enforcement
+path.
 
-Conversation history can't answer that. An API gateway can't either — that layer governs what flows *into* your AI, not what the agent does in your repository, your shell, your CI.
-
-Rigorix is the enforcement layer for agent execution. Natural-language tasks are compiled into a reviewable plan, executed inside policy, permission, and budget boundaries, and every step is recorded in a signed, timestamped audit envelope. When an agent wants to do something risky, Rigorix doesn't ask — it refuses, or gates the step for human approval.
-
-Built for platform and security teams running agents at scale — not for developers who want a faster autocomplete.
+It is for the security, platform and risk teams who are being asked to say "yes"
+to autonomy and are being asked to *prove* it afterwards. It is not an agent you
+chat with, and it is not a faster autocomplete: `Claude Code`, `Cursor`,
+`Copilot`, `Aider` and `Codex` keep their own loop and plug into Rigorix over MCP
+as **the layer they run inside**.
 
 ---
 
-## Watch it stop
+## Why the controls you already have do not cover this
 
-The fastest way to understand Rigorix is the [two-minute demo](https://github.com/arman-jalili/payments-demo): a coding agent fixes a real double-charge bug in a payments webhook — then its plan drifts toward a file it wasn't cleared to touch (`src/auth.ts`, signed off by a human). The step is marked `requires_approval = true`. Execution stops. The file is not touched. Until a human says yes.
+| You have | It governs | The gap |
+|---|---|---|
+| **Prompt engineering** ("never touch prod") | What you *ask* the model | A suggestion the model is free to ignore. Guidance is not a boundary. |
+| **An API gateway / network proxy** | Bytes flowing to and from the model | Not what the agent does in your repository, shell, CI or payment path. |
+| **Conversation history** | A transcript | Not evidence: not signed, not chained, not tamper-evident, not attributable. |
+| **Static policy on the request** | One request in isolation | Not the *composition*: five permitted steps whose sequence is a prohibited outcome. |
+| **A logging / SIEM pipeline** | Telling you afterwards | It reports. It cannot refuse. |
 
-Not a warning. A stop. One command, no API keys, fully local:
+The failure mode is not a malicious model. It is a **well-behaved agent doing
+individually-permitted things in an order nobody authorised** — and a control
+plane that cannot tell the difference between "an action was allowed" and "this
+sequence must not happen".
 
-```bash
-git clone https://github.com/arman-jalili/payments-demo
-cd payments-demo
-npm install && node .rigorix/run-demo.mjs
+Rigorix exists to make that distinction enforceable and provable.
+
+---
+
+## The architecture in one picture
+
+```
+  intent (natural language)
+        │
+        ▼
+  ┌───────────────────────────────────────────────────────────────┐
+  │ PLAN-TIME       compile to a reviewable DAG; apply operator    │
+  │                 requirements and sequence rules BEFORE any      │
+  │                 side effect (ADR-013, ADR-015)                  │
+  ├───────────────────────────────────────────────────────────────┤
+  │ APPROVAL-TIME   a human authorises an INTENT, not a node;       │
+  │                 HMAC-bound, single-use, time-bound (ADR-011)    │
+  ├───────────────────────────────────────────────────────────────┤
+  │ DISPATCH-TIME   ONE choke point. Re-verify the intent, run the  │
+  │                 operator's precondition against live authority, │
+  │                 then dispatch — or refuse (ADR-011, ADR-017)    │
+  └───────────────────────────────────────────────────────────────┘
+        │                                    │
+        ▼                                    ▼
+   signed envelope                    authority-fact projection
+   (HMAC + chain + anchor,            (verified by RE-DERIVATION,
+    ADR-016)                           spec §4.3.1)
 ```
 
+The LLM decides *what to generate*. The plan — not the model — decides *what is
+allowed to happen*. Enforcement is deterministic Rust.
+
 ---
 
-## Works with the agents you already run
+## The eight decisions that define the product
 
-Rigorix isn't a separate agent — it's a governance layer underneath yours. The [rigorix-mcp gateway](mcp/README.md) plugs Rigorix into any MCP-compatible coding assistant (Claude Code, Cursor, Aider) as a standard MCP server, exposing 14 built-in tools:
+Each of these is a shipped decision record. They are listed in the order a
+reviewer should read them, because each one closes a hole the previous one leaves
+open.
 
-- **Execution** — `rigorix_execute`, `rigorix_run`, `rigorix_plan`, `rigorix_validate_plan`, `rigorix_check_enforcement`, `rigorix_approve_execution`
-- **Templates** — list, get, create, validate
-- **Audit** — read, list, summarize signed audit records (read-only — the gateway never modifies audit data)
-- **Usage guide** — `rigorix_get_usage_guide`, a self-documenting tool list and workflow patterns
+### 1. Risk gating, budgets and autonomy presets (ADR-004, ADR-007, ADR-008)
 
-Your agent keeps its own loop; everything it does through Rigorix is planned, gated, and recorded.
+Every execution runs inside operator-authored risk policy, permission and budget
+boundaries. Budgets are **RAII reservations** — a reservation is taken before the
+call and released after, so a crashed or cancelled run cannot leak its allowance
+(ADR-008). Autonomy is a *preset*, not a vibe: the operator picks the envelope,
+the engine enforces it.
+
+*Business:* it converts "we trust the agent" into "we bounded the agent", which is
+the only form of that sentence an auditor accepts.
+
+### 2. Approval that binds to an intent, not to a screen (ADR-011)
+
+A human approval is not a checkbox on a node. At approval time the engine captures
+the canonical `ExecutionIntent` from the sealed graph and stores
+`HMAC-SHA256(run_key, canonical(tool ‖ intent ‖ declared_scope))` as a
+**single-use, time-bound** record. Immediately before dispatch it re-derives the
+intent and compares. Match → dispatch and consume. Mismatch → **HALT**
+(`IntentMismatch`): no dispatch, an audit event, re-approval required.
+
+This closes three real replay vectors: cross-process resume against a tampered
+state file, render/approve/execute mismatch, and stale approval sets reused after
+a re-plan.
+
+*Honest boundary:* there are two binding classes, and they are not equally strong.
+Deterministic tools (`run_command`, `file_write`, `edit_file`, `git_*`) are
+**payload-anchored** — the full dispatch payload is bound, airtight at dispatch
+level. `llm_generate` is **input-anchored** — the prompt and context are bound; the
+generated output is non-deterministic and verified *post hoc* by the validation
+loop. Binding governs agent-mediated tool dispatch; it is not a claim about what an
+arbitrary subprocess does afterwards.
+
+### 3. Composed-action gating — the sequence, not just the step (ADR-013, ADR-014, ADR-015)
+
+This is the answer to sequence attacks. Declarative rules over **ordered step
+sequences**, evaluated deterministically:
+
+```toml
+# .rigorix/sequence-policy.toml  — operator-owned; agents may not write it
+[[sequence_rules]]
+steps = ["read_customer_record", "payment_execute"]
+action = "promote"          # promote to human approval (default) | deny
+```
+
+The default action is `promote`, not `deny`: the product posture is *Rigorix does
+not ask — it refuses, or gates the step for human approval*. `deny` is available
+where the operator wants a hard block.
+
+Two evaluation points, deliberately: **plan-time** (primary — the ordered step
+list is evaluated *before* the graph is sealed, so the composition is caught
+before any side effect) and a **run-time prefix gate** in the same dispatch choke
+point, for dynamically composed plans.
+
+ADR-015 adds **operator-controlled step requirements** — evaluated for *every*
+plan, independent of what the plan itself declares. ADR-017 R3 closes its
+non-goal: a consequential step can require a **companion step** to be present in
+the same plan, so "payout only if the authority recheck also ran" is expressible
+and enforced.
+
+ADR-014 adds **value-identity**: a rule can compare a value to one carried by an
+earlier matched step in the same run (`/beneficiary` equals the earlier step's
+`/beneficiary`), plus a canonical **effect key** so the same economic action is
+recognised across runs and identifiers.
+
+*Honest boundary:* identity resolution and analytics live **outside** the engine.
+The domain supplies a canonical effect key; Rigorix does not guess what
+"beneficiary" means. There is no LLM in this path.
+
+### 4. Consequence gating — a precondition at the moment of dispatch (ADR-017)
+
+The strongest primitive: an operator authors a **dispatch-time precondition** — a
+deterministic external check, argv (no shell) or an HTTP determination service —
+evaluated immediately before the matched step's tool is invoked, at the same
+single choke point as the approval re-verification.
+
+```toml
+# .rigorix/preconditions.toml — operator-owned
+[[preconditions]]
+id = "beneficiary-eligible"
+match = { tool = "payment_execute" }
+require_params = ["/beneficiary", "/amount"]      # absent → deny
+command = ["/opt/rigorix/checks/beneficiary-eligible"]   # argv, resolved OUTSIDE the agent-writable workspace
+action = "deny"                                    # refuse; or "promote" to gate
+```
+
+The answer is **never cached across the gap**: authority at T₀ is not authority at
+Tₙ, so the check is re-read per dispatch.
+
+**Non-inheritance is normative (R4).** A provider's permitting answer is
+*evidence, not authority*: there is deliberately **no "provider says allow"
+short-circuit**. Every other matching precondition is still evaluated, an unknown
+or newer determination vocabulary maps to `unknown`, and **unknown never becomes
+authority**. Unreachable, timeout, non-2xx, unparseable and unknown all refuse.
+
+**Step-outcome gating (R2)** makes the consequence of failure explicit:
+`release_dependents_on_failure = false` means a failed (or denied) step marks its
+transitive dependents `Skipped`; they are never dispatched.
+
+*Honest boundary, stated plainly:* a precondition **narrows** the window between
+check and consequence; it does not close it. For money-out, the downstream system
+must still enforce eligibility at its own commit point. What Rigorix guarantees is
+narrower and reliable: **when the operator's check says no, the step is refused,
+and the determination is signed.**
+
+### 5. Evidence that survives the agent: HMAC, chain, anchor (ADR-016)
+
+"The audit trail" is not one artifact. Rigorix splits it by **trust role**:
+
+| Tier | Home | Properties | Trusted for decisions? |
+|---|---|---|---|
+| **Ledger** | external anchor (enterprise DB / external sink) | append-only, agent-inaccessible, per-producer sequence and chain | **yes** |
+| **Projection** | a signed read from the ledger | narrow, verifiable ("prior actions in window W for scope S") | **yes**, after verification |
+| **Cache** | local filesystem / `rigorix-server` | fast, rebuildable, chain-linked | tamper-**evident**, **not** trusted |
+
+Two principles do the work:
+
+- **Evidence authority ≥ rule authority.** A rule sourced from the enterprise
+  cannot be enforced against local, deletable evidence.
+- **No symmetric secret across a trust boundary.** HMAC secures the cache *within*
+  one trust domain; across host ↔ anchor, anchors are asymmetric.
+
+*Honest boundary:* the local cache is **tamper-evident, not tamper-proof**. It is
+not trusted for decisions; that is why the ledger tier exists.
+
+### 6. Verification by re-derivation, not by trusting a signature (spec §4.3.1)
+
+Rigorix can export its own hash-chained history as **authority facts** for an
+external determination consumer — and the export is checked by **re-deriving it**
+from the anchored chain, not by trusting a signature.
+
+A signature proves only *who said it*. Re-derivation proves *what the history
+actually supports* — so it also catches a signer asserting facts the chain does
+not back. Absence is explicit: a subject with no record yields a
+`NOT_ESTABLISHED` fact, and the artifact **never asserts present standing** (NC-4).
+
+This is the differentiator a neighbouring product cannot match by publishing more
+marketing: **the verifier is open source and published on crates.io, npm and
+PyPI** (with Go and Java implementations), so the reviewer runs the check on their
+own machine, in their own language, with no round-trip to the vendor.
+
+```bash
+rigorix audit projection --subject authority:beneficiary-eligible -o bundle.json
+rigorix audit verify-projection bundle.json   # offline; no engine, no key
+```
+
+### 7. Identity: OSS attests, the enterprise authorises (ADR-012)
+
+Rigorix records **who was presented as acting** — an attributed, time-bound claim,
+best-effort verified when an IdP is reachable, and **explicitly marked
+`unverified` or `absent` when it is not**. OSS makes no authorization judgment;
+scope and role decisions belong to the enterprise layer, which consumes the same
+signed envelope.
+
+*Honest boundary:* this deliberately **fails open** on identity for a local
+developer tool (with an explicit marker in the envelope), and it says so. That is
+not the same decision as egress control, and the two are documented separately so
+they are never conflated. Marking is not prevention: a verifier can *see* a forged
+authority digest; prevention is the boundary itself.
+
+### 8. Quality gates with pluggable scoring (ADR-010)
+
+A `scored_evaluation` node evaluates an artifact against a rubric — inline or
+referenced — with per-dimension thresholds and its own retry/fallback policy, over
+a **Rigorix-defined scoring protocol**. External scoring systems adopt the
+protocol by implementing the server side. Scoring participates in merge gating
+like any other policy.
+
+---
+
+## What Rigorix is not
+
+Stated because a security reader should be able to rely on a claim without
+discovering a hidden gap.
+
+- **Not a workflow engine.** The precondition primitive is exactly *match a step,
+  run a check, refuse on failure, record the outcome*. No loops, no conditionals,
+  no policy DSL, no multi-step orchestration.
+- **Not a domain system.** The engine does not know what "beneficiary eligible"
+  means. The operator supplies the process; entity resolution lives in the domain.
+- **Not judgment by model.** No LLM in the enforcement path — by construction, in
+  the risk gate, the sequence rules, the preconditions and the approval reverify.
+- **Not a replacement for approval.** A human authorises the intent; the
+  precondition re-validates the world. They are different controls.
+- **Not a transparency log or gossip stack.** The signed envelope plus the anchor
+  already provide the evidence.
+- **Not a benchmark-backed claim.** See the comparison note below.
+
+---
+
+## Interfaces
+
+**MCP gateway** (`rigorix-mcp`) — plugs Rigorix into any MCP-compatible assistant.
+15 built-in tools: execution (6), templates (4), audit (4, including the
+authority-fact bundle), usage guide (1); plus 3 auth tools when an identity
+provider is configured.
 
 ```bash
 cargo install rigorix-mcp
 ```
 
-Add to `.mcp.json` in your project root:
-
 ```json
-{
-  "mcpServers": {
-    "rigorix-mcp": {
-      "command": "rigorix-mcp",
-      "args": []
-    }
-  }
-}
+{ "mcpServers": { "rigorix-mcp": { "command": "rigorix-mcp", "args": [] } } }
 ```
 
-Then let the agent drive — plan, validate, execute, and audit from inside the conversation. Full docs: [mcp/README.md](mcp/README.md).
+**CLI** (`rigorix-cli`) — plan, run, inspect, and verify offline: `run`, `plan`,
+`cancel`, `status`, `history`, `explain`, `diff-plan`, `generate`, `template`,
+`audit {list|show|diff|projection|verify-projection}`, `logs`, `config`, `init`,
+`key`, plus the interactive TUI as the default entry point.
 
----
+**Server** (`rigorix-server`) — the OSS reference host: JSON-RPC 2.0 over the
+frozen `rigorix.*` catalog, with an optional MCP Streamable HTTP transport.
 
-## The problem
+**GitHub Action** (`rigorix-actions`) — the same engine, adapted to CI, on its own
+release cadence.
 
-Every agent loop today works the same way: an LLM decides what to do, does it, checks the result, and loops. That loop is powerful — and unstructured. There's no distinction between planning and execution. There's no audit trail beyond conversation history. There's no way to say *"execute this plan, but only if it stays within these boundaries."*
-
-This works fine when a human is watching every step. It breaks down when you want to:
-
-- **Run in CI/CD** — without a human approving every tool call
-- **Audit what happened** — when conversation history isn't enough for compliance
-- **Enforce policies** — "deny any change that touches the auth module" or "flag diffs that modify payment processing"
-- **Budget costs** — cap LLM spending per run so a runaway agent doesn't burn your API key
-
-Rigorix is opinionated: it intentionally gives up some **flexibility** in exchange for **repeatability, governance, and deterministic execution.**
-
-The core idea: instead of an LLM deciding what to do at each step, the intent is compiled into a DAG first — a deterministic, reviewable plan. The DAG says: *read these files, generate this patch, run these tests, verify these conditions.* The LLM fills in the content; the DAG controls the flow. This is the same pattern that made build systems (Make, Bazel) and data pipelines (Airflow, Dagster) reliable: separate *what* from *how*, validate the plan before running it, and record every execution.
-
-**Bounded autonomy:** every execution is constrained by configurable risk policies, permission rules, execution budgets, and quality gates. The model is intentionally restrictive: the LLM decides what to generate within the execution graph; Rigorix determines what is allowed to happen.
-
-```
- Natural language task
-        ↓
- Classifier — maps intent to a template
-        ↓
- Template — defines the execution structure
-        ↓
- Parameters — extracted from the task
-        ↓
- DAG — deterministic execution graph
-        ↓
- Execution — tools, retry, recovery
-        ↓
- Validation — quality gates, policies
-        ↓
- Audit — signed, timestamped record
-```
-
----
-
-## How Rigorix compares
-
-| Dimension | Rigorix | Claude Code | Copilot / Cursor | Aider | SWE-Agent |
-|-----------|---------|-------------|------------------|-------|-----------|
-| **Execution** | Template-driven DAG | Agent loop | Agent loop | Agent loop | Agent loop |
-| **Safety** | Risk gating, budgets, permissions | Permission prompts | Permission prompts (Cursor) | Git auto-commit | Docker sandbox |
-| **PR governance** | Built-in policy.toml | External CI | ✗ | ✗ | ✗ |
-| **Audit** | HMAC-signed envelopes | Conversation history | Conversation history | Git log | Ephemeral containers |
-| **Quality gates** | Post-execution validation | ✗ | ✗ | ✗ | ✗ |
-| **Scored evaluation** | Multidimensional quality scoring with pluggable backends and policy-based merge gating | ✗ | ✗ | ✗ | ✗ |
-| **Self-correcting** | Validate loop (plan → verify → fix) | Retry loop | ✗ | Lint-then-fix loop | Retry loop |
-
-The distinction that matters: **CI/CD answers "did the agent break the rules" — Rigorix answers "could the agent break them."** One layer reports; the other refuses.
-
-Rigorix is designed for **deterministic, auditable, safely-bounded automation** — not open-ended agent loops. If you need a code assistant that chats with you, use Claude Code or Aider. If you need a pipeline that enforces policies and generates auditable code changes, use Rigorix.
-
----
-
-## Templates
-
-Templates encode repeatable engineering workflows. Instead of asking the model to rediscover how to perform a common task each time, Rigorix selects an appropriate template, extracts parameters, builds an execution graph, and lets the LLM focus on generating code within that structure.
-
-Repeatable means the same intent produces the same execution structure under the same templates and policies. The generated code may differ, but the workflow, validation steps, and governance remain consistent.
-
-A template defines:
-
-- **What** files to read and what to generate from them
-- **Which** commands to run for verification (type-check, test, lint)
-- **How** to handle dependencies between steps
-- **Where** the output goes (new files, patches, test results)
-- **Which** steps are gated — `requires_approval = true` pauses the run until a human decides
-
-Here is a minimal template — it reads a file, runs a regex filter, and writes the result:
-
-```yaml
-name: extract-function-docs
-description: Extract JSDoc comments from a TypeScript file
-parameters:
-  - name: file_path
-    type: string
-    description: Path to the TypeScript file
-nodes:
-  - id: read_file
-    action: file_read
-    params:
-      path: "{{ file_path }}"
-  - id: extract_docs
-    action: llm_generate
-    depends_on: [read_file]
-    params:
-      prompt: >-
-        Extract all JSDoc comments from the file below.
-        Return them as a markdown list.
-      input: "{{ read_file.output }}"
-  - id: write_output
-    action: file_write
-    depends_on: [extract_docs]
-    params:
-      path: "docs/{{ file_path | basename }}.md"
-      content: "{{ extract_docs.output }}"
-```
-
-When a user runs `rigorix plan "Extract docs from src/api.ts"`, Rigorix classifies the intent, maps it to this template, prompts the LLM to fill `file_path`, and builds the 3-node DAG. **The LLM generates the doc content; the template controls the flow.**
-
-When no existing template matches the intent — or confidence is low — Rigorix prompts the LLM to generate a new template dynamically. Generated templates can be cached and reused, reducing the need to regenerate common workflows.
-
-Rigorix currently supports Rust, TypeScript, and Python as target codebases. TypeScript is the most mature integration today; the others are functional but earlier-stage.
+See [`mcp/README.md`](mcp/README.md), [`cli/README.md`](cli/README.md) and
+[`engine/README.md`](engine/README.md).
 
 ---
 
 ## Quickstart
 
-### Install
-
 ```bash
-# From source
-cargo install --git https://github.com/arman-jalili/rigorix-oss rigorix-cli
-
-# Or build locally
-git clone https://github.com/arman-jalili/rigorix-oss
-cd rigorix-oss && cargo build --release -p rigorix-cli
-./target/release/rigorix-cli --help
+cargo install rigorix-cli
+export ANTHROPIC_API_KEY="sk-ant-..."
+rigorix init                       # scaffold .rigorix/ with a default rigorix.toml
+rigorix plan "add retry to the payment webhook"   # plan first — review before running
+rigorix run  "add retry to the payment webhook"
 ```
 
-### Set your API key
-
-```bash
-export RIGORIX__LLM__API_KEY="sk-ant-..."   # Anthropic
-# or: export ANTHROPIC_API_KEY="sk-ant-..."
-```
-
-### Initialize a project
-
-```bash
-cd my-project
-rigorix init
-```
-
-### Plan before running (recommended)
-
-```bash
-rigorix plan "Add a new endpoint to the API"   # Review the DAG, then:
-rigorix run "Add a new endpoint to the API"
-```
-
-Or plan and confirm in one flow:
-
-```bash
-rigorix plan "Add error handling to the parser"
-# Shows plan, then prompts:
-# Run this plan now? [y/N]: y
-```
-
-### Run your first task
-
-```bash
-rigorix run "Explain how the main module works"
-```
-
-Rigorix will: classify the intent → extract parameters → generate a DAG → execute nodes (file reads, edits, bash commands) → validate results.
+Operator policy lives in `.rigorix/` — `policy.toml`, `permissions.toml`,
+`sequence-policy.toml`, `preconditions.toml`. **These are the trust surface, and
+the default permission config denies executing agents write access to
+`.rigorix/**`** — otherwise an agent could rewrite the rules it is judged by.
 
 ---
 
-## Architecture Overview
+## Claim ceiling
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                   User (Developer)                           │
-│            (CLI / TUI / GitHub Action)                       │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-┌──────────────────────────▼──────────────────────────────────┐
-│                     Planning Phase                           │
-│                                                              │
-│  Intent → Classify → Extract → Generate TaskGraph → Validate │
-│                  ↕ (low-confidence fallback)                 │
-│        Template System + LLM Template Generator              │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-┌──────────────────────────▼──────────────────────────────────┐
-│                     Execution Phase                          │
-│                                                              │
-│  DAG Engine (topo sort) → ParallelExecutor (tokio JoinSet)   │
-│       → Tool System (file/git/command/LSP)                   │
-│       → Retry/Recovery/Fallback                               │
-│       → Cancellation (graceful/immediate)                    │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-┌──────────────────────────▼──────────────────────────────────┐
-│                  Observability & Persistence                  │
-│                                                              │
-│  Event Bus → State Persistence → Audit (HMAC-signed)         │
-│         + Prometheus Metrics + Tracing                       │
-└─────────────────────────────────────────────────────────────┘
-```
+Public claims here are bounded by the published specifications. A passing test is
+**engineering verification (L1)** under a stated fixture; it does not silently
+inherit standing as **protocol validation (L2)** or **independent evidence (L3)**.
 
-## Repository Structure
-
-```
-rigorix-oss/
-├── engine/              # Core library — all business logic
-│   ├── src/             # Core engine (planning, execution, tools, governance)
-│   └── .pi/             # Architecture docs, ADRs, diagrams
-├── cli/                 # CLI binary — thin wrapper over engine
-│   ├── src/cli_boundary/# Flag-based CLI (Clap, dispatch, config)
-│   ├── src/tui/         # Interactive TUI (ratatui)
-│   └── .pi/             # Architecture docs
-├── mcp/                 # MCP gateway server (rigorix-mcp) — bridges
-│   │                    #   Claude Code / Cursor / Aider to the engine
-│   ├── src/             # 6 bounded-context modules
-│   └── .pi/             # Architecture docs
-├── server/              # OSS reference execution host (rigorix-server) —
-│   │                    #   JSON-RPC 2.0 + SSE over the frozen rigorix.* API
-│   ├── src/             # transport, catalog, backend seam, version
-│   └── .pi/             # Architecture docs
-├── actions/             # GitHub Action — thin adapter over engine
-│   ├── src/             # 9 bounded-context modules
-│   └── .pi/             # Architecture docs
-├── Cargo.toml           # Workspace root
-└── .pi/                 # Root-level architecture docs, prompts, scripts
-```
-
-## Development
-
-### Prerequisites
-
-- Rust 2024 edition (stable toolchain)
-- LLM API key (set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`)
-
-### CI as Continuous Verification
-
-Rigorix treats CI as continuous verification rather than compilation and testing. Beyond formatting, linting, unit tests, and security scanning, every architectural capability is validated through proofing scripts that verify contracts, architecture readiness, documentation consistency, policy enforcement, and execution guarantees.
-
-```
-📦 113 automated verification steps across 5 crates (engine · mcp · cli · actions · server)
-
-  Lint (18)        — formatting, clippy, CI validation × 5 crates
-  Build (13)       — build/check, static analysis, package × 5 crates
-  Test (57)        — cargo test, unit/integration stages, module proofing scripts
-  Security (10)    — cargo audit, secret scan, per-crate security validation
-  Docs (12)        — canonical, architecture, readiness × all crates
-  Integration (2)  — integration and operations validation
-  Coverage (1)     — workspace line coverage, gated ≥60%
-```
-
-```bash
-# Run the full CI suite (113 steps, ~8 min)
-bash .pi/scripts/local-ci.sh
-
-# Run a specific stage
-bash .pi/scripts/local-ci.sh --stage=lint      # lint only
-bash .pi/scripts/local-ci.sh --stage=build     # build only
-bash .pi/scripts/local-ci.sh --stage=test      # test only
-bash .pi/scripts/local-ci.sh --stage=security  # security only
-bash .pi/scripts/local-ci.sh --stage=docs      # documentation only
-bash .pi/scripts/local-ci.sh --stage=integration  # integration only
-
-# Run a specific crate
-bash .pi/scripts/local-ci.sh --crate=engine
-bash .pi/scripts/local-ci.sh --crate=mcp
-bash .pi/scripts/local-ci.sh --crate=cli
-bash .pi/scripts/local-ci.sh --crate=actions
-bash .pi/scripts/local-ci.sh --crate=server
-
-# Quick mode — skip release builds, use cargo check instead
-bash .pi/scripts/local-ci.sh --quick
-
-# Save report to a file (auto-gitignored under .pi/output/)
-bash .pi/scripts/local-ci.sh --save
-
-# List all available CI validation scripts
-bash .pi/scripts/local-ci.sh --list
-```
-
-## Architecture Documentation
-
-Each crate has its own `.pi/architecture/` directory with:
-- **Module specs** — Detailed interface contracts for each bounded context
-- **ADRs** — Architecture Decision Records explaining key design choices
-- **Diagrams** — System context, data flow, deployment
-
-### Published specifications
-
-Versioned, citable specifications with enumerated non-claims and a falsifiable
-validation protocol live in [`docs/spec/`](docs/spec/):
-
-- [Consequence Gating v1.0](docs/spec/consequence-gating-v1.md) — dispatch-time
-  preconditions: jurisdiction, evaluation contract, evidence model, interfaces,
-  failure semantics, non-claims
-- [Validation Protocol v1.0](docs/spec/validation-protocol-v1.md) — falsifiable
-  cases with stated failure conditions
+- [Consequence Gating v1.0](docs/spec/consequence-gating-v1.md) — the normative
+  spec, including what each mode does *not* cover
+- [Validation Protocol v1](docs/spec/validation-protocol-v1.md) — falsifiable
+  claims with stated failure conditions
 - [Terminology](docs/spec/terminology.md) — the normative vocabulary
 
-> **Claim ceiling.** Public claims are bounded by these specifications. A passing
-> test is *engineering verification* (L1) under a stated fixture; it does not
-> silently inherit standing as *protocol validation* (L2) or *independent
-> evidence* (L3). See [docs/spec/README.md](docs/spec/README.md) §Claim ceilings.
+The decision records live in
+[`engine/.pi/architecture/decisions/`](engine/.pi/architecture/decisions/) — start
+with ADR-011 (approval binding) and ADR-017 (consequence gating).
+
+---
+
+## Releases
+
+Release history is in [CHANGELOG.md](CHANGELOG.md). The release train is
+`rigorix-engine` / `rigorix-mcp` / `rigorix-cli`, which version together;
+`rigorix-actions` follows its own cadence.
 
 ---
 
 ## Contributing
 
-We welcome contributions! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for our development process, coding standards, and pull request workflow.
-
-Key guidelines:
-- Every edit must pass `cargo clippy --workspace` and `cargo fmt --check`
-- All modules follow Clean Architecture with frozen contracts (see `.pi/architecture/`)
-- Run `cargo test --workspace` before submitting
-- New features require architecture documentation (see `.pi/prompts/feature-development.md`)
+See [CONTRIBUTING.md](CONTRIBUTING.md). Every edit must pass
+`cargo clippy --workspace`, `cargo fmt --check` and `cargo test --workspace`;
+documentation must pass `.pi/scripts/validate-docs.sh`.
 
 ---
 
 ## License
 
-Licensed under either of:
-
-- MIT license ([LICENSE-MIT](LICENSE-MIT))
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
-
-at your option.
+Licensed under either of MIT ([LICENSE-MIT](LICENSE-MIT)) or Apache-2.0
+([LICENSE-APACHE](LICENSE-APACHE)), at your option.

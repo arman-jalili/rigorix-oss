@@ -8,7 +8,7 @@
 //! into — never a second source) and forwards each run-relevant
 //! [`ExecutionEvent`] into the server's [`EventHub`].
 //!
-//! [ADR-0001 D8] fixes exactly three push names; the variant → name mapping is
+//! ADR-0001 D8 fixes exactly three push names; the variant → name mapping is
 //! **complete and frozen** in `schemas/api/events.json` (`x-engine-event-mapping`)
 //! — a variant that maps to `null` (audit-delivery/circuit-breaker events) is
 //! intentionally not pushed. [`kind_for`] is an exhaustive match, so adding an
@@ -23,7 +23,10 @@
 //! so a slow bridge lags (dropped events are logged, never a stall); the hub's
 //! own broadcast is bounded too. Execution is never blocked by a slow SSE client.
 //!
-//! [ADR-0001 D8]: https://github.com/arman-jalili/rigorix-sdk/blob/main/docs/adr/ADR-0001-native-api-catalog.md
+//! ADR-0001 D8 is the native-API catalog decision. It is not linkable:
+//! the ADR lives in a private repository, so this comment previously carried a
+//! GitHub URL that 404s for every reader of this public repo. The mapping it
+//! fixes is implemented in `kind_for` below.
 
 use std::sync::Arc;
 
