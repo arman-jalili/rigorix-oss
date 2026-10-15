@@ -320,37 +320,6 @@ the default permission config denies executing agents write access to
 
 ---
 
-## How Rigorix compares
-
-Its neighbours are the other governance layers, not the coding agents it sits
-underneath.
-
-Every competitor cell below was read from the product's own site or repository on
-**2026-10-15**. Where a claim could not be established from the source, the cell
-reads **not established** rather than inferring a weakness. Competitors ship
-weekly: treat this as dated, not durable.
-
-| | **Rigorix** | **Cordum** | **Mault** | **APERION** | **microsoft/agent-governance-toolkit** |
-|---|---|---|---|---|---|
-| **What it is** | deterministic execution boundary under any MCP agent | "The Action Firewall for AI Agents" | "Governance for Coding Agents" | "Runtime AI Governance for Enterprise Agents" | "AI Agent Governance Toolkit" |
-| **Where it enforces** | compiled plan + per-step policy / permission / budget gate at one choke point | pre-tool gate; policy, approval and redacted audit evidence before execution | deterministic rules "from keystroke to merge" | "in the path between your agents and every model and tool" | policy enforcement, zero-trust identity, sandboxing |
-| **No LLM in the enforcement path** | **yes** — enforcement is deterministic Rust | not established | **yes** — "No LLM in the enforcement path" | not established | not established |
-| **Signed record** | HMAC envelopes + chain anchor (ADR-016) | "redacted audit evidence" | "a signed record of every action"; "Signed, verifiable offline" | "a record bound to the human who owns it" | not established |
-| **Verifier you run yourself** | **yes** — `rigorix-verifier` on crates.io / npm / PyPI, plus Go and Java | not established | not established | not established | not established |
-| **Verification method** | **re-derivation from the anchored chain** (§4.3.1) | not established | not established | not established | not established |
-| **Stated claim ceiling** | **yes** — never asserts present standing (NC-4) | not established | not established | not established | not established |
-| **Licence** | MIT / Apache-2.0 | source-available core | proprietary | proprietary | MIT |
-| **Signal** | — | cordum.io | mault.ai | aperion.ai; `AperionAI/shield` licence **conflicting** (repo says open-source, badge says Proprietary) | 6,430 stars, MIT, "10/10 OWASP Agentic Top 10", pushed 2026-10-15 |
-
-**What this table is not.** It is not a benchmark, and no independent comparative
-evaluation has been performed. Every cell is a reading of vendor-published
-material; the Rigorix column is a reading of our own artifacts. It should not be
-cited as if it established relative quality — see the claim ceilings in
-[`docs/spec/README.md`](docs/spec/README.md). If a cell is wrong, the correction is
-a source and a commit: open an issue.
-
----
-
 ## Claim ceiling
 
 Public claims here are bounded by the published specifications. A passing test is

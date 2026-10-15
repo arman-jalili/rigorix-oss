@@ -1,199 +1,150 @@
 # rigorix-cli
 
-**Thin binary wrapper around `rigorix-engine` — the user-facing CLI for planning and executing DAG tasks.**
-
-Per [ADR-002](../cli/.pi/architecture/decisions/ADR-002-cli-engine-split.md), the CLI contains **zero business logic**. All execution, planning, and domain logic lives in the engine crate. The CLI is responsible only for:
-
-- Command parsing (Clap)
-- Config loading and merging (TOML + env + flags + `models.json`)
-- Output formatting (Pretty, JSON, Markdown, Quiet)
-- Signal handling (Ctrl+C, SIGTERM)
-- Tracing initialization
-- Dispatching to engine services
-
----
-
-## Quick Start
+**The `rigorix` binary — a thin wrapper over `rigorix-engine`.** It holds no
+business logic of its own: every command resolves a config, dispatches to an
+engine service, and formats the result. That is deliberate. A CLI that reimplements
+a rule is a second source of truth, and the engine's rules are the product.
 
 ```bash
-# Launch interactive TUI (default)
-cargo run -p rigorix-cli
-
-# Plan only — preview generated plan
-cargo run -p rigorix-cli -- plan "add input validation to the login form"
-
-# Full run — plan + execute + persist
-cargo run -p rigorix-cli -- run "refactor database queries to use async"
-
-# Cancel a running execution
-cargo run -p rigorix-cli -- cancel <execution-id>
-
-# Show execution status
-cargo run -p rigorix-cli -- status
+cargo install rigorix-cli
 ```
+
+Running `rigorix` with no arguments opens the **interactive TUI**. Every command
+below is also available non-interactively for CI and scripting.
 
 ---
 
 ## Commands
 
-### Tier 1 — Full Lifecycle (via `OrchestratorService`)
+### Lifecycle
 
 | Command | Description |
-|---------|-------------|
-| `rigorix run <intent>` | Full lifecycle: plan → execute → persist → emit → audit |
+|---|---|
+| `rigorix run <intent>` | Full lifecycle: plan → execute → persist → emit → record |
 | `rigorix plan <intent>` | Plan only — preview the generated plan without executing |
-| `rigorix cancel <id>` | Cancel a running execution (graceful then immediate) |
-| `rigorix status` | Show current or most recent execution status |
+| `rigorix cancel <id>` | Cancel a running execution (graceful, then immediate) |
+| `rigorix status` | Current or most recent execution status |
 
-### Tier 2 — Direct Engine Services
+`plan` before `run` is the intended workflow: the plan is the reviewable artifact,
+and it is where operator requirements and sequence rules are already applied.
+
+### Inspection
 
 | Command | Description |
-|---------|-------------|
+|---|---|
 | `rigorix history [--limit N] [--status S]` | List past executions |
-| `rigorix explain <id> [--diff <id2>]` | Detailed execution info with optional comparison |
-| `rigorix diff-plan <id1> <id2>` | Compare two plans side-by-side |
-| `rigorix generate <intent>` | Generate a reusable template from natural language |
+| `rigorix explain <id> [--diff <id2>]` | Detailed execution info, optionally compared |
+| `rigorix diff-plan <id1> <id2>` | Compare two plans side by side |
+| `rigorix logs [--session-id <id>]` | Raw execution session logs |
 | `rigorix template {list\|show <id>}` | Browse or inspect templates |
-| `rigorix audit {list\|show\|diff}` | Browse audit trails |
-| `rigorix audit projection [--subject <s>]... [-o <file>]` | Emit an authority-fact projection bundle (carries the signed history, not just a summary) |
-| `rigorix audit verify-projection <bundle>` | Verify a bundle offline by re-derivation — no engine, no key; non-zero exit on failure |
-| `rigorix logs [--session-id <id>]` | View execution event logs |
-| `rigorix config {init\|show\|validate}` | Manage configuration |
+| `rigorix generate <intent>` | Generate a reusable template from an intent |
 
-### Tier 3 — CLI-Only
+### Audit — including offline verification
 
 | Command | Description |
-|---------|-------------|
-| `rigorix init` | Scaffold `.rigorix/` directory with default `rigorix.toml` |
+|---|---|
+| `rigorix audit list` / `show` / `diff` | Browse the signed audit trail |
+| `rigorix audit projection [--subject <s>]... [-o <file>]` | Emit an authority-fact projection bundle |
+| `rigorix audit verify-projection <bundle>` | **Verify a bundle offline by re-derivation** |
+
+`audit verify-projection` is the one to look at first. It needs **no engine, no
+session and no key**: it reads the bundle, re-derives the projection from the
+bundled signed history, and exits non-zero if the two disagree or the history is
+not an intact chain. That is the whole point of the export — a third party checks
+it themselves (spec §4.3.1).
+
+```bash
+rigorix audit projection --subject authority:beneficiary-eligible -o bundle.json
+rigorix audit verify-projection bundle.json     # exit 0 = verified
+```
+
+Note the disclosure: a bundle carries the envelopes. The consumer receives the
+signed history, not a summary.
+
+### Setup
+
+| Command | Description |
+|---|---|
+| `rigorix init` | Scaffold `.rigorix/` with a default `rigorix.toml` |
+| `rigorix config {init\|show\|validate}` | Manage and validate configuration |
 | `rigorix key [--label NAME]` | Generate API keys |
 
-### Shortcut Flags
+---
 
-| Flag | Expands To |
-|------|-----------|
-| `--run <intent>` | `rigorix run <intent>` |
-| `--exec <id>` | `rigorix tui --exec <id>` |
-| `--history` | `rigorix history` |
+## Output formats
 
-> When no subcommand or flag is given, the **interactive TUI** launches by default.
+Every command accepts `--format`:
+
+| Format | Use |
+|---|---|
+| `pretty` *(default)* | Human-readable, Unicode, for a terminal |
+| `json` | Machine-readable, for CI and scripting |
+| `markdown` | Documentation output |
+| `quiet` | Minimal output; the exit code is the interface |
+
+Exit codes are the contract in `quiet` mode: non-zero means the operation did not
+succeed — including a projection that failed verification.
 
 ---
 
 ## Configuration
 
-Config loading follows a layered priority (highest wins):
+`rigorix init` scaffolds `.rigorix/`:
 
-1. CLI flag overrides
-2. Environment variables (`RIGORIX__LLM__API_KEY`, `RIGORIX__ORCHESTRATOR__MAX_PARALLEL_TASKS`, etc.)
-3. `rigorix.toml` in CWD (or parent, walking up to repo root)
-4. `~/.rigorix/config.toml` (user-level fallback)
-5. `~/.rigorix/models.json` or `.rigorix/models.json` (provider URL, max_tokens)
-6. Compiled-in defaults
+| File | Owner | Purpose |
+|---|---|---|
+| `rigorix.toml` | operator | Engine configuration and the audit HMAC key |
+| `models.json` | operator | Model definitions and selection |
+| `policy.toml` | operator | Declarative policy |
+| `permissions.toml` | operator | Path and capability rules |
+| `sequence-policy.toml` | operator | Sequence rules and operator step requirements (ADR-013/015) |
+| `preconditions.toml` | operator | Dispatch-time preconditions (ADR-017) |
+
+**`.rigorix/` is a trust surface.** The default permission config denies executing
+agents write access to `.rigorix/**` — otherwise an agent could rewrite the rules
+it is judged by. Treat these files as you would a CI configuration or a
+branch-protection rule.
+
+---
+
+## Architecture
+
+2 modules, Clean Architecture with frozen contracts:
+
+| Module | Responsibility |
+|---|---|
+| `cli_boundary` | Clap command surface, config resolution, dispatch, output formatting, signal handling |
+| `tui` | The ratatui interactive shell: plan review, command bar, event bridge, view models |
+
+```
+cli/src
+├── cli_boundary/   cli.rs (surface) · dispatch.rs (routing) · config.rs
+│                   output.rs (pretty/json/markdown/quiet) · error.rs · signal.rs
+└── tui/            views/ · widgets/ · input/ · plan_review.rs · event_bridge.rs
+```
+
+`cli_boundary` is the only place that knows about argv. Everything below it takes
+typed arguments and returns typed results, which is why the whole command surface
+is unit-testable without spawning a process — and the projection round-trip *is*
+tested by spawning the real binary in an empty temp directory
+(`cli/tests/projection_surface.rs`).
+
+---
+
+## Development
 
 ```bash
-# Initialize default config
-rigorix init
-
-# View merged config (secrets redacted)
-rigorix config show
-
-# Validate config against safety caps
-rigorix config validate
+cargo test -p rigorix-cli
+cargo clippy -p rigorix-cli -- -D warnings
+cargo run -p rigorix-cli -- --help
+cargo run -p rigorix-cli -- audit --help
 ```
 
-### Models.json
-
-The `models.json` file provides LLM provider configuration (base URLs, model IDs, max tokens). It follows the same format as `~/.pi/agent/models.json`. Example:
-
-```json
-{
-  "providers": {
-    "anthropic": {
-      "baseUrl": "https://api.anthropic.com/v1",
-      "apiKey": "${ANTHROPIC_API_KEY}",
-      "models": [
-        {"id": "claude-sonnet-4-6", "maxTokens": 8192}
-      ]
-    }
-  }
-}
-```
-
----
-
-## Module Structure
-
-```
-cli/src/
-├── main.rs                   # Binary entry point
-├── lib.rs                    # Library root
-│
-├── cli_boundary/             # Flag-based CLI
-│   ├── cli.rs                # Clap parser: 14 commands + 3 shortcuts
-│   ├── dispatch.rs           # Command → engine service routing
-│   ├── orchestrator.rs       # OrchestratorBuilder wrapper
-│   ├── config.rs             # Multi-source config loader
-│   ├── output.rs             # Output formatter trait
-│   ├── signal.rs             # Ctrl+C / SIGTERM handler
-│   ├── tracing.rs            # tracing-subscriber init
-│   ├── error.rs              # CliError → exit codes
-│   └── tests.rs              # Integration tests
-│
-└── tui/                      # Interactive Terminal UI
-    ├── views/                # 7 views: Dashboard, Plan, Nodes, Diff, History, Events, Settings
-    ├── widgets/              # 6 widgets: StatusBar, CmdBar, DAG Tree, Event Log, Node Detail, Metrics
-    ├── input/                # Keymap, command palette
-    ├── event_bridge.rs       # Engine events → VM commands
-    ├── orchestrator_spawner.rs # Background orchestrator task
-    └── view_model.rs         # UI state model
-```
-
----
-
-## Output Formats
-
-All commands support `--format` (default: Pretty):
-
-| Format | Use Case |
-|--------|----------|
-| `pretty` | Human-readable with Unicode symbols (default) |
-| `json` | CI/CD integration and scripting |
-| `markdown` | Documentation output |
-| `quiet` | Minimal output, exit codes only |
-
----
-
-## Output Examples
-
-### Plan Output (Pretty)
-
-```
-Plan: refactor database queries to use async (confidence 92%)
-  Template: async-refactor | LLM: 2 calls, 850 tokens
-  Parameters:
-    ├── target_module: src/db/
-    ├── connection_pool: PgPool
-  Graph: 4 node(s), sealed=true
-    · analyze (root)
-    · rewrite ← [analyze]
-    · test ← [rewrite]
-    · verify ← [test]
-```
-
-### Run Output (Pretty)
-
-```
-Run: Completed — 0 failed, 4 passed, 0 skipped (4 total)
-  Template: async-refactor | LLM: 2 calls, 850 tokens
-
-  ✓ analyze — Completed
-  ✓ rewrite — Completed
-  ✓ test — Completed
-  ✓ verify — Completed
-```
+Architecture: [`.pi/architecture/modules/`](.pi/architecture/modules/).
 
 ---
 
 ## License
 
-MIT OR Apache-2.0
+Licensed under either of MIT ([LICENSE-MIT](../LICENSE-MIT)) or Apache-2.0
+([LICENSE-APACHE](../LICENSE-APACHE)), at your option.
