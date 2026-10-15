@@ -238,3 +238,42 @@ mod precondition {
         mod preconditionsurfaces_test;
     }
 }
+// The outer module mirrors the renamed `engine/tests/unit/capacity-ledger/` dir.
+// `capacity-ledger` is hyphenated on disk and underscored in Rust; the outer
+// `#[path]` makes the inner module names (single words) resolve relative to it.
+#[path = "capacity-ledger"]
+mod capacity_ledger {
+    mod capacityledger {
+        mod capacityledger_test;
+    }
+    mod capacityledgerservice {
+        mod capacityledgerservice_test;
+    }
+    mod exposure {
+        mod exposure_test;
+    }
+    mod grant {
+        mod grant_test;
+    }
+    mod httpledger {
+        mod httpledger_test;
+    }
+    mod idempotencykey {
+        mod idempotencykey_test;
+    }
+    mod inprocessledger {
+        mod inprocessledger_test;
+    }
+    mod ledgererror {
+        mod ledgererror_test;
+    }
+    mod reservation {
+        mod reservation_test;
+    }
+    mod reservationguard {
+        mod reservationguard_test;
+    }
+    mod resource {
+        mod resource_test;
+    }
+}
