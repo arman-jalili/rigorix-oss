@@ -10,7 +10,8 @@
 //! Maps every ambiguity to `Unavailable` so the caller fails closed (I4).
 //!
 //! # Status
-//! The port methods are TODO stubs; ISSUE-CAPACITY-LEDGER-10 supplies the
+//! The port methods are TODO stubs that fail closed with
+//! [`LedgerError::Unavailable`]; ISSUE-CAPACITY-LEDGER-10 supplies the real
 //! implementation. The config type and constructor are frozen here.
 
 use std::fmt;
@@ -93,10 +94,18 @@ impl HttpLedger {
     }
 }
 
+/// Fail-closed placeholder body. TODO(ISSUE-CAPACITY-LEDGER-10): replace each
+/// call with the real HTTP operation.
+fn not_implemented(op: &str) -> LedgerError {
+    LedgerError::Unavailable {
+        detail: format!("HttpLedger::{op} not implemented yet (ISSUE-CAPACITY-LEDGER-10)"),
+    }
+}
+
 #[async_trait]
 impl CapacityLedger for HttpLedger {
     async fn declare_resource(&self, _spec: ResourceSpec) -> Result<(), LedgerError> {
-        todo!("ISSUE-CAPACITY-LEDGER-10: implement HttpLedger::declare_resource")
+        Err(not_implemented("declare_resource"))
     }
 
     async fn reserve(
@@ -105,18 +114,18 @@ impl CapacityLedger for HttpLedger {
         _amount: u64,
         _key: IdempotencyKey,
     ) -> Result<Grant, LedgerError> {
-        todo!("ISSUE-CAPACITY-LEDGER-10: implement HttpLedger::reserve")
+        Err(not_implemented("reserve"))
     }
 
     async fn commit(&self, _grant: Grant) -> Result<Reservation, LedgerError> {
-        todo!("ISSUE-CAPACITY-LEDGER-10: implement HttpLedger::commit")
+        Err(not_implemented("commit"))
     }
 
     async fn release(&self, _grant: Grant) -> Result<Reservation, LedgerError> {
-        todo!("ISSUE-CAPACITY-LEDGER-10: implement HttpLedger::release")
+        Err(not_implemented("release"))
     }
 
     async fn exposure(&self, _resource: &ResourceId) -> Result<Exposure, LedgerError> {
-        todo!("ISSUE-CAPACITY-LEDGER-10: implement HttpLedger::exposure")
+        Err(not_implemented("exposure"))
     }
 }

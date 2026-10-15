@@ -13,7 +13,8 @@
 //! HTTP adapter against a real contested store.
 //!
 //! # Status
-//! The port methods are TODO stubs; ISSUE-CAPACITY-LEDGER-9 supplies the
+//! The port methods are TODO stubs that fail closed with
+//! [`LedgerError::Unavailable`]; ISSUE-CAPACITY-LEDGER-9 supplies the real
 //! implementation. The type and its constructor are frozen here so wiring and
 //! contract tests can target it.
 
@@ -42,10 +43,18 @@ impl Default for InProcessLedger {
     }
 }
 
+/// Fail-closed placeholder body. TODO(ISSUE-CAPACITY-LEDGER-9): replace each
+/// call with the real in-process operation.
+fn not_implemented(op: &str) -> LedgerError {
+    LedgerError::Unavailable {
+        detail: format!("InProcessLedger::{op} not implemented yet (ISSUE-CAPACITY-LEDGER-9)"),
+    }
+}
+
 #[async_trait]
 impl CapacityLedger for InProcessLedger {
     async fn declare_resource(&self, _spec: ResourceSpec) -> Result<(), LedgerError> {
-        todo!("ISSUE-CAPACITY-LEDGER-9: implement InProcessLedger::declare_resource")
+        Err(not_implemented("declare_resource"))
     }
 
     async fn reserve(
@@ -54,18 +63,18 @@ impl CapacityLedger for InProcessLedger {
         _amount: u64,
         _key: IdempotencyKey,
     ) -> Result<Grant, LedgerError> {
-        todo!("ISSUE-CAPACITY-LEDGER-9: implement InProcessLedger::reserve")
+        Err(not_implemented("reserve"))
     }
 
     async fn commit(&self, _grant: Grant) -> Result<Reservation, LedgerError> {
-        todo!("ISSUE-CAPACITY-LEDGER-9: implement InProcessLedger::commit")
+        Err(not_implemented("commit"))
     }
 
     async fn release(&self, _grant: Grant) -> Result<Reservation, LedgerError> {
-        todo!("ISSUE-CAPACITY-LEDGER-9: implement InProcessLedger::release")
+        Err(not_implemented("release"))
     }
 
     async fn exposure(&self, _resource: &ResourceId) -> Result<Exposure, LedgerError> {
-        todo!("ISSUE-CAPACITY-LEDGER-9: implement InProcessLedger::exposure")
+        Err(not_implemented("exposure"))
     }
 }
