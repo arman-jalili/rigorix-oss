@@ -9,9 +9,9 @@ mod tests {
 
     use chrono::Utc;
     use rigorix_engine::capacity_ledger::application::{
-        CapacityLedgerService, CommitCapacityInput, CommitCapacityOutput, ExposureOutput,
-        ExposureQuery, ReleaseCapacityInput, ReleaseCapacityOutput, ReserveCapacityInput,
-        ReserveCapacityOutput,
+        CapacityLedgerService, CapacityLedgerServiceImpl, CommitCapacityInput,
+        CommitCapacityOutput, ExposureOutput, ExposureQuery, ReleaseCapacityInput,
+        ReleaseCapacityOutput, ReserveCapacityInput, ReserveCapacityOutput,
     };
     use rigorix_engine::capacity_ledger::domain::{
         Exposure, IdempotencyKey, Lease, Reservation, ReservationId, ResourceId, Window,
@@ -36,6 +36,10 @@ mod tests {
         // Use cases are consumed as a boxed trait object by the enforcement seam.
         fn assert_object_safe(_: Option<Box<dyn CapacityLedgerService>>) {}
         assert_object_safe(None);
+
+        // The concrete service satisfies the frozen trait.
+        fn assert_impl<T: CapacityLedgerService>() {}
+        assert_impl::<CapacityLedgerServiceImpl>();
     }
 
     #[test]

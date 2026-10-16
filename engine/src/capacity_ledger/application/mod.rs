@@ -15,6 +15,7 @@ pub mod dto;
 pub mod factory;
 pub mod guard;
 pub mod service;
+pub mod service_impl;
 
 pub use dto::{
     CommitCapacityInput, CommitCapacityOutput, ExposureOutput, ExposureQuery, ReleaseCapacityInput,
@@ -23,3 +24,4 @@ pub use dto::{
 pub use factory::{CapacityLedgerFactory, LedgerBackendConfig};
 pub use guard::ReservationGuard;
 pub use service::CapacityLedgerService;
+pub use service_impl::CapacityLedgerServiceImpl;
