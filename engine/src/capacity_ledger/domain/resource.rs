@@ -35,6 +35,11 @@ impl ResourceId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Whether the label is empty (a declaration that cannot be referenced).
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 impl fmt::Display for ResourceId {
@@ -60,6 +65,11 @@ impl Window {
     /// Construct a bounded window.
     pub fn bounded(duration_secs: u64) -> Self {
         Self { duration_secs }
+    }
+
+    /// Whether exposure is aggregated over a finite period.
+    pub fn is_bounded(&self) -> bool {
+        self.duration_secs > 0
     }
 }
 
@@ -104,5 +114,29 @@ impl ResourceSpec {
     /// The hard capacity cap.
     pub fn hard_limit(&self) -> u64 {
         self.hard_limit
+    }
+
+    /// Remaining capacity given current exposure (I6: never underflows).
+    ///
+    /// `committed` is capacity already spent; `outstanding` is capacity held
+    /// but not yet resolved.
+    pub fn remaining(&self, committed: u64, outstanding: u64) -> u64 {
+        self.hard_limit
+            .saturating_sub(committed)
+            .saturating_sub(outstanding)
+    }
+
+    /// Whether `additional` units can still be claimed without exceeding the
+    /// hard limit (I6 — no claim inflation).
+    pub fn has_room_for(&self, committed: u64, outstanding: u64, additional: u64) -> bool {
+        committed
+            .saturating_add(outstanding)
+            .saturating_add(additional)
+            <= self.hard_limit
+    }
+
+    /// Whether the resource is fully claimed (`remaining == 0`).
+    pub fn is_saturated(&self, committed: u64, outstanding: u64) -> bool {
+        self.remaining(committed, outstanding) == 0
     }
 }
