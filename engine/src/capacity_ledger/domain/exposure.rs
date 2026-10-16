@@ -67,4 +67,30 @@ impl Exposure {
             .saturating_sub(self.committed)
             .saturating_sub(self.outstanding)
     }
+
+    /// Whether `amount` more units could be reserved without exceeding the cap.
+    pub fn would_fit(&self, amount: u64) -> bool {
+        self.available() >= amount
+    }
+
+    /// Whether no capacity remains.
+    pub fn is_exhausted(&self) -> bool {
+        self.available() == 0
+    }
+
+    /// Whether `committed + outstanding` respects the hard limit (I6).
+    pub fn is_consistent(&self) -> bool {
+        self.committed.saturating_add(self.outstanding) <= self.hard_limit
+    }
+
+    /// Fraction of the cap currently claimed (`committed + outstanding`).
+    ///
+    /// Returns `1.0` for a zero cap to avoid division by zero.
+    pub fn claimed_ratio(&self) -> f64 {
+        if self.hard_limit == 0 {
+            return 1.0;
+        }
+        let claimed = self.committed.saturating_add(self.outstanding) as f64;
+        (claimed / self.hard_limit as f64).min(1.0)
+    }
 }
