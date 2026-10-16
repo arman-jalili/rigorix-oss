@@ -45,4 +45,35 @@ mod tests {
         };
         assert!(matches!(contended, LedgerError::Contended { .. }));
     }
+
+    #[test]
+    fn test_ledgererror_classifies_failures() {
+        let insufficient = LedgerError::Insufficient {
+            resource: ResourceId::new("gpu"),
+            requested: 1,
+            available: 0,
+        };
+        assert!(!insufficient.is_retriable());
+        assert!(insufficient.is_capacity_exhausted());
+        assert!(!insufficient.is_unavailable());
+
+        let unavailable = LedgerError::Unavailable {
+            detail: "timeout".into(),
+        };
+        assert!(unavailable.is_retriable());
+        assert!(unavailable.is_unavailable());
+        assert!(!unavailable.is_capacity_exhausted());
+
+        let contended = LedgerError::Contended {
+            resource: ResourceId::new("gpu"),
+            detail: "lost the race".into(),
+        };
+        assert!(contended.is_retriable());
+
+        let expired = LedgerError::LeaseExpired {
+            resource: ResourceId::new("gpu"),
+            key: IdempotencyKey::new("k"),
+        };
+        assert!(!expired.is_retriable());
+    }
 }
