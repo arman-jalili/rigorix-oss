@@ -5,18 +5,49 @@
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use chrono::Utc;
+    use rigorix_engine::capacity_ledger::domain::{
+        Exposure, IdempotencyKey, Lease, Reservation, ReservationId, ReservationState, ResourceId,
+        Window,
+    };
     use rigorix_engine::capacity_ledger::infrastructure::{HttpLedger, HttpLedgerConfig};
     use rigorix_engine::capacity_ledger::interfaces::CapacityLedger;
+    use rigorix_engine::capacity_ledger::interfaces::http::{
+        COMMIT_PATH, EXPOSURE_PATH, RESERVE_PATH,
+    };
+    use serde_json::json;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn config(server: &MockServer) -> HttpLedgerConfig {
+        HttpLedgerConfig::new(server.uri(), 1_000, 65_536, None)
+    }
+
+    fn reservation(id: ReservationId) -> Reservation {
+        Reservation::new(
+            id,
+            ResourceId::new("gpu"),
+            2,
+            Lease::expiring_in(Utc::now(), Duration::from_secs(60)),
+            IdempotencyKey::new("k1"),
+        )
+    }
+
+    fn exposure() -> Exposure {
+        Exposure::new(ResourceId::new("gpu"), 10, 0, 2, Window::UNBOUNDED)
+    }
 
     #[test]
     fn test_httpledger_is_defined() {
-        let config = HttpLedgerConfig::new(
+        let cfg = HttpLedgerConfig::new(
             "https://ledger.example",
             5_000,
             65_536,
             Some("token".to_string()),
         );
-        let ledger = HttpLedger::new(config);
+        let ledger = HttpLedger::new(cfg);
         assert_eq!(ledger.config().base_url, "https://ledger.example");
         assert_eq!(ledger.config().timeout_ms, 5_000);
         assert_eq!(ledger.config().max_response_body_bytes, 65_536);
@@ -27,19 +58,115 @@ mod tests {
 
     #[test]
     fn test_httpledger_interacts_with_capacityledger() {
-        // The adapter must satisfy the full frozen port.
         fn assert_impl<T: CapacityLedger>() {}
         assert_impl::<HttpLedger>();
 
         // Credentials are never rendered by Debug (fail-closed transport discipline).
-        let config = HttpLedgerConfig::new(
+        let cfg = HttpLedgerConfig::new(
             "https://ledger.example",
             1_000,
             1_024,
             Some("super-secret".to_string()),
         );
-        let rendered = format!("{config:?}");
+        let rendered = format!("{cfg:?}");
         assert!(!rendered.contains("super-secret"));
         assert!(rendered.contains("<redacted>"));
+    }
+
+    #[tokio::test]
+    async fn reserve_then_commit_round_trips_over_http() {
+        let server = MockServer::start().await;
+        let id = ReservationId::new();
+        let outstanding = reservation(id);
+        let committed = Reservation {
+            state: ReservationState::Committed,
+            ..outstanding.clone()
+        };
+
+        Mock::given(method("POST"))
+            .and(path(RESERVE_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "reservation": outstanding,
+                "exposure": exposure(),
+            })))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path(format!("/v1/capacity/reservations/{id}/commit")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "reservation": committed,
+                "exposure": exposure(),
+            })))
+            .mount(&server)
+            .await;
+
+        let ledger = HttpLedger::new(config(&server));
+        let grant = ledger
+            .reserve(&ResourceId::new("gpu"), 2, IdempotencyKey::new("k1"))
+            .await
+            .expect("reserve");
+        assert_eq!(grant.amount(), 2);
+        assert_eq!(grant.reservation_id(), id);
+
+        let committed = ledger.commit(grant).await.expect("commit");
+        assert_eq!(committed.state, ReservationState::Committed);
+    }
+
+    #[tokio::test]
+    async fn exposure_is_read_from_the_frozen_endpoint() {
+        let server = MockServer::start().await;
+        assert_eq!(EXPOSURE_PATH, "/v1/capacity/exposure/{resource}");
+
+        Mock::given(method("GET"))
+            .and(path("/v1/capacity/exposure/gpu"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "exposure": exposure(),
+            })))
+            .mount(&server)
+            .await;
+
+        let ledger = HttpLedger::new(config(&server));
+        let exposure = ledger
+            .exposure(&ResourceId::new("gpu"))
+            .await
+            .expect("exposure");
+        assert_eq!(exposure.outstanding, 2);
+        assert_eq!(exposure.committed, 0);
+    }
+
+    #[tokio::test]
+    async fn non_success_status_fails_closed() {
+        let server = MockServer::start().await;
+        assert_eq!(COMMIT_PATH, "/v1/capacity/reservations/{id}/commit");
+        Mock::given(method("POST"))
+            .and(path(RESERVE_PATH))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+
+        let ledger = HttpLedger::new(config(&server));
+        let err = ledger
+            .reserve(&ResourceId::new("gpu"), 1, IdempotencyKey::new("k1"))
+            .await
+            .unwrap_err();
+        assert!(err.is_unavailable());
+    }
+
+    #[tokio::test]
+    async fn malformed_body_fails_closed() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(RESERVE_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_string("not json"))
+            .mount(&server)
+            .await;
+
+        let ledger = HttpLedger::new(config(&server));
+        let err = ledger
+            .reserve(&ResourceId::new("gpu"), 1, IdempotencyKey::new("k1"))
+            .await
+            .unwrap_err();
+        assert!(err.is_unavailable());
     }
 }
