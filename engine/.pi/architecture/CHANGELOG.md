@@ -1137,3 +1137,27 @@ When making architecture changes:
 - **6 PRs** merged: #344 (contract), #345 (service), #346 (builder), #347 (record), #348 (proofing)
 - **2 docs** created: runbook + DR plan
 - **3 CI scripts** created: contract check, coverage check, stage wrapper
+
+## [2026-10-15] — Capacity Ledger Implementation Complete
+
+### Changed
+- Updated `.pi/architecture/modules/capacity-ledger.md`: all 11 components
+  `planned → implemented`, added an Implementation Status + Operability section
+- Implemented the full `src/capacity_ledger/` module (domain → application →
+  infrastructure → interfaces) per ADR-018 and ADR-008
+
+### Implemented
+- Domain: Resource, Reservation (one terminal transition), Grant (opaque),
+  Exposure (committed/outstanding distinct), IdempotencyKey, LedgerError,
+  LedgerEvent
+- Port: `CapacityLedger` (I1–I6) + shared contract suite
+- Application: `CapacityLedgerServiceImpl`, `ReservationGuardImpl` (release on
+  drop), DTOs, factory interface
+- Infrastructure: `InProcessLedger` (single-execution atomicity),
+  `HttpLedger` (fail-closed transport), repository seam
+- Proofing: `check_capacity-ledger_contracts.sh` + hardening Stage 11
+- Docs: `runbook-capacity-ledger.md`, `dr-plan-capacity-ledger.md`
+
+### Verification
+- Panic surface unchanged (fail-closed stubs, no `todo!()` in production)
+- Contract suite green against `InProcessLedger`; WireMock suite for `HttpLedger`

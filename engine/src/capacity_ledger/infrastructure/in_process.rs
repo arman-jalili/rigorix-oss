@@ -148,6 +148,11 @@ impl CapacityLedger for InProcessLedger {
                 available: spec.hard_limit,
             });
         }
+        tracing::info!(
+            resource = %spec.id,
+            hard_limit = spec.hard_limit,
+            "capacity resource declared"
+        );
         state.specs.insert(spec.id.clone(), spec);
         Ok(())
     }
@@ -206,6 +211,12 @@ impl CapacityLedger for InProcessLedger {
         );
         let grant = Self::grant_from(&reservation);
 
+        tracing::debug!(
+            resource = %resource,
+            amount,
+            reservation = %reservation.id,
+            "capacity reserved"
+        );
         state.by_key.insert((resource.clone(), key), reservation.id);
         state
             .outstanding
@@ -268,6 +279,7 @@ impl InProcessLedger {
         if to == ReservationState::Committed {
             *state.committed.entry(resource).or_insert(0) += amount;
         }
+        tracing::debug!(reservation = %id, state = ?to, "capacity reservation resolved");
         state.reservations.insert(id, reservation.clone());
         Ok(reservation)
     }
