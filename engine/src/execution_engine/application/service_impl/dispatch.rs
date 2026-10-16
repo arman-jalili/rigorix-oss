@@ -3,6 +3,25 @@
 
 use super::*;
 
+/// The outcome of the ADR-018 capacity seam's pre-dispatch check.
+///
+/// Declared at module scope (an `enum` cannot live inside an `impl` block).
+pub(super) enum CapacityVerdict {
+    /// No rule governs this step, or a grant was taken. Dispatch.
+    Dispatch,
+    /// The step was refused; the tool must never be called.
+    Deny {
+        /// The contended resource label.
+        resource: String,
+        /// Units the rule asked for.
+        amount: u64,
+        /// Human-readable cause (already redacted by the ledger error).
+        detail: String,
+        /// The reason, for evidence and operator differentiation.
+        reason: &'static str,
+    },
+}
+
 impl ParallelExecutionServiceImpl {
     /// Pop the next dispatchable ready node from the graph.
     ///
@@ -206,6 +225,47 @@ impl ParallelExecutionServiceImpl {
                 }
             }
 
+            // ADR-018: reserve capacity for a governed step at the last possible
+            // moment (after the authority and sequence gates). A refusal fails the
+            // node before its tool is ever called.
+            match self.capacity_verdict(dag_id, graph, node_id).await? {
+                CapacityVerdict::Dispatch => {}
+                CapacityVerdict::Deny {
+                    resource,
+                    amount,
+                    detail,
+                    reason,
+                } => {
+                    let node_name = graph
+                        .get_node(node_id)
+                        .map(|n| n.name.clone())
+                        .unwrap_or_default();
+                    let task_result = TaskResult::failure(
+                        node_id,
+                        &node_name,
+                        format!("Capacity refused step before dispatch: {detail}"),
+                        "capacity_denied".to_string(),
+                        0,
+                        0,
+                    );
+                    node_results.insert(node_id, task_result);
+                    failed_count += 1;
+                    self.release_or_skip_dependents(graph, dag_id, node_id, total_nodes, true)
+                        .await;
+                    tracing::warn!(
+                        %dag_id,
+                        %node_id,
+                        %resource,
+                        amount,
+                        reason,
+                        "capacity: step refused before dispatch (fail closed)"
+                    );
+                    // NEVER fall through to dispatch: a refused node's tool is
+                    // never called. Continue the fill loop.
+                    continue;
+                }
+            }
+
             spawn_concurrent_node(
                 &mut join_set,
                 graph,
@@ -262,6 +322,11 @@ impl ParallelExecutionServiceImpl {
                     break;
                 }
             }
+
+            // ADR-018: settle the capacity hold for this node's terminal outcome.
+            // Success commits; failure releases immediately (RAII) instead of
+            // letting the hold lapse with its lease.
+            self.settle_capacity(node_id, success).await;
 
             // Update session node state (lock scope ends before notify_progress:
             // it re-locks `sessions` internally — a self-deadlock otherwise).
@@ -445,6 +510,46 @@ impl ParallelExecutionServiceImpl {
                         }
                         self.release_or_skip_dependents(graph, dag_id, next_id, total_nodes, true)
                             .await;
+                        // NEVER fall through to dispatch (tool never called).
+                        continue;
+                    }
+                }
+
+                // ADR-018: reserve capacity for a governed step at the last
+                // possible moment. A refusal fails the node before its tool is
+                // ever called.
+                match self.capacity_verdict(dag_id, graph, next_id).await? {
+                    CapacityVerdict::Dispatch => {}
+                    CapacityVerdict::Deny {
+                        resource,
+                        amount,
+                        detail,
+                        reason,
+                    } => {
+                        let node_name = graph
+                            .get_node(next_id)
+                            .map(|n| n.name.clone())
+                            .unwrap_or_default();
+                        let task_result = TaskResult::failure(
+                            next_id,
+                            &node_name,
+                            format!("Capacity refused step before dispatch: {detail}"),
+                            "capacity_denied".to_string(),
+                            0,
+                            0,
+                        );
+                        node_results.insert(next_id, task_result);
+                        failed_count += 1;
+                        self.release_or_skip_dependents(graph, dag_id, next_id, total_nodes, true)
+                            .await;
+                        tracing::warn!(
+                            %dag_id,
+                            %next_id,
+                            %resource,
+                            amount,
+                            reason,
+                            "capacity: step refused before dispatch (fail closed)"
+                        );
                         // NEVER fall through to dispatch (tool never called).
                         continue;
                     }
@@ -887,6 +992,133 @@ impl ParallelExecutionServiceImpl {
     /// A `Deny` verdict means the tool must never be called. An unarmed gate
     /// (`NotArmed`) is a fail-closed refusal mapped to `Deny { error }`; any
     /// other gate error halts the run fail-closed (mirrors sequence policy).
+    /// ADR-018 capacity-ledger pre-dispatch check.
+    ///
+    /// Deliberately placed **after** the precondition and sequence gates so
+    /// capacity is never reserved for a step that will be denied, and
+    /// immediately before `spawn_concurrent_node` so a lease is held for the
+    /// shortest possible time.
+    ///
+    /// * no seam, or no rule for this step -> `Dispatch` (status quo)
+    /// * a grant was taken -> `Dispatch` (guard stored for settlement)
+    /// * `Insufficient`, `Unavailable`, or any other ledger failure -> `Deny`
+    ///   (fail closed; the tool is never called)
+    pub(super) async fn capacity_verdict(
+        &self,
+        dag_id: Uuid,
+        graph: &crate::dag_engine::domain::TaskGraph,
+        node_id: Uuid,
+    ) -> Result<CapacityVerdict, ExecutionError> {
+        let Some(setup) = &self.capacity else {
+            return Ok(CapacityVerdict::Dispatch);
+        };
+        let Some(node) = graph.get_node(node_id) else {
+            return Ok(CapacityVerdict::Dispatch);
+        };
+        let Some(rule) = setup.rule_for(&node.name, &node.tool) else {
+            return Ok(CapacityVerdict::Dispatch);
+        };
+
+        // A fresh key per dispatch attempt: each dispatch is a distinct logical
+        // reservation. A deterministic per-node key would collide with the
+        // previous attempt's settled reservation on retry (the ledger answers
+        // `Contended` once a key is resolved), which would turn a legitimate
+        // retry into a refusal. The execution and node ids are kept in the key
+        // prefix so a hold is traceable back to its dispatch.
+        let input = ReserveCapacityInput {
+            resource: ResourceId::new(rule.resource.clone()),
+            amount: rule.amount,
+            idempotency_key: IdempotencyKey::new(format!("{dag_id}:{node_id}:{}", Uuid::new_v4())),
+            requested_by: Some(format!("{}:{}", node.name, node.tool)),
+        };
+
+        match setup.service.reserve(input).await {
+            Ok(output) => {
+                let mut holds =
+                    self.capacity_holds
+                        .lock()
+                        .map_err(|e| ExecutionError::InternalError {
+                            detail: format!("Lock error: {e}"),
+                        })?;
+                holds.insert(node_id, output.reservation.id);
+                Ok(CapacityVerdict::Dispatch)
+            }
+            // Fail closed on EVERY ledger failure: a cap that fails open is not a
+            // cap, and an outage must never read as "room available".
+            Err(error) => {
+                let reason = match error {
+                    LedgerError::Insufficient { .. } => "capacity_exhausted",
+                    _ => "capacity_unavailable",
+                };
+                Ok(CapacityVerdict::Deny {
+                    resource: rule.resource.clone(),
+                    amount: rule.amount,
+                    detail: error.to_string(),
+                    reason,
+                })
+            }
+        }
+    }
+
+    /// Settle a node's capacity hold at its terminal outcome.
+    ///
+    /// Success commits (the capacity is spent); anything else releases the hold
+    /// immediately rather than letting it lapse with the lease. A missing hold
+    /// means the step was never governed, which is not an error.
+    pub(super) async fn settle_capacity(&self, node_id: Uuid, success: bool) {
+        let hold = {
+            let mut holds = match self.capacity_holds.lock() {
+                Ok(holds) => holds,
+                Err(error) => {
+                    tracing::warn!(
+                        %node_id,
+                        %error,
+                        "capacity: hold registry poisoned; the hold will lapse with its lease"
+                    );
+                    return;
+                }
+            };
+            holds.remove(&node_id)
+        };
+        let Some(reservation_id) = hold else { return };
+        let Some(setup) = &self.capacity else { return };
+
+        if success {
+            match setup
+                .service
+                .commit(CommitCapacityInput { reservation_id })
+                .await
+            {
+                Ok(_) => {
+                    tracing::debug!(%node_id, "capacity: hold committed (step succeeded)")
+                }
+                Err(error) => tracing::warn!(
+                    %node_id,
+                    %error,
+                    "capacity: commit failed; the lease will expire and return the capacity"
+                ),
+            }
+        } else {
+            match setup
+                .service
+                .release(ReleaseCapacityInput {
+                    reservation_id,
+                    reason: Some("step did not succeed".to_string()),
+                })
+                .await
+            {
+                Ok(_) => {
+                    tracing::debug!(%node_id, "capacity: hold released (step did not succeed)")
+                }
+                Err(error) => tracing::warn!(
+                    %node_id,
+                    %error,
+                    "capacity: release failed; the lease will expire and return the capacity"
+                ),
+            }
+        }
+    }
+
     pub(super) async fn precondition_verdict(
         &self,
         dag_id: Uuid,

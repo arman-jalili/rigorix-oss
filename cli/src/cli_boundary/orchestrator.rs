@@ -332,6 +332,14 @@ pub async fn build_orchestrator_with_budget(
             ))
         }
     };
+    // ADR-018: operator-declared capacity ledger (`.rigorix/capacity.toml`).
+    // Absent file = no seam (status quo). A malformed declaration is fail-closed:
+    // governance that cannot be established must not silently disappear, so the
+    // run is refused rather than quietly downgraded to "no capacity governance".
+    let capacity =
+        rigorix_engine::capacity_ledger::CapacitySetup::from_env(std::path::Path::new(&repo_root))
+            .await
+            .map_err(|error| CliError::Config(format!("capacity ledger: {error}")))?;
     let execution = ParallelExecutionFactoryImpl
         .create(ParallelExecutionFactoryConfig {
             executor_config: ParallelExecutorConfig {
@@ -356,6 +364,7 @@ pub async fn build_orchestrator_with_budget(
             approval_binding,
             sequence_policy: sequence_policy.clone(),
             precondition,
+            capacity,
         })
         .await
         .map_err(|e| CliError::General(format!("execution: {e}")))?;

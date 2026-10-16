@@ -35,6 +35,11 @@ use crate::approval::application::dto::ApproveInput as ApprovalApproveInput;
 use crate::approval::application::{ApprovalService, IntentVerification, ResolvedNode};
 use crate::approval::domain::ApprovalError as ApprovalServiceError;
 use crate::approval::infrastructure::effect_scope::{ChangeSnapshot, GitDiffEffectOracle};
+use crate::capacity_ledger::CapacitySetup;
+use crate::capacity_ledger::application::dto::{
+    CommitCapacityInput, ReleaseCapacityInput, ReserveCapacityInput,
+};
+use crate::capacity_ledger::domain::{IdempotencyKey, LedgerError, ReservationId, ResourceId};
 use crate::dag_engine::domain::GatingMode;
 use crate::event_system::application::EventBusService;
 use crate::event_system::domain::ExecutionEvent;
@@ -528,6 +533,27 @@ pub struct ParallelExecutionServiceImpl {
     /// release its transitive dependents: they are marked `Skipped` and never
     /// dispatched. Default = today's behavior (release).
     gating_mode: GatingMode,
+
+    /// ADR-018 capacity-ledger dispatch seam (opt-in, operator-declared).
+    ///
+    /// When present, `run_dispatch_loop` reserves capacity for every step a
+    /// declared rule governs, **after** the precondition and sequence gates and
+    /// immediately before `spawn_concurrent_node`: a refusal records a
+    /// deterministic `capacity_denied` node failure and the tool is never
+    /// called. The grant is committed on success and released on failure (RAII).
+    /// `None` = no capacity governance (status quo, no adapter constructed).
+    capacity: Option<CapacitySetup>,
+
+    /// Outstanding reservations keyed by node id, so the terminal outcome can
+    /// commit (success) or release (failure) the matching hold.
+    ///
+    /// The *reservation id* is stored rather than the RAII guard because the
+    /// service boundary settles by id (`commit`/`release` take a reservation id;
+    /// `ReserveCapacityOutput::guard` is `None` on that path). Panic-safety does
+    /// not depend on drop here: every hold carries a lease, so a loop that dies
+    /// without settling still returns the capacity when the lease lapses
+    /// (ADR-018 I3).
+    capacity_holds: Arc<Mutex<HashMap<Uuid, ReservationId>>>,
 }
 
 impl ParallelExecutionServiceImpl {
@@ -551,6 +577,8 @@ impl ParallelExecutionServiceImpl {
             sequence_policy: None,
             precondition_gate: None,
             gating_mode: GatingMode::default(),
+            capacity: None,
+            capacity_holds: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -591,6 +619,16 @@ impl ParallelExecutionServiceImpl {
         self
     }
 
+    /// Set the ADR-018 capacity-ledger dispatch seam.
+    ///
+    /// The seam is armed by the operator declaration (`.rigorix/capacity.toml`)
+    /// and built by the composition root; `None` keeps the status-quo path. Only
+    /// steps a declared rule names are governed; every other step is untouched.
+    pub fn with_capacity_ledger(mut self, setup: CapacitySetup) -> Self {
+        self.capacity = Some(setup);
+        self
+    }
+
     /// Set ADR-017 R2 step-outcome gating (`[gating] release_dependents_on_failure`).
     ///
     /// When `release_dependents_on_failure = false`, a failed or denied node
@@ -606,6 +644,14 @@ impl ParallelExecutionServiceImpl {
     #[cfg(test)]
     pub(crate) fn precondition_gate_present(&self) -> bool {
         self.precondition_gate.is_some()
+    }
+
+    /// Whether the ADR-018 capacity seam is armed (a reachability probe).
+    ///
+    /// Used by the wiring test: the seam must be *reachable*, not merely
+    /// compiled.
+    pub fn capacity_seam_present(&self) -> bool {
+        self.capacity.is_some()
     }
 
     /// Test-only: the attached ADR-017 R2 gating mode.

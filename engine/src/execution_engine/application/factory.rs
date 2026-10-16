@@ -111,6 +111,15 @@ pub struct ParallelExecutionFactoryConfig {
     /// [`crate::precondition::PreconditionSetup::from_env`]. `None` (default)
     /// preserves today's behavior (no gate — status quo).
     pub precondition: Option<crate::precondition::PreconditionSetup>,
+
+    /// ADR-018: optional capacity-ledger dispatch seam.
+    ///
+    /// When set, the dispatch loop reserves capacity for every step a declared
+    /// rule governs, commits on success and releases on failure (RAII). The
+    /// composition roots build it from the operator declaration via
+    /// [`crate::capacity_ledger::CapacitySetup::from_env`]. `None` (default)
+    /// preserves today's behavior exactly (no seam — status quo).
+    pub capacity: Option<crate::capacity_ledger::CapacitySetup>,
 }
 
 impl Default for ParallelExecutionFactoryConfig {
@@ -126,6 +135,7 @@ impl Default for ParallelExecutionFactoryConfig {
             approval_binding: None,
             sequence_policy: None,
             precondition: None,
+            capacity: None,
         }
     }
 }

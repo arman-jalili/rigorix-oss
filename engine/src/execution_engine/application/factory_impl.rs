@@ -67,6 +67,11 @@ impl ParallelExecutionFactoryImpl {
                 .with_gating_mode(setup.gating_mode)
                 .with_precondition_gate(setup.gate);
         }
+        // ADR-018: attach the operator-declared capacity seam. `None` keeps the
+        // status-quo dispatch path: no seam, and no adapter is ever constructed.
+        if let Some(setup) = config.capacity {
+            executor = executor.with_capacity_ledger(setup);
+        }
         if let Some(binding) = config.approval_binding {
             // ADR-011: attach the approval binding with a live session-graph
             // intent resolver — approve/verify/consume now run at the runtime

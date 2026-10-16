@@ -11,13 +11,16 @@
 //!
 //! [`CapacityLedger`]: crate::capacity_ledger::interfaces::CapacityLedger
 
+pub mod config;
 pub mod dto;
 pub mod factory;
 pub mod guard;
 pub mod guard_impl;
 pub mod service;
 pub mod service_impl;
+pub mod setup;
 
+pub use config::{CapacityGrantRule, CapacityLedgerConfig};
 pub use dto::{
     CommitCapacityInput, CommitCapacityOutput, ExposureOutput, ExposureQuery, ReleaseCapacityInput,
     ReleaseCapacityOutput, ReserveCapacityInput, ReserveCapacityOutput,
@@ -27,3 +30,4 @@ pub use guard::ReservationGuard;
 pub use guard_impl::ReservationGuardImpl;
 pub use service::CapacityLedgerService;
 pub use service_impl::CapacityLedgerServiceImpl;
+pub use setup::{CapacitySetup, CapacitySetupError};

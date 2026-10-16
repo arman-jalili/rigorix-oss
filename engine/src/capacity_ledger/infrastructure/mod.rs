@@ -13,9 +13,11 @@
 //! only adapter that can provide cross-session atomicity, and only against a
 //! real contested store.
 
+pub mod factory_impl;
 pub mod http;
 pub mod in_process;
 pub mod repository;
 
+pub use factory_impl::DefaultCapacityLedgerFactory;
 pub use http::{HttpLedger, HttpLedgerConfig};
 pub use in_process::InProcessLedger;

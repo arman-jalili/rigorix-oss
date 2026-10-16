@@ -36,9 +36,20 @@
 //! ALL files in this module are frozen contracts created by ISSUE-CONTRACT-FREEZE.
 //! - No implementation changes without explicit contract change approval
 //! - Implementation PRs MUST reference these interfaces
-//! - Adapters carry `todo!()` bodies until their implementation issues land
+//! - The adapters are implemented; the composition-root seam that constructs
+//!   and invokes them is `application::setup::CapacitySetup` (ADR-018).
+//!
+//! # Wiring (ADR-018)
+//!
+//! `CapacitySetup::from_env` reads the operator declaration
+//! (`.rigorix/capacity.toml`) at composition time; the execution engine holds the
+//! resulting service and reserves/commits/releases around dispatch. With no
+//! declaration the module is inert and the previous code path is unchanged.
 
 pub mod application;
 pub mod domain;
 pub mod infrastructure;
 pub mod interfaces;
+
+pub use application::{CapacityGrantRule, CapacityLedgerConfig, CapacitySetup, CapacitySetupError};
+pub use interfaces::CapacityLedger;
