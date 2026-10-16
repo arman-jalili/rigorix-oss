@@ -5,13 +5,17 @@
 
 #[cfg(test)]
 mod tests {
-    use rigorix_engine::capacity_ledger::application::ReservationGuard;
+    use rigorix_engine::capacity_ledger::application::{ReservationGuard, ReservationGuardImpl};
 
     #[test]
     fn test_reservationguard_is_defined() {
         // The guard travels inside DTOs as a boxed trait object (RAII, ADR-008).
         fn assert_object_safe(_: Option<Box<dyn ReservationGuard>>) {}
         assert_object_safe(None);
+
+        // The concrete RAII guard satisfies the frozen trait.
+        fn assert_impl<T: ReservationGuard>() {}
+        assert_impl::<ReservationGuardImpl>();
     }
 
     #[test]
