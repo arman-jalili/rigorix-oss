@@ -412,4 +412,10 @@ mod tests {
         assert_eq!(exposure.outstanding, 10);
         assert!(exposure.is_consistent());
     }
+
+    #[tokio::test]
+    async fn satisfies_the_frozen_port_contract() {
+        let ledger = InProcessLedger::new();
+        crate::capacity_ledger::interfaces::contract::run_contract(&ledger).await;
+    }
 }
