@@ -23,4 +23,24 @@ mod tests {
         let from_uuid = IdempotencyKey::from_uuid(uuid::Uuid::nil());
         assert_eq!(from_uuid.as_str(), "00000000-0000-0000-0000-000000000000");
     }
+
+    #[test]
+    fn test_idempotencykey_is_deterministic_per_step() {
+        let execution = uuid::Uuid::nil();
+
+        // A retry of the same step must reuse the exact same key (I2).
+        let first = IdempotencyKey::for_step(execution, "charge");
+        let retry = IdempotencyKey::for_step(execution, "charge");
+        assert_eq!(first, retry);
+
+        // A different step or execution must not collide.
+        assert_ne!(first, IdempotencyKey::for_step(execution, "refund"));
+        assert_ne!(
+            first,
+            IdempotencyKey::for_step(uuid::Uuid::now_v7(), "charge")
+        );
+
+        assert!(!first.is_empty());
+        assert!(IdempotencyKey::new("").is_empty());
+    }
 }
