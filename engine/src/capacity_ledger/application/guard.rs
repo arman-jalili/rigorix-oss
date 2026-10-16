@@ -14,10 +14,13 @@
 //! - Drop without [`ReservationGuard::commit`] MUST release the hold
 //! - `commit` consumes the guard (by `Box<Self>`) and is terminal
 //! - The guard is `Send + Sync + Debug` so it can travel inside DTOs
+//! - The guard deliberately does **not** hand back its [`Grant`](crate::capacity_ledger::domain::Grant):
+//!   a caller who could obtain the grant could commit it directly and bypass
+//!   release-on-drop. Callers observe `reservation_id` and the state flags only.
 
 use async_trait::async_trait;
 
-use crate::capacity_ledger::domain::{Grant, LedgerError, Reservation, ReservationId};
+use crate::capacity_ledger::domain::{LedgerError, Reservation, ReservationId};
 
 /// RAII handle owning a single reservation.
 ///
@@ -27,9 +30,6 @@ use crate::capacity_ledger::domain::{Grant, LedgerError, Reservation, Reservatio
 pub trait ReservationGuard: Send + Sync + std::fmt::Debug {
     /// Identity of the reservation held by this guard.
     fn reservation_id(&self) -> ReservationId;
-
-    /// The underlying grant, or `None` once consumed by `commit`.
-    fn grant(&self) -> Option<&Grant>;
 
     /// Whether [`ReservationGuard::commit`] has completed.
     fn is_committed(&self) -> bool;
