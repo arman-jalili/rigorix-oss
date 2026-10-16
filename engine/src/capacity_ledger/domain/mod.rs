@@ -23,5 +23,7 @@ pub use event::LedgerEvent;
 pub use exposure::Exposure;
 pub use grant::Grant;
 pub use idempotency::IdempotencyKey;
-pub use reservation::{Lease, Reservation, ReservationId, ReservationState};
+pub use reservation::{
+    Lease, Reservation, ReservationId, ReservationState, ReservationTransitionError,
+};
 pub use resource::{ResourceId, ResourceSpec, Window};

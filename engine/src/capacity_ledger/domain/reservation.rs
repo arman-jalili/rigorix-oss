@@ -13,8 +13,11 @@
 //! - The lease is authoritative: an expired reservation is no longer a claim
 //! - The store clock decides expiry (I5), never the caller's clock
 
+use std::fmt;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use super::{IdempotencyKey, ResourceId};
 
@@ -42,6 +45,12 @@ impl ReservationId {
 impl Default for ReservationId {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl fmt::Display for ReservationId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -96,6 +105,29 @@ impl ReservationState {
     pub fn is_terminal(&self) -> bool {
         !matches!(self, Self::Outstanding)
     }
+}
+
+/// Why a reservation state transition was rejected.
+///
+/// The aggregate permits exactly one terminal transition; every later attempt
+/// is a programming error (or a retry after the state was already resolved).
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ReservationTransitionError {
+    /// The reservation already reached a terminal state.
+    #[error("reservation {id} is already terminal ({state:?})")]
+    AlreadyTerminal {
+        /// The reservation that could not move.
+        id: ReservationId,
+        /// The terminal state it is stuck in.
+        state: ReservationState,
+    },
+
+    /// An expiry transition was requested before the lease lapsed.
+    #[error("reservation {id} lease has not expired yet")]
+    LeaseNotExpired {
+        /// The reservation whose lease is still live.
+        id: ReservationId,
+    },
 }
 
 /// A held claim on capacity.
@@ -155,5 +187,44 @@ impl Reservation {
     /// Whether the lease has lapsed at `now`.
     pub fn is_expired_at(&self, now: DateTime<Utc>) -> bool {
         self.lease.is_expired_at(now)
+    }
+
+    /// Move to `to`, enforcing exactly one terminal transition.
+    ///
+    /// # Errors
+    /// [`ReservationTransitionError::AlreadyTerminal`] if this reservation has
+    /// already been committed, released, or expired.
+    pub fn transition(mut self, to: ReservationState) -> Result<Self, ReservationTransitionError> {
+        if self.state.is_terminal() {
+            return Err(ReservationTransitionError::AlreadyTerminal {
+                id: self.id,
+                state: self.state,
+            });
+        }
+        self.state = to;
+        Ok(self)
+    }
+
+    /// Commit the reservation (spend the held capacity).
+    pub fn commit(self) -> Result<Self, ReservationTransitionError> {
+        self.transition(ReservationState::Committed)
+    }
+
+    /// Release the reservation (hand the held capacity back).
+    pub fn release(self) -> Result<Self, ReservationTransitionError> {
+        self.transition(ReservationState::Released)
+    }
+
+    /// Expire the reservation, but only once its lease has actually lapsed (I5).
+    ///
+    /// # Errors
+    /// [`ReservationTransitionError::LeaseNotExpired`] before `now` reaches the
+    /// lease deadline; [`ReservationTransitionError::AlreadyTerminal`] if it was
+    /// already resolved.
+    pub fn expire(self, now: DateTime<Utc>) -> Result<Self, ReservationTransitionError> {
+        if !self.is_expired_at(now) {
+            return Err(ReservationTransitionError::LeaseNotExpired { id: self.id });
+        }
+        self.transition(ReservationState::Expired)
     }
 }

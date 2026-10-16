@@ -9,7 +9,8 @@ mod tests {
 
     use chrono::Utc;
     use rigorix_engine::capacity_ledger::domain::{
-        IdempotencyKey, Lease, Reservation, ReservationId, ReservationState, ResourceId,
+        IdempotencyKey, Lease, Reservation, ReservationId, ReservationState,
+        ReservationTransitionError, ResourceId,
     };
 
     fn reservation() -> Reservation {
@@ -45,5 +46,39 @@ mod tests {
         let lease = Lease::expiring_in(now, Duration::from_secs(30));
         assert!(!lease.is_expired_at(now));
         assert!(lease.is_expired_at(now + chrono::Duration::seconds(60)));
+    }
+
+    #[test]
+    fn test_reservation_has_exactly_one_terminal_transition() {
+        // Commit is terminal; a second transition is rejected.
+        let committed = reservation().commit().expect("commit");
+        assert_eq!(committed.state, ReservationState::Committed);
+        let retried = committed.clone().release();
+        assert!(matches!(
+            retried,
+            Err(ReservationTransitionError::AlreadyTerminal { .. })
+        ));
+
+        // Release is terminal too.
+        let released = reservation().release().expect("release");
+        assert_eq!(released.state, ReservationState::Released);
+
+        // Expiry only succeeds once the lease has lapsed (I5).
+        let now = Utc::now();
+        let live = Reservation::new(
+            ReservationId::new(),
+            ResourceId::new("gpu"),
+            1,
+            Lease::expiring_in(now, Duration::from_secs(60)),
+            IdempotencyKey::new("k2"),
+        );
+        assert!(matches!(
+            live.clone().expire(now),
+            Err(ReservationTransitionError::LeaseNotExpired { .. })
+        ));
+        let expired = live
+            .expire(now + chrono::Duration::seconds(120))
+            .expect("expire after lease");
+        assert_eq!(expired.state, ReservationState::Expired);
     }
 }
