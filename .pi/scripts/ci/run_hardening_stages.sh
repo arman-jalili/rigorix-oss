@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Hardening Stage Runner
 #
-# Runs all 10 hardening stages as defined in the architecture pipeline.
+# Runs all 11 hardening stages as defined in the architecture pipeline.
 # Each stage runs its scripts and reports pass/fail.
 # A stage failure prevents MR merge (allow_failure: No).
 #
@@ -18,6 +18,7 @@
 #   8. migration_verify     — Migration checks (conditional)
 #   9. package_build        — Docker build (conditional, main only)
 #   10. release_readiness   — Runbook/observability/policy checks
+#   11. capacity-ledger_proofing — Frozen contract implementation check
 
 set -euo pipefail
 
@@ -215,6 +216,11 @@ run_stage "9" "package_build" \
 # Stage 10: Release Readiness
 run_stage "10" "release_readiness" \
     "${SCRIPTS_DIR}/stage_release_readiness.sh" \
+    "always"
+
+# Stage 11: Capacity Ledger Proofing
+run_stage "11" "capacity-ledger_proofing" \
+    "${SCRIPTS_DIR}/stage_capacity-ledger_proofing.sh" \
     "always"
 
 # ── Summary ──
