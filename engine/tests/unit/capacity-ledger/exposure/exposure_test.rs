@@ -27,4 +27,23 @@ mod tests {
         let full = Exposure::new(ResourceId::new("gpu"), 5, 5, 0, Window::UNBOUNDED);
         assert_eq!(full.available(), 0);
     }
+
+    #[test]
+    fn test_exposure_capacity_queries() {
+        let e = Exposure::new(ResourceId::new("gpu"), 10, 4, 3, Window::UNBOUNDED);
+        assert!(e.would_fit(3));
+        assert!(!e.would_fit(4));
+        assert!(!e.is_exhausted());
+        assert!(e.is_consistent());
+        assert!((e.claimed_ratio() - 0.7).abs() < f64::EPSILON);
+
+        let exhausted = Exposure::new(ResourceId::new("gpu"), 10, 6, 4, Window::UNBOUNDED);
+        assert!(exhausted.is_exhausted());
+        assert!(!exhausted.would_fit(1));
+
+        // An over-claimed snapshot is detectable, not silently accepted.
+        let inconsistent = Exposure::new(ResourceId::new("gpu"), 5, 4, 4, Window::UNBOUNDED);
+        assert!(!inconsistent.is_consistent());
+        assert_eq!(inconsistent.claimed_ratio(), 1.0);
+    }
 }
