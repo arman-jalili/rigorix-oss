@@ -34,9 +34,23 @@ impl IdempotencyKey {
         Self(id.to_string())
     }
 
+    /// Derive the retry identity for one step of one execution.
+    ///
+    /// Deterministic by construction: a retried reserve for the same
+    /// `(execution_id, step_id)` produces the same key, so the ledger can
+    /// collapse the retry instead of double-reserving (I2).
+    pub fn for_step(execution_id: uuid::Uuid, step_id: &str) -> Self {
+        Self(format!("{execution_id}:{step_id}"))
+    }
+
     /// Borrow the underlying token.
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// Whether the token is empty (never a valid retry identity).
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }
 
