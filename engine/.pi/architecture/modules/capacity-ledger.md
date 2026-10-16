@@ -66,7 +66,7 @@ contract consumed by `enforcement`.
 
 ### Resource
 
-status: planned
+status: implemented
 depends: none
 
 **Purpose:** A named, limited capacity. `ResourceId` is the identity; `ResourceSpec` carries
@@ -77,7 +77,7 @@ meaning to a resource name — it is an operator-declared label.
 
 ### Reservation
 
-status: planned
+status: implemented
 depends: Resource
 
 **Purpose:** The aggregate. A held claim on capacity with a lease and exactly one terminal
@@ -88,7 +88,7 @@ by convention.
 
 ### Grant
 
-status: planned
+status: implemented
 depends: Reservation
 
 **Purpose:** The opaque handle returned by `reserve`. Must not be constructible by a caller —
@@ -98,7 +98,7 @@ otherwise a forged grant becomes a way to skip reservation.
 
 ### Exposure
 
-status: planned
+status: implemented
 depends: Reservation
 
 **Purpose:** The aggregate view. **Committed and outstanding are separate fields, never summed
@@ -109,7 +109,7 @@ questions, and collapsing them destroys the ability to answer either.
 
 ### IdempotencyKey
 
-status: planned
+status: implemented
 depends: none
 
 **Purpose:** Retry identity. Part of the reserve request so that a retried reservation cannot
@@ -120,7 +120,7 @@ become the over-spend.
 
 ### LedgerError
 
-status: planned
+status: implemented
 depends: none
 
 **Purpose:** Typed failures. `Insufficient` (no room) and `Unavailable` (control plane
@@ -131,7 +131,7 @@ events, and the operator-facing surfaces depend on the distinction.
 
 ### CapacityLedgerService
 
-status: planned
+status: implemented
 depends: CapacityLedger, Reservation, Grant, Exposure
 
 **Purpose:** The use cases over the port: reserve, commit, release, exposure. Contains no
@@ -142,7 +142,7 @@ this module exists to replace.
 
 ### ReservationGuard
 
-status: planned
+status: implemented
 depends: CapacityLedgerService
 
 **Purpose:** RAII binding of a grant to a step's lifetime: commit on success, **release on
@@ -153,7 +153,7 @@ a panic or early return leaks capacity until the lease expires.
 
 ### InProcessLedger
 
-status: planned
+status: implemented
 depends: CapacityLedger
 
 **Purpose:** The standalone default. Single-execution atomicity via the proven ADR-008
@@ -164,7 +164,7 @@ because the temptation to describe it as "the distributed ledger" is high and wr
 
 ### HttpLedger
 
-status: planned
+status: implemented
 depends: CapacityLedger
 
 **Purpose:** Opt-in distributed mode. Reaches the enterprise ledger service over HTTP with the
@@ -176,7 +176,7 @@ amplification, explicit deadline, credentials never logged). Maps every ambiguit
 
 ### CapacityLedger
 
-status: planned
+status: implemented
 depends: none
 
 **Purpose:** The port. The invariants (I1 atomic/linearizable per resource+window, I2 idempotent,
@@ -214,3 +214,38 @@ signatures are incidental. One contract suite runs against every adapter.
 - ADR-008: RAII reservation pattern
 - ADR-016: the **audit** ledger — a different thing (append-only proof, not leased accounting)
 - Enterprise counterpart: ADR-010 `capacity-ledger-service`
+
+---
+
+## Implementation Status
+
+All components are implemented under `src/capacity_ledger/` and frozen by the
+contract-freeze issue. Status is tracked per epic issue.
+
+| Component | Implementation | Tests |
+|-----------|----------------|-------|
+| Resource | `domain/resource.rs` — identity, window, saturating capacity arithmetic | unit |
+| Reservation | `domain/reservation.rs` — one terminal transition, lease-gated expiry | unit |
+| Grant | `domain/grant.rs` — opaque, crate-internal issuance only | in-crate |
+| Exposure | `domain/exposure.rs` — committed/outstanding kept distinct | unit |
+| IdempotencyKey | `domain/idempotency.rs` — deterministic `for_step` | unit |
+| LedgerError | `domain/error.rs` — typed failures + classification | unit |
+| CapacityLedger | `interfaces/capacity_ledger.rs` — port + `interfaces/contract.rs` suite | contract suite |
+| CapacityLedgerService | `application/service_impl.rs` | 4 tests |
+| ReservationGuard | `application/guard_impl.rs` — release-on-drop (ADR-008) | 3 tests |
+| InProcessLedger | `infrastructure/in_process.rs` — single-execution atomicity | 7 tests incl. 50-way concurrency |
+| HttpLedger | `infrastructure/http.rs` — fail-closed transport | WireMock suite |
+
+### Operability
+
+- **Runbook:** `docs/runbook-capacity-ledger.md`
+- **DR plan:** `docs/dr-plan-capacity-ledger.md`
+- **Proofing:** `.pi/scripts/ci/check_capacity-ledger_contracts.sh` +
+  `stage_capacity-ledger_proofing.sh` (hardening Stage 11)
+- **Observability:** `tracing` on declare/reserve/resolve; `reservation_id` and
+  `resource` are the correlation keys
+
+### Guarantee ceiling
+
+The in-process adapter provides **single-execution atomicity only**; only the
+HTTP adapter against a real contested store provides cross-session atomicity.
