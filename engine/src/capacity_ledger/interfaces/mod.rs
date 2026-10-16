@@ -9,6 +9,8 @@
 //! endpoint contracts exposed by the opt-in distributed adapter.
 
 pub mod capacity_ledger;
+#[cfg(test)]
+pub mod contract;
 pub mod http;
 
 pub use capacity_ledger::CapacityLedger;
