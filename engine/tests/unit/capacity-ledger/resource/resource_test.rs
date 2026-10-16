@@ -17,6 +17,8 @@ mod tests {
         assert_eq!(spec.hard_limit, 8);
         assert_eq!(spec.window.duration_secs, 60);
         assert_eq!(spec.hard_limit(), 8);
+        assert!(!spec.id.is_empty());
+        assert!(spec.window.is_bounded());
     }
 
     #[test]
@@ -30,5 +32,21 @@ mod tests {
 
         // The window bounds exposure aggregation; zero means unbounded.
         assert_eq!(Window::UNBOUNDED.duration_secs, 0);
+        assert!(!Window::UNBOUNDED.is_bounded());
+    }
+
+    #[test]
+    fn test_resource_room_arithmetic_is_saturating() {
+        let spec = ResourceSpec::new(ResourceId::new("gpu"), "GPU".into(), 8, Window::UNBOUNDED);
+
+        // committed + outstanding + additional must stay within the cap (I6).
+        assert!(spec.has_room_for(3, 2, 3));
+        assert!(!spec.has_room_for(3, 2, 4));
+        assert_eq!(spec.remaining(3, 2), 3);
+        assert!(spec.is_saturated(8, 0));
+
+        // Saturation never underflows, even if exposure already exceeds the cap.
+        assert_eq!(spec.remaining(9, 3), 0);
+        assert!(!spec.has_room_for(9, 3, 1));
     }
 }
