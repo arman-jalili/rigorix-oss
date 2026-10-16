@@ -65,3 +65,23 @@ pub enum LedgerError {
         key: IdempotencyKey,
     },
 }
+
+impl LedgerError {
+    /// Whether retrying with the same idempotency key may succeed.
+    ///
+    /// Contention and outages are transient; a full cap or an expired lease is
+    /// not fixed by retrying the identical request.
+    pub fn is_retriable(&self) -> bool {
+        matches!(self, Self::Contended { .. } | Self::Unavailable { .. })
+    }
+
+    /// Whether the ledger itself could not be reached (an outage, not a cap).
+    pub fn is_unavailable(&self) -> bool {
+        matches!(self, Self::Unavailable { .. })
+    }
+
+    /// Whether the resource is healthy but has no room left.
+    pub fn is_capacity_exhausted(&self) -> bool {
+        matches!(self, Self::Insufficient { .. })
+    }
+}
