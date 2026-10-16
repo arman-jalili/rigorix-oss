@@ -70,11 +70,14 @@ impl Lease {
         Self { expires_at }
     }
 
-    /// Construct a lease expiring `ttl` seconds from `now`.
+    /// Construct a lease expiring `ttl` from `now`.
+    ///
+    /// Preserves sub-second precision; a `ttl` too large for `chrono` saturates
+    /// at the maximum representable duration rather than panicking.
     pub fn expiring_in(now: DateTime<Utc>, ttl: std::time::Duration) -> Self {
-        let secs = ttl.as_secs().min(i64::MAX as u64) as i64;
+        let delta = chrono::Duration::from_std(ttl).unwrap_or(chrono::Duration::MAX);
         Self {
-            expires_at: now + chrono::Duration::seconds(secs),
+            expires_at: now + delta,
         }
     }
 
