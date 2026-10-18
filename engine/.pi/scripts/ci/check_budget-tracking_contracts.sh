@@ -153,10 +153,14 @@ fi
 echo ""
 echo "--- Repository Contracts ---"
 
-if grep -q 'pub trait LlmBudgetRepository' "$SRC_DIR/budget_tracking/infrastructure/repository/mod.rs" 2>/dev/null; then
-    log_pass "LlmBudgetRepository trait exists"
+# The dead persistence port must not come back (#1016): budgets are
+# per-execution and ephemeral, and the decision is recorded in the module.
+if [ -e "$SRC_DIR/budget_tracking/infrastructure/repository/mod.rs" ] || [ -e "$SRC_DIR/budget_tracking/infrastructure/in_memory_budget_repository.rs" ]; then
+    log_fail "dead LlmBudgetRepository persistence port reintroduced (#1016)"
+elif grep -q 'no persistence port' "$SRC_DIR/budget_tracking/infrastructure/mod.rs" 2>/dev/null; then
+    log_pass "no persistence port; budgets documented as ephemeral (#1016)"
 else
-    log_fail "LlmBudgetRepository trait not found"
+    log_fail "ephemerality of budgets not documented (#1016)"
 fi
 
 # ---------------------------------------------------------------------------
