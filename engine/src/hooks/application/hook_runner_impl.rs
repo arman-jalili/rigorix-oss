@@ -26,6 +26,7 @@ use crate::hooks::domain::error::HookError;
 use crate::hooks::domain::event::HookEvent;
 use crate::hooks::domain::protocol::{HookDecision, HookStdinPayload, HookStdoutResponse};
 use crate::hooks::domain::result::HookRunResult;
+use crate::tools::application::shell_policy::apply_child_env;
 
 use super::dto::{
     HookRunnerStatus, RunPostToolUseFailureInput, RunPostToolUseFailureOutput, RunPostToolUseInput,
@@ -84,9 +85,13 @@ impl HookRunnerImpl {
         let timeout_ms = (self.config.timeout_secs.max(MIN_TIMEOUT_SECS)) * 1000;
 
         // Spawn the child process
-        let mut child = tokio::process::Command::new("sh")
-            .arg("-c")
-            .arg(command)
+        // #1082 class C3: a hook used to inherit the whole engine environment,
+        // including `RIGORIX_HMAC_KEY`, so any operator-configured hook could
+        // forge audit envelopes. Same allowlist as every other sink.
+        let mut hook_cmd = tokio::process::Command::new("sh");
+        hook_cmd.arg("-c").arg(command);
+        apply_child_env(&mut hook_cmd, &[]);
+        let mut child = hook_cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -552,6 +557,39 @@ mod tests {
         // Empty config — no hooks to run, so abort doesn't matter
         let output = runner.run_pre_tool_use(input, Some(&signal)).await.unwrap();
         assert!(output.result.is_allowed());
+    }
+
+    /// #1082 class C3: a hook child used to inherit the engine's whole
+    /// environment, `RIGORIX_HMAC_KEY` included, so any operator-configured hook
+    /// could forge audit envelopes. The child now sees the allowlist only.
+    #[tokio::test]
+    async fn hook_child_does_not_inherit_the_engine_environment() {
+        // A probe name, not the real key: several tests read `RIGORIX_HMAC_KEY`
+        // from the process env and this suite runs tests in parallel, so a global
+        // mutation of the real name would be #1081 all over again. The
+        // "allowlist excludes secrets" property is asserted statically in
+        // shell_policy's own tests.
+        const PROBE: &str = "RIGORIX_TEST_LEAK_PROBE";
+        // SAFETY: `PROBE` is unique to this test and read only by the child.
+        unsafe { std::env::set_var(PROBE, "secret-engine-value") };
+
+        let runner = HookRunnerImpl::new(HookConfig::default());
+        let payload = serde_json::json!({});
+        // Deny if the child can see the probe; allow if the env was cleared.
+        let command = format!(
+            "if [ -n \"${PROBE}\" ]; then printf '{{\"decision\":\"deny\",\"reason\":\"leaked\"}}'; \
+             else printf '{{\"decision\":\"allow\"}}'; fi"
+        );
+        let result = runner
+            .execute_command(&command, &payload, None)
+            .await
+            .expect("hook runs");
+        assert!(
+            !result.denied && !result.failed,
+            "the child must not inherit the engine env (class C3): a hook that could \
+             still read the probe would have answered deny, got {:?}",
+            result
+        );
     }
 
     /// GAP-A-04 regression: a hook emitting more than the ~64KB pipe buffer

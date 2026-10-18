@@ -186,10 +186,10 @@ reverse) is a review defect — the two are meant to move together.
 | `tools/application/run_command_tool.rs` | governed shell: allowlist + control-operator refusal + cleared env |
 | `tools/application/shell_policy.rs` | the policy itself (`apply_child_env` takes the child `Command` by reference) |
 | `tools/application/git_stage_tool.rs`, `git_commit_tool.rs` | fixed argv, no caller string |
-| `tools/application/git_read_tool.rs` | `sh -c` for a git read — **not conformant**: a caller path is interpolated into the shell string (#1082, class C2) |
+| `tools/application/git_read_tool.rs` | fixed argv `git` (no shell) + write/exec flag refusal (#1082, class C2) |
 | `execution_engine/application/service_impl/tools.rs` | governed shell (`exec_run_command`) + fixed argv `git` |
 | `precondition/infrastructure/runner.rs` | operator argv, never a shell; trust boundary + explicit env (ADR-017) |
-| `hooks/application/hook_runner_impl.rs` | operator-configured hook command — **env not cleared** (#1082, class C3) |
+| `hooks/application/hook_runner_impl.rs` | operator-configured hook command (shell); child env cleared to the allowlist (#1082, class C3) |
 | `approval/infrastructure/effect_scope.rs`, `orchestrator/.../helpers.rs` | fixed argv `git` |
 | `scored_evaluation/.../local_backend.rs` | operator-configured scorer script, fixed argv |
 | `cli/cli_boundary/dispatch.rs`, `mcp/.../engine_facade_impl.rs` | fixed argv `git remote/config` |
@@ -197,9 +197,12 @@ reverse) is a review defect — the two are meant to move together.
 | `actions/.../router_impl.rs` | fixed argv `git` |
 | test-only: `execution_engine/approval_binding_tests.rs`, `cli/tests/projection_surface.rs`, `mcp/tests/{stdio_integration,e2e_execute_to_audit,e2e_enterprise_proxy}_test.rs` | runs the binary under test |
 
-The two non-conformant rows are listed rather than hidden: the lint confines
-*where* spawning happens, not *what* the command does with caller input. Closing
-them is #1082 (guards C2 and C3).
+The lint confines *where* spawning happens, not *what* the command does with
+caller input. Those are separate properties and both are now enforced: the two
+former gaps (`git_read_tool` interpolating a caller path into `sh -c`, and the
+hook child inheriting the engine environment) were closed in #1082, and
+`engine/tests/guard_suite.rs` fails if a new `sh -c` site appears without the
+policy that validates its string.
 
 ---
 
