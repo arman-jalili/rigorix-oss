@@ -7,6 +7,10 @@
 //! Executes a configurable local script with artifact + rubric as
 //! environment variables and reads ScoringResult JSON from stdout.
 
+// #1083: approved process-spawning sink — operator-configured scorer script path, fixed argv.
+// See `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
+#![allow(clippy::disallowed_types)]
+
 use async_trait::async_trait;
 
 use crate::scored_evaluation::domain::{

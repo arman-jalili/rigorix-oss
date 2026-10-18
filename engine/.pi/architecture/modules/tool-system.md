@@ -165,6 +165,41 @@ same `tools::application::shell_policy` helpers:
 | Compound shell string bypassing a prefix allowlist | A command containing `;` `&&` `||` `|` `&` backticks `$(` `<` `>` or a newline is refused before the prefix check; the classifier and the executor share one intent→command extraction | `shell_policy` tests |
 | Child command reading engine secrets | `apply_child_env` clears the inherited environment; only `PATH HOME LANG LC_ALL TMPDIR SHELL TERM` plus explicit per-call overrides reach the child, so `RIGORIX_HMAC_KEY` is not handed to executed commands | `test_child_does_not_inherit_the_engine_environment` |
 | Git commit with wrong message | GitCommitTool requires Medium+ confirmation | security-validator |
+| A **new** spawn site that skips the policy | `clippy.toml` `disallowed-types` denies `std::process::Command` and `tokio::process::Command` workspace-wide (`disallowed_types = "deny"` in `[workspace.lints.clippy]`); a site compiles only with a documented `#![allow]`, so it cannot be added silently | `cargo clippy --workspace --all-targets` |
+
+### Process spawning sinks {#process-spawning-sinks}
+
+Spawning is a privileged sink: it runs something outside the engine's type system
+with whatever environment and arguments the caller assembled. Two `sh -c` sites
+once existed side by side here — one with an allowlist and a control-operator
+refusal, one with neither — and the unguarded one was in the real dispatch path
+(#1067). Nothing declared spawning privileged, so the default for a new sink was
+*ungoverned* and a reviewer had to notice by reading.
+
+**The default is now inverted (#1083).** The lint fires for any new site; the
+list below is the complete set that has opted in, and each entry says which policy
+applies. Adding a row without adding the corresponding `#![allow]` reason (or the
+reverse) is a review defect — the two are meant to move together.
+
+| Sink | Policy |
+|---|---|
+| `tools/application/run_command_tool.rs` | governed shell: allowlist + control-operator refusal + cleared env |
+| `tools/application/shell_policy.rs` | the policy itself (`apply_child_env` takes the child `Command` by reference) |
+| `tools/application/git_stage_tool.rs`, `git_commit_tool.rs` | fixed argv, no caller string |
+| `tools/application/git_read_tool.rs` | `sh -c` for a git read — **not conformant**: a caller path is interpolated into the shell string (#1082, class C2) |
+| `execution_engine/application/service_impl/tools.rs` | governed shell (`exec_run_command`) + fixed argv `git` |
+| `precondition/infrastructure/runner.rs` | operator argv, never a shell; trust boundary + explicit env (ADR-017) |
+| `hooks/application/hook_runner_impl.rs` | operator-configured hook command — **env not cleared** (#1082, class C3) |
+| `approval/infrastructure/effect_scope.rs`, `orchestrator/.../helpers.rs` | fixed argv `git` |
+| `scored_evaluation/.../local_backend.rs` | operator-configured scorer script, fixed argv |
+| `cli/cli_boundary/dispatch.rs`, `mcp/.../engine_facade_impl.rs` | fixed argv `git remote/config` |
+| `cli/tui/mod.rs` | fixed argv clipboard helper |
+| `actions/.../router_impl.rs` | fixed argv `git` |
+| test-only: `execution_engine/approval_binding_tests.rs`, `cli/tests/projection_surface.rs`, `mcp/tests/{stdio_integration,e2e_execute_to_audit,e2e_enterprise_proxy}_test.rs` | runs the binary under test |
+
+The two non-conformant rows are listed rather than hidden: the lint confines
+*where* spawning happens, not *what* the command does with caller input. Closing
+them is #1082 (guards C2 and C3).
 
 ---
 

@@ -10,6 +10,10 @@
 //! # Risk Level
 //! High — commits are permanent and modify Git history.
 
+// #1083: approved process-spawning sink — fixed-argv `git` sink: no caller string reaches a shell.
+// See `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
+#![allow(clippy::disallowed_types)]
+
 use async_trait::async_trait;
 use std::time::Instant;
 

@@ -26,6 +26,10 @@
 //! sandbox the child, which still runs as the engine's user with the engine's
 //! filesystem access. A real isolation boundary is the deployment's job.
 
+// #1083: approved process-spawning sink — the policy itself — `apply_child_env` takes the child `Command` by reference.
+// See `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
+#![allow(clippy::disallowed_types)]
+
 use std::borrow::Cow;
 
 /// Environment variables a child command inherits.

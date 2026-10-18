@@ -8,6 +8,10 @@
 //! reads and parses stdout JSON responses, and aggregates results into
 //! `HookRunResult`. Supports cooperative cancellation via `HookAbortSignal`.
 
+// #1083: approved process-spawning sink — operator-configured hook command (shell); env handling tracked in #1082.
+// See `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
+#![allow(clippy::disallowed_types)]
+
 use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

@@ -42,3 +42,6 @@ tower = { version = "0.5", features = ["util"] }
 # OSS-CATALOG-SUBSET-VERIFIER (#907): the SHARED closed-namespace guard.
 # Published crates.io dependency (NOT path/git) so a fresh public clone builds.
 rigorix-verifier = "0.5"
+
+[lints]
+workspace = true

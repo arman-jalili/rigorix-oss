@@ -7,6 +7,11 @@
 //! @canonical .pi/architecture/modules/execution-tools.md
 //! Implements: Acceptance Criterion #12 — end-to-end plan execution → audit
 
+// #1083: approved process-spawning sink — end-to-end test: runs the MCP
+// binary under test, fixed argv.
+// See `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
+#![allow(clippy::disallowed_types)]
+
 use std::process::{Command, Stdio};
 
 mod common;

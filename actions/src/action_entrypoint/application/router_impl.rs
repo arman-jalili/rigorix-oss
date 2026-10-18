@@ -9,6 +9,10 @@
 //! `ActionMode` and `ActionContext` to the appropriate engine service call and
 //! formats the result into `ActionOutput`.
 
+// #1083: approved process-spawning sink — fixed-argv `git` sink.
+// See `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
+#![allow(clippy::disallowed_types)]
+
 use std::sync::Arc;
 use std::time::Instant;
 

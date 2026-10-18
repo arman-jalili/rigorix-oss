@@ -7,6 +7,10 @@
 //!   on terminal outcome.
 //! Issue: #792 wiring (ADR-011 acceptance slice)
 
+// #1083: approved process-spawning sink — test-only: sets up a `git` fixture.
+// See `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
+#![allow(clippy::disallowed_types)]
+
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
