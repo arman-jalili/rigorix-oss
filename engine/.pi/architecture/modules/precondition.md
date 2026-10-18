@@ -357,7 +357,7 @@ release_dependents_on_failure = false
 | 2 | PreconditionRepository | Malformed/over-cap → `Err` (fail closed); missing file → `Ok(None)` | unit test |
 | 3 | PreconditionRunner | argv execution, JSON stdin, env set, exit code mapped; no shell | unit test |
 | 4 | PreconditionRunner | A command path resolving inside the agent-writable workspace is refused | unit test |
-| 5 | PreconditionRunner | Timeout and spawn failure map to refuse (`error`), never pass | unit test |
+| 5 | PreconditionRunner | Timeout and spawn failure map to refuse (`error`), never pass — the timeout case runs on a **virtual clock** (`#[tokio::test(start_paused)]`) so it asserts the budget is honoured without depending on wall-clock time; fault-injected to confirm it discriminates the variant (#1081) | unit test |
 | 6 | PreconditionService | Matched step exit 0 → `Dispatch`; non-zero → `Deny` | unit test |
 | 7 | PreconditionService | `require_params` absent → `Deny` before the command runs | unit test |
 | 8 | PreconditionService | Non-matching step is unaffected (no process spawned) | unit test |
