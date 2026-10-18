@@ -447,6 +447,22 @@ impl EnforcementConfig {
                     value: Some(budget.soft_warning_threshold.to_string()),
                 });
             }
+
+            // Fail closed: a shared/contested limit is enforced by the capacity
+            // ledger, not this counter. No binding from `budgets` to a declared
+            // ledger resource exists yet (#1061), so accepting the scope here
+            // would silently disable the limit.
+            if budget.scope == BudgetScope::SharedContested {
+                errors.push(ConfigValidationError {
+                    field: format!("budgets.{}.scope", name),
+                    message: format!(
+                        "budget '{}' is shared_contested, but the enforcement counter cannot enforce a shared limit; \
+                         declare the resource in .rigorix/capacity.toml (capacity ledger) and remove this budget",
+                        name
+                    ),
+                    value: Some("shared_contested".to_string()),
+                });
+            }
         }
 
         errors

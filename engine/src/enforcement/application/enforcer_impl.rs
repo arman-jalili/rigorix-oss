@@ -28,7 +28,9 @@ use crate::enforcement::application::dto::{
     ResourceBudgetStatus, TrackResourceUsageInput, TrackResourceUsageOutput,
 };
 use crate::enforcement::application::service::ExecutionEnforcer;
-use crate::enforcement::domain::{EnforcementConfig, EnforcementError, ResourceBudget, ToolPolicy};
+use crate::enforcement::domain::{
+    BudgetScope, EnforcementConfig, EnforcementError, ResourceBudget, ToolPolicy,
+};
 
 /// Internal mutable state for the execution enforcer.
 struct EnforcerState {
@@ -72,6 +74,17 @@ pub struct ExecutionEnforcerImpl {
 impl ExecutionEnforcerImpl {
     /// Create a new `ExecutionEnforcerImpl` from an `EnforcementConfig`.
     pub fn new(execution_id: &str, config: EnforcementConfig) -> Self {
+        // Fail loudly when a shared/contested budget bypassed validation: this
+        // counter will not enforce it, and nothing else takes over yet (#1061).
+        for (name, budget) in &config.budgets {
+            if budget.scope == BudgetScope::SharedContested {
+                tracing::warn!(
+                    budget = %name,
+                    "shared_contested budget is advisory only: no local limit applies; the capacity ledger must enforce it (declare the resource in .rigorix/capacity.toml)"
+                );
+            }
+        }
+
         Self {
             execution_id: execution_id.to_string(),
             state: RwLock::new(EnforcerState {
@@ -1581,5 +1594,25 @@ mod tests {
             .await
             .unwrap();
         assert!(!output.allowed, "exactly 10/10 calls must block the 11th");
+    }
+
+    #[test]
+    fn test_shared_contested_budget_is_refused_by_validation() {
+        let mut config = EnforcementConfig::standard();
+        config.budgets.insert(
+            "shared".to_string(),
+            ResourceBudget {
+                resource: "shared".to_string(),
+                soft_warning_threshold: 0.5,
+                hard_limit: 10,
+                current_usage: 0,
+                scope: BudgetScope::SharedContested,
+            },
+        );
+        let errors = config.validate(&crate::enforcement::domain::SafetyCaps::default());
+        assert!(
+            errors.iter().any(|e| e.field == "budgets.shared.scope"),
+            "a shared_contested budget must be refused, got {errors:?}"
+        );
     }
 }

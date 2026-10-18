@@ -18,7 +18,7 @@ question:
 
 | component | shape | limitation |
 |---|---|---|
-| `budget_tracking` — `LlmBudget` + RAII `LlmBudgetReservation` | real reserve → commit/rollback, `Arc<BudgetState>` | **LLM-scoped**; state is **in-process**; the `LlmBudgetRepository` persistence port exists but is **unwired** |
+| `budget_tracking` — `LlmBudget` + RAII `LlmBudgetReservation` | real reserve → commit/rollback, `Arc<BudgetState>` | **LLM-scoped**; state is **in-process** and **ephemeral** — the `LlmBudgetRepository` persistence port had no caller and was deleted (#1016) |
 | `enforcement` — `ResourceBudget { resource, soft_warning_threshold, hard_limit, current_usage }` | generic **counter** + threshold evaluation | a **check, not a reservation** — exactly the insufficient "naive counter" |
 
 Read against the published requirement (a shared cross-session risk ledger with

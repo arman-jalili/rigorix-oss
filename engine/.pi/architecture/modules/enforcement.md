@@ -67,9 +67,10 @@ impl EnforcementConfig {
 `ResourceBudget` is a counter, not a reservation. It is authoritative only for
 per-execution, non-contested limits (`BudgetScope::PerExecution`, the default).
 A limit shared across independent executions is contested: declare the resource
-in `.rigorix/capacity.toml` so the capacity ledger enforces it, and set
-`BudgetScope::SharedContested` so the local counter is advisory and never
-blocks. Exactly one mechanism is authoritative for any resource.
+in `.rigorix/capacity.toml` so the capacity ledger enforces it. Do not model it
+as a `ResourceBudget`: `BudgetScope::SharedContested` is a fail-closed marker
+and config validation refuses it, because no budget→ledger binding exists yet
+(#1061). Exactly one mechanism is authoritative for any resource.
 
 `ToolPolicy::max_calls` is a per-execution counter enforced from that
 execution's per-tool call map; it is not a contested resource and is not
