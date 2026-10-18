@@ -9,6 +9,14 @@
 //! without a successful commit. Because `Drop` cannot be async, a release is
 //! dispatched onto the Tokio runtime the guard was created in; if there is no
 //! runtime, the hold is left to expire with its lease (and a warning is logged).
+//!
+//! # Guarantee
+//! Drop-time release is **best-effort local cleanup, not a correctness
+//! guarantee** (#1054). The spawned task may never run (runtime shutdown) and a
+//! remote release may fail; failures are logged, not swallowed. The normal path
+//! is an explicit, awaited `commit`/`release`; the durable lease plus
+//! reconciliation is the recovery mechanism. RAII protects against forgotten
+//! cleanup paths — it does not substitute for durable recovery.
 
 use std::fmt;
 use std::sync::{Arc, Mutex};
@@ -140,18 +148,27 @@ impl Drop for ReservationGuardImpl {
         };
 
         if let Some(grant) = grant {
+            let reservation_id = self.reservation_id;
             match &self.runtime {
                 Some(handle) => {
                     let ledger = self.ledger.clone();
                     handle.spawn(async move {
-                        // Best-effort: an expired/committed reservation is fine.
-                        let _ = ledger.release(grant).await;
+                        // Best-effort only: Drop cannot await, so this is local
+                        // cleanup, not a guarantee. Record a failure instead of
+                        // swallowing it; the lease/reconciliation path takes over.
+                        if let Err(error) = ledger.release(grant).await {
+                            tracing::warn!(
+                                reservation = %reservation_id,
+                                error = %error,
+                                "best-effort capacity release on drop failed; relying on lease expiry/reconciliation"
+                            );
+                        }
                     });
                 }
                 None => {
                     tracing::warn!(
-                        reservation = %self.reservation_id,
-                        "capacity reservation dropped outside a Tokio runtime; relying on lease expiry to reclaim it"
+                        reservation = %reservation_id,
+                        "capacity reservation dropped outside a Tokio runtime; relying on lease expiry/reconciliation to reclaim it"
                     );
                 }
             }

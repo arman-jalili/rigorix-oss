@@ -22,7 +22,7 @@ use crate::capacity_ledger::interfaces::CapacityLedger;
 /// `Debug` redacts the bearer token so config can be logged safely.
 #[derive(Clone, PartialEq, Eq)]
 pub enum LedgerBackendConfig {
-    /// The standalone in-process adapter (single-execution atomicity).
+    /// The standalone in-process adapter (single-process atomicity).
     InProcess,
 
     /// The opt-in HTTP adapter against an enterprise ledger service.

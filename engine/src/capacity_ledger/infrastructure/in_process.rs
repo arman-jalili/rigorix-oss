@@ -11,9 +11,12 @@
 //! database, no network.
 //!
 //! # Guarantee ceiling (Frozen)
-//! This adapter provides **single-execution atomicity only**. It MUST NOT be
-//! described as "the distributed ledger"; cross-session atomicity requires the
-//! HTTP adapter against a real contested store.
+//! This adapter provides **single-process atomicity**: every execution in this
+//! process that shares the instance contends on the same aggregate. It MUST NOT
+//! be described as "the distributed ledger"; cross-session atomicity (across
+//! processes or replicas) requires the HTTP adapter against a real contested
+//! store. Proven at composition level by
+//! `two_concurrent_executions_share_the_in_process_aggregate`.
 //!
 //! # Invariants implemented
 //! - **I1** one mutex linearizes every operation per process

@@ -344,3 +344,62 @@ async fn absent_declaration_dispatches_unchanged() {
         "with no declaration the engine must behave exactly as before"
     );
 }
+
+// ---------------------------------------------------------------------------
+// 6. Two concurrent executions through one executor share one aggregate.
+// ---------------------------------------------------------------------------
+
+/// The in-process guarantee is **single-process**, not single-execution: every
+/// execution that shares the executor contends on the same aggregate. This is
+/// the composition-level test the adapter's 50-way mutex test cannot provide.
+#[tokio::test]
+async fn two_concurrent_executions_share_the_in_process_aggregate() {
+    // hard_limit 4, amount 3: the two runs cannot both be granted.
+    let repo = scratch_with_declaration("concurrent", 4, 3);
+    let marker_a = marker_path("concurrent-a");
+    let marker_b = marker_path("concurrent-b");
+    let _ = std::fs::remove_file(&marker_a);
+    let _ = std::fs::remove_file(&marker_b);
+
+    let (executor, setup) = executor_with_declaration(&repo).await;
+    assert!(setup.is_armed(), "the fixture must arm the seam");
+
+    let graph_a = single_node_graph(
+        Uuid::new_v4(),
+        "pay",
+        "run_command",
+        format!("touch {}", marker_a.display()),
+    );
+    let graph_b = single_node_graph(
+        Uuid::new_v4(),
+        "pay",
+        "run_command",
+        format!("touch {}", marker_b.display()),
+    );
+
+    let (result_a, result_b) = tokio::join!(
+        run(executor.as_ref(), Uuid::new_v4(), graph_a),
+        run(executor.as_ref(), Uuid::new_v4(), graph_b),
+    );
+
+    assert_eq!(
+        result_a.failed_count + result_b.failed_count,
+        1,
+        "exactly one of the two 3-unit grants fits under a 4-unit cap"
+    );
+    assert_eq!(
+        usize::from(marker_a.exists()) + usize::from(marker_b.exists()),
+        1,
+        "only the granted execution may run its tool"
+    );
+
+    let (committed, outstanding) = exposure_committed(&setup).await;
+    assert!(
+        committed + outstanding <= 4,
+        "the aggregate must never exceed the hard limit (committed={committed}, outstanding={outstanding})"
+    );
+    assert_eq!(
+        committed, 3,
+        "the winning execution's hold must be committed"
+    );
+}

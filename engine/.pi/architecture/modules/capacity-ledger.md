@@ -15,9 +15,10 @@ is, and which atomic operations the engine may perform against them.
 It explicitly does **not** own storage. The engine has no database dependency and will not
 acquire one; storage is an adapter. See ADR-018.
 
-**Guarantee ceiling:** the in-process adapter provides **single-execution atomicity**; only the
-HTTP adapter against a real contested store provides cross-session atomicity. No deployment may
-claim the second while running the first.
+**Guarantee ceiling:** the in-process adapter provides **single-process atomicity** — every
+execution in the process that shares the instance contends on one aggregate. Only the HTTP
+adapter against a real contested store provides cross-session atomicity (across processes or
+replicas). No deployment may claim the second while running the first.
 
 ## DDD Layers
 
@@ -54,7 +55,7 @@ contract consumed by `enforcement`.
 #### Infrastructure Layer (`infrastructure/`)
 | Component | Description | Connects to |
 |-----------|-------------|-------------|
-| InProcessLedger | Default adapter; single-execution atomicity; no network, no DB | In-memory state |
+| InProcessLedger | Default adapter; single-process atomicity; no network, no DB | In-memory state |
 | HttpLedger | Opt-in adapter; bounded body, no redirects, deadline, redaction | Enterprise ledger service |
 | DefaultCapacityLedgerFactory | Maps a backend selection to a concrete adapter | InProcessLedger / HttpLedger |
 
@@ -153,11 +154,12 @@ reservation id, so no DTO hands one out and there is exactly one owner of each `
 status: implemented
 depends: CapacityLedgerService
 
-**Purpose:** RAII binding of a grant to a step's lifetime: commit on success, **release on
-drop**. Release-on-drop is not optional — if release happens only on an explicit error branch,
-a panic or early return leaks capacity until the lease expires. The service owns every
-outstanding guard; dropping the service releases them, and the lease remains the backstop
-when a process dies without settling.
+**Purpose:** RAII binding of a grant to a step's lifetime: commit on success, **best-effort
+release on drop**. The normal path is an explicit, awaited `commit`/`release`; Drop is local
+cleanup only (it cannot await, may not run, and its failure is logged). The service owns every
+outstanding guard; dropping the service attempts to release them, and a lapsed lease becomes
+`Ambiguous` and must be reconciled. RAII is a safeguard against forgotten cleanup paths, not a
+durable-recovery guarantee (#1054).
 
 **Layer:** `application/`
 
@@ -292,8 +294,8 @@ contract-freeze issue. Status is tracked per epic issue.
 | LedgerError | `domain/error.rs` — typed failures + classification | unit |
 | CapacityLedger | `interfaces/capacity_ledger.rs` — port + `interfaces/contract.rs` suite | contract suite |
 | CapacityLedgerService | `application/service_impl.rs` | 4 tests |
-| ReservationGuard | `application/guard_impl.rs` — release-on-drop (ADR-008), owned by the service | 4 tests |
-| InProcessLedger | `infrastructure/in_process.rs` — single-execution atomicity | 7 tests incl. 50-way concurrency |
+| ReservationGuard | `application/guard_impl.rs` — best-effort release-on-drop (ADR-008), owned by the service | 4 tests |
+| InProcessLedger | `infrastructure/in_process.rs` — single-process atomicity | 8 tests incl. 50-way + cross-execution composition |
 | HttpLedger | `infrastructure/http.rs` — fail-closed transport | WireMock suite |
 | CapacityLedgerConfig | `application/config.rs` — declaration parse + fail-closed validation | 7 tests |
 | DefaultCapacityLedgerFactory | `infrastructure/factory_impl.rs` — adapter construction | 2 tests |
@@ -315,8 +317,10 @@ contract-freeze issue. Status is tracked per epic issue.
 
 ### Guarantee ceiling
 
-The in-process adapter provides **single-execution atomicity only**; only the
-HTTP adapter against a real contested store provides cross-session atomicity.
+The in-process adapter provides **single-process atomicity**: every execution
+in the process that shares the instance contends on one aggregate. Only the HTTP
+adapter against a real contested store provides cross-session atomicity (across
+processes or replicas).
 
 ### Relationship to enforcement budgets
 
