@@ -313,3 +313,12 @@ contract-freeze issue. Status is tracked per epic issue.
 
 The in-process adapter provides **single-execution atomicity only**; only the
 HTTP adapter against a real contested store provides cross-session atomicity.
+
+### Relationship to enforcement budgets
+
+The `enforcement` module's `ResourceBudget` is a **per-execution counter**
+(`BudgetScope::PerExecution`), authoritative only for limits local to one run.
+Any limit contested across executions belongs here: declare it in
+`.rigorix/capacity.toml` and mark the matching counter
+`BudgetScope::SharedContested` so it stays advisory. Exactly one mechanism is
+authoritative per resource.

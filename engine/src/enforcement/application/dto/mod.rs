@@ -81,6 +81,10 @@ pub struct BudgetSnapshot {
     pub usage_ratio: f64,
     /// Whether the soft warning threshold has been crossed.
     pub warning_active: bool,
+    /// Whether this counter blocks on its hard limit. `false` means the limit is
+    /// shared and the capacity ledger enforces it; this snapshot is advisory.
+    #[serde(default)]
+    pub authoritative: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -99,6 +103,12 @@ pub struct TrackResourceUsageInput {
     /// The amount to add to current usage.
     /// Must be >= 0. Use 0 to report no consumption.
     pub amount: u64,
+
+    /// The tool that consumed the resource, when applicable (e.g. for
+    /// `"tool_calls"`). Attributes per-tool call counts, which are a
+    /// per-execution counter (see #1017), not a contested ledger resource.
+    #[serde(default)]
+    pub tool: Option<String>,
 
     /// Additional context about this resource usage (e.g., token breakdown).
     pub context: Option<serde_json::Value>,
@@ -168,7 +178,12 @@ pub struct ResourceBudgetStatus {
     pub warning_threshold: f64,
     /// Whether the warning threshold has been crossed.
     pub warning_active: bool,
-    /// Whether the hard limit has been reached or exceeded.
+    /// Whether this counter is authoritative for its hard limit. `false` means
+    /// the limit is shared and enforced by the capacity ledger.
+    #[serde(default)]
+    pub authoritative: bool,
+    /// Whether the hard limit has been reached or exceeded **and** this counter
+    /// is authoritative for it.
     pub limit_reached: bool,
 }
 
