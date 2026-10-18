@@ -548,11 +548,11 @@ pub struct ParallelExecutionServiceImpl {
     /// commit (success) or release (failure) the matching hold.
     ///
     /// The *reservation id* is stored rather than the RAII guard because the
-    /// service boundary settles by id (`commit`/`release` take a reservation id;
-    /// `ReserveCapacityOutput::guard` is `None` on that path). Panic-safety does
+    /// ledger service owns the guard and settles by id (`commit`/`release` take
+    /// a reservation id); no DTO hands a guard to this seam. Panic-safety does
     /// not depend on drop here: every hold carries a lease, so a loop that dies
     /// without settling still returns the capacity when the lease lapses
-    /// (ADR-018 I3).
+    /// (ADR-018 I3), and dropping the service releases its outstanding guards.
     capacity_holds: Arc<Mutex<HashMap<Uuid, ReservationId>>>,
 }
 

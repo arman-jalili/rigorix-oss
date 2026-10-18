@@ -51,6 +51,30 @@ impl ReservationGuardImpl {
             }),
         }
     }
+
+    /// Release the underlying reservation, awaiting the ledger call.
+    ///
+    /// The service uses this for by-id release so the terminal snapshot and the
+    /// post-release exposure are deterministic; a `Drop`-only release is
+    /// scheduled asynchronously and cannot be awaited. The guard is marked
+    /// released before the await, so its `Drop` does not release twice.
+    pub(crate) async fn release(self: Box<Self>) -> Result<Reservation, LedgerError> {
+        let grant = {
+            let mut state = self.state.lock().map_err(|_| LedgerError::Unavailable {
+                detail: "reservation guard poisoned".to_string(),
+            })?;
+            if state.released {
+                return Err(LedgerError::Unavailable {
+                    detail: format!("reservation {} is already released", self.reservation_id),
+                });
+            }
+            state.released = true;
+            state.grant.take().ok_or_else(|| LedgerError::Unavailable {
+                detail: format!("reservation {} grant already consumed", self.reservation_id),
+            })?
+        };
+        self.ledger.release(grant).await
+    }
 }
 
 impl fmt::Debug for ReservationGuardImpl {

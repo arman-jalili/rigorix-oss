@@ -84,16 +84,59 @@ mod tests {
     }
 
     #[test]
-    fn test_capacityledgerservice_interacts_with_grant() {
-        // The reserve output carries the RAII guard that owns the grant. The
-        // guard must never appear on the wire.
+    fn test_capacityledgerservice_reserve_output_owns_no_guard() {
+        // The service owns the guard. The DTO exposes the snapshot and exposure
+        // only, and never a handle on the wire (#1049).
         let output = ReserveCapacityOutput {
             reservation: sample_reservation(),
             exposure: sample_exposure(),
-            guard: None,
         };
         let json = serde_json::to_string(&output).unwrap();
         assert!(!json.contains("guard"));
+        let round_trip: ReserveCapacityOutput = serde_json::from_str(&json).unwrap();
+        assert_eq!(round_trip, output);
+    }
+
+    #[tokio::test]
+    async fn service_drop_releases_outstanding_guards() {
+        use std::sync::Arc;
+
+        use rigorix_engine::capacity_ledger::domain::{ResourceSpec, Window};
+        use rigorix_engine::capacity_ledger::infrastructure::InProcessLedger;
+        use rigorix_engine::capacity_ledger::interfaces::CapacityLedger;
+
+        let ledger = Arc::new(InProcessLedger::new());
+        let resource = ResourceId::new("drop-gpu");
+        ledger
+            .declare_resource(ResourceSpec::new(
+                resource.clone(),
+                "drop-gpu".to_string(),
+                4,
+                Window::bounded(60),
+            ))
+            .await
+            .unwrap();
+
+        let service = CapacityLedgerServiceImpl::new(ledger.clone());
+        let output = service
+            .reserve(ReserveCapacityInput {
+                resource: resource.clone(),
+                amount: 3,
+                idempotency_key: IdempotencyKey::new("drop-k1"),
+                requested_by: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(output.exposure.outstanding, 3);
+
+        // Service-lifetime RAII: dropping the service drops the owned guards,
+        // whose Drop dispatches a release onto the captured runtime.
+        drop(service);
+        tokio::time::sleep(Duration::from_millis(150)).await;
+
+        let exposure = ledger.exposure(&resource).await.unwrap();
+        assert_eq!(exposure.outstanding, 0);
+        assert_eq!(exposure.committed, 0);
     }
 
     #[test]
