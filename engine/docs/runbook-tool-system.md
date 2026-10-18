@@ -68,7 +68,7 @@ Shutdown is immediate:
 | `max_output_bytes` | `ToolSystemConfig` | 1 MB | Max output capture size |
 | `dry_run_high_risk` | `ToolSystemConfig` | true | Dry-run High-risk tools by default |
 | `require_medium_confirmation` | `ToolSystemConfig` | true | Require confirmation for Medium-risk |
-| `allowlist` | `RunCommandTool` | [] | Allowed command prefixes |
+| `allowlist` | `RunCommandTool` | [] | Allowed command prefixes (a single simple command; control operators are refused even when the prefix matches) |
 
 ## Common Failure Modes
 
@@ -95,6 +95,27 @@ Shutdown is immediate:
 **Symptom:** `ToolError::PathDenied("Command 'xxx' is not in the allowlist")`
 **Cause:** Command not in the configured allowlist.
 **Recovery:** Add the command prefix to the allowlist, or use an allowed command.
+
+### RunCommand Refused for a Shell Control Operator
+
+**Symptom:** `ToolError::PathDenied("Command '...' contains the shell control operator ';'")`
+**Cause:** The command is a compound shell string. `;` `&&` `||` `|` `&`
+backticks `$(` `<` `>` and newlines are refused, because a prefix allowlist
+cannot bound what the rest of the string does once `sh -c` sees it.
+**Recovery:** Split the work into separate steps, or put the compound in a
+script file and allowlist that script. Do not try to escape the operator: the
+check is on the raw string, and the shell re-interprets escapes.
+
+### Child Command Cannot See Engine Environment
+
+**Symptom:** an executed command prints an empty value for a variable the engine
+process has (for example `RIGORIX_HMAC_KEY`).
+**Cause:** intended. Child commands inherit only `PATH`, `HOME`, `LANG`,
+`LC_ALL`, `TMPDIR`, `SHELL`, `TERM` and any per-call `env` overrides.
+**Recovery:** pass the value explicitly in the step's `env` object if the command
+needs it — but never pass signing keys to an agent-controlled command. This is
+not a sandbox: the child still has the engine user's filesystem access, so
+isolation is a deployment concern (container, separate user, read-only mounts).
 
 ### File Patch Ambiguity
 

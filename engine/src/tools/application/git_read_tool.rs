@@ -14,6 +14,7 @@ use async_trait::async_trait;
 use std::time::Instant;
 
 use crate::tools::application::dto::{ToolInput, ToolResult};
+use crate::tools::application::shell_policy::apply_child_env;
 use crate::tools::domain::{Tool, ToolError};
 
 /// Set of allowed read-only git commands.
@@ -99,15 +100,14 @@ impl Tool for GitReadTool {
             }
         }
 
-        let output = tokio::process::Command::new("sh")
-            .arg("-c")
-            .arg(&full_cmd)
-            .current_dir(&self.repo_root)
-            .output()
-            .await
-            .map_err(|e| {
-                ToolError::ExecutionFailed(format!("Failed to execute git command: {}", e))
-            })?;
+        // The child inherits only the explicit allowlist, so a git command
+        // cannot read `RIGORIX_HMAC_KEY` or anchor credentials (#1068).
+        let mut cmd = tokio::process::Command::new("sh");
+        cmd.arg("-c").arg(&full_cmd).current_dir(&self.repo_root);
+        apply_child_env(&mut cmd, &[]);
+        let output = cmd.output().await.map_err(|e| {
+            ToolError::ExecutionFailed(format!("Failed to execute git command: {}", e))
+        })?;
 
         let duration_ms = start.elapsed().as_millis() as u64;
 

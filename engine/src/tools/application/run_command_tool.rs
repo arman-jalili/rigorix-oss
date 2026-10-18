@@ -7,6 +7,19 @@
 //! Executes shell commands with allowlist enforcement and timeout.
 //! Commands must match an entry in the configured allowlist to execute.
 //! High risk — dry-run by default in risk-gated mode.
+//!
+//! # Security
+//!
+//! The allowlist matches a single simple command. A command containing a shell
+//! control operator (`;`, `&&`, `||`, `|`, `&`, backticks, `$(`, `<`, `>`, a
+//! newline) is refused *before* the prefix check: matching a prefix and then
+//! handing the whole string to `sh -c` lets `echo ok; curl evil` through. Split
+//! a compound into separate steps, or put it in a script the allowlist permits.
+//!
+//! The child gets a cleared environment plus [`INHERITED_ENV_ALLOWLIST`], so it
+//! cannot read `RIGORIX_HMAC_KEY` and forge audit envelopes. This is not a
+//! sandbox: the child still runs as the engine's user with its filesystem
+//! access (#1068).
 
 use async_trait::async_trait;
 use std::collections::HashSet;
@@ -14,6 +27,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use crate::tools::application::dto::{SideEffect, ToolInput, ToolResult};
+use crate::tools::application::shell_policy::{apply_child_env, find_shell_control_operator};
 use crate::tools::domain::{Tool, ToolError};
 
 /// Tool for executing shell commands with allowlist enforcement.
@@ -29,7 +43,8 @@ use crate::tools::domain::{Tool, ToolError};
 ///
 /// # Security
 /// Commands are validated against a configured allowlist of permitted
-/// command prefixes. Commands not matching any allowlist entry are rejected.
+/// command prefixes. Commands not matching any allowlist entry are rejected,
+/// and so is any command containing a shell control operator.
 pub struct RunCommandTool {
     /// Root directory for execution.
     workspace_root: String,
@@ -68,6 +83,12 @@ impl RunCommandTool {
     /// For example, "cargo" matches "cargo build" but not "cargoes".
     fn is_command_allowed(&self, command: &str) -> bool {
         let trimmed = command.trim();
+        // A compound string is never a single allowlisted command, even when it
+        // starts with an allowed prefix (defence in depth; `execute` also
+        // reports the operator specifically).
+        if find_shell_control_operator(trimmed).is_some() {
+            return false;
+        }
         for prefix in &self.allowlist {
             if trimmed == prefix.as_str()
                 || trimmed.starts_with(&format!("{} ", prefix))
@@ -106,6 +127,16 @@ impl Tool for RunCommandTool {
             })
             .unwrap_or_default();
 
+        // Refuse a compound shell string before the allowlist check: the
+        // allowlist sees a prefix, but `sh -c` would execute everything.
+        if let Some(operator) = find_shell_control_operator(&command) {
+            return Err(ToolError::PathDenied(format!(
+                "Command '{}' contains the shell control operator '{}'. run_command executes a single \
+                 command, not a compound shell string; use separate steps or an allowlisted script.",
+                command, operator
+            )));
+        }
+
         // Enforce allowlist
         if !self.is_command_allowed(&command) {
             return Err(ToolError::PathDenied(format!(
@@ -121,14 +152,11 @@ impl Tool for RunCommandTool {
 
         let start = Instant::now();
 
-        // Execute the command
+        // Execute the command. The child inherits only the explicit allowlist;
+        // `RIGORIX_HMAC_KEY` and anchor credentials stay in the engine process.
         let mut cmd = tokio::process::Command::new("/bin/sh");
         cmd.arg("-c").arg(&command).current_dir(&cwd);
-
-        // Set environment overrides
-        for (key, value) in &env_overrides {
-            cmd.env(key, value);
-        }
+        apply_child_env(&mut cmd, &env_overrides);
 
         let output = tokio::time::timeout(timeout_duration, cmd.output())
             .await
@@ -287,5 +315,64 @@ mod tests {
         let result = tool.execute(&input).await.unwrap();
         assert!(result.is_success());
         assert!(result.output.trim().ends_with(dir.path().to_str().unwrap()));
+    }
+
+    /// #1067: the allowlist matched a prefix, then `sh -c` ran the whole
+    /// compound. A string containing a control operator must be refused.
+    #[tokio::test]
+    async fn test_compound_shell_string_is_refused() {
+        let (tool, _dir) = allowlist_tool();
+        for command in [
+            "echo ok; rm -rf /",
+            "echo ok && rm -rf /",
+            "echo ok || rm -rf /",
+            "echo ok | sh",
+            "echo ok & ",
+            "echo `id`",
+            "echo $(id)",
+            "echo ok > /tmp/rigorix-escape",
+            "echo ok < /etc/passwd",
+            "echo ok\nrm -rf /",
+        ] {
+            let result = tool.execute(&make_input(command)).await;
+            assert!(
+                matches!(result, Err(ToolError::PathDenied(_))),
+                "{command:?} must be refused before execution"
+            );
+        }
+    }
+
+    /// #1068: the child must not inherit the engine's environment. The engine
+    /// signs audit envelopes with `RIGORIX_HMAC_KEY`, so handing it to a child
+    /// lets the child forge the records that constrain it.
+    #[tokio::test]
+    async fn test_child_does_not_inherit_the_engine_environment() {
+        assert!(
+            std::env::var("CARGO_MANIFEST_DIR").is_ok(),
+            "test precondition: cargo must set a parent-only variable"
+        );
+        let (tool, _dir) = allowlist_tool();
+        let result = tool
+            .execute(&make_input("echo \"[$CARGO_MANIFEST_DIR]\""))
+            .await
+            .unwrap();
+        assert_eq!(
+            result.output.trim(),
+            "[]",
+            "the engine environment must not reach the child"
+        );
+
+        // Explicit per-call overrides still apply after the clear.
+        let mut params = HashMap::new();
+        params.insert(
+            "command".to_string(),
+            serde_json::Value::String("echo \"[$RIGORIX_TEST_OVERRIDE]\"".to_string()),
+        );
+        params.insert(
+            "env".to_string(),
+            serde_json::json!({ "RIGORIX_TEST_OVERRIDE": "visible" }),
+        );
+        let result = tool.execute(&ToolInput::new(params)).await.unwrap();
+        assert_eq!(result.output.trim(), "[visible]");
     }
 }

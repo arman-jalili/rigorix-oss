@@ -120,8 +120,29 @@ PathDenied, RequiresConfirmation }"]
 1. Execution Engine requests tool by name from ToolRegistry
 2. execute_with_risk_gate enforces RiskLevel policy before execution
 3. FileWriteTool validates all paths against repo_root
-4. RunCommandTool checks command against allowlist
+4. RunCommandTool checks the command for shell control operators, then against the allowlist
 5. Tools return ToolResult with output text, exit code, and side effects for audit
+
+<details>
+<summary>Command execution environment</summary>
+
+Both shell-executing routes (`RunCommandTool` in the registry, and
+`ParallelExecutionServiceImpl::exec_run_command` on the dispatch path) call the
+same `tools::application::shell_policy` helpers:
+
+- `find_shell_control_operator` — refuses `;` `&&` `||` `|` `&` backticks `$(`
+  `<` `>` and newlines. A prefix match is not evidence that the rest of the
+  string is inert, so the compound form is rejected rather than split-and-checked.
+- `command_from_intent` — the bash classifier and the executor extract the
+  command the same way, so a JSON intent cannot hide a command from the
+  classifier.
+- `apply_child_env` — `env_clear()` plus an explicit allowlist
+  (`PATH`, `HOME`, `LANG`, `LC_ALL`, `TMPDIR`, `SHELL`, `TERM`) and per-call
+  overrides. This removes the engine's secret material (`RIGORIX_HMAC_KEY`,
+  anchor credentials) from the child's environment. It is **not** a sandbox: the
+  child still runs as the engine's user with the engine's filesystem access.
+
+</details>
 
 ## Dependencies
 
@@ -141,6 +162,8 @@ PathDenied, RequiresConfirmation }"]
 |---------|------------|-----------|
 | Writing outside workspace | FileWriteTool validates all paths against repo_root | security-validator |
 | Arbitrary command execution | RunCommandTool constrained by allowlist; High risk = dry-run default | security-validator |
+| Compound shell string bypassing a prefix allowlist | A command containing `;` `&&` `||` `|` `&` backticks `$(` `<` `>` or a newline is refused before the prefix check; the classifier and the executor share one intent→command extraction | `shell_policy` tests |
+| Child command reading engine secrets | `apply_child_env` clears the inherited environment; only `PATH HOME LANG LC_ALL TMPDIR SHELL TERM` plus explicit per-call overrides reach the child, so `RIGORIX_HMAC_KEY` is not handed to executed commands | `test_child_does_not_inherit_the_engine_environment` |
 | Git commit with wrong message | GitCommitTool requires Medium+ confirmation | security-validator |
 
 ---
