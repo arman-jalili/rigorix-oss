@@ -83,7 +83,6 @@ CONTRACT_FILES=(
     "application/factory.rs"
     "interfaces/capacity_ledger.rs"
     "interfaces/http/mod.rs"
-    "infrastructure/repository/mod.rs"
     "infrastructure/in_process.rs"
     "infrastructure/http.rs"
 )
@@ -178,7 +177,6 @@ require_impl "ReservationGuard" \
 echo ""
 echo "--- Storage / factory seams ---"
 SEAMS=(
-    "infrastructure/repository/mod.rs:pub trait CapacityLedgerRepository:CapacityLedgerRepository repository interface"
     "application/factory.rs:pub trait CapacityLedgerFactory:CapacityLedgerFactory factory interface"
 )
 for seam in "${SEAMS[@]}"; do
@@ -190,11 +188,14 @@ for seam in "${SEAMS[@]}"; do
     fi
 done
 
-# The repository seam must at least be wired into the module tree.
-if grep -qF "pub mod repository" "${MODULE_DIR}/infrastructure/mod.rs"; then
-    pass "CapacityLedgerRepository wired into infrastructure/mod.rs"
+# A dead persistence seam must not come back (#1016): storage is the
+# adapter's job, and the decision is recorded in the infrastructure module.
+if [ -e "${MODULE_DIR}/infrastructure/repository/mod.rs" ]; then
+    fail "dead CapacityLedgerRepository persistence port reintroduced (#1016)"
+elif grep -qF "No local persistence port" "${MODULE_DIR}/infrastructure/mod.rs"; then
+    pass "no local persistence port; decision recorded (#1016)"
 else
-    fail "CapacityLedgerRepository not wired into infrastructure/mod.rs"
+    fail "persistence decision not recorded in infrastructure/mod.rs"
 fi
 
 # ── Summary ─────────────────────────────────────────────────────────────────
