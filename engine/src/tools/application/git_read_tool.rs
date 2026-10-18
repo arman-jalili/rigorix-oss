@@ -9,6 +9,15 @@
 //!
 //! All git commands are restricted to read-only operations (log, diff, status,
 //! show, branch, ls-files) to prevent accidental mutations.
+//!
+//! # No shell (#1082, class C2)
+//!
+//! The command is executed as **argv**, never through `sh -c`. It used to be
+//! built by string concatenation (`git {command} -- {path}`) and handed to a
+//! shell, so the first token allowlist validated a string the executor did not
+//! run: `path = "x; touch pwned"` passed the check and then executed. argv
+//! removes the interpreter from the path, so a metacharacter is just a byte in
+//! an argument.
 
 // #1083: approved process-spawning sink — `sh -c` for a git read; the caller-supplied path must be argv, not interpolated (#1082).
 // See `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
@@ -33,6 +42,21 @@ const ALLOWED_GIT_COMMANDS: &[&str] = &[
     "rev-parse",
     "rev-list",
     "cat-file",
+];
+
+/// Flags that make a nominally read-only git command write a file or run
+/// something else. Defence in depth: argv is what removes the shell (class C2),
+/// this keeps a read-only command read-only even when the caller appends flags.
+const WRITE_OR_EXEC_FLAGS: &[&str] = &[
+    "--output",
+    "--ext-diff",
+    "--textconv",
+    "--upload-pack",
+    "--exec",
+    "--open-files-in-pager",
+    "--no-index",
+    "-c",
+    "--config-env",
 ];
 
 /// Tool for reading Git repository information.
@@ -90,24 +114,33 @@ impl Tool for GitReadTool {
 
         let start = Instant::now();
 
-        // Build the full git command
-        let mut full_cmd = format!("git {}", command);
-        if let Some(p) = &path {
-            full_cmd.push_str(&format!(" -- {}", p));
+        // argv, never a shell: the allowlist below validates the same tokens
+        // the executor runs (#1082, class C2).
+        let tokens: Vec<&str> = command.split_whitespace().collect();
+        for token in &tokens {
+            let flag = token.split('=').next().unwrap_or(token);
+            if WRITE_OR_EXEC_FLAGS.contains(&flag) {
+                return Err(ToolError::InvalidInput(format!(
+                    "Git flag '{}' is not a read-only operation",
+                    flag
+                )));
+            }
         }
 
-        // Add max-count for log commands
-        if command.starts_with("log") {
-            full_cmd = format!("git {} --max-count={}", command, max_results);
-            if let Some(p) = &path {
-                full_cmd.push_str(&format!(" -- {}", p));
-            }
+        let mut args: Vec<String> = tokens.iter().map(|t| t.to_string()).collect();
+        // Bound the result set for log commands.
+        if tokens.first() == Some(&"log") {
+            args.push(format!("--max-count={max_results}"));
+        }
+        if let Some(p) = &path {
+            args.push("--".to_string());
+            args.push(p.clone());
         }
 
         // The child inherits only the explicit allowlist, so a git command
         // cannot read `RIGORIX_HMAC_KEY` or anchor credentials (#1068).
-        let mut cmd = tokio::process::Command::new("sh");
-        cmd.arg("-c").arg(&full_cmd).current_dir(&self.repo_root);
+        let mut cmd = tokio::process::Command::new("git");
+        cmd.args(&args).current_dir(&self.repo_root);
         apply_child_env(&mut cmd, &[]);
         let output = cmd.output().await.map_err(|e| {
             ToolError::ExecutionFailed(format!("Failed to execute git command: {}", e))
@@ -202,6 +235,50 @@ mod tests {
 
         assert!(result.is_success());
         assert!(result.output.contains("Initial commit"));
+    }
+
+    /// #1082 class C2: the allowlist used to validate a string that was then
+    /// handed to `sh -c`, so a caller path could append a command. argv removes
+    /// the interpreter: the metacharacters stay inside one argument.
+    #[tokio::test]
+    async fn caller_path_cannot_inject_a_shell_command() {
+        let dir = TempDir::new().unwrap();
+        init_git_repo(&dir);
+        let marker = dir.path().join("pwned");
+        assert!(!marker.exists());
+
+        let tool = GitReadTool::new(dir.path().to_str().unwrap());
+        let mut params = std::collections::HashMap::new();
+        params.insert(
+            "command".to_string(),
+            serde_json::Value::String("status".to_string()),
+        );
+        params.insert(
+            "path".to_string(),
+            serde_json::Value::String(format!("; touch {}", marker.display())),
+        );
+
+        // The call may fail (git rejects the path); what matters is that nothing
+        // executed the injected text.
+        let _ = tool.execute(&ToolInput::new(params)).await;
+        assert!(
+            !marker.exists(),
+            "the caller path must never reach a shell (class C2)"
+        );
+    }
+
+    /// A nominally read-only command must stay read-only when the caller appends
+    /// a flag that writes a file (#1082, class C2 defence in depth).
+    #[tokio::test]
+    async fn write_flags_are_refused() {
+        let dir = TempDir::new().unwrap();
+        init_git_repo(&dir);
+        let tool = GitReadTool::new(dir.path().to_str().unwrap());
+        let result = tool
+            .execute(&make_input("diff --output=/tmp/rigorix-should-not-exist"))
+            .await;
+        assert!(result.is_err(), "a write flag must be refused");
+        assert!(!std::path::Path::new("/tmp/rigorix-should-not-exist").exists());
     }
 
     #[tokio::test]
