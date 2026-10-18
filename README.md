@@ -268,7 +268,34 @@ discovering a hidden gap.
   precondition re-validates the world. They are different controls.
 - **Not a transparency log or gossip stack.** The signed envelope plus the anchor
   already provide the evidence.
-- **Not a benchmark-backed claim.** See the comparison note below.
+- **Not a benchmark-backed claim.** No independent comparative evaluation
+  exists. See [Where Rigorix fits](#where-rigorix-fits) for the failure modes
+  this design distinguishes, and what that table does not establish.
+
+---
+
+## Where Rigorix fits
+
+The useful comparison is not agent-vs-agent — it is **which credential-binding
+failure mode a control actually closes**. Rigorix is a governance layer beneath
+whatever agent you run, so it is measured on these dimensions:
+
+| Failure mode | What breaks | Rigorix binding | Source |
+|---|---|---|---|
+| **Scope** | A credential is used outside the step it was approved for | Approval binds to `(tool, intent, declared_scope)`; dispatch-time preconditions re-read the authoritative state | ADR-011, ADR-017 |
+| **Argument** | The dispatched arguments differ from the approved ones | Approval binds the exact intent bytes and re-derives them at dispatch | ADR-011 |
+| **Temporal** | The decision was true at plan time but is stale at dispatch | Approval and preconditions are revalidated at the moment of consequence | ADR-017 |
+| **Tool** | A permitted tool is swapped for a different one | Tool identity is part of the approval binding and of the effect key | ADR-011, ADR-014 |
+| **Delegation** | Authority is silently re-delegated | The record is bound to the attesting identity; whether a delegation is legally valid is explicitly out of scope | ADR-012, spec NC-2 |
+| **Semantic** | The effect differs from the intent | Canonical `eff:` effect keys and value-identity matching | ADR-014 |
+
+**What this table is not.** It is not a benchmark, not a competitor ranking, and
+not a claim of independent validation. No public independent comparative
+evaluation exists; the [claim ceiling](#claim-ceiling) applies (L1 engineering
+verification, L2 protocol validation, L3 independent evidence). Named-competitor
+cells are deliberately omitted: a cell that cannot be sourced and dated would be
+"not established", which is noise rather than evidence. Any vendor can be
+measured against the six dimensions above, using its own documentation.
 
 ---
 
