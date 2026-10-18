@@ -28,6 +28,7 @@ pub mod lsp_query_tool;
 pub mod registry_impl;
 pub mod run_command_tool;
 pub mod service;
+pub mod shell_policy;
 
 pub use dto::*;
 pub use factory::*;

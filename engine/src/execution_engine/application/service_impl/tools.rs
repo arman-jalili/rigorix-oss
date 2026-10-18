@@ -2,6 +2,9 @@
 //! `ParallelExecutionServiceImpl` (extracted from `service_impl.rs`, #914).
 
 use super::*;
+use crate::tools::application::shell_policy::{
+    apply_child_env, command_from_intent, field_from_intent, find_shell_control_operator,
+};
 
 impl ParallelExecutionServiceImpl {
     /// Execute a single tool node and return the TaskResult.
@@ -55,7 +58,11 @@ impl ParallelExecutionServiceImpl {
 
             // Additional check for bash commands
             if tool_name == "run_command" {
-                let bash_outcome = enforcer.check_bash(tool_intent, None).await;
+                // The classifier must see the command, not the JSON intent. Both
+                // this check and `exec_run_command` use the same extraction, so
+                // the bytes classified are the bytes executed (#1067).
+                let command = command_from_intent(tool_intent);
+                let bash_outcome = enforcer.check_bash(&command, None).await;
                 if let crate::permission::domain::PermissionOutcome::Denied { reason, .. } =
                     bash_outcome
                 {
@@ -153,10 +160,7 @@ impl ParallelExecutionServiceImpl {
     /// Falls back to using the intent as-is if it's not valid JSON
     /// or doesn't contain the expected field.
     pub(super) fn resolve_json_field(intent: &str, field: &str) -> String {
-        serde_json::from_str::<serde_json::Value>(intent)
-            .ok()
-            .and_then(|v| v.get(field).and_then(|v| v.as_str().map(String::from)))
-            .unwrap_or_else(|| intent.to_string())
+        field_from_intent(intent, field).into_owned()
     }
 
     pub(super) async fn exec_run_command(
@@ -165,17 +169,31 @@ impl ParallelExecutionServiceImpl {
         node_name: &str,
         start: std::time::Instant,
     ) -> TaskResult {
-        let command = Self::resolve_json_field(intent, "command");
+        let command = command_from_intent(intent);
+        // Refuse a compound shell string: there is no allowlist on this path,
+        // and `sh -c` would execute every operator in the string (#1067).
+        if let Some(operator) = find_shell_control_operator(&command) {
+            let duration_ms = start.elapsed().as_millis() as u64;
+            return TaskResult::failure(
+                node_id,
+                node_name,
+                format!(
+                    "Command '{}' contains the shell control operator '{}'; run_command executes a \
+                     single command, not a compound shell string",
+                    command, operator
+                ),
+                "shell_operator_rejected".to_string(),
+                duration_ms,
+                0,
+            );
+        }
         // GAP-A-12: bounded subprocess execution — never block the async
-        // runtime on an unbounded `sh -c`.
-        let output = tokio::time::timeout(
-            SUBPROCESS_TIMEOUT,
-            tokio::process::Command::new("sh")
-                .arg("-c")
-                .arg(&command)
-                .output(),
-        )
-        .await;
+        // runtime on an unbounded `sh -c`. The child gets a cleared environment
+        // so it cannot read `RIGORIX_HMAC_KEY` and forge audit envelopes (#1068).
+        let mut child = tokio::process::Command::new("sh");
+        child.arg("-c").arg(command.as_ref());
+        apply_child_env(&mut child, &[]);
+        let output = tokio::time::timeout(SUBPROCESS_TIMEOUT, child.output()).await;
         match output {
             Ok(Ok(out)) => {
                 let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
