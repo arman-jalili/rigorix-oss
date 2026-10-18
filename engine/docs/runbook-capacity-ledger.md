@@ -93,6 +93,24 @@ the RAII guard and the lease:
 - `is_consistent()` on an `Exposure` is false if `committed + outstanding`
   exceeds `hard_limit` — a contract violation worth escalating.
 
+## Window semantics
+
+`ResourceSpec.window` is a **rolling duration**: at most `hard_limit` units may
+be claimed in any trailing `window.duration_secs` period.
+
+| window | behaviour |
+|--------|-----------|
+| `duration_secs = 0` (`Window::UNBOUNDED`) | all-time cap; committed exposure never ages out |
+| `duration_secs = W > 0` | a commit counts for W seconds, then stops counting |
+
+- Only **committed** capacity ages out. `outstanding` and `ambiguous` holds are
+  counted regardless of age (they are unresolved claims).
+- A commit is stamped with the store clock at commit/reconciliation time. A late
+  reconciliation of an `Ambiguous` reservation counts from the reconciliation,
+  not from the original reserve.
+- `declare_resource` validates a new limit against the **new** window, so
+  changing the period is judged on the period it will enforce.
+
 ## Configuration Reference
 
 ### `InProcessLedger`
@@ -133,3 +151,4 @@ No redirects, explicit deadline, bounded body, credentials never logged.
 | I4 | Fail-closed — ambiguity maps to `Unavailable` |
 | I5 | Store clock decides expiry |
 | I6 | `committed + outstanding` never exceeds `hard_limit` |
+| I7 | A bounded window is enforced as a rolling duration: committed capacity ages out after W seconds |
