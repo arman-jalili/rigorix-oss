@@ -11,7 +11,9 @@
 //! expires.
 //!
 //! # Contract (Frozen)
-//! - Drop without [`ReservationGuard::commit`] MUST release the hold
+//! - Drop without [`ReservationGuard::commit`] **attempts** a best-effort release.
+//!   Drop cannot await, so it is not a correctness guarantee: use an explicit
+//!   commit/release for correctness, with the lease as the durable backstop.
 //! - `commit` consumes the guard (by `Box<Self>`) and is terminal
 //! - The guard is `Send + Sync + Debug` so it can travel inside DTOs
 //! - The guard deliberately does **not** hand back its [`Grant`](crate::capacity_ledger::domain::Grant):

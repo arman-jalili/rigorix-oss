@@ -9,8 +9,9 @@
 //! depend on nothing here.
 //!
 //! # Guarantee ceiling
-//! `InProcessLedger` gives single-execution atomicity only. `HttpLedger` is the
-//! only adapter that can provide cross-session atomicity, and only against a
+//! `InProcessLedger` gives single-process atomicity across every execution that
+//! shares the instance. `HttpLedger` is the only adapter that can provide
+//! cross-session atomicity (across processes or replicas), and only against a
 //! real contested store.
 //!
 //! # No local persistence port

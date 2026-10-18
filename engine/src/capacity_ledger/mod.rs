@@ -27,9 +27,11 @@
 //!
 //! # Guarantee ceiling
 //!
-//! The in-process adapter provides **single-execution atomicity**; only the HTTP
-//! adapter against a real contested store provides cross-session atomicity. No
-//! deployment may claim the second while running the first.
+//! The in-process adapter provides **single-process atomicity**: every execution
+//! in this process that shares the instance contends on one aggregate. Only the
+//! HTTP adapter against a real contested store provides cross-session atomicity
+//! (across processes or replicas). No deployment may claim the second while
+//! running the first.
 //!
 //! # Contract Freeze Notice
 //!

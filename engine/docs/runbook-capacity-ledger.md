@@ -15,10 +15,10 @@ database dependency. Storage is an adapter.
 
 **Guarantee ceiling (read this first):**
 
-- `InProcessLedger` provides **single-execution atomicity only** (one mutex per
-  process).
+- `InProcessLedger` provides **single-process atomicity**: every execution in
+  the process that shares the instance contends on one aggregate (one mutex).
 - Only `HttpLedger` against a real contested store provides **cross-session
-  atomicity**.
+  atomicity** — across processes or replicas.
 
 No deployment may claim cross-session guarantees while running the in-process
 adapter.
@@ -35,8 +35,8 @@ adapter.
 | `LedgerError` | domain | `Insufficient \| Contended \| Unavailable \| LeaseExpired` |
 | `CapacityLedger` | interfaces | The port (invariants I1–I6) |
 | `CapacityLedgerServiceImpl` | application | reserve / commit / release / exposure use cases |
-| `ReservationGuardImpl` | application | RAII: commit on success, release on drop |
-| `InProcessLedger` | infrastructure | Default adapter, single-execution atomicity |
+| `ReservationGuardImpl` | application | RAII: commit on success, **best-effort** release on drop |
+| `InProcessLedger` | infrastructure | Default adapter, single-process atomicity |
 | `HttpLedger` | infrastructure | Opt-in adapter, fail-closed transport |
 
 ## Startup Sequence
@@ -63,14 +63,19 @@ adapter.
 ## Graceful Shutdown
 
 There is no long-lived worker to drain. Capacity safety on shutdown comes from
-the RAII guard and the lease:
+explicit settlement, with the guard and lease as backstops:
 
-1. Dropping an uncommitted `ReservationGuard` dispatches a release onto the
-   runtime it was created in.
-2. If the process dies before the release runs, the reservation is reclaimed
-   when its lease lapses; no manual cleanup is required.
-3. On a controlled shutdown, commit or drop every outstanding guard before the
-   runtime is torn down so releases are dispatched, not left to expiry.
+1. Dropping an uncommitted `ReservationGuard` **attempts** a best-effort release
+   on the runtime it was created in. Drop cannot await: the task may not run and
+   a release may fail, so this is local cleanup, not a guarantee.
+2. If the process dies (or the release fails), the lease lapses. The hold does
+   **not** silently disappear: it becomes `Ambiguous` and retains exposure until
+   reconciled. A `tracing::warn!` records the failed drop-release.
+3. On a controlled shutdown, `commit` or `release` every outstanding hold
+   explicitly (the awaited paths) before tearing down the runtime.
+
+> RAII protects against forgotten cleanup paths; it is not a substitute for the
+> durable lease + reconciliation mechanism (#1054).
 
 ## Common Failure Modes and Recovery
 
