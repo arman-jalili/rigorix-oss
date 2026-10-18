@@ -73,8 +73,10 @@ status: implemented
 depends: none
 
 **Purpose:** A named, limited capacity. `ResourceId` is the identity; `ResourceSpec` carries
-`hard_limit` and the window over which exposure is aggregated. The engine attaches no domain
-meaning to a resource name — it is an operator-declared label.
+`hard_limit` and the window over which exposure is aggregated. A bounded window is a **rolling
+duration**: committed capacity older than W seconds stops counting (`window.duration_secs = 0`
+is the unbounded all-time cap). The engine attaches no domain meaning to a resource name — it
+is an operator-declared label.
 
 **Layer:** `domain/`
 

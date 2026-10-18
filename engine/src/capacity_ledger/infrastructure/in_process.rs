@@ -24,7 +24,7 @@
 //! - **I5** expiry uses the store clock (`Utc::now`), never the caller's
 //! - **I6** `committed + outstanding` never exceeds `hard_limit`
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -47,7 +47,9 @@ struct LedgerState {
     reservations: HashMap<ReservationId, Reservation>,
     /// `(resource, idempotency key) -> reservation` — the I2 index.
     by_key: HashMap<(ResourceId, IdempotencyKey), ReservationId>,
-    committed: HashMap<ResourceId, u64>,
+    /// Timestamped commit amounts, per resource, oldest first. Only commits
+    /// inside the resource's window count toward exposure (#1051).
+    committed: HashMap<ResourceId, VecDeque<(DateTime<Utc>, u64)>>,
     outstanding: HashMap<ResourceId, u64>,
 }
 
@@ -80,17 +82,40 @@ impl LedgerState {
         }
     }
 
-    fn snapshot(&self, resource: &ResourceId) -> Exposure {
-        let spec = self.specs.get(resource);
-        let hard_limit = spec.map(|s| s.hard_limit).unwrap_or(0);
-        let window = spec.map(|s| s.window).unwrap_or(Window::UNBOUNDED);
-        Exposure::new(
-            resource.clone(),
-            hard_limit,
-            self.committed.get(resource).copied().unwrap_or(0),
-            self.outstanding.get(resource).copied().unwrap_or(0),
-            window,
-        )
+    /// Sum committed amounts still inside `window`, pruning older entries.
+    ///
+    /// A rolling-duration window (#1051): capacity committed more than W seconds
+    /// ago no longer counts, so the cap is per trailing window rather than for
+    /// the resource's lifetime. An unbounded window never prunes.
+    fn committed_in_window(
+        &mut self,
+        resource: &ResourceId,
+        window: Window,
+        now: DateTime<Utc>,
+    ) -> u64 {
+        let Some(entries) = self.committed.get_mut(resource) else {
+            return 0;
+        };
+        if window.is_bounded() {
+            let delta =
+                chrono::Duration::from_std(std::time::Duration::from_secs(window.duration_secs))
+                    .unwrap_or(chrono::Duration::MAX);
+            let cutoff = now - delta;
+            while entries.front().is_some_and(|(at, _)| *at <= cutoff) {
+                entries.pop_front();
+            }
+        }
+        entries.iter().map(|(_, amount)| *amount).sum()
+    }
+
+    fn snapshot(&mut self, resource: &ResourceId) -> Exposure {
+        let now = Utc::now();
+        let spec = self.specs.get(resource).cloned();
+        let hard_limit = spec.as_ref().map(|s| s.hard_limit).unwrap_or(0);
+        let window = spec.as_ref().map(|s| s.window).unwrap_or(Window::UNBOUNDED);
+        let committed = self.committed_in_window(resource, window, now);
+        let outstanding = self.outstanding.get(resource).copied().unwrap_or(0);
+        Exposure::new(resource.clone(), hard_limit, committed, outstanding, window)
     }
 }
 
@@ -144,8 +169,11 @@ impl CapacityLedger for InProcessLedger {
         let mut state = self.locked()?;
         state.expire_lapsed(now);
 
-        let existing = state.snapshot(&spec.id);
-        let claimed = existing.committed.saturating_add(existing.outstanding);
+        // Validate against the *new* window, so re-declaring with a different
+        // period is judged on the period it will actually enforce.
+        let committed = state.committed_in_window(&spec.id, spec.window, now);
+        let outstanding = state.outstanding.get(&spec.id).copied().unwrap_or(0);
+        let claimed = committed.saturating_add(outstanding);
         if claimed > spec.hard_limit {
             return Err(LedgerError::Insufficient {
                 resource: spec.id.clone(),
@@ -213,7 +241,7 @@ impl CapacityLedger for InProcessLedger {
             };
         }
 
-        let committed = state.committed.get(resource).copied().unwrap_or(0);
+        let committed = state.committed_in_window(resource, spec.window, now);
         let outstanding = state.outstanding.get(resource).copied().unwrap_or(0);
         let available = spec
             .hard_limit
@@ -304,7 +332,11 @@ impl InProcessLedger {
             *outstanding = outstanding.saturating_sub(amount);
         }
         if to == ReservationState::Committed {
-            *state.committed.entry(resource).or_insert(0) += amount;
+            state
+                .committed
+                .entry(resource)
+                .or_default()
+                .push_back((now, amount));
         }
         tracing::debug!(reservation = %id, state = ?to, "capacity reservation resolved");
         state.reservations.insert(id, reservation.clone());
@@ -509,6 +541,64 @@ mod tests {
         let exposure = ledger.exposure(&resource).await.unwrap();
         assert_eq!(exposure.outstanding, 10);
         assert!(exposure.is_consistent());
+    }
+
+    #[tokio::test]
+    async fn committed_exposure_ages_out_of_a_bounded_window() {
+        let ledger = InProcessLedger::new();
+        let resource = ResourceId::new("gpu");
+        ledger
+            .declare_resource(ResourceSpec::new(
+                resource.clone(),
+                "GPU".to_string(),
+                100,
+                Window::bounded(1),
+            ))
+            .await
+            .unwrap();
+
+        let grant = ledger
+            .reserve(&resource, 100, IdempotencyKey::new("k1"))
+            .await
+            .unwrap();
+        ledger.commit(grant).await.unwrap();
+
+        let full = ledger.exposure(&resource).await.unwrap();
+        assert_eq!(full.committed, 100);
+        assert_eq!(full.available(), 0);
+        assert!(matches!(
+            ledger
+                .reserve(&resource, 1, IdempotencyKey::new("k2"))
+                .await
+                .unwrap_err(),
+            LedgerError::Insufficient { .. }
+        ));
+
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+
+        // The trailing window has rolled, so the committed capacity is available
+        // again — a per-hour cap is not a lifetime cap (#1051).
+        let aged = ledger.exposure(&resource).await.unwrap();
+        assert_eq!(aged.committed, 0);
+        assert_eq!(aged.available(), 100);
+        ledger
+            .reserve(&resource, 1, IdempotencyKey::new("k3"))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn unbounded_window_never_ages_out() {
+        let ledger = declared(10).await;
+        let resource = ResourceId::new("gpu");
+        let grant = ledger
+            .reserve(&resource, 5, IdempotencyKey::new("k1"))
+            .await
+            .unwrap();
+        ledger.commit(grant).await.unwrap();
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(ledger.exposure(&resource).await.unwrap().committed, 5);
     }
 
     #[tokio::test]
