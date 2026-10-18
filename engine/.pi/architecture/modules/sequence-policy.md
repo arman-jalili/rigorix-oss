@@ -156,8 +156,28 @@ recorded; parameter **values** stay redacted (SpanPrivacy).
 
 Fail-closed: malformed requirements refuse the plan (same posture as corrupt rules);
 an absent requirement set is the status quo. `SafetyCaps` bound the count and the
-required pointers. **Non-goal:** required-companion-step obligations ("only allowed if
-the plan also contains a step matching R") — a follow-up extension.
+required pointers.
+
+#### Companion steps: presence lint + execution prerequisite (#1069)
+
+`require_companion_step` is split into the two things it was conflated into:
+
+| Check | When | Question | Enforced by |
+|---|---|---|---|
+| **Presence** | plan time | does the plan contain a step matching R? | `evaluate_requirements` → `requirement_findings[]` |
+| **Execution prerequisite** | dispatch | has a step matching R **completed successfully** in this run? | `evaluate_companion_prerequisite` at the dispatch seam |
+
+Presence is a lint, not a precondition. A plan with the companion listed *after*
+the matched step, an independent companion that never becomes eligible, or a
+companion that fails, all satisfied the presence check. The dispatch check answers
+the question the name implies: `run_dispatch_loop` builds the completed set from
+`NodeStatus::Completed` nodes only, so a failed companion is excluded. An unmet
+prerequisite fails the node before dispatch (`companion_prerequisite_unmet`) and
+its tool is never called.
+
+`action = "deny"` obligations are enforced at dispatch. `action = "promote"` is a
+plan-time human decision: the matched step pauses for approval, and re-denying it
+at dispatch would make the approval unable to unblock it.
 
 ### R1 — Declarative Sequence Rules
 

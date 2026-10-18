@@ -458,6 +458,14 @@ enum SequencePolicyVerdict {
     /// The node completes a forbidden sequence under a `deny` rule — fail the
     /// node before dispatch (its tool is never called).
     Deny { rule_id: String, later_step: String },
+    /// A matched step's required companion has **not completed successfully**
+    /// in this run — the execution prerequisite is unmet (#1069). Distinct from
+    /// `Deny` (a sequence-ordering rule): the remedy here is to run the
+    /// companion, not to reorder the plan.
+    CompanionUnmet {
+        obligation_id: String,
+        required_companion: String,
+    },
 }
 
 // ---------------------------------------------------------------------------

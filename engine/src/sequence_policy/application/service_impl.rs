@@ -44,7 +44,7 @@ use crate::sequence_policy::domain::{
 use crate::sequence_policy::infrastructure::ExecutionHistory;
 use crate::sequence_policy::infrastructure::repository::SequencePolicyRepository;
 
-use super::companion::{CompanionStepObligation, CompanionStepObligationService};
+use super::companion::{CompanionFinding, CompanionStepObligation, CompanionStepObligationService};
 use super::companion_impl::CompanionStepObligationServiceImpl;
 use super::dto::{DispatchedStep, PlannedStep};
 use super::matcher::{Matcher, StepView};
@@ -365,6 +365,27 @@ impl SequencePolicyService for SequencePolicyServiceImpl {
             );
         }
         Ok(findings)
+    }
+
+    async fn evaluate_companion_prerequisite(
+        &self,
+        completed: &[PlannedStep],
+        next: &PlannedStep,
+    ) -> Result<Vec<CompanionFinding>, SequencePolicyError> {
+        let Some(config) = self.repository.load_config().await? else {
+            return Ok(Vec::new());
+        };
+        let obligations: Vec<CompanionStepObligation> = config
+            .requirements
+            .iter()
+            .filter_map(CompanionStepObligation::from_requirement)
+            .collect();
+        if obligations.is_empty() {
+            return Ok(Vec::new());
+        }
+        CompanionStepObligationServiceImpl::new(obligations)
+            .evaluate_prerequisite(completed, next)
+            .await
     }
 }
 

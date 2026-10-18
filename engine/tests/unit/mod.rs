@@ -189,6 +189,11 @@ mod sequence_policy {
         #[path = "step-requirement_test.rs"]
         mod step_requirement_test;
     }
+    #[path = "companion-prerequisite"]
+    mod companion_prerequisite {
+        #[path = "companion-prerequisite_test.rs"]
+        mod companion_prerequisite_test;
+    }
 }
 // The outer module mirrors the renamed `engine/tests/unit/precondition/` dir;
 // the inner `precondition` group is the module's own unit tests (same name by

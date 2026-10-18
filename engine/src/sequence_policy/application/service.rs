@@ -110,4 +110,31 @@ pub trait SequencePolicyService: Send + Sync {
         steps: &[PlannedStep],
         identity_attested: bool,
     ) -> Result<Vec<RequirementFinding>, SequencePolicyError>;
+
+    /// Evaluate the **execution prerequisite** form of a companion obligation
+    /// (#1069) for the step about to dispatch.
+    ///
+    /// `completed` is the set of steps that already reached
+    /// `NodeStatus::Completed` **successfully** in this run — the executor reads
+    /// it at the dispatch seam. Presence in the plan is not a prerequisite: a
+    /// companion listed after the matched step, or one that failed, satisfied
+    /// the plan-time check but must not satisfy this one.
+    ///
+    /// Only `deny`-action obligations are enforced here. A `promote`
+    /// obligation's human decision happens at plan time; re-denying a promoted
+    /// step at dispatch would make approval unable to unblock it.
+    ///
+    /// The default implementation returns no findings (no obligations).
+    ///
+    /// # Errors
+    /// - Fail closed: a corrupt predicate config halts the run before dispatch.
+    async fn evaluate_companion_prerequisite(
+        &self,
+        completed: &[PlannedStep],
+        next: &PlannedStep,
+    ) -> Result<Vec<crate::sequence_policy::application::CompanionFinding>, SequencePolicyError>
+    {
+        let _ = (completed, next);
+        Ok(Vec::new())
+    }
 }

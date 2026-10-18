@@ -29,8 +29,14 @@
 //! # Contract (Frozen)
 //! - `match` reuses the frozen
 //!   [`StepPredicate`](crate::sequence_policy::domain::StepPredicate) matcher
-//! - `require_companion_step` is itself a `StepPredicate`; unmet (no step in the
-//!   plan matches) → `action`
+//! - `require_companion_step` is itself a `StepPredicate`. It is enforced in two
+//!   places with two different meanings (#1069):
+//!   - **presence** (plan time, `evaluate_plan`): the plan contains a matching
+//!     step somewhere → unmet → `action`. This is a lint, not a prerequisite.
+//!   - **execution prerequisite** (dispatch, `evaluate_prerequisite`): a
+//!     matching step **completed successfully** in this run → dispatch, else the
+//!     node fails before its tool is called. Only `deny` obligations apply here;
+//!     `promote` was already decided by the human approval.
 //! - `action` defaults to `deny`; `promote` sets `requires_approval = true` on
 //!   the matched step and reuses the ADR-011 pause/resume chain
 //! - A [`CompanionFinding`] records ids and step names only — parameter VALUES
@@ -154,6 +160,24 @@ pub trait CompanionStepObligationService: Send + Sync {
     async fn evaluate_plan(
         &self,
         steps: &[PlannedStep],
+    ) -> Result<Vec<CompanionFinding>, SequencePolicyError>;
+
+    /// Evaluate the **execution prerequisite** form for `next` given the steps
+    /// that already completed successfully in this run (#1069).
+    ///
+    /// `evaluate_plan` answers *is a companion present somewhere in the plan?*,
+    /// which is a lint, not a prerequisite: a companion listed after the matched
+    /// step, or one that later failed, satisfies it. This answers *has the
+    /// companion already succeeded?* — the guarantee the word "companion"
+    /// implies, checked at the dispatch seam where the outcome is known.
+    ///
+    /// Only `deny`-action obligations are reported here: a `promote` obligation
+    /// already forces human approval at plan time, and re-denying the promoted
+    /// step after approval would make the approval unable to unblock it.
+    async fn evaluate_prerequisite(
+        &self,
+        completed: &[PlannedStep],
+        next: &PlannedStep,
     ) -> Result<Vec<CompanionFinding>, SequencePolicyError>;
 }
 
