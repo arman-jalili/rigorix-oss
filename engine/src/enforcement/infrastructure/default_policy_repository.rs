@@ -119,7 +119,7 @@ impl EnforcementPolicyRepository for DefaultPolicyRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::enforcement::domain::{ResourceBudget, ToolRiskLevel};
+    use crate::enforcement::domain::{BudgetScope, ResourceBudget, ToolRiskLevel};
     use std::collections::HashMap;
 
     fn create_test_config() -> EnforcementConfig {
@@ -131,6 +131,7 @@ mod tests {
                 soft_warning_threshold: 0.8,
                 hard_limit: 100_000,
                 current_usage: 0,
+                scope: BudgetScope::PerExecution,
             },
         );
 

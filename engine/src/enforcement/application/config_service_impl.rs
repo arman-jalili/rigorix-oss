@@ -153,7 +153,7 @@ impl ConfigBuilder {
 mod tests {
     use super::*;
     use crate::enforcement::domain::{
-        EnforcementPresetProfile, SafetyCaps, ToolPolicy, ToolRiskLevel,
+        BudgetScope, EnforcementPresetProfile, SafetyCaps, ToolPolicy, ToolRiskLevel,
     };
 
     // -----------------------------------------------------------------------
@@ -246,6 +246,7 @@ mod tests {
             soft_warning_threshold: 0.9,
             hard_limit: 200_000,
             current_usage: 0,
+            scope: BudgetScope::PerExecution,
         };
         config = config.with_budget(override_budget);
         assert_eq!(config.budgets.get("tokens").unwrap().hard_limit, 200_000);
@@ -463,6 +464,7 @@ mod tests {
                         soft_warning_threshold: 0.5,
                         hard_limit: 100,
                         current_usage: 0,
+                        scope: BudgetScope::PerExecution,
                     },
                 );
                 b

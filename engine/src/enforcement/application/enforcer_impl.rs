@@ -41,6 +41,11 @@ struct EnforcerState {
     /// The number of tool calls that have been made so far.
     tool_call_count: u64,
 
+    /// Per-tool call counts for this execution. A per-execution counter is the
+    /// authoritative mechanism for per-tool limits (they are not contested
+    /// across executions — see #1017).
+    tool_calls: HashMap<String, u64>,
+
     /// Total execution time tracked in milliseconds.
     total_execution_time_ms: u64,
 
@@ -73,6 +78,7 @@ impl ExecutionEnforcerImpl {
                 config,
                 warnings: HashMap::new(),
                 tool_call_count: 0,
+                tool_calls: HashMap::new(),
                 total_execution_time_ms: 0,
                 total_tokens: 0,
             }),
@@ -115,6 +121,7 @@ impl ExecutionEnforcerImpl {
             limit: budget.hard_limit,
             usage_ratio,
             warning_active,
+            authoritative: budget.scope.is_authoritative(),
         }
     }
 
@@ -123,7 +130,8 @@ impl ExecutionEnforcerImpl {
     fn build_resource_budget_status(name: &str, budget: &ResourceBudget) -> ResourceBudgetStatus {
         let usage_ratio = Self::usage_ratio(budget.current_usage, budget.hard_limit);
         let warning_active = usage_ratio >= budget.soft_warning_threshold;
-        let limit_reached = budget.current_usage >= budget.hard_limit;
+        let limit_reached =
+            budget.scope.is_authoritative() && budget.current_usage >= budget.hard_limit;
         ResourceBudgetStatus {
             resource: name.to_string(),
             used: budget.current_usage,
@@ -131,6 +139,7 @@ impl ExecutionEnforcerImpl {
             usage_ratio,
             warning_threshold: budget.soft_warning_threshold,
             warning_active,
+            authoritative: budget.scope.is_authoritative(),
             limit_reached,
         }
     }
@@ -168,9 +177,23 @@ impl ExecutionEnforcer for ExecutionEnforcerImpl {
             });
         }
 
-        // 3. Check if the tool has exceeded its max calls (future: per-tool tracking)
-        if let Some(_max_calls) = policy.max_calls {
-            // Per-tool call count tracking is reserved for a future implementation.
+        // 3. Check the per-tool call limit against this execution's counter.
+        if let Some(max_calls) = policy.max_calls {
+            let used = state.tool_calls.get(&input.tool).copied().unwrap_or(0);
+            if used >= max_calls {
+                return Ok(EvaluateToolCallOutput {
+                    allowed: false,
+                    reason: Some(format!(
+                        "Tool '{}' call limit reached ({}/{}); per-execution counts are authoritative for this limit",
+                        input.tool, used, max_calls
+                    )),
+                    risk_level: policy.risk_level,
+                    requires_confirmation: policy.requires_confirmation,
+                    dry_run: policy.dry_run,
+                    budget_status: None,
+                    active_warnings: state.warnings.keys().cloned().collect(),
+                });
+            }
         }
 
         // 4. Check budget for the tool's associated resource
@@ -186,6 +209,7 @@ impl ExecutionEnforcer for ExecutionEnforcerImpl {
 
         // 5. Check if budget is exceeded
         if let Some(ref snapshot) = budget_status
+            && snapshot.authoritative
             && snapshot.used >= snapshot.limit
         {
             return Ok(EvaluateToolCallOutput {
@@ -295,7 +319,9 @@ impl ExecutionEnforcer for ExecutionEnforcerImpl {
             let warning_threshold_crossed = previous_usage < (limit as f64 * threshold) as u64
                 && current_usage >= (limit as f64 * threshold) as u64;
 
-            let limit_exceeded = current_usage >= limit;
+            // A shared/contested limit is enforced by the capacity ledger; the
+            // local counter must not double-enforce it.
+            let limit_exceeded = budget.scope.is_authoritative() && current_usage >= limit;
 
             (
                 previous_usage,
@@ -332,7 +358,11 @@ impl ExecutionEnforcer for ExecutionEnforcerImpl {
         // Update aggregate counters based on resource type
         match input.resource.as_str() {
             "tool_calls" => {
-                state.tool_call_count = state.tool_call_count.saturating_add(input.amount)
+                state.tool_call_count = state.tool_call_count.saturating_add(input.amount);
+                if let Some(tool) = &input.tool {
+                    let count = state.tool_calls.entry(tool.clone()).or_insert(0);
+                    *count = count.saturating_add(input.amount);
+                }
             }
             "execution_time_ms" => {
                 state.total_execution_time_ms =
@@ -503,7 +533,7 @@ mod tests {
         CheckExecutionLimitsInput, EvaluateToolCallInput, GetBudgetStatusInput,
         TrackResourceUsageInput,
     };
-    use crate::enforcement::domain::{ResourceBudget, ToolRiskLevel};
+    use crate::enforcement::domain::{BudgetScope, ResourceBudget, ToolRiskLevel};
 
     #[tracing::instrument(skip_all)]
     fn create_test_enforcer() -> ExecutionEnforcerImpl {
@@ -585,6 +615,7 @@ mod tests {
             resource: "tool_calls".to_string(),
             amount: 200, // exact limit
             context: None,
+            tool: None,
         };
         enforcer.track_resource_usage(track_input).await.unwrap();
 
@@ -612,6 +643,7 @@ mod tests {
                 resource: "tool_calls".to_string(),
                 amount: 1,
                 context: None,
+                tool: None,
             };
             enforcer.track_resource_usage(track_input).await.unwrap();
         }
@@ -638,6 +670,7 @@ mod tests {
                 resource: "execution_time_ms".to_string(),
                 amount: 3600 * 1000 + 1, // exceed the default 3600s limit
                 context: None,
+                tool: None,
             })
             .await
             .unwrap();
@@ -673,6 +706,7 @@ mod tests {
                 resource: "tokens".to_string(),
                 amount: 100_001, // exceed the default 100_000 limit
                 context: None,
+                tool: None,
             })
             .await
             .unwrap();
@@ -724,6 +758,7 @@ mod tests {
             resource: "tokens".to_string(),
             amount: 85_000, // 85% of 100_000, exceeds 80% warning threshold
             context: None,
+            tool: None,
         };
         enforcer.track_resource_usage(track_input).await.unwrap();
 
@@ -753,6 +788,7 @@ mod tests {
             resource: "tokens".to_string(),
             amount: 500,
             context: None,
+            tool: None,
         };
         let output = enforcer.track_resource_usage(input).await.unwrap();
         assert_eq!(output.previous_usage, 0);
@@ -770,6 +806,7 @@ mod tests {
             resource: "tokens".to_string(),
             amount: 60_000, // exceeds the strict limit of 50_000
             context: None,
+            tool: None,
         };
         let output = enforcer.track_resource_usage(input).await.unwrap();
         assert!(output.limit_exceeded);
@@ -785,6 +822,7 @@ mod tests {
             resource: "tokens".to_string(),
             amount: 80_000,
             context: None,
+            tool: None,
         };
         let output = enforcer.track_resource_usage(input).await.unwrap();
         assert!(output.warning_threshold_crossed);
@@ -800,6 +838,7 @@ mod tests {
             resource: "nonexistent".to_string(),
             amount: 100,
             context: None,
+            tool: None,
         };
         let result = enforcer.track_resource_usage(input).await;
         assert!(result.is_err());
@@ -821,6 +860,7 @@ mod tests {
                 resource: "tool_calls".to_string(),
                 amount: 10,
                 context: None,
+                tool: None,
             })
             .await
             .unwrap();
@@ -831,6 +871,7 @@ mod tests {
                 resource: "tokens".to_string(),
                 amount: 5000,
                 context: None,
+                tool: None,
             })
             .await
             .unwrap();
@@ -904,6 +945,7 @@ mod tests {
                 resource: "tokens".to_string(),
                 amount: 50_000,
                 context: None,
+                tool: None,
             })
             .await
             .unwrap();
@@ -952,6 +994,7 @@ mod tests {
                     resource: "tool_calls".to_string(),
                     amount: 1,
                     context: None,
+                    tool: None,
                 })
                 .await
                 .unwrap();
@@ -964,6 +1007,7 @@ mod tests {
                 resource: "tool_calls".to_string(),
                 amount: 1,
                 context: None,
+                tool: None,
             })
             .await
             .unwrap();
@@ -995,6 +1039,7 @@ mod tests {
                 resource: "tokens".to_string(),
                 amount: 50_000,
                 context: None,
+                tool: None,
             })
             .await
             .unwrap();
@@ -1030,6 +1075,7 @@ mod tests {
                 resource: "tokens".to_string(),
                 amount: 50_000,
                 context: None,
+                tool: None,
             })
             .await
             .unwrap();
@@ -1072,6 +1118,7 @@ mod tests {
                 resource: "tokens".to_string(),
                 amount: 80_000,
                 context: None,
+                tool: None,
             })
             .await
             .unwrap();
@@ -1094,6 +1141,7 @@ mod tests {
                 resource: "tokens".to_string(),
                 amount: 80_000,
                 context: None,
+                tool: None,
             })
             .await
             .unwrap();
@@ -1105,6 +1153,7 @@ mod tests {
                 resource: "tool_calls".to_string(),
                 amount: 400,
                 context: None,
+                tool: None,
             })
             .await
             .unwrap();
@@ -1236,6 +1285,7 @@ mod tests {
                 soft_warning_threshold: 0.9,
                 hard_limit: 50,
                 current_usage: 0,
+                scope: BudgetScope::PerExecution,
             },
         );
 
@@ -1322,6 +1372,7 @@ mod tests {
                         resource: "tool_calls".to_string(),
                         amount: 1,
                         context: None,
+                        tool: None,
                     })
                     .await
                     .unwrap();
@@ -1352,6 +1403,7 @@ mod tests {
                 resource: "tokens".to_string(),
                 amount: 0,
                 context: None,
+                tool: None,
             })
             .await
             .unwrap();
@@ -1372,6 +1424,7 @@ mod tests {
                 resource: "tokens".to_string(),
                 amount: 80_000,
                 context: None,
+                tool: None,
             })
             .await
             .unwrap();
@@ -1381,5 +1434,152 @@ mod tests {
         // Reload should clear warnings
         enforcer.reload_config().await.unwrap();
         assert!(!enforcer.has_active_warnings());
+    }
+
+    #[tokio::test]
+    async fn test_shared_contested_budget_is_advisory() {
+        let mut config = EnforcementConfig::standard();
+        config.budgets.insert(
+            "shared".to_string(),
+            ResourceBudget {
+                resource: "shared".to_string(),
+                soft_warning_threshold: 0.5,
+                hard_limit: 1,
+                current_usage: 5,
+                scope: BudgetScope::SharedContested,
+            },
+        );
+        config.tool_policies.insert(
+            "shared-tool".to_string(),
+            crate::enforcement::domain::ToolPolicy {
+                allowed: true,
+                risk_level: ToolRiskLevel::Low,
+                requires_confirmation: false,
+                dry_run: false,
+                max_calls: None,
+                budget_key: Some("shared".to_string()),
+            },
+        );
+        let enforcer = ExecutionEnforcerImpl::new("test-shared", config);
+
+        let status = enforcer
+            .get_budget_status(GetBudgetStatusInput {
+                execution_id: "test-shared".to_string(),
+                resources: Some(vec!["shared".to_string()]),
+            })
+            .await
+            .unwrap();
+        let budget = status
+            .budgets
+            .iter()
+            .find(|b| b.resource == "shared")
+            .unwrap();
+        assert!(!budget.authoritative);
+        assert!(!budget.limit_reached);
+
+        let output = enforcer
+            .evaluate_tool_call(EvaluateToolCallInput {
+                execution_id: "test-shared".to_string(),
+                node_id: "n1".to_string(),
+                tool: "shared-tool".to_string(),
+                arguments: None,
+                is_retry: false,
+                attempt: 1,
+            })
+            .await
+            .unwrap();
+        assert!(
+            output.allowed,
+            "a shared/contested budget must not block locally: {:?}",
+            output.reason
+        );
+    }
+
+    #[tokio::test]
+    async fn test_per_tool_call_limit_blocks_only_that_tool() {
+        let mut config = EnforcementConfig::standard();
+        config.tool_policies.get_mut("bash").unwrap().max_calls = Some(1);
+        let enforcer = ExecutionEnforcerImpl::new("test-tools", config);
+
+        enforcer
+            .track_resource_usage(TrackResourceUsageInput {
+                execution_id: "test-tools".to_string(),
+                resource: "tool_calls".to_string(),
+                amount: 1,
+                tool: Some("bash".to_string()),
+                context: None,
+            })
+            .await
+            .unwrap();
+
+        let blocked = enforcer
+            .evaluate_tool_call(EvaluateToolCallInput {
+                execution_id: "test-tools".to_string(),
+                node_id: "n1".to_string(),
+                tool: "bash".to_string(),
+                arguments: None,
+                is_retry: false,
+                attempt: 1,
+            })
+            .await
+            .unwrap();
+        assert!(!blocked.allowed);
+        assert!(blocked.reason.unwrap().contains("call limit reached"));
+
+        // A different tool is unaffected by bash's exhausted count.
+        let allowed = enforcer
+            .evaluate_tool_call(EvaluateToolCallInput {
+                execution_id: "test-tools".to_string(),
+                node_id: "n2".to_string(),
+                tool: "read".to_string(),
+                arguments: None,
+                is_retry: false,
+                attempt: 1,
+            })
+            .await
+            .unwrap();
+        assert!(allowed.allowed);
+    }
+
+    #[tokio::test]
+    async fn test_per_tool_call_counting_is_concurrency_safe() {
+        use std::sync::Arc;
+
+        let mut config = EnforcementConfig::standard();
+        config.tool_policies.get_mut("bash").unwrap().max_calls = Some(10);
+        let enforcer = Arc::new(ExecutionEnforcerImpl::new("test-conc", config));
+
+        let mut handles = Vec::new();
+        for _ in 0..10 {
+            let enforcer = Arc::clone(&enforcer);
+            handles.push(tokio::spawn(async move {
+                enforcer
+                    .track_resource_usage(TrackResourceUsageInput {
+                        execution_id: "test-conc".to_string(),
+                        resource: "tool_calls".to_string(),
+                        amount: 1,
+                        tool: Some("bash".to_string()),
+                        context: None,
+                    })
+                    .await
+                    .unwrap();
+            }));
+        }
+        for handle in handles {
+            handle.await.unwrap();
+        }
+
+        let output = enforcer
+            .evaluate_tool_call(EvaluateToolCallInput {
+                execution_id: "test-conc".to_string(),
+                node_id: "n1".to_string(),
+                tool: "bash".to_string(),
+                arguments: None,
+                is_retry: false,
+                attempt: 1,
+            })
+            .await
+            .unwrap();
+        assert!(!output.allowed, "exactly 10/10 calls must block the 11th");
     }
 }

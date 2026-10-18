@@ -70,6 +70,7 @@ impl EnforcementConfig {
                 soft_warning_threshold: 0.8,
                 hard_limit: 100_000,
                 current_usage: 0,
+                scope: BudgetScope::PerExecution,
             },
         );
         budgets.insert(
@@ -79,6 +80,7 @@ impl EnforcementConfig {
                 soft_warning_threshold: 0.8,
                 hard_limit: 500,
                 current_usage: 0,
+                scope: BudgetScope::PerExecution,
             },
         );
         budgets.insert(
@@ -88,6 +90,7 @@ impl EnforcementConfig {
                 soft_warning_threshold: 0.85,
                 hard_limit: 900_000, // 15 minutes
                 current_usage: 0,
+                scope: BudgetScope::PerExecution,
             },
         );
 
@@ -149,6 +152,7 @@ impl EnforcementConfig {
                 soft_warning_threshold: 0.7,
                 hard_limit: 50_000,
                 current_usage: 0,
+                scope: BudgetScope::PerExecution,
             },
         );
         budgets.insert(
@@ -158,6 +162,7 @@ impl EnforcementConfig {
                 soft_warning_threshold: 0.7,
                 hard_limit: 200,
                 current_usage: 0,
+                scope: BudgetScope::PerExecution,
             },
         );
         budgets.insert(
@@ -167,6 +172,7 @@ impl EnforcementConfig {
                 soft_warning_threshold: 0.75,
                 hard_limit: 600_000, // 10 minutes
                 current_usage: 0,
+                scope: BudgetScope::PerExecution,
             },
         );
 
@@ -241,6 +247,7 @@ impl EnforcementConfig {
                 soft_warning_threshold: 0.5,
                 hard_limit: 20_000,
                 current_usage: 0,
+                scope: BudgetScope::PerExecution,
             },
         );
         budgets.insert(
@@ -250,6 +257,7 @@ impl EnforcementConfig {
                 soft_warning_threshold: 0.5,
                 hard_limit: 50,
                 current_usage: 0,
+                scope: BudgetScope::PerExecution,
             },
         );
         budgets.insert(
@@ -259,6 +267,7 @@ impl EnforcementConfig {
                 soft_warning_threshold: 0.6,
                 hard_limit: 600_000, // 10 minutes
                 current_usage: 0,
+                scope: BudgetScope::PerExecution,
             },
         );
 
@@ -503,12 +512,46 @@ pub struct ConfigValidationError {
     pub value: Option<String>,
 }
 
-/// A resource budget with soft warning threshold and hard limit.
+/// Where a [`ResourceBudget`]'s hard limit is authoritative.
+///
+/// There are two mechanisms for a limited resource:
+/// - [`BudgetScope::PerExecution`] — this counter is authoritative. The limit is
+///   local to one execution, so no other execution can contend for it.
+/// - [`BudgetScope::SharedContested`] — the capacity ledger
+///   (`crate::capacity_ledger`) is authoritative. This counter is advisory and
+///   never blocks; a local count cannot see other executions and would be
+///   wrong for a contested limit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum BudgetScope {
+    /// The limit is local to this execution; this counter blocks the call.
+    #[default]
+    PerExecution,
+    /// The limit is shared across executions; the capacity ledger enforces it
+    /// and this counter is advisory only (never blocks).
+    SharedContested,
+}
+
+impl BudgetScope {
+    /// Whether this counter is allowed to block on its hard limit.
+    pub fn is_authoritative(self) -> bool {
+        matches!(self, Self::PerExecution)
+    }
+}
+
+/// A per-execution resource budget with soft warning threshold and hard limit.
+///
+/// This is a **counter, not a reservation**. It is authoritative only for
+/// per-execution, non-contested limits (tokens, tool calls, elapsed time). A
+/// limit shared across independent executions is contested, and a local counter
+/// cannot see the other executions — declare that resource in
+/// `.rigorix/capacity.toml` so the capacity ledger enforces it, and set
+/// [`BudgetScope::SharedContested`] here so this counter stays advisory.
 ///
 /// - `soft_warning_threshold`: Percentage (0.0–1.0) at which a
 ///   `BudgetWarning` event is emitted. Example: 0.8 = warn at 80% usage.
-/// - `hard_limit`: Absolute maximum. When reached, the executing tool call
-///   is blocked and an enforcement action is taken.
+/// - `hard_limit`: Absolute maximum. When reached (and `scope` is authoritative),
+///   the executing tool call is blocked and an enforcement action is taken.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ResourceBudget {
     /// The name of the resource being tracked (e.g., "tokens", "tool_calls").
@@ -524,6 +567,12 @@ pub struct ResourceBudget {
     /// Current usage of this resource (runtime state, updated by the enforcer).
     #[serde(default)]
     pub current_usage: u64,
+
+    /// Where this budget's hard limit is authoritative. Defaults to
+    /// [`BudgetScope::PerExecution`]; use [`BudgetScope::SharedContested`] for
+    /// a limit the capacity ledger enforces.
+    #[serde(default)]
+    pub scope: BudgetScope,
 }
 
 /// Limits that constrain overall execution behavior.
@@ -575,7 +624,10 @@ pub struct ToolPolicy {
     /// If true, this tool is executed in dry-run mode (no side effects).
     pub dry_run: bool,
 
-    /// Optional maximum number of times this tool can be called.
+    /// Optional maximum number of times this tool can be called **in this
+    /// execution**. Enforced against the enforcer's per-execution counter; a
+    /// per-tool limit is not contested across executions, so it is not a
+    /// capacity-ledger resource (see [`BudgetScope`]).
     pub max_calls: Option<u64>,
 
     /// Optional budget name that this tool consumes from.

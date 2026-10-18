@@ -62,6 +62,19 @@ impl EnforcementConfig {
 - `max_time_seconds` ≤ 7,200 (2 hours)
 - `max_parallel_tasks` ≤ 64
 
+### Resource budgets are per-execution counters
+
+`ResourceBudget` is a counter, not a reservation. It is authoritative only for
+per-execution, non-contested limits (`BudgetScope::PerExecution`, the default).
+A limit shared across independent executions is contested: declare the resource
+in `.rigorix/capacity.toml` so the capacity ledger enforces it, and set
+`BudgetScope::SharedContested` so the local counter is advisory and never
+blocks. Exactly one mechanism is authoritative for any resource.
+
+`ToolPolicy::max_calls` is a per-execution counter enforced from that
+execution's per-tool call map; it is not a contested resource and is not
+ledger-governed.
+
 ### ExecutionEnforcer
 
 **Purpose:** Atomic runtime enforcer that gates every action against limits

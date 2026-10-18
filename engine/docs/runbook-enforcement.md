@@ -188,6 +188,23 @@ If the process terminates without cleanup:
 2. If it occurs, recreate the enforcer with `ExecutionEnforcerFactoryImpl`
 3. Report the bug with a stack trace
 
+## Resource budgets vs. the capacity ledger
+
+There are two mechanisms for a limited resource, and exactly one is
+authoritative for a given limit:
+
+| Limit shape | Authoritative mechanism | How to configure |
+|-------------|-------------------------|------------------|
+| Per-execution, non-contested (tokens, tool calls, elapsed time) | `ResourceBudget` counter with `scope = per_execution` (default) | `EnforcementConfig.budgets` |
+| Shared across independent executions (contested) | Capacity ledger | Declare the resource in `.rigorix/capacity.toml`; set the matching `ResourceBudget.scope = shared_contested` so the local counter is advisory and never blocks |
+
+A per-tool `max_calls` limit is a per-execution counter: it is enforced from
+that execution's tool-call map, not from the ledger.
+
+> A local counter cannot see other executions. Using one for a contested limit
+> is not merely redundant — it is wrong. The ledger reserves atomically; the
+> counter only observes its own run.
+
 ## Configuration Reference
 
 ### EnforcementConfig Fields
@@ -206,8 +223,9 @@ If the process terminates without cleanup:
 |-------|------|-------------|
 | `resource` | `String` | Resource name (e.g., "tokens", "tool_calls") |
 | `soft_warning_threshold` | `f64` | Fraction (0.0–1.0) at which warning is emitted |
-| `hard_limit` | `u64` | Absolute maximum; tool blocked when exceeded |
+| `hard_limit` | `u64` | Absolute maximum; tool blocked when exceeded and `scope` is authoritative |
 | `current_usage` | `u64` | Current runtime usage (mutated by enforcer) |
+| `scope` | `BudgetScope` | `per_execution` (default, authoritative) or `shared_contested` (advisory; the capacity ledger enforces) |
 
 ### ToolPolicy Fields
 
@@ -217,7 +235,7 @@ If the process terminates without cleanup:
 | `risk_level` | `ToolRiskLevel` | Low, Medium, High, or Critical |
 | `requires_confirmation` | `bool` | User must confirm before execution |
 | `dry_run` | `bool` | Execute without side effects |
-| `max_calls` | `Option<u64>` | Maximum calls allowed (None = unlimited) |
+| `max_calls` | `Option<u64>` | Maximum calls **per tool in this execution** (None = unlimited); per-execution counter, not a ledger resource |
 | `budget_key` | `Option<String>` | References a budget for tracking |
 
 ## Performance Characteristics
