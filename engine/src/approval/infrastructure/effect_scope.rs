@@ -10,13 +10,34 @@
 //! alone would miss side-effects from `run_command` scripts.
 //!
 //! # Contract
-//! - `snapshot` captures the current changed-path set (tracked-modified +
-//!   untracked), `diff` returns the paths changed between two snapshots —
-//!   wire as: snapshot pre-dispatch (post-approval) and post-execution, then
-//!   `diff(pre, post)` is the effect set of the run.
+//! - `snapshot` captures the current changed-path set (tracked changes in the
+//!   working tree **and** the index, plus untracked files), `diff` returns the
+//!   paths changed between two snapshots — wire as: snapshot once pre-dispatch
+//!   (post-approval) and compare after each consequential step, then
+//!   `diff(baseline, post)` is the effect set of the run so far.
 //! - When git is unavailable / not a repository the oracle returns
 //!   `ApprovalError::ScopeVerificationUnavailable` (retriable) — callers skip
 //!   with an explicit marker, never silently.
+//!
+//! # What this oracle is not (and what its baseline means)
+//!
+//! **Not wired by default.** Every shipped entry point leaves
+//! `ParallelExecutionFactoryConfig::approval_repo_path` at `None` (CLI, GitHub
+//! Action, MCP host), so no effect-scope coverage is produced in the OSS default.
+//! Configuring the path is an operator decision, not something the engine does
+//! for you (#1072).
+//!
+//! **Per-loop baseline, not per-step attribution.** The baseline is taken once
+//! at the start of `run_dispatch_loop`. Effects are therefore attributable to the
+//! run, and only soundly to a specific step when steps execute one at a time. With
+//! concurrent approved steps the check reports the union, and the violating step
+//! is whichever completes first. A pre-existing dirty tree appears in every
+//! comparison because the baseline is dirty too — it is *excluded* by the diff,
+//! but a file the author keeps editing during a run is reported as the run's effect.
+//!
+//! **Paths, not content.** A modification inside an already-changed file is
+//! indistinguishable from the change that was already there. Content-level
+//! attribution needs per-step commits, which this oracle deliberately does not do.
 
 use std::path::Path;
 use std::process::Command;
@@ -26,7 +47,9 @@ use crate::approval::domain::ApprovalError;
 /// A point-in-time set of changed paths in the repository.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ChangeSnapshot {
-    /// Paths with tracked modifications (`git diff --name-only`).
+    /// Paths with tracked changes — staged (`git diff --cached`) **and**
+    /// unstaged (`git diff`). A step that stages its edit and commits later is
+    /// visible; checking only the working tree made it invisible (#1072).
     pub modified: Vec<String>,
     /// Untracked paths (`git ls-files --others --exclude-standard`).
     pub untracked: Vec<String>,
@@ -54,7 +77,13 @@ impl GitDiffEffectOracle {
     /// - `ApprovalError::ScopeVerificationUnavailable` — git missing, the
     ///   path is not a repository, or a git call failed.
     pub fn snapshot(&self, repo: &Path) -> Result<ChangeSnapshot, ApprovalError> {
-        let modified = run_git(repo, &["diff", "--name-only"])?;
+        // Both halves of the tracked change set: the working tree and the index.
+        // `git diff` alone reports only unstaged modifications, so a step that
+        // stages its edit slipped past the oracle (#1072).
+        let mut modified = run_git(repo, &["diff", "--name-only"])?;
+        modified.extend(run_git(repo, &["diff", "--cached", "--name-only"])?);
+        modified.sort();
+        modified.dedup();
         let untracked = run_git(repo, &["ls-files", "--others", "--exclude-standard"])?;
         Ok(ChangeSnapshot {
             modified,
@@ -185,6 +214,36 @@ mod tests {
         )
         .expect("side-effect outside declared scope");
         assert_eq!(violation.out_of_scope, vec!["src/auth.ts".to_string()]);
+    }
+
+    /// #1072: a step that stages its edit (`git add`) and commits later was
+    /// invisible, because `git diff --name-only` reports only unstaged changes.
+    #[test]
+    fn staged_changes_are_part_of_the_snapshot() {
+        let repo = temp_repo();
+        std::fs::write(repo.path().join("tracked.txt"), "original").unwrap();
+        commit_all(repo.path());
+        let oracle = GitDiffEffectOracle;
+
+        let pre = oracle.snapshot(repo.path()).unwrap();
+        assert!(pre.all().is_empty(), "clean tree");
+
+        // Modify and stage, but do not commit: the working tree is now clean
+        // relative to HEAD, so `git diff` alone sees nothing.
+        std::fs::write(repo.path().join("tracked.txt"), "staged tamper").unwrap();
+        let status = Command::new("git")
+            .args(["-C", repo.path().to_str().unwrap(), "add", "tracked.txt"])
+            .status()
+            .expect("git add");
+        assert!(status.success());
+
+        let post = oracle.snapshot(repo.path()).unwrap();
+        assert_eq!(post.modified, vec!["tracked.txt".to_string()]);
+        assert_eq!(
+            oracle.diff(&pre, &post),
+            vec!["tracked.txt".to_string()],
+            "a staged effect must not be invisible"
+        );
     }
 
     #[test]

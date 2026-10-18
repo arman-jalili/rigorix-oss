@@ -50,6 +50,13 @@ New `ApprovalRecorded` audit event; envelope gains `approval_events[]`. The appr
 
 Declared scope (R1) is compared against actual effects using **git diff** (snapshot at dispatch, diff after execution) — not just engine-visible `file_paths`, which miss `run_command` script side-effects. Out-of-scope effects → `scope_violation` flag in the envelope: **non-blocking, first-class evidence** (R2 is the blocking check).
 
+**Implementation status (2026-02, #1072): partial — not active in the OSS default.** The oracle exists and its snapshot now covers staged (`git diff --cached`) as well as unstaged tracked changes and untracked files, but every shipped entry point leaves `approval_repo_path` at `None` (CLI, GitHub Action, MCP host), so no effect-scope evidence is produced unless an operator configures the path. Two further limits are inherent to the current design and are not fixed by wiring it:
+
+- **Per-loop baseline.** One snapshot is taken at the start of the dispatch loop and compared after each consequential step, so effects are attributable to the *run*. With concurrent steps the union is reported and the violating step is whichever completes first; a tree the author is actively editing is reported as the agent's effect.
+- **Paths, not content.** A further edit inside an already-changed file is indistinguishable from the original change.
+
+Therefore this decision's coverage claim is: *if enabled, a changed path outside the declared scope is recorded as evidence*. It is not "effect-scope verification is active by default", and it is not per-step attribution.
+
 ### 6. Decision context — "the recorded why"
 
 `DecisionContext` captures the rendered step, upstream evidence, and state snapshot at approval time. Summarized into the envelope (`decision_context_ref` + summary); full payload opt-in following the `planning_prompt` privacy pattern. The chain the envelope proves: **shown = dispatched = executed (dispatch level)**.

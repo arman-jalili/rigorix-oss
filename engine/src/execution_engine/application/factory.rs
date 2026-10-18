@@ -189,6 +189,46 @@ pub struct FailureStrategyOverride {
     pub preferred_strategy: crate::execution_engine::domain::RetryStrategy,
 }
 
+/// Why an explicitly requested approval binding could not be armed.
+///
+/// A requested guarantee must not silently disappear (#1070): `=1` without a
+/// key is "requested and unsatisfiable" and must fail at composition time, not
+/// log a warning and serve unbound. Unset stays quiet (`Ok(None)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ApprovalBindingError {
+    /// `RIGORIX_APPROVAL_BINDING` requested binding but `RIGORIX_HMAC_KEY` is
+    /// unset or empty.
+    MissingKey {
+        /// The environment variable that is missing.
+        var: &'static str,
+        /// What silently happened before this became an error.
+        consequence: &'static str,
+    },
+    /// The approval store could not be opened at the configured path.
+    StoreUnavailable {
+        /// Underlying I/O detail.
+        detail: String,
+    },
+}
+
+impl std::fmt::Display for ApprovalBindingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingKey { var, consequence } => {
+                write!(
+                    f,
+                    "approval binding requested but {var} is unset: {consequence}"
+                )
+            }
+            Self::StoreUnavailable { detail } => {
+                write!(f, "approval store unavailable: {detail}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ApprovalBindingError {}
+
 impl ApprovalBindingSetup {
     /// Build an approval binding setup from environment configuration.
     ///
@@ -198,29 +238,53 @@ impl ApprovalBindingSetup {
     /// persisted to `<repo_root>/.rigorix/approvals.json` (atomic writes,
     /// cross-process resume).
     ///
-    /// Returns `None` when disabled — the executor keeps the legacy
-    /// `session.approved` gate (zero behavior change).
-    pub fn from_env(repo_root: &std::path::Path) -> Option<Self> {
+    /// # Errors
+    ///
+    /// - `Ok(None)` — binding was not requested.
+    /// - `Err(MissingKey)` — requested via `RIGORIX_APPROVAL_BINDING=1` but
+    ///   `RIGORIX_HMAC_KEY` is unset. This used to warn and return `None`, so a
+    ///   deployment could believe it was binding approvals for months while
+    ///   approving unbound (#1070).
+    /// - `Err(StoreUnavailable)` — the approval store could not be opened. This
+    ///   used to panic in the composition root.
+    pub fn from_env(repo_root: &std::path::Path) -> Result<Option<Self>, ApprovalBindingError> {
         let enabled = std::env::var("RIGORIX_APPROVAL_BINDING").ok();
-        let on = matches!(
+        let run_key = std::env::var("RIGORIX_HMAC_KEY").ok();
+        let ttl = std::env::var("RIGORIX_APPROVAL_TTL_SECONDS").ok();
+        Self::from_env_values(
             enabled.as_deref(),
+            run_key.as_deref(),
+            ttl.as_deref(),
+            repo_root,
+        )
+    }
+
+    /// The environment read is separated from the decision so the decision is
+    /// testable without mutating process-global state.
+    pub(crate) fn from_env_values(
+        enabled: Option<&str>,
+        run_key: Option<&str>,
+        ttl_seconds: Option<&str>,
+        repo_root: &std::path::Path,
+    ) -> Result<Option<Self>, ApprovalBindingError> {
+        let on = matches!(
+            enabled,
             Some("1") | Some("true") | Some("TRUE") | Some("yes")
         );
         if !on {
-            return None;
+            return Ok(None);
         }
-        let run_key = std::env::var("RIGORIX_HMAC_KEY")
-            .ok()
+        let Some(run_key) = run_key
             .filter(|k| !k.is_empty())
-            .map(|k| k.into_bytes());
-        let Some(run_key) = run_key else {
-            tracing::warn!(
-                "RIGORIX_APPROVAL_BINDING=1 but RIGORIX_HMAC_KEY is unset — approval binding disabled"
-            );
-            return None;
+            .map(|k| k.as_bytes().to_vec())
+        else {
+            return Err(ApprovalBindingError::MissingKey {
+                var: "RIGORIX_HMAC_KEY",
+                consequence: "approvals would be accepted unbound; set the key or unset \
+                              RIGORIX_APPROVAL_BINDING",
+            });
         };
-        let ttl_seconds = std::env::var("RIGORIX_APPROVAL_TTL_SECONDS")
-            .ok()
+        let ttl_seconds = ttl_seconds
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(3600);
         let store_dir = repo_root.join(".rigorix");
@@ -229,18 +293,92 @@ impl ApprovalBindingSetup {
             crate::approval::infrastructure::repository::FileBackedApprovalRepository::open(
                 store_dir.join("approvals.json"),
             )
-            .expect("approval store must open"),
+            .map_err(|e| ApprovalBindingError::StoreUnavailable {
+                detail: format!("{}: {e}", store_dir.join("approvals.json").display()),
+            })?,
         );
         tracing::info!(
             ttl_seconds,
             "approval binding ENABLED (ADR-011) — records at {}",
             store_dir.join("approvals.json").display()
         );
-        Some(Self {
+        Ok(Some(Self {
             repository,
             run_key,
             ttl_seconds,
-        })
+        }))
+    }
+}
+
+#[cfg(test)]
+mod approval_binding_env_tests {
+    use super::*;
+
+    #[test]
+    fn unset_binding_is_not_requested_and_stays_quiet() {
+        assert!(
+            ApprovalBindingSetup::from_env_values(None, None, None, std::path::Path::new("/tmp"))
+                .expect("not requested is not an error")
+                .is_none()
+        );
+        assert!(
+            ApprovalBindingSetup::from_env_values(
+                Some("0"),
+                None,
+                None,
+                std::path::Path::new("/tmp")
+            )
+            .expect("explicitly off is not an error")
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn requested_binding_without_a_key_fails_instead_of_downgrading() {
+        let result = ApprovalBindingSetup::from_env_values(
+            Some("1"),
+            None,
+            None,
+            std::path::Path::new("/tmp"),
+        );
+        let Err(err) = result else {
+            panic!("requested and unsatisfiable must fail, not silently downgrade");
+        };
+        assert!(matches!(
+            err,
+            ApprovalBindingError::MissingKey {
+                var: "RIGORIX_HMAC_KEY",
+                ..
+            }
+        ));
+        assert!(err.to_string().contains("RIGORIX_HMAC_KEY"));
+
+        // An empty key is as unsatisfiable as an absent one.
+        assert!(
+            ApprovalBindingSetup::from_env_values(
+                Some("1"),
+                Some(""),
+                None,
+                std::path::Path::new("/tmp")
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn requested_binding_with_a_key_is_armed() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let setup = ApprovalBindingSetup::from_env_values(
+            Some("1"),
+            Some("run-key"),
+            Some("60"),
+            dir.path(),
+        )
+        .expect("armed")
+        .expect("some");
+        assert_eq!(setup.ttl_seconds, 60);
+        assert_eq!(setup.run_key, b"run-key".to_vec());
+        assert!(dir.path().join(".rigorix").is_dir());
     }
 }
 

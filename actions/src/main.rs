@@ -384,7 +384,8 @@ async fn build_action_orchestrator(
     let approval_binding =
         rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env(
             std::path::Path::new(repo_root),
-        );
+        )
+        .map_err(|e| format!("approval binding: {e}"))?;
     // ADR-013 R3/R2: operator-authored .rigorix/sequence-policy.toml gates
     // the dispatch prefix (executor) and the plan (orchestrator builder).
     let sequence_policy =

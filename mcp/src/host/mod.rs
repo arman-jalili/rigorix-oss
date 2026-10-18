@@ -1614,7 +1614,7 @@ pub async fn build_real_engine(
                 permission_enforcer,
                 hook_runner,
                 event_bus: Some(Arc::clone(&event_bus)),
-                approval_binding: rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env(std::path::Path::new(repo_root)),
+                approval_binding: rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env(std::path::Path::new(repo_root))?,
                 sequence_policy: sequence_policy.clone(),
                 precondition,
                 capacity,
