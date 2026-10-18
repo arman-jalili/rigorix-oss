@@ -182,6 +182,37 @@ guardian_issue:
     - merge
 ---
 
+## Update — 2026-10-18 (re-verified against code)
+
+**Part 2 (release-notes home) is DELIVERED.** `CHANGELOG.md` exists (1224 lines, Keep a
+Changelog, backfilled to 1.8.0) and is gated by `.pi/scripts/validate-docs.sh`
+(newest entry must equal `engine/Cargo.toml`). Release notes are out of the main README.
+Dependency #1012 is closed and delivered.
+
+**Part 1 (verified comparables) is NOT delivered, and the rewrite left a new defect.**
+
+- The comparison table is gone (correct — it compared Rigorix to the agents it governs).
+- **`README.md:271` now dangles:** it says *"See the comparison note below"* and **no such
+  section exists** — the next heading is `## Interfaces`. Verified:
+  `grep -n -i 'comparison note\|## compar' README.md` returns only that one line.
+  This is a broken cross-reference shipped by #1014 and must be fixed either way.
+
+**Recommended content when this is picked up** (from the research pass): replace the old
+"you vs. the agents" framing with the six **credential-binding failure modes** (scope,
+argument, temporal, tool, delegation, semantic) as the comparison dimensions, sourced and
+dated. Rigorix's differentiators map onto those modes rather than onto named competitors,
+which keeps the table verifiable and out of the wrong category.
+
+**Still excluded by the inclusion rule:** anything a reader cannot adopt today without a
+sales conversation (enterprise-tier comparables), and any competitor cell that cannot be
+sourced and dated → "not established".
+
+**Acceptance (unchanged, plus one):** every competitor cell sourced + dated or
+"not established"; the table is not in the wrong category; **no dangling cross-reference
+remains in README.md**.
+
+---
+
 # ISSUE-POSITIONING-AND-RELEASE-NOTES
 
 ## Defect 1 — the comparison table is a category error

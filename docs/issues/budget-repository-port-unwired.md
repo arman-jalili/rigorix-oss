@@ -72,6 +72,47 @@ guardian_issue:
     - merge
 ---
 
+## Update — 2026-10-18 (scope broadened: there are now TWO dead persistence ports)
+
+The first is unchanged and still accurate:
+
+| claim | evidence | status |
+|---|---|---|
+| the port declares persistence | `budget_tracking/infrastructure/repository/mod.rs` | still true |
+| nothing calls it | `llm_budget_impl.rs` — **0** repository references | still true |
+| only tests call it | `record_reservation` — **0** production callers | still true |
+| only one adapter exists | `in_memory_budget_repository.rs` | still true |
+
+**Second instance, found while wiring the capacity ledger:**
+
+`engine/src/capacity_ledger/infrastructure/repository/mod.rs:29` declares
+`CapacityLedgerRepository` (put_spec / get_spec / put_reservation / get_reservation /
+find_by_idempotency_key / list_reservations / exposure) — a persistence seam.
+
+- **implementations: NONE** (`grep -rn 'impl CapacityLedgerRepository'` → 0)
+- **production references: NONE** outside its own file
+
+So the capacity ledger now has a *working* port (`CapacityLedger` → `InProcessLedger` /
+`HttpLedger`, wired into the dispatch path in `a861e2a8`) **and** a second dead persistence
+port next to it. This matters for the decision below: **"fold it into the capacity ledger"
+is not a fix while the capacity ledger's own repository seam is equally unreferenced** — it
+would move the dead port, not remove it.
+
+**Decision required (now four options):**
+1. delete `LlmBudgetRepository` and keep in-memory budgets explicitly ephemeral;
+2. wire a durable adapter for budgets;
+3. fold budgets into the capacity ledger **after** resolving `CapacityLedgerRepository`
+   (use it for the in-process/HTTP adapters, or delete it);
+4. delete both dead ports and state plainly that persistence is the enterprise service's job
+   (which is what the shipped architecture actually did: `HttpLedger` talks to the enterprise
+   ledger service; nothing in the OSS engine persists capacity locally).
+
+**Acceptance (strengthened):** no trait method in either module lacks a production caller;
+if `CapacityLedgerRepository` is deleted, `InProcessLedger`/`HttpLedger` must not be relying on
+it (verified by build + tests); the chosen option is recorded in the module docs.
+
+---
+
 # ISSUE-BUDGET-REPOSITORY-PORT-UNWIRED
 
 ## Intent

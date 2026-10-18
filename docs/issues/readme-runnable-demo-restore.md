@@ -5,8 +5,8 @@ guardian_issue:
   epic: "documentation"
   component: "Docs"
   module: "docs"
-  status: planned
-  priority: high
+  status: deferred
+  priority: low
   dependencies:
     - "PR #1014 (docs rewrite, merged)"
 
@@ -67,6 +67,29 @@ guardian_issue:
     - validate
     - create-mr
     - merge
+---
+
+## Update — 2026-10-18 — **DEFERRED by decision**
+
+Deferred deliberately, not dropped. The README's demo section should showcase the capability
+that was just implemented — the ADR-018 capacity ledger (reserve → dispatch → commit/release,
+fail-closed, with the seam proved reachable by a falsifiable test) — and **that demo does not
+exist yet**. Restoring a demo of the older feature set first would anchor the README to the
+previous generation of the product and have to be redone.
+
+**Ordering:**
+1. build the new capacity-ledger demo (Docker-free: one command, three minutes, no
+   docker-compose — the `authority-demo` property),
+2. then restore the README section pointing at it,
+3. and only then close this.
+
+Everything else in this issue stands unchanged: exact commands with recorded output, commands
+**executed** not described, a visual a reader can see, no non-derivable numbers,
+`validate-docs.sh` green.
+
+**Current state of the defect:** the README still has **no runnable demo section**. Nothing
+here is claimed as fixed.
+
 ---
 
 # ISSUE-README-RUNNABLE-DEMO-RESTORE

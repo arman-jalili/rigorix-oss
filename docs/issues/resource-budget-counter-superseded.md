@@ -77,6 +77,50 @@ guardian_issue:
     - merge
 ---
 
+## Update — 2026-10-18 (dependency LANDED; the decision is now actionable)
+
+The facts remain true, but the blocker is gone.
+
+**Dependency satisfied.** The capacity-ledger dispatch seam landed in `a861e2a8`
+(`feat(capacity-ledger): wire the seam into the dispatch path`). The engine now performs
+reserve → dispatch → commit/release on the real `run_dispatch_loop` path, armed from
+`.rigorix/capacity.toml` by `CapacitySetup::from_env` and attached at all three production
+composition roots (CLI, MCP host, GitHub Action). Proof: `tests/capacity_ledger_composition_e2e.rs`
+drives the real loop, and the over-cap case **fails if the seam call is removed** (verified by
+removal).
+
+**Re-verified evidence, today:**
+
+| fact | evidence (current) |
+|---|---|
+| generic resource concept | `enforcement/domain/config.rs:513` — `ResourceBudget { resource, soft_warning_threshold, hard_limit, current_usage }` |
+| it is a counter | `enforcement/application/enforcer_impl.rs:109-129` — `usage_ratio`, `current_usage >= hard_limit` |
+| no reservation concept | `grep reserve engine/src/enforcement` → zero hits |
+| **still zero integration** | `grep -rc 'capacity_ledger' engine/src/enforcement` → **0 files** |
+| blast radius (grep) | **31 references across 9 files** |
+| blast radius (graph) | 38 upstream symbols, MEDIUM risk, 7 direct (mostly tests) |
+
+So there are now **two working mechanisms for "a limited resource" and nothing connects
+them**: `ResourceBudget` counts and compares; `CapacityLedger` reserves atomically and is
+wired into dispatch. Exactly the ambiguity this issue exists to remove.
+
+**Decision required (unchanged):** view over the ledger / deprecated / explicitly scoped to
+non-contested limits. Two considerations that are now concrete rather than hypothetical:
+
+- `ResourceBudget` is per-run in-memory and cannot see other executions; the ledger can. For
+  anything contested, the counter is not merely redundant — it is **wrong**.
+- Non-contested per-run limits (tool calls, timeout) are legitimately not ledger-shaped, so a
+  blanket "port everything to the ledger" is also wrong.
+
+A likely landing zone: keep `ResourceBudget` for per-execution, non-contested budget keys and
+state that explicitly in its doc comment; route anything whose limit is shared across
+executions through the capacity ledger. Either way, **the doc must say which is which**.
+
+**Acceptance (unchanged):** exactly one authoritative mechanism per resource, stated in docs
+and enforced in code; existing enforcement tests pass; do not delete `ResourceBudget` blindly.
+
+---
+
 # ISSUE-RESOURCE-BUDGET-COUNTER-SUPERSEDED
 
 ## Intent
