@@ -1615,4 +1615,37 @@ mod tests {
             "a shared_contested budget must be refused, got {errors:?}"
         );
     }
+
+    /// #1066: the code docs used to instruct operators to set the scope that
+    /// validation always refuses. The refusal itself must name the supported
+    /// path, so the message and the docs say the same thing.
+    #[test]
+    fn test_the_shared_contested_refusal_names_the_supported_path() {
+        let mut config = EnforcementConfig::standard();
+        config.budgets.insert(
+            "shared".to_string(),
+            ResourceBudget {
+                resource: "shared".to_string(),
+                soft_warning_threshold: 0.5,
+                hard_limit: 10,
+                current_usage: 0,
+                scope: BudgetScope::SharedContested,
+            },
+        );
+        let errors = config.validate(&crate::enforcement::domain::SafetyCaps::default());
+        let message = errors
+            .iter()
+            .find(|e| e.field == "budgets.shared.scope")
+            .map(|e| e.message.clone())
+            .expect("scope refusal present");
+        assert!(
+            message.contains(".rigorix/capacity.toml"),
+            "the refusal must point at the capacity declaration: {message}"
+        );
+        assert!(
+            message.contains("remove this budget"),
+            "the refusal must say the budget is the wrong mechanism: {message}"
+        );
+        assert!(!BudgetScope::SharedContested.is_authoritative());
+    }
 }

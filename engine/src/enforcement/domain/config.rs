@@ -530,21 +530,32 @@ pub struct ConfigValidationError {
 
 /// Where a [`ResourceBudget`]'s hard limit is authoritative.
 ///
-/// There are two mechanisms for a limited resource:
+/// There are two mechanisms for a limited resource, and only one of them is a
+/// budget:
 /// - [`BudgetScope::PerExecution`] — this counter is authoritative. The limit is
 ///   local to one execution, so no other execution can contend for it.
-/// - [`BudgetScope::SharedContested`] — the capacity ledger
-///   (`crate::capacity_ledger`) is authoritative. This counter is advisory and
-///   never blocks; a local count cannot see other executions and would be
-///   wrong for a contested limit.
+/// - A **shared, contested** limit is **not** modelled as a budget. Declare the
+///   resource in `.rigorix/capacity.toml` and let the capacity ledger
+///   (`crate::capacity_ledger`) enforce it. A local counter cannot see other
+///   executions, so using one for a contested limit would be a limit the
+///   operator believes is enforced and is not.
+///
+/// [`BudgetScope::SharedContested`] is retained so existing configs deserialize,
+/// but [`EnforcementConfig::validate`] **refuses** it: no binding from a budget
+/// to a declared ledger resource exists. Do not set it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum BudgetScope {
     /// The limit is local to this execution; this counter blocks the call.
     #[default]
     PerExecution,
-    /// The limit is shared across executions; the capacity ledger enforces it
-    /// and this counter is advisory only (never blocks).
+    /// Reserved for a future budget↔ledger binding. **Rejected by
+    /// [`EnforcementConfig::validate`]** because no such binding exists: the
+    /// counter cannot enforce a shared limit, and accepting the scope would
+    /// advertise an enforcement that does not happen.
+    ///
+    /// Declare the contested resource in `.rigorix/capacity.toml` instead and
+    /// remove the budget entry.
     SharedContested,
 }
 
@@ -561,8 +572,9 @@ impl BudgetScope {
 /// per-execution, non-contested limits (tokens, tool calls, elapsed time). A
 /// limit shared across independent executions is contested, and a local counter
 /// cannot see the other executions — declare that resource in
-/// `.rigorix/capacity.toml` so the capacity ledger enforces it, and set
-/// [`BudgetScope::SharedContested`] here so this counter stays advisory.
+/// `.rigorix/capacity.toml` so the capacity ledger enforces it, and **remove this
+/// budget**. Do not set [`BudgetScope::SharedContested`] to express it: there is
+/// no budget→ledger binding, so validation refuses that scope (#1061/#1066).
 ///
 /// - `soft_warning_threshold`: Percentage (0.0–1.0) at which a
 ///   `BudgetWarning` event is emitted. Example: 0.8 = warn at 80% usage.
@@ -585,8 +597,10 @@ pub struct ResourceBudget {
     pub current_usage: u64,
 
     /// Where this budget's hard limit is authoritative. Defaults to
-    /// [`BudgetScope::PerExecution`]; use [`BudgetScope::SharedContested`] for
-    /// a limit the capacity ledger enforces.
+    /// [`BudgetScope::PerExecution`], which is the only accepted value:
+    /// [`BudgetScope::SharedContested`] is refused by validation because there
+    /// is no budget→ledger binding. Declare contested resources in
+    /// `.rigorix/capacity.toml` and remove the budget instead.
     #[serde(default)]
     pub scope: BudgetScope,
 }
