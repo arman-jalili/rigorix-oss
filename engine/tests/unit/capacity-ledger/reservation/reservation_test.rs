@@ -37,10 +37,12 @@ mod tests {
         let r = reservation();
         assert_eq!(r.resource, ResourceId::new("gpu"));
 
-        // Exactly one terminal transition: all non-outstanding states are terminal.
+        // Committed/Released/Expired are terminal; Ambiguous is the
+        // reconciliation state and must stay non-terminal.
         assert!(ReservationState::Committed.is_terminal());
         assert!(ReservationState::Released.is_terminal());
         assert!(ReservationState::Expired.is_terminal());
+        assert!(!ReservationState::Ambiguous.is_terminal());
 
         let now = Utc::now();
         let lease = Lease::expiring_in(now, Duration::from_secs(30));
@@ -80,5 +82,40 @@ mod tests {
             .expire(now + chrono::Duration::seconds(120))
             .expect("expire after lease");
         assert_eq!(expired.state, ReservationState::Expired);
+    }
+
+    #[test]
+    fn test_lapsed_lease_marks_ambiguous_not_terminal() {
+        let now = Utc::now();
+        let live = Reservation::new(
+            ReservationId::new(),
+            ResourceId::new("gpu"),
+            1,
+            Lease::expiring_in(now, Duration::from_secs(60)),
+            IdempotencyKey::new("k3"),
+        );
+        assert!(matches!(
+            live.clone().mark_ambiguous(now),
+            Err(ReservationTransitionError::LeaseNotExpired { .. })
+        ));
+
+        let ambiguous = live
+            .mark_ambiguous(now + chrono::Duration::seconds(120))
+            .expect("mark ambiguous after lease");
+        assert_eq!(ambiguous.state, ReservationState::Ambiguous);
+        assert!(!ambiguous.is_terminal());
+
+        // Reconciliation (late commit) is the terminal transition.
+        let reconciled = ambiguous.clone().commit().expect("late commit");
+        assert_eq!(reconciled.state, ReservationState::Committed);
+        assert!(reconciled.is_terminal());
+
+        // Ambiguous cannot be moved back to a non-terminal state.
+        assert!(
+            ambiguous
+                .clone()
+                .transition(ReservationState::Outstanding)
+                .is_err()
+        );
     }
 }

@@ -10,7 +10,10 @@
 //! # Contract (Frozen)
 //! - A reservation is created `Outstanding`
 //! - `Committed`, `Released`, and `Expired` are terminal states
-//! - The lease is authoritative: an expired reservation is no longer a claim
+//! - A lapsed lease is **not proof of no effect**: if the outcome is unknown the
+//!   reservation moves to `Ambiguous` and keeps its exposure until reconciled
+//!   (late commit proves success; release proves no effect). `Ambiguous` is a
+//!   reconciliation state, not a terminal one.
 //! - The store clock decides expiry (I5), never the caller's clock
 
 use std::fmt;
@@ -95,18 +98,25 @@ impl Lease {
 pub enum ReservationState {
     /// Capacity is held but not yet spent.
     Outstanding,
+    /// The lease lapsed and the outcome is unknown. Exposure is retained until
+    /// the caller reconciles it with a late commit (proved success) or release
+    /// (proved no effect). A lapsed lease is never proof that no effect happened.
+    Ambiguous,
     /// Capacity was consumed (terminal).
     Committed,
     /// Capacity was handed back before consumption (terminal).
     Released,
-    /// The lease lapsed before commit or release (terminal).
+    /// The lease lapsed and the reservation is definitively void (terminal).
     Expired,
 }
 
 impl ReservationState {
     /// Whether this state is terminal (no further transition is legal).
+    ///
+    /// `Ambiguous` is deliberately **not** terminal: it is the reconciliation
+    /// state that a late commit or release resolves.
     pub fn is_terminal(&self) -> bool {
-        !matches!(self, Self::Outstanding)
+        !matches!(self, Self::Outstanding | Self::Ambiguous)
     }
 }
 
@@ -204,6 +214,13 @@ impl Reservation {
                 state: self.state,
             });
         }
+        // `Ambiguous` may only move to a terminal state (reconciliation).
+        if self.state == ReservationState::Ambiguous && !to.is_terminal() {
+            return Err(ReservationTransitionError::AlreadyTerminal {
+                id: self.id,
+                state: self.state,
+            });
+        }
         self.state = to;
         Ok(self)
     }
@@ -218,7 +235,24 @@ impl Reservation {
         self.transition(ReservationState::Released)
     }
 
-    /// Expire the reservation, but only once its lease has actually lapsed (I5).
+    /// Mark the reservation `Ambiguous` once its lease has lapsed (I5): the
+    /// outcome is unknown, so exposure must be retained until reconciliation.
+    ///
+    /// # Errors
+    /// [`ReservationTransitionError::LeaseNotExpired`] before `now` reaches the
+    /// lease deadline; [`ReservationTransitionError::AlreadyTerminal`] if it was
+    /// already resolved.
+    pub fn mark_ambiguous(self, now: DateTime<Utc>) -> Result<Self, ReservationTransitionError> {
+        if !self.is_expired_at(now) {
+            return Err(ReservationTransitionError::LeaseNotExpired { id: self.id });
+        }
+        self.transition(ReservationState::Ambiguous)
+    }
+
+    /// Expire the reservation definitively once its lease has lapsed (I5).
+    ///
+    /// Only use this when the caller has proof that no effect happened; a
+    /// lapsed lease alone is unknown and must use [`Reservation::mark_ambiguous`].
     ///
     /// # Errors
     /// [`ReservationTransitionError::LeaseNotExpired`] before `now` reaches the
