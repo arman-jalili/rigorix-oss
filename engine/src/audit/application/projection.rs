@@ -12,6 +12,7 @@
 //! silence, and never promoted to a positive.
 
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 use crate::audit::application::verify_chain;
 use crate::audit::domain::authority_fact::{
@@ -141,12 +142,45 @@ impl std::fmt::Display for ProjectionVerificationError {
 
 impl std::error::Error for ProjectionVerificationError {}
 
+/// What verifying a bundle actually established.
+///
+/// Deliberately **not** called `Verified`. The outcome is *consistency between a
+/// projection and the history supplied with it*, which is a different question
+/// from provenance. A third party can build a self-consistent chain and a
+/// matching projection without ever obtaining the real history, and this outcome
+/// accepts it (#1073).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BundleVerification {
+    /// The bundled chain is internally linked and the projection is exactly what
+    /// re-derivation from that history produces.
+    ///
+    /// What this establishes: the exporter did not assert facts its own history
+    /// contradicts. What it does **not** establish: that the history is authentic,
+    /// externally anchored, or attributable to the claimed producer. `verify_chain`
+    /// checks sequence continuity and producer grouping — not an anchor signature,
+    /// and not the envelope HMACs against a trusted key. Provenance requires a
+    /// separate trusted-anchor check that this bundle does not carry the evidence
+    /// for.
+    ChainConsistent,
+}
+
 /// Verify a projection by re-deriving it from the bundled history.
 ///
 /// This is the re-derivation design: verification does not trust a signature, it
 /// re-runs the derivation against history that must first be an intact chain.
-/// That detects a signer asserting facts the anchored history does not support —
-/// which a signature over the projection could not detect.
+/// That detects a signer asserting facts the history does not support — which a
+/// signature over the projection could not detect.
+///
+/// # What this does not establish
+///
+/// The supplied history is authentic, externally anchored, or attributable to the
+/// claimed producer. `verify_chain` groups envelopes by producer and checks
+/// sequence continuity; it does **not** verify an anchor signature and does not
+/// verify envelope HMACs against a trusted key. The `anchor_ref` is also derived
+/// from the bundle's own envelopes, so comparing it compares the bundle with
+/// itself: that detects an *inconsistent exporter*, not a *forged history*. The
+/// returned outcome is named for what it proves — [`BundleVerification::ChainConsistent`].
 ///
 /// `generated_at` is deliberately **not** compared. It records when the
 /// projection was produced, so it is not reproducible; everything that carries a
@@ -160,9 +194,9 @@ impl std::error::Error for ProjectionVerificationError {}
 ///   match what the history says.
 pub fn verify_authority_fact_bundle(
     bundle: &AuthorityFactBundle,
-) -> Result<(), ProjectionVerificationError> {
-    // 1. The history must be genuine before anything derived from it means
-    //    anything. Unverified history re-derives to unverified facts.
+) -> Result<BundleVerification, ProjectionVerificationError> {
+    // 1. The history must be intact before anything derived from it means
+    //    anything at all. This is linkage, not authenticity.
     verify_chain(&bundle.envelopes)
         .map_err(|error| ProjectionVerificationError::Chain(error.to_string()))?;
 
@@ -180,7 +214,7 @@ pub fn verify_authority_fact_bundle(
     if derived.anchor_ref != bundle.projection.anchor_ref {
         return Err(ProjectionVerificationError::AnchorDiffers);
     }
-    Ok(())
+    Ok(BundleVerification::ChainConsistent)
 }
 
 #[cfg(test)]
@@ -297,5 +331,15 @@ mod tests {
             subjects_without_record: subjects,
         };
         verify_authority_fact_bundle(&bundle).expect("bundle verifies by re-derivation");
+    }
+
+    /// #1073: the outcome is named and serialized for what it proves. Pinning the
+    /// wire name stops a downstream consumer from reading this as authentication.
+    #[test]
+    fn the_outcome_is_serialized_as_chain_consistency() {
+        assert_eq!(
+            serde_json::to_value(BundleVerification::ChainConsistent).unwrap(),
+            serde_json::json!("chain_consistent")
+        );
     }
 }

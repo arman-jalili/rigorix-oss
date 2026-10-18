@@ -55,6 +55,9 @@ info!("Audit shutdown: {} delivered, {} dropped", delivered, dropped);
 | HMAC key missing | `AuditError::NotConfigured` | Set signing key in config |
 | Signature mismatch | `AuditError::SignatureMismatch` | Check signing key match between sender/receiver |
 | Envelope serialization error | `AuditError::SerializationFailed` | Check event payload validity |
+| `history_integrity = anchored_pending` | The anchor is configured in anchored mode but no verified head exists yet | Normal during startup: the label turns `anchored` once a history read verifies a head. If it persists, the anchor is unreachable — check anchor connectivity; deny-class cross-run rules must treat `anchored_pending` as unanchored (it is not evidence). |
+| `audit verify-projection` reports `provenance_established: false` | Expected. The command proves the projection matches the supplied history (`chain_consistent`) | Not an error. To establish provenance, verify the history against the anchor out of band — the bundle carries no anchor-signed checkpoint, so this check must not be read as authentication. |
+| `audit verify-projection` fails | `facts_differ` / `anchor_differs` / chain error | The exporter asserted facts the bundled history does not support, or the history is not an intact chain. Treat the bundle as untrustworthy and re-export from the producer. |
 
 ## Operations
 

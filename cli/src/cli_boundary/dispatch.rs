@@ -735,19 +735,24 @@ async fn handle_audit(
                 Err(e) => return DispatchResult::error(format!("parse bundle: {e}"), 1),
             };
             match verify_authority_fact_bundle(&bundle) {
-                Ok(()) => DispatchResult::success_with_data(
+                Ok(outcome) => DispatchResult::success_with_data(
                     format!(
-                        "authority-fact bundle verified by re-derivation ({} fact(s))",
+                        "authority-fact bundle consistent by re-derivation ({} fact(s)); this proves \
+                         the projection matches the supplied history, NOT that the history is \
+                         authentic or externally anchored — provenance needs a separate trusted-anchor check",
                         bundle.projection.facts.len()
                     ),
                     serde_json::json!({
                         "verified": true,
+                        "check": "chain_consistency",
+                        "consistency": serde_json::to_value(outcome).unwrap_or_default(),
+                        "provenance_established": false,
                         "facts": bundle.projection.facts.len(),
                         "projection_digest": bundle.projection.digest(),
                     }),
                 ),
                 Err(e) => DispatchResult::error(
-                    format!("authority-fact bundle FAILED verification: {e}"),
+                    format!("authority-fact bundle FAILED consistency verification: {e}"),
                     1,
                 ),
             }
