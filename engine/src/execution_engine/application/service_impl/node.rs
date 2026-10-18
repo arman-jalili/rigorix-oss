@@ -1,6 +1,7 @@
 //! `execute_node` flow for `ParallelExecutionServiceImpl` (extracted from
 //! `service_impl.rs`, #914): per-node tool execution + inline retry loop.
 
+use super::gate::NodeGate;
 use super::*;
 
 impl ParallelExecutionServiceImpl {
@@ -28,6 +29,67 @@ impl ParallelExecutionServiceImpl {
         let node_id = input.node_id;
 
         let mut last_retry_decision: Option<RetryDecision> = None;
+
+        // #1074: the single-node route runs the **same** consequence-gate
+        // sequence as `execute_graph` (approval binding → precondition →
+        // sequence policy → capacity). It used to dispatch with none of them,
+        // so the same tool had two different permission answers depending on
+        // which method the caller used. `execute_node` has no session to pause,
+        // so a promote/halt verdict is reported as `approval_required` rather
+        // than silently dispatched.
+        let gate_graph: Option<crate::dag_engine::domain::TaskGraph> = {
+            let sessions = self
+                .sessions
+                .lock()
+                .map_err(|e| ExecutionError::InternalError {
+                    detail: format!("Lock error: {e}"),
+                })?;
+            sessions.get(&input.dag_id).and_then(|s| s.graph.clone())
+        };
+        if let Some(graph) = &gate_graph {
+            let node_name = graph
+                .get_node(node_id)
+                .map(|n| n.name.clone())
+                .unwrap_or_else(|| format!("node-{node_id}"));
+            let no_approvals: HashSet<Uuid> = HashSet::new();
+            match self
+                .gate_node(input.dag_id, graph, node_id, &no_approvals)
+                .await?
+            {
+                NodeGate::Dispatch => {}
+                NodeGate::Refuse {
+                    failure_type,
+                    message,
+                    ..
+                } => {
+                    return Ok(ExecuteNodeOutput {
+                        result: TaskResult::failure(
+                            node_id,
+                            &node_name,
+                            message,
+                            failure_type,
+                            0,
+                            0,
+                        ),
+                        retry_decision: None,
+                    });
+                }
+                NodeGate::Promote | NodeGate::HaltIntent { .. } => {
+                    return Ok(ExecuteNodeOutput {
+                        result: TaskResult::failure(
+                            node_id,
+                            &node_name,
+                            "Approval required: the single-node route cannot pause for approval; use execute_graph so the approval chain applies"
+                                .to_string(),
+                            "approval_required".to_string(),
+                            0,
+                            0,
+                        ),
+                        retry_decision: None,
+                    });
+                }
+            }
+        }
 
         // Inline retry loop per node
         for attempt in 0..max_attempts {

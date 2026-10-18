@@ -1,6 +1,7 @@
 //! Dispatch loop + sequence-policy dispatch helpers for
 //! `ParallelExecutionServiceImpl` (extracted from `service_impl.rs`, #914).
 
+use super::gate::GateOutcome;
 use super::*;
 
 /// The outcome of the ADR-018 capacity seam's pre-dispatch check.
@@ -97,199 +98,27 @@ impl ParallelExecutionServiceImpl {
                 break;
             };
 
-            // ADR-011 choke point: verify the approved intent before dispatch.
-            if graph
-                .get_node(node_id)
-                .map(|n| n.requires_approval)
-                .unwrap_or(false)
-            {
-                match self.verify_before_dispatch(node_id).await {
-                    Ok((true, _)) => {}
-                    Ok((false, digests)) => {
-                        if let Some((expected, actual)) = digests {
-                            let step_name = graph
-                                .get_node(node_id)
-                                .map(|n| n.name.clone())
-                                .unwrap_or_default();
-                            self.publish_event(ExecutionEvent::IntentMismatchDetected {
-                                execution_id: dag_id,
-                                node_id: node_id.to_string(),
-                                step_name,
-                                expected,
-                                actual,
-                                timestamp: chrono::Utc::now(),
-                            })
-                            .await;
-                        }
-                        self.halt_intent_mismatch(dag_id, graph, node_id, total_nodes)
-                            .await?;
-                        approval_blocked = true;
-                        break;
-                    }
-                    Err(e) => return Err(e),
-                }
-            }
-
-            // R1 dispatch-time precondition gate (ADR-017): after ADR-011
-            // approval verification, before the R3 sequence-policy gate.
-            match self.precondition_verdict(dag_id, graph, node_id).await? {
-                PreconditionVerdict::Dispatch => {}
-                PreconditionVerdict::Deny {
-                    precondition_id,
-                    outcome,
-                } => {
-                    let node_name = graph
-                        .get_node(node_id)
-                        .map(|n| n.name.clone())
-                        .unwrap_or_default();
-                    let task_result = TaskResult::failure(
-                        node_id,
-                        &node_name,
-                        format!(
-                            "Precondition '{precondition_id}' refused step before dispatch ({})",
-                            outcome.as_str()
-                        ),
-                        "precondition_denied".to_string(),
-                        0,
-                        0,
-                    );
-                    node_results.insert(node_id, task_result);
-                    failed_count += 1;
-                    if let Some((denied_id, state)) =
-                        self.record_precondition_denial(dag_id, node_id, &precondition_id, outcome)
-                    {
-                        self.notify_progress(dag_id, denied_id, state, total_nodes);
-                    }
-                    // ADR-017 R2: release dependents, or stop the failure.
-                    self.release_or_skip_dependents(graph, dag_id, node_id, total_nodes, true)
-                        .await;
-                    // NEVER fall through to dispatch: a denied node's tool is
-                    // never called. Continue the fill loop.
-                    continue;
-                }
-            }
-
-            // R3 sequence-policy prefix gate (opt-in; module doc §R3).
-            // Promotion flips the live node's requires_approval flag so the
-            // SAME approval pause/approve/resume chain as a pre-declared
-            // gated step applies; denial records a deterministic failure
-            // before the node's tool is ever called.
+            // Single consequence-gate sequence (#1074): approval binding →
+            // precondition → sequence policy → capacity. Shared with `execute_node`
+            // so the two routes cannot answer differently.
             match self
-                .sequence_policy_verdict(dag_id, graph, node_id, approved)
+                .apply_gate(
+                    dag_id,
+                    graph,
+                    node_id,
+                    approved,
+                    total_nodes,
+                    &mut node_results,
+                    &mut failed_count,
+                )
                 .await?
             {
-                SequencePolicyVerdict::Dispatch => {}
-                SequencePolicyVerdict::Promote => {
-                    if let Some(node) = graph.get_node_mut(node_id) {
-                        node.requires_approval = true;
-                    }
-                    graph.requeue_ready_node(node_id);
+                GateOutcome::Dispatch => {}
+                GateOutcome::Paused => {
                     approval_blocked = true;
-                    self.mark_awaiting_approval(dag_id, graph, total_nodes)
-                        .await?;
                     break;
                 }
-                SequencePolicyVerdict::Deny {
-                    rule_id,
-                    later_step,
-                } => {
-                    let node_name = graph
-                        .get_node(node_id)
-                        .map(|n| n.name.clone())
-                        .unwrap_or_default();
-                    let task_result = TaskResult::failure(
-                        node_id,
-                        &node_name,
-                        format!(
-                            "Sequence policy denied by rule '{rule_id}' — step '{later_step}' must not dispatch"
-                        ),
-                        "sequence_policy_denied".to_string(),
-                        0,
-                        0,
-                    );
-                    node_results.insert(node_id, task_result);
-                    failed_count += 1;
-                    // Mirror the consumption-loop state update so observers
-                    // see the denial like any deterministic node failure.
-                    if let Some((denied_id, state)) =
-                        self.record_sequence_denial(dag_id, node_id, &rule_id, &later_step)
-                    {
-                        self.notify_progress(dag_id, denied_id, state, total_nodes);
-                    }
-                    // ADR-017 R2: release dependents, or stop the failure.
-                    self.release_or_skip_dependents(graph, dag_id, node_id, total_nodes, true)
-                        .await;
-                    // NEVER fall through to dispatch: a denied node's tool is
-                    // never called. Continue the fill loop.
-                    continue;
-                }
-                SequencePolicyVerdict::CompanionUnmet {
-                    obligation_id,
-                    required_companion,
-                } => {
-                    let node_name = graph
-                        .get_node(node_id)
-                        .map(|n| n.name.clone())
-                        .unwrap_or_default();
-                    let task_result = TaskResult::failure(
-                        node_id,
-                        &node_name,
-                        format!(
-                            "Companion prerequisite '{obligation_id}' unmet — '{required_companion}' must complete successfully before this step dispatches"
-                        ),
-                        "companion_prerequisite_unmet".to_string(),
-                        0,
-                        0,
-                    );
-                    node_results.insert(node_id, task_result);
-                    failed_count += 1;
-                    self.release_or_skip_dependents(graph, dag_id, node_id, total_nodes, true)
-                        .await;
-                    // NEVER fall through to dispatch: the tool never runs
-                    // without its prerequisite.
-                    continue;
-                }
-            }
-
-            // ADR-018: reserve capacity for a governed step at the last possible
-            // moment (after the authority and sequence gates). A refusal fails the
-            // node before its tool is ever called.
-            match self.capacity_verdict(dag_id, graph, node_id).await? {
-                CapacityVerdict::Dispatch => {}
-                CapacityVerdict::Deny {
-                    resource,
-                    amount,
-                    detail,
-                    reason,
-                } => {
-                    let node_name = graph
-                        .get_node(node_id)
-                        .map(|n| n.name.clone())
-                        .unwrap_or_default();
-                    let task_result = TaskResult::failure(
-                        node_id,
-                        &node_name,
-                        format!("Capacity refused step before dispatch: {detail}"),
-                        "capacity_denied".to_string(),
-                        0,
-                        0,
-                    );
-                    node_results.insert(node_id, task_result);
-                    failed_count += 1;
-                    self.release_or_skip_dependents(graph, dag_id, node_id, total_nodes, true)
-                        .await;
-                    tracing::warn!(
-                        %dag_id,
-                        %node_id,
-                        %resource,
-                        amount,
-                        reason,
-                        "capacity: step refused before dispatch (fail closed)"
-                    );
-                    // NEVER fall through to dispatch: a refused node's tool is
-                    // never called. Continue the fill loop.
-                    continue;
-                }
+                GateOutcome::Refused => continue,
             }
 
             spawn_concurrent_node(
@@ -420,190 +249,27 @@ impl ParallelExecutionServiceImpl {
                     break;
                 };
 
-                // ADR-011 choke point: verify the approved intent before dispatch.
-                if graph
-                    .get_node(next_id)
-                    .map(|n| n.requires_approval)
-                    .unwrap_or(false)
-                {
-                    match self.verify_before_dispatch(next_id).await {
-                        Ok((true, _)) => {}
-                        Ok((false, digests)) => {
-                            if let Some((expected, actual)) = digests {
-                                let step_name = graph
-                                    .get_node(next_id)
-                                    .map(|n| n.name.clone())
-                                    .unwrap_or_default();
-                                self.publish_event(ExecutionEvent::IntentMismatchDetected {
-                                    execution_id: dag_id,
-                                    node_id: next_id.to_string(),
-                                    step_name,
-                                    expected,
-                                    actual,
-                                    timestamp: chrono::Utc::now(),
-                                })
-                                .await;
-                            }
-                            self.halt_intent_mismatch(dag_id, graph, next_id, total_nodes)
-                                .await?;
-                            approval_blocked = true;
-                            break;
-                        }
-                        Err(e) => return Err(e),
-                    }
-                }
-
-                // R1 dispatch-time precondition gate (ADR-017).
-                match self.precondition_verdict(dag_id, graph, next_id).await? {
-                    PreconditionVerdict::Dispatch => {}
-                    PreconditionVerdict::Deny {
-                        precondition_id,
-                        outcome,
-                    } => {
-                        let node_name = graph
-                            .get_node(next_id)
-                            .map(|n| n.name.clone())
-                            .unwrap_or_default();
-                        let task_result = TaskResult::failure(
-                            next_id,
-                            &node_name,
-                            format!(
-                                "Precondition '{precondition_id}' refused step before dispatch ({})",
-                                outcome.as_str()
-                            ),
-                            "precondition_denied".to_string(),
-                            0,
-                            0,
-                        );
-                        node_results.insert(next_id, task_result);
-                        failed_count += 1;
-                        if let Some((denied_id, state)) = self.record_precondition_denial(
-                            dag_id,
-                            next_id,
-                            &precondition_id,
-                            outcome,
-                        ) {
-                            self.notify_progress(dag_id, denied_id, state, total_nodes);
-                        }
-                        self.release_or_skip_dependents(graph, dag_id, next_id, total_nodes, true)
-                            .await;
-                        // NEVER fall through to dispatch (tool never called).
-                        continue;
-                    }
-                }
-
-                // R3 sequence-policy prefix gate (opt-in; module doc §R3).
-                // Same semantics as the Phase-1 gate above.
+                // Single consequence-gate sequence (#1074): approval binding →
+                // precondition → sequence policy → capacity. Shared with `execute_node`
+                // so the two routes cannot answer differently.
                 match self
-                    .sequence_policy_verdict(dag_id, graph, next_id, approved)
+                    .apply_gate(
+                        dag_id,
+                        graph,
+                        next_id,
+                        approved,
+                        total_nodes,
+                        &mut node_results,
+                        &mut failed_count,
+                    )
                     .await?
                 {
-                    SequencePolicyVerdict::Dispatch => {}
-                    SequencePolicyVerdict::Promote => {
-                        if let Some(node) = graph.get_node_mut(next_id) {
-                            node.requires_approval = true;
-                        }
-                        graph.requeue_ready_node(next_id);
+                    GateOutcome::Dispatch => {}
+                    GateOutcome::Paused => {
                         approval_blocked = true;
-                        self.mark_awaiting_approval(dag_id, graph, total_nodes)
-                            .await?;
                         break;
                     }
-                    SequencePolicyVerdict::Deny {
-                        rule_id,
-                        later_step,
-                    } => {
-                        let node_name = graph
-                            .get_node(next_id)
-                            .map(|n| n.name.clone())
-                            .unwrap_or_default();
-                        let task_result = TaskResult::failure(
-                            next_id,
-                            &node_name,
-                            format!(
-                                "Sequence policy denied by rule '{rule_id}' — step '{later_step}' must not dispatch"
-                            ),
-                            "sequence_policy_denied".to_string(),
-                            0,
-                            0,
-                        );
-                        node_results.insert(next_id, task_result);
-                        failed_count += 1;
-                        if let Some((denied_id, state)) =
-                            self.record_sequence_denial(dag_id, next_id, &rule_id, &later_step)
-                        {
-                            self.notify_progress(dag_id, denied_id, state, total_nodes);
-                        }
-                        self.release_or_skip_dependents(graph, dag_id, next_id, total_nodes, true)
-                            .await;
-                        // NEVER fall through to dispatch (tool never called).
-                        continue;
-                    }
-                    SequencePolicyVerdict::CompanionUnmet {
-                        obligation_id,
-                        required_companion,
-                    } => {
-                        let node_name = graph
-                            .get_node(next_id)
-                            .map(|n| n.name.clone())
-                            .unwrap_or_default();
-                        let task_result = TaskResult::failure(
-                            next_id,
-                            &node_name,
-                            format!(
-                                "Companion prerequisite '{obligation_id}' unmet — '{required_companion}' must complete successfully before this step dispatches"
-                            ),
-                            "companion_prerequisite_unmet".to_string(),
-                            0,
-                            0,
-                        );
-                        node_results.insert(next_id, task_result);
-                        failed_count += 1;
-                        self.release_or_skip_dependents(graph, dag_id, next_id, total_nodes, true)
-                            .await;
-                        // NEVER fall through to dispatch.
-                        continue;
-                    }
-                }
-
-                // ADR-018: reserve capacity for a governed step at the last
-                // possible moment. A refusal fails the node before its tool is
-                // ever called.
-                match self.capacity_verdict(dag_id, graph, next_id).await? {
-                    CapacityVerdict::Dispatch => {}
-                    CapacityVerdict::Deny {
-                        resource,
-                        amount,
-                        detail,
-                        reason,
-                    } => {
-                        let node_name = graph
-                            .get_node(next_id)
-                            .map(|n| n.name.clone())
-                            .unwrap_or_default();
-                        let task_result = TaskResult::failure(
-                            next_id,
-                            &node_name,
-                            format!("Capacity refused step before dispatch: {detail}"),
-                            "capacity_denied".to_string(),
-                            0,
-                            0,
-                        );
-                        node_results.insert(next_id, task_result);
-                        failed_count += 1;
-                        self.release_or_skip_dependents(graph, dag_id, next_id, total_nodes, true)
-                            .await;
-                        tracing::warn!(
-                            %dag_id,
-                            %next_id,
-                            %resource,
-                            amount,
-                            reason,
-                            "capacity: step refused before dispatch (fail closed)"
-                        );
-                        // NEVER fall through to dispatch (tool never called).
-                        continue;
-                    }
+                    GateOutcome::Refused => continue,
                 }
 
                 spawn_concurrent_node(

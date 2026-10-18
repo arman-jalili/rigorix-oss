@@ -98,6 +98,27 @@ Execution events are flushed before shutdown.
 
 **Symptom:** Node returns `TaskResult { success: false, failure_type: "exhausted" }`
 **Cause:** Node failed all retry attempts with no fallback configured.
+**Recovery:** Increase `max_attempts`, add a fallback strategy, or fix the root failure.
+
+### Failure Mode 3b: A single node is refused before dispatch
+
+**Symptom:** `TaskResult { success: false, failure_type: "precondition_denied" |
+"sequence_policy_denied" | "companion_prerequisite_unmet" | "capacity_denied" }`
+from **either** `execute_graph` or `execute_node`; the tool was never called.
+**Cause:** the shared consequence-gate sequence refused the node (see the owning
+module's runbook for the specific gate).
+**Recovery:** fix the gate's input (precondition config, plan ordering, capacity
+declaration). Do not route around it by calling `execute_node`: that method runs
+the same gates.
+
+### Failure Mode 3c: `execute_node` reports `approval_required`
+
+**Symptom:** `execute_node` returns `failure_type: "approval_required"`.
+**Cause:** the node needs a human approval pause (`promote` sequence rule or an
+approval-binding mismatch), and the single-node route has no session in which to
+pause.
+**Recovery:** run the plan through `execute_graph`/`resume_execution`, which own
+the approval pause/approve/resume chain.
 **Recovery:** 
 - Increase `max_attempts` in the node's RetryPolicy
 - Configure a fallback node

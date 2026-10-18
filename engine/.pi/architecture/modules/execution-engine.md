@@ -99,7 +99,7 @@ Executes sealed TaskGraphs from the DAG Engine using a concurrent worker pool (t
 | Method | Input | Output | Description |
 |--------|-------|--------|-------------|
 | execute_graph | ExecuteGraphInput | ExecuteGraphOutput | Execute a sealed TaskGraph end-to-end |
-| execute_node | ExecuteNodeInput | ExecuteNodeOutput | Execute single node with inline retry loop |
+| execute_node | ExecuteNodeInput | ExecuteNodeOutput | Execute single node with inline retry loop — runs the **same consequence-gate sequence** as `execute_graph` |
 | get_execution_state | GetExecutionStateInput | GetExecutionStateOutput | Poll in-flight execution state |
 | pause_execution | PauseExecutionInput | PauseExecutionOutput | Pause dispatch (in-flight nodes complete) |
 | resume_execution | ResumeExecutionInput | ResumeExecutionOutput | Resume paused execution |
@@ -109,7 +109,6 @@ Executes sealed TaskGraphs from the DAG Engine using a concurrent worker pool (t
 ---
 
 ### Inline Retry Loop
-
 The retry loop is embedded directly in `execute_node()`, not a separate wrapper:
 
 ```
@@ -173,6 +172,31 @@ See [approval module](./modules/approval.md) for the full contract. Summary of c
 - **`NodeStatus`** gains `AwaitingApproval` (exists in code) and **`IntentMismatch`** (new — pre-dispatch verification failure; node never dispatches; re-approval required)
 - **Vocabulary note (intentional, pre-existing):** this module's `NodeStatus` (Pending/Ready/Running/…) is the **runtime executor** vocabulary; the persisted snapshot in state-persistence.md uses a different set (Pending/InProgress/…) — mapped at the state-persistence boundary (`NodeExecutionState → NodeState`). Both gain the two new variants consistently. Unifying the vocabularies is a follow-up cleanup (serialized-state migration required), out of this contract-freeze scope.
 - **Dispatch choke point**: verification is inserted between `pop_dispatchable` and `execute_tool` inside `run_dispatch_loop` (the single loop used by both `execute_graph` and `resume_execution`) — every dispatch entry path is covered by one insertion
+
+### Consequence gates: one sequence, two routes (#1074)
+
+`service_impl/gate.rs` owns the gate order for a node; both routes call it.
+
+| Order | Gate | Refusal failure type |
+|---|---|---|
+| 1 | ADR-011 approval binding (only `requires_approval` nodes) | halt on mismatch (`IntentMismatchDetected`) |
+| 2 | ADR-017 precondition (authoritative state re-read) | `precondition_denied` |
+| 3 | ADR-013/ADR-015 sequence policy (prefix + companion prerequisite) | `sequence_policy_denied` / `companion_prerequisite_unmet` |
+| 4 | ADR-018 capacity reservation | `capacity_denied` |
+
+- `gate_node(...)` computes the verdict; `apply_gate(...)` is the dispatch-loop
+  bookkeeping (record the deterministic failure, release dependents, or pause).
+  Both fill loops in `run_dispatch_loop` (Phase 1 and Phase 3) share `apply_gate`,
+  so their bookkeeping cannot drift.
+- `execute_node` (the public single-node trait method) calls the **same**
+  `gate_node` before dispatching, from the session graph it already reads. It has
+  no session to pause, so `Promote`/`HaltIntent` is reported as
+  `approval_required` rather than dispatched. Before this, `execute_node` ran a
+  node with **no** approval, precondition, sequence or capacity gate: the same
+  tool had two different permission answers depending on which method the caller
+  used, and the difference was invisible in the signature.
+- Adding a gate means adding it to `gate_node` once. Do not re-inline a gate in
+  either caller — that duplication is what produced the divergence.
 - **`approve_node`** contract change: `ApproveNodeInput` gains `approver_id` (required), `authority` (optional), `decision_context` (optional), `token_claims_ref` (optional); the session's `approved: HashSet<Uuid>` becomes a map of node_id → `ApprovalRecord` (delegating to `ApprovalService`); output gains `approval_records: Vec<ApprovalRecord>`
 - **Single-use semantics**: the approval is **consumed on terminal outcome** (`Pending → Consumed` on success/skipped/exhausted failure after ≥1 dispatch); failed attempts stay `Pending` so legitimate retries re-verify; non-terminal interruptions keep `Pending` for cross-process resume; TTL enforced at verification
 - **Retry integration**: `IntentMismatch` is non-retriable (see failure-classification) — the node stays halted for human re-approval

@@ -483,6 +483,7 @@ const SUBPROCESS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(6
 const GIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 mod dispatch;
+mod gate;
 mod tools;
 
 mod node;
