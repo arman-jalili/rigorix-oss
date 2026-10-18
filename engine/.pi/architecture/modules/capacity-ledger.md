@@ -37,7 +37,7 @@ contract consumed by `enforcement`.
 | Component | Description | Framework? |
 |-----------|-------------|------------|
 | Resource | `ResourceId` + `ResourceSpec` (name, hard_limit, window) | ❌ No |
-| Reservation | Reservation aggregate + `ReservationState` (outstanding/committed/released/expired) | ❌ No |
+| Reservation | Reservation aggregate + `ReservationState` (outstanding/ambiguous/committed/released/expired) | ❌ No |
 | Grant | Opaque handle returned by reserve; binds resource, amount, lease, idempotency key | ❌ No |
 | Exposure | Aggregate view: committed vs outstanding kept distinct | ❌ No |
 | IdempotencyKey | Retry identity; makes double-reserve impossible by construction | ❌ No |
@@ -85,7 +85,9 @@ depends: Resource
 
 **Purpose:** The aggregate. A held claim on capacity with a lease and exactly one terminal
 transition (committed, released, or expired). State transitions are enforced in the type, not
-by convention.
+by convention. A lapsed lease is **not proof of no effect**: it moves the reservation to
+`Ambiguous`, which retains exposure until a late commit (proved success) or release (proved no
+effect) reconciles it. `Ambiguous` is non-terminal by design.
 
 **Layer:** `domain/`
 
@@ -281,7 +283,7 @@ contract-freeze issue. Status is tracked per epic issue.
 | Component | Implementation | Tests |
 |-----------|----------------|-------|
 | Resource | `domain/resource.rs` — identity, window, saturating capacity arithmetic | unit |
-| Reservation | `domain/reservation.rs` — one terminal transition, lease-gated expiry | unit |
+| Reservation | `domain/reservation.rs` — one terminal transition; lapsed lease → `Ambiguous` + reconciliation | unit |
 | Grant | `domain/grant.rs` — opaque, crate-internal issuance only | in-crate |
 | Exposure | `domain/exposure.rs` — committed/outstanding kept distinct | unit |
 | IdempotencyKey | `domain/idempotency.rs` — deterministic `for_step` | unit |

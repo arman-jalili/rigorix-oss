@@ -77,9 +77,10 @@ the RAII guard and the lease:
 | Symptom | `LedgerError` | Meaning | Recovery |
 |---------|---------------|---------|----------|
 | `insufficient capacity …` | `Insufficient` | Resource is healthy but full | Wait for commits/leases to clear, or raise `hard_limit` with `declare_resource` (rejected if below current exposure) |
-| `resource … is contended` | `Contended` | Lost a race or replayed a resolved key | Retry with the same idempotency key; do **not** mint a new key |
+| `resource … is contended` | `Contended` | Lost a race, replayed a resolved key, **reused a key with a different amount**, or the key points at an ambiguous reservation | Retry with the same key **and the same amount**; for an ambiguous hold, commit or release it first; do **not** mint a new key to bypass a conflict |
 | `capacity ledger is unavailable` | `Unavailable` | Outage, timeout, non-2xx, malformed/oversized body, undeclared resource, unknown reservation | Fail closed; retry with backoff. Check `HttpLedger` config (timeout, body bound, base URL, token) |
-| `lease expired …` | `LeaseExpired` | Commit attempted after the lease lapsed | Re-reserve; the old claim is void |
+| `lease expired …` | `LeaseExpired` | Commit attempted on a definitively expired reservation | Re-reserve; the old claim is void |
+| Capacity still held after a crash | — | The lapsed lease became `Ambiguous`: the outcome is unknown, so exposure is retained | Reconcile explicitly: `commit` if the effect happened, `release` if it did not. Do not assume the hold is gone |
 | Capacity never released after a crash | — | Guard dropped outside a runtime | No action: lease expiry reclaims it |
 
 ### Diagnosis
@@ -127,8 +128,8 @@ No redirects, explicit deadline, bounded body, credentials never logged.
 | ID | Invariant |
 |----|-----------|
 | I1 | Atomic/linearizable per resource+window |
-| I2 | Idempotent — a retried reserve with the same key yields one reservation |
-| I3 | Leased — every hold expires and is reclaimed |
+| I2 | Idempotent — a retried reserve with the same key **and amount** yields one reservation; a different amount is a typed conflict |
+| I3 | Leased — every hold expires; a lapsed lease becomes `Ambiguous` and retains exposure until reconciled |
 | I4 | Fail-closed — ambiguity maps to `Unavailable` |
 | I5 | Store clock decides expiry |
 | I6 | `committed + outstanding` never exceeds `hard_limit` |

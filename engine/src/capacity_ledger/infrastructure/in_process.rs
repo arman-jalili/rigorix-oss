@@ -17,8 +17,10 @@
 //!
 //! # Invariants implemented
 //! - **I1** one mutex linearizes every operation per process
-//! - **I2** `(resource, idempotency key)` maps to at most one reservation
-//! - **I3** every grant carries a lease and lapsed leases are reclaimed
+//! - **I2** `(resource, idempotency key)` maps to at most one reservation; the
+//!   same key with a different amount is a typed conflict, never a silent hit
+//! - **I3** every grant carries a lease; a lapsed lease becomes `Ambiguous` and
+//!   retains exposure until a late commit/release reconciles it
 //! - **I5** expiry uses the store clock (`Utc::now`), never the caller's
 //! - **I6** `committed + outstanding` never exceeds `hard_limit`
 
@@ -50,7 +52,13 @@ struct LedgerState {
 }
 
 impl LedgerState {
-    /// Reclaim any outstanding reservation whose lease has lapsed (I3/I5).
+    /// Sweep lapsed holds (I3/I5).
+    ///
+    /// A lapsed lease is **not** proof that no effect happened (#1050), so the
+    /// reservation becomes `Ambiguous` and its exposure is retained until a late
+    /// commit (proved success) or release (proved no effect) reconciles it. The
+    /// idempotency key stays bound to the original reservation so a retry cannot
+    /// silently create a second one (#1052).
     fn expire_lapsed(&mut self, now: DateTime<Utc>) {
         let lapsed: Vec<ReservationId> = self
             .reservations
@@ -60,17 +68,14 @@ impl LedgerState {
             .collect();
 
         for id in lapsed {
-            if let Some(mut reservation) = self.reservations.remove(&id) {
-                reservation.state = ReservationState::Expired;
-                if let Some(outstanding) = self.outstanding.get_mut(&reservation.resource) {
-                    *outstanding = outstanding.saturating_sub(reservation.amount);
-                }
-                // The claim is void, so the key may be retried afresh.
-                self.by_key.remove(&(
-                    reservation.resource.clone(),
-                    reservation.idempotency_key.clone(),
-                ));
-                self.reservations.insert(id, reservation);
+            if let Some(reservation) = self.reservations.get_mut(&id) {
+                reservation.state = ReservationState::Ambiguous;
+                tracing::warn!(
+                    reservation = %id,
+                    resource = %reservation.resource,
+                    amount = reservation.amount,
+                    "capacity lease lapsed; outcome unknown, exposure retained until reconciliation"
+                );
             }
         }
     }
@@ -175,11 +180,31 @@ impl CapacityLedger for InProcessLedger {
                 detail: format!("resource '{resource}' has not been declared"),
             })?;
 
-        // I2: a retried reserve collapses onto the original reservation.
+        // I2: a retried reserve collapses onto the original reservation — but
+        // only for the identical request. A different amount is a conflict, not
+        // an idempotent hit (#1052).
         if let Some(existing_id) = state.by_key.get(&(resource.clone(), key.clone())).copied() {
             return match state.reservations.get(&existing_id) {
                 Some(reservation) if reservation.state == ReservationState::Outstanding => {
-                    Ok(Self::grant_from(reservation))
+                    if reservation.amount == amount {
+                        Ok(Self::grant_from(reservation))
+                    } else {
+                        Err(LedgerError::Contended {
+                            resource: resource.clone(),
+                            detail: format!(
+                                "idempotency key reused with a different amount (existing {}, requested {})",
+                                reservation.amount, amount
+                            ),
+                        })
+                    }
+                }
+                Some(reservation) if reservation.state == ReservationState::Ambiguous => {
+                    Err(LedgerError::Contended {
+                        resource: resource.clone(),
+                        detail: format!(
+                            "idempotency key refers to ambiguous reservation {existing_id}; commit or release it before retrying"
+                        ),
+                    })
                 }
                 _ => Err(LedgerError::Contended {
                     resource: resource.clone(),
@@ -259,17 +284,19 @@ impl InProcessLedger {
                     detail: format!("unknown reservation {id}"),
                 })?;
 
-        if reservation.state != ReservationState::Outstanding {
+        if reservation.state == ReservationState::Expired {
+            return Err(LedgerError::LeaseExpired { resource, key });
+        }
+        // `Ambiguous` is reconciled by a late commit or release. `expire_lapsed`
+        // above is what moves an expired `Outstanding` hold into that state.
+        if !matches!(
+            reservation.state,
+            ReservationState::Outstanding | ReservationState::Ambiguous
+        ) {
             return Err(LedgerError::Contended {
                 resource: resource.clone(),
                 detail: format!("reservation {id} is already {:?}", reservation.state),
             });
-        }
-
-        if to == ReservationState::Committed && reservation.is_expired_at(now) {
-            reservation.state = ReservationState::Expired;
-            state.reservations.insert(id, reservation);
-            return Err(LedgerError::LeaseExpired { resource, key });
         }
 
         reservation.state = to;
@@ -374,25 +401,84 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn lapsed_lease_is_reclaimed_by_the_store_clock() {
+    async fn lapsed_lease_becomes_ambiguous_and_retains_exposure() {
         let ledger = InProcessLedger::with_lease_ttl(Duration::from_millis(250));
         ledger.declare_resource(spec(1)).await.unwrap();
         let resource = ResourceId::new("gpu");
-        ledger
+        let grant = ledger
             .reserve(&resource, 1, IdempotencyKey::new("k1"))
             .await
             .unwrap();
+        let id = grant.reservation_id();
 
-        // Wait for k1's lease to lapse, but leave k2 a comfortable margin.
         tokio::time::sleep(Duration::from_millis(400)).await;
 
-        // The next operation sweeps the lapsed hold, so another reserve fits.
-        let grant = ledger
+        // A lapsed lease is not proof of no effect: exposure is retained.
+        assert_eq!(ledger.exposure(&resource).await.unwrap().outstanding, 1);
+
+        // Another caller cannot steal the ambiguous hold.
+        let err = ledger
             .reserve(&resource, 1, IdempotencyKey::new("k2"))
             .await
+            .unwrap_err();
+        assert!(matches!(err, LedgerError::Insufficient { .. }));
+
+        // A late commit proves the effect happened and reconciles the hold.
+        let committed = ledger.commit(grant).await.unwrap();
+        assert_eq!(committed.id, id);
+        assert_eq!(committed.state, ReservationState::Committed);
+        let after = ledger.exposure(&resource).await.unwrap();
+        assert_eq!(after.committed, 1);
+        assert_eq!(after.outstanding, 0);
+    }
+
+    #[tokio::test]
+    async fn reusing_a_key_with_a_different_amount_is_a_conflict() {
+        let ledger = declared(10).await;
+        let resource = ResourceId::new("gpu");
+        let grant = ledger
+            .reserve(&resource, 4, IdempotencyKey::new("k1"))
+            .await
             .unwrap();
-        assert_eq!(grant.amount(), 1);
-        assert_eq!(ledger.exposure(&resource).await.unwrap().outstanding, 1);
+        assert_eq!(grant.amount(), 4);
+
+        let err = ledger
+            .reserve(&resource, 999, IdempotencyKey::new("k1"))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, LedgerError::Contended { .. }),
+            "different amount must not return the 4-unit grant: {err:?}"
+        );
+
+        // The identical request still collapses onto the original reservation.
+        let same = ledger
+            .reserve(&resource, 4, IdempotencyKey::new("k1"))
+            .await
+            .unwrap();
+        assert_eq!(same.reservation_id(), grant.reservation_id());
+    }
+
+    #[tokio::test]
+    async fn retry_after_expiry_does_not_create_a_second_reservation() {
+        let ledger = InProcessLedger::with_lease_ttl(Duration::from_millis(100));
+        ledger.declare_resource(spec(10)).await.unwrap();
+        let resource = ResourceId::new("gpu");
+        ledger
+            .reserve(&resource, 4, IdempotencyKey::new("k1"))
+            .await
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // The key is still bound to the ambiguous reservation, so a retry is
+        // rejected instead of silently reserving a second 4 units.
+        let err = ledger
+            .reserve(&resource, 4, IdempotencyKey::new("k1"))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, LedgerError::Contended { .. }));
+        assert_eq!(ledger.exposure(&resource).await.unwrap().outstanding, 4);
     }
 
     #[tokio::test]
