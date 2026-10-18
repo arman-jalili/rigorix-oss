@@ -59,6 +59,28 @@ info!("Audit shutdown: {} delivered, {} dropped", delivered, dropped);
 | `audit verify-projection` reports `provenance_established: false` | Expected. The command proves the projection matches the supplied history (`chain_consistent`) | Not an error. To establish provenance, verify the history against the anchor out of band — the bundle carries no anchor-signed checkpoint, so this check must not be read as authentication. |
 | `audit verify-projection` fails | `facts_differ` / `anchor_differs` / chain error | The exporter asserted facts the bundled history does not support, or the history is not an intact chain. Treat the bundle as untrustworthy and re-export from the producer. |
 
+
+### Release order after an integrity-vocabulary change
+
+`history_integrity` is inside the signed bytes, so its values are a shared
+contract (`rigorix-sdk` `schemas/envelope.json`). Adding a value is a rollout,
+not an edit:
+
+1. `rigorix-sdk` schema (values + description) — the contract.
+2. this engine — start emitting.
+3. enterprise ingestion — must accept it, or it **drops** every envelope that
+   carries it (fail closed). These are the first records an anchored deployment
+   writes, so the symptom is a gap at the head of the chain.
+4. console.
+
+Shipped example (#1071): the engine emitted `anchored_pending` before the schema
+knew it, and enterprise ingestion rejected it before `rigorix-enterprise` #268
+accepted it — consumer-first ordering was required for the release even though
+the engine and schema were already on `main`. To check the emit side only:
+`engine/tests/conformance/envelope.rs` validates all three variants against the
+real SDK schemas.
+
+
 ## Operations
 
 ### Check audit status

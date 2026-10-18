@@ -51,6 +51,9 @@ prometheus = "0.14.0"
 
 [dev-dependencies]
 tempfile.workspace = true
+# #1071: the conformance suite builds an anchored runtime, whose history source
+# is an async trait. Same crate the engine itself uses.
+async-trait.workspace = true
 wiremock = "0.6"
 criterion = { version = "0.5", features = ["html_reports"] }
 # JSON-Schema validation for the conformance suite (same validator the

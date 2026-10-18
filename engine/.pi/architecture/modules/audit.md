@@ -160,6 +160,17 @@ head (the startup window, or a history read that has not succeeded) is
 the label was chosen from the mode alone, so a headless record read as
 authenticated to any consumer that trusted the label.
 
+**The vocabulary is a cross-repo contract, not a local enum.** `history_integrity`
+is part of the canonical (signed) form, so its values live in `rigorix-sdk`
+`schemas/envelope.json` and ingestion rejects a value it does not know (#1071).
+The engine emitted `anchored_pending` before the schema carried it — every
+envelope written in the startup window was outside the contract, and nothing
+noticed because no conformance case set the field. The value is now exercised
+against the real SDK schemas (`engine/tests/conformance/envelope.rs`, all three
+variants plus a negative case for an invented one), so a vocabulary gap fails
+CI here rather than surfacing downstream. Adding a variant requires, in order:
+`rigorix-sdk` schema → this engine → enterprise ingestion → console.
+
 ## Authority-fact bundles: consistency, not provenance
 
 The `audit projection` / `audit verify-projection` pair (#1073):
