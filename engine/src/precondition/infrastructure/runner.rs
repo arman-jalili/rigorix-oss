@@ -628,6 +628,13 @@ mod tests {
         }
     }
 
+    /// The domain **maximum** (#1081). These checks are must-pass cases:
+    /// `/bin/sh -c 'exit 0'` finishing is not in doubt, but the 5s default is a
+    /// wall-clock budget competing with the rest of the suite for CPU, so a
+    /// loaded machine could report `Timeout` and fail a test whose subject is
+    /// exit-code mapping. Use the largest budget an operator may configure.
+    const TEST_TIMEOUT_MS: u64 = 60_000;
+
     fn precondition(id: &str, command: Vec<&str>) -> Precondition {
         Precondition {
             id: id.to_string(),
@@ -635,7 +642,7 @@ mod tests {
             require_params: vec![],
             command: command.into_iter().map(str::to_string).collect(),
             provider: None,
-            timeout_ms: 5_000,
+            timeout_ms: TEST_TIMEOUT_MS,
             failure: FailureAction::Deny,
             capture_output: false,
             require_immutable_check: false,
@@ -723,10 +730,15 @@ mod tests {
         assert!(!error.is_retriable());
     }
 
-    #[tokio::test]
+    /// #1081: the clock is virtual, so the assertion is "the runner honours the
+    /// budget", not "this machine took >100ms to get here". The child sleeps far
+    /// longer than any real CI stall, so the timer cannot lose the race; and the
+    /// wait is advanced instantly instead of burning a real 100ms (plus a real
+    /// `sleep` process) inside a suite that already runs thousands of tests.
+    #[tokio::test(start_paused = true)]
     async fn timeout_maps_to_refuse_error() {
         let runner = runner_outside_workspace();
-        let mut precondition = precondition("p1", vec!["/bin/sh", "-c", "sleep 5"]);
+        let mut precondition = precondition("p1", vec!["/bin/sh", "-c", "sleep 3600"]);
         precondition.timeout_ms = 100;
         let error = runner
             .run(&precondition, &input())
@@ -734,6 +746,19 @@ mod tests {
             .expect_err("timeout");
         assert!(matches!(error, PreconditionError::Timeout { .. }));
         assert!(!error.is_retriable());
+    }
+
+    /// Fault injection for the test above: a check that finishes well inside its
+    /// budget must be judged on its exit code. Without this, a runner that
+    /// reported `Timeout` unconditionally would still pass the timeout case.
+    #[tokio::test]
+    async fn a_check_that_finishes_inside_its_budget_is_not_a_timeout() {
+        let runner = runner_outside_workspace();
+        let mut fast = precondition("p1", vec!["/bin/sh", "-c", "exit 0"]);
+        fast.timeout_ms = 60_000;
+        let run = runner.run(&fast, &input()).await.expect("run");
+        assert_eq!(run.outcome, PreconditionOutcome::Passed);
+        assert_eq!(run.exit_code, Some(0));
     }
 
     #[tokio::test]

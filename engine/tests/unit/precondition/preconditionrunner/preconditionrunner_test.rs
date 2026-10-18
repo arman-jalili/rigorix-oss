@@ -12,13 +12,21 @@ use rigorix_engine::precondition::infrastructure::{
 };
 use serde_json::json;
 
+/// The domain maximum (#1081): these are must-pass checks. `/bin/sh -c 'exit 0'`
+/// finishing is not in doubt, but the 5s default is a wall-clock budget sharing
+/// the machine with the rest of the suite, so a loaded host could report
+/// `Timeout` and fail a test whose subject is exit-code mapping.
+const TEST_TIMEOUT_MS: u64 = 60_000;
+
 fn precondition(id: &str, command: Vec<&str>) -> Precondition {
-    serde_json::from_value(json!({
+    let mut parsed: Precondition = serde_json::from_value(json!({
         "id": id,
         "match": { "tool": "payment_execute" },
         "command": command
     }))
-    .expect("precondition parses")
+    .expect("precondition parses");
+    parsed.timeout_ms = TEST_TIMEOUT_MS;
+    parsed
 }
 
 fn input() -> PreconditionCheckInput {
@@ -131,14 +139,33 @@ async fn command_inside_workspace_is_refused() {
     assert!(matches!(error, PreconditionError::TrustBoundary { .. }));
 }
 
-#[tokio::test]
-async fn timeout_and_spawn_failure_refuse_never_pass() {
-    let mut slow = precondition("p1", vec!["/bin/sh", "-c", "sleep 5"]);
+/// #1081: virtual clock. The subject is "the runner honours the budget", not
+/// "this machine took >100ms to get here". The child sleeps far longer than any
+/// real CI stall, so the timer cannot lose the race, and the wait is advanced
+/// instantly rather than burning a real 100ms plus a real `sleep` process inside
+/// a suite that already runs thousands of tests.
+#[tokio::test(start_paused = true)]
+async fn timeout_refuses_never_passes() {
+    let mut slow = precondition("p1", vec!["/bin/sh", "-c", "sleep 3600"]);
     slow.timeout_ms = 100;
     let timeout = runner().run(&slow, &input()).await.expect_err("timeout");
     assert!(matches!(timeout, PreconditionError::Timeout { .. }));
     assert!(!timeout.is_retriable());
+}
 
+/// Fault injection for the case above: a check that finishes inside its budget
+/// is judged on its exit code. Without this, a runner that refused everything as
+/// `Timeout` would still satisfy the timeout test.
+#[tokio::test]
+async fn a_check_inside_its_budget_is_judged_by_its_exit_code() {
+    let mut fast = precondition("p1", vec!["/bin/sh", "-c", "exit 0"]);
+    fast.timeout_ms = 60_000;
+    let run = runner().run(&fast, &input()).await.expect("run");
+    assert_eq!(run.outcome, PreconditionOutcome::Passed);
+}
+
+#[tokio::test]
+async fn spawn_failure_refuses_never_passes() {
     let spawn = runner()
         .run(
             &precondition("p1", vec!["/nonexistent/rigorix-check-xyz"]),
