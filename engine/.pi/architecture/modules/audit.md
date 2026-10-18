@@ -150,8 +150,34 @@ serde-defaulted fields join the envelope and are covered by the HMAC
 | `producer_id` | `Option<String>` | the chain this envelope belongs to (`RIGORIX_AUDIT_PRODUCER_ID`, default `local`) |
 | `sequence` | `Option<u64>` | monotonic per-producer number (genesis `0`) |
 | `prev_hash` | `Option<String>` | SHA-256 of the predecessor's **canonical bytes** (`signature` nulled) — the same form the HMAC signs, so chain and signature cannot disagree |
-| `history_integrity` | `Option<HistoryIntegrity>` | `local_unanchored` (Phase A OSS default) or `anchored` (Phase C) |
+| `history_integrity` | `Option<HistoryIntegrity>` | `local_unanchored` (Phase A OSS default), `anchored_pending` (anchored mode, no verified head yet), or `anchored` (a verified head is bound) |
 | `history_policy` | `Option<HistoryPolicy>` | the recorded `allow_unanchored` opt-in, when the operator accepts best-effort local history |
+
+**The label is decided from evidence, not configuration (#1071).** `anchored`
+requires both `AnchorMode::Anchored` *and* a verified head. Anchored mode with no
+head (the startup window, or a history read that has not succeeded) is
+`anchored_pending` — configuration is intent, a head is evidence. Before this,
+the label was chosen from the mode alone, so a headless record read as
+authenticated to any consumer that trusted the label.
+
+## Authority-fact bundles: consistency, not provenance
+
+The `audit projection` / `audit verify-projection` pair (#1073):
+
+- **Established** — the bundled chain is internally linked (per-producer
+  sequence continuity) and the projection is exactly what re-derivation from that
+  history produces. This catches an exporter asserting facts its own history
+  contradicts, which a signature over the projection cannot catch.
+- **Not established** — that the history is authentic, externally anchored, or
+  attributable to the claimed producer. `verify_chain` does not verify an anchor
+  signature or the envelope HMACs against a trusted key, and `anchor_ref` is
+  derived from the bundle's own envelopes, so that comparison is the bundle
+  against itself. A third party can build a self-consistent chain and a matching
+  projection without ever obtaining the real history.
+
+The outcome is therefore named `BundleVerification::ChainConsistent` and the CLI
+reports `provenance_established: false`. Provenance needs a separate
+trusted-anchor check that the bundle does not currently carry evidence for.
 
 `AuditEnvelopeFactoryImpl` tags every built envelope `local_unanchored` and
 copies the chain link. `AuditServiceImpl::build_and_send` resolves

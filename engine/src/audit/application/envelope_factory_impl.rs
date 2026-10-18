@@ -124,15 +124,21 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
         let planning_hash = Self::compute_planning_hash(&input.planning_prompt);
 
         // ADR-016 Phase C: tag the regime and bind the verified anchor head.
-        // Anchored iff the runtime is anchored; the head is the last slice the
-        // guard verified (set by AnchoredHistoryAdapter).
+        // The label is decided from **evidence**, not configuration (#1071).
+        // Anchored mode with no verified head is `anchored_pending`: the anchor
+        // was asked for, but nothing has been verified yet (the startup window),
+        // so the record must not read as authenticated.
         let (history_integrity, anchor_head) = match &self.anchor {
-            Some(runtime)
-                if runtime.mode() == crate::audit::domain::anchor::AnchorMode::Anchored =>
-            {
-                (Some(HistoryIntegrity::Anchored), runtime.head())
-            }
-            _ => (Some(HistoryIntegrity::LocalUnanchored), None),
+            Some(runtime) => match (runtime.mode(), runtime.head()) {
+                (crate::audit::domain::anchor::AnchorMode::Anchored, Some(head)) => {
+                    (Some(HistoryIntegrity::Anchored), Some(head))
+                }
+                (crate::audit::domain::anchor::AnchorMode::Anchored, None) => {
+                    (Some(HistoryIntegrity::AnchoredPending), None)
+                }
+                _ => (Some(HistoryIntegrity::LocalUnanchored), None),
+            },
+            None => (Some(HistoryIntegrity::LocalUnanchored), None),
         };
 
         let mut envelope = AuditEnvelope {
@@ -308,6 +314,52 @@ mod tests {
             Some(HistoryIntegrity::LocalUnanchored)
         );
         assert!(local.anchor_head.is_none());
+    }
+
+    /// #1071: the label used to come from configuration alone, so an anchored
+    /// runtime with no verified head emitted `anchored`. Configuration is intent;
+    /// a head is evidence. The headless case must be visibly distinct.
+    #[tokio::test]
+    async fn anchored_mode_without_a_verified_head_is_pending_not_anchored() {
+        use crate::audit::domain::HistoryIntegrity;
+        use crate::audit::infrastructure::anchor::{AnchorError, AnchorRuntime, AnchorSliceSource};
+        use ed25519_dalek::SigningKey;
+
+        struct NoopSource;
+        #[async_trait::async_trait]
+        impl AnchorSliceSource for NoopSource {
+            async fn fetch_slice(
+                &self,
+                _scope: &str,
+                _since: chrono::DateTime<chrono::Utc>,
+            ) -> Result<crate::audit::domain::anchor::HistorySlice, AnchorError> {
+                Err(AnchorError::Unreachable("noop".into()))
+            }
+        }
+
+        let signing = SigningKey::from_bytes(&[9u8; 32]);
+        let runtime = AnchorRuntime::anchored(
+            std::sync::Arc::new(NoopSource),
+            hex::encode(signing.verifying_key().to_bytes()),
+            "test-anchor",
+            "local",
+        );
+        assert!(
+            runtime.head().is_none(),
+            "the fixture must have no verified head"
+        );
+
+        let envelope = AuditEnvelopeFactoryImpl::default()
+            .with_anchor(runtime)
+            .build_envelope(sample_input())
+            .await
+            .unwrap();
+        assert_eq!(
+            envelope.history_integrity,
+            Some(HistoryIntegrity::AnchoredPending),
+            "anchored mode without evidence must not be labelled authenticated"
+        );
+        assert!(envelope.anchor_head.is_none());
     }
 
     #[tokio::test]

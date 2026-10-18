@@ -33,6 +33,14 @@ pub enum HistoryIntegrity {
     LocalUnanchored,
     /// Anchor-authenticated evidence (Phase C; not produced in Phase A).
     Anchored,
+    /// The anchor is configured in anchored mode but **no verified head exists**
+    /// yet — the startup window, or a history read that has not succeeded.
+    ///
+    /// Distinct from [`Anchored`](Self::Anchored) on purpose: configuration is
+    /// intent, a head is evidence. Labelling a headless record `anchored` let a
+    /// consumer that trusts the label accept a record nothing had verified
+    /// (#1071).
+    AnchoredPending,
 }
 
 /// ADR-016: a recorded history-policy opt-in.

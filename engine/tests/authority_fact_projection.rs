@@ -7,7 +7,8 @@
 
 use rigorix_engine::audit::application::envelope_factory_impl::AuditEnvelopeFactoryImpl;
 use rigorix_engine::audit::application::projection::{
-    ProjectAuthorityFacts, ProjectionVerificationError, verify_authority_fact_bundle,
+    BundleVerification, ProjectAuthorityFacts, ProjectionVerificationError,
+    verify_authority_fact_bundle,
 };
 use rigorix_engine::audit::domain::authority_fact::{AuthorityFactBundle, AuthorityFactProjection};
 use rigorix_engine::audit::domain::envelope::AuditEnvelope;
@@ -156,7 +157,10 @@ fn bundle_with(subjects: &[String]) -> AuthorityFactBundle {
 
 #[test]
 fn an_intact_bundle_verifies_by_re_derivation() {
-    assert_eq!(verify_authority_fact_bundle(&bundle_with(&[])), Ok(()));
+    assert_eq!(
+        verify_authority_fact_bundle(&bundle_with(&[])),
+        Ok(BundleVerification::ChainConsistent)
+    );
 }
 
 /// The property a signature over the projection could NOT provide: a projection
@@ -265,7 +269,10 @@ fn the_bundle_round_trips_through_json() {
     let back: AuthorityFactBundle = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(back.projection.facts, bundle.projection.facts);
     assert_eq!(back.envelopes.len(), bundle.envelopes.len());
-    assert_eq!(verify_authority_fact_bundle(&back), Ok(()));
+    assert_eq!(
+        verify_authority_fact_bundle(&back),
+        Ok(BundleVerification::ChainConsistent)
+    );
 }
 
 #[test]
