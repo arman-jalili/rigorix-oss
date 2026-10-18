@@ -345,3 +345,156 @@ async fn requirement_findings_conform_to_schema() {
     let value = serde_json::to_value(&envelope).expect("engine serde");
     assert_valid(&schema(), &value, "envelope with requirement_findings");
 }
+
+// ---------------------------------------------------------------------------
+// #1071: `history_integrity` is part of the frozen canonical form
+// ---------------------------------------------------------------------------
+//
+// `HistoryIntegrity` is a CLOSED set inside the signed bytes (enterprise #263),
+// so its vocabulary lives in `rigorix-sdk` `schemas/envelope.json` — not in this
+// crate. `anchored_pending` was added to the engine before it was added to the
+// schema, so every envelope written in the startup window was outside the
+// contract, and nothing caught it: no conformance case set the field at all.
+//
+// These cases exercise the field through the real factory so the vocabulary gap
+// fails CI here instead of being noticed downstream.
+
+use rigorix_engine::audit::domain::HistoryIntegrity;
+use rigorix_engine::audit::domain::anchor::HistorySlice;
+use rigorix_engine::audit::infrastructure::anchor::{
+    AnchorError, AnchorRuntime, AnchorSliceSource,
+};
+
+/// An anchored runtime that has **not** read history yet — the startup window.
+/// The factory only asks for `mode()` and `head()`, so the source is never
+/// called; the stub exists to satisfy the constructor.
+struct StartupWindowSource;
+
+#[async_trait::async_trait]
+impl AnchorSliceSource for StartupWindowSource {
+    async fn fetch_slice(
+        &self,
+        _scope: &str,
+        _since: chrono::DateTime<chrono::Utc>,
+    ) -> Result<HistorySlice, AnchorError> {
+        Err(AnchorError::Unreachable(
+            "conformance stub: no history has been read in the startup window".to_string(),
+        ))
+    }
+}
+
+fn anchored_runtime() -> std::sync::Arc<AnchorRuntime> {
+    AnchorRuntime::anchored(
+        std::sync::Arc::new(StartupWindowSource),
+        "0".repeat(64),
+        "https://anchor.example.com",
+        "conformance",
+    )
+}
+
+fn signed_input() -> BuildEnvelopeInput {
+    let mut input = minimal_input();
+    input.sign = true;
+    input
+}
+
+/// Anchored mode + no verified head → `anchored_pending`, and that value is in
+/// the frozen vocabulary. `anchor_head` stays null: no evidence is claimed.
+#[tokio::test]
+async fn startup_window_envelope_is_anchored_pending_and_conforms() {
+    let runtime = anchored_runtime();
+    assert!(runtime.head().is_none(), "startup window: no verified head");
+
+    let factory = AuditEnvelopeFactoryImpl::new(Some(FIXTURE_KEY.to_string())).with_anchor(runtime);
+    let envelope = factory.build_envelope(signed_input()).await.unwrap();
+
+    assert_eq!(
+        envelope.history_integrity,
+        Some(HistoryIntegrity::AnchoredPending),
+        "anchored mode without a verified head must not claim `anchored`"
+    );
+    assert!(
+        envelope.anchor_head.is_none(),
+        "there is no head to bind — claiming one would be fabricated evidence"
+    );
+
+    let value = serde_json::to_value(&envelope).expect("engine serde");
+    assert_eq!(
+        value["history_integrity"], "anchored_pending",
+        "wire value is serde snake_case and must match the schema vocabulary"
+    );
+    assert!(value["anchor_head"].is_null());
+    assert_valid(&schema(), &value, "anchored_pending (startup window)");
+
+    factory
+        .verify_signature(&envelope)
+        .await
+        .expect("a pending envelope is still HMAC-signed");
+}
+
+/// Anchored mode + verified head → `anchored`, with the head bound into the
+/// signed bytes. This is the only label that asserts anchor-authenticated
+/// evidence, so it must carry the evidence.
+#[tokio::test]
+async fn anchored_label_requires_and_carries_a_verified_head() {
+    let runtime = anchored_runtime();
+    let head = "ab".repeat(32);
+    runtime.set_head(&head);
+
+    let factory = AuditEnvelopeFactoryImpl::new(Some(FIXTURE_KEY.to_string())).with_anchor(runtime);
+    let envelope = factory.build_envelope(signed_input()).await.unwrap();
+
+    assert_eq!(envelope.history_integrity, Some(HistoryIntegrity::Anchored));
+    assert_eq!(envelope.anchor_head.as_deref(), Some(head.as_str()));
+
+    let value = serde_json::to_value(&envelope).expect("engine serde");
+    assert_eq!(value["history_integrity"], "anchored");
+    assert_eq!(value["anchor_head"], head);
+    assert_valid(&schema(), &value, "anchored (verified head)");
+}
+
+/// The vocabulary is closed and the two anchored-side labels are distinct: a
+/// consumer must be able to tell "authenticated" from "configured, not yet
+/// verified". An unknown value must not validate — that is what made this a
+/// contract break rather than a style choice.
+#[tokio::test]
+async fn history_integrity_vocabulary_is_closed_and_the_labels_are_distinct() {
+    let pending = AuditEnvelopeFactoryImpl::new(Some(FIXTURE_KEY.to_string()))
+        .with_anchor(anchored_runtime())
+        .build_envelope(signed_input())
+        .await
+        .unwrap();
+    let mut anchored = pending.clone();
+    anchored.history_integrity = Some(HistoryIntegrity::Anchored);
+    anchored.anchor_head = Some("cd".repeat(32));
+
+    let pending_value = serde_json::to_value(&pending).expect("engine serde");
+    let anchored_value = serde_json::to_value(&anchored).expect("engine serde");
+    assert_ne!(
+        pending_value["history_integrity"], anchored_value["history_integrity"],
+        "an unverified anchor must not serialize to the authenticated label"
+    );
+
+    // Every value the engine can emit must be in the schema.
+    let schema_value = schema();
+    for integrity in [
+        HistoryIntegrity::LocalUnanchored,
+        HistoryIntegrity::Anchored,
+        HistoryIntegrity::AnchoredPending,
+    ] {
+        let mut value = pending_value.clone();
+        value["history_integrity"] = serde_json::to_value(integrity).expect("serde");
+        assert_valid(&schema_value, &value, "emitted HistoryIntegrity variant");
+    }
+
+    // An invented value must not: adding a variant without the schema change is
+    // exactly the defect this suite failed to catch (#1071).
+    let mut unknown = pending_value.clone();
+    unknown["history_integrity"] = serde_json::json!("anchored_unverified");
+    let compiled = jsonschema::validator_for(&schema_value).expect("schema compiles");
+    assert!(
+        !compiled.is_valid(&unknown),
+        "the integrity vocabulary is closed inside the canonical form; \
+         a new value is a schema change in rigorix-sdk, not a local edit"
+    );
+}
