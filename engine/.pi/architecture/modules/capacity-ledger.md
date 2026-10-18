@@ -139,7 +139,8 @@ depends: CapacityLedger, Reservation, Grant, Exposure
 
 **Purpose:** The use cases over the port: reserve, commit, release, exposure. Contains no
 storage logic and no local counter — a local counter is precisely the naive-counter failure
-this module exists to replace.
+this module exists to replace. It owns the outstanding `ReservationGuard`s keyed by
+reservation id, so no DTO hands one out and there is exactly one owner of each `Grant`.
 
 **Layer:** `application/`
 
@@ -150,7 +151,9 @@ depends: CapacityLedgerService
 
 **Purpose:** RAII binding of a grant to a step's lifetime: commit on success, **release on
 drop**. Release-on-drop is not optional — if release happens only on an explicit error branch,
-a panic or early return leaks capacity until the lease expires.
+a panic or early return leaks capacity until the lease expires. The service owns every
+outstanding guard; dropping the service releases them, and the lease remains the backstop
+when a process dies without settling.
 
 **Layer:** `application/`
 
@@ -285,7 +288,7 @@ contract-freeze issue. Status is tracked per epic issue.
 | LedgerError | `domain/error.rs` — typed failures + classification | unit |
 | CapacityLedger | `interfaces/capacity_ledger.rs` — port + `interfaces/contract.rs` suite | contract suite |
 | CapacityLedgerService | `application/service_impl.rs` | 4 tests |
-| ReservationGuard | `application/guard_impl.rs` — release-on-drop (ADR-008) | 3 tests |
+| ReservationGuard | `application/guard_impl.rs` — release-on-drop (ADR-008), owned by the service | 4 tests |
 | InProcessLedger | `infrastructure/in_process.rs` — single-execution atomicity | 7 tests incl. 50-way concurrency |
 | HttpLedger | `infrastructure/http.rs` — fail-closed transport | WireMock suite |
 | CapacityLedgerConfig | `application/config.rs` — declaration parse + fail-closed validation | 7 tests |

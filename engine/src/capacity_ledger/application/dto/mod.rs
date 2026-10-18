@@ -11,15 +11,13 @@
 //! - Every operation has a dedicated input and output DTO
 //! - DTOs are JSON-serializable (`snake_case` fields as written)
 //! - `committed` and `outstanding` are never collapsed in an output
-//! - The RAII guard is intentionally excluded from the wire (`#[serde(skip)]`)
+//! - No DTO hands out a reservation handle: the service owns outstanding guards
 
 use serde::{Deserialize, Serialize};
 
 use crate::capacity_ledger::domain::{
     Exposure, IdempotencyKey, Reservation, ReservationId, ResourceId,
 };
-
-use super::guard::ReservationGuard;
 
 // ---------------------------------------------------------------------------
 // Reserve
@@ -52,19 +50,19 @@ pub struct ReserveCapacityInput {
 /// # Fields (Frozen)
 /// - `reservation: Reservation` — the resulting reservation snapshot
 /// - `exposure: Exposure` — exposure after the reserve
-/// - `guard` — RAII handle (not serialized; use `commit`/drop)
-#[derive(Debug, Serialize, Deserialize)]
+///
+/// The service owns the outstanding [`ReservationGuard`] internally and settles
+/// it by reservation id through `commit`/`release`. No handle is handed out: a
+/// caller cannot hold a guard while the service also owns its grant.
+///
+/// [`ReservationGuard`]: super::guard::ReservationGuard
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReserveCapacityOutput {
     /// The resulting reservation snapshot.
     pub reservation: Reservation,
 
     /// Exposure after the reserve.
     pub exposure: Exposure,
-
-    /// RAII handle owning the reservation. Excluded from the wire; dropping it
-    /// without committing releases the hold.
-    #[serde(skip)]
-    pub guard: Option<Box<dyn ReservationGuard>>,
 }
 
 // ---------------------------------------------------------------------------

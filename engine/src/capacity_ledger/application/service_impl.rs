@@ -6,16 +6,21 @@
 //!
 //! `CapacityLedgerServiceImpl` is a thin use-case layer over the
 //! [`CapacityLedger`] port. It holds **no capacity counter** — the port is the
-//! single source of truth. Its only state is the set of outstanding grants, so
+//! single source of truth. Its only state is the set of outstanding guards, so
 //! a caller can commit or release by reservation id.
 //!
+//! # Ownership (single owner)
+//! The service owns every outstanding [`ReservationGuardImpl`]; no DTO hands a
+//! guard to the caller. `commit(id)`/`release(id)` take the guard out of the
+//! registry and settle through it. Dropping the service drops every remaining
+//! guard, whose `Drop` releases the hold — RAII at service lifetime, with the
+//! lease as the backstop if the process dies (ADR-008, ADR-018 I3).
+//!
 //! # Contract notes
-//! - The grant registry is keyed by reservation id; a grant is removed before
+//! - The guard registry is keyed by reservation id; a guard is removed before
 //!   the async port call, so the mutex is never held across an `await`.
 //! - A poisoned registry or an unknown reservation maps to
 //!   [`LedgerError::Unavailable`] (fail closed, I4).
-//! - RAII guard wiring lands in ISSUE-CAPACITY-LEDGER-8; `reserve` currently
-//!   returns `guard: None`.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -31,12 +36,14 @@ use super::dto::{
     CommitCapacityInput, CommitCapacityOutput, ExposureOutput, ExposureQuery, ReleaseCapacityInput,
     ReleaseCapacityOutput, ReserveCapacityInput, ReserveCapacityOutput,
 };
+use super::guard::ReservationGuard;
+use super::guard_impl::ReservationGuardImpl;
 use super::service::CapacityLedgerService;
 
 /// Use-case service over a [`CapacityLedger`] port.
 pub struct CapacityLedgerServiceImpl {
     ledger: Arc<dyn CapacityLedger>,
-    grants: Mutex<HashMap<ReservationId, Grant>>,
+    guards: Mutex<HashMap<ReservationId, ReservationGuardImpl>>,
 }
 
 impl CapacityLedgerServiceImpl {
@@ -44,17 +51,17 @@ impl CapacityLedgerServiceImpl {
     pub fn new(ledger: Arc<dyn CapacityLedger>) -> Self {
         Self {
             ledger,
-            grants: Mutex::new(HashMap::new()),
+            guards: Mutex::new(HashMap::new()),
         }
     }
 
-    /// Take the grant for `id`, if it is still outstanding.
-    fn take_grant(&self, id: &ReservationId) -> Result<Grant, LedgerError> {
-        let mut grants = self.grants.lock().map_err(|_| LedgerError::Unavailable {
-            detail: "capacity grant registry poisoned".to_string(),
+    /// Take the guard for `id`, if it is still outstanding.
+    fn take_guard(&self, id: &ReservationId) -> Result<ReservationGuardImpl, LedgerError> {
+        let mut guards = self.guards.lock().map_err(|_| LedgerError::Unavailable {
+            detail: "capacity guard registry poisoned".to_string(),
         })?;
-        grants.remove(id).ok_or_else(|| LedgerError::Unavailable {
-            detail: format!("no outstanding grant for reservation {id}"),
+        guards.remove(id).ok_or_else(|| LedgerError::Unavailable {
+            detail: format!("no outstanding guard for reservation {id}"),
         })
     }
 }
@@ -84,19 +91,20 @@ impl CapacityLedgerService for CapacityLedgerServiceImpl {
         let reservation = reservation_from_grant(&grant);
         let exposure: Exposure = self.ledger.exposure(&reservation.resource).await?;
 
-        // Track the grant so commit/release-by-id can find it. The lock is
-        // released at the end of this statement, before any further await.
-        self.grants
+        // The service owns the guard, so commit/release-by-id can find it and
+        // dropping the service releases it. The lock is released at the end of
+        // this statement, before any further await.
+        let guard = ReservationGuardImpl::new(self.ledger.clone(), grant);
+        self.guards
             .lock()
             .map_err(|_| LedgerError::Unavailable {
-                detail: "capacity grant registry poisoned".to_string(),
+                detail: "capacity guard registry poisoned".to_string(),
             })?
-            .insert(reservation.id, grant);
+            .insert(reservation.id, guard);
 
         Ok(ReserveCapacityOutput {
             reservation,
             exposure,
-            guard: None,
         })
     }
 
@@ -104,8 +112,8 @@ impl CapacityLedgerService for CapacityLedgerServiceImpl {
         &self,
         input: CommitCapacityInput,
     ) -> Result<CommitCapacityOutput, LedgerError> {
-        let grant = self.take_grant(&input.reservation_id)?;
-        let reservation = self.ledger.commit(grant).await?;
+        let guard = self.take_guard(&input.reservation_id)?;
+        let reservation = Box::new(guard).commit().await?;
         let exposure = self.ledger.exposure(&reservation.resource).await?;
         Ok(CommitCapacityOutput {
             reservation,
@@ -117,8 +125,8 @@ impl CapacityLedgerService for CapacityLedgerServiceImpl {
         &self,
         input: ReleaseCapacityInput,
     ) -> Result<ReleaseCapacityOutput, LedgerError> {
-        let grant = self.take_grant(&input.reservation_id)?;
-        let reservation = self.ledger.release(grant).await?;
+        let guard = self.take_guard(&input.reservation_id)?;
+        let reservation = Box::new(guard).release().await?;
         let exposure = self.ledger.exposure(&reservation.resource).await?;
         Ok(ReleaseCapacityOutput {
             reservation,
