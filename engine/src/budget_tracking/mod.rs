@@ -22,8 +22,7 @@
 //! │   ├── service.rs    # LlmBudgetService, LlmBudgetReservation traits
 //! │   ├── factory.rs    # LlmBudgetFactory trait
 //! │   └── dto/          # Input/Output DTOs with validation
-//! ├── infrastructure/   # Repository interfaces
-//! │   └── repository/   # LlmBudgetRepository trait
+//! ├── infrastructure/   # (no persistence port: budgets are ephemeral)
 //! └── interfaces/       # API contracts
 //!     └── http/         # REST endpoint contracts
 //! ```

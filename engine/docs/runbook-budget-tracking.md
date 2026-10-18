@@ -20,7 +20,12 @@ coordinates budget exhaustion with the cancellation system.
 | `LlmBudgetImpl` | Application service | Runtime budget tracker using atomic counters with `CancellationToken` |
 | `LlmBudgetReservationImpl` | Application service | RAII guard — auto-rollbacks call + token counters on Drop if not committed |
 | `LlmBudgetFactoryImpl` | Factory | Constructs budget instances from preset modes or custom limits |
-| `LlmBudgetRepository` | Repository | Persistence interface for budget snapshots and reservation records |
+
+> **Budgets are ephemeral.** They are per-execution counters held by
+> `LlmBudgetImpl`; nothing in the OSS engine persists them. The former
+> `LlmBudgetRepository` port was removed because it had no caller (#1016).
+> Durable or cross-execution accounting belongs to the capacity ledger, whose
+> HTTP adapter delegates to the enterprise ledger service.
 
 ### Preset Profiles
 
