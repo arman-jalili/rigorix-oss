@@ -319,6 +319,6 @@ HTTP adapter against a real contested store provides cross-session atomicity.
 The `enforcement` module's `ResourceBudget` is a **per-execution counter**
 (`BudgetScope::PerExecution`), authoritative only for limits local to one run.
 Any limit contested across executions belongs here: declare it in
-`.rigorix/capacity.toml` and mark the matching counter
-`BudgetScope::SharedContested` so it stays advisory. Exactly one mechanism is
-authoritative per resource.
+`.rigorix/capacity.toml`. Do not model it as an enforcement `ResourceBudget`;
+`BudgetScope::SharedContested` is refused by validation until a budget→ledger
+binding exists (#1061). Exactly one mechanism is authoritative per resource.

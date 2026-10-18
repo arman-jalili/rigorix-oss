@@ -196,7 +196,7 @@ authoritative for a given limit:
 | Limit shape | Authoritative mechanism | How to configure |
 |-------------|-------------------------|------------------|
 | Per-execution, non-contested (tokens, tool calls, elapsed time) | `ResourceBudget` counter with `scope = per_execution` (default) | `EnforcementConfig.budgets` |
-| Shared across independent executions (contested) | Capacity ledger | Declare the resource in `.rigorix/capacity.toml`; set the matching `ResourceBudget.scope = shared_contested` so the local counter is advisory and never blocks |
+| Shared across independent executions (contested) | Capacity ledger | Declare the resource in `.rigorix/capacity.toml`; do **not** model it as a `ResourceBudget` — `shared_contested` is refused by validation because no budget→ledger binding exists (#1061) |
 
 A per-tool `max_calls` limit is a per-execution counter: it is enforced from
 that execution's tool-call map, not from the ledger.
@@ -225,7 +225,7 @@ that execution's tool-call map, not from the ledger.
 | `soft_warning_threshold` | `f64` | Fraction (0.0–1.0) at which warning is emitted |
 | `hard_limit` | `u64` | Absolute maximum; tool blocked when exceeded and `scope` is authoritative |
 | `current_usage` | `u64` | Current runtime usage (mutated by enforcer) |
-| `scope` | `BudgetScope` | `per_execution` (default, authoritative) or `shared_contested` (advisory; the capacity ledger enforces) |
+| `scope` | `BudgetScope` | `per_execution` (default, authoritative). `shared_contested` is a fail-closed marker: validation refuses it until a ledger binding exists (#1061) |
 
 ### ToolPolicy Fields
 
