@@ -20,7 +20,9 @@ use async_trait::async_trait;
 
 use crate::sequence_policy::domain::SequencePolicyError;
 
-use super::companion::{CompanionFinding, CompanionStepObligation, CompanionStepObligationService};
+use super::companion::{
+    CompanionAction, CompanionFinding, CompanionStepObligation, CompanionStepObligationService,
+};
 use super::dto::PlannedStep;
 
 /// Concrete companion-step obligation evaluator.
@@ -73,6 +75,45 @@ impl CompanionStepObligationService for CompanionStepObligationServiceImpl {
                         action: obligation.action,
                     });
                 }
+            }
+        }
+        Ok(findings)
+    }
+
+    async fn evaluate_prerequisite(
+        &self,
+        completed: &[PlannedStep],
+        next: &PlannedStep,
+    ) -> Result<Vec<CompanionFinding>, SequencePolicyError> {
+        let mut findings = Vec::new();
+        for obligation in &self.obligations {
+            // A promoted obligation is decided by the human approval at plan
+            // time; enforcing it again here would make approval unblockable.
+            if obligation.action != CompanionAction::Deny {
+                continue;
+            }
+            if !obligation.r#match.matches(&next.tool, &next.parameters)? {
+                continue;
+            }
+            // Require a step that **completed successfully** — presence in the
+            // plan is not an execution prerequisite (#1069).
+            let mut satisfied = false;
+            for candidate in completed {
+                if obligation
+                    .require_companion_step
+                    .matches(&candidate.tool, &candidate.parameters)?
+                {
+                    satisfied = true;
+                    break;
+                }
+            }
+            if !satisfied {
+                findings.push(CompanionFinding {
+                    obligation_id: obligation.id.clone(),
+                    step: next.name.clone(),
+                    required_companion: obligation.require_companion_step.tool.clone(),
+                    action: obligation.action,
+                });
             }
         }
         Ok(findings)

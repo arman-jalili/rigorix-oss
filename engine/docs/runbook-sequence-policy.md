@@ -94,6 +94,7 @@ immediate:
 | **Promote rule pauses a run** | Record `PendingApproval`, node `AwaitingApproval` | Human approves (approve → executes) or declines (never dispatched); run stays resumable |
 | **Deny rule match (plan)** | `SequencePolicyDenied` refusal before any step | Operator re-authorizes the composition explicitly or amends the rule |
 | **Deny rule match (runtime)** | Node fails with `sequence_policy_denied`, tool never called | Same as above; siblings/dependents release like any dispatched failure |
+| **Companion prerequisite unmet (runtime)** | Node fails with `companion_prerequisite_unmet`; the matched step's tool is never called | The plan-time lint only proves the companion is *present*. At dispatch the companion must have **completed successfully**. Reorder the plan so the companion runs first (add the DAG edge), or fix the failing companion. A companion that ran and failed does not count. `promote` obligations are not checked here — they pause for human approval at plan time instead. |
 | **R3 eval error mid-dispatch** | Run halts fail-closed before the node dispatches | Operator fixes the config; the halted run surfaces `SequencePolicyConfigError` evidence |
 | **Regex ReDoS** | (Prevented) | Safety cap 8 regex predicates/file + compile once per load |
 | **Agent edits the rules** | (Prevented) | `.rigorix/**` writes denied to `workspace_write` agents (R5); operator mode only |

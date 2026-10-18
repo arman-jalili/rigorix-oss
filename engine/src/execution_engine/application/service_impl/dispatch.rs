@@ -223,6 +223,32 @@ impl ParallelExecutionServiceImpl {
                     // never called. Continue the fill loop.
                     continue;
                 }
+                SequencePolicyVerdict::CompanionUnmet {
+                    obligation_id,
+                    required_companion,
+                } => {
+                    let node_name = graph
+                        .get_node(node_id)
+                        .map(|n| n.name.clone())
+                        .unwrap_or_default();
+                    let task_result = TaskResult::failure(
+                        node_id,
+                        &node_name,
+                        format!(
+                            "Companion prerequisite '{obligation_id}' unmet — '{required_companion}' must complete successfully before this step dispatches"
+                        ),
+                        "companion_prerequisite_unmet".to_string(),
+                        0,
+                        0,
+                    );
+                    node_results.insert(node_id, task_result);
+                    failed_count += 1;
+                    self.release_or_skip_dependents(graph, dag_id, node_id, total_nodes, true)
+                        .await;
+                    // NEVER fall through to dispatch: the tool never runs
+                    // without its prerequisite.
+                    continue;
+                }
             }
 
             // ADR-018: reserve capacity for a governed step at the last possible
@@ -511,6 +537,31 @@ impl ParallelExecutionServiceImpl {
                         self.release_or_skip_dependents(graph, dag_id, next_id, total_nodes, true)
                             .await;
                         // NEVER fall through to dispatch (tool never called).
+                        continue;
+                    }
+                    SequencePolicyVerdict::CompanionUnmet {
+                        obligation_id,
+                        required_companion,
+                    } => {
+                        let node_name = graph
+                            .get_node(next_id)
+                            .map(|n| n.name.clone())
+                            .unwrap_or_default();
+                        let task_result = TaskResult::failure(
+                            next_id,
+                            &node_name,
+                            format!(
+                                "Companion prerequisite '{obligation_id}' unmet — '{required_companion}' must complete successfully before this step dispatches"
+                            ),
+                            "companion_prerequisite_unmet".to_string(),
+                            0,
+                            0,
+                        );
+                        node_results.insert(next_id, task_result);
+                        failed_count += 1;
+                        self.release_or_skip_dependents(graph, dag_id, next_id, total_nodes, true)
+                            .await;
+                        // NEVER fall through to dispatch.
                         continue;
                     }
                 }
@@ -953,6 +1004,53 @@ impl ParallelExecutionServiceImpl {
                 .await;
             }
             return Ok(SequencePolicyVerdict::Promote);
+        }
+
+        // #1069: the plan-time companion check is a *presence* lint. Here, at
+        // the dispatch seam, the companion must have already **completed
+        // successfully**: `prefix` is built from `NodeStatus::Completed` nodes,
+        // so it is the outcome set, not the plan. A companion listed after the
+        // matched step, or one that failed, does not satisfy this.
+        let completed_steps: Vec<PlannedStep> = prefix
+            .iter()
+            .map(|step| PlannedStep {
+                name: step.name.clone(),
+                tool: step.tool.clone(),
+                parameters: step.parameters.clone(),
+            })
+            .collect();
+        match svc
+            .evaluate_companion_prerequisite(&completed_steps, &next)
+            .await
+        {
+            Ok(findings) => {
+                if let Some(finding) = findings.into_iter().next() {
+                    tracing::warn!(
+                        %dag_id,
+                        %node_id,
+                        obligation = %finding.obligation_id,
+                        required = %finding.required_companion,
+                        "companion prerequisite unmet — step refused before dispatch (fail closed)"
+                    );
+                    return Ok(SequencePolicyVerdict::CompanionUnmet {
+                        obligation_id: finding.obligation_id,
+                        required_companion: finding.required_companion,
+                    });
+                }
+            }
+            Err(e) => {
+                self.publish_event(ExecutionEvent::SequencePolicyConfigError {
+                    execution_id: dag_id,
+                    detail: format!("companion prerequisite: {e}"),
+                    timestamp: chrono::Utc::now(),
+                })
+                .await;
+                return Err(ExecutionError::InternalError {
+                    detail: format!(
+                        "Companion prerequisite evaluation failed — run halted before dispatch (fail closed): {e}"
+                    ),
+                });
+            }
         }
         Ok(SequencePolicyVerdict::Dispatch)
     }
