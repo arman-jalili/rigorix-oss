@@ -46,8 +46,7 @@ budget_tracking/
 │   ├── dto/mod.rs             # Input/Output DTOs (reserve, commit, status)
 │   ├── llm_budget_impl.rs     # LlmBudgetImpl + LlmBudgetReservationImpl
 │   └── llm_budget_factory_impl.rs  # LlmBudgetFactoryImpl
-├── infrastructure/            # Persistence interfaces
-│   └── repository/mod.rs      # LlmBudgetRepository trait
+├── infrastructure/            # (no persistence port: budgets are ephemeral)
 └── interfaces/                # HTTP API contracts
     └── http/mod.rs            # 5 REST endpoints
 ```
@@ -60,7 +59,14 @@ budget_tracking/
 | LlmBudgetImpl | `src/budget_tracking/application/llm_budget_impl.rs` | Atomic counter-based runtime budget tracker | #budget-impl |
 | LlmBudgetReservationImpl | `src/budget_tracking/application/llm_budget_impl.rs` | RAII guard, commits or auto-rollbacks | #reservation |
 | LlmBudgetFactoryImpl | `src/budget_tracking/application/llm_budget_factory_impl.rs` | Factory with preset and custom creation | #factory |
-| LlmBudgetRepository | `src/budget_tracking/infrastructure/repository/mod.rs` | Persistence interface for budget snapshots | #repository |
+
+### Persistence
+
+Budgets are **per-execution and ephemeral**. `LlmBudgetImpl` owns its counters;
+nothing in the OSS engine persists them. The former `LlmBudgetRepository` port
+had no production caller and was removed (#1016). Durable or cross-execution
+accounting is the capacity ledger's job (`capacity_ledger`), whose HTTP adapter
+delegates to the enterprise ledger service.
 
 ---
 
