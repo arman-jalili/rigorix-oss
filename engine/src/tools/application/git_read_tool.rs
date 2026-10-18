@@ -10,6 +10,10 @@
 //! All git commands are restricted to read-only operations (log, diff, status,
 //! show, branch, ls-files) to prevent accidental mutations.
 
+// #1083: approved process-spawning sink — `sh -c` for a git read; the caller-supplied path must be argv, not interpolated (#1082).
+// See `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
+#![allow(clippy::disallowed_types)]
+
 use async_trait::async_trait;
 use std::time::Instant;
 

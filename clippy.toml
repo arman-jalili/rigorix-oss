@@ -1,0 +1,17 @@
+# Workspace clippy configuration.
+#
+# Process spawning is a privileged sink: it runs something outside the engine's
+# type system, with whatever environment and arguments the caller assembled. Two
+# `sh -c` sites once existed side by side in this crate — one with an allowlist
+# and a control-operator refusal, one with neither — and the unguarded one was in
+# the real dispatch path. The build could not tell, because nothing declared that
+# spawning is privileged (#1083).
+#
+# Declaring it inverts the default: a new spawn site does not compile until it
+# either adopts the policy or writes an `#[allow]` with a reason a reviewer sees.
+# The approved sinks and the policy each applies are listed in
+# `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
+disallowed-types = [
+  { path = "std::process::Command", reason = "process spawning is a privileged sink: route it through an approved sink (tools/application/run_command_tool.rs or shell_policy.rs) or write an #[allow] with a reason — see tool-system.md#process-spawning-sinks" },
+  { path = "tokio::process::Command", reason = "process spawning is a privileged sink: route it through an approved sink (tools/application/run_command_tool.rs or shell_policy.rs) or write an #[allow] with a reason — see tool-system.md#process-spawning-sinks" },
+]

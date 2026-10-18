@@ -1,6 +1,10 @@
 //! Terminal UI module — interactive TUI (ratatui).
 //! @canonical .pi/architecture/modules/tui.md
 
+// #1083: approved process-spawning sink — fixed-argv clipboard helper.
+// See `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
+#![allow(clippy::disallowed_types)]
+
 pub mod command_bar;
 pub mod event_bridge;
 pub mod input;

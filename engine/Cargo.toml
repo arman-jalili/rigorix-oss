@@ -80,3 +80,6 @@ path = "tests/unit/mod.rs"
 name = "conformance"
 path = "tests/conformance/mod.rs"
 required-features = ["conformance"]
+
+[lints]
+workspace = true

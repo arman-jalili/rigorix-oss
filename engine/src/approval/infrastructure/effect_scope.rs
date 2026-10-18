@@ -39,6 +39,10 @@
 //! indistinguishable from the change that was already there. Content-level
 //! attribution needs per-step commits, which this oracle deliberately does not do.
 
+// #1083: approved process-spawning sink — fixed-argv `git diff` for the effect snapshot.
+// See `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
+#![allow(clippy::disallowed_types)]
+
 use std::path::Path;
 use std::process::Command;
 

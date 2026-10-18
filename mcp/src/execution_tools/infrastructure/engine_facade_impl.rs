@@ -8,6 +8,10 @@
 //! DAG execution, quality gates, policy engine, and audit dispatch.
 //! Enforcement checks remain direct for check_enforcement().
 
+// #1083: approved process-spawning sink — fixed-argv `git remote/config` reads.
+// See `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
+#![allow(clippy::disallowed_types)]
+
 use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;

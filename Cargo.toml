@@ -7,6 +7,11 @@ license = "MIT OR Apache-2.0"
 authors = ["Arman Wolkensteiner-Jalili and Rigorix contributors"]
 edition = "2024"
 
+[workspace.lints.clippy]
+# #1083: a restriction lint, allow-by-default — deny it here so plain
+# `cargo clippy` catches a new spawn site, not only CI. Configured in clippy.toml.
+disallowed_types = "deny"
+
 [workspace.dependencies]
 # Shared external dependencies (single version across all crates)
 serde = { version = "1", features = ["derive"] }

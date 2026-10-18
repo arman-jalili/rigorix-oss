@@ -2,6 +2,10 @@
 //! `orchestrator_impl.rs`, #916). A child module of the impl type, so it can
 //! access its private fields; methods the coordinator calls are `pub(super)`.
 
+// #1083: approved process-spawning sink — fixed-argv `git` sink.
+// See `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
+#![allow(clippy::disallowed_types)]
+
 use super::*;
 
 impl OrchestratorServiceImpl {

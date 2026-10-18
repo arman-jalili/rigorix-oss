@@ -1,6 +1,10 @@
 //! Tool-node execution (`execute_tool` + `exec_*`) for
 //! `ParallelExecutionServiceImpl` (extracted from `service_impl.rs`, #914).
 
+// #1083: approved process-spawning sink — governed shell (`exec_run_command` via shell_policy) plus fixed-argv `git`.
+// See `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
+#![allow(clippy::disallowed_types)]
+
 use super::*;
 use crate::tools::application::shell_policy::{
     apply_child_env, command_from_intent, field_from_intent, find_shell_control_operator,

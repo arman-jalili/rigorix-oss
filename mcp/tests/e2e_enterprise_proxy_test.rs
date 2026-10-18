@@ -8,6 +8,11 @@
 //! @canonical .pi/architecture/modules/enterprise-proxy.md
 //! Implements: Acceptance Criteria #8, #9 — E2E conditional wiring
 
+// #1083: approved process-spawning sink — end-to-end test: runs the MCP
+// binary under test, fixed argv.
+// See `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
+#![allow(clippy::disallowed_types)]
+
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 use std::time::Duration;

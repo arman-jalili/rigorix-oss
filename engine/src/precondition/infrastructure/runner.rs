@@ -37,6 +37,10 @@
 //!   (truncated to [`MAX_CAPTURED_STDOUT_BYTES`]); it is never captured by
 //!   default
 
+// #1083: approved process-spawning sink — operator-configured argv, never a shell; trust boundary + env set (ADR-017).
+// See `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
+#![allow(clippy::disallowed_types)]
+
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 

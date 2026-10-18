@@ -6,6 +6,11 @@
 //! exits non-zero when the projection does not match, or when the history is not
 //! an intact chain. No engine process and no operator key are involved.
 
+// #1083: approved process-spawning sink — integration test: runs the CLI
+// binary under test, fixed argv.
+// See `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
+#![allow(clippy::disallowed_types)]
+
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Output};
