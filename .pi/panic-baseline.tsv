@@ -10,7 +10,6 @@ engine/src/cancellation/application/cancellation_service_impl.rs:161	borrow()	in
 engine/src/cancellation/application/cancellation_service_impl.rs:227	borrow()	invariant	low	tokio watch::Receiver::borrow() — panics only on a same-task conflicting borrow
 engine/src/cancellation/application/cancellation_service_impl.rs:269	borrow()	invariant	low	tokio watch::Receiver::borrow() — panics only on a same-task conflicting borrow
 engine/src/cancellation/application/cancellation_service_impl.rs:275	borrow()	invariant	low	tokio watch::Receiver::borrow() — panics only on a same-task conflicting borrow
-engine/src/execution_engine/application/factory.rs:232	expect	startup	medium	fail-fast at composition: approval store must open
 mcp/src/audit_tools/infrastructure/in_memory_audit_service.rs:393	expect	const	low	HMAC accepts any key length, so new_from_slice cannot fail here
 mcp/src/audit_tools/interfaces/mcp/mod.rs:143	expect	const	low	serde_json::from_str on a compile-time schema const (test-enforced)
 mcp/src/audit_tools/interfaces/mcp/mod.rs:152	expect	const	low	serde_json::from_str on a compile-time schema const (test-enforced)

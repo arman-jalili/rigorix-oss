@@ -306,7 +306,8 @@ pub async fn build_orchestrator_with_budget(
     let approval_binding =
         rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env(
             std::path::Path::new(&repo_root),
-        );
+        )
+        .map_err(|e| CliError::General(format!("approval binding: {e}")))?;
     // ADR-013 R3: operator-authored .rigorix/sequence-policy.toml gates the
     // dispatch prefix (absent file = no gating). Shared by the executor
     // (R3) and the orchestrator builder (R2 plan-time) below.

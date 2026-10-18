@@ -80,7 +80,16 @@ Stored as `decision_context` in the approval record; **summarized** into the env
 - **Effect oracle:** git diff — the engine snapshots `git status` / `git diff --stat` at dispatch (post-approval, pre-execution) and post-execution; the actual changed path set is the oracle. `file_paths` (engine-visible file tools) alone would miss side-effects from `run_command` scripts (the exact case motivating effect-scope verification) — git diff does not.
 - Effects outside the declared scope → `scope_violation` flag in the envelope (**non-blocking, first-class evidence**; R2 is the blocking check).
 
-**Honest boundary (unchanged):** a side-effect on `src/auth.ts` via a script can still happen — it is now *detected and recorded* as a violation in the signed record.
+**Implementation status (#1072): conditionally active, off by default.** The
+snapshot covers staged and unstaged tracked changes plus untracked files, but no
+shipped entry point sets `approval_repo_path` — CLI, GitHub Action and MCP host all
+pass `None`. Effect-scope evidence is therefore produced only when an operator
+configures the path explicitly. The baseline is **per dispatch loop**, not per
+step: with concurrent steps the reported set is the union and attribution is to
+the run, and a file the author is editing during the run is reported as the
+agent's effect. Content inside an already-changed file is not distinguished.
+
+**Honest boundary (unchanged):** a side-effect on `src/auth.ts` via a script can still happen — it is now *detected and recorded* as a violation in the signed record **when the oracle is enabled**; in the OSS default it is not detected at all, which is why the binding layer's prevention boundary (ADR-011) is the guarantee and this is evidence.
 
 ## External Stress-Test → Design Requirements (Portotify ALLOW-Matrix)
 
