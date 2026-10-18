@@ -1,6 +1,8 @@
 # location	kind	class	severity	reason
 # Generated/maintained by .pi/scripts/validate-unsafe-sites.sh --update
+# `location` is file::code#occurrence, not file:line: a site is matched by
+# what it does, so unrelated edits above it do not churn the baseline.
 # Every entry is an explicit decision: production `unsafe` is either
 # removed or recorded here with the reason it is tolerated.
-engine/src/precondition/infrastructure/runner.rs:314	unsafe	libc	medium	libc::geteuid/getgroups to read the real uid/groups for the precondition runner; the existing SAFETY note covers the only pointer (a buffer sized by the first getgroups call) and every call is fallible-by-return, not UB
-engine/src/precondition/infrastructure/runner.rs:328	unsafe	libc	medium	libc::geteuid/getgroups to read the real uid/groups for the precondition runner; the existing SAFETY note covers the only pointer (a buffer sized by the first getgroups call) and every call is fallible-by-return, not UB
+engine/src/precondition/infrastructure/runner.rs::let euid = unsafe { libc::geteuid() };#1	unsafe	libc	medium	libc::geteuid/getgroups to read the real uid/groups for the precondition runner; the existing SAFETY note covers the only pointer (a buffer sized by the first getgroups call) and every call is fallible-by-return, not UB
+engine/src/precondition/infrastructure/runner.rs::unsafe {#1	unsafe	libc	medium	libc::geteuid/getgroups to read the real uid/groups for the precondition runner; the existing SAFETY note covers the only pointer (a buffer sized by the first getgroups call) and every call is fallible-by-return, not UB

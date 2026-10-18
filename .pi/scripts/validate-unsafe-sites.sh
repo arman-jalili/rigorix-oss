@@ -74,16 +74,27 @@ def classify(f):
     return "unknown", "unknown", "unclassified — triage required"
 
 
+# Key a site by (file, code text, occurrence) — NOT by line number. A line
+# inserted above a site used to read as "1 new site + 1 stale entry", which fails
+# a green branch for a change that touched no `unsafe` at all (it did, on the
+# #1082 branch, when a lint header was added to the top of runner.rs). A guard
+# that cries wolf on an unrelated edit trains people to run --update without
+# reading, which is how a baseline stops meaning anything.
 rows = []
+seen = {}
 for f in findings:
     cls, sev, why = classify(f)
-    rows.append((f"{f['file']}:{f['line']}", f["kind"], cls, sev, why))
+    base = f"{f['file']}::{f['code'].strip()}"
+    seen[base] = seen.get(base, 0) + 1
+    rows.append((f"{base}#{seen[base]}", f["kind"], cls, sev, why))
 rows.sort()
 
 
 def fmt(rows):
     out = ["# location\tkind\tclass\tseverity\treason",
            "# Generated/maintained by .pi/scripts/validate-unsafe-sites.sh --update",
+           "# `location` is file::code#occurrence, not file:line: a site is matched by",
+           "# what it does, so unrelated edits above it do not churn the baseline.",
            "# Every entry is an explicit decision: production `unsafe` is either",
            "# removed or recorded here with the reason it is tolerated."]
     for loc, kind, cls, sev, why in rows:
