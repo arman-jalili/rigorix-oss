@@ -347,6 +347,53 @@ the default permission config denies executing agents write access to
 
 ---
 
+## See it run
+
+One command, no Docker, no network. The first run compiles the engine (a few
+minutes); after that it takes about a second:
+
+```bash
+git clone https://github.com/arman-jalili/rigorix-oss && cd rigorix-oss
+demo/capacity-ledger/run.sh
+```
+
+It writes a throwaway `.rigorix/capacity.toml` and drives the real engine types —
+no mocks, no recorded fixtures. Act 1 is the reserve/commit/release contract with
+the aggregate exposure printed after every step; act 2 arms the same declaration
+into the real executor and launches two executions that contend for one cap.
+
+```text
+── Act 1 — the contract ──
+
+1. execution A reserves 3
+   ▒▒▒··   committed 0, outstanding 3, available 2 of 5
+
+…                       (retry with the same key: still one hold)
+
+3. execution B reserves 3
+   refused: insufficient capacity for resource 'payments-budget': requested 3, available 2
+   ▒▒▒··   committed 0, outstanding 3, available 2 of 5
+   unchanged — a refusal reserves nothing
+
+── Act 2 — the seam, through the real executor ──
+  hard_limit 4, step amount 3, two executions launched together
+  dispatched: 1, refused before dispatch: 1
+  tool markers on disk: 1 of 2 (the refused step never ran its tool)
+  ███·   committed 3, outstanding 0, available 1 of 4
+  refusal: capacity_denied (the step's tool was never called)
+```
+
+The marker file in act 2 is the point: the refused execution's tool **never ran**,
+so its marker never appears. A local counter — run the tool, check afterwards —
+cannot produce an absence. Scope of the guarantee, stated plainly: the in-process
+adapter is **single-process** atomicity, not cross-session protection; that needs
+the HTTP adapter against a real contested store (ADR-018).
+
+Full transcript, and what the demo does *not* prove:
+[`demo/capacity-ledger/`](demo/capacity-ledger/README.md).
+
+---
+
 ## Claim ceiling
 
 Public claims here are bounded by the published specifications. A passing test is

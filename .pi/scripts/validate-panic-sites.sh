@@ -69,6 +69,9 @@ findings = json.load(open(current_path))
 # ISSUE-PRODUCTION-PANIC-SURFACE; a panic re-appearing in those files is a NEW
 # decision and intentionally falls through to "unclassified — triage required".
 RULES = [
+    (r"^engine/examples/", "demo", "low",
+     "runnable demo: its asserts are the evidence it prints, so panicking on a "
+     "violated invariant is the intended behaviour (a reader sees the failure)"),
     (r"^mcp/src/engine_wiring\.rs$", "startup", "medium",
      "fail-fast at composition: without an engine the host cannot serve; logs then panics"),
     (r"^mcp/src/host/mod\.rs$", "startup", "medium",

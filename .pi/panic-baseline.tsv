@@ -5,6 +5,9 @@
 # Every entry is an explicit decision: a panic that can reach production is either
 # removed (return a Result) or recorded here with the reason it is tolerated.
 actions/src/action_output/application/output_variable_impl.rs::.expect("const name regex is valid (covered by validate_name tests)"),#1	expect	const	low	compile-time regex, covered by validate_name tests
+engine/examples/capacity_ledger_demo.rs::assert!(#1	assert!	demo	low	runnable demo: its asserts are the evidence it prints, so panicking on a violated invariant is the intended behaviour (a reader sees the failure)
+engine/examples/capacity_ledger_demo.rs::assert!(#2	assert!	demo	low	runnable demo: its asserts are the evidence it prints, so panicking on a violated invariant is the intended behaviour (a reader sees the failure)
+engine/examples/capacity_ledger_demo.rs::assert_eq!(#1	assert!	demo	low	runnable demo: its asserts are the evidence it prints, so panicking on a violated invariant is the intended behaviour (a reader sees the failure)
 engine/src/approval/domain/hash.rs::let mut mac = HmacSha256::new_from_slice(run_key).expect("HMAC accepts any key length");#1	expect	const	low	infallible in practice (serde_json on an owned struct / HMAC accepts any key length)
 engine/src/approval/domain/intent.rs::.expect("canonical serialization is always valid JSON")#1	expect	const	low	infallible in practice (serde_json on an owned struct / HMAC accepts any key length)
 engine/src/cancellation/application/cancellation_service_impl.rs::let current = *self.signal_rx.borrow();#1	borrow()	invariant	low	tokio watch::Receiver::borrow() — panics only on a same-task conflicting borrow
