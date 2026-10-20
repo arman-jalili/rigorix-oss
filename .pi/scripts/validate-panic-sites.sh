@@ -95,15 +95,24 @@ def classify(f):
     return "unknown", "unknown", "unclassified — triage required"
 
 
+# Key a site by (file, code text, occurrence) — NOT by line number (#1089).
+# A line inserted above a site used to read as "1 new site + 1 stale entry",
+# which fails a green branch for a change that touched no panic at all. The
+# unsafe baseline was re-keyed for exactly this reason (#1088); this one was not.
 rows = []
+seen = {}
 for f in findings:
     cls, sev, why = classify(f)
-    rows.append((f"{f['file']}:{f['line']}", f["kind"], cls, sev, why))
+    base = f"{f['file']}::{f['code'].strip()}"
+    seen[base] = seen.get(base, 0) + 1
+    rows.append((f"{base}#{seen[base]}", f["kind"], cls, sev, why))
 rows.sort()
 
 def fmt(rows):
     out = ["# location\tkind\tclass\tseverity\treason",
            "# Generated/maintained by .pi/scripts/validate-panic-sites.sh --update",
+           "# `location` is file::code#occurrence, not file:line: a site is matched by",
+           "# what it does, so unrelated edits above it do not churn the baseline.",
            "# Every entry is an explicit decision: a panic that can reach production is either",
            "# removed (return a Result) or recorded here with the reason it is tolerated."]
     for loc, kind, cls, sev, why in rows:
