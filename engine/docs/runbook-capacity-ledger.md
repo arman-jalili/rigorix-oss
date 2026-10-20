@@ -168,3 +168,35 @@ service keeps the guard that already owns it. Consequences for an operator:
   would surface as `Contended { detail: "... is already Released" }`, which was a real defect
   until #1018;
 - a *different* amount with the same key is `Contended`, not a retry (#1052).
+
+## Observing refusals (and what OSS cannot show)
+
+A refused step is visible today, in three places that agree:
+
+| Where | What you see |
+|---|---|
+| the node result | `failure_type: "capacity_denied"`, message `Capacity refused step before dispatch: <reason>` |
+| the engine log (`warn`) | `capacity: step refused before dispatch (fail closed)` with `dag_id`, `node_id`, `resource`, `amount`, `reason` — enable with `RUST_LOG=warn` |
+| the audit envelope | the step's failure event, so the refusal is in the signed record rather than only in a log |
+
+**Exposure is a different question, and OSS only answers it in-process.** The
+in-process adapter holds its aggregate in memory: `exposure(resource)` is exact for
+the process that ran the steps, and meaningless for any other process. That is why
+there is no `rigorix capacity exposure` subcommand — a fresh CLI process would
+construct an empty ledger and print zeros, which reads as authoritative and is
+worse than no command at all. For a host application that embeds the engine, the
+service is the readable surface (`CapacityLedgerService::exposure`).
+
+Outside the process, exposure is only meaningful where the state actually lives:
+the **HTTP adapter** against a real contested store
+(`GET /v1/capacity/exposure/{resource}`, ADR-018), served by the deployment that
+owns the store — in the reference topology, the enterprise host. A deployment
+running the in-process adapter has no cross-process exposure to read, and should
+not be given a route that pretends otherwise.
+
+**If a refusal is surprising**, check in this order: the resource's `hard_limit`
+and `window_seconds` in `.rigorix/capacity.toml`; whether the refused step's
+`amount` plus `committed + outstanding` exceeds the cap (the log line carries
+`reason`); and whether a lease lapsed — a lapsed hold becomes `Ambiguous` and keeps
+counting until it is reconciled, so capacity stays reserved for work whose outcome
+is unknown.
