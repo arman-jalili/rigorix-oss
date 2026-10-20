@@ -68,12 +68,12 @@ guardian project create --lang <lang>   (Epic 0 — greenfield only)
 - Fill in `## Key Files` sections in each module doc (initially `None yet`)
 - Update the CHANGELOG (initially a placeholder)
 
-**Output files:**
+**Output files** (paths are relative to the repository root):
 | Path | Contents |
 |------|----------|
-| `.pi/architecture/modules/<context>.md` | One module doc per bounded context |
-| `.pi/architecture/decisions/ADR-001.md` | Architecture pattern decision |
-| `.pi/architecture/diagrams/system-context.md` | Mermaid bounded context flow |
+| `.pi/architecture/modules/<context>.md` | One module doc per bounded context (pattern: per bounded context) |
+| `engine/.pi/architecture/decisions/ADR-001-architecture-pattern.md` | Architecture pattern decision |
+| `engine/.pi/architecture/diagrams/system-context.md` | Mermaid bounded context flow |
 
 ---
 
