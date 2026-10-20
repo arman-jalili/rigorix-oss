@@ -157,3 +157,14 @@ No redirects, explicit deadline, bounded body, credentials never logged.
 | I5 | Store clock decides expiry |
 | I6 | `committed + outstanding` never exceeds `hard_limit` |
 | I7 | A bounded window is enforced as a rolling duration: committed capacity ages out after W seconds |
+
+## Idempotent retries and hold ownership
+
+A retry with the same idempotency key and amount returns the **same** reservation, and the
+service keeps the guard that already owns it. Consequences for an operator:
+
+- a retry never consumes capacity twice, and never releases the hold it returned;
+- if a retry is followed by a commit, the commit succeeds — a released-under-you reservation
+  would surface as `Contended { detail: "... is already Released" }`, which was a real defect
+  until #1018;
+- a *different* amount with the same key is `Contended`, not a retry (#1052).

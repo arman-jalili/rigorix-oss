@@ -94,13 +94,21 @@ impl CapacityLedgerService for CapacityLedgerServiceImpl {
         // The service owns the guard, so commit/release-by-id can find it and
         // dropping the service releases it. The lock is released at the end of
         // this statement, before any further await.
-        let guard = ReservationGuardImpl::new(self.ledger.clone(), grant);
-        self.guards
-            .lock()
-            .map_err(|_| LedgerError::Unavailable {
+        //
+        // An idempotent retry (same key, same amount) comes back with the *same*
+        // reservation id (#1052). Inserting a second guard for that id would
+        // replace the owner, and the replaced guard's drop attempts a release —
+        // handing back a hold the caller is about to commit. So only a vacant id
+        // gets a guard: the retry path constructs none, which means there is
+        // nothing to drop and no race with the durable release.
+        {
+            let mut guards = self.guards.lock().map_err(|_| LedgerError::Unavailable {
                 detail: "capacity guard registry poisoned".to_string(),
-            })?
-            .insert(reservation.id, guard);
+            })?;
+            if let std::collections::hash_map::Entry::Vacant(slot) = guards.entry(reservation.id) {
+                slot.insert(ReservationGuardImpl::new(self.ledger.clone(), grant));
+            }
+        }
 
         Ok(ReserveCapacityOutput {
             reservation,
@@ -276,6 +284,64 @@ mod tests {
         assert_eq!(committed.reservation.state, ReservationState::Committed);
         assert_eq!(committed.exposure.committed, 3);
         assert_eq!(committed.exposure.outstanding, 0);
+    }
+
+    /// #1090: the durable artifact for the retry-replaces-guard defect.
+    ///
+    /// The bug is a **drop race**, so an outcome assertion alone can pass against
+    /// the broken code by scheduling luck (the demo failed one run in three).
+    /// This asserts the invariant directly — exactly one guard per reservation id
+    /// — and drains the runtime so a wrongly replaced guard's drop-release has
+    /// every chance to land before the exposure is read. Nothing in the in-process
+    /// adapter awaits, so one yield is a complete drain, not a sleep.
+    #[tokio::test]
+    async fn an_idempotent_retry_keeps_exactly_one_guard() {
+        use crate::capacity_ledger::infrastructure::InProcessLedger;
+
+        let ledger = Arc::new(InProcessLedger::new());
+        let resource = ResourceId::new("retry-gpu");
+        ledger
+            .declare_resource(ResourceSpec::new(
+                resource.clone(),
+                "retry-gpu".to_string(),
+                4,
+                Window::bounded(60),
+            ))
+            .await
+            .unwrap();
+        let svc = CapacityLedgerServiceImpl::new(ledger.clone());
+
+        let input = || ReserveCapacityInput {
+            resource: resource.clone(),
+            amount: 3,
+            idempotency_key: IdempotencyKey::new("k1"),
+            requested_by: None,
+        };
+        let first = svc.reserve(input()).await.unwrap();
+        let retry = svc.reserve(input()).await.unwrap();
+        assert_eq!(
+            first.reservation.id, retry.reservation.id,
+            "same key must return the same reservation (#1052)"
+        );
+
+        // Let any drop-dispatched release run: with a second guard registered for
+        // this id, the replaced owner is dropped here and releases the hold.
+        tokio::task::yield_now().await;
+
+        {
+            let guards = svc.guards.lock().expect("registry not poisoned");
+            assert_eq!(guards.len(), 1, "exactly one owner per reservation id");
+            assert!(
+                guards.contains_key(&first.reservation.id),
+                "the retry must not displace the guard that owns the hold"
+            );
+        }
+
+        let exposure = ledger.exposure(&resource).await.unwrap();
+        assert_eq!(
+            exposure.outstanding, 3,
+            "a retry must not release the hold it just returned"
+        );
     }
 
     #[tokio::test]

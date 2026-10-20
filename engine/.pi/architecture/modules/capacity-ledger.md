@@ -147,6 +147,13 @@ storage logic and no local counter — a local counter is precisely the naive-co
 this module exists to replace. It owns the outstanding `ReservationGuard`s keyed by
 reservation id, so no DTO hands one out and there is exactly one owner of each `Grant`.
 
+**A retry is not a second owner.** An idempotent retry (same key, same amount) returns the
+same reservation id (#1052), so the registry keeps the guard it already has and constructs
+none for the retry. Registering a second guard under that id would replace the owner, and the
+replaced guard's drop attempts a best-effort release — handing back a hold the caller is
+about to commit, non-deterministically. Found by running the demo (#1018), not by review:
+the first version of `demo/capacity-ledger` failed one run in three at the commit step.
+
 **Layer:** `application/`
 
 ### ReservationGuard

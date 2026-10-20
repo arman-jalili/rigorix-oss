@@ -97,6 +97,65 @@ mod tests {
         assert_eq!(round_trip, output);
     }
 
+    /// A retry with the same idempotency key returns the **same** reservation
+    /// (#1052). It must therefore also leave the hold owned by the guard that
+    /// already exists: registering a second guard for that id replaces the owner,
+    /// and the replaced guard's drop releases a hold the caller still believes
+    /// it has — so the follow-up `commit` finds a released reservation (#1018
+    /// demo, found by running it).
+    #[tokio::test]
+    async fn an_idempotent_retry_does_not_release_the_hold() {
+        use std::sync::Arc;
+
+        use rigorix_engine::capacity_ledger::domain::{ResourceSpec, Window};
+        use rigorix_engine::capacity_ledger::infrastructure::InProcessLedger;
+        use rigorix_engine::capacity_ledger::interfaces::CapacityLedger;
+
+        let ledger = Arc::new(InProcessLedger::new());
+        let resource = ResourceId::new("retry-gpu");
+        ledger
+            .declare_resource(ResourceSpec::new(
+                resource.clone(),
+                "retry-gpu".to_string(),
+                4,
+                Window::bounded(60),
+            ))
+            .await
+            .unwrap();
+        let service = CapacityLedgerServiceImpl::new(ledger.clone());
+
+        let reserve = || ReserveCapacityInput {
+            resource: resource.clone(),
+            amount: 3,
+            idempotency_key: IdempotencyKey::new("retry-k1"),
+            requested_by: None,
+        };
+        let first = service.reserve(reserve()).await.unwrap();
+        let retry = service.reserve(reserve()).await.unwrap();
+        assert_eq!(
+            first.reservation.id, retry.reservation.id,
+            "the ledger returns the same reservation for the same key"
+        );
+
+        // Drop-dispatched releases run on a spawned task. Yield so a wrong one
+        // runs before the assertion — no wall clock (#1081): the in-process
+        // adapter never awaits, so a single drain is complete.
+        tokio::task::yield_now().await;
+        let exposure = ledger.exposure(&resource).await.unwrap();
+        assert_eq!(
+            exposure.outstanding, 3,
+            "a retry must not release the hold it just returned"
+        );
+
+        let committed = service
+            .commit(CommitCapacityInput {
+                reservation_id: first.reservation.id,
+            })
+            .await
+            .expect("the hold survives the retry, so it can be committed");
+        assert_eq!(committed.exposure.committed, 3);
+    }
+
     #[tokio::test]
     async fn service_drop_releases_outstanding_guards() {
         use std::sync::Arc;
