@@ -72,9 +72,11 @@ process that shares the instance contends on one aggregate. It is not
 cross-session protection — two processes, two replicas or two hosts are outside
 it. That requires the HTTP adapter against a real contested store
 (`HttpLedger`, ADR-018), and no deployment may claim the second while running the
-first. See `.pi/architecture/modules/capacity-ledger.md` §"Guarantee ceiling".
+first. See the [capacity-ledger module spec §Guarantee
+ceiling](../../engine/.pi/architecture/modules/capacity-ledger.md).
 
 It also does not show *observability*: exposure is readable in-process (as act 1
 does) and over the HTTP adapter's route, but there is no OSS subcommand or server
-route that answers "why was my step refused" from outside the process. See
-`docs/runbook-capacity-ledger.md` §"Observing refusals".
+route that answers "why was my step refused" from outside the process. See the
+[capacity-ledger runbook §Observing
+refusals](../../engine/docs/runbook-capacity-ledger.md).
