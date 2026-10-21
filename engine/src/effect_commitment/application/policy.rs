@@ -31,6 +31,61 @@ impl ReconciliationPolicy {
         Self
     }
 
+    /// Authorise a definite settlement of a dispatched effect.
+    ///
+    /// The state machine and the evidence completeness rule are checked here so
+    /// every adapter reaches the same verdict before mutating the record.
+    ///
+    /// # Errors
+    /// - [`CommitmentError::AlreadySettled`] when the record is terminal
+    /// - [`CommitmentError::NotAmbiguous`] when it is `Ambiguous` (resolve it)
+    /// - [`CommitmentError::EvidenceMissing`] for incomplete evidence
+    pub fn authorize_settlement(
+        &self,
+        record: &EffectRecord,
+        evidence: &ObservedOutcome,
+    ) -> Result<(), CommitmentError> {
+        if record.is_terminal() {
+            return Err(CommitmentError::AlreadySettled {
+                record_id: record.id(),
+                state: record.state(),
+            });
+        }
+        if record.state() == EffectState::Ambiguous {
+            return Err(CommitmentError::NotAmbiguous {
+                record_id: record.id(),
+                state: record.state(),
+            });
+        }
+        if !evidence.is_complete() {
+            return Err(CommitmentError::EvidenceMissing {
+                record_id: record.id(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Authorise marking a dispatched effect ambiguous.
+    ///
+    /// # Errors
+    /// - [`CommitmentError::AlreadySettled`] when the record is terminal
+    /// - [`CommitmentError::Contended`] when it is already `Ambiguous`
+    pub fn authorize_mark_ambiguous(&self, record: &EffectRecord) -> Result<(), CommitmentError> {
+        if record.is_terminal() {
+            return Err(CommitmentError::AlreadySettled {
+                record_id: record.id(),
+                state: record.state(),
+            });
+        }
+        if record.is_ambiguous() {
+            return Err(CommitmentError::Contended {
+                record_id: Some(record.id()),
+                detail: "effect is already ambiguous".to_string(),
+            });
+        }
+        Ok(())
+    }
+
     /// Authorise leaving `Ambiguous` with `evidence` and `resolver`.
     ///
     /// # Errors
