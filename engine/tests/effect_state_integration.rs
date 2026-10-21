@@ -96,7 +96,7 @@ fn ambiguous_is_the_only_state_that_fences() {
         .mark_ambiguous("lost", Utc::now())
         .unwrap();
     assert!(!may_retry(&ambiguous));
-    assert!(!may_release_dependents(&[ambiguous.clone()]));
+    assert!(!may_release_dependents(std::slice::from_ref(&ambiguous)));
 
     let resolved = ambiguous
         .resolve(

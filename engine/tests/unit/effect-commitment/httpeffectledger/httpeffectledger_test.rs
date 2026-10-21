@@ -6,10 +6,58 @@
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use chrono::Utc;
+    use rigorix_engine::capacity_ledger::domain::IdempotencyKey;
+    use rigorix_engine::effect_commitment::application::{
+        BeginEffectOutput, MarkAmbiguousOutput, QueryEffectOutput, ResolveEffectOutput,
+        SettleDefiniteOutput,
+    };
+    use rigorix_engine::effect_commitment::domain::{
+        CommitmentError, EffectIntent, EffectQuery, EffectRecord, ObservedOutcome,
+        ResolverIdentity, ResolverKind,
+    };
     use rigorix_engine::effect_commitment::infrastructure::{
         HttpEffectLedger, HttpEffectLedgerConfig,
     };
     use rigorix_engine::effect_commitment::interfaces::EffectCommitmentLedger;
+    use rigorix_engine::effect_commitment::interfaces::http::{
+        AMBIGUOUS_PATH, AMBIGUOUS_QUERY_PATH, BEGIN_PATH, QUERY_PATH, RESOLVE_PATH, SETTLE_PATH,
+    };
+    use serde_json::json;
+    use uuid::Uuid;
+    use wiremock::matchers::{header, method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn config(server: &MockServer) -> HttpEffectLedgerConfig {
+        HttpEffectLedgerConfig::new(server.uri(), 2_000, 65_536, None)
+    }
+
+    fn intent() -> EffectIntent {
+        EffectIntent::new(
+            Uuid::from_u128(1),
+            Uuid::from_u128(2),
+            1,
+            IdempotencyKey::new("intent-key"),
+            "payments.charge",
+            "args-digest",
+            "precondition-digest",
+            "authority-digest",
+        )
+    }
+
+    fn evidence() -> ObservedOutcome {
+        ObservedOutcome::committed("receipt-1", "readback-1", Utc::now(), "stripe")
+    }
+
+    fn provider() -> ResolverIdentity {
+        ResolverIdentity::new("stripe", ResolverKind::Provider, "readback-1")
+    }
+
+    fn ambiguous(record: EffectRecord) -> EffectRecord {
+        record.mark_ambiguous("response lost", Utc::now()).unwrap()
+    }
 
     #[test]
     fn test_httpeffectledger_is_defined() {
@@ -43,5 +91,204 @@ mod tests {
         let rendered = format!("{cfg:?}");
         assert!(!rendered.contains("super-secret"));
         assert!(rendered.contains("<redacted>"));
+    }
+
+    #[tokio::test]
+    async fn begin_round_trips_and_sends_the_bearer_token() {
+        let server = MockServer::start().await;
+        let record = EffectRecord::begin(intent());
+        Mock::given(method("POST"))
+            .and(path(BEGIN_PATH))
+            .and(header("authorization", "Bearer token-1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(BeginEffectOutput {
+                record: record.clone(),
+            }))
+            .mount(&server)
+            .await;
+
+        let ledger = HttpEffectLedger::new(HttpEffectLedgerConfig::new(
+            server.uri(),
+            2_000,
+            65_536,
+            Some("token-1".to_string()),
+        ));
+        let begun = ledger.begin(intent()).await.unwrap();
+        assert_eq!(begun, record);
+    }
+
+    #[tokio::test]
+    async fn settle_mark_and_resolve_round_trip() {
+        let server = MockServer::start().await;
+        let dispatched = EffectRecord::begin(intent());
+        let id = dispatched.id();
+        let committed = dispatched
+            .clone()
+            .settle_definite(evidence(), Utc::now())
+            .unwrap();
+        let ambiguous = ambiguous(dispatched.clone());
+        let resolved = ambiguous
+            .clone()
+            .resolve(evidence(), provider(), Utc::now())
+            .unwrap();
+
+        Mock::given(method("POST"))
+            .and(path(SETTLE_PATH.replace("{id}", &id.to_string())))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(SettleDefiniteOutput {
+                    record: committed.clone(),
+                }),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(AMBIGUOUS_PATH.replace("{id}", &id.to_string())))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(MarkAmbiguousOutput {
+                    record: ambiguous.clone(),
+                }),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(RESOLVE_PATH.replace("{id}", &id.to_string())))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(ResolveEffectOutput {
+                    record: resolved.clone(),
+                }),
+            )
+            .mount(&server)
+            .await;
+
+        let ledger = HttpEffectLedger::new(config(&server));
+        assert_eq!(
+            ledger.settle_definite(id, evidence()).await.unwrap(),
+            committed
+        );
+        assert_eq!(
+            ledger
+                .mark_ambiguous(id, "response lost".to_string())
+                .await
+                .unwrap(),
+            ambiguous
+        );
+        assert_eq!(
+            ledger.resolve(id, evidence(), provider()).await.unwrap(),
+            resolved
+        );
+    }
+
+    #[tokio::test]
+    async fn query_round_trips_for_id_dag_and_ambiguity() {
+        let server = MockServer::start().await;
+        let record = EffectRecord::begin(intent());
+        let id = record.id();
+        let dag_id = record.intent().dag_id;
+
+        Mock::given(method("GET"))
+            .and(path(QUERY_PATH))
+            .and(query_param("record_id", id.to_string()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(QueryEffectOutput {
+                records: vec![record.clone()],
+            }))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(QUERY_PATH))
+            .and(query_param("dag_id", dag_id.to_string()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(QueryEffectOutput {
+                records: vec![record.clone()],
+            }))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(AMBIGUOUS_QUERY_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_json(QueryEffectOutput {
+                records: Vec::new(),
+            }))
+            .mount(&server)
+            .await;
+
+        let ledger = HttpEffectLedger::new(config(&server));
+        assert_eq!(
+            ledger.query(EffectQuery::by_id(id)).await.unwrap(),
+            vec![record.clone()]
+        );
+        assert_eq!(
+            ledger.query(EffectQuery::by_dag(dag_id)).await.unwrap(),
+            vec![record]
+        );
+        assert!(
+            ledger
+                .query(EffectQuery::ambiguous(None))
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn every_transport_ambiguity_fails_closed() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(BEGIN_PATH))
+            .respond_with(ResponseTemplate::new(500).set_body_json(json!({
+                "code": "unavailable",
+                "message": "store down"
+            })))
+            .mount(&server)
+            .await;
+
+        let ledger = HttpEffectLedger::new(config(&server));
+        let err = ledger.begin(intent()).await.unwrap_err();
+        assert!(matches!(err, CommitmentError::Unavailable { .. }));
+
+        // Malformed JSON is also Unavailable.
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(BEGIN_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_string("not json"))
+            .mount(&server)
+            .await;
+        let ledger = HttpEffectLedger::new(config(&server));
+        assert!(matches!(
+            ledger.begin(intent()).await.unwrap_err(),
+            CommitmentError::Unavailable { .. }
+        ));
+
+        // An oversized body is refused even when it is valid JSON.
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(BEGIN_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_json(BeginEffectOutput {
+                record: EffectRecord::begin(intent()),
+            }))
+            .mount(&server)
+            .await;
+        let ledger =
+            HttpEffectLedger::new(HttpEffectLedgerConfig::new(server.uri(), 2_000, 8, None));
+        assert!(matches!(
+            ledger.begin(intent()).await.unwrap_err(),
+            CommitmentError::Unavailable { .. }
+        ));
+
+        // A timeout is Unavailable.
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(BEGIN_PATH))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_delay(Duration::from_millis(300))
+                    .set_body_json(BeginEffectOutput {
+                        record: EffectRecord::begin(intent()),
+                    }),
+            )
+            .mount(&server)
+            .await;
+        let ledger =
+            HttpEffectLedger::new(HttpEffectLedgerConfig::new(server.uri(), 50, 65_536, None));
+        assert!(matches!(
+            ledger.begin(intent()).await.unwrap_err(),
+            CommitmentError::Unavailable { .. }
+        ));
     }
 }
