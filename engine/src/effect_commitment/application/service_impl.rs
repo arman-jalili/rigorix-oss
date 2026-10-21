@@ -23,9 +23,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::effect_commitment::domain::{
-    CommitmentError, EffectQuery, EffectRecord, ObservedOutcome, ResolverIdentity,
-};
+use crate::effect_commitment::domain::{CommitmentError, EffectQuery, EffectRecord};
 use crate::effect_commitment::interfaces::EffectCommitmentLedger;
 
 use super::dto::{
