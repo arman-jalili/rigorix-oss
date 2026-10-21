@@ -10,6 +10,22 @@ mod tests {
         EffectCommitmentBackendConfig, EffectCommitmentConfig, ProviderReceiptConfig,
     };
 
+    fn http_config() -> &'static str {
+        r#"
+[backend]
+kind = "http"
+base_url = "https://ledger.example"
+timeout_ms = 1000
+max_response_body_bytes = 4096
+
+[receipt_reader]
+base_url = "https://payments.example"
+provider_id = "stripe"
+timeout_ms = 2000
+max_response_body_bytes = 8192
+"#
+    }
+
     #[test]
     fn test_effectcommitmentconfig_is_defined() {
         let in_memory = EffectCommitmentConfig::new(EffectCommitmentBackendConfig::InMemory, None);
@@ -67,8 +83,8 @@ mod tests {
         );
         assert!(matches!(setup, Ok(None)));
 
-        // A present declaration is fail-closed while the parser/composition path
-        // is still stubbed: it must never silently downgrade to "not armed".
+        // A present declaration is fail-closed while the composition path is
+        // still stubbed: it must never silently downgrade to "not armed".
         std::fs::create_dir_all(scratch.join(".rigorix")).unwrap();
         std::fs::write(
             scratch.join(".rigorix/effect-commitment.toml"),
@@ -81,5 +97,154 @@ mod tests {
             ),
         );
         assert!(setup.is_err());
+    }
+
+    #[test]
+    fn a_full_declaration_parses_both_adapters() {
+        let config = EffectCommitmentConfig::parse(http_config()).expect("valid config");
+        match config.backend.clone() {
+            EffectCommitmentBackendConfig::Http {
+                base_url,
+                timeout_ms,
+                max_response_body_bytes,
+                auth_token,
+            } => {
+                assert_eq!(base_url, "https://ledger.example");
+                assert_eq!(timeout_ms, 1_000);
+                assert_eq!(max_response_body_bytes, 4_096);
+                assert!(auth_token.is_none());
+            }
+            other => panic!("expected http backend, got {other:?}"),
+        }
+
+        let reader = config.receipt_reader.as_ref().expect("receipt reader");
+        assert_eq!(reader.provider_id, "stripe");
+        assert_eq!(reader.base_url, "https://payments.example");
+        assert_eq!(reader.timeout_ms, 2_000);
+        assert!(config.can_prove_commitment());
+    }
+
+    #[test]
+    fn absent_backend_defaults_to_in_memory() {
+        let config = EffectCommitmentConfig::parse("").expect("empty config is valid");
+        assert!(matches!(
+            config.backend,
+            EffectCommitmentBackendConfig::InMemory
+        ));
+        assert!(!config.can_prove_commitment());
+    }
+
+    #[test]
+    fn unknown_fields_are_refused_not_ignored() {
+        let text = r#"
+[backend]
+kind = "in_memory"
+typo_field = true
+"#;
+        assert!(EffectCommitmentConfig::parse(text).is_err());
+    }
+
+    #[test]
+    fn in_memory_rejects_http_only_fields() {
+        let text = r#"
+[backend]
+kind = "in_memory"
+base_url = "https://ledger.example"
+"#;
+        assert!(EffectCommitmentConfig::parse(text).is_err());
+    }
+
+    #[test]
+    fn http_requires_a_valid_base_url_and_positive_bounds() {
+        assert!(
+            EffectCommitmentConfig::parse(
+                r#"
+[backend]
+kind = "http"
+"#
+            )
+            .is_err()
+        );
+        assert!(
+            EffectCommitmentConfig::parse(
+                r#"
+[backend]
+kind = "http"
+base_url = "ledger.example"
+"#
+            )
+            .is_err()
+        );
+        assert!(
+            EffectCommitmentConfig::parse(
+                r#"
+[backend]
+kind = "http"
+base_url = "https://ledger.example"
+timeout_ms = 0
+"#
+            )
+            .is_err()
+        );
+        assert!(
+            EffectCommitmentConfig::parse(
+                r#"
+[backend]
+kind = "http"
+base_url = "https://ledger.example"
+max_response_body_bytes = 0
+"#
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn unknown_backend_kinds_are_refused() {
+        let text = r#"
+[backend]
+kind = "database"
+"#;
+        assert!(EffectCommitmentConfig::parse(text).is_err());
+    }
+
+    #[test]
+    fn a_named_credential_must_exist_in_the_environment() {
+        let missing = format!("RIGORIX_TEST_MISSING_TOKEN_{}", uuid::Uuid::new_v4());
+        let text = format!(
+            r#"
+[backend]
+kind = "http"
+base_url = "https://ledger.example"
+auth_token_env = "{missing}"
+"#
+        );
+        // The variable is guaranteed absent; the config must fail closed rather
+        // than silently dropping the credential.
+        assert!(EffectCommitmentConfig::parse(&text).is_err());
+    }
+
+    #[test]
+    fn the_receipt_reader_requires_a_provider_identity_and_valid_url() {
+        assert!(
+            EffectCommitmentConfig::parse(
+                r#"
+[receipt_reader]
+base_url = "https://payments.example"
+provider_id = "  "
+"#
+            )
+            .is_err()
+        );
+        assert!(
+            EffectCommitmentConfig::parse(
+                r#"
+[receipt_reader]
+base_url = "payments.example"
+provider_id = "stripe"
+"#
+            )
+            .is_err()
+        );
     }
 }

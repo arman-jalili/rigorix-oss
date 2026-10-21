@@ -35,6 +35,8 @@
 
 use std::fmt;
 
+use serde::Deserialize;
+
 use crate::effect_commitment::application::factory::EffectCommitmentBackendConfig;
 
 use super::setup::EffectCommitmentSetupError;
@@ -132,14 +134,178 @@ impl EffectCommitmentConfig {
 
     /// Parse and validate `.rigorix/effect-commitment.toml`.
     ///
-    /// The signature is frozen; ISSUE-EFFECT-COMMITMENT-13 supplies the strict
-    /// parser. Until then parsing fails closed rather than silently ignoring a
-    /// declaration.
-    pub fn parse(_text: &str) -> Result<Self, EffectCommitmentSetupError> {
-        Err(EffectCommitmentSetupError::Unavailable {
-            detail:
-                "ISSUE-EFFECT-COMMITMENT-13: effect-commitment config parsing is not implemented"
-                    .to_string(),
+    /// Validation is strict and fail-closed: an unknown field, an ambiguous
+    /// backend selection, or an unresolvable credential name is refused rather
+    /// than guessed.
+    pub fn parse(text: &str) -> Result<Self, EffectCommitmentSetupError> {
+        let raw: RawConfig = toml::from_str(text).map_err(|e| {
+            invalid(format!(
+                ".rigorix/effect-commitment.toml could not be parsed: {e}"
+            ))
+        })?;
+
+        let backend = parse_backend(raw.backend)?;
+        let receipt_reader = raw.receipt_reader.map(parse_receipt_reader).transpose()?;
+
+        Ok(Self {
+            backend,
+            receipt_reader,
         })
     }
+}
+
+// ---------------------------------------------------------------------------
+// Raw TOML shape
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawConfig {
+    #[serde(default)]
+    backend: Option<RawBackend>,
+    #[serde(default)]
+    receipt_reader: Option<RawReceiptReader>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawBackend {
+    kind: String,
+    #[serde(default)]
+    base_url: Option<String>,
+    #[serde(default)]
+    timeout_ms: Option<u64>,
+    #[serde(default)]
+    max_response_body_bytes: Option<usize>,
+    /// Environment variable holding the bearer token, never the token itself.
+    #[serde(default)]
+    auth_token_env: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawReceiptReader {
+    base_url: String,
+    provider_id: String,
+    #[serde(default)]
+    timeout_ms: Option<u64>,
+    #[serde(default)]
+    max_response_body_bytes: Option<usize>,
+    /// Environment variable holding the bearer token, never the token itself.
+    #[serde(default)]
+    auth_token_env: Option<String>,
+}
+
+fn invalid(detail: impl Into<String>) -> EffectCommitmentSetupError {
+    EffectCommitmentSetupError::ConfigInvalid {
+        detail: detail.into(),
+    }
+}
+
+fn validate_url(what: &str, url: &str) -> Result<(), EffectCommitmentSetupError> {
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return Err(invalid(format!("{what} must be an absolute http(s) URL")));
+    }
+    Ok(())
+}
+
+fn read_token(
+    env_var: Option<String>,
+    what: &str,
+) -> Result<Option<String>, EffectCommitmentSetupError> {
+    match env_var {
+        Some(var) => match std::env::var(&var) {
+            Ok(value) if !value.is_empty() => Ok(Some(value)),
+            _ => Err(invalid(format!(
+                "{what} auth_token_env names '{var}' but the variable is missing or empty"
+            ))),
+        },
+        None => Ok(None),
+    }
+}
+
+fn parse_backend(
+    raw: Option<RawBackend>,
+) -> Result<EffectCommitmentBackendConfig, EffectCommitmentSetupError> {
+    let Some(raw) = raw else {
+        // Absent backend means the inert in-process default; the declaration
+        // itself is what arms the context.
+        return Ok(EffectCommitmentBackendConfig::InMemory);
+    };
+
+    match raw.kind.as_str() {
+        "in_memory" => {
+            if raw.base_url.is_some()
+                || raw.timeout_ms.is_some()
+                || raw.max_response_body_bytes.is_some()
+                || raw.auth_token_env.is_some()
+            {
+                return Err(invalid(
+                    "backend kind 'in_memory' must not declare HTTP fields (base_url, timeout_ms, max_response_body_bytes, auth_token_env)",
+                ));
+            }
+            Ok(EffectCommitmentBackendConfig::InMemory)
+        }
+        "http" => {
+            let base_url = raw
+                .base_url
+                .ok_or_else(|| invalid("backend kind 'http' requires base_url"))?;
+            validate_url("backend base_url", &base_url)?;
+            let timeout_ms = raw.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS);
+            if timeout_ms == 0 {
+                return Err(invalid("backend timeout_ms must be greater than zero"));
+            }
+            let max_response_body_bytes = raw
+                .max_response_body_bytes
+                .unwrap_or(DEFAULT_MAX_RESPONSE_BODY_BYTES);
+            if max_response_body_bytes == 0 {
+                return Err(invalid(
+                    "backend max_response_body_bytes must be greater than zero",
+                ));
+            }
+            let auth_token = read_token(raw.auth_token_env, "backend")?;
+            Ok(EffectCommitmentBackendConfig::Http {
+                base_url,
+                timeout_ms,
+                max_response_body_bytes,
+                auth_token,
+            })
+        }
+        other => Err(invalid(format!(
+            "unknown backend kind '{other}' (expected 'in_memory' or 'http')"
+        ))),
+    }
+}
+
+fn parse_receipt_reader(
+    raw: RawReceiptReader,
+) -> Result<ProviderReceiptConfig, EffectCommitmentSetupError> {
+    validate_url("receipt_reader base_url", &raw.base_url)?;
+    if raw.provider_id.trim().is_empty() {
+        return Err(invalid("receipt_reader provider_id must not be empty"));
+    }
+
+    let timeout_ms = raw.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS);
+    if timeout_ms == 0 {
+        return Err(invalid(
+            "receipt_reader timeout_ms must be greater than zero",
+        ));
+    }
+    let max_response_body_bytes = raw
+        .max_response_body_bytes
+        .unwrap_or(DEFAULT_MAX_RESPONSE_BODY_BYTES);
+    if max_response_body_bytes == 0 {
+        return Err(invalid(
+            "receipt_reader max_response_body_bytes must be greater than zero",
+        ));
+    }
+
+    let auth_token = read_token(raw.auth_token_env, "receipt_reader")?;
+    Ok(ProviderReceiptConfig::new(
+        raw.base_url,
+        raw.provider_id,
+        timeout_ms,
+        max_response_body_bytes,
+        auth_token,
+    ))
 }
