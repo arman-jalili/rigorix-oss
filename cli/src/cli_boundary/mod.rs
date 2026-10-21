@@ -22,6 +22,7 @@
 pub mod cli;
 pub mod config;
 pub mod dispatch;
+pub mod doctor;
 pub mod error;
 pub mod orchestrator;
 pub mod output;

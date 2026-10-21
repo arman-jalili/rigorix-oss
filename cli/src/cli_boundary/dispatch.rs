@@ -92,14 +92,39 @@ impl fmt::Display for DispatchResult {
 // CLI-only helpers
 // ---------------------------------------------------------------------------
 
-fn cmd_init() -> DispatchResult {
-    let path = std::path::Path::new(".rigorix");
-    if path.is_dir() {
-        return DispatchResult::success(".rigorix/ already exists");
+/// `rigorix doctor` — print the seam inventory (#1103).
+///
+/// Exit code: 0 when nothing is misconfigured (unarmed is fine), 1 when a seam
+/// was requested and cannot be honoured, because that seam will refuse runs.
+async fn cmd_doctor() -> DispatchResult {
+    let repo_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let report = crate::cli_boundary::doctor::probe(&repo_root).await;
+    let rendered = report.render();
+    if report.exit_code() == 0 {
+        DispatchResult::success(rendered)
+    } else {
+        DispatchResult::error(rendered, report.exit_code())
     }
-    match std::fs::create_dir_all(path.join("templates")) {
-        Ok(_) => {
-            let default_config = r#"# Rigorix Configuration
+}
+
+/// Scaffold `.rigorix/` and **always** report the seam inventory (#1101).
+///
+/// The scaffold itself is idempotent: an existing directory is left alone. The
+/// advisory is not — it runs on every invocation, because a repository
+/// initialised by an older version must still learn what this one knows. The
+/// previous `if path.is_dir() { return ... }` made the gap permanent.
+async fn cmd_init() -> DispatchResult {
+    let repo_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let path = std::path::Path::new(".rigorix");
+    // Keyed on the config file, not the directory: `rigorix doctor` (and any
+    // engine seam construction) may create `.rigorix/` as a side effect, and an
+    // empty directory must not be mistaken for an initialised workspace.
+    let existed = path.join("rigorix.toml").is_file();
+
+    if !existed {
+        match std::fs::create_dir_all(path.join("templates")) {
+            Ok(_) => {
+                let default_config = r#"# Rigorix Configuration
 [orchestrator]
 max_parallel_tasks = 4
 max_retries = 3
@@ -112,25 +137,77 @@ format = "text"
 [llm]
 provider = "anthropic"
 model = "claude-sonnet-4-6"
+
+# ── Enforcement seams — ALL UNARMED AS WRITTEN (#1101) ──────────────────────
+# Nothing below is active. Each line names the file or variable that arms a
+# seam; uncommenting a file path is not enough on its own — read the comment.
+#
+#   precondition gate   .rigorix/preconditions.toml     (argv checks, ADR-017)
+#                       re-reads authoritative state before dispatch; a
+#                       malformed file arms a refuse-everything gate
+#   sequence policy     .rigorix/sequence-policy.toml   (promote/prerequisite rules)
+#   capacity ledger     .rigorix/capacity.toml          (contested limits, ADR-018)
+#   approval binding    RIGORIX_APPROVAL_BINDING=1 + RIGORIX_HMAC_KEY=<secret>
+#                       binding without a key is a startup error, not a warning
+#   history anchor      RIGORIX_ANCHOR_URL + RIGORIX_ANCHOR_PUBLIC_KEY
+#   envelope signing    RIGORIX_HMAC_KEY=<secret>       (run `rigorix key`)
+#
+# `rigorix doctor` prints which of these are armed in this repository.
 "#;
-            let config_path = path.join("rigorix.toml");
-            if let Err(e) = std::fs::write(&config_path, default_config) {
-                return DispatchResult::error(format!("Failed to write config: {e}"), 1);
+                let config_path = path.join("rigorix.toml");
+                if let Err(e) = std::fs::write(&config_path, default_config) {
+                    return DispatchResult::error(format!("Failed to write config: {e}"), 1);
+                }
             }
-            DispatchResult::success("Initialized .rigorix/ directory")
+            Err(e) => return DispatchResult::error(format!("Failed to create .rigorix/: {e}"), 1),
         }
-        Err(e) => DispatchResult::error(format!("Failed to create .rigorix/: {e}"), 1),
     }
+
+    let report = crate::cli_boundary::doctor::probe(&repo_root).await;
+    let headline = if existed {
+        ".rigorix/rigorix.toml already exists — scaffold left unchanged"
+    } else {
+        "Initialized .rigorix/ directory"
+    };
+    DispatchResult::success(format!(
+        "{headline}\n\n{}\nNext: `rigorix doctor` lists every seam above; \\\n`rigorix init` writes unarmed configuration only.",
+        report.render()
+    ))
 }
 
-fn cmd_key(label: Option<String>) -> DispatchResult {
-    let key = uuid::Uuid::new_v4();
-    let label_str = label.unwrap_or_else(|| "default".to_string());
+/// Produce the key the engine actually consumes (#1102).
+///
+/// This used to print a random UUID labelled "Generated API key" and return it in
+/// a field called `key`. Nothing reads that value; 26 call sites read
+/// `RIGORIX_HMAC_KEY`. A user who ran the command had configured nothing and
+/// would find out later as an unverifiable envelope — the harder failure to
+/// diagnose. It now emits the key the readers want, and names the variable it has
+/// to be set as.
+async fn cmd_key(label: Option<String>) -> DispatchResult {
+    use rand::RngCore;
+
+    let mut bytes = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    let key: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    let label = label.unwrap_or_else(|| "default".to_string());
+
     let data = serde_json::json!({
-        "key": key.to_string(),
-        "label": label_str,
+        "env_var": "RIGORIX_HMAC_KEY",
+        "key": key,
+        "label": label,
+        "algorithm": "HMAC-SHA256, 32-byte key, hex-encoded",
     });
-    DispatchResult::success_with_data(format!("Generated API key ({label_str})"), data)
+
+    DispatchResult::success_with_data(
+        format!(
+            "Generated HMAC signing key ({label}) — this is the key the engine reads as \
+             RIGORIX_HMAC_KEY.\n\n  export RIGORIX_HMAC_KEY={key}\n\n\
+             It is printed once and not stored: put it in your secret manager or shell \
+             profile. Without it, audit envelopes are unsigned and `rigorix doctor` \
+             reports `envelope signing: unarmed`."
+        ),
+        data,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -799,7 +876,7 @@ async fn handle_logs(svc: &CliServices, session_id: Option<uuid::Uuid>) -> Dispa
 
 async fn handle_config(svc: &CliServices, action: ConfigAction) -> DispatchResult {
     match action {
-        ConfigAction::Init => cmd_init(),
+        ConfigAction::Init => cmd_init().await,
         ConfigAction::Show => {
             let data = serde_json::json!({ "config": svc.config });
             DispatchResult::success_with_data("Current configuration", data)
@@ -827,6 +904,19 @@ pub async fn dispatch(
     config: crate::cli_boundary::config::CliConfig,
     cancellation_token: crate::cli_boundary::signal::CancellationToken,
 ) -> DispatchResult {
+    // A diagnostic must run when the rest of the CLI cannot (#1103).
+    //
+    // `build_cli_services` opens config, state and the approval store; with
+    // `RIGORIX_APPROVAL_BINDING=1` and no key it fails closed and returns early —
+    // which is precisely the state an operator needs `doctor` to explain. So both
+    // commands are answered before any service is built. `init` is here for the
+    // same reason: it is how a fresh repo gets a config at all.
+    match &command {
+        CliCommand::Doctor => return cmd_doctor().await,
+        CliCommand::Init => return cmd_init().await,
+        _ => {}
+    }
+
     // Build CLI services for Tier 2 commands
     let services = match crate::cli_boundary::orchestrator::build_cli_services(config.clone()).await
     {
@@ -963,8 +1053,11 @@ pub async fn dispatch(
         CliCommand::Audit { action } => handle_audit(&services, action).await,
         CliCommand::Logs { session_id } => handle_logs(&services, session_id).await,
         CliCommand::Config { action } => handle_config(&services, action).await,
-        CliCommand::Init => cmd_init(),
-        CliCommand::Key { label } => cmd_key(label),
+        CliCommand::Key { label } => cmd_key(label).await,
+        // Answered before service bootstrap (see the top of this function).
+        CliCommand::Doctor | CliCommand::Init => {
+            DispatchResult::error("internal: handled before dispatch".to_string(), 1)
+        }
         CliCommand::Tui { .. } => DispatchResult::success("TUI mode"),
     }
 }

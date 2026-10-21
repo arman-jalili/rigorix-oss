@@ -316,8 +316,8 @@ cargo install rigorix-mcp
 
 **CLI** (`rigorix-cli`) — plan, run, inspect, and verify offline: `run`, `plan`,
 `cancel`, `status`, `history`, `explain`, `diff-plan`, `generate`, `template`,
-`audit {list|show|diff|projection|verify-projection}`, `logs`, `config`, `init`,
-`key`, plus the interactive TUI as the default entry point.
+`audit {list|show|diff|projection|verify-projection}`, `logs`, `config`, `doctor`,
+`init`, `key`, plus the interactive TUI as the default entry point.
 
 **Server** (`rigorix-server`) — the OSS reference host: JSON-RPC 2.0 over the
 frozen `rigorix.*` catalog, with an optional MCP Streamable HTTP transport.
