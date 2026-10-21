@@ -7,6 +7,15 @@ Blueprint Source: Domain Exploration Session 63c25384
 
 ## Overview
 
+> **NOT CONSTRUCTED BY ANY ENTRY POINT (#1100, tracked as #1108).** The enforcer
+> and its counters are complete and tested, but no composition root builds one: CLI,
+> GitHub Action and MCP host never call `ExecutionEnforcerImpl`, so **no budget
+> counter is consulted at dispatch today**. What *does* run at the tool boundary is
+> `PermissionEnforcer` (paths and capabilities) and, per resource, the ADR-018
+> capacity ledger. Do not describe budget limits as enforced until #1108 lands —
+> `engine/.pi/architecture/wiring-claims.md` row W13 pins this admission, and
+> `validate-wiring-claims.sh` fails if it is quietly removed.
+
 Enforces hard caps on execution behavior: retries per node, total retries, tool calls, dynamic nodes, execution time, and parallel tasks. Supports three autonomy presets (Default, Advanced, Aggressive) with configurable limits and absolute safety hard-caps.
 
 ## Responsibilities

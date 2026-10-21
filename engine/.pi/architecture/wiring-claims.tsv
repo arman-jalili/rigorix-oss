@@ -1,0 +1,29 @@
+# Wiring-claim manifest (#1100). Machine-readable form of wiring-claims.md.
+#
+# Columns (tab-separated):
+#   id       stable row id, matching the audit table
+#   doc      the document whose claim is checked
+#   verdict  CONFIRMED | GAP
+#   checks   `;;`-separated checks, each one of:
+#              contains:<path>:<needle>        file must contain needle
+#              no-callers:<needle>:<exclude>   no file outside <exclude> may contain needle
+#              declares-gap:<path>:<needle>    doc must still declare the gap
+#   claim    one line, for the failure message
+#
+# A CONFIRMED row fails when its evidence disappears. A GAP row fails when the
+# document stops declaring the gap (the overclaim came back) or when callers
+# appear (the gap was closed and the row should be promoted).
+W1	engine/.pi/architecture/modules/capacity-ledger.md	CONFIRMED	contains:engine/src/execution_engine/application/service_impl/gate.rs:self.capacity_verdict(	capacity is reserved before a step dispatches
+W2	engine/.pi/architecture/modules/capacity-ledger.md	CONFIRMED	contains:cli/src/cli_boundary/orchestrator.rs:CapacitySetup::from_env;;contains:actions/src/main.rs:CapacitySetup::from_env;;contains:mcp/src/host/mod.rs:CapacitySetup::from_env	the capacity seam is armed in all three roots
+W3	engine/.pi/architecture/modules/precondition.md	CONFIRMED	contains:engine/src/execution_engine/application/service_impl/gate.rs:self.precondition_verdict(	a precondition check runs before dispatch
+W4	engine/.pi/architecture/modules/sequence-policy.md	CONFIRMED	contains:engine/src/execution_engine/application/service_impl/gate.rs:.sequence_policy_verdict(;;contains:cli/src/cli_boundary/orchestrator.rs:with_sequence_policy(	the sequence policy gates dispatch and is consulted at plan time
+W5	engine/.pi/architecture/modules/approval.md	CONFIRMED	contains:engine/src/execution_engine/application/service_impl/gate.rs:verify_before_dispatch;;contains:cli/src/cli_boundary/orchestrator.rs:ApprovalBindingSetup::from_env;;contains:actions/src/main.rs:ApprovalBindingSetup::from_env;;contains:mcp/src/host/mod.rs:ApprovalBindingSetup::from_env	an approval is verified against its intent before dispatch, in all three roots
+W6	engine/.pi/architecture/modules/approval.md	CONFIRMED	contains:cli/src/cli_boundary/orchestrator.rs:approval_repo_path: Some;;contains:actions/src/main.rs:approval_repo_path: Some;;contains:mcp/src/host/mod.rs:approval_repo_path: Some;;contains:engine/src/execution_engine/application/service_impl/dispatch.rs:self.effect_scope_check(	the effect-scope oracle is wired in all three roots
+W7	engine/.pi/architecture/modules/audit.md	CONFIRMED	contains:cli/src/cli_boundary/orchestrator.rs:with_anchor(;;contains:actions/src/main.rs:with_anchor(;;contains:mcp/src/host/mod.rs:with_anchor(	envelopes are tagged with the anchor regime in all three roots
+W8	engine/.pi/architecture/modules/sequence-policy.md	CONFIRMED	contains:engine/src/execution_engine/application/factory.rs:AnchoredHistoryAdapter::new	anchored mode verifies cross-run history through the anchor adapter
+W9	engine/.pi/architecture/modules/tool-system.md	CONFIRMED	contains:clippy.toml:std::process::Command;;contains:engine/src/tools/application/run_command_tool.rs:apply_child_env	process spawning is confined to the approved sinks and clears the child env
+W10	engine/.pi/architecture/modules/hooks.md	CONFIRMED	contains:cli/src/cli_boundary/orchestrator.rs:hook_runner;;contains:actions/src/main.rs:hook_runner;;contains:mcp/src/host/mod.rs:hook_runner	hooks run around tool calls in all three roots
+W11	engine/.pi/architecture/modules/failure-classification.md	CONFIRMED	contains:engine/src/execution_engine/application/factory_impl.rs:FailureClassifierServiceImpl	failure classification drives retry decisions
+W12	engine/.pi/architecture/modules/enforcement.md	CONFIRMED	contains:engine/src/execution_engine/application/service_impl/tools.rs:enforcer.check(	permissions gate tool calls
+W13	engine/.pi/architecture/modules/enforcement.md	GAP	no-callers:ExecutionEnforcerImpl:engine/src/enforcement/;;declares-gap:engine/.pi/architecture/modules/enforcement.md:NOT CONSTRUCTED BY ANY ENTRY POINT	budget counters gate every action
+W14	engine/.pi/architecture/modules/recovery-recipes.md	GAP	no-callers:with_recovery_service:engine/src/execution_engine/application/;;declares-gap:engine/.pi/architecture/modules/recovery-recipes.md:NOT WIRED BY ANY ENTRY POINT	recovery recipes run when a step fails

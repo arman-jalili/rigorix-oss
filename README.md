@@ -85,11 +85,21 @@ open.
 
 ### 1. Risk gating, budgets and autonomy presets (ADR-004, ADR-007, ADR-008)
 
-Every execution runs inside operator-authored risk policy, permission and budget
-boundaries. Budgets are **RAII reservations** — a reservation is taken before the
-call and released after, so a crashed or cancelled run cannot leak its allowance
-(ADR-008). Autonomy is a *preset*, not a vibe: the operator picks the envelope,
-the engine enforces it.
+Every execution runs inside operator-authored risk policy and permission
+boundaries, and contested capacity is **reserved before dispatch and released
+after**, so a crashed or cancelled run cannot leak its allowance (ADR-018). The
+ledger's refusal happens before the step runs — see the demo below, where the
+refused step's tool never executes.
+
+Autonomy is a *preset*, not a vibe: the operator picks the envelope, the engine
+enforces it.
+
+*Not yet enforced:* the per-execution **budget counter** (`enforcement`, ADR-008)
+is implemented and tested but no entry point constructs it, so token/tool-call
+budgets are not consulted at dispatch today. Risk gating, permissions and the
+capacity ledger do run. The gap is tracked in #1108 and pinned in
+[`wiring-claims.md`](engine/.pi/architecture/wiring-claims.md) — a validator fails
+if this paragraph is quietly removed.
 
 *Business:* it converts "we trust the agent" into "we bounded the agent", which is
 the only form of that sentence an auditor accepts.

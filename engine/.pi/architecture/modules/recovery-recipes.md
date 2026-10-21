@@ -7,6 +7,14 @@ Rationale: Automatic recovery before escalation — known failure modes auto-hea
 
 ## Overview
 
+> **NOT WIRED BY ANY ENTRY POINT (#1100, tracked as #1108).** `ExecutionServiceImpl`
+> consults `self.recovery_service` when a step fails, but nothing ever calls
+> `with_recovery_service`: the field is always `None`, so no recipe runs. The module
+> below is the design as implemented; it becomes the behaviour only once a
+> composition root supplies the service. Row W14 in
+> `engine/.pi/architecture/wiring-claims.md` pins this, and
+> `validate-wiring-claims.sh` fails if the admission disappears.
+
 The Recovery Recipes system encodes known failure scenarios and their automatic recovery procedures. The core rule is: **one automatic recovery attempt per scenario before human escalation.** Each failure scenario has a `RecoveryRecipe` — a sequence of recovery steps with a maximum attempt count and an escalation policy for when attempts are exhausted.
 
 This transforms Rigorix's DR plans from prose documentation into **executable code** — the engine can actually run `cargo clean && cargo build` on a compile failure instead of just documenting that as a recovery procedure.
