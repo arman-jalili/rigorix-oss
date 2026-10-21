@@ -6,8 +6,38 @@
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use chrono::Utc;
+    use rigorix_engine::capacity_ledger::domain::IdempotencyKey;
+    use rigorix_engine::effect_commitment::domain::{
+        CommitmentError, EffectIntent, EffectQuery, EffectRecordId, EffectState, ObservedOutcome,
+        ResolverIdentity, ResolverKind,
+    };
     use rigorix_engine::effect_commitment::infrastructure::InMemoryEffectLedger;
     use rigorix_engine::effect_commitment::interfaces::EffectCommitmentLedger;
+    use uuid::Uuid;
+
+    fn intent(key: &str, args: &str) -> EffectIntent {
+        EffectIntent::new(
+            Uuid::from_u128(1),
+            Uuid::from_u128(2),
+            1,
+            IdempotencyKey::new(key),
+            "payments.charge",
+            args,
+            "precondition-digest",
+            "authority-digest",
+        )
+    }
+
+    fn evidence() -> ObservedOutcome {
+        ObservedOutcome::committed("receipt-1", "readback-1", Utc::now(), "stripe")
+    }
+
+    fn provider() -> ResolverIdentity {
+        ResolverIdentity::new("stripe", ResolverKind::Provider, "readback-1")
+    }
 
     #[test]
     fn test_inmemoryeffectledger_is_defined() {
@@ -17,8 +47,202 @@ mod tests {
 
     #[test]
     fn test_inmemoryeffectledger_interacts_with_effectcommitmentledger() {
-        // The adapter must satisfy the full frozen port.
         fn assert_impl<T: EffectCommitmentLedger>() {}
         assert_impl::<InMemoryEffectLedger>();
+    }
+
+    #[tokio::test]
+    async fn begin_records_a_dispatched_effect() {
+        let ledger = InMemoryEffectLedger::new();
+        let record = ledger.begin(intent("k1", "args")).await.unwrap();
+
+        assert_eq!(record.state(), EffectState::Dispatched);
+        assert!(!record.is_terminal());
+        assert!(record.outcome().is_none());
+        assert_eq!(record.intent().args_digest, "args");
+    }
+
+    #[tokio::test]
+    async fn a_retry_with_the_same_key_and_payload_reads_the_existing_record() {
+        let ledger = InMemoryEffectLedger::new();
+        let first = ledger.begin(intent("k1", "args")).await.unwrap();
+
+        let mut retry = intent("k1", "args");
+        retry.attempt = 99;
+        let retried = ledger.begin(retry).await.unwrap();
+
+        assert_eq!(first.id(), retried.id());
+        assert_eq!(
+            ledger
+                .query(EffectQuery::by_dag(Uuid::from_u128(1)))
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn the_same_key_with_a_different_payload_is_contended() {
+        let ledger = InMemoryEffectLedger::new();
+        let first = ledger.begin(intent("k1", "args")).await.unwrap();
+
+        let err = ledger
+            .begin(intent("k1", "different-args"))
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            CommitmentError::Contended {
+                record_id: Some(id),
+                ..
+            } if id == first.id()
+        ));
+    }
+
+    #[tokio::test]
+    async fn settle_is_terminal_and_cannot_be_replayed() {
+        let ledger = InMemoryEffectLedger::new();
+        let record = ledger.begin(intent("k1", "args")).await.unwrap();
+        let evidence = evidence();
+
+        let settled = ledger
+            .settle_definite(record.id(), evidence.clone())
+            .await
+            .unwrap();
+        assert_eq!(settled.state(), EffectState::Committed);
+        assert_eq!(settled.outcome(), Some(&evidence));
+
+        let replay = ledger.settle_definite(record.id(), evidence).await;
+        assert!(matches!(
+            replay,
+            Err(CommitmentError::AlreadySettled { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn ambiguous_fences_and_only_provider_evidence_resolves_it() {
+        let ledger = InMemoryEffectLedger::new();
+        let record = ledger.begin(intent("k1", "args")).await.unwrap();
+
+        let ambiguous = ledger
+            .mark_ambiguous(record.id(), "response lost".to_string())
+            .await
+            .unwrap();
+        assert!(ambiguous.blocks_retry());
+        assert!(ambiguous.blocks_dependents());
+
+        let pending = ledger.query(EffectQuery::ambiguous(None)).await.unwrap();
+        assert_eq!(pending, vec![ambiguous.clone()]);
+
+        // F4: the agent cannot settle it.
+        let rejected = ledger
+            .resolve(
+                record.id(),
+                evidence(),
+                ResolverIdentity::new("agent", ResolverKind::Agent, "readback-1"),
+            )
+            .await;
+        assert!(matches!(
+            rejected,
+            Err(CommitmentError::UnauthorizedResolver { .. })
+        ));
+
+        let resolved = ledger
+            .resolve(record.id(), evidence(), provider())
+            .await
+            .unwrap();
+        assert_eq!(resolved.state(), EffectState::Committed);
+        assert_eq!(resolved.resolver(), Some(&provider()));
+        assert!(
+            ledger
+                .query(EffectQuery::ambiguous(None))
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn ambiguous_cannot_be_settled_definitely() {
+        let ledger = InMemoryEffectLedger::new();
+        let record = ledger.begin(intent("k1", "args")).await.unwrap();
+        ledger
+            .mark_ambiguous(record.id(), "lost".to_string())
+            .await
+            .unwrap();
+
+        let err = ledger
+            .settle_definite(record.id(), evidence())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, CommitmentError::NotAmbiguous { .. }));
+    }
+
+    #[tokio::test]
+    async fn query_reads_by_id_and_by_dag() {
+        let ledger = InMemoryEffectLedger::new();
+        let first = ledger.begin(intent("k1", "a")).await.unwrap();
+        let mut second_intent = intent("k2", "b");
+        second_intent.node_id = Uuid::from_u128(3);
+        let second = ledger.begin(second_intent).await.unwrap();
+
+        let by_id = ledger.query(EffectQuery::by_id(second.id())).await.unwrap();
+        assert_eq!(by_id, vec![second.clone()]);
+
+        let by_dag = ledger
+            .query(EffectQuery::by_dag(Uuid::from_u128(1)))
+            .await
+            .unwrap();
+        assert_eq!(by_dag, vec![first.clone(), second.clone()]);
+
+        let other_dag = ledger
+            .query(EffectQuery::by_dag(Uuid::from_u128(999)))
+            .await
+            .unwrap();
+        assert!(other_dag.is_empty());
+    }
+
+    #[tokio::test]
+    async fn unknown_records_and_incomplete_evidence_fail_closed() {
+        let ledger = InMemoryEffectLedger::new();
+        let missing = ledger
+            .settle_definite(EffectRecordId::new(), evidence())
+            .await;
+        assert!(matches!(missing, Err(CommitmentError::Unavailable { .. })));
+
+        let record = ledger.begin(intent("k1", "args")).await.unwrap();
+        let incomplete = ObservedOutcome {
+            receipt_id: String::new(),
+            readback_digest: "readback-1".to_string(),
+            observed_at: Utc::now(),
+            source: "stripe".to_string(),
+            verdict: rigorix_engine::effect_commitment::domain::OutcomeVerdict::Committed,
+        };
+        let err = ledger
+            .settle_definite(record.id(), incomplete)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, CommitmentError::EvidenceMissing { .. }));
+    }
+
+    #[tokio::test]
+    async fn concurrent_begins_with_the_same_key_create_one_record() {
+        let ledger = Arc::new(InMemoryEffectLedger::new());
+        let mut handles = Vec::new();
+        for _ in 0..32 {
+            let ledger = ledger.clone();
+            handles.push(tokio::spawn(async move {
+                ledger.begin(intent("same", "args")).await.unwrap().id()
+            }));
+        }
+
+        let mut ids = Vec::new();
+        for handle in handles {
+            ids.push(handle.await.unwrap());
+        }
+        ids.sort();
+        ids.dedup();
+        assert_eq!(ids.len(), 1, "custody must collapse all retries");
     }
 }
