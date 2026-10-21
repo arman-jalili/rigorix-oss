@@ -21,6 +21,7 @@ pub mod policy;
 pub mod receipt;
 pub mod seam;
 pub mod service;
+pub mod service_impl;
 pub mod setup;
 pub mod vocabulary;
 
@@ -37,6 +38,7 @@ pub use policy::ReconciliationPolicy;
 pub use receipt::ProviderReceiptReader;
 pub use seam::{DispatchObservation, DispatchSeam};
 pub use service::EffectCommitmentService;
+pub use service_impl::EffectCommitmentServiceImpl;
 pub use setup::{
     EffectCommitmentCompositionRoot, EffectCommitmentSetup, EffectCommitmentSetupError,
 };
