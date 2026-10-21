@@ -121,6 +121,15 @@ pub struct ParallelExecutionFactoryConfig {
     /// preserves today's behavior exactly (no seam — status quo).
     pub capacity: Option<crate::capacity_ledger::CapacitySetup>,
 
+    /// ADR-019: optional effect-commitment dispatch seam.
+    ///
+    /// When set, `run_dispatch_loop` records a write-ahead intent before each
+    /// dispatch, refuses the dispatch if the record cannot be written, and
+    /// settles or marks the effect ambiguous when the node returns. The
+    /// composition roots build it from `.rigorix/effect-commitment.toml` via
+    /// `EffectCommitmentSetup`. `None` (default) preserves the status quo.
+    pub effect_commitment: Option<std::sync::Arc<dyn crate::effect_commitment::DispatchSeam>>,
+
     /// Optional recovery-recipe service (ADR-0xx recovery recipes, #1108).
     ///
     /// When set, a node failure is mapped to a failure scenario and one recovery
@@ -174,6 +183,7 @@ impl Default for ParallelExecutionFactoryConfig {
             sequence_policy: None,
             precondition: None,
             capacity: None,
+            effect_commitment: None,
             recovery: None,
         }
     }

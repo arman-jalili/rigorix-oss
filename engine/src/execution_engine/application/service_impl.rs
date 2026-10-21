@@ -41,6 +41,9 @@ use crate::capacity_ledger::application::dto::{
 };
 use crate::capacity_ledger::domain::{IdempotencyKey, LedgerError, ReservationId, ResourceId};
 use crate::dag_engine::domain::GatingMode;
+use crate::effect_commitment::{
+    DispatchObservation, DispatchSeam, EffectIntent, EffectRecordId, ObservedOutcome,
+};
 use crate::event_system::application::EventBusService;
 use crate::event_system::domain::ExecutionEvent;
 use crate::execution_engine::domain::{
@@ -610,6 +613,17 @@ pub struct ParallelExecutionServiceImpl {
     /// without settling still returns the capacity when the lease lapses
     /// (ADR-018 I3), and dropping the service releases its outstanding guards.
     capacity_holds: Arc<Mutex<HashMap<Uuid, ReservationId>>>,
+    /// ADR-019 effect-commitment dispatch seam (opt-in, operator-declared).
+    ///
+    /// When present, `run_dispatch_loop` records a write-ahead intent before
+    /// `spawn_concurrent_node`. A failed `begin` refuses the dispatch (the tool
+    /// is never called). A returned result settles the record; a timeout,
+    /// cancellation, or lost response marks it `Ambiguous`, which fences
+    /// dependents and retry. `None` = no seam (status quo).
+    effect_commitment: Option<Arc<dyn DispatchSeam>>,
+    /// Effect record ids keyed by node id, so the terminal outcome can settle
+    /// the matching write-ahead record.
+    effect_records: Arc<Mutex<HashMap<Uuid, EffectRecordId>>>,
     /// Per-execution budget enforcers (ADR-008, #1108).
     ///
     /// One enforcer per `dag_id`: the counters it holds (tool calls, tokens,
@@ -649,6 +663,8 @@ impl ParallelExecutionServiceImpl {
             gating_mode: GatingMode::default(),
             capacity: None,
             capacity_holds: Arc::new(Mutex::new(HashMap::new())),
+            effect_commitment: None,
+            effect_records: Arc::new(Mutex::new(HashMap::new())),
             budget_enforcers: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -697,6 +713,16 @@ impl ParallelExecutionServiceImpl {
     /// steps a declared rule names are governed; every other step is untouched.
     pub fn with_capacity_ledger(mut self, setup: CapacitySetup) -> Self {
         self.capacity = Some(setup);
+        self
+    }
+
+    /// Set the ADR-019 effect-commitment dispatch seam.
+    ///
+    /// When present, every dispatched node is recorded before the tool is
+    /// called and settled (or marked ambiguous) when it returns. `None` keeps
+    /// the status-quo dispatch path.
+    pub fn with_effect_commitment_seam(mut self, seam: Arc<dyn DispatchSeam>) -> Self {
+        self.effect_commitment = Some(seam);
         self
     }
 

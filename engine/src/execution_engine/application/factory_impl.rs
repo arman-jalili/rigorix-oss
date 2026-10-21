@@ -72,6 +72,11 @@ impl ParallelExecutionFactoryImpl {
         if let Some(setup) = config.capacity {
             executor = executor.with_capacity_ledger(setup);
         }
+        // ADR-019: attach the operator-declared effect-commitment seam. `None`
+        // keeps the status-quo dispatch path (no write-ahead record).
+        if let Some(seam) = config.effect_commitment {
+            executor = executor.with_effect_commitment_seam(seam);
+        }
         // #1108: recovery recipes are an inserted attempt in the failure path, so
         // they are attached only when the composition root armed them.
         if let Some(recovery) = config.recovery {

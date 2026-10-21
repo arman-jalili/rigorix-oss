@@ -1,6 +1,8 @@
 //! Dispatch loop + sequence-policy dispatch helpers for
 //! `ParallelExecutionServiceImpl` (extracted from `service_impl.rs`, #914).
 
+use sha2::{Digest, Sha256};
+
 use super::gate::GateOutcome;
 use super::*;
 
@@ -128,6 +130,10 @@ impl ParallelExecutionServiceImpl {
                 GateOutcome::Refused => continue,
             }
 
+            // ADR-019: write the intent durably before the tool is sent. A
+            // failed begin refuses the dispatch.
+            self.begin_effect(dag_id, graph, node_id).await?;
+
             spawn_concurrent_node(
                 &mut join_set,
                 graph,
@@ -156,6 +162,10 @@ impl ParallelExecutionServiceImpl {
                 failed_count += 1;
             }
             node_results.insert(node_id, task_result.clone());
+
+            // ADR-019: settle the write-ahead record from what the dispatch
+            // observed. A lost/timeout/cancelled outcome becomes Ambiguous.
+            self.settle_effect(node_id, &task_result).await;
 
             // GAP-A-11: abort dispatch when the failure threshold is crossed
             // (0 = unlimited) or the session was cancelled.
@@ -279,6 +289,9 @@ impl ParallelExecutionServiceImpl {
                     }
                     GateOutcome::Refused => continue,
                 }
+
+                // ADR-019: write the intent durably before the tool is sent.
+                self.begin_effect(dag_id, graph, next_id).await?;
 
                 spawn_concurrent_node(
                     &mut join_set,
@@ -765,6 +778,158 @@ impl ParallelExecutionServiceImpl {
     /// A `Deny` verdict means the tool must never be called. An unarmed gate
     /// (`NotArmed`) is a fail-closed refusal mapped to `Deny { error }`; any
     /// other gate error halts the run fail-closed (mirrors sequence policy).
+    /// ADR-019: write the intent durably before `spawn_concurrent_node`.
+    ///
+    /// A missing node or a failed `begin` refuses the dispatch; the tool is
+    /// never sent. The returned record id is remembered by node id so the
+    /// terminal outcome can settle it.
+    pub(super) async fn begin_effect(
+        &self,
+        dag_id: Uuid,
+        graph: &crate::dag_engine::domain::TaskGraph,
+        node_id: Uuid,
+    ) -> Result<(), ExecutionError> {
+        let Some(seam) = &self.effect_commitment else {
+            return Ok(());
+        };
+
+        let node = graph
+            .get_node(node_id)
+            .ok_or_else(|| ExecutionError::InternalError {
+                detail: format!("effect commitment: node {node_id} is not in the graph"),
+            })?;
+
+        // The gate's digests are not yet exposed on the node, so the intent
+        // identity is derived from the node and execution identity for now.
+        // The service still derives the authoritative idempotency key.
+        let intent = EffectIntent::new(
+            dag_id,
+            node_id,
+            0,
+            IdempotencyKey::new(format!("{dag_id}:{node_id}:pending")),
+            node.tool.clone(),
+            Self::effect_digest(&node.intent),
+            Self::effect_digest(&format!("{dag_id}:{node_id}:precondition")),
+            Self::effect_digest(&format!("{dag_id}:{node_id}:authority")),
+        );
+
+        let record = seam.before_dispatch(intent).await.map_err(|error| {
+            ExecutionError::InternalError {
+                detail: format!(
+                    "effect commitment begin failed; refusing to dispatch node {node_id}: {error}"
+                ),
+            }
+        })?;
+
+        let mut records =
+            self.effect_records
+                .lock()
+                .map_err(|_| ExecutionError::InternalError {
+                    detail: "effect record registry poisoned; refusing to dispatch".to_string(),
+                })?;
+        records.insert(node_id, record.id());
+        Ok(())
+    }
+
+    /// ADR-019: settle the write-ahead record from the dispatch outcome.
+    ///
+    /// A definite result settles `Committed`/`NotCommitted`; a timeout,
+    /// cancellation, network failure, or lost response marks the record
+    /// `Ambiguous` so dependents and retry are fenced.
+    pub(super) async fn settle_effect(&self, node_id: Uuid, result: &TaskResult) {
+        let Some(seam) = &self.effect_commitment else {
+            return;
+        };
+
+        let record_id = self
+            .effect_records
+            .lock()
+            .ok()
+            .and_then(|mut records| records.remove(&node_id));
+        let Some(record_id) = record_id else {
+            return;
+        };
+
+        let failure = result
+            .failure_type
+            .as_deref()
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+
+        let observation = if Self::is_lost_outcome(result) {
+            DispatchObservation::Lost {
+                reason: format!("dispatch outcome unknown ({failure})"),
+            }
+        } else {
+            let digest = Self::effect_digest(&format!(
+                "{node_id}:{}",
+                result.output.as_deref().unwrap_or_default()
+            ));
+            let receipt = format!("node:{node_id}");
+            let observed_at = Utc::now();
+            let source = "execution-engine";
+            let outcome = if result.success {
+                ObservedOutcome::committed(receipt, digest, observed_at, source)
+            } else {
+                ObservedOutcome::not_committed(receipt, digest, observed_at, source)
+            };
+            DispatchObservation::Observed(outcome)
+        };
+
+        if let Err(error) = seam.after_dispatch(record_id, observation).await {
+            tracing::warn!(
+                %node_id,
+                %error,
+                "effect commitment settle failed; attempting to mark ambiguous"
+            );
+            let _ = seam
+                .after_dispatch(
+                    record_id,
+                    DispatchObservation::Lost {
+                        reason: format!("settle failed: {error}"),
+                    },
+                )
+                .await;
+        }
+    }
+
+    /// Whether a task result is an unknown outcome rather than a definite one.
+    ///
+    /// A lapsed deadline, an in-flight cancellation, or a lost transport is
+    /// absence of evidence, not evidence of absence: the record must become
+    /// `Ambiguous`, never `NotCommitted`.
+    pub(super) fn is_lost_outcome(result: &TaskResult) -> bool {
+        let failure = result
+            .failure_type
+            .as_deref()
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let error_text = result
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+
+        matches!(
+            failure.as_str(),
+            "timeout"
+                | "timed_out"
+                | "command_timed_out"
+                | "cancelled"
+                | "canceled"
+                | "cancellation"
+                | "network"
+                | "lost_response"
+        ) || error_text.contains("timed out")
+            || error_text.contains("timeout")
+            || error_text.contains("cancelled")
+            || error_text.contains("canceled")
+    }
+
+    fn effect_digest(seed: &str) -> String {
+        hex::encode(Sha256::digest(seed.as_bytes()))
+    }
+
     /// ADR-018 capacity-ledger pre-dispatch check.
     ///
     /// Deliberately placed **after** the precondition and sequence gates so
@@ -1035,6 +1200,62 @@ impl ParallelExecutionServiceImpl {
         }
         for (dep, state) in updates {
             self.notify_progress(dag_id, dep, state, total_nodes);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn result(success: bool, failure_type: Option<&str>, error: Option<&str>) -> TaskResult {
+        TaskResult {
+            node_id: Uuid::nil(),
+            node_name: "n".to_string(),
+            success,
+            output: None,
+            duration_ms: 0,
+            retry_attempts: 0,
+            error: error.map(str::to_string),
+            failure_type: failure_type.map(str::to_string),
+            started_at: Utc::now(),
+            completed_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn lost_outcomes_are_the_ones_that_must_stay_ambiguous() {
+        // Definite results.
+        assert!(!ParallelExecutionServiceImpl::is_lost_outcome(&result(
+            true, None, None
+        )));
+        assert!(!ParallelExecutionServiceImpl::is_lost_outcome(&result(
+            false,
+            Some("command_failed"),
+            Some("exit status 1")
+        )));
+        assert!(!ParallelExecutionServiceImpl::is_lost_outcome(&result(
+            false,
+            Some("unknown_tool"),
+            Some("unknown tool")
+        )));
+
+        // Unknown outcomes: deadline, cancellation, lost transport.
+        for (failure_type, error) in [
+            (Some("timeout"), None),
+            (
+                Some("command_timed_out"),
+                Some("command timed out after 120s"),
+            ),
+            (Some("cancelled"), None),
+            (Some("network"), None),
+            (None, Some("connection timed out")),
+            (None, Some("request was cancelled")),
+        ] {
+            assert!(
+                ParallelExecutionServiceImpl::is_lost_outcome(&result(false, failure_type, error)),
+                "{failure_type:?}/{error:?} must be ambiguous"
+            );
         }
     }
 }

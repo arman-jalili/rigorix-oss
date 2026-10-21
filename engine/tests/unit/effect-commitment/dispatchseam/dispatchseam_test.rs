@@ -59,3 +59,138 @@ mod tests {
         assert_eq!(moved, intent);
     }
 }
+
+#[cfg(test)]
+mod impl_tests {
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
+    use chrono::Utc;
+    use rigorix_engine::capacity_ledger::domain::IdempotencyKey;
+    use rigorix_engine::effect_commitment::application::{
+        DispatchObservation, DispatchSeam, EffectCommitmentSeam, EffectCommitmentServiceImpl,
+        Sha256IntentKeyDerivation,
+    };
+    use rigorix_engine::effect_commitment::domain::{
+        CommitmentError, EffectIntent, EffectQuery, EffectRecord, EffectRecordId, ObservedOutcome,
+        ResolverIdentity,
+    };
+    use rigorix_engine::effect_commitment::infrastructure::InMemoryEffectLedger;
+    use rigorix_engine::effect_commitment::interfaces::EffectCommitmentLedger;
+    use uuid::Uuid;
+
+    fn intent() -> EffectIntent {
+        EffectIntent::new(
+            Uuid::from_u128(1),
+            Uuid::from_u128(2),
+            0,
+            IdempotencyKey::new("pending"),
+            "payments.charge",
+            "args-digest",
+            "precondition-digest",
+            "authority-digest",
+        )
+    }
+
+    fn evidence() -> ObservedOutcome {
+        ObservedOutcome::committed("receipt-1", "readback-1", Utc::now(), "stripe")
+    }
+
+    fn seam() -> EffectCommitmentSeam {
+        let service = EffectCommitmentServiceImpl::new(
+            Arc::new(InMemoryEffectLedger::new()),
+            Arc::new(Sha256IntentKeyDerivation::new()),
+        );
+        EffectCommitmentSeam::new(Arc::new(service))
+    }
+
+    #[tokio::test]
+    async fn before_dispatch_records_the_intent_and_after_dispatch_settles_it() {
+        let seam = seam();
+        let record = seam.before_dispatch(intent()).await.unwrap();
+        assert_eq!(record.state().as_str(), "dispatched");
+
+        let settled = seam
+            .after_dispatch(record.id(), DispatchObservation::Observed(evidence()))
+            .await
+            .unwrap();
+        assert_eq!(settled.state().as_str(), "committed");
+        assert!(settled.is_terminal());
+    }
+
+    #[tokio::test]
+    async fn a_lost_observation_marks_the_record_ambiguous() {
+        let seam = seam();
+        let record = seam.before_dispatch(intent()).await.unwrap();
+        let ambiguous = seam
+            .after_dispatch(
+                record.id(),
+                DispatchObservation::Lost {
+                    reason: "response lost".to_string(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(ambiguous.state().as_str(), "ambiguous");
+        assert!(ambiguous.blocks_retry());
+    }
+
+    #[tokio::test]
+    async fn a_failed_begin_is_returned_so_the_dispatch_can_refuse() {
+        struct UnavailableLedger;
+
+        #[async_trait]
+        impl EffectCommitmentLedger for UnavailableLedger {
+            async fn begin(&self, _intent: EffectIntent) -> Result<EffectRecord, CommitmentError> {
+                Err(CommitmentError::Unavailable {
+                    detail: "store down".to_string(),
+                })
+            }
+            async fn settle_definite(
+                &self,
+                _record_id: EffectRecordId,
+                _outcome: ObservedOutcome,
+            ) -> Result<EffectRecord, CommitmentError> {
+                Err(CommitmentError::Unavailable {
+                    detail: "store down".to_string(),
+                })
+            }
+            async fn mark_ambiguous(
+                &self,
+                _record_id: EffectRecordId,
+                _reason: String,
+            ) -> Result<EffectRecord, CommitmentError> {
+                Err(CommitmentError::Unavailable {
+                    detail: "store down".to_string(),
+                })
+            }
+            async fn resolve(
+                &self,
+                _record_id: EffectRecordId,
+                _outcome: ObservedOutcome,
+                _resolver: ResolverIdentity,
+            ) -> Result<EffectRecord, CommitmentError> {
+                Err(CommitmentError::Unavailable {
+                    detail: "store down".to_string(),
+                })
+            }
+            async fn query(
+                &self,
+                _query: EffectQuery,
+            ) -> Result<Vec<EffectRecord>, CommitmentError> {
+                Err(CommitmentError::Unavailable {
+                    detail: "store down".to_string(),
+                })
+            }
+        }
+
+        let service = EffectCommitmentServiceImpl::new(
+            Arc::new(UnavailableLedger),
+            Arc::new(Sha256IntentKeyDerivation::new()),
+        );
+        let seam = EffectCommitmentSeam::new(Arc::new(service));
+
+        let result = seam.before_dispatch(intent()).await;
+        assert!(matches!(result, Err(CommitmentError::Unavailable { .. })));
+    }
+}
