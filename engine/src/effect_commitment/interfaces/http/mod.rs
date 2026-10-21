@@ -120,19 +120,10 @@ pub struct CommitmentErrorResponse {
 impl CommitmentErrorResponse {
     /// Build an error body from a typed error.
     pub fn from_error(error: &CommitmentError) -> Self {
-        let record_id = match error {
-            CommitmentError::AlreadySettled { record_id, .. }
-            | CommitmentError::NotAmbiguous { record_id, .. }
-            | CommitmentError::EvidenceMissing { record_id } => Some(*record_id),
-            CommitmentError::Contended { record_id, .. } => *record_id,
-            CommitmentError::UnauthorizedResolver { .. } | CommitmentError::Unavailable { .. } => {
-                None
-            }
-        };
         Self {
             code: error.code().to_string(),
             message: error.to_string(),
-            record_id,
+            record_id: error.record_id(),
         }
     }
 }
