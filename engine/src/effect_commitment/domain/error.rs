@@ -98,4 +98,18 @@ impl CommitmentError {
     pub fn is_unavailable(&self) -> bool {
         matches!(self, Self::Unavailable { .. })
     }
+
+    /// The affected record, when the variant carries one.
+    ///
+    /// This is the single source of truth for the `record_id` field of the
+    /// frozen HTTP error body.
+    pub fn record_id(&self) -> Option<EffectRecordId> {
+        match self {
+            Self::AlreadySettled { record_id, .. }
+            | Self::NotAmbiguous { record_id, .. }
+            | Self::EvidenceMissing { record_id } => Some(*record_id),
+            Self::Contended { record_id, .. } => *record_id,
+            Self::UnauthorizedResolver { .. } | Self::Unavailable { .. } => None,
+        }
+    }
 }

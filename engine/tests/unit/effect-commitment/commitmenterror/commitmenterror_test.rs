@@ -17,6 +17,7 @@ mod tests {
             state: EffectState::Committed,
         };
         assert_eq!(settled.code(), "already_settled");
+        assert_eq!(settled.record_id(), Some(id));
         assert!(!settled.is_retriable());
         assert!(settled.to_string().contains(&id.to_string()));
 
@@ -25,15 +26,18 @@ mod tests {
             state: EffectState::Dispatched,
         };
         assert_eq!(not_ambiguous.code(), "not_ambiguous");
+        assert_eq!(not_ambiguous.record_id(), Some(id));
 
         let unauthorized = CommitmentError::UnauthorizedResolver {
             resolver_id: "agent".to_string(),
             reason: "F4".to_string(),
         };
         assert_eq!(unauthorized.code(), "unauthorized_resolver");
+        assert_eq!(unauthorized.record_id(), None);
 
         let missing = CommitmentError::EvidenceMissing { record_id: id };
         assert_eq!(missing.code(), "evidence_missing");
+        assert_eq!(missing.record_id(), Some(id));
     }
 
     #[test]
