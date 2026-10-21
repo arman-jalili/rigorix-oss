@@ -50,7 +50,8 @@ Per ADR-002, the CLI contains zero business logic — all execution, planning, a
 
 | Command | What it does |
 |---------|-------------|
-| `rigorix init` | Scaffold `.rigorix/` directory + default config |
+| `rigorix init` | Scaffold `.rigorix/` directory + default config, then report the seam inventory (always, even when the config exists) |
+| `rigorix doctor` | Report which enforcement seams are armed, by probing each seam through the constructor the run path uses |
 | `rigorix key` | Generate API keys |
 | `rigorix` (no args) | **Primary interface** — launch interactive TUI dashboard (see tui.md) |
 | `rigorix tui [--exec] [--history]` | Launch TUI with specific execution loaded |
@@ -117,7 +118,8 @@ dispatch(command, config) {
 
         // CLI-Only:
         Init     → scaffold .rigorix/ + default rigorix.toml
-        Key      → generate API key
+        Doctor   → armed-seam report (before service bootstrap)
+        Key      → generate the RIGORIX_HMAC_KEY signing key
         Tui      → launch ratatui dashboard (tui::run(args).await)
     }
 }
@@ -180,7 +182,12 @@ depends: none
 
 status: planned
 depends: CliParser
-**Purpose:** Match parsed `CliCommand` to the appropriate handler — orchestrator (run/plan/cancel/status), engine service (history/explain/diff-plan/generate/template/audit/logs/config), or CLI-only (init/key/tui).
+**Purpose:** Match parsed `CliCommand` to the appropriate handler — orchestrator (run/plan/cancel/status), engine service (history/explain/diff-plan/generate/template/audit/logs/config), or CLI-only (doctor/init/key/tui).
+
+`doctor` and `init` are answered **before** any service is constructed: with a
+seam that is requested but cannot be honoured, normal startup fails closed, and
+the report explaining why has to survive that. A diagnostic that only works when
+the thing it diagnoses is healthy is not a diagnostic.
 
 ### OrchestratorBuilder
 

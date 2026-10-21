@@ -228,7 +228,14 @@ pub enum CliCommand {
     /// Scaffold `.rigorix/` directory with a default `rigorix.toml`.
     Init,
 
-    /// Generate API keys.
+    /// Report which enforcement seams are armed in this repository.
+    ///
+    /// Every seam is probed through the same constructor the run path uses, so
+    /// the answer matches what a run would actually do. Exits non-zero only when
+    /// a seam is requested and cannot be honoured (runs would refuse).
+    Doctor,
+
+    /// Generate the audit signing key the engine consumes (`RIGORIX_HMAC_KEY`).
     Key {
         /// Optional human-readable label for the key.
         #[arg(long)]

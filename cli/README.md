@@ -65,9 +65,22 @@ signed history, not a summary.
 
 | Command | Description |
 |---|---|
-| `rigorix init` | Scaffold `.rigorix/` with a default `rigorix.toml` |
+| `rigorix doctor` | Report which enforcement seams are armed in this repository |
+| `rigorix init` | Scaffold `.rigorix/` with a default `rigorix.toml`, then report the seam inventory |
 | `rigorix config {init\|show\|validate}` | Manage and validate configuration |
-| `rigorix key [--label NAME]` | Generate API keys |
+| `rigorix key [--label NAME]` | Generate the audit signing key (`RIGORIX_HMAC_KEY`) |
+
+`rigorix init` writes configuration that is **unarmed on purpose**: it names every
+seam (`preconditions.toml`, `sequence-policy.toml`, `capacity.toml`,
+`RIGORIX_APPROVAL_BINDING`, the anchor variables, `RIGORIX_HMAC_KEY`) without
+enabling any of them. `rigorix doctor` prints the same list with what is actually
+armed in this repository, and exits non-zero only when a seam was requested and
+cannot be honoured — that seam refuses runs, so the operator needs to know before
+a step is refused.
+
+Both answer before the rest of the CLI starts: with `RIGORIX_APPROVAL_BINDING=1`
+and no key, normal startup fails closed, and `doctor` is the command that explains
+why.
 
 ---
 
