@@ -106,4 +106,16 @@ impl EffectIntent {
             self.tool, self.args_digest, self.precondition_digest, self.authority_digest
         )
     }
+
+    /// Whether `other` expresses the same logical intent as this one.
+    ///
+    /// Two intents are the same when they belong to the same DAG node and have
+    /// the same payload digest. The attempt counter and timestamp are ignored:
+    /// a retry is the same intent, not a new one. This is the predicate behind
+    /// the custody rule (same key + same payload ⇒ read the existing record).
+    pub fn same_intent(&self, other: &Self) -> bool {
+        self.dag_id == other.dag_id
+            && self.node_id == other.node_id
+            && self.intent_digest() == other.intent_digest()
+    }
 }
