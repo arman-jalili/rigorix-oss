@@ -282,3 +282,70 @@ mod capacity_ledger {
         mod resource_test;
     }
 }
+// The outer module mirrors the renamed `engine/tests/unit/effect-commitment/`
+// dir. Hyphenated on disk, underscored in Rust; the outer `#[path]` makes the
+// inner module names resolve relative to it.
+// @canonical .pi/architecture/modules/effect-commitment.md
+#[path = "effect-commitment"]
+mod effect_commitment {
+    mod commitmenterror {
+        mod commitmenterror_test;
+    }
+    mod compositionroots {
+        mod compositionroots_test;
+    }
+    mod defaulteffectcommitmentfactory {
+        mod defaulteffectcommitmentfactory_test;
+    }
+    mod dependentfence {
+        mod dependentfence_test;
+    }
+    mod dispatchseam {
+        mod dispatchseam_test;
+    }
+    mod effectcommitmentconfig {
+        mod effectcommitmentconfig_test;
+    }
+    mod effectcommitmentledger {
+        mod effectcommitmentledger_test;
+    }
+    mod effectcommitmentservice {
+        mod effectcommitmentservice_test;
+    }
+    mod effectintent {
+        mod effectintent_test;
+    }
+    mod effectrecord {
+        mod effectrecord_test;
+    }
+    mod effectstate {
+        mod effectstate_test;
+    }
+    mod httpeffectledger {
+        mod httpeffectledger_test;
+    }
+    mod inmemoryeffectledger {
+        mod inmemoryeffectledger_test;
+    }
+    mod intentkeyderivation {
+        mod intentkeyderivation_test;
+    }
+    mod nodestatevocabulary {
+        mod nodestatevocabulary_test;
+    }
+    mod observedoutcome {
+        mod observedoutcome_test;
+    }
+    mod providerreceiptreader {
+        mod providerreceiptreader_test;
+    }
+    mod reconciliationpolicy {
+        mod reconciliationpolicy_test;
+    }
+    mod resolveridentity {
+        mod resolveridentity_test;
+    }
+    mod retryfence {
+        mod retryfence_test;
+    }
+}

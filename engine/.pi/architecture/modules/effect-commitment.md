@@ -4,6 +4,7 @@
 Canonical Reference: .pi/architecture/modules/effect-commitment.md
 Blueprint Source: Guardian Framework v1.2
 Generated: NEVER (this is the source)
+Last Updated: 2026-10-21 — ISSUE-CONTRACT-FREEZE froze the interfaces, DTOs, and schemas
 -->
 
 ## Overview

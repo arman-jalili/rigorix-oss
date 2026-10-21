@@ -1,9 +1,9 @@
 ---
 guardian_issue:
   id: "ISSUE-CONTRACT-FREEZE"
-  epic: "capacity_ledger"
+  epic: "effect-commitment"
   component: "Contract Freeze"
-  module: "capacity-ledger"
+  module: "effect-commitment"
   status: planned
   priority: critical
   dependencies: []
@@ -29,7 +29,7 @@ guardian_issue:
       - REST/event contracts
 
   canonical_references:
-    - module: ".pi/architecture/modules/capacity-ledger.md"
+    - module: ".pi/architecture/modules/effect-commitment.md"
 
   acceptance_criteria:
     - "All component interfaces defined as stubs (TODO bodies)"
@@ -47,33 +47,42 @@ guardian_issue:
     interfaces, types, DTOs, event schemas, API paths, error formats.
 
   file_changes:
-    - "create: src/capacity-ledger/domain/"
-    - "create: src/capacity-ledger/application/"
-    - "create: src/capacity-ledger/infrastructure/"
-    - "create: src/capacity-ledger/interfaces/"
+    - "create: src/effect-commitment/domain/"
+    - "create: src/effect-commitment/application/"
+    - "create: src/effect-commitment/infrastructure/"
+    - "create: src/effect-commitment/interfaces/"
 ---
 
-# Contract Freeze: capacity-ledger
+# Contract Freeze: effect-commitment
 
 ## Intent
 
-Define and freeze all public interfaces, contracts, and schemas for the capacity-ledger
+Define and freeze all public interfaces, contracts, and schemas for the effect-commitment
 epic before any implementation begins. This prevents architecture drift — implementation
 must satisfy contracts, not the other way around.
 
 ## Included Components
 
-- Resource
-- Reservation
-- Grant
-- Exposure
-- IdempotencyKey
-- LedgerError
-- CapacityLedgerService
-- ReservationGuard
-- InProcessLedger
-- HttpLedger
-- CapacityLedger
+- EffectIntent
+- EffectState
+- EffectRecord
+- ObservedOutcome
+- ResolverIdentity
+- CommitmentError
+- EffectCommitmentService
+- IntentKeyDerivation
+- ReconciliationPolicy
+- InMemoryEffectLedger
+- HttpEffectLedger
+- ProviderReceiptReader
+- EffectCommitmentConfig
+- DefaultEffectCommitmentFactory
+- EffectCommitmentLedger
+- DispatchSeam
+- DependentFence
+- RetryFence
+- NodeStateVocabulary
+- CompositionRoots
 
 ## What Must Be Frozen
 

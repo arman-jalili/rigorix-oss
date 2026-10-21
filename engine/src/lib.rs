@@ -39,6 +39,7 @@ pub mod code_graph;
 pub mod common;
 pub mod configuration;
 pub mod dag_engine;
+pub mod effect_commitment;
 pub mod enforcement;
 pub mod error;
 pub mod event_system;
