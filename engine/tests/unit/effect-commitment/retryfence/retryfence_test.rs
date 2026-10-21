@@ -8,7 +8,9 @@
 mod tests {
     use chrono::Utc;
     use rigorix_engine::capacity_ledger::domain::IdempotencyKey;
-    use rigorix_engine::effect_commitment::application::{RetryFence, may_retry};
+    use rigorix_engine::effect_commitment::application::{
+        DefaultRetryFence, RetryFence, may_retry,
+    };
     use rigorix_engine::effect_commitment::domain::{
         EffectIntent, EffectRecord, ObservedOutcome, ResolverIdentity, ResolverKind,
     };
@@ -48,6 +50,11 @@ mod tests {
             .mark_ambiguous("response lost", Utc::now())
             .unwrap();
         assert!(!may_retry(&ambiguous));
+
+        // The injectable default agrees with the pure predicate.
+        let fence = DefaultRetryFence;
+        assert!(fence.may_retry(&dispatched));
+        assert!(!fence.may_retry(&ambiguous));
 
         // A new attempt after resolution is permitted.
         let resolved = ambiguous

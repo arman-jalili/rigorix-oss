@@ -7,6 +7,8 @@
 
 use sha2::{Digest, Sha256};
 
+use crate::effect_commitment::application::{DefaultRetryFence, RetryFence};
+
 use super::gate::GateOutcome;
 use super::*;
 
@@ -824,6 +826,27 @@ impl ParallelExecutionServiceImpl {
                 ),
             }
         })?;
+
+        // ADR-019 F2: a write-ahead read that came back unsettled means this
+        // intent was already dispatched and its outcome is unknown. Re-sending
+        // it is the double-spend path.
+        if !DefaultRetryFence.may_retry(&record) {
+            return Err(ExecutionError::InternalError {
+                detail: format!(
+                    "effect {} is Ambiguous; retry refused (ADR-019 F2)",
+                    record.id()
+                ),
+            });
+        }
+        if record.is_terminal() {
+            return Err(ExecutionError::InternalError {
+                detail: format!(
+                    "effect {} is already settled ({}); refusing to re-dispatch a terminal record",
+                    record.id(),
+                    record.state()
+                ),
+            });
+        }
 
         let mut records =
             self.effect_records
