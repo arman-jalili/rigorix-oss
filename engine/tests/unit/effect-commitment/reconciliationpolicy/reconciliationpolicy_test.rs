@@ -83,6 +83,19 @@ mod tests {
             policy.authorize_resolution(&record, None, &resolver),
             Err(CommitmentError::EvidenceMissing { .. })
         ));
+
+        // An incomplete outcome is an unrecorded claim, not evidence.
+        let incomplete = ObservedOutcome {
+            receipt_id: "receipt-1".to_string(),
+            readback_digest: String::new(),
+            observed_at: Utc::now(),
+            source: "stripe".to_string(),
+            verdict: rigorix_engine::effect_commitment::domain::OutcomeVerdict::Committed,
+        };
+        assert!(matches!(
+            policy.authorize_resolution(&record, Some(&incomplete), &resolver),
+            Err(CommitmentError::EvidenceMissing { .. })
+        ));
     }
 
     #[test]

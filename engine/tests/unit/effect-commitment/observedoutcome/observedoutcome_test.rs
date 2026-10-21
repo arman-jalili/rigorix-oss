@@ -24,6 +24,17 @@ mod tests {
         let failure = ObservedOutcome::not_committed("receipt-2", "readback-2", at(), "stripe");
         assert!(!failure.is_committed());
         assert_eq!(failure.terminal_state(), EffectState::NotCommitted);
+
+        // Evidence needs a receipt, a read-back digest, and a source.
+        assert!(success.is_complete());
+        let incomplete = ObservedOutcome {
+            receipt_id: String::new(),
+            readback_digest: "readback".to_string(),
+            observed_at: at(),
+            source: "stripe".to_string(),
+            verdict: OutcomeVerdict::Committed,
+        };
+        assert!(!incomplete.is_complete());
     }
 
     #[test]
