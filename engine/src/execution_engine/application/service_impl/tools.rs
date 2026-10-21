@@ -13,15 +13,40 @@ use crate::tools::application::shell_policy::{
 impl ParallelExecutionServiceImpl {
     /// Execute a single tool node and return the TaskResult.
     ///
-    /// Execution order: permission check → PreToolUse hooks → tool → PostToolUse hooks.
+    /// Execution order: budget evaluation → permission check → PreToolUse hooks →
+    /// tool → PostToolUse hooks.
+    ///
+    /// The budget evaluation comes first because it is the control with an
+    /// execution-wide counter: a call that would exceed the limit must not run at
+    /// all, and it must not be dispatched just to be refused afterwards.
     pub(super) async fn execute_tool(
         &self,
+        dag_id: Uuid,
         node: &crate::dag_engine::domain::TaskNode,
         node_id: Uuid,
         start: std::time::Instant,
     ) -> TaskResult {
         let tool_name = node.tool.as_str();
         let tool_intent = &node.intent;
+
+        // ── Budget and limit gating (ADR-008, #1108) ──
+        //
+        // Shared with the parallel dispatch path so the two routes cannot answer
+        // differently (#1074/#1108).
+        if let Some(enforcer) = self.budget_enforcer_for(dag_id)
+            && let Err(refusal) =
+                super::budget::evaluate(&enforcer, dag_id, node_id, &node.tool).await
+        {
+            let duration_ms = start.elapsed().as_millis() as u64;
+            return TaskResult::failure(
+                node_id,
+                &node.name,
+                refusal.reason().to_string(),
+                refusal.failure_type().to_string(),
+                duration_ms,
+                0,
+            );
+        }
 
         // ── Permission gating ──
         if let Some(ref enforcer) = self.permission_enforcer {

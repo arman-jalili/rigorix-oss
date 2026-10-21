@@ -65,23 +65,26 @@ claim does not hold; the document now says so and the row pins that admission.
 | W10 | `modules/hooks.md` | hooks run around tool calls | CONFIRMED | `hook_runner` is set in all three roots |
 | W11 | `modules/failure-classification.md` | classification drives retry decisions | CONFIRMED | `factory_impl.rs` constructs `FailureClassifierServiceImpl` |
 | W12 | `modules/enforcement.md` | permissions gate tool calls | CONFIRMED | `service_impl/tools.rs` calls `enforcer.check(` |
-| **W13** | `modules/enforcement.md` | **budgets **RAII reservations** gate every action (README §1)** | **GAP** | **`ExecutionEnforcerImpl` has no caller outside `engine/src/enforcement/`; the enforcer is never constructed by an entry point** |
-| **W14** | `modules/recovery-recipes.md` | **recovery recipes run when a step fails** | **GAP** | **`with_recovery_service` has no caller; `node.rs` consults `self.recovery_service`, which is always `None`** |
+| W13 | `modules/enforcement.md` | budgets and per-tool `max_calls` are evaluated before a tool call runs | CONFIRMED (#1108) | `service_impl/budget.rs` calls `evaluate_tool_call(`; both dispatch paths call it; `enforcement: Some(` in all three roots |
+| W14 | `modules/recovery-recipes.md` | recovery recipes can be attached when a step fails | CONFIRMED (#1108, opt-in) | `RecoverySetup` + `with_recovery_service(` in the factory; `RecoverySetup::from_env(` in all three roots |
 
-## What the two GAPs mean
+## The two rows that were GAPs (closed by #1108)
 
-Both are the same shape as the capacity ledger before `a861e2a8`: a complete
-module with its own tests, referenced by the executor and by nothing else.
+Both had the shape the capacity ledger had before `a861e2a8`: a complete module
+with its own tests, referenced by the executor and constructed by nothing.
 
-- **W13 is a product claim, not a doc nit.** The README says "Every execution runs
-  inside operator-authored risk policy, permission and budget boundaries". Risk
-  gating and permissions do run; contested capacity is enforced by the ledger; the
-  per-execution **budget counter** does not run, because no composition root builds
-  it. `README.md` §1 now says which of those is which.
-- **W14 is narrower**: recovery recipes are an opt-in behaviour that has never been
-  switchable, because nothing supplies the service.
+- **W13** — `ExecutionEnforcerImpl` had no caller outside `engine/src/enforcement/`.
+  Budgets, per-tool `max_calls` and the presets were configured, validated, echoed
+  and never consulted. Now every entry point attaches an `EnforcementConfig`, and
+  **both** dispatch paths evaluate each call before the tool runs — the parallel
+  loop and the single-node route — through one shared `service_impl::budget`
+  function, because a check added to one path only is the #1074 defect.
+- **W14** — `with_recovery_service` had no caller. Now `RecoverySetup::from_env()`
+  arms it (`RIGORIX_RECOVERY=1`) and the factory attaches it. Opt-in, because
+  recovery inserts an attempt into the failure path and changes how a failure is
+  retried; wiring makes it reachable and switchable without silently changing
+  failure handling for everyone.
 
-Neither is fixed here. Wiring either one changes behaviour at dispatch — the
-enforcer would start refusing calls that exceed a configured budget, and recipes
-would start running on failure — so it is a decision with its own acceptance test,
-not an audit edit. Tracked as **#1108**.
+The lesson the audit recorded still holds: both were invisible to grep, to the
+test suite and to review, and neither was a compile error. They became visible
+only when the claim was resolved against what constructs what.

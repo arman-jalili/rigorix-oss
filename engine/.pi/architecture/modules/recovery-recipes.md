@@ -7,13 +7,22 @@ Rationale: Automatic recovery before escalation — known failure modes auto-hea
 
 ## Overview
 
-> **NOT WIRED BY ANY ENTRY POINT (#1100, tracked as #1108).** `ExecutionServiceImpl`
-> consults `self.recovery_service` when a step fails, but nothing ever calls
-> `with_recovery_service`: the field is always `None`, so no recipe runs. The module
-> below is the design as implemented; it becomes the behaviour only once a
-> composition root supplies the service. Row W14 in
-> `engine/.pi/architecture/wiring-claims.md` pins this, and
-> `validate-wiring-claims.sh` fails if the admission disappears.
+> **WIRED, OPT-IN (#1108).** `RecoverySetup::from_env()` arms the seam when
+> `RIGORIX_RECOVERY=1|true|yes`, and the factory attaches it
+> (`ParallelExecutionFactoryConfig::recovery` → `with_recovery_service`). With the
+> variable unset — the default — `node.rs` still reads `None` and no attempt is
+> made.
+>
+> **Why opt-in rather than default:** recovery inserts an attempt into the failure
+> path (`node.rs` Phase 3b, before retry evaluation) and changes how a failure is
+> retried. That is an operator decision, not a default. Wiring it makes the
+> capability reachable and switchable; it does not silently change failure
+> handling for everyone.
+>
+> Execution itself is simulated today (`RecoveryServiceImpl::execute_step` returns
+> success for steps that need no external work), so the seam is reachable but not
+> yet doing real repairs — that is a separate design decision recorded here rather
+> than implied by a "wired" label.
 
 The Recovery Recipes system encodes known failure scenarios and their automatic recovery procedures. The core rule is: **one automatic recovery attempt per scenario before human escalation.** Each failure scenario has a `RecoveryRecipe` — a sequence of recovery steps with a maximum attempt count and an escalation policy for when attempts are exhausted.
 

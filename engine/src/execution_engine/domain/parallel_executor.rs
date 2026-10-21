@@ -69,6 +69,20 @@ pub struct ParallelExecutorConfig {
     /// Whether to run post-execution validation rules on nodes.
     pub enable_validation: bool,
 
+    /// ADR-008: per-execution budget and limit enforcement.
+    ///
+    /// `Some(config)` arms the enforcer at dispatch: every tool call is evaluated
+    /// against the configured tool policy, per-tool `max_calls`, resource budgets
+    /// and execution limits **before** the tool runs, and the call is counted when
+    /// it is allowed. `None` disables it (the field is serialized only when set,
+    /// so existing configs are unaffected).
+    ///
+    /// Entry points pass `EnforcementConfig::standard()` unless a preset was
+    /// requested. #1108: before this field existed the enforcer was constructed by
+    /// no composition root, so budgets were configurable and never consulted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enforcement: Option<crate::enforcement::domain::config::EnforcementConfig>,
+
     /// ADR-011 R5: repository path for the effect-scope oracle (git-diff).
     ///
     /// When set AND an approval binding is attached, post-execution effect-
@@ -89,6 +103,7 @@ impl Default for ParallelExecutorConfig {
             max_failures_before_abort: 0, // Unlimited by default
             enable_fallback: true,
             enable_validation: true,
+            enforcement: None,
             approval_repo_path: None,
         }
     }

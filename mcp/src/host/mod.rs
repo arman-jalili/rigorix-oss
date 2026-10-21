@@ -1618,10 +1618,17 @@ pub async fn build_real_engine(
                 sequence_policy: sequence_policy.clone(),
                 precondition,
                 capacity,
+                // #1108: recovery recipes are opt-in (RIGORIX_RECOVERY=1).
+                recovery: rigorix_engine::execution_engine::application::factory::RecoverySetup::from_env(),
                 // ADR-011 R5: the MCP host is an entry point too — leaving this
                 // at the default `None` meant the oracle was off here as well (#1099).
                 executor_config: rigorix_engine::execution_engine::domain::ParallelExecutorConfig {
                     approval_repo_path: Some(repo_root.to_string()),
+                    // ADR-008 (#1108): budgets and per-tool call limits are
+                    // evaluated before each tool call.
+                    enforcement: Some(
+                        rigorix_engine::enforcement::domain::config::EnforcementConfig::standard(),
+                    ),
                     ..rigorix_engine::execution_engine::domain::ParallelExecutorConfig::default()
                 },
                 ..ParallelExecutionFactoryConfig::default()

@@ -120,6 +120,44 @@ pub struct ParallelExecutionFactoryConfig {
     /// [`crate::capacity_ledger::CapacitySetup::from_env`]. `None` (default)
     /// preserves today's behavior exactly (no seam — status quo).
     pub capacity: Option<crate::capacity_ledger::CapacitySetup>,
+
+    /// Optional recovery-recipe service (ADR-0xx recovery recipes, #1108).
+    ///
+    /// When set, a node failure is mapped to a failure scenario and one recovery
+    /// attempt is made before retry evaluation. `None` (default) keeps today's
+    /// behaviour: no recovery attempt.
+    ///
+    /// The composition roots build it with [`RecoverySetup::from_env`], which is
+    /// **opt-in** (`RIGORIX_RECOVERY=1`): recovery inserts an attempt into the
+    /// failure path, and changing that by default would change how every failure
+    /// is retried. Wiring it opt-in makes the capability reachable and switchable
+    /// instead of unreachable (#1108, audit row W14).
+    pub recovery: Option<Arc<dyn crate::recovery_recipes::application::service::RecoveryService>>,
+}
+
+/// Opt-in arming for the recovery-recipe seam (#1108).
+pub struct RecoverySetup;
+
+impl RecoverySetup {
+    /// The environment variable that enables recovery recipes.
+    pub const ENV: &'static str = "RIGORIX_RECOVERY";
+
+    /// Build the recovery service when the operator asked for it.
+    ///
+    /// Truthy: `1`, `true`, `yes` (case-insensitive). Anything else — including
+    /// unset — leaves recovery off, which is the documented default.
+    pub fn from_env()
+    -> Option<Arc<dyn crate::recovery_recipes::application::service::RecoveryService>> {
+        let requested = std::env::var(Self::ENV)
+            .map(|value| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+            .unwrap_or(false);
+        if !requested {
+            return None;
+        }
+        Some(Arc::new(
+            crate::recovery_recipes::application::service_impl::RecoveryServiceImpl::new(),
+        ))
+    }
 }
 
 impl Default for ParallelExecutionFactoryConfig {
@@ -136,6 +174,7 @@ impl Default for ParallelExecutionFactoryConfig {
             sequence_policy: None,
             precondition: None,
             capacity: None,
+            recovery: None,
         }
     }
 }

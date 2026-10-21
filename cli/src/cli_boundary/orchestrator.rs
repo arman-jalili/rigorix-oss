@@ -101,6 +101,29 @@ pub struct CliServices {
     pub config: CliConfig,
 }
 
+/// Map the operator's `[enforcement] preset` to the limits the executor enforces
+/// (#1108).
+///
+/// `rigorix.toml` names the presets by autonomy intent (`default`, `advanced`,
+/// `aggressive`); the enforcer names them by limit profile (`standard`, `strict`,
+/// `maximum`). The mapping is by the documented meaning of each: a more autonomous
+/// envelope is the stricter limit profile, not a looser one.
+fn enforcement_config_from_engine(
+    preset: &rigorix_engine::configuration::domain::EnforcementPreset,
+) -> rigorix_engine::enforcement::domain::config::EnforcementConfig {
+    use rigorix_engine::configuration::domain::EnforcementPreset;
+    use rigorix_engine::enforcement::domain::config::{
+        EnforcementConfig, EnforcementPresetProfile,
+    };
+
+    let profile = match preset {
+        EnforcementPreset::Default => EnforcementPresetProfile::Standard,
+        EnforcementPreset::Advanced => EnforcementPresetProfile::Strict,
+        EnforcementPreset::Aggressive => EnforcementPresetProfile::Maximum,
+    };
+    EnforcementConfig::from_preset(&profile)
+}
+
 /// Build non-LLM CLI services for Tier 2 commands.
 ///
 /// Builds state manager, template service, audit repository, dag planning
@@ -358,6 +381,10 @@ pub async fn build_orchestrator_with_budget(
                 // It stays inert unless the approved intent declared a scope,
                 // so this wiring cannot invent a violation (#1099).
                 approval_repo_path: Some(repo_root.clone()),
+                // ADR-008 (#1108): budgets are evaluated before each tool call.
+                // `--enforcement` selects a preset; the standard limits apply
+                // otherwise (500 tool calls, 3600s, 100k tokens per execution).
+                enforcement: Some(enforcement_config_from_engine(&engine_config.enforcement)),
             },
             register_event_handlers: true,
             enable_progress_callbacks: true,
@@ -369,6 +396,10 @@ pub async fn build_orchestrator_with_budget(
             sequence_policy: sequence_policy.clone(),
             precondition,
             capacity,
+            // #1108: recovery recipes are opt-in (RIGORIX_RECOVERY=1). They add an
+            // attempt to the failure path, so they are not on by default.
+            recovery:
+                rigorix_engine::execution_engine::application::factory::RecoverySetup::from_env(),
         })
         .await
         .map_err(|e| CliError::General(format!("execution: {e}")))?;

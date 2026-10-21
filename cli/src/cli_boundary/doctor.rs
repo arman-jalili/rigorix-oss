@@ -428,6 +428,58 @@ pub async fn probe(repo_root: &Path) -> DoctorReport {
         ),
     });
 
+    // 5b. Budget enforcement (ADR-008, #1108) — always on; the limits come from
+    // `[enforcement] preset`. Reported with the actual numbers, because "budgets
+    // are enforced" is not actionable and "500 tool calls" is.
+    {
+        use rigorix_engine::enforcement::domain::config::EnforcementConfig;
+        let limits = EnforcementConfig::standard().execution_limits;
+        // The numbers printed are the `default` preset's. The effective preset
+        // comes from `[enforcement] preset`, so the row names the source rather
+        // than asserting numbers it has not read (#1100: the same trap as a doc
+        // claiming wiring it never checked).
+        let mut row = SeamReport::armed(
+            "budget limits",
+            "evaluates each tool call against per-execution limits before it runs",
+            "`[enforcement] preset` in rigorix.toml".to_string(),
+        );
+        row.detail = Some(format!(
+            "default preset = {} tool calls, {}s, {} tokens per execution; a refused \
+             call is `budget_exceeded` and its tool never runs",
+            limits.max_tool_calls, limits.max_execution_time_secs, limits.max_tokens
+        ));
+        seams.push(row);
+    }
+
+    // 5c. Recovery recipes (#1108) — opt-in, because recovery changes the failure
+    // path rather than only refusing.
+    {
+        let enabled = ["1", "true", "yes"].iter().any(|truthy| {
+            std::env::var("RIGORIX_RECOVERY")
+                .map(|value| value.eq_ignore_ascii_case(truthy))
+                .unwrap_or(false)
+        });
+        let mut row = if enabled {
+            SeamReport::armed(
+                "recovery recipes",
+                "attempts one known recovery before retry evaluation",
+                "RIGORIX_RECOVERY (set)".to_string(),
+            )
+        } else {
+            SeamReport::unarmed(
+                "recovery recipes",
+                "attempts one known recovery before retry evaluation",
+                "RIGORIX_RECOVERY (unset)".to_string(),
+            )
+        };
+        row.detail = Some(
+            "opt-in: recovery inserts an attempt into the failure path, so it is not \
+             on by default"
+                .to_string(),
+        );
+        seams.push(row);
+    }
+
     // 6. Envelope signing key — the key `rigorix key` now produces.
     //
     // Presence only: the value is a secret and is never printed, not even its
@@ -522,7 +574,11 @@ mod tests {
         // The probe reads process env too (anchor, signing). Make that explicit:
         // whatever the state, every row must be present and renderable.
         let report = probe(dir.path()).await;
-        assert_eq!(report.seams.len(), 7, "six seams plus the signing key");
+        assert_eq!(
+            report.seams.len(),
+            9,
+            "seams, the signing key, budget limits, recovery"
+        );
         let text = report.render();
         assert!(text.contains("seams armed"));
         assert!(report.exit_code() == 0 || !report.misconfigured().is_empty());
