@@ -6,10 +6,37 @@
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use rigorix_engine::capacity_ledger::domain::IdempotencyKey;
     use rigorix_engine::effect_commitment::application::{
         ProviderReceiptConfig, ProviderReceiptReader,
     };
+    use rigorix_engine::effect_commitment::domain::{
+        CommitmentError, EffectIntent, OutcomeVerdict,
+    };
     use rigorix_engine::effect_commitment::infrastructure::HttpProviderReceiptReader;
+    use serde_json::json;
+    use uuid::Uuid;
+    use wiremock::matchers::{header, method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn config(server: &MockServer) -> ProviderReceiptConfig {
+        ProviderReceiptConfig::new(server.uri(), "stripe", 2_000, 65_536, None)
+    }
+
+    fn intent() -> EffectIntent {
+        EffectIntent::new(
+            Uuid::from_u128(1),
+            Uuid::from_u128(2),
+            1,
+            IdempotencyKey::new("durable-intent-key"),
+            "payments.charge",
+            "args-digest",
+            "precondition-digest",
+            "authority-digest",
+        )
+    }
 
     #[test]
     fn test_providerreceiptreader_is_defined() {
@@ -21,6 +48,9 @@ mod tests {
 
         fn assert_send_sync<T: Send + Sync + ?Sized>() {}
         assert_send_sync::<dyn ProviderReceiptReader>();
+
+        fn assert_impl<T: ProviderReceiptReader>() {}
+        assert_impl::<HttpProviderReceiptReader>();
     }
 
     #[test]
@@ -41,5 +71,170 @@ mod tests {
         let rendered = format!("{cfg:?}");
         assert!(!rendered.contains("super-secret"));
         assert!(rendered.contains("<redacted>"));
+    }
+
+    #[tokio::test]
+    async fn a_succeeded_receipt_is_committed_evidence() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/receipts/re_123"))
+            .and(header("authorization", "Bearer provider-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "receipt_id": "re_123",
+                "status": "succeeded",
+                "observed_at": "2026-10-21T12:00:00Z"
+            })))
+            .mount(&server)
+            .await;
+
+        let reader = HttpProviderReceiptReader::new(ProviderReceiptConfig::new(
+            server.uri(),
+            "stripe",
+            2_000,
+            65_536,
+            Some("provider-token".to_string()),
+        ));
+        let outcome = reader.observe(&intent(), Some("re_123")).await.unwrap();
+
+        assert!(outcome.is_committed());
+        assert_eq!(outcome.verdict, OutcomeVerdict::Committed);
+        assert_eq!(outcome.receipt_id, "re_123");
+        assert_eq!(outcome.source, "stripe");
+        assert_eq!(outcome.readback_digest.len(), 64);
+        assert!(outcome.is_complete());
+    }
+
+    #[tokio::test]
+    async fn a_failed_receipt_is_not_committed_evidence() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/receipts/re_404"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "receipt_id": "re_404",
+                "status": "failed"
+            })))
+            .mount(&server)
+            .await;
+
+        let reader = HttpProviderReceiptReader::new(config(&server));
+        let outcome = reader.observe(&intent(), Some("re_404")).await.unwrap();
+        assert_eq!(outcome.verdict, OutcomeVerdict::NotCommitted);
+    }
+
+    #[tokio::test]
+    async fn the_idempotency_key_is_used_for_lookup_when_no_receipt_id_is_known() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/receipts"))
+            .and(query_param("idempotency_key", "durable-intent-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "status": "succeeded"
+            })))
+            .mount(&server)
+            .await;
+
+        let reader = HttpProviderReceiptReader::new(config(&server));
+        let outcome = reader.observe(&intent(), None).await.unwrap();
+        assert_eq!(outcome.receipt_id, "durable-intent-key");
+        assert!(outcome.is_committed());
+    }
+
+    #[tokio::test]
+    async fn pending_and_unknown_statuses_are_not_evidence() {
+        for status in ["pending", "processing", "what-is-this"] {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path("/v1/receipts/re_1"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                    "receipt_id": "re_1",
+                    "status": status
+                })))
+                .mount(&server)
+                .await;
+
+            let reader = HttpProviderReceiptReader::new(config(&server));
+            let err = reader.observe(&intent(), Some("re_1")).await.unwrap_err();
+            assert!(
+                matches!(err, CommitmentError::Unavailable { .. }),
+                "status '{status}' must not become a verdict"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn every_transport_ambiguity_fails_closed() {
+        // Non-2xx.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/receipts/re_1"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+        let reader = HttpProviderReceiptReader::new(config(&server));
+        assert!(matches!(
+            reader.observe(&intent(), Some("re_1")).await,
+            Err(CommitmentError::Unavailable { .. })
+        ));
+
+        // Malformed JSON.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/receipts/re_1"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("not json"))
+            .mount(&server)
+            .await;
+        let reader = HttpProviderReceiptReader::new(config(&server));
+        assert!(matches!(
+            reader.observe(&intent(), Some("re_1")).await,
+            Err(CommitmentError::Unavailable { .. })
+        ));
+
+        // Oversized body.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/receipts/re_1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "receipt_id": "re_1",
+                "status": "succeeded"
+            })))
+            .mount(&server)
+            .await;
+        let reader = HttpProviderReceiptReader::new(ProviderReceiptConfig::new(
+            server.uri(),
+            "stripe",
+            2_000,
+            8,
+            None,
+        ));
+        assert!(matches!(
+            reader.observe(&intent(), Some("re_1")).await,
+            Err(CommitmentError::Unavailable { .. })
+        ));
+
+        // Timeout.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/receipts/re_1"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_delay(Duration::from_millis(300))
+                    .set_body_json(json!({
+                        "receipt_id": "re_1",
+                        "status": "succeeded"
+                    })),
+            )
+            .mount(&server)
+            .await;
+        let reader = HttpProviderReceiptReader::new(ProviderReceiptConfig::new(
+            server.uri(),
+            "stripe",
+            50,
+            65_536,
+            None,
+        ));
+        assert!(matches!(
+            reader.observe(&intent(), Some("re_1")).await,
+            Err(CommitmentError::Unavailable { .. })
+        ));
     }
 }
