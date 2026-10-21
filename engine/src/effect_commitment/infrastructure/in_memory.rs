@@ -188,3 +188,14 @@ impl EffectCommitmentLedger for InMemoryEffectLedger {
             .collect())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn satisfies_the_frozen_port_contract() {
+        let ledger = InMemoryEffectLedger::new();
+        crate::effect_commitment::interfaces::contract::run_contract(&ledger).await;
+    }
+}

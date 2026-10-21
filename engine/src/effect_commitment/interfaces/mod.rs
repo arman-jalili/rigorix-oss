@@ -8,6 +8,8 @@
 //! `EffectCommitmentLedger` port (the model the engine programs against) and the
 //! HTTP endpoint/error contracts exposed by the opt-in distributed adapter.
 
+#[cfg(test)]
+pub mod contract;
 pub mod effect_commitment_ledger;
 pub mod http;
 
