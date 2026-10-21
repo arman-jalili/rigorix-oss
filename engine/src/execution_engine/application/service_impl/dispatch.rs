@@ -1,5 +1,9 @@
 //! Dispatch loop + sequence-policy dispatch helpers for
 //! `ParallelExecutionServiceImpl` (extracted from `service_impl.rs`, #914).
+//!
+//! @canonical .pi/architecture/modules/execution-engine.md#dispatch
+//! Implements: ADR-019 effect-commitment write-ahead/settle in `run_dispatch_loop`
+//! Issue: #1129
 
 use sha2::{Digest, Sha256};
 
