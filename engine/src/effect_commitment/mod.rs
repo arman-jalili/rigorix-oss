@@ -57,6 +57,7 @@ pub use application::{
     MarkAmbiguousOutput, NodeStateVocabulary, ProviderReceiptConfig, ProviderReceiptReader,
     QueryEffectInput, QueryEffectOutput, ReconciliationPolicy, ResolveEffectInput,
     ResolveEffectOutput, RetryFence, SettleDefiniteInput, SettleDefiniteOutput,
+    Sha256IntentKeyDerivation,
 };
 pub use domain::{
     CommitmentError, EffectEvent, EffectIntent, EffectQuery, EffectRecord, EffectRecordId,

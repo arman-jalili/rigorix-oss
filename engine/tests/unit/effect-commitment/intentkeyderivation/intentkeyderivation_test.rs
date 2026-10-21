@@ -7,42 +7,81 @@
 #[cfg(test)]
 mod tests {
     use rigorix_engine::capacity_ledger::domain::IdempotencyKey;
-    use rigorix_engine::effect_commitment::application::IntentKeyDerivation;
+    use rigorix_engine::effect_commitment::application::{
+        IntentKeyDerivation, Sha256IntentKeyDerivation,
+    };
     use rigorix_engine::effect_commitment::domain::EffectIntent;
     use uuid::Uuid;
 
+    fn intent(attempt: u32) -> EffectIntent {
+        EffectIntent::new(
+            Uuid::from_u128(1),
+            Uuid::from_u128(2),
+            attempt,
+            IdempotencyKey::new("attempt-derived"),
+            "payments.charge",
+            "args-digest",
+            "precondition-digest",
+            "authority-digest",
+        )
+    }
+
     #[test]
     fn test_intentkeyderivation_is_defined() {
-        // Derivation is a port: the concrete hash lands in
-        // ISSUE-EFFECT-COMMITMENT-8, but the contract must be object-safe.
+        // Derivation is a port so composition can choose an implementation.
         fn assert_object_safe(_: Option<Box<dyn IntentKeyDerivation>>) {}
         assert_object_safe(None);
 
         fn assert_send_sync<T: Send + Sync + ?Sized>() {}
         assert_send_sync::<dyn IntentKeyDerivation>();
+
+        // The concrete derivation satisfies the port.
+        fn assert_impl<T: IntentKeyDerivation>() {}
+        assert_impl::<Sha256IntentKeyDerivation>();
     }
 
     #[test]
     fn test_intentkeyderivation_interacts_with_effectintent() {
-        let mut intent = EffectIntent::new(
-            Uuid::from_u128(1),
-            Uuid::from_u128(2),
-            1,
-            IdempotencyKey::new("derived"),
-            "payments.charge",
-            "args-digest",
-            "precondition-digest",
-            "authority-digest",
+        let derivation = Sha256IntentKeyDerivation::new();
+
+        let key = derivation.derive_key(&intent(1));
+        // SHA-256 lowercase hex is 64 characters.
+        assert_eq!(key.as_str().len(), 64);
+        assert!(key.as_str().chars().all(|c| c.is_ascii_hexdigit()));
+
+        // Deterministic: the same intent derives the same key.
+        assert_eq!(key, derivation.derive_key(&intent(1)));
+
+        // Stable across retries: attempt is not part of the identity.
+        assert_eq!(key, derivation.derive_key(&intent(99)));
+
+        // A changed payload derives a different key.
+        let mut changed = intent(1);
+        changed.args_digest = "other-args".to_string();
+        assert_ne!(key, derivation.derive_key(&changed));
+
+        // A different node derives a different key.
+        let mut other_node = intent(1);
+        other_node.node_id = Uuid::from_u128(999);
+        assert_ne!(key, derivation.derive_key(&other_node));
+    }
+
+    #[test]
+    fn the_payload_digest_is_unambiguous() {
+        // Before the digest was length-prefixed, moving a separator between
+        // fields could produce the same concatenation. These two must differ.
+        let mut left = intent(1);
+        left.tool = "a|b".to_string();
+        left.args_digest = "c".to_string();
+
+        let mut right = intent(1);
+        right.tool = "a".to_string();
+        right.args_digest = "b|c".to_string();
+
+        assert_ne!(left.intent_digest(), right.intent_digest());
+        assert_ne!(
+            Sha256IntentKeyDerivation::new().derive_key(&left),
+            Sha256IntentKeyDerivation::new().derive_key(&right)
         );
-
-        // The derivation inputs are stable across retries: attempt is excluded
-        // from the intent digest, which is what makes a same-key read possible.
-        let first = intent.intent_digest();
-        intent.attempt = 7;
-        assert_eq!(intent.intent_digest(), first);
-
-        // A different payload must derive a different key.
-        intent.args_digest = "other-args".to_string();
-        assert_ne!(intent.intent_digest(), first);
     }
 }

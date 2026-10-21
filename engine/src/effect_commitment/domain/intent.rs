@@ -20,6 +20,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::capacity_ledger::domain::IdempotencyKey;
@@ -95,16 +96,26 @@ impl EffectIntent {
         }
     }
 
-    /// The payload component of the intent digest.
+    /// The payload digest of the intent.
     ///
     /// `IntentKeyDerivation` hashes `(dag_id, node_id, intent_digest)`. This
     /// value deliberately excludes `attempt` and `created_at`, so a retry of the
-    /// same logical effect derives the same key.
+    /// same logical effect derives the same key. Components are length-prefixed
+    /// before hashing, so changing a field boundary cannot collide with another
+    /// intent that happens to use the same separator characters.
     pub fn intent_digest(&self) -> String {
-        format!(
-            "{}|{}|{}|{}",
-            self.tool, self.args_digest, self.precondition_digest, self.authority_digest
-        )
+        let mut hasher = Sha256::new();
+        hasher.update(b"rigorix.effect-commitment.intent-digest.v1");
+        for part in [
+            &self.tool,
+            &self.args_digest,
+            &self.precondition_digest,
+            &self.authority_digest,
+        ] {
+            hasher.update((part.len() as u64).to_be_bytes());
+            hasher.update(part.as_bytes());
+        }
+        hex::encode(hasher.finalize())
     }
 
     /// Whether `other` expresses the same logical intent as this one.
