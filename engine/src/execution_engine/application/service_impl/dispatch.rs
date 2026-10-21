@@ -880,21 +880,60 @@ impl ParallelExecutionServiceImpl {
             DispatchObservation::Observed(outcome)
         };
 
-        if let Err(error) = seam.after_dispatch(record_id, observation).await {
-            tracing::warn!(
-                %node_id,
-                %error,
-                "effect commitment settle failed; attempting to mark ambiguous"
-            );
-            let _ = seam
-                .after_dispatch(
-                    record_id,
-                    DispatchObservation::Lost {
-                        reason: format!("settle failed: {error}"),
-                    },
-                )
-                .await;
+        match seam.after_dispatch(record_id, observation).await {
+            Ok(record) => self.record_effect_fence(node_id, record.blocks_dependents()),
+            Err(error) => {
+                tracing::warn!(
+                    %node_id,
+                    %error,
+                    "effect commitment settle failed; attempting to mark ambiguous"
+                );
+                match seam
+                    .after_dispatch(
+                        record_id,
+                        DispatchObservation::Lost {
+                            reason: format!("settle failed: {error}"),
+                        },
+                    )
+                    .await
+                {
+                    Ok(record) => {
+                        self.record_effect_fence(node_id, record.blocks_dependents());
+                    }
+                    Err(second) => {
+                        // We could not prove the record terminal. Fence.
+                        tracing::warn!(
+                            %node_id,
+                            %second,
+                            "effect commitment could not record the unknown outcome; fencing"
+                        );
+                        self.record_effect_fence(node_id, true);
+                    }
+                }
+            }
         }
+    }
+
+    /// Remember whether a node's effect blocks its dependents (F1).
+    fn record_effect_fence(&self, node_id: Uuid, ambiguous: bool) {
+        if let Ok(mut fenced) = self.effect_ambiguous.lock() {
+            if ambiguous {
+                fenced.insert(node_id);
+            } else {
+                fenced.remove(&node_id);
+            }
+        }
+    }
+
+    /// Whether a node's effect is still `Ambiguous`.
+    ///
+    /// A poisoned lock is treated as fenced: releasing dependents on unknown
+    /// state would be the double-spend path.
+    pub(super) fn effect_blocks_dependents(&self, node_id: Uuid) -> bool {
+        self.effect_ambiguous
+            .lock()
+            .map(|fenced| fenced.contains(&node_id))
+            .unwrap_or(true)
     }
 
     /// Whether a task result is an unknown outcome rather than a definite one.
@@ -1172,6 +1211,20 @@ impl ParallelExecutionServiceImpl {
         total_nodes: u32,
         is_failure: bool,
     ) {
+        // ADR-019 F1: an unsettled effect blocks its dependents. The node is
+        // marked completed in the graph without decrementing any dependent's
+        // in-degree, so nothing downstream can become ready. The run stays open
+        // until the operator resolves the record.
+        if self.effect_blocks_dependents(node_id) {
+            tracing::warn!(
+                %dag_id,
+                %node_id,
+                "effect is Ambiguous; dependents stay fenced (ADR-019 F1)"
+            );
+            let _ = graph.mark_completed_without_release(node_id);
+            return;
+        }
+
         if !is_failure || self.gating_mode.release_dependents_on_failure {
             let _ = graph.mark_completed(node_id);
             return;

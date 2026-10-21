@@ -624,6 +624,12 @@ pub struct ParallelExecutionServiceImpl {
     /// Effect record ids keyed by node id, so the terminal outcome can settle
     /// the matching write-ahead record.
     effect_records: Arc<Mutex<HashMap<Uuid, EffectRecordId>>>,
+    /// Node ids whose commitment record is `Ambiguous` (ADR-019 F1).
+    ///
+    /// `release_or_skip_dependents` checks this before releasing; an unknown
+    /// outcome must not let the run proceed on top of it. A poisoned lock is
+    /// treated as fenced (fail closed).
+    effect_ambiguous: Arc<Mutex<HashSet<Uuid>>>,
     /// Per-execution budget enforcers (ADR-008, #1108).
     ///
     /// One enforcer per `dag_id`: the counters it holds (tool calls, tokens,
@@ -665,6 +671,7 @@ impl ParallelExecutionServiceImpl {
             capacity_holds: Arc::new(Mutex::new(HashMap::new())),
             effect_commitment: None,
             effect_records: Arc::new(Mutex::new(HashMap::new())),
+            effect_ambiguous: Arc::new(Mutex::new(HashSet::new())),
             budget_enforcers: Arc::new(Mutex::new(HashMap::new())),
         }
     }
