@@ -10,6 +10,16 @@
 
 Core protocol implementation: transport management, session lifecycle, tool registration, request routing, resource exposure, prompt templates. This is the **entry point** for all MCP client connections — every tool call, resource read, and prompt request arrives here first.
 
+**Scope decision (#1104): MCP is the adapter surface, and that is the ceiling.**
+No framework-specific adapters exist (LangChain tools, OpenAI function wrappers,
+CrewAI, …) and none are planned. The reason is not effort: an adapter per
+framework would be a second dispatch path with the engine's controls on the far
+side of it — the exact shape #1074 removed inside the engine. A host that cannot
+speak MCP integrates through `rigorix-server` or the library, which are the same
+dispatch code as this module. Recording it here matters because an unstated scope
+boundary reads as an absence: "we have no LangChain integration" and "we are not
+building one" are different answers for an evaluator, and only one of them is true.
+
 > **GAP-A-10:** the SSE transport was **removed** — the server is stdio-only.
 > The `--sse` flag is accepted for compatibility and starts stdio mode with a warning.
 > The following ADR-005/ADR-008 auth-gate design applied to the removed SSE transport and is retained here as historical record.

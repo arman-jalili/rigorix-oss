@@ -90,6 +90,15 @@ When no enterprise configuration is present, zero enterprise code is loaded and 
 
 See [`server/README.md`](../server/README.md) for the HTTP surfaces.
 
+**MCP is the adapter surface, not one integration among several (#1104).** There
+are no framework-specific adapters — LangChain tools, OpenAI function wrappers,
+CrewAI, or any other — and none are planned. An MCP host reaches every engine
+control through one transport; a per-framework shim would be a second dispatch
+path with the controls on the far side of it, which is the failure mode this
+project removes rather than reproduces. A host that cannot speak MCP integrates
+through `rigorix-server` or the library, and both are the same code as this
+binary.
+
 ---
 
 ## Architecture
