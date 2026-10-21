@@ -306,6 +306,13 @@ measured against the six dimensions above, using its own documentation.
 authority-fact bundle), usage guide (1); plus 3 auth tools when an identity
 provider is configured.
 
+**MCP is the adapter surface, deliberately.** There are no framework-specific
+adapters (LangChain, OpenAI tools, CrewAI, …) and none are planned: a shim per
+framework would be a second dispatch path with the engine's controls on the far
+side of it, which is the failure this project exists to remove. Any MCP host —
+stdio or Streamable HTTP — reaches every control; a host outside MCP integrates
+through the server or the library, both of which are the same code.
+
 ```bash
 cargo install rigorix-mcp
 ```
