@@ -23,7 +23,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::{CommitmentError, EffectIntent, EffectState, ObservedOutcome, ResolverIdentity};
+use super::{
+    CommitmentError, EffectIntent, EffectQuery, EffectState, ObservedOutcome, ResolverIdentity,
+};
 
 /// Stable identity of an effect record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -198,6 +200,26 @@ impl EffectRecord {
     /// Whether provider evidence has been recorded.
     pub fn has_evidence(&self) -> bool {
         self.outcome.is_some()
+    }
+
+    /// Whether this record is currently unsettled.
+    pub fn is_ambiguous(&self) -> bool {
+        self.state.is_ambiguous()
+    }
+
+    /// Whether this record matches a ledger query.
+    ///
+    /// Adapters use this to implement the read side without duplicating the
+    /// query semantics; `Ambiguous` is the operator surface that lists what is
+    /// unsettled.
+    pub fn matches_query(&self, query: &EffectQuery) -> bool {
+        match query {
+            EffectQuery::ById { record_id } => self.id == *record_id,
+            EffectQuery::ByDag { dag_id } => self.intent.dag_id == *dag_id,
+            EffectQuery::Ambiguous { dag_id } => {
+                self.is_ambiguous() && dag_id.is_none_or(|dag| self.intent.dag_id == dag)
+            }
+        }
     }
 
     /// Settle a `Dispatched` effect with definite provider evidence.

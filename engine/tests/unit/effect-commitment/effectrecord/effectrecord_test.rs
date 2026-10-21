@@ -9,8 +9,8 @@ mod tests {
     use chrono::Utc;
     use rigorix_engine::capacity_ledger::domain::IdempotencyKey;
     use rigorix_engine::effect_commitment::domain::{
-        CommitmentError, EffectIntent, EffectRecord, EffectRecordId, EffectState, ObservedOutcome,
-        ResolverIdentity, ResolverKind,
+        CommitmentError, EffectIntent, EffectQuery, EffectRecord, EffectRecordId, EffectState,
+        ObservedOutcome, ResolverIdentity, ResolverKind,
     };
     use uuid::Uuid;
 
@@ -135,5 +135,23 @@ mod tests {
         )
         .expect("ambiguous without evidence is representable");
         assert!(hydrated.blocks_retry());
+    }
+
+    #[test]
+    fn test_effectrecord_matches_ledger_queries() {
+        let record = EffectRecord::begin(intent());
+
+        assert!(record.matches_query(&EffectQuery::by_id(record.id())));
+        assert!(!record.matches_query(&EffectQuery::by_id(EffectRecordId::new())));
+        assert!(record.matches_query(&EffectQuery::by_dag(Uuid::from_u128(1))));
+        assert!(!record.matches_query(&EffectQuery::by_dag(Uuid::from_u128(999))));
+
+        // The ambiguous query lists only unsettled records, optionally by DAG.
+        assert!(!record.matches_query(&EffectQuery::ambiguous(None)));
+        let ambiguous = record.clone().mark_ambiguous("lost", Utc::now()).unwrap();
+        assert!(ambiguous.is_ambiguous());
+        assert!(ambiguous.matches_query(&EffectQuery::ambiguous(None)));
+        assert!(ambiguous.matches_query(&EffectQuery::ambiguous(Some(Uuid::from_u128(1)))));
+        assert!(!ambiguous.matches_query(&EffectQuery::ambiguous(Some(Uuid::from_u128(999)))));
     }
 }
