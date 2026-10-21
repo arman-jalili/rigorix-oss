@@ -95,6 +95,12 @@ impl StateManagerService for FileSystemStateManager {
             crate::state_persistence::domain::NodeStatus::InProgress => {
                 state.node_started(node_id)?;
             }
+            crate::state_persistence::domain::NodeStatus::Dispatched => {
+                state.node_dispatched(node_id)?;
+            }
+            crate::state_persistence::domain::NodeStatus::Ambiguous => {
+                state.node_ambiguous(node_id, input.error)?;
+            }
             crate::state_persistence::domain::NodeStatus::Completed => {
                 state.node_completed(node_id, input.output, input.duration_ms.unwrap_or(0))?;
             }

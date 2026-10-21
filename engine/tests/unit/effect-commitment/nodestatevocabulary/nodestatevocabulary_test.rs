@@ -8,6 +8,7 @@
 mod tests {
     use rigorix_engine::effect_commitment::application::NodeStateVocabulary;
     use rigorix_engine::effect_commitment::domain::EffectState;
+    use rigorix_engine::state_persistence::domain::NodeStatus;
 
     #[test]
     fn test_nodestatevocabulary_is_defined() {
@@ -49,5 +50,21 @@ mod tests {
             NodeStateVocabulary::label(EffectState::Ambiguous),
             NodeStateVocabulary::AMBIGUOUS
         );
+
+        // The cross-context edit: state_persistence now carries the same words,
+        // and both new variants are non-terminal.
+        assert_eq!(
+            NodeStatus::Dispatched.as_str(),
+            NodeStateVocabulary::DISPATCHED
+        );
+        assert_eq!(
+            NodeStatus::Ambiguous.as_str(),
+            NodeStateVocabulary::AMBIGUOUS
+        );
+        assert!(!NodeStatus::Dispatched.is_terminal());
+        assert!(!NodeStatus::Ambiguous.is_terminal());
+        assert!(NodeStatus::Ambiguous.is_ambiguous());
+        assert!(NodeStatus::Dispatched.is_unsettled());
+        assert!(NodeStatus::Ambiguous.is_unsettled());
     }
 }

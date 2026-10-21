@@ -94,6 +94,13 @@ pub enum NodeStatus {
     Pending,
     /// Node is currently executing.
     InProgress,
+    /// The write-ahead intent is durable and the effect has been sent, but no
+    /// terminal outcome is known yet. Non-terminal (ADR-019).
+    Dispatched,
+    /// The effect outcome is unknown (lost response, timeout, crash). Retained
+    /// until a resolver presents provider evidence. Non-terminal; fences
+    /// dependents and retry (ADR-019).
+    Ambiguous,
     /// Node finished successfully.
     Completed,
     /// Node failed (may be retried depending on policy).
@@ -104,6 +111,10 @@ pub enum NodeStatus {
 
 impl NodeStatus {
     /// Returns true if this status represents a terminal node state.
+    ///
+    /// `Dispatched` and `Ambiguous` are deliberately excluded: the first has no
+    /// outcome yet, and the second exists to be resolved by external evidence
+    /// (ADR-019).
     pub fn is_terminal(&self) -> bool {
         matches!(
             self,
@@ -111,9 +122,19 @@ impl NodeStatus {
         )
     }
 
-    /// Returns true if this status represents a running/in-progress node.
+    /// Returns true if this status represents a running/in-flight node.
     pub fn is_active(&self) -> bool {
-        *self == NodeStatus::InProgress
+        matches!(self, NodeStatus::InProgress | NodeStatus::Dispatched)
+    }
+
+    /// Returns true if the effect has been sent but not settled.
+    pub fn is_unsettled(&self) -> bool {
+        matches!(self, NodeStatus::Dispatched | NodeStatus::Ambiguous)
+    }
+
+    /// Returns true if the effect outcome is unknown.
+    pub fn is_ambiguous(&self) -> bool {
+        matches!(self, NodeStatus::Ambiguous)
     }
 
     /// Returns the canonical snake_case name of this status variant.
@@ -121,6 +142,8 @@ impl NodeStatus {
         match self {
             NodeStatus::Pending => "pending",
             NodeStatus::InProgress => "in_progress",
+            NodeStatus::Dispatched => "dispatched",
+            NodeStatus::Ambiguous => "ambiguous",
             NodeStatus::Completed => "completed",
             NodeStatus::Failed => "failed",
             NodeStatus::Skipped => "skipped",
@@ -274,7 +297,9 @@ impl ExecutionState {
             });
             entry.status = match ns.status {
                 NodeStatus::Pending => ExecStatus::Pending,
-                NodeStatus::InProgress => ExecStatus::Running,
+                NodeStatus::InProgress | NodeStatus::Dispatched | NodeStatus::Ambiguous => {
+                    ExecStatus::Running
+                }
                 NodeStatus::Completed => ExecStatus::Completed,
                 NodeStatus::Failed => ExecStatus::Failed,
                 NodeStatus::Skipped => ExecStatus::Skipped,
@@ -390,6 +415,68 @@ impl ExecutionState {
         Ok(())
     }
 
+    /// Mark a node as `Dispatched` after its write-ahead intent is durable.
+    ///
+    /// Accepts a pending node (the dispatcher won the race before
+    /// `node_started`) or an in-progress node. `Dispatched` is non-terminal: the
+    /// outcome is not known yet.
+    pub fn node_dispatched(&mut self, node_id: Uuid) -> Result<(), StateError> {
+        let node = self
+            .node_states
+            .get_mut(&node_id)
+            .ok_or_else(|| StateError::NodeNotFound {
+                node_id: node_id.to_string(),
+                execution_id: self.execution_id.to_string(),
+            })?;
+
+        if !matches!(node.status, NodeStatus::Pending | NodeStatus::InProgress) {
+            return Err(StateError::InvalidNodeTransition {
+                node_id: node_id.to_string(),
+                from: node.status.as_str().to_string(),
+                to: NodeStatus::Dispatched.as_str().to_string(),
+                detail: "Only a pending or in-progress node can be dispatched".to_string(),
+            });
+        }
+
+        node.status = NodeStatus::Dispatched;
+        if node.started_at.is_none() {
+            node.started_at = Some(Utc::now());
+        }
+        Ok(())
+    }
+
+    /// Mark a node `Ambiguous` because its effect outcome is unknown.
+    ///
+    /// Any non-terminal state is accepted: a lost response or process death can
+    /// interrupt the node at any point after dispatch. `Ambiguous` is
+    /// deliberately non-terminal and blocks dependents and retry (ADR-019).
+    pub fn node_ambiguous(
+        &mut self,
+        node_id: Uuid,
+        reason: Option<String>,
+    ) -> Result<(), StateError> {
+        let node = self
+            .node_states
+            .get_mut(&node_id)
+            .ok_or_else(|| StateError::NodeNotFound {
+                node_id: node_id.to_string(),
+                execution_id: self.execution_id.to_string(),
+            })?;
+
+        if node.status.is_terminal() {
+            return Err(StateError::InvalidNodeTransition {
+                node_id: node_id.to_string(),
+                from: node.status.as_str().to_string(),
+                to: NodeStatus::Ambiguous.as_str().to_string(),
+                detail: "A terminal node cannot become ambiguous".to_string(),
+            });
+        }
+
+        node.status = NodeStatus::Ambiguous;
+        node.error = reason;
+        Ok(())
+    }
+
     /// Mark a node as completed with its output and duration.
     pub fn node_completed(
         &mut self,
@@ -405,12 +492,16 @@ impl ExecutionState {
                 execution_id: self.execution_id.to_string(),
             })?;
 
-        if node.status != NodeStatus::InProgress {
+        if !matches!(
+            node.status,
+            NodeStatus::InProgress | NodeStatus::Dispatched | NodeStatus::Ambiguous
+        ) {
             return Err(StateError::InvalidNodeTransition {
                 node_id: node_id.to_string(),
                 from: node.status.as_str().to_string(),
                 to: "completed".to_string(),
-                detail: "Only an in-progress node can be completed".to_string(),
+                detail: "Only an in-flight, dispatched, or ambiguous node can be completed"
+                    .to_string(),
             });
         }
 
@@ -430,12 +521,19 @@ impl ExecutionState {
                 execution_id: self.execution_id.to_string(),
             })?;
 
-        if node.status != NodeStatus::InProgress && node.status != NodeStatus::Pending {
+        if !matches!(
+            node.status,
+            NodeStatus::InProgress
+                | NodeStatus::Pending
+                | NodeStatus::Dispatched
+                | NodeStatus::Ambiguous
+        ) {
             return Err(StateError::InvalidNodeTransition {
                 node_id: node_id.to_string(),
                 from: node.status.as_str().to_string(),
                 to: "failed".to_string(),
-                detail: "Only an in-progress or pending node can fail".to_string(),
+                detail: "Only a pending, in-flight, dispatched, or ambiguous node can fail"
+                    .to_string(),
             });
         }
 
@@ -516,6 +614,8 @@ impl ExecutionState {
             match node_state.status {
                 NodeStatus::Pending => summary.pending += 1,
                 NodeStatus::InProgress => summary.in_progress += 1,
+                NodeStatus::Dispatched => summary.dispatched += 1,
+                NodeStatus::Ambiguous => summary.ambiguous += 1,
                 NodeStatus::Completed => summary.completed += 1,
                 NodeStatus::Failed => summary.failed += 1,
                 NodeStatus::Skipped => summary.skipped += 1,
@@ -532,6 +632,12 @@ pub struct NodeStatusSummary {
     pub pending: u32,
     /// Number of nodes currently in progress.
     pub in_progress: u32,
+    /// Number of nodes with a durable intent but no outcome yet.
+    #[serde(default)]
+    pub dispatched: u32,
+    /// Number of nodes whose effect outcome is unknown.
+    #[serde(default)]
+    pub ambiguous: u32,
     /// Number of nodes completed successfully.
     pub completed: u32,
     /// Number of nodes that failed.
@@ -593,5 +699,97 @@ impl NodeState {
             started_at: None,
             completed_at: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn execution(status: NodeStatus) -> (ExecutionState, Uuid) {
+        let node_id = Uuid::new_v4();
+        let mut state = ExecutionState::new(Uuid::nil(), "hash".to_string());
+        state.init_node_states(&[node_id]);
+        state.node_states.get_mut(&node_id).unwrap().status = status;
+        (state, node_id)
+    }
+
+    #[test]
+    fn dispatched_and_ambiguous_are_not_terminal() {
+        assert!(!NodeStatus::Dispatched.is_terminal());
+        assert!(!NodeStatus::Ambiguous.is_terminal());
+        assert!(NodeStatus::Dispatched.is_unsettled());
+        assert!(NodeStatus::Ambiguous.is_unsettled());
+        assert!(!NodeStatus::Completed.is_unsettled());
+        assert!(NodeStatus::Ambiguous.is_ambiguous());
+        assert!(!NodeStatus::Dispatched.is_ambiguous());
+        assert_eq!(NodeStatus::Dispatched.as_str(), "dispatched");
+        assert_eq!(NodeStatus::Ambiguous.as_str(), "ambiguous");
+
+        // Both survive a JSON round-trip as the new vocabulary.
+        let json = serde_json::to_string(&NodeStatus::Ambiguous).unwrap();
+        assert_eq!(json, "\"Ambiguous\"");
+        let decoded: NodeStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded, NodeStatus::Ambiguous);
+    }
+
+    #[test]
+    fn a_node_can_go_pending_dispatched_ambiguous_completed() {
+        let (mut state, node) = execution(NodeStatus::Pending);
+
+        state.node_dispatched(node).unwrap();
+        assert_eq!(state.node_states[&node].status, NodeStatus::Dispatched);
+        assert!(state.node_states[&node].started_at.is_some());
+
+        state
+            .node_ambiguous(node, Some("response lost".to_string()))
+            .unwrap();
+        assert_eq!(state.node_states[&node].status, NodeStatus::Ambiguous);
+        assert_eq!(
+            state.node_states[&node].error.as_deref(),
+            Some("response lost")
+        );
+
+        state
+            .node_completed(node, Some("ok".to_string()), 5)
+            .unwrap();
+        assert_eq!(state.node_states[&node].status, NodeStatus::Completed);
+    }
+
+    #[test]
+    fn an_ambiguous_node_can_fail_and_a_terminal_node_cannot_become_ambiguous() {
+        let (mut state, node) = execution(NodeStatus::Dispatched);
+        state
+            .node_ambiguous(node, Some("timeout".to_string()))
+            .unwrap();
+        state
+            .node_failed(node, "provider refused".to_string())
+            .unwrap();
+        assert_eq!(state.node_states[&node].status, NodeStatus::Failed);
+
+        let err = state.node_ambiguous(node, None).unwrap_err();
+        assert!(matches!(err, StateError::InvalidNodeTransition { .. }));
+    }
+
+    #[test]
+    fn an_ambiguous_node_cannot_be_re_dispatched() {
+        let (mut state, node) = execution(NodeStatus::Ambiguous);
+        assert!(state.node_dispatched(node).is_err());
+    }
+
+    #[test]
+    fn the_summary_reports_the_new_vocabulary() {
+        let mut state = ExecutionState::new(Uuid::nil(), "hash".to_string());
+        let dispatched = Uuid::new_v4();
+        let ambiguous = Uuid::new_v4();
+        state.init_node_states(&[dispatched, ambiguous]);
+        state.node_states.get_mut(&dispatched).unwrap().status = NodeStatus::Dispatched;
+        state.node_states.get_mut(&ambiguous).unwrap().status = NodeStatus::Ambiguous;
+
+        let summary = state.status_summary();
+        assert_eq!(summary.dispatched, 1);
+        assert_eq!(summary.ambiguous, 1);
+        assert_eq!(summary.completed, 0);
+        assert_eq!(summary.in_progress, 0);
     }
 }
