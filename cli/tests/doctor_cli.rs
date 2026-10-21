@@ -50,11 +50,12 @@ fn doctor_lists_every_seam_and_exits_zero_when_nothing_is_misconfigured() {
         "capacity ledger",
         "history anchor",
         "envelope signing",
+        "effect scope",
     ] {
         assert!(stdout.contains(seam), "report must name `{seam}`: {stdout}");
     }
     assert!(
-        stdout.contains("0 of 6 seams armed"),
+        stdout.contains("0 of 7 seams armed"),
         "an empty directory arms nothing: {stdout}"
     );
     assert!(
@@ -93,6 +94,24 @@ fn doctor_reports_a_requested_but_unbuildable_seam_and_exits_non_zero() {
     assert!(
         report.contains("RIGORIX_HMAC_KEY"),
         "the report must say which variable is missing: {report}"
+    );
+}
+
+/// #1099: the effect-scope oracle is not armed on its own. It is reported as
+/// unarmed until the approval binding exists — the two are one control, and
+/// claiming the oracle alone would be the "configured, never consulted" shape.
+#[test]
+fn effect_scope_is_reported_as_dependent_on_the_approval_binding() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut cmd = bin();
+    cmd.current_dir(dir.path()).args(["doctor"]);
+    isolated(&mut cmd);
+    let out = cmd.output().expect("run rigorix doctor");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("effect scope"), "{stdout}");
+    assert!(
+        stdout.contains("needs `approval binding`"),
+        "the dependency must be stated, not implied: {stdout}"
     );
 }
 

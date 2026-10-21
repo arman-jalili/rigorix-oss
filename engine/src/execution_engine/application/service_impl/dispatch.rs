@@ -78,11 +78,18 @@ impl ParallelExecutionServiceImpl {
         let event_bus = &self.event_bus;
         let mut approval_blocked = false;
         // ADR-011 R5: pre-dispatch effect baseline (git oracle).
+        //
+        // Only when the graph has an approval-gated node: the baseline can only
+        // be consumed by `effect_scope_check`, which runs for such nodes. Every
+        // entry point now sets `approval_repo_path` (#1099), so taking two git
+        // snapshots per run unconditionally would be pure overhead for the runs
+        // that have nothing to check.
+        let gated_nodes = graph.nodes.iter().any(|node| node.requires_approval);
         let scope_baseline: Option<ChangeSnapshot> = match &config.approval_repo_path {
-            Some(repo) => GitDiffEffectOracle
+            Some(repo) if gated_nodes => GitDiffEffectOracle
                 .snapshot(std::path::Path::new(repo))
                 .ok(),
-            None => None,
+            _ => None,
         };
 
         // Phase 1: Initial dispatch — fill the pipeline up to max_concurrent

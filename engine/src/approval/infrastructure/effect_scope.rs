@@ -21,11 +21,20 @@
 //!
 //! # What this oracle is not (and what its baseline means)
 //!
-//! **Not wired by default.** Every shipped entry point leaves
-//! `ParallelExecutionFactoryConfig::approval_repo_path` at `None` (CLI, GitHub
-//! Action, MCP host), so no effect-scope coverage is produced in the OSS default.
-//! Configuring the path is an operator decision, not something the engine does
-//! for you (#1072).
+//! **Wired, and inert until a scope is declared (#1099).** All three entry points
+//! (CLI, GitHub Action, MCP host) now set
+//! `ParallelExecutionFactoryConfig::approval_repo_path`, so the oracle runs for
+//! approval-gated steps. It still produces nothing unless the approved intent
+//! carried a non-empty `declared_scope`: the check is gated on the evidence, not
+//! on the wiring.
+//!
+//! **What #1072 left out, and how that was recorded.** #1072 was closed
+//! `COMPLETED` with three parts; two landed (the oracle, the staged-changes
+//! snapshot) and the third — "disabled in every production entry point" — did
+//! not. Closing it without recording the split made the tracker assert something
+//! the code contradicted. The wiring is #1099; `rigorix doctor` reports the
+//! `effect scope` row so the wiring is readable rather than a flag in three
+//! builders.
 //!
 //! **Per-loop baseline, not per-step attribution.** The baseline is taken once
 //! at the start of `run_dispatch_loop`. Effects are therefore attributable to the

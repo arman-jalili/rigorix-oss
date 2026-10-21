@@ -264,6 +264,40 @@ pub async fn probe(repo_root: &Path) -> DoctorReport {
         },
     );
 
+    // 2b. Effect-scope oracle (ADR-011 R5) — needs BOTH an approval binding (the
+    // record that declares a scope) and a repo path to diff. This entry point
+    // wires the path itself, so the row reports the wiring that shipped in #1099
+    // rather than a claim in a comment.
+    let binding_armed = seams
+        .iter()
+        .any(|row| row.seam == "approval binding" && row.state == SeamState::Armed);
+    let effect_scope_effect = "diffs what a run changed against the scope its approval declared";
+    seams.push(if binding_armed {
+        let mut armed = SeamReport::armed(
+            "effect scope",
+            effect_scope_effect,
+            format!("git oracle over {}", repo_root.display()),
+        );
+        armed.detail = Some(
+            "runs only for approval-gated steps whose approved intent declared a \
+             `declared_scope`; no declared scope means nothing to check"
+                .to_string(),
+        );
+        armed
+    } else {
+        let mut unarmed = SeamReport::unarmed(
+            "effect scope",
+            effect_scope_effect,
+            "needs `approval binding` (RIGORIX_APPROVAL_BINDING)".to_string(),
+        );
+        unarmed.detail = Some(
+            "without an approval record there is no declared scope to diff against, \
+             so the oracle has nothing to inspect"
+                .to_string(),
+        );
+        unarmed
+    });
+
     // 3. Sequence policy (ADR-013/015) — `sequence-policy.toml` or an enterprise bundle.
     //
     // The constructor is only called when a rules source exists. Constructing it
@@ -488,7 +522,7 @@ mod tests {
         // The probe reads process env too (anchor, signing). Make that explicit:
         // whatever the state, every row must be present and renderable.
         let report = probe(dir.path()).await;
-        assert_eq!(report.seams.len(), 6, "five seams plus the signing key");
+        assert_eq!(report.seams.len(), 7, "six seams plus the signing key");
         let text = report.render();
         assert!(text.contains("seams armed"));
         assert!(report.exit_code() == 0 || !report.misconfigured().is_empty());

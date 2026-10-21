@@ -428,7 +428,8 @@ async fn build_action_orchestrator(
                 max_failures_before_abort: 0,
                 enable_fallback: true,
                 enable_validation: true,
-                approval_repo_path: None,
+                // ADR-011 R5: effect-scope oracle over the workspace (#1099).
+                approval_repo_path: Some(repo_root.to_string()),
             },
             register_event_handlers: true,
             enable_progress_callbacks: true,

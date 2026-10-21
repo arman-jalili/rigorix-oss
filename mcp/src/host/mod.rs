@@ -1618,6 +1618,12 @@ pub async fn build_real_engine(
                 sequence_policy: sequence_policy.clone(),
                 precondition,
                 capacity,
+                // ADR-011 R5: the MCP host is an entry point too — leaving this
+                // at the default `None` meant the oracle was off here as well (#1099).
+                executor_config: rigorix_engine::execution_engine::domain::ParallelExecutorConfig {
+                    approval_repo_path: Some(repo_root.to_string()),
+                    ..rigorix_engine::execution_engine::domain::ParallelExecutorConfig::default()
+                },
                 ..ParallelExecutionFactoryConfig::default()
             })
             .await?,
