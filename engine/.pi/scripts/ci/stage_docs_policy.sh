@@ -19,13 +19,15 @@ log_fail() { echo "  ✗ FAIL: $1 — $2"; FAIL=$((FAIL + 1)); }
 echo "  Checking MR traceability..."
 
 # Check 1: MR Traceability
-# Every changed implementation file should have a canonical reference
+# Every changed implementation file should have a canonical reference.
+# The repo-wide convention is the `@canonical` tag (see validate-canonical.sh);
+# the prose forms remain accepted for older files.
 if command -v git &>/dev/null; then
     changed_files=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -E '\.(py|ts|rs|go)$' || true)
     if [[ -n "$changed_files" ]]; then
         files_without_ref=0
         while IFS= read -r file; do
-            if ! grep -q "Canonical Reference\|canonical.*reference" "$file" 2>/dev/null; then
+            if ! grep -qE "@canonical|Canonical Reference|canonical.*reference" "$file" 2>/dev/null; then
                 ((files_without_ref++))
                 log_fail "MR traceability" "${file} missing canonical reference to architecture"
             fi
@@ -51,8 +53,12 @@ if command -v git &>/dev/null; then
         for module_file in "${ARCH_DIR}"/modules/*.md; do
             [[ -f "$module_file" ]] || continue
             module_name=$(basename "$module_file" .md)
-            # Check if files related to this module changed
-            if git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -qi "${module_name}" 2>/dev/null; then
+            # Check if files related to this module changed. Match a path
+            # *component*, not an arbitrary substring: `resolveridentity/` is
+            # not the `identity` module, and a module declared as `foo-bar` is
+            # implemented under `foo_bar/`.
+            module_pattern="${module_name//-/_}"
+            if git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -Eqi "(^|/)(${module_name}|${module_pattern})(/|$)" 2>/dev/null; then
                 # Module files changed — check if the module doc was also touched
                 if ! git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -q "$(basename "$module_file")" 2>/dev/null; then
                     # Check if the module doc has a recent "Last Updated" that matches

@@ -285,6 +285,7 @@ mod capacity_ledger {
 // The outer module mirrors the renamed `engine/tests/unit/effect-commitment/`
 // dir. Hyphenated on disk, underscored in Rust; the outer `#[path]` makes the
 // inner module names resolve relative to it.
+// @canonical .pi/architecture/modules/effect-commitment.md
 #[path = "effect-commitment"]
 mod effect_commitment {
     mod commitmenterror {
