@@ -86,16 +86,9 @@ impl ReconciliationPolicy {
 
     /// Whether `to` is a legal successor of `from`.
     ///
-    /// `Ambiguous -> Dispatched` is illegal: a retry while unsettled is exactly
-    /// the double-spend path this context closes.
+    /// The transition graph lives on [`EffectState`]; this policy method is the
+    /// single place reconciliation callers consult.
     pub fn is_legal_transition(&self, from: EffectState, to: EffectState) -> bool {
-        matches!(
-            (from, to),
-            (EffectState::Dispatched, EffectState::Committed)
-                | (EffectState::Dispatched, EffectState::NotCommitted)
-                | (EffectState::Dispatched, EffectState::Ambiguous)
-                | (EffectState::Ambiguous, EffectState::Committed)
-                | (EffectState::Ambiguous, EffectState::NotCommitted)
-        )
+        from.can_transition_to(to)
     }
 }

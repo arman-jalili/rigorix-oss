@@ -72,6 +72,36 @@ impl EffectState {
             Self::Ambiguous => "ambiguous",
         }
     }
+
+    /// Parse a canonical wire label.
+    ///
+    /// Returns `None` for anything that is not one of the four frozen words;
+    /// the caller decides whether that is a query miss or a malformed record.
+    pub fn parse(label: &str) -> Option<Self> {
+        match label {
+            "dispatched" => Some(Self::Dispatched),
+            "committed" => Some(Self::Committed),
+            "not_committed" => Some(Self::NotCommitted),
+            "ambiguous" => Some(Self::Ambiguous),
+            _ => None,
+        }
+    }
+
+    /// Whether `to` is a legal successor of this state.
+    ///
+    /// The normative graph lives on the type so every caller enforces the same
+    /// edges; `Ambiguous -> Dispatched` is deliberately absent (a retry while
+    /// unsettled is the double-spend path).
+    pub fn can_transition_to(&self, to: Self) -> bool {
+        matches!(
+            (self, to),
+            (Self::Dispatched, Self::Committed)
+                | (Self::Dispatched, Self::NotCommitted)
+                | (Self::Dispatched, Self::Ambiguous)
+                | (Self::Ambiguous, Self::Committed)
+                | (Self::Ambiguous, Self::NotCommitted)
+        )
+    }
 }
 
 impl std::fmt::Display for EffectState {
