@@ -35,16 +35,27 @@ mod tests {
         let setup = EffectCommitmentSetup::from_env(&scratch).await;
         assert!(matches!(setup, Ok(None)));
 
-        // A present declaration must fail closed until the composition path
-        // lands: never silently behave as if it were armed.
+        // A valid declaration arms the seam.
         std::fs::create_dir_all(scratch.join(".rigorix")).unwrap();
         std::fs::write(
             scratch.join(".rigorix/effect-commitment.toml"),
             "[backend]\nkind = \"in_memory\"\n",
         )
         .unwrap();
-        let setup = EffectCommitmentSetup::from_env(&scratch).await;
-        assert!(setup.is_err());
+        let setup = EffectCommitmentSetup::from_env(&scratch)
+            .await
+            .expect("valid declaration")
+            .expect("armed seam");
+        assert!(!setup.can_prove_commitment());
+        let _seam = setup.dispatch_seam();
+
+        // A malformed declaration still fails closed.
+        std::fs::write(
+            scratch.join(".rigorix/effect-commitment.toml"),
+            "not = = toml",
+        )
+        .unwrap();
+        assert!(EffectCommitmentSetup::from_env(&scratch).await.is_err());
     }
 
     #[tokio::test]

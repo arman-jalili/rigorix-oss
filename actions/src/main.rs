@@ -417,6 +417,14 @@ async fn build_action_orchestrator(
         rigorix_engine::capacity_ledger::CapacitySetup::from_env(std::path::Path::new(repo_root))
             .await
             .map_err(|error| format!("capacity ledger: {error}"))?;
+    // ADR-019: operator-declared effect commitment. Absent file = no seam;
+    // a malformed declaration fails closed.
+    let effect_commitment = rigorix_engine::effect_commitment::EffectCommitmentSetup::from_env(
+        std::path::Path::new(repo_root),
+    )
+    .await
+    .map_err(|error| format!("effect commitment: {error}"))?
+    .map(|setup| setup.dispatch_seam());
     let execution = ParallelExecutionFactoryImpl
         .create(ParallelExecutionFactoryConfig {
             executor_config: ParallelExecutorConfig {
@@ -447,6 +455,7 @@ async fn build_action_orchestrator(
             sequence_policy: sequence_policy.clone(),
             precondition,
             capacity,
+            effect_commitment,
             // #1108: recovery recipes are opt-in (RIGORIX_RECOVERY=1). They add an
             // attempt to the failure path, so they are not on by default.
             recovery:
