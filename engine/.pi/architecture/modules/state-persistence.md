@@ -3,11 +3,12 @@
 <!--
 Canonical Reference: .pi/architecture/modules/state-persistence.md
 Blueprint Source: Domain Exploration Session 63c25384
+Last Updated: 2026-10-21 — ADR-019: NodeStatus gains Dispatched/Ambiguous (both non-terminal)
 -->
 
 ## Overview
 
-Persists execution state to disk using atomic write-rename for crash safety. Tracks overall execution status (Pending, Running, Completed, Failed, Cancelled) and per-node state (Pending, InProgress, Completed, Failed, Skipped). Supports TUI graph persistence for viewing past executions.
+Persists execution state to disk using atomic write-rename for crash safety. Tracks overall execution status (Pending, Running, Completed, Failed, Cancelled) and per-node state (Pending, InProgress, Dispatched, Ambiguous, Completed, Failed, Skipped). `Dispatched` and `Ambiguous` are non-terminal; the latter blocks dependents and retry until provider evidence resolves it (ADR-019). Supports TUI graph persistence for viewing past executions.
 
 ## Responsibilities
 
