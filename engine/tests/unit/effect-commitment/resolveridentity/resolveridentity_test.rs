@@ -12,7 +12,18 @@ mod tests {
     fn test_resolveridentity_is_defined() {
         let provider = ResolverIdentity::new("stripe-readback", ResolverKind::Provider, "digest");
         assert!(provider.is_authorized());
+        assert!(provider.has_evidence_digest());
         assert_eq!(provider.resolver_id, "stripe-readback");
+
+        // Authority is owned by the kind, not repeated at each call site.
+        assert!(ResolverKind::Provider.is_authorized());
+        assert!(ResolverKind::ExternalOperator.is_authorized());
+        assert!(!ResolverKind::DispatchingProcess.is_authorized());
+        assert!(!ResolverKind::Agent.is_authorized());
+
+        // An empty digest is an unrecorded claim.
+        let no_digest = ResolverIdentity::new("stripe", ResolverKind::Provider, "  ");
+        assert!(!no_digest.has_evidence_digest());
 
         let operator = ResolverIdentity::new("ops-1", ResolverKind::ExternalOperator, "digest");
         assert!(operator.is_authorized());

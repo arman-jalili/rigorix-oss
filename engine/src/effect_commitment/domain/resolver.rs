@@ -30,6 +30,16 @@ pub enum ResolverKind {
     Agent,
 }
 
+impl ResolverKind {
+    /// Whether this kind may leave `Ambiguous` (F4).
+    ///
+    /// Only external authority counts: the dispatching process and the agent
+    /// cannot possess evidence the engine does not already have.
+    pub fn is_authorized(&self) -> bool {
+        matches!(self, Self::Provider | Self::ExternalOperator)
+    }
+}
+
 /// The authenticated identity permitted to settle an effect.
 ///
 /// # Fields (Frozen)
@@ -68,9 +78,14 @@ impl ResolverIdentity {
     /// process and the agent are rejected because neither can possess evidence
     /// the engine does not already have.
     pub fn is_authorized(&self) -> bool {
-        matches!(
-            self.kind,
-            ResolverKind::Provider | ResolverKind::ExternalOperator
-        )
+        self.kind.is_authorized()
+    }
+
+    /// Whether the resolver presented a non-empty evidence digest.
+    ///
+    /// An empty digest is an unrecorded claim, which the policy treats as no
+    /// evidence.
+    pub fn has_evidence_digest(&self) -> bool {
+        !self.evidence_digest.trim().is_empty()
     }
 }
