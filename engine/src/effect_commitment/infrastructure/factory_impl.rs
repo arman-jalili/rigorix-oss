@@ -10,12 +10,14 @@
 //! both adapters; the application layer keeps depending on the port alone.
 
 use crate::effect_commitment::application::{
-    EffectCommitmentBackendConfig, EffectCommitmentFactory,
+    EffectCommitmentBackendConfig, EffectCommitmentFactory, ProviderReceiptConfig,
+    ProviderReceiptReader,
 };
 use crate::effect_commitment::interfaces::EffectCommitmentLedger;
 
 use super::http::{HttpEffectLedger, HttpEffectLedgerConfig};
 use super::in_memory::InMemoryEffectLedger;
+use super::provider_receipt::HttpProviderReceiptReader;
 
 /// The default factory: maps a backend selection to a concrete adapter.
 #[derive(Debug, Default, Clone, Copy)]
@@ -44,5 +46,12 @@ impl EffectCommitmentFactory for DefaultEffectCommitmentFactory {
                 auth_token,
             ))),
         }
+    }
+
+    fn create_receipt_reader(
+        &self,
+        config: ProviderReceiptConfig,
+    ) -> Box<dyn ProviderReceiptReader> {
+        Box::new(HttpProviderReceiptReader::new(config))
     }
 }

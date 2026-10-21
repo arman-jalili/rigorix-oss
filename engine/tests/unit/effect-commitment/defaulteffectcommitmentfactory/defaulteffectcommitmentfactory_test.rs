@@ -7,7 +7,8 @@
 #[cfg(test)]
 mod tests {
     use rigorix_engine::effect_commitment::application::{
-        EffectCommitmentBackendConfig, EffectCommitmentFactory,
+        EffectCommitmentBackendConfig, EffectCommitmentFactory, ProviderReceiptConfig,
+        ProviderReceiptReader,
     };
     use rigorix_engine::effect_commitment::infrastructure::DefaultEffectCommitmentFactory;
 
@@ -16,6 +17,10 @@ mod tests {
         let factory = DefaultEffectCommitmentFactory::new();
         // Constructing must not panic and must yield a usable port object.
         let _ledger = factory.create(EffectCommitmentBackendConfig::InMemory);
+
+        // The factory itself is object-safe, so composition can hold a boxed one.
+        fn assert_object_safe(_: Option<Box<dyn EffectCommitmentFactory>>) {}
+        assert_object_safe(None);
     }
 
     #[test]
@@ -38,5 +43,18 @@ mod tests {
             let _ = ledger;
         }
         assert_port(ledger.as_ref());
+    }
+
+    #[test]
+    fn test_defaulteffectcommitmentfactory_builds_the_receipt_reader() {
+        let factory = DefaultEffectCommitmentFactory::new();
+        let reader = factory.create_receipt_reader(ProviderReceiptConfig::new(
+            "https://payments.example",
+            "stripe",
+            1_000,
+            4_096,
+            Some("provider-secret".to_string()),
+        ));
+        let _port: &dyn ProviderReceiptReader = reader.as_ref();
     }
 }

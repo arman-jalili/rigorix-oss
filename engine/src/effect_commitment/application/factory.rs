@@ -19,6 +19,9 @@ use std::fmt;
 
 use crate::effect_commitment::interfaces::EffectCommitmentLedger;
 
+use super::config::ProviderReceiptConfig;
+use super::receipt::ProviderReceiptReader;
+
 /// Backend selection for the commitment ledger.
 #[derive(Clone, PartialEq, Eq)]
 pub enum EffectCommitmentBackendConfig {
@@ -62,4 +65,14 @@ impl fmt::Debug for EffectCommitmentBackendConfig {
 pub trait EffectCommitmentFactory: Send + Sync {
     /// Construct the adapter described by `config`.
     fn create(&self, config: EffectCommitmentBackendConfig) -> Box<dyn EffectCommitmentLedger>;
+
+    /// Construct the optional L3 provider receipt reader.
+    ///
+    /// Composition roots call this only when the declaration contains a
+    /// `receipt_reader` table; without it the context can prove not-settled
+    /// only.
+    fn create_receipt_reader(
+        &self,
+        config: ProviderReceiptConfig,
+    ) -> Box<dyn ProviderReceiptReader>;
 }
