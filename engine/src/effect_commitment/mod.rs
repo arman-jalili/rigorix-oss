@@ -52,12 +52,12 @@ pub mod interfaces;
 pub use application::{
     BeginEffectInput, BeginEffectOutput, DependentFence, DispatchObservation, DispatchSeam,
     EffectCommitmentBackendConfig, EffectCommitmentCompositionRoot, EffectCommitmentConfig,
-    EffectCommitmentFactory, EffectCommitmentService, EffectCommitmentServiceImpl,
-    EffectCommitmentSetup, EffectCommitmentSetupError, IntentKeyDerivation, MarkAmbiguousInput,
-    MarkAmbiguousOutput, NodeStateVocabulary, ProviderReceiptConfig, ProviderReceiptReader,
-    QueryEffectInput, QueryEffectOutput, ReconciliationPolicy, ResolveEffectInput,
-    ResolveEffectOutput, RetryFence, SettleDefiniteInput, SettleDefiniteOutput,
-    Sha256IntentKeyDerivation,
+    EffectCommitmentFactory, EffectCommitmentSeam, EffectCommitmentService,
+    EffectCommitmentServiceImpl, EffectCommitmentSetup, EffectCommitmentSetupError,
+    IntentKeyDerivation, MarkAmbiguousInput, MarkAmbiguousOutput, NodeStateVocabulary,
+    ProviderReceiptConfig, ProviderReceiptReader, QueryEffectInput, QueryEffectOutput,
+    ReconciliationPolicy, ResolveEffectInput, ResolveEffectOutput, RetryFence, SettleDefiniteInput,
+    SettleDefiniteOutput, Sha256IntentKeyDerivation,
 };
 pub use domain::{
     CommitmentError, EffectEvent, EffectIntent, EffectQuery, EffectRecord, EffectRecordId,

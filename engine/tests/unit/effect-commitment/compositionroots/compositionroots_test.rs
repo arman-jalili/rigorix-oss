@@ -51,8 +51,14 @@ mod tests {
     async fn test_compositionroots_interacts_with_effectcommitmentconfig() {
         use rigorix_engine::effect_commitment::application::EffectCommitmentConfig;
 
-        // Parsing is frozen but deferred: the signature exists and fails closed.
-        assert!(EffectCommitmentConfig::parse("").is_err());
+        // An empty declaration is valid and inert (no backend => in-memory
+        // default); malformed TOML is refused.
+        let config = EffectCommitmentConfig::parse("").expect("empty declaration");
+        assert!(matches!(
+            config.backend,
+            rigorix_engine::effect_commitment::application::EffectCommitmentBackendConfig::InMemory
+        ));
+        assert!(EffectCommitmentConfig::parse("not = = toml").is_err());
     }
 
     #[tokio::test]
