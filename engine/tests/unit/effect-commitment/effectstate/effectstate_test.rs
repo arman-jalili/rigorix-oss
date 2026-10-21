@@ -40,5 +40,45 @@ mod tests {
         assert_eq!(json, "\"not_committed\"");
         let round_trip: EffectState = serde_json::from_str(&json).unwrap();
         assert_eq!(round_trip, EffectState::NotCommitted);
+
+        // Every canonical word parses; anything else is not a state.
+        for state in [
+            EffectState::Dispatched,
+            EffectState::Committed,
+            EffectState::NotCommitted,
+            EffectState::Ambiguous,
+        ] {
+            assert_eq!(EffectState::parse(state.as_str()), Some(state));
+        }
+        assert_eq!(EffectState::parse("in_progress"), None);
+    }
+
+    #[test]
+    fn test_effectstate_transition_graph_is_owned_by_the_type() {
+        // Dispatched may settle either way or become ambiguous.
+        for to in [
+            EffectState::Committed,
+            EffectState::NotCommitted,
+            EffectState::Ambiguous,
+        ] {
+            assert!(EffectState::Dispatched.can_transition_to(to));
+        }
+
+        // Ambiguous may only become terminal.
+        assert!(EffectState::Ambiguous.can_transition_to(EffectState::Committed));
+        assert!(EffectState::Ambiguous.can_transition_to(EffectState::NotCommitted));
+        assert!(!EffectState::Ambiguous.can_transition_to(EffectState::Dispatched));
+
+        // Terminal states have no successors.
+        for from in [EffectState::Committed, EffectState::NotCommitted] {
+            for to in [
+                EffectState::Dispatched,
+                EffectState::Committed,
+                EffectState::NotCommitted,
+                EffectState::Ambiguous,
+            ] {
+                assert!(!from.can_transition_to(to));
+            }
+        }
     }
 }
