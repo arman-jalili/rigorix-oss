@@ -353,6 +353,9 @@ is unchanged.
 
 ## Operability
 
+**Runbook:** [`docs/runbook-effect-commitment.md`](../../docs/runbook-effect-commitment.md)
+**DR plan:** [`docs/dr-plan-effect-commitment.md`](../../docs/dr-plan-effect-commitment.md)
+
 An `Ambiguous` effect blocks a run indefinitely. That is the guarantee, not a defect, and it makes
 two operator surfaces mandatory rather than optional:
 
