@@ -16,6 +16,7 @@ pub mod config;
 pub mod dto;
 pub mod factory;
 pub mod fence;
+pub mod fence_impl;
 pub mod key;
 pub mod key_impl;
 pub mod policy;
@@ -35,6 +36,7 @@ pub use dto::{
 };
 pub use factory::{EffectCommitmentBackendConfig, EffectCommitmentFactory};
 pub use fence::{DependentFence, RetryFence, may_release_dependents, may_retry};
+pub use fence_impl::{DefaultDependentFence, DefaultRetryFence};
 pub use key::IntentKeyDerivation;
 pub use key_impl::Sha256IntentKeyDerivation;
 pub use policy::ReconciliationPolicy;
