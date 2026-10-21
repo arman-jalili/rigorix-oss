@@ -47,3 +47,70 @@ mod tests {
         assert!(json.contains("\"code\":\"not_ambiguous\""));
     }
 }
+
+#[cfg(test)]
+mod adapter_contract_tests {
+    use chrono::Utc;
+    use rigorix_engine::capacity_ledger::domain::IdempotencyKey;
+    use rigorix_engine::effect_commitment::domain::{
+        EffectIntent, EffectQuery, ObservedOutcome, ResolverIdentity, ResolverKind,
+    };
+    use rigorix_engine::effect_commitment::infrastructure::InMemoryEffectLedger;
+    use rigorix_engine::effect_commitment::interfaces::EffectCommitmentLedger;
+    use uuid::Uuid;
+
+    fn intent(attempt: u32) -> EffectIntent {
+        EffectIntent::new(
+            Uuid::from_u128(1),
+            Uuid::from_u128(2),
+            attempt,
+            IdempotencyKey::new("contract-key"),
+            "payments.charge",
+            "args-digest",
+            "precondition-digest",
+            "authority-digest",
+        )
+    }
+
+    fn evidence() -> ObservedOutcome {
+        ObservedOutcome::committed("receipt-1", "readback-1", Utc::now(), "stripe")
+    }
+
+    #[tokio::test]
+    async fn the_port_contract_is_adapter_agnostic() {
+        // Program only against the port: the same calls must work for every
+        // adapter that satisfies it.
+        let ledger: Box<dyn EffectCommitmentLedger> = Box::new(InMemoryEffectLedger::new());
+
+        let first = ledger.begin(intent(1)).await.unwrap();
+        let retry = ledger.begin(intent(2)).await.unwrap();
+        assert_eq!(first.id(), retry.id());
+
+        let ambiguous = ledger
+            .mark_ambiguous(first.id(), "response lost".to_string())
+            .await
+            .unwrap();
+        assert!(ambiguous.blocks_retry());
+        assert_eq!(
+            ledger.query(EffectQuery::ambiguous(None)).await.unwrap(),
+            vec![ambiguous]
+        );
+
+        let resolved = ledger
+            .resolve(
+                first.id(),
+                evidence(),
+                ResolverIdentity::new("stripe", ResolverKind::Provider, "readback-1"),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resolved.state().as_str(), "committed");
+        assert!(
+            ledger
+                .query(EffectQuery::ambiguous(None))
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+}
