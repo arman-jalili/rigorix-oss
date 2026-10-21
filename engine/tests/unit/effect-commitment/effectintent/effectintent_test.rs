@@ -58,4 +58,23 @@ mod tests {
         changed.args_digest = "different".to_string();
         assert_ne!(changed.intent_digest(), intent.intent_digest());
     }
+
+    #[test]
+    fn test_effectintent_same_intent_ignores_attempt_and_time() {
+        let intent = intent();
+        let mut retry = intent.clone();
+        retry.attempt = 99;
+        retry.created_at = Utc::now();
+        assert!(intent.same_intent(&retry));
+
+        // A different payload is not the same intent.
+        let mut changed = intent.clone();
+        changed.args_digest = "different".to_string();
+        assert!(!intent.same_intent(&changed));
+
+        // A different node is not the same intent.
+        let mut other_node = intent.clone();
+        other_node.node_id = Uuid::from_u128(999);
+        assert!(!intent.same_intent(&other_node));
+    }
 }
