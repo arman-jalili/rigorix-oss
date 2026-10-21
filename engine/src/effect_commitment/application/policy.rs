@@ -75,7 +75,7 @@ impl ReconciliationPolicy {
             });
         }
 
-        if evidence.readback_digest.trim().is_empty() {
+        if !evidence.is_complete() {
             return Err(CommitmentError::EvidenceMissing {
                 record_id: record.id(),
             });

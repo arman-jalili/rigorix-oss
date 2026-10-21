@@ -103,6 +103,17 @@ impl ObservedOutcome {
         self.verdict == OutcomeVerdict::Committed
     }
 
+    /// Whether this is a complete piece of evidence.
+    ///
+    /// A receipt id, a read-back digest, and a source identity are all required. An
+    /// outcome missing any of them is an unrecorded claim, not evidence, and the
+    /// reconciliation policy refuses it (F3).
+    pub fn is_complete(&self) -> bool {
+        !self.receipt_id.trim().is_empty()
+            && !self.readback_digest.trim().is_empty()
+            && !self.source.trim().is_empty()
+    }
+
     /// The terminal state this evidence authorises.
     pub fn terminal_state(&self) -> EffectState {
         self.verdict.terminal_state()
