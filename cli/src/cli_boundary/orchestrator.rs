@@ -354,7 +354,10 @@ pub async fn build_orchestrator_with_budget(
                 max_failures_before_abort: engine_config.max_failures_before_abort.unwrap_or(0),
                 enable_fallback: true,
                 enable_validation: true,
-                approval_repo_path: None,
+                // ADR-011 R5: the effect-scope oracle needs a repo to diff.
+                // It stays inert unless the approved intent declared a scope,
+                // so this wiring cannot invent a violation (#1099).
+                approval_repo_path: Some(repo_root.clone()),
             },
             register_event_handlers: true,
             enable_progress_callbacks: true,

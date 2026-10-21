@@ -80,16 +80,28 @@ Stored as `decision_context` in the approval record; **summarized** into the env
 - **Effect oracle:** git diff — the engine snapshots `git status` / `git diff --stat` at dispatch (post-approval, pre-execution) and post-execution; the actual changed path set is the oracle. `file_paths` (engine-visible file tools) alone would miss side-effects from `run_command` scripts (the exact case motivating effect-scope verification) — git diff does not.
 - Effects outside the declared scope → `scope_violation` flag in the envelope (**non-blocking, first-class evidence**; R2 is the blocking check).
 
-**Implementation status (#1072): conditionally active, off by default.** The
-snapshot covers staged and unstaged tracked changes plus untracked files, but no
-shipped entry point sets `approval_repo_path` — CLI, GitHub Action and MCP host all
-pass `None`. Effect-scope evidence is therefore produced only when an operator
-configures the path explicitly. The baseline is **per dispatch loop**, not per
-step: with concurrent steps the reported set is the union and attribution is to
-the run, and a file the author is editing during the run is reported as the
-agent's effect. Content inside an already-changed file is not distinguished.
+**Implementation status: wired in all three entry points, inert until a scope is
+declared (#1099).** CLI, GitHub Action and MCP host now set `approval_repo_path` to
+their repository root; the oracle runs for approval-gated steps. It still produces
+no evidence unless the approved intent carried a non-empty `declared_scope` — the
+check is gated on the evidence, not on the wiring — so enabling it cannot invent a
+violation. `rigorix doctor` reports an `effect scope` row, which is unarmed until
+`approval binding` is armed: without an approval record there is no declared scope
+to diff against.
 
-**Honest boundary (unchanged):** a side-effect on `src/auth.ts` via a script can still happen — it is now *detected and recorded* as a violation in the signed record **when the oracle is enabled**; in the OSS default it is not detected at all, which is why the binding layer's prevention boundary (ADR-011) is the guarantee and this is evidence.
+**Correction to the #1072 record.** #1072 was closed `COMPLETED` with three parts:
+the oracle and the staged-changes snapshot landed, "disabled in every production
+entry point" did not. Closing it without recording the split made the tracker
+assert something the code contradicted. The third part is #1099.
+
+The baseline is **per dispatch loop**, not per step: with concurrent steps the
+reported set is the union and attribution is to the run, and a file the author is
+editing during the run is reported as the agent's effect. Content inside an
+already-changed file is not distinguished. When the graph has no approval-gated
+node the baseline is not taken at all, so wiring the path costs nothing on runs
+with nothing to check.
+
+**Honest boundary (unchanged):** a side-effect on `src/auth.ts` via a script can still happen — it is now *detected and recorded* as a violation in the signed record **when the approved intent declared a scope**; with no declared scope nothing is inspected, which is why the binding layer's prevention boundary (ADR-011) is the guarantee and this is evidence.
 
 ## External Stress-Test → Design Requirements (Portotify ALLOW-Matrix)
 
