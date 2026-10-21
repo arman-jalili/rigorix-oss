@@ -2604,6 +2604,7 @@ dependencies = [
  "crossterm",
  "dirs",
  "futures",
+ "rand 0.8.6",
  "ratatui",
  "rigorix-engine",
  "serde",
