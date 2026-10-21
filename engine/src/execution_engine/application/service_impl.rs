@@ -87,6 +87,9 @@ async fn spawn_concurrent_node(
     dag_id: Uuid,
     node_id: Uuid,
     permission_enforcer: &Option<Arc<dyn PermissionEnforcer>>,
+    budget_enforcer: &Option<
+        Arc<crate::enforcement::application::enforcer_impl::ExecutionEnforcerImpl>,
+    >,
     hook_runner: &Option<Arc<dyn HookRunnerService>>,
     enforce_permission: bool,
 ) -> Result<(), ExecutionError> {
@@ -130,9 +133,52 @@ async fn spawn_concurrent_node(
     let eb = Arc::clone(event_bus);
     let exec_id = dag_id;
     let permission = permission_enforcer.clone();
+    let budget = budget_enforcer.clone();
     let hook_runner = hook_runner.clone();
 
     join_set.spawn(async move {
+        // ── Budget and limit gating (ADR-008, #1108) ──
+        //
+        // First, and shared with `execute_tool` (the single-node route): a call
+        // that would exceed a limit must not run, and the two dispatch paths must
+        // not answer differently.
+        if let Some(ref enforcer) = budget
+            && let Err(refusal) =
+                crate::execution_engine::application::service_impl::budget::evaluate(
+                    enforcer,
+                    dag_id,
+                    node_id,
+                    &node_tool,
+                )
+                .await
+        {
+            let dur = start.elapsed().as_millis() as u64;
+            let result = TaskResult::failure(
+                node_id,
+                &node_name,
+                refusal.reason().to_string(),
+                refusal.failure_type().to_string(),
+                dur,
+                0,
+            );
+            if let Err(e) = eb
+                .publish(crate::event_system::application::dto::PublishEventInput {
+                    event: ExecutionEvent::NodeCompleted {
+                        execution_id: exec_id,
+                        node_id: node_id.to_string(),
+                        node_name,
+                        duration_ms: dur,
+                        output: serde_json::json!(null),
+                        timestamp: chrono::Utc::now(),
+                    },
+                })
+                .await
+            {
+                tracing::warn!(error = %e, "event publish failed — evidence may be incomplete");
+            }
+            return (node_id, result);
+        }
+
         // Permission check (gate before execution) — GAP-A-11: gated by the
         // executor's enable_enforcement config flag.
         if enforce_permission && let Some(ref enforcer) = permission {
@@ -482,6 +528,7 @@ const SUBPROCESS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(6
 /// GAP-A-12: bound git subprocess execution.
 const GIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
+mod budget;
 mod dispatch;
 mod gate;
 mod tools;
@@ -563,6 +610,20 @@ pub struct ParallelExecutionServiceImpl {
     /// without settling still returns the capacity when the lease lapses
     /// (ADR-018 I3), and dropping the service releases its outstanding guards.
     capacity_holds: Arc<Mutex<HashMap<Uuid, ReservationId>>>,
+    /// Per-execution budget enforcers (ADR-008, #1108).
+    ///
+    /// One enforcer per `dag_id`: the counters it holds (tool calls, tokens,
+    /// elapsed time, per-tool counts) are per execution by definition, and two
+    /// concurrent executions must not share them. Created lazily from
+    /// `ParallelExecutorConfig::enforcement`; absent config = no enforcement.
+    budget_enforcers: Arc<
+        Mutex<
+            HashMap<
+                Uuid,
+                Arc<crate::enforcement::application::enforcer_impl::ExecutionEnforcerImpl>,
+            >,
+        >,
+    >,
 }
 
 impl ParallelExecutionServiceImpl {
@@ -588,6 +649,7 @@ impl ParallelExecutionServiceImpl {
             gating_mode: GatingMode::default(),
             capacity: None,
             capacity_holds: Arc::new(Mutex::new(HashMap::new())),
+            budget_enforcers: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -1755,5 +1817,45 @@ impl crate::approval::application::NodeIntentResolver for SessionGraphResolver {
             }
         }
         None
+    }
+}
+
+impl ParallelExecutionServiceImpl {
+    /// The per-execution budget enforcer for `dag_id`, created on first use
+    /// (#1108).
+    ///
+    /// One enforcer per execution: the counters it holds (tool calls, tokens,
+    /// elapsed time, per-tool counts) are per execution by definition, and two
+    /// concurrent executions must not share them. `None` when the executor was
+    /// built without an `enforcement` config — the status quo before #1108.
+    pub(super) fn budget_enforcer_for(
+        &self,
+        dag_id: Uuid,
+    ) -> Option<Arc<crate::enforcement::application::enforcer_impl::ExecutionEnforcerImpl>> {
+        use crate::enforcement::application::enforcer_impl::ExecutionEnforcerImpl;
+
+        if !self.config.enable_enforcement {
+            return None;
+        }
+        let config = self.config.enforcement.clone()?;
+        let mut enforcers = match self.budget_enforcers.lock() {
+            Ok(guard) => guard,
+            Err(error) => {
+                tracing::error!(
+                    %dag_id,
+                    %error,
+                    "enforcement: enforcer registry poisoned — budgets cannot be evaluated"
+                );
+                return None;
+            }
+        };
+        Some(
+            enforcers
+                .entry(dag_id)
+                .or_insert_with(|| {
+                    Arc::new(ExecutionEnforcerImpl::new(&dag_id.to_string(), config))
+                })
+                .clone(),
+        )
     }
 }

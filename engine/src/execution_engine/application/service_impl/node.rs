@@ -157,7 +157,7 @@ impl ParallelExecutionServiceImpl {
 
             let (execution_successful, output_text, failure_type, error_message, exec_duration_ms) =
                 if let Some(node) = node_info {
-                    let task_result = self.execute_tool(&node, node_id, start).await;
+                    let task_result = self.execute_tool(input.dag_id, &node, node_id, start).await;
                     let dur = task_result.duration_ms;
                     if task_result.success {
                         (

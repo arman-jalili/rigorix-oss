@@ -72,6 +72,11 @@ impl ParallelExecutionFactoryImpl {
         if let Some(setup) = config.capacity {
             executor = executor.with_capacity_ledger(setup);
         }
+        // #1108: recovery recipes are an inserted attempt in the failure path, so
+        // they are attached only when the composition root armed them.
+        if let Some(recovery) = config.recovery {
+            executor = executor.with_recovery_service(recovery);
+        }
         if let Some(binding) = config.approval_binding {
             // ADR-011: attach the approval binding with a live session-graph
             // intent resolver — approve/verify/consume now run at the runtime

@@ -136,6 +136,7 @@ impl ParallelExecutionServiceImpl {
                 dag_id,
                 node_id,
                 &self.permission_enforcer,
+                &self.budget_enforcer_for(dag_id),
                 &self.hook_runner,
                 config.enable_enforcement,
             )
@@ -287,6 +288,7 @@ impl ParallelExecutionServiceImpl {
                     dag_id,
                     next_id,
                     &self.permission_enforcer,
+                    &self.budget_enforcer_for(dag_id),
                     &self.hook_runner,
                     config.enable_enforcement,
                 )

@@ -430,6 +430,12 @@ async fn build_action_orchestrator(
                 enable_validation: true,
                 // ADR-011 R5: effect-scope oracle over the workspace (#1099).
                 approval_repo_path: Some(repo_root.to_string()),
+                // ADR-008 (#1108): budgets and per-tool call limits are
+                // evaluated before each tool call. The Action is unattended, so
+                // it takes the standard limits rather than an operator preset.
+                enforcement: Some(
+                    rigorix_engine::enforcement::domain::config::EnforcementConfig::standard(),
+                ),
             },
             register_event_handlers: true,
             enable_progress_callbacks: true,
@@ -441,6 +447,10 @@ async fn build_action_orchestrator(
             sequence_policy: sequence_policy.clone(),
             precondition,
             capacity,
+            // #1108: recovery recipes are opt-in (RIGORIX_RECOVERY=1). They add an
+            // attempt to the failure path, so they are not on by default.
+            recovery:
+                rigorix_engine::execution_engine::application::factory::RecoverySetup::from_env(),
         })
         .await
         .map_err(|e| format!("execution: {e}"))?;
