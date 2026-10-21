@@ -168,3 +168,244 @@ mod tests {
         assert_eq!(round_trip.record_id, record.id());
     }
 }
+
+/// Exercises the concrete service over an in-memory port fake. The fake owns
+/// the aggregate but no policy: F3/F4 are the service's responsibility here.
+#[cfg(test)]
+mod impl_tests {
+    use std::sync::{Arc, Mutex};
+
+    use async_trait::async_trait;
+    use chrono::Utc;
+    use rigorix_engine::capacity_ledger::domain::IdempotencyKey;
+    use rigorix_engine::effect_commitment::application::{
+        BeginEffectInput, EffectCommitmentService, EffectCommitmentServiceImpl,
+        IntentKeyDerivation, MarkAmbiguousInput, QueryEffectInput, ResolveEffectInput,
+        SettleDefiniteInput,
+    };
+    use rigorix_engine::effect_commitment::domain::{
+        CommitmentError, EffectIntent, EffectQuery, EffectRecord, EffectRecordId, ObservedOutcome,
+        ResolverIdentity, ResolverKind,
+    };
+    use rigorix_engine::effect_commitment::interfaces::EffectCommitmentLedger;
+    use uuid::Uuid;
+
+    fn intent() -> EffectIntent {
+        EffectIntent::new(
+            Uuid::from_u128(1),
+            Uuid::from_u128(2),
+            1,
+            IdempotencyKey::new("attempt-derived"),
+            "payments.charge",
+            "args-digest",
+            "precondition-digest",
+            "authority-digest",
+        )
+    }
+
+    fn evidence() -> ObservedOutcome {
+        ObservedOutcome::committed("receipt-1", "readback-1", Utc::now(), "stripe")
+    }
+
+    struct FakeKeyDerivation;
+
+    impl IntentKeyDerivation for FakeKeyDerivation {
+        fn derive_key(&self, intent: &EffectIntent) -> IdempotencyKey {
+            IdempotencyKey::new(format!("intent-{}", intent.intent_digest()))
+        }
+    }
+
+    #[derive(Default)]
+    struct FakeLedger {
+        record: Mutex<Option<EffectRecord>>,
+    }
+
+    impl FakeLedger {
+        fn current(&self) -> Option<EffectRecord> {
+            self.record.lock().unwrap().clone()
+        }
+
+        fn store(&self, record: EffectRecord) -> EffectRecord {
+            *self.record.lock().unwrap() = Some(record.clone());
+            record
+        }
+    }
+
+    #[async_trait]
+    impl EffectCommitmentLedger for FakeLedger {
+        async fn begin(&self, intent: EffectIntent) -> Result<EffectRecord, CommitmentError> {
+            Ok(self.store(EffectRecord::begin(intent)))
+        }
+
+        async fn settle_definite(
+            &self,
+            _record_id: EffectRecordId,
+            outcome: ObservedOutcome,
+        ) -> Result<EffectRecord, CommitmentError> {
+            let record = self.current().ok_or_else(|| CommitmentError::Unavailable {
+                detail: "missing".to_string(),
+            })?;
+            Ok(self.store(record.settle_definite(outcome, Utc::now())?))
+        }
+
+        async fn mark_ambiguous(
+            &self,
+            _record_id: EffectRecordId,
+            reason: String,
+        ) -> Result<EffectRecord, CommitmentError> {
+            let record = self.current().ok_or_else(|| CommitmentError::Unavailable {
+                detail: "missing".to_string(),
+            })?;
+            Ok(self.store(record.mark_ambiguous(reason, Utc::now())?))
+        }
+
+        async fn resolve(
+            &self,
+            _record_id: EffectRecordId,
+            outcome: ObservedOutcome,
+            resolver: ResolverIdentity,
+        ) -> Result<EffectRecord, CommitmentError> {
+            let record = self.current().ok_or_else(|| CommitmentError::Unavailable {
+                detail: "missing".to_string(),
+            })?;
+            Ok(self.store(record.resolve(outcome, resolver, Utc::now())?))
+        }
+
+        async fn query(&self, query: EffectQuery) -> Result<Vec<EffectRecord>, CommitmentError> {
+            Ok(self
+                .current()
+                .filter(|record| record.matches_query(&query))
+                .into_iter()
+                .collect())
+        }
+    }
+
+    fn service() -> EffectCommitmentServiceImpl {
+        EffectCommitmentServiceImpl::new(
+            Arc::new(FakeLedger::default()),
+            Arc::new(FakeKeyDerivation),
+        )
+    }
+
+    #[tokio::test]
+    async fn begin_derives_the_key_instead_of_trusting_the_caller() {
+        let service = service();
+        let out = service
+            .begin(BeginEffectInput { intent: intent() })
+            .await
+            .unwrap();
+
+        assert_ne!(
+            out.record.intent().idempotency_key,
+            IdempotencyKey::new("attempt-derived")
+        );
+        assert!(
+            out.record
+                .intent()
+                .idempotency_key
+                .as_str()
+                .starts_with("intent-")
+        );
+    }
+
+    #[tokio::test]
+    async fn settle_and_mark_are_delegated_and_return_the_snapshot() {
+        let service = service();
+        let begun = service
+            .begin(BeginEffectInput { intent: intent() })
+            .await
+            .unwrap();
+
+        let settled = service
+            .settle_definite(SettleDefiniteInput {
+                record_id: begun.record.id(),
+                outcome: evidence(),
+            })
+            .await
+            .unwrap();
+        assert!(settled.record.is_terminal());
+        assert_eq!(settled.record.state().as_str(), "committed");
+
+        let begun = service
+            .begin(BeginEffectInput { intent: intent() })
+            .await
+            .unwrap();
+        let ambiguous = service
+            .mark_ambiguous(MarkAmbiguousInput {
+                record_id: begun.record.id(),
+                reason: "lost".to_string(),
+            })
+            .await
+            .unwrap();
+        assert!(ambiguous.record.blocks_retry());
+    }
+
+    #[tokio::test]
+    async fn resolve_applies_the_policy_before_the_ledger() {
+        let service = service();
+        let begun = service
+            .begin(BeginEffectInput { intent: intent() })
+            .await
+            .unwrap();
+        service
+            .mark_ambiguous(MarkAmbiguousInput {
+                record_id: begun.record.id(),
+                reason: "lost".to_string(),
+            })
+            .await
+            .unwrap();
+
+        // F4: the dispatching process is rejected before any write.
+        let rejected = service
+            .resolve(ResolveEffectInput {
+                record_id: begun.record.id(),
+                outcome: evidence(),
+                resolver: ResolverIdentity::new(
+                    "dispatch-loop",
+                    ResolverKind::DispatchingProcess,
+                    "readback-1",
+                ),
+            })
+            .await;
+        assert!(matches!(
+            rejected,
+            Err(CommitmentError::UnauthorizedResolver { .. })
+        ));
+
+        let resolved = service
+            .resolve(ResolveEffectInput {
+                record_id: begun.record.id(),
+                outcome: evidence(),
+                resolver: ResolverIdentity::new("stripe", ResolverKind::Provider, "readback-1"),
+            })
+            .await
+            .unwrap();
+        assert_eq!(resolved.record.state().as_str(), "committed");
+        assert!(resolved.record.resolver().is_some());
+    }
+
+    #[tokio::test]
+    async fn query_is_delegated_verbatim() {
+        let service = service();
+        let begun = service
+            .begin(BeginEffectInput { intent: intent() })
+            .await
+            .unwrap();
+
+        let by_id = service
+            .query(QueryEffectInput {
+                query: EffectQuery::by_id(begun.record.id()),
+            })
+            .await
+            .unwrap();
+        assert_eq!(by_id.records, vec![begun.record.clone()]);
+
+        let other = service
+            .query(QueryEffectInput {
+                query: EffectQuery::by_id(EffectRecordId::new()),
+            })
+            .await
+            .unwrap();
+        assert!(other.records.is_empty());
+    }
+}
