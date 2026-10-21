@@ -83,8 +83,7 @@ max_response_body_bytes = 8192
         );
         assert!(matches!(setup, Ok(None)));
 
-        // A present declaration is fail-closed while the composition path is
-        // still stubbed: it must never silently downgrade to "not armed".
+        // A present, valid declaration arms the seam.
         std::fs::create_dir_all(scratch.join(".rigorix")).unwrap();
         std::fs::write(
             scratch.join(".rigorix/effect-commitment.toml"),
@@ -96,7 +95,7 @@ max_response_body_bytes = 8192
                 &scratch,
             ),
         );
-        assert!(setup.is_err());
+        assert!(matches!(setup, Ok(Some(_))));
     }
 
     #[test]

@@ -1602,6 +1602,13 @@ pub async fn build_real_engine(
     let capacity =
         rigorix_engine::capacity_ledger::CapacitySetup::from_env(std::path::Path::new(repo_root))
             .await?;
+    // ADR-019: operator-declared effect commitment. Absent file = no seam;
+    // a malformed declaration fails closed.
+    let effect_commitment = rigorix_engine::effect_commitment::EffectCommitmentSetup::from_env(
+        std::path::Path::new(repo_root),
+    )
+    .await?
+    .map(|setup| setup.dispatch_seam());
     // ── Event bus (shared: the executor publishes into it AND the
     //    orchestrator drains it for the audit envelope — a split bus makes
     //    engine envelopes evidence-empty) ──
@@ -1618,6 +1625,7 @@ pub async fn build_real_engine(
                 sequence_policy: sequence_policy.clone(),
                 precondition,
                 capacity,
+                effect_commitment,
                 // #1108: recovery recipes are opt-in (RIGORIX_RECOVERY=1).
                 recovery: rigorix_engine::execution_engine::application::factory::RecoverySetup::from_env(),
                 // ADR-011 R5: the MCP host is an entry point too — leaving this

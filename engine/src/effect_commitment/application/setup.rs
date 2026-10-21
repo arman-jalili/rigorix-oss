@@ -1,8 +1,8 @@
 //! EffectCommitmentSetup — composition-root wiring for the commitment seam.
 //!
 //! @canonical .pi/architecture/modules/effect-commitment.md#compositionroots
-//! Implements: ISSUE-CONTRACT-FREEZE — `from_env` composition contract
-//! Issue: #1113
+//! Implements: ISSUE-EFFECT-COMMITMENT-20 — `from_env` arms the seam
+//! Issue: #1133
 //! ADR-019: arm the seam from `.rigorix/effect-commitment.toml`
 //!
 //! The capacity ledger was once dead code because no composition root
@@ -24,8 +24,14 @@ use async_trait::async_trait;
 use thiserror::Error;
 
 use crate::effect_commitment::application::factory::EffectCommitmentFactory;
+use crate::effect_commitment::application::key_impl::Sha256IntentKeyDerivation;
+use crate::effect_commitment::application::seam::DispatchSeam;
+use crate::effect_commitment::application::seam_impl::EffectCommitmentSeam;
 use crate::effect_commitment::application::service::EffectCommitmentService;
+use crate::effect_commitment::application::service_impl::EffectCommitmentServiceImpl;
 use crate::effect_commitment::domain::CommitmentError;
+use crate::effect_commitment::infrastructure::factory_impl::DefaultEffectCommitmentFactory;
+use crate::effect_commitment::interfaces::EffectCommitmentLedger;
 
 use super::config::EffectCommitmentConfig;
 use super::receipt::ProviderReceiptReader;
@@ -76,17 +82,30 @@ pub struct EffectCommitmentSetup {
 impl EffectCommitmentSetup {
     /// Build a seam from an already-parsed config.
     ///
-    /// The signature is frozen; ISSUE-EFFECT-COMMITMENT-14 supplies the concrete
-    /// construction path. Until then a declaration fails closed rather than
-    /// yielding a seam that does not enforce anything.
+    /// The factory constructs the ledger and, when declared, the L3 receipt
+    /// reader. The service always uses the SHA-256 intent-derived key; a
+    /// deployment cannot accidentally run with attempt-derived keys.
     pub async fn from_config(
-        _config: EffectCommitmentConfig,
-        _factory: &dyn EffectCommitmentFactory,
+        config: EffectCommitmentConfig,
+        factory: &dyn EffectCommitmentFactory,
     ) -> Result<Self, EffectCommitmentSetupError> {
-        Err(EffectCommitmentSetupError::Unavailable {
-            detail:
-                "ISSUE-EFFECT-COMMITMENT-14: effect-commitment composition is not implemented yet"
-                    .to_string(),
+        let EffectCommitmentConfig {
+            backend,
+            receipt_reader,
+        } = config;
+
+        let ledger: Arc<dyn EffectCommitmentLedger> = Arc::from(factory.create(backend));
+        let service: Arc<dyn EffectCommitmentService> = Arc::new(EffectCommitmentServiceImpl::new(
+            ledger,
+            Arc::new(Sha256IntentKeyDerivation::new()),
+        ));
+        let receipt_reader = receipt_reader.map(|config| {
+            Arc::from(factory.create_receipt_reader(config)) as Arc<dyn ProviderReceiptReader>
+        });
+
+        Ok(Self {
+            service,
+            receipt_reader,
         })
     }
 
@@ -98,28 +117,38 @@ impl EffectCommitmentSetup {
     ///   the caller must fail closed.
     pub async fn from_env(repo_root: &Path) -> Result<Option<Self>, EffectCommitmentSetupError> {
         let path = repo_root.join(".rigorix").join("effect-commitment.toml");
-        match std::fs::read_to_string(&path) {
-            Ok(_text) => {
-                // A declaration exists, so the operator asked for the guarantee.
-                // Refuse to pretend it is armed until the concrete adapters and
-                // parser land.
-                Err(EffectCommitmentSetupError::Unavailable {
-                    detail: "ISSUE-EFFECT-COMMITMENT-13/14: a declaration is present but the \
-                             composition path is not implemented yet"
-                        .to_string(),
-                })
-            }
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 tracing::debug!(
                     "effect-commitment: .rigorix/effect-commitment.toml absent — seam not armed \
                      (fail-open-absent)"
                 );
-                Ok(None)
+                return Ok(None);
             }
-            Err(error) => Err(EffectCommitmentSetupError::ConfigInvalid {
-                detail: format!(".rigorix/effect-commitment.toml could not be read: {error}"),
-            }),
-        }
+            Err(error) => {
+                return Err(EffectCommitmentSetupError::ConfigInvalid {
+                    detail: format!(".rigorix/effect-commitment.toml could not be read: {error}"),
+                });
+            }
+        };
+
+        let config = EffectCommitmentConfig::parse(&text)?;
+        let setup = Self::from_config(config, &DefaultEffectCommitmentFactory).await?;
+
+        tracing::info!(
+            can_prove_commitment = setup.can_prove_commitment(),
+            "effect-commitment: dispatch seam ARMED from operator config (ADR-019)"
+        );
+        Ok(Some(setup))
+    }
+
+    /// The dispatch seam over the armed service.
+    ///
+    /// This is the value the execution-engine factory attaches; it is how the
+    /// context stops being dead code.
+    pub fn dispatch_seam(&self) -> Arc<dyn DispatchSeam> {
+        Arc::new(EffectCommitmentSeam::new(self.service.clone()))
     }
 
     /// Whether provider evidence is available (L3).
