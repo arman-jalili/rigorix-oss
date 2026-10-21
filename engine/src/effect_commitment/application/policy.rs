@@ -69,7 +69,7 @@ impl ReconciliationPolicy {
 
         // The resolver must present *some* evidence digest; an empty digest is
         // an unrecorded claim, which is the same as no evidence.
-        if resolver.evidence_digest.trim().is_empty() {
+        if !resolver.has_evidence_digest() {
             return Err(CommitmentError::EvidenceMissing {
                 record_id: record.id(),
             });
