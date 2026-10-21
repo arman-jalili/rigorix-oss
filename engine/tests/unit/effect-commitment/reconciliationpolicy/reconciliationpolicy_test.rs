@@ -121,4 +121,61 @@ mod tests {
                 .is_ok()
         );
     }
+
+    #[test]
+    fn test_reconciliationpolicy_authorizes_settlement_and_ambiguity() {
+        let policy = ReconciliationPolicy::new();
+        let dispatched = EffectRecord::begin(intent());
+
+        // A dispatched record settles with complete evidence.
+        assert!(
+            policy
+                .authorize_settlement(&dispatched, &evidence())
+                .is_ok()
+        );
+
+        // An ambiguous record must be resolved, not settled definitely.
+        let ambiguous = dispatched
+            .clone()
+            .mark_ambiguous("lost", Utc::now())
+            .unwrap();
+        assert!(matches!(
+            policy.authorize_settlement(&ambiguous, &evidence()),
+            Err(CommitmentError::NotAmbiguous { .. })
+        ));
+
+        // Marking is only legal from dispatched.
+        assert!(policy.authorize_mark_ambiguous(&dispatched).is_ok());
+        assert!(matches!(
+            policy.authorize_mark_ambiguous(&ambiguous),
+            Err(CommitmentError::Contended { .. })
+        ));
+
+        // A terminal record can do neither.
+        let committed = dispatched
+            .clone()
+            .settle_definite(evidence(), Utc::now())
+            .unwrap();
+        assert!(matches!(
+            policy.authorize_settlement(&committed, &evidence()),
+            Err(CommitmentError::AlreadySettled { .. })
+        ));
+        assert!(matches!(
+            policy.authorize_mark_ambiguous(&committed),
+            Err(CommitmentError::AlreadySettled { .. })
+        ));
+
+        // Incomplete evidence is refused even for a dispatched record.
+        let incomplete = ObservedOutcome {
+            receipt_id: String::new(),
+            readback_digest: "readback-1".to_string(),
+            observed_at: Utc::now(),
+            source: "stripe".to_string(),
+            verdict: rigorix_engine::effect_commitment::domain::OutcomeVerdict::Committed,
+        };
+        assert!(matches!(
+            policy.authorize_settlement(&dispatched, &incomplete),
+            Err(CommitmentError::EvidenceMissing { .. })
+        ));
+    }
 }
