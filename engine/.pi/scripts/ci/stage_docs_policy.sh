@@ -26,8 +26,16 @@ if command -v git &>/dev/null; then
     changed_files=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -E '\.(py|ts|rs|go)$' || true)
     if [[ -n "$changed_files" ]]; then
         files_without_ref=0
+        repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
         while IFS= read -r file; do
-            if ! grep -qE "@canonical|Canonical Reference|canonical.*reference" "$file" 2>/dev/null; then
+            # `git diff` prints paths relative to the repo root even when the
+            # stage runs from a crate directory (engine/). Resolve against both
+            # before deciding the file has no reference.
+            file_path="$file"
+            if [[ ! -f "$file_path" && -n "$repo_root" && -f "$repo_root/$file" ]]; then
+                file_path="$repo_root/$file"
+            fi
+            if ! grep -qE "@canonical|Canonical Reference|canonical.*reference" "$file_path" 2>/dev/null; then
                 ((files_without_ref++))
                 log_fail "MR traceability" "${file} missing canonical reference to architecture"
             fi
