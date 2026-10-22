@@ -917,6 +917,23 @@ pub async fn dispatch(
         _ => {}
     }
 
+    // #1156: the flag is accepted by clap and was threaded into RunInput, but
+    // nothing read it — the executor config is built once at startup. Refusing
+    // loudly is the only option that does not let an operator believe the run
+    // is hardened when it is not.
+    if let CliCommand::Run {
+        enforcement: Some(preset),
+        ..
+    } = &command
+    {
+        return DispatchResult::error(
+            format!(
+                "`--enforcement {preset}` is not implemented: the executor config is built once                  at startup, so a per-run preset cannot be honoured. Set `[enforcement] preset`                  in rigorix.toml instead. The flag is refused rather than silently ignored."
+            ),
+            2,
+        );
+    }
+
     // Build CLI services for Tier 2 commands
     let services = match crate::cli_boundary::orchestrator::build_cli_services(config.clone()).await
     {
@@ -1059,5 +1076,39 @@ pub async fn dispatch(
             DispatchResult::error("internal: handled before dispatch".to_string(), 1)
         }
         CliCommand::Tui { .. } => DispatchResult::success("TUI mode"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn the_enforcement_flag_is_refused_instead_of_silently_ignored() {
+        // #1156: if this starts returning 0, the flag became a no-op again.
+        let command = CliCommand::Run {
+            intent: "do the thing".to_string(),
+            enforcement: Some("strict".to_string()),
+            max_llm_calls: None,
+            max_llm_tokens: None,
+        };
+        let result = dispatch(
+            command,
+            crate::cli_boundary::config::CliConfig::default(),
+            crate::cli_boundary::signal::CancellationToken::new(),
+        )
+        .await;
+
+        assert_eq!(result.exit_code, 2, "a refused flag is a usage error");
+        assert!(
+            result.summary.contains("not implemented"),
+            "{}",
+            result.summary
+        );
+        assert!(
+            result.summary.contains("[enforcement] preset"),
+            "the error must name the working alternative: {}",
+            result.summary
+        );
     }
 }

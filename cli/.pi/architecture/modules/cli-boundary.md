@@ -3,7 +3,7 @@
 ## Status
 
 **Status:** ✅ Architecture defined — source code implemented
-**Last reviewed:** 2026-06-16
+**Last reviewed:** 2026-10-22 — per-run `--enforcement` is refused (#1156)
 
 ## Description
 
