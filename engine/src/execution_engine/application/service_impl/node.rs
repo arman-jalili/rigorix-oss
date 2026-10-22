@@ -23,14 +23,7 @@ impl ParallelExecutionServiceImpl {
         // This is the **inline retry loop** — not a separate retry wrapper.
         // Each retry can escalate the strategy per the RetryPolicy.
 
-        let policy = input
-            .retry_policy
-            .clone()
-            .unwrap_or_else(|| self.config.default_retry_policy.clone());
-        let max_attempts = policy.max_attempts;
         let node_id = input.node_id;
-
-        let mut last_retry_decision: Option<RetryDecision> = None;
 
         // #1074: the single-node route runs the **same** consequence-gate
         // sequence as `execute_graph` (approval binding → precondition →
@@ -93,8 +86,20 @@ impl ParallelExecutionServiceImpl {
             }
         }
 
-        // Inline retry loop per node
-        for attempt in 0..max_attempts {
+        // #1185: `gate_node` wrote the effect record before this block can
+        // call a tool. The retry loop stays inside one record; the outcome is
+        // settled once, below, exactly as the graph route settles it.
+        let outcome: Result<ExecuteNodeOutput, ExecutionError> = async {
+            let policy = input
+                .retry_policy
+                .clone()
+                .unwrap_or_else(|| self.config.default_retry_policy.clone());
+            let max_attempts = policy.max_attempts;
+
+            let mut last_retry_decision: Option<RetryDecision> = None;
+
+            // Inline retry loop per node
+            for attempt in 0..max_attempts {
             let start = std::time::Instant::now();
 
             // --- Phase 1: Check skip conditions before execution ---
@@ -517,9 +522,31 @@ impl ParallelExecutionServiceImpl {
             max_attempts.saturating_sub(1),
         );
 
-        Ok(ExecuteNodeOutput {
-            result,
-            retry_decision: None,
-        })
+            Ok(ExecuteNodeOutput {
+                result,
+                retry_decision: None,
+            })
+        }
+        .await;
+
+        // Settle the write-ahead record from the terminal outcome. An error
+        // after the record was written may mean the tool ran and its result was
+        // lost; marking that uncertain outcome `Ambiguous` is the honest state.
+        match &outcome {
+            Ok(output) => self.settle_effect(node_id, &output.result).await,
+            Err(error) => {
+                let result = TaskResult::failure(
+                    node_id,
+                    format!("node-{node_id}"),
+                    format!("single-node dispatch failed after the write-ahead: {error}"),
+                    "lost_response".to_string(),
+                    0,
+                    0,
+                );
+                self.settle_effect(node_id, &result).await;
+            }
+        }
+
+        outcome
     }
 }

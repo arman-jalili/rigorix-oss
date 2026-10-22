@@ -4,7 +4,7 @@
 Canonical Reference: .pi/architecture/modules/effect-commitment.md
 Blueprint Source: Guardian Framework v1.2
 Generated: NEVER (this is the source)
-Last Updated: 2026-10-23 — durability and settlement are reported separately; conditional wiring rows state both branches (#1182, #1183)
+Last Updated: 2026-10-23 — the engine derives the intent key once; the write-ahead is the fifth shared gate (#1185, #1187)
 -->
 
 ## Overview
@@ -164,6 +164,10 @@ depends: EffectIntent
 attempt-derived key at `dispatch.rs:795`, which makes every retry a new intent and therefore makes
 the retry fence unenforceable. Same key + same payload ⇒ read the existing record (the custody
 property); same key + different payload ⇒ refuse (preserves #1052).
+
+`ParallelExecutionServiceImpl::effect_intent` calls this derivation **once** and stores the result on
+the intent (#1187). The record, the process-provider environment variable, and the receipt lookup
+all read that one value; there is no placeholder to drift, and a changed payload changes the key.
 
 **Layer:** `application/`
 

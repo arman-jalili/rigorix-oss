@@ -3,7 +3,7 @@
 <!--
 Canonical Reference: .pi/architecture/modules/execution-engine.md
 Blueprint Source: Domain Exploration Session 63c25384
-Last Updated: 2026-10-22 — recovery step outcomes gate NodeStatus::Ready (#1157)
+Last Updated: 2026-10-23 — effect write-ahead is the fifth shared gate; the single-node route settles it (#1185)
 -->
 
 ## Overview
@@ -184,6 +184,7 @@ See [approval module](./modules/approval.md) for the full contract. Summary of c
 | 2 | ADR-017 precondition (authoritative state re-read) | `precondition_denied` |
 | 3 | ADR-013/ADR-015 sequence policy (prefix + companion prerequisite) | `sequence_policy_denied` / `companion_prerequisite_unmet` |
 | 4 | ADR-018 capacity reservation | `capacity_denied` |
+| 5 | ADR-019 effect write-ahead (record before the tool can run) | begin failure refuses the dispatch |
 
 - `gate_node(...)` computes the verdict; `apply_gate(...)` is the dispatch-loop
   bookkeeping (record the deterministic failure, release dependents, or pause).
@@ -192,10 +193,15 @@ See [approval module](./modules/approval.md) for the full contract. Summary of c
 - `execute_node` (the public single-node trait method) calls the **same**
   `gate_node` before dispatching, from the session graph it already reads. It has
   no session to pause, so `Promote`/`HaltIntent` is reported as
-  `approval_required` rather than dispatched. Before this, `execute_node` ran a
+  `approval_required` rather than dispatched. Before #1074, `execute_node` ran a
   node with **no** approval, precondition, sequence or capacity gate: the same
   tool had two different permission answers depending on which method the caller
   used, and the difference was invisible in the signature.
+- The write-ahead is the fifth gate and lives in `gate_node` (#1185). It used to
+  run only in the two graph fill loops, so `execute_node` had no record and no
+  fence — the same divergence one layer down. Both routes now write the record
+  before the tool can run; `execute_node` settles it from the terminal outcome,
+  and `spawn_concurrent_node` does the same on the graph route.
 - Adding a gate means adding it to `gate_node` once. Do not re-inline a gate in
   either caller — that duplication is what produced the divergence.
 - **`approve_node`** contract change: `ApproveNodeInput` gains `approver_id` (required), `authority` (optional), `decision_context` (optional), `token_claims_ref` (optional); the session's `approved: HashSet<Uuid>` becomes a map of node_id → `ApprovalRecord` (delegating to `ApprovalService`); output gains `approval_records: Vec<ApprovalRecord>`
