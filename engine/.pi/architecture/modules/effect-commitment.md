@@ -4,7 +4,7 @@
 Canonical Reference: .pi/architecture/modules/effect-commitment.md
 Blueprint Source: Guardian Framework v1.2
 Generated: NEVER (this is the source)
-Last Updated: 2026-10-23 — the engine derives the intent key once; the write-ahead is the fifth shared gate (#1185, #1187)
+Last Updated: 2026-10-23 — the approver may declare scope, and the envelope records whether the check ran (#1189, #1190)
 -->
 
 ## Overview

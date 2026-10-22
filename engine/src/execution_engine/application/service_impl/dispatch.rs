@@ -454,6 +454,21 @@ impl ParallelExecutionServiceImpl {
         Ok(())
     }
 
+    /// Emit the run-level fact that the scope check ran (or why it did not).
+    ///
+    /// #1189: the envelope derives `scope_check` from these events, so "no
+    /// violations" and "never checked" are distinguishable from the signed
+    /// record.
+    async fn record_scope_check(&self, dag_id: Uuid, node_id: Uuid, status: &str) {
+        self.publish_event(ExecutionEvent::EffectScopeChecked {
+            execution_id: dag_id,
+            node_id: node_id.to_string(),
+            status: status.to_string(),
+            timestamp: Utc::now(),
+        })
+        .await;
+    }
+
     /// ADR-011 R5: post-execution effect-scope verification (evidence only).
     ///
     /// Compares the run's net git changes against the approved record's
@@ -467,9 +482,13 @@ impl ParallelExecutionServiceImpl {
         baseline: &ChangeSnapshot,
     ) {
         let Some(binding) = &self.approval_binding else {
+            self.record_scope_check(dag_id, node_id, "unavailable")
+                .await;
             return;
         };
         let Ok(Some(record)) = binding.service.get_approval(node_id).await else {
+            self.record_scope_check(dag_id, node_id, "not_declared")
+                .await;
             return;
         };
         // Declared scope lives in the canonical intent payload captured at
@@ -485,12 +504,19 @@ impl ParallelExecutionServiceImpl {
             })
             .unwrap_or_default();
         if declared.is_empty() {
+            self.record_scope_check(dag_id, node_id, "not_declared")
+                .await;
             return;
         }
         let oracle = GitDiffEffectOracle;
         let Ok(post) = oracle.snapshot(std::path::Path::new(repo_path)) else {
+            self.record_scope_check(dag_id, node_id, "unavailable")
+                .await;
             return;
         };
+        // The comparison ran: record that fact before reporting what it found,
+        // so a clean result and a violation both carry `checked` (#1189).
+        self.record_scope_check(dag_id, node_id, "checked").await;
         let effects = oracle.diff(baseline, &post);
         if effects.is_empty() {
             return;

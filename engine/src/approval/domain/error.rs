@@ -61,6 +61,11 @@ pub enum ApprovalError {
     #[error("Scope verification unavailable: {0}")]
     ScopeVerificationUnavailable(String),
 
+    /// An approver-supplied declared scope is not a safe repo-relative path,
+    /// or strict mode was requested with no scope (#1190).
+    #[error("Invalid declared scope: {0}")]
+    InvalidScope(String),
+
     /// Unexpected internal failure.
     #[error("Internal error: {0}")]
     Internal(String),

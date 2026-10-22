@@ -39,6 +39,46 @@ pub struct ApproveInput {
     pub decision_context: Option<DecisionContext>,
     /// IdP token/claims presented at approval (credential-substitution check).
     pub token_claims_ref: Option<String>,
+    /// Optional repo-relative paths the approver declares for this approval
+    /// (#1190). Merged with the planner's scope before hashing, so a
+    /// `run_command` step can be verified when the planner cannot name paths.
+    /// Absent = unchanged behaviour.
+    #[serde(default)]
+    pub declared_scope: Option<Vec<String>>,
+    /// When true, refuse an approval whose merged scope is empty. Opt-in until
+    /// the planner covers more tools; the default is unchanged.
+    #[serde(default)]
+    pub strict_scope: Option<bool>,
+}
+
+/// Validate one approver-supplied scope entry (#1190).
+///
+/// Scope entries are repo-relative paths, the same vocabulary the planner and
+/// the git oracle use. Reject absolute paths and traversal: the value is signed
+/// and later compared against git output, so bad input would become bad
+/// evidence. Do not parse a command string into paths — that is guessing.
+pub fn validate_scope_entry(entry: &str) -> Result<(), ApprovalError> {
+    use std::path::{Component, Path};
+
+    if entry.trim().is_empty() || entry.contains('\0') {
+        return Err(ApprovalError::InvalidScope(
+            "declared_scope entries must be non-empty repo-relative paths".into(),
+        ));
+    }
+    let path = Path::new(entry);
+    let bad = path.is_absolute()
+        || path.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        });
+    if bad {
+        return Err(ApprovalError::InvalidScope(format!(
+            "'{entry}' is not a repo-relative path"
+        )));
+    }
+    Ok(())
 }
 
 /// Output of the approval flow: which steps were approved, which were not
@@ -76,6 +116,11 @@ impl ApproveInput {
             return Err(ApprovalError::InvalidState(
                 "approve requires at least one step_name".into(),
             ));
+        }
+        if let Some(scope) = &self.declared_scope {
+            for entry in scope {
+                validate_scope_entry(entry)?;
+            }
         }
         Ok(())
     }

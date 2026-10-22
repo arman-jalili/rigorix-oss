@@ -91,6 +91,9 @@ pub struct AuditEnvelope {
     pub approval_events: Vec<ApprovalRecordRef>,
     /// Post-execution scope violations (non-blocking evidence).
     pub scope_violations: Vec<ScopeViolationRef>,
+    /// Whether the scope check ran: checked | not_declared | unavailable.
+    /// None on legacy envelopes (#1189).
+    pub scope_check: Option<ScopeCheckStatus>,
     /// Reference + summary of decision context (full payload opt-in, stored locally).
     pub decision_context_ref: Option<String>,
     /// Attributed human identity of author/approver (see identity module).
@@ -107,6 +110,7 @@ See [approval module](./modules/approval.md) and [identity module](./modules/ide
 |-------|------|--------|-------|
 | `approval_events` | `Vec<ApprovalRecordRef>` | ApprovalService | One ref per human approval: step_name, node_id, intent_hash, approver_id, authority, decided_at, decision_context_ref |
 | `scope_violations` | `Vec<ScopeViolationRef>` | ApprovalService (git-diff oracle) | Out-of-scope effects; non-blocking evidence |
+| `scope_check` | `Option<ScopeCheckStatus>` | ApprovalService (git-diff oracle) | `checked` / `not_declared` / `unavailable`; `None` only on legacy envelopes (#1189) |
 | `decision_context_ref` | `Option<String>` | ApprovalService (R4) | Points to full decision context; summary embedded in the ref |
 | `identity` | `Option<IdentityRef>` | Identity module | Subject, issuer, source, authority, expires_at — redacted, never the raw token |
 

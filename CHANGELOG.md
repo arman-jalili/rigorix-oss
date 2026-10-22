@@ -25,6 +25,7 @@ of that train — do not infer its version from these tags (it is 1.4.0).
 - Plan creation declares the effect scope of file writes, patches, and stages, so the R5 oracle can report an out-of-scope effect (#1175) ([#1180](https://github.com/arman-jalili/rigorix-oss/pull/1180))
 - `rigorix doctor` reports the effect-commitment seam and its derived ceiling (#1176) ([#1180](https://github.com/arman-jalili/rigorix-oss/pull/1180))
 - `doctor` reports durability and settlement as separate axes, with the restart cost (#1182) ([#1184](https://github.com/arman-jalili/rigorix-oss/pull/1184))
+- The approve surface accepts an optional approver-declared scope, merged with the planner's and covered by the intent hash; opt-in strict mode refuses an empty scope (#1190) ([#1194](https://github.com/arman-jalili/rigorix-oss/pull/1194))
 
 ### Fixed
 
@@ -39,14 +40,17 @@ of that train — do not infer its version from these tags (it is 1.4.0).
 - The wiring claim for the `Dispatched` sweep states both branches instead of "every root sweeps" (#1183) ([#1184](https://github.com/arman-jalili/rigorix-oss/pull/1184))
 - `execute_node` runs the effect write-ahead and settle through the shared gate path (#1185) ([#1191](https://github.com/arman-jalili/rigorix-oss/pull/1191))
 - The intent key is derived once and used by the record, provider, and receipt reader; the placeholder is gone (#1187) ([#1191](https://github.com/arman-jalili/rigorix-oss/pull/1191))
+- The signed envelope records whether the scope check ran (`checked` / `not_declared` / `unavailable`), not only whether it found violations (#1189) ([#1194](https://github.com/arman-jalili/rigorix-oss/pull/1194))
 
 ### Internal
 
 - The effect-commitment and capacity-ledger contract proofs gate through `.pi/guards.tsv` and `.pi/scripts/validate-guards.sh`, with seeded-failure self-tests (#1186) ([#1192](https://github.com/arman-jalili/rigorix-oss/pull/1192))
 - Nine effect-commitment issue packets are `done` with a `closed_reason`, and `engine/.pi/issues/README.md` states the closing convention (#1188) ([#1193](https://github.com/arman-jalili/rigorix-oss/pull/1193))
 
-<details><summary>Issues closed in this release (98)</summary>
+<details><summary>Issues closed in this release (100)</summary>
 
+- #1190 — the approve surface cannot declare a scope, so run_command steps have no way to be verified — the runbook says the approve surface may set one
+- #1189 — the signed envelope records scope violations but not whether the check ran — "no violations" is indistinguishable from "never checked"
 - #1188 — nine engine issue packets for effect-commitment still say status:planned after the epic merged, and closed_reason was not applied
 - #1187 — the provider and the receipt reader use the placeholder {dag_id}:{node_id}:pending, not the intent-derived key — a changed payload collides
 - #1186 — the 150-check contract proof never runs in CI: root-only script, crate-scoped loops, and a root loop that is continue-on-error + || true

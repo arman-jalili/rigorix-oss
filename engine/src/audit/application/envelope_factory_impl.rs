@@ -162,6 +162,7 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
             scoring_results: input.scoring_results,
             approval_events: Self::approval_refs_from_events(&input.events),
             scope_violations: Self::scope_refs_from_events(&input.events),
+            scope_check: Self::scope_check_from_events(&input.events),
             sequence_policy_findings: Self::sequence_policy_findings_from_events(&input.events),
             requirement_findings: Self::requirement_findings_from_events(&input.events),
             precondition_findings: Self::precondition_findings_from_events(&input.events),
@@ -256,6 +257,66 @@ mod tests {
             prev_hash: None,
             history_policy: None,
         }
+    }
+
+    fn scope_check_event(status: &str) -> ExecutionEventRef {
+        ExecutionEventRef {
+            event_type: "effect_scope_checked".to_string(),
+            summary: format!("effect scope {status}"),
+            occurred_at: chrono::Utc::now(),
+            correlation_id: None,
+            status: EventStatus::Success,
+            payload: Some(serde_json::json!({ "status": status })),
+        }
+    }
+
+    /// #1189: a clean envelope and an unexamined envelope are different facts.
+    #[tokio::test]
+    async fn scope_check_distinguishes_checked_from_not_declared_and_unavailable() {
+        use crate::audit::domain::ScopeCheckStatus;
+
+        let factory = AuditEnvelopeFactoryImpl::default();
+        for (status, expected) in [
+            ("checked", ScopeCheckStatus::Checked),
+            ("not_declared", ScopeCheckStatus::NotDeclared),
+            ("unavailable", ScopeCheckStatus::Unavailable),
+        ] {
+            let mut input = sample_input();
+            input.events.push(scope_check_event(status));
+            let envelope = factory.build_envelope(input).await.unwrap();
+            assert_eq!(
+                envelope.scope_check,
+                Some(expected),
+                "status {status} must survive into the envelope"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn scope_check_is_absent_on_a_legacy_envelope() {
+        // No `effect_scope_checked` event: the envelope predates the field and
+        // makes no claim either way.
+        let envelope = AuditEnvelopeFactoryImpl::default()
+            .build_envelope(sample_input())
+            .await
+            .unwrap();
+        assert_eq!(envelope.scope_check, None);
+    }
+
+    #[tokio::test]
+    async fn scope_check_prefers_unavailable_over_checked() {
+        use crate::audit::domain::ScopeCheckStatus;
+
+        // One node compared, another could not be: the run's assurance is
+        // incomplete, so the record must not read as fully checked.
+        let mut input = sample_input();
+        input.events.push(scope_check_event("checked"));
+        input.events.push(scope_check_event("unavailable"));
+        let envelope = AuditEnvelopeFactoryImpl::default()
+            .build_envelope(input)
+            .await
+            .unwrap();
+        assert_eq!(envelope.scope_check, Some(ScopeCheckStatus::Unavailable));
     }
 
     #[tokio::test]
@@ -789,6 +850,51 @@ impl AuditEnvelopeFactoryImpl {
             });
         }
         out
+    }
+
+    /// Aggregate the per-node `effect_scope_checked` events into the run's
+    /// outcome (#1189).
+    ///
+    /// Precedence: `unavailable` if any node could not be checked (the run's
+    /// assurance is incomplete), else `checked` if any node was compared, else
+    /// `not_declared`. No event at all means a legacy envelope: `None`.
+    fn scope_check_from_events(
+        events: &[crate::audit::domain::ExecutionEventRef],
+    ) -> Option<crate::audit::domain::ScopeCheckStatus> {
+        use crate::audit::domain::ScopeCheckStatus;
+
+        let mut seen = false;
+        let mut checked = false;
+        let mut unavailable = false;
+        for e in events {
+            if e.event_type != "effect_scope_checked" {
+                continue;
+            }
+            let Some(status) = e
+                .payload
+                .as_ref()
+                .and_then(|p| p.get("status"))
+                .and_then(|v| v.as_str())
+            else {
+                continue;
+            };
+            seen = true;
+            match status {
+                "checked" => checked = true,
+                "unavailable" => unavailable = true,
+                _ => {}
+            }
+        }
+        if !seen {
+            return None;
+        }
+        if unavailable {
+            Some(ScopeCheckStatus::Unavailable)
+        } else if checked {
+            Some(ScopeCheckStatus::Checked)
+        } else {
+            Some(ScopeCheckStatus::NotDeclared)
+        }
     }
 
     fn decision_context_ref_from_events(

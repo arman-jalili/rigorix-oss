@@ -393,6 +393,11 @@ pub struct ApproveInput {
     pub authority: Option<String>,        // role / policy id (captured fact)
     pub decision_context: Option<DecisionContext>, // R4 — what the human was shown
     pub token_claims_ref: Option<String>, // IdP token/claims presented at approval
+    // #1190: optional approver-declared scope, merged with the planner's and
+    // covered by the hash. Absent = unchanged. Entries must be repo-relative.
+    pub declared_scope: Option<Vec<String>>,
+    // #1190: opt-in; refuse an approval whose merged scope is empty.
+    pub strict_scope: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -406,6 +411,14 @@ pub struct ApproveOutput {
 ```
 
 **Dependencies:** `DecisionContext`, `ApprovalRecord`
+
+**Scope from the approval surface (#1190):** `declared_scope` is optional and
+additive. At approval it is validated (non-empty, repo-relative, no `..` or
+absolute paths), merged with the planner's scope before hashing, and stored in
+`ApprovalRecord.intent_payload`. `verify_intent` re-merges
+`ApprovalRecord.approver_scope` into the current node intent before hashing, so a
+changed planner scope still mismatches. `strict_scope` refuses an approval whose
+merged scope is empty; it is opt-in until every producer supplies a scope.
 
 ---
 
@@ -592,6 +605,11 @@ pub struct AuditEnvelope {
     /// Post-execution scope violations (non-blocking evidence).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scope_violations: Vec<ScopeViolationRef>,
+
+    /// Whether R5 ran: `checked` | `not_declared` | `unavailable` (#1189).
+    /// `None` on legacy envelopes that did not record it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope_check: Option<ScopeCheckStatus>,
 
     /// Reference + summary of decision context (full payload opt-in, stored locally).
     #[serde(default, skip_serializing_if = "Option::is_none")]

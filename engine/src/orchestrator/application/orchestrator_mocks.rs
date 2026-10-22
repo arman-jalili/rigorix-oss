@@ -1,3 +1,4 @@
+//! @canonical .pi/architecture/modules/orchestrator.md
 //! Mock service implementations for orchestrator tests.
 //!
 //! These mocks provide deterministic implementations of engine services
@@ -506,6 +507,7 @@ impl crate::audit::application::AuditService for MockAuditService {
                 requirement_findings: Vec::new(),
                 precondition_findings: Vec::new(),
                 scope_violations: Vec::new(),
+                scope_check: None,
                 decision_context_ref: None,
                 signature: None,
                 evidence_degraded: false,
