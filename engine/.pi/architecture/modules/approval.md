@@ -4,6 +4,7 @@
 Canonical Reference: .pi/architecture/modules/approval.md
 Rationale: Bind human approval to the exact resolved execution intent — replay protection at the step level, first-class signed evidence, and effect-scope verification
 Blueprint Source: Requirements v1 — 2026-08-28 (approved, NOT YET BUILT)
+Last Updated: 2026-10-23 — plan creation produces the declared scope (#1175)
 -->
 
 ## Overview
@@ -80,14 +81,17 @@ Stored as `decision_context` in the approval record; **summarized** into the env
 - **Effect oracle:** git diff — the engine snapshots `git status` / `git diff --stat` at dispatch (post-approval, pre-execution) and post-execution; the actual changed path set is the oracle. `file_paths` (engine-visible file tools) alone would miss side-effects from `run_command` scripts (the exact case motivating effect-scope verification) — git diff does not.
 - Effects outside the declared scope → `scope_violation` flag in the envelope (**non-blocking, first-class evidence**; R2 is the blocking check).
 
-**Implementation status: wired in all three entry points, inert until a scope is
-declared (#1099).** CLI, GitHub Action and MCP host now set `approval_repo_path` to
-their repository root; the oracle runs for approval-gated steps. It still produces
-no evidence unless the approved intent carried a non-empty `declared_scope` — the
-check is gated on the evidence, not on the wiring — so enabling it cannot invent a
-violation. `rigorix doctor` reports an `effect scope` row, which is unarmed until
-`approval binding` is armed: without an approval record there is no declared scope
-to diff against.
+**Implementation status: wired in all three entry points and fed by plan creation
+(#1099, #1175).** CLI, GitHub Action and MCP host set `approval_repo_path` to
+their repository root; the oracle runs for approval-gated steps. Plan creation
+writes `declared_scope` into the resolved intent for actions that name a file
+(`file_write`, `file_append`, `file_patch`, `git_stage`), so an out-of-scope
+effect is detectable end to end. A `run_command` step declares no scope: a
+command string is not a path list, and a guessed scope would create false
+violations. The check remains gated on the evidence, so enabling it cannot invent
+a violation. `rigorix doctor` reports an `effect scope` row, which is unarmed
+until `approval binding` is armed: without an approval record there is no
+declared scope to diff against.
 
 **Correction to the #1072 record.** #1072 was closed `COMPLETED` with three parts:
 the oracle and the staged-changes snapshot landed, "disabled in every production

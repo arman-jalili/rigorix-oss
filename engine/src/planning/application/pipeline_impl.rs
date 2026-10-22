@@ -308,11 +308,21 @@ impl PlanningPipelineImpl {
                 TemplateAction::RunCommand { command, .. } => ("run_command", command.clone()),
                 TemplateAction::FileRead { path } => ("file_read", path.clone()),
                 TemplateAction::FileWrite { path, content } => {
-                    let v = serde_json::json!({"path": path, "content": content});
+                    // #1175: a write names the file it will touch, so the plan
+                    // can declare the effect scope it is asking approval for.
+                    let v = serde_json::json!({
+                        "path": path,
+                        "content": content,
+                        "declared_scope": [path],
+                    });
                     ("file_write", v.to_string())
                 }
                 TemplateAction::FileAppend { path, content } => {
-                    let v = serde_json::json!({"path": path, "content": content});
+                    let v = serde_json::json!({
+                        "path": path,
+                        "content": content,
+                        "declared_scope": [path],
+                    });
                     ("file_append", v.to_string())
                 }
                 TemplateAction::FilePatch {
@@ -346,10 +356,18 @@ impl PlanningPipelineImpl {
                     if let Some(p) = position {
                         obj.insert("position".to_string(), serde_json::json!(p));
                     }
+                    // #1175: the patch names the one file it changes.
+                    obj.insert("declared_scope".to_string(), serde_json::json!([path]));
                     ("file_patch", serde_json::Value::Object(obj).to_string())
                 }
                 TemplateAction::GitRead { command, .. } => ("git_read", command.clone()),
-                TemplateAction::GitStage { path } => ("git_stage", path.clone()),
+                TemplateAction::GitStage { path } => {
+                    // #1175: staging is an effect on the named path. The JSON
+                    // shape keeps the path extraction (`field_from_intent`)
+                    // working while carrying the scope to the approval.
+                    let v = serde_json::json!({"path": path, "declared_scope": [path]});
+                    ("git_stage", v.to_string())
+                }
                 TemplateAction::GitCommit {
                     message,
                     auto_stage,
@@ -911,4 +929,95 @@ pub fn compute_planning_hash(
         .map(|b| format!("{:02x}", b))
         .collect::<String>();
     PlanningHash::new(hash_hex)
+}
+
+#[cfg(test)]
+mod declared_scope_tests {
+    use super::PlanningPipelineImpl;
+    use crate::templates::application::dto::{GenerateOutput, GeneratedNode};
+    use crate::templates::domain::{RetryConfig, TemplateAction};
+
+    fn output(node: GeneratedNode) -> GenerateOutput {
+        GenerateOutput {
+            template_id: "scope-test".to_string(),
+            nodes: vec![node],
+            edges: Vec::new(),
+            valid: true,
+            topological_order: vec!["n1".to_string()],
+            errors: Vec::new(),
+            execution_id: uuid::Uuid::new_v4(),
+            node_count: 1,
+        }
+    }
+
+    fn generated(action: TemplateAction) -> GeneratedNode {
+        GeneratedNode {
+            id: "n1".to_string(),
+            name: "step".to_string(),
+            action,
+            retry: RetryConfig::default(),
+            validate: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn plan_creation_declares_the_scope_of_a_file_write() {
+        // #1175: the oracle compares effects against this list. A plan that
+        // names the file it writes can declare it without guessing.
+        let (graph, _) =
+            PlanningPipelineImpl::build_task_graph(&output(generated(TemplateAction::FileWrite {
+                path: "src/auth.rs".to_string(),
+                content: "fn main() {}".to_string(),
+            })));
+        let node = graph.nodes().next().expect("one node");
+        let intent = crate::approval::domain::ExecutionIntent::from_node(node);
+        assert_eq!(intent.declared_scope, vec!["src/auth.rs".to_string()]);
+    }
+
+    #[test]
+    fn plan_creation_declares_the_scope_of_a_patch_and_a_stage() {
+        let (graph, _) =
+            PlanningPipelineImpl::build_task_graph(&output(generated(TemplateAction::FilePatch {
+                path: "docs/readme.md".to_string(),
+                insert: "text".to_string(),
+                search: None,
+                before: false,
+                anchor_type: None,
+                anchor_name: None,
+                container: None,
+                position: None,
+            })));
+        let node = graph.nodes().next().expect("one node");
+        let intent = crate::approval::domain::ExecutionIntent::from_node(node);
+        assert_eq!(intent.declared_scope, vec!["docs/readme.md".to_string()]);
+
+        let (graph, _) =
+            PlanningPipelineImpl::build_task_graph(&output(generated(TemplateAction::GitStage {
+                path: "src/lib.rs".to_string(),
+            })));
+        let node = graph.nodes().next().expect("one node");
+        let intent = crate::approval::domain::ExecutionIntent::from_node(node);
+        assert_eq!(intent.declared_scope, vec!["src/lib.rs".to_string()]);
+    }
+
+    #[test]
+    fn a_run_command_does_not_invent_a_scope() {
+        // #1175: the command string is not a path list. A guessed scope creates
+        // false violations, which trains operators to ignore the control.
+        let (graph, _) = PlanningPipelineImpl::build_task_graph(&output(generated(
+            TemplateAction::RunCommand {
+                command: "make clean".to_string(),
+                cwd: None,
+                timeout_secs: 60,
+                env: std::collections::HashMap::new(),
+            },
+        )));
+        let node = graph.nodes().next().expect("one node");
+        let intent = crate::approval::domain::ExecutionIntent::from_node(node);
+        assert!(
+            intent.declared_scope.is_empty(),
+            "no explicit path, no declared scope: {:?}",
+            intent.declared_scope
+        );
+    }
 }

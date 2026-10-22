@@ -294,6 +294,12 @@ whatever agent you run, so it is measured on these dimensions:
 | **Delegation** | Authority is silently re-delegated | The record is bound to the attesting identity; whether a delegation is legally valid is explicitly out of scope | ADR-012, spec NC-2 |
 | **Semantic** | The effect differs from the intent | Canonical `eff:` effect keys and value-identity matching | ADR-014 |
 
+**Scope evidence needs a declared scope.** Plan creation declares the files a
+step will write, patch, or stage; the post-execution oracle diffs those against
+the run's git changes. A `run_command` step declares no scope unless the plan
+states one, because a command string is not a path list — the oracle is evidence,
+not prevention.
+
 **What this table is not.** It is not a benchmark, not a competitor ranking, and
 not a claim of independent validation. No public independent comparative
 evaluation exists; the [claim ceiling](#claim-ceiling) applies (L1 engineering
