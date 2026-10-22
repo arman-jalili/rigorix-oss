@@ -48,7 +48,7 @@ pub use seam_impl::EffectCommitmentSeam;
 pub use service::EffectCommitmentService;
 pub use service_impl::EffectCommitmentServiceImpl;
 pub use setup::{
-    EffectCommitmentCeiling, EffectCommitmentCompositionRoot, EffectCommitmentSetup,
-    EffectCommitmentSetupError,
+    CommitmentDurability, CommitmentSettlement, EffectCommitmentCeiling,
+    EffectCommitmentCompositionRoot, EffectCommitmentSetup, EffectCommitmentSetupError,
 };
 pub use vocabulary::NodeStateVocabulary;

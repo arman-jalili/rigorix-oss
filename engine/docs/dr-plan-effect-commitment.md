@@ -14,7 +14,7 @@ Losing it is not a cache miss: it reopens the window where the system cannot dis
 |---|---|---|
 | L1 (`in_memory`) | the engine process | Nothing durable. Process death loses the records; this is the documented L1 ceiling. |
 | L2 (`http`) | the contested ledger store | The records and their transitions. This is the DR scope. |
-| L3 | the provider receipt system + L2 store | Provider evidence. The provider is the authority; the store is the index. |
+| L3 (settlement) | the provider receipt system + whichever ledger is configured | Provider evidence. The provider is the authority; the store is the index. L3 is orthogonal to durability: at L1 the receipt can prove a commitment during the process, but a restart loses the record it would resolve. |
 
 ## Backup strategy
 

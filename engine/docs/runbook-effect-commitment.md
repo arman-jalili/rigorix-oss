@@ -19,6 +19,13 @@ unknown. The context answers one question — *was this effect committed?* — a
 Without a receipt reader the context can prove **not-settled**; it can never prove **settled**. Do
 not describe a deployment as L3 unless its resolver actually presents provider evidence.
 
+**Durability and settlement are two axes, not one ceiling (#1182).** L1/L2 describe how long the
+record survives; L3 describes whether provider evidence can prove the effect committed. They
+combine: an in-process ledger with a receipt reader is **L1 durability + L3 settlement**. That can
+prove a commitment while the process lives, but a restart still loses the record and its fences, so
+the receipt cannot be attached to anything afterward. `rigorix doctor` reports both axes and states
+the restart cost; do not quote a single "L3" as if it implied durability.
+
 ## Who owns the `Dispatched` sweep (#1173)
 
 The expiry predicate compares two values from two places:
