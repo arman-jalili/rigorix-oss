@@ -15,6 +15,125 @@ of that train — do not infer its version from these tags (it is 1.4.0).
 
 ## [Unreleased]
 
+### Added
+
+- **Capacity ledger bounded context (ADR-018):** frozen contract, in-process and HTTP adapters, intent-derived keys, service-owned `ReservationGuard`, a rolling exposure window, and the ambiguous lapsed-lease state (#1020–#1034, #1049–#1054) ([#1035](https://github.com/arman-jalili/rigorix-oss/pull/1035), [#1065](https://github.com/arman-jalili/rigorix-oss/pull/1065))
+- **Effect commitment bounded context (ADR-019):** write-ahead record, four-state machine with non-terminal `Ambiguous`, resolver authority, dependent and retry fences, L1/L2/L3 adapters, armed in all three composition roots, with a runbook and DR plan (#1112–#1135) ([#1136](https://github.com/arman-jalili/rigorix-oss/pull/1136), [#1162](https://github.com/arman-jalili/rigorix-oss/pull/1162))
+- Enforcement budgets are evaluated before every tool call on both dispatch paths; recovery recipes are opt-in (#1108) ([#1111](https://github.com/arman-jalili/rigorix-oss/pull/1111))
+- `rigorix doctor`, an `init` seam inventory, and `rigorix key` that emits the HMAC key the engine reads (#1101–#1103) ([#1105](https://github.com/arman-jalili/rigorix-oss/pull/1105)–[#1107](https://github.com/arman-jalili/rigorix-oss/pull/1107))
+- Process-spawn guard: clippy denies spawning outside the approved sinks, one mechanical guard per escaped failure class, and stable baselines (#1082, #1083, #1089) ([#1084](https://github.com/arman-jalili/rigorix-oss/pull/1084)–[#1088](https://github.com/arman-jalili/rigorix-oss/pull/1088))
+- Plan creation declares the effect scope of file writes, patches, and stages, so the R5 oracle can report an out-of-scope effect (#1175) ([#1180](https://github.com/arman-jalili/rigorix-oss/pull/1180))
+- `rigorix doctor` reports the effect-commitment seam and its derived ceiling (#1176) ([#1180](https://github.com/arman-jalili/rigorix-oss/pull/1180))
+
+### Fixed
+
+- Effect-commitment runtime gaps: capacity holds reuse the intent key, orphaned `Dispatched` records are swept, the intent key reaches process providers, and an unreachable `http` backend is refused at startup (#1163–#1166) ([#1167](https://github.com/arman-jalili/rigorix-oss/pull/1167))
+- The `Dispatched` sweep is gated on ledger ownership, so an L2 client cannot judge another process's clock (#1173) ([#1180](https://github.com/arman-jalili/rigorix-oss/pull/1180))
+- The provider contract states the implemented process channel and marks `Idempotency-Key` reserved (#1174) ([#1180](https://github.com/arman-jalili/rigorix-oss/pull/1180))
+- Recovery reports `Unsupported` instead of `Recovered` for repairs it cannot perform (#1157) ([#1168](https://github.com/arman-jalili/rigorix-oss/pull/1168))
+- `--enforcement` is refused with an actionable message, and the refusal renders without gaps (#1156, #1171) ([#1169](https://github.com/arman-jalili/rigorix-oss/pull/1169), [#1172](https://github.com/arman-jalili/rigorix-oss/pull/1172))
+- Process-spawn allow comments match the code; a hook that closes stdin before reading is a normal early exit (#1159) ([#1170](https://github.com/arman-jalili/rigorix-oss/pull/1170))
+- Run-command rejects compound shell strings and clears the child environment (#1067, #1068); approval binding refuses without an HMAC key (#1070); the scope oracle is wired in all roots and sees staged changes (#1072, #1099); the anchor label requires a verified head (#1071) ([#1084](https://github.com/arman-jalili/rigorix-oss/pull/1084)–[#1106](https://github.com/arman-jalili/rigorix-oss/pull/1106))
+- TLS trust path takes the two 2026-10 RUSTSEC fixes (#1110) ([#1110](https://github.com/arman-jalili/rigorix-oss/pull/1110))
+
+<details><summary>Issues closed in this release (92)</summary>
+
+- #1178 — the CHANGELOG's Unreleased section is empty although a whole context and three fix batches landed since 1.10.0
+- #1177 — the OSS wiring-claims manifest has no effect-commitment row, and three shipped modules still say Status: Planned
+- #1176 — doctor reports every seam except effect-commitment, so the newest enforcement boundary and its claim ceiling are invisible
+- #1175 — the effect-scope oracle is wired in every root and nothing produces a declared_scope — the scope control cannot fire, and the docs call it by design
+- #1174 — the provider contract says HTTP providers receive Idempotency-Key, but no execution path sends HTTP — the only sender is a test
+- #1173 — the Dispatched sweep runs in every client root against the local clock; at L2 the service must own it, or roots fence each other live work
+- #1171 — the --enforcement refusal renders with 18-space gaps, and the comment beside the working path still says the flag selects a preset
+- #1166 — backend.kind = "http" points at a ledger service that does not exist in OSS, and no deployment ships a config — every run is L1 and the L2 path is unreachable
+- #1165 — the intent key is never sent to the provider, so the receipt reader idempotency-key lookup can only miss — L3 is unreachable by construction
+- #1164 — nothing reconciles Dispatched records after a crash: may_retry only blocks Ambiguous, so a resumed run re-dispatches an effect that may already have happened
+- #1163 — capacity holds use a per-attempt UUID while the effect record uses an intent key: a crash after reserve leaves an unrecoverable hold, and a resumed dispatch holds twice
+- #1160 — .pi/INDEX.md and the architecture-coordinator agent reference four files that exist under no path — decide delete or instantiate
+- #1159 — git_read_tool: the comment justifying its process-spawn allow says sh -c, but the code is argv-only — the review note contradicts the thing it certifies
+- #1157 — recovery: execute_step returns Ok for five repairs without performing them — the seam is wired, reports success, and repairs nothing
+- #1156 — cli: --enforcement is a documented override that is threaded and never read — passing it changes nothing
+- #1135 — Architecture Readiness: Runbook, DR, docs, CI enforcement
+- #1134 — Proofing: Validation scripts + CI integration
+- #1133 — Implement CompositionRoots — effect-commitment
+- #1132 — Implement NodeStateVocabulary — effect-commitment
+- #1131 — Implement RetryFence — effect-commitment
+- #1130 — Implement DependentFence — effect-commitment
+- #1129 — Implement DispatchSeam — effect-commitment
+- #1128 — Implement EffectCommitmentLedger — effect-commitment
+- #1127 — Implement DefaultEffectCommitmentFactory — effect-commitment
+- #1126 — Implement EffectCommitmentConfig — effect-commitment
+- #1125 — Implement ProviderReceiptReader — effect-commitment
+- #1124 — Implement HttpEffectLedger — effect-commitment
+- #1123 — Implement InMemoryEffectLedger — effect-commitment
+- #1122 — Implement ReconciliationPolicy — effect-commitment
+- #1121 — Implement IntentKeyDerivation — effect-commitment
+- #1120 — Implement EffectCommitmentService — effect-commitment
+- #1119 — Implement CommitmentError — effect-commitment
+- #1118 — Implement ResolverIdentity — effect-commitment
+- #1117 — Implement ObservedOutcome — effect-commitment
+- #1116 — Implement EffectRecord — effect-commitment
+- #1115 — Implement EffectState — effect-commitment
+- #1114 — Implement EffectIntent — effect-commitment
+- #1113 — Contract Freeze: Define interfaces and contracts
+- #1112 — Epic: effect-commitment
+- #1108 — enforcement/recovery: wire the two modules that no entry point constructed (budgets pre-dispatch, recovery opt-in)
+- #1104 — integration: the MCP gateway is the only adapter surface — record whether that is the ceiling or a gap
+- #1103 — cli: no `rigorix doctor` — nothing can answer 'is enforcement actually armed in this repo?'
+- #1102 — cli: `rigorix key` prints a random UUID that nothing consumes — 26 readers of RIGORIX_HMAC_KEY, zero of this value
+- #1101 — cli: `rigorix init` scaffolds no enforcement configuration and names none of the env vars that arm it
+- #1100 — audit: verify every module doc and ADR claim of end-to-end wiring against the call graph, then fix or delete what does not hold
+- #1099 — approval: the effect-scope oracle still ships disabled in all three entry points — #1072 closed COMPLETED with the wiring half deferred
+- #1096 — .pi/context/domain-workflow.md points at two .pi/ paths that live under engine/ — one also names the wrong file
+- #1094 — demo/capacity-ledger/README.md points at two paths that do not exist — both are missing the engine/ prefix
+- #1090 — the fix for retry-replaces-guard (found by the capacity demo) has no test — a future edit to the guard registry silently reopens it
+- #1089 — the panic baseline is still keyed by file:line, so any edit above a site reads as a new panic — the unsafe baseline was re-keyed, this one was not
+- #1083 — clippy.toml: ban process-spawn types and methods outside the approved module, so a new spawn site cannot bypass the shell policy
+- #1082 — spike: catalogue the failure classes that escaped gates and reviews, and build one guard per class
+- #1081 — tests: three precondition runner tests spawn /bin/sh on a wall-clock budget and time out under full-suite parallelism
+- #1074 — execution-engine: the public execute_node trait method runs a node without the approval, precondition, sequence or capacity gates
+- #1073 — audit: verify_authority_fact_bundle proves the projection matches the supplied history, not that the history came from the anchor
+- #1072 — approval: the git effect-scope oracle is disabled in every production entry point, and its diff misses staged changes and uses one baseline per loop
+- #1071 — audit: an envelope is labelled HistoryIntegrity::Anchored whenever the anchor is in anchored mode, even when no verified head exists
+- #1070 — approval: RIGORIX_APPROVAL_BINDING=1 with no HMAC key logs a warning and silently falls back to unbound approval
+- #1069 — sequence_policy: the R3 companion obligation is satisfied by a step existing anywhere in the plan — not by ordering, dependency, or success
+- #1068 — run_command: the child process inherits the engine environment, including RIGORIX_HMAC_KEY and anchor credentials
+- #1067 — run_command: the allowlist checks a prefix of a compound shell string, and check_bash is fed the JSON intent instead of the command
+- #1066 — enforcement: the BudgetScope docs instruct operators to use shared_contested, which validation always refuses
+- #1061 — enforcement: BudgetScope::SharedContested defers the limit and nothing takes over — no binding to a capacity-ledger resource
+- #1060 — docs: ADR-018 and the gap ledger still claim the deleted persistence ports exist
+- #1054 — capacity_ledger: ReservationGuard drop performs a fire-and-forget async release and swallows the failure
+- #1053 — capacity_ledger: 'single-execution atomicity' understates the in-process guarantee, and the cross-session case is untested
+- #1052 — capacity_ledger: reusing an idempotency key with a different amount silently returns the original reservation
+- #1051 — capacity_ledger: ResourceSpec.window is accepted and echoed but never enforced — committed exposure never ages out
+- #1050 — capacity_ledger: a lapsed lease is treated as proof the effect did not happen (no ambiguous-outcome state)
+- #1049 — capacity_ledger: ReserveCapacityOutput::guard is always None — the DTO advertises an RAII handle that does not exist
+- #1034 — Architecture Readiness: Runbook, DR, docs, CI enforcement
+- #1033 — Proofing: Validation scripts + CI integration
+- #1032 — Implement CapacityLedger — capacity-ledger
+- #1031 — Implement HttpLedger — capacity-ledger
+- #1030 — Implement InProcessLedger — capacity-ledger
+- #1029 — Implement ReservationGuard — capacity-ledger
+- #1028 — Implement CapacityLedgerService — capacity-ledger
+- #1027 — Implement LedgerError — capacity-ledger
+- #1026 — Implement IdempotencyKey — capacity-ledger
+- #1025 — Implement Exposure — capacity-ledger
+- #1024 — Implement Grant — capacity-ledger
+- #1023 — Implement Reservation — capacity-ledger
+- #1022 — Implement Resource — capacity-ledger
+- #1021 — Contract Freeze: Define interfaces and contracts
+- #1020 — Epic: capacity_ledger
+- #1019 — enforcement: resolve the 'reserved for a future implementation' per-tool call counter
+- #1018 — [deferred] README: restore a runnable demo once the capacity-ledger demo exists
+- #1017 — enforcement: ResourceBudget is a counter, not a reservation — supersede it via the capacity ledger
+- #1016 — persistence ports: LlmBudgetRepository and CapacityLedgerRepository are both declared and neither has a caller
+- #1015 — design: distributed capacity ledger — cross-session aggregate enforcement (ADR-018)
+- #1013 — Competitive positioning: replace the category-error comparison table, and give release notes a durable home
+- #1012 — Documentation hygiene: the README must convert, and every doc must be verified against code
+
+</details>
+
+
 ## [1.10.0] - 2026-10-14
 
 [1.10.0]: https://github.com/arman-jalili/rigorix-oss/releases/tag/v1.10.0
