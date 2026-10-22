@@ -13,11 +13,23 @@ unknown. The context answers one question — *was this effect committed?* — a
 | Level | Claim | Requires |
 |---|---|---|
 | L1 | The intent is recorded before the effect is sent; an `Ambiguous` effect blocks dependents and retry **in this process**. | `backend.kind = "in_memory"` |
-| L2 | Records and fences survive process death and settle through a contested store. | `backend.kind = "http"` + a real ledger service |
+| L2 | Records and fences survive process death and settle through a contested store. | `backend.kind = "http"` **and** a service implementing the frozen `/v1/effects` contract. **OSS ships the client, not the service**; enterprise ADR-011 specifies it. |
 | L3 | The effect **committed**. | a `[receipt_reader]`, provider receipt/read-back evidence, and a provider that received the intent key |
 
 Without a receipt reader the context can prove **not-settled**; it can never prove **settled**. Do
 not describe a deployment as L3 unless its resolver actually presents provider evidence.
+
+## L2: the serving side is not in OSS (#1166)
+
+The HTTP adapter is implemented and frozen, but nothing in this repository answers its six paths.
+Every OSS deployment is therefore **L1** unless the operator supplies the enterprise ledger
+service. That is the honest statement; "L2 available" without a service is the claim this section
+exists to prevent.
+
+If `backend.kind = "http"` is declared, startup probes the address and refuses to run when nothing
+is listening, so the failure happens before the first effect rather than hours into a run. The
+example declaration is [`docs/examples/effect-commitment.toml`](examples/effect-commitment.toml);
+it is inert until copied to `.rigorix/effect-commitment.toml`.
 
 ## Startup sequence and dependencies
 

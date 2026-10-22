@@ -197,6 +197,12 @@ depends: EffectCommitmentLedger
 **Purpose:** Transport to a contested store that owns atomicity (L2). Every failure — unreachable,
 timeout, contended — is fail-closed: the dispatch is refused, never silently allowed.
 
+**Serving side is not in OSS (#1166).** The six frozen paths are a client contract; the enterprise
+service (ADR-011) implements them. An OSS deployment is L1 unless that service is supplied, and a
+`backend.kind = "http"` declaration probes the address at startup so an unreachable service refuses
+the run before the first effect. The example declaration lives at
+`docs/examples/effect-commitment.toml` and is inert until copied to `.rigorix/`.
+
 **Layer:** `infrastructure/`
 
 ### ProviderReceiptReader

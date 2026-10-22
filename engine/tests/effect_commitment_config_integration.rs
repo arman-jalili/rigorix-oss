@@ -104,3 +104,80 @@ unknown = true
         .is_err()
     );
 }
+
+fn scratch_dir() -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "rigorix-effect-setup-{}-{}",
+        std::process::id(),
+        uuid::Uuid::new_v4()
+    ));
+    std::fs::create_dir_all(dir.join(".rigorix")).unwrap();
+    dir
+}
+
+#[tokio::test]
+async fn an_unreachable_http_backend_refuses_to_start() {
+    let root = scratch_dir();
+    std::fs::write(
+        root.join(".rigorix/effect-commitment.toml"),
+        r#"
+[backend]
+kind = "http"
+base_url = "http://127.0.0.1:1"
+timeout_ms = 500
+"#,
+    )
+    .unwrap();
+
+    let error =
+        match rigorix_engine::effect_commitment::EffectCommitmentSetup::from_env(&root).await {
+            Err(error) => error,
+            Ok(_) => panic!("a backend pointing at nothing must not start"),
+        };
+    let detail = error.to_string();
+    assert!(detail.contains("unreachable"), "detail: {detail}");
+    assert!(
+        detail.contains("L1"),
+        "the error must name the honest ceiling: {detail}"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn an_absent_declaration_still_means_no_seam() {
+    let root = std::env::temp_dir().join(format!(
+        "rigorix-effect-absent-{}-{}",
+        std::process::id(),
+        uuid::Uuid::new_v4()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let setup = rigorix_engine::effect_commitment::EffectCommitmentSetup::from_env(&root)
+        .await
+        .expect("absent is not an error");
+    assert!(
+        setup.is_none(),
+        "no declaration must leave the previous path unchanged"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn an_in_memory_declaration_arms_the_seam_without_network() {
+    let root = scratch_dir();
+    std::fs::write(
+        root.join(".rigorix/effect-commitment.toml"),
+        "[backend]\nkind = \"in_memory\"\n",
+    )
+    .unwrap();
+    let setup = rigorix_engine::effect_commitment::EffectCommitmentSetup::from_env(&root)
+        .await
+        .expect("in-memory is always available")
+        .expect("declared means armed");
+    assert!(
+        !setup.can_prove_commitment(),
+        "no receipt reader means not L3"
+    );
+    assert_eq!(setup.reconcile().await.expect("empty sweep"), 0);
+    let _ = std::fs::remove_dir_all(root);
+}

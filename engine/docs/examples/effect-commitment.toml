@@ -1,0 +1,37 @@
+# Example only — the engine does NOT read this file.
+#
+# Copy it to `<repo>/.rigorix/effect-commitment.toml` to arm the dispatch seam.
+# Absent declaration = no seam, no network, no shared state, unchanged dispatch.
+#
+# ---------------------------------------------------------------- L1 (OSS)
+# The only backend this repository can fully serve. Records and fences are
+# exact within one process; a restart loses them. This is the honest OSS
+# default.
+[backend]
+kind = "in_memory"
+
+# ---------------------------------------------------------------- L2 (enterprise)
+# The HTTP client is frozen and implemented here, but the serving side is not
+# in OSS: it must implement POST /v1/effects/intents,
+# POST /v1/effects/{id}/{settle,ambiguous,resolve}, GET /v1/effects (including
+# ?state=dispatched) and GET /v1/effects/ambiguous. Startup probes the address
+# and refuses to run if nothing is listening.
+#
+# [backend]
+# kind = "http"
+# base_url = "https://commitment.example"
+# timeout_ms = 5000
+# max_response_body_bytes = 65536
+# auth_token_env = "EFFECT_LEDGER_TOKEN"
+
+# ---------------------------------------------------------------- L3 (provider)
+# Optional. Without it the context can prove not-settled, never settled.
+# The provider must receive the intent key (Idempotency-Key /
+# RIGORIX_EFFECT_IDEMPOTENCY_KEY), dedupe on it, and expose it on the receipt.
+#
+# [receipt_reader]
+# base_url = "https://payments.example"
+# provider_id = "stripe"
+# timeout_ms = 5000
+# max_response_body_bytes = 65536
+# auth_token_env = "PAYMENTS_TOKEN"
