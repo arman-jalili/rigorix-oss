@@ -14,7 +14,7 @@ unknown. The context answers one question — *was this effect committed?* — a
 |---|---|---|
 | L1 | The intent is recorded before the effect is sent; an `Ambiguous` effect blocks dependents and retry **in this process**. | `backend.kind = "in_memory"` |
 | L2 | Records and fences survive process death and settle through a contested store. | `backend.kind = "http"` + a real ledger service |
-| L3 | The effect **committed**. | a `[receipt_reader]` and provider receipt/read-back evidence |
+| L3 | The effect **committed**. | a `[receipt_reader]`, provider receipt/read-back evidence, and a provider that received the intent key |
 
 Without a receipt reader the context can prove **not-settled**; it can never prove **settled**. Do
 not describe a deployment as L3 unless its resolver actually presents provider evidence.
@@ -65,6 +65,20 @@ provider_id = "stripe"
 | `receipt_reader` | Optional provider read-back adapter; presence is the L3 claim |
 | `timeout_ms` | Per-request deadline; must be > 0 |
 | `max_response_body_bytes` | Bounded response body; must be > 0 |
+
+## L3: what the provider must do (#1165)
+
+The receipt reader looks a receipt up by the intent's idempotency key. That only works if the
+provider was given the key when the effect was sent:
+
+- **HTTP providers** receive `Idempotency-Key: <intent-key>`.
+- **Process providers** invoked through `run_command` receive
+  `RIGORIX_EFFECT_IDEMPOTENCY_KEY=<intent-key>` in their environment.
+
+The provider MUST dedupe on that key and MUST expose it on the receipt (the reader queries
+`GET /v1/receipts?idempotency_key=<key>`). A provider that stores the key but does not dedupe leaves
+L3 out of reach. The key is not a secret, but it must never be logged together with request or
+response bodies. Without a provider that honours this contract, the honest ceiling is L2.
 
 ## Operating an unsettled effect
 

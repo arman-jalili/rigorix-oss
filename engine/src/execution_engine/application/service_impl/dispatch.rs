@@ -142,6 +142,11 @@ impl ParallelExecutionServiceImpl {
             // failed begin refuses the dispatch.
             self.begin_effect(dag_id, graph, node_id).await?;
 
+            let effect_key = self
+                .effect_keys
+                .lock()
+                .ok()
+                .and_then(|keys| keys.get(&node_id).map(|key| key.as_str().to_string()));
             spawn_concurrent_node(
                 &mut join_set,
                 graph,
@@ -152,6 +157,7 @@ impl ParallelExecutionServiceImpl {
                 &self.permission_enforcer,
                 &self.budget_enforcer_for(dag_id),
                 &self.hook_runner,
+                effect_key,
                 config.enable_enforcement,
             )
             .await?;
@@ -301,6 +307,11 @@ impl ParallelExecutionServiceImpl {
                 // ADR-019: write the intent durably before the tool is sent.
                 self.begin_effect(dag_id, graph, next_id).await?;
 
+                let effect_key = self
+                    .effect_keys
+                    .lock()
+                    .ok()
+                    .and_then(|keys| keys.get(&next_id).map(|key| key.as_str().to_string()));
                 spawn_concurrent_node(
                     &mut join_set,
                     graph,
@@ -311,6 +322,7 @@ impl ParallelExecutionServiceImpl {
                     &self.permission_enforcer,
                     &self.budget_enforcer_for(dag_id),
                     &self.hook_runner,
+                    effect_key,
                     config.enable_enforcement,
                 )
                 .await?;
@@ -862,6 +874,7 @@ impl ParallelExecutionServiceImpl {
             });
         }
 
+        let key = record.intent().idempotency_key.clone();
         let mut records =
             self.effect_records
                 .lock()
@@ -869,6 +882,13 @@ impl ParallelExecutionServiceImpl {
                     detail: "effect record registry poisoned; refusing to dispatch".to_string(),
                 })?;
         records.insert(node_id, record.id());
+        let mut keys = self
+            .effect_keys
+            .lock()
+            .map_err(|_| ExecutionError::InternalError {
+                detail: "effect key registry poisoned; refusing to dispatch".to_string(),
+            })?;
+        keys.insert(node_id, key);
         Ok(())
     }
 
@@ -887,6 +907,12 @@ impl ParallelExecutionServiceImpl {
             .lock()
             .ok()
             .and_then(|mut records| records.remove(&node_id));
+        // The provider key is only meaningful while the record is in flight.
+        let _ = self
+            .effect_keys
+            .lock()
+            .ok()
+            .and_then(|mut keys| keys.remove(&node_id));
         let Some(record_id) = record_id else {
             return;
         };

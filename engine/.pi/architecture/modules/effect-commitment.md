@@ -208,6 +208,12 @@ depends: ObservedOutcome
 produce an `ObservedOutcome`. This is the L3 boundary. Without it the context can prove
 *not-settled* only, and the runbook must say so.
 
+**Provider-facing contract (#1165):** the reader can look a receipt up by the intent's
+idempotency key, so the provider must have received that key. The engine sends it as
+`Idempotency-Key` to HTTP providers and as `RIGORIX_EFFECT_IDEMPOTENCY_KEY` to process providers
+(`run_command`). The provider must dedupe on it and expose it on the receipt. A provider that
+stores the key but does not dedupe leaves L3 as unreachable as before.
+
 **Layer:** `infrastructure/`
 
 ### EffectCommitmentConfig
