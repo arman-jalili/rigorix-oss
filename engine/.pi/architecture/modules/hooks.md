@@ -3,7 +3,7 @@
 <!--
 Canonical Reference: .pi/architecture/modules/hooks.md
 Rationale: Extensible tool lifecycle interception without modifying engine code
-Last Updated: 2026-10-21 — treat a hook that closes stdin (EPIPE) as a normal early exit
+Last Updated: 2026-10-22 — allow-site comment matches the cleared-env code (#1159)
 -->
 
 ## Overview

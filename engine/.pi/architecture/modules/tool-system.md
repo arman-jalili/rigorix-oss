@@ -241,7 +241,7 @@ pub enum ToolError {
 
 ---
 
-Last updated: 2026-06-15
+Last updated: 2026-10-22 — allow-site comments checked against their code (#1159)
 *Module version: 1.0.0*
 
 ---

@@ -19,7 +19,7 @@
 //! removes the interpreter from the path, so a metacharacter is just a byte in
 //! an argument.
 
-// #1083: approved process-spawning sink — `sh -c` for a git read; the caller-supplied path must be argv, not interpolated (#1082).
+// #1083: approved process-spawning sink — fixed argv (`Command::new("git")`), never `sh -c`; the caller-supplied path is a separate argv element, not interpolated (#1082).
 // See `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
 #![allow(clippy::disallowed_types)]
 
