@@ -54,6 +54,14 @@ impl EffectReconciler {
         Self::new(ledger, DEFAULT_DISPATCH_LEASE)
     }
 
+    /// Whether this reconciler's owner may sweep at all.
+    ///
+    /// False for a shared ledger: the service owns the sweep, and a client that
+    /// swept would compare another process's timestamps against its own clock.
+    pub fn can_sweep(&self) -> bool {
+        self.ledger.can_sweep_dispatched()
+    }
+
     /// The configured lease.
     pub fn lease(&self) -> Duration {
         self.lease
@@ -69,6 +77,13 @@ impl EffectReconciler {
     /// A transport/storage failure is returned unchanged; the caller must fail
     /// closed rather than start with an unknown backlog.
     pub async fn reconcile(&self) -> Result<usize, CommitmentError> {
+        if !self.ledger.can_sweep_dispatched() {
+            tracing::debug!(
+                "effect-commitment: ledger is shared; the service owns the Dispatched sweep, \
+                 this root does not sweep it (#1173)"
+            );
+            return Ok(0);
+        }
         let now = Utc::now();
         let candidates = self.ledger.query(EffectQuery::dispatched(None)).await?;
         let mut swept = 0usize;

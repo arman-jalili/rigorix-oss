@@ -1,7 +1,7 @@
 # DR Plan: Effect Commitment (`effect-commitment`)
 
 **Status:** Implemented (ADR-019)
-**Last updated:** 2026-10-21
+**Last updated:** 2026-10-23
 **Companion runbook:** `docs/runbook-effect-commitment.md`
 
 ## Scope
@@ -37,13 +37,28 @@ Losing it is not a cache miss: it reopens the window where the system cannot dis
    `ResolverIdentity`. A terminal record without evidence is corrupt; do not serve it as settled.
 3. Point the `backend.base_url` at the restored store (or the promoted replica) and restart the
    composition root. `EffectCommitmentSetup::from_env` must succeed; a malformed config refuses to
-   start. The startup sweep (`EffectCommitmentSetup::reconcile`) then moves `Dispatched` records
-   older than the 15-minute dispatch lease to `Ambiguous`; a sweep failure refuses the start.
+   start. The **service** then reconciles: at L2 it owns the store and the clock, and moves
+   `Dispatched` records older than the 15-minute dispatch lease to `Ambiguous`. The client's
+   `EffectCommitmentSetup::reconcile` is a no-op for a shared ledger, because a client clock must
+   not judge another process's `started_at` (#1173). An L1 root still sweeps at startup — it owns
+   the only clock.
 4. Re-query the ambiguous queue — it now includes both effects that lost their response and effects
    whose owner died while still `Dispatched`. Every unsettled effect remains fenced; resolve each
    with provider evidence before closing its run. Do **not** bulk-mark them `NotCommitted` to clear
    the queue.
 5. Reconcile the audit chain: the resolved records are the evidence for the interval.
+
+### Reconciler per ceiling
+
+| ceiling | who reconciles `Dispatched` after a crash | clock |
+|---|---|---|
+| L1 | the composition root, at startup | the root's clock (same process that wrote the record) |
+| L2 | the ledger service (`DispatchedSweeper`, enterprise ADR-011) | the service's clock (same store that owns the records) |
+| L3 | the ledger service, as L2 | the service's clock |
+
+Do not restore an L2 store and then sweep it from a client: the records were written by other
+processes. If the service does not implement the sweeper, orphans stay `Dispatched` and the
+ambiguous queue is incomplete — escalate to the ledger owner rather than shrinking the lease.
 
 ## Failover plan
 

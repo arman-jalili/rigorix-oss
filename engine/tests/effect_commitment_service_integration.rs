@@ -66,6 +66,10 @@ impl TestLedger {
 
 #[async_trait]
 impl EffectCommitmentLedger for TestLedger {
+    fn can_sweep_dispatched(&self) -> bool {
+        true
+    }
+
     async fn begin(&self, intent: EffectIntent) -> Result<EffectRecord, CommitmentError> {
         let key = intent.idempotency_key.clone();
         if let Some(existing) = self.by_key.lock().unwrap().get(&key).copied() {

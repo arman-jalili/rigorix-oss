@@ -201,6 +201,12 @@ fn encode_path_segment(segment: &str) -> String {
 
 #[async_trait]
 impl EffectCommitmentLedger for HttpEffectLedger {
+    fn can_sweep_dispatched(&self) -> bool {
+        // Records are written by other processes and read through the service.
+        // A client clock must not decide that their dispatch expired (#1173).
+        false
+    }
+
     async fn begin(&self, intent: EffectIntent) -> Result<EffectRecord, CommitmentError> {
         let body = BeginEffectInput { intent };
         let request = self.client()?.post(self.url(BEGIN_PATH)).json(&body);

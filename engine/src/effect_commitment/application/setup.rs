@@ -67,6 +67,62 @@ impl From<CommitmentError> for EffectCommitmentSetupError {
     }
 }
 
+/// The guarantee this setup can actually prove.
+///
+/// The ceiling is derived from what was constructed, never declared by an
+/// operator (ADR-019). In particular, L3 requires a provider receipt reader:
+/// without one the context can prove **not-settled**, never **settled**.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffectCommitmentCeiling {
+    /// In-process ledger: exact within this process, lost on restart.
+    L1,
+    /// Shared ledger: survives process death; no provider read-back.
+    L2,
+    /// Provider receipt read-back is armed: can prove committed.
+    L3,
+}
+
+impl EffectCommitmentCeiling {
+    /// Derive the ceiling from the constructed adapters.
+    ///
+    /// Provider evidence is what upgrades L2 to L3; the absence of a shared
+    /// ledger caps the claim at L1 even when a receipt reader is configured,
+    /// because the record itself does not survive the process.
+    pub fn derive(shared_ledger: bool, provider_evidence: bool) -> Self {
+        match (shared_ledger, provider_evidence) {
+            (_, true) => Self::L3,
+            (true, false) => Self::L2,
+            (false, false) => Self::L1,
+        }
+    }
+
+    /// The short label used by `rigorix doctor` and the runbook.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::L1 => "L1",
+            Self::L2 => "L2",
+            Self::L3 => "L3",
+        }
+    }
+
+    /// One sentence an operator can act on.
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::L1 => {
+                "in-process record only; survives neither restart nor a second process, \
+                 and cannot prove a commitment"
+            }
+            Self::L2 => {
+                "shared ledger survives process death; without a receipt reader it can prove \
+                 not-settled only"
+            }
+            Self::L3 => {
+                "provider receipt read-back is armed; the only ceiling that can prove committed"
+            }
+        }
+    }
+}
+
 /// An armed effect-commitment seam: the service plus the optional receipt reader.
 ///
 /// `Clone` so it can travel inside the execution factory config, matching the
@@ -81,6 +137,9 @@ pub struct EffectCommitmentSetup {
 
     /// The startup sweep for records orphaned by a crash (#1164).
     reconciler: Arc<EffectReconciler>,
+
+    /// The guarantee this setup can actually prove, derived at construction.
+    ceiling: EffectCommitmentCeiling,
 }
 
 impl EffectCommitmentSetup {
@@ -98,6 +157,13 @@ impl EffectCommitmentSetup {
             receipt_reader,
         } = config;
 
+        let shared_ledger = matches!(
+            backend,
+            crate::effect_commitment::application::factory::EffectCommitmentBackendConfig::Http { .. }
+        );
+        let provider_evidence = receipt_reader.is_some();
+        let ceiling = EffectCommitmentCeiling::derive(shared_ledger, provider_evidence);
+
         let ledger: Arc<dyn EffectCommitmentLedger> = Arc::from(factory.create(backend));
         let reconciler = Arc::new(EffectReconciler::with_default_lease(ledger.clone()));
         let service: Arc<dyn EffectCommitmentService> = Arc::new(EffectCommitmentServiceImpl::new(
@@ -112,6 +178,7 @@ impl EffectCommitmentSetup {
             service,
             receipt_reader,
             reconciler,
+            ceiling,
         })
     }
 
@@ -163,6 +230,24 @@ impl EffectCommitmentSetup {
     /// Whether provider evidence is available (L3).
     pub fn can_prove_commitment(&self) -> bool {
         self.receipt_reader.is_some()
+    }
+
+    /// The guarantee ceiling this setup was actually built to provide.
+    ///
+    /// Derived from the constructed adapters (#1176), so a report cannot claim
+    /// more than the code can do.
+    pub fn ceiling(&self) -> EffectCommitmentCeiling {
+        self.ceiling
+    }
+
+    /// Whether this process owns the `Dispatched` sweep (L1) or the service does (L2).
+    ///
+    /// At L1 the record and the clock live in this process, so the startup sweep
+    /// is the only thing that closes the crash window. At L2 the store is shared,
+    /// so a client sweep would compare the writer's timestamps against its own
+    /// clock; the service owns it (#1173).
+    pub fn sweeps_dispatched(&self) -> bool {
+        self.reconciler.can_sweep()
     }
 
     /// Sweep `Dispatched` records orphaned by a crash to `Ambiguous` (#1164).
@@ -251,4 +336,32 @@ pub trait EffectCommitmentCompositionRoot: Send + Sync {
         &self,
         repo_root: &Path,
     ) -> Result<Option<EffectCommitmentSetup>, EffectCommitmentSetupError>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EffectCommitmentCeiling;
+
+    #[test]
+    fn the_ceiling_is_derived_from_the_constructed_adapters() {
+        // No shared ledger, no provider evidence: the in-process default.
+        assert_eq!(
+            EffectCommitmentCeiling::derive(false, false),
+            EffectCommitmentCeiling::L1
+        );
+        // A shared ledger upgrades durability, not provability.
+        assert_eq!(
+            EffectCommitmentCeiling::derive(true, false),
+            EffectCommitmentCeiling::L2
+        );
+        // Provider evidence is what lets the context say "committed".
+        assert_eq!(
+            EffectCommitmentCeiling::derive(false, true),
+            EffectCommitmentCeiling::L3
+        );
+        assert_eq!(
+            EffectCommitmentCeiling::derive(true, true),
+            EffectCommitmentCeiling::L3
+        );
+    }
 }

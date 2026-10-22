@@ -17,7 +17,9 @@ use chrono::Utc;
 use rigorix_engine::capacity_ledger::domain::IdempotencyKey;
 use rigorix_engine::effect_commitment::application::{DEFAULT_DISPATCH_LEASE, EffectReconciler};
 use rigorix_engine::effect_commitment::domain::{EffectIntent, EffectQuery, EffectState};
-use rigorix_engine::effect_commitment::infrastructure::InMemoryEffectLedger;
+use rigorix_engine::effect_commitment::infrastructure::{
+    HttpEffectLedger, HttpEffectLedgerConfig, InMemoryEffectLedger,
+};
 use rigorix_engine::effect_commitment::interfaces::EffectCommitmentLedger;
 use uuid::Uuid;
 
@@ -39,6 +41,10 @@ fn intent(age: Duration) -> EffectIntent {
 #[tokio::test]
 async fn an_expired_dispatched_record_becomes_ambiguous() {
     let ledger = Arc::new(InMemoryEffectLedger::new());
+    assert!(
+        ledger.can_sweep_dispatched(),
+        "an in-process ledger has one clock; its owner must sweep"
+    );
     let old = ledger
         .begin(intent(DEFAULT_DISPATCH_LEASE + Duration::from_secs(60)))
         .await
@@ -116,4 +122,29 @@ async fn a_terminal_record_is_never_swept() {
     assert_eq!(reconciler.reconcile().await.unwrap(), 0);
     let records = ledger.query(EffectQuery::by_id(begun.id())).await.unwrap();
     assert_eq!(records[0].state(), EffectState::Committed);
+}
+
+#[tokio::test]
+async fn a_shared_ledger_is_not_swept_by_a_client_root() {
+    // #1173: the predicate mixes the writer's `started_at` with the sweeper's
+    // clock. A client of a shared store must not sweep: the service owns both
+    // the records and the clock.
+    let ledger = Arc::new(HttpEffectLedger::new(HttpEffectLedgerConfig::new(
+        "http://127.0.0.1:1",
+        100,
+        1024,
+        None,
+    )));
+    assert!(
+        !ledger.can_sweep_dispatched(),
+        "a shared ledger must report that its owner, not this client, sweeps"
+    );
+
+    let reconciler = EffectReconciler::with_default_lease(ledger);
+    assert!(!reconciler.can_sweep());
+    assert_eq!(
+        reconciler.reconcile().await.unwrap(),
+        0,
+        "a client must not issue the query, let alone transition a record"
+    );
 }

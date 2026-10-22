@@ -141,6 +141,10 @@ mod impl_tests {
 
         #[async_trait]
         impl EffectCommitmentLedger for UnavailableLedger {
+            fn can_sweep_dispatched(&self) -> bool {
+                true
+            }
+
             async fn begin(&self, _intent: EffectIntent) -> Result<EffectRecord, CommitmentError> {
                 Err(CommitmentError::Unavailable {
                     detail: "store down".to_string(),

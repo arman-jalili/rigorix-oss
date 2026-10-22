@@ -98,6 +98,11 @@ impl Default for InMemoryEffectLedger {
 
 #[async_trait]
 impl EffectCommitmentLedger for InMemoryEffectLedger {
+    fn can_sweep_dispatched(&self) -> bool {
+        // One process, one clock: this owner is the only possible sweeper.
+        true
+    }
+
     async fn begin(&self, intent: EffectIntent) -> Result<EffectRecord, CommitmentError> {
         let key = intent.idempotency_key.clone();
         let mut state = self.locked()?;

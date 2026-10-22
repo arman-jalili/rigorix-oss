@@ -21,12 +21,15 @@
 //!
 //! # What this oracle is not (and what its baseline means)
 //!
-//! **Wired, and inert until a scope is declared (#1099).** All three entry points
-//! (CLI, GitHub Action, MCP host) now set
+//! **Wired, and fed by plan creation (#1099, #1175).** All three entry points
+//! (CLI, GitHub Action, MCP host) set
 //! `ParallelExecutionFactoryConfig::approval_repo_path`, so the oracle runs for
-//! approval-gated steps. It still produces nothing unless the approved intent
-//! carried a non-empty `declared_scope`: the check is gated on the evidence, not
-//! on the wiring.
+//! approval-gated steps. Plan creation now writes `declared_scope` into the
+//! resolved intent for actions that name a file (`file_write`, `file_append`,
+//! `file_patch`, `git_stage`), so the check has evidence without guessing. A
+//! `run_command` step declares no scope: a command string is not a path list,
+//! and a guessed scope would create false violations. The check is still gated
+//! on the evidence — enabling the oracle cannot invent a violation.
 //!
 //! **What #1072 left out, and how that was recorded.** #1072 was closed
 //! `COMPLETED` with three parts; two landed (the oracle, the staged-changes
