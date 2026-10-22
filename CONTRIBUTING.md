@@ -205,6 +205,9 @@ Release history lives in [CHANGELOG.md](CHANGELOG.md) at the repo root. It follo
 reproduced in the README — the README is a product page and links to the changelog
 instead. Do not add a version list to `README.md`.
 
+Entries are written when the change merges, not when the release is cut: see
+[RELEASING.md](RELEASING.md) for the merge-time expectation and the checklist.
+
 ### Format
 
 Newest first. One `## [x.y.z] - YYYY-MM-DD` heading per released version, with a
