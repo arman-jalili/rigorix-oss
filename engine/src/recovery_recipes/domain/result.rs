@@ -49,6 +49,59 @@ pub enum RecoveryResult {
     },
 }
 
+/// What actually happened when one recovery step was executed.
+///
+/// `Result<(), String>` could not say "I did nothing, and that is not an error";
+/// it forced the caller to read a no-op as a successful repair. This type makes
+/// the distinction explicit, and `RecoveryResult::Recovered` requires every step
+/// to be `Performed`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RecoveryStepOutcome {
+    /// The step performed the action it names.
+    Performed,
+
+    /// The step is not implemented in this engine, and here is why.
+    ///
+    /// Not an error: an unsupported step must stop the recipe, but it must not
+    /// be recorded as a repair that happened.
+    Unsupported {
+        /// The missing capability, in operator terms.
+        reason: String,
+    },
+
+    /// The step was implemented but refused its parameters.
+    Failed {
+        /// What was wrong.
+        reason: String,
+    },
+}
+
+impl RecoveryStepOutcome {
+    /// Whether the step actually performed its action.
+    pub fn is_performed(&self) -> bool {
+        matches!(self, Self::Performed)
+    }
+
+    /// Whether the step is explicitly unsupported.
+    pub fn is_unsupported(&self) -> bool {
+        matches!(self, Self::Unsupported { .. })
+    }
+
+    /// Whether the step refused its parameters.
+    pub fn is_failed(&self) -> bool {
+        matches!(self, Self::Failed { .. })
+    }
+
+    /// The operator-facing reason, when there is one.
+    pub fn reason(&self) -> Option<&str> {
+        match self {
+            Self::Performed => None,
+            Self::Unsupported { reason } | Self::Failed { reason } => Some(reason.as_str()),
+        }
+    }
+}
+
 impl RecoveryResult {
     /// Returns `true` if this result indicates successful recovery.
     pub fn is_recovered(&self) -> bool {

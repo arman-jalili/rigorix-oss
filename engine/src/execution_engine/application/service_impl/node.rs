@@ -1,5 +1,7 @@
 //! `execute_node` flow for `ParallelExecutionServiceImpl` (extracted from
 //! `service_impl.rs`, #914): per-node tool execution + inline retry loop.
+//!
+//! @canonical .pi/architecture/modules/execution-engine.md
 
 use super::gate::NodeGate;
 use super::*;
@@ -298,14 +300,52 @@ impl ParallelExecutionServiceImpl {
                                         .entry(input.dag_id)
                                         .or_insert_with(RecoveryContext::new);
                                     ctx.record_attempt(scenario);
+                                    // The attempt counter alone cannot say whether
+                                    // anything was repaired (#1157). Record the
+                                    // per-step outcome alongside it.
+                                    if let Some(last_step) = recovery_out.last_step.clone() {
+                                        let event = if recovery_out.result.is_recovered() {
+                                            crate::recovery_recipes::domain::RecoveryEvent::RecoverySucceeded {
+                                                scenario,
+                                                steps_taken: recovery_out.result.steps_executed(),
+                                                result: recovery_out.result.clone(),
+                                            }
+                                        } else {
+                                            crate::recovery_recipes::domain::RecoveryEvent::RecoveryFailed {
+                                                scenario,
+                                                failed_step: last_step,
+                                                reason: recovery_out.summary.clone(),
+                                                is_final_attempt: recovery_out.is_final_attempt,
+                                            }
+                                        };
+                                        ctx.record_event(event);
+                                    }
                                 }
+                                let performed = recovery_out
+                                    .step_outcomes
+                                    .iter()
+                                    .filter(|outcome| outcome.is_performed())
+                                    .count();
+                                let not_performed =
+                                    recovery_out.step_outcomes.len().saturating_sub(performed);
                                 tracing::info!(
                                     dag_id = %input.dag_id,
                                     node_id = %node_id,
                                     scenario = %scenario.as_str(),
                                     result = %recovery_out.result.summary(),
+                                    performed,
+                                    not_performed,
                                     "Recovery attempted"
                                 );
+                                if !recovery_out.result.is_recovered() {
+                                    tracing::warn!(
+                                        dag_id = %input.dag_id,
+                                        node_id = %node_id,
+                                        scenario = %scenario.as_str(),
+                                        outcomes = ?recovery_out.step_outcomes,
+                                        "recovery did not perform every step; node is not marked Ready"
+                                    );
+                                }
 
                                 if recovery_out.result.is_recovered() {
                                     // Recovery succeeded — re-add node to ready queue

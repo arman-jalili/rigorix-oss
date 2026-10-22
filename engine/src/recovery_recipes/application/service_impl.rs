@@ -12,6 +12,7 @@ use std::collections::HashMap;
 
 use crate::recovery_recipes::domain::{
     FailureScenario, RecoveryError, RecoveryRecipe, RecoveryResult, RecoveryStep,
+    RecoveryStepOutcome,
 };
 
 use super::dto::{
@@ -60,48 +61,83 @@ impl RecoveryServiceImpl {
         })
     }
 
-    /// Execute a single recovery step.
-    /// In a production implementation, this would actually execute the step
-    /// (run clean build, retry connection, etc.). For now, returns success
-    /// for steps that don't require external execution, and simulates basic steps.
-    async fn execute_step(&self, step: &RecoveryStep) -> Result<(), String> {
+    /// Execute a single recovery step and say what actually happened.
+    ///
+    /// `Unsupported` is not an error: it means the capability does not exist in
+    /// this engine. It must still stop the recipe, because a later step cannot
+    /// depend on a repair that did not run.
+    async fn execute_step(
+        &self,
+        step: &RecoveryStep,
+        original_error: Option<&str>,
+    ) -> RecoveryStepOutcome {
         match step {
-            // Safe steps — simulated as successful
-            RecoveryStep::CleanBuild
-            | RecoveryStep::ExpandContext
-            | RecoveryStep::RebaseBranch
-            | RecoveryStep::AcceptTrust
-            | RecoveryStep::RestartWorker => Ok(()),
+            // Process-spawning sinks (build, git rebase, worker restart) need
+            // their own allowlist discipline; faking them is how #1157 was
+            // created. They are explicitly unsupported until that work exists.
+            RecoveryStep::CleanBuild => RecoveryStepOutcome::Unsupported {
+                reason: "no build supervisor: a clean build is a process-spawning sink with its \
+                         own security surface"
+                    .to_string(),
+            },
+            RecoveryStep::RebaseBranch => RecoveryStepOutcome::Unsupported {
+                reason: "no git-rebase supervisor: rebasing is a process-spawning sink with its \
+                         own security surface"
+                    .to_string(),
+            },
+            RecoveryStep::RestartWorker => RecoveryStepOutcome::Unsupported {
+                reason: "no supervisor exists in this engine to restart a worker".to_string(),
+            },
+            RecoveryStep::AcceptTrust => RecoveryStepOutcome::Unsupported {
+                reason: "no trust-decision store; auto-accepting a trust prompt needs policy or \
+                         human authority"
+                    .to_string(),
+            },
 
-            // Connection retry — validates timeout > 0
+            // In-process and honest: with an original error there is context to
+            // expand; without one there is nothing to expand.
+            RecoveryStep::ExpandContext => match original_error {
+                Some(error) if !error.trim().is_empty() => RecoveryStepOutcome::Performed,
+                _ => RecoveryStepOutcome::Unsupported {
+                    reason: "no original error context to expand".to_string(),
+                },
+            },
+
+            // Validation steps that perform no external action (by design).
             RecoveryStep::RetryConnection { timeout_ms } => {
                 if *timeout_ms == 0 {
-                    return Err("RetryConnection timeout must be > 0".to_string());
+                    RecoveryStepOutcome::Failed {
+                        reason: "RetryConnection timeout must be > 0".to_string(),
+                    }
+                } else if *timeout_ms > DEFAULT_RETRY_TIMEOUT_MS * 10 {
+                    RecoveryStepOutcome::Failed {
+                        reason: format!(
+                            "RetryConnection timeout {}ms exceeds maximum {}ms",
+                            timeout_ms,
+                            DEFAULT_RETRY_TIMEOUT_MS * 10
+                        ),
+                    }
+                } else {
+                    RecoveryStepOutcome::Performed
                 }
-                if *timeout_ms > DEFAULT_RETRY_TIMEOUT_MS * 10 {
-                    return Err(format!(
-                        "RetryConnection timeout {}ms exceeds maximum {}ms",
-                        timeout_ms,
-                        DEFAULT_RETRY_TIMEOUT_MS * 10
-                    ));
-                }
-                Ok(())
             }
-
-            // Restart service — validates name is non-empty
             RecoveryStep::RestartService { name } => {
                 if name.trim().is_empty() {
-                    return Err("RestartService name must not be empty".to_string());
+                    RecoveryStepOutcome::Failed {
+                        reason: "RestartService name must not be empty".to_string(),
+                    }
+                } else {
+                    RecoveryStepOutcome::Performed
                 }
-                Ok(())
             }
-
-            // Escalate — requires a reason
             RecoveryStep::EscalateToHuman { reason } => {
                 if reason.trim().is_empty() {
-                    return Err("EscalateToHuman reason must not be empty".to_string());
+                    RecoveryStepOutcome::Failed {
+                        reason: "EscalateToHuman reason must not be empty".to_string(),
+                    }
+                } else {
+                    RecoveryStepOutcome::Performed
                 }
-                Ok(())
             }
         }
     }
@@ -125,52 +161,61 @@ impl RecoveryService for RecoveryServiceImpl {
             return Err(RecoveryError::MaxAttemptsReached(input.scenario));
         }
 
-        let mut steps_taken = 0u32;
-        let mut recovered_steps: Vec<RecoveryStep> = Vec::new();
-        let mut remaining_steps: Vec<RecoveryStep> = recipe.steps.clone();
+        let mut outcomes: Vec<RecoveryStepOutcome> = Vec::new();
+        let mut performed: Vec<RecoveryStep> = Vec::new();
 
-        for step in &recipe.steps {
-            match self.execute_step(step).await {
-                Ok(()) => {
-                    steps_taken += 1;
-                    recovered_steps.push(step.clone());
-                    remaining_steps.remove(0);
-                }
-                Err(reason) => {
-                    // Step failed — record partial recovery or escalation
-                    if steps_taken > 0 {
-                        return Ok(AttemptRecoveryOutput {
-                            result: RecoveryResult::PartialRecovery {
-                                recovered: recovered_steps,
-                                remaining: remaining_steps,
-                            },
-                            last_step: Some(step.clone()),
-                            is_final_attempt: input.attempt_number >= recipe.max_attempts,
-                            summary: format!(
-                                "Partial recovery: {} succeeded, failed at {:?}: {}",
-                                steps_taken, step, reason
-                            ),
-                        });
-                    }
-
-                    return Ok(AttemptRecoveryOutput {
-                        result: RecoveryResult::EscalationRequired {
-                            reason: format!("Step {:?} failed: {}", step, reason),
-                        },
-                        last_step: Some(step.clone()),
-                        is_final_attempt: input.attempt_number >= recipe.max_attempts,
-                        summary: format!("Escalation required: step {:?} failed: {}", step, reason),
-                    });
-                }
+        for (index, step) in recipe.steps.iter().enumerate() {
+            let outcome = self
+                .execute_step(step, input.original_error.as_deref())
+                .await;
+            if outcome.is_performed() {
+                performed.push(step.clone());
+                outcomes.push(outcome);
+                continue;
             }
+
+            // A step that did not act stops the recipe: later steps cannot
+            // depend on a repair that never happened.
+            let remaining: Vec<RecoveryStep> = recipe.steps[index..].to_vec();
+            let reason = outcome.reason().unwrap_or("no reason given").to_string();
+            outcomes.push(outcome);
+            let (result, summary) = if performed.is_empty() {
+                (
+                    RecoveryResult::EscalationRequired {
+                        reason: format!("Step {step:?}: {reason}"),
+                    },
+                    format!("Escalation required: step {step:?}: {reason}"),
+                )
+            } else {
+                (
+                    RecoveryResult::PartialRecovery {
+                        recovered: performed.clone(),
+                        remaining,
+                    },
+                    format!(
+                        "Partial recovery: {} performed, stopped at {step:?}: {reason}",
+                        performed.len()
+                    ),
+                )
+            };
+            return Ok(AttemptRecoveryOutput {
+                result,
+                last_step: Some(step.clone()),
+                is_final_attempt: input.attempt_number >= recipe.max_attempts,
+                summary,
+                step_outcomes: outcomes,
+            });
         }
 
-        // All steps completed successfully
+        // Every step performed its action — only now is the node repaired.
         Ok(AttemptRecoveryOutput {
-            result: RecoveryResult::Recovered { steps_taken },
+            result: RecoveryResult::Recovered {
+                steps_taken: outcomes.len() as u32,
+            },
             last_step: recipe.steps.last().cloned(),
             is_final_attempt: input.attempt_number >= recipe.max_attempts,
-            summary: format!("Recovered after {} step(s)", steps_taken),
+            summary: format!("Recovered after {} step(s)", outcomes.len()),
+            step_outcomes: outcomes,
         })
     }
 
@@ -313,14 +358,23 @@ mod tests {
         .unwrap()
     }
 
+    fn performed_recipe() -> RecoveryRecipe {
+        RecoveryRecipe::new(
+            FailureScenario::ProviderFailure,
+            vec![RecoveryStep::RetryConnection { timeout_ms: 1_000 }],
+            1,
+            EscalationPolicy::AlertHuman,
+        )
+        .unwrap()
+    }
+
     #[tokio::test]
     async fn test_attempt_recovery_success() {
         let service = RecoveryServiceImpl::new();
-        let recipe = test_recipe();
         let output = service
             .attempt_recovery(AttemptRecoveryInput {
-                scenario: FailureScenario::CompileError,
-                recipe,
+                scenario: FailureScenario::ProviderFailure,
+                recipe: performed_recipe(),
                 attempt_number: 1,
                 original_error: None,
                 execution_id: None,
@@ -330,7 +384,77 @@ mod tests {
 
         assert!(output.result.is_recovered());
         assert_eq!(output.result.steps_executed(), 1);
+        assert_eq!(output.step_outcomes, vec![RecoveryStepOutcome::Performed]);
         assert!(output.is_final_attempt); // attempt 1 of max_attempts 1 — is final
+    }
+
+    #[tokio::test]
+    async fn an_unsupported_step_is_not_reported_as_recovered() {
+        let service = RecoveryServiceImpl::new();
+        let output = service
+            .attempt_recovery(AttemptRecoveryInput {
+                scenario: FailureScenario::CompileError,
+                recipe: test_recipe(), // CleanBuild: unsupported in this engine
+                attempt_number: 1,
+                original_error: None,
+                execution_id: None,
+            })
+            .await
+            .unwrap();
+
+        assert!(!output.result.is_recovered(), "a no-op is not a repair");
+        assert!(output.result.is_escalation_required());
+        assert_eq!(output.step_outcomes.len(), 1);
+        assert!(output.step_outcomes[0].is_unsupported());
+        assert!(
+            output.step_outcomes[0]
+                .reason()
+                .unwrap_or_default()
+                .contains("build supervisor")
+        );
+    }
+
+    #[tokio::test]
+    async fn a_partial_recovery_distinguishes_performed_from_unsupported() {
+        let service = RecoveryServiceImpl::new();
+        let recipe = RecoveryRecipe::new(
+            FailureScenario::ProviderFailure,
+            vec![
+                RecoveryStep::RetryConnection { timeout_ms: 1_000 },
+                RecoveryStep::CleanBuild,
+            ],
+            1,
+            EscalationPolicy::AlertHuman,
+        )
+        .unwrap();
+        let output = service
+            .attempt_recovery(AttemptRecoveryInput {
+                scenario: FailureScenario::ProviderFailure,
+                recipe,
+                attempt_number: 1,
+                original_error: Some("connection reset".to_string()),
+                execution_id: None,
+            })
+            .await
+            .unwrap();
+
+        assert!(output.result.is_partial());
+        assert_eq!(output.step_outcomes.len(), 2);
+        assert!(output.step_outcomes[0].is_performed());
+        assert!(output.step_outcomes[1].is_unsupported());
+        match &output.result {
+            RecoveryResult::PartialRecovery {
+                recovered,
+                remaining,
+            } => {
+                assert_eq!(
+                    recovered,
+                    &vec![RecoveryStep::RetryConnection { timeout_ms: 1_000 }]
+                );
+                assert_eq!(remaining, &vec![RecoveryStep::CleanBuild]);
+            }
+            other => panic!("expected partial recovery, got {other:?}"),
+        }
     }
 
     #[tokio::test]
@@ -498,71 +622,114 @@ mod tests {
     async fn test_execute_step_retry_connection_validates_timeout() {
         let service = RecoveryServiceImpl::new();
 
-        // Valid timeout
-        let result = service
-            .execute_step(&RecoveryStep::RetryConnection { timeout_ms: 1000 })
+        let performed = service
+            .execute_step(&RecoveryStep::RetryConnection { timeout_ms: 1000 }, None)
             .await;
-        assert!(result.is_ok());
+        assert!(performed.is_performed());
 
-        // Zero timeout
-        let result = service
-            .execute_step(&RecoveryStep::RetryConnection { timeout_ms: 0 })
+        let zero = service
+            .execute_step(&RecoveryStep::RetryConnection { timeout_ms: 0 }, None)
             .await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("must be > 0"));
+        assert!(zero.is_failed());
+        assert!(zero.reason().unwrap_or_default().contains("must be > 0"));
+
+        let too_long = service
+            .execute_step(
+                &RecoveryStep::RetryConnection {
+                    timeout_ms: DEFAULT_RETRY_TIMEOUT_MS * 10 + 1,
+                },
+                None,
+            )
+            .await;
+        assert!(too_long.is_failed());
+        assert!(
+            too_long
+                .reason()
+                .unwrap_or_default()
+                .contains("exceeds maximum")
+        );
     }
 
     #[tokio::test]
     async fn test_execute_step_restart_service_validates_name() {
         let service = RecoveryServiceImpl::new();
-        let result = service
-            .execute_step(&RecoveryStep::RestartService {
-                name: "lsp".to_string(),
-            })
+        let performed = service
+            .execute_step(
+                &RecoveryStep::RestartService {
+                    name: "lsp".to_string(),
+                },
+                None,
+            )
             .await;
-        assert!(result.is_ok());
+        assert!(performed.is_performed());
 
-        let result = service
-            .execute_step(&RecoveryStep::RestartService {
-                name: "".to_string(),
-            })
+        let empty = service
+            .execute_step(
+                &RecoveryStep::RestartService {
+                    name: "".to_string(),
+                },
+                None,
+            )
             .await;
-        assert!(result.is_err());
+        assert!(empty.is_failed());
     }
 
     #[tokio::test]
     async fn test_execute_step_escalate_validates_reason() {
         let service = RecoveryServiceImpl::new();
-        let result = service
-            .execute_step(&RecoveryStep::EscalateToHuman {
-                reason: "test".to_string(),
-            })
+        let performed = service
+            .execute_step(
+                &RecoveryStep::EscalateToHuman {
+                    reason: "test".to_string(),
+                },
+                None,
+            )
             .await;
-        assert!(result.is_ok());
+        assert!(performed.is_performed());
 
-        let result = service
-            .execute_step(&RecoveryStep::EscalateToHuman {
-                reason: "".to_string(),
-            })
+        let empty = service
+            .execute_step(
+                &RecoveryStep::EscalateToHuman {
+                    reason: "".to_string(),
+                },
+                None,
+            )
             .await;
-        assert!(result.is_err());
+        assert!(empty.is_failed());
     }
 
     #[tokio::test]
-    async fn test_execute_safe_steps_succeed() {
+    async fn side_effect_steps_are_explicitly_unsupported() {
         let service = RecoveryServiceImpl::new();
         for step in &[
             RecoveryStep::CleanBuild,
-            RecoveryStep::ExpandContext,
             RecoveryStep::RebaseBranch,
             RecoveryStep::AcceptTrust,
             RecoveryStep::RestartWorker,
         ] {
+            let outcome = service.execute_step(step, None).await;
             assert!(
-                service.execute_step(step).await.is_ok(),
-                "Step {:?} should succeed",
-                step
+                outcome.is_unsupported(),
+                "{step:?} must not claim to have repaired anything"
             );
+            assert!(outcome.reason().is_some(), "{step:?} needs a reason");
         }
+    }
+
+    #[tokio::test]
+    async fn expand_context_is_performed_only_with_real_context() {
+        let service = RecoveryServiceImpl::new();
+        assert!(
+            service
+                .execute_step(&RecoveryStep::ExpandContext, Some("compile failed"))
+                .await
+                .is_performed()
+        );
+        assert!(
+            service
+                .execute_step(&RecoveryStep::ExpandContext, None)
+                .await
+                .is_unsupported()
+        );
     }
 }

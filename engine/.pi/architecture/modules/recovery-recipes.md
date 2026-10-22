@@ -19,10 +19,15 @@ Rationale: Automatic recovery before escalation — known failure modes auto-hea
 > capability reachable and switchable; it does not silently change failure
 > handling for everyone.
 >
-> Execution itself is simulated today (`RecoveryServiceImpl::execute_step` returns
-> success for steps that need no external work), so the seam is reachable but not
-> yet doing real repairs — that is a separate design decision recorded here rather
-> than implied by a "wired" label.
+> Execution is **not uniformly simulated** (#1157). `execute_step` returns a
+> `RecoveryStepOutcome` (`Performed` | `Unsupported` | `Failed`). `CleanBuild`,
+> `RebaseBranch`, `RestartWorker` and `AcceptTrust` are explicitly unsupported:
+> they need a process-spawning sink or a trust-decision store that this engine
+> does not have, and faking them is how the original defect was created.
+> `ExpandContext` is performed only when there is an original error to expand;
+> `RetryConnection`, `RestartService` and `EscalateToHuman` validate their
+> parameters. `RecoveryResult::Recovered` requires **every** step to be
+> performed, so an unsupported step cannot mark a node `Ready`.
 
 The Recovery Recipes system encodes known failure scenarios and their automatic recovery procedures. The core rule is: **one automatic recovery attempt per scenario before human escalation.** Each failure scenario has a `RecoveryRecipe` — a sequence of recovery steps with a maximum attempt count and an escalation policy for when attempts are exhausted.
 
@@ -370,8 +375,9 @@ async fn execute_with_recovery(
 | E2E | 80% | Live build failure → clean build → re-execute |
 
 **Key Test Scenarios:**
-- CompileError triggers `CleanBuild` → build succeeds → node re-executes
-- CompileError triggers `CleanBuild` → still fails → escalation to human
+- CompileError triggers `CleanBuild` → unsupported → escalation, and the node is **not** `Ready`
+- A recipe with `RetryConnection` → `CleanBuild` → partial recovery, the performed step is recorded, the unsupported step is named with its reason
+- `ExpandContext` with an original error → performed; without one → unsupported
 - Unknown failure type → no recipe → returns original error
 - Scenario at max attempts → immediate escalation
 - RecoveryContext tracks attempts correctly across multiple failures
