@@ -398,6 +398,51 @@ pub async fn probe(repo_root: &Path) -> DoctorReport {
         },
     );
 
+    // 4b. Effect commitment (ADR-019) — `.rigorix/effect-commitment.toml`.
+    //
+    // The newest enforcement boundary is the one that decides whether a retry
+    // can double-spend, so it must be visible. The ceiling is derived by the
+    // setup from what it constructed, never declared here: doctor reports the
+    // capability, it does not re-implement the rule (#1176).
+    let effect_commitment_path = repo_root.join(".rigorix").join("effect-commitment.toml");
+    seams.push(
+        match rigorix_engine::effect_commitment::EffectCommitmentSetup::from_env(repo_root).await {
+            Ok(Some(setup)) => {
+                let ceiling = setup.ceiling();
+                let mut row = SeamReport::armed(
+                    "effect commitment",
+                    "records each effect before dispatch and blocks retry/dependents while its \
+                     outcome is unknown",
+                    format!("{}", effect_commitment_path.display()),
+                );
+                row.detail = Some(format!(
+                    "ceiling {}: {}; {}",
+                    ceiling.as_str(),
+                    ceiling.description(),
+                    if setup.sweeps_dispatched() {
+                        "this root owns the Dispatched sweep"
+                    } else {
+                        "the ledger service owns the Dispatched sweep"
+                    }
+                ));
+                row
+            }
+            Ok(None) => SeamReport::unarmed(
+                "effect commitment",
+                "records each effect before dispatch and blocks retry/dependents while its \
+                 outcome is unknown",
+                format!("{} (absent)", effect_commitment_path.display()),
+            ),
+            Err(error) => SeamReport::misconfigured(
+                "effect commitment",
+                "records each effect before dispatch and blocks retry/dependents while its \
+                 outcome is unknown",
+                format!("{}", effect_commitment_path.display()),
+                error.to_string(),
+            ),
+        },
+    );
+
     // 5. Anchor (ADR-016) — env-configured anchor.
     let anchor = rigorix_engine::audit::infrastructure::anchor::AnchorRuntime::from_env();
     seams.push(match anchor.mode() {
@@ -568,6 +613,102 @@ mod tests {
         assert!(text.contains("approval binding: file.toml"));
     }
 
+    fn write_effect_commitment(dir: &Path, body: &str) {
+        let root = dir.join(".rigorix");
+        std::fs::create_dir_all(&root).expect("create .rigorix");
+        std::fs::write(root.join("effect-commitment.toml"), body).expect("write config");
+    }
+
+    fn effect_commitment_row(report: &DoctorReport) -> &SeamReport {
+        report
+            .seams
+            .iter()
+            .find(|row| row.seam == "effect commitment")
+            .expect("effect-commitment row must exist")
+    }
+
+    #[tokio::test]
+    async fn an_absent_effect_commitment_declaration_is_unarmed_not_an_error() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let report = probe(dir.path()).await;
+        let row = effect_commitment_row(&report);
+        assert_eq!(row.state, SeamState::Unarmed);
+        assert!(row.source.contains("(absent)"), "{}", row.source);
+        assert_eq!(
+            report.exit_code(),
+            0,
+            "absent is the valid L1/unarmed default, not a failure"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_in_memory_declaration_reports_the_l1_ceiling_and_local_sweep() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_effect_commitment(dir.path(), "[backend]\nkind = \"in_memory\"\n");
+        let report = probe(dir.path()).await;
+        let row = effect_commitment_row(&report);
+        assert_eq!(row.state, SeamState::Armed);
+        let detail = row.detail.as_deref().unwrap_or_default();
+        assert!(detail.contains("ceiling L1"), "{detail}");
+        assert!(
+            detail.contains("this root owns the Dispatched sweep"),
+            "{detail}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_receipt_reader_derives_l3_rather_than_being_declared() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_effect_commitment(
+            dir.path(),
+            "[backend]\nkind = \"in_memory\"\n\n[receipt_reader]\n\
+             base_url = \"https://payments.example\"\nprovider_id = \"stripe\"\n",
+        );
+        let report = probe(dir.path()).await;
+        let row = effect_commitment_row(&report);
+        assert_eq!(row.state, SeamState::Armed);
+        let detail = row.detail.as_deref().unwrap_or_default();
+        assert!(detail.contains("ceiling L3"), "{detail}");
+    }
+
+    #[tokio::test]
+    async fn a_malformed_effect_commitment_declaration_fails_the_command() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_effect_commitment(dir.path(), "[backend]\nkind = \"http\"\n");
+        let report = probe(dir.path()).await;
+        let row = effect_commitment_row(&report);
+        assert_eq!(row.state, SeamState::Misconfigured);
+        assert!(
+            row.detail
+                .as_deref()
+                .unwrap_or_default()
+                .contains("base_url")
+        );
+        assert_eq!(report.exit_code(), 1);
+    }
+
+    #[tokio::test]
+    async fn the_effect_commitment_row_never_prints_a_credential() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let var = "RIGORIX_TEST_EFFECT_TOKEN_1176";
+        // SAFETY: this test owns the variable name; no other test reads it.
+        unsafe { std::env::set_var(var, "super-secret-token") };
+        write_effect_commitment(
+            dir.path(),
+            "[backend]\nkind = \"in_memory\"\n\n[receipt_reader]\n\
+             base_url = \"https://payments.example\"\nprovider_id = \"stripe\"\n\
+             auth_token_env = \"RIGORIX_TEST_EFFECT_TOKEN_1176\"\n",
+        );
+        let report = probe(dir.path()).await;
+        let text = report.render();
+        unsafe { std::env::remove_var(var) };
+        assert!(text.contains("effect commitment"), "{text}");
+        assert!(
+            !text.contains("super-secret-token"),
+            "doctor must never print the credential: {text}"
+        );
+    }
+
     #[tokio::test]
     async fn an_empty_directory_reports_every_seam_and_arms_nothing() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -576,8 +717,8 @@ mod tests {
         let report = probe(dir.path()).await;
         assert_eq!(
             report.seams.len(),
-            9,
-            "seams, the signing key, budget limits, recovery"
+            10,
+            "seams, the signing key, budget limits, recovery, effect commitment"
         );
         let text = report.render();
         assert!(text.contains("seams armed"));

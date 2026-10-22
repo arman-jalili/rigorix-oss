@@ -4,7 +4,7 @@
 Canonical Reference: .pi/architecture/modules/effect-commitment.md
 Blueprint Source: Guardian Framework v1.2
 Generated: NEVER (this is the source)
-Last Updated: 2026-10-21 — contract frozen; adapters, seam, fences, vocabulary, and composition roots implemented
+Last Updated: 2026-10-23 — sweep ownership is a ledger capability; the ceiling is derived, not declared
 -->
 
 ## Overview
@@ -214,11 +214,13 @@ depends: ObservedOutcome
 produce an `ObservedOutcome`. This is the L3 boundary. Without it the context can prove
 *not-settled* only, and the runbook must say so.
 
-**Provider-facing contract (#1165):** the reader can look a receipt up by the intent's
-idempotency key, so the provider must have received that key. The engine sends it as
-`Idempotency-Key` to HTTP providers and as `RIGORIX_EFFECT_IDEMPOTENCY_KEY` to process providers
-(`run_command`). The provider must dedupe on it and expose it on the receipt. A provider that
-stores the key but does not dedupe leaves L3 as unreachable as before.
+**Provider-facing contract (#1165, #1174):** the reader can look a receipt up by the intent's
+idempotency key, so the provider must have received that key. The implemented transmission is the
+process channel: `RIGORIX_EFFECT_IDEMPOTENCY_KEY` in the environment of a `run_command` provider.
+The engine has no HTTP tool, so `Idempotency-Key` is the **reserved** header an HTTP provider
+adapter must attach when one lands — not a mechanism any current integration can rely on. The
+provider must dedupe on the key and expose it on the receipt. A provider that stores the key but
+does not dedupe leaves L3 as unreachable as before.
 
 **Layer:** `infrastructure/`
 
@@ -379,12 +381,18 @@ A timeout that guesses is not a substitute: guessing is how the window is closed
 ### Crash reconciliation (#1164)
 
 A process can die between the write-ahead record and the settlement, leaving a record `Dispatched`
-with no live owner. At startup every composition root runs `EffectCommitmentSetup::reconcile`,
-which moves records older than `DEFAULT_DISPATCH_LEASE` (15 minutes) to `Ambiguous`. The transition
-is conditional, so N roots sweeping concurrently converge on one result; a fresh record is
-untouched because it may be in flight in another process. The sweep never resolves — it may not
+with no live owner. At L1 every composition root runs `EffectCommitmentSetup::reconcile` at
+startup, moving records older than `DEFAULT_DISPATCH_LEASE` (15 minutes) to `Ambiguous`. The
+transition is conditional, so N roots sweeping concurrently converge on one result; a fresh record
+is untouched because it may be in flight in another process. The sweep never resolves — it may not
 claim the effect committed or did not happen. The lease is the maximum crash window an operator
 has to accept.
+
+The sweep is gated on a ledger capability, `can_sweep_dispatched` (#1173): an in-process ledger
+returns `true` (its owner has the only clock), a shared HTTP ledger returns `false` (the service
+owns both the records and the clock). `EffectCommitmentSetup::reconcile` returns `0` without
+querying when the adapter cannot sweep, so a client never compares another process's `started_at`
+against its own clock.
 
 ## Guarantee ceiling
 
@@ -396,3 +404,7 @@ has to accept.
 
 Without a `ProviderReceiptReader`, the context can prove **not-settled** and never **settled**.
 That asymmetry is the honest claim and must appear wherever the feature is described.
+
+`EffectCommitmentSetup::ceiling()` derives the level from the constructed adapters (shared ledger
+and/or receipt reader), never from an operator declaration; `rigorix doctor` prints that derived
+value. A deployment must not be described at a level the constructed setup cannot support.

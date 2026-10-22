@@ -1,7 +1,7 @@
 # Runbook: Effect Commitment (`effect-commitment`)
 
 **Status:** Implemented (ADR-019)
-**Last updated:** 2026-10-21
+**Last updated:** 2026-10-23
 **Canonical architecture:** `.pi/architecture/modules/effect-commitment.md`
 **Decision:** `.pi/architecture/decisions/ADR-019-effect-commitment.md`
 
@@ -18,6 +18,30 @@ unknown. The context answers one question — *was this effect committed?* — a
 
 Without a receipt reader the context can prove **not-settled**; it can never prove **settled**. Do
 not describe a deployment as L3 unless its resolver actually presents provider evidence.
+
+## Who owns the `Dispatched` sweep (#1173)
+
+The expiry predicate compares two values from two places:
+
+```
+record.started_at + 15min  <  Utc::now()
+      ↑ written by the dispatching process      ↑ the sweeping process's clock
+```
+
+That comparison is only sound when both come from the same clock. The adapter reports the
+capability (`can_sweep_dispatched`), and the sweep is gated on it — never on a `backend.kind`
+string in each root:
+
+| ceiling | sweeper | why |
+|---|---|---|
+| L1 (`in_memory`) | the composition root, at startup | record and clock are in one process; the root is the only possible sweeper |
+| L2 (`http`) | the ledger service (enterprise ADR-011 `DispatchedSweeper`) | the store is shared; a client clock must not judge another process's `started_at` |
+| L3 | the ledger service, same as its L2 store | provider evidence does not change who owns the records |
+
+A client-side sweep against a shared store is unsound in both directions: a fast client clock marks
+a live dispatch `Ambiguous` (a false double-spend signal); a slow one leaves orphans `Dispatched`
+forever. The 15-minute lease only hides skew below fifteen minutes. `EffectCommitmentSetup::reconcile`
+returns `0` without querying when the adapter cannot sweep.
 
 ## L2: the serving side is not in OSS (#1166)
 
@@ -41,10 +65,11 @@ it is inert until copied to `.rigorix/effect-commitment.toml`.
    refused rather than silently downgraded.
 4. The factory builds the ledger adapter and, when declared, the provider receipt reader. The
    composition root attaches `setup.dispatch_seam()` to the execution-engine factory.
-5. The composition root runs `setup.reconcile()`. A `Dispatched` record older than the 15-minute
-   dispatch lease has no live owner (its process died), so it is moved to `Ambiguous` before any
-   node can retry it. A sweep failure refuses the start; a fresh record is left alone because it
-   may be in flight elsewhere.
+5. At L1 the composition root runs `setup.reconcile()`. A `Dispatched` record older than the
+   15-minute dispatch lease has no live owner (its process died), so it is moved to `Ambiguous`
+   before any node can retry it. A sweep failure refuses the start; a fresh record is left alone
+   because it may be in flight elsewhere. At L2 the call is a no-op in the client: the ledger
+   service owns the sweep and its clock (see "Who owns the `Dispatched` sweep").
 
 The only required dependency is the selected ledger adapter. The HTTP adapter additionally depends
 on the ledger service; the receipt reader depends on the provider's read-back API.
@@ -83,9 +108,12 @@ provider_id = "stripe"
 The receipt reader looks a receipt up by the intent's idempotency key. That only works if the
 provider was given the key when the effect was sent:
 
-- **HTTP providers** receive `Idempotency-Key: <intent-key>`.
 - **Process providers** invoked through `run_command` receive
-  `RIGORIX_EFFECT_IDEMPOTENCY_KEY=<intent-key>` in their environment.
+  `RIGORIX_EFFECT_IDEMPOTENCY_KEY=<intent-key>` in their environment. This is the implemented
+  transmission.
+- **HTTP providers** would receive `Idempotency-Key: <intent-key>`, but the engine has no HTTP
+  tool: every tool sink is a process. The header is **reserved** for a future HTTP adapter (#1174),
+  not a mechanism an integration can rely on today.
 
 The provider MUST dedupe on that key and MUST expose it on the receipt (the reader queries
 `GET /v1/receipts?idempotency_key=<key>`). A provider that stores the key but does not dedupe leaves

@@ -28,6 +28,10 @@ struct RecordingLedger {
 
 #[async_trait]
 impl EffectCommitmentLedger for RecordingLedger {
+    fn can_sweep_dispatched(&self) -> bool {
+        true
+    }
+
     async fn begin(&self, intent: EffectIntent) -> Result<EffectRecord, CommitmentError> {
         *self.last_intent.lock().unwrap() = Some(intent.clone());
         Ok(EffectRecord::begin(intent))

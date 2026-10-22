@@ -51,13 +51,14 @@ fn doctor_lists_every_seam_and_exits_zero_when_nothing_is_misconfigured() {
         "history anchor",
         "envelope signing",
         "effect scope",
+        "effect commitment",
         "budget limits",
         "recovery recipes",
     ] {
         assert!(stdout.contains(seam), "report must name `{seam}`: {stdout}");
     }
     assert!(
-        stdout.contains("1 of 9 seams armed"),
+        stdout.contains("1 of 10 seams armed"),
         "an empty directory arms only the budget limits, which every entry point attaches: {stdout}"
     );
     assert!(

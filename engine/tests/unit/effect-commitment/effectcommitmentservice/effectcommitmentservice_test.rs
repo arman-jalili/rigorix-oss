@@ -233,6 +233,10 @@ mod impl_tests {
 
     #[async_trait]
     impl EffectCommitmentLedger for FakeLedger {
+        fn can_sweep_dispatched(&self) -> bool {
+            true
+        }
+
         async fn begin(&self, intent: EffectIntent) -> Result<EffectRecord, CommitmentError> {
             Ok(self.store(EffectRecord::begin(intent)))
         }

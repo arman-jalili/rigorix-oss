@@ -76,4 +76,16 @@ pub trait EffectCommitmentLedger: Send + Sync {
 
     /// Read records by identity, by DAG, or list ambiguous effects.
     async fn query(&self, query: EffectQuery) -> Result<Vec<EffectRecord>, CommitmentError>;
+
+    /// Whether **this adapter's owner** may sweep expired `Dispatched` records.
+    ///
+    /// The predicate `started_at + lease < now` mixes two clocks when the record
+    /// was written by another process. An in-process ledger has one clock and
+    /// its owner must sweep (it is the only thing closing the crash window); a
+    /// distributed ledger is shared by many processes, so the service that owns
+    /// the store must sweep, and a client must not (#1173).
+    ///
+    /// This is a capability, not `backend.kind == "http"`: the adapter knows how
+    /// its records are shared, and callers must not have to re-derive it.
+    fn can_sweep_dispatched(&self) -> bool;
 }

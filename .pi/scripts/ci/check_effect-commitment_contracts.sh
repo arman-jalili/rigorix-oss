@@ -162,7 +162,8 @@ for adapter in in_memory http; do
         "async fn settle_definite" \
         "async fn mark_ambiguous" \
         "async fn resolve" \
-        "async fn query"
+        "async fn query" \
+        "fn can_sweep_dispatched"
 done
 
 # ── 4. Application contracts ────────────────────────────────────────────────
