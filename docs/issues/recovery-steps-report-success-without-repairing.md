@@ -7,10 +7,10 @@ guardian_issue:
   tracking_issue: 1157
   component: "RecoveryRecipes"
   module: "recovery-recipes"
-  status: planned
+  status: implemented
   priority: high
   created_at: "2026-10-23T06:00:00Z"
-  updated_at: "2026-10-23T06:00:00Z"
+  updated_at: "2026-10-23T14:00:00Z"
 
   intent: |
     Separate "I performed the repair" from "I have no implementation for this repair", and stop

@@ -7,10 +7,10 @@ guardian_issue:
   tracking_issue: 1159
   component: "Tools"
   module: "tool-system"
-  status: planned
+  status: implemented
   priority: medium
   created_at: "2026-10-23T06:00:00Z"
-  updated_at: "2026-10-23T06:00:00Z"
+  updated_at: "2026-10-23T14:00:00Z"
 
   intent: |
     Correct the audit comment on an allowlist site, and make sure the inventory it points at agrees.

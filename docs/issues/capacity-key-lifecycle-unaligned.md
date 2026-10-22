@@ -7,10 +7,10 @@ guardian_issue:
   tracking_issue: 1163
   component: "ExecutionEngine"
   module: "capacity-ledger"
-  status: planned
+  status: implemented
   priority: high
   created_at: "2026-10-23T08:00:00Z"
-  updated_at: "2026-10-23T08:00:00Z"
+  updated_at: "2026-10-23T14:00:00Z"
 
   intent: |
     Derive the capacity reservation key from the same intent identity the effect record uses, so a

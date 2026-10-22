@@ -7,10 +7,10 @@ guardian_issue:
   tracking_issue: 1165
   component: "EffectCommitment"
   module: "effect-commitment"
-  status: planned
+  status: implemented
   priority: high
   created_at: "2026-10-23T08:00:00Z"
-  updated_at: "2026-10-23T08:00:00Z"
+  updated_at: "2026-10-23T14:00:00Z"
 
   intent: |
     Transmit the derived intent key to the provider, so the receipt reader's fallback lookup can

@@ -117,7 +117,7 @@ to make it disappear: a guessed outcome is how the window is closed incorrectly.
 |---|---|---|
 | Dispatch refused with `effect commitment begin failed` | The write-ahead record could not be written. | Treat as fail-closed. Check the ledger service/network, then retry the run. Do **not** bypass the seam. |
 | `Ambiguous` effect; run does not progress | A response was lost, a deadline passed, the process died, or a cancellation happened in flight. | Follow *Operating an unsettled effect*. |
-| A record is still `Dispatched` after a crash | The startup sweep has not run, or the record is still inside its 15-minute lease (it may be in flight elsewhere). | Restart the composition root so the sweep runs, or wait for the lease; then follow *Operating an unsettled effect*. Never resolve a `Dispatched` record by hand as `NotCommitted`. |
+| A record is still `Dispatched` after a crash (**L2 only** — at L1 the record is gone, not stale) | The startup sweep has not run, or the record is still inside its 15-minute lease (it may be in flight elsewhere). | Restart the composition root so the sweep runs, or wait for the lease; then follow *Operating an unsettled effect*. Never resolve a `Dispatched` record by hand as `NotCommitted`. |
 | `retry refused` on a node | F2: the intent is still ambiguous, or the record is terminal. | Resolve the ambiguous record, or start a **new intent** (new execution). Do not re-send the same intent. |
 | Dependents never run | F1: an upstream effect is still ambiguous. | Resolve the upstream record; then resume. |
 | `provider receipt status 'pending'` / `Unavailable` | The provider has not settled; the context refuses to guess. | Retry the read-back later. The effect stays ambiguous. |

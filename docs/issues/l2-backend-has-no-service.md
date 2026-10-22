@@ -7,10 +7,10 @@ guardian_issue:
   tracking_issue: 1166
   component: "EffectCommitment"
   module: "effect-commitment"
-  status: planned
+  status: implemented
   priority: medium
   created_at: "2026-10-23T08:00:00Z"
-  updated_at: "2026-10-23T08:00:00Z"
+  updated_at: "2026-10-23T14:00:00Z"
 
   intent: |
     Make the L2 path reachable: either name and document the service that implements it, or say
