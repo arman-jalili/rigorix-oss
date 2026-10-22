@@ -78,7 +78,22 @@ impl ApprovalServiceImpl {
         resolved: &crate::approval::application::service::ResolvedNode,
         input: &ApproveInput,
         now: chrono::DateTime<Utc>,
-    ) -> ApprovalRecord {
+    ) -> Result<ApprovalRecord, ApprovalError> {
+        // #1190: an approver may add scope, but never remove what the planner
+        // declared. Merge before hashing: the signature covers the value the
+        // oracle will compare against.
+        let mut intent = resolved.intent.clone();
+        if let Some(scope) = &input.declared_scope {
+            intent.declared_scope.extend(scope.iter().cloned());
+        }
+        intent.declared_scope.sort();
+        intent.declared_scope.dedup();
+        if input.strict_scope == Some(true) && intent.declared_scope.is_empty() {
+            return Err(ApprovalError::InvalidScope(
+                "strict scope mode requires a declared scope, and neither the plan nor the approver supplied one"
+                    .into(),
+            ));
+        }
         let decision_context = match input.decision_context.clone() {
             Some(mut ctx) => {
                 // R4: derive the envelope-safe summary when the caller did not
@@ -99,12 +114,11 @@ impl ApprovalServiceImpl {
                 }
             }
         };
-        ApprovalRecord {
+        Ok(ApprovalRecord {
             step_name: resolved.step_name.clone(),
             node_id: resolved.node_id,
-            intent_hash: self.digest(&resolved.intent),
-            intent_payload: serde_json::to_value(&resolved.intent)
-                .unwrap_or(serde_json::Value::Null),
+            intent_hash: self.digest(&intent),
+            intent_payload: serde_json::to_value(&intent).unwrap_or(serde_json::Value::Null),
             approver_id: input.approver_id.clone(),
             authority: input.authority.clone(),
             decided_at: now,
@@ -113,7 +127,8 @@ impl ApprovalServiceImpl {
             token_claims_ref: input.token_claims_ref.clone(),
             status: ApprovalStatus::Pending,
             decision_context,
-        }
+            approver_scope: input.declared_scope.clone().unwrap_or_default(),
+        })
     }
 }
 
@@ -131,7 +146,7 @@ impl ApprovalService for ApprovalServiceImpl {
                 not_found.push(step_name.clone());
                 continue;
             };
-            let record = self.build_record(&resolved, &input, now);
+            let record = self.build_record(&resolved, &input, now)?;
             self.repo.save(&record).await?;
             tracing::info!(
                 step_name = %record.step_name,
@@ -184,7 +199,17 @@ impl ApprovalService for ApprovalServiceImpl {
                 let Some(resolved) = self.resolver.resolve_by_node_id(node_id).await else {
                     return Err(ApprovalError::NotFound(node_id));
                 };
-                let current = self.digest(&resolved.intent);
+                // #1190: the approved scope may include the approver's
+                // addition. Re-merge it into the current intent before hashing
+                // so the comparison covers the same bytes the record signed;
+                // a changed planner scope still mismatches.
+                let mut current_intent = resolved.intent.clone();
+                current_intent
+                    .declared_scope
+                    .extend(record.approver_scope.iter().cloned());
+                current_intent.declared_scope.sort();
+                current_intent.declared_scope.dedup();
+                let current = self.digest(&current_intent);
                 if current == record.intent_hash {
                     tracing::info!(node_id = %node_id, step_name = %resolved.step_name, "verify: MATCHED — dispatch");
                     Ok(IntentVerification::Matched)
@@ -277,14 +302,49 @@ mod tests {
             Duration::from_secs(600),
         );
         let now = Utc::now();
-        let record = svc.build_record(
+        let record = svc
+            .build_record(
+                &crate::approval::application::service::ResolvedNode {
+                    node_id: Uuid::new_v4(),
+                    step_name: "s".into(),
+                    intent: ExecutionIntent {
+                        tool: "run_command".into(),
+                        intent: serde_json::json!({"command": "echo hi"}),
+                        declared_scope: vec![],
+                    },
+                },
+                &ApproveInput {
+                    dag_id: Uuid::new_v4(),
+                    step_names: vec!["s".into()],
+                    approver_id: "user".into(),
+                    authority: None,
+                    decision_context: None,
+                    token_claims_ref: None,
+                    declared_scope: None,
+                    strict_scope: None,
+                },
+                now,
+            )
+            .expect("record");
+        assert_eq!(record.status, ApprovalStatus::Pending);
+        assert!(record.expires_at > record.decided_at);
+        assert_eq!(record.approver_id, "user");
+    }
+
+    fn record_with(
+        svc: &ApprovalServiceImpl,
+        planner_scope: Vec<String>,
+        input_scope: Option<Vec<String>>,
+        strict: Option<bool>,
+    ) -> Result<ApprovalRecord, ApprovalError> {
+        svc.build_record(
             &crate::approval::application::service::ResolvedNode {
                 node_id: Uuid::new_v4(),
                 step_name: "s".into(),
                 intent: ExecutionIntent {
                     tool: "run_command".into(),
                     intent: serde_json::json!({"command": "echo hi"}),
-                    declared_scope: vec![],
+                    declared_scope: planner_scope,
                 },
             },
             &ApproveInput {
@@ -294,12 +354,80 @@ mod tests {
                 authority: None,
                 decision_context: None,
                 token_claims_ref: None,
+                declared_scope: input_scope,
+                strict_scope: strict,
             },
-            now,
+            Utc::now(),
+        )
+    }
+
+    /// #1190: the approver's scope is merged, not substituted, and the signature
+    /// covers the merged value the oracle will use.
+    #[test]
+    fn approver_scope_is_merged_into_the_hashed_intent() {
+        let svc = ApprovalServiceImpl::new(
+            Arc::new(
+                crate::approval::infrastructure::repository::InMemoryApprovalRepository::new(),
+            ),
+            Arc::new(crate::approval::application::service_impl::tests::DummyResolver),
+            b"key".to_vec(),
+            Duration::from_secs(600),
         );
-        assert_eq!(record.status, ApprovalStatus::Pending);
-        assert!(record.expires_at > record.decided_at);
-        assert_eq!(record.approver_id, "user");
+        let with_scope = record_with(&svc, vec!["docs/".into()], Some(vec!["src/".into()]), None)
+            .expect("record");
+        assert_eq!(
+            with_scope.intent_payload["declared_scope"],
+            serde_json::json!(["docs/", "src/"]),
+            "planner scope must be kept and the approver's added"
+        );
+        assert_eq!(with_scope.approver_scope, vec!["src/".to_string()]);
+
+        let without = record_with(&svc, vec!["docs/".into()], None, None).expect("record");
+        assert_ne!(
+            with_scope.intent_hash, without.intent_hash,
+            "the hash must cover the approver-supplied scope"
+        );
+    }
+
+    /// #1190: strict mode is opt-in and refuses, rather than warning, when
+    /// neither producer supplied a scope.
+    #[test]
+    fn strict_scope_refuses_when_no_scope_is_declared() {
+        let svc = ApprovalServiceImpl::new(
+            Arc::new(
+                crate::approval::infrastructure::repository::InMemoryApprovalRepository::new(),
+            ),
+            Arc::new(crate::approval::application::service_impl::tests::DummyResolver),
+            b"key".to_vec(),
+            Duration::from_secs(600),
+        );
+        let error = record_with(&svc, Vec::new(), None, Some(true)).expect_err("strict refusal");
+        assert!(matches!(error, ApprovalError::InvalidScope(_)), "{error:?}");
+    }
+
+    #[test]
+    fn a_traversal_entry_is_refused_before_hashing() {
+        let mut input = ApproveInput {
+            dag_id: Uuid::new_v4(),
+            step_names: vec!["s".into()],
+            approver_id: "user".into(),
+            authority: None,
+            decision_context: None,
+            token_claims_ref: None,
+            declared_scope: Some(vec!["../etc/passwd".into()]),
+            strict_scope: None,
+        };
+        assert!(matches!(
+            input.validate(),
+            Err(ApprovalError::InvalidScope(_))
+        ));
+        input.declared_scope = Some(vec!["/etc/passwd".into()]);
+        assert!(matches!(
+            input.validate(),
+            Err(ApprovalError::InvalidScope(_))
+        ));
+        input.declared_scope = Some(vec!["src/".into()]);
+        assert!(input.validate().is_ok());
     }
 
     /// Dummy resolver used by the sanity test above (never resolves).

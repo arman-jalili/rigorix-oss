@@ -1309,6 +1309,10 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                         authority: input.authority.clone(),
                         decision_context: input.decision_context.clone(),
                         token_claims_ref: input.token_claims_ref.clone(),
+                        // #1190: the engine's approve_node surface does not
+                        // declare scope; the approver-facing surface may.
+                        declared_scope: None,
+                        strict_scope: None,
                     };
                     let out = binding.service.approve(approve_input).await.map_err(|e| {
                         ExecutionError::InternalError {

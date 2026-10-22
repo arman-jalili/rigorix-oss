@@ -1,3 +1,4 @@
+//! @canonical .pi/architecture/modules/orchestrator.md
 pub(crate) use super::*;
 
 pub(crate) use crate::sequence_policy::domain::{
@@ -45,6 +46,7 @@ impl audit_app::AuditService for CapturingAuditService {
                 requirement_findings: Vec::new(),
                 precondition_findings: Vec::new(),
                 scope_violations: Vec::new(),
+                scope_check: None,
                 decision_context_ref: None,
                 signature: None,
                 evidence_degraded: false,

@@ -76,6 +76,7 @@ pub enum ExecutionEvent {
     ApprovalRecorded { execution_id, node_id, step_name, intent_hash, approver_id, authority, decided_at, decision_context_ref },
     IntentMismatchDetected { execution_id, node_id, step_name, expected_hash, actual_hash, timestamp },
     ScopeViolationRecorded { execution_id, node_id, step_name, out_of_scope, timestamp },
+    EffectScopeChecked { execution_id, node_id, status, timestamp },
     NodeConsumed { execution_id, node_id, nonce, timestamp },
 }
 ```
@@ -85,6 +86,7 @@ pub enum ExecutionEvent {
 - `ApprovalRecorded` — human approved a step; bound to `intent_hash` with `approver_id`/`authority` (ADR-011 R3)
 - `IntentMismatchDetected` — pre-dispatch verification failed; HALT, re-approval required (ADR-011 R2)
 - `ScopeViolationRecorded` — post-execution effects exceeded declared scope (ADR-011 R5)
+- `EffectScopeChecked` — whether the R5 check ran (`checked` / `not_declared` / `unavailable`), so a clean result is distinguishable from "never checked" (#1189)
 - `NodeConsumed` — approved node dispatched; approval consumed (single-use)
 
 ---
@@ -188,5 +190,5 @@ ordered by sequence"]
 ---
 
 **Status:** Implemented  
-**Last verified:** 2026-08-28 (approval/identity event variants — contract amendment)  
+**Last verified:** 2026-10-23 (EffectScopeChecked records whether R5 ran — #1189)  
 **Module version:** 1.1.0

@@ -267,3 +267,4 @@ let result = orchestrator.run(RunInput { intent }).await?;
 | 2026-06-16 | ExecutionRecord helpers and tests (#341) | record | done |
 | 2026-06-16 | Proofing scripts and CI integration (#342) | testing, CI | done |
 | 2026-06-16 | Runbook, DR plan, and architecture sync (#343) | operations | done |
+| 2026-10-23 | Event timestamps read through `ExecutionEvent::timestamp()`, so a new variant cannot break the drain path (#1189) | orchestrator-impl | done |

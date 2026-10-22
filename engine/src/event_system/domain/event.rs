@@ -332,6 +332,20 @@ pub enum ExecutionEvent {
         timestamp: DateTime<Utc>,
     },
 
+    /// The R5 scope check recorded whether it ran, independent of findings
+    /// (#1189). Emitted for every checked node so "no violations" is not
+    /// confused with "never checked".
+    EffectScopeChecked {
+        /// Globally unique execution identifier.
+        execution_id: uuid::Uuid,
+        /// Node id whose effect scope was checked.
+        node_id: String,
+        /// `checked` | `not_declared` | `unavailable`.
+        status: String,
+        /// ISO 8601 timestamp of the event.
+        timestamp: DateTime<Utc>,
+    },
+
     /// A sequence-policy rule matched at plan time (R2) or the runtime
     /// dispatch boundary (R3): the later step was promoted (`requires_approval`
     /// flipped — the existing approval pause decides) or denied. First-class
@@ -515,6 +529,7 @@ impl ExecutionEvent {
             ExecutionEvent::PreconditionChecked { .. } => "precondition_checked",
             ExecutionEvent::IntentMismatchDetected { .. } => "intent_mismatch_detected",
             ExecutionEvent::ScopeViolationRecorded { .. } => "scope_violation_recorded",
+            ExecutionEvent::EffectScopeChecked { .. } => "effect_scope_checked",
             ExecutionEvent::AuditEnvelopeCreated { .. } => "audit_envelope_created",
         }
     }
@@ -541,6 +556,7 @@ impl ExecutionEvent {
             ExecutionEvent::ApprovalRecorded { execution_id, .. }
             | ExecutionEvent::IntentMismatchDetected { execution_id, .. }
             | ExecutionEvent::ScopeViolationRecorded { execution_id, .. }
+            | ExecutionEvent::EffectScopeChecked { execution_id, .. }
             | ExecutionEvent::SequenceRuleMatched { execution_id, .. }
             | ExecutionEvent::SequencePolicyDenied { execution_id, .. }
             | ExecutionEvent::SequencePolicyConfigError { execution_id, .. }
@@ -572,6 +588,7 @@ impl ExecutionEvent {
             | ExecutionEvent::ApprovalRecorded { timestamp, .. }
             | ExecutionEvent::IntentMismatchDetected { timestamp, .. }
             | ExecutionEvent::ScopeViolationRecorded { timestamp, .. }
+            | ExecutionEvent::EffectScopeChecked { timestamp, .. }
             | ExecutionEvent::SequenceRuleMatched { timestamp, .. }
             | ExecutionEvent::SequencePolicyDenied { timestamp, .. }
             | ExecutionEvent::SequencePolicyConfigError { timestamp, .. }
@@ -640,6 +657,9 @@ impl ExecutionEvent {
                     out_of_scope.len()
                 )
             }
+            ExecutionEvent::EffectScopeChecked {
+                node_id, status, ..
+            } => format!("Effect scope {status} for node {node_id}"),
             ExecutionEvent::PlanningStarted { intent, .. } => {
                 format!(
                     "Planning started: {}",
@@ -952,6 +972,12 @@ impl ExecutionEvent {
                 "template_id": template_id,
                 "confidence": confidence,
                 "parameters": parameters,
+            })),
+            ExecutionEvent::EffectScopeChecked {
+                node_id, status, ..
+            } => Some(serde_json::json!({
+                "node_id": node_id,
+                "status": status,
             })),
             // Informational events — no payload needed
             ExecutionEvent::PlanningStarted { .. }

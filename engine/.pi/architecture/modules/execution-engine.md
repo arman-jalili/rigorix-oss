@@ -3,7 +3,7 @@
 <!--
 Canonical Reference: .pi/architecture/modules/execution-engine.md
 Blueprint Source: Domain Exploration Session 63c25384
-Last Updated: 2026-10-23 — effect write-ahead is the fifth shared gate; the single-node route settles it (#1185)
+Last Updated: 2026-10-23 — the scope check records whether it ran, and the approver may supply scope (#1189, #1190)
 -->
 
 ## Overview

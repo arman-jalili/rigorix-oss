@@ -243,6 +243,12 @@ pub struct AuditEnvelope {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scope_violations: Vec<ScopeViolationRef>,
 
+    /// Whether the R5 scope check actually ran, separate from what it found
+    /// (#1189). `None` means the envelope predates this field: it makes no
+    /// claim either way. New envelopes always carry `Some(...)`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope_check: Option<ScopeCheckStatus>,
+
     /// Sequence-policy decisions recorded during the run (R6): every matched
     /// rule — promoted later step or dispatch-boundary deny — as a redacted
     /// finding. Answers "why did the run pause / why was this step denied"
@@ -385,6 +391,23 @@ pub struct PreconditionFindingRef {
     /// and optional; absent only in pre-attribution (old-engine) envelopes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attribution: Option<String>,
+}
+
+/// The outcome of the R5 scope check, independent of whether it found a
+/// violation (#1189).
+///
+/// "No violations" and "never looked" are different facts; a verifier must be
+/// able to tell them apart from the signed record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScopeCheckStatus {
+    /// A declared scope existed and the oracle compared the run against it.
+    Checked,
+    /// The approved intent declared no scope; there was nothing to compare.
+    NotDeclared,
+    /// A scope was declared but the oracle could not run (git missing, not a
+    /// repository, snapshot failure).
+    Unavailable,
 }
 
 /// A reference to a recorded effect-scope violation (ADR-011 R5).

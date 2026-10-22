@@ -149,6 +149,11 @@ pub struct ApprovalRecord {
     pub status: ApprovalStatus,
     /// What the human was shown (R4).
     pub decision_context: DecisionContext,
+    /// Scope the approver supplied at approval time (#1190). Kept separately
+    /// from the planner scope so verification can re-merge it into the current
+    /// node intent before hashing; empty for approvals that supplied none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub approver_scope: Vec<String>,
 }
 
 impl ApprovalRecord {

@@ -118,6 +118,7 @@ impl PersistedEventRepository for InMemoryEventRepository {
                         | ExecutionEvent::ApprovalRecorded { execution_id, .. }
                         | ExecutionEvent::IntentMismatchDetected { execution_id, .. }
                         | ExecutionEvent::ScopeViolationRecorded { execution_id, .. }
+                        | ExecutionEvent::EffectScopeChecked { execution_id, .. }
                         | ExecutionEvent::SequenceRuleMatched { execution_id, .. }
                         | ExecutionEvent::SequencePolicyDenied { execution_id, .. }
                         | ExecutionEvent::SequencePolicyConfigError { execution_id, .. }
@@ -165,6 +166,7 @@ impl PersistedEventRepository for InMemoryEventRepository {
                         ExecutionEvent::ApprovalRecorded { .. } => "approval_recorded",
                         ExecutionEvent::IntentMismatchDetected { .. } => "intent_mismatch_detected",
                         ExecutionEvent::ScopeViolationRecorded { .. } => "scope_violation_recorded",
+                        ExecutionEvent::EffectScopeChecked { .. } => "effect_scope_checked",
                         ExecutionEvent::SequenceRuleMatched { .. } => "sequence_rule_matched",
                         ExecutionEvent::SequencePolicyDenied { .. } => "sequence_policy_denied",
                         ExecutionEvent::SequencePolicyConfigError { .. } => {
@@ -201,6 +203,7 @@ impl PersistedEventRepository for InMemoryEventRepository {
                     ExecutionEvent::ApprovalRecorded { timestamp, .. }
                     | ExecutionEvent::IntentMismatchDetected { timestamp, .. }
                     | ExecutionEvent::ScopeViolationRecorded { timestamp, .. }
+                    | ExecutionEvent::EffectScopeChecked { timestamp, .. }
                     | ExecutionEvent::SequenceRuleMatched { timestamp, .. }
                     | ExecutionEvent::SequencePolicyDenied { timestamp, .. }
                     | ExecutionEvent::SequencePolicyConfigError { timestamp, .. }
@@ -281,6 +284,7 @@ impl PersistedEventRepository for InMemoryEventRepository {
                 ExecutionEvent::ApprovalRecorded { timestamp, .. }
                 | ExecutionEvent::IntentMismatchDetected { timestamp, .. }
                 | ExecutionEvent::ScopeViolationRecorded { timestamp, .. }
+                | ExecutionEvent::EffectScopeChecked { timestamp, .. }
                 | ExecutionEvent::SequenceRuleMatched { timestamp, .. }
                 | ExecutionEvent::SequencePolicyDenied { timestamp, .. }
                 | ExecutionEvent::SequencePolicyConfigError { timestamp, .. }
