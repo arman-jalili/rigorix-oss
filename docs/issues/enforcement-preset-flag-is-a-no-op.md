@@ -127,100 +127,52 @@ guardian_issue:
 
 ## What you are looking at
 
-`rigorix run --enforcement <preset>` is offered as a way to override the enforcement preset for a
-single run. It parses, it validates, it flows into the orchestrator builder — and then nothing reads
-it. The enforcement config that actually governs the run comes from `.rigorix` (the configuration
-file), resolved once at startup.
+`rigorix run --enforcement <preset>` parses, validates, and flows into the orchestrator builder — and
+nothing reads it. The enforcement config that governs the run comes from `.rigorix`, resolved once at
+startup. An operator who passes `--enforcement strict` believes the run is hardened; it is not, and
+nothing reports the difference, including `rigorix doctor`, which reports the config-file preset as
+if it were what was asked for.
 
-An operator who passes `--enforcement strict` believes the run is hardened. It is not. Nothing
-reports the difference, including `rigorix doctor`, which reports the config-file preset as though it
-were what was asked for.
+The architecture already records the gap honestly (`engine/.pi/architecture/modules/enforcement.md:23-26`):
+the flag "is threaded and not yet read… Selecting a preset per run needs a config-override path, not
+a wiring fix." **So the doc is not the defect — the CLI surface is.** The person at risk reads the
+flag, not the module doc.
 
-This is not a case of a doc lying. The architecture records the gap honestly
-(`engine/.pi/architecture/modules/enforcement.md:23-26`):
+## Where it goes
 
-> **Still asymmetric, deliberately recorded:** the per-run `--enforcement` flag
-> (`RunInput::enforcement_preset`) is threaded and not yet read — the executor config is built once at
-> startup, so the flag cannot vary per run. Selecting a preset per run needs a config-override path,
-> not a wiring fix.
+| step | location |
+|---|---|
+| flag | `cli/src/cli_boundary/dispatch.rs:220`, threaded at `:233`, calls at `:981,:990` |
+| DTO field | `engine/src/orchestrator/application/dto/mod.rs:50,196` |
+| builder + setter | `engine/src/orchestrator/application/builder_impl.rs:30,196-197` |
+| then | never read |
+| the real source | `cli/src/cli_boundary/orchestrator.rs:395` — from `engine_config.enforcement` |
 
-The **interface** is what lies. That asymmetry is worse than a documented limitation, because the
-person at risk reads the flag, not the module doc.
-
-## Evidence, end to end
-
-```
-rigorix run --enforcement strict
-  cli/src/cli_boundary/dispatch.rs:220   enforcement: Option<String>
-                              :233       RunIntent { enforcement_preset: enforcement }
-                              :981,:990  → handle_run(orch, intent, enforcement)
-  engine/src/orchestrator/application/dto/mod.rs:50,196    pub enforcement_preset: Option<String>
-  engine/src/orchestrator/application/builder_impl.rs:30   field
-                                             :196-197  fn with_enforcement_preset(mut self, preset: String)
-                                                       ↓
-                                            NEVER READ   ← the defect ends here
-```
-
-Where the real value comes from:
-
-```rust
-// cli/src/cli_boundary/orchestrator.rs:395
-enforcement: Some(enforcement_config_from_engine(&engine_config.enforcement)),
-```
-
-`engine_config` is the `.rigorix` configuration — the file. The flag never reaches this line.
-
-Proof that the field is write-only: every other construction site passes `None`, and no site
-dereferences it.
-
-```bash
-grep -rn 'enforcement_preset' . --include=*.rs
-#   .pi-less constructions, all `None`:
-#     mcp/src/execution_tools/infrastructure/engine_facade_impl.rs:323, :554
-#     cli/src/tui/mod.rs:703
-#     cli/src/tui/orchestrator_spawner.rs:152
-#     actions/src/action_entrypoint/application/router_impl.rs:78
-#     engine/src/orchestrator/application/builder_impl.rs:175, :335, :460
-#     ~20 test fixtures
-#   the only non-None assignments:
-#     cli/src/cli_boundary/dispatch.rs:233
-#     engine/src/orchestrator/application/builder_impl.rs:196-197 (the setter)
-#   reads: none
-```
-
-The engine's own comment at `parallel_executor.rs:80-84` says the same:
-
-> "Entry points pass `EnforcementConfig::standard()` unless a preset was…"
+Confirm in one command: `grep -rn 'enforcement_preset' . --include=*.rs` — every construction is
+`None` (tui, spawner, mcp, actions, ~20 fixtures); the only non-`None` writes are the CLI and the
+setter; there are no reads.
 
 ## The decision (already made — implement, do not re-litigate)
 
 **Reject the flag loudly now; implement the per-run override as separate work.**
 
-Reasoning: a per-run override is not a wiring fix. The executor config is built once at startup, so
-the flag needs a path that replaces the config object *per run*. Until that path exists, refusing the
-flag is the only option that does not mislead — and silently accepting a security setting is worth a
-breaking change to stop. Two alternatives if you disagree with the ordering:
-
-- **(c) delete the surface** — remove the clap arg, `RunInput.enforcement_preset`, and
-  `with_enforcement_preset` together. A DTO field that exists and is never read is exactly how this
-  happened; leaving it invites the same wiring attempt.
-- **(a) implement now** — only if you can do it without mutating global state (see Pitfalls).
-
-If you choose (a) or (c) rather than (b), say so in a comment before implementing, so the record
-shows the decision changed.
+A per-run override is not a wiring fix: the executor config is built once at startup, so the flag
+needs a path that replaces the config object *per run*. Until that exists, refusing is the only
+option that does not mislead. If you disagree with the ordering, comment before implementing:
+**(c)** delete the surface entirely — clap arg, `RunInput.enforcement_preset`, and
+`with_enforcement_preset` together; **(a)** implement now, only if it can be done without global
+state.
 
 ## In Scope
 
-- The chosen resolution for the flag: refuse with an actionable error / remove / implement
-- `engine/.pi/architecture/modules/enforcement.md:23-26` updated to describe the new reality in the
-  same MR
-- A test that fails if the flag is a silent no-op again
+- The chosen resolution: refuse with an actionable error / remove / implement
+- `enforcement.md:23-26` updated to the new reality **in the same MR**
+- A test that fails if the flag becomes a silent no-op again
 
 ## Out of Scope
 
-- Preset definitions, limits, or the `[enforcement] preset` config-file setting (it works)
-- Per-edge, per-tool, or per-node enforcement overrides
-- The `doctor` command's other probes
+- Preset definitions and limits; the `[enforcement] preset` config-file setting (it works)
+- Per-edge, per-tool, per-node overrides; other `doctor` probes
 
 ## Affected Layers
 
@@ -228,69 +180,61 @@ shows the decision changed.
 - `EnforcementConfig` / `EnforcementPreset` — unchanged
 
 ### Application
-- `RunInput.enforcement_preset` and `OrchestratorBuilder::with_enforcement_preset` (remove or use)
-- If (a): a per-run config-override path applied where the plan is dispatched
+- `RunInput.enforcement_preset`, `OrchestratorBuilder::with_enforcement_preset` — removed or used
+- If (a): a per-run config-override path at dispatch
 
 ### Infrastructure
 - None
 
 ### API
-- The CLI's `--enforcement` argument: behaviour or removal
+- The CLI `--enforcement` argument: behaviour or removal
 
 ## Canonical References
 
-| what | where |
-|---|---|
-| the honest note | `engine/.pi/architecture/modules/enforcement.md:23-26` |
-| the flag | `cli/src/cli_boundary/dispatch.rs:220,233,981,990` |
-| the DTO field | `engine/src/orchestrator/application/dto/mod.rs:50,196` |
-| the builder | `engine/src/orchestrator/application/builder_impl.rs:30,196-197` |
-| the real source | `cli/src/cli_boundary/orchestrator.rs:395` |
-| the engine contract | `engine/src/execution_engine/application/parallel_executor.rs:80-84` |
+- **Module:** `.pi/architecture/modules/enforcement.md:23-26`
+- **ADR:** `.pi/architecture/decisions/ADR-008-budget-enforcement.md`
+- **Evidence:** the five locations in "Where it goes" above
+- **Engine contract:** `engine/src/execution_engine/application/parallel_executor.rs:80-84`
 
 ## Acceptance Criteria
 
 | # | Criterion | How it is checked |
 |---|-----------|-------------------|
-| 1 | Flag changes behaviour, is refused with an actionable message, or is gone | `validate-tests.sh` + a case that fails today |
-| 2 | No stored-but-unread preset remains anywhere | `validate-architecture.sh` (grep-based check in the MR) |
-| 3 | The error names the config file as the supported path (if (b)) | review of the message text |
+| 1 | Flag changes behaviour, is refused with an actionable message, or is gone | `validate-tests.sh`, with a case that fails today |
+| 2 | No stored-but-unread preset remains | `validate-architecture.sh` |
+| 3 | The error names the config file as the supported path (if (b)) | review of the message |
 | 4 | `enforcement.md:23` matches the resolution | `validate-canonical.sh` |
-| 5 | Layer boundaries respected | `validate-architecture.sh` |
-| 6 | No test asserts the no-op as correct | review |
+| 5 | No test asserts the no-op as correct | review |
 
 ## Implementation
 
-> You are implementing a decision, not choosing one. If (b): the error message must name the config
-> file, because the operator's immediate next question is "then how do I set it?".
+> You are implementing a decision, not choosing one. If (b), the error must name the config file —
+> the operator's next question is "then how do I set it?".
 
-1. Read `cli/src/cli_boundary/dispatch.rs:200-250` and `:960-1000` — the arg, the intent, the calls.
-2. Read `engine/src/orchestrator/application/builder_impl.rs:20-40` and `:185-205`.
-3. Read `cli/src/cli_boundary/orchestrator.rs:385-400` — where the real config is built.
-4. Confirm the field is read nowhere: `grep -rn 'enforcement_preset' . --include=*.rs`.
-5. Implement the chosen option.
-6. Update `enforcement.md:23-26`.
-7. Add the test (see below).
+1. Read `dispatch.rs:200-250`, `:960-1000`; `builder_impl.rs:20-40`, `:185-205`;
+   `orchestrator.rs:385-400`.
+2. Confirm no reads (`grep -rn 'enforcement_preset' . --include=*.rs`).
+3. Implement the chosen option.
+4. Update `enforcement.md:23-26`; add the test.
 
 ### The test that matters
 
-A test that constructs a run with `--enforcement strict` and asserts *something about the resolved
-config* — not that the value was stored. Asserting `intent.enforcement_preset == Some("strict")`
-would pass today against the bug, which is why no test caught it.
+Assert something about the **resolved config** for a run started with `--enforcement strict`. An
+assertion that `intent.enforcement_preset == Some("strict")` passes today against the bug — which is
+why nothing caught it.
 
 ## Pitfalls
 
-- **Do not implement (a) by mutating a global.** Two concurrent runs do not share counters today
-  because the enforcer is per execution, keyed by `dag_id`. A per-run config must follow that shape;
-  a global override introduces cross-run interference that is far worse than the no-op.
-- **Do not leave the DTO field behind** if choosing (c). The field existing is the invitation.
-- **Do not update the doc in a follow-up.** Two documents describing different realities is the exact
-  defect being fixed.
-- **Do not silence the flag with a warning log.** A warning on stderr during a long run is not an
-  interface; the operator already believed the flag worked.
+- **Do not implement (a) by mutating a global.** Concurrent runs are isolated because the enforcer is
+  per execution keyed by `dag_id`; a global override introduces cross-run interference, which is far
+  worse than the no-op.
+- **Do not leave the DTO field behind** if choosing (c). The unused field is the invitation.
+- **Do not update the doc in a follow-up.** Two documents describing different realities is the
+  defect.
+- **Do not downgrade it to a warning log.** The operator already believed the flag worked.
 
 ## Why this is high
 
-The flag is a security control that silently does nothing. There is no error, no log, and no
-doctor probe that compares requested vs effective — so the only way to discover it is to read the
-source of the module the operator was told not to need.
+A security control that silently does nothing, with no error, no log, and no doctor probe comparing
+requested versus effective — discoverable only by reading the source of the module the operator was
+told they would not need.

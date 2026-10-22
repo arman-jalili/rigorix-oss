@@ -127,104 +127,79 @@ guardian_issue:
 
 ## What you are looking at
 
-The repository's strongest structural guard is an inverted default: `disallowed_types = "deny"` in
-`[workspace.lints.clippy]`, with roughly twenty sites carrying `#[allow(clippy::disallowed_types)]`
-and a written reason each. **Those comments are the audit trail.** They are what a reviewer, an
-auditor, or a future agent reads to decide whether an exception is justified.
+The repository's strongest structural guard is an inverted default — `disallowed_types = "deny"` with
+roughly twenty `#[allow(clippy::disallowed_types)]` sites, each carrying a written reason. **Those
+comments are the audit trail**: they are what a reviewer or auditor reads to decide whether an
+exception is justified. One of them is wrong.
 
-One of them is wrong. `engine/src/tools/application/git_read_tool.rs:22`:
+`engine/src/tools/application/git_read_tool.rs:22`:
 
 ```rust
 // #1083: approved process-spawning sink — `sh -c` for a git read; the caller-supplied path must be argv, not interpolated (#1082).
-// See `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
-#![allow(clippy::disallowed_types)]
 ```
 
-The code is not `sh -c`, and the same file says so twenty lines earlier:
-
-```rust
-//! run: `path = "x; touch pwned"` passed the check and then executed. argv
-//! removes the interpreter from the path, so a metacharacter is just a byte in
-//! an argument.                                            (lines 18-20)
-```
-
-The implementation agrees with the module doc, not with the allow comment:
-
-```rust
-let mut cmd = tokio::process::Command::new("git");   // :142 — argv, no interpreter
-// --output, -c and --exec are refused
-```
-
-So the file contradicts itself three ways, and the wrong statement is the one attached to the
-security exception.
+The code is not `sh -c`. The same file says so at `:18-20` — *"argv removes the interpreter from the
+path, so a metacharacter is just a byte in an argument"* — and the implementation agrees:
+`Command::new("git")` at `:142`, with `--output`, `-c` and `--exec` refused. Three statements in one
+file, and the wrong one is attached to the security exception.
 
 ## Why a comment counts as a defect
 
-The guard works by making every exception visible and requiring a justification. That only holds if
-the justification is true. A wrong one is worse than none: an absent reason prompts a question; a
-confident wrong reason answers it incorrectly.
-
-In this case the wrong reason describes exactly the vulnerability class the guard exists to prevent
-(shell interpolation), attached to a comment claiming that is what the code does. Anyone auditing
-sink behaviour from the comments — which is the intended workflow — will conclude this tool runs a
-shell, and will either "fix" working code or fail to notice a real shell sink written in the same
-style.
+The guard works by making exceptions visible and requiring a true justification. A wrong reason is
+worse than none: an absent reason prompts a question, a confident wrong reason answers it
+incorrectly. Here the wrong reason describes the exact vulnerability class the guard exists to
+prevent, attached to code that does not do it — so an auditor working from the comments will either
+"fix" working code or fail to notice a real shell sink written in the same style.
 
 ## In Scope
 
-- Correct the comment at `git_read_tool.rs:22` to describe argv construction
-- Verify `.pi/architecture/modules/tool-system.md#process-spawning-sinks` says the same for git reads
-  (the comment points there; if the inventory repeats the error, fix both in this MR)
-- Sweep the other `#[allow(clippy::disallowed_types)]` sites: read each comment against its code, and
-  report the result in the MR description (expected: they agree; say so explicitly)
+- Correct the comment at `git_read_tool.rs:22` to describe argv construction (keep the `#1083` /
+  `#1082` references and the inventory pointer; only the mechanism is wrong)
+- Verify `.pi/architecture/modules/tool-system.md#process-spawning-sinks` agrees for git reads, and
+  fix both in this MR if it repeats the error
+- Sweep the other allow sites: read each comment against its code, report the result in the MR
+  description
 
 ## Out of Scope
 
 - **Any implementation change.** The code is correct.
 - Reducing the number of allow sites
-- Adding a guard that text-matches comments against code (see Pitfalls)
-- The `#1082` / `#1083` history
+- A guard that text-matches comments against code (see Pitfalls)
 
 ## Affected Layers
 
 ### Domain / Application / Infrastructure / API
-- None. This is a comment and, at most, one inventory row.
+- None. A comment and, at most, one inventory row.
 
 ## Canonical References
 
-| what | where |
-|---|---|
-| the wrong claim | `engine/src/tools/application/git_read_tool.rs:22` |
-| the right claim, same file | `git_read_tool.rs:18-20` |
-| the code | `git_read_tool.rs:142` (and the argv assembly through `:210`) |
-| the inventory the comment cites | `.pi/architecture/modules/tool-system.md#process-spawning-sinks` |
+- **Module:** `.pi/architecture/modules/tool-system.md#process-spawning-sinks`
+- **Evidence:** `git_read_tool.rs:18-22` (the contradiction), `:142` (the code)
 
 ## Acceptance Criteria
 
 | # | Criterion | How it is checked |
 |---|-----------|-------------------|
 | 1 | The comment describes argv, not `sh -c` | review |
-| 2 | The inventory entry agrees with the comment | `validate-canonical.sh` |
-| 3 | Other allow sites checked; the result is stated in the MR | review |
-| 4 | No implementation change appears in the diff | `validate-ci.sh` + diff review |
+| 2 | The inventory entry agrees | `validate-canonical.sh` |
+| 3 | Other allow sites checked; result stated in the MR | review |
+| 4 | No implementation change in the diff | `validate-ci.sh` + diff |
 
 ## Implementation
 
-1. Read `git_read_tool.rs:1-45` — module docs and the allow comment, in one view.
-2. Read `git_read_tool.rs:130-215` — the command construction and the refused flags.
-3. Rewrite the comment to describe argv. Keep the issue references (`#1083`, `#1082`) and the
-   inventory pointer — the only thing that is wrong is the mechanism.
-4. Open `tool-system.md#process-spawning-sinks`; compare the git-read entry.
-5. `grep -rn 'allow(clippy::disallowed_types)' --include=*.rs .` and read each comment against its
-   code. Record the list in the MR description with one line per site.
-6. Run validators.
+1. Read `git_read_tool.rs:1-45` (docs and allow comment together) and `:130-215`.
+2. Rewrite the comment to describe argv.
+3. Compare the inventory entry for git reads.
+4. `grep -rn 'allow(clippy::disallowed_types)' --include=*.rs .` and read each comment against its
+   code; list the sites in the MR description.
+5. Run validators.
 
 ## Pitfalls
 
-- **Do not add a comment-vs-code text guard.** It would be brittle (comments and code change
-  independently) and would produce a false green: a comment can name `argv` while the code
-  interpolates. The real guard is the deny-by-default lint plus a reason that review keeps honest.
-- **Do not "fix" the code.** It is argv and correct. The defect is the description.
+- **Do not add a comment-vs-code text guard.** It is brittle (they change independently) and yields a
+  false green: a comment can name `argv` while the code interpolates. The real guard is the deny
+  default plus a reason that review keeps honest.
+- **Do not "fix" the code** — it is argv and correct.
 - **Do not let the diff grow.** If the sweep finds another wrong comment, decide explicitly: fix it
   here (still comment-only) or file it separately and say which.
 - **If the inventory is also wrong, fix both now** — otherwise the citation and the file disagree
@@ -232,6 +207,6 @@ style.
 
 ## Why this is medium
 
-No code is wrong, and nothing behaves badly. But the file that justifies an exception to the
-repository's strongest guard tells a reviewer the opposite of what the file does — and a trusted
-justification is the one mechanism that guard has.
+Nothing behaves badly. But the file that justifies an exception to the repository's strongest guard
+tells a reviewer the opposite of what the file does, and a trusted justification is the only
+mechanism that guard has.
