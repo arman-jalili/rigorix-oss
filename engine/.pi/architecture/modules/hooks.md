@@ -416,5 +416,5 @@ pub enum HookError {
 
 ---
 
-**Status:** Planned  
+**Status:** Implemented. `HookRunnerServiceImpl` is attached in all three roots; a hook that closes stdin before reading is a normal early exit, and its exit status remains the verdict (#1170).
 **Implementation priority:** P0 — foundational extensibility mechanism

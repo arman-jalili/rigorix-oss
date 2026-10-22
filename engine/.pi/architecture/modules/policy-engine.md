@@ -313,5 +313,5 @@ priority = 15
 
 ---
 
-**Status:** Planned  
+**Status:** Implemented as a library, **not wired**. `PolicyEngineFactoryImpl` and the evaluator are complete and tested, but no composition root calls `with_policy_engine`, so no run consults a policy. Do not describe it as an active control until that call exists.
 **Implementation priority:** P1 — configurable enforcement
