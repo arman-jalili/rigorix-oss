@@ -50,9 +50,10 @@ pub mod infrastructure;
 pub mod interfaces;
 
 pub use application::{
-    BeginEffectInput, BeginEffectOutput, DependentFence, DispatchObservation, DispatchSeam,
-    EffectCommitmentBackendConfig, EffectCommitmentCeiling, EffectCommitmentCompositionRoot,
-    EffectCommitmentConfig, EffectCommitmentFactory, EffectCommitmentSeam, EffectCommitmentService,
+    BeginEffectInput, BeginEffectOutput, CommitmentDurability, CommitmentSettlement,
+    DependentFence, DispatchObservation, DispatchSeam, EffectCommitmentBackendConfig,
+    EffectCommitmentCeiling, EffectCommitmentCompositionRoot, EffectCommitmentConfig,
+    EffectCommitmentFactory, EffectCommitmentSeam, EffectCommitmentService,
     EffectCommitmentServiceImpl, EffectCommitmentSetup, EffectCommitmentSetupError,
     IntentKeyDerivation, MarkAmbiguousInput, MarkAmbiguousOutput, NodeStateVocabulary,
     ProviderReceiptConfig, ProviderReceiptReader, QueryEffectInput, QueryEffectOutput,

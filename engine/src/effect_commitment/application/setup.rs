@@ -67,40 +67,54 @@ impl From<CommitmentError> for EffectCommitmentSetupError {
     }
 }
 
-/// The guarantee this setup can actually prove.
+/// How long the commitment record and its fences survive.
 ///
-/// The ceiling is derived from what was constructed, never declared by an
-/// operator (ADR-019). In particular, L3 requires a provider receipt reader:
-/// without one the context can prove **not-settled**, never **settled**.
+/// Durability is one axis; it says nothing about whether the context can prove
+/// the effect committed. A restart costs the L1 record entirely.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EffectCommitmentCeiling {
+pub enum CommitmentDurability {
     /// In-process ledger: exact within this process, lost on restart.
     L1,
-    /// Shared ledger: survives process death; no provider read-back.
+    /// Shared ledger: survives process death.
     L2,
-    /// Provider receipt read-back is armed: can prove committed.
-    L3,
 }
 
-impl EffectCommitmentCeiling {
-    /// Derive the ceiling from the constructed adapters.
-    ///
-    /// Provider evidence is what upgrades L2 to L3; the absence of a shared
-    /// ledger caps the claim at L1 even when a receipt reader is configured,
-    /// because the record itself does not survive the process.
-    pub fn derive(shared_ledger: bool, provider_evidence: bool) -> Self {
-        match (shared_ledger, provider_evidence) {
-            (_, true) => Self::L3,
-            (true, false) => Self::L2,
-            (false, false) => Self::L1,
-        }
-    }
-
-    /// The short label used by `rigorix doctor` and the runbook.
-    pub fn as_str(self) -> &'static str {
+impl CommitmentDurability {
+    /// The existing level name for this axis.
+    pub fn level(self) -> &'static str {
         match self {
             Self::L1 => "L1",
             Self::L2 => "L2",
+        }
+    }
+
+    /// One sentence an operator can act on, including the restart cost.
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::L1 => "in-process only; a restart loses the record and its fences",
+            Self::L2 => "shared ledger; the record and its fences survive a restart",
+        }
+    }
+}
+
+/// Whether provider evidence can settle an effect.
+///
+/// Settlement is the second axis. It is independent of durability: a receipt
+/// reader can prove `committed` even when the record is in-process (L1), because
+/// the provider is the authority for the effect, not the ledger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommitmentSettlement {
+    /// No receipt reader: the context can prove not-settled only.
+    None,
+    /// Provider receipt read-back: the context can prove committed.
+    L3,
+}
+
+impl CommitmentSettlement {
+    /// The level name for this axis, or `none` when no read-back exists.
+    pub fn level(self) -> &'static str {
+        match self {
+            Self::None => "none",
             Self::L3 => "L3",
         }
     }
@@ -108,18 +122,53 @@ impl EffectCommitmentCeiling {
     /// One sentence an operator can act on.
     pub fn description(self) -> &'static str {
         match self {
-            Self::L1 => {
-                "in-process record only; survives neither restart nor a second process, \
-                 and cannot prove a commitment"
-            }
-            Self::L2 => {
-                "shared ledger survives process death; without a receipt reader it can prove \
-                 not-settled only"
-            }
-            Self::L3 => {
-                "provider receipt read-back is armed; the only ceiling that can prove committed"
-            }
+            Self::None => "no provider read-back; can prove not-settled only",
+            Self::L3 => "provider receipt read-back; can prove committed",
         }
+    }
+}
+
+/// The two independent guarantee axes: durability and settlement.
+///
+/// The runbook speaks L1/L2 for durability and L3 for settlement. Collapsing
+/// them into one label made `doctor` print "L3" for a deployment with no
+/// durable record (#1182); this type keeps them separate while preserving the
+/// vocabulary operators already use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectCommitmentCeiling {
+    durability: CommitmentDurability,
+    settlement: CommitmentSettlement,
+}
+
+impl EffectCommitmentCeiling {
+    /// Derive both axes from the constructed adapters.
+    ///
+    /// The axes are independent: a receipt reader yields L3 settlement even at
+    /// L1 durability, and the absence of a receipt reader leaves settlement at
+    /// `none` even on a shared ledger. Do not cap L3 at L1 (#1182).
+    pub fn derive(shared_ledger: bool, provider_evidence: bool) -> Self {
+        Self {
+            durability: if shared_ledger {
+                CommitmentDurability::L2
+            } else {
+                CommitmentDurability::L1
+            },
+            settlement: if provider_evidence {
+                CommitmentSettlement::L3
+            } else {
+                CommitmentSettlement::None
+            },
+        }
+    }
+
+    /// How long the record and its fences survive.
+    pub fn durability(&self) -> CommitmentDurability {
+        self.durability
+    }
+
+    /// Whether provider evidence can prove the effect committed.
+    pub fn settlement(&self) -> CommitmentSettlement {
+        self.settlement
     }
 }
 
@@ -340,28 +389,29 @@ pub trait EffectCommitmentCompositionRoot: Send + Sync {
 
 #[cfg(test)]
 mod tests {
-    use super::EffectCommitmentCeiling;
-
     #[test]
-    fn the_ceiling_is_derived_from_the_constructed_adapters() {
-        // No shared ledger, no provider evidence: the in-process default.
+    fn the_two_axes_are_derived_independently() {
+        use super::{CommitmentDurability, CommitmentSettlement, EffectCommitmentCeiling};
+
+        // The full matrix: durability and settlement do not move together.
+        let l1_none = EffectCommitmentCeiling::derive(false, false);
+        assert_eq!(l1_none.durability(), CommitmentDurability::L1);
+        assert_eq!(l1_none.settlement(), CommitmentSettlement::None);
+
+        let l2_none = EffectCommitmentCeiling::derive(true, false);
+        assert_eq!(l2_none.durability(), CommitmentDurability::L2);
+        assert_eq!(l2_none.settlement(), CommitmentSettlement::None);
+
+        let l1_l3 = EffectCommitmentCeiling::derive(false, true);
+        assert_eq!(l1_l3.durability(), CommitmentDurability::L1);
         assert_eq!(
-            EffectCommitmentCeiling::derive(false, false),
-            EffectCommitmentCeiling::L1
+            l1_l3.settlement(),
+            CommitmentSettlement::L3,
+            "L3 is reachable at L1: the provider, not the ledger, is the authority"
         );
-        // A shared ledger upgrades durability, not provability.
-        assert_eq!(
-            EffectCommitmentCeiling::derive(true, false),
-            EffectCommitmentCeiling::L2
-        );
-        // Provider evidence is what lets the context say "committed".
-        assert_eq!(
-            EffectCommitmentCeiling::derive(false, true),
-            EffectCommitmentCeiling::L3
-        );
-        assert_eq!(
-            EffectCommitmentCeiling::derive(true, true),
-            EffectCommitmentCeiling::L3
-        );
+
+        let l2_l3 = EffectCommitmentCeiling::derive(true, true);
+        assert_eq!(l2_l3.durability(), CommitmentDurability::L2);
+        assert_eq!(l2_l3.settlement(), CommitmentSettlement::L3);
     }
 }

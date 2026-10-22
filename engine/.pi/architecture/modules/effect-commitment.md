@@ -4,7 +4,7 @@
 Canonical Reference: .pi/architecture/modules/effect-commitment.md
 Blueprint Source: Guardian Framework v1.2
 Generated: NEVER (this is the source)
-Last Updated: 2026-10-23 — sweep ownership is a ledger capability; the ceiling is derived; the HTTP idempotency header is reserved (#1174)
+Last Updated: 2026-10-23 — durability and settlement are reported separately; conditional wiring rows state both branches (#1182, #1183)
 -->
 
 ## Overview
@@ -392,7 +392,8 @@ The sweep is gated on a ledger capability, `can_sweep_dispatched` (#1173): an in
 returns `true` (its owner has the only clock), a shared HTTP ledger returns `false` (the service
 owns both the records and the clock). `EffectCommitmentSetup::reconcile` returns `0` without
 querying when the adapter cannot sweep, so a client never compares another process's `started_at`
-against its own clock.
+against its own clock. The wiring claim is therefore **conditional**, not "every root sweeps"
+(#1183): every root calls `reconcile`; the adapter decides whether it may sweep.
 
 ## Guarantee ceiling
 
@@ -405,6 +406,8 @@ against its own clock.
 Without a `ProviderReceiptReader`, the context can prove **not-settled** and never **settled**.
 That asymmetry is the honest claim and must appear wherever the feature is described.
 
-`EffectCommitmentSetup::ceiling()` derives the level from the constructed adapters (shared ledger
-and/or receipt reader), never from an operator declaration; `rigorix doctor` prints that derived
-value. A deployment must not be described at a level the constructed setup cannot support.
+`EffectCommitmentSetup::ceiling()` derives **two independent axes** from the constructed adapters,
+never from an operator declaration: durability (L1 in-process, L2 shared ledger) and settlement
+(`none`, or L3 with a receipt reader). They combine — L1 durability + L3 settlement is a valid
+deployment — and `rigorix doctor` prints both plus the restart cost. Do not collapse them into one
+label: "L3" says the context can prove committed, not that the record survives a restart (#1182).

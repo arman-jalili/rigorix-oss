@@ -416,9 +416,11 @@ pub async fn probe(repo_root: &Path) -> DoctorReport {
                     format!("{}", effect_commitment_path.display()),
                 );
                 row.detail = Some(format!(
-                    "ceiling {}: {}; {}",
-                    ceiling.as_str(),
-                    ceiling.description(),
+                    "durability {}: {}; settlement {}: {}; {}",
+                    ceiling.durability().level(),
+                    ceiling.durability().description(),
+                    ceiling.settlement().level(),
+                    ceiling.settlement().description(),
                     if setup.sweeps_dispatched() {
                         "this root owns the Dispatched sweep"
                     } else {
@@ -649,7 +651,12 @@ mod tests {
         let row = effect_commitment_row(&report);
         assert_eq!(row.state, SeamState::Armed);
         let detail = row.detail.as_deref().unwrap_or_default();
-        assert!(detail.contains("ceiling L1"), "{detail}");
+        assert!(detail.contains("durability L1"), "{detail}");
+        assert!(detail.contains("settlement none"), "{detail}");
+        assert!(
+            detail.contains("a restart loses the record and its fences"),
+            "doctor must say what a restart costs: {detail}"
+        );
         assert!(
             detail.contains("this root owns the Dispatched sweep"),
             "{detail}"
@@ -668,7 +675,15 @@ mod tests {
         let row = effect_commitment_row(&report);
         assert_eq!(row.state, SeamState::Armed);
         let detail = row.detail.as_deref().unwrap_or_default();
-        assert!(detail.contains("ceiling L3"), "{detail}");
+        assert!(detail.contains("durability L1"), "{detail}");
+        assert!(
+            detail.contains("settlement L3"),
+            "L3 is settlement at L1 durability, not a single ceiling: {detail}"
+        );
+        assert!(
+            detail.contains("a restart loses the record and its fences"),
+            "an L3 label must not hide the durability cost: {detail}"
+        );
     }
 
     #[tokio::test]
