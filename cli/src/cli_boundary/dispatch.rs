@@ -217,7 +217,6 @@ async fn cmd_key(label: Option<String>) -> DispatchResult {
 async fn handle_run(
     orch: &dyn rigorix_engine::orchestrator::application::OrchestratorService,
     intent: String,
-    enforcement: Option<String>,
 ) -> DispatchResult {
     let input = rigorix_engine::orchestrator::application::dto::RunInput {
         intent,
@@ -230,7 +229,9 @@ async fn handle_run(
         // Identity attestation arrives via the MCP auth module (ADR-012);
         // the CLI run path is legacy self-asserted author.
         identity: None,
-        enforcement_preset: enforcement,
+        // Reserved for the per-run override (#1156): the CLI flag is refused,
+        // so this is always None until that override path exists.
+        enforcement_preset: None,
     };
     match orch.run(input).await {
         Ok(output) => {
@@ -928,7 +929,12 @@ pub async fn dispatch(
     {
         return DispatchResult::error(
             format!(
-                "`--enforcement {preset}` is not implemented: the executor config is built once                  at startup, so a per-run preset cannot be honoured. Set `[enforcement] preset`                  in rigorix.toml instead. The flag is refused rather than silently ignored."
+                concat!(
+                    "`--enforcement {preset}` is not implemented: the executor config is built once at startup, ",
+                    "so a per-run preset cannot be honoured. Set `[enforcement] preset` in rigorix.toml instead. ",
+                    "The flag is refused rather than silently ignored."
+                ),
+                preset = preset
             ),
             2,
         );
@@ -993,18 +999,14 @@ pub async fn dispatch(
 
     // Thin router — delegates to handler functions
     match command {
-        CliCommand::Run {
-            intent,
-            enforcement,
-            ..
-        } => {
+        CliCommand::Run { intent, .. } => {
             let Some(orch) = orch.as_deref() else {
                 return DispatchResult::error(
                     "internal error: orchestrator not built for run".to_string(),
                     1,
                 );
             };
-            handle_run(orch, intent, enforcement).await
+            handle_run(orch, intent).await
         }
         CliCommand::Plan { intent } => {
             let Some(orch) = orch.as_deref() else {
@@ -1026,7 +1028,7 @@ pub async fn dispatch(
                 std::io::stdin().read_line(&mut input).ok();
                 let input = input.trim().to_lowercase();
                 if input == "y" || input == "yes" {
-                    return handle_run(orch, intent_clone, None).await;
+                    return handle_run(orch, intent_clone).await;
                 }
                 // User declined — exit cleanly with no double-print
                 return DispatchResult::success("");
@@ -1103,6 +1105,11 @@ mod tests {
         assert!(
             result.summary.contains("not implemented"),
             "{}",
+            result.summary
+        );
+        assert!(
+            !result.summary.contains("  "),
+            "the message renders with a gap: {:?}",
             result.summary
         );
         assert!(
