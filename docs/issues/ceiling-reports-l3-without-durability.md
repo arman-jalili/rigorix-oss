@@ -1,109 +1,99 @@
 ---
 guardian_issue:
-  id: "ISSUE-CEILING-L3-WITHOUT-DURABILITY"
-  title: "the ceiling derivation returns L3 for an in-memory ledger, contradicting its own doc comment — doctor over-reports the one number the runbook forbids misstating"
+  id: "ISSUE-CEILING-SCALAR-HIDES-DURABILITY"
+  title: "the ceiling is one scalar for two orthogonal axes: doctor prints 'ceiling L3' for a deployment with no durability, and derive's doc comment states a rule the code does not implement"
   epic: "effect commitment"
   epic_id: "EPIC-EFFECT-COMMITMENT"
   tracking_issue: 1182
   component: "EffectCommitment"
   module: "effect-commitment"
   status: planned
-  priority: high
-  created_at: "2026-10-23T16:00:00Z"
-  updated_at: "2026-10-23T16:00:00Z"
+  priority: medium
+  created_at: "2026-10-23T17:00:00Z"
+  updated_at: "2026-10-23T17:00:00Z"
 
   intent: |
-    Make the ceiling derivation match its documentation: a deployment whose records die with the
-    process cannot claim L3.
+    Report durability and settlement evidence separately, and fix the comment that contradicts both the
+    code and the runbook.
 
-    `EffectCommitmentCeiling::derive` (`application/setup.rs:93-100`) is:
+    The runbook defines the levels by **claim**, not by a ladder (`runbook-effect-commitment.md:13-26`):
 
-    ```rust
-    match (shared_ledger, provider_evidence) {
-        (_, true) => Self::L3,          // ← provider evidence alone upgrades
-        (true, false) => Self::L2,
-        (false, false) => Self::L1,
-    }
-    ```
+    | level | claim | requires |
+    |---|---|---|
+    | L1 | fences **in this process** | `in_memory` |
+    | L2 | survives process death, contested store | `http` **+ a service** — "OSS ships the client, not the service; enterprise ADR-011 specifies it" |
+    | L3 | **the effect committed** | `[receipt_reader]` + provider evidence + a provider that received the key |
 
-    Its own doc comment, three lines above, says the opposite:
+    L3 requires no L2. So `EffectCommitmentCeiling::derive(false, true) == L3` is **correct per the
+    runbook**: with a receipt reader, an in-process deployment can still prove that an effect
+    committed, by re-deriving the intent key and asking the provider. That path is real — the key is
+    `H(dag_id, node_id, intent_digest)` built from the persisted `TaskNode` (`dispatch.rs:802-812`,
+    `key_impl.rs:37-45`), so it survives in the plan even when the ledger does not.
 
-    > "Provider evidence is what upgrades L2 to L3; **the absence of a shared ledger caps the claim at
-    > L1 even when a receipt reader is configured**, because the record itself does not survive the
-    > process."
+    Two problems remain, and neither is the derivation:
 
-    The enum agrees with the comment: `L1` is defined as *"In-process ledger: exact within this
-    process, lost on restart"*, `L3` as *"Provider receipt read-back is armed: can prove committed"*.
-    The code picks L3 for `(in_memory, receipt_reader)`.
+    1. **`derive`'s doc comment contradicts it** (`setup.rs:88-92`): "the absence of a shared ledger caps
+       the claim at L1 even when a receipt reader is configured, because the record itself does not
+       survive the process." The code and the runbook both disagree with that sentence.
+    2. **One scalar cannot express two axes.** `doctor` prints `ceiling L3` with the description "the
+       only ceiling that can prove committed" — true, and silent about the fact that this deployment
+       has **no durability at all**: after a restart there is no record, no fence, and no sweep. An
+       operator reading "L3" can reasonably infer a cumulative top tier.
 
-    **The case is reachable.** `EffectCommitmentConfig::parse` accepts `kind = "in_memory"` together
-    with a `[receipt_reader]` section (verified by parsing that exact config: `is_ok = true`; the
-    in-memory rejection rule covers only backend HTTP fields, `config.rs:237-244`). `EffectCommitmentSetup`
-    computes the two booleans independently (`setup.rs:161-166`), and `doctor` prints
-    `setup.ceiling()` directly (`doctor.rs:411`).
-
-    So an operator with an in-process ledger and a receipt reader runs `rigorix doctor`, reads
-    **ceiling L3**, and is told that a deployment which loses every record on restart can prove the
-    effect committed — which is the claim the runbook explicitly forbids (`runbook:19-20`).
-
-    A unit test asserts the defect (`setup.rs:359-360`: `derive(false, true) == L3`), so the suite is
-    green on the wrong behaviour.
+    This matters commercially as well as operationally: durability is the enterprise property
+    (ADR-011), and a label that reads as "top level" while the deployment is L1 on durability hides
+    exactly what the enterprise service adds.
 
   dependencies:
-    - name: "EffectCommitmentCeiling::derive"
+    - name: "EffectCommitmentCeiling"
       type: internal
-      note: "application/setup.rs:93-100 — the match arm; :88-92 is the contradictory doc comment."
-    - name: "EffectCommitmentConfig::parse"
-      type: internal
-      note: "config.rs:237-244 — in_memory rejects backend HTTP fields only; a [receipt_reader] is allowed."
+      note: "application/setup.rs:76-120 — enum, derive, as_str, description."
     - name: "doctor effect-commitment row"
       type: internal
-      note: "cli/src/cli_boundary/doctor.rs:409-419 — prints the derived ceiling (#1176)."
+      note: "cli/src/cli_boundary/doctor.rs:409-419 — prints ceiling + description."
     - name: "runbook ceiling table"
       type: internal
-      note: "engine/docs/runbook-effect-commitment.md:15-20 — L3 conditions and the prohibition."
+      note: "engine/docs/runbook-effect-commitment.md:13-26 — the spec this issue follows."
 
   in_scope:
-    - "Fix the derivation so provider evidence cannot lift an in-process ledger above L1"
-    - "Flip the unit test that asserts L3 for (false, true); add the (true,true) case explicitly"
-    - "State in the runbook and doctor description what L1-with-a-receipt-reader can and cannot prove"
-    - "Test the full matrix via setup: in_memory+reader ⇒ L1, http ⇒ L2, http+reader ⇒ L3"
+    - "Correct `derive`'s doc comment to match the code and the runbook (L3 = settlement evidence)"
+    - "Make the reported ceiling state both axes: durability (in-process | shared) and evidence (none | settled)"
+    - "doctor prints both, and says plainly what the deployment cannot do after a restart"
+    - "Keep L3 reachable at L1 — do not cap it"
 
   out_of_scope:
-    - "Whether an L1 deployment should be allowed to configure a receipt reader at all (it may be useful for manual reconciliation)"
-    - "Splitting the ceiling into two axes (durability vs settlement evidence) — see the note below"
-    - "The doctor row itself (#1176)"
+    - "Capping L3 at L2 (would remove a legitimate OSS capability and contradict the runbook)"
+    - "Rejecting `[receipt_reader]` with `in_memory`; it is useful for manual reconciliation"
+    - "The sweep capability (#1173) and the W17 row (#1183)"
 
   affected_layers:
     domain:
-      - "Modified: EffectCommitmentCeiling::derive"
+      - "Modified: EffectCommitmentCeiling — two axes, or one label plus a qualifier"
     application:
-      - "Modified: setup.rs doc comment and the unit test"
+      - "Modified: derive doc comment; description text"
     infrastructure:
       - "None"
     api:
-      - "Modified: doctor output for the in_memory + receipt_reader configuration"
+      - "Modified: the doctor row's text"
 
   canonical_references:
     - module: ".pi/architecture/modules/effect-commitment.md"
     - adr:
         - ".pi/architecture/decisions/ADR-019-effect-commitment.md"
     - last_sync: "2026-10-23"
-    - evidence: "application/setup.rs:93-100 — (_, true) => L3"
-    - evidence: "application/setup.rs:88-92 — 'caps the claim at L1 even when a receipt reader is configured'"
-    - evidence: "application/setup.rs:76-84 — the L1/L2/L3 enum doc"
-    - evidence: "application/setup.rs:359-360 — the test asserting (false,true) == L3"
-    - evidence: "orchestrator: config.rs:237-244 — in_memory rejects backend HTTP fields only"
-    - evidence: "parsed 'kind=\"in_memory\"' + [receipt_reader] successfully (is_ok = true)"
-    - evidence: "cli/src/cli_boundary/doctor.rs:411 — ceiling printed from setup.ceiling()"
-    - evidence: "engine/docs/runbook-effect-commitment.md:15-20"
+    - evidence: "runbook-effect-commitment.md:13-26 — L3 requires a receipt reader, not L2; L2 names the enterprise service"
+    - evidence: "application/setup.rs:93-100 — (_, true) => L3 (correct per the runbook)"
+    - evidence: "application/setup.rs:88-92 — the contradicting doc comment"
+    - evidence: "application/setup.rs:110-120 — the three descriptions doctor prints"
+    - evidence: "cli/src/cli_boundary/doctor.rs:411-419 — ceiling + description in the row"
+    - evidence: "dispatch.rs:802-812 / key_impl.rs:37-45 — the intent key is re-derivable from the plan"
 
   acceptance_criteria:
-    - "derive(false, true) == L1; derive(true, false) == L2; derive(true, true) == L3"
-    - "The unit test asserts the corrected matrix and would fail on the old behaviour"
-    - "An end-to-end setup test covers in_memory+reader ⇒ L1 and http+reader ⇒ L3"
-    - "doctor prints L1 for an in-memory ledger with a receipt reader"
-    - "The runbook explains what L1-with-a-reader can prove (settlement, while the process lives) and what it cannot (durability)"
+    - "The reported ceiling names durability and evidence separately, or qualifies a single label"
+    - "doctor's row says what the deployment cannot do after a restart when durability is in-process"
+    - "L3 remains reachable with an in-process ledger and a receipt reader"
+    - "`derive`'s doc comment agrees with the code and the runbook"
+    - "Tests cover: in_memory+reader (settlement yes, durability no), http (durability yes, settlement no), http+reader (both)"
     - "validate-ci.sh, validate-tests.sh, validate-canonical.sh pass"
 
   validators:
@@ -113,22 +103,25 @@ guardian_issue:
     - canonical
 
   implementation_notes: |
-    The doc comment is the specification; the code drifted from it. Change the code, not the comment.
+    Prefer two fields over a qualified string: `durability: InProcess | Shared` and
+    `settlement: None | ProviderEvidence`. A string like "L3 (L1 durability)" invites the reader to
+    parse it, and the whole problem is that one token carries two meanings.
 
-    Two axes are being collapsed into one label, and that is worth a sentence rather than a redesign:
-    durability (does the record survive?) and settlement evidence (can we learn what happened?) are
-    independent. An L1 deployment with a receipt reader genuinely can ask the provider "did this
-    commit?", but it cannot fence anything after a restart, because the record is gone. If you want to
-    express both, do it in the doctor detail line — "ceiling L1 (record not durable); receipt reader
-    configured for manual reconciliation" — rather than by widening the enum in this issue.
+    Keep the labels the runbook uses. Do not invent a new scale — the operator docs, the DR plan and
+    the console all speak L1/L2/L3, and a fourth vocabulary is a new source of drift.
 
-    Do not silently drop the receipt reader at L1. Configuring one is legitimate; reporting a ceiling
-    it does not earn is not.
+    Do not "fix" this by disabling the receipt reader at L1. Asking a provider whether an effect
+    committed is useful precisely when the local record is gone; that is the one recovery path an
+    in-process deployment has.
+
+    The doctor line should be actionable: "settlement evidence: provider read-back armed;
+    durability: in-process — a restart loses the record and the fence. Durability requires the ledger
+    service (ADR-011)." That sentence also makes the enterprise gap legible without naming a product.
 
   file_changes:
     - "modify: engine/src/effect_commitment/application/setup.rs"
-    - "modify: engine/docs/runbook-effect-commitment.md"
-    - "modify: cli/src/cli_boundary/doctor.rs (description only, if the detail line changes)"
+    - "modify: cli/src/cli_boundary/doctor.rs"
+    - "modify: engine/docs/runbook-effect-commitment.md (if the table needs the two axes spelled out)"
     - "create: engine/tests/effect_commitment_ceiling_matrix.rs"
 
   pipeline_steps:
@@ -138,79 +131,76 @@ guardian_issue:
     - merge
 ---
 
-# ISSUE-1182: L3 without durability
+# ISSUE-1182: two axes reported as one label
 
 ## What you are looking at
 
 ```
-derive(shared_ledger, provider_evidence)
-  (_,             true)  => L3      ← in-memory + receipt reader reaches L3
-  (true,          false) => L2
-  (false,         false) => L1
+durability:   in-process  |  shared (enterprise service)
+settlement:   none        |  provider read-back
 ```
 
-Doc comment above it: *"the absence of a shared ledger caps the claim at L1 even when a receipt reader
-is configured, because the record itself does not survive the process."*
+`ceiling()` collapses these into one of L1/L2/L3, and `doctor` prints it with "the only ceiling that
+can prove committed". For `kind = "in_memory"` + `[receipt_reader]` that yields **L3** while both
+durability and the ability to fence across a restart are absent.
 
-Reachable, verified: `kind = "in_memory"` + `[receipt_reader]` parses, setup derives, doctor prints.
-The result is `ceiling L3` for a deployment whose records are lost on restart — the claim the runbook
-forbids.
+The derivation is right per the runbook (L3 = the effect committed, no L2 required). The **label** is
+what misleads, and `derive`'s doc comment states the opposite rule in prose.
 
 ## Decision (already made)
 
-Fix the derivation to match its comment: `(false, _) => L1`, `(true, false) => L2`, `(true, true) => L3`.
-Flip the test that asserts the defect.
+Keep L3 reachable at L1. Report the two axes separately; fix the comment; make doctor say what a
+restart costs.
 
 ## In Scope
 
-- The match arms, the test matrix, the runbook sentence, an end-to-end setup test
+- Two-axis reporting; comment fix; doctor text; matrix tests
 
 ## Out of Scope
 
-- Whether L1 may configure a reader (it may)
-- Splitting the ceiling into two axes (note only)
-- The doctor row (#1176)
+- Capping L3 at L2; rejecting readers at L1; #1173/#1183
 
 ## Affected Layers
 
 ### Domain
-- `derive`
+- `EffectCommitmentCeiling` — two fields
 
 ### Application
-- Doc comment + unit test
+- `derive` comment; `description`
 
 ### API
-- doctor output for that configuration
+- doctor row text
 
 ## Canonical References
 
 - **Module:** `.pi/architecture/modules/effect-commitment.md`
-- **Evidence:** `setup.rs:76-100,359-360`; `config.rs:237-244`; `doctor.rs:411`; `runbook:15-20`
+- **Evidence:** `runbook:13-26`; `setup.rs:88-120`; `doctor.rs:411-419`; `key_impl.rs:37-45`
 
 ## Acceptance Criteria
 
 | # | Criterion | Validator |
 |---|-----------|-----------|
-| 1 | Correct matrix | `validate-tests.sh` |
-| 2 | Test fails on the old behaviour | `validate-tests.sh` |
-| 3 | Setup matrix test (in_memory+reader ⇒ L1) | `validate-integration.sh` |
-| 4 | doctor prints L1 for that config | `validate-tests.sh` |
-| 5 | Runbook explains both axes | `validate-canonical.sh` |
+| 1 | Both axes reported | `validate-tests.sh` |
+| 2 | doctor says what a restart costs | `validate-tests.sh` |
+| 3 | L3 reachable at L1 | `validate-tests.sh` |
+| 4 | Comment matches code + runbook | `validate-canonical.sh` |
+| 5 | Matrix tests (3 combinations) | `validate-integration.sh` |
 
 ## Implementation
 
-1. Read `setup.rs:76-110`, `:155-170`, `:340-370`; `config.rs:230-250`.
-2. Fix the match; fix the test; add the matrix test through setup.
-3. One runbook sentence on what L1-with-a-reader proves.
-4. Run validators.
+1. Read `setup.rs:76-130`, `doctor.rs:400-425`, `runbook:13-26`.
+2. Split the type; keep the L1/L2/L3 vocabulary for each axis.
+3. Update the doctor text; add the matrix tests.
 
 ## Pitfalls
 
-- **Do not change the doc comment to match the code** — the comment is the specification.
-- **Do not reject the config** — a reader at L1 is legitimate for manual reconciliation.
-- **Beware tests that assert the bug**: `setup.rs:359` does, which is why the suite never caught it.
+- **Do not cap L3 at L1.** It contradicts the runbook and removes the only recovery path an
+  in-process deployment has.
+- **Do not invent new level names** — the runbook, DR plan and console all speak L1/L2/L3.
+- **Do not fix it with a string** like "L3 (L1 durability)"; that is the same conflation in text form.
 
-## Why this is high
+## Why this is medium
 
-It is the number the runbook singles out as not-to-be-misstated, printed by the tool built to report
-it honestly, in the configuration most likely to be tried first (opt-in, in-process, plus a reader).
+Operationally the deployment works as designed. But the label is what an operator quotes when asked
+what protection is in place, and "L3" for a deployment that cannot fence after a restart overstates
+durability — while hiding the one thing the enterprise service adds.
