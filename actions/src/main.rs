@@ -419,12 +419,24 @@ async fn build_action_orchestrator(
             .map_err(|error| format!("capacity ledger: {error}"))?;
     // ADR-019: operator-declared effect commitment. Absent file = no seam;
     // a malformed declaration fails closed.
-    let effect_commitment = rigorix_engine::effect_commitment::EffectCommitmentSetup::from_env(
-        std::path::Path::new(repo_root),
-    )
-    .await
-    .map_err(|error| format!("effect commitment: {error}"))?
-    .map(|setup| setup.dispatch_seam());
+    let effect_commitment =
+        match rigorix_engine::effect_commitment::EffectCommitmentSetup::from_env(
+            std::path::Path::new(repo_root),
+        )
+        .await
+        .map_err(|error| format!("effect commitment: {error}"))?
+        {
+            Some(setup) => {
+                // #1164: a record left Dispatched by a crash has no live owner.
+                // Mark it Ambiguous before any node can retry it.
+                setup
+                    .reconcile()
+                    .await
+                    .map_err(|error| format!("effect commitment: {error}"))?;
+                Some(setup.dispatch_seam())
+            }
+            None => None,
+        };
     let execution = ParallelExecutionFactoryImpl
         .create(ParallelExecutionFactoryConfig {
             executor_config: ParallelExecutorConfig {

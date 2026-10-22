@@ -1604,11 +1604,20 @@ pub async fn build_real_engine(
             .await?;
     // ADR-019: operator-declared effect commitment. Absent file = no seam;
     // a malformed declaration fails closed.
-    let effect_commitment = rigorix_engine::effect_commitment::EffectCommitmentSetup::from_env(
-        std::path::Path::new(repo_root),
-    )
-    .await?
-    .map(|setup| setup.dispatch_seam());
+    let effect_commitment =
+        match rigorix_engine::effect_commitment::EffectCommitmentSetup::from_env(
+            std::path::Path::new(repo_root),
+        )
+        .await?
+        {
+            Some(setup) => {
+                // #1164: a record left Dispatched by a crash has no live owner.
+                // Mark it Ambiguous before any node can retry it.
+                setup.reconcile().await?;
+                Some(setup.dispatch_seam())
+            }
+            None => None,
+        };
     // ── Event bus (shared: the executor publishes into it AND the
     //    orchestrator drains it for the audit envelope — a split bus makes
     //    engine envelopes evidence-empty) ──

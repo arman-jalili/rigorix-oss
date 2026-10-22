@@ -155,7 +155,7 @@ if [ "$SINGLE_COUNT" -gt 0 ]; then
 Each requires separate branch: \`issue/{number}\`
 
 EOF
-    echo "$SINGLE_ISSUES" | jq -r '.[] | "- #\(.number): \(.title) → branch: \`issue/\(.number)\`"' >> "$OUTPUT_FILE"
+    echo "$SINGLE_ISSUES" | jq -r '.[] | "- #\(.number): \(.title) → branch: `issue/\(.number)`"' >> "$OUTPUT_FILE"
 fi
 
 # ---------------------------------------------------------------------------

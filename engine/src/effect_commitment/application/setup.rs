@@ -25,6 +25,7 @@ use thiserror::Error;
 
 use crate::effect_commitment::application::factory::EffectCommitmentFactory;
 use crate::effect_commitment::application::key_impl::Sha256IntentKeyDerivation;
+use crate::effect_commitment::application::reconcile::EffectReconciler;
 use crate::effect_commitment::application::seam::DispatchSeam;
 use crate::effect_commitment::application::seam_impl::EffectCommitmentSeam;
 use crate::effect_commitment::application::service::EffectCommitmentService;
@@ -77,6 +78,9 @@ pub struct EffectCommitmentSetup {
 
     /// The optional L3 provider read-back adapter.
     pub receipt_reader: Option<Arc<dyn ProviderReceiptReader>>,
+
+    /// The startup sweep for records orphaned by a crash (#1164).
+    reconciler: Arc<EffectReconciler>,
 }
 
 impl EffectCommitmentSetup {
@@ -95,6 +99,7 @@ impl EffectCommitmentSetup {
         } = config;
 
         let ledger: Arc<dyn EffectCommitmentLedger> = Arc::from(factory.create(backend));
+        let reconciler = Arc::new(EffectReconciler::with_default_lease(ledger.clone()));
         let service: Arc<dyn EffectCommitmentService> = Arc::new(EffectCommitmentServiceImpl::new(
             ledger,
             Arc::new(Sha256IntentKeyDerivation::new()),
@@ -106,6 +111,7 @@ impl EffectCommitmentSetup {
         Ok(Self {
             service,
             receipt_reader,
+            reconciler,
         })
     }
 
@@ -134,6 +140,9 @@ impl EffectCommitmentSetup {
         };
 
         let config = EffectCommitmentConfig::parse(&text)?;
+        // #1166: fail at startup, not at first use. A config pointing at a
+        // service that does not exist is a declaration that cannot be honoured.
+        validate_backend_reachable(&config.backend).await?;
         let setup = Self::from_config(config, &DefaultEffectCommitmentFactory).await?;
 
         tracing::info!(
@@ -154,6 +163,80 @@ impl EffectCommitmentSetup {
     /// Whether provider evidence is available (L3).
     pub fn can_prove_commitment(&self) -> bool {
         self.receipt_reader.is_some()
+    }
+
+    /// Sweep `Dispatched` records orphaned by a crash to `Ambiguous` (#1164).
+    ///
+    /// Composition roots call this exactly once at startup, after
+    /// [`EffectCommitmentSetup::from_env`] arms the seam. A failure is
+    /// fail-closed: starting with an unknown backlog would let a resumed run
+    /// retry an effect that may already have happened.
+    pub async fn reconcile(&self) -> Result<usize, EffectCommitmentSetupError> {
+        let swept = self.reconciler.reconcile().await?;
+        if swept > 0 {
+            tracing::warn!(
+                swept,
+                lease_secs = self.reconciler.lease().as_secs(),
+                "effect-commitment: startup sweep moved expired Dispatched records to Ambiguous"
+            );
+        } else {
+            tracing::debug!("effect-commitment: startup sweep found no expired Dispatched records");
+        }
+        Ok(swept)
+    }
+}
+
+/// Probe the declared backend before the run starts (#1166).
+///
+/// The OSS repository ships the HTTP **client** but not the ledger service, so
+/// a `[backend] kind = "http"` declaration that points at nothing would fail
+/// hours into a run. A TCP connect is enough to distinguish "nothing is
+/// listening" from "a service is there"; the first use still fails closed on
+/// any protocol error.
+async fn validate_backend_reachable(
+    backend: &crate::effect_commitment::application::factory::EffectCommitmentBackendConfig,
+) -> Result<(), EffectCommitmentSetupError> {
+    use crate::effect_commitment::application::factory::EffectCommitmentBackendConfig;
+
+    let EffectCommitmentBackendConfig::Http {
+        base_url,
+        timeout_ms,
+        ..
+    } = backend
+    else {
+        return Ok(());
+    };
+
+    let url = reqwest::Url::parse(base_url).map_err(|error| {
+        EffectCommitmentSetupError::ConfigInvalid {
+            detail: format!("effect-commitment backend base_url is not a URL: {error}"),
+        }
+    })?;
+    let host = url
+        .host_str()
+        .ok_or_else(|| EffectCommitmentSetupError::ConfigInvalid {
+            detail: "effect-commitment backend base_url has no host".to_string(),
+        })?;
+    let port =
+        url.port_or_known_default()
+            .ok_or_else(|| EffectCommitmentSetupError::ConfigInvalid {
+                detail: "effect-commitment backend base_url has no port".to_string(),
+            })?;
+    let probe_timeout = std::time::Duration::from_millis((*timeout_ms).min(5_000));
+
+    match tokio::time::timeout(probe_timeout, tokio::net::TcpStream::connect((host, port))).await {
+        Ok(Ok(_)) => Ok(()),
+        Ok(Err(error)) => Err(EffectCommitmentSetupError::Unavailable {
+            detail: format!(
+                "effect-commitment backend at {base_url} is unreachable: {error}.                  OSS ships only the in-process L1 adapter; L2 requires a service implementing                  the frozen /v1/effects contract (enterprise ADR-011). See                  docs/runbook-effect-commitment.md."
+            ),
+        }),
+        Err(_) => Err(EffectCommitmentSetupError::Unavailable {
+            detail: format!(
+                "effect-commitment backend at {base_url} did not accept a connection within                  {}ms. OSS ships only the in-process L1 adapter; L2 requires the enterprise                  ledger service (ADR-011).",
+                probe_timeout.as_millis()
+            ),
+        }),
     }
 }
 

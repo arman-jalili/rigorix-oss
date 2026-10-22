@@ -139,8 +139,24 @@ impl ParallelExecutionServiceImpl {
         }
 
         // ── Execute the tool ──
+        // #1165: the provider must receive the intent-derived key, or the
+        // receipt reader's idempotency-key lookup can only miss.
+        let effect_key = self
+            .effect_keys
+            .lock()
+            .ok()
+            .and_then(|keys| keys.get(&node_id).map(|key| key.as_str().to_string()));
         let result = match tool_name {
-            "run_command" => Self::exec_run_command(tool_intent, node_id, &node.name, start).await,
+            "run_command" => {
+                Self::exec_run_command(
+                    tool_intent,
+                    node_id,
+                    &node.name,
+                    start,
+                    effect_key.as_deref(),
+                )
+                .await
+            }
             "file_read" => Self::exec_file_read(tool_intent, node_id, &node.name, start).await,
             "file_write" => Self::exec_file_write(tool_intent, node_id, &node.name, start).await,
             "file_append" => Self::exec_file_append(tool_intent, node_id, &node.name, start).await,
@@ -197,6 +213,7 @@ impl ParallelExecutionServiceImpl {
         node_id: Uuid,
         node_name: &str,
         start: std::time::Instant,
+        effect_key: Option<&str>,
     ) -> TaskResult {
         let command = command_from_intent(intent);
         // Refuse a compound shell string: there is no allowlist on this path,
@@ -221,7 +238,17 @@ impl ParallelExecutionServiceImpl {
         // so it cannot read `RIGORIX_HMAC_KEY` and forge audit envelopes (#1068).
         let mut child = tokio::process::Command::new("sh");
         child.arg("-c").arg(command.as_ref());
-        apply_child_env(&mut child, &[]);
+        // The key is not a secret, but it is the only way a process provider
+        // can dedupe and expose the receipt the reader will look up (#1165).
+        let overrides: Vec<(String, String)> = effect_key
+            .map(|key| {
+                vec![(
+                    crate::effect_commitment::interfaces::EFFECT_IDEMPOTENCY_ENV.to_string(),
+                    key.to_string(),
+                )]
+            })
+            .unwrap_or_default();
+        apply_child_env(&mut child, &overrides);
         let output = tokio::time::timeout(SUBPROCESS_TIMEOUT, child.output()).await;
         match output {
             Ok(Ok(out)) => {
@@ -960,5 +987,46 @@ impl ParallelExecutionServiceImpl {
         for cb in callbacks.iter() {
             cb(progress.clone());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Instant;
+
+    fn command_json(command: &str) -> String {
+        serde_json::json!({ "command": command }).to_string()
+    }
+
+    #[tokio::test]
+    async fn run_command_carries_the_effect_key_to_the_provider() {
+        // #1165: the provider must receive the intent-derived key. The process
+        // channel is an env var because run_command deliberately clears the
+        // rest of the environment.
+        let result = ParallelExecutionServiceImpl::exec_run_command(
+            &command_json("printf %s \"$RIGORIX_EFFECT_IDEMPOTENCY_KEY\""),
+            Uuid::now_v7(),
+            "n",
+            Instant::now(),
+            Some("intent-key-1"),
+        )
+        .await;
+        assert!(result.success, "command failed: {:?}", result.error);
+        assert_eq!(result.output.as_deref(), Some("intent-key-1"));
+    }
+
+    #[tokio::test]
+    async fn a_node_without_a_commitment_does_not_invent_a_key() {
+        let result = ParallelExecutionServiceImpl::exec_run_command(
+            &command_json("printf %s \"$RIGORIX_EFFECT_IDEMPOTENCY_KEY\""),
+            Uuid::now_v7(),
+            "n",
+            Instant::now(),
+            None,
+        )
+        .await;
+        assert!(result.success, "command failed: {:?}", result.error);
+        assert_eq!(result.output.as_deref(), Some(""));
     }
 }

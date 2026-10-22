@@ -13,11 +13,23 @@ unknown. The context answers one question — *was this effect committed?* — a
 | Level | Claim | Requires |
 |---|---|---|
 | L1 | The intent is recorded before the effect is sent; an `Ambiguous` effect blocks dependents and retry **in this process**. | `backend.kind = "in_memory"` |
-| L2 | Records and fences survive process death and settle through a contested store. | `backend.kind = "http"` + a real ledger service |
-| L3 | The effect **committed**. | a `[receipt_reader]` and provider receipt/read-back evidence |
+| L2 | Records and fences survive process death and settle through a contested store. | `backend.kind = "http"` **and** a service implementing the frozen `/v1/effects` contract. **OSS ships the client, not the service**; enterprise ADR-011 specifies it. |
+| L3 | The effect **committed**. | a `[receipt_reader]`, provider receipt/read-back evidence, and a provider that received the intent key |
 
 Without a receipt reader the context can prove **not-settled**; it can never prove **settled**. Do
 not describe a deployment as L3 unless its resolver actually presents provider evidence.
+
+## L2: the serving side is not in OSS (#1166)
+
+The HTTP adapter is implemented and frozen, but nothing in this repository answers its six paths.
+Every OSS deployment is therefore **L1** unless the operator supplies the enterprise ledger
+service. That is the honest statement; "L2 available" without a service is the claim this section
+exists to prevent.
+
+If `backend.kind = "http"` is declared, startup probes the address and refuses to run when nothing
+is listening, so the failure happens before the first effect rather than hours into a run. The
+example declaration is [`docs/examples/effect-commitment.toml`](examples/effect-commitment.toml);
+it is inert until copied to `.rigorix/effect-commitment.toml`.
 
 ## Startup sequence and dependencies
 
@@ -29,6 +41,10 @@ not describe a deployment as L3 unless its resolver actually presents provider e
    refused rather than silently downgraded.
 4. The factory builds the ledger adapter and, when declared, the provider receipt reader. The
    composition root attaches `setup.dispatch_seam()` to the execution-engine factory.
+5. The composition root runs `setup.reconcile()`. A `Dispatched` record older than the 15-minute
+   dispatch lease has no live owner (its process died), so it is moved to `Ambiguous` before any
+   node can retry it. A sweep failure refuses the start; a fresh record is left alone because it
+   may be in flight elsewhere.
 
 The only required dependency is the selected ledger adapter. The HTTP adapter additionally depends
 on the ledger service; the receipt reader depends on the provider's read-back API.
@@ -62,6 +78,20 @@ provider_id = "stripe"
 | `timeout_ms` | Per-request deadline; must be > 0 |
 | `max_response_body_bytes` | Bounded response body; must be > 0 |
 
+## L3: what the provider must do (#1165)
+
+The receipt reader looks a receipt up by the intent's idempotency key. That only works if the
+provider was given the key when the effect was sent:
+
+- **HTTP providers** receive `Idempotency-Key: <intent-key>`.
+- **Process providers** invoked through `run_command` receive
+  `RIGORIX_EFFECT_IDEMPOTENCY_KEY=<intent-key>` in their environment.
+
+The provider MUST dedupe on that key and MUST expose it on the receipt (the reader queries
+`GET /v1/receipts?idempotency_key=<key>`). A provider that stores the key but does not dedupe leaves
+L3 out of reach. The key is not a secret, but it must never be logged together with request or
+response bodies. Without a provider that honours this contract, the honest ceiling is L2.
+
 ## Operating an unsettled effect
 
 An `Ambiguous` effect blocks its dependents and any retry **by design**. Do not wait for a timeout
@@ -87,6 +117,7 @@ to make it disappear: a guessed outcome is how the window is closed incorrectly.
 |---|---|---|
 | Dispatch refused with `effect commitment begin failed` | The write-ahead record could not be written. | Treat as fail-closed. Check the ledger service/network, then retry the run. Do **not** bypass the seam. |
 | `Ambiguous` effect; run does not progress | A response was lost, a deadline passed, the process died, or a cancellation happened in flight. | Follow *Operating an unsettled effect*. |
+| A record is still `Dispatched` after a crash | The startup sweep has not run, or the record is still inside its 15-minute lease (it may be in flight elsewhere). | Restart the composition root so the sweep runs, or wait for the lease; then follow *Operating an unsettled effect*. Never resolve a `Dispatched` record by hand as `NotCommitted`. |
 | `retry refused` on a node | F2: the intent is still ambiguous, or the record is terminal. | Resolve the ambiguous record, or start a **new intent** (new execution). Do not re-send the same intent. |
 | Dependents never run | F1: an upstream effect is still ambiguous. | Resolve the upstream record; then resume. |
 | `provider receipt status 'pending'` / `Unavailable` | The provider has not settled; the context refuses to guess. | Retry the read-back later. The effect stays ambiguous. |

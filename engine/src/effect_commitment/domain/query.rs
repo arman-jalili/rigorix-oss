@@ -10,6 +10,8 @@
 //! - `ByDag` reads every record for one execution
 //! - `Ambiguous` lists unsettled effects, optionally narrowed to one DAG — this
 //!   is the operator surface that makes an indefinitely blocked run legible
+//! - `Dispatched` lists in-flight effects; the crash sweep uses it to find
+//!   records whose owner is gone
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -37,6 +39,16 @@ pub enum EffectQuery {
         /// Optional execution filter.
         dag_id: Option<Uuid>,
     },
+
+    /// List in-flight (`Dispatched`) effects, optionally narrowed to one run.
+    ///
+    /// This is the candidate set for the crash sweep: a record that is still
+    /// `Dispatched` past its lease has no live owner and must become
+    /// `Ambiguous`, never `NotCommitted` (#1164).
+    Dispatched {
+        /// Optional execution filter.
+        dag_id: Option<Uuid>,
+    },
 }
 
 impl EffectQuery {
@@ -53,5 +65,10 @@ impl EffectQuery {
     /// List unsettled effects, optionally for one run.
     pub fn ambiguous(dag_id: Option<Uuid>) -> Self {
         Self::Ambiguous { dag_id }
+    }
+
+    /// List in-flight effects, optionally for one run.
+    pub fn dispatched(dag_id: Option<Uuid>) -> Self {
+        Self::Dispatched { dag_id }
     }
 }

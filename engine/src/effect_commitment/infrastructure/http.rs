@@ -265,6 +265,15 @@ impl EffectCommitmentLedger for HttpEffectLedger {
                     None => request,
                 }
             }
+            EffectQuery::Dispatched { dag_id } => {
+                let request = client
+                    .get(self.url(QUERY_PATH))
+                    .query(&[("state", "dispatched")]);
+                match dag_id {
+                    Some(dag_id) => request.query(&[("dag_id", dag_id.to_string())]),
+                    None => request,
+                }
+            }
         };
         let output: QueryEffectOutput = self.send_json(request).await?;
         Ok(output.records)

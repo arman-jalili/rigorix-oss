@@ -85,12 +85,25 @@ pub async fn run_contract(ledger: &dyn EffectCommitmentLedger) {
         .begin(intent("contract-2", 1, "args"))
         .await
         .expect("begin second");
+
+    // The crash sweep's read side: only the in-flight record is returned.
+    let in_flight = ledger
+        .query(EffectQuery::dispatched(None))
+        .await
+        .expect("dispatched query");
+    assert_eq!(in_flight, vec![second.clone()]);
+
     let ambiguous = ledger
         .mark_ambiguous(second.id(), "response lost".to_string())
         .await
         .expect("mark ambiguous");
     assert!(ambiguous.blocks_retry());
     assert!(ambiguous.blocks_dependents());
+    let no_longer_in_flight = ledger
+        .query(EffectQuery::dispatched(None))
+        .await
+        .expect("dispatched query after mark");
+    assert!(no_longer_in_flight.is_empty());
 
     let pending = ledger
         .query(EffectQuery::ambiguous(None))

@@ -219,7 +219,31 @@ impl EffectRecord {
             EffectQuery::Ambiguous { dag_id } => {
                 self.is_ambiguous() && dag_id.is_none_or(|dag| self.intent.dag_id == dag)
             }
+            EffectQuery::Dispatched { dag_id } => {
+                self.state == EffectState::Dispatched
+                    && dag_id.is_none_or(|dag| self.intent.dag_id == dag)
+            }
         }
+    }
+
+    /// The instant after which a `Dispatched` record has no live owner.
+    ///
+    /// The deadline is derived from the intent's `created_at` plus the dispatch
+    /// lease, so the record shape does not carry a second timestamp. A record
+    /// that is still `Dispatched` past this instant was written before a crash
+    /// (or its owner stopped reporting) and must be swept to `Ambiguous`.
+    pub fn dispatch_deadline(&self, lease: std::time::Duration) -> DateTime<Utc> {
+        let lease = chrono::Duration::from_std(lease)
+            .unwrap_or_else(|_| chrono::Duration::seconds(i64::MAX / 2));
+        self.intent.created_at + lease
+    }
+
+    /// Whether this record is `Dispatched` and older than `lease`.
+    ///
+    /// Only `Dispatched` can expire: a terminal record is settled, and an
+    /// `Ambiguous` record is already awaiting a resolver.
+    pub fn is_dispatch_expired(&self, now: DateTime<Utc>, lease: std::time::Duration) -> bool {
+        self.state == EffectState::Dispatched && self.dispatch_deadline(lease) < now
     }
 
     /// Settle a `Dispatched` effect with definite provider evidence.

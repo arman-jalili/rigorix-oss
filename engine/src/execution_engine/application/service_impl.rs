@@ -94,6 +94,7 @@ async fn spawn_concurrent_node(
         Arc<crate::enforcement::application::enforcer_impl::ExecutionEnforcerImpl>,
     >,
     hook_runner: &Option<Arc<dyn HookRunnerService>>,
+    effect_key: Option<String>,
     enforce_permission: bool,
 ) -> Result<(), ExecutionError> {
     let node = match graph.get_node(node_id).cloned() {
@@ -320,6 +321,7 @@ async fn spawn_concurrent_node(
                     node_id,
                     &node_name,
                     start,
+                    effect_key.as_deref(),
                 )
                 .await
             }
@@ -624,6 +626,9 @@ pub struct ParallelExecutionServiceImpl {
     /// Effect record ids keyed by node id, so the terminal outcome can settle
     /// the matching write-ahead record.
     effect_records: Arc<Mutex<HashMap<Uuid, EffectRecordId>>>,
+    /// Intent-derived keys keyed by node id, so the tool call can carry the
+    /// same identity to the provider (#1165).
+    effect_keys: Arc<Mutex<HashMap<Uuid, IdempotencyKey>>>,
     /// Node ids whose commitment record is `Ambiguous` (ADR-019 F1).
     ///
     /// `release_or_skip_dependents` checks this before releasing; an unknown
@@ -671,6 +676,7 @@ impl ParallelExecutionServiceImpl {
             capacity_holds: Arc::new(Mutex::new(HashMap::new())),
             effect_commitment: None,
             effect_records: Arc::new(Mutex::new(HashMap::new())),
+            effect_keys: Arc::new(Mutex::new(HashMap::new())),
             effect_ambiguous: Arc::new(Mutex::new(HashSet::new())),
             budget_enforcers: Arc::new(Mutex::new(HashMap::new())),
         }

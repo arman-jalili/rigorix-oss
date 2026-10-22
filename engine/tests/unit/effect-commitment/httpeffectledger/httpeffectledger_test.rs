@@ -227,6 +227,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dispatched_query_uses_the_state_parameter() {
+        let server = MockServer::start().await;
+        let record = EffectRecord::begin(intent());
+        Mock::given(method("GET"))
+            .and(path(QUERY_PATH))
+            .and(query_param("state", "dispatched"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(QueryEffectOutput {
+                records: vec![record.clone()],
+            }))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(QUERY_PATH))
+            .and(query_param("state", "dispatched"))
+            .and(query_param("dag_id", record.intent().dag_id.to_string()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(QueryEffectOutput {
+                records: vec![record.clone()],
+            }))
+            .mount(&server)
+            .await;
+
+        let ledger = HttpEffectLedger::new(config(&server));
+        assert_eq!(
+            ledger.query(EffectQuery::dispatched(None)).await.unwrap(),
+            vec![record.clone()]
+        );
+        assert_eq!(
+            ledger
+                .query(EffectQuery::dispatched(Some(record.intent().dag_id)))
+                .await
+                .unwrap(),
+            vec![record]
+        );
+    }
+
+    #[tokio::test]
     async fn every_transport_ambiguity_fails_closed() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))

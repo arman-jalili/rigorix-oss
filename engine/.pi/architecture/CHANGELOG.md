@@ -1,3 +1,24 @@
+## [2026-10-22] — effect-commitment runtime gaps closed (#1163–#1166)
+
+### Fixed
+- **Capacity holds share the effect identity (#1163).** The reserve key is
+  `H(dag_id, node_id, intent_digest)` — the same derivation the record uses. A
+  crash after reserve is findable, and a resumed dispatch collapses onto the
+  original hold instead of holding the resource twice. Same key with a
+  different amount is `Contended`.
+- **Startup sweep for orphaned records (#1164).** A record left `Dispatched` by
+  a crash is moved to `Ambiguous` once it exceeds the 15-minute dispatch lease.
+  The transition is conditional, so concurrent composition roots converge; the
+  sweep never resolves and never claims the effect did or did not happen.
+- **The provider receives the intent key (#1165).** HTTP providers get
+  `Idempotency-Key`; process providers get `RIGORIX_EFFECT_IDEMPOTENCY_KEY`.
+  The provider must dedupe on it and expose it on the receipt, otherwise the
+  reader's key lookup can only miss.
+- **The L2 ceiling is stated honestly (#1166).** OSS ships the HTTP client, not
+  the ledger service. A declared `kind = "http"` backend is probed at startup
+  and refuses the run if nothing is listening. An inert example declaration
+  lives at `docs/examples/effect-commitment.toml`.
+
 ## [2026-10-21] — effect-commitment implemented (ADR-019)
 
 ### Added

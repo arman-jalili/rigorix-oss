@@ -12,6 +12,9 @@
 pub mod contract;
 pub mod effect_commitment_ledger;
 pub mod http;
+pub mod provider;
 
 pub use effect_commitment_ledger::EffectCommitmentLedger;
 pub use http::{CommitmentErrorResponse, EFFECT_COMMITMENT_ENDPOINTS, EndpointContract};
+
+pub use provider::{EFFECT_IDEMPOTENCY_ENV, EFFECT_IDEMPOTENCY_HEADER};
