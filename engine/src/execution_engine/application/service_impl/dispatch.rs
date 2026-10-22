@@ -7,6 +7,8 @@
 
 use sha2::{Digest, Sha256};
 
+use crate::effect_commitment::application::key::IntentKeyDerivation;
+use crate::effect_commitment::application::key_impl::Sha256IntentKeyDerivation;
 use crate::effect_commitment::application::{DefaultRetryFence, RetryFence};
 
 use super::gate::GateOutcome;
@@ -778,6 +780,30 @@ impl ParallelExecutionServiceImpl {
         Some((node_id, cloned))
     }
 
+    /// Build the intent identity shared by the effect record and the
+    /// capacity hold (#1163).
+    ///
+    /// The gate's digests are not yet exposed on the node, so the intent
+    /// identity is derived from the node and execution identity for now. The
+    /// placeholder key is replaced by the service's intent derivation; the
+    /// digest fields are what make the derived key stable across retries.
+    fn effect_intent(
+        dag_id: Uuid,
+        node_id: Uuid,
+        node: &crate::dag_engine::domain::TaskNode,
+    ) -> EffectIntent {
+        EffectIntent::new(
+            dag_id,
+            node_id,
+            0,
+            IdempotencyKey::new(format!("{dag_id}:{node_id}:pending")),
+            node.tool.clone(),
+            Self::effect_digest(&node.intent),
+            Self::effect_digest(&format!("{dag_id}:{node_id}:precondition")),
+            Self::effect_digest(&format!("{dag_id}:{node_id}:authority")),
+        )
+    }
+
     /// R1 dispatch-time precondition verdict for one ready node (ADR-017).
     ///
     /// Returns `Dispatch` when no gate is wired or the gate allows dispatch.
@@ -805,19 +831,7 @@ impl ParallelExecutionServiceImpl {
                 detail: format!("effect commitment: node {node_id} is not in the graph"),
             })?;
 
-        // The gate's digests are not yet exposed on the node, so the intent
-        // identity is derived from the node and execution identity for now.
-        // The service still derives the authoritative idempotency key.
-        let intent = EffectIntent::new(
-            dag_id,
-            node_id,
-            0,
-            IdempotencyKey::new(format!("{dag_id}:{node_id}:pending")),
-            node.tool.clone(),
-            Self::effect_digest(&node.intent),
-            Self::effect_digest(&format!("{dag_id}:{node_id}:precondition")),
-            Self::effect_digest(&format!("{dag_id}:{node_id}:authority")),
-        );
+        let intent = Self::effect_intent(dag_id, node_id, node);
 
         let record = seam.before_dispatch(intent).await.map_err(|error| {
             ExecutionError::InternalError {
@@ -1023,16 +1037,18 @@ impl ParallelExecutionServiceImpl {
             return Ok(CapacityVerdict::Dispatch);
         };
 
-        // A fresh key per dispatch attempt: each dispatch is a distinct logical
-        // reservation. A deterministic per-node key would collide with the
-        // previous attempt's settled reservation on retry (the ledger answers
-        // `Contended` once a key is resolved), which would turn a legitimate
-        // retry into a refusal. The execution and node ids are kept in the key
-        // prefix so a hold is traceable back to its dispatch.
+        // The hold and the effect record must share one identity (#1163): a
+        // deterministic key from (dag_id, node_id, intent_digest). A same-key,
+        // same-amount retry collapses onto the existing reservation (#1052), so
+        // a resumed dispatch finds the hold it already owns instead of holding
+        // the resource twice. A different amount is refused as `Contended`
+        // rather than silently under-reserved.
+        let intent = Self::effect_intent(dag_id, node_id, node);
+        let idempotency_key = Sha256IntentKeyDerivation::new().derive_key(&intent);
         let input = ReserveCapacityInput {
             resource: ResourceId::new(rule.resource.clone()),
             amount: rule.amount,
-            idempotency_key: IdempotencyKey::new(format!("{dag_id}:{node_id}:{}", Uuid::new_v4())),
+            idempotency_key,
             requested_by: Some(format!("{}:{}", node.name, node.tool)),
         };
 
@@ -1301,6 +1317,27 @@ mod tests {
             started_at: Utc::now(),
             completed_at: Utc::now(),
         }
+    }
+
+    fn node(id: Uuid, tool: &str, intent: &str) -> crate::dag_engine::domain::TaskNode {
+        crate::dag_engine::domain::TaskNode::new(id, "n", tool, vec![], intent)
+    }
+
+    #[test]
+    fn capacity_and_effect_share_an_identity_across_retries() {
+        // #1163: the hold must use the same deterministic key as the record.
+        let dag = Uuid::now_v7();
+        let id = Uuid::now_v7();
+        let n = node(id, "run_command", "echo hello");
+        let a = ParallelExecutionServiceImpl::effect_intent(dag, id, &n);
+        let b = ParallelExecutionServiceImpl::effect_intent(dag, id, &n);
+        let derive = Sha256IntentKeyDerivation::new();
+        assert_eq!(derive.derive_key(&a), derive.derive_key(&b));
+
+        // A different payload is a different intent (and must not reuse a hold).
+        let changed = node(id, "run_command", "echo goodbye");
+        let c = ParallelExecutionServiceImpl::effect_intent(dag, id, &changed);
+        assert_ne!(derive.derive_key(&a), derive.derive_key(&c));
     }
 
     #[test]
