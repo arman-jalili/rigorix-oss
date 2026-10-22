@@ -32,6 +32,19 @@ sites for the **CONFIRMED** rows, where the question was "does *each entry point
 construct it?" — three roots have to be checked by name, because two out of three is
 the failure mode (#1099 had exactly that shape).
 
+## Adding the next row
+
+1. Resolve the claim against the code first: grep finds the symbol, only
+   reachability answers "does each entry point construct it?". Check the roots
+   by name — two out of three is the failure mode this manifest exists for.
+2. Choose a check that fails when the wiring disappears: a `contains` on the
+   call site (path + identifier), not on the module's own definition; a
+   `no-callers` when the point is that nothing reaches it.
+3. Add the row to **both** files — `wiring-claims.tsv` (the check) and the table
+   below (the reasoning) — with the same id.
+4. Run `.pi/scripts/validate-wiring-claims.sh`; a row that cannot fail is not a
+   check.
+
 ## The check that decays visibly
 
 A one-off audit is true for one commit. `wiring-claims.tsv` is the machine-readable
@@ -67,6 +80,9 @@ claim does not hold; the document now says so and the row pins that admission.
 | W12 | `modules/enforcement.md` | permissions gate tool calls | CONFIRMED | `service_impl/tools.rs` calls `enforcer.check(` |
 | W13 | `modules/enforcement.md` | budgets and per-tool `max_calls` are evaluated before a tool call runs | CONFIRMED (#1108) | `service_impl/budget.rs` calls `evaluate_tool_call(`; both dispatch paths call it; `enforcement: Some(` in all three roots |
 | W14 | `modules/recovery-recipes.md` | recovery recipes can be attached when a step fails | CONFIRMED (#1108, opt-in) | `RecoverySetup` + `with_recovery_service(` in the factory; `RecoverySetup::from_env(` in all three roots |
+| W15 | `modules/effect-commitment.md` | the commitment seam is armed from `.rigorix/effect-commitment.toml` at composition time | CONFIRMED | `EffectCommitmentSetup::from_env` in CLI, Action **and** MCP host |
+| W16 | `modules/effect-commitment.md` | the intent is recorded before dispatch and settled after | CONFIRMED | `factory_impl.rs` calls `with_effect_commitment_seam(`; `dispatch.rs` calls `seam.before_dispatch(` |
+| W17 | `modules/effect-commitment.md` | every composition root sweeps orphaned `Dispatched` records at startup | CONFIRMED | `.reconcile()` in CLI, Action **and** MCP host |
 
 ## The two rows that were GAPs (closed by #1108)
 

@@ -409,5 +409,5 @@ pub enum RecoveryError {
 
 ---
 
-**Status:** Planned  
+**Status:** Implemented (opt-in via `RIGORIX_RECOVERY`). `RecoverySetup::from_env` and `with_recovery_service` are wired in all three roots; a step that cannot be performed reports `Unsupported`, so a partial attempt is not recorded as `Recovered` (#1157).
 **Implementation priority:** P0 — extends failure_classification with automatic recovery
