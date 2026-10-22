@@ -154,102 +154,164 @@ guardian_issue:
     - create-mr
     - merge
 ---
+# ISSUE-1157: five recovery steps report success without repairing, and the node is then marked `Ready`
 
-# ISSUE-1157: five recovery steps report success without repairing
+## What you are looking at
 
-## Intent
+When a node fails, the engine consults a recovery service, which looks up a recipe for the failure
+scenario and executes its steps. Five of those steps return `Ok(())` without doing anything:
 
-Make "I did nothing" expressible, and stop it from being treated as "fixed".
-
-## The chain
-
+```rust
+// engine/src/recovery_recipes/application/service_impl.rs:67
+/// Execute a single recovery step.
+/// In a production implementation, this would actually execute the step
+/// (run clean build, retry connection, etc.). For now, returns success
+/// for steps that don't require external execution, and simulates basic steps.
+async fn execute_step(&self, step: &RecoveryStep) -> Result<(), String> {
+    match step {
+        // Safe steps — simulated as successful
+        RecoveryStep::CleanBuild
+        | RecoveryStep::ExpandContext
+        | RecoveryStep::RebaseBranch
+        | RecoveryStep::AcceptTrust
+        | RecoveryStep::RestartWorker => Ok(()),          // :70-75  ← nothing happens
+        RecoveryStep::RetryConnection { timeout_ms } => { /* validates only */ }
+        RecoveryStep::RestartService { name } => { /* validates only */ }
+        RecoveryStep::EscalateToHuman { reason } => { /* validates only */ }
+    }
+}
 ```
-node fails
-  → recovery_svc.attempt_recovery            node.rs:285
-      → execute_step(CleanBuild) => Ok(())   service_impl.rs:71   ← nothing happens
-  → ctx.record_attempt(scenario)             node.rs:300          ← recorded anyway
-  → is_recovered() == true
-  → state.status = NodeStatus::Ready         node.rs:319
-  → continue                                 node.rs:320          ← same broken state
+
+The caller trusts that (`engine/src/execution_engine/application/service_impl/node.rs:285-320`):
+
+```rust
+if let Ok(recovery_out) = recovery_svc.attempt_recovery(recovery_input).await {
+    ctx.record_attempt(scenario);            // :300  recorded before the outcome is checked
+    if recovery_out.result.is_recovered() {
+        state.status = NodeStatus::Ready;    // :319  as if repaired
+        continue;                            // :320  re-enter the retry loop
+    }
+}
 ```
 
-## Step dispositions (required)
+Two consequences. The second is worse:
 
-| step | side effect needed | proposed |
+1. **The signed record gains a recovery attempt for a repair that never happened.** The record is the
+   artifact operators use to explain a failure, so it now explains it wrongly.
+2. **Control flow treats the node as repaired.** A node whose failure needed a clean build is set to
+   `Ready` without a clean build, re-enters the retry loop in the same broken state, and burns the
+   retry budget on a repair that cannot work.
+
+Note that `RetryConnection`, `RestartService` and `EscalateToHuman` are *honest*: they are
+parameter-validation steps that do not claim to act. The defect is confined to the five above.
+
+## The fix, in one sentence
+
+`Result<(), String>` cannot say "I did nothing, and that is not an error" — so introduce an outcome
+type, classify the five steps, implement the ones that can be implemented in-process, and mark the
+rest explicitly unsupported.
+
+## Step dispositions (decided — implement, do not re-open)
+
+| step | needed side effect | disposition |
 |---|---|---|
-| `CleanBuild` | spawn a build | **Unsupported** — process-spawning sink, separate issue |
+| `CleanBuild` | spawn a build process | **Unsupported** — process-spawning sink, own security surface, separate issue |
 | `RebaseBranch` | spawn `git rebase` | **Unsupported** — same |
-| `RestartWorker` | restart a component | **Unsupported** — supervisor does not exist here |
-| `ExpandContext` | none (adjusts retry input) | **implement** |
-| `AcceptTrust` | records a decision | **implement**, if it needs no external call |
-| `RetryConnection` / `RestartService` / `EscalateToHuman` | validation only, by design | already honest — keep |
+| `RestartWorker` | restart a component | **Unsupported** — no supervisor exists in this engine |
+| `ExpandContext` | none — widens what the retry carries | **implement honestly** if it can be done with no side effect |
+| `AcceptTrust` | records a decision | **implement honestly** if it needs no external call |
+| `RetryConnection` / `RestartService` / `EscalateToHuman` | argument validation, by design | keep as-is |
+
+The point of implementing the two in-process steps is that it turns the change from a rename into a
+repair: the recovery service becomes partly real rather than uniformly declared.
 
 ## In Scope
 
-- `RecoveryStepOutcome`; no bare `Ok`
-- Implement the in-process steps; mark the rest unsupported
-- `is_recovered()` requires all performed
-- Record the outcome, not just the attempt
+- A `RecoveryStepOutcome` (`Performed` | `Unsupported { reason }`) replacing the bare `Ok(())`
+- `execute_step` returns it; `attempt_recovery` aggregates it
+- `is_recovered()` requires every step `Performed`; one `Unsupported` means not recovered
+- The outcome is recorded, so the signed record distinguishes performed from unsupported
+- Tests for both paths
 
 ## Out of Scope
 
-- Implementing process spawning for the three side-effect steps
-- Recipe catalogue changes
+- Implementing process spawning for `CleanBuild` / `RebaseBranch` / `RestartWorker`
+- Recipe catalogue, scenario→recipe mapping, retry budget policy
+- Changing what the retry loop does when recovery is not recovered (it should fall through to normal
+  failure handling — confirm it does, do not redesign it)
 
 ## Affected Layers
 
 ### Domain
-- New `RecoveryStepOutcome`; `is_recovered` semantics
+- New: `RecoveryStepOutcome`
+- Modified: `RecoveryResult::is_recovered` semantics — "all performed", not "no errors"
 
 ### Application
-- `execute_step` returns an outcome; `node.rs` gates `Ready` on it
+- `execute_step` signature and body
+- `attempt_recovery` aggregation
+- `node.rs:285-320` gates `NodeStatus::Ready` on the outcome
 
 ### Infrastructure
-- None
+- None for the in-process steps; nothing new is spawned
 
 ### API
 - None
 
 ## Canonical References
 
-- **Module:** `.pi/architecture/modules/recovery-recipes.md`
-- **ADR-016:** `.pi/architecture/decisions/ADR-016-audit-integrity-anchor.md`
-- **Evidence:** `service_impl.rs:64-105`; `node.rs:285,300,319-320`
+| what | where |
+|---|---|
+| the simulate-and-return | `engine/src/recovery_recipes/application/service_impl.rs:64-105` |
+| the only production call site | `engine/src/execution_engine/application/service_impl/node.rs:285` |
+| the record write | `node.rs:300` (`ctx.record_attempt`) |
+| the Ready assignment | `node.rs:309-320` |
+| process-spawning policy | `.pi/architecture/modules/tool-system.md#process-spawning-sinks` |
+| record integrity | `.pi/architecture/decisions/ADR-016-audit-integrity-anchor.md` |
 
 ## Acceptance Criteria
 
-| # | Criterion | Validator |
-|---|-----------|-----------|
-| 1 | No success without action or explicit Unsupported | `validate-tests.sh` |
-| 2 | Unsupported never sets Ready | `validate-tests.sh` |
-| 3 | Record distinguishes performed from unsupported | `validate-canonical.sh` |
-| 4 | Each step has a disposition | MR description |
-| 5 | Loop terminates via retry budget, does not spin | `validate-tests.sh` |
+| # | Criterion | How it is checked |
+|---|-----------|-------------------|
+| 1 | No step can report success without an action or an explicit `Unsupported` | `validate-tests.sh` |
+| 2 | An `Unsupported` step cannot set `NodeStatus::Ready` | `validate-tests.sh` |
+| 3 | The record distinguishes performed from unsupported | `validate-canonical.sh` (record field) + test |
+| 4 | Every one of the five steps has a stated disposition | MR description |
+| 5 | The retry loop terminates via the retry budget and does not spin | `validate-tests.sh` |
+| 6 | No new process-spawning site appears | `validate-security.sh` |
 
 ## Implementation
 
-> **Agent:** the type change is the fix. Do not implement process spawning here; that has its own
-> issue and its own security review.
+1. Read `service_impl.rs:55-115` (the match), then `:180-260` (`attempt_recovery`).
+2. Read `node.rs:260-330` — the branch that sets `Ready` and `continue`s.
+3. Add `RecoveryStepOutcome`; change `execute_step` to return it.
+4. Implement `ExpandContext` / `AcceptTrust` if side-effect-free; otherwise they join the unsupported
+   set with a reason.
+5. Mark `CleanBuild` / `RebaseBranch` / `RestartWorker` unsupported with a reason that names the
+   missing capability ("no build runner", "no git mutator", "no worker supervisor").
+6. Aggregate in `attempt_recovery`; make `is_recovered()` require all-performed.
+7. Move or extend `record_attempt` so the outcome travels with it.
+8. Gate `NodeStatus::Ready` on the outcome.
+9. Tests: all-performed → Ready; any-unsupported → not Ready, normal failure path; record contains
+   the outcome.
 
-### Steps
+## Pitfalls
 
-1. Read `service_impl.rs:55-110` and `node.rs:270-330`
-2. Add `RecoveryStepOutcome`; change the signature
-3. Implement `ExpandContext` / `AcceptTrust` honestly if side-effect-free
-4. Mark `CleanBuild` / `RebaseBranch` / `RestartWorker` unsupported with a reason
-5. Gate `NodeStatus::Ready` on all-performed; record the outcome
-6. Tests: all-performed, some-unsupported, record contents
+- **Do not half-implement the process-spawning steps.** Faking them is how this issue was created;
+  implementing them badly creates a worse one. They have their own allowlist discipline under
+  `tool-system.md#process-spawning-sinks`.
+- **`record_attempt` currently runs before the outcome is known** (`node.rs:300`). As written the
+  record cannot be corrected afterwards. Move it or extend it.
+- **Watch the `continue` at :320.** With an unsupported step the node should fall through to the
+  failure path; confirm it cannot re-enter the loop with the same scenario without consuming the
+  retry budget.
+- **Do not delete the recovery feature.** Five unimplemented steps that say "unsupported" are honest
+  and usable; the type is the defect.
+- **A boolean `success: false` is not enough.** The record needs the *reason*, or the next reader
+  cannot tell "not implemented" from "ran and failed".
 
-## Notes
+## Why this is high
 
-- **`Ok(())` is the lie, not the missing feature.** `Result<(), String>` cannot say "did nothing".
-- Do not half-implement the process-spawning steps — that is how this issue was created.
-- `record_attempt` runs before the outcome is known; move or extend it.
-- Check the `continue` at :320 cannot spin without consuming the retry budget.
-- The record is signed: a repair that did not happen is a false history entry, not a display bug.
-
-## Why high
-
-It corrupts both the control flow and the signed record. A node marked `Ready` after a repair that
-never ran will fail again for the same reason, and the audit trail will say it was recovered — so the
-one artifact operators trust to explain a failure will explain it wrongly.
+It corrupts control flow and the signed record at the same time. A node marked `Ready` after a repair
+that never ran will fail again for the same reason, and the audit trail will say it was recovered —
+so the one artifact that explains a failure explains it wrongly, and the retry budget is spent
+proving it.
