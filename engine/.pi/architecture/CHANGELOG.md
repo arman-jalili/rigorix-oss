@@ -1,3 +1,28 @@
+## [2026-10-21] — effect-commitment implemented (ADR-019)
+
+### Added
+- **`effect-commitment` context**: the frozen contract is backed by the domain aggregate, the
+  application service, the in-process (L1) and HTTP (L2) ledger adapters, and the provider receipt
+  reader (L3). Every adapter runs the same port contract suite.
+- **Dispatch seam**: the execution engine records a write-ahead intent before dispatch, refuses the
+  send if the record cannot be written, and settles or marks the effect ambiguous when the node
+  returns. A timeout, cancellation, network failure, or lost response becomes `Ambiguous`.
+- **Fences**: `Ambiguous` effects block dependents (F1) and retry (F2); only a provider or an
+  authorised external operator presenting an `ObservedOutcome` may resolve one (F3/F4).
+- **Intent-derived key**: `IdempotencyKey = H(dag_id, node_id, intent_digest)`, stable across
+  retries, with a length-prefixed payload digest.
+- **`NodeStatus` vocabulary**: `Dispatched` and `Ambiguous` are non-terminal; a run no longer has to
+  record an unknown outcome as `Completed` or `Failed`.
+- **Opt-in composition roots**: `.rigorix/effect-commitment.toml` is parsed strictly and wired in
+  `cli`, `mcp`, and `actions`. Absent declaration = no adapter, no network, unchanged dispatch path.
+- **Operability**: `docs/runbook-effect-commitment.md`, `docs/dr-plan-effect-commitment.md`, and a
+  deterministic proofing stage (`check_effect-commitment_contracts.sh`).
+
+### Notes
+- Claim ceiling: L1 record+fences in-process; L2 survives process death through a contested store;
+  L3 "committed" requires provider receipt/read-back. Without a receipt reader the context proves
+  **not-settled**, never **settled**.
+
 ## [2026-10-20] — ADR-019 effect commitment (designed)
 
 ### Added

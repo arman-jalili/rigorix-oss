@@ -97,6 +97,12 @@ impl EffectCommitmentService for EffectCommitmentServiceImpl {
         intent.idempotency_key = self.key_derivation.derive_key(&intent);
 
         let record = self.ledger.begin(intent).await?;
+        tracing::debug!(
+            record = %record.id(),
+            dag = %record.intent().dag_id,
+            node = %record.intent().node_id,
+            "effect intent recorded (write-ahead)"
+        );
         Ok(BeginEffectOutput { record })
     }
 
@@ -108,6 +114,11 @@ impl EffectCommitmentService for EffectCommitmentServiceImpl {
             .ledger
             .settle_definite(input.record_id, input.outcome)
             .await?;
+        tracing::debug!(
+            record = %record.id(),
+            state = %record.state(),
+            "effect settled with provider evidence"
+        );
         Ok(SettleDefiniteOutput { record })
     }
 
@@ -119,6 +130,11 @@ impl EffectCommitmentService for EffectCommitmentServiceImpl {
             .ledger
             .mark_ambiguous(input.record_id, input.reason)
             .await?;
+        tracing::warn!(
+            record = %record.id(),
+            reason = record.ambiguous_reason().unwrap_or("<unknown>"),
+            "effect outcome unknown; record is Ambiguous and fences dependents/retry"
+        );
         Ok(MarkAmbiguousOutput { record })
     }
 
@@ -134,11 +150,21 @@ impl EffectCommitmentService for EffectCommitmentServiceImpl {
             .ledger
             .resolve(input.record_id, input.outcome, input.resolver)
             .await?;
+        tracing::info!(
+            record = %record.id(),
+            state = %record.state(),
+            resolver = record
+                .resolver()
+                .map(|resolver| resolver.resolver_id.as_str())
+                .unwrap_or("<unknown>"),
+            "ambiguous effect resolved with provider evidence"
+        );
         Ok(ResolveEffectOutput { record })
     }
 
     async fn query(&self, input: QueryEffectInput) -> Result<QueryEffectOutput, CommitmentError> {
         let records = self.ledger.query(input.query).await?;
+        tracing::debug!(records = records.len(), "effect commitment ledger query");
         Ok(QueryEffectOutput { records })
     }
 }
