@@ -22,7 +22,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+PROJECT_ROOT="${RIGORIX_CONTRACT_ROOT:-$(cd "${SCRIPT_DIR}/../../.." && pwd)}"
 MODULE_DIR="${PROJECT_ROOT}/engine/src/capacity_ledger"
 
 RED='\033[0;31m'
@@ -40,6 +40,24 @@ warn() { echo -e "  ${YELLOW}⚠️  WARN${NC} $1"; }
 
 if [[ "${1:-}" == "--help" ]]; then
     sed -n '3,22p' "$0" | sed 's/^# \{0,1\}//'
+    exit 0
+fi
+
+# Seeded-failure proof: copy the module to a temporary root, remove one frozen
+# contract file, and require this exact check to fail. `validate-guards.sh
+# --self-test` calls this through the registry, so a check that cannot fail is
+# caught in CI (#1186).
+if [[ "${1:-}" == "--self-test" ]]; then
+    TMP="$(mktemp -d)"
+    trap 'find "$TMP" -mindepth 1 -delete 2>/dev/null; rmdir "$TMP" 2>/dev/null' EXIT
+    mkdir -p "$TMP/engine/src"
+    cp -R "${MODULE_DIR}" "$TMP/engine/src/capacity_ledger"
+    rm "$TMP/engine/src/capacity_ledger/domain/resource.rs"
+    if RIGORIX_CONTRACT_ROOT="$TMP" bash "$0" >/dev/null 2>&1; then
+        echo "❌ self-test: a removed frozen contract still passed" >&2
+        exit 1
+    fi
+    echo "✅ self-test: seeded contract violation was caught"
     exit 0
 fi
 
