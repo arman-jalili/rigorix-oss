@@ -4,7 +4,7 @@ guardian_issue:
   title: "the Dispatched sweep runs in every client root against the local clock; at L2 the service must own it, or roots fence each other's live work"
   epic: "effect commitment"
   epic_id: "EPIC-EFFECT-COMMITMENT"
-  tracking_issue: 1172
+  tracking_issue: 1173
   component: "EffectCommitment"
   module: "effect-commitment"
   status: planned
@@ -123,7 +123,7 @@ guardian_issue:
     - merge
 ---
 
-# ISSUE-1172: whoever sweeps must own the clock
+# ISSUE-1173: whoever sweeps must own the clock
 
 ## What you are looking at
 

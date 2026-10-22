@@ -4,7 +4,7 @@ guardian_issue:
   title: "the provider contract says HTTP providers receive Idempotency-Key, but no execution path sends HTTP — the only sender is a test"
   epic: "effect commitment"
   epic_id: "EPIC-EFFECT-COMMITMENT"
-  tracking_issue: 1173
+  tracking_issue: 1174
   component: "EffectCommitment"
   module: "effect-commitment"
   status: planned
@@ -118,7 +118,7 @@ guardian_issue:
     - merge
 ---
 
-# ISSUE-1173: the header is a contract with no sender
+# ISSUE-1174: the header is a contract with no sender
 
 ## What you are looking at
 
