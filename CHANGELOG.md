@@ -24,6 +24,7 @@ of that train — do not infer its version from these tags (it is 1.4.0).
 - Process-spawn guard: clippy denies spawning outside the approved sinks, one mechanical guard per escaped failure class, and stable baselines (#1082, #1083, #1089) ([#1084](https://github.com/arman-jalili/rigorix-oss/pull/1084)–[#1088](https://github.com/arman-jalili/rigorix-oss/pull/1088))
 - Plan creation declares the effect scope of file writes, patches, and stages, so the R5 oracle can report an out-of-scope effect (#1175) ([#1180](https://github.com/arman-jalili/rigorix-oss/pull/1180))
 - `rigorix doctor` reports the effect-commitment seam and its derived ceiling (#1176) ([#1180](https://github.com/arman-jalili/rigorix-oss/pull/1180))
+- `doctor` reports durability and settlement as separate axes, with the restart cost (#1182) ([#1184](https://github.com/arman-jalili/rigorix-oss/pull/1184))
 
 ### Fixed
 
@@ -35,9 +36,23 @@ of that train — do not infer its version from these tags (it is 1.4.0).
 - Process-spawn allow comments match the code; a hook that closes stdin before reading is a normal early exit (#1159) ([#1170](https://github.com/arman-jalili/rigorix-oss/pull/1170))
 - Run-command rejects compound shell strings and clears the child environment (#1067, #1068); approval binding refuses without an HMAC key (#1070); the scope oracle is wired in all roots and sees staged changes (#1072, #1099); the anchor label requires a verified head (#1071) ([#1084](https://github.com/arman-jalili/rigorix-oss/pull/1084)–[#1106](https://github.com/arman-jalili/rigorix-oss/pull/1106))
 - TLS trust path takes the two 2026-10 RUSTSEC fixes (#1110) ([#1110](https://github.com/arman-jalili/rigorix-oss/pull/1110))
+- The wiring claim for the `Dispatched` sweep states both branches instead of "every root sweeps" (#1183) ([#1184](https://github.com/arman-jalili/rigorix-oss/pull/1184))
+- `execute_node` runs the effect write-ahead and settle through the shared gate path (#1185) ([#1191](https://github.com/arman-jalili/rigorix-oss/pull/1191))
+- The intent key is derived once and used by the record, provider, and receipt reader; the placeholder is gone (#1187) ([#1191](https://github.com/arman-jalili/rigorix-oss/pull/1191))
 
-<details><summary>Issues closed in this release (92)</summary>
+### Internal
 
+- The effect-commitment and capacity-ledger contract proofs gate through `.pi/guards.tsv` and `.pi/scripts/validate-guards.sh`, with seeded-failure self-tests (#1186) ([#1192](https://github.com/arman-jalili/rigorix-oss/pull/1192))
+- Nine effect-commitment issue packets are `done` with a `closed_reason`, and `engine/.pi/issues/README.md` states the closing convention (#1188) ([#1193](https://github.com/arman-jalili/rigorix-oss/pull/1193))
+
+<details><summary>Issues closed in this release (98)</summary>
+
+- #1188 — nine engine issue packets for effect-commitment still say status:planned after the epic merged, and closed_reason was not applied
+- #1187 — the provider and the receipt reader use the placeholder {dag_id}:{node_id}:pending, not the intent-derived key — a changed payload collides
+- #1186 — the 150-check contract proof never runs in CI: root-only script, crate-scoped loops, and a root loop that is continue-on-error + || true
+- #1185 — execute_node runs the shared gate sequence but not the effect-commitment write-ahead — the #1074 divergence, one layer down
+- #1183 — W17 says every composition root sweeps orphaned Dispatched records; at L2 none does, and the guard only checks that the evidence path exists
+- #1182 — the ceiling is one scalar for two orthogonal axes: doctor prints L3 for a deployment with no durability, and derive's comment states a rule the code does not implement
 - #1178 — the CHANGELOG's Unreleased section is empty although a whole context and three fix batches landed since 1.10.0
 - #1177 — the OSS wiring-claims manifest has no effect-commitment row, and three shipped modules still say Status: Planned
 - #1176 — doctor reports every seam except effect-commitment, so the newest enforcement boundary and its claim ceiling are invisible

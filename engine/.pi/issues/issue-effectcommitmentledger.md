@@ -4,7 +4,8 @@ guardian_issue:
   epic: "TBD"
   component: "EffectCommitmentLedger"
   module: "effect-commitment"
-  status: planned
+  status: done
+  closed_reason: "Implemented in #1113 (contract freeze) and #1151 (shared contract suite); adapters in infrastructure/in_memory.rs and infrastructure/http.rs"
   priority: high
   dependencies:
     - "none"

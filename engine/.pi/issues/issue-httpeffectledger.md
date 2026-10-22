@@ -4,7 +4,8 @@ guardian_issue:
   epic: "TBD"
   component: "HttpEffectLedger"
   module: "effect-commitment"
-  status: planned
+  status: done
+  closed_reason: "Implemented in #1147 — engine/src/effect_commitment/infrastructure/http.rs; the frozen six paths, fail-closed transport"
   priority: high
   dependencies:
     - "EffectCommitmentLedger"

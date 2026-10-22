@@ -4,7 +4,8 @@ guardian_issue:
   epic: "TBD"
   component: "EffectRecord"
   module: "effect-commitment"
-  status: planned
+  status: done
+  closed_reason: "Implemented in #1139 — engine/src/effect_commitment/domain/record.rs; query surface in tests/unit/effect-commitment/effectrecord"
   priority: high
   dependencies:
     - "EffectIntent"
