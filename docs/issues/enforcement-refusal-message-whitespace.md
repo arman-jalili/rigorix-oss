@@ -7,7 +7,7 @@ guardian_issue:
   tracking_issue: 1171
   component: "Cli"
   module: "cli-boundary"
-  status: planned
+  status: implemented
   priority: low
   created_at: "2026-10-23T12:00:00Z"
   updated_at: "2026-10-23T12:00:00Z"
