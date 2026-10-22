@@ -33,3 +33,5 @@
 .pi/scripts/validate-ubiquitous-language.sh	domain	advisory	no	domain	glossary drift check
 .pi/scripts/validate-operations.sh	operations	advisory	no	ops	production-readiness heuristic
 .pi/scripts/validate-integration.sh	integration	advisory	no	integration	integration heuristic
+.pi/scripts/ci/check_effect-commitment_contracts.sh	contract-proofing	gating	yes	architecture	the 150-check effect-commitment contract proof runs here with a real exit code; --self-test seeds a removed contract and requires a failure (#1186)
+.pi/scripts/ci/check_capacity-ledger_contracts.sh	contract-proofing	gating	yes	architecture	the capacity-ledger contract proof runs here with a real exit code; --self-test seeds a removed contract and requires a failure (#1186)

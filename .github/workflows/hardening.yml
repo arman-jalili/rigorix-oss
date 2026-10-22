@@ -75,6 +75,8 @@ jobs:
           echo "Checking commit: ${{ github.sha }}"
         continue-on-error: true
 
+      # Advisory pass. Gating proofing lives in .pi/guards.tsv and runs through
+      # `validate-guards.sh` in the audit job; this step only prints (#1186).
       - name: Docs policy scripts (root + per-crate, all conventions)
         continue-on-error: true
         shell: bash
@@ -246,6 +248,10 @@ jobs:
         shell: bash
         run: bash .pi/scripts/validate-guards.sh --self-test
 
+      # Advisory only: a root-only proof that must gate is registered in
+      # .pi/guards.tsv and runs through `validate-guards.sh` above with a real
+      # exit code. This loop cannot fail the job, so a check that lives only
+      # here is documentation (#1186).
       - name: Advisory scripts (root + per-crate — do NOT gate)
         continue-on-error: true
         shell: bash
