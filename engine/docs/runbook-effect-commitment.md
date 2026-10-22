@@ -29,6 +29,10 @@ not describe a deployment as L3 unless its resolver actually presents provider e
    refused rather than silently downgraded.
 4. The factory builds the ledger adapter and, when declared, the provider receipt reader. The
    composition root attaches `setup.dispatch_seam()` to the execution-engine factory.
+5. The composition root runs `setup.reconcile()`. A `Dispatched` record older than the 15-minute
+   dispatch lease has no live owner (its process died), so it is moved to `Ambiguous` before any
+   node can retry it. A sweep failure refuses the start; a fresh record is left alone because it
+   may be in flight elsewhere.
 
 The only required dependency is the selected ledger adapter. The HTTP adapter additionally depends
 on the ledger service; the receipt reader depends on the provider's read-back API.
@@ -87,6 +91,7 @@ to make it disappear: a guessed outcome is how the window is closed incorrectly.
 |---|---|---|
 | Dispatch refused with `effect commitment begin failed` | The write-ahead record could not be written. | Treat as fail-closed. Check the ledger service/network, then retry the run. Do **not** bypass the seam. |
 | `Ambiguous` effect; run does not progress | A response was lost, a deadline passed, the process died, or a cancellation happened in flight. | Follow *Operating an unsettled effect*. |
+| A record is still `Dispatched` after a crash | The startup sweep has not run, or the record is still inside its 15-minute lease (it may be in flight elsewhere). | Restart the composition root so the sweep runs, or wait for the lease; then follow *Operating an unsettled effect*. Never resolve a `Dispatched` record by hand as `NotCommitted`. |
 | `retry refused` on a node | F2: the intent is still ambiguous, or the record is terminal. | Resolve the ambiguous record, or start a **new intent** (new execution). Do not re-send the same intent. |
 | Dependents never run | F1: an upstream effect is still ambiguous. | Resolve the upstream record; then resume. |
 | `provider receipt status 'pending'` / `Unavailable` | The provider has not settled; the context refuses to guess. | Retry the read-back later. The effect stays ambiguous. |

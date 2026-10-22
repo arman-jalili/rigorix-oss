@@ -79,7 +79,7 @@ contract consumed by `execution-engine`.
 
 ### EffectIntent
 
-status: planned
+status: implemented
 depends: none
 
 **Purpose:** The write-ahead identity of a proposed effect. Carries `dag_id`, `node_id`,
@@ -91,7 +91,7 @@ made durable **before** the effect is sent; if that write fails, the effect must
 
 ### EffectState
 
-status: planned
+status: implemented
 depends: none
 
 **Purpose:** `Dispatched`, `Committed`, `NotCommitted`, `Ambiguous`. `is_terminal()` is false for
@@ -103,7 +103,7 @@ Transitions are enforced in the type, not by convention — mirroring `Reservati
 
 ### EffectRecord
 
-status: planned
+status: implemented
 depends: EffectIntent, EffectState
 
 **Purpose:** The aggregate. Holds the intent, the current state, the observed outcome when one
@@ -114,7 +114,7 @@ outcome or an explicit `NotCommitted` observation is unrepresentable.
 
 ### ObservedOutcome
 
-status: planned
+status: implemented
 depends: none
 
 **Purpose:** Evidence from the provider: receipt id, read-back digest, observed timestamp, source
@@ -125,7 +125,7 @@ not an `ObservedOutcome`.
 
 ### ResolverIdentity
 
-status: planned
+status: implemented
 depends: none
 
 **Purpose:** The authenticated identity permitted to settle an `Ambiguous` effect, plus the evidence
@@ -136,7 +136,7 @@ evidence*. The dispatching process and the agent are rejected by policy, not by 
 
 ### CommitmentError
 
-status: planned
+status: implemented
 depends: none
 
 **Purpose:** Closed vocabulary: `AlreadySettled`, `NotAmbiguous`, `UnauthorizedResolver`,
@@ -146,7 +146,7 @@ depends: none
 
 ### EffectCommitmentService
 
-status: planned
+status: implemented
 depends: EffectRecord, EffectCommitmentLedger, IntentKeyDerivation, ReconciliationPolicy
 
 **Purpose:** `begin`, `settle_definite`, `mark_ambiguous`, `resolve`, `query`. Fail-closed: an
@@ -157,7 +157,7 @@ exactly the window this context exists to close.
 
 ### IntentKeyDerivation
 
-status: planned
+status: implemented
 depends: EffectIntent
 
 **Purpose:** Derives `IdempotencyKey = H(dag_id, node_id, intent_digest)`. Replaces the
@@ -169,7 +169,7 @@ property); same key + different payload ⇒ refuse (preserves #1052).
 
 ### ReconciliationPolicy
 
-status: planned
+status: implemented
 depends: EffectState, ObservedOutcome, ResolverIdentity
 
 **Purpose:** Encodes F3/F4: only a resolver presenting an `ObservedOutcome` may leave `Ambiguous`;
@@ -180,7 +180,7 @@ is testable without a database.
 
 ### InMemoryEffectLedger
 
-status: planned
+status: implemented
 depends: EffectCommitmentLedger
 
 **Purpose:** Single-process adapter for L1: exact within one process, meaningless across processes.
@@ -191,7 +191,7 @@ running this.
 
 ### HttpEffectLedger
 
-status: planned
+status: implemented
 depends: EffectCommitmentLedger
 
 **Purpose:** Transport to a contested store that owns atomicity (L2). Every failure — unreachable,
@@ -201,7 +201,7 @@ timeout, contended — is fail-closed: the dispatch is refused, never silently a
 
 ### ProviderReceiptReader
 
-status: planned
+status: implemented
 depends: ObservedOutcome
 
 **Purpose:** The anti-corruption adapter over the foreign payment system: read-back a receipt and
@@ -212,7 +212,7 @@ produce an `ObservedOutcome`. This is the L3 boundary. Without it the context ca
 
 ### EffectCommitmentConfig
 
-status: planned
+status: implemented
 depends: none
 
 **Purpose:** `.rigorix/effect-commitment.toml` plus env. **Absent declaration ⇒ no adapter, no
@@ -223,7 +223,7 @@ malformed declaration is a hard error at composition time.
 
 ### DefaultEffectCommitmentFactory
 
-status: planned
+status: implemented
 depends: EffectCommitmentLedger
 
 **Purpose:** Concrete construction from a backend selection. The capacity ledger's contract freeze
@@ -234,7 +234,7 @@ that failure cannot repeat.
 
 ### EffectCommitmentLedger
 
-status: planned
+status: implemented
 depends: none
 
 **Purpose:** The port: `begin`, `settle_definite`, `mark_ambiguous`, `resolve`, `query`. Engine
@@ -244,7 +244,7 @@ owns the contract; storage owns the atomicity.
 
 ### DispatchSeam
 
-status: planned
+status: implemented
 depends: EffectCommitmentService, IntentKeyDerivation, EffectIntent
 
 **Purpose:** The seam. Inside `run_dispatch_loop`, after the precondition/sequence/capacity gates
@@ -262,7 +262,7 @@ removal).
 
 ### DependentFence
 
-status: planned
+status: implemented
 depends: EffectState
 
 **Purpose:** `release_or_skip_dependents` must not release a dependent while any upstream effect is
@@ -272,7 +272,7 @@ depends: EffectState
 
 ### RetryFence
 
-status: planned
+status: implemented
 depends: EffectState
 
 **Purpose:** The retry policy refuses to re-dispatch an `Ambiguous` effect (F2). A new attempt after
@@ -282,7 +282,7 @@ resolution is permitted; an attempt before resolution is not.
 
 ### NodeStateVocabulary
 
-status: planned
+status: implemented
 depends: EffectState
 
 **Purpose:** The one edit this context requires in another: `NodeStatus` gains `Dispatched` and
@@ -294,7 +294,7 @@ context has nowhere to put its answer.
 
 ### CompositionRoots
 
-status: planned
+status: implemented
 depends: DispatchSeam, EffectCommitmentConfig, DefaultEffectCommitmentFactory
 
 **Purpose:** `EffectCommitmentSetup::from_env` wired in `cli`, `mcp` and `actions`, exactly where
@@ -363,6 +363,16 @@ two operator surfaces mandatory rather than optional:
 - **resolve** — settle with provider evidence, recording the resolver identity
 
 A timeout that guesses is not a substitute: guessing is how the window is closed incorrectly.
+
+### Crash reconciliation (#1164)
+
+A process can die between the write-ahead record and the settlement, leaving a record `Dispatched`
+with no live owner. At startup every composition root runs `EffectCommitmentSetup::reconcile`,
+which moves records older than `DEFAULT_DISPATCH_LEASE` (15 minutes) to `Ambiguous`. The transition
+is conditional, so N roots sweeping concurrently converge on one result; a fresh record is
+untouched because it may be in flight in another process. The sweep never resolves — it may not
+claim the effect committed or did not happen. The lease is the maximum crash window an operator
+has to accept.
 
 ## Guarantee ceiling
 

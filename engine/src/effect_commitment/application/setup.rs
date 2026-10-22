@@ -25,6 +25,7 @@ use thiserror::Error;
 
 use crate::effect_commitment::application::factory::EffectCommitmentFactory;
 use crate::effect_commitment::application::key_impl::Sha256IntentKeyDerivation;
+use crate::effect_commitment::application::reconcile::EffectReconciler;
 use crate::effect_commitment::application::seam::DispatchSeam;
 use crate::effect_commitment::application::seam_impl::EffectCommitmentSeam;
 use crate::effect_commitment::application::service::EffectCommitmentService;
@@ -77,6 +78,9 @@ pub struct EffectCommitmentSetup {
 
     /// The optional L3 provider read-back adapter.
     pub receipt_reader: Option<Arc<dyn ProviderReceiptReader>>,
+
+    /// The startup sweep for records orphaned by a crash (#1164).
+    reconciler: Arc<EffectReconciler>,
 }
 
 impl EffectCommitmentSetup {
@@ -95,6 +99,7 @@ impl EffectCommitmentSetup {
         } = config;
 
         let ledger: Arc<dyn EffectCommitmentLedger> = Arc::from(factory.create(backend));
+        let reconciler = Arc::new(EffectReconciler::with_default_lease(ledger.clone()));
         let service: Arc<dyn EffectCommitmentService> = Arc::new(EffectCommitmentServiceImpl::new(
             ledger,
             Arc::new(Sha256IntentKeyDerivation::new()),
@@ -106,6 +111,7 @@ impl EffectCommitmentSetup {
         Ok(Self {
             service,
             receipt_reader,
+            reconciler,
         })
     }
 
@@ -154,6 +160,26 @@ impl EffectCommitmentSetup {
     /// Whether provider evidence is available (L3).
     pub fn can_prove_commitment(&self) -> bool {
         self.receipt_reader.is_some()
+    }
+
+    /// Sweep `Dispatched` records orphaned by a crash to `Ambiguous` (#1164).
+    ///
+    /// Composition roots call this exactly once at startup, after
+    /// [`EffectCommitmentSetup::from_env`] arms the seam. A failure is
+    /// fail-closed: starting with an unknown backlog would let a resumed run
+    /// retry an effect that may already have happened.
+    pub async fn reconcile(&self) -> Result<usize, EffectCommitmentSetupError> {
+        let swept = self.reconciler.reconcile().await?;
+        if swept > 0 {
+            tracing::warn!(
+                swept,
+                lease_secs = self.reconciler.lease().as_secs(),
+                "effect-commitment: startup sweep moved expired Dispatched records to Ambiguous"
+            );
+        } else {
+            tracing::debug!("effect-commitment: startup sweep found no expired Dispatched records");
+        }
+        Ok(swept)
     }
 }
 

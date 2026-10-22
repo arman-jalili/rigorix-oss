@@ -37,9 +37,12 @@ Losing it is not a cache miss: it reopens the window where the system cannot dis
    `ResolverIdentity`. A terminal record without evidence is corrupt; do not serve it as settled.
 3. Point the `backend.base_url` at the restored store (or the promoted replica) and restart the
    composition root. `EffectCommitmentSetup::from_env` must succeed; a malformed config refuses to
-   start.
-4. Re-query the ambiguous queue. Every unsettled effect remains fenced; resolve each with provider
-   evidence before closing its run. Do **not** bulk-mark them `NotCommitted` to clear the queue.
+   start. The startup sweep (`EffectCommitmentSetup::reconcile`) then moves `Dispatched` records
+   older than the 15-minute dispatch lease to `Ambiguous`; a sweep failure refuses the start.
+4. Re-query the ambiguous queue — it now includes both effects that lost their response and effects
+   whose owner died while still `Dispatched`. Every unsettled effect remains fenced; resolve each
+   with provider evidence before closing its run. Do **not** bulk-mark them `NotCommitted` to clear
+   the queue.
 5. Reconcile the audit chain: the resolved records are the evidence for the interval.
 
 ## Failover plan

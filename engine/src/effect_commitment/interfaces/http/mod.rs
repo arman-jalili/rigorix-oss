@@ -38,6 +38,9 @@ pub const AMBIGUOUS_PATH: &str = "/v1/effects/{id}/ambiguous";
 pub const RESOLVE_PATH: &str = "/v1/effects/{id}/resolve";
 
 /// Path for querying records (by record id or DAG via query parameters).
+///
+/// `?state=dispatched` is the crash sweep's read side (#1164): it lists
+/// in-flight records so an expired one can be conditionally marked ambiguous.
 pub const QUERY_PATH: &str = "/v1/effects";
 
 /// Path for listing unsettled effects.
