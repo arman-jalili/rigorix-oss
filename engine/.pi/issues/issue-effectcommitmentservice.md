@@ -4,7 +4,8 @@ guardian_issue:
   epic: "TBD"
   component: "EffectCommitmentService"
   module: "effect-commitment"
-  status: planned
+  status: done
+  closed_reason: "Implemented in #1143 — engine/src/effect_commitment/application/service_impl.rs; begin derives the intent key before recording"
   priority: high
   dependencies:
     - "EffectRecord"

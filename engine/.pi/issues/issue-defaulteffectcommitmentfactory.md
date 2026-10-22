@@ -4,7 +4,8 @@ guardian_issue:
   epic: "TBD"
   component: "DefaultEffectCommitmentFactory"
   module: "effect-commitment"
-  status: planned
+  status: done
+  closed_reason: "Implemented in #1150 — engine/src/effect_commitment/infrastructure/factory_impl.rs; builds every adapter, proven by #1186"
   priority: high
   dependencies:
     - "EffectCommitmentLedger"

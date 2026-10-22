@@ -4,7 +4,8 @@ guardian_issue:
   epic: "TBD"
   component: "InMemoryEffectLedger"
   module: "effect-commitment"
-  status: planned
+  status: done
+  closed_reason: "Implemented in #1146 — engine/src/effect_commitment/infrastructure/in_memory.rs; L1 custody, fences, terminal uniqueness"
   priority: high
   dependencies:
     - "EffectCommitmentLedger"

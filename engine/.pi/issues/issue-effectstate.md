@@ -4,7 +4,8 @@ guardian_issue:
   epic: "TBD"
   component: "EffectState"
   module: "effect-commitment"
-  status: planned
+  status: done
+  closed_reason: "Implemented in #1138 — engine/src/effect_commitment/domain/state.rs; transition suite in tests/unit/effect-commitment/effectstate"
   priority: high
   dependencies:
     - "none"

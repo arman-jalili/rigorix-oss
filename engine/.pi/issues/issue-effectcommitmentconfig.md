@@ -4,7 +4,8 @@ guardian_issue:
   epic: "TBD"
   component: "EffectCommitmentConfig"
   module: "effect-commitment"
-  status: planned
+  status: done
+  closed_reason: "Implemented in #1149 — engine/src/effect_commitment/application/config.rs; strict fail-closed TOML, absent = Ok(None)"
   priority: high
   dependencies:
     - "none"
