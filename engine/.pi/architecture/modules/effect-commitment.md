@@ -4,7 +4,7 @@
 Canonical Reference: .pi/architecture/modules/effect-commitment.md
 Blueprint Source: Guardian Framework v1.2
 Generated: NEVER (this is the source)
-Last Updated: 2026-10-23 — sweep ownership is a ledger capability; the ceiling is derived, not declared
+Last Updated: 2026-10-23 — sweep ownership is a ledger capability; the ceiling is derived; the HTTP idempotency header is reserved (#1174)
 -->
 
 ## Overview

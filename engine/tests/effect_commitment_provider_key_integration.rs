@@ -1,18 +1,23 @@
-//! #1165: the provider receives the intent key, and its echo resolves L3.
+//! #1165 / #1174: the receipt reader resolves an `Ambiguous` record when the
+//! provider echoes the intent key.
 //!
 //! @canonical .pi/architecture/modules/effect-commitment.md#providerreceiptreader
 //! Implements: ISSUE-1163 — L3 is reachable only if the key was sent
-//! Issue: #1165
+//! Issue: #1165, #1174
 //!
-//! The receipt reader can look a receipt up by idempotency key, but that lookup
-//! can only succeed if the provider was given the key. This test pins both
-//! halves of the contract:
+//! The reader can look a receipt up by idempotency key, but that lookup can
+//! only succeed if the provider was given the key. What this file proves:
 //!
-//! 1. an HTTP provider receives `Idempotency-Key` (the header the engine's HTTP
-//!    integrations must attach; process providers get the env var, covered by
-//!    the `tools` unit test);
-//! 2. a provider that echoes the key on its receipt can be read back, and the
-//!    resulting evidence resolves the `Ambiguous` record.
+//! 1. a provider that exposes the key on its receipt can be read back, and the
+//!    resulting evidence resolves the `Ambiguous` record;
+//! 2. the read-back uses the same intent-derived key the service recorded.
+//!
+//! What it does **not** prove: that the engine sends the key to an HTTP
+//! provider. The engine has no HTTP tool (its sinks are processes), so the
+//! request below is a stand-in for a provider integration and the header is
+//! reserved (#1174). The implemented transmission is the process env var, set
+//! in `exec_run_command` and asserted by the `tools` unit test
+//! `run_command_carries_the_effect_key_to_the_provider`.
 
 use std::sync::Arc;
 
@@ -47,7 +52,7 @@ fn intent() -> EffectIntent {
 }
 
 #[tokio::test]
-async fn a_provider_that_echoes_the_key_makes_the_ambiguous_record_resolvable() {
+async fn the_receipt_reader_resolves_an_ambiguous_record_when_the_provider_echoes_the_key() {
     let server = MockServer::start().await;
     let ledger = Arc::new(InMemoryEffectLedger::new());
     let service = EffectCommitmentServiceImpl::new(
@@ -62,9 +67,8 @@ async fn a_provider_that_echoes_the_key_makes_the_ambiguous_record_resolvable() 
         .expect("begin");
     let key = begun.record.intent().idempotency_key.as_str().to_string();
 
-    // 1. The provider receives the key on the wire. This is the contract an
-    //    HTTP integration must honour (the engine has no HTTP tool adapter, so
-    //    the header is exercised here directly).
+    // 1. Stand-in for a provider integration: the engine has no HTTP tool, so
+    //    this request exercises the reader half, not an engine sender (#1174).
     Mock::given(method("POST"))
         .and(path("/v1/charges"))
         .and(header(EFFECT_IDEMPOTENCY_HEADER, key.as_str()))
