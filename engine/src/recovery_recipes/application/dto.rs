@@ -16,7 +16,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::recovery_recipes::domain::{
-    FailureScenario, RecoveryRecipe, RecoveryResult, RecoveryStep,
+    FailureScenario, RecoveryRecipe, RecoveryResult, RecoveryStep, RecoveryStepOutcome,
 };
 
 // ---------------------------------------------------------------------------
@@ -59,6 +59,13 @@ pub struct AttemptRecoveryOutput {
 
     /// Human-readable summary of the recovery outcome.
     pub summary: String,
+
+    /// What each attempted step actually did.
+    ///
+    /// Empty for legacy callers; the service always populates it. This is the
+    /// field that distinguishes a performed repair from an unsupported one.
+    #[serde(default)]
+    pub step_outcomes: Vec<RecoveryStepOutcome>,
 }
 
 // ---------------------------------------------------------------------------

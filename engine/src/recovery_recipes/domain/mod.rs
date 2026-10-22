@@ -29,6 +29,6 @@ pub use error::RecoveryError;
 pub use escalation::EscalationPolicy;
 pub use event::RecoveryEvent;
 pub use recipe::RecoveryRecipe;
-pub use result::RecoveryResult;
+pub use result::{RecoveryResult, RecoveryStepOutcome};
 pub use scenario::FailureScenario;
 pub use step::RecoveryStep;

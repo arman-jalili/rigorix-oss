@@ -3,7 +3,7 @@
 <!--
 Canonical Reference: .pi/architecture/modules/execution-engine.md
 Blueprint Source: Domain Exploration Session 63c25384
-Last Updated: 2026-10-21 — ADR-019 effect-commitment write-ahead/settle seam in the dispatch loop
+Last Updated: 2026-10-22 — recovery step outcomes gate NodeStatus::Ready (#1157)
 -->
 
 ## Overview
