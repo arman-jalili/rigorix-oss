@@ -112,10 +112,17 @@ impl HookRunnerImpl {
         let stdin_json = serde_json::to_string(stdin_payload).unwrap_or_default();
         if let Some(mut stdin) = child.stdin.take() {
             if let Err(e) = stdin.write_all(stdin_json.as_bytes()).await {
-                let _ = child.kill().await;
-                return Err(HookError::Internal {
-                    detail: format!("Failed to write stdin to hook '{}': {}", command, e),
-                });
+                // A hook may exit without reading stdin (a shell one-liner that
+                // ignores its input, a fast deny, a crash). That closes the pipe
+                // and write(2) returns EPIPE. The hook's exit status/output is
+                // still the verdict; do not turn a closed pipe into an engine
+                // failure (the CI run observed this as a flaky broken pipe).
+                if e.kind() != std::io::ErrorKind::BrokenPipe {
+                    let _ = child.kill().await;
+                    return Err(HookError::Internal {
+                        detail: format!("Failed to write stdin to hook '{}': {}", command, e),
+                    });
+                }
             }
             let _ = stdin.flush().await;
         }
