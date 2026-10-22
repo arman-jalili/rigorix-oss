@@ -82,9 +82,11 @@ pub trait ParallelExecutionService: Send + Sync {
 
     /// Execute a single node (used internally by the dispatch loop).
     ///
-    /// Runs the node's tool binding, applies the retry policy on failure,
-    /// and returns the execution result. This is the unit of work dispatched
-    /// to the JoinSet.
+    /// Runs the same consequence gates as `execute_graph` — approval binding,
+    /// precondition, sequence policy, capacity, and the ADR-019 effect
+    /// write-ahead — then applies the retry policy on failure and settles the
+    /// effect record from the terminal outcome (#1185). It has no session to
+    /// pause, so an approval-required verdict is returned as a failure.
     async fn execute_node(
         &self,
         input: ExecuteNodeInput,

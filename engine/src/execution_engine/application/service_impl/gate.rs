@@ -1,5 +1,6 @@
 //! The **single** consequence-gate sequence for a node (#1074).
 //!
+//! @canonical .pi/architecture/modules/execution-engine.md#consequence-gates-one-sequence-two-routes-1074
 //! `execute_graph` (via `run_dispatch_loop`) and the public `execute_node`
 //! (via `execute_node_flow`) used to answer differently for the same tool: the
 //! graph route ran approval binding, precondition, sequence and capacity gates;
@@ -203,6 +204,15 @@ impl ParallelExecutionServiceImpl {
             }
         }
 
+        // ── 5. ADR-019 effect write-ahead ──
+        //
+        // The fifth consequence gate, and the one #1185 found outside this
+        // function: it used to run only in the graph loops, so `execute_node`
+        // dispatched the same tool with no record and no fence. It runs last,
+        // after capacity, so a refused node holds neither a reservation nor an
+        // effect record. Both routes call this function.
+        self.begin_effect(dag_id, graph, node_id).await?;
+
         Ok(NodeGate::Dispatch)
     }
 
@@ -296,6 +306,69 @@ mod tests {
     /// #1074: the gate sequence is one function, so a route that calls it
     /// cannot skip a gate. This pins the capacity arm — the arm that
     /// `execute_node` previously never reached — through the shared entry point.
+    /// #1185: the write-ahead is the fifth gate and lives in the shared path,
+    /// so `execute_node` cannot dispatch a tool without a record. The settle is
+    /// the same call both routes make from their terminal outcome.
+    #[tokio::test]
+    async fn the_shared_gate_writes_and_settles_the_effect_record() {
+        use crate::effect_commitment::application::{
+            EffectCommitmentSeam, EffectCommitmentServiceImpl, Sha256IntentKeyDerivation,
+        };
+        use crate::effect_commitment::domain::{EffectQuery, EffectState};
+        use crate::effect_commitment::infrastructure::InMemoryEffectLedger;
+        use crate::effect_commitment::interfaces::EffectCommitmentLedger;
+
+        let ledger = Arc::new(InMemoryEffectLedger::new());
+        let service = Arc::new(EffectCommitmentServiceImpl::new(
+            ledger.clone(),
+            Arc::new(Sha256IntentKeyDerivation::new()),
+        ));
+        let svc = ParallelExecutionServiceImpl::new(
+            crate::execution_engine::domain::ParallelExecutorConfig::default(),
+            Box::new(super::super::RetryEvaluationServiceImpl::default()),
+            std::sync::Arc::new(
+                crate::event_system::application::event_bus_service_impl::EventBusServiceImpl::default(),
+            ),
+        )
+        .with_effect_commitment_seam(Arc::new(EffectCommitmentSeam::new(service)));
+
+        let dag_id = Uuid::new_v4();
+        let node_id = Uuid::new_v4();
+        let mut graph = TaskGraph::new();
+        graph
+            .add_unchecked(TaskNode::new(
+                node_id,
+                "step",
+                "run_command",
+                vec![],
+                r#"{"command":"true"}"#.to_string(),
+            ))
+            .expect("add node");
+        graph.seal().expect("seal");
+
+        let verdict = svc
+            .gate_node(dag_id, &graph, node_id, &HashSet::new())
+            .await
+            .expect("gate evaluation");
+        assert!(matches!(verdict, NodeGate::Dispatch));
+        let records = ledger.query(EffectQuery::by_dag(dag_id)).await.unwrap();
+        assert_eq!(
+            records.len(),
+            1,
+            "the gate writes one record before dispatch"
+        );
+        assert_eq!(records[0].state(), EffectState::Dispatched);
+
+        // The single-node route's settle call, after its attempts.
+        svc.settle_effect(
+            node_id,
+            &TaskResult::success(node_id, "step", Some("ok".to_string()), 0, 0),
+        )
+        .await;
+        let records = ledger.query(EffectQuery::by_dag(dag_id)).await.unwrap();
+        assert_eq!(records[0].state(), EffectState::Committed);
+    }
+
     #[tokio::test]
     async fn the_shared_gate_sequence_refuses_a_step_over_the_capacity_cap() {
         let dir = tempfile::TempDir::new().expect("tempdir");

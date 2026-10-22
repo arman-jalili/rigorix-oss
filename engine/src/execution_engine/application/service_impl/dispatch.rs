@@ -138,10 +138,8 @@ impl ParallelExecutionServiceImpl {
                 GateOutcome::Refused => continue,
             }
 
-            // ADR-019: write the intent durably before the tool is sent. A
-            // failed begin refuses the dispatch.
-            self.begin_effect(dag_id, graph, node_id).await?;
-
+            // ADR-019: the write-ahead ran inside `gate_node`, the shared
+            // consequence path, so both routes record before they send.
             let effect_key = self
                 .effect_keys
                 .lock()
@@ -304,9 +302,8 @@ impl ParallelExecutionServiceImpl {
                     GateOutcome::Refused => continue,
                 }
 
-                // ADR-019: write the intent durably before the tool is sent.
-                self.begin_effect(dag_id, graph, next_id).await?;
-
+                // ADR-019: the write-ahead ran inside `gate_node`, the shared
+                // consequence path, so both routes record before they send.
                 let effect_key = self
                     .effect_keys
                     .lock()
@@ -793,27 +790,36 @@ impl ParallelExecutionServiceImpl {
     }
 
     /// Build the intent identity shared by the effect record and the
-    /// capacity hold (#1163).
+    /// capacity hold (#1163, #1187).
     ///
-    /// The gate's digests are not yet exposed on the node, so the intent
-    /// identity is derived from the node and execution identity for now. The
-    /// placeholder key is replaced by the service's intent derivation; the
-    /// digest fields are what make the derived key stable across retries.
+    /// The key is derived here, once, from `(dag_id, node_id, intent_digest)`:
+    /// the same node payload reuses it across retries, a changed payload gets a
+    /// different key. Every consumer reads this value — the service stores it on
+    /// the record, the provider receives it, and the receipt reader queries by
+    /// it. There is no placeholder to drift.
+    ///
+    /// The gate's precondition/authority digests are not yet exposed on the
+    /// node; those fields are derived from the execution identity for now and
+    /// do not affect the key.
     fn effect_intent(
         dag_id: Uuid,
         node_id: Uuid,
         node: &crate::dag_engine::domain::TaskNode,
     ) -> EffectIntent {
-        EffectIntent::new(
+        let mut intent = EffectIntent::new(
             dag_id,
             node_id,
             0,
-            IdempotencyKey::new(format!("{dag_id}:{node_id}:pending")),
+            // Replaced immediately: `EffectIntent::new` needs a value, and the
+            // derivation must see the complete digest fields.
+            IdempotencyKey::new("pending"),
             node.tool.clone(),
             Self::effect_digest(&node.intent),
             Self::effect_digest(&format!("{dag_id}:{node_id}:precondition")),
             Self::effect_digest(&format!("{dag_id}:{node_id}:authority")),
-        )
+        );
+        intent.idempotency_key = Sha256IntentKeyDerivation::new().derive_key(&intent);
+        intent
     }
 
     /// R1 dispatch-time precondition verdict for one ready node (ADR-017).
@@ -1070,7 +1076,9 @@ impl ParallelExecutionServiceImpl {
         // the resource twice. A different amount is refused as `Contended`
         // rather than silently under-reserved.
         let intent = Self::effect_intent(dag_id, node_id, node);
-        let idempotency_key = Sha256IntentKeyDerivation::new().derive_key(&intent);
+        // The intent already carries the derived key; deriving again here is
+        // how the hold and the record drifted apart before #1187.
+        let idempotency_key = intent.idempotency_key.clone();
         let input = ReserveCapacityInput {
             resource: ResourceId::new(rule.resource.clone()),
             amount: rule.amount,
@@ -1359,11 +1367,25 @@ mod tests {
         let b = ParallelExecutionServiceImpl::effect_intent(dag, id, &n);
         let derive = Sha256IntentKeyDerivation::new();
         assert_eq!(derive.derive_key(&a), derive.derive_key(&b));
+        assert_eq!(
+            a.idempotency_key,
+            derive.derive_key(&a),
+            "the stored key is the derived key, not a placeholder"
+        );
+        assert_ne!(
+            a.idempotency_key.as_str(),
+            format!("{dag}:{id}:pending"),
+            "the placeholder must not reach the record or the provider"
+        );
 
         // A different payload is a different intent (and must not reuse a hold).
         let changed = node(id, "run_command", "echo goodbye");
         let c = ParallelExecutionServiceImpl::effect_intent(dag, id, &changed);
         assert_ne!(derive.derive_key(&a), derive.derive_key(&c));
+        assert_ne!(
+            a.idempotency_key, c.idempotency_key,
+            "a changed payload must derive a different provider key"
+        );
     }
 
     #[test]
