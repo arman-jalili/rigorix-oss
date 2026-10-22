@@ -402,8 +402,9 @@ pub async fn build_orchestrator_with_budget(
                 // so this wiring cannot invent a violation (#1099).
                 approval_repo_path: Some(repo_root.clone()),
                 // ADR-008 (#1108): budgets are evaluated before each tool call.
-                // `--enforcement` selects a preset; the standard limits apply
-                // otherwise (500 tool calls, 3600s, 100k tokens per execution).
+                // The preset comes from `[enforcement] preset`; the per-run CLI
+                // flag is refused (#1156), and the standard limits apply when
+                // no preset is configured (500 calls, 3600s, 100k tokens).
                 enforcement: Some(enforcement_config_from_engine(&engine_config.enforcement)),
             },
             register_event_handlers: true,
