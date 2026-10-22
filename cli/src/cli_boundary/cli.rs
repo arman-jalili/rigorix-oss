@@ -135,7 +135,10 @@ pub enum CliCommand {
         /// Natural-language intent describing what to execute.
         intent: String,
 
-        /// Optional enforcement preset override.
+        /// Not implemented — refused. Use `[enforcement] preset` in rigorix.toml.
+        ///
+        /// The executor config is built once at startup, so a per-run preset
+        /// cannot be honoured. Passing this flag is a usage error (#1156).
         #[arg(long)]
         enforcement: Option<String>,
 

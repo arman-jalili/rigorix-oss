@@ -20,10 +20,13 @@ Blueprint Source: Domain Exploration Session 63c25384
 > `strict`, `aggressive` → `maximum`. The enforcer is per execution, keyed by
 > `dag_id`, so two concurrent runs do not share counters.
 >
-> **Still asymmetric, deliberately recorded:** the per-run `--enforcement` flag
-> (`RunInput::enforcement_preset`) is threaded and not yet read — the executor
-> config is built once at startup, so the flag cannot vary per run. Selecting a
-> preset per run needs a config-override path, not a wiring fix.
+> **Refused (#1156):** the per-run `--enforcement` flag is rejected with a usage
+> error. The executor config is built once at startup, so the flag cannot vary a
+> run; letting it parse and do nothing let an operator believe a run was
+> hardened when it was not. Use `[enforcement] preset` in `rigorix.toml` (that
+> path works). A per-run override needs a config-replacement path, not a wiring
+> fix; until it exists, `RunInput::enforcement_preset` remains for that future
+> work but no caller may set it from the CLI.
 
 Enforces hard caps on execution behavior: retries per node, total retries, tool calls, dynamic nodes, execution time, and parallel tasks. Supports three autonomy presets (Default, Advanced, Aggressive) with configurable limits and absolute safety hard-caps.
 
