@@ -13,8 +13,16 @@ CRATES=("engine" "mcp" "cli" "actions" "server")
 REPORT_DIR=".pi/output"
 
 while [[ $# -gt 0 ]]; do
-    case $1 in --quick) QUICK=true;; --release) RELEASE=true;; --stage=*) STAGE="${1#*=}";; --crate=*) CRATE_FILTER="${1#*=}";; --list) LIST_ONLY=true;; --save) SAVE_OUTPUT=true;; esac
-    shift
+    case $1 in
+        --quick) QUICK=true; shift ;;
+        --release) RELEASE=true; shift ;;
+        --stage=*) STAGE="${1#*=}"; shift ;;
+        --stage) STAGE="$2"; shift 2 ;;
+        --crate=*) CRATE_FILTER="${1#*=}"; shift ;;
+        --list) LIST_ONLY=true; shift ;;
+        --save) SAVE_OUTPUT=true; shift ;;
+        *) shift ;;
+    esac
 done
 
 [[ -n "$CRATE_FILTER" ]] && CRATES=("$CRATE_FILTER")
@@ -193,7 +201,7 @@ fi
 if should_run "security"; then
     header "Stage 4: Security"
     if command -v cargo-audit &>/dev/null || cargo audit --version &>/dev/null 2>&1; then
-        run_cmd "cargo audit" cargo audit
+        run_cmd "cargo audit" cargo audit --deny warnings
     else
         fail "cargo audit — not installed (run 'cargo install cargo-audit')"
     fi
