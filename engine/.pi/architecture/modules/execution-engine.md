@@ -3,7 +3,7 @@
 <!--
 Canonical Reference: .pi/architecture/modules/execution-engine.md
 Blueprint Source: Domain Exploration Session 63c25384
-Last Updated: 2026-10-23 — the scope check records whether it ran, and the approver may supply scope (#1189, #1190)
+Last Updated: 2026-10-24 — the dispatch path has a cost baseline, and the scope check records whether it ran (#1189, #1190, #1208)
 -->
 
 ## Overview
@@ -261,6 +261,34 @@ See [approval module](./modules/approval.md) for the full contract. Summary of c
 | EXEC_INTERNAL_ERROR | 500 | Internal error |
 
 ---
+
+## Enforcement-path cost baseline (#1208)
+
+`engine/benches/dag_engine.rs` has an `enforcement_path` group over
+`execute_graph`: `seam_absent` (the default path) and `seam_in_memory` (the
+ADR-019 write-ahead + settle per node), at 1, 10, and 100 independent nodes.
+Each node runs the cheapest shipped tool (`file_read` of a small repo file) so
+the measurement is gate + dispatch, not tool cost. The executor is pinned to
+`max_concurrent_executions: 1` to isolate marginal gate cost from tokio
+scheduling; a fresh `dag_id` per iteration keeps the in-memory ledger keyed per
+execution instead of hitting the retry fence.
+
+Baseline (local macOS laptop, criterion, 50 samples; median with 95% CI — treat
+absolute values as machine-dependent and compare like-for-like):
+
+| nodes | seam absent | seam in-memory |
+|---|---|---|
+| 1 | 166 µs [162–174] | 193 µs [179–210] |
+| 10 | 1.94 ms [1.77–2.13] | 1.86 ms [1.70–2.05] |
+| 100 | 19.8 ms [17.8–22.3] | 25.0 ms [21.8–28.8] |
+
+The per-node floor (~160–190 µs) is dominated by dispatch/tracing, not the
+gates; the in-memory seam adds a measurable but single-digit-ms cost at 100
+nodes. What matters for regression is the group's stored criterion baseline:
+run `cargo bench --bench dag_engine -- enforcement_path` before and after a
+dispatch change. The HTTP capacity configuration is intentionally not measured:
+it needs a stub transport, and adding one would benchmark the stub's socket,
+not the engine.
 
 ## Module Registration
 
