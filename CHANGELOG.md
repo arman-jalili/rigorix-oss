@@ -46,6 +46,7 @@ of that train — do not infer its version from these tags (it is 1.4.0).
 - `tokio` 1.52.3 → 1.54.1 closes RUSTSEC-2026-0386 (`AsyncFd` I/O safety); the strict audit gate caught it locally (#1207) ([#1207](https://github.com/arman-jalili/rigorix-oss/pull/1207))
 - Server HTTP/SSE is now exercised end-to-end over a real socket, including a `Last-Event-ID` reconnect, and the action binary is driven with a fixture workflow environment and asserted through its outputs and exit code (#1209) ([#1210](https://github.com/arman-jalili/rigorix-oss/pull/1210))
 - The dispatch path has a criterion baseline: `enforcement_path` measures `execute_graph` with the effect seam absent and present at 1/10/100 nodes, with the numbers recorded in the execution-engine module doc (#1208) ([#1211](https://github.com/arman-jalili/rigorix-oss/pull/1211))
+- The dispatch benchmark's module doc now records the method and its noise floor instead of a non-reproducing table: the seam delta was below the harness's resolution at N ≤ 100, and criterion defaults (not 50 samples) are what the bench runs (#1212) ([#1213](https://github.com/arman-jalili/rigorix-oss/pull/1213))
 - An armed commitment seam no longer disables retries: a `NotCommitted` attempt is retryable as a new attempt record under the same intent key, while `Committed` and `Ambiguous` stay refused (#1196) ([#1197](https://github.com/arman-jalili/rigorix-oss/pull/1197))
 - `execute_node` runs the effect write-ahead and settle through the shared gate path (#1185) ([#1191](https://github.com/arman-jalili/rigorix-oss/pull/1191))
 - The intent key is derived once and used by the record, provider, and receipt reader; the placeholder is gone (#1187) ([#1191](https://github.com/arman-jalili/rigorix-oss/pull/1191))
@@ -56,8 +57,9 @@ of that train — do not infer its version from these tags (it is 1.4.0).
 - The effect-commitment and capacity-ledger contract proofs gate through `.pi/guards.tsv` and `.pi/scripts/validate-guards.sh`, with seeded-failure self-tests (#1186) ([#1192](https://github.com/arman-jalili/rigorix-oss/pull/1192))
 - Nine effect-commitment issue packets are `done` with a `closed_reason`, and `engine/.pi/issues/README.md` states the closing convention (#1188) ([#1193](https://github.com/arman-jalili/rigorix-oss/pull/1193))
 
-<details><summary>Issues closed in this release (111)</summary>
+<details><summary>Issues closed in this release (112)</summary>
 
+- #1212 — the recorded enforcement-path baseline does not reproduce: the 26% seam cost re-measures as 3% inside overlapping CIs, and the doc claims 50 samples the bench never sets
 - #1208 — no benchmark covers the enforcement path: criterion measures topological_sort and seal_graph, not the five gates every dispatch passes
 - #1209 — the server HTTP/SSE surface and the actions entrypoint have no end-to-end test: 6 of 190 test files spawn a process, 1 binds a socket
 - #1206 — local-ci silently ignores unknown arguments, so a typo runs the whole suite instead of one stage

@@ -3,7 +3,7 @@
 <!--
 Canonical Reference: .pi/architecture/modules/execution-engine.md
 Blueprint Source: Domain Exploration Session 63c25384
-Last Updated: 2026-10-24 — the dispatch path has a cost baseline, and the scope check records whether it ran (#1189, #1190, #1208)
+Last Updated: 2026-10-24 — the dispatch benchmark records a method and its noise floor, not a table (#1189, #1190, #1208, #1212)
 -->
 
 ## Overview
@@ -273,22 +273,38 @@ the measurement is gate + dispatch, not tool cost. The executor is pinned to
 scheduling; a fresh `dag_id` per iteration keeps the in-memory ledger keyed per
 execution instead of hitting the retry fence.
 
-Baseline (local macOS laptop, criterion, 50 samples; median with 95% CI — treat
-absolute values as machine-dependent and compare like-for-like):
+### Baseline method, not a table
 
-| nodes | seam absent | seam in-memory |
-|---|---|---|
-| 1 | 166 µs [162–174] | 193 µs [179–210] |
-| 10 | 1.94 ms [1.77–2.13] | 1.86 ms [1.70–2.05] |
-| 100 | 19.8 ms [17.8–22.3] | 25.0 ms [21.8–28.8] |
+Do **not** copy absolute numbers out of this document. Criterion's default
+sampling is used (3 s warm-up, 5 s measurement, 100 samples); there is no
+`sample_size` override in the bench. Compare **before and after on the same
+idle machine and tree**; criterion stores the baseline per group under
+`target/criterion`, so the stored baseline is the regression reference:
 
-The per-node floor (~160–190 µs) is dominated by dispatch/tracing, not the
-gates; the in-memory seam adds a measurable but single-digit-ms cost at 100
-nodes. What matters for regression is the group's stored criterion baseline:
-run `cargo bench --bench dag_engine -- enforcement_path` before and after a
-dispatch change. The HTTP capacity configuration is intentionally not measured:
-it needs a stub transport, and adding one would benchmark the stub's socket,
-not the engine.
+```bash
+cd engine
+cargo bench --bench dag_engine -- enforcement_path
+```
+
+Run it once on the base tree, once on the changed tree, and compare the two
+reports. Do **not** use `--quick`: it under-samples the group badly (measured
+~44 µs vs ~198 µs for the same 1-node cell), which is a larger error than any
+effect this bench is meant to detect.
+
+### What the harness can and cannot resolve
+
+On the machine used for #1208, the seam-absent and seam-in-memory cells overlap
+at 1, 10, and 100 nodes, and the earlier 100-node delta (recorded as +26 %) did
+not reproduce on a second run (+3 %, overlapping bands). **At N ≤ 100 the
+in-memory seam cost is below this harness's noise floor**; the honest reading is
+that no seam cost is distinguishable, not that the seam is free.
+
+The per-node floor comes from the 100-node slope, not the 1-node cell (where
+fixed setup dominates and the CI is tens of microseconds wide): roughly
+170 µs/node for `file_read` + dispatch/tracing, i.e. gate overhead is not the
+dominant term at these sizes. The HTTP capacity configuration is intentionally
+not measured: it needs a stub transport, and adding one would benchmark the
+stub's socket, not the engine.
 
 ## Module Registration
 

@@ -129,6 +129,11 @@ fn in_memory_seam(runtime: &tokio::runtime::Runtime) -> Arc<dyn DispatchSeam> {
 /// the write-ahead record + settle per node. A fresh `dag_id` per iteration
 /// keeps the in-memory ledger keyed per execution, so the measurement does not
 /// hit the retry fence after the first iteration.
+///
+/// Sampling is left at criterion's defaults (3 s warm-up, 5 s measurement,
+/// 100 samples) — do not add a `--quick` baseline: it under-samples this group
+/// by ~4.5x, more than the effect being measured. The module doc records the
+/// method and the noise floor, not absolute numbers (#1212).
 fn bench_enforcement_path(c: &mut Criterion) {
     let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
     let seam = in_memory_seam(&runtime);
