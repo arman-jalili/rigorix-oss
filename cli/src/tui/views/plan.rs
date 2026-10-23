@@ -8,7 +8,7 @@ use crate::tui::view_model::{ExecutionPhase, NodeStatus, NodeViewModel, TuiViewM
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Color, Modifier, Style, Stylize},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
 };

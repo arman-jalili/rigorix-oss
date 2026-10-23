@@ -193,7 +193,7 @@ fi
 if should_run "security"; then
     header "Stage 4: Security"
     if command -v cargo-audit &>/dev/null || cargo audit --version &>/dev/null 2>&1; then
-        run_cmd "cargo audit" cargo audit --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2026-0002
+        run_cmd "cargo audit" cargo audit
     else
         fail "cargo audit — not installed (run 'cargo install cargo-audit')"
     fi

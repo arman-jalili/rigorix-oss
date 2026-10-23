@@ -218,9 +218,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
 
+      # GATING: advisory policy lives in .cargo/audit.toml. A new unmaintained
+      # advisory stops the train until it is upgraded, removed, or reviewed with
+      # a tracking issue and expiry. Do not add --ignore flags here (#1198).
       - name: Cargo audit
-        run: cargo audit --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2026-0002 --deny warnings
-        continue-on-error: true
+        run: cargo audit --deny warnings
 
       - name: Secret scan
         shell: bash
