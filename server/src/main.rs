@@ -1,4 +1,6 @@
 //! `rigorix-server` binary — axum bootstrap (#888 OSS-C2).
+//! @canonical .pi/architecture/modules/rigorix-server.md
+//!
 //!
 //! Serves the frozen `rigorix.*` catalog at `POST /rpc`. The host composition
 //! is the SAME one the stdio MCP binary uses (`rigorix_mcp::host::init_host`).

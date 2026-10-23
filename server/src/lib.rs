@@ -1,4 +1,6 @@
 //! `rigorix-server` — OSS reference execution host (#888 OSS-C2).
+//! @canonical .pi/architecture/modules/rigorix-server.md
+//!
 //!
 //! Exposes the frozen `rigorix.*` catalog (ADR-0001) over HTTP:
 //! JSON-RPC 2.0 at `POST /rpc`. This is a **host over the existing engine**:

@@ -1,4 +1,6 @@
 //! End-to-end HTTP/SSE transport (#1209).
+//! @canonical .pi/architecture/modules/rigorix-server.md#push-channel-get-events-adr-0001-d8
+//!
 //!
 //! Binds an ephemeral loopback port and drives the **production** route table
 //! with a real HTTP client. The other server suites stop at the codec
