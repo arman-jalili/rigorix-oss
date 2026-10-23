@@ -10,6 +10,16 @@
 //! 2. CLI arguments (if run outside GitHub Actions)
 //! 3. `action.yml` defaults
 //! 4. Engine defaults
+//!
+//! # YAML resolution (#1205)
+//!
+//! `action.yml` is parsed by `serde-saphyr`, which uses **YAML 1.1** scalar
+//! resolution. That differs from the previous `serde_yaml` 0.9 parser on three
+//! inputs: `yes/no/on/off/y/n` are booleans (so `default: off` reaches the
+//! input surface as `"false"`), `010` is a number rather than the string
+//! `"010"`, and duplicate mapping keys are rejected instead of last-wins. The
+//! resolution tests below pin this behaviour deliberately; quote ambiguous
+//! defaults (`default: "off"`, `default: "010"`) when the literal text matters.
 
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -464,6 +474,75 @@ inputs:
         assert_eq!(result.config.mode, "run");
         assert_eq!(result.config.max_llm_calls, 25);
         assert!(result.config.post_pr_comment);
+    }
+
+    /// #1205: pin the YAML 1.1 resolution the swapped parser actually uses,
+    /// including the inputs where `serde_yaml` 0.9 disagreed. A migration test
+    /// that only covers agreeing values cannot detect a resolution change.
+    #[tokio::test]
+    async fn test_yaml_1_1_scalar_resolution_is_pinned() {
+        let yml = r#"
+inputs:
+  a:
+    default: yes
+  b:
+    default: no
+  c:
+    default: on
+  d:
+    default: off
+  e:
+    default: y
+  f:
+    default: n
+  leading-zero:
+    default: 010
+"#;
+        let repo = YamlConfigRepository::new();
+        let defaults = repo.parse_yml_defaults(yml).await.unwrap();
+
+        for (key, expected) in [
+            ("a", true),
+            ("b", false),
+            ("c", true),
+            ("d", false),
+            ("e", true),
+            ("f", false),
+        ] {
+            assert_eq!(
+                defaults[key],
+                serde_json::json!(expected),
+                "YAML 1.1 boolean resolution changed for {key}"
+            );
+            assert_eq!(
+                ConfigLoaderImpl::yaml_value_to_string(&defaults[key]),
+                expected.to_string(),
+                "the downstream string changed for {key}"
+            );
+        }
+
+        // `010` is a number, not the string "010"; its rendering is pinned so a
+        // future parser swap is visible in the diff.
+        let rendered = ConfigLoaderImpl::yaml_value_to_string(&defaults["leading-zero"]);
+        assert_eq!(rendered, "10.0");
+    }
+
+    /// #1205: duplicate keys are a hard error, not silently last-wins.
+    #[tokio::test]
+    async fn test_duplicate_yaml_keys_are_rejected() {
+        let yml = r#"
+inputs:
+  mode:
+    default: run
+  mode:
+    default: plan
+"#;
+        let repo = YamlConfigRepository::new();
+        let error = repo.parse_yml_defaults(yml).await.unwrap_err();
+        assert!(
+            matches!(error, ActionInputError::Yaml(_)),
+            "duplicate keys must be a parse error, got: {error:?}"
+        );
     }
 
     #[tokio::test]
