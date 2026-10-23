@@ -35,3 +35,4 @@
 .pi/scripts/validate-integration.sh	integration	advisory	no	integration	integration heuristic
 .pi/scripts/ci/check_effect-commitment_contracts.sh	contract-proofing	gating	yes	architecture	the 150-check effect-commitment contract proof runs here with a real exit code; --self-test seeds a removed contract and requires a failure (#1186)
 .pi/scripts/ci/check_capacity-ledger_contracts.sh	contract-proofing	gating	yes	architecture	the capacity-ledger contract proof runs here with a real exit code; --self-test seeds a removed contract and requires a failure (#1186)
+.pi/scripts/ci/stage_workspace_check.sh	compile	gating	yes	architecture	cargo check --workspace --all-targets; catches a public-enum addition breaking a downstream exhaustive match (#1195)

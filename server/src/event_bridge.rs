@@ -70,7 +70,8 @@ pub fn kind_for(event: &ExecutionEvent) -> Option<EventKind> {
         | ExecutionEvent::RequirementUnmet { .. }
         | ExecutionEvent::RequirementPromoted { .. }
         | ExecutionEvent::PreconditionChecked { .. }
-        | ExecutionEvent::ScopeViolationRecorded { .. } => Some(EventKind::PolicyChanged),
+        | ExecutionEvent::ScopeViolationRecorded { .. }
+        | ExecutionEvent::EffectScopeChecked { .. } => Some(EventKind::PolicyChanged),
 
         // ── not pushed (audit delivery / circuit breaker) ───────────────
         ExecutionEvent::AuditEnvelopeDelivered { .. }
@@ -212,6 +213,17 @@ fn describe(event: &ExecutionEvent) -> (EventStatus, String, Value) {
             EventStatus::Failure,
             format!("scope violation on step '{step_name}'"),
             json!({ "step_name": step_name, "node_id": node_id, "out_of_scope": out_of_scope }),
+        ),
+        ExecutionEvent::EffectScopeChecked {
+            node_id, status, ..
+        } => (
+            if status == "checked" {
+                EventStatus::Success
+            } else {
+                EventStatus::Skipped
+            },
+            format!("effect scope {status} for node '{node_id}'"),
+            json!({ "node_id": node_id, "status": status }),
         ),
         ExecutionEvent::SequenceRuleMatched {
             rule_id,
@@ -371,6 +383,12 @@ mod tests {
                 decision_context_ref: None,
                 timestamp,
             },
+            "effect_scope_checked" => ExecutionEvent::EffectScopeChecked {
+                execution_id,
+                node_id: "validate".to_string(),
+                status: "checked".to_string(),
+                timestamp,
+            },
             "sequence_policy_denied" => ExecutionEvent::SequencePolicyDenied {
                 execution_id,
                 rule_id: "no-remove-then-add".to_string(),
@@ -405,6 +423,11 @@ mod tests {
         assert_eq!(
             kind_for(&event("sequence_policy_denied")),
             Some(EventKind::PolicyChanged)
+        );
+        assert_eq!(
+            kind_for(&event("effect_scope_checked")),
+            Some(EventKind::PolicyChanged),
+            "scope-check evidence belongs with the other policy events"
         );
         assert_eq!(kind_for(&event("audit_envelope_created")), None);
     }
