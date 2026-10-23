@@ -5,16 +5,8 @@
 
 use std::sync::Arc;
 
-use axum::body::Bytes;
-use axum::extract::State;
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
-use axum::{Json, Router};
-
 use rigorix_server::backend::HostBackend;
-use rigorix_server::events::{EventHub, events_handler};
-use rigorix_server::rpc;
+use rigorix_server::events::EventHub;
 use rigorix_server::state::ServerState;
 
 #[tokio::main]
@@ -47,19 +39,7 @@ async fn main() {
     );
     let state = ServerState::new(Arc::new(HostBackend), hub);
 
-    let app = Router::new()
-        .route("/health", get(|| async { "ok" }))
-        .route("/rpc", post(rpc_handler))
-        .route("/events", get(events_handler))
-        // #915 / ADR-0001 D4: the optional MCP Streamable HTTP adapter over the
-        // frozen catalog. Same governed dispatch + auth as `/rpc`.
-        .route(
-            "/mcp",
-            post(rigorix_server::mcp_http::post_handler)
-                .get(rigorix_server::mcp_http::get_handler)
-                .delete(rigorix_server::mcp_http::delete_handler),
-        )
-        .with_state(state);
+    let app = rigorix_server::app::router(state);
 
     let listener = match tokio::net::TcpListener::bind(&bind).await {
         Ok(listener) => listener,
@@ -74,20 +54,5 @@ async fn main() {
 
     if let Err(e) = axum::serve(listener, app).await {
         tracing::error!("server error: {e}");
-    }
-}
-
-/// `POST /rpc` — JSON-RPC 2.0 (single, batch, notification).
-///
-/// Always HTTP 200 for a well-formed envelope; notifications yield an empty
-/// body. Malformed JSON yields a `-32700` error object.
-async fn rpc_handler(State(state): State<ServerState>, body: Bytes) -> Response {
-    let value: serde_json::Value = match serde_json::from_slice(&body) {
-        Ok(value) => value,
-        Err(_) => return Json(rpc::parse_error()).into_response(),
-    };
-    match rpc::handle_value(value, state.backend.as_ref()).await {
-        Some(response) => Json(response).into_response(),
-        None => StatusCode::OK.into_response(),
     }
 }

@@ -23,7 +23,8 @@ error taxonomy).
 ```
 server/
 ├── src/
-│   ├── main.rs        # axum bootstrap: POST /rpc, GET /events, /mcp, GET /health
+│   ├── main.rs        # axum bootstrap: composes state and serves the router
+│   ├── app.rs         # production route table (/rpc, /events, /mcp, /health) (#1209)
 │   ├── lib.rs         # module root
 │   ├── backend.rs     # MethodBackend trait + HostBackend (delegates to rigorix-mcp)
 │   ├── catalog.rs     # the frozen 20-method table (name -> auth -> mcp tool)
@@ -34,7 +35,7 @@ server/
 │   ├── state.rs       # server state
 │   ├── anchor/        # ADR-016 anchor surface (mode + verified head)
 │   └── version.rs     # rigorix.system.version
-└── tests/             # rpc_transport, auth_levels, catalog_parity
+└── tests/             # rpc_transport, auth_levels, catalog_parity, http_e2e
 ```
 
 ## Contracts
@@ -77,6 +78,12 @@ shared composition before the server binds (`RIGORIX_SERVER_BIND`, default
 - Bounded per-subscriber broadcast (backpressure): a slow consumer lags and
   drops events rather than stalling execution; reconnect with `Last-Event-ID`
   replays. Mirrors `AuditEnvelopeDropped`.
+- **End-to-end transport (#1209):** `tests/http_e2e.rs` binds an ephemeral
+  loopback `TcpListener`, serves the production `app::router`, and uses a real
+  HTTP client to assert the JSON-RPC status/body, the `text/event-stream`
+  declaration, a live chunked SSE frame, and a `Last-Event-ID` reconnect that
+  replays only the missed events. The router lives in `app.rs` so the binary and
+  the test cannot drift.
 - The legacy MCP SSE endpoint is **not** resurrected (GAP-A-10).
 - **Auth (ADR-0001 D4, #913):** `GET /events` applies the **same** session gate
   as `POST /rpc` (`crate::rpc::handle_value`): with an IdP configured, an

@@ -44,6 +44,7 @@ of that train — do not infer its version from these tags (it is 1.4.0).
 - `local-ci --stage security` runs the same `cargo audit --deny warnings` as Hardening (#1202); `validate-decision-expiry.sh` fails a lapsed advisory ignore or an invalid `docs/issues` status, with a self-test (#1203) ([#1204](https://github.com/arman-jalili/rigorix-oss/pull/1204))
 - `action.yml` YAML 1.1 scalar resolution is documented and pinned by tests: `yes/no/on/off/y/n` are booleans, `010` is a number, duplicate keys fail loudly (#1205); `local-ci` rejects unknown arguments and stage names instead of running the whole suite (#1206) ([#1207](https://github.com/arman-jalili/rigorix-oss/pull/1207))
 - `tokio` 1.52.3 → 1.54.1 closes RUSTSEC-2026-0386 (`AsyncFd` I/O safety); the strict audit gate caught it locally (#1207) ([#1207](https://github.com/arman-jalili/rigorix-oss/pull/1207))
+- Server HTTP/SSE is now exercised end-to-end over a real socket, including a `Last-Event-ID` reconnect, and the action binary is driven with a fixture workflow environment and asserted through its outputs and exit code (#1209) ([#1210](https://github.com/arman-jalili/rigorix-oss/pull/1210))
 - An armed commitment seam no longer disables retries: a `NotCommitted` attempt is retryable as a new attempt record under the same intent key, while `Committed` and `Ambiguous` stay refused (#1196) ([#1197](https://github.com/arman-jalili/rigorix-oss/pull/1197))
 - `execute_node` runs the effect write-ahead and settle through the shared gate path (#1185) ([#1191](https://github.com/arman-jalili/rigorix-oss/pull/1191))
 - The intent key is derived once and used by the record, provider, and receipt reader; the placeholder is gone (#1187) ([#1191](https://github.com/arman-jalili/rigorix-oss/pull/1191))
@@ -54,8 +55,9 @@ of that train — do not infer its version from these tags (it is 1.4.0).
 - The effect-commitment and capacity-ledger contract proofs gate through `.pi/guards.tsv` and `.pi/scripts/validate-guards.sh`, with seeded-failure self-tests (#1186) ([#1192](https://github.com/arman-jalili/rigorix-oss/pull/1192))
 - Nine effect-commitment issue packets are `done` with a `closed_reason`, and `engine/.pi/issues/README.md` states the closing convention (#1188) ([#1193](https://github.com/arman-jalili/rigorix-oss/pull/1193))
 
-<details><summary>Issues closed in this release (109)</summary>
+<details><summary>Issues closed in this release (110)</summary>
 
+- #1209 — the server HTTP/SSE surface and the actions entrypoint have no end-to-end test: 6 of 190 test files spawn a process, 1 binds a socket
 - #1206 — local-ci silently ignores unknown arguments, so a typo runs the whole suite instead of one stage
 - #1205 — the YAML parser swap silently changes scalar resolution: yes/no/on/off become booleans, 010 becomes 10.0, duplicate keys now hard-error
 - #1203 — decision expiry is a comment and issue front matter is unvalidated: nothing reads `.cargo/audit.toml` dates or `docs/issues/**` status

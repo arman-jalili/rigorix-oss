@@ -2979,6 +2979,7 @@ dependencies = [
  "axum",
  "chrono",
  "futures",
+ "reqwest",
  "rigorix-engine",
  "rigorix-mcp",
  "rigorix-verifier",
