@@ -7,10 +7,11 @@ guardian_issue:
   tracking_issue: 1198
   component: "Docs"
   module: "operations"
-  status: planned
+  status: done
+  closed_reason: "Implemented in #1201: ctutils 0.4.4, ratatui 0.30.2 drops lru 0.12/paste, and the remaining unmaintained advisories are reviewed ignores in .cargo/audit.toml tracked by #1199/#1200."
   priority: critical
   created_at: "2026-10-24T07:30:00Z"
-  updated_at: "2026-10-24T07:30:00Z"
+  updated_at: "2026-10-24T09:00:00Z"
 
   intent: |
     Restore a green main by fixing the one actionable vulnerability and making an explicit decision about
