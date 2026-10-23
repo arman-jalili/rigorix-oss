@@ -144,7 +144,7 @@ The command bar is a persistent text input at the bottom of the screen. Users ty
 
 ## EventBridge
 
-Subscribes to the engine's `EventBus` broadcast channel. Each incoming `ExecutionEvent` is mapped to a `ViewModelMutation`.
+Subscribes to the engine's `EventBus` broadcast channel. Each incoming `ExecutionEvent` is mapped to a `ViewModelMutation`. The mapping is exhaustive: `EffectScopeChecked` is informational (the TUI has no node status for "check ran but found nothing"), so it deliberately produces no mutation (#1189, #1195).
 
 **Lag handling:**
 - < 50 dropped: continue processing remaining events

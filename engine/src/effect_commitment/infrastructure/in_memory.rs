@@ -19,7 +19,10 @@
 //! # Invariants implemented
 //! - **Write-ahead**: `begin` inserts the record before returning.
 //! - **Custody**: a retry with the same intent-derived key returns the existing
-//!   record; the same key with a different payload is `Contended`.
+//!   record while it is `Dispatched`, `Ambiguous`, or `Committed`; the same key
+//!   with a different payload is `Contended`.
+//! - **Retry**: a `NotCommitted` record is a settled attempt, so `begin` creates
+//!   a new attempt under the same key and keeps the old one in `ByDag` (#1196).
 //! - **Terminal uniqueness**: a settled record cannot be settled again.
 //! - **Evidence**: `resolve` runs `ReconciliationPolicy` (F3/F4) before leaving
 //!   `Ambiguous`.
@@ -34,8 +37,8 @@ use chrono::Utc;
 use crate::capacity_ledger::domain::IdempotencyKey;
 use crate::effect_commitment::application::ReconciliationPolicy;
 use crate::effect_commitment::domain::{
-    CommitmentError, EffectIntent, EffectQuery, EffectRecord, EffectRecordId, ObservedOutcome,
-    ResolverIdentity,
+    CommitmentError, EffectIntent, EffectQuery, EffectRecord, EffectRecordId, EffectState,
+    ObservedOutcome, ResolverIdentity,
 };
 use crate::effect_commitment::interfaces::EffectCommitmentLedger;
 
@@ -110,13 +113,21 @@ impl EffectCommitmentLedger for InMemoryEffectLedger {
         if let Some(existing_id) = state.by_key.get(&key).copied() {
             let existing = state.get(existing_id)?;
             if existing.intent().same_intent(&intent) {
-                // Custody: a retry reads what is already recorded.
-                return Ok(existing);
+                // Custody: an in-flight, ambiguous, or committed attempt is
+                // returned as-is. A definite non-commitment is the one settled
+                // state that may be retried (#1196): fall through and create a
+                // new attempt record under the same intent-derived key. The
+                // settled attempt stays in `records`/`order`, so `ByDag` shows
+                // both attempts while `by_key` points at the latest.
+                if existing.state() != EffectState::NotCommitted {
+                    return Ok(existing);
+                }
+            } else {
+                return Err(CommitmentError::Contended {
+                    record_id: Some(existing_id),
+                    detail: "idempotency key reused with a different intent payload".to_string(),
+                });
             }
-            return Err(CommitmentError::Contended {
-                record_id: Some(existing_id),
-                detail: "idempotency key reused with a different intent payload".to_string(),
-            });
         }
 
         let record = EffectRecord::begin(intent);
@@ -202,5 +213,80 @@ mod tests {
     async fn satisfies_the_frozen_port_contract() {
         let ledger = InMemoryEffectLedger::new();
         crate::effect_commitment::interfaces::contract::run_contract(&ledger).await;
+    }
+
+    /// #1196: a definite non-commitment is retryable, and the retry is a new
+    /// attempt under the same intent key — the key never contains an attempt.
+    #[tokio::test]
+    async fn a_retry_after_not_committed_is_a_new_attempt_under_the_same_key() {
+        use crate::effect_commitment::domain::EffectIntent;
+        use uuid::Uuid;
+
+        let ledger = InMemoryEffectLedger::new();
+        let dag_id = Uuid::from_u128(1);
+        let intent = EffectIntent::new(
+            dag_id,
+            Uuid::from_u128(2),
+            1,
+            IdempotencyKey::new("retryable-intent"),
+            "payments.charge",
+            "args-digest",
+            "precondition-digest",
+            "authority-digest",
+        );
+
+        let first = ledger.begin(intent.clone()).await.expect("first attempt");
+        let settled = ledger
+            .settle_definite(
+                first.id(),
+                ObservedOutcome::not_committed("receipt-1", "readback-1", Utc::now(), "stripe"),
+            )
+            .await
+            .expect("definite failure");
+        assert_eq!(settled.state(), EffectState::NotCommitted);
+
+        let second = ledger.begin(intent).await.expect("retry begins");
+        assert_ne!(second.id(), first.id(), "the retry is a new attempt");
+        assert_eq!(second.state(), EffectState::Dispatched);
+        assert_eq!(
+            second.intent().idempotency_key,
+            first.intent().idempotency_key,
+            "the key is intent-derived, never attempt-derived"
+        );
+
+        let history = ledger.query(EffectQuery::by_dag(dag_id)).await.unwrap();
+        assert_eq!(history.len(), 2, "both attempts remain readable");
+        assert_eq!(history[0].state(), EffectState::NotCommitted);
+        assert_eq!(history[1].state(), EffectState::Dispatched);
+    }
+
+    /// #1196: only `NotCommitted` re-arms; a commitment is still custody.
+    #[tokio::test]
+    async fn a_committed_intent_is_still_returned_by_custody() {
+        use crate::effect_commitment::domain::EffectIntent;
+        use uuid::Uuid;
+
+        let ledger = InMemoryEffectLedger::new();
+        let intent = EffectIntent::new(
+            Uuid::from_u128(3),
+            Uuid::from_u128(4),
+            1,
+            IdempotencyKey::new("committed-intent"),
+            "payments.charge",
+            "args-digest",
+            "precondition-digest",
+            "authority-digest",
+        );
+        let first = ledger.begin(intent.clone()).await.unwrap();
+        let committed = ledger
+            .settle_definite(
+                first.id(),
+                ObservedOutcome::committed("receipt-2", "readback-2", Utc::now(), "stripe"),
+            )
+            .await
+            .unwrap();
+        let again = ledger.begin(intent).await.unwrap();
+        assert_eq!(again.id(), committed.id());
+        assert_eq!(again.state(), EffectState::Committed);
     }
 }

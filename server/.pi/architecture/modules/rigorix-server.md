@@ -69,7 +69,8 @@ shared composition before the server binds (`RIGORIX_SERVER_BIND`, default
   no longer inert. The variant → name mapping is **exhaustive** (`kind_for`, so a new
   engine variant is a compile error until classified) and mirrors the frozen
   `schemas/api/events.json` `x-engine-event-mapping` (audit-delivery + circuit-breaker
-  events intentionally not pushed).
+  events intentionally not pushed). `EffectScopeChecked` is pushed as
+  `policy_changed` evidence, alongside `ScopeViolationRecorded` (#1189, #1195).
 - `Last-Event-ID` header or `?last_event_id=` replays from a bounded ring
   buffer before the live stream.
 - 15s keep-alive heartbeat.

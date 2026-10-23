@@ -896,14 +896,29 @@ impl ParallelExecutionServiceImpl {
                 ),
             });
         }
-        if record.is_terminal() {
-            return Err(ExecutionError::InternalError {
-                detail: format!(
-                    "effect {} is already settled ({}); refusing to re-dispatch a terminal record",
-                    record.id(),
-                    record.state()
-                ),
-            });
+        // A `NotCommitted` record is a settled *attempt*, not a settled intent:
+        // the ledger re-arms it as a new attempt under the same key (#1196).
+        // `Committed` is a real terminal answer and must stay refused; if an
+        // adapter returns the old NotCommitted record instead of a new attempt,
+        // dispatching it would only fail later at settlement, so refuse here.
+        match record.state() {
+            crate::effect_commitment::domain::EffectState::Committed => {
+                return Err(ExecutionError::InternalError {
+                    detail: format!(
+                        "effect {} is already committed; refusing to re-dispatch a terminal record",
+                        record.id()
+                    ),
+                });
+            }
+            crate::effect_commitment::domain::EffectState::NotCommitted => {
+                return Err(ExecutionError::InternalError {
+                    detail: format!(
+                        "effect {} is NotCommitted but the ledger did not create a new attempt;                          retrying requires attempt-scoped records (ADR-019)",
+                        record.id()
+                    ),
+                });
+            }
+            _ => {}
         }
 
         let key = record.intent().idempotency_key.clone();
