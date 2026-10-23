@@ -3,7 +3,7 @@
 ## Module Status
 
 **Status:** Implemented (epic: auth — #819)
-**Last reviewed:** 2026-09-05
+**Last reviewed:** 2026-10-24
 **Blueprint Source:** Requirements v1 — 2026-08-28 (approved, BUILT via #820–#827, MRs #828–#834)
 
 ## Description
@@ -23,7 +23,7 @@ This module is **not** an access-control gate on the agent's tool calls — the 
 |-------|---------------|------|
 | **Domain** | IdpConfig, TokenStatus, AuthError, DeviceFlowState | `src/auth/domain/` |
 | **Application** | AuthService (login/logout/status/refresh), token custody orchestration | `src/auth/application/` |
-| **Infrastructure** | IdpClient (OIDC device flow over reqwest), KeychainStore (keyring), TokenProvider | `src/auth/infrastructure/` |
+| **Infrastructure** | IdpClient (OIDC device flow over reqwest), KeychainStore (keyring-core), TokenProvider | `src/auth/infrastructure/` |
 | **Interfaces** | MCP tool handlers (`rigorix_auth_login`, `rigorix_auth_status`, `rigorix_auth_logout`), SSE auth middleware | `src/auth/interfaces/` |
 
 ## Related ADRs
@@ -69,7 +69,7 @@ This module is **not** an access-control gate on the agent's tool calls — the 
 **Implementation File:** `src/auth/infrastructure/keychain_store.rs`
 
 **Key behaviors:**
-- OS keychain via `keyring` crate (macOS Keychain, Windows Credential Manager, Linux Secret Service)
+- OS keychain via `keyring-core` + a platform store: macOS Keychain, Windows Credential Manager, and the Linux kernel keyutils session keyring (#1200). Linux keyutils is in-memory and does not survive a reboot; the refresh token then reads as absent and the human re-authenticates. macOS/Windows keep native persistence.
 - Refresh token is the crown jewel: never written to `.rigorix/` or any readable file
 - Fallback: explicit opt-in plaintext file with warning (for CI environments without a keychain) — documented degraded mode
 
@@ -227,7 +227,7 @@ integration, and contract-shape tests plus deterministic proofing
 |-----------|----------------|------|-------|
 | AuthService (Application) | `AuthServiceImpl` (login/poll/status/refresh/logout/attest), `AuthServiceFactoryImpl` | `src/auth/application/{service_impl,factory}.rs` | #821 |
 | IdpClient (Infrastructure) | `HttpIdpClient` — OIDC discovery + device flow (RFC 8628/6749/7009/8414) | `src/auth/infrastructure/idp_client_impl.rs` | #822 |
-| KeychainStore (Infrastructure) | `KeychainStoreImpl` — OS keychain (`keyring`) + explicit plaintext fallback | `src/auth/infrastructure/keychain_store_impl.rs` | #823 |
+| KeychainStore (Infrastructure) | `KeychainStoreImpl` — OS keychain (`keyring-core`) + explicit plaintext fallback | `src/auth/infrastructure/keychain_store_impl.rs` | #823 |
 | TokenProvider (Infrastructure) | `InMemoryTokenProvider` — short-TTL in-memory custody | `src/auth/infrastructure/token_provider_impl.rs` | #824 |
 | AuthHandler / SSE Auth (Interfaces) | `AuthToolHandlerImpl`, `SseAuthGateImpl` (none/api_key/idp, fail-closed) | `src/auth/interfaces/` | #825 |
 | Proofing & CI | `check_auth_contracts.sh`, hardening stage 14 | `.pi/scripts/ci/` | #826 |
@@ -252,7 +252,7 @@ integration, and contract-shape tests plus deterministic proofing
 |---|------|-------------|-----------|
 | 1 | Domain types | IdpConfig, TokenStatus, AuthError, DeviceFlowState | — |
 | 2 | IdpClient | OIDC discovery + device flow (RFC 8628) over reqwest | 1 |
-| 3 | KeychainStore | `keyring`-based refresh token custody | — |
+| 3 | KeychainStore | `keyring-core`-based refresh token custody | — |
 | 4 | TokenProvider | In-memory short-TTL access token + auto-refresh | 2, 3 |
 | 5 | AuthService | login/logout/status/refresh orchestration | 2, 3, 4 |
 | 6 | Attestation bridge | Delegate to engine `IdentityAttestationService` | 5, engine identity |

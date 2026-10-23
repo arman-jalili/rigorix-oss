@@ -1,5 +1,11 @@
 # Runbook: auth
 
+
+> **Linux backend (#1200):** the refresh token is held in the kernel keyutils
+> session keyring, not D-Bus Secret Service. It is secure but in-memory: after a
+> reboot the token reads as absent and `rigorix auth login` must run again. The
+> macOS and Windows native stores are unchanged.
+
 ## Overview
 
 The auth module provides client-side identity attestation for the Rigorix MCP

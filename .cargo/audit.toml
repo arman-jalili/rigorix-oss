@@ -1,24 +1,18 @@
 [advisories]
-# Policy: no silent ignores. Every entry names the dependency chain, why it is
-# tolerated, the tracking issue, and when the decision expires. Do not add
-# `--ignore` flags to workflows; this file is reviewed with the code (#1198).
+# Policy: no silent ignores. This is the single home for advisory decisions;
+# do not add `--ignore` flags to workflows or scripts (#1198).
 #
-# 2026-10-24 dispositions:
+# A suppression is only valid with a comment directly above the ID in the form
+#
+#   # expires: YYYY-MM-DD — why, and the tracking issue
+#   "RUSTSEC-YYYY-NNNN",
+#
+# `validate-decision-expiry.sh` fails when that date has passed or the comment
+# is missing, and registers the check as gating (#1203).
+#
+# 2026-10-24 status: no ignores remain.
 #   ctutils 0.4.2 -> 0.4.4          fixed (RUSTSEC-2026-0385)
-#   paste 1.0.15                    gone with the ratatui 0.30 upgrade
-#   lru 0.12.5 (RUSTSEC-2026-0253,
-#   RUSTSEC-2026-0002)              gone with the ratatui 0.30 upgrade
-#   unsafe-libyaml                  reviewed ignore, tracked in #1199
-#   zvariant / zbus_names           reviewed ignore, tracked in #1200
-#   zvariant_derive                 reviewed ignore, tracked in #1200
-ignore = [
-  # serde_yaml 0.9.34+deprecated in rigorix-actions. Unmaintained upstream, no
-  # patched release; migration is tracked in #1199. Expires 2027-01-31.
-  "RUSTSEC-2024-0449",
-  # Linux-only keyring chain (zbus/zvariant) in rigorix-mcp. Unmaintained
-  # upstream, no patched release; backend decision tracked in #1200.
-  # Expires 2027-01-31.
-  "RUSTSEC-2026-0370",
-  "RUSTSEC-2026-0371",
-  "RUSTSEC-2026-0372",
-]
+#   paste 1.0.15                    removed with ratatui 0.30
+#   lru 0.12.5                      removed with ratatui 0.30
+#   unsafe-libyaml                  removed with serde-saphyr (#1199)
+#   zvariant / zbus_names / ...     removed with the keyutils backend (#1200)

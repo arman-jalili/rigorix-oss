@@ -86,7 +86,7 @@ pub trait ConfigRepository: Send + Sync {
     async fn parse_yml_defaults(
         &self,
         yaml_content: &str,
-    ) -> Result<std::collections::HashMap<String, serde_yaml::Value>, ActionInputError>;
+    ) -> Result<std::collections::HashMap<String, serde_json::Value>, ActionInputError>;
 
     /// Read CLI argument overrides.
     ///

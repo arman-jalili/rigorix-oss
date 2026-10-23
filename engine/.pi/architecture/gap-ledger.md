@@ -534,15 +534,17 @@ with a chain, a rationale, a tracking issue, and an expiry. The workflow
 | RUSTSEC-2026-0385 | `ctutils 0.4.2 ← digest ← hmac` (all crates) | vulnerability | **Fixed**: bumped to 0.4.4 | — | — |
 | RUSTSEC-2026-0253, RUSTSEC-2026-0002 | `lru 0.12.5 ← ratatui 0.29 ← cli` | unsound | **Fixed**: ratatui 0.30.2 uses `lru 0.18.5`; `lru 0.12.5` left the lockfile | — | — |
 | RUSTSEC-2024-0436 | `paste 1.0.15 ← ratatui 0.29` | unmaintained | **Fixed**: ratatui 0.30.2 no longer depends on `paste` | — | — |
-| RUSTSEC-2024-0449 | `unsafe-libyaml ← serde_yaml ← actions` | unmaintained | **Reviewed ignore**: no patched release; migration is out of scope for this fix | #1199 | 2027-01-31 |
-| RUSTSEC-2026-0370 | `zvariant ← zbus ← keyring ← mcp` (Linux) | unmaintained | **Reviewed ignore**: no patched release; backend decision is out of scope | #1200 | 2027-01-31 |
-| RUSTSEC-2026-0371 | `zbus_names ← zbus ← keyring ← mcp` (Linux) | unmaintained | same | #1200 | 2027-01-31 |
-| RUSTSEC-2026-0372 | `zvariant_derive ← zvariant ← keyring ← mcp` (Linux) | unmaintained | same | #1200 | 2027-01-31 |
+| RUSTSEC-2024-0449 | `unsafe-libyaml ← serde_yaml ← actions` | unmaintained | **Fixed**: `serde-saphyr` replaces `serde_yaml` (#1199) | — | — |
+| RUSTSEC-2026-0370 | `zvariant ← zbus ← keyring ← mcp` (Linux) | unmaintained | **Fixed**: `keyring-core` + Linux keyutils removes `zbus`/`zvariant` (#1200) | — | — |
+| RUSTSEC-2026-0371 | `zbus_names ← zbus ← keyring ← mcp` (Linux) | unmaintained | same | — | — |
+| RUSTSEC-2026-0372 | `zvariant_derive ← zvariant ← keyring ← mcp` (Linux) | unmaintained | same | — | — |
 
-**Verification:** `cargo audit` and `cargo audit --deny warnings` both exit 0.
-`cargo tree -i paste`, `cargo tree -i lru@0.12.5`, and
-`cargo tree -i unsafe-libyaml` were checked after the upgrade; only the tracked
-`serde_yaml` chain remains, and the Linux keyring chain remains platform-gated.
+**Verification:** `cargo audit` and `cargo audit --deny warnings` both exit 0
+with **no ignores left** in `.cargo/audit.toml`. `cargo tree -i paste`,
+`cargo tree -i lru@0.12.5`, `cargo tree -i unsafe-libyaml`, `cargo tree -i
+zbus`, and `cargo tree -i zvariant` all return no match. The local security
+stage now runs the same strict invocation, and `validate-decision-expiry.sh`
+gates the next suppression with an `# expires:` date (#1202, #1203).
 
 **Why ratatui 0.30:** it is the only maintained line that removes both the
 `lru 0.12` unsoundness and the deprecated `paste` macro. The CLI compiled with
