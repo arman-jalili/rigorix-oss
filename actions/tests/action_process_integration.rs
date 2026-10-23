@@ -1,4 +1,6 @@
 //! Process-level contract with a workflow (#1209).
+//! @canonical actions/.pi/architecture/modules/action-entrypoint.md
+//!
 //!
 //! The parser test proves inputs parse; this runs the **built binary** the way
 //! a workflow does — fixture `GITHUB_*` environment, fixture workspace,
