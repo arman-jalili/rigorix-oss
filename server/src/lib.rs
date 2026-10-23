@@ -10,6 +10,7 @@
 //!
 //! | Module | Responsibility |
 //! |--------|----------------|
+//! | [`app`] | The HTTP route table (`/health`, `/rpc`, `/events`, `/mcp`) |
 //! | [`catalog`] | The frozen method table (name → auth level → MCP tool) |
 //! | [`backend`] | [`MethodBackend`] seam; [`HostBackend`] delegates to `rigorix-mcp` |
 //! | [`rpc`] | JSON-RPC 2.0 codec: single, batch, notification; errors |
@@ -20,6 +21,7 @@
 //! | [`mcp_http`] | MCP Streamable HTTP adapter over the frozen catalog (#915) |
 
 pub mod anchor;
+pub mod app;
 pub mod backend;
 pub mod catalog;
 pub mod event_bridge;

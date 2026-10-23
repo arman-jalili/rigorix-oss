@@ -39,6 +39,8 @@ tempfile = { workspace = true }
 chrono = { workspace = true }
 # Drive the axum router in-process for the MCP Streamable HTTP integration test.
 tower = { version = "0.5", features = ["util"] }
+# Real HTTP/SSE client for the end-to-end transport test (#1209).
+reqwest = { workspace = true }
 # OSS-CATALOG-SUBSET-VERIFIER (#907): the SHARED closed-namespace guard.
 # Published crates.io dependency (NOT path/git) so a fresh public clone builds.
 rigorix-verifier = "0.5"
