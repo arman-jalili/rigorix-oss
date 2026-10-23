@@ -7,8 +7,17 @@
 //!
 //! Concrete implementation of the frozen [`KeychainStore`] port:
 //!
-//! - [`KeychainStoreImpl::keychain`] — OS keychain via the `keyring` crate
-//!   (macOS Keychain, Windows Credential Manager, Linux Secret Service)
+//! - [`KeychainStoreImpl::keychain`] — OS keychain via `keyring-core` and a
+//!   platform store (macOS Keychain, Windows Credential Manager, Linux keyutils)
+//!
+//! # Linux backend (#1200)
+//!
+//! The Linux store is the kernel keyutils session keyring, not D-Bus Secret
+//! Service. That removes the unmaintained `zbus`/`zvariant` chain from the
+//! default dependency graph while keeping a secure in-memory store that works on
+//! headless hosts. It does **not** survive a reboot: after one, a refresh token
+//! lookup returns `None` and the human re-authenticates. On macOS and Windows
+//! the native stores keep their previous persistence.
 //! - [`KeychainStoreImpl::plaintext`] — **explicit opt-in** degraded mode for
 //!   CI environments without a keychain: credentials in a file restricted to
 //!   the owning user (0600 on Unix), with a prominent warning at construction
@@ -25,6 +34,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use tracing::warn;
 
@@ -43,6 +53,45 @@ pub struct KeychainStoreImpl {
     fallback_dir: Option<PathBuf>,
 }
 
+/// Install the platform credential store exactly once per process.
+///
+/// `keyring-core` selects the store explicitly at runtime (unlike `keyring` v1,
+/// which selected it by feature at compile time). Initializing lazily keeps the
+/// plaintext fallback usable in environments with no OS keychain.
+fn ensure_default_store() -> Result<(), AuthError> {
+    static STORE: OnceLock<Result<(), String>> = OnceLock::new();
+    STORE
+        .get_or_init(|| init_store().map_err(|e| e.to_string()))
+        .clone()
+        .map_err(AuthError::Keychain)
+}
+
+#[cfg(target_os = "macos")]
+fn init_store() -> Result<(), String> {
+    let store = apple_native_keyring_store::keychain::Store::new().map_err(|e| e.to_string())?;
+    keyring_core::set_default_store(store);
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn init_store() -> Result<(), String> {
+    let store = windows_native_keyring_store::Store::new().map_err(|e| e.to_string())?;
+    keyring_core::set_default_store(store);
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn init_store() -> Result<(), String> {
+    let store = linux_keyutils_keyring_store::Store::new().map_err(|e| e.to_string())?;
+    keyring_core::set_default_store(store);
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+fn init_store() -> Result<(), String> {
+    Err("no OS keychain backend is implemented for this platform".to_string())
+}
+
 impl KeychainStoreImpl {
     /// Create an OS-keychain-backed store (production default).
     ///
@@ -53,7 +102,8 @@ impl KeychainStoreImpl {
     pub fn keychain() -> Result<Self, AuthError> {
         // Probe the platform store up front so misconfiguration surfaces at
         // construction, not on first use.
-        let entry = keyring::Entry::new(
+        ensure_default_store()?;
+        let entry = keyring_core::Entry::new(
             crate::auth::infrastructure::keychain_store::RIGORIX_KEYCHAIN_SERVICE,
             "probe",
         )
@@ -133,7 +183,7 @@ impl KeychainStore for KeychainStoreImpl {
         token: &Secret<String>,
     ) -> Result<(), AuthError> {
         if self.uses_keychain() {
-            let entry = keyring::Entry::new(service, account).map_err(|e| {
+            let entry = keyring_core::Entry::new(service, account).map_err(|e| {
                 AuthError::Keychain(format!("keychain entry {service}/{account}: {e}"))
             })?;
             entry.set_password(token.expose()).map_err(|e| {
@@ -157,12 +207,12 @@ impl KeychainStore for KeychainStoreImpl {
         account: &str,
     ) -> Result<Option<Secret<String>>, AuthError> {
         if self.uses_keychain() {
-            let entry = keyring::Entry::new(service, account).map_err(|e| {
+            let entry = keyring_core::Entry::new(service, account).map_err(|e| {
                 AuthError::Keychain(format!("keychain entry {service}/{account}: {e}"))
             })?;
             match entry.get_password() {
                 Ok(password) => Ok(Some(Secret::new(password))),
-                Err(keyring::Error::NoEntry) => Ok(None),
+                Err(keyring_core::Error::NoEntry) => Ok(None),
                 Err(e) => Err(AuthError::Keychain(format!(
                     "keychain read {service}/{account}: {e}"
                 ))),
@@ -185,13 +235,13 @@ impl KeychainStore for KeychainStoreImpl {
 
     async fn delete_refresh_token(&self, service: &str, account: &str) -> Result<(), AuthError> {
         if self.uses_keychain() {
-            let entry = keyring::Entry::new(service, account).map_err(|e| {
+            let entry = keyring_core::Entry::new(service, account).map_err(|e| {
                 AuthError::Keychain(format!("keychain entry {service}/{account}: {e}"))
             })?;
             match entry.delete_credential() {
                 Ok(()) => Ok(()),
                 // Deleting a missing credential is idempotent.
-                Err(keyring::Error::NoEntry) => Ok(()),
+                Err(keyring_core::Error::NoEntry) => Ok(()),
                 Err(e) => Err(AuthError::Keychain(format!(
                     "keychain delete {service}/{account}: {e}"
                 ))),

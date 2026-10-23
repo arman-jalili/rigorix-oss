@@ -64,27 +64,22 @@ impl ConfigRepository for YamlConfigRepository {
     async fn parse_yml_defaults(
         &self,
         yaml_content: &str,
-    ) -> Result<HashMap<String, serde_yaml::Value>, ActionInputError> {
-        let yaml: serde_yaml::Value = serde_yaml::from_str(yaml_content)?;
+    ) -> Result<HashMap<String, serde_json::Value>, ActionInputError> {
+        let yaml: serde_json::Value = serde_saphyr::from_str(yaml_content)?;
 
         let inputs = yaml
             .get("inputs")
-            .and_then(|v| v.as_mapping())
+            .and_then(|v| v.as_object())
             .ok_or_else(|| ActionInputError::ActionYmlParseError {
                 detail: "Missing 'inputs' section in action.yml".to_string(),
             })?;
 
         let mut defaults = HashMap::new();
         for (name, config) in inputs {
-            let name_str = name
-                .as_str()
-                .ok_or_else(|| ActionInputError::ActionYmlParseError {
-                    detail: "Non-string input name in action.yml".to_string(),
-                })?;
-
-            // Store just the "default" sub-value if it exists
+            // JSON object keys are strings by construction; the YAML parser
+            // rejects a non-string mapping key before we get here.
             if let Some(default) = config.get("default") {
-                defaults.insert(name_str.to_string(), default.clone());
+                defaults.insert(name.clone(), default.clone());
             }
         }
 
@@ -160,7 +155,7 @@ impl ConfigLoadingService for ConfigLoaderImpl {
 
         if let Some(ref yml) = yml_content {
             let yml_defaults = self.repository.parse_yml_defaults(yml).await?;
-            // Convert serde_yaml::Value values to strings
+            // Convert serde_json::Value values to strings
             let string_map: HashMap<String, String> = yml_defaults
                 .into_iter()
                 .map(|(k, v)| (k, Self::yaml_value_to_string(&v)))
@@ -282,12 +277,12 @@ impl ConfigLoadingService for ConfigLoaderImpl {
 // ── Private helpers ──
 
 impl ConfigLoaderImpl {
-    /// Convert a serde_yaml::Value to a string representation.
-    fn yaml_value_to_string(value: &serde_yaml::Value) -> String {
+    /// Convert a serde_json::Value to a string representation.
+    fn yaml_value_to_string(value: &serde_json::Value) -> String {
         match value {
-            serde_yaml::Value::String(s) => s.clone(),
-            serde_yaml::Value::Bool(b) => b.to_string(),
-            serde_yaml::Value::Number(n) => n.to_string(),
+            serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Bool(b) => b.to_string(),
+            serde_json::Value::Number(n) => n.to_string(),
             _ => String::new(),
         }
     }
@@ -394,7 +389,7 @@ mod tests {
         async fn parse_yml_defaults(
             &self,
             yaml_content: &str,
-        ) -> Result<HashMap<String, serde_yaml::Value>, ActionInputError> {
+        ) -> Result<HashMap<String, serde_json::Value>, ActionInputError> {
             // Delegate to real implementation
             let real = YamlConfigRepository::new();
             real.parse_yml_defaults(yaml_content).await
@@ -438,6 +433,34 @@ inputs:
 
         assert!(result.yml_defaults_applied);
         assert!(!result.env_overrides_applied);
+        assert_eq!(result.config.mode, "run");
+        assert_eq!(result.config.max_llm_calls, 25);
+        assert!(result.config.post_pr_comment);
+    }
+
+    /// #1199: the replacement parser must keep accepting the same action.yml
+    /// shape, including unquoted booleans and numbers, and render them the way
+    /// the previous `serde_yaml` path did.
+    #[tokio::test]
+    async fn test_yml_defaults_round_trip_scalar_types() {
+        let yml = r#"
+name: 'Rigorix'
+inputs:
+  mode:
+    default: run
+  max-llm-calls:
+    default: 25
+  post-pr-comment:
+    default: true
+"#;
+        let repo = YamlConfigRepository::new();
+        let defaults = repo.parse_yml_defaults(yml).await.unwrap();
+        assert_eq!(defaults["mode"], serde_json::json!("run"));
+        assert_eq!(defaults["max-llm-calls"], serde_json::json!(25));
+        assert_eq!(defaults["post-pr-comment"], serde_json::json!(true));
+
+        let loader = make_loader(Some(yml));
+        let result = loader.load(LoadConfigInput::default()).await.unwrap();
         assert_eq!(result.config.mode, "run");
         assert_eq!(result.config.max_llm_calls, 25);
         assert!(result.config.post_pr_comment);
