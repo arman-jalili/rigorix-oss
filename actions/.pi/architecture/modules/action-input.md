@@ -297,6 +297,22 @@ pub struct ActionConfig {
 
 ---
 
+## YAML Resolution (#1205)
+
+`action.yml` is parsed by `serde-saphyr`, which applies **YAML 1.1** scalar
+resolution. This differs from the previous `serde_yaml` 0.9 parser on three
+inputs, and the difference is deliberate and pinned by tests:
+
+| Input | `serde_yaml` 0.9 | current parser | Downstream string |
+|---|---|---|---|
+| `default: yes/no/on/off/y/n` | string as written | boolean | `"true"` / `"false"` |
+| `default: 010` | `"010"` | number | `"10.0"` |
+| duplicate mapping keys | last wins | parse error | run fails |
+
+Quote an ambiguous default (`default: "off"`, `default: "010"`) when the literal
+text is part of the input contract. Duplicate keys fail loudly rather than
+silently dropping one.
+
 ## action.yml Input Schema
 
 The inputs defined in `action.yml` map to the `ActionInputs` struct:
@@ -410,7 +426,7 @@ ActionInputs + GitHubEvent + CiEnvironment
 
 ---
 
-*Last updated: 2026-06-20*
+*Last updated: 2026-10-24*
 *Module version: 1.0.0 (Implemented)*
 
 ---

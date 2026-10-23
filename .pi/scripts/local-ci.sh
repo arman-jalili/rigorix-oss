@@ -11,19 +11,40 @@ FAILED=0; PASSED=0; SKIPPED=0; START_TIME=$(date +%s)
 FAILURES=()
 CRATES=("engine" "mcp" "cli" "actions" "server")
 REPORT_DIR=".pi/output"
+VALID_STAGES=" lint build test security coverage docs integration "
+
+usage() {
+    echo "usage: local-ci.sh [--quick] [--release] [--stage=<stage>|--stage <stage>]" >&2
+    echo "                   [--crate=<crate>] [--list] [--save]" >&2
+    echo "stages:${VALID_STAGES}" >&2
+}
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --quick) QUICK=true; shift ;;
         --release) RELEASE=true; shift ;;
         --stage=*) STAGE="${1#*=}"; shift ;;
-        --stage) STAGE="$2"; shift 2 ;;
+        --stage)
+            [[ $# -ge 2 ]] || { echo "local-ci: --stage requires a value" >&2; usage; exit 2; }
+            STAGE="$2"; shift 2 ;;
         --crate=*) CRATE_FILTER="${1#*=}"; shift ;;
+        --crate)
+            [[ $# -ge 2 ]] || { echo "local-ci: --crate requires a value" >&2; usage; exit 2; }
+            CRATE_FILTER="$2"; shift 2 ;;
         --list) LIST_ONLY=true; shift ;;
         --save) SAVE_OUTPUT=true; shift ;;
-        *) shift ;;
+        *)
+            echo "local-ci: unknown argument '$1'" >&2
+            usage
+            exit 2 ;;
     esac
 done
+
+if [[ -n "$STAGE" && "$VALID_STAGES" != *" $STAGE "* ]]; then
+    echo "local-ci: unknown stage '$STAGE'" >&2
+    usage
+    exit 2
+fi
 
 [[ -n "$CRATE_FILTER" ]] && CRATES=("$CRATE_FILTER")
 mkdir -p "$REPORT_DIR"

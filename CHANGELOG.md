@@ -42,6 +42,8 @@ of that train — do not infer its version from these tags (it is 1.4.0).
 - Dependency audit is green again: `ctutils` is 0.4.4, and `ratatui` 0.30.2 removes `lru` 0.12 and `paste`; the remaining unmaintained advisories are reviewed ignores in `.cargo/audit.toml` with tracking issues and an expiry (#1198) ([#1201](https://github.com/arman-jalili/rigorix-oss/pull/1201))
 - `rigorix-actions` parses YAML with `serde-saphyr` instead of the unmaintained `serde_yaml`/`unsafe-libyaml` (#1199); `rigorix-mcp` uses `keyring-core` with the Linux kernel keyutils store instead of the unmaintained `zbus`/`zvariant` chain (#1200) ([#1204](https://github.com/arman-jalili/rigorix-oss/pull/1204))
 - `local-ci --stage security` runs the same `cargo audit --deny warnings` as Hardening (#1202); `validate-decision-expiry.sh` fails a lapsed advisory ignore or an invalid `docs/issues` status, with a self-test (#1203) ([#1204](https://github.com/arman-jalili/rigorix-oss/pull/1204))
+- `action.yml` YAML 1.1 scalar resolution is documented and pinned by tests: `yes/no/on/off/y/n` are booleans, `010` is a number, duplicate keys fail loudly (#1205); `local-ci` rejects unknown arguments and stage names instead of running the whole suite (#1206) ([#1207](https://github.com/arman-jalili/rigorix-oss/pull/1207))
+- `tokio` 1.52.3 → 1.54.1 closes RUSTSEC-2026-0386 (`AsyncFd` I/O safety); the strict audit gate caught it locally (#1207) ([#1207](https://github.com/arman-jalili/rigorix-oss/pull/1207))
 - An armed commitment seam no longer disables retries: a `NotCommitted` attempt is retryable as a new attempt record under the same intent key, while `Committed` and `Ambiguous` stay refused (#1196) ([#1197](https://github.com/arman-jalili/rigorix-oss/pull/1197))
 - `execute_node` runs the effect write-ahead and settle through the shared gate path (#1185) ([#1191](https://github.com/arman-jalili/rigorix-oss/pull/1191))
 - The intent key is derived once and used by the record, provider, and receipt reader; the placeholder is gone (#1187) ([#1191](https://github.com/arman-jalili/rigorix-oss/pull/1191))
@@ -52,8 +54,10 @@ of that train — do not infer its version from these tags (it is 1.4.0).
 - The effect-commitment and capacity-ledger contract proofs gate through `.pi/guards.tsv` and `.pi/scripts/validate-guards.sh`, with seeded-failure self-tests (#1186) ([#1192](https://github.com/arman-jalili/rigorix-oss/pull/1192))
 - Nine effect-commitment issue packets are `done` with a `closed_reason`, and `engine/.pi/issues/README.md` states the closing convention (#1188) ([#1193](https://github.com/arman-jalili/rigorix-oss/pull/1193))
 
-<details><summary>Issues closed in this release (107)</summary>
+<details><summary>Issues closed in this release (109)</summary>
 
+- #1206 — local-ci silently ignores unknown arguments, so a typo runs the whole suite instead of one stage
+- #1205 — the YAML parser swap silently changes scalar resolution: yes/no/on/off become booleans, 010 becomes 10.0, duplicate keys now hard-error
 - #1203 — decision expiry is a comment and issue front matter is unvalidated: nothing reads `.cargo/audit.toml` dates or `docs/issues/**` status
 - #1202 — the strict audit gate has no local stand-in: local-ci runs plain `cargo audit`, Hardening denies warnings
 - #1200 — mcp: review the Linux keyring chain (zbus/zvariant unmaintained; RUSTSEC-2026-0370/71/72)
