@@ -19,7 +19,10 @@
 //!   [`CommitmentError::Unavailable`]; the caller never assumes a commitment it
 //!   did not observe.
 //! - **Custody**: a repeated `begin` with the same intent-derived key returns
-//!   the existing record; it never creates a second one. A same-key/different-
+//!   the existing record while it is `Dispatched`, `Ambiguous`, or `Committed`.
+//!   The one exception is a `NotCommitted` record: a definite failure may be
+//!   retried, so `begin` creates a new attempt record under the same key and
+//!   keeps the settled attempt in the DAG history (#1196). A same-key/different-
 //!   intent call is [`CommitmentError::Contended`].
 //! - **Terminal uniqueness**: a settled record cannot be settled again
 //!   ([`CommitmentError::AlreadySettled`]).
@@ -42,7 +45,10 @@ pub trait EffectCommitmentLedger: Send + Sync {
     /// Record the write-ahead intent and return a `Dispatched` record.
     ///
     /// MUST be durable before the caller dispatches. A repeated call with the
-    /// same intent-derived key returns the existing record (custody).
+    /// same intent-derived key returns the existing record while it is
+    /// `Dispatched`, `Ambiguous`, or `Committed`. A `NotCommitted` record is a
+    /// completed attempt, not this attempt: the adapter creates a new record
+    /// under the same key and keeps the settled one in the history (#1196).
     async fn begin(&self, intent: EffectIntent) -> Result<EffectRecord, CommitmentError>;
 
     /// Settle a `Dispatched` record with definite provider evidence.

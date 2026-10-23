@@ -112,11 +112,14 @@ async fn an_ambiguous_effect_is_not_re_dispatched() {
     );
 }
 
+/// #1196: `Committed` is the terminal state that must stay refused. A
+/// `NotCommitted` record is retryable and is covered by the retry integration
+/// test; "terminal" alone is no longer the refusal predicate.
 #[tokio::test]
-async fn a_terminal_effect_is_not_re_dispatched() {
+async fn a_committed_effect_is_not_re_dispatched() {
     let message = execute_and_expect_error(Arc::new(PreCommittedSeam)).await;
     assert!(
-        message.contains("already settled"),
-        "a terminal write-ahead read must refuse the re-dispatch, got: {message}"
+        message.contains("already committed"),
+        "a committed write-ahead read must refuse the re-dispatch, got: {message}"
     );
 }

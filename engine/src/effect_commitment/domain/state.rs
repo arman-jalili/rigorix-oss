@@ -14,7 +14,9 @@
 //! ```
 //!
 //! # Contract (Frozen)
-//! - `Committed` and `NotCommitted` are terminal
+//! - `Committed` and `NotCommitted` are terminal **for one attempt**
+//! - a retry after `NotCommitted` is a new attempt record under the same intent
+//!   key, never a transition out of the settled attempt (#1196)
 //! - `Dispatched` and `Ambiguous` are **not** terminal
 //! - `Ambiguous` blocks dependents (F1) and retry (F2)
 //! - `Ambiguous -> Dispatched` is illegal; a retry while unsettled is refused

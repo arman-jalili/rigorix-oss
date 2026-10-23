@@ -4,7 +4,7 @@
 Canonical Reference: .pi/architecture/modules/effect-commitment.md
 Blueprint Source: Guardian Framework v1.2
 Generated: NEVER (this is the source)
-Last Updated: 2026-10-23 — the approver may declare scope, and the envelope records whether the check ran (#1189, #1190)
+Last Updated: 2026-10-23 — a definite failure is retryable as a new attempt under the same key (#1196)
 -->
 
 ## Overview
@@ -110,6 +110,10 @@ depends: EffectIntent, EffectState
 exists, and the resolver identity that settled it. A terminal state without either an observed
 outcome or an explicit `NotCommitted` observation is unrepresentable.
 
+Terminality is **per attempt**. A `NotCommitted` attempt stays readable and a retry is a new
+record under the same intent-derived key; the aggregate is never mutated back to `Dispatched`
+(#1196). `ByDag` shows every attempt, while the custody lookup points at the latest.
+
 **Layer:** `domain/`
 
 ### ObservedOutcome
@@ -163,7 +167,9 @@ depends: EffectIntent
 **Purpose:** Derives `IdempotencyKey = H(dag_id, node_id, intent_digest)`. Replaces the
 attempt-derived key at `dispatch.rs:795`, which makes every retry a new intent and therefore makes
 the retry fence unenforceable. Same key + same payload ⇒ read the existing record (the custody
-property); same key + different payload ⇒ refuse (preserves #1052).
+property); same key + different payload ⇒ refuse (preserves #1052). A `NotCommitted` record is the
+one exception: it is a settled attempt, so `begin` creates a new attempt under the same key and
+keeps the old one in `ByDag` (#1196).
 
 `ParallelExecutionServiceImpl::effect_intent` calls this derivation **once** and stores the result on
 the intent (#1187). The record, the process-provider environment variable, and the receipt lookup
@@ -294,7 +300,9 @@ status: implemented
 depends: EffectState
 
 **Purpose:** The retry policy refuses to re-dispatch an `Ambiguous` effect (F2). A new attempt after
-resolution is permitted; an attempt before resolution is not.
+resolution is permitted; an attempt before resolution is not. A `NotCommitted` effect is already a
+definite answer and is retryable — the ledger starts a new attempt under the same key rather than
+returning the settled record (#1196).
 
 **Layer:** `application/` + `dispatch.rs`
 
