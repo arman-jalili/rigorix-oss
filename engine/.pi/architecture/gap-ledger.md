@@ -1,7 +1,7 @@
 # Gap Ledger
 
 > **Source:** Comprehensive codebase assessment — 2026-06-15
-> **Last Updated:** 2026-08-30 (Addendum 2: codebase audit implementation backlog — 30 new, see bottom)
+> **Last Updated:** 2026-10-24 (dependency advisory dispositions — see bottom)
 > **⚠️ Status verification 2026-08-30:** every Open item re-verified against source. **Most Addendum-2 items are already FIXED in code** (marked `GAP-A-xx` in source) — see "Verification 2026-08-30" section at the bottom for the authoritative per-item verdict. Table statuses above are stale relative to that section.
 > **Scope:** All 17 modules across engine/src/, architecture docs, tests, CI, tooling
 > **Total findings:** 65 | **Resolved:** 27 | **Open:** 38
@@ -517,3 +517,33 @@ surface.
 
 **Related:** ADR-017 §Honest boundary · #985/#986/#987 · issue #992 ·
 workaround in `authority-demo/.rigorix/scripts/setup-authority.sh`.
+
+
+---
+
+# Addendum 2026-10-24 — dependency advisory dispositions (#1198)
+
+`cargo audit` and `cargo audit --deny warnings` were red on main because the
+advisory feed changed, not because the code changed. The policy is still "no
+silent ignores": each tolerated advisory is recorded in `.cargo/audit.toml`
+with a chain, a rationale, a tracking issue, and an expiry. The workflow
+`--ignore` flags were removed; the toml is the single source.
+
+| Advisory | Crate / chain | Kind | Disposition | Tracking | Expiry |
+|---|---|---|---|---|---|
+| RUSTSEC-2026-0385 | `ctutils 0.4.2 ← digest ← hmac` (all crates) | vulnerability | **Fixed**: bumped to 0.4.4 | — | — |
+| RUSTSEC-2026-0253, RUSTSEC-2026-0002 | `lru 0.12.5 ← ratatui 0.29 ← cli` | unsound | **Fixed**: ratatui 0.30.2 uses `lru 0.18.5`; `lru 0.12.5` left the lockfile | — | — |
+| RUSTSEC-2024-0436 | `paste 1.0.15 ← ratatui 0.29` | unmaintained | **Fixed**: ratatui 0.30.2 no longer depends on `paste` | — | — |
+| RUSTSEC-2024-0449 | `unsafe-libyaml ← serde_yaml ← actions` | unmaintained | **Reviewed ignore**: no patched release; migration is out of scope for this fix | #1199 | 2027-01-31 |
+| RUSTSEC-2026-0370 | `zvariant ← zbus ← keyring ← mcp` (Linux) | unmaintained | **Reviewed ignore**: no patched release; backend decision is out of scope | #1200 | 2027-01-31 |
+| RUSTSEC-2026-0371 | `zbus_names ← zbus ← keyring ← mcp` (Linux) | unmaintained | same | #1200 | 2027-01-31 |
+| RUSTSEC-2026-0372 | `zvariant_derive ← zvariant ← keyring ← mcp` (Linux) | unmaintained | same | #1200 | 2027-01-31 |
+
+**Verification:** `cargo audit` and `cargo audit --deny warnings` both exit 0.
+`cargo tree -i paste`, `cargo tree -i lru@0.12.5`, and
+`cargo tree -i unsafe-libyaml` were checked after the upgrade; only the tracked
+`serde_yaml` chain remains, and the Linux keyring chain remains platform-gated.
+
+**Why ratatui 0.30:** it is the only maintained line that removes both the
+`lru 0.12` unsoundness and the deprecated `paste` macro. The CLI compiled with
+two unused `Stylize` imports (removed); its 92 unit tests pass.

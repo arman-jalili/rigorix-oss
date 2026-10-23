@@ -39,6 +39,7 @@ of that train — do not infer its version from these tags (it is 1.4.0).
 - TLS trust path takes the two 2026-10 RUSTSEC fixes (#1110) ([#1110](https://github.com/arman-jalili/rigorix-oss/pull/1110))
 - The wiring claim for the `Dispatched` sweep states both branches instead of "every root sweeps" (#1183) ([#1184](https://github.com/arman-jalili/rigorix-oss/pull/1184))
 - The cli and server event bridges classify `EffectScopeChecked`, and a workspace compile gate catches the next unhandled public-enum variant (#1195) ([#1197](https://github.com/arman-jalili/rigorix-oss/pull/1197))
+- Dependency audit is green again: `ctutils` is 0.4.4, and `ratatui` 0.30.2 removes `lru` 0.12 and `paste`; the remaining unmaintained advisories are reviewed ignores in `.cargo/audit.toml` with tracking issues and an expiry (#1198) ([#1201](https://github.com/arman-jalili/rigorix-oss/pull/1201))
 - An armed commitment seam no longer disables retries: a `NotCommitted` attempt is retryable as a new attempt record under the same intent key, while `Committed` and `Ambiguous` stay refused (#1196) ([#1197](https://github.com/arman-jalili/rigorix-oss/pull/1197))
 - `execute_node` runs the effect write-ahead and settle through the shared gate path (#1185) ([#1191](https://github.com/arman-jalili/rigorix-oss/pull/1191))
 - The intent key is derived once and used by the record, provider, and receipt reader; the placeholder is gone (#1187) ([#1191](https://github.com/arman-jalili/rigorix-oss/pull/1191))
@@ -49,8 +50,9 @@ of that train — do not infer its version from these tags (it is 1.4.0).
 - The effect-commitment and capacity-ledger contract proofs gate through `.pi/guards.tsv` and `.pi/scripts/validate-guards.sh`, with seeded-failure self-tests (#1186) ([#1192](https://github.com/arman-jalili/rigorix-oss/pull/1192))
 - Nine effect-commitment issue packets are `done` with a `closed_reason`, and `engine/.pi/issues/README.md` states the closing convention (#1188) ([#1193](https://github.com/arman-jalili/rigorix-oss/pull/1193))
 
-<details><summary>Issues closed in this release (102)</summary>
+<details><summary>Issues closed in this release (103)</summary>
 
+- #1198 — main is red for dependency advisories, not code: ctutils 0.4.2 (patch available) fails Audit, and Hardening --deny warnings fails on five unmaintained/unsound crates
 - #1196 — with effect-commitment armed, a node cannot retry after a definite failure: the fence allows NotCommitted, begin_effect refuses every terminal record
 - #1195 — main is red: ExecutionEvent::EffectScopeChecked was added without updating the two event bridges, failing 9 CI and Hardening jobs
 - #1190 — the approve surface cannot declare a scope, so run_command steps have no way to be verified — the runbook says the approve surface may set one
