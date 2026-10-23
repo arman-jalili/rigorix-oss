@@ -5,6 +5,14 @@
 # Every entry is an explicit decision: a panic that can reach production is either
 # removed (return a Result) or recorded here with the reason it is tolerated.
 actions/src/action_output/application/output_variable_impl.rs::.expect("const name regex is valid (covered by validate_name tests)"),#1	expect	const	low	compile-time regex, covered by validate_name tests
+engine/benches/dag_engine.rs::.expect("armed seam")#1	expect	bench	low	criterion harness: a failed setup or execution aborts the benchmark run, which is the intended signal; benchmark code is never linked into production
+engine/benches/dag_engine.rs::.expect("execute graph");#1	expect	bench	low	criterion harness: a failed setup or execution aborts the benchmark run, which is the intended signal; benchmark code is never linked into production
+engine/benches/dag_engine.rs::.expect("valid bench declaration")#1	expect	bench	low	criterion harness: a failed setup or execution aborts the benchmark run, which is the intended signal; benchmark code is never linked into production
+engine/benches/dag_engine.rs::.expect("write bench declaration");#1	expect	bench	low	criterion harness: a failed setup or execution aborts the benchmark run, which is the intended signal; benchmark code is never linked into production
+engine/benches/dag_engine.rs::graph.add_unchecked(node).expect("add unchecked");#1	expect	bench	low	criterion harness: a failed setup or execution aborts the benchmark run, which is the intended signal; benchmark code is never linked into production
+engine/benches/dag_engine.rs::graph.seal().expect("seal");#1	expect	bench	low	criterion harness: a failed setup or execution aborts the benchmark run, which is the intended signal; benchmark code is never linked into production
+engine/benches/dag_engine.rs::let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");#1	expect	bench	low	criterion harness: a failed setup or execution aborts the benchmark run, which is the intended signal; benchmark code is never linked into production
+engine/benches/dag_engine.rs::std::fs::create_dir_all(dir.join(".rigorix")).expect("create bench declaration dir");#1	expect	bench	low	criterion harness: a failed setup or execution aborts the benchmark run, which is the intended signal; benchmark code is never linked into production
 engine/examples/capacity_ledger_demo.rs::assert!(#1	assert!	demo	low	runnable demo: its asserts are the evidence it prints, so panicking on a violated invariant is the intended behaviour (a reader sees the failure)
 engine/examples/capacity_ledger_demo.rs::assert!(#2	assert!	demo	low	runnable demo: its asserts are the evidence it prints, so panicking on a violated invariant is the intended behaviour (a reader sees the failure)
 engine/examples/capacity_ledger_demo.rs::assert_eq!(#1	assert!	demo	low	runnable demo: its asserts are the evidence it prints, so panicking on a violated invariant is the intended behaviour (a reader sees the failure)

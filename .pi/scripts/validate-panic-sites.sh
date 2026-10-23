@@ -69,6 +69,9 @@ findings = json.load(open(current_path))
 # ISSUE-PRODUCTION-PANIC-SURFACE; a panic re-appearing in those files is a NEW
 # decision and intentionally falls through to "unclassified — triage required".
 RULES = [
+    (r"^engine/benches/", "bench", "low",
+     "criterion harness: a failed setup or execution aborts the benchmark run, "
+     "which is the intended signal; benchmark code is never linked into production"),
     (r"^engine/examples/", "demo", "low",
      "runnable demo: its asserts are the evidence it prints, so panicking on a "
      "violated invariant is the intended behaviour (a reader sees the failure)"),
