@@ -1,22 +1,27 @@
-# Issue Implementation Groups — Round 2
+# Issue Implementation Groups
 
-**Generated:** 2026-10-18
-**Open issues:** #1050–#1054, #1060, #1061 (skip #1018 — deferred)
+**Generated:** Thu Oct 22 20:23:19 CEST 2026
+**Total Issues:** 6
 
-## Batches (dependency order)
+---
 
-| Batch | Branch | Issues | Rationale |
-|-------|--------|--------|-----------|
-| 1 | `issue/1060-1061` | #1060, #1061 | Consequences of #1016/#1017: stale docs + unbound `shared_contested` footgun |
-| 2 | `feature/capacity-idempotency-ambiguity` | #1052, #1050 | The issue notes say these must be resolved together (key lifecycle ↔ ambiguous outcome) |
-| 3 | `issue/1051` | #1051 | Window semantics (rolling duration), independent of 1–2 |
-| 4 | `feature/capacity-guarantee-accuracy` | #1053, #1054 | Both correct the stated guarantee: single-process atomicity + best-effort Drop |
+## Grouping Strategy
 
-## Decisions
-- #1051: **rolling duration** — at most N units in any trailing W seconds.
-- #1050: add an explicit **ambiguous** reservation state that retains exposure
-  until reconciled; expiry alone never proves "no effect".
-- #1052: same key + different amount → typed conflict; retry after expiry →
-  reject (never silently create a second reservation).
-- #1061: **refuse** a `shared_contested` budget in config validation until a
-  ledger binding exists (fail closed, loud).
+Issues are grouped by:
+1. **Component** — Same module/files affected
+2. **Priority** — Critical > High > Medium > Low
+3. **Dependency** — Blocking relationships
+
+---
+
+
+### Individual Issues (No Grouping)
+
+Each requires separate branch: `issue/{number}`
+
+- #1178: the CHANGELOG's Unreleased section is empty although a whole context and three fix batches landed since 1.10.0 → branch: `issue/1178`
+- #1177: the OSS wiring-claims manifest has no effect-commitment row, and three shipped modules still say Status: Planned → branch: `issue/1177`
+- #1176: doctor reports every seam except effect-commitment, so the newest enforcement boundary and its claim ceiling are invisible → branch: `issue/1176`
+- #1175: the effect-scope oracle is wired in every root and nothing produces a declared_scope — the scope control cannot fire, and the docs call it by design → branch: `issue/1175`
+- #1174: the provider contract says HTTP providers receive Idempotency-Key, but no execution path sends HTTP — the only sender is a test → branch: `issue/1174`
+- #1173: the Dispatched sweep runs in every client root against the local clock; at L2 the service must own it, or roots fence each other live work → branch: `issue/1173`
