@@ -37,3 +37,4 @@
 .pi/scripts/ci/check_capacity-ledger_contracts.sh	contract-proofing	gating	yes	architecture	the capacity-ledger contract proof runs here with a real exit code; --self-test seeds a removed contract and requires a failure (#1186)
 .pi/scripts/ci/stage_workspace_check.sh	compile	gating	yes	architecture	cargo check --workspace --all-targets; catches a public-enum addition breaking a downstream exhaustive match (#1195)
 .pi/scripts/validate-decision-expiry.sh	decisions	gating	yes	architecture	audit-ignore expiry and docs/issues front-matter vocabulary; --self-test seeds both violations (#1203)
+.pi/scripts/validate-workspace-pins.sh	workspace-pins	gating	yes	supply-chain	an intra-workspace path-dep pin equals the crate it points at

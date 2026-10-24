@@ -21,7 +21,10 @@ release inherits the same work.
 2. Rename the heading to `## [x.y.z] - YYYY-MM-DD` and add the link reference to
    the GitHub Release on the next line.
 3. Start a fresh `## [Unreleased]` at the top.
-4. Keep `rigorix-actions` out of the train; it versions on its own cadence.
+4. `rigorix-actions` is on the train: bump it to the same version. It was excluded
+   once because the old gate failed for it — but an excluded crate never gets
+   bumped, and `publish-crate.sh` then skips it as already published. A crate
+   outside the gate is a crate that is never released.
 5. Run `bash .pi/scripts/validate-docs.sh` (it is also part of the gating
    `validate-guards.sh`).
 

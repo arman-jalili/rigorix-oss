@@ -28,10 +28,13 @@ jobs:
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           echo "Tag version: $TAG_VERSION"
 
-          # NOTE: `actions` is NOT on the engine/mcp/cli release train (it stays
-          # on its own line); requiring it to match the tag made every prior
-          # release fail at this gate.
-          for crate in engine cli mcp; do
+          # `actions` IS on the train. It used to be excluded, and the exclusion
+          # hid a real defect: nothing bumped its version, so `publish-crate.sh`
+          # skipped it as "already published" on every release and the crate sat
+          # on 1.4.0 for seven weeks while `actions/` took 307 lines of change.
+          # An excluded crate is an unreleased crate; the gate is what makes
+          # `skip if exists` mean "rerun" instead of "never".
+          for crate in engine cli mcp actions; do
             CRATE_VERSION=$(grep '^version' "$crate/Cargo.toml" | head -1 | sed 's/version = "//;s/"//')
             echo "$crate: $CRATE_VERSION"
             if [[ "$CRATE_VERSION" != "$TAG_VERSION" ]]; then
@@ -99,11 +102,12 @@ jobs:
   # ── Create GitHub Release ─────────────────────────────────────
   github-release:
     name: 🏷️ GitHub Release
-    # `needs` lists the release train only. `publish-actions` is deliberately
-    # absent: `rigorix-actions` has its own cadence (it is not in the `verify`
-    # gate's crate list either), so a failure there must not block announcing a
-    # release whose three train crates all shipped.
-    needs: [publish-engine, publish-cli, publish-mcp]
+    # `needs` lists the release train, and `publish-actions` is part of it: the
+    # actions crate carries the same version as the engine it adapts, so a release
+    # page that omits it would advertise a train with a missing car. The `verify`
+    # gate now requires all four versions to equal the tag, so the only way
+    # `publish-actions` skips is a rerun, where the skip is correct.
+    needs: [publish-engine, publish-cli, publish-mcp, publish-actions]
     # Announce the release only once every train crate is actually on crates.io.
     # Previously `if: always()`, which meant a failed publish still produced a
     # release page advertising crates that did not exist in the registry — the

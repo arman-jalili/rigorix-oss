@@ -9,9 +9,11 @@ and links here. Each entry lists the pull requests merged and the issues closed 
 that version's window, derived from git and the issue tracker, so the entries and
 the tags cannot disagree. Backfilled 2026-10-15.
 
-The release train is `rigorix-engine` / `rigorix-mcp` / `rigorix-cli`, which version
-together. `rigorix-actions` follows its own cadence and is deliberately **not** part
-of that train — do not infer its version from these tags (it is 1.4.0).
+The release train is `rigorix-engine` / `rigorix-mcp` / `rigorix-cli` /
+`rigorix-actions`, which version together. `rigorix-actions` is the adapter crate and
+the Docker image behind `action.yml`; its version is the version of the engine it
+adapts. It was outside the train until 1.11.0, which is why its numbers jump from
+1.4.0 to 1.11.0 — for seven weeks it was skipped as "already published".
 
 ## [Unreleased]
 
