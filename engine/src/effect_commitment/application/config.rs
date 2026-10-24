@@ -18,7 +18,8 @@
 //! # max_response_body_bytes = 65536
 //! # auth_token_env = "EFFECT_LEDGER_TOKEN"
 //!
-//! [receipt_reader]              # optional; without it the ceiling is L2
+//! [receipt_reader]              # optional; without it settlement stays `none`
+//!                               # (durability comes from `backend`: L2 only for `http`)
 //! base_url = "https://payments.example"
 //! provider_id = "stripe"
 //! # timeout_ms = 5000

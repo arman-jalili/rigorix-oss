@@ -4,7 +4,7 @@
 Canonical Reference: .pi/architecture/modules/effect-commitment.md
 Blueprint Source: Guardian Framework v1.2
 Generated: NEVER (this is the source)
-Last Updated: 2026-10-23 — a definite failure is retryable as a new attempt under the same key (#1196)
+Last Updated: 2026-10-24 — the config example names the settlement axis separately from durability (#1214)
 -->
 
 ## Overview
