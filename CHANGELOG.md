@@ -15,6 +15,10 @@ of that train — do not infer its version from these tags (it is 1.4.0).
 
 ## [Unreleased]
 
+### Fixed
+
+- The `receipt_reader` config example names the settlement axis (`none` without a reader) separately from durability, and the consequence-gating spec states `1.9.0 and later` instead of stopping at 1.10.0 (#1214) ([#1215](https://github.com/arman-jalili/rigorix-oss/pull/1215))
+
 ## [1.11.0] - 2026-10-24
 
 [1.11.0]: https://github.com/arman-jalili/rigorix-oss/releases/tag/v1.11.0
