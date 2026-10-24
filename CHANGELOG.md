@@ -15,6 +15,10 @@ of that train — do not infer its version from these tags (it is 1.4.0).
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-10-24
+
+[1.11.0]: https://github.com/arman-jalili/rigorix-oss/releases/tag/v1.11.0
+
 ### Added
 
 - **Capacity ledger bounded context (ADR-018):** frozen contract, in-process and HTTP adapters, intent-derived keys, service-owned `ReservationGuard`, a rolling exposure window, and the ambiguous lapsed-lease state (#1020–#1034, #1049–#1054) ([#1035](https://github.com/arman-jalili/rigorix-oss/pull/1035), [#1065](https://github.com/arman-jalili/rigorix-oss/pull/1065))

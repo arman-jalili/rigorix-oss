@@ -2873,7 +2873,7 @@ dependencies = [
 
 [[package]]
 name = "rigorix-cli"
-version = "1.10.0"
+version = "1.11.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2898,7 +2898,7 @@ dependencies = [
 
 [[package]]
 name = "rigorix-engine"
-version = "1.10.0"
+version = "1.11.0"
 dependencies = [
  "async-trait",
  "base64",
@@ -2936,7 +2936,7 @@ dependencies = [
 
 [[package]]
 name = "rigorix-mcp"
-version = "1.10.0"
+version = "1.11.0"
 dependencies = [
  "apple-native-keyring-store",
  "async-trait",
