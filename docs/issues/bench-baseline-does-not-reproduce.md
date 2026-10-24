@@ -27,8 +27,11 @@ guardian_issue:
     | 100 nodes, present | 25.0 ms [21.8-28.8] | 17.3 ms [16.5-18.4] |
 
     The documented conclusion — "the in-memory seam adds a measurable but single-digit-ms cost at 100
-    nodes" — is +5.2 ms / +26% with separated CIs as recorded, and +0.5 ms / +3% with overlapping bands
-    as measured. The 1-node pair no longer separates either.
+    nodes" — is +5.2 ms / +26% as recorded, and +0.5 ms / +3% as measured. Correction to the original
+    text of this issue: the recorded 100-node bands were *narrowly* overlapping ([21.8, 22.3]), not
+    separated; the 1-node pair was the separated one (166 [162-174] vs 193 [179-210]) and it does not
+    reproduce (198 [171-233] vs 205 [187-228]). The finding is unchanged — the delta does not
+    reproduce — but "non-overlapping" was my overstatement.
 
     Two supporting defects: the doc says "criterion, 50 samples" while the bench sets no `sample_size`
     (criterion default is 100), and `--quick` returns 43.6 µs for a cell that takes 198 µs by default —
