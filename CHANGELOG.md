@@ -19,6 +19,8 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Fixed
 
+- `rigorix-actions` joins the release train: it had been excluded from the version gate, so nothing bumped it and `publish-crate.sh` skipped it as already published for four releases (1.4.0, uploaded 2026-09-06, while `actions/` gained 307 lines). Its stale `rigorix-engine` pin is now guarded by `validate-workspace-pins.sh`, and 1.11.0 is published (#1216)
+
 - The `receipt_reader` config example names the settlement axis (`none` without a reader) separately from durability, and the consequence-gating spec states `1.9.0 and later` instead of stopping at 1.10.0 (#1214) ([#1215](https://github.com/arman-jalili/rigorix-oss/pull/1215))
 
 ## [1.11.0] - 2026-10-24
