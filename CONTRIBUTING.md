@@ -231,9 +231,9 @@ the issues closed in its window.
 
 ### The release train
 
-`rigorix-engine` / `rigorix-mcp` / `rigorix-cli` version together.
-`rigorix-actions` follows its own cadence and is **not** part of the train — never
-infer its version from a release-train tag.
+`rigorix-engine` / `rigorix-mcp` / `rigorix-cli` / `rigorix-actions` version
+together. The action adapter always matches the engine it wraps, and every crate in
+the train is checked against the tag before publishing.
 
 ### This is enforced
 

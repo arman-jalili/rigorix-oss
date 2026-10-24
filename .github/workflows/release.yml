@@ -126,13 +126,13 @@ jobs:
         run: |
           # Name the exact version and crates this tag actually published.
           # The notes previously listed `rigorix-actions` under "Crates
-          # Published" for a `v1.9.5` tag although that crate is at 1.4.0 — a
-          # reader would infer a version that does not exist on crates.io.
+          # Published" for a `v1.9.5` tag although that crate was still at 1.4.0
+          # at the time — a reader would infer a version that did not exist.
           VERSION="${GITHUB_REF_NAME#v}"
           {
             echo "# Rigorix ${{ github.ref_name }}"
             echo ""
-            echo "Release train: \`engine\` / \`mcp\` / \`cli\` → \`$VERSION\`."
+            echo "Release train: \`engine\` / \`mcp\` / \`cli\` / \`actions\` → \`$VERSION\`."
             echo ""
             # Point at the repo's changelog (CHANGELOG.md). This previously read
             # `.pi/architecture/CHANGELOG.md`, which is the GUARDIAN framework's
@@ -145,8 +145,7 @@ jobs:
             echo "- [rigorix-engine $VERSION](https://crates.io/crates/rigorix-engine/$VERSION)"
             echo "- [rigorix-mcp $VERSION](https://crates.io/crates/rigorix-mcp/$VERSION)"
             echo "- [rigorix-cli $VERSION](https://crates.io/crates/rigorix-cli/$VERSION)"
-            echo ""
-            echo "\`rigorix-actions\` is not part of this release train (its own cadence)."
+            echo "- [rigorix-actions $VERSION](https://crates.io/crates/rigorix-actions/$VERSION)"
           } > release-notes.md
 
       - name: Create Release
