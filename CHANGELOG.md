@@ -19,6 +19,8 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Fixed
 
+- The execution-governance spec's framing documents were brought in line with its requirements: six levels everywhere, a claim template that can express Level 6, a Level 6 evidence row, claim discipline bound to every level, the unsettled interval in scope, renumbered non-claims, the stale EG-052 gap row and T11 residual removed, the PyPI caveat stated, and the requirement count corrected to 55. The status line no longer forbids citation (#1218)
+
 - `rigorix-actions` joins the release train: it had been excluded from the version gate, so nothing bumped it and `publish-crate.sh` skipped it as already published for four releases (1.4.0, uploaded 2026-09-06, while `actions/` gained 307 lines). Its stale `rigorix-engine` pin is now guarded by `validate-workspace-pins.sh`, and 1.11.0 is published. The generated release notes, README, CONTRIBUTING, RELEASING, and the action README now all say the same thing: four crates, one version (#1216) ([#1217](https://github.com/arman-jalili/rigorix-oss/pull/1217))
 
 - The `receipt_reader` config example names the settlement axis (`none` without a reader) separately from durability, and the consequence-gating spec states `1.9.0 and later` instead of stopping at 1.10.0 (#1214) ([#1215](https://github.com/arman-jalili/rigorix-oss/pull/1215))
