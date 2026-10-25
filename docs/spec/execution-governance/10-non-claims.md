@@ -61,10 +61,10 @@ talk or sales conversation can be checked against it.
 
 ## 4. Commercial non-claims
 
-13. No hosted multi-tenant service.
-14. No SOC 2 report, ISO 27001 certificate or equivalent attestation.
-15. No customer references, production telemetry or case studies.
-16. No claim of peer-reviewed validation of this specification or the
+16. No hosted multi-tenant service.
+17. No SOC 2 report, ISO 27001 certificate or equivalent attestation.
+18. No customer references, production telemetry or case studies.
+19. No claim of peer-reviewed validation of this specification or the
     implementation.
 
 ## 5. How to use this document

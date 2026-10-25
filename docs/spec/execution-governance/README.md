@@ -1,9 +1,12 @@
 # Rigorix Specification — Execution Governance
 
-**Version:** 0.1 (draft for review)
-**Status:** Working draft. Not yet published. Nothing here may be quoted publicly
-before Arman approves the release.
-**Date:** 2026-10-19
+**Version:** 0.1.1 (public review draft)
+**Status:** Published for review and quotation. Cite it, quote it, and disagree with it
+in public — that is what a review draft is for. Two limits remain: no conformance
+claim may be made against a draft version (see `09-conformance.md` §7), and a
+published version is immutable, so corrections arrive as a new patch version
+(`12-versioning.md` §5).
+**Date:** 2026-10-25
 
 ---
 
@@ -15,8 +18,10 @@ produces evidence a third party can verify.
 
 It defines the terminology, the conceptual model, the normative requirements, the
 evidence model, the threat model, the conformance levels, and the explicit
-non-claims. It is implementation-neutral: Rigorix is the reference implementation,
-not the definition.
+non-claims. It also covers the **unsettled interval** after a consequence is
+dispatched: an effect whose outcome is unknown is a state, not a guess (§J of
+`03-requirements.md`, `02-conceptual-model.md` §11–12). It is implementation-neutral:
+Rigorix is the reference implementation, not the definition.
 
 ## How to read this
 
@@ -30,6 +35,9 @@ Three reading paths. Pick the one that matches why you are here.
 
 **If you are auditing a claim** (auditor, reviewer, counterparty)
 → `03-requirements.md` → `05-evidence-model.md` → `09-conformance.md` → `11-traceability.md` → `10-non-claims.md`
+
+**If you are deciding what to do when an effect's outcome is unknown**
+→ `02-conceptual-model.md` §11–12 → `03-requirements.md` §J → `05-evidence-model.md` §11–13
 
 ## Document map
 

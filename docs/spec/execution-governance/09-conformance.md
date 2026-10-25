@@ -49,6 +49,10 @@ Capability: the unsettled interval is owned. Write-ahead record, non-terminal
 Level 6 requires a declared durability axis (L1 or L2) and a declared settlement
 axis (none or L3); the two are independent.
 
+**Claim discipline (EG-080–EG-082) applies at every level** and is therefore not
+listed under any one of them: a deployment at any level that states a guarantee must
+state the level, the mode and the requirements it does not meet.
+
 ## 2a. Commitment claim matrix
 
 A Level 6 claim MUST name one cell:
@@ -65,7 +69,7 @@ A Level 6 claim MUST name one cell:
 ```
 Implementation: <name and version>
 Specification:  execution-governance 0.1
-Level:          <1-5>
+Level:          <1-6>
 Deployment:     engine-only | engine+verifier | engine+control-plane
 Anchor holder:  <party or "none">
 Durability:     L1 in-process | L2 contested store
@@ -87,6 +91,7 @@ exceptions, and stating them is what makes the rest credible.
 | 3 | a run showing a precondition refusing after the world changed, with a signed finding |
 | 4 | an offline verification at V2 and V3, with the verifier's own level report |
 | 5 | a concurrency test where a naive counter breaches and reservation holds |
+| 6 | a run where a dispatched effect is left unsettled: the retry is refused, a dependent is fenced, and a resolver settles it with a provider receipt — with the durability and settlement axes named |
 
 Fixtures SHOULD be published so a third party can reproduce them.
 

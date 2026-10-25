@@ -54,4 +54,5 @@ not resolved by editing the specification to match the code.
 
 | Version | Date | Change |
 |---|---|---|
-| 0.1 | 2026-10-19 | Initial draft: terminology, model, 60+ requirements, evidence levels, threat model, conformance levels, non-claims. |
+| 0.1.1 | 2026-10-25 | Editorial correction, no obligation changed: the level table in `00-scope.md` now lists all six levels and defers to this document; the claim format accepts `1-6`; `09-conformance.md` gains a Level 6 evidence row and binds EG-080–EG-082 to every level; the unsettled interval enters scope (`00-scope.md` §2, §4); `10-non-claims.md` §4 renumbered 16–19; the stale EG-052 'not implemented' row and the matching T11 residual are corrected against `rigorix doctor`; `05-evidence-model.md` no longer implies PyPI verifies effect evidence; requirement count corrected to 55. |
+| 0.1 | 2026-10-19 | Initial draft: terminology, model, 55 numbered requirements, evidence levels, threat model, conformance levels, non-claims. |

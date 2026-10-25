@@ -35,7 +35,7 @@ stays honest.
 | EG-043 no cross-session claim in-process | ADR-018 claim ceiling | docs review |
 | EG-050 one gate for all routes | #1074 `gate.rs` | gate parity tests |
 | EG-051 refuse when unevaluable | all gate modules | negative tests |
-| EG-052 control posture reporting | **not implemented** | — (gap) |
+| EG-052 control posture reporting | `rigorix doctor` (#1103/#1105) | doctor tests; new seams must be added |
 | EG-053 reject compound shell | #1067 | `run_command` tests |
 | EG-054 no secret inheritance | #1068 cleared env | subprocess tests |
 | EG-060 decision record with inputs | envelope findings | audit tests; demos |
@@ -65,7 +65,7 @@ stays honest.
 
 | Requirement | Status | Note |
 |---|---|---|
-| EG-052 control posture reporting | implemented | `rigorix doctor` (#1103/#1105); new seams must be added |
+| EG-052 control posture reporting | implemented, and fragile | every new control seam must be added to `rigorix doctor` or it becomes invisible to the discipline that closed EG-052 |
 | EG-043 distributed claim ceiling | enforced in docs only | needs a machine-checkable mode assertion |
 | EG-063 anchor as separate party | deployment property | cannot be enforced by code; must be documented per deployment |
 

@@ -112,7 +112,9 @@ with extra steps.
 ## 10. Reference implementation
 
 - Envelope schema v2 and signed fixtures: `rigorix-sdk/schemas`.
-- Verifiers: `rigorix-verifier` on crates.io, PyPI, npm; Java and Go in-repo.
+- Verifiers: `rigorix-verifier` on crates.io and npm (0.8.0); Java and Go in-repo. The
+  PyPI package is behind and cannot yet verify effect-commitment evidence — see
+  `10-non-claims.md` §3 item 14 before citing PyPI as a channel.
 - Functions: `verify_chain`, `verify_chain_with_checkpoints`, `verify_ed25519`,
   `verify_ledger_receipt`, `verify_history_slice`, `verify_compaction_checkpoint`.
 - Anchor: Ed25519 signed reads in the enterprise audit service (ADR-016).

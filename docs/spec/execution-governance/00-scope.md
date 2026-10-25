@@ -24,8 +24,13 @@ A second class of failure does not involve time at all. Several individually
 permitted actions compose into an outcome no single decision was permitted to
 reach. The composition never appears in any single decision's context.
 
-Execution governance addresses both: the decision is made again at the moment of
-consequence, and constraints apply to composition rather than to single requests.
+A third does not involve permission at all. The effect is dispatched and the outcome
+is unknown — the response was lost, the process died, the deadline passed. A
+two-state world records that unknown as a lie with a timestamp.
+
+Execution governance addresses all three: the decision is made again at the moment
+of consequence, constraints apply to composition rather than to single requests, and
+the unsettled interval is owned rather than assumed.
 
 ## 3. Audience
 
@@ -46,8 +51,10 @@ consequence, and constraints apply to composition rather than to single requests
 4. Constraints over composition across steps, runs and sessions.
 5. The evidence model, including the distinct guarantees of chain, signature and
    external anchor.
-6. Conformance levels and the evidence required to claim one.
-7. Explicit non-claims.
+6. The unsettled interval after dispatch: the effect states, the fences that hold
+   while an outcome is unknown, and who may settle it.
+7. Conformance levels and the evidence required to claim one.
+8. Explicit non-claims.
 
 ## 5. Out of scope
 
@@ -83,8 +90,10 @@ consequence, and constraints apply to composition rather than to single requests
 
 ## 8. Conformance levels
 
-Five levels, cumulative. A deployment declares the highest level it satisfies and
-lists the requirements it does not meet.
+Six levels, cumulative. A deployment declares the highest level it satisfies and
+lists the requirements it does not meet. The normative definition, the requirement
+lists and the evidence per level are in `09-conformance.md`; this table is a summary
+and, where the two disagree, `09-conformance.md` wins.
 
 | Level | Name | What it adds |
 |---|---|---|
@@ -93,6 +102,7 @@ lists the requirements it does not meet.
 | 3 | Commit-time authority | dispatch-time revalidation against operator authority |
 | 4 | Verifiable evidence | chain, signature, anchor, independent verification |
 | 5 | Distributed capacity | aggregate reservation across sessions and replicas |
+| 6 | Commitment | ownership of the unsettled interval: write-ahead record, non-terminal `Ambiguous`, fenced dependents, refused retries, evidenced resolution. A Level 6 claim MUST name a durability axis (L1 in-process or L2 contested store) and a settlement axis (none, or L3 provider receipt); the two are independent |
 
 A deployment MUST NOT claim a level whose underlying mode is absent. See
 `09-conformance.md` and `10-non-claims.md`.

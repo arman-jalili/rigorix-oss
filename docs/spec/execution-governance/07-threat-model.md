@@ -89,7 +89,9 @@ direct database credential). The engine governs what is routed through it.
 A control is requested but not active, and nothing says so.
 **Control:** fail closed on missing configuration (EG-014, EG-051); machine-readable
 control posture (EG-052).
-**Residual:** posture reporting is a gap in the current reference implementation.
+**Residual:** posture reporting covers only the seams `rigorix doctor` knows. A new
+control seam that is not added to that report is invisible, which is the same failure
+with a shorter history (EG-052).
 
 ### T12 — Refusal laundering
 The agent retries a refused action through a different tool or path until one passes.
