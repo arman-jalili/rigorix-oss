@@ -423,6 +423,9 @@ inherit standing as **protocol validation (L2)** or **independent evidence (L3)*
 - [Validation Protocol v1](docs/spec/validation-protocol-v1.md) — falsifiable
   claims with stated failure conditions
 - [Terminology](docs/spec/terminology.md) — the normative vocabulary
+- [Execution Governance specification v0.1 (draft)](docs/spec/execution-governance/README.md)
+  — the 13-document working draft: terminology, model, requirements, evidence,
+  threat model, conformance and non-claims
 
 The decision records live in
 [`engine/.pi/architecture/decisions/`](engine/.pi/architecture/decisions/) — start
