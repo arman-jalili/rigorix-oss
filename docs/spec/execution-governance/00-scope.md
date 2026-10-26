@@ -136,3 +136,18 @@ A reader can answer four questions without asking the vendor:
 2. What happens when it says no?
 3. What does the evidence prove, and what does it not?
 4. Which level does this deployment satisfy, and what is missing?
+
+And the model itself answers five questions, in the order a reader meets them — four
+before an action runs, one after:
+
+| Question | Where it is answered |
+|---|---|
+| May this happen, given what already happened? | sequence constraint, §4 gate 3, `03-requirements` §D |
+| Is the condition still true? | precondition at dispatch, §4 gate 2, §C |
+| Is this the same consequence under a different name? | effect identity, §E — `03-requirements` §D |
+| What do these actions sum to? | capacity reservation, §4 gate 4, §E |
+| Did it actually happen? | the unsettled interval, §11–12 — `03-requirements` §J |
+
+The first four are the composition **axes** (§9 of `02-conceptual-model.md`). The fifth
+is not an axis: it is the phase after the act, where an unknown outcome is a state
+rather than a value somebody chose.
