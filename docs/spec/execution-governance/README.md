@@ -10,30 +10,21 @@ published version is immutable, so corrections arrive as a new patch version
 
 ---
 
-## A specification for the category, not the definition of it
+## What this document states, and for whom
 
-Execution governance is a category name in use by several authors. This document is
-**a** specification for it: it defines its terms as used here, and its requirements
-bind a system, not a field. It is not another author's definition, not a profile of
-their frameworks, and not a claim to supersede them.
+This specification defines **execution governance** as Rigorix practises it: deciding
+again at the moment an action becomes an effect, recording every decision, and owning the
+effect until it is settled.
 
-The discipline it specifies: the decision about an action is made again at the moment
-the action becomes an effect, every refusal is recorded, and the interval between
-dispatch and settlement is owned until provider evidence resolves it. Requirement
-identifiers are `RS-NNN` — Rigorix specification, unambiguous in a citation.
+It was written from the implementation — the engine, the verifiers, the deployments in
+`11-traceability.md` — and it is the source of its own vocabulary. The terms, the
+requirement set, the evidence model and the conformance levels were derived from what the
+system does and from the failures it was built to prevent, not adopted from another
+framework.
 
-Prior work in the same problem area, so a reader can compare rather than take our word
-for it. The descriptions are from titles and abstracts, not from full texts:
-
-| Work | Date | Relation |
-|---|---|---|
-| Ho Wa Ku, *Execution Governance* series (Zenodo, incl. "Execution Governance: The Layer Before Action Becomes Effect", `10.5281/zenodo.23542203` and `10.5281/zenodo.23638760`) | 2026 | Defines an EG framework with EvidenceToEffect (E2E) and Proof–Claim Applicability (PCA); treats current authority at effect/commitment time as one of three judgments. Overlaps on the moment; differs in that it is an analytical framework for evaluating claims, and this specification is a set of obligations on a system that executes. |
-| O. Bankuti, *Fail-Closed Execution Governance* (Zenodo `10.5281/zenodo.21969326`) | 2026-08 | Typed authority decisions, acyclic evidence hashes, single-use commits. Close to approval binding and chained evidence here. |
-| S. Das, *Computation Is Not Authority* (Zenodo `10.5281/zenodo.21861642`) | 2026-08 | Architectural argument for constraining what automated systems may execute. |
-| *A Closed-Loop Consequence-Governance Runtime for AI Agents* (Zenodo, 2026-08) | 2026-08 | Structural gating and counterfactual evaluation at runtime; shares "consequence gating" vocabulary. |
-
-If one of these defines a term we use, that definition wins for that term and this
-document should be corrected. The reverse is not true: nothing here obliges them.
+The requirements are normative for a system that claims conformance to this
+specification, and for nothing else. Requirement identifiers are `RS-NNN` so a citation
+is unambiguous.
 
 ## What this is
 

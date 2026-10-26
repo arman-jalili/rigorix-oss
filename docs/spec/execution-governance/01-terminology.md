@@ -1,10 +1,9 @@
 # 01 — Terminology
 
 **Status: normative for this specification.** These definitions constrain the other
-documents in this set — requirements, evidence, conformance — and nothing outside
-them. Where another author defines one of these terms differently in their own
-framework, their definition governs theirs and this one governs this document; a
-shared word is not a shared claim.
+documents in this set — requirements, evidence, conformance — and nothing outside them.
+An implementation that does not claim conformance to this specification is not bound by
+them, and this document makes no claim about it.
 
 Each entry gives the definition, the words to avoid, and where the concept is
 implemented. Terms are grouped by the part of the model they belong to.
@@ -19,8 +18,9 @@ proving what was decided. It comprises five commitments: a bounded plan, authori
 revalidated at dispatch, constraints on composition, ownership of the interval
 between dispatch and settlement, and independently verifiable evidence.
 
-Used here descriptively. It is a category name shared with other authors (see
-`README.md` for the prior work), not a term this document owns.
+The term as Rigorix uses it, defined from the implementation and normative for this
+document set. It names a discipline, not a trademark; the definition above is the one a
+reader should hold an implementation to.
 
 *Avoid:* runtime governance (a generic category claim), AI governance (an
 organizational programme), agent security (inputs and prompts), guardrails

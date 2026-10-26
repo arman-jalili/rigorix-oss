@@ -11,11 +11,6 @@ It exists because a class of control is missing from current practice: a
 deterministic decision made at the moment an action becomes real, with evidence
 that a third party can verify afterwards.
 
-**On the name.** Execution governance is a category name shared with other authors;
-`README.md` lists the prior work so a reader can compare. This document is one
-specification for that category. It defines its terms as used here and binds systems,
-not the field — a shared word is not a shared claim.
-
 ## 2. The problem, stated once
 
 Authorization is normally decided before an action executes and is then treated as
@@ -86,7 +81,6 @@ the unsettled interval is owned rather than assumed.
 | Sandbox / isolation | how much damage is contained? | contains effects; does not decide whether they may occur |
 | Agent framework | how does the agent loop? | the loop is the caller, not the governor |
 | AI governance platform | is the programme adequate? | organizational assurance, not execution-time enforcement |
-| Another author's execution-governance framework | analytical judgments about whether a claim about an effect is supported | adjacent, not identical: this specification is a set of obligations on a system that **executes**, and it owns the interval after dispatch as well as the decision before it (levels 5–6) |
 
 ## 7. Normative language and requirement identifiers
 
