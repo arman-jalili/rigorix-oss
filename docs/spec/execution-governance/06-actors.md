@@ -6,7 +6,7 @@
 
 ## 1. Why roles matter here
 
-Effect-gated execution only works if the party being governed cannot edit the rules,
+Execution governance only works if the party being governed cannot edit the rules,
 approve its own actions, or rewrite the record. That is a separation-of-duties
 property, and it is structural: it lives in who can write what.
 

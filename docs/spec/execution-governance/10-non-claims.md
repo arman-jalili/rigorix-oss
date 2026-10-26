@@ -66,10 +66,11 @@ talk or sales conversation can be checked against it.
 18. No customer references, production telemetry or case studies.
 19. No claim of peer-reviewed validation of this specification or the
     implementation.
-20. No claim to define, supersede, or speak for any other author's framework. The
-    phrase "execution governance" names prior work in this area; this document is not
-    its definition, and a reader comparing the two should use the published sources
-    listed in `README.md`, not this document's summary of them.
+20. No claim to define, supersede, or speak for any other author's framework.
+    Execution governance is a shared category name; this document specifies one set of
+    requirements under it and defines those terms as used here. A reader comparing
+    frameworks should use the published sources listed in `README.md`, not this
+    document's summary of them.
 
 ## 5. How to use this document
 

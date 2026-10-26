@@ -1,4 +1,4 @@
-# Rigorix Specification — Effect-Gated Execution
+# Rigorix Specification — Execution Governance
 
 **Version:** 0.2.0 (public review draft)
 **Status:** Published for review and quotation. Cite it, quote it, and disagree with it
@@ -10,20 +10,20 @@ published version is immutable, so corrections arrive as a new patch version
 
 ---
 
-## What this is *not*
+## A specification for the category, not the definition of it
 
-This document does **not** define "execution governance". That phrase is in use as a
-category name by other authors, and this specification is not their definition, not a
-profile of their frameworks, and not a claim to supersede them.
+Execution governance is a category name in use by several authors. This document is
+**a** specification for it: it defines its terms as used here, and its requirements
+bind a system, not a field. It is not another author's definition, not a profile of
+their frameworks, and not a claim to supersede them.
 
-The discipline described here is **effect-gated execution**: the decision about an
-action is made again at the moment the action becomes an effect, every refusal is
-recorded, and the interval between dispatch and settlement is owned until provider
-evidence resolves it. Requirement identifiers are `RS-NNN` — Rigorix specification,
-unambiguous in a citation.
+The discipline it specifies: the decision about an action is made again at the moment
+the action becomes an effect, every refusal is recorded, and the interval between
+dispatch and settlement is owned until provider evidence resolves it. Requirement
+identifiers are `RS-NNN` — Rigorix specification, unambiguous in a citation.
 
-Prior work in the same problem area, listed so a reader can compare rather than take
-our word for it. The descriptions are from titles and abstracts, not from full texts:
+Prior work in the same problem area, so a reader can compare rather than take our word
+for it. The descriptions are from titles and abstracts, not from full texts:
 
 | Work | Date | Relation |
 |---|---|---|
@@ -37,7 +37,7 @@ document should be corrected. The reverse is not true: nothing here obliges them
 
 ## What this is
 
-This is the specification for **effect-gated execution**: the layer that decides
+This is the specification for **execution governance**: the layer that decides
 whether a consequential AI-agent action may happen, at the moment it happens, and
 produces evidence a third party can verify.
 

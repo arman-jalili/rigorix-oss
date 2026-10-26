@@ -12,7 +12,7 @@ artifact and checked against stated failure conditions.
 | [Consequence Gating](./consequence-gating-v1.md) | 1.0 | 2026-10-12 | Published |
 | [Consequence Gating — Validation Protocol](./validation-protocol-v1.md) | 1.0 | 2026-10-12 | Published |
 | [Terminology](./terminology.md) | 1.0 | 2026-10-12 | Published |
-| [Effect-Gated Execution](./effect-gated-execution/README.md) | 0.2 | 2026-10-25 | Review draft |
+| [Execution Governance](./execution-governance/README.md) | 0.2 | 2026-10-25 | Review draft |
 
 ## How to cite
 
@@ -25,12 +25,12 @@ Identifiers are namespace-stable:
 - `rigorix-consequence-gating`
 - `rigorix-consequence-gating-protocol`
 - `rigorix-consequence-gating-terminology`
-- `rigorix-effect-gated-execution` (14 documents; requirement identifiers `RS-NNN`)
+- `rigorix-execution-governance` (14 documents; requirement identifiers `RS-NNN`)
 
 A review draft may be cited for review and disagreement; no conformance claim may
 cite it. See the document's own §Status.
 
-> Rigorix Effect-Gated Execution v0.2 §A (plan and scope)
+> Rigorix Execution Governance v0.2 §A (plan and scope)
 
 ## Versioning policy
 

@@ -39,7 +39,7 @@ permitted.
 
 ## 2. Definition
 
-**Effect-gated execution is the discipline of deciding again at the moment an
+**Execution governance is the discipline of deciding again at the moment an
 action becomes an effect, and proving what was decided.**
 
 Five commitments follow.

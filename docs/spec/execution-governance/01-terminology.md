@@ -1,7 +1,10 @@
 # 01 — Terminology
 
-**Status: normative.** Definitions in this document constrain every other
-document. If a term here conflicts with usage elsewhere, this document wins.
+**Status: normative for this specification.** These definitions constrain the other
+documents in this set — requirements, evidence, conformance — and nothing outside
+them. Where another author defines one of these terms differently in their own
+framework, their definition governs theirs and this one governs this document; a
+shared word is not a shared claim.
 
 Each entry gives the definition, the words to avoid, and where the concept is
 implemented. Terms are grouped by the part of the model they belong to.
@@ -10,22 +13,26 @@ implemented. Terms are grouped by the part of the model they belong to.
 
 ## A. The category and the unit
 
-### Effect-gated execution
+### Execution governance
 The discipline of deciding again at the moment an action becomes an effect, and
 proving what was decided. It comprises five commitments: a bounded plan, authority
 revalidated at dispatch, constraints on composition, ownership of the interval
 between dispatch and settlement, and independently verifiable evidence.
 
-*Avoid:* execution governance (in use as a category name by other authors — see
-`README.md`; using it as our own would read as a claim to define their frameworks),
-runtime governance (a generic category claim), AI governance (an organizational
-programme), agent security (inputs and prompts), guardrails (perimeter controls).
+Used here descriptively. It is a category name shared with other authors (see
+`README.md` for the prior work), not a term this document owns.
+
+*Avoid:* runtime governance (a generic category claim), AI governance (an
+organizational programme), agent security (inputs and prompts), guardrails
+(perimeter controls).
 
 *Anchor:* this specification.
 
 ### Effect-gated
-The adjective form, for describing a system rather than the discipline: "an
-effect-gated execution path", "an effect-gated run". Not a noun.
+The adjective for the mechanism, not the category: a gate placed at the effect — the
+moment an action becomes real — rather than at plan time or at approval. "An
+effect-gated step", "the effect-gated path". Not a noun, and not a synonym for the
+discipline.
 
 *Avoid:* gatekeeper, guardrail (both describe something the model is asked to obey).
 
@@ -298,10 +305,9 @@ Without it, a deployment can prove *not-settled* and never *settled*.
 
 | Avoid | Why | Use |
 |---|---|---|
-| execution governance | published as a category name by other authors in 2026; adopting it would read as claiming their definition | effect-gated execution |
-| runtime governance | claimed by other frameworks; generic | effect-gated execution |
-| AI governance | organizational programme, compliance | effect-gated execution |
-| agent security | prompts, inputs, tool poisoning | effect-gated execution (for the execution layer) |
+| runtime governance | claimed by other frameworks; generic | execution governance |
+| AI governance | organizational programme, compliance | execution governance |
+| agent security | prompts, inputs, tool poisoning | execution governance (for the execution layer) |
 | guardrail | perimeter metaphor, no decision semantics | gate |
 | human-in-the-loop | describes a UI pattern, not a control | approval, then commit-time authority |
 | policy enforcement point | one check at one boundary | gate, commit-time authority |

@@ -16,7 +16,7 @@ claim.
 
 Levels are cumulative. An implementation declares the highest level it satisfies.
 
-### Level 1 — Core effect-gated execution
+### Level 1 — Core execution governance
 Requirements: RS-001–RS-005, RS-010–RS-014, RS-050–RS-054, RS-060–RS-062, RS-070–RS-073.
 Capability: a consequential action is expressed as a plan, gates run at a single
 choke point, approvals bind to intent, decisions are recorded, refusals prevent
@@ -68,7 +68,7 @@ A Level 6 claim MUST name one cell:
 
 ```
 Implementation: <name and version>
-Specification:  effect-gated-execution 0.2
+Specification:  execution-governance 0.2
 Level:          <1-6>
 Deployment:     engine-only | engine+verifier | engine+control-plane
 Anchor holder:  <party or "none">

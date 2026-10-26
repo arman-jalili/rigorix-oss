@@ -8,7 +8,7 @@ Requirements that constrain behaviour are in `03-requirements.md`.
 ## 1. The three moments
 
 Every consequential action passes through three moments. Classical authorization
-collapses them into one; effect-gated execution keeps them separate and decides at
+collapses them into one; execution governance keeps them separate and decides at
 two of them.
 
 ```
