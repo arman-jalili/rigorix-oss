@@ -39,8 +39,8 @@ permitted.
 
 ## 2. Definition
 
-**Execution governance is the discipline of deciding again at the moment an
-action becomes an effect, and proving what was decided.**
+**Execution governance is the discipline of deciding again at the moment of
+consequence, and proving what was decided.**
 
 Five commitments follow.
 
@@ -48,10 +48,12 @@ Five commitments follow.
 2. Authorization attaches to an intent and is revalidated against the world at
    dispatch.
 3. Constraints apply to composition across steps, runs and sessions.
-4. Every decision produces evidence a third party can verify without trusting the
+4. The interval between dispatch and settlement is owned until provider evidence
+   resolves it.
+5. Every decision produces evidence a third party can verify without trusting the
    producer.
 
-A system that does one of these is a control. A system that does all four is a
+A system that does one of these is a control. A system that does all five is a
 governance layer.
 
 ---
@@ -69,9 +71,10 @@ judgment about one specific intent, bound so it cannot be replayed against anoth
 
 ---
 
-## 4. Four axes
+## 4. Five questions
 
-An action can be individually permitted and collectively wrong in four ways.
+An action can be individually permitted and collectively wrong in four ways before it
+runs — and in one more after.
 
 **Sequence.** May this happen, given what already happened? Ordered rules, evaluated
 before the plan is sealed, at the run prefix, and across prior runs using their signed
@@ -88,8 +91,14 @@ supplied by the domain, compared deterministically.
 and resolved after execution, so concurrent sessions cannot authorize into the same
 room.
 
-Each axis is a separate question with a separate enforcement point. An implementation
-can answer one and not the others, which is why conformance is levelled.
+**Commitment.** Did it actually happen? The interval after dispatch is a state, not a
+guess: an effect whose outcome is unknown stays `Ambiguous`, its dependents are fenced,
+its retry is refused, and only a resolver holding provider evidence may close it. Most
+systems answer the first four questions and then record "complete" for something they
+never learned.
+
+Each question has a separate enforcement point. An implementation can answer one and
+not the others, which is why conformance is levelled.
 
 ---
 
