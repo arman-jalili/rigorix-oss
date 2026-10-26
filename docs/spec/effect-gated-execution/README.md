@@ -16,12 +16,11 @@ This document does **not** define "execution governance". That phrase is in use 
 category name by other authors, and this specification is not their definition, not a
 profile of their frameworks, and not a claim to supersede them.
 
-Renamed at 0.2.0 for that reason. The discipline described here is **effect-gated
-execution**: the decision about an action is made again at the moment the action
-becomes an effect, every refusal is recorded, and the interval between dispatch and
-settlement is owned until provider evidence resolves it. The requirement identifiers
-changed with the name (`EG-NNN` → `EGE-NNN`) because they are cited, and an identifier
-that changes meaning under a stable spelling is worse than one that changes spelling.
+The discipline described here is **effect-gated execution**: the decision about an
+action is made again at the moment the action becomes an effect, every refusal is
+recorded, and the interval between dispatch and settlement is owned until provider
+evidence resolves it. Requirement identifiers are `RS-NNN` — Rigorix specification,
+unambiguous in a citation.
 
 Prior work in the same problem area, listed so a reader can compare rather than take
 our word for it. The descriptions are from titles and abstracts, not from full texts:
@@ -72,7 +71,7 @@ Three reading paths. Pick the one that matches why you are here.
 | `00-scope.md` | Purpose, audience, scope, non-goals, normative language, versioning | Normative framing |
 | `01-terminology.md` | The controlled vocabulary. Definitions, terms to avoid, anchors | **Normative** |
 | `02-conceptual-model.md` | Entities, lifecycle, three moments, gate sequence, state | **Normative** |
-| `03-requirements.md` | Numbered requirements (EGE-001…), each with rationale and trace | **Normative** |
+| `03-requirements.md` | Numbered requirements (RS-001…), each with rationale and trace | **Normative** |
 | `04-architecture.md` | Layers, components, deployment modes, boundaries | Informative |
 | `05-evidence-model.md` | Envelope, chain, anchor, receipts, verification levels | **Normative** |
 | `06-actors.md` | Roles, responsibilities, separation of duties | Informative |
@@ -102,7 +101,7 @@ obligation can be met.
 MUST, MUST NOT, SHOULD, SHOULD NOT, MAY are used as defined in RFC 2119 and
 RFC 8174, and only in capitals.
 
-Each requirement has an identifier (`EG-NNN`) so it can be cited, tested and
+Each requirement has an identifier (`RS-NNN`) so it can be cited, tested and
 traced. Identifiers are stable. Withdrawn requirements keep their number and are
 marked withdrawn.
 

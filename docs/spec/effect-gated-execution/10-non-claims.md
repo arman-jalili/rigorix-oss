@@ -45,7 +45,7 @@ talk or sales conversation can be checked against it.
     in-process ledger provides single-execution atomicity. Distributed mode requires
     the control plane and a contested store.
 11. **Posture reporting covers the seams the doctor knows.** A new seam that is not
-    added to `rigorix doctor` is invisible to the same discipline that closed EGE-052.
+    added to `rigorix doctor` is invisible to the same discipline that closed RS-052.
 12. **Commitment has two independent ceilings and both must be stated.** An
     in-process record proves the unsettled interval within one process only. Settled
     is provable only with a provider receipt (L3). Without one, the honest claim is

@@ -25,7 +25,7 @@ Identifiers are namespace-stable:
 - `rigorix-consequence-gating`
 - `rigorix-consequence-gating-protocol`
 - `rigorix-consequence-gating-terminology`
-- `rigorix-effect-gated-execution` (14 documents; requirement identifiers `EGE-NNN`)
+- `rigorix-effect-gated-execution` (14 documents; requirement identifiers `RS-NNN`)
 
 A review draft may be cited for review and disagreement; no conformance claim may
 cite it. See the document's own §Status.

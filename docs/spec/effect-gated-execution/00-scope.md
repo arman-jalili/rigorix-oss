@@ -90,7 +90,7 @@ the unsettled interval is owned rather than assumed.
 ## 7. Normative language and requirement identifiers
 
 - MUST / MUST NOT / SHOULD / SHOULD NOT / MAY per RFC 2119 and RFC 8174.
-- Requirements are numbered `EG-NNN` and grouped by area.
+- Requirements are numbered `RS-NNN` and grouped by area.
 - A requirement may be **conditional** on a declared capability or deployment mode.
   Conditions are stated in the requirement.
 - A requirement is **withdrawn** by marking it withdrawn; numbers are never reused.
