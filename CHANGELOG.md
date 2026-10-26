@@ -17,6 +17,10 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ## [Unreleased]
 
+### Changed
+
+- The specification is **renamed** to *Effect-Gated Execution* at 0.2.0 and every requirement identifier moved `EG-NNN` → `EGE-NNN`. "Execution governance" is in use as a published category name by other authors (Zenodo, 2026), so a document titled after it reads as claiming their definition — which it does not. The spec now opens with what it is not, lists the prior work with DOIs, and `10-non-claims.md` gains item 20 disclaiming any definition of another author's framework. No obligation changed (#1219)
+
 ### Fixed
 
 - The execution-governance spec's framing documents were brought in line with its requirements: six levels everywhere, a claim template that can express Level 6, a Level 6 evidence row, claim discipline bound to every level, the unsettled interval in scope, renumbered non-claims, the stale EG-052 gap row and T11 residual removed, the PyPI caveat stated, and the requirement count corrected to 55. The status line no longer forbids citation (#1218)

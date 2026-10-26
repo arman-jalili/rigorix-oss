@@ -2,12 +2,18 @@
 
 ## 1. Purpose
 
-This specification defines **execution governance** for AI-agent and automated
-systems that perform consequential actions.
+This specification defines **effect-gated execution** for AI-agent and automated
+systems that perform consequential actions — the discipline of deciding again at the
+moment an action becomes an effect, recording the decision, and owning the effect
+until it is settled.
 
 It exists because a class of control is missing from current practice: a
 deterministic decision made at the moment an action becomes real, with evidence
 that a third party can verify afterwards.
+
+**On the name.** "Execution governance" is in use as a category name by other authors
+(see `README.md`). This document no longer uses it as its own, and defines no
+framework but the one below. The rename is recorded in `12-versioning.md` §7.
 
 ## 2. The problem, stated once
 
@@ -28,7 +34,7 @@ A third does not involve permission at all. The effect is dispatched and the out
 is unknown — the response was lost, the process died, the deadline passed. A
 two-state world records that unknown as a lie with a timestamp.
 
-Execution governance addresses all three: the decision is made again at the moment
+Effect-gated execution addresses all three: the decision is made again at the moment
 of consequence, constraints apply to composition rather than to single requests, and
 the unsettled interval is owned rather than assumed.
 
@@ -79,6 +85,7 @@ the unsettled interval is owned rather than assumed.
 | Sandbox / isolation | how much damage is contained? | contains effects; does not decide whether they may occur |
 | Agent framework | how does the agent loop? | the loop is the caller, not the governor |
 | AI governance platform | is the programme adequate? | organizational assurance, not execution-time enforcement |
+| Execution governance (as published by other authors) | three overlapping judgments, or a discipline for deciding before an action becomes an effect | adjacent, not identical: this specification is a set of obligations on a system that **executes**, and it owns the interval after dispatch as well as the decision before it (levels 5–6) |
 
 ## 7. Normative language and requirement identifiers
 
@@ -97,7 +104,7 @@ and, where the two disagree, `09-conformance.md` wins.
 
 | Level | Name | What it adds |
 |---|---|---|
-| 1 | Core execution governance | plan artifact, gate, approval binding, refusal, decision record |
+| 1 | Core effect-gated execution | plan artifact, gate, approval binding, refusal, decision record |
 | 2 | Composition | sequence constraints and effect identity across steps and runs |
 | 3 | Commit-time authority | dispatch-time revalidation against operator authority |
 | 4 | Verifiable evidence | chain, signature, anchor, independent verification |

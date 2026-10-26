@@ -54,7 +54,7 @@ guarantees become unreviewable.
 | Engine + control plane | engine plus enterprise services | Levels 1–5, subject to the store and configuration |
 
 Mode determines the claim. The same binary in two modes does not carry the same
-guarantees, and a claim that ignores the mode is invalid (EG-081).
+guarantees, and a claim that ignores the mode is invalid (EGE-081).
 
 ## 4. Trust boundaries
 
@@ -62,14 +62,14 @@ Three boundaries must be drawn explicitly.
 
 **Operator boundary.** Rules, preconditions, authority sources and approval policy
 are operator-owned. They must not be writable through the agent's execution
-interface (EG-025, EG-072).
+interface (EGE-025, EGE-072).
 
 **Process boundary.** A dispatched command runs as a subprocess. It must not inherit
-control-plane secrets (EG-054). It should run under a distinct OS identity when the
+control-plane secrets (EGE-054). It should run under a distinct OS identity when the
 deployment requires containment; the engine is not a sandbox.
 
 **Evidence boundary.** The producer signs; a third party verifies. If the verifier
-needs the producer online, the boundary has collapsed (EG-065).
+needs the producer online, the boundary has collapsed (EGE-065).
 
 ## 5. Data flow of a refusal
 
@@ -90,7 +90,7 @@ Nothing in that flow requires the agent to cooperate. That is the point.
 
 Two components must never both decide the same step. The gate decides; the executor
 obeys. Where an implementation has a fast path (a single-node API, a batch mode, a
-resume path), it must call the gate, not reimplement it (EG-050).
+resume path), it must call the gate, not reimplement it (EGE-050).
 
 ## 7. What the architecture does not provide
 

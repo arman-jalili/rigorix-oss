@@ -45,7 +45,7 @@ talk or sales conversation can be checked against it.
     in-process ledger provides single-execution atomicity. Distributed mode requires
     the control plane and a contested store.
 11. **Posture reporting covers the seams the doctor knows.** A new seam that is not
-    added to `rigorix doctor` is invisible to the same discipline that closed EG-052.
+    added to `rigorix doctor` is invisible to the same discipline that closed EGE-052.
 12. **Commitment has two independent ceilings and both must be stated.** An
     in-process record proves the unsettled interval within one process only. Settled
     is provable only with a provider receipt (L3). Without one, the honest claim is
@@ -66,6 +66,10 @@ talk or sales conversation can be checked against it.
 18. No customer references, production telemetry or case studies.
 19. No claim of peer-reviewed validation of this specification or the
     implementation.
+20. No claim to define, supersede, or speak for any other author's framework. The
+    phrase "execution governance" names prior work in this area; this document is not
+    its definition, and a reader comparing the two should use the published sources
+    listed in `README.md`, not this document's summary of them.
 
 ## 5. How to use this document
 

@@ -1,6 +1,6 @@
-# Rigorix Specification — Execution Governance
+# Rigorix Specification — Effect-Gated Execution
 
-**Version:** 0.1.1 (public review draft)
+**Version:** 0.2.0 (public review draft)
 **Status:** Published for review and quotation. Cite it, quote it, and disagree with it
 in public — that is what a review draft is for. Two limits remain: no conformance
 claim may be made against a draft version (see `09-conformance.md` §7), and a
@@ -10,9 +10,35 @@ published version is immutable, so corrections arrive as a new patch version
 
 ---
 
+## What this is *not*
+
+This document does **not** define "execution governance". That phrase is in use as a
+category name by other authors, and this specification is not their definition, not a
+profile of their frameworks, and not a claim to supersede them.
+
+Renamed at 0.2.0 for that reason. The discipline described here is **effect-gated
+execution**: the decision about an action is made again at the moment the action
+becomes an effect, every refusal is recorded, and the interval between dispatch and
+settlement is owned until provider evidence resolves it. The requirement identifiers
+changed with the name (`EG-NNN` → `EGE-NNN`) because they are cited, and an identifier
+that changes meaning under a stable spelling is worse than one that changes spelling.
+
+Prior work in the same problem area, listed so a reader can compare rather than take
+our word for it. The descriptions are from titles and abstracts, not from full texts:
+
+| Work | Date | Relation |
+|---|---|---|
+| Ho Wa Ku, *Execution Governance* series (Zenodo, incl. "Execution Governance: The Layer Before Action Becomes Effect", `10.5281/zenodo.23542203` and `10.5281/zenodo.23638760`) | 2026 | Defines an EG framework with EvidenceToEffect (E2E) and Proof–Claim Applicability (PCA); treats current authority at effect/commitment time as one of three judgments. Overlaps on the moment; differs in that it is an analytical framework for evaluating claims, and this specification is a set of obligations on a system that executes. |
+| O. Bankuti, *Fail-Closed Execution Governance* (Zenodo `10.5281/zenodo.21969326`) | 2026-08 | Typed authority decisions, acyclic evidence hashes, single-use commits. Close to approval binding and chained evidence here. |
+| S. Das, *Computation Is Not Authority* (Zenodo `10.5281/zenodo.21861642`) | 2026-08 | Architectural argument for constraining what automated systems may execute. |
+| *A Closed-Loop Consequence-Governance Runtime for AI Agents* (Zenodo, 2026-08) | 2026-08 | Structural gating and counterfactual evaluation at runtime; shares "consequence gating" vocabulary. |
+
+If one of these defines a term we use, that definition wins for that term and this
+document should be corrected. The reverse is not true: nothing here obliges them.
+
 ## What this is
 
-This is the specification for **execution governance**: the layer that decides
+This is the specification for **effect-gated execution**: the layer that decides
 whether a consequential AI-agent action may happen, at the moment it happens, and
 produces evidence a third party can verify.
 
@@ -46,7 +72,7 @@ Three reading paths. Pick the one that matches why you are here.
 | `00-scope.md` | Purpose, audience, scope, non-goals, normative language, versioning | Normative framing |
 | `01-terminology.md` | The controlled vocabulary. Definitions, terms to avoid, anchors | **Normative** |
 | `02-conceptual-model.md` | Entities, lifecycle, three moments, gate sequence, state | **Normative** |
-| `03-requirements.md` | Numbered requirements (EG-001…), each with rationale and trace | **Normative** |
+| `03-requirements.md` | Numbered requirements (EGE-001…), each with rationale and trace | **Normative** |
 | `04-architecture.md` | Layers, components, deployment modes, boundaries | Informative |
 | `05-evidence-model.md` | Envelope, chain, anchor, receipts, verification levels | **Normative** |
 | `06-actors.md` | Roles, responsibilities, separation of duties | Informative |

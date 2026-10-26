@@ -16,40 +16,40 @@ claim.
 
 Levels are cumulative. An implementation declares the highest level it satisfies.
 
-### Level 1 — Core execution governance
-Requirements: EG-001–EG-005, EG-010–EG-014, EG-050–EG-054, EG-060–EG-062, EG-070–EG-073.
+### Level 1 — Core effect-gated execution
+Requirements: EGE-001–EGE-005, EGE-010–EGE-014, EGE-050–EGE-054, EGE-060–EGE-062, EGE-070–EGE-073.
 Capability: a consequential action is expressed as a plan, gates run at a single
 choke point, approvals bind to intent, decisions are recorded, refusals prevent
 dispatch.
 
 ### Level 2 — Composition
-Adds: EG-030–EG-035.
+Adds: EGE-030–EGE-035.
 Capability: sequence constraints and effect identity across steps and runs, including
 cross-run evaluation over signed history.
 
 ### Level 3 — Commit-time authority
-Adds: EG-020–EG-026.
+Adds: EGE-020–EGE-026.
 Capability: operator checks re-evaluated at dispatch against live authority, with
 fail-closed semantics and signed findings.
 
 ### Level 4 — Verifiable evidence
-Adds: EG-063–EG-066.
+Adds: EGE-063–EGE-066.
 Capability: chain, signature and external anchor, with offline verification that
 reports its achieved verification level (V1–V3).
 
 ### Level 5 — Distributed capacity
-Adds: EG-040–EG-043.
+Adds: EGE-040–EGE-043.
 Capability: aggregate exposure enforced with reserve-then-authorize against a
 contested store, across sessions and replicas.
 
 ### Level 6 — Commitment
-Adds: EG-090–EG-098.
+Adds: EGE-090–EGE-098.
 Capability: the unsettled interval is owned. Write-ahead record, non-terminal
 `Ambiguous`, dependents fenced, retries refused, resolver authority enforced.
 Level 6 requires a declared durability axis (L1 or L2) and a declared settlement
 axis (none or L3); the two are independent.
 
-**Claim discipline (EG-080–EG-082) applies at every level** and is therefore not
+**Claim discipline (EGE-080–EGE-082) applies at every level** and is therefore not
 listed under any one of them: a deployment at any level that states a guarantee must
 state the level, the mode and the requirements it does not meet.
 
@@ -68,7 +68,7 @@ A Level 6 claim MUST name one cell:
 
 ```
 Implementation: <name and version>
-Specification:  execution-governance 0.1
+Specification:  effect-gated-execution 0.2
 Level:          <1-6>
 Deployment:     engine-only | engine+verifier | engine+control-plane
 Anchor holder:  <party or "none">
@@ -115,11 +115,11 @@ Step 6 is the one most implementations skip and the one that matters most.
 ## 6. Partial conformance
 
 Partial conformance is allowed and must be expressed as exceptions. Example: an
-implementation may satisfy Level 4 but not EG-063 if it has no external anchor; it
+implementation may satisfy Level 4 but not EGE-063 if it has no external anchor; it
 then declares Level 3 with a note that chain and signature exist but no anchor.
 
 What is not allowed is declaring Level 4 while the anchor is self-held and calling it
-external provenance (EG-064, EG-081).
+external provenance (EGE-064, EGE-081).
 
 ## 7. Conformance of this specification itself
 

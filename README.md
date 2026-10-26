@@ -26,6 +26,10 @@ chat with, and it is not a faster autocomplete: `Claude Code`, `Cursor`,
 `Copilot`, `Aider` and `Codex` keep their own loop and plug into Rigorix over MCP
 as **the layer they run inside**.
 
+**Start here:** [What this is and why it exists](docs/manifesto.md) ·
+[The specification](docs/spec/effect-gated-execution/README.md) ·
+[See it run](#see-it-run).
+
 ---
 
 ## Why the controls you already have do not cover this
@@ -423,7 +427,7 @@ inherit standing as **protocol validation (L2)** or **independent evidence (L3)*
 - [Validation Protocol v1](docs/spec/validation-protocol-v1.md) — falsifiable
   claims with stated failure conditions
 - [Terminology](docs/spec/terminology.md) — the normative vocabulary
-- [Execution Governance specification v0.1 (draft)](docs/spec/execution-governance/README.md)
+- [Effect-Gated Execution specification v0.2 (review draft)](docs/spec/effect-gated-execution/README.md)
   — the 13-document working draft: terminology, model, requirements, evidence,
   threat model, conformance and non-claims
 

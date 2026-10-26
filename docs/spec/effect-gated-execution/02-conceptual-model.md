@@ -8,7 +8,7 @@ Requirements that constrain behaviour are in `03-requirements.md`.
 ## 1. The three moments
 
 Every consequential action passes through three moments. Classical authorization
-collapses them into one; execution governance keeps them separate and decides at
+collapses them into one; effect-gated execution keeps them separate and decides at
 two of them.
 
 ```
@@ -175,7 +175,7 @@ Intent ──begin──► Dispatched ──settle(committed)─────►
 sent. `Ambiguous` is non-terminal by design. Leaving it requires a resolver and
 provider evidence; a lapsed lease is absence of evidence, not evidence of absence.
 
-Fencing rules (normative in EG-090…EG-098): dependents of an ambiguous effect are
+Fencing rules (normative in EGE-090…EGE-098): dependents of an ambiguous effect are
 not released (F1); a retry is refused (F2); only provider evidence settles (F3); the
 dispatching process and the agent are never the resolver (F4).
 

@@ -10,16 +10,24 @@ implemented. Terms are grouped by the part of the model they belong to.
 
 ## A. The category and the unit
 
-### Execution governance
-The discipline of deciding again at the moment of consequence, and proving what
-was decided. It comprises four commitments: a bounded plan, authority revalidated
-at dispatch, constraints on composition, and independently verifiable evidence.
+### Effect-gated execution
+The discipline of deciding again at the moment an action becomes an effect, and
+proving what was decided. It comprises five commitments: a bounded plan, authority
+revalidated at dispatch, constraints on composition, ownership of the interval
+between dispatch and settlement, and independently verifiable evidence.
 
-*Avoid:* runtime governance (a generic category claim), AI governance (an
-organizational programme), agent security (inputs and prompts), guardrails
-(perimeter controls).
+*Avoid:* execution governance (in use as a category name by other authors — see
+`README.md`; using it as our own would read as a claim to define their frameworks),
+runtime governance (a generic category claim), AI governance (an organizational
+programme), agent security (inputs and prompts), guardrails (perimeter controls).
 
 *Anchor:* this specification.
+
+### Effect-gated
+The adjective form, for describing a system rather than the discipline: "an
+effect-gated execution path", "an effect-gated run". Not a noun.
+
+*Avoid:* gatekeeper, guardrail (both describe something the model is asked to obey).
 
 ### Consequential action
 An action whose effects are real and not trivially reversible: money moves, access
@@ -290,9 +298,10 @@ Without it, a deployment can prove *not-settled* and never *settled*.
 
 | Avoid | Why | Use |
 |---|---|---|
-| runtime governance | claimed by other frameworks; generic | execution governance |
-| AI governance | organizational programme, compliance | execution governance |
-| agent security | prompts, inputs, tool poisoning | execution governance (for the execution layer) |
+| execution governance | published as a category name by other authors in 2026; adopting it would read as claiming their definition | effect-gated execution |
+| runtime governance | claimed by other frameworks; generic | effect-gated execution |
+| AI governance | organizational programme, compliance | effect-gated execution |
+| agent security | prompts, inputs, tool poisoning | effect-gated execution (for the execution layer) |
 | guardrail | perimeter metaphor, no decision semantics | gate |
 | human-in-the-loop | describes a UI pattern, not a control | approval, then commit-time authority |
 | policy enforcement point | one check at one boundary | gate, commit-time authority |

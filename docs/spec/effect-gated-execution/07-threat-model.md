@@ -24,79 +24,79 @@ honest; that is a separate trust anchor.
 
 ### T1 — Stale authority
 Approve at T₀, change the world at ΔN, dispatch at Tₙ.
-**Control:** precondition at dispatch, re-read per step, fail-closed (EG-020–EG-025).
+**Control:** precondition at dispatch, re-read per step, fail-closed (EGE-020–EGE-025).
 **Residual:** the window between check and effect remains. The downstream system must
 enforce at its own commit point.
 
 ### T2 — Composition
 Individually permitted steps whose order or combination is prohibited.
 **Control:** sequence constraints at plan, prefix and cross-run; effect identity
-(EG-030–EG-035).
+(EGE-030–EGE-035).
 **Residual:** rules express only what the operator thought of. Novel compositions pass.
 
 ### T3 — Cross-session splitting
 Divide an attack across two prompts or sessions so no single run matches.
-**Control:** cross-run evaluation over signed history (EG-032), fail-closed when
+**Control:** cross-run evaluation over signed history (EGE-032), fail-closed when
 history is unavailable.
 **Residual:** history must be retained and available; retention policy is a
 deployment decision.
 
 ### T4 — Approval substitution
 Get a human to approve a benign intent, dispatch a different one.
-**Control:** intent digest, single-use approval, re-derivation at dispatch (EG-011,
-EG-012).
+**Control:** intent digest, single-use approval, re-derivation at dispatch (EGE-011,
+EGE-012).
 **Residual:** approval fatigue; a human who does not read the payload cannot be
 protected by binding.
 
 ### T5 — Scope expansion
 Start with a narrow permission and widen it through subsequent actions.
-**Control:** declared scope in the intent, permission gates per step (EG-073).
+**Control:** declared scope in the intent, permission gates per step (EGE-073).
 **Residual:** a chain of individually in-scope actions that widens effect; this is T2.
 
 ### T6 — Aggregate exposure
 Many sessions each within a per-session cap, collectively over the budget.
-**Control:** reserve-then-authorize against a shared ledger (EG-040–EG-043).
+**Control:** reserve-then-authorize against a shared ledger (EGE-040–EGE-043).
 **Residual:** only when the ledger is a contested store. In-process ledger gives
 single-execution atomicity and no more.
 
 ### T7 — Control-plane tampering
 The agent edits rules, preconditions, approvals or evidence.
 **Control:** write denial for the governed party, checks outside the agent-writable
-workspace, separate control-plane credentials (EG-025, EG-072).
+workspace, separate control-plane credentials (EGE-025, EGE-072).
 **Residual:** a compromised host with the operator's own credentials is out of scope.
 
 ### T8 — Secret inheritance
 A dispatched command reads the engine's signing key and forges evidence.
-**Control:** cleared child environment (EG-054), secrets outside the execution
+**Control:** cleared child environment (EGE-054), secrets outside the execution
 workspace.
 **Residual:** same-UID filesystem access; process isolation is a deployment concern.
 
 ### T9 — Evidence forgery
 Construct a self-consistent chain that never happened.
 **Control:** V3 external anchor; signature by a key the producer does not hold
-(EG-063).
+(EGE-063).
 **Residual:** if the anchor key is held by the producer, only P2 is achieved. This is
 why the anchor holder must be a separate party.
 
 ### T10 — Bypass by alternate route
 Use a lower-level API that skips the gate.
-**Control:** one gate module for all routes; no direct-execute interface (EG-050,
-EG-070, EG-071).
+**Control:** one gate module for all routes; no direct-execute interface (EGE-050,
+EGE-070, EGE-071).
 **Residual:** side channels outside the engine (a shell the agent runs itself, a
 direct database credential). The engine governs what is routed through it.
 
 ### T11 — Silent downgrade
 A control is requested but not active, and nothing says so.
-**Control:** fail closed on missing configuration (EG-014, EG-051); machine-readable
-control posture (EG-052).
+**Control:** fail closed on missing configuration (EGE-014, EGE-051); machine-readable
+control posture (EGE-052).
 **Residual:** posture reporting covers only the seams `rigorix doctor` knows. A new
 control seam that is not added to that report is invisible, which is the same failure
-with a shorter history (EG-052).
+with a shorter history (EGE-052).
 
 ### T12 — Refusal laundering
 The agent retries a refused action through a different tool or path until one passes.
 **Control:** sequence constraints across steps and runs; capacity and effect keys
-(EG-030–EG-035).
+(EGE-030–EGE-035).
 **Residual:** a genuinely different tool with the same effect may not match the rule
 unless the operator expressed it by effect rather than by tool.
 

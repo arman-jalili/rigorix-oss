@@ -56,7 +56,7 @@ A record can satisfy P1 and not P2 (unsigned). It can satisfy P1 and P2 and not 
 | V2 | Integrity-checked | envelopes + key | the set was produced by a holder of the key and unmodified since |
 | V3 | Externally proven | envelopes + receipt/slice/checkpoint + public key | this history state was attested by the anchor key holder at that time |
 
-**Conformance requirement EG-064:** a verifier MUST report which level it achieved,
+**Conformance requirement EGE-064:** a verifier MUST report which level it achieved,
 and MUST NOT describe V1 or V2 as proving external provenance.
 
 ## 5. What each level does not prove
@@ -73,7 +73,7 @@ and MUST NOT describe V1 or V2 as proving external provenance.
 An envelope that lacks a signature, an anchor reference, or a required field MUST be
 marked degraded. Degradation is a property of the record, not a verdict on the run.
 A deployment that produces degraded evidence is not necessarily non-conforming; a
-deployment that presents degraded evidence as intact is (EG-061).
+deployment that presents degraded evidence as intact is (EGE-061).
 
 ## 7. Offline verification procedure
 

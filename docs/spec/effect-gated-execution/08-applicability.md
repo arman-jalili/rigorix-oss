@@ -126,5 +126,5 @@ The checks, the authority sources, the retention rules, the approver population 
 the regulatory mapping. A product that ships "the checks" for one domain becomes a
 point solution. A layer ships the mechanism and lets the operator express the domain.
 
-That is the difference between a product for payments and an execution governance
+That is the difference between a product for payments and an effect-gated execution
 layer that is used for payments.
