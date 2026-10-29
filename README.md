@@ -1,5 +1,9 @@
 # Rigorix
 
+**Control consequential AI-agent actions — from financial transactions and database migrations to dependency upgrades and production changes — before they execute, and retain evidence of every decision.**
+
+[rigorix.eu](https://rigorix.eu)
+
 [![rigorix-verifier on crates.io](https://img.shields.io/crates/v/rigorix-verifier?label=rigorix-verifier%20%C2%B7%20crates.io)](https://crates.io/crates/rigorix-verifier)
 [![rigorix-verifier on npm](https://img.shields.io/npm/v/rigorix-verifier?label=rigorix-verifier%20%C2%B7%20npm)](https://www.npmjs.com/package/rigorix-verifier)
 [![rigorix-verifier on PyPI](https://img.shields.io/pypi/v/rigorix-verifier?label=rigorix-verifier%20%C2%B7%20PyPI)](https://pypi.org/project/rigorix-verifier/)
