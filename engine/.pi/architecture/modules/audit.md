@@ -110,7 +110,7 @@ See [approval module](./modules/approval.md) and [identity module](./modules/ide
 |-------|------|--------|-------|
 | `approval_events` | `Vec<ApprovalRecordRef>` | ApprovalService | One ref per human approval: step_name, node_id, intent_hash, approver_id, authority, decided_at, decision_context_ref |
 | `scope_violations` | `Vec<ScopeViolationRef>` | ApprovalService (git-diff oracle) | Out-of-scope effects; non-blocking evidence |
-| `scope_check` | `Option<ScopeCheckStatus>` | ApprovalService (git-diff oracle) | `checked` / `not_declared` / `unavailable`; `None` only on legacy envelopes (#1189) |
+| `scope_check` | `Option<ScopeCheckStatus>` | ApprovalService (git-diff oracle) | `checked` / `not_declared` / `unavailable`; `None` only on legacy envelopes (#1189). Declared after `scope_violations`, before `sequence_policy_findings`; independent verifiers must declare it too or canonical bytes diverge. `rigorix-verifier` 0.8.1 added it (#1222) |
 | `decision_context_ref` | `Option<String>` | ApprovalService (R4) | Points to full decision context; summary embedded in the ref |
 | `identity` | `Option<IdentityRef>` | Identity module | Subject, issuer, source, authority, expires_at — redacted, never the raw token |
 
