@@ -61,7 +61,12 @@ stays honest.
 | RS-098 settlement requires receipt (L3) | provider receipt reader | receipt tests |
 | Effect-scope evidence wired | #1106; plan declares scope (#1175) | R5 oracle tests |
 
-## Known gaps
+## Known gaps, and one caveat
+
+Two of the rows below are gaps: work that is not enforced. The first is not — it is a
+requirement that is met and stays met only if each new control seam is added to the doctor.
+Listing it here rather than in the table above is deliberate: "implemented" without the
+fragility is a claim that decays silently.
 
 | Requirement | Status | Note |
 |---|---|---|
