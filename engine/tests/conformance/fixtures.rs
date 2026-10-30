@@ -1,5 +1,8 @@
 //! Real signed envelope fixture generation (F-20260907-01 DoD).
 //!
+//! @canonical .pi/architecture/modules/audit.md#envelope
+//! Canonical Reference: .pi/architecture/modules/audit.md#envelope
+//!
 //! Produces 4–5 REAL engine-signed envelope JSON files (fixed test HMAC key
 //! `fixture-hmac-key-2026`, documented in rigorix-sdk
 //! `schemas/fixtures/envelope/README.md`) from actual engine runs — envelopes

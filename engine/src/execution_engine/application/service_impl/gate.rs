@@ -261,8 +261,25 @@ impl ParallelExecutionServiceImpl {
                     .unwrap_or_default();
                 node_results.insert(
                     node_id,
-                    TaskResult::failure(node_id, &node_name, message, failure_type, 0, 0),
+                    TaskResult::failure(node_id, &node_name, message.clone(), failure_type, 0, 0),
                 );
+                // #1230: the run ends here, before NodeStarted. Without a
+                // terminal failure event the signed record looked Completed.
+                if let Err(e) = self
+                    .event_bus
+                    .publish(crate::event_system::application::dto::PublishEventInput {
+                        event: ExecutionEvent::NodeFailed {
+                            execution_id: dag_id,
+                            node_id: node_id.to_string(),
+                            error: message,
+                            attempt: 0,
+                            timestamp: chrono::Utc::now(),
+                        },
+                    })
+                    .await
+                {
+                    tracing::warn!(error = %e, "event publish failed — evidence may be incomplete");
+                }
                 *failed_count += 1;
                 match record {
                     DenialRecord::Precondition {

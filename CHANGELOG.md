@@ -19,6 +19,8 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Fixed
 
+- A run refused at dispatch writes a terminal `node_failed` event, and audit status derives from failure evidence rather than a marker allowlist — so the signed record and summary call a refusal `Failed`, not `Completed` (#1230)
+
 - An envelope carrying `scope_check` verifies with `rigorix-verifier` 0.8.1, and a chain containing one verifies end to end; 0.8.0 dropped the unknown field during canonicalization and broke both (#1222) ([#1226](https://github.com/arman-jalili/rigorix-oss/pull/1226))
 - `rigorix_audit_summary` returns structured JSON: an empty trail is zeroes and a failure is an error, never `null` (#1224)
 - A run's drained event stream is filtered to its own execution, so an approved run no longer leaks its precondition findings into the next run's **written envelope**; the regression now asserts the file's `precondition_findings[].step`, not the derived read surface (#1223)

@@ -309,22 +309,30 @@ fn engine_envelope_to_mcp(envelope: &EngineAuditEnvelope) -> AuditEnvelope {
 }
 
 fn engine_status(envelope: &EngineAuditEnvelope) -> ExecutionStatus {
+    use rigorix_engine::audit::domain::EventStatus;
+
     let has = |name: &str| envelope.events.iter().any(|e| e.event_type == name);
     if has("execution_failed") {
-        ExecutionStatus::Failed
-    } else if has("execution_cancelled") {
-        ExecutionStatus::Cancelled
-    } else if has("execution_completed") {
-        ExecutionStatus::Completed
-    } else if envelope
+        return ExecutionStatus::Failed;
+    }
+    if has("execution_cancelled") {
+        return ExecutionStatus::Cancelled;
+    }
+    if has("execution_completed") {
+        return ExecutionStatus::Completed;
+    }
+    // Any failure event is a failed run. This does not depend on remembering a
+    // particular marker name — the omission that made a refusal read Completed
+    // (#1230). A refusal now writes node_failed; this also catches the next path
+    // that forgets a marker but carries failure evidence.
+    if envelope
         .events
         .iter()
-        .any(|e| e.event_type == "node_failed")
+        .any(|e| e.status == EventStatus::Failure)
     {
-        ExecutionStatus::Failed
-    } else {
-        ExecutionStatus::Completed
+        return ExecutionStatus::Failed;
     }
+    ExecutionStatus::Completed
 }
 
 fn engine_step(event: &rigorix_engine::audit::domain::ExecutionEventRef) -> Option<ExecutionStep> {

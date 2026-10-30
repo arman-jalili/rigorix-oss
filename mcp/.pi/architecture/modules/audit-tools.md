@@ -267,6 +267,7 @@ Service that queries audit records from rigorix-engine and formats them for MCP.
 - Returns NotFound error for unknown execution IDs (not a panic)
 - AuditEnvelope HMAC integrity is **verified on read** by the store: when an HMAC key is configured, `read_audit`, `list_audits`, and `audit_summary` recompute each record's HMAC and refuse a mismatch (ADR-016 verify-on-read); the gateway never serves tampered evidence
 - `rigorix_audit_summary` returns **structured JSON** (`format_summary_json`), not the markdown rendering. An empty trail is a valid summary of zeroes; a read/format failure is an error. It never degrades to `null`, because "no audits" and "the tool is broken" must be distinguishable (#1224).
+- **A refusal is a failure in the record.** The dispatch gate writes a terminal `node_failed` event before the run ends, and the read model derives status from terminal/failure events rather than a marker allowlist. A run refused at dispatch therefore reads `Failed` from disk and counts as a failure in the summary (#1230).
 - **The signed file is the read source of truth.** `rigorix_read_audit` and `rigorix_audit_summary` read `.rigorix/audit/<id>.json` through `AuditEnvelopeRepository` when the host provides it, then fall back to the session index. A fresh process therefore reads the record it did not write, and a session index cannot substitute an empty projection for the artifact (#1227). The persisted engine envelope is projected into the MCP read model (status, steps, events, findings) by one conversion.
 
 **Key Methods:**
