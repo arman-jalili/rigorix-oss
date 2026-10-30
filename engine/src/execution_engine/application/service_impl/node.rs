@@ -57,6 +57,23 @@ impl ParallelExecutionServiceImpl {
                     message,
                     ..
                 } => {
+                    // #1230: a refusal ends the node before NodeStarted; the
+                    // terminal failure must still be in the signed event stream.
+                    if let Err(e) = self
+                        .event_bus
+                        .publish(crate::event_system::application::dto::PublishEventInput {
+                            event: ExecutionEvent::NodeFailed {
+                                execution_id: input.dag_id,
+                                node_id: node_id.to_string(),
+                                error: message.clone(),
+                                attempt: 0,
+                                timestamp: chrono::Utc::now(),
+                            },
+                        })
+                        .await
+                    {
+                        tracing::warn!(error = %e, "event publish failed — evidence may be incomplete");
+                    }
                     return Ok(ExecuteNodeOutput {
                         result: TaskResult::failure(
                             node_id,
