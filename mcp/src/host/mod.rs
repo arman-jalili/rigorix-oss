@@ -239,15 +239,18 @@ impl AppState {
             auth_handler,
 
             // Audit handlers
-            read_audit_handler: Box::new(ReadAuditHandlerImpl::new(
-                audit_query.clone(),
-                formatter.clone(),
-            )),
+            read_audit_handler: Box::new(
+                ReadAuditHandlerImpl::new(audit_query.clone(), formatter.clone())
+                    .with_repository(audit_history.clone()),
+            ),
             list_audits_handler: Box::new(ListAuditsHandlerImpl::new(
                 audit_query.clone(),
                 formatter.clone(),
             )),
-            audit_summary_handler: Box::new(AuditSummaryHandlerImpl::new(audit_query, formatter)),
+            audit_summary_handler: Box::new(
+                AuditSummaryHandlerImpl::new(audit_query, formatter)
+                    .with_repository(audit_history.clone()),
+            ),
             audit_authority_facts_handler: Box::new(AuditAuthorityFactsHandlerImpl::new(
                 audit_history,
             )),

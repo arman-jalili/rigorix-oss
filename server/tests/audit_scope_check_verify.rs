@@ -1,7 +1,7 @@
 //! #1222: an envelope carrying `scope_check` must verify with the published
-//! verifier, and a chain containing it must verify end to end.
-//!
 //! @canonical .pi/architecture/modules/audit.md#envelope
+//! Canonical Reference: .pi/architecture/modules/audit.md#envelope
+//! verifier, and a chain containing it must verify end to end.
 //!
 //! The 0.8.0 verifier struct lacked the field, so serde dropped it while
 //! re-serializing and produced different canonical bytes — signature mismatch

@@ -492,6 +492,10 @@ impl OrchestratorService for OrchestratorServiceImpl {
             .map(|o| {
                 o.events
                     .into_iter()
+                    // The bus is shared with earlier runs in the same process;
+                    // an approval leaves its events undrained. A run's record
+                    // must carry only its own events (#1223).
+                    .filter(|pe| pe.event.execution_id() == &execution_id)
                     .map(|pe| {
                         let ts = *pe.event.timestamp();
                         ExecutionEventInfo {
@@ -1027,6 +1031,10 @@ impl OrchestratorService for OrchestratorServiceImpl {
             .map(|o| {
                 o.events
                     .into_iter()
+                    // The bus is shared with earlier runs in the same process;
+                    // an approval leaves its events undrained. A run's record
+                    // must carry only its own events (#1223).
+                    .filter(|pe| pe.event.execution_id() == &execution_id)
                     .map(|pe| {
                         let ts = *pe.event.timestamp();
                         ExecutionEventInfo {

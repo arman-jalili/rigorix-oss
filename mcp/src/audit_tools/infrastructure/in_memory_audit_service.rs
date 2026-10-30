@@ -311,12 +311,26 @@ impl AuditQueryService for InMemoryAuditQueryService {
             self.verify_envelope(envelope)?;
         }
 
-        let total_executions = filtered.len() as u64;
-        let success_count = filtered
+        Ok(Self::summarize(&filtered, since, until))
+    }
+}
+
+impl InMemoryAuditQueryService {
+    /// Aggregate a set of envelopes into an `AuditSummary`.
+    ///
+    /// Shared by the session index and the disk-backed read path so both
+    /// surfaces count the same way (#1227).
+    pub fn summarize(
+        envelopes: &[&AuditEnvelope],
+        since: DateTime<Utc>,
+        until: DateTime<Utc>,
+    ) -> AuditSummary {
+        let total_executions = envelopes.len() as u64;
+        let success_count = envelopes
             .iter()
             .filter(|a| matches!(a.status(), ExecutionStatus::Completed))
             .count() as u64;
-        let failure_count = filtered
+        let failure_count = envelopes
             .iter()
             .filter(|a| matches!(a.status(), ExecutionStatus::Failed))
             .count() as u64;
@@ -325,15 +339,14 @@ impl AuditQueryService for InMemoryAuditQueryService {
         } else {
             0.0
         };
-        let total_duration_ms: u64 = filtered.iter().map(|a| a.duration_ms()).sum();
+        let total_duration_ms: u64 = envelopes.iter().map(|a| a.duration_ms()).sum();
         let total_tokens: Option<u64> = {
-            let sum: u64 = filtered.iter().filter_map(|a| a.tokens_used()).sum();
+            let sum: u64 = envelopes.iter().filter_map(|a| a.tokens_used()).sum();
             if sum > 0 { Some(sum) } else { None }
         };
 
-        // Compute top failures - group by template_name + status
         let mut failure_map: HashMap<String, u64> = HashMap::new();
-        for a in &filtered {
+        for a in envelopes {
             if matches!(a.status(), ExecutionStatus::Failed) {
                 let key = a.template_name().unwrap_or("unknown").to_string();
                 *failure_map.entry(key.clone()).or_insert(0) += 1;
@@ -346,9 +359,8 @@ impl AuditQueryService for InMemoryAuditQueryService {
         top_failures.sort_by_key(|b| std::cmp::Reverse(b.count()));
         top_failures.truncate(5);
 
-        // Compute top templates
         let mut template_map: HashMap<String, (u64, u64)> = HashMap::new();
-        for a in &filtered {
+        for a in envelopes {
             let tn = a.template_name().unwrap_or("unknown").to_string();
             let entry = template_map.entry(tn).or_insert((0, 0));
             entry.0 += 1;
@@ -363,7 +375,7 @@ impl AuditQueryService for InMemoryAuditQueryService {
         top_templates.sort_by_key(|b| std::cmp::Reverse(b.count()));
         top_templates.truncate(5);
 
-        Ok(AuditSummary::new(
+        AuditSummary::new(
             since,
             until,
             total_executions,
@@ -374,7 +386,7 @@ impl AuditQueryService for InMemoryAuditQueryService {
             total_tokens,
             top_failures,
             top_templates,
-        ))
+        )
     }
 }
 
