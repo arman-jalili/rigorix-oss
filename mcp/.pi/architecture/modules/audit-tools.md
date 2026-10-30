@@ -266,6 +266,7 @@ Service that queries audit records from rigorix-engine and formats them for MCP.
 - Always queries rigorix-engine directly (no local cache)
 - Returns NotFound error for unknown execution IDs (not a panic)
 - AuditEnvelope HMAC integrity is **verified on read** by the store: when an HMAC key is configured, `read_audit`, `list_audits`, and `audit_summary` recompute each record's HMAC and refuse a mismatch (ADR-016 verify-on-read); the gateway never serves tampered evidence
+- `rigorix_audit_summary` returns **structured JSON** (`format_summary_json`), not the markdown rendering. An empty trail is a valid summary of zeroes; a read/format failure is an error. It never degrades to `null`, because "no audits" and "the tool is broken" must be distinguishable (#1224).
 
 **Key Methods:**
 ```rust

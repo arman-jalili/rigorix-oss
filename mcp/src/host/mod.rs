@@ -749,7 +749,12 @@ impl AppState {
                     .handle(input)
                     .await
                     .map_err(HostError::from)?;
-                Ok(serde_json::from_str(&result.content[0].text).unwrap_or_default())
+                // A summary that cannot be produced must say so. Degrading a
+                // formatter/parse failure to `null` made "no audits" and "the
+                // tool is broken" indistinguishable (#1224).
+                serde_json::from_str(&result.content[0].text).map_err(|e| {
+                    HostError::internal(format!("audit summary is not valid JSON: {e}"))
+                })
             }
             "rigorix_audit_authority_facts" => {
                 let input = serde_json::from_value(params.clone())

@@ -226,7 +226,11 @@ impl AuditSummaryHandler for AuditSummaryHandlerImpl {
             .await
             .map_err(AuditHandlerError::AuditError)?;
 
-        let formatted = self.formatter.format_summary_text(&summary);
+        // `rigorix_audit_summary` is a structured tool: the host parses this
+        // text as JSON. Returning the markdown summary made that parse fail and
+        // `unwrap_or_default()` turn it into `null` (#1224).
+        let formatted = serde_json::to_string(&self.formatter.format_summary_json(&summary))
+            .unwrap_or_else(|_| "{}".to_string());
 
         Ok(ToolCallResult {
             content: vec![crate::execution_tools::domain::error::ToolContentItem {
@@ -502,7 +506,31 @@ mod tests {
                 until: Some(until),
             })
             .await;
-        assert!(result.is_ok());
-        assert!(result.unwrap().content[0].text.contains("3"));
+        let result = result.unwrap();
+        let json: serde_json::Value =
+            serde_json::from_str(&result.content[0].text).expect("summary must be JSON");
+        assert_eq!(json["total_executions"], 3);
+        assert_eq!(json["success_count"], 3);
+        assert_eq!(json["failure_count"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_audit_summary_handler_empty_trail_is_zeroes_not_null() {
+        let svc = Arc::new(InMemoryAuditQueryService::new());
+        let formatter = Arc::new(AuditFormatterImpl::new());
+        let handler = AuditSummaryHandlerImpl::new(svc, formatter);
+        let result = handler
+            .handle(AuditSummaryInput {
+                since: None,
+                until: None,
+            })
+            .await
+            .expect("an empty trail is a valid summary");
+        let json: serde_json::Value =
+            serde_json::from_str(&result.content[0].text).expect("summary must be JSON");
+        assert_eq!(json["total_executions"], 0);
+        assert_eq!(json["success_count"], 0);
+        assert_eq!(json["failure_count"], 0);
+        assert_eq!(json["success_rate"], 0.0);
     }
 }

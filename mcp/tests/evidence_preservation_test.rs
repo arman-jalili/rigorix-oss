@@ -87,14 +87,18 @@ async fn host(root: &str) -> AppState {
 }
 
 fn plan(requires_approval: bool) -> serde_json::Value {
+    plan_named("evidence-preservation-demo", "pay", requires_approval)
+}
+
+fn plan_named(template: &str, step: &str, requires_approval: bool) -> serde_json::Value {
     serde_json::json!({
         "plan": {
-            "name": "evidence-preservation-demo",
+            "name": template,
             "description": "approval-resume evidence preservation",
             "version": "1.0.0",
             "tags": [],
             "steps": [{
-                "name": "pay",
+                "name": step,
                 "tool": "run_command",
                 "parameters": { "command": "true" },
                 "requires_approval": requires_approval,
@@ -213,6 +217,67 @@ async fn approval_resume_preserves_precondition_evidence() {
             .is_some_and(|s| !s.is_empty()),
         "the evidence envelope must be signed: {persisted}"
     );
+}
+
+/// #1223: an approved run's findings belong to that execution only.
+///
+/// The leaked-from run paused and was approved; the next run in the same MCP
+/// session must not inherit its `precondition_findings`.
+#[tokio::test]
+async fn an_approved_run_does_not_leak_findings_into_the_next_run() {
+    let dir = tempfile::tempdir().expect("temp repo");
+    write_repo(dir.path());
+    let root = dir.path().to_string_lossy().to_string();
+    let state = host(&root).await;
+
+    let run = |template: &'static str, step: &'static str| {
+        let plan = plan_named(template, step, true);
+        let state = &state;
+        async move {
+            let exec = state
+                .handle_tool_call("rigorix_execute", &plan)
+                .await
+                .expect("rigorix_execute");
+            assert_eq!(exec["status"].as_str(), Some("PendingApproval"));
+            let execution_id = exec["execution_id"].as_str().expect("id").to_string();
+            state
+                .handle_tool_call(
+                    "rigorix_approve_execution",
+                    &serde_json::json!({
+                        "execution_id": execution_id,
+                        "step_names": [step],
+                        "approver_id": "tester",
+                    }),
+                )
+                .await
+                .expect("approve");
+            state
+                .handle_tool_call(
+                    "rigorix_read_audit",
+                    &serde_json::json!({ "execution_id": execution_id, "format": "json" }),
+                )
+                .await
+                .expect("read audit")
+        }
+    };
+
+    let first = run("run-a", "pay-a").await;
+    let second = run("run-b", "pay-b").await;
+
+    for (name, audit, expected_step) in [("first", first, "pay-a"), ("second", second, "pay-b")] {
+        let findings = audit["precondition_findings"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{name} run must carry its finding: {audit}"));
+        assert_eq!(
+            findings.len(),
+            1,
+            "{name} run must carry only its own finding: {audit}"
+        );
+        assert_eq!(
+            findings[0]["step"], expected_step,
+            "{name} run carries another execution's finding: {audit}"
+        );
+    }
 }
 
 /// AC #6: a non-approval run is unchanged — the step dispatching normally
