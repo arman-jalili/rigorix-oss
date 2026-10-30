@@ -349,6 +349,10 @@ async fn a_fresh_process_reads_the_persisted_envelope() {
         .unwrap_or_else(|| panic!("persisted findings must be returned: {audit}"));
     assert_eq!(findings.len(), 1, "the file carries one finding: {audit}");
     assert_eq!(findings[0]["step"], "pay");
+    assert_eq!(
+        audit["status"], "Failed",
+        "a refused run must read as Failed, not Completed: {audit}"
+    );
     assert!(
         audit["events"]
             .as_array()
@@ -371,6 +375,11 @@ async fn a_fresh_process_reads_the_persisted_envelope() {
         summary["total_executions"].as_u64().unwrap_or(0) >= 1,
         "summary must count the record on disk: {summary}"
     );
+    assert_eq!(
+        summary["failure_count"], 1,
+        "a refused run is a failure in the summary: {summary}"
+    );
+    assert_eq!(summary["success_count"], 0);
 
     // A genuinely unknown id is still distinct.
     let missing = state
