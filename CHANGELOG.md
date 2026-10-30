@@ -20,7 +20,9 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 ### Fixed
 
 - An envelope carrying `scope_check` verifies with `rigorix-verifier` 0.8.1, and a chain containing one verifies end to end; 0.8.0 dropped the unknown field during canonicalization and broke both (#1222) ([#1226](https://github.com/arman-jalili/rigorix-oss/pull/1226))
-- `rigorix_audit_summary` returns structured JSON: an empty trail is zeroes and a failure is an error, never `null` (#1224); an approved run no longer leaks its precondition findings into the next run's envelope, locked by a two-run regression test (#1223)
+- `rigorix_audit_summary` returns structured JSON: an empty trail is zeroes and a failure is an error, never `null` (#1224)
+- A run's drained event stream is filtered to its own execution, so an approved run no longer leaks its precondition findings into the next run's **written envelope**; the regression now asserts the file's `precondition_findings[].step`, not the derived read surface (#1223)
+- `rigorix_read_audit` and `rigorix_audit_summary` read the persisted signed envelope as their source of truth, so a fresh process reads the record it did not write; an unknown id is still `not found` (#1227)
 
 - The specification's framing documents were brought in line with its requirements: six levels everywhere, a claim template that can express Level 6, a Level 6 evidence row, claim discipline bound to every level, the unsettled interval in scope, renumbered non-claims, the stale RS-052 gap row and T11 residual removed, the PyPI caveat stated, and the requirement count corrected to 55. The status line no longer forbids citation (#1218)
 
