@@ -75,6 +75,14 @@ fn rich_input() -> BuildEnvelopeInput {
         approval_event(),
         scope_violation_event(),
         sequence_rule_event(),
+        ExecutionEventRef {
+            event_type: "effect_scope_checked".to_string(),
+            summary: "effect scope checked".to_string(),
+            occurred_at: chrono::Utc::now(),
+            correlation_id: None,
+            status: EventStatus::Success,
+            payload: Some(serde_json::json!({ "status": "checked" })),
+        },
     ];
     input.file_paths = vec![
         "data/registrations.json".to_string(),
