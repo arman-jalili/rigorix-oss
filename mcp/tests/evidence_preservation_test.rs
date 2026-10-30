@@ -251,20 +251,41 @@ async fn an_approved_run_does_not_leak_findings_into_the_next_run() {
                 )
                 .await
                 .expect("approve");
-            state
+            let audit = state
                 .handle_tool_call(
                     "rigorix_read_audit",
                     &serde_json::json!({ "execution_id": execution_id, "format": "json" }),
                 )
                 .await
-                .expect("read audit")
+                .expect("read audit");
+            (execution_id, audit)
         }
     };
 
-    let first = run("run-a", "pay-a").await;
-    let second = run("run-b", "pay-b").await;
+    let (first_id, first) = run("run-a", "pay-a").await;
+    let (second_id, second) = run("run-b", "pay-b").await;
 
-    for (name, audit, expected_step) in [("first", first, "pay-a"), ("second", second, "pay-b")] {
+    // A run that never pauses writes its envelope through the engine's own
+    // audit service, not the approval-resume path.
+    let third_plan = plan_named("run-c", "pay-c", false);
+    let third = state
+        .handle_tool_call("rigorix_execute", &third_plan)
+        .await
+        .expect("third execute");
+    let third_id = third["execution_id"].as_str().expect("id").to_string();
+    let third_audit = state
+        .handle_tool_call(
+            "rigorix_read_audit",
+            &serde_json::json!({ "execution_id": third_id, "format": "json" }),
+        )
+        .await
+        .expect("read third audit");
+
+    for (name, id, audit, expected_step) in [
+        ("first", &first_id, first, "pay-a"),
+        ("second", &second_id, second, "pay-b"),
+        ("third", &third_id, third_audit, "pay-c"),
+    ] {
         let findings = audit["precondition_findings"]
             .as_array()
             .unwrap_or_else(|| panic!("{name} run must carry its finding: {audit}"));
@@ -277,7 +298,94 @@ async fn an_approved_run_does_not_leak_findings_into_the_next_run() {
             findings[0]["step"], expected_step,
             "{name} run carries another execution's finding: {audit}"
         );
+
+        // The artifact a recipient receives is the file, not the read surface.
+        let persisted = persisted_envelope(dir.path(), id);
+        let persisted_findings = persisted["precondition_findings"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{name} file must carry findings: {persisted}"));
+        assert_eq!(
+            persisted_findings.len(),
+            1,
+            "{name} file must carry only its own finding: {persisted}"
+        );
+        assert_eq!(
+            persisted_findings[0]["step"], expected_step,
+            "{name} file carries another execution's finding: {persisted}"
+        );
     }
+}
+
+/// #1227: a fresh process reads the signed record it did not write.
+#[tokio::test]
+async fn a_fresh_process_reads_the_persisted_envelope() {
+    let dir = tempfile::tempdir().expect("temp repo");
+    write_repo(dir.path());
+    let root = dir.path().to_string_lossy().to_string();
+
+    // First process: run once, then disappear.
+    let execution_id = {
+        let state = host(&root).await;
+        let exec = state
+            .handle_tool_call("rigorix_execute", &plan(false))
+            .await
+            .expect("rigorix_execute");
+        let execution_id = exec["execution_id"].as_str().expect("id").to_string();
+        persisted_envelope(dir.path(), &execution_id);
+        execution_id
+    };
+
+    // New process (new AppState, empty session index) reads the file.
+    let state = host(&root).await;
+    let audit = state
+        .handle_tool_call(
+            "rigorix_read_audit",
+            &serde_json::json!({ "execution_id": execution_id, "format": "json" }),
+        )
+        .await
+        .expect("a fresh process must read the persisted envelope");
+    let findings = audit["precondition_findings"]
+        .as_array()
+        .unwrap_or_else(|| panic!("persisted findings must be returned: {audit}"));
+    assert_eq!(findings.len(), 1, "the file carries one finding: {audit}");
+    assert_eq!(findings[0]["step"], "pay");
+    assert!(
+        audit["events"]
+            .as_array()
+            .is_some_and(|events| !events.is_empty()),
+        "the real event stream must survive the disk read: {audit}"
+    );
+
+    // The summary counts the same persisted trail, not an empty session.
+    let summary = state
+        .handle_tool_call(
+            "rigorix_audit_summary",
+            &serde_json::json!({
+                "since": "2020-01-01T00:00:00Z",
+                "until": "2030-01-01T00:00:00Z"
+            }),
+        )
+        .await
+        .expect("summary over the persisted trail");
+    assert!(
+        summary["total_executions"].as_u64().unwrap_or(0) >= 1,
+        "summary must count the record on disk: {summary}"
+    );
+
+    // A genuinely unknown id is still distinct.
+    let missing = state
+        .handle_tool_call(
+            "rigorix_read_audit",
+            &serde_json::json!({
+                "execution_id": "00000000-0000-0000-0000-000000000000",
+                "format": "json"
+            }),
+        )
+        .await;
+    assert!(
+        missing.is_err(),
+        "an unknown id must not read as an empty record"
+    );
 }
 
 /// AC #6: a non-approval run is unchanged — the step dispatching normally

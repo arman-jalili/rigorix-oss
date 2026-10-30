@@ -18,12 +18,18 @@ use crate::audit_tools::application::service::{
     AuditAuthorityFactsHandler, AuditSummaryHandler, ListAuditsHandler, ReadAuditHandler,
 };
 use crate::audit_tools::domain::entity::{AuditFormatter, SharedAuditQueryService};
-use crate::audit_tools::domain::error::AuditHandlerError;
-use crate::audit_tools::domain::value::AuditFilter;
+use crate::audit_tools::domain::error::{AuditError, AuditHandlerError};
+use crate::audit_tools::domain::value::{
+    AuditEnvelope, AuditFilter, ExecutionEvent, ExecutionStep, PreconditionFinding,
+    RequirementFinding, SequencePolicyFinding,
+};
+use crate::audit_tools::infrastructure::in_memory_audit_service::InMemoryAuditQueryService;
 use crate::execution_tools::domain::error::ToolCallResult;
 use crate::execution_tools::domain::value::ExecutionId;
+use crate::execution_tools::domain::value::ExecutionStatus;
 
 use rigorix_engine::audit::application::projection::ProjectAuthorityFacts;
+use rigorix_engine::audit::domain::AuditEnvelope as EngineAuditEnvelope;
 use rigorix_engine::audit::domain::authority_fact::AuthorityFactBundle;
 use rigorix_engine::audit::infrastructure::repository::AuditEnvelopeRepository;
 
@@ -37,6 +43,9 @@ use std::collections::BTreeSet;
 pub struct ReadAuditHandlerImpl {
     query_service: SharedAuditQueryService,
     formatter: Arc<dyn AuditFormatter>,
+    /// Persisted signed-envelope history (`<repo_root>/.rigorix/audit`). When
+    /// the session index misses, this is the record a recipient receives.
+    repository: Option<Arc<dyn AuditEnvelopeRepository>>,
 }
 
 impl ReadAuditHandlerImpl {
@@ -45,7 +54,14 @@ impl ReadAuditHandlerImpl {
         Self {
             query_service,
             formatter,
+            repository: None,
         }
+    }
+
+    /// Fall back to the on-disk signed trail when the session index misses.
+    pub fn with_repository(mut self, repository: Arc<dyn AuditEnvelopeRepository>) -> Self {
+        self.repository = Some(repository);
+        self
     }
 }
 
@@ -57,12 +73,27 @@ impl ReadAuditHandler for ReadAuditHandlerImpl {
             .map_err(|_| AuditHandlerError::InvalidArguments("execution_id".into()))?;
         let execution_id = ExecutionId::from_uuid(uuid);
 
-        // Query the audit record
-        let envelope = self
-            .query_service
-            .read_audit(&execution_id)
-            .await
-            .map_err(AuditHandlerError::AuditError)?;
+        // The signed file is the artifact a recipient receives, so it is the
+        // source of truth when present. The session index is a projection of
+        // the same run and can be empty or stale (#1227, #1223). If the file is
+        // absent (in-memory tests), fall back to the session index.
+        let envelope = match &self.repository {
+            Some(repository) => match repository.find_by_execution_id(&uuid).await.map_err(|e| {
+                AuditHandlerError::AuditError(AuditError::EngineError(e.to_string()))
+            })? {
+                Some(envelope) => engine_envelope_to_mcp(&envelope),
+                None => self
+                    .query_service
+                    .read_audit(&execution_id)
+                    .await
+                    .map_err(AuditHandlerError::AuditError)?,
+            },
+            None => self
+                .query_service
+                .read_audit(&execution_id)
+                .await
+                .map_err(AuditHandlerError::AuditError)?,
+        };
 
         // Format the result
         let formatted = match input.format.as_deref() {
@@ -175,6 +206,163 @@ impl ListAuditsHandler for ListAuditsHandlerImpl {
     }
 }
 
+/// Project an engine envelope into the MCP read model.
+///
+/// The engine envelope is the signed artifact; the MCP type is a presentation
+/// projection (steps + normalized status). Keeping the mapping here means the
+/// disk fallback returns the same shape as an in-session read.
+fn engine_envelope_to_mcp(envelope: &EngineAuditEnvelope) -> AuditEnvelope {
+    let completed_at = envelope.timestamp;
+    let started_at = completed_at - Duration::milliseconds(envelope.duration_ms as i64);
+
+    let status = engine_status(envelope);
+    let steps = envelope
+        .events
+        .iter()
+        .filter_map(engine_step)
+        .collect::<Vec<_>>();
+    let events = envelope
+        .events
+        .iter()
+        .map(|e| {
+            let status = match e.status {
+                rigorix_engine::audit::domain::EventStatus::Success => {
+                    crate::audit_tools::domain::value::EventStatus::Success
+                }
+                rigorix_engine::audit::domain::EventStatus::Failure => {
+                    crate::audit_tools::domain::value::EventStatus::Failure
+                }
+                rigorix_engine::audit::domain::EventStatus::Skipped => {
+                    crate::audit_tools::domain::value::EventStatus::Skipped
+                }
+                rigorix_engine::audit::domain::EventStatus::Cancelled => {
+                    crate::audit_tools::domain::value::EventStatus::Cancelled
+                }
+            };
+            ExecutionEvent::new(
+                e.event_type.clone(),
+                e.summary.clone(),
+                e.occurred_at,
+                e.correlation_id,
+                status,
+            )
+        })
+        .collect();
+
+    AuditEnvelope::new_with_findings(
+        envelope.execution_id,
+        status,
+        Some(envelope.template_id.clone()),
+        started_at,
+        completed_at,
+        envelope.duration_ms,
+        steps,
+        (envelope.total_tokens > 0).then_some(envelope.total_tokens as u64),
+        envelope.signature.clone().unwrap_or_default(),
+        events,
+        envelope
+            .precondition_findings
+            .iter()
+            .map(|f| {
+                PreconditionFinding::new(
+                    f.precondition_id.clone(),
+                    f.step.clone(),
+                    f.outcome.clone(),
+                    f.exit_code,
+                    f.inputs_hash.clone(),
+                    f.checked_at,
+                    f.summary.clone(),
+                    f.check_digest.clone(),
+                    f.authority_digest.clone(),
+                    f.check_writable,
+                    f.attribution.clone(),
+                )
+            })
+            .collect(),
+        envelope
+            .sequence_policy_findings
+            .iter()
+            .map(|f| {
+                SequencePolicyFinding::new(
+                    f.rule_id.clone(),
+                    f.action.clone(),
+                    f.later_step.clone(),
+                    f.matched_indices.clone(),
+                    f.summary.clone(),
+                )
+            })
+            .collect(),
+        envelope
+            .requirement_findings
+            .iter()
+            .map(|f| {
+                RequirementFinding::new(
+                    f.requirement_id.clone(),
+                    f.step.clone(),
+                    f.action.clone(),
+                    f.unmet.clone(),
+                    f.summary.clone(),
+                )
+            })
+            .collect(),
+    )
+}
+
+fn engine_status(envelope: &EngineAuditEnvelope) -> ExecutionStatus {
+    let has = |name: &str| envelope.events.iter().any(|e| e.event_type == name);
+    if has("execution_failed") {
+        ExecutionStatus::Failed
+    } else if has("execution_cancelled") {
+        ExecutionStatus::Cancelled
+    } else if has("execution_completed") {
+        ExecutionStatus::Completed
+    } else if envelope
+        .events
+        .iter()
+        .any(|e| e.event_type == "node_failed")
+    {
+        ExecutionStatus::Failed
+    } else {
+        ExecutionStatus::Completed
+    }
+}
+
+fn engine_step(event: &rigorix_engine::audit::domain::ExecutionEventRef) -> Option<ExecutionStep> {
+    if event.event_type != "node_completed" && event.event_type != "node_failed" {
+        return None;
+    }
+    let payload = event.payload.as_ref();
+    let name = payload
+        .and_then(|p| p.get("step_name").or_else(|| p.get("node_name")))
+        .and_then(|v| v.as_str())
+        .unwrap_or(&event.summary)
+        .to_string();
+    let success = event.event_type == "node_completed";
+    let error = (!success)
+        .then(|| {
+            payload
+                .and_then(|p| p.get("error"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        })
+        .flatten();
+    let output = payload
+        .and_then(|p| p.get("output"))
+        .cloned()
+        .unwrap_or_default();
+    let duration_ms = payload
+        .and_then(|p| p.get("duration_ms"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    Some(ExecutionStep::new(
+        name,
+        success,
+        error,
+        output,
+        duration_ms,
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // AuditSummaryHandlerImpl
 // ---------------------------------------------------------------------------
@@ -183,6 +371,9 @@ impl ListAuditsHandler for ListAuditsHandlerImpl {
 pub struct AuditSummaryHandlerImpl {
     query_service: SharedAuditQueryService,
     formatter: Arc<dyn AuditFormatter>,
+    /// Persisted signed trail. When present it is the source of truth, so a
+    /// fresh process summarizes the 14 records on disk, not its empty session.
+    repository: Option<Arc<dyn AuditEnvelopeRepository>>,
 }
 
 impl AuditSummaryHandlerImpl {
@@ -191,7 +382,14 @@ impl AuditSummaryHandlerImpl {
         Self {
             query_service,
             formatter,
+            repository: None,
         }
+    }
+
+    /// Count the persisted trail rather than the session index.
+    pub fn with_repository(mut self, repository: Arc<dyn AuditEnvelopeRepository>) -> Self {
+        self.repository = Some(repository);
+        self
     }
 }
 
@@ -220,11 +418,25 @@ impl AuditSummaryHandler for AuditSummaryHandlerImpl {
             ));
         }
 
-        let summary = self
-            .query_service
-            .audit_summary(since, until)
-            .await
-            .map_err(AuditHandlerError::AuditError)?;
+        let summary = match &self.repository {
+            Some(repository) => {
+                let envelopes = repository
+                    .list(Some(since), Some(until), None)
+                    .await
+                    .map_err(|e| {
+                        AuditHandlerError::AuditError(AuditError::EngineError(e.to_string()))
+                    })?;
+                let projected: Vec<AuditEnvelope> =
+                    envelopes.iter().map(engine_envelope_to_mcp).collect();
+                let refs: Vec<&AuditEnvelope> = projected.iter().collect();
+                InMemoryAuditQueryService::summarize(&refs, since, until)
+            }
+            None => self
+                .query_service
+                .audit_summary(since, until)
+                .await
+                .map_err(AuditHandlerError::AuditError)?,
+        };
 
         // `rigorix_audit_summary` is a structured tool: the host parses this
         // text as JSON. Returning the markdown summary made that parse fail and
