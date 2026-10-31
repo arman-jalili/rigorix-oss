@@ -50,7 +50,7 @@ guardian_issue:
 
   out_of_scope:
     - "The MAC algorithm and the key"
-    - "Anti-rollback, which is a different property (#TBD)"
+    - "Anti-rollback, which is a different property (#1241)"
     - "Legacy records without a MAC"
 
   affected_layers:
