@@ -67,8 +67,8 @@ RULES = [
     (r"^engine/src/approval/infrastructure/repository/approval_repository_impl\.rs$",
      "libc", "low",
      "libc::flock on a file descriptor owned by the enclosing File; the call takes "
-     "no pointer, its return is checked, and EINTR is retried. Used to serialise "
-     "the approval store's read-modify-write across processes (#1254)"),
+     "no pointer, its return is checked, and EINTR is retried. Used for shared "
+     "read and exclusive write locks on the approval store and ledger (#1254, #1261)"),
 ]
 
 

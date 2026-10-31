@@ -1,6 +1,7 @@
 //! ApprovalError — typed error enum for all approval binding failure modes.
 //!
 //! @canonical .pi/architecture/modules/approval.md#error-handling
+//! Canonical Reference: .pi/architecture/modules/approval.md#error-handling
 //! Implements: Contract Freeze — ApprovalError enum + `is_retriable()`
 //! Issue: #786 (approval epic — contract freeze)
 //!
@@ -88,6 +89,21 @@ pub enum ApprovalError {
         node_id: Uuid,
         /// Step name the record claims to authorize.
         step_name: String,
+    },
+
+    /// A second terminal write for the same `(node_id, nonce)` found its marker
+    /// already recorded — a replay, not an idempotent update (#1261).
+    #[error(
+        "Approval for step '{step_name}' (node {node_id}) was already consumed according to \
+         ledger '{ledger}'; a second consumption is refused"
+    )]
+    ConsumptionReplay {
+        /// Node whose approval was already consumed.
+        node_id: Uuid,
+        /// Step name the record claims to authorize.
+        step_name: String,
+        /// The ledger holding the first marker.
+        ledger: String,
     },
 
     /// The consumption ledger's authenticated structure does not verify —

@@ -47,14 +47,15 @@ fn lock_path(path: &Path) -> PathBuf {
     ))
 }
 
-/// Serialise a read-modify-write across processes (#1254).
+/// Serialise access across processes (#1254, #1261).
 ///
-/// An in-process `RwLock` only serialises one repository; two MCP sessions each
-/// hold their own and would otherwise write back a stale snapshot. The lock is
-/// a sibling file, held for the whole read-modify-write, so the file is the
-/// source of truth at write time.
-fn with_exclusive_lock<T>(
+/// Writes take an exclusive lock for the whole read-modify-write; reads take a
+/// shared lock while they re-read, so a live instance never serves its open-time
+/// snapshot. The lock is a sibling file because the store and ledger may not
+/// exist yet.
+fn with_file_lock<T>(
     path: &Path,
+    exclusive: bool,
     action: impl FnOnce() -> Result<T, ApprovalError>,
 ) -> Result<T, ApprovalError> {
     use std::os::unix::io::AsRawFd;
@@ -71,9 +72,14 @@ fn with_exclusive_lock<T>(
         .map_err(|e| {
             ApprovalError::Internal(format!("open approval lock {}: {e}", lock.display()))
         })?;
+    let operation = if exclusive {
+        libc::LOCK_EX
+    } else {
+        libc::LOCK_SH
+    };
     loop {
         // SAFETY: `file` owns a valid descriptor for the duration of the call.
-        let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
+        let rc = unsafe { libc::flock(file.as_raw_fd(), operation) };
         if rc == 0 {
             break;
         }
@@ -86,6 +92,20 @@ fn with_exclusive_lock<T>(
         }
     }
     action()
+}
+
+fn with_exclusive_lock<T>(
+    path: &Path,
+    action: impl FnOnce() -> Result<T, ApprovalError>,
+) -> Result<T, ApprovalError> {
+    with_file_lock(path, true, action)
+}
+
+fn with_shared_lock<T>(
+    path: &Path,
+    action: impl FnOnce() -> Result<T, ApprovalError>,
+) -> Result<T, ApprovalError> {
+    with_file_lock(path, false, action)
 }
 
 /// The ledger file. `mac` covers `version` + the whole `entries` map, so
@@ -509,18 +529,19 @@ impl crate::approval::infrastructure::repository::ApprovalRepository
 /// makes the publish atomic and collision-free.
 pub struct FileBackedApprovalRepository {
     path: PathBuf,
-    records: RwLock<HashMap<Uuid, ApprovalRecord>>,
     mac_key: Option<Vec<u8>>,
     /// Consumption markers live outside the store file, so restoring an older
     /// copy of the store does not restore an older copy of its progress.
     consumption_path: Option<PathBuf>,
-    /// Whether the ledger file existed when opened. Without a file there is no
-    /// second witness, so the terminal cross-check cannot run.
-    ledger_present: bool,
-    consumed: RwLock<BTreeMap<String, ConsumptionMarker>>,
     /// Serialises this instance's saves with its own writes; the file lock
     /// serialises across instances.
     write_lock: std::sync::Mutex<()>,
+}
+
+struct ReadSnapshot {
+    records: HashMap<Uuid, ApprovalRecord>,
+    consumed: BTreeMap<String, ConsumptionMarker>,
+    ledger_present: bool,
 }
 
 impl FileBackedApprovalRepository {
@@ -579,14 +600,41 @@ impl FileBackedApprovalRepository {
             Some(ledger) if ledger_present => read_consumption_ledger(&path, ledger, run_key)?,
             _ => BTreeMap::new(),
         };
+        // The open validates both files; reads re-read them under a shared
+        // lock, because another instance may write after this returns (#1261).
+        let _ = (records, consumed, ledger_present);
         Ok(Self {
             path,
-            records: RwLock::new(records),
             mac_key: run_key.map(<[u8]>::to_vec),
             consumption_path: consumption_path.map(Path::to_path_buf),
-            ledger_present,
-            consumed: RwLock::new(consumed),
             write_lock: std::sync::Mutex::new(()),
+        })
+    }
+
+    /// Read both files under shared locks. The store is locked first; writers
+    /// take the ledger lock and the store lock separately, never nested, so
+    /// this cannot deadlock (#1261).
+    fn read_snapshot(&self) -> Result<ReadSnapshot, ApprovalError> {
+        with_shared_lock(&self.path, || {
+            let records = Self::read_store(&self.path)?;
+            let (consumed, ledger_present) = match self.consumption_path.as_ref() {
+                Some(path) => with_shared_lock(path, || {
+                    if path.is_file() {
+                        Ok((
+                            read_consumption_ledger(&self.path, path, self.mac_key.as_deref())?,
+                            true,
+                        ))
+                    } else {
+                        Ok((BTreeMap::new(), false))
+                    }
+                })?,
+                None => (BTreeMap::new(), false),
+            };
+            Ok(ReadSnapshot {
+                records,
+                consumed,
+                ledger_present,
+            })
         })
     }
 
@@ -595,15 +643,16 @@ impl FileBackedApprovalRepository {
     /// means the marker was dropped, and the anti-rollback guard would have
     /// nothing to fire on. Without a ledger file there is no second witness, so
     /// only the pending direction is meaningful.
-    fn reject_rolled_back(&self, record: &ApprovalRecord) -> Result<(), ApprovalError> {
+    fn reject_rolled_back(
+        record: &ApprovalRecord,
+        consumed: &BTreeMap<String, ConsumptionMarker>,
+        ledger_present: bool,
+        ledger_path: Option<&Path>,
+    ) -> Result<(), ApprovalError> {
         let pending = matches!(record.status, ApprovalStatus::Pending);
-        if !pending && !self.ledger_present {
+        if !pending && !ledger_present {
             return Ok(());
         }
-        let consumed = self
-            .consumed
-            .read()
-            .map_err(|_| ApprovalError::Internal("consumption ledger poisoned".into()))?;
         let key = marker_key(record.node_id, record.nonce);
         if pending {
             if consumed.contains_key(&key) {
@@ -616,9 +665,7 @@ impl FileBackedApprovalRepository {
             return Err(ApprovalError::UncoveredTerminalRecord {
                 node_id: record.node_id,
                 step_name: record.step_name.clone(),
-                ledger: self
-                    .consumption_path
-                    .as_ref()
+                ledger: ledger_path
                     .map(|path| path.display().to_string())
                     .unwrap_or_default(),
             });
@@ -639,13 +686,23 @@ impl FileBackedApprovalRepository {
                 BTreeMap::new()
             };
             let key = marker_key(record.node_id, record.nonce);
-            if matches!(record.status, ApprovalStatus::Pending) {
-                if consumed.contains_key(&key) {
-                    return Err(ApprovalError::RecordRollback {
+            if consumed.contains_key(&key) {
+                return if matches!(record.status, ApprovalStatus::Pending) {
+                    Err(ApprovalError::RecordRollback {
                         node_id: record.node_id,
                         step_name: record.step_name.clone(),
-                    });
-                }
+                    })
+                } else {
+                    // Insert-if-absent, never upsert: the same key is the same
+                    // approval, so a second terminal write is a replay (#1261).
+                    Err(ApprovalError::ConsumptionReplay {
+                        node_id: record.node_id,
+                        step_name: record.step_name.clone(),
+                        ledger: path.display().to_string(),
+                    })
+                };
+            }
+            if matches!(record.status, ApprovalStatus::Pending) {
                 return Ok(());
             }
             consumed.insert(
@@ -658,11 +715,6 @@ impl FileBackedApprovalRepository {
                 },
             );
             write_consumption_ledger(path, &consumed, self.mac_key.as_deref())?;
-            *self
-                .consumed
-                .write()
-                .map_err(|_| ApprovalError::Internal("consumption ledger poisoned".into()))? =
-                consumed;
             Ok(())
         })
     }
@@ -711,10 +763,6 @@ impl FileBackedApprovalRepository {
                 .map_err(|e| ApprovalError::Internal(format!("write store: {e}")))?;
             std::fs::rename(&tmp, &self.path)
                 .map_err(|e| ApprovalError::Internal(format!("commit store: {e}")))?;
-            *self
-                .records
-                .write()
-                .map_err(|_| ApprovalError::Internal("file repo poisoned".into()))? = map;
             Ok(())
         })
     }
@@ -739,16 +787,20 @@ impl crate::approval::infrastructure::repository::ApprovalRepository
     }
 
     async fn load(&self, node_id: Uuid) -> Result<Option<ApprovalRecord>, ApprovalError> {
-        let map = self
+        let snapshot = self.read_snapshot()?;
+        let record = snapshot
             .records
-            .read()
-            .map_err(|_| ApprovalError::Internal("file repo poisoned".into()))?;
-        let record = map.get(&node_id).cloned();
-        let record = record
+            .get(&node_id)
+            .cloned()
             .map(|record| verify_if_keyed(record, self.mac_key.as_deref()))
             .transpose()?;
         if let Some(record) = record.as_ref() {
-            self.reject_rolled_back(record)?;
+            Self::reject_rolled_back(
+                record,
+                &snapshot.consumed,
+                snapshot.ledger_present,
+                self.consumption_path.as_deref(),
+            )?;
         }
         Ok(record)
     }
@@ -757,31 +809,29 @@ impl crate::approval::infrastructure::repository::ApprovalRepository
         let Some(key) = self.mac_key.as_deref() else {
             return Ok(0);
         };
-        let map = self
-            .records
-            .read()
-            .map_err(|_| ApprovalError::Internal("file repo poisoned".into()))?;
-        for record in map.values() {
+        let snapshot = self.read_snapshot()?;
+        for record in snapshot.records.values() {
             if !record.verify_integrity(key) {
                 return Err(ApprovalError::RecordIntegrity {
                     node_id: record.node_id,
                     step_name: record.step_name.clone(),
                 });
             }
-            self.reject_rolled_back(record)?;
+            Self::reject_rolled_back(
+                record,
+                &snapshot.consumed,
+                snapshot.ledger_present,
+                self.consumption_path.as_deref(),
+            )?;
         }
-        Ok(map.len())
+        Ok(snapshot.records.len())
     }
 
     async fn consumption_marker_count(&self) -> Result<usize, ApprovalError> {
         if self.consumption_path.is_none() {
             return Ok(0);
         }
-        let consumed = self
-            .consumed
-            .read()
-            .map_err(|_| ApprovalError::Internal("consumption ledger poisoned".into()))?;
-        Ok(consumed.len())
+        Ok(self.read_snapshot()?.consumed.len())
     }
 
     async fn migrate_consumption_ledger(&self) -> Result<LedgerMigration, ApprovalError> {

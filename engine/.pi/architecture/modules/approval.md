@@ -4,7 +4,7 @@
 Canonical Reference: .pi/architecture/modules/approval.md
 Rationale: Bind human approval to the exact resolved execution intent — replay protection at the step level, first-class signed evidence, and effect-scope verification
 Blueprint Source: Requirements v1 — 2026-08-28 (approved, NOT YET BUILT)
-Last Updated: 2026-10-31 — MAC material derives from the record; the ledger is authenticated, checked both ways, reports populations, and treats absence as a no-op; both files are written under a lock (#1240, #1241, #1244, #1253, #1254, #1255, #1256)
+Last Updated: 2026-10-31 — MAC material derives from the record; reads and writes re-read both files under locks; the ledger is authenticated, checked both ways, reports populations, and treats absence as a no-op (#1240, #1241, #1244, #1253, #1254, #1255, #1256, #1261)
 -->
 
 ## Overview
@@ -599,6 +599,23 @@ record: a marker without a record is visible and safe, while a terminal record
 without a marker is the invisible failure the ledger exists to prevent. The
 store temp path is unique per write, so concurrent publishes cannot rename the
 same file.
+
+### Reads re-read live state (#1261)
+
+Writes re-read and merge (#1254); reads must too, because the anti-rollback
+guard exists for a process that was already running when a consumption
+happened. `load`, `verify_integrity` and `consumption_marker_count` take a shared
+file lock and re-read both files, so an open MCP session sees records and
+markers written by another session. A record written after a session opened is
+visible; a record another session consumed is returned with its terminal status,
+so dispatch refuses it rather than serving a stale `Pending`.
+
+`record_consumption` is insert-if-absent, not upsert. An existing marker for the
+same `(node_id, nonce)` is the same approval, so a second terminal write is
+`ApprovalError::ConsumptionReplay`, naming node, step and ledger. The first
+`recorded_at` is left untouched: two consumptions cannot be made to look like
+one idempotent update. A restored pending record with a marker remains
+`RecordRollback`.
 
 ### One run key (#1238)
 
