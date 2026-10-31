@@ -200,7 +200,7 @@ fn render_ledger_migration(outcome: LedgerMigration) -> String {
 
     if !missing.is_empty() {
         message.push_str(&format!(
-            "; left {} terminal record(s) unprotected: {}",
+            "; adopted {} terminal record(s) that had no marker: {}",
             missing.len(),
             format_missing(&missing)
         ));
@@ -1287,12 +1287,12 @@ mod tests {
     }
 
     #[test]
-    fn migration_with_missing_records_lists_what_stays_unprotected() {
+    fn migration_with_missing_records_reports_the_records_it_adopted() {
         let node = uuid::Uuid::new_v4();
         let message =
             render_ledger_migration(migrated(0, 1, vec![(node, "commit_cost".into())], true));
         assert!(
-            message.contains("left 1 terminal record(s) unprotected"),
+            message.contains("adopted 1 terminal record(s) that had no marker"),
             "{message}"
         );
         assert!(message.contains("commit_cost"), "{message}");

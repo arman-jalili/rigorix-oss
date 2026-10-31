@@ -29,8 +29,9 @@ pub enum LedgerMigration {
         markers: usize,
         /// Terminal records (consumed/expired/superseded) in the store.
         terminal_records: usize,
-        /// Terminal records the adopted ledger leaves unprotected, as
-        /// `(node_id, step_name)`.
+        /// Terminal records that had no marker, as `(node_id, step_name)`.
+        /// Without `--accept-missing` these refuse; with it they are adopted
+        /// into the ledger and reported here.
         missing: Vec<(Uuid, String)>,
         /// Whether the store file existed and was read. `false` means the
         /// comparison could not run at all (#1251).
@@ -44,7 +45,7 @@ pub enum LedgerMigration {
         markers: usize,
         /// Terminal records (consumed/expired/superseded) in the store.
         terminal_records: usize,
-        /// Terminal records the sealed ledger leaves unprotected.
+        /// Terminal records that had no marker and were adopted.
         missing: Vec<(Uuid, String)>,
         /// Whether the store file existed and was read (#1251).
         store_present: bool,

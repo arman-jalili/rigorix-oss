@@ -104,12 +104,28 @@ pub enum ApprovalError {
         detail: String,
     },
 
+    /// A terminal record has no marker in an existing consumption ledger —
+    /// the ledger and the store disagree (#1255).
+    #[error(
+        "Approval record for step '{step_name}' (node {node_id}) is terminal but has no marker in \
+         consumption ledger '{ledger}'; run `rigorix approve ledger migrate` to compare and adopt it, \
+         or `rigorix approve ledger migrate --accept-missing` to adopt the store's terminal records"
+    )]
+    UncoveredTerminalRecord {
+        /// Node whose terminal record has no marker.
+        node_id: Uuid,
+        /// Step name the record claims to authorize.
+        step_name: String,
+        /// The ledger that should remember it.
+        ledger: String,
+    },
+
     /// Migration would seal a ledger that does not cover every terminal record
     /// the authenticated store holds (#1249).
     #[error(
         "consumption ledger migration at '{ledger}' for store '{store}' refuses to seal: \
          {missing_count} terminal record(s) have no marker ({missing}); rerun with \
-         `--accept-missing` only if you accept that they stay unprotected"
+         `--accept-missing` to adopt them into the ledger explicitly"
     )]
     MigrationIncomplete {
         /// The approval store.

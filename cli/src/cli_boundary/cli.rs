@@ -127,7 +127,7 @@ pub enum LedgerAction {
     /// ledger. This is the explicit, one-time migration path (#1247).
     Migrate {
         /// Seal even when terminal store records have no marker. The report
-        /// names every record left unprotected.
+        /// adopts terminal records that have no marker and names each one.
         #[arg(long)]
         accept_missing: bool,
     },

@@ -21,11 +21,14 @@ echo "  Checking MR traceability..."
 # Check 1: MR Traceability
 # Every changed implementation file should have a canonical reference
 if command -v git &>/dev/null; then
-    changed_files=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -E '\.(py|ts|rs|go)$' || true)
+    # `git diff` paths are repo-relative, while this script may be run from the
+    # mcp/ package directory. Resolve both the diff and the files against root.
+    ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    changed_files=$(git -C "$ROOT" diff --name-only HEAD~1 HEAD 2>/dev/null | grep -E '\.(py|ts|rs|go)$' || true)
     if [[ -n "$changed_files" ]]; then
         files_without_ref=0
         while IFS= read -r file; do
-            if ! grep -q "Canonical Reference\|canonical.*reference" "$file" 2>/dev/null; then
+            if ! grep -q "Canonical Reference\|canonical.*reference" "$ROOT/$file" 2>/dev/null; then
                 ((files_without_ref++))
                 log_fail "MR traceability" "${file} missing canonical reference to architecture"
             fi
