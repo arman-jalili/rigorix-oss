@@ -1,6 +1,7 @@
 //! ApprovalRepository — durable approval-record persistence.
 //!
 //! @canonical .pi/architecture/modules/approval.md#infrastructure
+//! Canonical Reference: .pi/architecture/modules/approval.md#infrastructure
 //! Implements: Contract Freeze — ApprovalRepository trait
 //! Issue: #786 (approval epic — contract freeze); implementation in
 //!   ISSUE-APPROVALSERVICE (#792)
@@ -23,6 +24,14 @@ use crate::approval::domain::{ApprovalError, ApprovalRecord};
 /// Outcome of an explicit consumption-ledger migration (#1247).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LedgerMigration {
+    /// No ledger at the path, or an empty file: nothing required migration, so
+    /// this is a successful no-op (#1256).
+    NothingToMigrate {
+        /// The ledger path that was inspected.
+        ledger_path: std::path::PathBuf,
+        /// `true` for an empty file, `false` for an absent one.
+        empty: bool,
+    },
     /// A bare legacy map was adopted and written in the sealed form.
     Migrated {
         /// Markers adopted from the legacy map.

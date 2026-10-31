@@ -407,6 +407,43 @@ async fn migration_refuses_a_ledger_that_misses_a_terminal_store_record() {
     assert!(reopened.load(node_id).await.expect("load").is_some());
 }
 
+/// #1256: absence and emptiness are no-ops, not integrity failures.
+#[tokio::test]
+async fn migration_of_an_absent_or_empty_ledger_is_a_no_op() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("consumed.json");
+
+    let absent =
+        FileBackedApprovalRepository::migrate_consumption_ledger(&store, &ledger, RUN_KEY, false)
+            .expect("absent ledger");
+    assert_eq!(
+        absent,
+        LedgerMigration::NothingToMigrate {
+            ledger_path: ledger.clone(),
+            empty: false,
+        }
+    );
+    assert!(!ledger.exists(), "a no-op must not create the ledger");
+
+    std::fs::write(&ledger, "").expect("empty ledger");
+    let empty =
+        FileBackedApprovalRepository::migrate_consumption_ledger(&store, &ledger, RUN_KEY, false)
+            .expect("empty ledger");
+    assert_eq!(
+        empty,
+        LedgerMigration::NothingToMigrate {
+            ledger_path: ledger.clone(),
+            empty: true,
+        }
+    );
+    assert_eq!(
+        std::fs::read_to_string(&ledger).unwrap(),
+        "",
+        "a no-op must not rewrite the empty file"
+    );
+}
+
 /// #1255: a terminal record whose marker went missing must not load silently.
 #[tokio::test]
 async fn a_terminal_record_without_a_marker_is_refused_on_load() {
@@ -469,6 +506,7 @@ async fn a_terminal_record_without_a_marker_is_refused_on_load() {
         | LedgerMigration::AlreadySealed {
             markers, missing, ..
         } => (markers, missing),
+        other => panic!("expected an adopted ledger, got {other:?}"),
     };
     assert_eq!(markers, 1, "the terminal record was adopted");
     assert_eq!(missing.len(), 1, "and reported as previously uncovered");

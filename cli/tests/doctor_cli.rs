@@ -1,6 +1,7 @@
 //! `rigorix doctor` / `rigorix init` / `rigorix key` behaviour (#1101, #1102, #1103).
 //!
 //! @canonical .pi/architecture/modules/cli-boundary.md
+//! Canonical Reference: .pi/architecture/modules/cli-boundary.md
 //! Implements: ISSUE-NO-DOCTOR-COMMAND — the report is a CLI contract, not just a
 //!   function, so it is exercised through the real binary
 //! Issue: #1103
@@ -384,4 +385,125 @@ fn approve_ledger_migrate_with_an_empty_store_says_nothing_was_compared() {
         "{stdout}"
     );
     assert!(!stdout.contains("of 0"), "{stdout}");
+}
+
+fn migration_command(
+    dir: &std::path::Path,
+    store: &std::path::Path,
+    ledger: &std::path::Path,
+    key: &str,
+) -> Command {
+    let mut cmd = bin();
+    cmd.current_dir(dir).args(["approve", "ledger", "migrate"]);
+    isolated(&mut cmd);
+    cmd.env("RIGORIX_HMAC_KEY", key)
+        .env("RIGORIX_APPROVAL_STORE", store)
+        .env("RIGORIX_APPROVAL_CONSUMPTION_LEDGER", ledger);
+    cmd
+}
+
+#[test]
+fn approve_ledger_migrate_without_a_ledger_is_a_successful_no_op() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("consumed.json");
+
+    let out = migration_command(dir.path(), &store, &ledger, "migration-test-key")
+        .output()
+        .expect("run rigorix");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "nothing to migrate is not a failure: {stdout}"
+    );
+    assert!(stdout.contains("there is no ledger at"), "{stdout}");
+    assert!(stdout.contains("nothing to migrate"), "{stdout}");
+    assert!(!ledger.exists(), "a no-op must not create the ledger");
+}
+
+#[test]
+fn approve_ledger_migrate_with_an_empty_ledger_is_a_successful_no_op() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("consumed.json");
+    std::fs::write(&ledger, "").expect("empty ledger");
+
+    let out = migration_command(dir.path(), &store, &ledger, "migration-test-key")
+        .output()
+        .expect("run rigorix");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "an empty ledger is not a failure: {stdout}"
+    );
+    assert!(stdout.contains("is empty; nothing to migrate"), "{stdout}");
+    assert_eq!(std::fs::read_to_string(&ledger).unwrap(), "");
+}
+
+#[test]
+fn a_ledger_read_failure_names_the_ledger_not_the_store() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("ledger-as-directory");
+    std::fs::create_dir(&ledger).expect("make unreadable ledger path");
+
+    let out = migration_command(dir.path(), &store, &ledger, "migration-test-key")
+        .output()
+        .expect("run rigorix");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success(), "an unreadable ledger is a failure");
+    assert!(
+        stderr.contains("approval ledger migration failed"),
+        "the ledger, not the store, is the subject: {stderr}"
+    );
+    assert!(stderr.contains("ledger-as-directory"), "{stderr}");
+    assert!(
+        !stderr.contains("approval store unavailable"),
+        "the store is not what failed: {stderr}"
+    );
+}
+
+#[test]
+fn a_corrupt_or_rekeyed_ledger_still_fails_and_names_the_ledger() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let corrupt = dir.path().join("corrupt.json");
+    std::fs::write(&corrupt, "{ this is not json").expect("write corrupt ledger");
+
+    let out = migration_command(dir.path(), &store, &corrupt, "migration-test-key")
+        .output()
+        .expect("run rigorix");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success(), "damage is not a no-op");
+    assert!(stderr.contains("corrupt.json"), "{stderr}");
+    assert!(
+        stderr.contains("approval ledger migration failed"),
+        "{stderr}"
+    );
+
+    let rekeyed = dir.path().join("rekeyed.json");
+    std::fs::write(
+        &rekeyed,
+        r#"{"11111111-1111-1111-1111-111111111111:22222222-2222-2222-2222-222222222222":{"node_id":"11111111-1111-1111-1111-111111111111","nonce":"22222222-2222-2222-2222-222222222222","status":"consumed","recorded_at":"2026-10-31T00:00:00Z"}}"#,
+    )
+    .expect("bare legacy map");
+    let first = migration_command(dir.path(), &store, &rekeyed, "key-one")
+        .output()
+        .expect("seal under the first key");
+    assert!(
+        first.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+
+    let second = migration_command(dir.path(), &store, &rekeyed, "key-two")
+        .output()
+        .expect("run under a different key");
+    let stderr = String::from_utf8_lossy(&second.stderr);
+    assert!(
+        !second.status.success(),
+        "a MAC mismatch must stay a failure"
+    );
+    assert!(stderr.contains("MAC mismatch"), "{stderr}");
+    assert!(stderr.contains("rekeyed.json"), "{stderr}");
 }
