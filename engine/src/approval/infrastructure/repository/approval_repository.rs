@@ -45,4 +45,12 @@ pub trait ApprovalRepository: Send + Sync {
     async fn verify_integrity(&self) -> Result<usize, ApprovalError> {
         Ok(0)
     }
+
+    /// Number of consumption markers in the anti-rollback ledger.
+    ///
+    /// `0` means either no ledger (first run) or no terminal transition yet;
+    /// `doctor` distinguishes those by the path's existence (#1244).
+    async fn consumption_marker_count(&self) -> Result<usize, ApprovalError> {
+        Ok(0)
+    }
 }

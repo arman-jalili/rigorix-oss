@@ -4,7 +4,7 @@
 Canonical Reference: .pi/architecture/modules/approval.md
 Rationale: Bind human approval to the exact resolved execution intent — replay protection at the step level, first-class signed evidence, and effect-scope verification
 Blueprint Source: Requirements v1 — 2026-08-28 (approved, NOT YET BUILT)
-Last Updated: 2026-10-31 — MAC material derives from the record and consumption has an external ledger (#1240, #1241)
+Last Updated: 2026-10-31 — MAC material derives from the record; the consumption ledger is authenticated as a set (#1240, #1241, #1244)
 -->
 
 ## Overview
@@ -523,9 +523,16 @@ terminal is `ApprovalError::RecordRollback` and `verify_intent` refuses with
 `IntegrityFailure`. A new approval has a new nonce and is unaffected.
 
 The ledger path is `RIGORIX_APPROVAL_CONSUMPTION_LEDGER` (absolute or
-repo-relative); the default is `$HOME/.rigorix/approval-consumption.json`, so
-restoring the workspace store alone does not restore consumed approvals. With no
-ledger file, a fresh store works and doctor reports the marker as absent.
+repo-relative); the default is `$HOME/.rigorix/approval-consumption-<key-fingerprint>.json`, so
+restoring the workspace store alone does not restore consumed approvals.
+
+The ledger file is not a bare map (#1244): `{ version, entries, mac }`, where
+the MAC covers the version and the whole entries map with the run key. Removing
+one marker changes the authenticated bytes, so truncation is
+`ApprovalError::ConsumptionLedgerIntegrity` naming the store and ledger paths —
+not an absence. A ledger that has never been written is still a valid first run;
+doctor says `no history yet`. A pre-#1244 bare map is adopted and re-sealed on
+open, after which single-marker deletion is detectable.
 
 ### One run key (#1238)
 

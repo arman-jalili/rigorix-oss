@@ -289,9 +289,19 @@ pub async fn probe(repo_root: &Path) -> DoctorReport {
                         } else {
                             "outside agent-writable workspace"
                         };
+                        let markers = setup
+                            .repository
+                            .consumption_marker_count()
+                            .await
+                            .unwrap_or(0);
+                        let ledger_state = if setup.consumption_ledger_path.is_file() {
+                            format!("verified, {markers} marker(s)")
+                        } else {
+                            "no history yet".to_string()
+                        };
                         row.detail = Some(format!(
                             "mode: intent-bound; approver id required; TTL {}s; store {} ({} record(s) verify, {store_location}); \
-                             consumption ledger {} ({ledger_location}); binding key {}; signing key {}; keys {}",
+                             consumption ledger {} ({ledger_location}; {ledger_state}); binding key {}; signing key {}; keys {}",
                             setup.ttl_seconds,
                             setup.store_path.display(),
                             verified,

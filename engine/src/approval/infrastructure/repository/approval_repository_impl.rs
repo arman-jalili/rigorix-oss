@@ -11,12 +11,14 @@
 //!   resume: instance A persists, instance B hydrates the same file and can
 //!   verify the approval against its own re-derived intents
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 
 use chrono::{DateTime, Utc};
+use hmac::{Hmac, KeyInit, Mac};
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 use uuid::Uuid;
 
 use crate::approval::domain::{ApprovalError, ApprovalRecord, ApprovalStatus};
@@ -32,6 +34,137 @@ struct ConsumptionMarker {
 
 fn marker_key(node_id: Uuid, nonce: Uuid) -> String {
     format!("{node_id}:{nonce}")
+}
+
+/// The ledger file. `mac` covers `version` + the whole `entries` map, so
+/// removing one marker changes the authenticated bytes (#1244). A per-entry
+/// MAC would be removed with its entry; the whole-set MAC is the point.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ConsumptionLedgerFile {
+    version: u8,
+    entries: BTreeMap<String, ConsumptionMarker>,
+    mac: String,
+}
+
+const CONSUMPTION_LEDGER_VERSION: u8 = 1;
+
+fn ledger_mac(
+    entries: &BTreeMap<String, ConsumptionMarker>,
+    run_key: &[u8],
+) -> Result<String, ApprovalError> {
+    let bytes = serde_json::to_vec(&(CONSUMPTION_LEDGER_VERSION, entries))
+        .map_err(|e| ApprovalError::Internal(format!("serialize consumption ledger MAC: {e}")))?;
+    let mut mac = Hmac::<Sha256>::new_from_slice(run_key)
+        .map_err(|e| ApprovalError::Internal(format!("consumption ledger MAC key: {e}")))?;
+    mac.update(&bytes);
+    Ok(hex::encode(mac.finalize().into_bytes()))
+}
+
+fn ledger_integrity(store: &Path, ledger: &Path, detail: impl Into<String>) -> ApprovalError {
+    ApprovalError::ConsumptionLedgerIntegrity {
+        store: store.display().to_string(),
+        ledger: ledger.display().to_string(),
+        detail: detail.into(),
+    }
+}
+
+fn write_consumption_ledger(
+    ledger: &Path,
+    entries: &BTreeMap<String, ConsumptionMarker>,
+    run_key: Option<&[u8]>,
+) -> Result<(), ApprovalError> {
+    if let Some(parent) = ledger.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let mac = match run_key {
+        Some(key) => ledger_mac(entries, key)?,
+        None => String::new(),
+    };
+    let contents = serde_json::to_string_pretty(&ConsumptionLedgerFile {
+        version: CONSUMPTION_LEDGER_VERSION,
+        entries: entries.clone(),
+        mac,
+    })
+    .map_err(|e| ApprovalError::Internal(format!("serialize consumption ledger: {e}")))?;
+    // Unique temp name: the ledger may be shared across processes, and a
+    // fixed `.json.tmp` makes concurrent writers rename a file another writer
+    // already moved.
+    let tmp = ledger.with_file_name(format!(
+        ".{}.{}.tmp",
+        ledger
+            .file_name()
+            .map(|name| name.to_string_lossy())
+            .unwrap_or_default(),
+        Uuid::new_v4()
+    ));
+    std::fs::write(&tmp, contents).map_err(|e| {
+        ApprovalError::Internal(format!(
+            "write approval consumption ledger {}: {e}",
+            tmp.display()
+        ))
+    })?;
+    std::fs::rename(&tmp, ledger).map_err(|e| {
+        ApprovalError::Internal(format!(
+            "commit approval consumption ledger {}: {e}",
+            ledger.display()
+        ))
+    })?;
+    Ok(())
+}
+
+/// Load and verify the ledger. Returns the entries and whether the file was in
+/// the pre-#1244 bare-map form and needs re-sealing.
+fn read_consumption_ledger(
+    store: &Path,
+    ledger: &Path,
+    run_key: Option<&[u8]>,
+) -> Result<(BTreeMap<String, ConsumptionMarker>, bool), ApprovalError> {
+    let raw = std::fs::read_to_string(ledger)
+        .map_err(|e| ledger_integrity(store, ledger, format!("read failed: {e}")))?;
+    if raw.trim().is_empty() {
+        return Err(ledger_integrity(
+            store,
+            ledger,
+            "file is empty — an absent first-run ledger must be deleted, not truncated",
+        ));
+    }
+    let value: serde_json::Value = serde_json::from_str(&raw)
+        .map_err(|e| ledger_integrity(store, ledger, format!("corrupt JSON: {e}")))?;
+    if value.get("entries").is_some() {
+        let file: ConsumptionLedgerFile = serde_json::from_value(value)
+            .map_err(|e| ledger_integrity(store, ledger, format!("corrupt structure: {e}")))?;
+        if file.version != CONSUMPTION_LEDGER_VERSION {
+            return Err(ledger_integrity(
+                store,
+                ledger,
+                format!("unsupported ledger version {}", file.version),
+            ));
+        }
+        if let Some(key) = run_key {
+            let expected = ledger_mac(&file.entries, key)?;
+            if !constant_time_eq(expected.as_bytes(), file.mac.as_bytes()) {
+                return Err(ledger_integrity(
+                    store,
+                    ledger,
+                    "MAC mismatch — markers were removed or altered",
+                ));
+            }
+        }
+        Ok((file.entries, false))
+    } else {
+        // Pre-#1244 bare map. Adopt its current contents and seal them so a
+        // later single-marker deletion is detectable.
+        let entries: BTreeMap<String, ConsumptionMarker> = serde_json::from_value(value)
+            .map_err(|e| ledger_integrity(store, ledger, format!("corrupt legacy map: {e}")))?;
+        Ok((entries, true))
+    }
+}
+
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (a, b)| acc | (a ^ b)) == 0
 }
 
 /// In-memory approval store (node-scoped, single record per node).
@@ -148,7 +281,7 @@ pub struct FileBackedApprovalRepository {
     /// Consumption markers live outside the store file, so restoring an older
     /// copy of the store does not restore an older copy of its progress.
     consumption_path: Option<PathBuf>,
-    consumed: RwLock<HashMap<String, ConsumptionMarker>>,
+    consumed: RwLock<BTreeMap<String, ConsumptionMarker>>,
 }
 
 impl FileBackedApprovalRepository {
@@ -184,27 +317,13 @@ impl FileBackedApprovalRepository {
             })?,
             Ok(_) | Err(_) => HashMap::new(),
         };
-        let consumed = match consumption_path {
-            Some(path) if path.is_file() => {
-                let raw = std::fs::read_to_string(path).map_err(|e| {
-                    ApprovalError::Internal(format!(
-                        "read approval consumption ledger {}: {e}",
-                        path.display()
-                    ))
-                })?;
-                if raw.trim().is_empty() {
-                    HashMap::new()
-                } else {
-                    serde_json::from_str(&raw).map_err(|e| {
-                        ApprovalError::Internal(format!(
-                            "corrupt approval consumption ledger {}: {e}",
-                            path.display()
-                        ))
-                    })?
-                }
-            }
-            _ => HashMap::new(),
+        let (consumed, migrated) = match consumption_path {
+            Some(ledger) if ledger.is_file() => read_consumption_ledger(&path, ledger, run_key)?,
+            _ => (BTreeMap::new(), false),
         };
+        if migrated && let Some(ledger) = consumption_path {
+            write_consumption_ledger(ledger, &consumed, run_key)?;
+        }
         Ok(Self {
             path,
             records: RwLock::new(records),
@@ -251,25 +370,7 @@ impl FileBackedApprovalRepository {
                 recorded_at: Utc::now(),
             },
         );
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let contents = serde_json::to_string_pretty(&*consumed)
-            .map_err(|e| ApprovalError::Internal(format!("serialize consumption ledger: {e}")))?;
-        let tmp = path.with_extension("json.tmp");
-        std::fs::write(&tmp, contents).map_err(|e| {
-            ApprovalError::Internal(format!(
-                "write approval consumption ledger {}: {e}",
-                tmp.display()
-            ))
-        })?;
-        std::fs::rename(&tmp, path).map_err(|e| {
-            ApprovalError::Internal(format!(
-                "commit approval consumption ledger {}: {e}",
-                path.display()
-            ))
-        })?;
-        Ok(())
+        write_consumption_ledger(path, &consumed, self.mac_key.as_deref())
     }
 
     fn persist(&self) -> Result<(), ApprovalError> {
@@ -338,6 +439,17 @@ impl crate::approval::infrastructure::repository::ApprovalRepository
             self.reject_rolled_back(record)?;
         }
         Ok(map.len())
+    }
+
+    async fn consumption_marker_count(&self) -> Result<usize, ApprovalError> {
+        if self.consumption_path.is_none() {
+            return Ok(0);
+        }
+        let consumed = self
+            .consumed
+            .read()
+            .map_err(|_| ApprovalError::Internal("consumption ledger poisoned".into()))?;
+        Ok(consumed.len())
     }
 
     async fn delete(&self, node_id: Uuid) -> Result<(), ApprovalError> {

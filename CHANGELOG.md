@@ -26,6 +26,7 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Fixed
 
+- The consumption ledger is `{version, entries, mac}` with a whole-set MAC: deleting a marker changes the authenticated bytes and refuses the store with a diagnosis naming both paths; an absent ledger remains a valid first run (#1244)
 - Approval MAC material is derived from the record's serialization minus `mac`, so a field added to `ApprovalRecord` is protected automatically; version 1 material is retained only to verify existing records (#1240)
 - Terminal approval transitions are recorded in a consumption ledger outside the store file; restoring an authentic older store now fails with `RecordRollback` instead of restoring a consumed approval, and `doctor` classifies the store and ledger by writability (#1241)
 - Approval records carry an HMAC over their lifecycle fields (`status`, `expires_at`, `nonce`, identity and intent); a consumed record edited back to `pending` or an extended expiry is refused on load with a named diagnosis, and the store path is configurable via `RIGORIX_APPROVAL_STORE` so it can live outside the agent-writable workspace (#1237)

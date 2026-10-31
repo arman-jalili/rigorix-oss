@@ -70,7 +70,7 @@ the same decision.
 - Terminal transitions (`consumed`, `expired`, `superseded`) are also recorded in
   a consumption ledger keyed by `(node_id, nonce)`. Restoring an older copy of
   `approvals.json` no longer restores a consumed approval: the load is refused.
-- The ledger defaults to `$HOME/.rigorix/approval-consumption.json`, outside the
+- The ledger defaults to `$HOME/.rigorix/approval-consumption-<key-fingerprint>.json`, outside the
   repository. Override with `RIGORIX_APPROVAL_CONSUMPTION_LEDGER` (absolute or
   repo-relative). `rigorix doctor` prints both paths and whether they are inside
   or outside the agent-writable workspace.
@@ -86,3 +86,15 @@ the same decision.
 - Use `rigorix-verifier` **0.9.0** (crates.io, npm; Maven/PyPI source is 0.9.0
   but publication remains blocked under SDK #57). A 0.8.x verifier drops the
   field during canonicalization and fails signature verification.
+
+
+## The consumption ledger is authenticated as a set (from Unreleased)
+
+- The ledger file is now `{ version: 1, entries, mac }`. The MAC covers the
+  version and the whole marker map, so deleting one marker is an integrity
+  failure naming the store and ledger paths — not a fresh store.
+- A missing ledger is still a valid first run; `rigorix doctor` says
+  `no history yet`. A pre-#1244 bare map is adopted and re-sealed on open.
+- No configuration change is required. The ledger still defaults outside the
+  repository (`$HOME/.rigorix/approval-consumption-<key-fingerprint>.json`); override with
+  `RIGORIX_APPROVAL_CONSUMPTION_LEDGER`.

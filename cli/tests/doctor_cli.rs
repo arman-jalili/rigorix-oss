@@ -248,6 +248,10 @@ fn doctor_reports_the_approval_store_and_key_agreement() {
         stdout.contains(&ledger.display().to_string()),
         "doctor must name the consumption ledger: {stdout}"
     );
+    assert!(
+        stdout.contains("no history yet"),
+        "a first run has no ledger history and must say so: {stdout}"
+    );
     assert!(stdout.contains("keys agree"), "{stdout}");
     assert!(
         !stdout.contains("doctor-test-run-key"),
