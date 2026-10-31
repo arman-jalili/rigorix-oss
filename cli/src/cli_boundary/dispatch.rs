@@ -1,6 +1,7 @@
 //! Command dispatcher — routes parsed commands to engine services.
 //!
 //! @canonical .pi/architecture/modules/cli-boundary.md#dispatch-logic
+//! Canonical Reference: .pi/architecture/modules/cli-boundary.md#dispatch-logic
 //! Implements: Dispatcher component: dispatch function and DispatchResult type
 //! Issue: issue-dispatcher
 //!
@@ -142,6 +143,19 @@ async fn cmd_approve_ledger_migrate(
 fn render_ledger_migration(outcome: LedgerMigration) -> String {
     let (markers, terminal_records, missing, store_present, store_path, already_sealed) =
         match outcome {
+            LedgerMigration::NothingToMigrate { ledger_path, empty } => {
+                return if empty {
+                    format!(
+                        "the ledger at `{}` is empty; nothing to migrate",
+                        ledger_path.display()
+                    )
+                } else {
+                    format!(
+                        "there is no ledger at `{}`; nothing to migrate",
+                        ledger_path.display()
+                    )
+                };
+            }
             LedgerMigration::Migrated {
                 markers,
                 terminal_records,

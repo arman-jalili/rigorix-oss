@@ -290,6 +290,26 @@ fn migrate_consumption_ledger_at(
     run_key: Option<&[u8]>,
     accept_missing: bool,
 ) -> Result<LedgerMigration, ApprovalError> {
+    // Absence and emptiness are no-ops, and neither needs a key: there is
+    // nothing to authenticate. Damage below still requires one (#1256).
+    let raw = match std::fs::read_to_string(ledger) {
+        Ok(raw) => raw,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(LedgerMigration::NothingToMigrate {
+                ledger_path: ledger.to_path_buf(),
+                empty: false,
+            });
+        }
+        Err(e) => {
+            return Err(ledger_integrity(store, ledger, format!("read failed: {e}")));
+        }
+    };
+    if raw.trim().is_empty() {
+        return Ok(LedgerMigration::NothingToMigrate {
+            ledger_path: ledger.to_path_buf(),
+            empty: true,
+        });
+    }
     let Some(key) = run_key else {
         return Err(ledger_integrity(
             store,
@@ -297,15 +317,6 @@ fn migrate_consumption_ledger_at(
             "migration requires the run key; set RIGORIX_HMAC_KEY",
         ));
     };
-    let raw = std::fs::read_to_string(ledger)
-        .map_err(|e| ledger_integrity(store, ledger, format!("read failed: {e}")))?;
-    if raw.trim().is_empty() {
-        return Err(ledger_integrity(
-            store,
-            ledger,
-            "file is empty — nothing to migrate",
-        ));
-    }
     let value: serde_json::Value = serde_json::from_str(&raw)
         .map_err(|e| ledger_integrity(store, ledger, format!("corrupt JSON: {e}")))?;
     if value.get("entries").is_some() {

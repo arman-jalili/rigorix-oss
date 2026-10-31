@@ -100,11 +100,16 @@ the same decision.
   or the configured `audit_hmac_key`). The command reports
   `adopted N of M terminal record(s)`, where M comes from the authenticated
   store. If a terminal record has no marker, migration refuses and names the
-  node and step; `--accept-missing` seals anyway and lists what stays
-  unprotected. With no store present the report names the missing path and says
+  node and step; `--accept-missing` adopts those terminal records into the ledger and names
+  each one. With no store present the report names the missing path and says
   nothing was compared; an empty store says it held no terminal records to
   compare. The loader never adopts a bare map, because accepting the unprotected
   form is how a truncation becomes a valid ledger.
+
+Running `rigorix approve ledger migrate` with no ledger, or with an empty one,
+is a successful no-op (exit 0) that names the path and says nothing was
+migrated. Unreadable, corrupt, unsealed and MAC-mismatched ledgers still fail,
+and a ledger failure is reported as such rather than as an unavailable store.
 - No configuration change is required. The ledger still defaults outside the
   repository (`$HOME/.rigorix/approval-consumption-<key-fingerprint>.json`); override with
   `RIGORIX_APPROVAL_CONSUMPTION_LEDGER`.

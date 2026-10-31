@@ -4,7 +4,7 @@
 Canonical Reference: .pi/architecture/modules/approval.md
 Rationale: Bind human approval to the exact resolved execution intent — replay protection at the step level, first-class signed evidence, and effect-scope verification
 Blueprint Source: Requirements v1 — 2026-08-28 (approved, NOT YET BUILT)
-Last Updated: 2026-10-31 — MAC material derives from the record; the ledger is authenticated and checked in both directions; both files are written under a lock (#1240, #1241, #1244, #1254, #1255)
+Last Updated: 2026-10-31 — MAC material derives from the record; the ledger is authenticated, checked both ways, and absence is a no-op; both files are written under a lock (#1240, #1241, #1244, #1254, #1255, #1256)
 -->
 
 ## Overview
@@ -549,6 +549,15 @@ record without a marker refuses the migration and names the node and step;
 `--accept-missing` is the explicit override: it adopts those terminal records
 into the ledger and the report names each one. It is idempotent: an already-sealed
 ledger is verified and compared. The loader never calls it.
+
+An absent or empty ledger is a successful no-op with exit 0 (#1256): there is
+nothing to migrate, and reporting a broken store for that state taught operators
+to ignore the command's real failures. The sentence names the ledger path and
+says nothing was migrated. Damage still fails: an unreadable, corrupt,
+unsealed or MAC-mismatched ledger, and a migration that would leave terminal
+records uncovered, all exit non-zero. A ledger failure is reported as
+`approval ledger migration failed`, naming the ledger, never as an unavailable
+store.
 
 The report never prints `N of 0` (#1251). When the store is absent it names the
 path it did not find and says nothing was compared; when the store exists but

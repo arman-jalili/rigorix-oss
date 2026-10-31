@@ -1,6 +1,7 @@
 //! Factory interfaces for constructing Execution Engine service instances.
 //!
 //! @canonical .pi/architecture/modules/execution-engine.md
+//! Canonical Reference: .pi/architecture/modules/execution-engine.md
 //! Implements: Contract Freeze — ParallelExecutionFactory and RetryEvaluationFactory traits
 //! Issue: issue-contract-freeze
 //!
@@ -264,6 +265,12 @@ pub enum ApprovalBindingError {
         /// Underlying I/O detail.
         detail: String,
     },
+    /// The consumption-ledger migration failed. This is a ledger failure, not
+    /// an unavailable store (#1256).
+    LedgerUnavailable {
+        /// Underlying detail, naming the ledger.
+        detail: String,
+    },
     /// The approval key and the envelope-signing key came from two sources and
     /// disagree. Values are never included — only the sources.
     KeyMismatch {
@@ -285,6 +292,9 @@ impl std::fmt::Display for ApprovalBindingError {
             }
             Self::StoreUnavailable { detail } => {
                 write!(f, "approval store unavailable: {detail}")
+            }
+            Self::LedgerUnavailable { detail } => {
+                write!(f, "approval ledger migration failed: {detail}")
             }
             Self::KeyMismatch {
                 binding_source,
@@ -462,8 +472,8 @@ impl ApprovalBindingSetup {
             accept_missing,
         )
         .map(Some)
-        .map_err(|e| ApprovalBindingError::StoreUnavailable {
-            detail: format!("{}: {e}", store_path.display()),
+        .map_err(|e| ApprovalBindingError::LedgerUnavailable {
+            detail: e.to_string(),
         })
     }
 
