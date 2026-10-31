@@ -35,6 +35,7 @@ use serde_json::Value as JsonValue;
 
 use crate::cli_boundary::cli::{ApproveAction, CliCommand, ConfigAction, LedgerAction};
 use crate::cli_boundary::orchestrator::CliServices;
+use rigorix_engine::approval::infrastructure::repository::LedgerMigration;
 use rigorix_engine::audit::application::projection::{
     ProjectAuthorityFacts, verify_authority_fact_bundle,
 };
@@ -117,7 +118,6 @@ async fn cmd_approve_ledger_migrate(
     config: &crate::cli_boundary::config::CliConfig,
     accept_missing: bool,
 ) -> DispatchResult {
-    use rigorix_engine::approval::infrastructure::repository::LedgerMigration;
     let repo_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let signing_key = config
         .engine_config
@@ -128,40 +128,7 @@ async fn cmd_approve_ledger_migrate(
         signing_key,
         accept_missing,
     ) {
-        Ok(Some(LedgerMigration::Migrated {
-            markers,
-            terminal_records,
-            missing,
-        })) => {
-            let mut message = format!(
-                "adopted {markers} of {terminal_records} terminal record(s) from the legacy consumption ledger; wrote the sealed form"
-            );
-            if !missing.is_empty() {
-                message.push_str(&format!(
-                    "; left {} terminal record(s) unprotected: {}",
-                    missing.len(),
-                    format_missing(&missing)
-                ));
-            }
-            DispatchResult::success(message)
-        }
-        Ok(Some(LedgerMigration::AlreadySealed {
-            markers,
-            terminal_records,
-            missing,
-        })) => {
-            let mut message = format!(
-                "consumption ledger is already sealed; {markers} marker(s) verify against {terminal_records} terminal record(s) in the store"
-            );
-            if !missing.is_empty() {
-                message.push_str(&format!(
-                    "; left {} terminal record(s) unprotected: {}",
-                    missing.len(),
-                    format_missing(&missing)
-                ));
-            }
-            DispatchResult::success(message)
-        }
+        Ok(Some(outcome)) => DispatchResult::success(render_ledger_migration(outcome)),
         Ok(None) => DispatchResult::error(
             "approval binding is not configured: export RIGORIX_HMAC_KEY (or configure \
              audit_hmac_key) before migrating the consumption ledger"
@@ -170,6 +137,78 @@ async fn cmd_approve_ledger_migrate(
         ),
         Err(error) => DispatchResult::error(error.to_string(), 1),
     }
+}
+
+fn render_ledger_migration(outcome: LedgerMigration) -> String {
+    let (markers, terminal_records, missing, store_present, store_path, already_sealed) =
+        match outcome {
+            LedgerMigration::Migrated {
+                markers,
+                terminal_records,
+                missing,
+                store_present,
+                store_path,
+            } => (
+                markers,
+                terminal_records,
+                missing,
+                store_present,
+                store_path,
+                false,
+            ),
+            LedgerMigration::AlreadySealed {
+                markers,
+                terminal_records,
+                missing,
+                store_present,
+                store_path,
+            } => (
+                markers,
+                terminal_records,
+                missing,
+                store_present,
+                store_path,
+                true,
+            ),
+        };
+
+    let mut message = if already_sealed {
+        format!("consumption ledger is already sealed; {markers} marker(s) verify")
+    } else if !store_present {
+        format!(
+            "adopted {markers} marker(s); the store was not found at `{}`, so nothing was compared",
+            store_path.display()
+        )
+    } else if terminal_records == 0 {
+        format!(
+            "adopted {markers} marker(s); the store holds no terminal record(s), so nothing was compared"
+        )
+    } else {
+        format!(
+            "adopted {markers} of {terminal_records} terminal record(s) from the legacy consumption ledger"
+        )
+    };
+
+    if already_sealed && !store_present {
+        message.push_str(&format!(
+            "; the store was not found at `{}`, so nothing was compared",
+            store_path.display()
+        ));
+    } else if already_sealed && terminal_records == 0 {
+        message.push_str("; the store holds no terminal record(s), so nothing was compared");
+    }
+
+    if !missing.is_empty() {
+        message.push_str(&format!(
+            "; left {} terminal record(s) unprotected: {}",
+            missing.len(),
+            format_missing(&missing)
+        ));
+    }
+    if !already_sealed {
+        message.push_str("; wrote the sealed form");
+    }
+    message
 }
 
 fn format_missing(missing: &[(uuid::Uuid, String)]) -> String {
@@ -1199,5 +1238,63 @@ mod tests {
             "the error must name the working alternative: {}",
             result.summary
         );
+    }
+
+    fn migrated(
+        markers: usize,
+        terminal_records: usize,
+        missing: Vec<(uuid::Uuid, String)>,
+        store_present: bool,
+    ) -> LedgerMigration {
+        LedgerMigration::Migrated {
+            markers,
+            terminal_records,
+            missing,
+            store_present,
+            store_path: std::path::PathBuf::from("/var/lib/rigorix/approvals.json"),
+        }
+    }
+
+    #[test]
+    fn migration_store_absent_names_the_path_and_compares_nothing() {
+        let message = render_ledger_migration(migrated(1, 0, vec![], false));
+        assert!(message.contains("adopted 1 marker(s)"), "{message}");
+        assert!(
+            message.contains("store was not found at `/var/lib/rigorix/approvals.json`"),
+            "{message}"
+        );
+        assert!(message.contains("nothing was compared"), "{message}");
+        assert!(!message.contains("of 0"), "{message}");
+    }
+
+    #[test]
+    fn migration_store_present_without_terminal_records_says_nothing_was_compared() {
+        let message = render_ledger_migration(migrated(1, 0, vec![], true));
+        assert!(
+            message.contains("store holds no terminal record(s), so nothing was compared"),
+            "{message}"
+        );
+        assert!(!message.contains("of 0"), "{message}");
+    }
+
+    #[test]
+    fn migration_with_terminal_records_keeps_adopted_n_of_m() {
+        let message = render_ledger_migration(migrated(1, 1, vec![], true));
+        assert!(
+            message.contains("adopted 1 of 1 terminal record(s)"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn migration_with_missing_records_lists_what_stays_unprotected() {
+        let node = uuid::Uuid::new_v4();
+        let message =
+            render_ledger_migration(migrated(0, 1, vec![(node, "commit_cost".into())], true));
+        assert!(
+            message.contains("left 1 terminal record(s) unprotected"),
+            "{message}"
+        );
+        assert!(message.contains("commit_cost"), "{message}");
     }
 }

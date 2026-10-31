@@ -550,6 +550,12 @@ record without a marker refuses the migration and names the node and step;
 leaves unprotected. It is idempotent: an already-sealed ledger is verified and
 compared. The loader never calls it.
 
+The report never prints `N of 0` (#1251). When the store is absent it names the
+path it did not find and says nothing was compared; when the store exists but
+holds no terminal records it says the comparison had nothing to cover. Those are
+different facts, and a ledger carried to a new host is legitimate — migration
+does not refuse on an absent store.
+
 ### One run key (#1238)
 
 The approval binding key and the envelope-signing key are the same run key.

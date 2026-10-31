@@ -32,6 +32,11 @@ pub enum LedgerMigration {
         /// Terminal records the adopted ledger leaves unprotected, as
         /// `(node_id, step_name)`.
         missing: Vec<(Uuid, String)>,
+        /// Whether the store file existed and was read. `false` means the
+        /// comparison could not run at all (#1251).
+        store_present: bool,
+        /// The store path, so a refusal/report can name it.
+        store_path: std::path::PathBuf,
     },
     /// The ledger already carried a wrapper and its MAC verified.
     AlreadySealed {
@@ -41,6 +46,10 @@ pub enum LedgerMigration {
         terminal_records: usize,
         /// Terminal records the sealed ledger leaves unprotected.
         missing: Vec<(Uuid, String)>,
+        /// Whether the store file existed and was read (#1251).
+        store_present: bool,
+        /// The store path.
+        store_path: std::path::PathBuf,
     },
 }
 
