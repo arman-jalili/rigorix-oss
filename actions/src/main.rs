@@ -382,8 +382,9 @@ async fn build_action_orchestrator(
     };
     let hook_runner = load_hook_runner(repo_root);
     let approval_binding =
-        rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env(
+        rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env_with_signing_key(
             std::path::Path::new(repo_root),
+            read_input("hmac-key").as_deref(),
         )
         .map_err(|e| format!("approval binding: {e}"))?;
     // ADR-013 R3/R2: operator-authored .rigorix/sequence-policy.toml gates

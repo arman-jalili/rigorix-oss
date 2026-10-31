@@ -35,6 +35,14 @@
 
 use std::path::{Path, PathBuf};
 
+/// A short, one-way fingerprint of a key — never the key or a prefix of it.
+fn key_fingerprint(key: &str) -> String {
+    use sha2::{Digest, Sha256};
+
+    let digest = Sha256::digest(key.as_bytes());
+    format!("sha256:{}", hex::encode(&digest[..8]))
+}
+
 /// The state of one enforcement seam.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SeamState {
@@ -239,25 +247,63 @@ pub async fn probe(repo_root: &Path) -> DoctorReport {
         },
     );
 
-    // 2. Approval binding (ADR-011) — env request + key.
+    // 2. Approval binding (ADR-011) — env request + one run key.
     let approval_source = "RIGORIX_APPROVAL_BINDING=1 + RIGORIX_HMAC_KEY".to_string();
     let remediation = "arm with RIGORIX_APPROVAL_BINDING=1, then export the key printed by \
                        `rigorix key` as RIGORIX_HMAC_KEY";
+    // The same configured key the composition hands the signer (#1238), so
+    // doctor sees the mismatch the process would refuse to start on.
+    let configured_signing_key = std::fs::read_to_string(repo_root.join("rigorix.toml"))
+        .ok()
+        .and_then(|raw| {
+            toml::from_str::<rigorix_engine::configuration::domain::config::Config>(&raw).ok()
+        })
+        .and_then(|config| config.audit_hmac_key);
     seams.push(
-        match rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env(
+        match rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env_with_signing_key(
             repo_root,
+            configured_signing_key.as_deref(),
         ) {
             Ok(Some(setup)) => {
-                let mut row = SeamReport::armed(
-                    "approval binding",
-                    "binds each approval to the intent it approved",
-                    approval_source,
-                );
-                row.detail = Some(format!(
-                    "mode: intent-bound; approver id required; TTL {}s; records at .rigorix/approvals.json",
-                    setup.ttl_seconds
-                ));
-                row
+                match setup.repository.verify_integrity().await {
+                    Ok(verified) => {
+                        let mut row = SeamReport::armed(
+                            "approval binding",
+                            "binds each approval to the intent it approved",
+                            approval_source,
+                        );
+                        let binding_key = String::from_utf8_lossy(&setup.run_key);
+                        let signing_key = configured_signing_key
+                            .clone()
+                            .or_else(|| std::env::var("RIGORIX_HMAC_KEY").ok())
+                            .unwrap_or_default();
+                        let agree = !signing_key.is_empty() && binding_key == signing_key;
+                        row.detail = Some(format!(
+                            "mode: intent-bound; approver id required; TTL {}s; store {} ({} record(s) verify); \
+                             binding key {}; signing key {}; keys {}",
+                            setup.ttl_seconds,
+                            setup.store_path.display(),
+                            verified,
+                            key_fingerprint(&binding_key),
+                            if signing_key.is_empty() {
+                                "not configured".to_string()
+                            } else {
+                                key_fingerprint(&signing_key)
+                            },
+                            if agree { "agree" } else { "differ" }
+                        ));
+                        row
+                    }
+                    Err(error) => SeamReport::misconfigured(
+                        "approval binding",
+                        "binds each approval to the intent it approved",
+                        approval_source,
+                        format!(
+                            "store {} failed integrity verification: {error}; re-approve the affected steps",
+                            setup.store_path.display()
+                        ),
+                    ),
+                }
             }
             Ok(None) => {
                 let mut row = SeamReport::unarmed(
@@ -265,7 +311,11 @@ pub async fn probe(repo_root: &Path) -> DoctorReport {
                     "binds each approval to the intent it approved",
                     approval_source,
                 );
-                row.detail = Some(format!("approvals are refused; {remediation}"));
+                let store = std::env::var("RIGORIX_APPROVAL_STORE")
+                    .unwrap_or_else(|_| ".rigorix/approvals.json".to_string());
+                row.detail = Some(format!(
+                    "approvals are refused; store {store}; {remediation}"
+                ));
                 row
             }
             Err(error) => SeamReport::misconfigured(
@@ -578,6 +628,17 @@ mod tests {
             state,
             detail: None,
         }
+    }
+
+    #[test]
+    fn key_fingerprints_are_one_way_and_distinguish_keys() {
+        let a = key_fingerprint("run-key-a");
+        let b = key_fingerprint("run-key-b");
+        assert!(a.starts_with("sha256:"));
+        assert_eq!(a.len(), "sha256:".len() + 16);
+        assert_ne!(a, b);
+        assert!(!a.contains("run-key-a"));
+        assert!(!b.contains("run-key-b"));
     }
 
     #[test]

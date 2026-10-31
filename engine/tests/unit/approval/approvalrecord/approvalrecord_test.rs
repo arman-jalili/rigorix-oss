@@ -32,6 +32,7 @@ fn sample_record() -> ApprovalRecord {
             full_payload: None,
         },
         approver_scope: Vec::new(),
+        mac: None,
     }
 }
 

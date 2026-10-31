@@ -59,6 +59,9 @@ pub struct ApprovalBindingSetup {
     pub run_key: Vec<u8>,
     /// Approval lifetime (expires_at = decided_at + ttl).
     pub ttl_seconds: u64,
+    /// Where the durable approval records live. Configurable so a deployment
+    /// can keep authority outside the agent-writable workspace (#1237).
+    pub store_path: std::path::PathBuf,
 }
 
 pub struct ParallelExecutionFactoryConfig {
@@ -258,6 +261,14 @@ pub enum ApprovalBindingError {
         /// Underlying I/O detail.
         detail: String,
     },
+    /// The approval key and the envelope-signing key came from two sources and
+    /// disagree. Values are never included — only the sources.
+    KeyMismatch {
+        /// Where the binding key came from.
+        binding_source: &'static str,
+        /// Where the signing key came from.
+        signing_source: &'static str,
+    },
 }
 
 impl std::fmt::Display for ApprovalBindingError {
@@ -272,11 +283,36 @@ impl std::fmt::Display for ApprovalBindingError {
             Self::StoreUnavailable { detail } => {
                 write!(f, "approval store unavailable: {detail}")
             }
+            Self::KeyMismatch {
+                binding_source,
+                signing_source,
+            } => write!(
+                f,
+                "approval binding key from {binding_source} differs from the audit signing key from {signing_source}; \
+                 configure one key source or make the two values equal"
+            ),
         }
     }
 }
 
 impl std::error::Error for ApprovalBindingError {}
+
+/// Resolve the approval store path: `RIGORIX_APPROVAL_STORE` when set
+/// (absolute, or relative to the repo root), otherwise the workspace-local
+/// default. A deployment can point this outside the agent-writable tree (#1237).
+fn resolve_store_path(repo_root: &std::path::Path, configured: Option<&str>) -> std::path::PathBuf {
+    match configured.filter(|p| !p.trim().is_empty()) {
+        Some(path) => {
+            let path = std::path::PathBuf::from(path);
+            if path.is_absolute() {
+                path
+            } else {
+                repo_root.join(path)
+            }
+        }
+        None => repo_root.join(".rigorix").join("approvals.json"),
+    }
+}
 
 impl ApprovalBindingSetup {
     /// Build an approval binding setup from environment configuration.
@@ -297,64 +333,101 @@ impl ApprovalBindingSetup {
     /// - `Err(StoreUnavailable)` — the approval store could not be opened. This
     ///   used to panic in the composition root.
     pub fn from_env(repo_root: &std::path::Path) -> Result<Option<Self>, ApprovalBindingError> {
+        Self::from_env_with_signing_key(repo_root, None)
+    }
+
+    /// Build the binding when the composition also knows the envelope-signing
+    /// key. The binding key and the signing key must be the same run key
+    /// (ADR-011 §key); if both sources are configured and differ, composition
+    /// fails instead of writing approval evidence under a different secret
+    /// (#1238).
+    ///
+    /// A configured signing key is sufficient to arm the binding. With neither
+    /// source, the binding stays unavailable and approvals are refused (#1235).
+    pub fn from_env_with_signing_key(
+        repo_root: &std::path::Path,
+        signing_key: Option<&str>,
+    ) -> Result<Option<Self>, ApprovalBindingError> {
         let enabled = std::env::var("RIGORIX_APPROVAL_BINDING").ok();
         let run_key = std::env::var("RIGORIX_HMAC_KEY").ok();
         let ttl = std::env::var("RIGORIX_APPROVAL_TTL_SECONDS").ok();
-        Self::from_env_values(
+        Self::from_env_key_values(
             enabled.as_deref(),
             run_key.as_deref(),
+            signing_key,
             ttl.as_deref(),
             repo_root,
         )
     }
 
-    /// The environment read is separated from the decision so the decision is
-    /// testable without mutating process-global state.
-    pub(crate) fn from_env_values(
+    /// Resolve the one run key and arm the binding. `run_key` is the binding
+    /// source (`RIGORIX_HMAC_KEY`); `signing_key` is the configured audit key.
+    fn from_env_key_values(
         enabled: Option<&str>,
         run_key: Option<&str>,
+        signing_key: Option<&str>,
         ttl_seconds: Option<&str>,
         repo_root: &std::path::Path,
     ) -> Result<Option<Self>, ApprovalBindingError> {
-        let on = matches!(
+        let env_key = run_key.filter(|k| !k.is_empty());
+        let signing_key = signing_key.filter(|k| !k.is_empty());
+        if let (Some(binding), Some(signing)) = (env_key, signing_key)
+            && binding != signing
+        {
+            return Err(ApprovalBindingError::KeyMismatch {
+                binding_source: "RIGORIX_HMAC_KEY",
+                signing_source: "the configured audit_hmac_key",
+            });
+        }
+        if matches!(
+            enabled,
+            Some("0") | Some("false") | Some("FALSE") | Some("no")
+        ) {
+            return Ok(None);
+        }
+        let requested = matches!(
             enabled,
             Some("1") | Some("true") | Some("TRUE") | Some("yes")
         );
-        if !on {
-            return Ok(None);
-        }
-        let Some(run_key) = run_key
-            .filter(|k| !k.is_empty())
-            .map(|k| k.as_bytes().to_vec())
-        else {
-            return Err(ApprovalBindingError::MissingKey {
-                var: "RIGORIX_HMAC_KEY",
-                consequence: "approvals would be accepted unbound; set the key or unset \
-                              RIGORIX_APPROVAL_BINDING",
-            });
+        let Some(key) = signing_key.or(env_key) else {
+            return if requested {
+                Err(ApprovalBindingError::MissingKey {
+                    var: "RIGORIX_HMAC_KEY",
+                    consequence: "approvals would be accepted unbound; set the key or unset \
+                                  RIGORIX_APPROVAL_BINDING",
+                })
+            } else {
+                Ok(None)
+            };
         };
         let ttl_seconds = ttl_seconds
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(3600);
-        let store_dir = repo_root.join(".rigorix");
-        let _ = std::fs::create_dir_all(&store_dir);
+        let configured_store = std::env::var("RIGORIX_APPROVAL_STORE").ok();
+        let store_path = resolve_store_path(repo_root, configured_store.as_deref());
+        if let Some(parent) = store_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let run_key = key.as_bytes().to_vec();
         let repository = std::sync::Arc::new(
-            crate::approval::infrastructure::repository::FileBackedApprovalRepository::open(
-                store_dir.join("approvals.json"),
+            crate::approval::infrastructure::repository::FileBackedApprovalRepository::open_with_key(
+                store_path.clone(),
+                Some(&run_key),
             )
             .map_err(|e| ApprovalBindingError::StoreUnavailable {
-                detail: format!("{}: {e}", store_dir.join("approvals.json").display()),
+                detail: format!("{}: {e}", store_path.display()),
             })?,
         );
         tracing::info!(
             ttl_seconds,
             "approval binding ENABLED (ADR-011) — records at {}",
-            store_dir.join("approvals.json").display()
+            store_path.display()
         );
         Ok(Some(Self {
             repository,
             run_key,
             ttl_seconds,
+            store_path,
         }))
     }
 }
@@ -366,13 +439,20 @@ mod approval_binding_env_tests {
     #[test]
     fn unset_binding_is_not_requested_and_stays_quiet() {
         assert!(
-            ApprovalBindingSetup::from_env_values(None, None, None, std::path::Path::new("/tmp"))
-                .expect("not requested is not an error")
-                .is_none()
+            ApprovalBindingSetup::from_env_key_values(
+                None,
+                None,
+                None,
+                None,
+                std::path::Path::new("/tmp")
+            )
+            .expect("not requested is not an error")
+            .is_none()
         );
         assert!(
-            ApprovalBindingSetup::from_env_values(
+            ApprovalBindingSetup::from_env_key_values(
                 Some("0"),
+                None,
                 None,
                 None,
                 std::path::Path::new("/tmp")
@@ -380,12 +460,25 @@ mod approval_binding_env_tests {
             .expect("explicitly off is not an error")
             .is_none()
         );
+        // Explicit off wins even when a key is available.
+        assert!(
+            ApprovalBindingSetup::from_env_key_values(
+                Some("0"),
+                Some("run-key"),
+                Some("run-key"),
+                None,
+                std::path::Path::new("/tmp")
+            )
+            .expect("explicit off")
+            .is_none()
+        );
     }
 
     #[test]
     fn requested_binding_without_a_key_fails_instead_of_downgrading() {
-        let result = ApprovalBindingSetup::from_env_values(
+        let result = ApprovalBindingSetup::from_env_key_values(
             Some("1"),
+            None,
             None,
             None,
             std::path::Path::new("/tmp"),
@@ -404,9 +497,10 @@ mod approval_binding_env_tests {
 
         // An empty key is as unsatisfiable as an absent one.
         assert!(
-            ApprovalBindingSetup::from_env_values(
+            ApprovalBindingSetup::from_env_key_values(
                 Some("1"),
                 Some(""),
+                None,
                 None,
                 std::path::Path::new("/tmp")
             )
@@ -417,9 +511,10 @@ mod approval_binding_env_tests {
     #[test]
     fn requested_binding_with_a_key_is_armed() {
         let dir = tempfile::TempDir::new().expect("tempdir");
-        let setup = ApprovalBindingSetup::from_env_values(
+        let setup = ApprovalBindingSetup::from_env_key_values(
             Some("1"),
             Some("run-key"),
+            None,
             Some("60"),
             dir.path(),
         )
@@ -428,6 +523,75 @@ mod approval_binding_env_tests {
         assert_eq!(setup.ttl_seconds, 60);
         assert_eq!(setup.run_key, b"run-key".to_vec());
         assert!(dir.path().join(".rigorix").is_dir());
+        assert_eq!(setup.store_path, dir.path().join(".rigorix/approvals.json"));
+    }
+
+    #[test]
+    fn the_store_path_can_resolve_outside_the_workspace() {
+        let repo = std::path::Path::new("/repo");
+        assert_eq!(
+            resolve_store_path(repo, Some("/var/lib/rigorix/approvals.json")),
+            std::path::PathBuf::from("/var/lib/rigorix/approvals.json")
+        );
+        assert_eq!(
+            resolve_store_path(repo, Some("../approvals.json")),
+            std::path::PathBuf::from("/repo/../approvals.json")
+        );
+        assert_eq!(
+            resolve_store_path(repo, Some("  ")),
+            std::path::PathBuf::from("/repo/.rigorix/approvals.json")
+        );
+    }
+
+    #[test]
+    fn a_configured_signing_key_alone_arms_the_binding() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let setup = ApprovalBindingSetup::from_env_key_values(
+            None,
+            None,
+            Some("configured-key"),
+            None,
+            dir.path(),
+        )
+        .expect("configured signing key is usable")
+        .expect("binding armed from the signing key");
+        assert_eq!(setup.run_key, b"configured-key".to_vec());
+    }
+
+    #[test]
+    fn differing_binding_and_signing_keys_fail_without_printing_values() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let err = match ApprovalBindingSetup::from_env_key_values(
+            Some("1"),
+            Some("env-key"),
+            Some("config-key"),
+            None,
+            dir.path(),
+        ) {
+            Err(error) => error,
+            Ok(_) => panic!("two different run keys must not start"),
+        };
+        assert!(matches!(err, ApprovalBindingError::KeyMismatch { .. }));
+        let text = err.to_string();
+        assert!(text.contains("RIGORIX_HMAC_KEY"));
+        assert!(text.contains("audit_hmac_key"));
+        assert!(!text.contains("env-key"));
+        assert!(!text.contains("config-key"));
+    }
+
+    #[test]
+    fn equal_binding_and_signing_keys_arm_one_binding() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let setup = ApprovalBindingSetup::from_env_key_values(
+            Some("1"),
+            Some("same-key"),
+            Some("same-key"),
+            None,
+            dir.path(),
+        )
+        .expect("equal sources agree")
+        .expect("armed");
+        assert_eq!(setup.run_key, b"same-key".to_vec());
     }
 }
 

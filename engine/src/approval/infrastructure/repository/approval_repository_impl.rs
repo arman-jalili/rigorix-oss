@@ -23,13 +23,48 @@ use crate::approval::domain::{ApprovalError, ApprovalRecord};
 #[derive(Default)]
 pub struct InMemoryApprovalRepository {
     records: RwLock<HashMap<Uuid, ApprovalRecord>>,
+    mac_key: Option<Vec<u8>>,
 }
 
 impl InMemoryApprovalRepository {
-    /// Create an empty in-memory store.
+    /// Create an empty in-memory store without record authentication.
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Create an in-memory store that seals and verifies records (#1237).
+    pub fn with_key(run_key: &[u8]) -> Self {
+        Self {
+            records: RwLock::new(HashMap::new()),
+            mac_key: Some(run_key.to_vec()),
+        }
+    }
+}
+
+fn seal_if_keyed(
+    record: &ApprovalRecord,
+    mac_key: Option<&[u8]>,
+) -> Result<ApprovalRecord, ApprovalError> {
+    let mut sealed = record.clone();
+    if let Some(key) = mac_key {
+        sealed.seal(key)?;
+    }
+    Ok(sealed)
+}
+
+fn verify_if_keyed(
+    record: ApprovalRecord,
+    mac_key: Option<&[u8]>,
+) -> Result<ApprovalRecord, ApprovalError> {
+    if let Some(key) = mac_key
+        && !record.verify_integrity(key)
+    {
+        return Err(ApprovalError::RecordIntegrity {
+            node_id: record.node_id,
+            step_name: record.step_name,
+        });
+    }
+    Ok(record)
 }
 
 #[async_trait::async_trait]
@@ -41,7 +76,8 @@ impl crate::approval::infrastructure::repository::ApprovalRepository
             .records
             .write()
             .map_err(|_| ApprovalError::Internal("in-memory repo poisoned".into()))?;
-        map.insert(record.node_id, record.clone());
+        let sealed = seal_if_keyed(record, self.mac_key.as_deref())?;
+        map.insert(record.node_id, sealed);
         Ok(())
     }
 
@@ -50,7 +86,29 @@ impl crate::approval::infrastructure::repository::ApprovalRepository
             .records
             .read()
             .map_err(|_| ApprovalError::Internal("in-memory repo poisoned".into()))?;
-        Ok(map.get(&node_id).cloned())
+        let record = map.get(&node_id).cloned();
+        record
+            .map(|record| verify_if_keyed(record, self.mac_key.as_deref()))
+            .transpose()
+    }
+
+    async fn verify_integrity(&self) -> Result<usize, ApprovalError> {
+        let Some(key) = self.mac_key.as_deref() else {
+            return Ok(0);
+        };
+        let map = self
+            .records
+            .read()
+            .map_err(|_| ApprovalError::Internal("in-memory repo poisoned".into()))?;
+        for record in map.values() {
+            if !record.verify_integrity(key) {
+                return Err(ApprovalError::RecordIntegrity {
+                    node_id: record.node_id,
+                    step_name: record.step_name.clone(),
+                });
+            }
+        }
+        Ok(map.len())
     }
 
     async fn delete(&self, node_id: Uuid) -> Result<(), ApprovalError> {
@@ -71,11 +129,21 @@ impl crate::approval::infrastructure::repository::ApprovalRepository
 pub struct FileBackedApprovalRepository {
     path: PathBuf,
     records: RwLock<HashMap<Uuid, ApprovalRecord>>,
+    mac_key: Option<Vec<u8>>,
 }
 
 impl FileBackedApprovalRepository {
-    /// Open (creating if needed) the store at `path`.
+    /// Open (creating if needed) the store at `path` without record
+    /// authentication (legacy/tests).
     pub fn open(path: impl AsRef<Path>) -> Result<Self, ApprovalError> {
+        Self::open_with_key(path, None)
+    }
+
+    /// Open the store and authenticate every record with `run_key` (#1237).
+    pub fn open_with_key(
+        path: impl AsRef<Path>,
+        run_key: Option<&[u8]>,
+    ) -> Result<Self, ApprovalError> {
         let path = path.as_ref().to_path_buf();
         let records = match std::fs::read_to_string(&path) {
             Ok(contents) if !contents.trim().is_empty() => serde_json::from_str::<
@@ -89,6 +157,7 @@ impl FileBackedApprovalRepository {
         Ok(Self {
             path,
             records: RwLock::new(records),
+            mac_key: run_key.map(<[u8]>::to_vec),
         })
     }
 
@@ -117,7 +186,8 @@ impl crate::approval::infrastructure::repository::ApprovalRepository
             .records
             .write()
             .map_err(|_| ApprovalError::Internal("file repo poisoned".into()))?;
-        map.insert(record.node_id, record.clone());
+        let sealed = seal_if_keyed(record, self.mac_key.as_deref())?;
+        map.insert(record.node_id, sealed);
         drop(map);
         self.persist()
     }
@@ -127,7 +197,29 @@ impl crate::approval::infrastructure::repository::ApprovalRepository
             .records
             .read()
             .map_err(|_| ApprovalError::Internal("file repo poisoned".into()))?;
-        Ok(map.get(&node_id).cloned())
+        let record = map.get(&node_id).cloned();
+        record
+            .map(|record| verify_if_keyed(record, self.mac_key.as_deref()))
+            .transpose()
+    }
+
+    async fn verify_integrity(&self) -> Result<usize, ApprovalError> {
+        let Some(key) = self.mac_key.as_deref() else {
+            return Ok(0);
+        };
+        let map = self
+            .records
+            .read()
+            .map_err(|_| ApprovalError::Internal("file repo poisoned".into()))?;
+        for record in map.values() {
+            if !record.verify_integrity(key) {
+                return Err(ApprovalError::RecordIntegrity {
+                    node_id: record.node_id,
+                    step_name: record.step_name.clone(),
+                });
+            }
+        }
+        Ok(map.len())
     }
 
     async fn delete(&self, node_id: Uuid) -> Result<(), ApprovalError> {

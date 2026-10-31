@@ -57,6 +57,14 @@ pub enum IntentVerification {
     },
     /// Approval expired or already consumed — never dispatches.
     Invalid(ApprovalStatus),
+    /// The persisted record failed its integrity MAC — never dispatches, and
+    /// never becomes a silent re-approval (#1237).
+    IntegrityFailure {
+        /// Node whose record failed.
+        node_id: Uuid,
+        /// Step name the record claims to authorize.
+        step_name: String,
+    },
 }
 
 /// Approval lifecycle service — capture, verify, consume, report.
