@@ -19,7 +19,7 @@ use rigorix_engine::approval::domain::{
     ApprovalError, ApprovalRecord, ApprovalStatus, DecisionContext, IntentHash,
 };
 use rigorix_engine::approval::infrastructure::repository::{
-    ApprovalRepository, FileBackedApprovalRepository,
+    ApprovalRepository, FileBackedApprovalRepository, LedgerMigration,
 };
 use uuid::Uuid;
 
@@ -257,4 +257,73 @@ async fn a_live_ledger_verifies_and_reports_its_marker_count() {
     .expect("live ledger verifies");
     assert_eq!(reopened.consumption_marker_count().await.expect("count"), 1);
     assert_eq!(reopened.verify_integrity().await.expect("records"), 1);
+}
+
+#[tokio::test]
+async fn a_stripped_wrapper_is_refused_by_name_not_adopted() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("consumed.json");
+    std::fs::write(&ledger, "{}").expect("write stripped ledger");
+
+    let error = match FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(RUN_KEY),
+        Some(&ledger),
+    ) {
+        Ok(_) => panic!("a ledger without a wrapper must not be adopted"),
+        Err(error) => error,
+    };
+    let text = error.to_string();
+    assert!(text.contains("unauthenticated ledger"), "{text}");
+    assert!(
+        text.contains("rigorix approve ledger migrate"),
+        "the refusal must name the migration command: {text}"
+    );
+    assert!(text.contains("consumed.json"), "{text}");
+}
+
+#[tokio::test]
+async fn explicit_migration_adopts_a_bare_map_and_reports_its_count() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("consumed.json");
+    let node_id = Uuid::new_v4();
+    let nonce = Uuid::new_v4();
+    let legacy = serde_json::json!({
+        format!("{node_id}:{nonce}"): {
+            "node_id": node_id,
+            "nonce": nonce,
+            "status": "consumed",
+            "recorded_at": "2026-10-31T00:00:00Z"
+        }
+    });
+    std::fs::write(&ledger, serde_json::to_string(&legacy).unwrap()).expect("legacy ledger");
+
+    let outcome =
+        FileBackedApprovalRepository::migrate_consumption_ledger(&store, &ledger, RUN_KEY)
+            .expect("migrate");
+    assert_eq!(outcome, LedgerMigration::Migrated { markers: 1 });
+
+    let sealed: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&ledger).unwrap()).unwrap();
+    assert_eq!(sealed["version"], 1);
+    assert!(sealed["mac"].as_str().is_some_and(|mac| !mac.is_empty()));
+    assert!(
+        sealed["entries"]
+            .get(format!("{node_id}:{nonce}"))
+            .is_some()
+    );
+
+    let reopened = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(RUN_KEY),
+        Some(&ledger),
+    )
+    .expect("the migrated ledger verifies");
+    assert_eq!(reopened.consumption_marker_count().await.unwrap(), 1);
+
+    let again = FileBackedApprovalRepository::migrate_consumption_ledger(&store, &ledger, RUN_KEY)
+        .expect("idempotent");
+    assert_eq!(again, LedgerMigration::AlreadySealed { markers: 1 });
 }

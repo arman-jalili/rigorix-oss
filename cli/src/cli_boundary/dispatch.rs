@@ -33,7 +33,7 @@ use std::fmt;
 
 use serde_json::Value as JsonValue;
 
-use crate::cli_boundary::cli::{CliCommand, ConfigAction};
+use crate::cli_boundary::cli::{ApproveAction, CliCommand, ConfigAction, LedgerAction};
 use crate::cli_boundary::orchestrator::CliServices;
 use rigorix_engine::audit::application::projection::{
     ProjectAuthorityFacts, verify_authority_fact_bundle,
@@ -104,6 +104,41 @@ async fn cmd_doctor() -> DispatchResult {
         DispatchResult::success(rendered)
     } else {
         DispatchResult::error(rendered, report.exit_code())
+    }
+}
+
+/// `rigorix approve ledger migrate` — the only path that adopts a legacy
+/// bare-map consumption ledger (#1247).
+///
+/// Runs before service bootstrap: the loader refuses a bare map, so building
+/// services first would make the migration command unusable in exactly the
+/// state it exists to repair.
+async fn cmd_approve_ledger_migrate(
+    config: &crate::cli_boundary::config::CliConfig,
+) -> DispatchResult {
+    use rigorix_engine::approval::infrastructure::repository::LedgerMigration;
+    let repo_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let signing_key = config
+        .engine_config
+        .as_ref()
+        .and_then(|engine| engine.audit_hmac_key.as_deref());
+    match rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::migrate_consumption_ledger(
+        &repo_root,
+        signing_key,
+    ) {
+        Ok(Some(LedgerMigration::Migrated { markers })) => DispatchResult::success(format!(
+            "adopted {markers} marker(s) from the legacy consumption ledger; wrote the sealed form"
+        )),
+        Ok(Some(LedgerMigration::AlreadySealed { markers })) => DispatchResult::success(format!(
+            "consumption ledger is already sealed; {markers} marker(s) verify"
+        )),
+        Ok(None) => DispatchResult::error(
+            "approval binding is not configured: export RIGORIX_HMAC_KEY (or configure \
+             audit_hmac_key) before migrating the consumption ledger"
+                .to_string(),
+            1,
+        ),
+        Err(error) => DispatchResult::error(error.to_string(), 1),
     }
 }
 
@@ -915,6 +950,12 @@ pub async fn dispatch(
     match &command {
         CliCommand::Doctor => return cmd_doctor().await,
         CliCommand::Init => return cmd_init().await,
+        CliCommand::Approve {
+            action:
+                ApproveAction::Ledger {
+                    action: LedgerAction::Migrate,
+                },
+        } => return cmd_approve_ledger_migrate(&config).await,
         _ => {}
     }
 
@@ -1074,6 +1115,9 @@ pub async fn dispatch(
         CliCommand::Config { action } => handle_config(&services, action).await,
         CliCommand::Key { label } => cmd_key(label).await,
         // Answered before service bootstrap (see the top of this function).
+        CliCommand::Approve { .. } => {
+            DispatchResult::error("internal: handled before dispatch".to_string(), 1)
+        }
         CliCommand::Doctor | CliCommand::Init => {
             DispatchResult::error("internal: handled before dispatch".to_string(), 1)
         }

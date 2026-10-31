@@ -15,5 +15,5 @@
 pub mod approval_repository;
 pub mod approval_repository_impl;
 
-pub use approval_repository::ApprovalRepository;
+pub use approval_repository::{ApprovalRepository, LedgerMigration};
 pub use approval_repository_impl::{FileBackedApprovalRepository, InMemoryApprovalRepository};

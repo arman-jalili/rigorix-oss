@@ -20,6 +20,21 @@ use uuid::Uuid;
 
 use crate::approval::domain::{ApprovalError, ApprovalRecord};
 
+/// Outcome of an explicit consumption-ledger migration (#1247).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LedgerMigration {
+    /// A bare legacy map was adopted and written in the sealed form.
+    Migrated {
+        /// Markers adopted.
+        markers: usize,
+    },
+    /// The ledger already carried a wrapper and its MAC verified.
+    AlreadySealed {
+        /// Markers verified.
+        markers: usize,
+    },
+}
+
 /// Durable repository for approval records.
 #[async_trait]
 pub trait ApprovalRepository: Send + Sync {
@@ -52,5 +67,16 @@ pub trait ApprovalRepository: Send + Sync {
     /// `doctor` distinguishes those by the path's existence (#1244).
     async fn consumption_marker_count(&self) -> Result<usize, ApprovalError> {
         Ok(0)
+    }
+
+    /// Explicitly migrate a pre-#1244 bare-map ledger to the sealed form.
+    ///
+    /// This is deliberately **not** the loader's job: adopting any file that
+    /// lacks the wrapper lets an attacker turn truncation back into a valid
+    /// legacy ledger (#1247).
+    async fn migrate_consumption_ledger(&self) -> Result<LedgerMigration, ApprovalError> {
+        Err(ApprovalError::Internal(
+            "this approval repository has no consumption ledger to migrate".into(),
+        ))
     }
 }
