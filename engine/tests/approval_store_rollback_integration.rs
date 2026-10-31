@@ -180,3 +180,81 @@ async fn a_current_store_still_dispatches() {
     assert_eq!(loaded.status, ApprovalStatus::Pending);
     assert_eq!(loaded.nonce, pending.nonce);
 }
+
+#[tokio::test]
+async fn deleting_one_marker_from_the_ledger_is_an_integrity_failure() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("consumed.json");
+    let node_id = Uuid::new_v4();
+
+    let repo = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(RUN_KEY),
+        Some(&ledger),
+    )
+    .expect("open");
+    let pending = sample_record(node_id);
+    repo.save(&pending).await.expect("save pending");
+    let mut consumed = pending.clone();
+    consumed.status = ApprovalStatus::Consumed;
+    repo.save(&consumed).await.expect("save consumed");
+
+    // Delete one marker from the unsigned-looking file. The whole-set MAC is
+    // what makes this an edit rather than an absence (#1244).
+    let mut raw: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&ledger).expect("read ledger"))
+            .expect("ledger json");
+    let entries = raw["entries"].as_object_mut().expect("entries");
+    assert_eq!(entries.len(), 1);
+    entries.clear();
+    std::fs::write(
+        &ledger,
+        serde_json::to_string_pretty(&raw).expect("serialize"),
+    )
+    .expect("truncate ledger");
+
+    let error = match FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(RUN_KEY),
+        Some(&ledger),
+    ) {
+        Ok(_) => panic!("a shortened ledger must not open"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        error,
+        ApprovalError::ConsumptionLedgerIntegrity { .. }
+    ));
+    let text = error.to_string();
+    assert!(text.contains("integrity"), "{text}");
+    assert!(text.contains("approvals.json"), "{text}");
+    assert!(text.contains("consumed.json"), "{text}");
+}
+
+#[tokio::test]
+async fn a_live_ledger_verifies_and_reports_its_marker_count() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("consumed.json");
+    let node_id = Uuid::new_v4();
+
+    let repo = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(RUN_KEY),
+        Some(&ledger),
+    )
+    .expect("open");
+    let mut record = sample_record(node_id);
+    record.status = ApprovalStatus::Consumed;
+    repo.save(&record).await.expect("save consumed");
+
+    let reopened = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(RUN_KEY),
+        Some(&ledger),
+    )
+    .expect("live ledger verifies");
+    assert_eq!(reopened.consumption_marker_count().await.expect("count"), 1);
+    assert_eq!(reopened.verify_integrity().await.expect("records"), 1);
+}

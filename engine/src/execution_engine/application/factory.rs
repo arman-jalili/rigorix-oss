@@ -320,6 +320,7 @@ fn resolve_store_path(repo_root: &std::path::Path, configured: Option<&str>) -> 
 fn resolve_consumption_ledger(
     repo_root: &std::path::Path,
     configured: Option<&str>,
+    run_key: &[u8],
 ) -> std::path::PathBuf {
     if let Some(path) = configured.filter(|p| !p.trim().is_empty()) {
         let path = std::path::PathBuf::from(path);
@@ -329,14 +330,15 @@ fn resolve_consumption_ledger(
             repo_root.join(path)
         };
     }
+    // One ledger per run key: two deployments with different keys sharing a
+    // home directory must not try to authenticate each other's markers.
+    use sha2::{Digest, Sha256};
+    let fingerprint = hex::encode(&Sha256::digest(run_key)[..8]);
+    let name = format!("approval-consumption-{fingerprint}.json");
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(|home| {
-            std::path::PathBuf::from(home)
-                .join(".rigorix")
-                .join("approval-consumption.json")
-        })
-        .unwrap_or_else(|| repo_root.join(".rigorix").join("approval-consumption.json"))
+        .map(|home| std::path::PathBuf::from(home).join(".rigorix").join(&name))
+        .unwrap_or_else(|| repo_root.join(".rigorix").join(&name))
 }
 
 impl ApprovalBindingSetup {
@@ -432,7 +434,7 @@ impl ApprovalBindingSetup {
         let store_path = resolve_store_path(repo_root, configured_store.as_deref());
         let configured_ledger = std::env::var("RIGORIX_APPROVAL_CONSUMPTION_LEDGER").ok();
         let consumption_ledger_path =
-            resolve_consumption_ledger(repo_root, configured_ledger.as_deref());
+            resolve_consumption_ledger(repo_root, configured_ledger.as_deref(), key.as_bytes());
         if let Some(parent) = store_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -559,7 +561,7 @@ mod approval_binding_env_tests {
     #[test]
     fn the_consumption_ledger_defaults_outside_the_workspace() {
         let repo = std::path::Path::new("/repo");
-        let default = resolve_consumption_ledger(repo, None);
+        let default = resolve_consumption_ledger(repo, None, b"test-run-key");
         if std::env::var_os("HOME")
             .or_else(|| std::env::var_os("USERPROFILE"))
             .is_some()
@@ -571,11 +573,11 @@ mod approval_binding_env_tests {
             );
         }
         assert_eq!(
-            resolve_consumption_ledger(repo, Some("/var/lib/rigorix/consumed.json")),
+            resolve_consumption_ledger(repo, Some("/var/lib/rigorix/consumed.json"), b"k"),
             std::path::PathBuf::from("/var/lib/rigorix/consumed.json")
         );
         assert_eq!(
-            resolve_consumption_ledger(repo, Some("ledgers/consumed.json")),
+            resolve_consumption_ledger(repo, Some("ledgers/consumed.json"), b"k"),
             std::path::PathBuf::from("/repo/ledgers/consumed.json")
         );
     }

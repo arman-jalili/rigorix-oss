@@ -90,6 +90,20 @@ pub enum ApprovalError {
         step_name: String,
     },
 
+    /// The consumption ledger's authenticated structure does not verify —
+    /// markers were removed or the file was truncated (#1244).
+    #[error(
+        "Approval consumption ledger integrity failure at '{ledger}' for store '{store}': {detail}"
+    )]
+    ConsumptionLedgerIntegrity {
+        /// The approval store the ledger anchors.
+        store: String,
+        /// The ledger path.
+        ledger: String,
+        /// What failed, without key material.
+        detail: String,
+    },
+
     /// Unexpected internal failure.
     #[error("Internal error: {0}")]
     Internal(String),
@@ -158,6 +172,14 @@ mod tests {
             !ApprovalError::RecordRollback {
                 node_id: Uuid::nil(),
                 step_name: "s".into()
+            }
+            .is_retriable()
+        );
+        assert!(
+            !ApprovalError::ConsumptionLedgerIntegrity {
+                store: "store".into(),
+                ledger: "ledger".into(),
+                detail: "missing marker".into(),
             }
             .is_retriable()
         );
