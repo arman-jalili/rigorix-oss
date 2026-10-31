@@ -23,6 +23,7 @@ fn isolated(cmd: &mut Command) {
         "RIGORIX_APPROVAL_BINDING",
         "RIGORIX_HMAC_KEY",
         "RIGORIX_APPROVAL_STORE",
+        "RIGORIX_APPROVAL_CONSUMPTION_LEDGER",
         "RIGORIX_ANCHOR_URL",
         "RIGORIX_ANCHOR_PUBLIC_KEY",
         "RIGORIX_SEQUENCE_POLICY",
@@ -217,13 +218,16 @@ fn key_produces_the_hmac_key_the_engine_reads() {
 #[test]
 fn doctor_reports_the_approval_store_and_key_agreement() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let store = dir.path().join("outside-workspace").join("approvals.json");
+    let outside = tempfile::tempdir().expect("outside store dir");
+    let store = outside.path().join("approvals.json");
+    let ledger = outside.path().join("consumed.json");
     let mut cmd = bin();
     cmd.current_dir(dir.path()).args(["doctor"]);
     isolated(&mut cmd);
     cmd.env("RIGORIX_APPROVAL_BINDING", "1")
         .env("RIGORIX_HMAC_KEY", "doctor-test-run-key")
-        .env("RIGORIX_APPROVAL_STORE", &store);
+        .env("RIGORIX_APPROVAL_STORE", &store)
+        .env("RIGORIX_APPROVAL_CONSUMPTION_LEDGER", &ledger);
     let out = cmd.output().expect("run rigorix doctor");
     let stdout = String::from_utf8_lossy(&out.stdout);
 
@@ -235,6 +239,14 @@ fn doctor_reports_the_approval_store_and_key_agreement() {
     assert!(
         stdout.contains("0 record(s) verify"),
         "an empty store verifies: {stdout}"
+    );
+    assert!(
+        stdout.contains("outside agent-writable workspace"),
+        "an external store must be classified as such: {stdout}"
+    );
+    assert!(
+        stdout.contains(&ledger.display().to_string()),
+        "doctor must name the consumption ledger: {stdout}"
     );
     assert!(stdout.contains("keys agree"), "{stdout}");
     assert!(

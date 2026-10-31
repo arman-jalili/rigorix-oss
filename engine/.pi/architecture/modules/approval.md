@@ -4,7 +4,7 @@
 Canonical Reference: .pi/architecture/modules/approval.md
 Rationale: Bind human approval to the exact resolved execution intent — replay protection at the step level, first-class signed evidence, and effect-scope verification
 Blueprint Source: Requirements v1 — 2026-08-28 (approved, NOT YET BUILT)
-Last Updated: 2026-10-31 — the record store is authenticated and one run key signs and binds (#1237, #1238)
+Last Updated: 2026-10-31 — MAC material derives from the record and consumption has an external ledger (#1240, #1241)
 -->
 
 ## Overview
@@ -496,20 +496,36 @@ sequenceDiagram
 | **Operational (mid-run)** | Approval records appended to the persisted `ExecutionState` file (`approval_records`) | Survives cross-process resume (GAP-3); queryable via `ApprovalService::get_approval` |
 | **Trust model note** | Standalone off-band verification requires the run key — available to authorized verifiers; never claim independent signature chains outside the envelope | Documented in ADR-011 §key |
 
-### The store is authenticated state (#1237)
+### The store is authenticated state (#1237, #1240)
 
-`ApprovalRecord.mac` is HMAC-SHA256 over every other field — including
-`status`, `expires_at`, `nonce`, `approver_id` and the intent — keyed with the
-run key. The repository seals on save and verifies on load; a record that does
-not authenticate is refused with `ApprovalError::RecordIntegrity` naming the
-step and node, and `verify_intent` returns `IntegrityFailure` instead of
-`Matched`. The check is seeded: a consumed record edited back to `pending`, and
-an extended `expires_at`, both fail.
+`ApprovalRecord.mac` is HMAC-SHA256 over the record's **own serialization minus
+`mac`** (version `2`), keyed with the run key. Deriving the material means a
+field added to the record is covered automatically; there is no parallel field
+list to extend. Version 1 material is retained only to verify records written by
+#1237. The repository seals on save and verifies on load; a record that does not
+authenticate is refused with `ApprovalError::RecordIntegrity` naming the step
+and node, and `verify_intent` returns `IntegrityFailure` instead of `Matched`.
+The check is seeded: a consumed record edited back to `pending`, and an extended
+`expires_at`, both fail.
 
 The store path is configurable with `RIGORIX_APPROVAL_STORE` (absolute, or
 relative to the repo root). The default is `<repo>/.rigorix/approvals.json`;
 deployments should point it outside the agent-writable workspace. Legacy records
 without a MAC do not authenticate and require re-approval.
+
+### Consumption survives a store rollback (#1241)
+
+A MAC proves a record was written by the run key; it does not prove the file is
+the latest one. Terminal transitions are also recorded in a separate
+consumption ledger keyed by `(node_id, nonce)`. Saving a terminal record writes
+the marker before the store; loading a `pending` record whose nonce is already
+terminal is `ApprovalError::RecordRollback` and `verify_intent` refuses with
+`IntegrityFailure`. A new approval has a new nonce and is unaffected.
+
+The ledger path is `RIGORIX_APPROVAL_CONSUMPTION_LEDGER` (absolute or
+repo-relative); the default is `$HOME/.rigorix/approval-consumption.json`, so
+restoring the workspace store alone does not restore consumed approvals. With no
+ledger file, a fresh store works and doctor reports the marker as absent.
 
 ### One run key (#1238)
 

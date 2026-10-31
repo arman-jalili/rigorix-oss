@@ -384,6 +384,7 @@ async fn test_factory_attached_binding_captures_verifies_consumes() {
             run_key: b"engine-run-key".to_vec(),
             ttl_seconds: 3600,
             store_path: std::path::PathBuf::new(),
+            consumption_ledger_path: std::path::PathBuf::new(),
         }),
         ..ParallelExecutionFactoryConfig::default()
     };
@@ -522,6 +523,7 @@ async fn test_bound_cycle_publishes_approval_and_scope_events() {
             run_key: b"engine-run-key".to_vec(),
             ttl_seconds: 3600,
             store_path: std::path::PathBuf::new(),
+            consumption_ledger_path: std::path::PathBuf::new(),
         }),
         ..ParallelExecutionFactoryConfig::default()
     };
