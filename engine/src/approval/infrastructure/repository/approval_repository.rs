@@ -21,17 +21,26 @@ use uuid::Uuid;
 use crate::approval::domain::{ApprovalError, ApprovalRecord};
 
 /// Outcome of an explicit consumption-ledger migration (#1247).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LedgerMigration {
     /// A bare legacy map was adopted and written in the sealed form.
     Migrated {
-        /// Markers adopted.
+        /// Markers adopted from the legacy map.
         markers: usize,
+        /// Terminal records (consumed/expired/superseded) in the store.
+        terminal_records: usize,
+        /// Terminal records the adopted ledger leaves unprotected, as
+        /// `(node_id, step_name)`.
+        missing: Vec<(Uuid, String)>,
     },
     /// The ledger already carried a wrapper and its MAC verified.
     AlreadySealed {
         /// Markers verified.
         markers: usize,
+        /// Terminal records (consumed/expired/superseded) in the store.
+        terminal_records: usize,
+        /// Terminal records the sealed ledger leaves unprotected.
+        missing: Vec<(Uuid, String)>,
     },
 }
 

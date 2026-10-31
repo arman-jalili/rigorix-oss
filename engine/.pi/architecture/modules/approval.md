@@ -542,9 +542,13 @@ valid legacy ledger. The refusal names the file and the migration command:
 rigorix approve ledger migrate
 ```
 
-Migration is explicit, reports the marker count it adopted, and writes the
-sealed form. It is idempotent: an already-sealed ledger is verified and reported.
-The loader never calls it.
+Migration is explicit and writes the sealed form. It compares the adopted
+marker set with the authenticated store's terminal records (consumed, expired,
+superseded) and reports `adopted N of M terminal record(s)` (#1249). A terminal
+record without a marker refuses the migration and names the node and step;
+`--accept-missing` is the explicit override and the report names every record it
+leaves unprotected. It is idempotent: an already-sealed ledger is verified and
+compared. The loader never calls it.
 
 ### One run key (#1238)
 

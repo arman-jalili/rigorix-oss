@@ -164,11 +164,54 @@ fn read_consumption_ledger(
     }
 }
 
+/// Terminal records in the authenticated store that the ledger does not cover.
+///
+/// The store is the source of truth for which records reached a terminal
+/// status; the ledger is supposed to remember every one. A bare map that names
+/// fewer is a truncated map, not an exported one (#1249).
+fn unprotected_terminal_records(
+    store: &Path,
+    run_key: &[u8],
+    entries: &BTreeMap<String, ConsumptionMarker>,
+) -> Result<(usize, Vec<(Uuid, String)>), ApprovalError> {
+    let records = match std::fs::read_to_string(store) {
+        Ok(contents) if !contents.trim().is_empty() => {
+            serde_json::from_str::<HashMap<Uuid, ApprovalRecord>>(&contents).map_err(|e| {
+                ApprovalError::Internal(format!("corrupt approval store {}: {e}", store.display()))
+            })?
+        }
+        Ok(_) => HashMap::new(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => HashMap::new(),
+        Err(e) => {
+            return Err(ApprovalError::Internal(format!(
+                "read approval store {}: {e}",
+                store.display()
+            )));
+        }
+    };
+    let mut terminal = 0usize;
+    let mut missing = Vec::new();
+    for record in records.values() {
+        let record = verify_if_keyed(record.clone(), Some(run_key))?;
+        if matches!(
+            record.status,
+            ApprovalStatus::Consumed | ApprovalStatus::Expired | ApprovalStatus::Superseded
+        ) {
+            terminal += 1;
+            if !entries.contains_key(&marker_key(record.node_id, record.nonce)) {
+                missing.push((record.node_id, record.step_name.clone()));
+            }
+        }
+    }
+    Ok((terminal, missing))
+}
+
 /// Explicit migration for a legacy bare map. Never called by the loader.
 fn migrate_consumption_ledger_at(
     store: &Path,
     ledger: &Path,
     run_key: Option<&[u8]>,
+    accept_missing: bool,
 ) -> Result<LedgerMigration, ApprovalError> {
     let Some(key) = run_key else {
         return Err(ledger_integrity(
@@ -199,16 +242,41 @@ fn migrate_consumption_ledger_at(
                 "MAC mismatch — the ledger is already sealed and was altered",
             ));
         }
+        let (terminal_records, missing) = unprotected_terminal_records(store, key, &file.entries)?;
+        if !accept_missing && !missing.is_empty() {
+            return Err(migration_incomplete(store, ledger, &missing));
+        }
         return Ok(LedgerMigration::AlreadySealed {
             markers: file.entries.len(),
+            terminal_records,
+            missing,
         });
     }
     let entries: BTreeMap<String, ConsumptionMarker> = serde_json::from_value(value)
         .map_err(|e| ledger_integrity(store, ledger, format!("corrupt legacy map: {e}")))?;
+    let (terminal_records, missing) = unprotected_terminal_records(store, key, &entries)?;
+    if !accept_missing && !missing.is_empty() {
+        return Err(migration_incomplete(store, ledger, &missing));
+    }
     write_consumption_ledger(ledger, &entries, Some(key))?;
     Ok(LedgerMigration::Migrated {
         markers: entries.len(),
+        terminal_records,
+        missing,
     })
+}
+
+fn migration_incomplete(store: &Path, ledger: &Path, missing: &[(Uuid, String)]) -> ApprovalError {
+    ApprovalError::MigrationIncomplete {
+        store: store.display().to_string(),
+        ledger: ledger.display().to_string(),
+        missing_count: missing.len(),
+        missing: missing
+            .iter()
+            .map(|(node, step)| format!("{node} ({step})"))
+            .collect::<Vec<_>>()
+            .join(", "),
+    }
 }
 
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
@@ -344,8 +412,14 @@ impl FileBackedApprovalRepository {
         store: impl AsRef<Path>,
         ledger: impl AsRef<Path>,
         run_key: &[u8],
+        accept_missing: bool,
     ) -> Result<LedgerMigration, ApprovalError> {
-        migrate_consumption_ledger_at(store.as_ref(), ledger.as_ref(), Some(run_key))
+        migrate_consumption_ledger_at(
+            store.as_ref(),
+            ledger.as_ref(),
+            Some(run_key),
+            accept_missing,
+        )
     }
 
     /// Open (creating if needed) the store at `path` without record
@@ -516,7 +590,7 @@ impl crate::approval::infrastructure::repository::ApprovalRepository
         let ledger = self.consumption_path.as_ref().ok_or_else(|| {
             ApprovalError::Internal("no consumption ledger path is configured".into())
         })?;
-        migrate_consumption_ledger_at(&self.path, ledger, self.mac_key.as_deref())
+        migrate_consumption_ledger_at(&self.path, ledger, self.mac_key.as_deref(), false)
     }
 
     async fn delete(&self, node_id: Uuid) -> Result<(), ApprovalError> {

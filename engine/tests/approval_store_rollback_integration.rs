@@ -301,9 +301,16 @@ async fn explicit_migration_adopts_a_bare_map_and_reports_its_count() {
     std::fs::write(&ledger, serde_json::to_string(&legacy).unwrap()).expect("legacy ledger");
 
     let outcome =
-        FileBackedApprovalRepository::migrate_consumption_ledger(&store, &ledger, RUN_KEY)
+        FileBackedApprovalRepository::migrate_consumption_ledger(&store, &ledger, RUN_KEY, false)
             .expect("migrate");
-    assert_eq!(outcome, LedgerMigration::Migrated { markers: 1 });
+    assert_eq!(
+        outcome,
+        LedgerMigration::Migrated {
+            markers: 1,
+            terminal_records: 0,
+            missing: vec![],
+        }
+    );
 
     let sealed: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&ledger).unwrap()).unwrap();
@@ -323,7 +330,104 @@ async fn explicit_migration_adopts_a_bare_map_and_reports_its_count() {
     .expect("the migrated ledger verifies");
     assert_eq!(reopened.consumption_marker_count().await.unwrap(), 1);
 
-    let again = FileBackedApprovalRepository::migrate_consumption_ledger(&store, &ledger, RUN_KEY)
-        .expect("idempotent");
-    assert_eq!(again, LedgerMigration::AlreadySealed { markers: 1 });
+    let again =
+        FileBackedApprovalRepository::migrate_consumption_ledger(&store, &ledger, RUN_KEY, false)
+            .expect("idempotent");
+    assert_eq!(
+        again,
+        LedgerMigration::AlreadySealed {
+            markers: 1,
+            terminal_records: 0,
+            missing: vec![],
+        }
+    );
+}
+
+/// #1249: the count is only a check if it is compared to the store.
+#[tokio::test]
+async fn migration_refuses_a_ledger_that_misses_a_terminal_store_record() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("consumed.json");
+    let node_id = Uuid::new_v4();
+
+    let repo = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(RUN_KEY),
+        Some(&ledger),
+    )
+    .expect("open");
+    let mut consumed = sample_record(node_id);
+    consumed.status = ApprovalStatus::Consumed;
+    repo.save(&consumed).await.expect("save consumed");
+    drop(repo);
+
+    // A stripped or truncated export: one terminal record in the store, no
+    // marker in the legacy map.
+    std::fs::write(&ledger, "{}").expect("write stripped legacy map");
+
+    let error = match FileBackedApprovalRepository::migrate_consumption_ledger(
+        &store, &ledger, RUN_KEY, false,
+    ) {
+        Ok(_) => panic!("a truncated legacy map must not be adopted silently"),
+        Err(error) => error,
+    };
+    let text = error.to_string();
+    assert!(matches!(error, ApprovalError::MigrationIncomplete { .. }));
+    assert!(text.contains(&node_id.to_string()), "{text}");
+    assert!(text.contains("commit_cost"), "{text}");
+    assert!(text.contains("refuses to seal"), "{text}");
+
+    let outcome =
+        FileBackedApprovalRepository::migrate_consumption_ledger(&store, &ledger, RUN_KEY, true)
+            .expect("--accept-missing");
+    assert_eq!(
+        outcome,
+        LedgerMigration::Migrated {
+            markers: 0,
+            terminal_records: 1,
+            missing: vec![(node_id, "commit_cost".into())],
+        }
+    );
+    let sealed: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&ledger).unwrap()).unwrap();
+    assert!(sealed["mac"].as_str().is_some_and(|mac| !mac.is_empty()));
+}
+
+#[tokio::test]
+async fn migration_adopts_n_of_n_when_the_ledger_covers_every_terminal_record() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("consumed.json");
+    let node_id = Uuid::new_v4();
+
+    let repo = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(RUN_KEY),
+        Some(&ledger),
+    )
+    .expect("open");
+    let mut consumed = sample_record(node_id);
+    consumed.status = ApprovalStatus::Consumed;
+    repo.save(&consumed).await.expect("save consumed");
+    drop(repo);
+
+    // Convert the sealed ledger back to the legacy bare-map shape, preserving
+    // every marker.
+    let sealed: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&ledger).unwrap()).unwrap();
+    std::fs::write(&ledger, serde_json::to_string(&sealed["entries"]).unwrap())
+        .expect("write legacy export");
+
+    let outcome =
+        FileBackedApprovalRepository::migrate_consumption_ledger(&store, &ledger, RUN_KEY, false)
+            .expect("migrate");
+    assert_eq!(
+        outcome,
+        LedgerMigration::Migrated {
+            markers: 1,
+            terminal_records: 1,
+            missing: vec![],
+        }
+    );
 }

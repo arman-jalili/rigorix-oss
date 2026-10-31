@@ -125,7 +125,12 @@ pub enum LedgerAction {
     /// The loader refuses a bare map: accepting any file without the wrapper
     /// would let removing the wrapper turn truncation into a valid legacy
     /// ledger. This is the explicit, one-time migration path (#1247).
-    Migrate,
+    Migrate {
+        /// Seal even when terminal store records have no marker. The report
+        /// names every record left unprotected.
+        #[arg(long)]
+        accept_missing: bool,
+    },
 }
 
 /// Actions for the `config` subcommand.

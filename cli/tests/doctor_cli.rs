@@ -321,8 +321,8 @@ fn approve_ledger_migrate_adopts_a_legacy_map_and_reports_the_count() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(out.status.success(), "migration must succeed: {stdout}");
     assert!(
-        stdout.contains("adopted 1 marker(s)"),
-        "the command must report what it adopted: {stdout}"
+        stdout.contains("adopted 1 of 0 terminal record(s)"),
+        "the command must report the adopted count against the store: {stdout}"
     );
     let sealed: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&ledger).expect("read sealed"))
@@ -335,7 +335,14 @@ fn approve_ledger_migrate_adopts_a_legacy_map_and_reports_the_count() {
     let stdout = String::from_utf8_lossy(&again.stdout);
     assert!(again.status.success(), "{stdout}");
     assert!(
-        stdout.contains("already sealed; 1 marker(s) verify"),
+        stdout.contains("already sealed; 1 marker(s) verify against 0 terminal record(s)"),
         "an idempotent migration must say the MAC was checked: {stdout}"
+    );
+
+    let accepted = run(&["approve", "ledger", "migrate", "--accept-missing"]);
+    assert!(accepted.status.success(), "the flag must be accepted");
+    assert!(
+        String::from_utf8_lossy(&accepted.stdout).contains("already sealed"),
+        "a sealed ledger remains sealed even with the flag"
     );
 }

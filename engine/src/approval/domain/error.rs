@@ -104,6 +104,24 @@ pub enum ApprovalError {
         detail: String,
     },
 
+    /// Migration would seal a ledger that does not cover every terminal record
+    /// the authenticated store holds (#1249).
+    #[error(
+        "consumption ledger migration at '{ledger}' for store '{store}' refuses to seal: \
+         {missing_count} terminal record(s) have no marker ({missing}); rerun with \
+         `--accept-missing` only if you accept that they stay unprotected"
+    )]
+    MigrationIncomplete {
+        /// The approval store.
+        store: String,
+        /// The ledger path.
+        ledger: String,
+        /// How many terminal records lack a marker.
+        missing_count: usize,
+        /// The records, as `node (step)`.
+        missing: String,
+    },
+
     /// Unexpected internal failure.
     #[error("Internal error: {0}")]
     Internal(String),
@@ -180,6 +198,15 @@ mod tests {
                 store: "store".into(),
                 ledger: "ledger".into(),
                 detail: "missing marker".into(),
+            }
+            .is_retriable()
+        );
+        assert!(
+            !ApprovalError::MigrationIncomplete {
+                store: "store".into(),
+                ledger: "ledger".into(),
+                missing_count: 1,
+                missing: "node (step)".into(),
             }
             .is_retriable()
         );

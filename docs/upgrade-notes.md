@@ -96,9 +96,12 @@ the same decision.
 - A missing ledger is still a valid first run; `rigorix doctor` says
   `no history yet`.
 - A pre-#1244 bare-map ledger is **refused** by a keyed deployment. Migrate it
-  explicitly and keep the reported marker count:
-  `rigorix approve ledger migrate` (requires `RIGORIX_HMAC_KEY` or the configured
-  `audit_hmac_key`). The loader never adopts a bare map, because accepting the
+  explicitly with `rigorix approve ledger migrate` (requires `RIGORIX_HMAC_KEY`
+  or the configured `audit_hmac_key`). The command reports
+  `adopted N of M terminal record(s)`, where M comes from the authenticated
+  store. If a terminal record has no marker, migration refuses and names the
+  node and step; `--accept-missing` seals anyway and lists what stays
+  unprotected. The loader never adopts a bare map, because accepting the
   unprotected form is how a truncation becomes a valid ledger.
 - No configuration change is required. The ledger still defaults outside the
   repository (`$HOME/.rigorix/approval-consumption-<key-fingerprint>.json`); override with

@@ -435,6 +435,7 @@ impl ApprovalBindingSetup {
     pub fn migrate_consumption_ledger(
         repo_root: &std::path::Path,
         signing_key: Option<&str>,
+        accept_missing: bool,
     ) -> Result<
         Option<crate::approval::infrastructure::repository::LedgerMigration>,
         ApprovalBindingError,
@@ -458,6 +459,7 @@ impl ApprovalBindingSetup {
             &store_path,
             &ledger_path,
             key.as_bytes(),
+            accept_missing,
         )
         .map(Some)
         .map_err(|e| ApprovalBindingError::StoreUnavailable {
