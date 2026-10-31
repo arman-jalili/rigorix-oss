@@ -37,6 +37,56 @@ fn marker_key(node_id: Uuid, nonce: Uuid) -> String {
     format!("{node_id}:{nonce}")
 }
 
+fn lock_path(path: &Path) -> PathBuf {
+    path.with_file_name(format!(
+        ".{}.lock",
+        path.file_name()
+            .map(|name| name.to_string_lossy())
+            .unwrap_or_default()
+    ))
+}
+
+/// Serialise a read-modify-write across processes (#1254).
+///
+/// An in-process `RwLock` only serialises one repository; two MCP sessions each
+/// hold their own and would otherwise write back a stale snapshot. The lock is
+/// a sibling file, held for the whole read-modify-write, so the file is the
+/// source of truth at write time.
+fn with_exclusive_lock<T>(
+    path: &Path,
+    action: impl FnOnce() -> Result<T, ApprovalError>,
+) -> Result<T, ApprovalError> {
+    use std::os::unix::io::AsRawFd;
+    let lock = lock_path(path);
+    if let Some(parent) = lock.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .truncate(false)
+        .open(&lock)
+        .map_err(|e| {
+            ApprovalError::Internal(format!("open approval lock {}: {e}", lock.display()))
+        })?;
+    loop {
+        // SAFETY: `file` owns a valid descriptor for the duration of the call.
+        let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
+        if rc == 0 {
+            break;
+        }
+        let error = std::io::Error::last_os_error();
+        if error.kind() != std::io::ErrorKind::Interrupted {
+            return Err(ApprovalError::Internal(format!(
+                "lock approval state {}: {error}",
+                lock.display()
+            )));
+        }
+    }
+    action()
+}
+
 /// The ledger file. `mac` covers `version` + the whole `entries` map, so
 /// removing one marker changes the authenticated bytes (#1244). A per-entry
 /// MAC would be removed with its entry; the whole-set MAC is the point.
@@ -405,9 +455,10 @@ impl crate::approval::infrastructure::repository::ApprovalRepository
 
 /// File-backed approval store — durable across processes.
 ///
-/// The whole node-scoped map is persisted as JSON on every mutation. Writes
-/// are small (approvals are rare), so full-file rewrite is acceptable; the
-/// write is atomic (temp file + rename) to survive interruption.
+/// The whole node-scoped map is persisted as JSON on every mutation, but the
+/// in-memory map is not the source of truth: every write re-reads the file
+/// under an exclusive lock before merging (#1254). A unique temp file per write
+/// makes the publish atomic and collision-free.
 pub struct FileBackedApprovalRepository {
     path: PathBuf,
     records: RwLock<HashMap<Uuid, ApprovalRecord>>,
@@ -416,6 +467,9 @@ pub struct FileBackedApprovalRepository {
     /// copy of the store does not restore an older copy of its progress.
     consumption_path: Option<PathBuf>,
     consumed: RwLock<BTreeMap<String, ConsumptionMarker>>,
+    /// Serialises this instance's saves with its own writes; the file lock
+    /// serialises across instances.
+    write_lock: std::sync::Mutex<()>,
 }
 
 impl FileBackedApprovalRepository {
@@ -479,6 +533,7 @@ impl FileBackedApprovalRepository {
             mac_key: run_key.map(<[u8]>::to_vec),
             consumption_path: consumption_path.map(Path::to_path_buf),
             consumed: RwLock::new(consumed),
+            write_lock: std::sync::Mutex::new(()),
         })
     }
 
@@ -499,42 +554,97 @@ impl FileBackedApprovalRepository {
         Ok(())
     }
 
+    /// Record terminal consumption under the ledger lock, re-reading the file
+    /// first so a marker another writer added is preserved (#1254).
     fn record_consumption(&self, record: &ApprovalRecord) -> Result<(), ApprovalError> {
         let Some(path) = self.consumption_path.as_ref() else {
             return Ok(());
         };
-        if matches!(record.status, ApprovalStatus::Pending) {
-            return Ok(());
-        }
-        let mut consumed = self
-            .consumed
-            .write()
-            .map_err(|_| ApprovalError::Internal("consumption ledger poisoned".into()))?;
-        consumed.insert(
-            marker_key(record.node_id, record.nonce),
-            ConsumptionMarker {
-                node_id: record.node_id,
-                nonce: record.nonce,
-                status: record.status,
-                recorded_at: Utc::now(),
-            },
-        );
-        write_consumption_ledger(path, &consumed, self.mac_key.as_deref())
+        with_exclusive_lock(path, || {
+            let mut consumed = if path.is_file() {
+                read_consumption_ledger(&self.path, path, self.mac_key.as_deref())?
+            } else {
+                BTreeMap::new()
+            };
+            let key = marker_key(record.node_id, record.nonce);
+            if matches!(record.status, ApprovalStatus::Pending) {
+                if consumed.contains_key(&key) {
+                    return Err(ApprovalError::RecordRollback {
+                        node_id: record.node_id,
+                        step_name: record.step_name.clone(),
+                    });
+                }
+                return Ok(());
+            }
+            consumed.insert(
+                key,
+                ConsumptionMarker {
+                    node_id: record.node_id,
+                    nonce: record.nonce,
+                    status: record.status,
+                    recorded_at: Utc::now(),
+                },
+            );
+            write_consumption_ledger(path, &consumed, self.mac_key.as_deref())?;
+            *self
+                .consumed
+                .write()
+                .map_err(|_| ApprovalError::Internal("consumption ledger poisoned".into()))? =
+                consumed;
+            Ok(())
+        })
     }
 
-    fn persist(&self) -> Result<(), ApprovalError> {
-        let map = self
-            .records
-            .read()
-            .map_err(|_| ApprovalError::Internal("file repo poisoned".into()))?;
-        let contents = serde_json::to_string_pretty(&*map)
-            .map_err(|e| ApprovalError::Internal(format!("serialize store: {e}")))?;
-        let tmp = self.path.with_extension("json.tmp");
-        std::fs::write(&tmp, contents)
-            .map_err(|e| ApprovalError::Internal(format!("write store: {e}")))?;
-        std::fs::rename(&tmp, &self.path)
-            .map_err(|e| ApprovalError::Internal(format!("commit store: {e}")))?;
-        Ok(())
+    fn read_store(path: &Path) -> Result<HashMap<Uuid, ApprovalRecord>, ApprovalError> {
+        match std::fs::read_to_string(path) {
+            Ok(contents) if !contents.trim().is_empty() => {
+                serde_json::from_str(&contents).map_err(|e| {
+                    ApprovalError::Internal(format!(
+                        "corrupt approval store {}: {e}",
+                        path.display()
+                    ))
+                })
+            }
+            Ok(_) => Ok(HashMap::new()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(HashMap::new()),
+            Err(e) => Err(ApprovalError::Internal(format!(
+                "read approval store {}: {e}",
+                path.display()
+            ))),
+        }
+    }
+
+    /// Read-modify-write the whole store under the file lock, merging into the
+    /// file at write time rather than publishing this instance's snapshot.
+    fn update_store(
+        &self,
+        mutate: impl FnOnce(&mut HashMap<Uuid, ApprovalRecord>),
+    ) -> Result<(), ApprovalError> {
+        with_exclusive_lock(&self.path, || {
+            let mut map = Self::read_store(&self.path)?;
+            mutate(&mut map);
+            let contents = serde_json::to_string_pretty(&map)
+                .map_err(|e| ApprovalError::Internal(format!("serialize store: {e}")))?;
+            // Unique per write: a fixed `.json.tmp` lets two writers rename the
+            // same path and lose one record (#1254).
+            let tmp = self.path.with_file_name(format!(
+                ".{}.{}.tmp",
+                self.path
+                    .file_name()
+                    .map(|name| name.to_string_lossy())
+                    .unwrap_or_default(),
+                Uuid::new_v4()
+            ));
+            std::fs::write(&tmp, contents)
+                .map_err(|e| ApprovalError::Internal(format!("write store: {e}")))?;
+            std::fs::rename(&tmp, &self.path)
+                .map_err(|e| ApprovalError::Internal(format!("commit store: {e}")))?;
+            *self
+                .records
+                .write()
+                .map_err(|_| ApprovalError::Internal("file repo poisoned".into()))? = map;
+            Ok(())
+        })
     }
 }
 
@@ -543,16 +653,17 @@ impl crate::approval::infrastructure::repository::ApprovalRepository
     for FileBackedApprovalRepository
 {
     async fn save(&self, record: &ApprovalRecord) -> Result<(), ApprovalError> {
-        let mut map = self
-            .records
-            .write()
-            .map_err(|_| ApprovalError::Internal("file repo poisoned".into()))?;
-        self.reject_rolled_back(record)?;
+        let _guard = self
+            .write_lock
+            .lock()
+            .map_err(|_| ApprovalError::Internal("file repo write lock poisoned".into()))?;
         let sealed = seal_if_keyed(record, self.mac_key.as_deref())?;
+        // Marker first: a marker without a record is visible and safe, a
+        // terminal record without a marker is the invisible failure (#1254).
         self.record_consumption(&sealed)?;
-        map.insert(record.node_id, sealed);
-        drop(map);
-        self.persist()
+        self.update_store(|map| {
+            map.insert(record.node_id, sealed);
+        })
     }
 
     async fn load(&self, node_id: Uuid) -> Result<Option<ApprovalRecord>, ApprovalError> {
@@ -609,12 +720,12 @@ impl crate::approval::infrastructure::repository::ApprovalRepository
     }
 
     async fn delete(&self, node_id: Uuid) -> Result<(), ApprovalError> {
-        let mut map = self
-            .records
-            .write()
-            .map_err(|_| ApprovalError::Internal("file repo poisoned".into()))?;
-        map.remove(&node_id);
-        drop(map);
-        self.persist()
+        let _guard = self
+            .write_lock
+            .lock()
+            .map_err(|_| ApprovalError::Internal("file repo write lock poisoned".into()))?;
+        self.update_store(|map| {
+            map.remove(&node_id);
+        })
     }
 }
