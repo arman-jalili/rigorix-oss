@@ -106,6 +106,28 @@ pub enum AuditAction {
     },
 }
 
+/// Actions for the `approve` subcommand.
+#[derive(Debug, Subcommand)]
+pub enum ApproveAction {
+    /// Operate on the approval consumption ledger.
+    Ledger {
+        /// Ledger operation.
+        #[command(subcommand)]
+        action: LedgerAction,
+    },
+}
+
+/// Actions for `approve ledger`.
+#[derive(Debug, Subcommand)]
+pub enum LedgerAction {
+    /// Adopt a pre-#1244 bare-map ledger and write the sealed form.
+    ///
+    /// The loader refuses a bare map: accepting any file without the wrapper
+    /// would let removing the wrapper turn truncation into a valid legacy
+    /// ledger. This is the explicit, one-time migration path (#1247).
+    Migrate,
+}
+
 /// Actions for the `config` subcommand.
 #[derive(Debug, Subcommand)]
 pub enum ConfigAction {
@@ -225,6 +247,12 @@ pub enum CliCommand {
     Config {
         #[command(subcommand)]
         action: ConfigAction,
+    },
+
+    /// Approve-side maintenance (explicit migration, not a dispatch path).
+    Approve {
+        #[command(subcommand)]
+        action: ApproveAction,
     },
 
     // ── Tier 3: CLI-Only ────────────────────────────────────────

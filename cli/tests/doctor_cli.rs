@@ -288,3 +288,54 @@ fn doctor_refuses_two_different_run_keys_without_printing_them() {
     assert!(!report.contains("config-key-value"), "{report}");
     assert!(!report.contains("env-key-value"), "{report}");
 }
+
+/// #1247: migration is explicit, reports what it adopted, and writes the form
+/// the loader will accept. The loader itself refuses a bare map.
+#[test]
+fn approve_ledger_migrate_adopts_a_legacy_map_and_reports_the_count() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let ledger = dir.path().join("legacy-consumption.json");
+    let store = dir.path().join("approvals.json");
+    let node = "11111111-1111-1111-1111-111111111111";
+    let nonce = "22222222-2222-2222-2222-222222222222";
+    std::fs::write(
+        &ledger,
+        format!(
+            r#"{{"{node}:{nonce}":{{"node_id":"{node}","nonce":"{nonce}","status":"consumed","recorded_at":"2026-10-31T00:00:00Z"}}}}"#
+        ),
+    )
+    .expect("write legacy ledger");
+
+    let run = |args: &[&str]| {
+        let mut cmd = bin();
+        cmd.current_dir(dir.path()).args(args);
+        isolated(&mut cmd);
+        cmd.env("RIGORIX_HMAC_KEY", "migration-test-key")
+            .env("RIGORIX_APPROVAL_STORE", &store)
+            .env("RIGORIX_APPROVAL_CONSUMPTION_LEDGER", &ledger)
+            .output()
+            .expect("run rigorix")
+    };
+
+    let out = run(&["approve", "ledger", "migrate"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "migration must succeed: {stdout}");
+    assert!(
+        stdout.contains("adopted 1 marker(s)"),
+        "the command must report what it adopted: {stdout}"
+    );
+    let sealed: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&ledger).expect("read sealed"))
+            .expect("sealed json");
+    assert_eq!(sealed["version"], 1);
+    assert!(sealed["mac"].as_str().is_some_and(|mac| !mac.is_empty()));
+    assert!(sealed["entries"].get(format!("{node}:{nonce}")).is_some());
+
+    let again = run(&["approve", "ledger", "migrate"]);
+    let stdout = String::from_utf8_lossy(&again.stdout);
+    assert!(again.status.success(), "{stdout}");
+    assert!(
+        stdout.contains("already sealed; 1 marker(s) verify"),
+        "an idempotent migration must say the MAC was checked: {stdout}"
+    );
+}

@@ -387,15 +387,16 @@ impl ApprovalBindingSetup {
         )
     }
 
-    /// Resolve the one run key and arm the binding. `run_key` is the binding
-    /// source (`RIGORIX_HMAC_KEY`); `signing_key` is the configured audit key.
-    fn from_env_key_values(
+    /// Resolve the one run key from the two possible sources.
+    ///
+    /// `run_key` is the binding source (`RIGORIX_HMAC_KEY`); `signing_key` is
+    /// the configured audit key. A configured mismatch is refused; with neither
+    /// source, binding is unavailable (or an error when explicitly requested).
+    fn resolve_run_key(
         enabled: Option<&str>,
         run_key: Option<&str>,
         signing_key: Option<&str>,
-        ttl_seconds: Option<&str>,
-        repo_root: &std::path::Path,
-    ) -> Result<Option<Self>, ApprovalBindingError> {
+    ) -> Result<Option<String>, ApprovalBindingError> {
         let env_key = run_key.filter(|k| !k.is_empty());
         let signing_key = signing_key.filter(|k| !k.is_empty());
         if let (Some(binding), Some(signing)) = (env_key, signing_key)
@@ -416,16 +417,65 @@ impl ApprovalBindingSetup {
             enabled,
             Some("1") | Some("true") | Some("TRUE") | Some("yes")
         );
-        let Some(key) = signing_key.or(env_key) else {
-            return if requested {
-                Err(ApprovalBindingError::MissingKey {
-                    var: "RIGORIX_HMAC_KEY",
-                    consequence: "approvals would be accepted unbound; set the key or unset \
-                                  RIGORIX_APPROVAL_BINDING",
-                })
-            } else {
-                Ok(None)
-            };
+        match signing_key.or(env_key) {
+            Some(key) => Ok(Some(key.to_string())),
+            None if requested => Err(ApprovalBindingError::MissingKey {
+                var: "RIGORIX_HMAC_KEY",
+                consequence: "approvals would be accepted unbound; set the key or unset \
+                              RIGORIX_APPROVAL_BINDING",
+            }),
+            None => Ok(None),
+        }
+    }
+
+    /// Explicitly migrate the configured consumption ledger (#1247).
+    ///
+    /// The loader no longer adopts a bare map. This is the one route that does,
+    /// and it reports how many markers it adopted.
+    pub fn migrate_consumption_ledger(
+        repo_root: &std::path::Path,
+        signing_key: Option<&str>,
+    ) -> Result<
+        Option<crate::approval::infrastructure::repository::LedgerMigration>,
+        ApprovalBindingError,
+    > {
+        let run_key = std::env::var("RIGORIX_HMAC_KEY").ok();
+        let Some(key) = Self::resolve_run_key(None, run_key.as_deref(), signing_key)? else {
+            return Ok(None);
+        };
+        let store_path = resolve_store_path(
+            repo_root,
+            std::env::var("RIGORIX_APPROVAL_STORE").ok().as_deref(),
+        );
+        let ledger_path = resolve_consumption_ledger(
+            repo_root,
+            std::env::var("RIGORIX_APPROVAL_CONSUMPTION_LEDGER")
+                .ok()
+                .as_deref(),
+            key.as_bytes(),
+        );
+        crate::approval::infrastructure::repository::FileBackedApprovalRepository::migrate_consumption_ledger(
+            &store_path,
+            &ledger_path,
+            key.as_bytes(),
+        )
+        .map(Some)
+        .map_err(|e| ApprovalBindingError::StoreUnavailable {
+            detail: format!("{}: {e}", store_path.display()),
+        })
+    }
+
+    /// Resolve the one run key and arm the binding. `run_key` is the binding
+    /// source (`RIGORIX_HMAC_KEY`); `signing_key` is the configured audit key.
+    fn from_env_key_values(
+        enabled: Option<&str>,
+        run_key: Option<&str>,
+        signing_key: Option<&str>,
+        ttl_seconds: Option<&str>,
+        repo_root: &std::path::Path,
+    ) -> Result<Option<Self>, ApprovalBindingError> {
+        let Some(key) = Self::resolve_run_key(enabled, run_key, signing_key)? else {
+            return Ok(None);
         };
         let ttl_seconds = ttl_seconds
             .and_then(|v| v.parse::<u64>().ok())

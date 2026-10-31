@@ -94,7 +94,12 @@ the same decision.
   version and the whole marker map, so deleting one marker is an integrity
   failure naming the store and ledger paths — not a fresh store.
 - A missing ledger is still a valid first run; `rigorix doctor` says
-  `no history yet`. A pre-#1244 bare map is adopted and re-sealed on open.
+  `no history yet`.
+- A pre-#1244 bare-map ledger is **refused** by a keyed deployment. Migrate it
+  explicitly and keep the reported marker count:
+  `rigorix approve ledger migrate` (requires `RIGORIX_HMAC_KEY` or the configured
+  `audit_hmac_key`). The loader never adopts a bare map, because accepting the
+  unprotected form is how a truncation becomes a valid ledger.
 - No configuration change is required. The ledger still defaults outside the
   repository (`$HOME/.rigorix/approval-consumption-<key-fingerprint>.json`); override with
   `RIGORIX_APPROVAL_CONSUMPTION_LEDGER`.

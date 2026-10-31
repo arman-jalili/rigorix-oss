@@ -22,6 +22,7 @@ use sha2::Sha256;
 use uuid::Uuid;
 
 use crate::approval::domain::{ApprovalError, ApprovalRecord, ApprovalStatus};
+use crate::approval::infrastructure::repository::LedgerMigration;
 
 /// One recorded terminal transition, kept outside the store file (#1241).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,13 +113,15 @@ fn write_consumption_ledger(
     Ok(())
 }
 
-/// Load and verify the ledger. Returns the entries and whether the file was in
-/// the pre-#1244 bare-map form and needs re-sealing.
+/// Load and verify the ledger. A file without the sealed wrapper is refused:
+/// the wrapper is the only evidence that the markers were ever authenticated,
+/// so accepting its absence would let an attacker choose the unprotected form
+/// (#1247).
 fn read_consumption_ledger(
     store: &Path,
     ledger: &Path,
     run_key: Option<&[u8]>,
-) -> Result<(BTreeMap<String, ConsumptionMarker>, bool), ApprovalError> {
+) -> Result<BTreeMap<String, ConsumptionMarker>, ApprovalError> {
     let raw = std::fs::read_to_string(ledger)
         .map_err(|e| ledger_integrity(store, ledger, format!("read failed: {e}")))?;
     if raw.trim().is_empty() {
@@ -150,14 +153,62 @@ fn read_consumption_ledger(
                 ));
             }
         }
-        Ok((file.entries, false))
+        Ok(file.entries)
     } else {
-        // Pre-#1244 bare map. Adopt its current contents and seal them so a
-        // later single-marker deletion is detectable.
-        let entries: BTreeMap<String, ConsumptionMarker> = serde_json::from_value(value)
-            .map_err(|e| ledger_integrity(store, ledger, format!("corrupt legacy map: {e}")))?;
-        Ok((entries, true))
+        Err(ledger_integrity(
+            store,
+            ledger,
+            "unauthenticated ledger: no version/entries/mac wrapper; run \
+             `rigorix approve ledger migrate` to adopt it explicitly",
+        ))
     }
+}
+
+/// Explicit migration for a legacy bare map. Never called by the loader.
+fn migrate_consumption_ledger_at(
+    store: &Path,
+    ledger: &Path,
+    run_key: Option<&[u8]>,
+) -> Result<LedgerMigration, ApprovalError> {
+    let Some(key) = run_key else {
+        return Err(ledger_integrity(
+            store,
+            ledger,
+            "migration requires the run key; set RIGORIX_HMAC_KEY",
+        ));
+    };
+    let raw = std::fs::read_to_string(ledger)
+        .map_err(|e| ledger_integrity(store, ledger, format!("read failed: {e}")))?;
+    if raw.trim().is_empty() {
+        return Err(ledger_integrity(
+            store,
+            ledger,
+            "file is empty — nothing to migrate",
+        ));
+    }
+    let value: serde_json::Value = serde_json::from_str(&raw)
+        .map_err(|e| ledger_integrity(store, ledger, format!("corrupt JSON: {e}")))?;
+    if value.get("entries").is_some() {
+        let file: ConsumptionLedgerFile = serde_json::from_value(value)
+            .map_err(|e| ledger_integrity(store, ledger, format!("corrupt structure: {e}")))?;
+        let expected = ledger_mac(&file.entries, key)?;
+        if !constant_time_eq(expected.as_bytes(), file.mac.as_bytes()) {
+            return Err(ledger_integrity(
+                store,
+                ledger,
+                "MAC mismatch — the ledger is already sealed and was altered",
+            ));
+        }
+        return Ok(LedgerMigration::AlreadySealed {
+            markers: file.entries.len(),
+        });
+    }
+    let entries: BTreeMap<String, ConsumptionMarker> = serde_json::from_value(value)
+        .map_err(|e| ledger_integrity(store, ledger, format!("corrupt legacy map: {e}")))?;
+    write_consumption_ledger(ledger, &entries, Some(key))?;
+    Ok(LedgerMigration::Migrated {
+        markers: entries.len(),
+    })
 }
 
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
@@ -285,6 +336,18 @@ pub struct FileBackedApprovalRepository {
 }
 
 impl FileBackedApprovalRepository {
+    /// Explicitly migrate a legacy bare-map ledger without opening the store.
+    ///
+    /// The loader refuses a bare map (#1247); this is the only path that
+    /// adopts one.
+    pub fn migrate_consumption_ledger(
+        store: impl AsRef<Path>,
+        ledger: impl AsRef<Path>,
+        run_key: &[u8],
+    ) -> Result<LedgerMigration, ApprovalError> {
+        migrate_consumption_ledger_at(store.as_ref(), ledger.as_ref(), Some(run_key))
+    }
+
     /// Open (creating if needed) the store at `path` without record
     /// authentication (legacy/tests).
     pub fn open(path: impl AsRef<Path>) -> Result<Self, ApprovalError> {
@@ -317,13 +380,10 @@ impl FileBackedApprovalRepository {
             })?,
             Ok(_) | Err(_) => HashMap::new(),
         };
-        let (consumed, migrated) = match consumption_path {
+        let consumed = match consumption_path {
             Some(ledger) if ledger.is_file() => read_consumption_ledger(&path, ledger, run_key)?,
-            _ => (BTreeMap::new(), false),
+            _ => BTreeMap::new(),
         };
-        if migrated && let Some(ledger) = consumption_path {
-            write_consumption_ledger(ledger, &consumed, run_key)?;
-        }
         Ok(Self {
             path,
             records: RwLock::new(records),
@@ -450,6 +510,13 @@ impl crate::approval::infrastructure::repository::ApprovalRepository
             .read()
             .map_err(|_| ApprovalError::Internal("consumption ledger poisoned".into()))?;
         Ok(consumed.len())
+    }
+
+    async fn migrate_consumption_ledger(&self) -> Result<LedgerMigration, ApprovalError> {
+        let ledger = self.consumption_path.as_ref().ok_or_else(|| {
+            ApprovalError::Internal("no consumption ledger path is configured".into())
+        })?;
+        migrate_consumption_ledger_at(&self.path, ledger, self.mac_key.as_deref())
     }
 
     async fn delete(&self, node_id: Uuid) -> Result<(), ApprovalError> {

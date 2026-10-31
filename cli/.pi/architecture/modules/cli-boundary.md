@@ -15,7 +15,7 @@ Per ADR-002, the CLI contains zero business logic — all execution, planning, a
 
 | Responsibility | Implementation |
 |---------------|---------------|
-| Command parsing | Clap argument parser → `CliCommand` enum (14 commands) |
+| Command parsing | Clap argument parser → `CliCommand` enum (15 commands) |
 | Config loading | Merge `rigorix.toml` + env vars + CLI flags → engine `Config` |
 | Orchestrator wiring | Build orchestrator via `OrchestratorBuilder` for `run`/`plan`/`cancel`/`status` |
 | Signal handling | Ctrl+C detection → forward to engine `CancellationToken` |
@@ -53,6 +53,7 @@ Per ADR-002, the CLI contains zero business logic — all execution, planning, a
 | `rigorix init` | Scaffold `.rigorix/` directory + default config, then report the seam inventory (always, even when the config exists) |
 | `rigorix doctor` | Report which enforcement seams are armed, by probing each seam through the constructor the run path uses |
 | `rigorix key` | Generate API keys |
+| `rigorix approve ledger migrate` | Explicitly adopt a pre-#1244 bare-map consumption ledger; refuses nothing and reports the marker count (answered before service bootstrap, because the loader refuses a bare map) (#1247) |
 | `rigorix` (no args) | **Primary interface** — launch interactive TUI dashboard (see tui.md) |
 | `rigorix tui [--exec] [--history]` | Launch TUI with specific execution loaded |
 
@@ -74,7 +75,7 @@ cli/src/
 │   └── pub mod tui;
 │
 ├── cli_boundary/             # ← This module
-│   ├── cli.rs                # Clap: 14 commands + --format, -v, shortcuts
+│   ├── cli.rs                # Clap: 15 commands + --format, -v, shortcuts
 │   ├── dispatch.rs           # match command → orchestrator / engine / CLI-only
 │   ├── orchestrator.rs       # Wires OrchestratorBuilder with config + repo_root
 │   ├── config.rs             # Config loader (TOML + env + flags → engine Config)
@@ -120,6 +121,7 @@ dispatch(command, config) {
         Init     → scaffold .rigorix/ + default rigorix.toml
         Doctor   → armed-seam report (before service bootstrap)
         Key      → generate the RIGORIX_HMAC_KEY signing key
+        Approve  → migrate a legacy consumption ledger (before service bootstrap)
         Tui      → launch ratatui dashboard (tui::run(args).await)
     }
 }
@@ -176,7 +178,7 @@ Signal handler is installed at startup and shared with the orchestrator via `Can
 
 status: planned
 depends: none
-**Purpose:** Clap argument parser defining 14 CLI commands, global flags (--format, -v), and shortcut flags (--run, --exec, --history). Produces `CliCommand` enum.
+**Purpose:** Clap argument parser defining 15 CLI commands, global flags (--format, -v), and shortcut flags (--run, --exec, --history). Produces `CliCommand` enum.
 
 ### Dispatcher
 
@@ -229,7 +231,7 @@ depends: none
 
 | Term | Definition |
 |------|-----------|
-| CliCommand | Parsed CLI command (14 variants) |
+| CliCommand | Parsed CLI command (15 variants) |
 | CliError | CLI error type mapping engine errors to exit codes |
 | LogFormatter | Formats engine output as Pretty, JSON, Markdown, or Quiet |
 | OrchestratorBuilder | Wires engine's `OrchestratorService` with config and repo_root |

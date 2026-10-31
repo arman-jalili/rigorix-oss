@@ -531,8 +531,20 @@ the MAC covers the version and the whole entries map with the run key. Removing
 one marker changes the authenticated bytes, so truncation is
 `ApprovalError::ConsumptionLedgerIntegrity` naming the store and ledger paths —
 not an absence. A ledger that has never been written is still a valid first run;
-doctor says `no history yet`. A pre-#1244 bare map is adopted and re-sealed on
-open, after which single-marker deletion is detectable.
+doctor says `no history yet`.
+
+A pre-#1244 bare map is **refused**, not adopted (#1247). The wrapper is the
+only evidence the markers were ever authenticated, so accepting its absence
+would let an attacker choose the unprotected form and turn a truncation into a
+valid legacy ledger. The refusal names the file and the migration command:
+
+```bash
+rigorix approve ledger migrate
+```
+
+Migration is explicit, reports the marker count it adopted, and writes the
+sealed form. It is idempotent: an already-sealed ledger is verified and reported.
+The loader never calls it.
 
 ### One run key (#1238)
 
