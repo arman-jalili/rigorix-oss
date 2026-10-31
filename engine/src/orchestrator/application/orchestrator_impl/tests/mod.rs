@@ -137,6 +137,25 @@ fn conference_policy(action: RuleAction) -> SequencePolicyConfig {
 
 /// Orchestrator with a REAL execution engine + REAL sequence-policy
 /// service evaluating the canonical conference rule.
+/// Attach the approval binding that every approval now requires (#1235).
+fn bind_test_approvals(
+    executor: crate::execution_engine::application::service_impl::ParallelExecutionServiceImpl,
+) -> crate::execution_engine::application::service_impl::ParallelExecutionServiceImpl {
+    use crate::approval::application::ApprovalServiceImpl;
+    use crate::approval::infrastructure::repository::InMemoryApprovalRepository;
+    use crate::execution_engine::application::service_impl::SessionGraphResolver;
+
+    let repository = Arc::new(InMemoryApprovalRepository::new());
+    let resolver = Arc::new(SessionGraphResolver::new(executor.sessions_handle()));
+    let service = ApprovalServiceImpl::new(
+        repository,
+        resolver,
+        b"engine-test-run-key".to_vec(),
+        std::time::Duration::from_secs(3600),
+    );
+    executor.with_approval_service(Arc::new(service))
+}
+
 fn real_orchestrator_with_conference_policy(action: RuleAction) -> OrchestratorServiceImpl {
     use crate::event_system::application::event_bus_service_impl::EventBusServiceImpl;
     use crate::execution_engine::application::service_impl::{
@@ -146,11 +165,11 @@ fn real_orchestrator_with_conference_policy(action: RuleAction) -> OrchestratorS
     use crate::sequence_policy::application::service_impl::SequencePolicyServiceImpl;
 
     let executor: Arc<dyn exec_svc::ParallelExecutionService> =
-        Arc::new(ParallelExecutionServiceImpl::new(
+        Arc::new(bind_test_approvals(ParallelExecutionServiceImpl::new(
             ParallelExecutorConfig::default(),
             Box::new(RetryEvaluationServiceImpl::new()),
             Arc::new(EventBusServiceImpl::default()),
-        ));
+        )));
     let policy = Arc::new(SequencePolicyServiceImpl::new(Box::new(FixedPolicyRepo {
         config: Some(conference_policy(action)),
     })));

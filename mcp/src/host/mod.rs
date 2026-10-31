@@ -620,7 +620,7 @@ impl AppState {
                         // so node/approval evidence is present even if the bus
                         // window missed it. The finding arrays are derived from
                         // the REAL events by the engine factory.
-                        let mut synthesized: Vec<ExecutionEventRef> = state
+                        let synthesized: Vec<ExecutionEventRef> = state
                             .node_states
                             .iter()
                             .filter(|(_, s)| s.status == "completed" || s.status == "failed")
@@ -651,24 +651,10 @@ impl AppState {
                                 }
                             })
                             .collect();
-                        // Approval evidence: the attested approver binding.
-                        if let Some(claim) = session_claim.as_ref() {
-                            for step in approval.approved_steps() {
-                                synthesized.push(ExecutionEventRef {
-                                    event_type: "approval_recorded".to_string(),
-                                    summary: "approval bound to attested identity".to_string(),
-                                    occurred_at: chrono::Utc::now(),
-                                    correlation_id: None,
-                                    status: EventStatus::Success,
-                                    payload: Some(serde_json::json!({
-                                        "step_name": step,
-                                        "approver_id": claim.subject,
-                                        "authority": claim.authority,
-                                        "decided_at": chrono::Utc::now().to_rfc3339(),
-                                    })),
-                                });
-                            }
-                        }
+                        // #1234: the engine publishes `approval_recorded`
+                        // when it grants an approval. The resumer's claim is
+                        // attestation, not a second approval fact — it lives in
+                        // `identity` below. Do not synthesize an approval row.
                         let events = merge_execution_event_refs(real_refs, synthesized);
                         let _ = audit
                             .build_and_send(BuildEnvelopeInput {
@@ -705,6 +691,7 @@ impl AppState {
                     "approved_steps": approval.approved_steps(),
                     "not_found": approval.not_found(),
                     "still_pending": approval.still_pending(),
+                    "denied": approval.denied(),
                     "resumed": approval.resumed(),
                     "message": if approval.resumed() {
                         "Approved — execution resumed"

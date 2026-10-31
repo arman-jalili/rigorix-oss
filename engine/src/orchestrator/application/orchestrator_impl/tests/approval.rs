@@ -13,12 +13,13 @@ async fn test_run_from_template_pauses_for_approval_and_resumes() {
     };
     use crate::execution_engine::domain::ParallelExecutorConfig;
 
-    let executor: Arc<dyn exec_svc::ParallelExecutionService> =
-        Arc::new(ParallelExecutionServiceImpl::new(
+    let executor: Arc<dyn exec_svc::ParallelExecutionService> = Arc::new(
+        super::bind_test_approvals(ParallelExecutionServiceImpl::new(
             ParallelExecutorConfig::default(),
             Box::new(RetryEvaluationServiceImpl::new()),
             Arc::new(EventBusServiceImpl::default()),
-        ));
+        )),
+    );
     let orch = OrchestratorServiceImpl::new(
         OrchestratorConfig::default(),
         Arc::new(super::super::super::orchestrator_mocks::MockPlanningService::new()),
@@ -73,7 +74,7 @@ async fn test_run_from_template_pauses_for_approval_and_resumes() {
         .approve_execution(ApproveExecutionInput {
             execution_id: out.execution_id,
             step_names: vec!["deploy".into()],
-            approver_id: None,
+            approver_id: Some("tester@example".to_string()),
             authority: None,
             token_claims_ref: None,
         })
@@ -156,7 +157,7 @@ async fn test_sequence_policy_promote_pauses_runbook_and_approve_executes_later_
         .approve_execution(ApproveExecutionInput {
             execution_id: out.execution_id,
             step_names: vec!["registration_add".into()],
-            approver_id: None,
+            approver_id: Some("tester@example".to_string()),
             authority: None,
             token_claims_ref: None,
         })
@@ -206,7 +207,7 @@ async fn test_sequence_policy_declined_later_step_is_never_dispatched() {
         .approve_execution(ApproveExecutionInput {
             execution_id: out.execution_id,
             step_names: vec!["no_such_step".into()],
-            approver_id: None,
+            approver_id: Some("tester@example".to_string()),
             authority: None,
             token_claims_ref: None,
         })

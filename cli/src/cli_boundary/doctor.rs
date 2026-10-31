@@ -240,26 +240,39 @@ pub async fn probe(repo_root: &Path) -> DoctorReport {
     );
 
     // 2. Approval binding (ADR-011) — env request + key.
-    let approval_source = "RIGORIX_APPROVAL_BINDING + RIGORIX_HMAC_KEY".to_string();
+    let approval_source = "RIGORIX_APPROVAL_BINDING=1 + RIGORIX_HMAC_KEY".to_string();
+    let remediation = "arm with RIGORIX_APPROVAL_BINDING=1, then export the key printed by \
+                       `rigorix key` as RIGORIX_HMAC_KEY";
     seams.push(
         match rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env(
             repo_root,
         ) {
-            Ok(Some(_)) => SeamReport::armed(
-                "approval binding",
-                "binds each approval to the intent it approved",
-                approval_source,
-            ),
-            Ok(None) => SeamReport::unarmed(
-                "approval binding",
-                "binds each approval to the intent it approved",
-                approval_source,
-            ),
+            Ok(Some(setup)) => {
+                let mut row = SeamReport::armed(
+                    "approval binding",
+                    "binds each approval to the intent it approved",
+                    approval_source,
+                );
+                row.detail = Some(format!(
+                    "mode: intent-bound; approver id required; TTL {}s; records at .rigorix/approvals.json",
+                    setup.ttl_seconds
+                ));
+                row
+            }
+            Ok(None) => {
+                let mut row = SeamReport::unarmed(
+                    "approval binding",
+                    "binds each approval to the intent it approved",
+                    approval_source,
+                );
+                row.detail = Some(format!("approvals are refused; {remediation}"));
+                row
+            }
             Err(error) => SeamReport::misconfigured(
                 "approval binding",
                 "binds each approval to the intent it approved",
                 approval_source,
-                error.to_string(),
+                format!("{error}; {remediation}"),
             ),
         },
     );

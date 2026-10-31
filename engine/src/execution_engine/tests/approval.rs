@@ -52,7 +52,7 @@ async fn test_hydrate_preserves_persisted_started_at() {
 async fn test_approval_gate_pauses_until_human_signoff() {
     use crate::dag_engine::domain::{TaskGraph, TaskNode};
 
-    let executor = create_executor();
+    let executor = create_bound_executor();
     let dag_id = Uuid::new_v4();
 
     // Graph: [safe] and [risky] are independent; risky requires approval.
@@ -102,7 +102,7 @@ async fn test_approval_gate_pauses_until_human_signoff() {
         .approve_node(ApproveNodeInput {
             dag_id,
             step_names: vec!["risky".to_string()],
-            approver_id: None,
+            approver_id: Some("tester@example".to_string()),
             authority: None,
             decision_context: None,
             token_claims_ref: None,
@@ -210,12 +210,12 @@ async fn test_cross_process_resume_hydrates_session_and_continues() {
         "deserialized execution_state is empty — this is the GAP-3 trap"
     );
 
-    let executor_b = create_executor();
+    let executor_b = create_bound_executor();
     let err = executor_b
         .approve_node(ApproveNodeInput {
             dag_id,
             step_names: vec!["migrate".to_string()],
-            approver_id: None,
+            approver_id: Some("tester@example".to_string()),
             authority: None,
             decision_context: None,
             token_claims_ref: None,
@@ -250,7 +250,7 @@ async fn test_cross_process_resume_hydrates_session_and_continues() {
         .approve_node(ApproveNodeInput {
             dag_id,
             step_names: vec!["migrate".to_string()],
-            approver_id: None,
+            approver_id: Some("tester@example".to_string()),
             authority: None,
             decision_context: None,
             token_claims_ref: None,
@@ -309,7 +309,7 @@ async fn test_approve_node_rejects_ungated_node() {
         .approve_node(ApproveNodeInput {
             dag_id,
             step_names: vec!["plain".to_string()],
-            approver_id: None,
+            approver_id: Some("tester@example".to_string()),
             authority: None,
             decision_context: None,
             token_claims_ref: None,
@@ -329,7 +329,7 @@ async fn test_approve_node_rejects_ungated_node() {
 async fn test_approve_node_rejects_non_awaiting_node() {
     use crate::dag_engine::domain::{TaskGraph, TaskNode};
 
-    let executor = create_executor();
+    let executor = create_bound_executor();
     let dag_id = Uuid::new_v4();
     let node = TaskNode::new(
         Uuid::new_v4(),
@@ -359,7 +359,7 @@ async fn test_approve_node_rejects_non_awaiting_node() {
         .approve_node(ApproveNodeInput {
             dag_id,
             step_names: vec!["gated".to_string()],
-            approver_id: None,
+            approver_id: Some("tester@example".to_string()),
             authority: None,
             decision_context: None,
             token_claims_ref: None,
@@ -374,7 +374,7 @@ async fn test_approve_node_rejects_non_awaiting_node() {
         .approve_node(ApproveNodeInput {
             dag_id,
             step_names: vec!["gated".to_string()],
-            approver_id: None,
+            approver_id: Some("tester@example".to_string()),
             authority: None,
             decision_context: None,
             token_claims_ref: None,
@@ -415,7 +415,7 @@ async fn test_approval_gate_rejects_unknown_step_name() {
         .approve_node(ApproveNodeInput {
             dag_id,
             step_names: vec!["nope".to_string()],
-            approver_id: None,
+            approver_id: Some("tester@example".to_string()),
             authority: None,
             decision_context: None,
             token_claims_ref: None,
@@ -622,7 +622,7 @@ async fn test_r3_promote_pauses_dynamic_later_step_and_approve_executes_it() {
         .approve_node(ApproveNodeInput {
             dag_id,
             step_names: vec!["step_b".to_string()],
-            approver_id: None,
+            approver_id: Some("tester@example".to_string()),
             authority: None,
             decision_context: None,
             token_claims_ref: None,
@@ -647,4 +647,146 @@ async fn test_r3_promote_pauses_dynamic_later_step_and_approve_executes_it() {
 
     let content = tokio::fs::read_to_string(&path_b).await.unwrap();
     assert_eq!(content, "b", "approved B tool must have executed");
+}
+
+// ── #1235: approval requires a binding and an approver id ──────────────────
+
+/// Build a gated, paused run on `executor` and return `(dag_id)`.
+async fn paused_gated(executor: &ParallelExecutionServiceImpl) -> Uuid {
+    use crate::dag_engine::domain::{TaskGraph, TaskNode};
+
+    let dag_id = Uuid::new_v4();
+    let risky = TaskNode::new(
+        Uuid::new_v4(),
+        "risky",
+        "run_command",
+        vec![],
+        r#"{"command": "echo risky"}"#,
+    )
+    .with_requires_approval(true);
+    let mut graph = TaskGraph::new();
+    graph.add_unchecked(risky).unwrap();
+    graph.seal().unwrap();
+    executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id,
+            graph: Some(graph),
+            config_override: None,
+        })
+        .await
+        .unwrap();
+    dag_id
+}
+
+#[tokio::test]
+async fn test_approve_without_binding_is_refused_with_remediation() {
+    let executor = create_unbound_executor();
+    let dag_id = paused_gated(&executor).await;
+
+    let approve = executor
+        .approve_node(ApproveNodeInput {
+            dag_id,
+            step_names: vec!["risky".into()],
+            approver_id: Some("tester@example".into()),
+            authority: None,
+            decision_context: None,
+            token_claims_ref: None,
+        })
+        .await
+        .expect("a refusal is a result, not an internal error");
+
+    assert!(
+        approve.approved.is_empty(),
+        "unbound approval must not grant"
+    );
+    assert_eq!(approve.denied, vec!["risky".to_string()]);
+    assert_eq!(approve.denied_reasons.len(), 1);
+    let reason = &approve.denied_reasons[0].reason;
+    for required in [
+        "RIGORIX_APPROVAL_BINDING",
+        "RIGORIX_HMAC_KEY",
+        "rigorix key",
+    ] {
+        assert!(
+            reason.contains(required),
+            "refusal must name {required}: {reason}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_approve_without_approver_id_is_refused_in_binding_mode() {
+    let executor = create_bound_executor();
+    let dag_id = paused_gated(&executor).await;
+
+    let approve = executor
+        .approve_node(ApproveNodeInput {
+            dag_id,
+            step_names: vec!["risky".into()],
+            approver_id: None,
+            authority: None,
+            decision_context: None,
+            token_claims_ref: None,
+        })
+        .await
+        .expect("missing identity is a refusal, not an internal error");
+
+    assert!(
+        approve.approved.is_empty(),
+        "unattributed approval must not grant"
+    );
+    assert_eq!(approve.denied, vec!["risky".to_string()]);
+    assert_eq!(approve.denied_reasons.len(), 1);
+    assert!(
+        approve.denied_reasons[0].reason.contains("approver"),
+        "refusal must name the missing identity: {}",
+        approve.denied_reasons[0].reason
+    );
+}
+
+#[tokio::test]
+async fn test_approve_unresolvable_intent_is_named_not_internal() {
+    use crate::approval::application::{ApprovalServiceImpl, NodeIntentResolver, ResolvedNode};
+    use crate::approval::infrastructure::repository::InMemoryApprovalRepository;
+
+    struct NoIntent;
+    #[async_trait]
+    impl NodeIntentResolver for NoIntent {
+        async fn resolve_by_step_name(&self, _: &str) -> Option<ResolvedNode> {
+            None
+        }
+        async fn resolve_by_node_id(&self, _: Uuid) -> Option<ResolvedNode> {
+            None
+        }
+    }
+
+    let executor = create_executor().with_approval_service(Arc::new(ApprovalServiceImpl::new(
+        Arc::new(InMemoryApprovalRepository::new()),
+        Arc::new(NoIntent),
+        b"engine-test-run-key".to_vec(),
+        std::time::Duration::from_secs(3600),
+    )));
+    let dag_id = paused_gated(&executor).await;
+
+    let approve = executor
+        .approve_node(ApproveNodeInput {
+            dag_id,
+            step_names: vec!["risky".into()],
+            approver_id: Some("tester@example".into()),
+            authority: None,
+            decision_context: None,
+            token_claims_ref: None,
+        })
+        .await
+        .expect("unresolvable intent is a step refusal, not an internal error");
+
+    assert!(approve.approved.is_empty());
+    assert_eq!(approve.denied, vec!["risky".to_string()]);
+    assert!(
+        approve.denied_reasons[0]
+            .reason
+            .contains("no resolvable intent"),
+        "refusal must name the missing intent: {}",
+        approve.denied_reasons[0].reason
+    );
 }

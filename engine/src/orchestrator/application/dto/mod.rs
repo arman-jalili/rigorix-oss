@@ -297,6 +297,11 @@ pub struct ApproveExecutionOutput {
 
     /// Whether the paused execution resumed after approval.
     pub resumed: bool,
+
+    /// Steps the approval gate refused, with the reason and remediation
+    /// (#1235). Empty when every requested step was approved.
+    #[serde(default)]
+    pub denied_reasons: Vec<crate::execution_engine::application::dto::ApprovalDenial>,
 }
 
 // ---------------------------------------------------------------------------

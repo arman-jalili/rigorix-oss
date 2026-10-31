@@ -67,14 +67,16 @@ impl OrchestratorServiceImpl {
                         detail: format!("Failed to hydrate execution session: {e}"),
                         source_module: "orchestrator".into(),
                     })?;
+                // #1235: the hydrated approve is the same approval — carry
+                // the approving identity, never drop it on the second attempt.
                 self.execution_service
                     .approve_node(exec_dto::ApproveNodeInput {
                         dag_id: input.execution_id,
-                        step_names: input.step_names,
-                        approver_id: None,
-                        authority: None,
+                        step_names: input.step_names.clone(),
+                        approver_id: input.approver_id.clone(),
+                        authority: input.authority.clone(),
                         decision_context: None,
-                        token_claims_ref: None,
+                        token_claims_ref: input.token_claims_ref.clone(),
                     })
                     .await
                     .map_err(|e| OrchestratorError::Internal {
@@ -139,6 +141,7 @@ impl OrchestratorServiceImpl {
             not_found: approve_out.not_found,
             still_pending: approve_out.still_pending,
             resumed,
+            denied_reasons: approve_out.denied_reasons,
         })
     }
 }

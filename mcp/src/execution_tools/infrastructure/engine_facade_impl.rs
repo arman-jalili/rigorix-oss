@@ -616,6 +616,16 @@ impl EngineFacade for EngineFacadeImpl {
             output.not_found,
             output.still_pending,
             output.resumed,
+        )
+        .with_denials(
+            output
+                .denied_reasons
+                .into_iter()
+                .map(|d| crate::execution_tools::domain::value::ApprovalDenial {
+                    step: d.step,
+                    reason: d.reason,
+                })
+                .collect(),
         ))
     }
 

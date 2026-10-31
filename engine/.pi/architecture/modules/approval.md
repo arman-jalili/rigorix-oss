@@ -4,7 +4,7 @@
 Canonical Reference: .pi/architecture/modules/approval.md
 Rationale: Bind human approval to the exact resolved execution intent — replay protection at the step level, first-class signed evidence, and effect-scope verification
 Blueprint Source: Requirements v1 — 2026-08-28 (approved, NOT YET BUILT)
-Last Updated: 2026-10-23 — plan creation produces the declared scope (#1175)
+Last Updated: 2026-10-31 — an approval requires a binding and an approver id (#1235)
 -->
 
 ## Overview
@@ -499,6 +499,18 @@ sequenceDiagram
 **Signing toggle:** when envelope signing is disabled (`signature: None`), approval records are operational evidence only — docs and UI must never claim tamper-evidence for unsigned runs.
 
 ## Migration Rule
+
+### The binding is required (#1235)
+
+There is no unbound approval mode. `approve_node` grants a step only when the
+executor carries an ADR-011 binding and the call carries a non-empty
+`approver_id`; otherwise every requested step is denied with a reason. The
+reason names the remediation (`RIGORIX_APPROVAL_BINDING`, `RIGORIX_HMAC_KEY`,
+`rigorix key`, or the missing identity). A step whose intent cannot be resolved
+is denied by name, never reported as an internal error. `denied` remains the
+list of names; `denied_reasons: Vec<ApprovalDenial>` carries `{ step, reason }`.
+This is a deliberate breaking change: a step approved without a pinned intent is
+a step whose dispatch may differ from what the human approved.
 
 Existing persisted `approved: Vec<Uuid>` sets (pre-binding) carry **no intent hash and no decision record**. On hydrate:
 

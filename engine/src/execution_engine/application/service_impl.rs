@@ -46,6 +46,7 @@ use crate::effect_commitment::{
 };
 use crate::event_system::application::EventBusService;
 use crate::event_system::domain::ExecutionEvent;
+use crate::execution_engine::application::dto::ApprovalDenial;
 use crate::execution_engine::domain::{
     BackoffStrategy, ExecutionError, ExecutionResult, FailureContext, NodeExecutionState,
     NodeStatus, ParallelExecutorConfig, RetryDecision, RetryPolicy, TaskResult,
@@ -1228,7 +1229,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
         }
 
         // (1) Resolve candidates under the sessions lock (no awaits held).
-        let (candidates, mut denied, not_found) = {
+        let (candidates, mut denied, not_found, mut denied_reasons) = {
             let mut sessions = self
                 .sessions
                 .lock()
@@ -1244,6 +1245,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
 
             let mut candidates: Vec<Candidate> = Vec::new();
             let mut denied: Vec<String> = Vec::new();
+            let mut denied_reasons: Vec<ApprovalDenial> = Vec::new();
             let mut not_found: Vec<String> = Vec::new();
 
             for name in &input.step_names {
@@ -1282,6 +1284,14 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
 
                 if !gated || !awaiting {
                     denied.push(name.clone());
+                    denied_reasons.push(ApprovalDenial {
+                        step: name.clone(),
+                        reason: if !gated {
+                            format!("step '{name}' is not approval-gated (requires_approval = false)")
+                        } else {
+                            format!("step '{name}' is not awaiting approval (already decided or executed)")
+                        },
+                    });
                     continue;
                 }
 
@@ -1290,79 +1300,141 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                     node_id,
                 });
             }
-            (candidates, denied, not_found)
+            (candidates, denied, not_found, denied_reasons)
         };
 
         let candidate_names: Vec<String> = candidates.iter().map(|c| c.name.clone()).collect();
 
-        // (2) Capture the approval record when a binding is configured.
+        // (2) Capture the approval record. The binding and the approving
+        // identity are both required — an approval that cannot be bound to a
+        // resolved intent and attributed to a person is refused, not granted
+        // unbound (#1235). The two checkers below build the diagnosis, so the
+        // refusal names what is missing and how to fix it.
+        const BINDING_REMEDIATION: &str = "approval binding is not armed: set RIGORIX_APPROVAL_BINDING=1, export the key from \
+             `rigorix key` as RIGORIX_HMAC_KEY, then restart";
+        const IDENTITY_REMEDIATION: &str = "approval requires an approver identity: sign in to the MCP session or pass the \
+             attested approver id";
+
         let mut approved: Vec<String> = Vec::new();
-        if let Some(binding) = &self.approval_binding {
-            // R3: identity is a required captured fact — fail closed without it.
-            let approver_id = input.approver_id.clone().filter(|s| !s.trim().is_empty());
-            match approver_id {
-                Some(approver_id) => {
-                    let approve_input = ApprovalApproveInput {
-                        dag_id: input.dag_id,
-                        step_names: candidate_names.clone(),
-                        approver_id,
-                        authority: input.authority.clone(),
-                        decision_context: input.decision_context.clone(),
-                        token_claims_ref: input.token_claims_ref.clone(),
-                        // #1190: the engine's approve_node surface does not
-                        // declare scope; the approver-facing surface may.
-                        declared_scope: None,
-                        strict_scope: None,
-                    };
-                    let out = binding.service.approve(approve_input).await.map_err(|e| {
-                        ExecutionError::InternalError {
-                            detail: format!("Approval binding capture failed: {e}"),
+        let approver_id = input.approver_id.clone().filter(|s| !s.trim().is_empty());
+        let mut deny = |step: &str, reason: String| {
+            denied.push(step.to_string());
+            denied_reasons.push(ApprovalDenial {
+                step: step.to_string(),
+                reason,
+            });
+        };
+
+        match (&self.approval_binding, approver_id) {
+            (Some(binding), Some(approver_id)) => {
+                let approve_input = ApprovalApproveInput {
+                    dag_id: input.dag_id,
+                    step_names: candidate_names.clone(),
+                    approver_id,
+                    authority: input.authority.clone(),
+                    decision_context: input.decision_context.clone(),
+                    token_claims_ref: input.token_claims_ref.clone(),
+                    // #1190: the engine's approve_node surface does not
+                    // declare scope; the approver-facing surface may.
+                    declared_scope: None,
+                    strict_scope: None,
+                };
+                match binding.service.approve(approve_input).await {
+                    Ok(out) => {
+                        approved = out.approved;
+                        // Names that failed to bind are denied (never silently
+                        // granted). A step the resolver could not find is named
+                        // with its own reason, not reported as an internal error.
+                        for name in &candidate_names {
+                            if !approved.contains(name) {
+                                let reason = if out.not_found.contains(name) {
+                                    format!(
+                                        "step '{name}' has no resolvable intent in the sealed graph; \
+                                         re-plan the run"
+                                    )
+                                } else {
+                                    format!(
+                                        "step '{name}' was not bound to an approval record; \
+                                         re-approve after checking the run state"
+                                    )
+                                };
+                                deny(name, reason);
+                            }
                         }
-                    })?;
-                    approved = out.approved;
-                    // Names that failed to bind are denied (never silently granted).
-                    for name in &candidate_names {
-                        if !approved.contains(name) {
-                            denied.push(name.clone());
+                        // ADR-011 R3: publish ApprovalRecorded for every
+                        // persisted record — the drained events are the source
+                        // the audit envelope derives `approval_events[]` from.
+                        for record in &out.approval_records {
+                            let decision_context_ref =
+                                if record.decision_context.summary.trim().is_empty() {
+                                    None
+                                } else {
+                                    Some(record.decision_context.summary.clone())
+                                };
+                            self.publish_event(ExecutionEvent::ApprovalRecorded {
+                                execution_id: input.dag_id,
+                                node_id: record.node_id.to_string(),
+                                step_name: record.step_name.clone(),
+                                intent_hash: record.intent_hash.0.clone(),
+                                approver_id: record.approver_id.clone(),
+                                authority: record.authority.clone(),
+                                decided_at: record.decided_at,
+                                decision_context_ref,
+                                timestamp: chrono::Utc::now(),
+                            })
+                            .await;
                         }
                     }
-                    // ADR-011 R3: publish ApprovalRecorded for every persisted
-                    // record — the drained events are the source the audit
-                    // envelope derives `approval_events[]` from.
-                    for record in &out.approval_records {
-                        let decision_context_ref =
-                            if record.decision_context.summary.trim().is_empty() {
-                                None
-                            } else {
-                                Some(record.decision_context.summary.clone())
-                            };
-                        self.publish_event(ExecutionEvent::ApprovalRecorded {
-                            execution_id: input.dag_id,
-                            node_id: record.node_id.to_string(),
-                            step_name: record.step_name.clone(),
-                            intent_hash: record.intent_hash.0.clone(),
-                            approver_id: record.approver_id.clone(),
-                            authority: record.authority.clone(),
-                            decided_at: record.decided_at,
-                            decision_context_ref,
-                            timestamp: chrono::Utc::now(),
-                        })
-                        .await;
-                    }
-                }
-                None => {
-                    if !candidate_names.is_empty() {
-                        tracing::warn!(
-                            dag_id = %input.dag_id,
-                            candidates = candidate_names.len(),
-                            "approve denied: approval binding requires approver_id (identity is a captured fact)"
-                        );
-                        denied.extend(candidate_names.clone());
+                    Err(error) => {
+                        // The approval service refused capture (store, hash,
+                        // TTL). Deny every candidate with the diagnosis instead
+                        // of failing the whole call as an internal error.
+                        for name in &candidate_names {
+                            deny(
+                                name,
+                                format!("approval binding refused step '{name}': {error}"),
+                            );
+                        }
                     }
                 }
             }
-        } else {
-            approved = candidate_names;
+            (Some(_), None) => {
+                if !candidate_names.is_empty() {
+                    tracing::warn!(
+                        dag_id = %input.dag_id,
+                        candidates = candidate_names.len(),
+                        "approve denied: approval binding requires approver_id (identity is a captured fact)"
+                    );
+                    for name in &candidate_names {
+                        deny(
+                            name,
+                            format!("step '{name}' was refused: {IDENTITY_REMEDIATION}"),
+                        );
+                    }
+                }
+            }
+            (None, approver_id) => {
+                if !candidate_names.is_empty() {
+                    tracing::warn!(
+                        dag_id = %input.dag_id,
+                        candidates = candidate_names.len(),
+                        "approve denied: approval binding is required"
+                    );
+                    let identity = if approver_id.is_none() {
+                        format!(
+                            " The approval also has no approver identity: {IDENTITY_REMEDIATION}"
+                        )
+                    } else {
+                        String::new()
+                    };
+                    for name in &candidate_names {
+                        deny(
+                            name,
+                            format!("step '{name}' was refused: {BINDING_REMEDIATION}.{identity}"),
+                        );
+                    }
+                }
+            }
         }
 
         // (3) Commit under the sessions lock: approved nodes become
@@ -1408,6 +1480,7 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
             not_found,
             still_pending,
             denied,
+            denied_reasons,
         })
     }
 

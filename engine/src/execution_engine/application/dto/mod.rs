@@ -105,9 +105,24 @@ pub struct ApproveNodeOutput {
     pub still_pending: Vec<String>,
     /// Step names rejected by the approval gate: the node is not
     /// approval-gated (`requires_approval == false`) or is not in
-    /// `AwaitingApproval` (GAP-H-07).
+    /// `AwaitingApproval` (GAP-H-07), or the approval could not be bound and
+    /// attributed.
     #[serde(default)]
     pub denied: Vec<String>,
+    /// One diagnosis per denied step (#1235). `denied` stays the list of
+    /// names for compatibility; this says why, including the command that
+    /// fixes the configuration.
+    #[serde(default)]
+    pub denied_reasons: Vec<ApprovalDenial>,
+}
+
+/// Why one step was denied, in the caller's vocabulary.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApprovalDenial {
+    /// The step name the refusal applies to.
+    pub step: String,
+    /// What is missing or wrong, and how to fix it.
+    pub reason: String,
 }
 
 // ---------------------------------------------------------------------------
