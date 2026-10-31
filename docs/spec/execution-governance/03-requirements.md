@@ -43,10 +43,14 @@ approval for its intent is recorded.
 *Trace:* approval module; ADR-011.
 
 **RS-011** An approval MUST bind to the canonical intent (tool, resolved payload,
-declared scope), MUST be single-use, and MUST carry a validity window.
+declared scope), MUST be single-use, and MUST carry a validity window. The approval
+evidence MUST state `intent_hash_provenance = derived` — the re-deriving engine
+computed the hash from the sealed graph. An `asserted` hash (a caller supplied it and
+an attesting service recorded who said it) satisfies RS-013 attribution, **not**
+RS-011.
 *Rationale:* binding prevents substitution; single use prevents replay; the window
-bounds staleness.
-*Trace:* ADR-011; intent digest.
+bounds staleness. A hash nobody re-derived is a claim, not a binding.
+*Trace:* ADR-011; intent digest; approval ref `intent_hash_provenance`.
 
 **RS-012** Immediately before dispatch of an approved step, the implementation MUST
 re-derive the intent and MUST halt on mismatch.

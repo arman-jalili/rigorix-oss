@@ -43,7 +43,7 @@ tower = { version = "0.5", features = ["util"] }
 reqwest = { workspace = true }
 # OSS-CATALOG-SUBSET-VERIFIER (#907): the SHARED closed-namespace guard.
 # Published crates.io dependency (NOT path/git) so a fresh public clone builds.
-rigorix-verifier = "0.8.1"
+rigorix-verifier = "0.9.0"
 
 [lints]
 workspace = true

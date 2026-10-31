@@ -108,13 +108,13 @@ See [approval module](./modules/approval.md) and [identity module](./modules/ide
 
 | Field | Type | Source | Notes |
 |-------|------|--------|-------|
-| `approval_events` | `Vec<ApprovalRecordRef>` | ApprovalService | One ref per human approval: step_name, node_id, intent_hash, approver_id, authority, decided_at, decision_context_ref |
+| `approval_events` | `Vec<ApprovalRecordRef>` | ApprovalService | One ref per human approval: step_name, node_id, intent_hash, intent_hash_provenance, approver_id, authority, decided_at |
 | `scope_violations` | `Vec<ScopeViolationRef>` | ApprovalService (git-diff oracle) | Out-of-scope effects; non-blocking evidence |
 | `scope_check` | `Option<ScopeCheckStatus>` | ApprovalService (git-diff oracle) | `checked` / `not_declared` / `unavailable`; `None` only on legacy envelopes (#1189). Declared after `scope_violations`, before `sequence_policy_findings`; independent verifiers must declare it too or canonical bytes diverge. `rigorix-verifier` 0.8.1 added it (#1222) |
 | `decision_context_ref` | `Option<String>` | ApprovalService (R4) | Points to full decision context; summary embedded in the ref |
 | `identity` | `Option<IdentityRef>` | Identity module | Subject, issuer, source, authority, expires_at — redacted, never the raw token |
 
-All fields are additive with `#[serde(default, skip_serializing_if = ...)]` — backward compatible with existing envelopes (same pattern as `scoring_results`). When envelope signing is disabled, these remain operational evidence; docs/UI must never claim tamper-evidence for unsigned runs.
+All vector fields are additive with `#[serde(default, skip_serializing_if = ...)]`. Within an approval ref, `intent_hash_provenance` is **required** (#1243): `derived` means the re-deriving engine computed the hash from the sealed graph, which is what RS-011 requires; `asserted` means a caller supplied the hash and an attesting service recorded who said it, which is RS-013 attribution only. There is no default — an emitter cannot stay silent about the kind of evidence. When envelope signing is disabled, these remain operational evidence; docs/UI must never claim tamper-evidence for unsigned runs.
 
 **Privacy:** `identity` and `decision_context` follow the `planning_prompt` opt-in pattern — full payloads stored locally, redacted summaries in the envelope (SpanPrivacy).
 
