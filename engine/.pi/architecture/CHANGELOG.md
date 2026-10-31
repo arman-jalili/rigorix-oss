@@ -1,3 +1,31 @@
+## [2026-10-31] — the approval store becomes a chained log (ADR-020)
+
+### Decided
+- **Approval state is derived from an append-only log (ADR-020).** The sealed JSON map and the
+  whole-set-sealed consumption ledger are replaced by two chained logs — decisions in the
+  repository, consumption outside it, because a spent approval must not be restorable from the
+  workspace. One event per file, `<seq>.json`, appended with `create_new`; no lock, no
+  read-modify-write, no re-signature of the set on every write.
+- **Integrity is the chain, not a seal.** A gap, reorder, duplicate or edited frame is a named
+  failure; an absent log is an empty fold, not an error; a legacy unsealed map is refused by name
+  with the migration command.
+- **Lifecycle becomes history.** `Pending → Consumed | Expired | Superseded` stops overwriting a
+  field: each transition is an event retaining when it happened and by which run. Duplicate
+  decisions and transitions against terminal records are retained and reported, never dropped.
+- **The approver identifier is a subject reference (D7).** The field is validated (no `@`, no
+  whitespace), documented as a reference, and the fixtures stop using email addresses. The
+  erasure position is contractual, not cryptographic: the log stores nothing that resolves to a
+  person, so no per-identity keys, custodian or KMS are introduced. If in-place erasure is ever
+  required, it reuses ADR-016's recorded compaction.
+- **The chain primitive is duplicated, not extracted (D10).** Extraction into a shared kernel is
+  triggered by a third user, not by two.
+
+### Retires
+- `#1244` (whole-set seal), `#1247` (implicit adoption of an unsealed ledger), `#1255` (one-way
+  ledger check), `#1254` (two writers erasing each other — unrepresentable once appends do not
+  read), `#1249`/`#1251`/`#1253` (migration counts become arithmetic over events), `#1256` (an
+  absent ledger is an empty fold).
+
 ## [2026-10-22] — effect-commitment runtime gaps closed (#1163–#1166)
 
 ### Fixed
