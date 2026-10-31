@@ -309,6 +309,8 @@ async fn explicit_migration_adopts_a_bare_map_and_reports_its_count() {
             markers: 1,
             terminal_records: 0,
             missing: vec![],
+            store_present: false,
+            store_path: store.clone(),
         }
     );
 
@@ -339,6 +341,8 @@ async fn explicit_migration_adopts_a_bare_map_and_reports_its_count() {
             markers: 1,
             terminal_records: 0,
             missing: vec![],
+            store_present: false,
+            store_path: store.clone(),
         }
     );
 }
@@ -387,6 +391,8 @@ async fn migration_refuses_a_ledger_that_misses_a_terminal_store_record() {
             markers: 0,
             terminal_records: 1,
             missing: vec![(node_id, "commit_cost".into())],
+            store_present: true,
+            store_path: store.clone(),
         }
     );
     let sealed: serde_json::Value =
@@ -428,6 +434,8 @@ async fn migration_adopts_n_of_n_when_the_ledger_covers_every_terminal_record() 
             markers: 1,
             terminal_records: 1,
             missing: vec![],
+            store_present: true,
+            store_path: store.clone(),
         }
     );
 }

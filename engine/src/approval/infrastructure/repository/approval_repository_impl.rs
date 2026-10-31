@@ -169,19 +169,26 @@ fn read_consumption_ledger(
 /// The store is the source of truth for which records reached a terminal
 /// status; the ledger is supposed to remember every one. A bare map that names
 /// fewer is a truncated map, not an exported one (#1249).
+struct StoreComparison {
+    store_present: bool,
+    terminal_records: usize,
+    missing: Vec<(Uuid, String)>,
+}
+
 fn unprotected_terminal_records(
     store: &Path,
     run_key: &[u8],
     entries: &BTreeMap<String, ConsumptionMarker>,
-) -> Result<(usize, Vec<(Uuid, String)>), ApprovalError> {
-    let records = match std::fs::read_to_string(store) {
-        Ok(contents) if !contents.trim().is_empty() => {
+) -> Result<StoreComparison, ApprovalError> {
+    let (store_present, records) = match std::fs::read_to_string(store) {
+        Ok(contents) if !contents.trim().is_empty() => (
+            true,
             serde_json::from_str::<HashMap<Uuid, ApprovalRecord>>(&contents).map_err(|e| {
                 ApprovalError::Internal(format!("corrupt approval store {}: {e}", store.display()))
-            })?
-        }
-        Ok(_) => HashMap::new(),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => HashMap::new(),
+            })?,
+        ),
+        Ok(_) => (true, HashMap::new()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (false, HashMap::new()),
         Err(e) => {
             return Err(ApprovalError::Internal(format!(
                 "read approval store {}: {e}",
@@ -203,7 +210,11 @@ fn unprotected_terminal_records(
             }
         }
     }
-    Ok((terminal, missing))
+    Ok(StoreComparison {
+        store_present,
+        terminal_records: terminal,
+        missing,
+    })
 }
 
 /// Explicit migration for a legacy bare map. Never called by the loader.
@@ -242,27 +253,31 @@ fn migrate_consumption_ledger_at(
                 "MAC mismatch — the ledger is already sealed and was altered",
             ));
         }
-        let (terminal_records, missing) = unprotected_terminal_records(store, key, &file.entries)?;
-        if !accept_missing && !missing.is_empty() {
-            return Err(migration_incomplete(store, ledger, &missing));
+        let comparison = unprotected_terminal_records(store, key, &file.entries)?;
+        if !accept_missing && !comparison.missing.is_empty() {
+            return Err(migration_incomplete(store, ledger, &comparison.missing));
         }
         return Ok(LedgerMigration::AlreadySealed {
             markers: file.entries.len(),
-            terminal_records,
-            missing,
+            terminal_records: comparison.terminal_records,
+            missing: comparison.missing,
+            store_present: comparison.store_present,
+            store_path: store.to_path_buf(),
         });
     }
     let entries: BTreeMap<String, ConsumptionMarker> = serde_json::from_value(value)
         .map_err(|e| ledger_integrity(store, ledger, format!("corrupt legacy map: {e}")))?;
-    let (terminal_records, missing) = unprotected_terminal_records(store, key, &entries)?;
-    if !accept_missing && !missing.is_empty() {
-        return Err(migration_incomplete(store, ledger, &missing));
+    let comparison = unprotected_terminal_records(store, key, &entries)?;
+    if !accept_missing && !comparison.missing.is_empty() {
+        return Err(migration_incomplete(store, ledger, &comparison.missing));
     }
     write_consumption_ledger(ledger, &entries, Some(key))?;
     Ok(LedgerMigration::Migrated {
         markers: entries.len(),
-        terminal_records,
-        missing,
+        terminal_records: comparison.terminal_records,
+        missing: comparison.missing,
+        store_present: comparison.store_present,
+        store_path: store.to_path_buf(),
     })
 }
 

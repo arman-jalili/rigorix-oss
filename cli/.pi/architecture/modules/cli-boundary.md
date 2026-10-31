@@ -53,7 +53,7 @@ Per ADR-002, the CLI contains zero business logic — all execution, planning, a
 | `rigorix init` | Scaffold `.rigorix/` directory + default config, then report the seam inventory (always, even when the config exists) |
 | `rigorix doctor` | Report which enforcement seams are armed, by probing each seam through the constructor the run path uses |
 | `rigorix key` | Generate API keys |
-| `rigorix approve ledger migrate [--accept-missing]` | Explicitly adopt a pre-#1244 bare-map consumption ledger; reports adopted vs. terminal store records and refuses a missing marker unless `--accept-missing` (answered before service bootstrap, because the loader refuses a bare map) (#1247, #1249) |
+| `rigorix approve ledger migrate [--accept-missing]` | Explicitly adopt a pre-#1244 bare-map consumption ledger; reports adopted vs. terminal store records (naming an absent-store comparison as not run), and refuses a missing marker unless `--accept-missing` (answered before service bootstrap, because the loader refuses a bare map) (#1247, #1249, #1251) |
 | `rigorix` (no args) | **Primary interface** — launch interactive TUI dashboard (see tui.md) |
 | `rigorix tui [--exec] [--history]` | Launch TUI with specific execution loaded |
 

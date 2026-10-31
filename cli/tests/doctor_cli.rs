@@ -321,8 +321,16 @@ fn approve_ledger_migrate_adopts_a_legacy_map_and_reports_the_count() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(out.status.success(), "migration must succeed: {stdout}");
     assert!(
-        stdout.contains("adopted 1 of 0 terminal record(s)"),
-        "the command must report the adopted count against the store: {stdout}"
+        stdout.contains("adopted 1 marker(s); the store was not found at"),
+        "the command must say the comparison could not run: {stdout}"
+    );
+    assert!(
+        stdout.contains("nothing was compared"),
+        "the command must not imply a comparison happened: {stdout}"
+    );
+    assert!(
+        !stdout.contains("of 0"),
+        "1 of 0 is not a readable comparison: {stdout}"
     );
     let sealed: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&ledger).expect("read sealed"))
@@ -335,8 +343,8 @@ fn approve_ledger_migrate_adopts_a_legacy_map_and_reports_the_count() {
     let stdout = String::from_utf8_lossy(&again.stdout);
     assert!(again.status.success(), "{stdout}");
     assert!(
-        stdout.contains("already sealed; 1 marker(s) verify against 0 terminal record(s)"),
-        "an idempotent migration must say the MAC was checked: {stdout}"
+        stdout.contains("already sealed; 1 marker(s) verify; the store was not found at"),
+        "an idempotent migration must say the MAC was checked and the store compared: {stdout}"
     );
 
     let accepted = run(&["approve", "ledger", "migrate", "--accept-missing"]);
@@ -345,4 +353,35 @@ fn approve_ledger_migrate_adopts_a_legacy_map_and_reports_the_count() {
         String::from_utf8_lossy(&accepted.stdout).contains("already sealed"),
         "a sealed ledger remains sealed even with the flag"
     );
+}
+
+#[test]
+fn approve_ledger_migrate_with_an_empty_store_says_nothing_was_compared() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let ledger = dir.path().join("legacy-consumption.json");
+    let store = dir.path().join("approvals.json");
+    std::fs::write(&store, "{}").expect("store present and empty");
+    std::fs::write(
+        &ledger,
+        r#"{"11111111-1111-1111-1111-111111111111:22222222-2222-2222-2222-222222222222":{"node_id":"11111111-1111-1111-1111-111111111111","nonce":"22222222-2222-2222-2222-222222222222","status":"consumed","recorded_at":"2026-10-31T00:00:00Z"}}"#,
+    )
+    .expect("write legacy ledger");
+
+    let mut cmd = bin();
+    cmd.current_dir(dir.path())
+        .args(["approve", "ledger", "migrate"]);
+    isolated(&mut cmd);
+    let out = cmd
+        .env("RIGORIX_HMAC_KEY", "migration-test-key")
+        .env("RIGORIX_APPROVAL_STORE", &store)
+        .env("RIGORIX_APPROVAL_CONSUMPTION_LEDGER", &ledger)
+        .output()
+        .expect("run rigorix");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{stdout}");
+    assert!(
+        stdout.contains("the store holds no terminal record(s), so nothing was compared"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("of 0"), "{stdout}");
 }

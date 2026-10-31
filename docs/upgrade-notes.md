@@ -101,8 +101,10 @@ the same decision.
   `adopted N of M terminal record(s)`, where M comes from the authenticated
   store. If a terminal record has no marker, migration refuses and names the
   node and step; `--accept-missing` seals anyway and lists what stays
-  unprotected. The loader never adopts a bare map, because accepting the
-  unprotected form is how a truncation becomes a valid ledger.
+  unprotected. With no store present the report names the missing path and says
+  nothing was compared; an empty store says it held no terminal records to
+  compare. The loader never adopts a bare map, because accepting the unprotected
+  form is how a truncation becomes a valid ledger.
 - No configuration change is required. The ledger still defaults outside the
   repository (`$HOME/.rigorix/approval-consumption-<key-fingerprint>.json`); override with
   `RIGORIX_APPROVAL_CONSUMPTION_LEDGER`.
