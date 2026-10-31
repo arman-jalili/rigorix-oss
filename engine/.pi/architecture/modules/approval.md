@@ -4,7 +4,7 @@
 Canonical Reference: .pi/architecture/modules/approval.md
 Rationale: Bind human approval to the exact resolved execution intent — replay protection at the step level, first-class signed evidence, and effect-scope verification
 Blueprint Source: Requirements v1 — 2026-08-28 (approved, NOT YET BUILT)
-Last Updated: 2026-10-31 — MAC material derives from the record; the consumption ledger is authenticated as a set; both files are written under a lock (#1240, #1241, #1244, #1254)
+Last Updated: 2026-10-31 — MAC material derives from the record; the ledger is authenticated and checked in both directions; both files are written under a lock (#1240, #1241, #1244, #1254, #1255)
 -->
 
 ## Overview
@@ -546,15 +546,31 @@ Migration is explicit and writes the sealed form. It compares the adopted
 marker set with the authenticated store's terminal records (consumed, expired,
 superseded) and reports `adopted N of M terminal record(s)` (#1249). A terminal
 record without a marker refuses the migration and names the node and step;
-`--accept-missing` is the explicit override and the report names every record it
-leaves unprotected. It is idempotent: an already-sealed ledger is verified and
-compared. The loader never calls it.
+`--accept-missing` is the explicit override: it adopts those terminal records
+into the ledger and the report names each one. It is idempotent: an already-sealed
+ledger is verified and compared. The loader never calls it.
 
 The report never prints `N of 0` (#1251). When the store is absent it names the
 path it did not find and says nothing was compared; when the store exists but
 holds no terminal records it says the comparison had nothing to cover. Those are
 different facts, and a ledger carried to a new host is legitimate — migration
 does not refuse on an absent store.
+
+### Load checks the ledger in both directions (#1255)
+
+Both files can authenticate individually and still contradict each other. The
+pending check asks whether a record claiming to be unspent has a marker saying
+otherwise; the terminal check asks the inverse — a record says it was spent, so
+the ledger must remember it. On load and `verify_integrity`, a terminal record
+with no marker is `ApprovalError::UncoveredTerminalRecord`, naming node, step and
+ledger. Otherwise marker loss is silent, and the anti-rollback guard has nothing
+to fire on.
+
+The refusal names `rigorix approve ledger migrate`, and
+`--accept-missing` is reachable because it adopts the store's uncovered terminal
+records into the ledger; without that an operator who legitimately moved a store
+would have no documented exit. When no ledger file exists there is no second
+witness, so only the pending direction is enforced.
 
 ### Two writers cannot erase each other (#1254)
 

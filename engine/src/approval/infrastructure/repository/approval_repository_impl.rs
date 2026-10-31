@@ -1,6 +1,7 @@
 //! ApprovalRepository implementations.
 //!
 //! @canonical .pi/architecture/modules/approval.md#infrastructure
+//! Canonical Reference: .pi/architecture/modules/approval.md#infrastructure
 //! Implements: ApprovalRepository — in-memory and file-backed stores
 //! Issue: #792 (approval epic — approvalservice implementation)
 //!
@@ -223,6 +224,9 @@ struct StoreComparison {
     store_present: bool,
     terminal_records: usize,
     missing: Vec<(Uuid, String)>,
+    /// The same records with the fields a marker needs, so `--accept-missing`
+    /// can adopt them into the ledger instead of leaving them uncovered.
+    missing_markers: Vec<(String, ConsumptionMarker)>,
 }
 
 fn unprotected_terminal_records(
@@ -248,6 +252,7 @@ fn unprotected_terminal_records(
     };
     let mut terminal = 0usize;
     let mut missing = Vec::new();
+    let mut missing_markers = Vec::new();
     for record in records.values() {
         let record = verify_if_keyed(record.clone(), Some(run_key))?;
         if matches!(
@@ -255,8 +260,18 @@ fn unprotected_terminal_records(
             ApprovalStatus::Consumed | ApprovalStatus::Expired | ApprovalStatus::Superseded
         ) {
             terminal += 1;
-            if !entries.contains_key(&marker_key(record.node_id, record.nonce)) {
+            let key = marker_key(record.node_id, record.nonce);
+            if !entries.contains_key(&key) {
                 missing.push((record.node_id, record.step_name.clone()));
+                missing_markers.push((
+                    key,
+                    ConsumptionMarker {
+                        node_id: record.node_id,
+                        nonce: record.nonce,
+                        status: record.status,
+                        recorded_at: record.decided_at,
+                    },
+                ));
             }
         }
     }
@@ -264,6 +279,7 @@ fn unprotected_terminal_records(
         store_present,
         terminal_records: terminal,
         missing,
+        missing_markers,
     })
 }
 
@@ -307,19 +323,27 @@ fn migrate_consumption_ledger_at(
         if !accept_missing && !comparison.missing.is_empty() {
             return Err(migration_incomplete(store, ledger, &comparison.missing));
         }
+        let mut entries = file.entries;
+        if accept_missing && !comparison.missing_markers.is_empty() {
+            entries.extend(comparison.missing_markers.iter().cloned());
+            write_consumption_ledger(ledger, &entries, Some(key))?;
+        }
         return Ok(LedgerMigration::AlreadySealed {
-            markers: file.entries.len(),
+            markers: entries.len(),
             terminal_records: comparison.terminal_records,
             missing: comparison.missing,
             store_present: comparison.store_present,
             store_path: store.to_path_buf(),
         });
     }
-    let entries: BTreeMap<String, ConsumptionMarker> = serde_json::from_value(value)
+    let mut entries: BTreeMap<String, ConsumptionMarker> = serde_json::from_value(value)
         .map_err(|e| ledger_integrity(store, ledger, format!("corrupt legacy map: {e}")))?;
     let comparison = unprotected_terminal_records(store, key, &entries)?;
     if !accept_missing && !comparison.missing.is_empty() {
         return Err(migration_incomplete(store, ledger, &comparison.missing));
+    }
+    if accept_missing {
+        entries.extend(comparison.missing_markers.iter().cloned());
     }
     write_consumption_ledger(ledger, &entries, Some(key))?;
     Ok(LedgerMigration::Migrated {
@@ -466,6 +490,9 @@ pub struct FileBackedApprovalRepository {
     /// Consumption markers live outside the store file, so restoring an older
     /// copy of the store does not restore an older copy of its progress.
     consumption_path: Option<PathBuf>,
+    /// Whether the ledger file existed when opened. Without a file there is no
+    /// second witness, so the terminal cross-check cannot run.
+    ledger_present: bool,
     consumed: RwLock<BTreeMap<String, ConsumptionMarker>>,
     /// Serialises this instance's saves with its own writes; the file lock
     /// serialises across instances.
@@ -523,8 +550,9 @@ impl FileBackedApprovalRepository {
             })?,
             Ok(_) | Err(_) => HashMap::new(),
         };
+        let ledger_present = consumption_path.is_some_and(Path::is_file);
         let consumed = match consumption_path {
-            Some(ledger) if ledger.is_file() => read_consumption_ledger(&path, ledger, run_key)?,
+            Some(ledger) if ledger_present => read_consumption_ledger(&path, ledger, run_key)?,
             _ => BTreeMap::new(),
         };
         Ok(Self {
@@ -532,23 +560,43 @@ impl FileBackedApprovalRepository {
             records: RwLock::new(records),
             mac_key: run_key.map(<[u8]>::to_vec),
             consumption_path: consumption_path.map(Path::to_path_buf),
+            ledger_present,
             consumed: RwLock::new(consumed),
             write_lock: std::sync::Mutex::new(()),
         })
     }
 
+    /// The ledger is checked in both directions (#1255). A pending record with
+    /// a marker was restored after being spent; a terminal record without one
+    /// means the marker was dropped, and the anti-rollback guard would have
+    /// nothing to fire on. Without a ledger file there is no second witness, so
+    /// only the pending direction is meaningful.
     fn reject_rolled_back(&self, record: &ApprovalRecord) -> Result<(), ApprovalError> {
-        if !matches!(record.status, ApprovalStatus::Pending) {
+        let pending = matches!(record.status, ApprovalStatus::Pending);
+        if !pending && !self.ledger_present {
             return Ok(());
         }
         let consumed = self
             .consumed
             .read()
             .map_err(|_| ApprovalError::Internal("consumption ledger poisoned".into()))?;
-        if consumed.contains_key(&marker_key(record.node_id, record.nonce)) {
-            return Err(ApprovalError::RecordRollback {
+        let key = marker_key(record.node_id, record.nonce);
+        if pending {
+            if consumed.contains_key(&key) {
+                return Err(ApprovalError::RecordRollback {
+                    node_id: record.node_id,
+                    step_name: record.step_name.clone(),
+                });
+            }
+        } else if !consumed.contains_key(&key) {
+            return Err(ApprovalError::UncoveredTerminalRecord {
                 node_id: record.node_id,
                 step_name: record.step_name.clone(),
+                ledger: self
+                    .consumption_path
+                    .as_ref()
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_default(),
             });
         }
         Ok(())

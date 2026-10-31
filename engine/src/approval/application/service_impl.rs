@@ -199,6 +199,16 @@ impl ApprovalService for ApprovalServiceImpl {
                 );
                 return Ok(IntentVerification::IntegrityFailure { node_id, step_name });
             }
+            Err(ApprovalError::UncoveredTerminalRecord {
+                node_id, step_name, ..
+            }) => {
+                tracing::error!(
+                    node_id = %node_id,
+                    step_name = %step_name,
+                    "verify: terminal approval has no consumption marker — refusing dispatch"
+                );
+                return Ok(IntentVerification::IntegrityFailure { node_id, step_name });
+            }
             Err(error) => return Err(error),
         };
         let Some(mut record) = loaded else {

@@ -388,7 +388,7 @@ async fn migration_refuses_a_ledger_that_misses_a_terminal_store_record() {
     assert_eq!(
         outcome,
         LedgerMigration::Migrated {
-            markers: 0,
+            markers: 1,
             terminal_records: 1,
             missing: vec![(node_id, "commit_cost".into())],
             store_present: true,
@@ -398,6 +398,87 @@ async fn migration_refuses_a_ledger_that_misses_a_terminal_store_record() {
     let sealed: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&ledger).unwrap()).unwrap();
     assert!(sealed["mac"].as_str().is_some_and(|mac| !mac.is_empty()));
+    let reopened = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(RUN_KEY),
+        Some(&ledger),
+    )
+    .expect("accepted terminal records are adopted into the ledger");
+    assert!(reopened.load(node_id).await.expect("load").is_some());
+}
+
+/// #1255: a terminal record whose marker went missing must not load silently.
+#[tokio::test]
+async fn a_terminal_record_without_a_marker_is_refused_on_load() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("consumed.json");
+    let node_id = Uuid::new_v4();
+
+    let repo = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(RUN_KEY),
+        Some(&ledger),
+    )
+    .expect("open");
+    let mut consumed = sample_record(node_id);
+    consumed.status = ApprovalStatus::Consumed;
+    repo.save(&consumed).await.expect("save consumed");
+    drop(repo);
+
+    // A valid sealed ledger with no markers, as a second writer dropping them
+    // (#1254) or a marker-dropping bug would leave.
+    let empty_store = dir.path().join("empty-store.json");
+    std::fs::write(dir.path().join("empty.json"), "{}").expect("legacy empty map");
+    FileBackedApprovalRepository::migrate_consumption_ledger(
+        &empty_store,
+        dir.path().join("empty.json"),
+        RUN_KEY,
+        false,
+    )
+    .expect("seal empty ledger");
+    std::fs::copy(dir.path().join("empty.json"), &ledger).expect("drop the marker");
+
+    let reopened = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(RUN_KEY),
+        Some(&ledger),
+    )
+    .expect("ledger itself verifies");
+    let error = reopened
+        .load(node_id)
+        .await
+        .expect_err("a terminal record with no marker must be refused");
+    let text = error.to_string();
+    assert!(
+        matches!(error, ApprovalError::UncoveredTerminalRecord { .. }),
+        "{text}"
+    );
+    assert!(text.contains(&node_id.to_string()), "{text}");
+    assert!(text.contains("commit_cost"), "{text}");
+    assert!(text.contains("rigorix approve ledger migrate"), "{text}");
+    assert!(text.contains("--accept-missing"), "{text}");
+
+    let migrated =
+        FileBackedApprovalRepository::migrate_consumption_ledger(&store, &ledger, RUN_KEY, true)
+            .expect("the documented override adopts the terminal record");
+    let (markers, missing) = match migrated {
+        LedgerMigration::Migrated {
+            markers, missing, ..
+        }
+        | LedgerMigration::AlreadySealed {
+            markers, missing, ..
+        } => (markers, missing),
+    };
+    assert_eq!(markers, 1, "the terminal record was adopted");
+    assert_eq!(missing.len(), 1, "and reported as previously uncovered");
+    let accepted = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(RUN_KEY),
+        Some(&ledger),
+    )
+    .expect("open after migration");
+    assert!(accepted.load(node_id).await.expect("load").is_some());
 }
 
 #[tokio::test]
