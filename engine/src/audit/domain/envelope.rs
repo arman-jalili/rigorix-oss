@@ -282,6 +282,21 @@ pub struct AuditEnvelope {
     pub decision_context_ref: Option<String>,
 }
 
+/// How the approval's `intent_hash` came to exist (#1243).
+///
+/// RS-011 (binding to the canonical intent) is satisfied only by `Derived`.
+/// `Asserted` is an attested claim — RS-013 evidence — that the caller supplied
+/// a hash the attesting service never resolved against a sealed graph.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IntentHashProvenance {
+    /// The re-deriving engine computed the hash from the sealed graph.
+    Derived,
+    /// The caller supplied the hash; an attesting service only recorded who
+    /// said it.
+    Asserted,
+}
+
 /// A signed reference to a human approval decision (ADR-011 R3).
 ///
 /// Summary fields only — the full record and decision payload live in the
@@ -294,6 +309,9 @@ pub struct ApprovalRecordRef {
     pub step_name: String,
     /// Intent hash the approval is bound to.
     pub intent_hash: String,
+    /// Whether the engine derived that hash or a caller asserted it (#1243).
+    /// Required: an emitter cannot stay silent about the kind of evidence.
+    pub intent_hash_provenance: IntentHashProvenance,
     /// Identity subject who approved (captured fact).
     pub approver_id: String,
     /// Role / policy id (captured fact).

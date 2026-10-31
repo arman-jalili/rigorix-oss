@@ -623,6 +623,9 @@ impl AuditEnvelopeFactoryImpl {
                 node_id,
                 step_name: step_name.to_string(),
                 intent_hash: intent_hash.to_string(),
+                // The OSS engine derives the hash from the sealed graph before
+                // publishing the event (#1243); it never accepts a caller's.
+                intent_hash_provenance: crate::audit::domain::IntentHashProvenance::Derived,
                 approver_id: approver_id.to_string(),
                 authority: payload
                     .get("authority")
@@ -944,6 +947,11 @@ mod population_tests {
         assert_eq!(refs.len(), 1);
         assert_eq!(refs[0].step_name, "risky_step");
         assert_eq!(refs[0].intent_hash, "abc123");
+        assert_eq!(
+            refs[0].intent_hash_provenance,
+            crate::audit::domain::IntentHashProvenance::Derived,
+            "the OSS engine only emits derived intent hashes (#1243)"
+        );
         assert_eq!(refs[0].approver_id, "user@org");
         assert_eq!(refs[0].authority.as_deref(), Some("role:operator"));
         assert_eq!(

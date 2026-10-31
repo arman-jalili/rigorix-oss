@@ -74,3 +74,15 @@ the same decision.
   repository. Override with `RIGORIX_APPROVAL_CONSUMPTION_LEDGER` (absolute or
   repo-relative). `rigorix doctor` prints both paths and whether they are inside
   or outside the agent-writable workspace.
+
+
+## Envelope approval refs state intent-hash provenance (from Unreleased)
+
+- `approvalRecordRef.intent_hash_provenance` is **required** (`derived` | `asserted`).
+  Envelopes without it no longer validate.
+- The OSS engine emits `derived`; an enterprise L2 deployment that accepts a
+  caller-supplied hash emits `asserted`. Only `derived` satisfies RS-011 binding;
+  `asserted` is RS-013 attribution.
+- Use `rigorix-verifier` **0.9.0** (crates.io, npm; Maven/PyPI source is 0.9.0
+  but publication remains blocked under SDK #57). A 0.8.x verifier drops the
+  field during canonicalization and fails signature verification.

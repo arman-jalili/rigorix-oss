@@ -47,6 +47,20 @@ action, to the strength of the attestation.
 A record can satisfy P1 and not P2 (unsigned). It can satisfy P1 and P2 and not P3
 (self-signed chain). It can satisfy P1–P3 and not P4 (anonymous signer).
 
+### Approval evidence: binding vs attribution
+
+An approval's `intent_hash` does not say, by itself, what it proves. The ref's
+required `intent_hash_provenance` does:
+
+| Value | Meaning | Satisfies |
+|---|---|---|
+| `derived` | The re-deriving engine computed the hash from the sealed graph (tool, resolved payload, declared scope). | RS-011 binding; RS-012 can re-derive and halt on mismatch. |
+| `asserted` | A caller supplied the hash; an attesting service recorded that the approver said it. | RS-013 attribution only. It does **not** satisfy RS-011, because no engine resolved the intent. |
+
+Both are evidence; they are not the same evidence. A conformance claim citing
+approval binding MUST state the provenance of the refs it cites and MUST NOT cite
+`asserted` refs as proof of RS-011.
+
 ## 4. Verification levels
 
 | Level | Name | Requires | A verifier may conclude |
