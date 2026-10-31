@@ -622,9 +622,9 @@ impl AppState {
                         // the REAL events by the engine factory.
                         let mut synthesized: Vec<ExecutionEventRef> = state
                             .node_states
-                            .values()
-                            .filter(|s| s.status == "completed" || s.status == "failed")
-                            .map(|s| {
+                            .iter()
+                            .filter(|(_, s)| s.status == "completed" || s.status == "failed")
+                            .map(|(node_id, s)| {
                                 let ok = s.status == "completed";
                                 ExecutionEventRef {
                                     event_type: if ok {
@@ -640,8 +640,13 @@ impl AppState {
                                     } else {
                                         EventStatus::Failure
                                     },
+                                    // node_id joins the synthesized floor to
+                                    // the gate's terminal event, so a refusal
+                                    // that already published one is not counted
+                                    // twice (#1232).
                                     payload: Some(serde_json::json!({
                                         "step_name": s.node_name,
+                                        "node_id": node_id.to_string(),
                                     })),
                                 }
                             })
@@ -1117,10 +1122,10 @@ fn event_ref_identity(e: &rigorix_engine::audit::domain::ExecutionEventRef) -> S
         .payload
         .as_ref()
         .and_then(|p| {
-            p.get("step_name")
+            p.get("node_id")
+                .or_else(|| p.get("step_name"))
                 .or_else(|| p.get("node_name"))
                 .or_else(|| p.get("step"))
-                .or_else(|| p.get("node_id"))
         })
         .and_then(|v| v.as_str())
         .unwrap_or("");

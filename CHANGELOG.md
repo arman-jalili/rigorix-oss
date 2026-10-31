@@ -19,6 +19,8 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Fixed
 
+- A refused step records exactly one terminal `node_failed` event, even through the approval/resume path; the synthesized floor is joined to the gate's event by `node_id` and de-duplicated (#1232)
+
 - A run refused at dispatch writes a terminal `node_failed` event, and audit status derives from failure evidence rather than a marker allowlist — so the signed record and summary call a refusal `Failed`, not `Completed` (#1230)
 
 - An envelope carrying `scope_check` verifies with `rigorix-verifier` 0.8.1, and a chain containing one verifies end to end; 0.8.0 dropped the unknown field during canonicalization and broke both (#1222) ([#1226](https://github.com/arman-jalili/rigorix-oss/pull/1226))

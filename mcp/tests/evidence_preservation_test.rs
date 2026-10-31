@@ -205,11 +205,22 @@ async fn approval_resume_preserves_precondition_evidence() {
     assert_eq!(persisted_findings.len(), 1);
     assert_eq!(persisted_findings[0]["outcome"], "failed");
     assert_eq!(persisted_findings[0]["exit_code"], 7);
+    let events = persisted["events"]
+        .as_array()
+        .expect("persisted events array");
     assert!(
-        persisted["events"].as_array().is_some_and(|events| events
+        events
             .iter()
-            .any(|e| e["event_type"] == "precondition_checked")),
+            .any(|e| e["event_type"] == "precondition_checked"),
         "the persisted envelope must be built from the REAL event stream: {persisted}"
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| e["event_type"] == "node_failed")
+            .count(),
+        1,
+        "one attempt must record exactly one terminal failure event: {persisted}"
     );
     assert!(
         persisted["signature"]
