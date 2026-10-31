@@ -26,7 +26,8 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Fixed
 
-- A consumption ledger without the `{version, entries, mac}` wrapper is refused instead of adopted, naming the file and `rigorix approve ledger migrate`; migration is explicit, reports the adopted marker count, and verifies when already sealed (#1247)
+- A consumption ledger without the `{version, entries, mac}` wrapper is refused instead of adopted, naming the file and `rigorix approve ledger migrate`; migration is explicit and verifies when already sealed (#1247)
+- Ledger migration compares its marker set with the authenticated store: it reports `adopted N of M terminal record(s)`, refuses a terminal record with no marker by node and step, and only seals with `--accept-missing`, which names what stays unprotected (#1249)
 - The consumption ledger is `{version, entries, mac}` with a whole-set MAC: deleting a marker changes the authenticated bytes and refuses the store with a diagnosis naming both paths; an absent ledger remains a valid first run (#1244)
 - Approval MAC material is derived from the record's serialization minus `mac`, so a field added to `ApprovalRecord` is protected automatically; version 1 material is retained only to verify existing records (#1240)
 - Terminal approval transitions are recorded in a consumption ledger outside the store file; restoring an authentic older store now fails with `RecordRollback` instead of restoring a consumed approval, and `doctor` classifies the store and ledger by writability (#1241)

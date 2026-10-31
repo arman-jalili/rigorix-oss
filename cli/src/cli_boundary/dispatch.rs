@@ -115,6 +115,7 @@ async fn cmd_doctor() -> DispatchResult {
 /// state it exists to repair.
 async fn cmd_approve_ledger_migrate(
     config: &crate::cli_boundary::config::CliConfig,
+    accept_missing: bool,
 ) -> DispatchResult {
     use rigorix_engine::approval::infrastructure::repository::LedgerMigration;
     let repo_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
@@ -125,13 +126,42 @@ async fn cmd_approve_ledger_migrate(
     match rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::migrate_consumption_ledger(
         &repo_root,
         signing_key,
+        accept_missing,
     ) {
-        Ok(Some(LedgerMigration::Migrated { markers })) => DispatchResult::success(format!(
-            "adopted {markers} marker(s) from the legacy consumption ledger; wrote the sealed form"
-        )),
-        Ok(Some(LedgerMigration::AlreadySealed { markers })) => DispatchResult::success(format!(
-            "consumption ledger is already sealed; {markers} marker(s) verify"
-        )),
+        Ok(Some(LedgerMigration::Migrated {
+            markers,
+            terminal_records,
+            missing,
+        })) => {
+            let mut message = format!(
+                "adopted {markers} of {terminal_records} terminal record(s) from the legacy consumption ledger; wrote the sealed form"
+            );
+            if !missing.is_empty() {
+                message.push_str(&format!(
+                    "; left {} terminal record(s) unprotected: {}",
+                    missing.len(),
+                    format_missing(&missing)
+                ));
+            }
+            DispatchResult::success(message)
+        }
+        Ok(Some(LedgerMigration::AlreadySealed {
+            markers,
+            terminal_records,
+            missing,
+        })) => {
+            let mut message = format!(
+                "consumption ledger is already sealed; {markers} marker(s) verify against {terminal_records} terminal record(s) in the store"
+            );
+            if !missing.is_empty() {
+                message.push_str(&format!(
+                    "; left {} terminal record(s) unprotected: {}",
+                    missing.len(),
+                    format_missing(&missing)
+                ));
+            }
+            DispatchResult::success(message)
+        }
         Ok(None) => DispatchResult::error(
             "approval binding is not configured: export RIGORIX_HMAC_KEY (or configure \
              audit_hmac_key) before migrating the consumption ledger"
@@ -140,6 +170,14 @@ async fn cmd_approve_ledger_migrate(
         ),
         Err(error) => DispatchResult::error(error.to_string(), 1),
     }
+}
+
+fn format_missing(missing: &[(uuid::Uuid, String)]) -> String {
+    missing
+        .iter()
+        .map(|(node, step)| format!("{node} ({step})"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Scaffold `.rigorix/` and **always** report the seam inventory (#1101).
@@ -953,9 +991,9 @@ pub async fn dispatch(
         CliCommand::Approve {
             action:
                 ApproveAction::Ledger {
-                    action: LedgerAction::Migrate,
+                    action: LedgerAction::Migrate { accept_missing },
                 },
-        } => return cmd_approve_ledger_migrate(&config).await,
+        } => return cmd_approve_ledger_migrate(&config, *accept_missing).await,
         _ => {}
     }
 
