@@ -4,7 +4,7 @@
 Canonical Reference: .pi/architecture/modules/approval.md
 Rationale: Bind human approval to the exact resolved execution intent — replay protection at the step level, first-class signed evidence, and effect-scope verification
 Blueprint Source: Requirements v1 — 2026-08-28 (approved, NOT YET BUILT)
-Last Updated: 2026-10-31 — MAC material derives from the record; the ledger is authenticated, checked both ways, and absence is a no-op; both files are written under a lock (#1240, #1241, #1244, #1254, #1255, #1256)
+Last Updated: 2026-10-31 — MAC material derives from the record; the ledger is authenticated, checked both ways, reports populations, and treats absence as a no-op; both files are written under a lock (#1240, #1241, #1244, #1253, #1254, #1255, #1256)
 -->
 
 ## Overview
@@ -544,11 +544,18 @@ rigorix approve ledger migrate
 
 Migration is explicit and writes the sealed form. It compares the adopted
 marker set with the authenticated store's terminal records (consumed, expired,
-superseded) and reports `adopted N of M terminal record(s)` (#1249). A terminal
-record without a marker refuses the migration and names the node and step;
-`--accept-missing` is the explicit override: it adopts those terminal records
-into the ledger and the report names each one. It is idempotent: an already-sealed
-ledger is verified and compared. The loader never calls it.
+superseded) (#1249). A terminal record without a marker refuses the migration
+and names the node and step; `--accept-missing` is the explicit override: it
+adopts those terminal records into the ledger and the report names each one. It
+is idempotent: an already-sealed ledger is verified and compared. The loader
+never calls it.
+
+The report states populations, never a fraction (#1253): markers adopted, how
+many cover terminal records, and how many have no record in the store. Markers
+and store records are different populations, so a ledger can legitimately hold
+more markers than the store has terminal records. Naming the unmatched count
+distinguishes a reset store or a ledger carried from another store from a
+routine match. The already-sealed path reports the same numbers.
 
 An absent or empty ledger is a successful no-op with exit 0 (#1256): there is
 nothing to migrate, and reporting a broken store for that state taught operators

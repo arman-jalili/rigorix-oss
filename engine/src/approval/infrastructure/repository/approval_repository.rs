@@ -42,6 +42,9 @@ pub enum LedgerMigration {
         /// Without `--accept-missing` these refuse; with it they are adopted
         /// into the ledger and reported here.
         missing: Vec<(Uuid, String)>,
+        /// Markers that name no record the store holds. A store reset or a
+        /// ledger from another store produces these (#1253).
+        unmatched_markers: usize,
         /// Whether the store file existed and was read. `false` means the
         /// comparison could not run at all (#1251).
         store_present: bool,
@@ -56,6 +59,8 @@ pub enum LedgerMigration {
         terminal_records: usize,
         /// Terminal records that had no marker and were adopted.
         missing: Vec<(Uuid, String)>,
+        /// Markers that name no record the store holds (#1253).
+        unmatched_markers: usize,
         /// Whether the store file existed and was read (#1251).
         store_present: bool,
         /// The store path.

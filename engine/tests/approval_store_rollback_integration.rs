@@ -309,6 +309,7 @@ async fn explicit_migration_adopts_a_bare_map_and_reports_its_count() {
             markers: 1,
             terminal_records: 0,
             missing: vec![],
+            unmatched_markers: 1,
             store_present: false,
             store_path: store.clone(),
         }
@@ -341,6 +342,7 @@ async fn explicit_migration_adopts_a_bare_map_and_reports_its_count() {
             markers: 1,
             terminal_records: 0,
             missing: vec![],
+            unmatched_markers: 1,
             store_present: false,
             store_path: store.clone(),
         }
@@ -391,6 +393,7 @@ async fn migration_refuses_a_ledger_that_misses_a_terminal_store_record() {
             markers: 1,
             terminal_records: 1,
             missing: vec![(node_id, "commit_cost".into())],
+            unmatched_markers: 0,
             store_present: true,
             store_path: store.clone(),
         }
@@ -405,6 +408,61 @@ async fn migration_refuses_a_ledger_that_misses_a_terminal_store_record() {
     )
     .expect("accepted terminal records are adopted into the ledger");
     assert!(reopened.load(node_id).await.expect("load").is_some());
+}
+
+/// #1253: markers naming no store record are a population, not a fraction.
+#[tokio::test]
+async fn migration_reports_markers_that_name_no_store_record() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("consumed.json");
+    let node_id = Uuid::new_v4();
+
+    let repo = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(RUN_KEY),
+        Some(&ledger),
+    )
+    .expect("open");
+    let mut consumed = sample_record(node_id);
+    consumed.status = ApprovalStatus::Consumed;
+    repo.save(&consumed).await.expect("save consumed");
+    drop(repo);
+
+    let sealed: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&ledger).unwrap()).unwrap();
+    let mut legacy = sealed["entries"].as_object().cloned().expect("entries");
+    let foreign = Uuid::new_v4();
+    let foreign_nonce = Uuid::new_v4();
+    legacy.insert(
+        format!("{foreign}:{foreign_nonce}"),
+        serde_json::json!({
+            "node_id": foreign,
+            "nonce": foreign_nonce,
+            "status": "consumed",
+            "recorded_at": "2026-10-31T00:00:00Z",
+        }),
+    );
+    std::fs::write(&ledger, serde_json::to_string(&legacy).unwrap()).expect("legacy export");
+
+    let outcome =
+        FileBackedApprovalRepository::migrate_consumption_ledger(&store, &ledger, RUN_KEY, false)
+            .expect("migrate");
+    match outcome {
+        LedgerMigration::Migrated {
+            markers,
+            terminal_records,
+            unmatched_markers,
+            missing,
+            ..
+        } => {
+            assert_eq!(markers, 2);
+            assert_eq!(terminal_records, 1);
+            assert_eq!(unmatched_markers, 1, "the foreign marker has no record");
+            assert!(missing.is_empty(), "the store record is covered");
+        }
+        other => panic!("expected a migration, got {other:?}"),
+    }
 }
 
 /// #1256: absence and emptiness are no-ops, not integrity failures.
@@ -553,6 +611,7 @@ async fn migration_adopts_n_of_n_when_the_ledger_covers_every_terminal_record() 
             markers: 1,
             terminal_records: 1,
             missing: vec![],
+            unmatched_markers: 0,
             store_present: true,
             store_path: store.clone(),
         }
