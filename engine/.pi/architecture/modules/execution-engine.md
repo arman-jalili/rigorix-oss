@@ -3,7 +3,7 @@
 <!--
 Canonical Reference: .pi/architecture/modules/execution-engine.md
 Blueprint Source: Domain Exploration Session 63c25384
-Last Updated: 2026-10-31 — a dispatch refusal writes one terminal node_failed event (#1230, #1232)
+Last Updated: 2026-10-31 — a refusal writes one terminal event; approvals require binding and identity (#1230, #1232, #1235)
 -->
 
 ## Overview
@@ -164,7 +164,7 @@ RetryPolicy {
 | EvaluateRetryInput | Input | failure_context, policy, fallback_node_id |
 | EvaluateRetryOutput | Output | decision, is_terminal |
 | ApproveNodeInput | Input | dag_id, step_names, approver_id, authority, decision_context, token_claims_ref |
-| ApproveNodeOutput | Output | dag_id, approved, not_found, still_pending, approval_records: Vec<ApprovalRecord> |
+| ApproveNodeOutput | Output | dag_id, approved, not_found, still_pending, denied, denied_reasons: Vec<ApprovalDenial>, approval_records: Vec<ApprovalRecord> |
 
 ## Approval Integration (Contract Amendment)
 

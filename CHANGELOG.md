@@ -17,6 +17,11 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking: approving now requires a provisioned approval binding and an approver identity.** An approval that cannot be bound to the resolved intent and attributed to a person is refused, with a per-step reason naming `RIGORIX_APPROVAL_BINDING`, `RIGORIX_HMAC_KEY`, `rigorix key`, or the missing identity (#1235). Before upgrading, run `rigorix key`, export the printed key as `RIGORIX_HMAC_KEY`, set `RIGORIX_APPROVAL_BINDING=1`, and restart. `rigorix doctor` reports the active mode and the remediation (#1235); see [docs/upgrade-notes.md](docs/upgrade-notes.md).
+- The MCP resume path no longer synthesizes an `approval_recorded` event: the engine that granted the approval publishes the one event, carrying `node_id`, `intent_hash` and `approver_id`; the resumer's attestation stays in `identity` (#1234).
+
 ### Fixed
 
 - A refused step records exactly one terminal `node_failed` event, even through the approval/resume path; the synthesized floor is joined to the gate's event by `node_id` and de-duplicated (#1232)

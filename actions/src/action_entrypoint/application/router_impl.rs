@@ -625,6 +625,7 @@ mod tests {
                     not_found: Vec::new(),
                     still_pending: Vec::new(),
                     resumed: true,
+                    denied_reasons: Vec::new(),
                 },
             )
         }

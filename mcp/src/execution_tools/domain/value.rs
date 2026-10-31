@@ -800,6 +800,15 @@ pub struct ApprovalIdentity {
 /// Returned by `rigorix_approve_execution`. Indicates which steps were
 /// approved, which were unknown, which remain pending, and whether the
 /// paused execution resumed.
+/// Why one requested step was refused (#1235).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApprovalDenial {
+    /// Step name the refusal applies to.
+    pub step: String,
+    /// What is missing, and how to fix it.
+    pub reason: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ApprovalResult {
     /// Execution ID the approval applied to.
@@ -816,6 +825,10 @@ pub struct ApprovalResult {
 
     /// Whether the paused execution resumed after approval.
     resumed: bool,
+
+    /// Refusals with a diagnosis, one per step (#1235).
+    #[serde(default)]
+    denied: Vec<ApprovalDenial>,
 }
 
 impl ApprovalResult {
@@ -833,7 +846,14 @@ impl ApprovalResult {
             not_found,
             still_pending,
             resumed,
+            denied: Vec::new(),
         }
+    }
+
+    /// Attach the refusal diagnoses from the engine approve call.
+    pub fn with_denials(mut self, denied: Vec<ApprovalDenial>) -> Self {
+        self.denied = denied;
+        self
     }
 
     /// Execution ID the approval applied to.
@@ -859,6 +879,11 @@ impl ApprovalResult {
     /// Whether the paused execution resumed after approval.
     pub fn resumed(&self) -> bool {
         self.resumed
+    }
+
+    /// Refusals with a diagnosis, one per step.
+    pub fn denied(&self) -> &[ApprovalDenial] {
+        &self.denied
     }
 }
 

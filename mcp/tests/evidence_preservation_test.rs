@@ -61,6 +61,20 @@ release_dependents_on_failure = true
 }
 
 async fn host(root: &str) -> AppState {
+    host_with_auth(root, None).await
+}
+
+async fn host_with_auth(
+    root: &str,
+    auth: Option<Box<dyn rigorix_mcp::auth::interfaces::mcp::AuthToolHandler>>,
+) -> AppState {
+    // #1235: approvals are refused unless they can be bound and attributed.
+    // This test asserts the evidenced path, so arm the binding with the same
+    // key the envelope is signed with.
+    unsafe {
+        std::env::set_var("RIGORIX_APPROVAL_BINDING", "1");
+        std::env::set_var("RIGORIX_HMAC_KEY", HMAC_KEY);
+    }
     let (engine, engine_audit, event_bus) =
         build_real_engine(root).await.expect("build real engine");
     let template_repo: SharedTemplateRepository =
@@ -79,7 +93,7 @@ async fn host(root: &str) -> AppState {
         engine,
         template_repo,
         Some(HMAC_KEY.to_string()),
-        None,
+        auth,
         engine_audit,
         event_bus,
         audit_history,
@@ -221,6 +235,30 @@ async fn approval_resume_preserves_precondition_evidence() {
             .count(),
         1,
         "one attempt must record exactly one terminal failure event: {persisted}"
+    );
+
+    // #1234: one approval, one event — the engine's, carrying the binding.
+    let approvals: Vec<&serde_json::Value> = events
+        .iter()
+        .filter(|e| e["event_type"] == "approval_recorded")
+        .collect();
+    assert_eq!(
+        approvals.len(),
+        1,
+        "the written envelope must carry exactly one approval event: {persisted}"
+    );
+    let approval = approvals[0];
+    assert!(
+        approval["payload"]["node_id"].is_string(),
+        "the approval event must carry node_id: {approval}"
+    );
+    assert!(
+        approval["payload"]["intent_hash"].is_string(),
+        "the approval event must carry the bound intent hash: {approval}"
+    );
+    assert_eq!(
+        approval["payload"]["approver_id"], "tester",
+        "the approval event must carry the approver: {approval}"
     );
     assert!(
         persisted["signature"]
@@ -442,5 +480,85 @@ async fn non_approval_run_is_unchanged() {
             .as_str()
             .is_some_and(|s| !s.is_empty()),
         "non-approval evidence must still be signed"
+    );
+}
+
+/// #1234: the resumer's attestation lives in `identity`, not in a second
+/// synthesized approval event.
+#[tokio::test]
+async fn approval_identity_is_attestation_not_a_second_approval() {
+    use rigorix_mcp::auth::interfaces::mcp::AuthToolHandler;
+
+    struct FixedAuth;
+
+    #[async_trait::async_trait]
+    impl AuthToolHandler for FixedAuth {
+        async fn handle_auth_login(
+            &self,
+            _: serde_json::Value,
+        ) -> Result<serde_json::Value, rigorix_mcp::auth::domain::error::AuthError> {
+            unimplemented!("login is not exercised")
+        }
+        async fn handle_auth_status(
+            &self,
+            _: serde_json::Value,
+        ) -> Result<serde_json::Value, rigorix_mcp::auth::domain::error::AuthError> {
+            unimplemented!("status is not exercised")
+        }
+        async fn handle_auth_logout(
+            &self,
+            _: serde_json::Value,
+        ) -> Result<serde_json::Value, rigorix_mcp::auth::domain::error::AuthError> {
+            unimplemented!("logout is not exercised")
+        }
+        async fn current_engine_identity(&self) -> Option<rigorix_engine::identity::IdentityRef> {
+            Some(rigorix_engine::identity::IdentityRef {
+                subject: "tester".to_string(),
+                issuer: "https://idp.example.com".to_string(),
+                source: rigorix_engine::identity::IdentitySource::LocalPrincipal,
+                authority: Some("approver".to_string()),
+                expires_at: None,
+            })
+        }
+    }
+
+    let dir = tempfile::tempdir().expect("temp repo");
+    write_repo(dir.path());
+    let root = dir.path().to_string_lossy().to_string();
+    let state = host_with_auth(&root, Some(Box::new(FixedAuth))).await;
+
+    let exec = state
+        .handle_tool_call("rigorix_execute", &plan(true))
+        .await
+        .expect("rigorix_execute");
+    let execution_id = exec["execution_id"].as_str().expect("id").to_string();
+    assert_eq!(exec["status"].as_str(), Some("PendingApproval"));
+
+    // The attested session supplies the approver; the caller supplies none.
+    let approved = state
+        .handle_tool_call(
+            "rigorix_approve_execution",
+            &serde_json::json!({
+                "execution_id": execution_id,
+                "step_names": ["pay"],
+            }),
+        )
+        .await
+        .expect("attested approval");
+    assert_eq!(approved["resumed"], true, "{approved}");
+
+    let persisted = persisted_envelope(dir.path(), &execution_id);
+    let events = persisted["events"].as_array().expect("events");
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| e["event_type"] == "approval_recorded")
+            .count(),
+        1,
+        "one approval is one event: {persisted}"
+    );
+    assert_eq!(
+        persisted["identity"]["subject"], "tester",
+        "the session claim belongs in identity: {persisted}"
     );
 }

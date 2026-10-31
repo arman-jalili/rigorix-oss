@@ -55,6 +55,35 @@ fn create_executor() -> ParallelExecutionServiceImpl {
     ParallelExecutionServiceImpl::new(config, Box::new(retry), event_bus)
 }
 
+/// An executor with the ADR-011 binding attached — the configuration every
+/// approval now requires (#1235). The resolver reads the executor's own session
+/// graph, so an approval is bound to the exact intent the run paused on.
+fn create_bound_executor() -> ParallelExecutionServiceImpl {
+    use crate::approval::application::ApprovalServiceImpl;
+    use crate::approval::infrastructure::repository::InMemoryApprovalRepository;
+    use crate::execution_engine::application::service_impl::SessionGraphResolver;
+
+    let executor = create_executor();
+    let repository = Arc::new(InMemoryApprovalRepository::new());
+    let resolver = Arc::new(SessionGraphResolver::new(executor.sessions_handle()));
+    let service = ApprovalServiceImpl::new(
+        repository,
+        resolver,
+        b"engine-test-run-key".to_vec(),
+        std::time::Duration::from_secs(3600),
+    );
+    executor.with_approval_service(Arc::new(service))
+}
+
+/// An executor with no approval binding — the configuration that must now
+/// refuse approvals instead of granting them unbound.
+fn create_unbound_executor() -> ParallelExecutionServiceImpl {
+    let config = ParallelExecutorConfig::default();
+    let retry = RetryEvaluationServiceImpl::new();
+    let event_bus = Arc::new(EventBusServiceImpl::default());
+    ParallelExecutionServiceImpl::new(config, Box::new(retry), event_bus)
+}
+
 /// A-02: minimal sealed graph for session-setup tests (abort/pause/state).
 fn sample_graph() -> crate::dag_engine::domain::TaskGraph {
     use crate::dag_engine::domain::{TaskGraph, TaskNode};
@@ -165,7 +194,7 @@ fn r3_executor(action: RuleAction, path_a: &str, path_b: &str) -> ParallelExecut
     let svc = SequencePolicyServiceImpl::new(Box::new(R3PolicyRepo {
         config: Some(r3_config(action, path_a, path_b)),
     }));
-    create_executor().with_sequence_policy(Arc::new(svc))
+    create_bound_executor().with_sequence_policy(Arc::new(svc))
 }
 
 /// Unique per-run temp paths (parallel-safe; leftover files from crashed
