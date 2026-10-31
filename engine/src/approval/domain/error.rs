@@ -78,6 +78,18 @@ pub enum ApprovalError {
         step_name: String,
     },
 
+    /// The store is older than a consumption already recorded outside it —
+    /// a whole-file rollback (#1241).
+    #[error(
+        "Approval record for step '{step_name}' (node {node_id}) regressed against the consumption ledger; re-approval required"
+    )]
+    RecordRollback {
+        /// Node whose record regressed.
+        node_id: Uuid,
+        /// Step name the record claims to authorize.
+        step_name: String,
+    },
+
     /// Unexpected internal failure.
     #[error("Internal error: {0}")]
     Internal(String),
@@ -137,6 +149,13 @@ mod tests {
         assert!(!ApprovalError::InvalidState("x".into()).is_retriable());
         assert!(
             !ApprovalError::RecordIntegrity {
+                node_id: Uuid::nil(),
+                step_name: "s".into()
+            }
+            .is_retriable()
+        );
+        assert!(
+            !ApprovalError::RecordRollback {
                 node_id: Uuid::nil(),
                 step_name: "s".into()
             }

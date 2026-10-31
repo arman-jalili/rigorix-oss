@@ -24,6 +24,8 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Fixed
 
+- Approval MAC material is derived from the record's serialization minus `mac`, so a field added to `ApprovalRecord` is protected automatically; version 1 material is retained only to verify existing records (#1240)
+- Terminal approval transitions are recorded in a consumption ledger outside the store file; restoring an authentic older store now fails with `RecordRollback` instead of restoring a consumed approval, and `doctor` classifies the store and ledger by writability (#1241)
 - Approval records carry an HMAC over their lifecycle fields (`status`, `expires_at`, `nonce`, identity and intent); a consumed record edited back to `pending` or an extended expiry is refused on load with a named diagnosis, and the store path is configurable via `RIGORIX_APPROVAL_STORE` so it can live outside the agent-writable workspace (#1237)
 - The approval-binding key and the envelope-signing key are resolved as one run key; a configured mismatch fails at startup without printing either value, and `doctor` prints a SHA-256 fingerprint of each and whether they agree (#1238)
 - A refused step records exactly one terminal `node_failed` event, even through the approval/resume path; the synthesized floor is joined to the gate's event by `node_id` and de-duplicated (#1232)

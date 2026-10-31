@@ -60,3 +60,17 @@ which intent it approved and who approved it is not evidence.
 authority over whether a dispatch may happen. A plaintext file inside the tree
 the agent writes cannot be that authority, and two different keys cannot attest
 the same decision.
+
+
+## Approval MAC material v2 and rollback protection (from Unreleased)
+
+- The MAC is now derived from the record's own serialization minus `mac`
+  (version 2). Records written by the previous material still verify; no
+  re-approval is required for that change.
+- Terminal transitions (`consumed`, `expired`, `superseded`) are also recorded in
+  a consumption ledger keyed by `(node_id, nonce)`. Restoring an older copy of
+  `approvals.json` no longer restores a consumed approval: the load is refused.
+- The ledger defaults to `$HOME/.rigorix/approval-consumption.json`, outside the
+  repository. Override with `RIGORIX_APPROVAL_CONSUMPTION_LEDGER` (absolute or
+  repo-relative). `rigorix doctor` prints both paths and whether they are inside
+  or outside the agent-writable workspace.

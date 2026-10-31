@@ -278,12 +278,24 @@ pub async fn probe(repo_root: &Path) -> DoctorReport {
                             .or_else(|| std::env::var("RIGORIX_HMAC_KEY").ok())
                             .unwrap_or_default();
                         let agree = !signing_key.is_empty() && binding_key == signing_key;
+                        let store_location = if setup.store_path.starts_with(repo_root) {
+                            "inside agent-writable workspace"
+                        } else {
+                            "outside agent-writable workspace"
+                        };
+                        let ledger_location = if setup.consumption_ledger_path.starts_with(repo_root)
+                        {
+                            "inside agent-writable workspace"
+                        } else {
+                            "outside agent-writable workspace"
+                        };
                         row.detail = Some(format!(
-                            "mode: intent-bound; approver id required; TTL {}s; store {} ({} record(s) verify); \
-                             binding key {}; signing key {}; keys {}",
+                            "mode: intent-bound; approver id required; TTL {}s; store {} ({} record(s) verify, {store_location}); \
+                             consumption ledger {} ({ledger_location}); binding key {}; signing key {}; keys {}",
                             setup.ttl_seconds,
                             setup.store_path.display(),
                             verified,
+                            setup.consumption_ledger_path.display(),
                             key_fingerprint(&binding_key),
                             if signing_key.is_empty() {
                                 "not configured".to_string()

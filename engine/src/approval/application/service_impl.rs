@@ -191,6 +191,14 @@ impl ApprovalService for ApprovalServiceImpl {
                 );
                 return Ok(IntentVerification::IntegrityFailure { node_id, step_name });
             }
+            Err(ApprovalError::RecordRollback { node_id, step_name }) => {
+                tracing::error!(
+                    node_id = %node_id,
+                    step_name = %step_name,
+                    "verify: approval store is older than recorded consumption — refusing dispatch"
+                );
+                return Ok(IntentVerification::IntegrityFailure { node_id, step_name });
+            }
             Err(error) => return Err(error),
         };
         let Some(mut record) = loaded else {

@@ -162,11 +162,10 @@ pub struct ApprovalRecord {
     pub mac: Option<String>,
 }
 
-/// Canonical bytes covered by the record MAC. Every field except `mac` is
-/// included, so changing `status`, `expires_at` or `nonce` invalidates the
-/// record just as changing the approver does.
+/// Version 1 material, kept only to verify records written before #1240.
+/// New records use the derived material.
 #[derive(Serialize)]
-struct MacMaterial<'a> {
+struct MacMaterialV1<'a> {
     version: u8,
     step_name: &'a str,
     node_id: &'a Uuid,
@@ -184,8 +183,26 @@ struct MacMaterial<'a> {
 }
 
 impl ApprovalRecord {
+    /// The MAC material is the record's own serialization minus `mac`, wrapped
+    /// with a version byte (#1240). Deriving it means a field added to the
+    /// record is covered automatically; there is no second list to extend.
     fn mac_material(&self) -> Result<Vec<u8>, ApprovalError> {
-        serde_json::to_vec(&MacMaterial {
+        let mut record = serde_json::to_value(self)
+            .map_err(|e| ApprovalError::Internal(format!("serialize approval record: {e}")))?;
+        if let serde_json::Value::Object(map) = &mut record {
+            map.remove("mac");
+        }
+        serde_json::to_vec(&serde_json::json!({
+            "version": 2u8,
+            "record": record,
+        }))
+        .map_err(|e| ApprovalError::Internal(format!("serialize approval MAC material: {e}")))
+    }
+
+    /// Version 1 material (#1237), retained for verification of existing
+    /// records. Never used to write a new MAC.
+    fn legacy_mac_material_v1(&self) -> Result<Vec<u8>, ApprovalError> {
+        serde_json::to_vec(&MacMaterialV1 {
             version: 1,
             step_name: &self.step_name,
             node_id: &self.node_id,
@@ -215,6 +232,9 @@ impl ApprovalRecord {
     }
 
     /// Whether the record authenticates under `run_key`.
+    ///
+    /// New records use the derived material. Records written with the version 1
+    /// hand list still verify, so upgrading does not require re-approval.
     pub fn verify_integrity(&self, run_key: &[u8]) -> bool {
         let Some(stored) = self.mac.as_deref() else {
             return false;
@@ -222,10 +242,17 @@ impl ApprovalRecord {
         let Ok(expected) = hex::decode(stored) else {
             return false;
         };
-        let Ok(material) = self.mac_material() else {
+        let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(run_key) else {
             return false;
         };
-        let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(run_key) else {
+        if let Ok(material) = self.mac_material() {
+            let mut candidate = mac.clone();
+            candidate.update(&material);
+            if candidate.verify_slice(&expected).is_ok() {
+                return true;
+            }
+        }
+        let Ok(material) = self.legacy_mac_material_v1() else {
             return false;
         };
         mac.update(&material);
@@ -319,5 +346,66 @@ impl ApprovalRecord {
                 "approval already superseded".into(),
             )),
         }
+    }
+}
+
+#[cfg(test)]
+mod mac_material_tests {
+    use super::*;
+
+    fn sample_record() -> ApprovalRecord {
+        let now = Utc::now();
+        ApprovalRecord {
+            step_name: "commit_cost".into(),
+            node_id: Uuid::new_v4(),
+            intent_hash: IntentHash("00".repeat(32)),
+            intent_payload: serde_json::json!({"tool": "run_command"}),
+            approver_id: "tester@example".into(),
+            authority: Some("approver".into()),
+            decided_at: now,
+            expires_at: now + chrono::Duration::hours(1),
+            nonce: Uuid::new_v4(),
+            token_claims_ref: None,
+            status: ApprovalStatus::Pending,
+            decision_context: DecisionContext {
+                rendered_step: "run_command".into(),
+                upstream_evidence: None,
+                state_snapshot: None,
+                summary: "run_command".into(),
+                full_payload: None,
+            },
+            approver_scope: vec!["src/pay.rs".into()],
+            mac: None,
+        }
+    }
+
+    /// #1240: the material is exactly the record minus `mac`.
+    #[test]
+    fn mac_material_covers_every_record_field() {
+        let record = sample_record();
+        let material: serde_json::Value =
+            serde_json::from_slice(&record.mac_material().expect("material"))
+                .expect("material json");
+        assert_eq!(material["version"], 2);
+
+        let mut serialized = serde_json::to_value(&record).expect("record json");
+        if let serde_json::Value::Object(map) = &mut serialized {
+            map.remove("mac");
+        }
+        assert_eq!(
+            material["record"], serialized,
+            "a field added to ApprovalRecord must be in the MAC material automatically"
+        );
+    }
+
+    #[test]
+    fn v1_material_still_verifies_an_existing_record() {
+        let mut record = sample_record();
+        let key = b"legacy-key";
+        let material = record.legacy_mac_material_v1().expect("v1 material");
+        let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("hmac");
+        mac.update(&material);
+        record.mac = Some(hex::encode(mac.finalize().into_bytes()));
+        assert!(record.verify_integrity(key));
     }
 }

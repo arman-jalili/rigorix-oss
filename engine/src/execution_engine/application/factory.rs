@@ -62,6 +62,9 @@ pub struct ApprovalBindingSetup {
     /// Where the durable approval records live. Configurable so a deployment
     /// can keep authority outside the agent-writable workspace (#1237).
     pub store_path: std::path::PathBuf,
+    /// Where terminal consumption is recorded. It must outlive a restore of the
+    /// store file, so it defaults outside the workspace (#1241).
+    pub consumption_ledger_path: std::path::PathBuf,
 }
 
 pub struct ParallelExecutionFactoryConfig {
@@ -314,6 +317,28 @@ fn resolve_store_path(repo_root: &std::path::Path, configured: Option<&str>) -> 
     }
 }
 
+fn resolve_consumption_ledger(
+    repo_root: &std::path::Path,
+    configured: Option<&str>,
+) -> std::path::PathBuf {
+    if let Some(path) = configured.filter(|p| !p.trim().is_empty()) {
+        let path = std::path::PathBuf::from(path);
+        return if path.is_absolute() {
+            path
+        } else {
+            repo_root.join(path)
+        };
+    }
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(|home| {
+            std::path::PathBuf::from(home)
+                .join(".rigorix")
+                .join("approval-consumption.json")
+        })
+        .unwrap_or_else(|| repo_root.join(".rigorix").join("approval-consumption.json"))
+}
+
 impl ApprovalBindingSetup {
     /// Build an approval binding setup from environment configuration.
     ///
@@ -405,14 +430,18 @@ impl ApprovalBindingSetup {
             .unwrap_or(3600);
         let configured_store = std::env::var("RIGORIX_APPROVAL_STORE").ok();
         let store_path = resolve_store_path(repo_root, configured_store.as_deref());
+        let configured_ledger = std::env::var("RIGORIX_APPROVAL_CONSUMPTION_LEDGER").ok();
+        let consumption_ledger_path =
+            resolve_consumption_ledger(repo_root, configured_ledger.as_deref());
         if let Some(parent) = store_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
         let run_key = key.as_bytes().to_vec();
         let repository = std::sync::Arc::new(
-            crate::approval::infrastructure::repository::FileBackedApprovalRepository::open_with_key(
+            crate::approval::infrastructure::repository::FileBackedApprovalRepository::open_with_key_and_ledger(
                 store_path.clone(),
                 Some(&run_key),
+                Some(&consumption_ledger_path),
             )
             .map_err(|e| ApprovalBindingError::StoreUnavailable {
                 detail: format!("{}: {e}", store_path.display()),
@@ -428,6 +457,7 @@ impl ApprovalBindingSetup {
             run_key,
             ttl_seconds,
             store_path,
+            consumption_ledger_path,
         }))
     }
 }
@@ -524,6 +554,30 @@ mod approval_binding_env_tests {
         assert_eq!(setup.run_key, b"run-key".to_vec());
         assert!(dir.path().join(".rigorix").is_dir());
         assert_eq!(setup.store_path, dir.path().join(".rigorix/approvals.json"));
+    }
+
+    #[test]
+    fn the_consumption_ledger_defaults_outside_the_workspace() {
+        let repo = std::path::Path::new("/repo");
+        let default = resolve_consumption_ledger(repo, None);
+        if std::env::var_os("HOME")
+            .or_else(|| std::env::var_os("USERPROFILE"))
+            .is_some()
+        {
+            assert!(
+                !default.starts_with(repo),
+                "the default ledger must not be restore-able with the workspace: {}",
+                default.display()
+            );
+        }
+        assert_eq!(
+            resolve_consumption_ledger(repo, Some("/var/lib/rigorix/consumed.json")),
+            std::path::PathBuf::from("/var/lib/rigorix/consumed.json")
+        );
+        assert_eq!(
+            resolve_consumption_ledger(repo, Some("ledgers/consumed.json")),
+            std::path::PathBuf::from("/repo/ledgers/consumed.json")
+        );
     }
 
     #[test]
