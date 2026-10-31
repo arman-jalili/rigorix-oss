@@ -120,6 +120,11 @@ This closes three real replay vectors: cross-process resume against a tampered
 state file, render/approve/execute mismatch, and stale approval sets reused after
 a re-plan.
 
+Arming it is an operator step, and approval is refused without it: set
+`RIGORIX_APPROVAL_BINDING=1`, export the run key from `rigorix key` as
+`RIGORIX_HMAC_KEY` (the same key that signs the envelope), and pass an `approver_id`
+with every approval. `rigorix doctor` reports the mode. See `docs/upgrade-notes.md`.
+
 *Honest boundary:* there are two binding classes, and they are not equally strong.
 Deterministic tools (`run_command`, `file_write`, `edit_file`, `git_*`) are
 **payload-anchored** — the full dispatch payload is bound, airtight at dispatch
