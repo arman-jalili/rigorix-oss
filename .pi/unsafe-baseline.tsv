@@ -4,5 +4,6 @@
 # what it does, so unrelated edits above it do not churn the baseline.
 # Every entry is an explicit decision: production `unsafe` is either
 # removed or recorded here with the reason it is tolerated.
+engine/src/approval/infrastructure/repository/approval_repository_impl.rs::let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };#1	unsafe	libc	low	libc::flock on a file descriptor owned by the enclosing File; the call takes no pointer, its return is checked, and EINTR is retried. Used to serialise the approval store's read-modify-write across processes (#1254)
 engine/src/precondition/infrastructure/runner.rs::let euid = unsafe { libc::geteuid() };#1	unsafe	libc	medium	libc::geteuid/getgroups to read the real uid/groups for the precondition runner; the existing SAFETY note covers the only pointer (a buffer sized by the first getgroups call) and every call is fallible-by-return, not UB
 engine/src/precondition/infrastructure/runner.rs::unsafe {#1	unsafe	libc	medium	libc::geteuid/getgroups to read the real uid/groups for the precondition runner; the existing SAFETY note covers the only pointer (a buffer sized by the first getgroups call) and every call is fallible-by-return, not UB
