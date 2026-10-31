@@ -12,7 +12,7 @@
 //!   resume: instance A persists, instance B hydrates the same file and can
 //!   verify the approval against its own re-derived intents
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 
@@ -227,6 +227,8 @@ struct StoreComparison {
     /// The same records with the fields a marker needs, so `--accept-missing`
     /// can adopt them into the ledger instead of leaving them uncovered.
     missing_markers: Vec<(String, ConsumptionMarker)>,
+    /// Markers naming no record this store holds (#1253).
+    unmatched_markers: usize,
 }
 
 fn unprotected_terminal_records(
@@ -250,6 +252,14 @@ fn unprotected_terminal_records(
             )));
         }
     };
+    let record_keys: HashSet<String> = records
+        .values()
+        .map(|record| marker_key(record.node_id, record.nonce))
+        .collect();
+    let unmatched_markers = entries
+        .keys()
+        .filter(|key| !record_keys.contains(*key))
+        .count();
     let mut terminal = 0usize;
     let mut missing = Vec::new();
     let mut missing_markers = Vec::new();
@@ -280,6 +290,7 @@ fn unprotected_terminal_records(
         terminal_records: terminal,
         missing,
         missing_markers,
+        unmatched_markers,
     })
 }
 
@@ -343,6 +354,7 @@ fn migrate_consumption_ledger_at(
             markers: entries.len(),
             terminal_records: comparison.terminal_records,
             missing: comparison.missing,
+            unmatched_markers: comparison.unmatched_markers,
             store_present: comparison.store_present,
             store_path: store.to_path_buf(),
         });
@@ -361,6 +373,7 @@ fn migrate_consumption_ledger_at(
         markers: entries.len(),
         terminal_records: comparison.terminal_records,
         missing: comparison.missing,
+        unmatched_markers: comparison.unmatched_markers,
         store_present: comparison.store_present,
         store_path: store.to_path_buf(),
     })

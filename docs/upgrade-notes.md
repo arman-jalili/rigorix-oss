@@ -104,7 +104,10 @@ the same decision.
   each one. With no store present the report names the missing path and says
   nothing was compared; an empty store says it held no terminal records to
   compare. The loader never adopts a bare map, because accepting the unprotected
-  form is how a truncation becomes a valid ledger.
+  form is how a truncation becomes a valid ledger. The report counts populations
+  rather than printing a fraction: markers adopted, terminal records covered,
+  and markers with no record in the store. The last number distinguishes a
+  reset store (or a ledger carried from another store) from a routine match.
 
 Running `rigorix approve ledger migrate` with no ledger, or with an empty one,
 is a successful no-op (exit 0) that names the path and says nothing was

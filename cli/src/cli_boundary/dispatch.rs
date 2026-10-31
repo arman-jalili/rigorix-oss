@@ -141,75 +141,105 @@ async fn cmd_approve_ledger_migrate(
 }
 
 fn render_ledger_migration(outcome: LedgerMigration) -> String {
-    let (markers, terminal_records, missing, store_present, store_path, already_sealed) =
-        match outcome {
-            LedgerMigration::NothingToMigrate { ledger_path, empty } => {
-                return if empty {
-                    format!(
-                        "the ledger at `{}` is empty; nothing to migrate",
-                        ledger_path.display()
-                    )
-                } else {
-                    format!(
-                        "there is no ledger at `{}`; nothing to migrate",
-                        ledger_path.display()
-                    )
-                };
-            }
-            LedgerMigration::Migrated {
-                markers,
-                terminal_records,
-                missing,
-                store_present,
-                store_path,
-            } => (
-                markers,
-                terminal_records,
-                missing,
-                store_present,
-                store_path,
-                false,
-            ),
-            LedgerMigration::AlreadySealed {
-                markers,
-                terminal_records,
-                missing,
-                store_present,
-                store_path,
-            } => (
-                markers,
-                terminal_records,
-                missing,
-                store_present,
-                store_path,
-                true,
-            ),
-        };
+    let (
+        markers,
+        terminal_records,
+        missing,
+        unmatched_markers,
+        store_present,
+        store_path,
+        already_sealed,
+    ) = match outcome {
+        LedgerMigration::NothingToMigrate { ledger_path, empty } => {
+            return if empty {
+                format!(
+                    "the ledger at `{}` is empty; nothing to migrate",
+                    ledger_path.display()
+                )
+            } else {
+                format!(
+                    "there is no ledger at `{}`; nothing to migrate",
+                    ledger_path.display()
+                )
+            };
+        }
+        LedgerMigration::Migrated {
+            markers,
+            terminal_records,
+            missing,
+            unmatched_markers,
+            store_present,
+            store_path,
+        } => (
+            markers,
+            terminal_records,
+            missing,
+            unmatched_markers,
+            store_present,
+            store_path,
+            false,
+        ),
+        LedgerMigration::AlreadySealed {
+            markers,
+            terminal_records,
+            missing,
+            unmatched_markers,
+            store_present,
+            store_path,
+        } => (
+            markers,
+            terminal_records,
+            missing,
+            unmatched_markers,
+            store_present,
+            store_path,
+            true,
+        ),
+    };
 
-    let mut message = if already_sealed {
-        format!("consumption ledger is already sealed; {markers} marker(s) verify")
-    } else if !store_present {
-        format!(
-            "adopted {markers} marker(s); the store was not found at `{}`, so nothing was compared",
-            store_path.display()
-        )
+    // Counts are populations, not a fraction (#1253): markers adopted, of
+    // which some cover terminal records and some name no store record. The
+    // populations differ, so `N of M` with N > M was never a contradiction to
+    // be capped — it needed the third number.
+    // On a successful outcome every terminal record is covered: missing ones
+    // were adopted by `--accept-missing`. `markers` can still exceed them.
+    let covered = terminal_records;
+    let mut message = if !store_present {
+        if already_sealed {
+            format!(
+                "consumption ledger is already sealed; {markers} marker(s) verify; the store was not found at `{}`, so nothing was compared",
+                store_path.display()
+            )
+        } else {
+            format!(
+                "adopted {markers} marker(s); the store was not found at `{}`, so nothing was compared",
+                store_path.display()
+            )
+        }
     } else if terminal_records == 0 {
+        if already_sealed {
+            format!(
+                "consumption ledger is already sealed; {markers} marker(s) verify; the store holds no terminal record(s), so nothing was compared"
+            )
+        } else {
+            format!(
+                "adopted {markers} marker(s); the store holds no terminal record(s), so nothing was compared"
+            )
+        }
+    } else if already_sealed {
         format!(
-            "adopted {markers} marker(s); the store holds no terminal record(s), so nothing was compared"
+            "consumption ledger is already sealed; {markers} marker(s) verify: {covered} cover {terminal_records} terminal record(s), {unmatched_markers} have no record in the store"
         )
     } else {
         format!(
-            "adopted {markers} of {terminal_records} terminal record(s) from the legacy consumption ledger"
+            "adopted {markers} marker(s): {covered} cover {terminal_records} terminal record(s), {unmatched_markers} have no record in the store"
         )
     };
 
-    if already_sealed && !store_present {
-        message.push_str(&format!(
-            "; the store was not found at `{}`, so nothing was compared",
-            store_path.display()
-        ));
-    } else if already_sealed && terminal_records == 0 {
-        message.push_str("; the store holds no terminal record(s), so nothing was compared");
+    if store_present && terminal_records > 0 && unmatched_markers > 0 {
+        message.push_str(
+            "; an unmatched marker means the store was reset, or the ledger came from another store",
+        );
     }
 
     if !missing.is_empty() {
@@ -1258,12 +1288,14 @@ mod tests {
         markers: usize,
         terminal_records: usize,
         missing: Vec<(uuid::Uuid, String)>,
+        unmatched_markers: usize,
         store_present: bool,
     ) -> LedgerMigration {
         LedgerMigration::Migrated {
             markers,
             terminal_records,
             missing,
+            unmatched_markers,
             store_present,
             store_path: std::path::PathBuf::from("/var/lib/rigorix/approvals.json"),
         }
@@ -1271,7 +1303,7 @@ mod tests {
 
     #[test]
     fn migration_store_absent_names_the_path_and_compares_nothing() {
-        let message = render_ledger_migration(migrated(1, 0, vec![], false));
+        let message = render_ledger_migration(migrated(1, 0, vec![], 1, false));
         assert!(message.contains("adopted 1 marker(s)"), "{message}");
         assert!(
             message.contains("store was not found at `/var/lib/rigorix/approvals.json`"),
@@ -1283,7 +1315,7 @@ mod tests {
 
     #[test]
     fn migration_store_present_without_terminal_records_says_nothing_was_compared() {
-        let message = render_ledger_migration(migrated(1, 0, vec![], true));
+        let message = render_ledger_migration(migrated(1, 0, vec![], 1, true));
         assert!(
             message.contains("store holds no terminal record(s), so nothing was compared"),
             "{message}"
@@ -1292,11 +1324,31 @@ mod tests {
     }
 
     #[test]
-    fn migration_with_terminal_records_keeps_adopted_n_of_m() {
-        let message = render_ledger_migration(migrated(1, 1, vec![], true));
+    fn migration_with_terminal_records_reports_populations_not_a_fraction() {
+        let complete = render_ledger_migration(migrated(2, 2, vec![], 0, true));
         assert!(
-            message.contains("adopted 1 of 1 terminal record(s)"),
+            complete.contains("2 cover 2 terminal record(s), 0 have no record in the store"),
+            "{complete}"
+        );
+        assert!(!complete.contains(" of "), "{complete}");
+    }
+
+    #[test]
+    fn more_markers_than_records_names_the_unmatched_ones() {
+        let message = render_ledger_migration(migrated(2, 1, vec![], 1, true));
+        assert!(
+            message.contains(
+                "adopted 2 marker(s): 1 cover 1 terminal record(s), 1 have no record in the store"
+            ),
             "{message}"
+        );
+        assert!(
+            message.contains("store was reset, or the ledger came from another store"),
+            "{message}"
+        );
+        assert!(
+            !message.contains(" of "),
+            "a fraction implies the markers came from the store: {message}"
         );
     }
 
@@ -1304,9 +1356,13 @@ mod tests {
     fn migration_with_missing_records_reports_the_records_it_adopted() {
         let node = uuid::Uuid::new_v4();
         let message =
-            render_ledger_migration(migrated(0, 1, vec![(node, "commit_cost".into())], true));
+            render_ledger_migration(migrated(0, 1, vec![(node, "commit_cost".into())], 0, true));
         assert!(
             message.contains("adopted 1 terminal record(s) that had no marker"),
+            "{message}"
+        );
+        assert!(
+            message.contains("1 cover 1 terminal record(s)"),
             "{message}"
         );
         assert!(message.contains("commit_cost"), "{message}");
