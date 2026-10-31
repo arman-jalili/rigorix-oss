@@ -64,6 +64,11 @@ RULES = [
      "libc::geteuid/getgroups to read the real uid/groups for the precondition "
      "runner; the existing SAFETY note covers the only pointer (a buffer sized "
      "by the first getgroups call) and every call is fallible-by-return, not UB"),
+    (r"^engine/src/approval/infrastructure/repository/approval_repository_impl\.rs$",
+     "libc", "low",
+     "libc::flock on a file descriptor owned by the enclosing File; the call takes "
+     "no pointer, its return is checked, and EINTR is retried. Used to serialise "
+     "the approval store's read-modify-write across processes (#1254)"),
 ]
 
 

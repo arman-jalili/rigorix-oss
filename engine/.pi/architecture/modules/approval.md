@@ -4,7 +4,7 @@
 Canonical Reference: .pi/architecture/modules/approval.md
 Rationale: Bind human approval to the exact resolved execution intent — replay protection at the step level, first-class signed evidence, and effect-scope verification
 Blueprint Source: Requirements v1 — 2026-08-28 (approved, NOT YET BUILT)
-Last Updated: 2026-10-31 — MAC material derives from the record; the consumption ledger is authenticated as a set (#1240, #1241, #1244)
+Last Updated: 2026-10-31 — MAC material derives from the record; the consumption ledger is authenticated as a set; both files are written under a lock (#1240, #1241, #1244, #1254)
 -->
 
 ## Overview
@@ -555,6 +555,18 @@ path it did not find and says nothing was compared; when the store exists but
 holds no terminal records it says the comparison had nothing to cover. Those are
 different facts, and a ledger carried to a new host is legitimate — migration
 does not refuse on an absent store.
+
+### Two writers cannot erase each other (#1254)
+
+Both files are whole-file JSON. Each is written by re-reading it under an
+exclusive `flock` on a sibling `.lock` file, merging the one record or marker,
+then publishing from a per-write unique temp file. A repository's cached map is
+never published wholesale, so two MCP sessions or a session and a CLI run on
+one tree keep both records and both markers. The marker is written before the
+record: a marker without a record is visible and safe, while a terminal record
+without a marker is the invisible failure the ledger exists to prevent. The
+store temp path is unique per write, so concurrent publishes cannot rename the
+same file.
 
 ### One run key (#1238)
 
