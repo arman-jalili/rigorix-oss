@@ -3,7 +3,7 @@
 <!--
 Canonical Reference: .pi/architecture/modules/execution-engine.md
 Blueprint Source: Domain Exploration Session 63c25384
-Last Updated: 2026-10-24 — the dispatch benchmark records a method and its noise floor, not a table (#1189, #1190, #1208, #1212)
+Last Updated: 2026-10-31 — a dispatch refusal writes one terminal node_failed event (#1230, #1232)
 -->
 
 ## Overview
@@ -175,6 +175,8 @@ See [approval module](./modules/approval.md) for the full contract. Summary of c
 - **Dispatch choke point**: verification is inserted between `pop_dispatchable` and `execute_tool` inside `run_dispatch_loop` (the single loop used by both `execute_graph` and `resume_execution`) — every dispatch entry path is covered by one insertion
 
 ### Consequence gates: one sequence, two routes (#1074)
+
+A dispatch refusal emits one terminal `node_failed` event before the run ends. This is the record's only terminal failure evidence when the node never started; the resume path's synthesized floor is joined by `node_id` and de-duplicated, so one attempt counts once (#1230, #1232).
 
 `service_impl/gate.rs` owns the gate order for a node; both routes call it.
 
