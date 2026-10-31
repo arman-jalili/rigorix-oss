@@ -397,6 +397,14 @@ impl ParallelExecutionServiceImpl {
                 );
                 Ok((false, Some((expected.0, actual.0))))
             }
+            Ok(IntentVerification::IntegrityFailure { step_name, .. }) => {
+                tracing::error!(
+                    node_id = %node_id,
+                    step_name = %step_name,
+                    "dispatch HALT: approval record failed integrity verification — re-approval required"
+                );
+                Ok((false, None))
+            }
             Ok(verdict) => {
                 tracing::error!(
                     node_id = %node_id,

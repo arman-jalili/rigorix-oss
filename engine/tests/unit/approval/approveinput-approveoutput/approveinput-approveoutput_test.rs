@@ -52,6 +52,7 @@ fn sample_output() -> ApproveOutput {
             full_payload: None,
         },
         approver_scope: Vec::new(),
+        mac: None,
     };
     ApproveOutput {
         dag_id: Uuid::new_v4(),

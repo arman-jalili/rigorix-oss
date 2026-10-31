@@ -22,6 +22,7 @@ fn isolated(cmd: &mut Command) {
     for var in [
         "RIGORIX_APPROVAL_BINDING",
         "RIGORIX_HMAC_KEY",
+        "RIGORIX_APPROVAL_STORE",
         "RIGORIX_ANCHOR_URL",
         "RIGORIX_ANCHOR_PUBLIC_KEY",
         "RIGORIX_SEQUENCE_POLICY",
@@ -210,4 +211,64 @@ fn key_produces_the_hmac_key_the_engine_reads() {
         !stdout.contains("API key"),
         "the command must not call a UUID an API key: {stdout}"
     );
+}
+
+/// #1237: doctor prints the configured store and whether its records verify.
+#[test]
+fn doctor_reports_the_approval_store_and_key_agreement() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = dir.path().join("outside-workspace").join("approvals.json");
+    let mut cmd = bin();
+    cmd.current_dir(dir.path()).args(["doctor"]);
+    isolated(&mut cmd);
+    cmd.env("RIGORIX_APPROVAL_BINDING", "1")
+        .env("RIGORIX_HMAC_KEY", "doctor-test-run-key")
+        .env("RIGORIX_APPROVAL_STORE", &store);
+    let out = cmd.output().expect("run rigorix doctor");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+
+    assert!(out.status.success(), "{stdout}");
+    assert!(
+        stdout.contains(&store.display().to_string()),
+        "doctor must print the store path: {stdout}"
+    );
+    assert!(
+        stdout.contains("0 record(s) verify"),
+        "an empty store verifies: {stdout}"
+    );
+    assert!(stdout.contains("keys agree"), "{stdout}");
+    assert!(
+        !stdout.contains("doctor-test-run-key"),
+        "never print the key"
+    );
+}
+
+/// #1238: two configured key sources that disagree are a composition error,
+/// reported without either value.
+#[test]
+fn doctor_refuses_two_different_run_keys_without_printing_them() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::write(
+        dir.path().join("rigorix.toml"),
+        "audit_hmac_key = \"config-key-value\"\n",
+    )
+    .expect("write rigorix.toml");
+    let mut cmd = bin();
+    cmd.current_dir(dir.path()).args(["doctor"]);
+    isolated(&mut cmd);
+    cmd.env("RIGORIX_APPROVAL_BINDING", "1")
+        .env("RIGORIX_HMAC_KEY", "env-key-value");
+    let out = cmd.output().expect("run rigorix doctor");
+    let report = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    assert!(!out.status.success(), "a key mismatch must fail: {report}");
+    assert!(report.contains("MISCONFIGURED"), "{report}");
+    assert!(report.contains("RIGORIX_HMAC_KEY"), "{report}");
+    assert!(report.contains("audit_hmac_key"), "{report}");
+    assert!(!report.contains("config-key-value"), "{report}");
+    assert!(!report.contains("env-key-value"), "{report}");
 }

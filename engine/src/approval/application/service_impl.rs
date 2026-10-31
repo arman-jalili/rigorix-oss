@@ -128,6 +128,7 @@ impl ApprovalServiceImpl {
             status: ApprovalStatus::Pending,
             decision_context,
             approver_scope: input.declared_scope.clone().unwrap_or_default(),
+            mac: None,
         })
     }
 }
@@ -146,7 +147,8 @@ impl ApprovalService for ApprovalServiceImpl {
                 not_found.push(step_name.clone());
                 continue;
             };
-            let record = self.build_record(&resolved, &input, now)?;
+            let mut record = self.build_record(&resolved, &input, now)?;
+            record.seal(&self.run_key)?;
             self.repo.save(&record).await?;
             tracing::info!(
                 step_name = %record.step_name,
@@ -179,16 +181,42 @@ impl ApprovalService for ApprovalServiceImpl {
     #[tracing::instrument(skip_all, name = "approval.verify_intent", fields(node_id = %node_id))]
     async fn verify_intent(&self, node_id: Uuid) -> Result<IntentVerification, ApprovalError> {
         let now = Utc::now();
-        let Some(mut record) = self.repo.load(node_id).await? else {
+        let loaded = match self.repo.load(node_id).await {
+            Ok(loaded) => loaded,
+            Err(ApprovalError::RecordIntegrity { node_id, step_name }) => {
+                tracing::error!(
+                    node_id = %node_id,
+                    step_name = %step_name,
+                    "verify: approval record failed integrity verification — refusing dispatch"
+                );
+                return Ok(IntentVerification::IntegrityFailure { node_id, step_name });
+            }
+            Err(error) => return Err(error),
+        };
+        let Some(mut record) = loaded else {
             // No record: never approved (or legacy pre-binding state that was
             // invalidated on hydrate) → re-approval required.
             tracing::warn!(node_id = %node_id, "verify: no approval record — re-approval required");
             return Err(ApprovalError::NotFound(node_id));
         };
+        // The repository verifies a keyed store; the service verifies too, so
+        // an unkeyed repository cannot turn a tampered record into `Matched`.
+        if !record.verify_integrity(&self.run_key) {
+            tracing::error!(
+                node_id = %node_id,
+                step_name = %record.step_name,
+                "verify: approval record MAC invalid — refusing dispatch"
+            );
+            return Ok(IntentVerification::IntegrityFailure {
+                node_id,
+                step_name: record.step_name,
+            });
+        }
 
         // R3 TTL — enforced at verification time; expired never dispatches.
         if record.is_expired_at(now) {
             record.status = ApprovalStatus::Expired;
+            record.seal(&self.run_key)?;
             self.repo.save(&record).await?;
             tracing::warn!(node_id = %node_id, "verify: approval expired (TTL) — no dispatch");
             return Ok(IntentVerification::Invalid(ApprovalStatus::Expired));
@@ -243,7 +271,14 @@ impl ApprovalService for ApprovalServiceImpl {
             .load(node_id)
             .await?
             .ok_or(ApprovalError::NotFound(node_id))?;
+        if !record.verify_integrity(&self.run_key) {
+            return Err(ApprovalError::RecordIntegrity {
+                node_id: record.node_id,
+                step_name: record.step_name,
+            });
+        }
         record.consume()?;
+        record.seal(&self.run_key)?;
         self.repo.save(&record).await?;
         tracing::info!(node_id = %node_id, "approval consumed (single-use, terminal outcome)");
         Ok(())
@@ -262,7 +297,16 @@ impl ApprovalService for ApprovalServiceImpl {
     }
 
     async fn get_approval(&self, node_id: Uuid) -> Result<Option<ApprovalRecord>, ApprovalError> {
-        self.repo.load(node_id).await
+        let record = self.repo.load(node_id).await?;
+        if let Some(record) = record.as_ref()
+            && !record.verify_integrity(&self.run_key)
+        {
+            return Err(ApprovalError::RecordIntegrity {
+                node_id: record.node_id,
+                step_name: record.step_name.clone(),
+            });
+        }
+        Ok(record)
     }
 }
 

@@ -4,7 +4,7 @@
 Canonical Reference: .pi/architecture/modules/approval.md
 Rationale: Bind human approval to the exact resolved execution intent — replay protection at the step level, first-class signed evidence, and effect-scope verification
 Blueprint Source: Requirements v1 — 2026-08-28 (approved, NOT YET BUILT)
-Last Updated: 2026-10-31 — an approval requires a binding and an approver id (#1235)
+Last Updated: 2026-10-31 — the record store is authenticated and one run key signs and binds (#1237, #1238)
 -->
 
 ## Overview
@@ -495,6 +495,30 @@ sequenceDiagram
 | **Evidence (end-state)** | Approval records are **content of the signed envelope** (`approval_events[]`) | Tamper-evident when envelope signing is on; covered transitively by the envelope HMAC |
 | **Operational (mid-run)** | Approval records appended to the persisted `ExecutionState` file (`approval_records`) | Survives cross-process resume (GAP-3); queryable via `ApprovalService::get_approval` |
 | **Trust model note** | Standalone off-band verification requires the run key — available to authorized verifiers; never claim independent signature chains outside the envelope | Documented in ADR-011 §key |
+
+### The store is authenticated state (#1237)
+
+`ApprovalRecord.mac` is HMAC-SHA256 over every other field — including
+`status`, `expires_at`, `nonce`, `approver_id` and the intent — keyed with the
+run key. The repository seals on save and verifies on load; a record that does
+not authenticate is refused with `ApprovalError::RecordIntegrity` naming the
+step and node, and `verify_intent` returns `IntegrityFailure` instead of
+`Matched`. The check is seeded: a consumed record edited back to `pending`, and
+an extended `expires_at`, both fail.
+
+The store path is configurable with `RIGORIX_APPROVAL_STORE` (absolute, or
+relative to the repo root). The default is `<repo>/.rigorix/approvals.json`;
+deployments should point it outside the agent-writable workspace. Legacy records
+without a MAC do not authenticate and require re-approval.
+
+### One run key (#1238)
+
+The approval binding key and the envelope-signing key are the same run key.
+Composition calls `ApprovalBindingSetup::from_env_with_signing_key`, which
+resolves the key once from `RIGORIX_HMAC_KEY` and the configured
+`audit_hmac_key`, and **fails at startup** when both are set and differ. A
+single configured source arms both. `doctor` prints a SHA-256 fingerprint of
+each key and whether they agree — never the value or a prefix.
 
 **Signing toggle:** when envelope signing is disabled (`signature: None`), approval records are operational evidence only — docs and UI must never claim tamper-evidence for unsigned runs.
 

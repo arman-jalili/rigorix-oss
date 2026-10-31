@@ -66,6 +66,18 @@ pub enum ApprovalError {
     #[error("Invalid declared scope: {0}")]
     InvalidScope(String),
 
+    /// A persisted record's lifecycle fields do not authenticate under the
+    /// run key — it was edited after it was written (#1237).
+    #[error(
+        "Approval record for step '{step_name}' (node {node_id}) failed integrity verification; re-approval required"
+    )]
+    RecordIntegrity {
+        /// Node whose record failed.
+        node_id: Uuid,
+        /// Step name the record claims to authorize.
+        step_name: String,
+    },
+
     /// Unexpected internal failure.
     #[error("Internal error: {0}")]
     Internal(String),
@@ -123,6 +135,13 @@ mod tests {
         assert!(!ApprovalError::AlreadyConsumed(Uuid::nil()).is_retriable());
         assert!(!ApprovalError::Expired(Uuid::nil()).is_retriable());
         assert!(!ApprovalError::InvalidState("x".into()).is_retriable());
+        assert!(
+            !ApprovalError::RecordIntegrity {
+                node_id: Uuid::nil(),
+                step_name: "s".into()
+            }
+            .is_retriable()
+        );
         // IntentMismatch is non-retriable by design — re-approval is the only recovery.
         assert!(
             !ApprovalError::IntentMismatch {

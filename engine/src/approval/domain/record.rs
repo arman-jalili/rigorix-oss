@@ -26,7 +26,9 @@
 //!   approvals (single-use semantics)
 
 use chrono::{DateTime, Utc};
+use hmac::{Hmac, KeyInit, Mac};
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 use uuid::Uuid;
 
 use super::error::ApprovalError;
@@ -154,9 +156,81 @@ pub struct ApprovalRecord {
     /// node intent before hashing; empty for approvals that supplied none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub approver_scope: Vec<String>,
+    /// HMAC-SHA256 over every other field, keyed with the run key (#1237).
+    /// Absent on legacy records; absent never verifies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mac: Option<String>,
+}
+
+/// Canonical bytes covered by the record MAC. Every field except `mac` is
+/// included, so changing `status`, `expires_at` or `nonce` invalidates the
+/// record just as changing the approver does.
+#[derive(Serialize)]
+struct MacMaterial<'a> {
+    version: u8,
+    step_name: &'a str,
+    node_id: &'a Uuid,
+    intent_hash: &'a IntentHash,
+    intent_payload: &'a serde_json::Value,
+    approver_id: &'a str,
+    authority: &'a Option<String>,
+    decided_at: String,
+    expires_at: String,
+    nonce: &'a Uuid,
+    token_claims_ref: &'a Option<String>,
+    status: ApprovalStatus,
+    decision_context: &'a DecisionContext,
+    approver_scope: &'a [String],
 }
 
 impl ApprovalRecord {
+    fn mac_material(&self) -> Result<Vec<u8>, ApprovalError> {
+        serde_json::to_vec(&MacMaterial {
+            version: 1,
+            step_name: &self.step_name,
+            node_id: &self.node_id,
+            intent_hash: &self.intent_hash,
+            intent_payload: &self.intent_payload,
+            approver_id: &self.approver_id,
+            authority: &self.authority,
+            decided_at: self.decided_at.to_rfc3339(),
+            expires_at: self.expires_at.to_rfc3339(),
+            nonce: &self.nonce,
+            token_claims_ref: &self.token_claims_ref,
+            status: self.status,
+            decision_context: &self.decision_context,
+            approver_scope: &self.approver_scope,
+        })
+        .map_err(|e| ApprovalError::Internal(format!("serialize approval MAC material: {e}")))
+    }
+
+    /// Seal the record with its run key. Called before every persistence.
+    pub fn seal(&mut self, run_key: &[u8]) -> Result<(), ApprovalError> {
+        let material = self.mac_material()?;
+        let mut mac = Hmac::<Sha256>::new_from_slice(run_key)
+            .map_err(|e| ApprovalError::Internal(format!("approval MAC key: {e}")))?;
+        mac.update(&material);
+        self.mac = Some(hex::encode(mac.finalize().into_bytes()));
+        Ok(())
+    }
+
+    /// Whether the record authenticates under `run_key`.
+    pub fn verify_integrity(&self, run_key: &[u8]) -> bool {
+        let Some(stored) = self.mac.as_deref() else {
+            return false;
+        };
+        let Ok(expected) = hex::decode(stored) else {
+            return false;
+        };
+        let Ok(material) = self.mac_material() else {
+            return false;
+        };
+        let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(run_key) else {
+            return false;
+        };
+        mac.update(&material);
+        mac.verify_slice(&expected).is_ok()
+    }
     /// Whether the approval is still pending (may be verified and dispatched).
     pub fn is_pending(&self) -> bool {
         matches!(self.status, ApprovalStatus::Pending)

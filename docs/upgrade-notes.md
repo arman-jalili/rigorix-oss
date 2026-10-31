@@ -29,3 +29,34 @@ trail are bound to the same run.
 **Why it changed.** A step approved without a pinned intent is a step whose
 dispatch may differ from what the human approved. An approval that cannot say
 which intent it approved and who approved it is not evidence.
+
+
+## Approval records are authenticated; one run key signs and binds (from Unreleased)
+
+**What changed.**
+
+- Approval records now carry an HMAC over every field, including `status`,
+  `expires_at`, `nonce`, `approver_id` and the bound intent. The repository
+  verifies it on load. A record edited after it was written — including a
+  consumed record set back to `pending`, or an expiry moved later — is refused
+  with a diagnosis naming the step and node.
+- The binding key and the envelope-signing key are one run key. If
+  `RIGORIX_HMAC_KEY` and the configured `audit_hmac_key` are both set and
+  differ, startup fails and names both sources (never the values).
+
+**What an operator must do.**
+
+1. Keep `RIGORIX_HMAC_KEY` and `rigorix.toml`'s `audit_hmac_key` equal, or set
+   only one. `rigorix doctor` prints a fingerprint of each and whether they
+   agree.
+2. Optionally set `RIGORIX_APPROVAL_STORE=/var/lib/rigorix/approvals.json`
+   (absolute, or relative to the repo root) to keep the authoritative store
+   outside the agent-writable workspace.
+3. **Re-approve paused runs after upgrading.** Records written before this
+   change have no MAC, so they cannot authenticate and are refused. Deletion was
+   already fail-closed; the MAC closes the edit case.
+
+**Why.** The lifecycle of an approval — pending, unexpired, unused — is
+authority over whether a dispatch may happen. A plaintext file inside the tree
+the agent writes cannot be that authority, and two different keys cannot attest
+the same decision.

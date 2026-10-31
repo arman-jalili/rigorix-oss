@@ -37,4 +37,12 @@ pub trait ApprovalRepository: Send + Sync {
 
     /// Delete the approval record for a node (compaction / cleanup).
     async fn delete(&self, node_id: Uuid) -> Result<(), ApprovalError>;
+
+    /// Verify every persisted record's MAC. Returns the number verified.
+    ///
+    /// Repositories without a run key have nothing to authenticate and return
+    /// `Ok(0)`; the production file store overrides this for `doctor` (#1237).
+    async fn verify_integrity(&self) -> Result<usize, ApprovalError> {
+        Ok(0)
+    }
 }
