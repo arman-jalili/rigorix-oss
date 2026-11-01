@@ -630,13 +630,23 @@ impl ParallelExecutionServiceImpl {
             // error is `AlreadyConsumed` (#1267).
             Err(ApprovalServiceError::NotFound(_)) => None,
             Err(e) => {
-                let already_recorded = binding
+                let nonce = binding
                     .service
-                    .consumption_settlement(node_id)
+                    .get_approval(node_id)
                     .await
                     .ok()
                     .flatten()
-                    .is_some_and(|recorded| recorded == settlement);
+                    .map(|record| record.nonce);
+                let already_recorded = match nonce {
+                    Some(nonce) => binding
+                        .service
+                        .consumption_settlement(node_id, nonce)
+                        .await
+                        .ok()
+                        .flatten()
+                        .is_some_and(|recorded| recorded == settlement),
+                    None => false,
+                };
                 if already_recorded {
                     tracing::info!(
                         node_id = %node_id,
@@ -1652,6 +1662,7 @@ mod consumption_refusal_tests {
     }
     struct MarkerBackedConsumption {
         marker: Mutex<Option<crate::approval::domain::ConsumptionSettlement>>,
+        nonce: Uuid,
     }
 
     #[async_trait::async_trait]
@@ -1685,16 +1696,46 @@ mod consumption_refusal_tests {
         async fn consumption_settlement(
             &self,
             _: Uuid,
+            nonce: Uuid,
         ) -> Result<Option<crate::approval::domain::ConsumptionSettlement>, ApprovalError> {
-            Ok(*self.marker.lock().expect("marker"))
+            if nonce == self.nonce {
+                Ok(*self.marker.lock().expect("marker"))
+            } else {
+                Ok(None)
+            }
         }
 
         async fn record_scope_violation(&self, _: ScopeViolation) -> Result<(), ApprovalError> {
             Ok(())
         }
 
-        async fn get_approval(&self, _: Uuid) -> Result<Option<ApprovalRecord>, ApprovalError> {
-            Ok(None)
+        async fn get_approval(
+            &self,
+            node_id: Uuid,
+        ) -> Result<Option<ApprovalRecord>, ApprovalError> {
+            let now = Utc::now();
+            Ok(Some(ApprovalRecord {
+                step_name: "commit_cost".into(),
+                node_id,
+                intent_hash: crate::approval::domain::IntentHash("00".repeat(32)),
+                intent_payload: serde_json::json!({}),
+                approver_id: "tester@example".into(),
+                authority: None,
+                decided_at: now,
+                expires_at: now + chrono::Duration::hours(1),
+                nonce: self.nonce,
+                token_claims_ref: None,
+                status: crate::approval::domain::ApprovalStatus::Consumed,
+                decision_context: crate::approval::domain::DecisionContext {
+                    rendered_step: "commit_cost".into(),
+                    upstream_evidence: None,
+                    state_snapshot: None,
+                    summary: "commit_cost".into(),
+                    full_payload: None,
+                },
+                approver_scope: vec![],
+                mac: None,
+            }))
         }
     }
 
@@ -1708,6 +1749,7 @@ mod consumption_refusal_tests {
         )
         .with_approval_service(Arc::new(MarkerBackedConsumption {
             marker: Mutex::new(None),
+            nonce: Uuid::from_u128(7),
         }));
         let node_id = Uuid::new_v4();
         let first_dag = Uuid::new_v4();

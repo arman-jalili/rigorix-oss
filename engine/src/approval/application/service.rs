@@ -116,6 +116,7 @@ pub trait ApprovalService: Send + Sync {
     async fn consumption_settlement(
         &self,
         _node_id: Uuid,
+        _nonce: Uuid,
     ) -> Result<Option<ConsumptionSettlement>, ApprovalError> {
         Ok(None)
     }

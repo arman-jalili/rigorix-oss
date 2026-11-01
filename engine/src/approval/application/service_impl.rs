@@ -328,8 +328,9 @@ impl ApprovalService for ApprovalServiceImpl {
     async fn consumption_settlement(
         &self,
         node_id: Uuid,
+        nonce: Uuid,
     ) -> Result<Option<ConsumptionSettlement>, ApprovalError> {
-        self.repo.consumption_settlement(node_id).await
+        self.repo.consumption_settlement(node_id, nonce).await
     }
 
     #[tracing::instrument(skip_all, name = "approval.record_scope_violation", fields(node_id = %violation.node_id, out_of_scope_count = violation.out_of_scope.len()))]
@@ -356,26 +357,6 @@ impl ApprovalService for ApprovalServiceImpl {
         }
         Ok(record)
     }
-}
-
-/// R3+AC #10 migration support — invalidate legacy approvals on hydrate.
-///
-/// Persisted pre-binding runs carry an `approved: Vec<Uuid>` set with **no
-/// records** (no intent hash, no decision record). On hydrate those approvals
-/// cannot be verified and must not authorize dispatch. Returns the subset of
-/// `legacy_approved` node ids that have no stored record — those require
-/// re-approval. Node ids that already have records are unaffected.
-pub async fn legacy_approvals_requiring_reapproval(
-    repo: &dyn ApprovalRepository,
-    legacy_approved: &[Uuid],
-) -> Result<Vec<Uuid>, ApprovalError> {
-    let mut invalidated = Vec::new();
-    for node_id in legacy_approved {
-        if repo.load(*node_id).await?.is_none() {
-            invalidated.push(*node_id);
-        }
-    }
-    Ok(invalidated)
 }
 
 #[cfg(test)]

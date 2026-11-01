@@ -3,7 +3,7 @@
 <!--
 Canonical Reference: .pi/architecture/modules/execution-engine.md
 Blueprint Source: Domain Exploration Session 63c25384
-Last Updated: 2026-11-01 — consumption refusal is classified from the ledger settlement and recorded on the refused run; a refusal writes one terminal event; approvals require binding and identity (#1230, #1232, #1235, #1263, #1267)
+Last Updated: 2026-11-01 — consumption refusal is classified from the ledger marker for the approval nonce and recorded on the refused run; a refusal writes one terminal event; approvals require binding and identity (#1230, #1232, #1235, #1263, #1267, #1271)
 -->
 
 ## Overview
@@ -207,7 +207,7 @@ A dispatch refusal emits one terminal `node_failed` event before the run ends. T
 - Adding a gate means adding it to `gate_node` once. Do not re-inline a gate in
   either caller — that duplication is what produced the divergence.
 - **`approve_node`** contract change: `ApproveNodeInput` gains `approver_id` (required), `authority` (optional), `decision_context` (optional), `token_claims_ref` (optional); the session's `approved: HashSet<Uuid>` becomes a map of node_id → `ApprovalRecord` (delegating to `ApprovalService`); output gains `approval_records: Vec<ApprovalRecord>`
-- **Single-use semantics**: the approval is **consumed on terminal outcome** (`Pending → Consumed` on success/skipped/exhausted failure after ≥1 dispatch); failed attempts stay `Pending` so legitimate retries re-verify; non-terminal interruptions keep `Pending` for cross-process resume; TTL enforced at verification. A **refused** consumption is evidence on the run that was refused (#1263): the executor publishes a named `NodeFailed` event, moves the node result and live state from completed to failed, and skips dependents. `AlreadyConsumed` is benign only when the ledger marker names the settlement `(dag_id, node_id, attempt)` being recorded now — never because some session in the process consumed the node (#1267). The event carries the real attempt.
+- **Single-use semantics**: the approval is **consumed on terminal outcome** (`Pending → Consumed` on success/skipped/exhausted failure after ≥1 dispatch); failed attempts stay `Pending` so legitimate retries re-verify; non-terminal interruptions keep `Pending` for cross-process resume; TTL enforced at verification. A **refused** consumption is evidence on the run that was refused (#1263): the executor publishes a named `NodeFailed` event, moves the node result and live state from completed to failed, and skips dependents. `AlreadyConsumed` is benign only when the marker for the approval's own `(node_id, nonce)` names the settlement `(dag_id, node_id, attempt)` being recorded now — never because some session in the process consumed the node, and never because its timestamp is latest (#1267, #1271). The event carries the real attempt.
 - **Retry integration**: `IntentMismatch` is non-retriable (see failure-classification) — the node stays halted for human re-approval
 
 ---

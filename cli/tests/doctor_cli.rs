@@ -13,6 +13,17 @@
 
 use std::process::Command;
 
+use chrono::{Duration as ChronoDuration, Utc};
+use rigorix_engine::approval::domain::{
+    ApprovalRecord, ApprovalStatus, ConsumptionSettlement, DecisionContext, IntentHash,
+};
+use rigorix_engine::approval::infrastructure::repository::{
+    ApprovalRepository, FileBackedApprovalRepository,
+};
+use uuid::Uuid;
+
+const DOCTOR_KEY: &str = "doctor-attribution-key";
+
 fn bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_rigorix-cli"))
 }
@@ -575,4 +586,130 @@ async fn doctor_names_an_absent_ledger_and_the_records_it_could_not_check() {
         "{combined}"
     );
     assert!(combined.contains("1 terminal record(s)"), "{combined}");
+}
+
+fn doctor_approval_record(node_id: Uuid) -> ApprovalRecord {
+    let now = Utc::now();
+    ApprovalRecord {
+        step_name: "commit_cost".into(),
+        node_id,
+        intent_hash: IntentHash("00".repeat(32)),
+        intent_payload: serde_json::json!({"tool": "run_command"}),
+        approver_id: "tester@example".into(),
+        authority: None,
+        decided_at: now,
+        expires_at: now + ChronoDuration::hours(1),
+        nonce: Uuid::new_v4(),
+        token_claims_ref: None,
+        status: ApprovalStatus::Pending,
+        decision_context: DecisionContext {
+            rendered_step: "run_command".into(),
+            upstream_evidence: None,
+            state_snapshot: None,
+            summary: "run_command".into(),
+            full_payload: None,
+        },
+        approver_scope: vec![],
+        mac: None,
+    }
+}
+
+fn run_doctor(store: &std::path::Path, ledger: &std::path::Path) -> (bool, String) {
+    let dir = tempfile::tempdir().expect("cwd");
+    let mut cmd = bin();
+    cmd.current_dir(dir.path()).args(["doctor"]);
+    isolated(&mut cmd);
+    cmd.env("RIGORIX_APPROVAL_BINDING", "1")
+        .env("RIGORIX_HMAC_KEY", DOCTOR_KEY)
+        .env("RIGORIX_APPROVAL_STORE", store)
+        .env("RIGORIX_APPROVAL_CONSUMPTION_LEDGER", ledger);
+    let out = cmd.output().expect("run rigorix doctor");
+    (
+        out.status.success(),
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        ),
+    )
+}
+
+/// #1272: verified is a count, so doctor must name the population that cannot
+/// classify a re-settlement as benign.
+#[tokio::test]
+async fn doctor_reports_attributed_and_unattributed_markers_separately() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("consumed.json");
+    let repo = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(DOCTOR_KEY.as_bytes()),
+        Some(&ledger),
+    )
+    .expect("open");
+
+    let mut attributed = doctor_approval_record(Uuid::new_v4());
+    attributed.status = ApprovalStatus::Consumed;
+    repo.save_with_settlement(
+        &attributed,
+        ConsumptionSettlement {
+            dag_id: Uuid::new_v4(),
+            node_id: attributed.node_id,
+            attempt: 1,
+        },
+    )
+    .await
+    .expect("attributed marker");
+
+    let mut legacy = doctor_approval_record(Uuid::new_v4());
+    legacy.status = ApprovalStatus::Consumed;
+    repo.save(&legacy).await.expect("unattributed marker");
+
+    let (success, report) = run_doctor(&store, &ledger);
+    assert!(success, "{report}");
+    assert!(
+        report.contains("2 marker(s): 1 attributed, 1 without a settlement"),
+        "{report}"
+    );
+    assert!(report.contains("capability gap"), "{report}");
+    assert!(
+        !report.contains("2 marker(s)\n"),
+        "the split must be on the ledger line: {report}"
+    );
+}
+
+/// #1272: when every marker is attributed, the unattributed population is
+/// still stated as zero.
+#[tokio::test]
+async fn doctor_reports_zero_unattributed_markers_explicitly() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("consumed.json");
+    let repo = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(DOCTOR_KEY.as_bytes()),
+        Some(&ledger),
+    )
+    .expect("open");
+
+    let mut attributed = doctor_approval_record(Uuid::new_v4());
+    attributed.status = ApprovalStatus::Consumed;
+    repo.save_with_settlement(
+        &attributed,
+        ConsumptionSettlement {
+            dag_id: Uuid::new_v4(),
+            node_id: attributed.node_id,
+            attempt: 1,
+        },
+    )
+    .await
+    .expect("attributed marker");
+
+    let (success, report) = run_doctor(&store, &ledger);
+    assert!(success, "{report}");
+    assert!(
+        report.contains("1 marker(s): 1 attributed, 0 without a settlement"),
+        "{report}"
+    );
+    assert!(!report.contains("capability gap"), "{report}");
 }

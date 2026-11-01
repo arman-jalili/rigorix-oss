@@ -3,7 +3,7 @@
 ## Status
 
 **Status:** ✅ Architecture defined — source code implemented
-**Last reviewed:** 2026-10-22 — refusal message rendered cleanly; dead pass-through removed (#1171)
+**Last reviewed:** 2026-11-01 — doctor splits attributed and unattributed consumption markers (#1272)
 
 ## Description
 
@@ -189,7 +189,10 @@ depends: CliParser
 `doctor` and `init` are answered **before** any service is constructed: with a
 seam that is requested but cannot be honoured, normal startup fails closed, and
 the report explaining why has to survive that. A diagnostic that only works when
-the thing it diagnoses is healthy is not a diagnostic.
+the thing it diagnoses is healthy is not a diagnostic. The approval-binding row
+reports the consumption ledger's marker population split — attributed versus
+without a settlement — so `verified` is not read as "every marker can classify a
+re-settlement as benign" (#1272).
 
 ### OrchestratorBuilder
 

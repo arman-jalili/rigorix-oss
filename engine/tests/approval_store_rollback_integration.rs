@@ -721,7 +721,7 @@ async fn a_pre_1268_ledger_still_verifies_and_refuses_consumption() {
     assert_eq!(loaded.status, ApprovalStatus::Consumed);
     assert_eq!(
         reopened
-            .consumption_settlement(node_id)
+            .consumption_settlement(node_id, consumed.nonce)
             .await
             .expect("marker"),
         None,
@@ -764,33 +764,43 @@ async fn the_current_nonce_wins_over_an_older_marker_for_the_same_node() {
     let mut old = sample_record(node_id);
     old.nonce = old_nonce;
     old.status = ApprovalStatus::Consumed;
-    repo.save_with_settlement(&old, old_settlement)
-        .await
-        .expect("consume the first approval");
-    std::thread::sleep(Duration::from_millis(2));
 
-    // A re-approval for the same node, with a new nonce. The old marker stays.
-    let mut current = sample_record(node_id);
-    current.nonce = current_nonce;
-    repo.save(&current).await.expect("save re-approval");
-    current.status = ApprovalStatus::Consumed;
     let current_settlement = ConsumptionSettlement {
         dag_id: Uuid::from_u128(11),
         node_id,
         attempt: 1,
     };
+    let mut current = sample_record(node_id);
+    current.nonce = current_nonce;
+    current.status = ApprovalStatus::Consumed;
+
+    // The current approval is recorded first; the marker for the older nonce is
+    // written *last*, so recency would answer with the wrong approval.
     repo.save_with_settlement(&current, current_settlement)
         .await
         .expect("consume the current approval");
+    std::thread::sleep(Duration::from_millis(2));
+    repo.save_with_settlement(&old, old_settlement)
+        .await
+        .expect("the old marker is written later");
 
     assert_eq!(
         repo.consumption_marker_count().await.expect("count"),
         2,
-        "the old marker is retained"
+        "both markers are retained"
     );
     assert_eq!(
-        repo.consumption_settlement(node_id).await.expect("marker"),
+        repo.consumption_settlement(node_id, current_nonce)
+            .await
+            .expect("marker"),
         Some(current_settlement),
-        "classification must use the marker for the current nonce"
+        "classification must use the current nonce, not the latest recorded_at"
+    );
+    assert_eq!(
+        repo.consumption_settlement(node_id, Uuid::from_u128(99))
+            .await
+            .expect("missing nonce"),
+        None,
+        "a nonce the store no longer holds is fail-safe"
     );
 }
