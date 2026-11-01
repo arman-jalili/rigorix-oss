@@ -4,7 +4,7 @@
 Canonical Reference: .pi/architecture/modules/approval.md
 Rationale: Bind human approval to the exact resolved execution intent — replay protection at the step level, first-class signed evidence, and effect-scope verification
 Blueprint Source: Requirements v1 — 2026-08-28 (approved, NOT YET BUILT)
-Last Updated: 2026-11-01 — settlement lookup is keyed by the approval nonce and doctor reports attributed versus unattributed markers; consumption attribution comes from the ledger marker, not process memory; MAC material derives from the record; reads and writes re-read both files under locks; a refused consumption is run evidence (#1240, #1241, #1244, #1253, #1254, #1255, #1256, #1261, #1263, #1264, #1267, #1271, #1272)
+Last Updated: 2026-11-01 — settlement lookup is keyed by the approval nonce and doctor reports a verified-with-gaps verdict for unattributed markers; consumption attribution comes from the ledger marker, not process memory; MAC material derives from the record; reads and writes re-read both files under locks; a refused consumption is run evidence (#1240, #1241, #1244, #1253, #1254, #1255, #1256, #1261, #1263, #1264, #1267, #1271, #1272, #1275)
 -->
 
 ## Overview
@@ -601,7 +601,9 @@ count. When the ledger is present, `doctor` also splits its markers into those
 that name a settlement and those that do not (#1272). A count alone hid two
 populations: unattributed markers (pre-#1268, or adopted by migration) always
 classify a re-settlement as another settlement, so they are reported as a
-capability gap, not folded into `verified`.
+capability gap. When any marker is unattributed the verdict is `verified with
+gaps`, not `verified`, and the gap gets its own line; verification did run, so
+the row still exits 0 (#1275).
 
 ### Two writers cannot erase each other (#1254)
 
