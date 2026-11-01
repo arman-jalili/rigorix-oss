@@ -4,7 +4,7 @@
 Canonical Reference: .pi/architecture/modules/approval.md
 Rationale: Bind human approval to the exact resolved execution intent — replay protection at the step level, first-class signed evidence, and effect-scope verification
 Blueprint Source: Requirements v1 — 2026-08-28 (approved, NOT YET BUILT)
-Last Updated: 2026-10-31 — MAC material derives from the record; reads and writes re-read both files under locks; the ledger is authenticated, checked both ways, reports populations, and treats absence as a no-op (#1240, #1241, #1244, #1253, #1254, #1255, #1256, #1261)
+Last Updated: 2026-10-31 — MAC material derives from the record; reads and writes re-read both files under locks; a configured-but-absent ledger refuses terminal records; the ledger is authenticated, checked both ways, reports populations, and treats migration absence as a no-op (#1240, #1241, #1244, #1253, #1254, #1255, #1256, #1261, #1264)
 -->
 
 ## Overview
@@ -585,8 +585,19 @@ to fire on.
 The refusal names `rigorix approve ledger migrate`, and
 `--accept-missing` is reachable because it adopts the store's uncovered terminal
 records into the ledger; without that an operator who legitimately moved a store
-would have no documented exit. When no ledger file exists there is no second
-witness, so only the pending direction is enforced.
+would have no documented exit.
+
+A configured ledger path whose file is absent is **not** an empty case when the
+store holds terminal records (#1264). Absence cannot prove nothing was spent: a
+fresh runner, a second machine, or a cache hit that restored the store but not
+the ledger all look identical, and assuming innocence makes every approval read
+as unspent. It refuses with `ApprovalError::ConsumptionLedgerMissing`, naming
+the path, the terminal-record count and the first node and step. With no terminal
+records there is nothing to check, so the absent ledger is allowed. A store with
+no ledger configured at all has no second witness and is also allowed; the two
+states are distinguished rather than collapsed. `doctor` reports an absent ledger
+beside terminal records as a misconfiguration with the path and the unchecked
+count.
 
 ### Two writers cannot erase each other (#1254)
 

@@ -1,6 +1,7 @@
 //! `rigorix doctor` — report which enforcement seams are actually armed (#1103).
 //!
 //! @canonical .pi/architecture/modules/cli-boundary.md
+//! Canonical Reference: .pi/architecture/modules/cli-boundary.md
 //! Implements: ISSUE-NO-DOCTOR-COMMAND — surface the seam state every entry point
 //!   otherwise only feeds to a factory
 //! Issue: #1103
@@ -297,7 +298,7 @@ pub async fn probe(repo_root: &Path) -> DoctorReport {
                         let ledger_state = if setup.consumption_ledger_path.is_file() {
                             format!("verified, {markers} marker(s)")
                         } else {
-                            "no history yet".to_string()
+                            "absent; no terminal records to check".to_string()
                         };
                         row.detail = Some(format!(
                             "mode: intent-bound; approver id required; TTL {}s; store {} ({} record(s) verify, {store_location}); \
@@ -316,6 +317,20 @@ pub async fn probe(repo_root: &Path) -> DoctorReport {
                         ));
                         row
                     }
+                    Err(rigorix_engine::approval::domain::ApprovalError::ConsumptionLedgerMissing {
+                        ledger,
+                        terminal_records,
+                        node_id,
+                        step_name,
+                    }) => SeamReport::misconfigured(
+                        "approval binding",
+                        "binds each approval to the intent it approved",
+                        approval_source,
+                        format!(
+                            "store {} could not be verified: consumption ledger {ledger} is absent, so                              {terminal_records} terminal record(s) are unchecked (first: {step_name}, node                              {node_id}); restore the ledger at that path, or re-approve the affected steps",
+                            setup.store_path.display()
+                        ),
+                    ),
                     Err(error) => SeamReport::misconfigured(
                         "approval binding",
                         "binds each approval to the intent it approved",
