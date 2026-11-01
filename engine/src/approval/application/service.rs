@@ -2,6 +2,7 @@
 //! capture, verify, consume, report.
 //!
 //! @canonical .pi/architecture/modules/approval.md#approvalservice
+//! Canonical Reference: .pi/architecture/modules/approval.md#approvalservice
 //! Implements: Contract Freeze — ApprovalService trait + IntentVerification
 //! Issue: #786 (approval epic — contract freeze); behavior in
 //!   ISSUE-APPROVALSERVICE (#792)
@@ -36,7 +37,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::approval::domain::{
-    ApprovalError, ApprovalRecord, ApprovalStatus, ExecutionIntent, IntentHash, ScopeViolation,
+    ApprovalError, ApprovalRecord, ApprovalStatus, ConsumptionSettlement, ExecutionIntent,
+    IntentHash, ScopeViolation,
 };
 
 use super::dto::{ApproveInput, ApproveOutput};
@@ -94,6 +96,29 @@ pub trait ApprovalService: Send + Sync {
     /// Failed attempts stay `Pending` so legitimate retries re-verify; a
     /// non-terminal interruption keeps `Pending` for cross-process resume.
     async fn consume(&self, node_id: Uuid) -> Result<(), ApprovalError>;
+
+    /// R3 — consume and attribute the marker to the settlement that did it.
+    ///
+    /// Default keeps existing implementations working without a ledger; the
+    /// production service records the settlement so a later reader can
+    /// classify an `AlreadyConsumed` from the artifact (#1267).
+    async fn consume_for_settlement(
+        &self,
+        node_id: Uuid,
+        _settlement: ConsumptionSettlement,
+    ) -> Result<(), ApprovalError> {
+        self.consume(node_id).await
+    }
+
+    /// The settlement recorded in the ledger for a consumed approval.
+    ///
+    /// `None` when there is no marker or the marker predates attribution.
+    async fn consumption_settlement(
+        &self,
+        _node_id: Uuid,
+    ) -> Result<Option<ConsumptionSettlement>, ApprovalError> {
+        Ok(None)
+    }
 
     /// R5 — record a post-execution scope violation into the envelope evidence
     /// (non-blocking, first-class).

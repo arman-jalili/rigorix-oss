@@ -254,7 +254,8 @@ impl ParallelExecutionServiceImpl {
                 .map(|n| n.requires_approval)
                 .unwrap_or(false)
             {
-                consumption_refusal = self.consume_on_terminal(dag_id, node_id).await;
+                let attempt = task_result.retry_attempts as u32 + 1;
+                consumption_refusal = self.consume_on_terminal(dag_id, node_id, attempt).await;
                 if let Some(baseline) = &scope_baseline
                     && let Some(repo) = &config.approval_repo_path
                 {
@@ -601,36 +602,55 @@ impl ParallelExecutionServiceImpl {
 
     /// Single-use settlement: consume the approval once the node reaches a
     /// terminal outcome. Non-terminal failures never reach this point.
-    pub(super) async fn consume_on_terminal(&self, dag_id: Uuid, node_id: Uuid) -> Option<String> {
+    pub(super) async fn consume_on_terminal(
+        &self,
+        dag_id: Uuid,
+        node_id: Uuid,
+        attempt: u32,
+    ) -> Option<String> {
         let Some(binding) = &self.approval_binding else {
             return None;
         };
-        match binding.service.consume(node_id).await {
+        let settlement = crate::approval::domain::ConsumptionSettlement {
+            dag_id,
+            node_id,
+            attempt,
+        };
+        match binding
+            .service
+            .consume_for_settlement(node_id, settlement)
+            .await
+        {
             Ok(()) => {
-                if let Ok(mut consumed) = self.consumed_here.lock() {
-                    consumed.insert(node_id);
-                }
                 tracing::info!(node_id = %node_id, "approval consumed (terminal outcome)");
                 None
             }
-            // Benign: the same decision consuming twice in one run. If this
-            // instance never consumed it, another decision did (#1263).
+            // Benign only if the ledger names *this* settlement. A marker
+            // written by another session or process is a refusal even when the
+            // error is `AlreadyConsumed` (#1267).
             Err(ApprovalServiceError::NotFound(_)) => None,
-            Err(ApprovalServiceError::AlreadyConsumed(_))
-                if self
-                    .consumed_here
-                    .lock()
-                    .map(|consumed| consumed.contains(&node_id))
-                    .unwrap_or(false) =>
-            {
-                None
-            }
             Err(e) => {
+                let already_recorded = binding
+                    .service
+                    .consumption_settlement(node_id)
+                    .await
+                    .ok()
+                    .flatten()
+                    .is_some_and(|recorded| recorded == settlement);
+                if already_recorded {
+                    tracing::info!(
+                        node_id = %node_id,
+                        attempt,
+                        "approval consumption already recorded by this settlement"
+                    );
+                    return None;
+                }
                 // #1263: a refused consumption is evidence on this run. The
                 // node is failed, not completed, and the event is named.
                 let message = format!("approval consumption refused: {e}");
                 tracing::error!(
                     node_id = %node_id,
+                    attempt,
                     error = %e,
                     "approval consumption refused — recording it on the run"
                 );
@@ -638,7 +658,7 @@ impl ParallelExecutionServiceImpl {
                     execution_id: dag_id,
                     node_id: node_id.to_string(),
                     error: message.clone(),
-                    attempt: 1,
+                    attempt,
                     timestamp: chrono::Utc::now(),
                 })
                 .await;
@@ -1598,7 +1618,7 @@ mod consumption_refusal_tests {
         let node_id = Uuid::new_v4();
 
         let message = executor
-            .consume_on_terminal(dag_id, node_id)
+            .consume_on_terminal(dag_id, node_id, 1)
             .await
             .expect("a refused consumption is not silent");
         assert!(
@@ -1629,5 +1649,109 @@ mod consumption_refusal_tests {
             "{}",
             failed.1
         );
+    }
+    struct MarkerBackedConsumption {
+        marker: Mutex<Option<crate::approval::domain::ConsumptionSettlement>>,
+    }
+
+    #[async_trait::async_trait]
+    impl ApprovalService for MarkerBackedConsumption {
+        async fn approve(&self, _: ApproveInput) -> Result<ApproveOutput, ApprovalError> {
+            Err(ApprovalError::Internal("not used".into()))
+        }
+
+        async fn verify_intent(&self, _: Uuid) -> Result<IntentVerification, ApprovalError> {
+            Ok(IntentVerification::Matched)
+        }
+
+        async fn consume(&self, node_id: Uuid) -> Result<(), ApprovalError> {
+            Err(ApprovalError::AlreadyConsumed(node_id))
+        }
+
+        async fn consume_for_settlement(
+            &self,
+            node_id: Uuid,
+            settlement: crate::approval::domain::ConsumptionSettlement,
+        ) -> Result<(), ApprovalError> {
+            let mut marker = self.marker.lock().expect("marker");
+            if marker.is_none() {
+                *marker = Some(settlement);
+                Ok(())
+            } else {
+                Err(ApprovalError::AlreadyConsumed(node_id))
+            }
+        }
+
+        async fn consumption_settlement(
+            &self,
+            _: Uuid,
+        ) -> Result<Option<crate::approval::domain::ConsumptionSettlement>, ApprovalError> {
+            Ok(*self.marker.lock().expect("marker"))
+        }
+
+        async fn record_scope_violation(&self, _: ScopeViolation) -> Result<(), ApprovalError> {
+            Ok(())
+        }
+
+        async fn get_approval(&self, _: Uuid) -> Result<Option<ApprovalRecord>, ApprovalError> {
+            Ok(None)
+        }
+    }
+
+    #[tokio::test]
+    async fn another_settlement_is_refused_from_the_marker_not_a_process_set() {
+        let bus = Arc::new(EventBusServiceImpl::default());
+        let executor = ParallelExecutionServiceImpl::new(
+            ParallelExecutorConfig::default(),
+            Box::new(RetryEvaluationServiceImpl::new()),
+            bus.clone(),
+        )
+        .with_approval_service(Arc::new(MarkerBackedConsumption {
+            marker: Mutex::new(None),
+        }));
+        let node_id = Uuid::new_v4();
+        let first_dag = Uuid::new_v4();
+
+        assert!(
+            executor
+                .consume_on_terminal(first_dag, node_id, 1)
+                .await
+                .is_none()
+        );
+        assert!(
+            executor
+                .consume_on_terminal(first_dag, node_id, 1)
+                .await
+                .is_none(),
+            "the same settlement recorded twice is benign"
+        );
+        let refused = executor
+            .consume_on_terminal(Uuid::new_v4(), node_id, 2)
+            .await
+            .expect("another settlement is refused");
+        assert!(
+            refused.contains("approval consumption refused"),
+            "{refused}"
+        );
+
+        let failed: Vec<_> = bus
+            .drain_persisted(DrainPersistedInput { clear: true })
+            .await
+            .expect("drain")
+            .events
+            .iter()
+            .filter_map(|persisted| match &persisted.event {
+                ExecutionEvent::NodeFailed { attempt, error, .. } => {
+                    Some((*attempt, error.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            failed.len(),
+            1,
+            "one refusal, no event for the benign replay"
+        );
+        assert_eq!(failed[0].0, 2, "the event carries the real attempt");
     }
 }

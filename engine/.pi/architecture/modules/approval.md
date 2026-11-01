@@ -4,7 +4,7 @@
 Canonical Reference: .pi/architecture/modules/approval.md
 Rationale: Bind human approval to the exact resolved execution intent — replay protection at the step level, first-class signed evidence, and effect-scope verification
 Blueprint Source: Requirements v1 — 2026-08-28 (approved, NOT YET BUILT)
-Last Updated: 2026-10-31 — MAC material derives from the record; reads and writes re-read both files under locks; a refused consumption is run evidence; a configured-but-absent ledger refuses terminal records; the ledger is authenticated, checked both ways, reports populations, and treats migration absence as a no-op (#1240, #1241, #1244, #1253, #1254, #1255, #1256, #1261, #1263, #1264)
+Last Updated: 2026-11-01 — consumption attribution comes from the ledger marker, not process memory; MAC material derives from the record; reads and writes re-read both files under locks; a refused consumption is run evidence; a configured-but-absent ledger refuses terminal records (#1240, #1241, #1244, #1253, #1254, #1255, #1256, #1261, #1263, #1264, #1267)
 -->
 
 ## Overview
@@ -639,10 +639,16 @@ result and live state failed, moves it from completed to failed, and skips its
 dependents. `ApprovalError::ConsumptionReplay` is therefore visible in the run
 that was refused, not only in the ledger.
 
-`NotFound` stays benign. `AlreadyConsumed` is benign only when **this executor**
-consumed that approval; the executor records its own successes, so a second
-decision's `AlreadyConsumed` is treated as the refusal it is. The first
-consumption and the single ledger marker are untouched.
+`NotFound` stays benign. The benign case is decided from the **ledger**, not
+process memory (#1267): each marker carries the consuming settlement
+`(dag_id, node_id, attempt)`, and `AlreadyConsumed` (or any other refusal) is
+benign only when the latest marker for the node names the settlement being
+recorded now. A second session in the same process, a second process, and a
+later run that reuses a node id all classify from the same artifact and produce
+the same evidence. The process-wide `consumed_here` set is gone. Legacy markers
+without attribution are omitted fields and classify as "another settlement" —
+fail-safe. The `NodeFailed` event carries the real 1-indexed attempt.
+The first consumption and its single marker are untouched.
 
 ### One run key (#1238)
 

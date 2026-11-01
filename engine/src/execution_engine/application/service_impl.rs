@@ -571,9 +571,6 @@ pub struct ParallelExecutionServiceImpl {
     /// (`verify_intent`), consume on terminal outcome, and approval capture
     /// persists single-use records. `None` = legacy `session.approved` gate.
     approval_binding: Option<Arc<ApprovalBinding>>,
-    /// Approvals this instance consumed. It distinguishes "this decision
-    /// consumed twice" (benign) from "another decision consumed it" (#1263).
-    consumed_here: Mutex<HashSet<Uuid>>,
 
     /// R3 sequence-policy prefix gate (opt-in).
     ///
@@ -674,7 +671,6 @@ impl ParallelExecutionServiceImpl {
             recovery_service: None,
             recovery_contexts: Mutex::new(HashMap::new()),
             approval_binding: None,
-            consumed_here: Mutex::new(HashSet::new()),
             sequence_policy: None,
             precondition_gate: None,
             gating_mode: GatingMode::default(),

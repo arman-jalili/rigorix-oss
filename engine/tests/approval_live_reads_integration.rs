@@ -10,7 +10,8 @@
 
 use chrono::{Duration as ChronoDuration, Utc};
 use rigorix_engine::approval::domain::{
-    ApprovalError, ApprovalRecord, ApprovalStatus, DecisionContext, IntentHash,
+    ApprovalError, ApprovalRecord, ApprovalStatus, ConsumptionSettlement, DecisionContext,
+    IntentHash,
 };
 use rigorix_engine::approval::infrastructure::repository::{
     ApprovalRepository, FileBackedApprovalRepository,
@@ -120,6 +121,53 @@ async fn an_open_session_sees_records_and_refuses_a_second_consumption() {
 }
 
 /// #1264: a configured ledger that is gone must not read as "nothing spent".
+/// #1267: the marker names the settlement, so classification needs no process
+/// memory and survives a restart.
+#[tokio::test]
+async fn the_consumption_marker_records_the_settling_run_and_attempt() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("consumed.json");
+    let repo = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(RUN_KEY),
+        Some(&ledger),
+    )
+    .expect("open");
+
+    let mut record = sample(Uuid::new_v4());
+    record.status = ApprovalStatus::Consumed;
+    let settlement = ConsumptionSettlement {
+        dag_id: Uuid::new_v4(),
+        node_id: record.node_id,
+        attempt: 2,
+    };
+    repo.save_with_settlement(&record, settlement)
+        .await
+        .expect("consume with attribution");
+    assert_eq!(
+        repo.consumption_settlement(record.node_id).await.unwrap(),
+        Some(settlement)
+    );
+
+    let replay = repo
+        .save_with_settlement(
+            &record,
+            ConsumptionSettlement {
+                attempt: 3,
+                ..settlement
+            },
+        )
+        .await
+        .expect_err("a different settlement is a replay");
+    assert!(matches!(replay, ApprovalError::ConsumptionReplay { .. }));
+    assert_eq!(
+        repo.consumption_settlement(record.node_id).await.unwrap(),
+        Some(settlement),
+        "the first settlement stays attributed"
+    );
+}
+
 #[tokio::test]
 async fn a_terminal_record_without_its_ledger_is_refused_by_path_and_node() {
     let dir = tempfile::TempDir::new().expect("tempdir");
