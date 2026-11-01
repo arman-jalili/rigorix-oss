@@ -30,6 +30,9 @@ _No unreleased changes._
 
 ### Fixed
 
+- An identity provider that is unreachable when the MCP server starts no longer disables attestation for the life of the process: discovery is re-attempted on a cooldown, and the L1 refusal distinguishes "no credential" (`unauthenticated`) from "the claim is present and could not be checked" (`unverified`), naming the recovery that can help rather than sending a logged-in caller to log in (#1277)
+- `demo/anchor-e2e` seeds its genesis envelope through the engine's own `AuditEnvelope` and signature, so the demo reaches the four outcomes it asserts instead of stopping at a 400 it discarded (#1278)
+
 - A consumption ledger without the `{version, entries, mac}` wrapper is refused instead of adopted, naming the file and `rigorix approve ledger migrate`; migration is explicit and verifies when already sealed (#1247)
 - Ledger migration compares its marker set with the authenticated store: it reports `adopted N of M terminal record(s)`, refuses a terminal record with no marker by node and step, and only seals with `--accept-missing`, which names what stays unprotected (#1249)
 - Migration no longer prints `N of 0`: an absent store names the missing path and an empty store says no terminal records were available, so the report distinguishes "nothing compared" from "nothing to cover" (#1251)
