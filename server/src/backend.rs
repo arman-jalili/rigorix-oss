@@ -58,7 +58,19 @@ impl MethodBackend for HostBackend {
 
     async fn is_authenticated(&self) -> bool {
         match &app_state().auth_handler {
-            Some(handler) => handler.current_engine_identity().await.is_some(),
+            // #1277 — `current_engine_identity` now hands over an `unverified`
+            // claim (the caller logged in; this process could not check it).
+            // "Authenticated" on this surface means attested, so an unverified
+            // claim stays false here, exactly as before the handler changed.
+            Some(handler) => handler
+                .current_engine_identity()
+                .await
+                .is_some_and(|identity| {
+                    !matches!(
+                        identity.source,
+                        rigorix_engine::identity::IdentitySource::Unverified
+                    )
+                }),
             None => false,
         }
     }

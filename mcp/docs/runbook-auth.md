@@ -80,9 +80,12 @@ driven by tool calls). Shutdown procedure:
 There is no standalone `/health` endpoint in this library module — the
 gateway's health surface covers it. Operator equivalents:
 
-- **`rigorix_auth_status`** returns `authenticated | expired | unauthenticated`
-  plus a redacted claim summary and source marker (`idp_token`,
-  `local_principal`, `unverified`)
+- **`rigorix_auth_status`** returns
+  `authenticated | expired | unauthenticated | unverified` plus a redacted
+  claim summary and source marker (`idp_token`, `local_principal`,
+  `unverified`). `unverified` means the credential is present and this
+  process could not check it — distinct from `unauthenticated` (no credential
+  at all) (#1277)
 - **Keychain reachability**: call `KeychainStoreImpl::keychain()` — success
   means the platform store is available
 - **IdP reachability**: a login attempt that returns
@@ -95,9 +98,30 @@ gateway's health surface covers it. Operator equivalents:
 - **Symptom**: `rigorix_auth_login` fails; status stays `unauthenticated`;
   `poll` reports a transport fault and keeps the flow pending
 - **Impact**: local development is **not** blocked — attestation degrades
-  explicitly to `IdentitySource::Unverified` (fail-open, ADR-008); runs and
-  approvals proceed with an explicit `identity: unverified` envelope marker
+  explicitly to `IdentitySource::Unverified` (ADR-012 offline policy); a run
+  that requires no attested identity proceeds with an explicit
+  `identity: unverified` envelope marker
 - **Recovery**: restore IdP connectivity; retry login. No data loss.
+
+### IdP unreachable at MCP startup — `unverified` session (#1277)
+
+- **Symptom**: the server log shows
+  `auth: IdP discovery failed (…) — claims degrade to unverified until it
+  answers`; `rigorix_auth_login` then succeeds and `rigorix_auth_status`
+  reports `unverified` with a claim summary, but a run over a
+  `require_identity` step is refused with
+  `… the caller is unverified — the claim is present and this process could
+  not verify it (the IdP was unreachable when the server started): restart
+  the MCP server once the IdP answers, or fix RIGORIX_IDP_ISSUER`
+- **Why it refuses**: the L1 identity gate fails closed. A claim this process
+  cannot check is not an attested identity (ADR-012 option c)
+- **Why the status is not `unauthenticated`**: the caller did log in. One word
+  for one fact — `unverified` is the same word the refusal prints
+- **Recovery**: bring the IdP up. Attestation re-attempts discovery (bounded
+  to one attempt per 30 s per process), so the next run succeeds **without a
+  restart**. If the IdP is up and discovery still fails, the issuer is wrong —
+  fix `RIGORIX_IDP_ISSUER` (or `[auth] issuer` in `.rigorix/auth.toml`) and
+  restart the server
 
 ### User denies / device code expires
 

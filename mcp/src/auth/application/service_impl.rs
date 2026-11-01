@@ -401,8 +401,17 @@ impl AuthService for AuthServiceImpl {
         let output = match token {
             Some(_) => {
                 let (claim_summary, source) = self.summarize_current_claim().await;
+                // #1277 — the verdict describes the weakest property the
+                // session carries. A token whose claim could not be checked
+                // (IdP unreachable at discovery) is `unverified`, not
+                // `authenticated`: the login happened, the attestation did not.
+                let status = if matches!(source, IdentitySource::Unverified) {
+                    TokenStatus::Unverified
+                } else {
+                    TokenStatus::Authenticated
+                };
                 StatusOutput {
-                    status: TokenStatus::Authenticated,
+                    status,
                     claim_summary,
                     source,
                 }
@@ -547,6 +556,7 @@ mod tests {
     };
     use std::collections::{HashMap, VecDeque};
     use std::sync::Mutex;
+    use std::sync::atomic::Ordering;
 
     use crate::auth::domain::value::Secret;
     use crate::auth::infrastructure::{
@@ -785,6 +795,9 @@ mod tests {
     #[derive(Default)]
     struct FakeAttestation {
         failures: Mutex<usize>,
+        /// When set, claims come back with `source = Unverified` (the IdP could
+        /// not be reached at discovery) — #1277.
+        unverifiable: std::sync::atomic::AtomicBool,
     }
 
     fn claim_from_token(token: &str, issuer: Option<&str>, method: &str) -> IdentityClaim {
@@ -809,11 +822,20 @@ mod tests {
                 return Err(IdentityError::Internal("forced failure".into()));
             }
             match input.token {
-                Some(token) => Ok(claim_from_token(
-                    &token,
-                    input.issuer.as_deref(),
-                    input.auth_method.as_deref().unwrap_or("device_code"),
-                )),
+                Some(token) => {
+                    let mut claim = claim_from_token(
+                        &token,
+                        input.issuer.as_deref(),
+                        input.auth_method.as_deref().unwrap_or("device_code"),
+                    );
+                    if self.unverifiable.load(Ordering::SeqCst) {
+                        // ADR-012 degradation: the claim is carried, the
+                        // authority it presented is not evidence.
+                        claim.source = IdentitySource::Unverified;
+                        claim.authority = None;
+                    }
+                    Ok(claim)
+                }
                 None => Err(IdentityError::MissingClaim(
                     "presented identity: token or principal".into(),
                 )),
@@ -1033,9 +1055,32 @@ mod tests {
         *h.attestation.failures.lock().unwrap() = 1;
 
         let out = h.service.status(&StatusInput::default()).await.unwrap();
-        assert_eq!(out.status, TokenStatus::Authenticated);
+        // #1277 — a check that did not run must not report like one that
+        // passed. The token is present; the verdict is `unverified`.
+        assert_eq!(out.status, TokenStatus::Unverified);
         assert!(out.claim_summary.is_none());
         assert_eq!(out.source, IdentitySource::Unverified);
+    }
+
+    /// #1277 — a claim that is present but unattested (IdP unreachable when the
+    /// process started) reports `unverified` with the claim still attached, not
+    /// `authenticated` and not `unauthenticated`.
+    #[tokio::test]
+    async fn status_unverified_when_claim_is_present_but_unattested() {
+        let h = harness();
+        h.service.login(&LoginInput::default()).await.unwrap();
+        h.service.poll(&PollInput::default()).await.unwrap();
+        h.service.poll(&PollInput::default()).await.unwrap();
+        h.attestation.unverifiable.store(true, Ordering::SeqCst);
+
+        let out = h.service.status(&StatusInput::default()).await.unwrap();
+        assert_eq!(out.status, TokenStatus::Unverified);
+        assert_eq!(out.status.to_string(), "unverified");
+        assert_eq!(out.source, IdentitySource::Unverified);
+        let summary = out
+            .claim_summary
+            .expect("the claim is carried, not dropped");
+        assert!(summary.subject.starts_with("user-from-access-token-1"));
     }
 
     // ---------------------------------------------------------------------

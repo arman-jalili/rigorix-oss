@@ -305,11 +305,13 @@ async fn device_flow_to_attested_identity_lifecycle() {
         .expect("access token cached");
     assert!(!cached.expose().is_empty());
 
-    // AC#3 — status is authenticated with a REAL engine-extracted claim.
-    // Offline NullVerifier degrades verification explicitly (AC#8) — the
-    // claim content (sub/iss/lifetime) is real, the source marker honest.
+    // AC#3 — the claim is real; the verdict follows the weakest property.
+    // Offline NullVerifier degrades verification explicitly (AC#8), so the
+    // session is `unverified` — the caller logged in, this process cannot
+    // check the claim (#1277).
     let status = service.status(&StatusInput::default()).await.unwrap();
-    assert_eq!(status.status, TokenStatus::Authenticated);
+    assert_eq!(status.status, TokenStatus::Unverified);
+    assert_eq!(status.status.to_string(), "unverified");
     let summary = status.claim_summary.expect("claim summary present");
     assert_eq!(summary.subject, "user@org");
     assert_eq!(summary.issuer, ISSUER);
@@ -336,7 +338,9 @@ async fn device_flow_to_attested_identity_lifecycle() {
     assert_eq!(refreshed.status, TokenStatus::Authenticated);
     assert_eq!(*idp.refresh_calls.lock().unwrap(), 1);
     let status = service.status(&StatusInput::default()).await.unwrap();
-    assert_eq!(status.status, TokenStatus::Authenticated);
+    // A silent refresh restores the credential, not the verification: the
+    // offline verifier still cannot check the claim (#1277).
+    assert_eq!(status.status, TokenStatus::Unverified);
 
     // AC#5 — logout clears keychain + memory and revokes at the IdP.
     let logout = service.logout(&LogoutInput::default()).await.unwrap();

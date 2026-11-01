@@ -315,10 +315,13 @@ impl AppState {
     }
 
     /// Active session identity (L1/L2, F-20260907-05): the engine
-    /// IdentityRef from the auth handler when an attested claim exists;
-    /// None when unauthenticated. Server-side truth — rigorix_run /
-    /// rigorix_execute / rigorix_validate_plan inject this; caller-supplied
-    /// `author` stays display-only for policy purposes.
+    /// IdentityRef from the auth handler when a claim exists — including a
+    /// claim tagged `unverified` (#1277): the engine distinguishes "cannot
+    /// check" from "no claim", and collapsing the two made the refusal tell a
+    /// caller who had just logged in to log in again. None only when there is
+    /// no claim at all. Server-side truth — rigorix_run / rigorix_execute /
+    /// rigorix_validate_plan inject this; caller-supplied `author` stays
+    /// display-only for policy purposes.
     async fn session_identity(&self) -> Option<rigorix_engine::identity::IdentityRef> {
         match &self.auth_handler {
             Some(handler) => handler.current_engine_identity().await,
@@ -1293,35 +1296,19 @@ pub async fn build_auth_handler()
         };
     let tokens: Arc<dyn rigorix_mcp::auth::infrastructure::token_provider::TokenProvider> =
         Arc::new(InMemoryTokenProvider::new());
-    // ADR-012 seam: the engine's identity attestation service. When the IdP
-    // is reachable we wire the JWKS-backed verifier so device-flow tokens
-    // attest with source = idp_token (real verification); if discovery fails
-    // or no jwks_uri is advertised we fall back to the offline NullVerifier
-    // (claims degrade to Unverified — explicit, never silent; L1 identity
-    // gate then refuses require_identity steps, which is the safe posture).
+    // ADR-012 seam: the engine's identity attestation service. The verifier is
+    // resolved at *attestation* time, not once here (#1277): a single failed
+    // discovery request in the first second of the process must not disable
+    // attestation for its whole life. `DiscoveryBackedVerifier` re-attempts
+    // discovery on a cooldown and keeps the offline default's contract — an
+    // unreachable IdP degrades the claim to `Unverified` (explicit, never
+    // silent) and the L1 identity gate keeps refusing `require_identity`
+    // steps, which is the safe posture.
     let attestation: Arc<
         dyn rigorix_engine::identity::application::service::IdentityAttestationService,
     > = {
-        let verifier: Box<dyn rigorix_engine::identity::infrastructure::TokenVerifier> = match idp
-            .discover()
-            .await
-        {
-            Ok(meta) => match meta.jwks_uri {
-                Some(jwks_url) => Box::new(
-                    rigorix_engine::identity::infrastructure::JwksVerifier::new(jwks_url),
-                ),
-                None => {
-                    tracing::warn!(
-                        "auth: IdP discovery returned no jwks_uri — claims degrade to unverified"
-                    );
-                    Box::new(rigorix_engine::identity::infrastructure::NullVerifier::new())
-                }
-            },
-            Err(e) => {
-                tracing::warn!("auth: IdP discovery failed ({e}) — claims degrade to unverified");
-                Box::new(rigorix_engine::identity::infrastructure::NullVerifier::new())
-            }
-        };
+        let verifier: Box<dyn rigorix_engine::identity::infrastructure::TokenVerifier> =
+            Box::new(rigorix_mcp::auth::infrastructure::DiscoveryBackedVerifier::new(idp.clone()));
         Arc::new(
             rigorix_engine::identity::application::service_impl::IdentityAttestationServiceImpl::with_verifier(
                 verifier,

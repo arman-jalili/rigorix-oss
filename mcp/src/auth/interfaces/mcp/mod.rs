@@ -73,7 +73,7 @@ pub const RIGORIX_AUTH_LOGIN_INPUT_SCHEMA: &str = r#"{
 pub const RIGORIX_AUTH_STATUS_INPUT_SCHEMA: &str = r#"{
     "type": "object",
     "properties": {},
-    "description": "Report identity status (authenticated/expired/unauthenticated) with a redacted claim summary."
+    "description": "Report identity status (authenticated/expired/unauthenticated/unverified) with a redacted claim summary."
 }"#;
 
 /// JSON Schema for the `rigorix_auth_logout` tool input.
@@ -100,7 +100,7 @@ pub fn rigorix_auth_login_tool_descriptor() -> Value {
 pub fn rigorix_auth_status_tool_descriptor() -> Value {
     serde_json::json!({
         "name": RIGORIX_AUTH_STATUS,
-        "description": "Report identity status (authenticated/expired/unauthenticated) and a redacted claim summary. Read-only.",
+        "description": "Report identity status (authenticated/expired/unauthenticated/unverified) and a redacted claim summary. Read-only.",
         "inputSchema": serde_json::from_str::<Value>(RIGORIX_AUTH_STATUS_INPUT_SCHEMA).unwrap_or_default()
     })
 }
@@ -149,10 +149,16 @@ pub trait AuthToolHandler: Send + Sync {
     async fn handle_auth_status(&self, params: Value) -> Result<Value, AuthError>;
 
     /// Return the ACTIVE session identity as an engine `IdentityRef`
-    /// (L1/L2, F-20260907-05): `Some` only when the session holds an attested
-    /// claim (source = idp_token | local_principal). `None` when
-    /// unauthenticated. Used by rigorix_run / rigorix_validate_plan to gate
-    /// `require_identity` steps and to bind the sequence-policy principal.
+    /// (L1/L2, F-20260907-05): `Some` when the session holds a claim, including
+    /// a claim that could not be verified (`source = unverified` — the engine's
+    /// gate refuses flagged steps with status `unverified`, distinct from
+    /// `unauthenticated`). `None` only when there is no claim at all. Used by
+    /// rigorix_run / rigorix_validate_plan to gate `require_identity` steps and
+    /// to bind the sequence-policy principal.
+    ///
+    /// #1277: this must not collapse `unverified` to `None` — that turned "this
+    /// process cannot check the claim" into "there is no claim", and the
+    /// refusal told a caller who had just logged in to log in.
     async fn current_engine_identity(&self) -> Option<rigorix_engine::identity::IdentityRef> {
         None
     }

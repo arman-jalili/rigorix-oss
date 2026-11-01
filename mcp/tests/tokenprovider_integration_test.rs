@@ -207,7 +207,9 @@ async fn real_provider_serves_short_ttl_cycle_through_auth_service() {
     assert_eq!(*idp.refresh_calls.lock().unwrap(), 1);
     assert!(tokens.current_access_token().await.is_some());
     let status = service.status(&StatusInput::default()).await.unwrap();
-    assert_eq!(status.status, TokenStatus::Authenticated);
+    // The refresh restores the credential; the offline verifier still cannot
+    // check it, so the verdict is `unverified` (#1277).
+    assert_eq!(status.status, TokenStatus::Unverified);
 
     // Logout clears the provider entirely.
     service

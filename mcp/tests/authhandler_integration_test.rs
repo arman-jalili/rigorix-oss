@@ -276,13 +276,15 @@ async fn status_drives_login_completion_and_matches_frozen_contract() {
     assert!(status1["claim_summary"].is_null());
     assert_eq!(status1["source"], "unverified");
 
-    // Status #2: advances the flow (poll #2 → authorized + custody) →
-    // authenticated with a claim summary.
+    // Status #2: advances the flow (poll #2 → authorized + custody) → the claim
+    // is carried but the offline verifier cannot check it, so the verdict is
+    // `unverified` (#1277: a check that did not run must not read like one that
+    // passed). The caller is not `unauthenticated` — they did log in.
     let status2 = handler
         .handle_auth_status(serde_json::json!({}))
         .await
         .unwrap();
-    assert_eq!(status2["status"], "authenticated");
+    assert_eq!(status2["status"], "unverified");
     assert!(status2["claim_summary"].is_object());
     assert_eq!(status2["source"], "unverified"); // offline NullVerifier marker
 
@@ -291,7 +293,7 @@ async fn status_drives_login_completion_and_matches_frozen_contract() {
         .handle_auth_status(serde_json::json!({}))
         .await
         .unwrap();
-    assert_eq!(service_driven["status"], "authenticated");
+    assert_eq!(service_driven["status"], "unverified");
 }
 
 /// rigorix_auth_logout → `{ status: "logged_out" }`.
