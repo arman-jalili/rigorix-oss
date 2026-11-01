@@ -48,19 +48,22 @@ guardian_issue:
     `IdentityRequired` renders that `None` as `status: "unauthenticated"`.
 
   in_scope:
+    - "`TokenStatus` gains a fourth literal — `Unverified` / `unverified` — for \"credential material is present and cannot be checked\". The name is the word the engine already prints for this condition (`orchestrator_impl.rs:1252`), so the status output and the refusal say one word, not two"
+    - "`current_engine_identity` stops collapsing `IdentitySource::Unverified` to `None`: it hands the engine the claim it has, tagged `Unverified`, so the existing refusal branch reports `unverified` instead of `unauthenticated`"
+    - "A session whose attestation could not be attempted reports `unverified` in `rigorix_auth_status` and in `IdentityRequired`, and the refusal names the real recovery — restart the MCP server once the IdP answers, or fix `RIGORIX_IDP_ISSUER` — instead of `rigorix_auth_login`"
     - "Attestation does not depend on a decision made once at startup: when the verifier is the offline default because discovery failed, the next claim that needs verifying re-attempts discovery (bounded per process), so a process that outlived an IdP outage recovers without a restart"
-    - "A session whose attestation could not be attempted carries a distinct status — `unverified: IdP unreachable` — through `rigorix_auth_status`, and `IdentityRequired` renders that reason instead of `unauthenticated`"
-    - "The refusal names the real recovery: restart the MCP server once the IdP answers (or fix `RIGORIX_IDP_ISSUER`), not `rigorix_auth_login`"
-    - "Seeds: discovery failing at startup then recovering → a run succeeds without a restart; an IdP that never answers → the refusal names the unreachable cause, and never the word `unauthenticated` for a session that logged in"
+    - "The contract notes that describe the vocabulary are updated with it: `mcp/src/auth/domain/status.rs` (the frozen note, which currently folds \"or IdP unreachable\" into `Unauthenticated`), `mcp/.pi/architecture/modules/auth.md`, `mcp/.pi/architecture/decisions/ADR-008-auth-client-flow.md`, `mcp/docs/runbook-auth.md`"
+    - "Seeds: discovery failing at startup then recovering → a run succeeds without a restart; an IdP that never answers → `rigorix_auth_status` reports `unverified` and the refusal says `unverified` with the restart recovery, never `unauthenticated` for a session that logged in; the three existing literals keep their meaning and their tests"
 
   out_of_scope:
     - "Failing open when the IdP is unreachable; the L1 gate keeps refusing"
     - "Caching JWKS across processes"
-    - "The demo-side workaround, which now waits for the discovery document before spawning the server and restarts a server that reported a discovery failure (payouts-demo `2af794f`)"
+    - "Renaming the engine's existing `unverified` refusal literal, or introducing a third spelling for the same fact"
+    - "The demo-side workaround, which now waits for the discovery document before spawning the server and restarts a server that reported a discovery failure (payouts-demo `f461ca7`)"
 
   affected_layers:
     domain:
-      - "Modified: the identity status vocabulary carries 'could not verify', distinct from 'no credential'"
+      - "Modified: `TokenStatus` carries `Unverified`, distinct from `Unauthenticated`"
     application:
       - "Modified: discovery is retried when attestation is needed and the verifier is the offline default"
     infrastructure:
@@ -106,3 +109,11 @@ The operator's only clue is a WARN line in a log they are not reading, and the e
 the one action that cannot help.
 
 A check that cannot run must say it cannot run — and must be able to run again later.
+
+## Decided in review
+
+The third literal was the defect: `Unauthenticated` is documented as *"no credential material at all
+(or IdP unreachable)"*, so a session that logged in without the IdP is reported as a session with no
+credential. The operator extended the frozen vocabulary rather than carrying the reason beside it, so
+the enum has four literals and the frozen note is rewritten to match. The literal is `unverified`,
+the word the engine's refusal already prints for this exact condition — one word for one fact.
