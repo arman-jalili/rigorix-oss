@@ -110,6 +110,29 @@ impl AuditEnvelopeFactoryImpl {
     pub fn set_signing_key(&mut self, key: Option<String>) {
         self.signing_key = key;
     }
+
+    /// Sign an envelope in place with the configured key.
+    ///
+    /// A no-op when no key is configured (the envelope keeps
+    /// `signature: None`, and `evidence_degraded` stays the caller's claim) —
+    /// signing is never silently simulated. The HMAC is over
+    /// [`canonical_envelope_bytes`](Self::canonical_envelope_bytes), the same
+    /// bytes `verify_signature` recomputes, so a producer outside the normal
+    /// build path (a demo seed, a migration helper) cannot drift from the
+    /// canonical form by re-implementing it (#1278).
+    ///
+    /// # Errors
+    /// - `AuditError::Internal` — the canonical serialization failed, or the
+    ///   key cannot key HMAC-SHA256
+    pub fn sign(&self, envelope: &mut AuditEnvelope) -> Result<(), AuditError> {
+        match &self.signing_key {
+            Some(key) => {
+                envelope.signature = Some(Self::compute_signature(envelope, key)?);
+                Ok(())
+            }
+            None => Ok(()),
+        }
+    }
 }
 
 impl Default for AuditEnvelopeFactoryImpl {
@@ -582,6 +605,52 @@ mod tests {
             Some("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2")
         );
         assert_eq!(envelope.git_branch.as_deref(), Some("main"));
+    }
+
+    /// #1278 — the signing entry point a producer outside the normal build path
+    /// (a demo seed) uses is the same one the verifier recomputes: the canonical
+    /// bytes are the engine's, never a second implementation.
+    #[tokio::test]
+    async fn sign_then_verify_round_trips_and_is_idempotent() {
+        let factory = AuditEnvelopeFactoryImpl::new(Some("seed-key".to_string()));
+        let mut envelope = factory.build_envelope(sample_input()).await.unwrap();
+        assert!(envelope.signature.is_none(), "built unsigned by default");
+
+        factory.sign(&mut envelope).unwrap();
+        let first = envelope.signature.clone().expect("signature attached");
+        factory
+            .verify_signature(&envelope)
+            .await
+            .expect("the engine recomputes the signature it just made");
+
+        // Canonical bytes null the signature, so re-signing is stable — a
+        // producer that signs twice cannot invalidate itself.
+        factory.sign(&mut envelope).unwrap();
+        assert_eq!(envelope.signature.as_deref(), Some(first.as_str()));
+    }
+
+    /// Signing is never simulated: without a key the envelope keeps
+    /// `signature: None`, and the verifier refuses it.
+    #[tokio::test]
+    async fn sign_without_a_key_does_not_fabricate_a_signature() {
+        let factory = AuditEnvelopeFactoryImpl::new(None);
+        let mut envelope = factory.build_envelope(sample_input()).await.unwrap();
+
+        factory.sign(&mut envelope).unwrap();
+        assert!(envelope.signature.is_none());
+        assert!(factory.verify_signature(&envelope).await.is_err());
+    }
+
+    /// A tampered field changes the signature — the seed is evidence only while
+    /// its bytes are the bytes that were signed.
+    #[tokio::test]
+    async fn sign_detects_tampering_after_the_fact() {
+        let factory = AuditEnvelopeFactoryImpl::new(Some("seed-key".to_string()));
+        let mut envelope = factory.build_envelope(sample_input()).await.unwrap();
+        factory.sign(&mut envelope).unwrap();
+
+        envelope.author = Some("someone-else".to_string());
+        assert!(factory.verify_signature(&envelope).await.is_err());
     }
 }
 
