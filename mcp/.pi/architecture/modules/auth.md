@@ -46,7 +46,7 @@ This module is **not** an access-control gate on the agent's tool calls — the 
 **Key behaviors:**
 - `login()`: initiate OIDC device authorization grant — returns `verification_uri` + `user_code` to display; polls the token endpoint; on success stores the refresh token in the OS keychain and returns a short-TTL access token to the in-memory `TokenProvider`
 - `refresh()`: exchange refresh token for a new access token (silent, background)
-- `status()`: report `TokenStatus::Authenticated | Expired | Unauthenticated` + claim summary
+- `status()`: report `TokenStatus::Authenticated | Expired | Unauthenticated | Unverified` + claim summary. The verdict is the weakest property the session carries: a token present whose claim could not be checked is `Unverified`, never `Authenticated` (#1277)
 - `logout()`: revoke/clear tokens from keychain and memory
 - `attest()`: delegate to engine `IdentityAttestationService` — token → `IdentityClaim`
 
@@ -111,7 +111,7 @@ stdio-only (GAP-A-10: SSE transport removed), so no runtime path constructs
 | **AuthLoginStarted** | Device flow initiated | `{ session_id, verification_uri, user_code }` | Logger, TUI |
 | **AuthLoginSucceeded** | Token exchange completed | `{ session_id, subject, issuer, token_ttl_secs }` | Logger, Metrics |
 | **AuthLoginFailed** | Device flow failed (denied/expired/error) | `{ session_id, error_type, reason }` | Logger, Alerts |
-| **AuthStatusChecked** | Identity status queried | `{ session_id, status (authenticated/expired/unauthenticated), claim_summary }` | Logger |
+| **AuthStatusChecked** | Identity status queried | `{ session_id, status (authenticated/expired/unauthenticated/unverified), claim_summary }` | Logger |
 | **AuthLoggedOut** | Tokens cleared | `{ session_id, revoked }` | Logger |
 
 ## API Endpoints (MCP Tool Schema)
@@ -130,12 +130,12 @@ All three tools return **redacted** output — never the raw token.
 |---|-----------|-----------|
 | 1 | Device flow: verification_uri + user_code returned; polling succeeds on authorization | unit test |
 | 2 | Login denied/expired → `AuthLoginFailed` with typed reason | unit test |
-| 3 | Status: authenticated/expired/unauthenticated transitions correct | unit test |
+| 3 | Status: authenticated/expired/unauthenticated/unverified transitions correct | unit test |
 | 4 | Expired access token silently refreshed from keychain refresh token | unit test |
 | 5 | Logout clears keychain + memory; subsequent tools run with `identity: absent` | integration test |
 | 6 | SSE non-localhost + auth=idp → unauthenticated bearer rejected before tool dispatch | integration test |
 | 7 | SSE localhost default → no auth required (regression) | integration test |
-| 8 | IdP unreachable → status unauthenticated; run proceeds with explicit `identity: unverified` marker | integration test |
+| 8 | IdP unreachable → status `unverified` (claim carried, not checked — never `unauthenticated` for a session that logged in); run is refused with status `unverified`, and a later attestation re-attempts discovery so the process recovers without a restart (#1277) | integration test |
 | 9 | Envelope identity block is redacted (no raw token anywhere) | integration test |
 | 10 | `rigorix_approve_execution` records approver_id from the claim + token_claims_ref | integration test |
 
@@ -187,12 +187,12 @@ All three tools return **redacted** output — never the raw token.
 **Key Test Scenarios:**
 1. Device flow: verification_uri + user_code returned; polling succeeds on authorization
 2. Login denied/expired → `AuthLoginFailed` with typed reason
-3. Status: authenticated/expired/unauthenticated transitions correct
+3. Status: authenticated/expired/unauthenticated/unverified transitions correct
 4. Refresh: expired access token silently refreshed from keychain refresh token
 5. Logout clears keychain + memory; subsequent tools run with `identity: absent`
 6. SSE non-localhost + auth=idp → unauthenticated bearer rejected before tool dispatch
 7. SSE localhost default → no auth required (regression)
-8. IdP unreachable → attestation degrades to `IdentitySource::Unverified`, run proceeds with explicit marker
+8. IdP unreachable → attestation degrades to `IdentitySource::Unverified`, status and refusal report `unverified`, and discovery is re-attempted so a recovered IdP needs no restart (#1277)
 9. Envelope identity block is redacted (no raw token anywhere)
 10. `rigorix_approve_execution` records approver_id from the claim + token_claims_ref
 

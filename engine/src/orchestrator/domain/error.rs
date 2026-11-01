@@ -126,10 +126,9 @@ pub enum OrchestratorError {
     /// attested identity (no session claim, or source = unverified).
     /// Refused at plan time — the step's tool is never called. L1 identity
     /// gate (F-20260907-05): an unauthenticated caller cannot run
-    /// consequential steps; the error names the login path.
-    #[error(
-        "Step '{step}' requires an attested identity but the caller is {status} — run rigorix_auth_login (or execute as a local principal) first"
-    )]
+    /// consequential steps; the error names the recovery that can actually
+    /// help (#1277).
+    #[error("{}", identity_required_message(.step, .status))]
     IdentityRequired {
         /// Name of the step that requires an attested identity.
         step: String,
@@ -155,6 +154,28 @@ impl OrchestratorError {
             OrchestratorError::PlanningFailed { .. }
                 | OrchestratorError::ExecutionFailed { .. }
                 | OrchestratorError::StatePersistenceFailed { .. }
+        )
+    }
+}
+
+/// The refusal's recovery sentence, chosen by the identity status (#1277).
+///
+/// `unauthenticated` means there is no credential to check — logging in is the
+/// fix. `unverified` means the credential is present and this process could
+/// not check it (the IdP was unreachable at discovery); telling the caller to
+/// log in points at the one action that cannot help, so the message names the
+/// two recoveries that can.
+fn identity_required_message(step: &str, status: &str) -> String {
+    if status == "unverified" {
+        format!(
+            "Step '{step}' requires an attested identity but the caller is unverified — the claim is \
+             present and this process could not verify it (the IdP was unreachable when the server \
+             started): restart the MCP server once the IdP answers, or fix RIGORIX_IDP_ISSUER"
+        )
+    } else {
+        format!(
+            "Step '{step}' requires an attested identity but the caller is unauthenticated — run \
+             rigorix_auth_login (or execute as a local principal) first"
         )
     }
 }

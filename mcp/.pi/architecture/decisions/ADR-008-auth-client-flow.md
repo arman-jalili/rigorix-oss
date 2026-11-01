@@ -39,7 +39,11 @@ Default remains localhost-only (ADR-005). When `mcp.sse.bind_address` is non-loc
 
 ### 5. Offline degradation is explicit
 
-IdP unreachable → `rigorix_auth_status` reports `unauthenticated`/`unverified`; runs/approvals continue with `identity: unverified` in the envelope. Never fail-closed for local dev.
+An unreachable IdP never turns attestation into an error (ADR-012 option c): the claim degrades to `IdentitySource::Unverified` and the envelope records `identity: unverified`. The *verdict* follows the weakest property the session carries — `rigorix_auth_status` reports `unverified` (credential present, not checked), never `unauthenticated` (no credential at all) and never `authenticated`. A run over a `require_identity` step is refused with status `unverified`; a run that requires no attested identity proceeds with the marker. Local development is not blocked, but a consequential step is: the L1 identity gate fails closed, by design.
+
+**Amended 2026-10 (#1277).** Two things were wrong in the original text. (1) *"reports `unauthenticated`/`unverified`"* folded two facts into one spelling and let a session that logged in read as anonymous — the enum now has four literals and the word is `unverified`. (2) *"never fail-closed"* was only true of attestation, not of the gate that consumes it. Both are corrected above.
+
+**Verifier resolution is not a startup decision.** The JWKS verifier is resolved at attestation time (`DiscoveryBackedVerifier`), not once during composition: a failed discovery at startup degrades claims *for now*, and the next attestation re-attempts discovery (bounded to one attempt per 30 s per process). A process that outlived an IdP outage recovers without a restart — the alternative was a long-lived server where one failed request in its first second disabled attestation for hours while `rigorix_auth_login` kept reporting success.
 
 ## Alternatives Considered
 

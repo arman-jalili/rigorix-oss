@@ -46,6 +46,42 @@ fn unverified_identity_refuses_flagged_step() {
     );
 }
 
+/// #1277 — the refusal names the recovery that can help. A caller whose claim
+/// is present but unchecked already logged in; `rigorix_auth_login` is the one
+/// action that cannot fix it.
+#[test]
+fn unverified_refusal_names_the_restart_recovery_not_the_login() {
+    let err = check_identity_gate(
+        &[step("registration_add", true)],
+        Some(&ref_with(IdentitySource::Unverified)),
+    )
+    .unwrap_err();
+    let rendered = err.to_string();
+    assert!(
+        rendered.contains("unverified"),
+        "the refusal must use the same word as the status: {rendered}"
+    );
+    assert!(
+        rendered.contains("restart the MCP server") && rendered.contains("RIGORIX_IDP_ISSUER"),
+        "the refusal must name the real recovery: {rendered}"
+    );
+    assert!(
+        !rendered.contains("rigorix_auth_login"),
+        "the refusal must not point at the action that cannot help: {rendered}"
+    );
+}
+
+/// The anonymous case keeps the login guidance — that is the recovery there.
+#[test]
+fn unauthenticated_refusal_keeps_the_login_recovery() {
+    let err = check_identity_gate(&[step("registration_remove", true)], None).unwrap_err();
+    let rendered = err.to_string();
+    assert!(
+        rendered.contains("unauthenticated") && rendered.contains("rigorix_auth_login"),
+        "unexpected refusal text: {rendered}"
+    );
+}
+
 #[test]
 fn attested_identity_allows_flagged_step() {
     for src in [IdentitySource::IdpToken, IdentitySource::LocalPrincipal] {

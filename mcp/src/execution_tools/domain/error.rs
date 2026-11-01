@@ -127,16 +127,35 @@ pub enum EngineFacadeError {
 
     /// A step declares `require_identity = true` but the caller has no
     /// attested identity. Refused at plan time; the native API maps this to
-    /// `identity_required` (ADR-0001 D6).
-    #[error(
-        "Step '{step}' requires an attested identity but the caller is {status} — run rigorix_auth_login (or execute as a local principal) first"
-    )]
+    /// `identity_required` (ADR-0001 D6). The recovery sentence follows the
+    /// status (#1277): `unverified` names the restart/issuer fix, because the
+    /// caller already logged in.
+    #[error("{}", identity_required_message(.step, .status))]
     IdentityRequired {
         /// Name of the step that requires an attested identity.
         step: String,
         /// Identity status at refusal time ("unauthenticated" / "unverified").
         status: String,
     },
+}
+
+/// The refusal's recovery sentence, chosen by the identity status.
+///
+/// Mirrors `rigorix_engine::orchestrator::domain::error` verbatim so the OSS
+/// surface and the native API print one message for one fact (#1277).
+fn identity_required_message(step: &str, status: &str) -> String {
+    if status == "unverified" {
+        format!(
+            "Step '{step}' requires an attested identity but the caller is unverified — the claim is \
+             present and this process could not verify it (the IdP was unreachable when the server \
+             started): restart the MCP server once the IdP answers, or fix RIGORIX_IDP_ISSUER"
+        )
+    } else {
+        format!(
+            "Step '{step}' requires an attested identity but the caller is unauthenticated — run \
+             rigorix_auth_login (or execute as a local principal) first"
+        )
+    }
 }
 
 // ---------------------------------------------------------------------------

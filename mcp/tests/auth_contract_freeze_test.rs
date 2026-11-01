@@ -184,6 +184,13 @@ fn test_token_status_serde_literals() {
         serde_json::to_string(&TokenStatus::Expired).unwrap(),
         "\"expired\""
     );
+    // #1277 — the fourth literal: credential material present, cannot be checked.
+    assert_eq!(TokenStatus::Unverified.to_string(), "unverified");
+    assert_eq!(
+        serde_json::to_string(&TokenStatus::Unverified).unwrap(),
+        "\"unverified\""
+    );
+    assert!(!TokenStatus::Unverified.is_authenticated());
     assert!(TokenStatus::Authenticated.is_authenticated());
     assert!(!TokenStatus::Unauthenticated.is_authenticated());
 }
