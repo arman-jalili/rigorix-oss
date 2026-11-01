@@ -1,3 +1,25 @@
+## [2026-10-31] — ADR-020 is Proposed, not accepted
+
+### Changed
+- **ADR-020 revised after review and demoted to Proposed (not scheduled).** Four objections were
+  accepted and one claim of the ADR corrected:
+  - **Consumption is not atomic.** The ADR now specifies a consume protocol (D6): claim before
+    dispatch, re-fold, proceed only if your `seq` is the first claim; release on a retryable failure;
+    lease expiry fails closed. The review also established that **today's design has the same gap and
+    worse** — `consume_on_terminal` runs after the outcome and swallows a `ConsumptionReplay` as a
+    warning, so a double dispatch is recorded nowhere (#1263).
+  - **Tail deletion un-spends the most recent approval.** The chain alone cannot see it, so D5 now
+    keeps a **sealed head** as well: the chain detects interior tampering without a key, the head
+    detects truncation. The empty-`$HOME` case is now an explicit non-guarantee and a filed defect
+    (#1264).
+  - **D7 conflicted with the identity contract.** Reduced to "the frame carries an opaque approver
+    handle"; the pseudonym/erasure decision moves to ADR-021 with the legal question undecided.
+  - **`rolled_back` re-armed spent approvals.** Now an annotation only; re-use requires a new
+    `decided` event with a fresh nonce.
+  - One file with framed, CRC-checked appends replaces one-file-per-event (n opens → one); a bench and
+    a measured checkpoint trigger replace "no regression"; shared conformance vectors for the two chain
+    verifiers; and the supported filesystem set is stated, with `doctor` refusing anything else.
+
 ## [2026-10-31] — the approval store becomes a chained log (ADR-020)
 
 ### Decided
