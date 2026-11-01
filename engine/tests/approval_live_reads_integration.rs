@@ -146,7 +146,9 @@ async fn the_consumption_marker_records_the_settling_run_and_attempt() {
         .await
         .expect("consume with attribution");
     assert_eq!(
-        repo.consumption_settlement(record.node_id).await.unwrap(),
+        repo.consumption_settlement(record.node_id, record.nonce)
+            .await
+            .unwrap(),
         Some(settlement)
     );
 
@@ -162,7 +164,9 @@ async fn the_consumption_marker_records_the_settling_run_and_attempt() {
         .expect_err("a different settlement is a replay");
     assert!(matches!(replay, ApprovalError::ConsumptionReplay { .. }));
     assert_eq!(
-        repo.consumption_settlement(record.node_id).await.unwrap(),
+        repo.consumption_settlement(record.node_id, record.nonce)
+            .await
+            .unwrap(),
         Some(settlement),
         "the first settlement stays attributed"
     );
@@ -273,4 +277,43 @@ async fn a_restored_pending_record_is_the_rollback_refusal() {
             ref step_name,
         } if node_id == record.node_id && step_name == "commit_cost"
     ));
+}
+
+/// #1272: doctor needs the attributed/unattributed split, not a bare count.
+#[tokio::test]
+async fn markers_split_by_whether_they_name_a_settlement() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("consumed.json");
+    let repo = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(RUN_KEY),
+        Some(&ledger),
+    )
+    .expect("open");
+
+    let mut attributed = sample(Uuid::new_v4());
+    attributed.status = ApprovalStatus::Consumed;
+    repo.save_with_settlement(
+        &attributed,
+        ConsumptionSettlement {
+            dag_id: Uuid::new_v4(),
+            node_id: attributed.node_id,
+            attempt: 1,
+        },
+    )
+    .await
+    .expect("attributed marker");
+
+    let mut unattributed = sample(Uuid::new_v4());
+    unattributed.status = ApprovalStatus::Consumed;
+    repo.save(&unattributed).await.expect("legacy marker");
+
+    let split = repo
+        .consumption_marker_attribution()
+        .await
+        .expect("attribution");
+    assert_eq!(split.settlements_known, 1);
+    assert_eq!(split.settlements_unknown, 1);
+    assert_eq!(repo.consumption_marker_count().await.unwrap(), 2);
 }

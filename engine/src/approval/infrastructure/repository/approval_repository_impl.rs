@@ -25,7 +25,7 @@ use uuid::Uuid;
 use crate::approval::domain::{
     ApprovalError, ApprovalRecord, ApprovalStatus, ConsumptionSettlement,
 };
-use crate::approval::infrastructure::repository::LedgerMigration;
+use crate::approval::infrastructure::repository::{ConsumptionMarkerAttribution, LedgerMigration};
 
 /// One recorded terminal transition, kept outside the store file (#1241).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -847,16 +847,18 @@ impl crate::approval::infrastructure::repository::ApprovalRepository
     async fn consumption_settlement(
         &self,
         node_id: Uuid,
+        nonce: Uuid,
     ) -> Result<Option<ConsumptionSettlement>, ApprovalError> {
         if self.consumption_path.is_none() {
             return Ok(None);
         }
         let snapshot = self.read_snapshot()?;
+        // The marker key already encodes the approval's identity. Recency is
+        // not identity: a second host, a restored ledger, or an out-of-order
+        // replay can write an older approval's marker later (#1271).
         Ok(snapshot
             .consumed
-            .values()
-            .filter(|marker| marker.node_id == node_id)
-            .max_by_key(|marker| marker.recorded_at)
+            .get(&marker_key(node_id, nonce))
             .and_then(|marker| match (marker.dag_id, marker.attempt) {
                 (Some(dag_id), Some(attempt)) => Some(ConsumptionSettlement {
                     dag_id,
@@ -917,6 +919,24 @@ impl crate::approval::infrastructure::repository::ApprovalRepository
             return Ok(0);
         }
         Ok(self.read_snapshot()?.consumed.len())
+    }
+
+    async fn consumption_marker_attribution(
+        &self,
+    ) -> Result<ConsumptionMarkerAttribution, ApprovalError> {
+        if self.consumption_path.is_none() {
+            return Ok(ConsumptionMarkerAttribution::default());
+        }
+        let snapshot = self.read_snapshot()?;
+        let settlements_known = snapshot
+            .consumed
+            .values()
+            .filter(|marker| marker.dag_id.is_some() && marker.attempt.is_some())
+            .count();
+        Ok(ConsumptionMarkerAttribution {
+            settlements_known,
+            settlements_unknown: snapshot.consumed.len().saturating_sub(settlements_known),
+        })
     }
 
     async fn migrate_consumption_ledger(&self) -> Result<LedgerMigration, ApprovalError> {

@@ -68,6 +68,19 @@ pub enum LedgerMigration {
     },
 }
 
+/// How the consumption ledger's markers divide by settlement attribution.
+///
+/// `settlements_known` markers can classify a re-settlement as benign when it
+/// names the same settlement. `settlements_unknown` markers (pre-#1268 or
+/// adopted by migration) always classify as another settlement (#1272).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ConsumptionMarkerAttribution {
+    /// Markers carrying both `dag_id` and `attempt`.
+    pub settlements_known: usize,
+    /// Markers carrying no settlement.
+    pub settlements_unknown: usize,
+}
+
 /// Durable repository for approval records.
 #[async_trait]
 pub trait ApprovalRepository: Send + Sync {
@@ -94,6 +107,7 @@ pub trait ApprovalRepository: Send + Sync {
     async fn consumption_settlement(
         &self,
         _node_id: Uuid,
+        _nonce: Uuid,
     ) -> Result<Option<ConsumptionSettlement>, ApprovalError> {
         Ok(None)
     }
@@ -121,6 +135,16 @@ pub trait ApprovalRepository: Send + Sync {
     /// `doctor` distinguishes those by the path's existence (#1244).
     async fn consumption_marker_count(&self) -> Result<usize, ApprovalError> {
         Ok(0)
+    }
+
+    /// The attributed/unattributed split of the consumption markers.
+    ///
+    /// A count alone is not comparable: `verified, N marker(s)` covers two
+    /// populations that behave differently on the next settlement (#1272).
+    async fn consumption_marker_attribution(
+        &self,
+    ) -> Result<ConsumptionMarkerAttribution, ApprovalError> {
+        Ok(ConsumptionMarkerAttribution::default())
     }
 
     /// Explicitly migrate a pre-#1244 bare-map ledger to the sealed form.

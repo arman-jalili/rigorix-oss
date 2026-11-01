@@ -290,13 +290,26 @@ pub async fn probe(repo_root: &Path) -> DoctorReport {
                         } else {
                             "outside agent-writable workspace"
                         };
-                        let markers = setup
+                        let attribution = setup
                             .repository
-                            .consumption_marker_count()
+                            .consumption_marker_attribution()
                             .await
-                            .unwrap_or(0);
+                            .unwrap_or_default();
+                        let markers =
+                            attribution.settlements_known + attribution.settlements_unknown;
                         let ledger_state = if setup.consumption_ledger_path.is_file() {
-                            format!("verified, {markers} marker(s)")
+                            let known = attribution.settlements_known;
+                            let unknown = attribution.settlements_unknown;
+                            if unknown == 0 {
+                                format!(
+                                    "verified, {markers} marker(s): {known} attributed, 0 without a settlement"
+                                )
+                            } else {
+                                format!(
+                                    "verified, {markers} marker(s): {known} attributed, {unknown} without a settlement; \
+                                     the {unknown} unattributed marker(s) are a capability gap — a re-settlement named by one is refused"
+                                )
+                            }
                         } else {
                             "absent; no terminal records to check".to_string()
                         };

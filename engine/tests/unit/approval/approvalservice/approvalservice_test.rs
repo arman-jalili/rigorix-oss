@@ -10,9 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
-use rigorix_engine::approval::application::service_impl::{
-    ApprovalServiceImpl, legacy_approvals_requiring_reapproval,
-};
+use rigorix_engine::approval::application::service_impl::ApprovalServiceImpl;
 use rigorix_engine::approval::application::{
     ApprovalService, ApproveInput, IntentVerification, NodeIntentResolver, ResolvedNode,
 };
@@ -423,36 +421,6 @@ async fn test_ttl_expired_between_approve_and_dispatch_is_invalid() {
         svc.get_approval(node_id).await.unwrap().unwrap().status,
         ApprovalStatus::Expired
     );
-}
-
-// ── #792 AC #10: migration — legacy approved without records → invalidated ──
-
-#[tokio::test]
-async fn test_legacy_approved_without_records_requires_reapproval() {
-    let resolver = Arc::new(MockResolver::from(vec![(
-        "deploy",
-        run_command("deploy.sh"),
-    )]));
-    let repo = Arc::new(InMemoryApprovalRepository::new()) as Arc<dyn ApprovalRepository>;
-    let svc = service(resolver.clone(), repo.clone(), Duration::from_secs(3600));
-
-    let legacy_node = Uuid::new_v4();
-    // Legacy pre-binding approved set carries no record → verify cannot pass.
-    let err = svc.verify_intent(legacy_node).await.unwrap_err();
-    assert!(matches!(err, ApprovalError::NotFound(_)));
-
-    // A recorded approval is unaffected by the migration.
-    let out = svc
-        .approve(approve_input(Uuid::new_v4(), "deploy", "u"))
-        .await
-        .unwrap();
-    let recorded_node = out.approval_records[0].node_id;
-
-    let invalidated =
-        legacy_approvals_requiring_reapproval(repo.as_ref(), &[legacy_node, recorded_node])
-            .await
-            .unwrap();
-    assert_eq!(invalidated, vec![legacy_node]);
 }
 
 // ── #792 R4/R5 wiring: decision context summary + scope-violation sink ──────

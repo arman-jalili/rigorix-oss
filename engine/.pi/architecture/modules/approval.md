@@ -4,7 +4,7 @@
 Canonical Reference: .pi/architecture/modules/approval.md
 Rationale: Bind human approval to the exact resolved execution intent — replay protection at the step level, first-class signed evidence, and effect-scope verification
 Blueprint Source: Requirements v1 — 2026-08-28 (approved, NOT YET BUILT)
-Last Updated: 2026-11-01 — consumption attribution comes from the ledger marker, not process memory; MAC material derives from the record; reads and writes re-read both files under locks; a refused consumption is run evidence; a configured-but-absent ledger refuses terminal records (#1240, #1241, #1244, #1253, #1254, #1255, #1256, #1261, #1263, #1264, #1267)
+Last Updated: 2026-11-01 — settlement lookup is keyed by the approval nonce and doctor reports attributed versus unattributed markers; consumption attribution comes from the ledger marker, not process memory; MAC material derives from the record; reads and writes re-read both files under locks; a refused consumption is run evidence (#1240, #1241, #1244, #1253, #1254, #1255, #1256, #1261, #1263, #1264, #1267, #1271, #1272)
 -->
 
 ## Overview
@@ -597,7 +597,11 @@ records there is nothing to check, so the absent ledger is allowed. A store with
 no ledger configured at all has no second witness and is also allowed; the two
 states are distinguished rather than collapsed. `doctor` reports an absent ledger
 beside terminal records as a misconfiguration with the path and the unchecked
-count.
+count. When the ledger is present, `doctor` also splits its markers into those
+that name a settlement and those that do not (#1272). A count alone hid two
+populations: unattributed markers (pre-#1268, or adopted by migration) always
+classify a re-settlement as another settlement, so they are reported as a
+capability gap, not folded into `verified`.
 
 ### Two writers cannot erase each other (#1254)
 
@@ -642,11 +646,15 @@ that was refused, not only in the ledger.
 `NotFound` stays benign. The benign case is decided from the **ledger**, not
 process memory (#1267): each marker carries the consuming settlement
 `(dag_id, node_id, attempt)`, and `AlreadyConsumed` (or any other refusal) is
-benign only when the latest marker for the node names the settlement being
-recorded now. A second session in the same process, a second process, and a
-later run that reuses a node id all classify from the same artifact and produce
-the same evidence. The process-wide `consumed_here` set is gone. Legacy markers
-without attribution are omitted fields and classify as "another settlement" —
+benign only when the marker for the approval's own **`(node_id, nonce)`** names
+the settlement being recorded now. The nonce, not recency, is the key: a
+re-approval leaves the old marker behind, and a second host with a clock ahead,
+a restored ledger, or an out-of-order replay can write the old marker later
+(#1271). A nonce the store no longer holds resolves to `None`, which is a
+refusal. A second session in the same process, a second process, and a later run
+that reuses a node id all classify from the same artifact and produce the same
+evidence. The process-wide `consumed_here` set is gone. Legacy markers without
+attribution are omitted fields and classify as "another settlement" —
 fail-safe. The `NodeFailed` event carries the real 1-indexed attempt.
 The first consumption and its single marker are untouched.
 
