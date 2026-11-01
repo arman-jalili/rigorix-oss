@@ -17,6 +17,10 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ## [Unreleased]
 
+_No unreleased changes._
+
+## [1.12.0] - 2026-11-01
+
 ### Changed
 
 - Approval refs state `intent_hash_provenance` (`derived` / `asserted`), required in the envelope and SDK schema. The OSS engine emits `derived`; an asserted hash is RS-013 attribution and does not satisfy RS-011 (#1243).

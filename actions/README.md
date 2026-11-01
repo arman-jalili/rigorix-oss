@@ -5,14 +5,14 @@ workflow events onto `rigorix-engine` services, formats the results as
 GitHub-native output, and enforces policy against the diff under review.
 
 ```yaml
-- uses: arman-jalili/rigorix-oss/actions@v1.11.0
+- uses: arman-jalili/rigorix-oss/actions@v1.12.0
   with:
     mode: governance
 ```
 
 > **Versioning note.** `rigorix-actions` is on the `engine` / `mcp` / `cli` release
 > train and shares its version: the adapter always matches the engine it wraps. It
-> is currently **1.11.0**. The Docker image behind `action.yml` is rebuilt on every
+> is currently **1.12.0**. The Docker image behind `action.yml` is rebuilt on every
 > push, so the crate and the image no longer carry different versions.
 
 ---
