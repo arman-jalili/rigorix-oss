@@ -7,7 +7,7 @@ guardian_issue:
   module: "approval"
   status: planned
   priority: medium
-  tracking_issue: 0
+  tracking_issue: 1272
   dependencies:
     - "#1267 — markers gained the settlement"
     - "#1269 — the legacy marker is now a tested shape"

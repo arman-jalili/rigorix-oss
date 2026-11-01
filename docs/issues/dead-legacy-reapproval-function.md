@@ -7,7 +7,7 @@ guardian_issue:
   module: "approval"
   status: planned
   priority: low
-  tracking_issue: 0
+  tracking_issue: 1273
   dependencies:
     - "ADR-011 — the approval binding"
 
