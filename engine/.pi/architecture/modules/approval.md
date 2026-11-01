@@ -4,7 +4,7 @@
 Canonical Reference: .pi/architecture/modules/approval.md
 Rationale: Bind human approval to the exact resolved execution intent — replay protection at the step level, first-class signed evidence, and effect-scope verification
 Blueprint Source: Requirements v1 — 2026-08-28 (approved, NOT YET BUILT)
-Last Updated: 2026-10-31 — MAC material derives from the record; reads and writes re-read both files under locks; a configured-but-absent ledger refuses terminal records; the ledger is authenticated, checked both ways, reports populations, and treats migration absence as a no-op (#1240, #1241, #1244, #1253, #1254, #1255, #1256, #1261, #1264)
+Last Updated: 2026-10-31 — MAC material derives from the record; reads and writes re-read both files under locks; a refused consumption is run evidence; a configured-but-absent ledger refuses terminal records; the ledger is authenticated, checked both ways, reports populations, and treats migration absence as a no-op (#1240, #1241, #1244, #1253, #1254, #1255, #1256, #1261, #1263, #1264)
 -->
 
 ## Overview
@@ -627,6 +627,22 @@ same `(node_id, nonce)` is the same approval, so a second terminal write is
 `recorded_at` is left untouched: two consumptions cannot be made to look like
 one idempotent update. A restored pending record with a marker remains
 `RecordRollback`.
+
+### A refused consumption is run evidence (#1263)
+
+Consumption happens after the terminal outcome, so a replay is discovered after
+the second dispatch. A warning on the log is not evidence: the run's record
+would still say the node completed, and the envelope would carry no refusal. When
+`consume_on_terminal` gets a non-benign refusal it publishes a named
+`NodeFailed` event carrying `approval consumption refused: …`, marks the node's
+result and live state failed, moves it from completed to failed, and skips its
+dependents. `ApprovalError::ConsumptionReplay` is therefore visible in the run
+that was refused, not only in the ledger.
+
+`NotFound` stays benign. `AlreadyConsumed` is benign only when **this executor**
+consumed that approval; the executor records its own successes, so a second
+decision's `AlreadyConsumed` is treated as the refusal it is. The first
+consumption and the single ledger marker are untouched.
 
 ### One run key (#1238)
 

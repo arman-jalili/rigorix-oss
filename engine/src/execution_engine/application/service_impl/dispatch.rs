@@ -2,6 +2,7 @@
 //! `ParallelExecutionServiceImpl` (extracted from `service_impl.rs`, #914).
 //!
 //! @canonical .pi/architecture/modules/execution-engine.md#dispatch
+//! Canonical Reference: .pi/architecture/modules/execution-engine.md#dispatch
 //! Implements: ADR-019 effect-commitment write-ahead/settle in `run_dispatch_loop`
 //! Issue: #1129
 
@@ -167,7 +168,7 @@ impl ParallelExecutionServiceImpl {
                 detail: format!("Task panicked: {e}"),
             })?;
 
-            let success = task_result.success;
+            let mut success = task_result.success;
             if success {
                 completed_count += 1;
             } else {
@@ -247,17 +248,56 @@ impl ParallelExecutionServiceImpl {
 
             // ADR-011 R3: consume the single-use approval on terminal outcome
             // (success, skipped, or exhausted failure after ≥1 dispatch).
+            let mut consumption_refusal = None;
             if graph
                 .get_node(node_id)
                 .map(|n| n.requires_approval)
                 .unwrap_or(false)
             {
-                self.consume_on_terminal(node_id).await;
+                consumption_refusal = self.consume_on_terminal(dag_id, node_id).await;
                 if let Some(baseline) = &scope_baseline
                     && let Some(repo) = &config.approval_repo_path
                 {
                     self.effect_scope_check(dag_id, node_id, repo, baseline)
                         .await;
+                }
+            }
+
+            // #1263: a refused consumption is a failed terminal settlement, not
+            // a log line. The node's result and live state become failures so
+            // the run's record and envelope cannot report it as completed.
+            if let Some(message) = consumption_refusal {
+                if success {
+                    completed_count -= 1;
+                    failed_count += 1;
+                    success = false;
+                }
+                if let Some(result) = node_results.get_mut(&node_id) {
+                    result.success = false;
+                    result.failure_type = Some("approval_consumption_refused".to_string());
+                    result.error = Some(message.clone());
+                }
+                let failed_state = {
+                    let mut sessions =
+                        self.sessions
+                            .lock()
+                            .map_err(|e| ExecutionError::InternalError {
+                                detail: format!("Lock error: {e}"),
+                            })?;
+                    if let Some(session) = sessions.get_mut(&dag_id)
+                        && let Some(state) = session.node_states.get_mut(&node_id)
+                    {
+                        state.mark_failed(
+                            "approval_consumption_refused".to_string(),
+                            message.clone(),
+                        );
+                        Some(state.clone())
+                    } else {
+                        None
+                    }
+                };
+                if let Some(state) = failed_state {
+                    self.notify_progress(dag_id, node_id, state, total_nodes);
                 }
             }
 
@@ -561,15 +601,48 @@ impl ParallelExecutionServiceImpl {
 
     /// Single-use settlement: consume the approval once the node reaches a
     /// terminal outcome. Non-terminal failures never reach this point.
-    pub(super) async fn consume_on_terminal(&self, node_id: Uuid) {
+    pub(super) async fn consume_on_terminal(&self, dag_id: Uuid, node_id: Uuid) -> Option<String> {
         let Some(binding) = &self.approval_binding else {
-            return;
+            return None;
         };
         match binding.service.consume(node_id).await {
-            Ok(()) => tracing::info!(node_id = %node_id, "approval consumed (terminal outcome)"),
-            Err(ApprovalServiceError::NotFound(_) | ApprovalServiceError::AlreadyConsumed(_)) => {}
+            Ok(()) => {
+                if let Ok(mut consumed) = self.consumed_here.lock() {
+                    consumed.insert(node_id);
+                }
+                tracing::info!(node_id = %node_id, "approval consumed (terminal outcome)");
+                None
+            }
+            // Benign: the same decision consuming twice in one run. If this
+            // instance never consumed it, another decision did (#1263).
+            Err(ApprovalServiceError::NotFound(_)) => None,
+            Err(ApprovalServiceError::AlreadyConsumed(_))
+                if self
+                    .consumed_here
+                    .lock()
+                    .map(|consumed| consumed.contains(&node_id))
+                    .unwrap_or(false) =>
+            {
+                None
+            }
             Err(e) => {
-                tracing::warn!(node_id = %node_id, error = %e, "consume failed (non-fatal)")
+                // #1263: a refused consumption is evidence on this run. The
+                // node is failed, not completed, and the event is named.
+                let message = format!("approval consumption refused: {e}");
+                tracing::error!(
+                    node_id = %node_id,
+                    error = %e,
+                    "approval consumption refused — recording it on the run"
+                );
+                self.publish_event(ExecutionEvent::NodeFailed {
+                    execution_id: dag_id,
+                    node_id: node_id.to_string(),
+                    error: message.clone(),
+                    attempt: 1,
+                    timestamp: chrono::Utc::now(),
+                })
+                .await;
+                Some(message)
             }
         }
     }
@@ -1471,5 +1544,90 @@ mod tests {
                 "{failure_type:?}/{error:?} must be ambiguous"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod consumption_refusal_tests {
+    use super::*;
+    use crate::approval::application::ApprovalService;
+    use crate::approval::application::dto::{ApproveInput, ApproveOutput};
+    use crate::approval::domain::{ApprovalError, ApprovalRecord, ScopeViolation};
+    use crate::event_system::application::dto::DrainPersistedInput;
+    use crate::event_system::application::event_bus_service_impl::EventBusServiceImpl;
+
+    struct RefusesSecondConsumption;
+
+    #[async_trait::async_trait]
+    impl ApprovalService for RefusesSecondConsumption {
+        async fn approve(&self, _: ApproveInput) -> Result<ApproveOutput, ApprovalError> {
+            Err(ApprovalError::Internal("not used".into()))
+        }
+
+        async fn verify_intent(&self, _: Uuid) -> Result<IntentVerification, ApprovalError> {
+            Ok(IntentVerification::Matched)
+        }
+
+        async fn consume(&self, node_id: Uuid) -> Result<(), ApprovalError> {
+            Err(ApprovalError::ConsumptionReplay {
+                node_id,
+                step_name: "commit_cost".into(),
+                ledger: "/home/u/.rigorix/approval-consumption.json".into(),
+            })
+        }
+
+        async fn record_scope_violation(&self, _: ScopeViolation) -> Result<(), ApprovalError> {
+            Ok(())
+        }
+
+        async fn get_approval(&self, _: Uuid) -> Result<Option<ApprovalRecord>, ApprovalError> {
+            Ok(None)
+        }
+    }
+
+    #[tokio::test]
+    async fn a_refused_consumption_publishes_node_failed_evidence() {
+        let bus = Arc::new(EventBusServiceImpl::default());
+        let executor = ParallelExecutionServiceImpl::new(
+            ParallelExecutorConfig::default(),
+            Box::new(RetryEvaluationServiceImpl::new()),
+            bus.clone(),
+        )
+        .with_approval_service(Arc::new(RefusesSecondConsumption));
+        let dag_id = Uuid::new_v4();
+        let node_id = Uuid::new_v4();
+
+        let message = executor
+            .consume_on_terminal(dag_id, node_id)
+            .await
+            .expect("a refused consumption is not silent");
+        assert!(
+            message.contains("approval consumption refused"),
+            "{message}"
+        );
+        assert!(message.contains("approval-consumption"), "{message}");
+
+        let drained = bus
+            .drain_persisted(DrainPersistedInput { clear: true })
+            .await
+            .expect("drain");
+        let failed = drained
+            .events
+            .iter()
+            .find_map(|persisted| match &persisted.event {
+                ExecutionEvent::NodeFailed {
+                    node_id: failed,
+                    error,
+                    ..
+                } => Some((failed, error)),
+                _ => None,
+            })
+            .expect("the run carries a named failure event");
+        assert_eq!(failed.0, &node_id.to_string());
+        assert!(
+            failed.1.contains("approval consumption refused"),
+            "{}",
+            failed.1
+        );
     }
 }
