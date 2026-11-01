@@ -8,19 +8,25 @@
 //! recorded outside the store, and a pending record whose nonce is already
 //! recorded terminal is refused.
 
+use std::collections::BTreeMap;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::{Duration as ChronoDuration, Utc};
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
+use hmac::{Hmac, KeyInit, Mac};
 use rigorix_engine::approval::application::{
     ApprovalService, ApprovalServiceImpl, IntentVerification, NodeIntentResolver, ResolvedNode,
 };
 use rigorix_engine::approval::domain::{
-    ApprovalError, ApprovalRecord, ApprovalStatus, DecisionContext, IntentHash,
+    ApprovalError, ApprovalRecord, ApprovalStatus, ConsumptionSettlement, DecisionContext,
+    IntentHash,
 };
 use rigorix_engine::approval::infrastructure::repository::{
     ApprovalRepository, FileBackedApprovalRepository, LedgerMigration,
 };
+use serde::Serialize;
+use sha2::Sha256;
 use uuid::Uuid;
 
 const RUN_KEY: &[u8] = b"approval-rollback-test-key";
@@ -49,6 +55,45 @@ fn sample_record(node_id: Uuid) -> ApprovalRecord {
         approver_scope: vec![],
         mac: None,
     }
+}
+
+/// The pre-#1268 on-disk marker: four fields, declaration order.
+#[derive(Serialize)]
+struct LegacyMarker {
+    node_id: Uuid,
+    nonce: Uuid,
+    status: ApprovalStatus,
+    recorded_at: DateTime<Utc>,
+}
+
+#[derive(Serialize)]
+struct LegacyLedger {
+    version: u8,
+    entries: BTreeMap<String, LegacyMarker>,
+    mac: String,
+}
+
+/// Write a ledger exactly as a release before #1268 did: markers without
+/// `dag_id`/`attempt`, MAC over `(1u8, entries)`. Built from local structs so
+/// the fixture does not depend on today's serializer.
+fn write_legacy_ledger(path: &Path, markers: Vec<LegacyMarker>) {
+    let entries: BTreeMap<_, _> = markers
+        .into_iter()
+        .map(|marker| (format!("{}:{}", marker.node_id, marker.nonce), marker))
+        .collect();
+    let bytes = serde_json::to_vec(&(1u8, &entries)).expect("legacy MAC material");
+    let mut mac = Hmac::<Sha256>::new_from_slice(RUN_KEY).expect("key");
+    mac.update(&bytes);
+    let file = LegacyLedger {
+        version: 1,
+        entries,
+        mac: hex::encode(mac.finalize().into_bytes()),
+    };
+    std::fs::write(
+        path,
+        serde_json::to_string_pretty(&file).expect("legacy ledger"),
+    )
+    .expect("write legacy ledger");
 }
 
 struct NoIntent;
@@ -615,5 +660,137 @@ async fn migration_adopts_n_of_n_when_the_ledger_covers_every_terminal_record() 
             store_present: true,
             store_path: store.clone(),
         }
+    );
+}
+
+/// #1269: a ledger written before markers carried settlement still opens and
+/// still refuses a second consumption. A non-skipped field or a version bump
+/// would turn this into `ConsumptionLedgerIntegrity` at a customer's site.
+#[tokio::test]
+async fn a_pre_1268_ledger_still_verifies_and_refuses_consumption() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("consumed.json");
+    let node_id = Uuid::new_v4();
+
+    let repo = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(RUN_KEY),
+        Some(&ledger),
+    )
+    .expect("open");
+    let mut consumed = sample_record(node_id);
+    consumed.status = ApprovalStatus::Consumed;
+    repo.save(&consumed).await.expect("save consumed");
+    drop(repo);
+
+    // Replace the ledger with the exact pre-change shape.
+    write_legacy_ledger(
+        &ledger,
+        vec![LegacyMarker {
+            node_id,
+            nonce: consumed.nonce,
+            status: ApprovalStatus::Consumed,
+            recorded_at: Utc::now(),
+        }],
+    );
+    let raw: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&ledger).expect("read")).expect("json");
+    let entry = &raw["entries"][format!("{node_id}:{}", consumed.nonce)];
+    assert_eq!(
+        entry.as_object().expect("marker").len(),
+        4,
+        "the fixture must stay a four-field marker: {entry}"
+    );
+    assert!(entry.get("dag_id").is_none());
+    assert!(entry.get("attempt").is_none());
+    assert_eq!(raw["version"], 1);
+
+    let reopened = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(RUN_KEY),
+        Some(&ledger),
+    )
+    .expect("a pre-#1268 ledger still verifies");
+
+    let loaded = reopened
+        .load(node_id)
+        .await
+        .expect("legacy ledger loads")
+        .expect("record");
+    assert_eq!(loaded.status, ApprovalStatus::Consumed);
+    assert_eq!(
+        reopened
+            .consumption_settlement(node_id)
+            .await
+            .expect("marker"),
+        None,
+        "a legacy marker carries no settlement"
+    );
+
+    let error = reopened
+        .save(&consumed)
+        .await
+        .expect_err("re-consuming a legacy terminal record is refused");
+    assert!(
+        matches!(error, ApprovalError::ConsumptionReplay { .. }),
+        "{error}"
+    );
+}
+
+/// #1269: an old marker for the same node must not shadow the current
+/// approval's marker when classification asks which settlement recorded it.
+#[tokio::test]
+async fn the_current_nonce_wins_over_an_older_marker_for_the_same_node() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("consumed.json");
+    let node_id = Uuid::new_v4();
+    let old_nonce = Uuid::from_u128(1);
+    let current_nonce = Uuid::from_u128(2);
+
+    let repo = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(RUN_KEY),
+        Some(&ledger),
+    )
+    .expect("open");
+
+    let old_settlement = ConsumptionSettlement {
+        dag_id: Uuid::from_u128(10),
+        node_id,
+        attempt: 1,
+    };
+    let mut old = sample_record(node_id);
+    old.nonce = old_nonce;
+    old.status = ApprovalStatus::Consumed;
+    repo.save_with_settlement(&old, old_settlement)
+        .await
+        .expect("consume the first approval");
+    std::thread::sleep(Duration::from_millis(2));
+
+    // A re-approval for the same node, with a new nonce. The old marker stays.
+    let mut current = sample_record(node_id);
+    current.nonce = current_nonce;
+    repo.save(&current).await.expect("save re-approval");
+    current.status = ApprovalStatus::Consumed;
+    let current_settlement = ConsumptionSettlement {
+        dag_id: Uuid::from_u128(11),
+        node_id,
+        attempt: 1,
+    };
+    repo.save_with_settlement(&current, current_settlement)
+        .await
+        .expect("consume the current approval");
+
+    assert_eq!(
+        repo.consumption_marker_count().await.expect("count"),
+        2,
+        "the old marker is retained"
+    );
+    assert_eq!(
+        repo.consumption_settlement(node_id).await.expect("marker"),
+        Some(current_settlement),
+        "classification must use the marker for the current nonce"
     );
 }
