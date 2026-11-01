@@ -4,7 +4,8 @@
 #
 # Brings up a disposable Postgres, runs the enterprise anchor (its `GET
 # /v1/history` returns the bare signed HistorySlice), seeds a producer's prior
-# evidence, then runs the OSS live E2E (`anchored_wire_live`) which asserts:
+# evidence (an envelope the ENGINE builds and signs — step 5), then runs the OSS
+# live E2E (`anchored_wire_live`) which asserts:
 #   1. valid enterprise-signed slice verifies + deny-class run enforced;
 #   2. anchor down  -> consequential run fails closed;
 #   3. forged slice -> fails closed;
@@ -18,6 +19,9 @@
 #   PG_PORT         host port for Postgres       (default 55432)
 #   ENT_PORT        enterprise HTTP port         (default 3000)
 #   ANCHOR_SCOPE    producer id                  (default local)
+#   AUDIT_ENVELOPE_HMAC_SECRET  envelope key, exported to the enterprise AND the
+#                   seed helper from one variable (default: the enterprise's
+#                   development key, rigorix-dev-envelope-hmac-key)
 #   KEEP=1          leave Postgres + enterprise running on exit
 # =============================================================================
 set -euo pipefail
@@ -31,12 +35,18 @@ ANCHOR_SCOPE="${ANCHOR_SCOPE:-local}"
 KEEP="${KEEP:-0}"
 
 API_KEY_SECRET="${API_KEY_SECRET:-rgx_dev_sk_e2e_secret_value}"
+# The envelope HMAC key, shared by the enterprise (verifier) and the seed
+# helper (signer) from this ONE variable so the two cannot drift (#1278).
+# Default = the enterprise's development key (`DEV_ENVELOPE_HMAC_SECRET`);
+# the control is on in every environment, only the key differs.
+AUDIT_ENVELOPE_HMAC_SECRET="${AUDIT_ENVELOPE_HMAC_SECRET:-rigorix-dev-envelope-hmac-key}"
 # Dev anchor seed [7u8;32] → this public key (enterprise Ed25519AnchorSigner).
 ANCHOR_PUBLIC_KEY="${ANCHOR_PUBLIC_KEY:-ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c}"
 DATABASE_URL="postgres://postgres:postgres@127.0.0.1:${PG_PORT}/rigorix"
 # NOTE: portable mktemp — BSD/macOS requires the XXXXXX template to end the
-# name (a trailing `.log` suffix makes it treat the path as literal).
+# name (a trailing `.log` suffix makes it treat the path as literal).                                                                                
 ENT_LOG="$(mktemp "${TMPDIR:-/tmp}/rigorix-ent.XXXXXX")"
+POST_BODY="$(mktemp "${TMPDIR:-/tmp}/rigorix-seed-post.XXXXXX")"
 
 ENT_PID=""
 cleanup() {
@@ -48,6 +58,7 @@ cleanup() {
     echo "KEEP=1: leaving Postgres ($PG_CONTAINER) and enterprise (pid ${ENT_PID:-?}) running"
   fi
   if [ "$code" -ne 0 ]; then echo "=== enterprise log (tail) ==="; tail -30 "$ENT_LOG" || true; fi
+  rm -f "$POST_BODY"
 }
 trap cleanup EXIT
 
@@ -74,6 +85,7 @@ mkdir -p /tmp/rigorix-e2e-exports
 DATABASE_URL="$DATABASE_URL" \
 DEFAULT_TEAM_ID='00000000-0000-0000-0000-000000000001' \
 EXPORT_DIR=/tmp/rigorix-e2e-exports \
+AUDIT_ENVELOPE_HMAC_SECRET="$AUDIT_ENVELOPE_HMAC_SECRET" \
 PORT="$ENT_PORT" \
 RUST_LOG=info \
 "$ENT_BIN" >"$ENT_LOG" 2>&1 &
@@ -92,58 +104,49 @@ docker cp "$REPO_ROOT/demo/anchor-e2e/seed.sql" "$PG_CONTAINER:/tmp/seed.sql" >/
 docker exec "$PG_CONTAINER" psql -U postgres -d rigorix -f /tmp/seed.sql >/dev/null
 
 echo "==> [5/6] seed producer '${ANCHOR_SCOPE}' prior evidence (genesis sequence 0)"
-ENVELOPE="$(python3 - "$ANCHOR_SCOPE" <<'PY'
-import datetime, json, sys, uuid
-scope = sys.argv[1]
-# The live assertion reads history with `since = now - 24h`, so the prior
-# evidence MUST be timestamped at run time (a hardcoded date goes stale and
-# yields an empty slice after 24h).
-now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-print(json.dumps({
-  "execution_id": str(uuid.uuid4()),
-  "timestamp": now,
-  "template_id": "e2e",
-  "planning_hash": "ab" * 32,
-  "source": "rigorix_cli",
-  "repository": "e2e/repo",
-  "author": "jeff@corp",
-  "total_tokens": 0,
-  "duration_ms": 0,
-  "file_paths": [],
-  "events": [{
-    "event_type": "node_completed",
-    "summary": "registration_remove",
-    "occurred_at": now,
-    "correlation_id": None,
-    "status": "success",
-    "payload": {"step_name": "registration_remove"},
-  }],
-  "signature": None,
-  "evidence_degraded": False,
-  "approval_events": [],
-  "scope_violations": [],
-  "sequence_policy_findings": [],
-  "requirement_findings": [],
-  "producer_id": scope,
-  "sequence": 0,
-  "prev_hash": None,
-  "history_integrity": "local_unanchored",
-}))
-PY
-)"
-curl -fsS -X POST \
+# The envelope is built and signed by the ENGINE (`examples/seed_envelope`):
+# its canonical bytes and its HMAC, timestamped at run time. A hand-written
+# envelope with `"signature": null` was refused by ingest (INVALID_SIGNATURE)
+# and the demo never reached step 6 (#1278).
+if ! ENVELOPE="$(AUDIT_ENVELOPE_HMAC_SECRET="$AUDIT_ENVELOPE_HMAC_SECRET" \
+  PRODUCER_ID="$ANCHOR_SCOPE" \
+  cargo run -q --manifest-path "$REPO_ROOT/Cargo.toml" \
+    -p rigorix-engine --example seed_envelope)"; then
+  echo "ERROR: seed_envelope helper failed — cannot seed prior evidence"
+  exit 1
+fi
+
+# A non-2xx must print the body: it names the contract (INVALID_SIGNATURE,
+# schema mismatch, chain rejection). Discarding it turned a contract error
+# into an unreported curl exit 22.
+HTTP_CODE="$(curl -sS -o "$POST_BODY" -w '%{http_code}' -X POST \
   -H "Authorization: Bearer ${API_KEY_SECRET}" \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: e2e-seed-$(date +%s)" \
   --data "$ENVELOPE" \
-  "http://127.0.0.1:${ENT_PORT}/api/v1/audit/oss-envelope" >/dev/null
+  "http://127.0.0.1:${ENT_PORT}/api/v1/audit/oss-envelope"
+)" || {
+  echo "ERROR: seed POST failed (curl could not reach the enterprise)"
+  cat "$POST_BODY" 2>/dev/null || true
+  exit 1
+}
+case "$HTTP_CODE" in
+  2??) ;;
+  *)
+    echo "ERROR: seed POST rejected — HTTP ${HTTP_CODE}"
+    cat "$POST_BODY"
+    echo
+    exit 1
+    ;;
+esac
 
 echo "==> [6/6] OSS live E2E (anchored_wire_live)"
 RIGORIX_E2E_ANCHOR_URL="http://127.0.0.1:${ENT_PORT}" \
 RIGORIX_E2E_ANCHOR_PUBLIC_KEY="$ANCHOR_PUBLIC_KEY" \
 RIGORIX_E2E_ANCHOR_TOKEN="$API_KEY_SECRET" \
 RIGORIX_E2E_ANCHOR_SCOPE="$ANCHOR_SCOPE" \
-cargo test -p rigorix-engine --test anchored_wire_live -- --nocapture
+cargo test --manifest-path "$REPO_ROOT/Cargo.toml" \
+  -p rigorix-engine --test anchored_wire_live -- --nocapture
 
 echo
 echo "✅ anchor E2E: all four outcomes verified against the live enterprise"

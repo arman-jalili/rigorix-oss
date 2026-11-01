@@ -53,7 +53,31 @@ docker compose -f demo/anchor-e2e/docker-compose.yml down -v
 ```
 
 `run.sh` env knobs: `ENTERPRISE_DIR`, `PG_PORT`, `ENT_PORT`, `ANCHOR_SCOPE`,
-`KEEP=1`.
+`AUDIT_ENVELOPE_HMAC_SECRET`, `KEEP=1`.
+
+## The seed envelope (#1278)
+
+Step 5 seeds a producer's genesis evidence, because the four outcomes are about
+what the engine does with *prior* history. The envelope is built and signed by
+the engine itself:
+
+```bash
+AUDIT_ENVELOPE_HMAC_SECRET=<the key ingest verifies with> PRODUCER_ID=local \
+  cargo run -q -p rigorix-engine --example seed_envelope   # prints signed JSON
+```
+
+`run.sh` exports **one** `AUDIT_ENVELOPE_HMAC_SECRET` to both the enterprise
+(verifier) and the helper (signer); the development default is the
+enterprise's `DEV_ENVELOPE_HMAC_SECRET`
+(`rigorix-dev-envelope-hmac-key`). A non-2xx from the seed POST prints the
+response body before exiting — the body is what names the contract
+(`INVALID_SIGNATURE`, schema mismatch, chain rejection).
+
+Why not a heredoc: the canonical envelope bytes are the contract. A second
+implementation of them in shell (or Python) is a copy that drifts, and the
+drift shows up as `INVALID_SIGNATURE` on somebody else's machine. This demo
+used to post `"signature": null`; ingest refused it and `curl -fsS` dropped the
+body, so the script stopped at step 5 and never reached the four outcomes.
 
 ## DEV/TEST ONLY
 
