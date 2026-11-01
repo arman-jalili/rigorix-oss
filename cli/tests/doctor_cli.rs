@@ -250,8 +250,8 @@ fn doctor_reports_the_approval_store_and_key_agreement() {
         "doctor must name the consumption ledger: {stdout}"
     );
     assert!(
-        stdout.contains("no history yet"),
-        "a first run has no ledger history and must say so: {stdout}"
+        stdout.contains("absent; no terminal records to check"),
+        "a first run must name the absent ledger and the empty check: {stdout}"
     );
     assert!(stdout.contains("keys agree"), "{stdout}");
     assert!(
@@ -506,4 +506,73 @@ fn a_corrupt_or_rekeyed_ledger_still_fails_and_names_the_ledger() {
     );
     assert!(stderr.contains("MAC mismatch"), "{stderr}");
     assert!(stderr.contains("rekeyed.json"), "{stderr}");
+}
+
+#[tokio::test]
+async fn doctor_names_an_absent_ledger_and_the_records_it_could_not_check() {
+    use chrono::{Duration as ChronoDuration, Utc};
+    use rigorix_engine::approval::domain::{
+        ApprovalRecord, ApprovalStatus, DecisionContext, IntentHash,
+    };
+    use rigorix_engine::approval::infrastructure::repository::{
+        ApprovalRepository, FileBackedApprovalRepository,
+    };
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("consumed.json");
+    let repo = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(b"doctor-ledger-test-key"),
+        Some(&ledger),
+    )
+    .expect("open approval store");
+    let now = Utc::now();
+    let record = ApprovalRecord {
+        step_name: "commit_cost".into(),
+        node_id: uuid::Uuid::new_v4(),
+        intent_hash: IntentHash("00".repeat(32)),
+        intent_payload: serde_json::json!({"tool": "run_command"}),
+        approver_id: "tester@example".into(),
+        authority: None,
+        decided_at: now,
+        expires_at: now + ChronoDuration::hours(1),
+        nonce: uuid::Uuid::new_v4(),
+        token_claims_ref: None,
+        status: ApprovalStatus::Consumed,
+        decision_context: DecisionContext {
+            rendered_step: "run_command".into(),
+            upstream_evidence: None,
+            state_snapshot: None,
+            summary: "run_command".into(),
+            full_payload: None,
+        },
+        approver_scope: vec![],
+        mac: None,
+    };
+    repo.save(&record).await.expect("write a terminal record");
+    drop(repo);
+    std::fs::remove_file(&ledger).expect("the host lost its ledger");
+
+    let mut cmd = bin();
+    cmd.current_dir(dir.path()).args(["doctor"]);
+    isolated(&mut cmd);
+    let out = cmd
+        .env("RIGORIX_HMAC_KEY", "doctor-ledger-test-key")
+        .env("RIGORIX_APPROVAL_STORE", &store)
+        .env("RIGORIX_APPROVAL_CONSUMPTION_LEDGER", &ledger)
+        .output()
+        .expect("run rigorix doctor");
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(!out.status.success(), "an unchecked store is not healthy");
+    assert!(combined.contains("consumption ledger"), "{combined}");
+    assert!(
+        combined.contains(&ledger.display().to_string()),
+        "{combined}"
+    );
+    assert!(combined.contains("1 terminal record(s)"), "{combined}");
 }

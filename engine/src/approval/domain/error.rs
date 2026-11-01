@@ -91,6 +91,25 @@ pub enum ApprovalError {
         step_name: String,
     },
 
+    /// A ledger path is configured but the file is absent, while the store
+    /// holds terminal records. Absence is not evidence that nothing was spent
+    /// (#1264).
+    #[error(
+        "Consumption ledger '{ledger}' is absent, so {terminal_records} terminal record(s) cannot be \
+         verified (first: step '{step_name}', node {node_id}); restore the ledger at that path, or \
+         re-approve the affected steps"
+    )]
+    ConsumptionLedgerMissing {
+        /// The configured ledger path that does not exist.
+        ledger: String,
+        /// How many terminal records could not be checked.
+        terminal_records: usize,
+        /// The first terminal record that could not be checked.
+        node_id: Uuid,
+        /// Its step name.
+        step_name: String,
+    },
+
     /// A second terminal write for the same `(node_id, nonce)` found its marker
     /// already recorded — a replay, not an idempotent update (#1261).
     #[error(

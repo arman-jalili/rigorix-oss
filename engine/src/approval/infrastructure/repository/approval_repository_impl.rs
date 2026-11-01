@@ -538,6 +538,18 @@ pub struct FileBackedApprovalRepository {
     write_lock: std::sync::Mutex<()>,
 }
 
+fn terminal_record_count(records: &HashMap<Uuid, ApprovalRecord>) -> usize {
+    records
+        .values()
+        .filter(|record| {
+            matches!(
+                record.status,
+                ApprovalStatus::Consumed | ApprovalStatus::Expired | ApprovalStatus::Superseded
+            )
+        })
+        .count()
+}
+
 struct ReadSnapshot {
     records: HashMap<Uuid, ApprovalRecord>,
     consumed: BTreeMap<String, ConsumptionMarker>,
@@ -648,11 +660,9 @@ impl FileBackedApprovalRepository {
         consumed: &BTreeMap<String, ConsumptionMarker>,
         ledger_present: bool,
         ledger_path: Option<&Path>,
+        terminal_records: usize,
     ) -> Result<(), ApprovalError> {
         let pending = matches!(record.status, ApprovalStatus::Pending);
-        if !pending && !ledger_present {
-            return Ok(());
-        }
         let key = marker_key(record.node_id, record.nonce);
         if pending {
             if consumed.contains_key(&key) {
@@ -661,13 +671,28 @@ impl FileBackedApprovalRepository {
                     step_name: record.step_name.clone(),
                 });
             }
-        } else if !consumed.contains_key(&key) {
+            return Ok(());
+        }
+
+        // A store with no ledger configured has no second witness; that is a
+        // different state from a configured path whose file is missing. The
+        // latter cannot prove nothing was spent, so it must refuse (#1264).
+        let Some(path) = ledger_path else {
+            return Ok(());
+        };
+        if !ledger_present {
+            return Err(ApprovalError::ConsumptionLedgerMissing {
+                ledger: path.display().to_string(),
+                terminal_records,
+                node_id: record.node_id,
+                step_name: record.step_name.clone(),
+            });
+        }
+        if !consumed.contains_key(&key) {
             return Err(ApprovalError::UncoveredTerminalRecord {
                 node_id: record.node_id,
                 step_name: record.step_name.clone(),
-                ledger: ledger_path
-                    .map(|path| path.display().to_string())
-                    .unwrap_or_default(),
+                ledger: path.display().to_string(),
             });
         }
         Ok(())
@@ -788,6 +813,7 @@ impl crate::approval::infrastructure::repository::ApprovalRepository
 
     async fn load(&self, node_id: Uuid) -> Result<Option<ApprovalRecord>, ApprovalError> {
         let snapshot = self.read_snapshot()?;
+        let terminal_records = terminal_record_count(&snapshot.records);
         let record = snapshot
             .records
             .get(&node_id)
@@ -800,6 +826,7 @@ impl crate::approval::infrastructure::repository::ApprovalRepository
                 &snapshot.consumed,
                 snapshot.ledger_present,
                 self.consumption_path.as_deref(),
+                terminal_records,
             )?;
         }
         Ok(record)
@@ -810,6 +837,7 @@ impl crate::approval::infrastructure::repository::ApprovalRepository
             return Ok(0);
         };
         let snapshot = self.read_snapshot()?;
+        let terminal_records = terminal_record_count(&snapshot.records);
         for record in snapshot.records.values() {
             if !record.verify_integrity(key) {
                 return Err(ApprovalError::RecordIntegrity {
@@ -822,6 +850,7 @@ impl crate::approval::infrastructure::repository::ApprovalRepository
                 &snapshot.consumed,
                 snapshot.ledger_present,
                 self.consumption_path.as_deref(),
+                terminal_records,
             )?;
         }
         Ok(snapshot.records.len())

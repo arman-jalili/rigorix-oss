@@ -119,6 +119,74 @@ async fn an_open_session_sees_records_and_refuses_a_second_consumption() {
     );
 }
 
+/// #1264: a configured ledger that is gone must not read as "nothing spent".
+#[tokio::test]
+async fn a_terminal_record_without_its_ledger_is_refused_by_path_and_node() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("consumed.json");
+
+    let repo = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(RUN_KEY),
+        Some(&ledger),
+    )
+    .expect("open");
+    let mut record = sample(Uuid::new_v4());
+    record.status = ApprovalStatus::Consumed;
+    repo.save(&record).await.expect("consume");
+    std::fs::remove_file(&ledger).expect("the host lost its ledger");
+
+    let error = repo
+        .load(record.node_id)
+        .await
+        .expect_err("a terminal record cannot be checked without its ledger");
+    let text = error.to_string();
+    assert!(
+        matches!(error, ApprovalError::ConsumptionLedgerMissing { .. }),
+        "{text}"
+    );
+    assert!(text.contains(&ledger.display().to_string()), "{text}");
+    assert!(text.contains(&record.node_id.to_string()), "{text}");
+    assert!(text.contains("1 terminal record(s)"), "{text}");
+
+    let verify = repo
+        .verify_integrity()
+        .await
+        .expect_err("verify must refuse too");
+    assert!(matches!(
+        verify,
+        ApprovalError::ConsumptionLedgerMissing {
+            terminal_records: 1,
+            ..
+        }
+    ));
+}
+
+/// #1264: absence with nothing terminal to check remains an allowed empty case.
+#[tokio::test]
+async fn no_ledger_and_no_terminal_records_is_allowed() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("consumed.json");
+
+    let repo = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(RUN_KEY),
+        Some(&ledger),
+    )
+    .expect("open");
+    assert_eq!(repo.verify_integrity().await.expect("empty store"), 0);
+    let pending = sample(Uuid::new_v4());
+    repo.save(&pending).await.expect("save pending");
+    assert!(repo.load(pending.node_id).await.expect("load").is_some());
+    assert_eq!(repo.verify_integrity().await.expect("only pending"), 1);
+    assert!(
+        !ledger.exists(),
+        "a pending save does not create the ledger"
+    );
+}
+
 #[tokio::test]
 async fn a_restored_pending_record_is_the_rollback_refusal() {
     let dir = tempfile::TempDir::new().expect("tempdir");

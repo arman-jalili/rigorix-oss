@@ -113,6 +113,12 @@ Running `rigorix approve ledger migrate` with no ledger, or with an empty one,
 is a successful no-op (exit 0) that names the path and says nothing was
 migrated. Unreadable, corrupt, unsealed and MAC-mismatched ledgers still fail,
 and a ledger failure is reported as such rather than as an unavailable store.
+
+A configured ledger that is absent beside a store with terminal records is a
+refusal, not a no-op: the ledger is the only witness that those approvals were
+spent, and a fresh host or a restored store cannot prove otherwise. Restore the
+ledger at the path named in the error, or re-approve the affected steps. An
+absent ledger with no terminal records is allowed.
 - No configuration change is required. The ledger still defaults outside the
   repository (`$HOME/.rigorix/approval-consumption-<key-fingerprint>.json`); override with
   `RIGORIX_APPROVAL_CONSUMPTION_LEDGER`.
