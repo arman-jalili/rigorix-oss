@@ -19,7 +19,7 @@
 use async_trait::async_trait;
 use uuid::Uuid;
 
-use crate::approval::domain::{ApprovalError, ApprovalRecord};
+use crate::approval::domain::{ApprovalError, ApprovalRecord, ConsumptionSettlement};
 
 /// Outcome of an explicit consumption-ledger migration (#1247).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,6 +76,27 @@ pub trait ApprovalRepository: Send + Sync {
     /// # Errors
     /// - `ApprovalError::Internal` — storage failure
     async fn save(&self, record: &ApprovalRecord) -> Result<(), ApprovalError>;
+
+    /// Persist a terminal record together with the settlement that consumed it.
+    ///
+    /// Repositories without a consumption ledger keep the old behaviour: there
+    /// is no marker to attribute (#1267).
+    async fn save_with_settlement(
+        &self,
+        record: &ApprovalRecord,
+        _settlement: ConsumptionSettlement,
+    ) -> Result<(), ApprovalError> {
+        self.save(record).await
+    }
+
+    /// The settlement recorded for a consumed approval, when the ledger carries
+    /// one. `None` means no marker, no attribution, or a legacy marker.
+    async fn consumption_settlement(
+        &self,
+        _node_id: Uuid,
+    ) -> Result<Option<ConsumptionSettlement>, ApprovalError> {
+        Ok(None)
+    }
 
     /// Load the current approval record for a node.
     ///

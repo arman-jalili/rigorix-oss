@@ -1,6 +1,7 @@
 //! Domain entities and interfaces for the Approval Binding bounded context.
 //!
 //! @canonical .pi/architecture/modules/approval.md#domain
+//! Canonical Reference: .pi/architecture/modules/approval.md#domain
 //! Implements: Contract Freeze — domain entities ExecutionIntent, IntentHash,
 //!   ApprovalRecord, DecisionContext, ApprovalStatus, ScopeViolation,
 //!   ApprovalError
@@ -33,5 +34,5 @@ pub mod violation;
 pub use error::ApprovalError;
 pub use hash::IntentHash;
 pub use intent::ExecutionIntent;
-pub use record::{ApprovalRecord, ApprovalStatus, DecisionContext};
+pub use record::{ApprovalRecord, ApprovalStatus, ConsumptionSettlement, DecisionContext};
 pub use violation::ScopeViolation;

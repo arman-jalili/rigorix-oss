@@ -2,6 +2,7 @@
 //! decision, plus the DecisionContext (R4) and ApprovalStatus that shape it.
 //!
 //! @canonical .pi/architecture/modules/approval.md#approvalrecord
+//! Canonical Reference: .pi/architecture/modules/approval.md#approvalrecord
 //! Implements: Contract Freeze — ApprovalRecord, DecisionContext, ApprovalStatus
 //! Issue: #786 (approval epic — contract freeze); behavior in
 //!   ISSUE-APPROVALRECORD (#789) and ISSUE-DECISIONCONTEXT (#790)
@@ -30,6 +31,20 @@ use hmac::{Hmac, KeyInit, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use uuid::Uuid;
+
+/// The settlement that consumed an approval: the run, the node and the
+/// attempt. It is written into the ledger marker so a reader with no process
+/// memory can tell "this settlement already recorded it" from "another
+/// settlement consumed it" (#1267).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConsumptionSettlement {
+    /// Execution whose terminal outcome consumed the approval.
+    pub dag_id: Uuid,
+    /// Node that settled.
+    pub node_id: Uuid,
+    /// 1-indexed attempt that reached the terminal outcome.
+    pub attempt: u32,
+}
 
 use super::error::ApprovalError;
 use super::hash::IntentHash;

@@ -1,6 +1,7 @@
 //! ApprovalService implementation.
 //!
 //! @canonical .pi/architecture/modules/approval.md#approvalservice
+//! Canonical Reference: .pi/architecture/modules/approval.md#approvalservice
 //! Implements: ISSUE-APPROVALSERVICE (#792) — R1 capture, R2 verify, R3
 //!   consume, R5 scope-violation reporting
 //!
@@ -28,8 +29,8 @@ use chrono::Utc;
 use uuid::Uuid;
 
 use crate::approval::domain::{
-    ApprovalError, ApprovalRecord, ApprovalStatus, DecisionContext, ExecutionIntent, IntentHash,
-    ScopeViolation,
+    ApprovalError, ApprovalRecord, ApprovalStatus, ConsumptionSettlement, DecisionContext,
+    ExecutionIntent, IntentHash, ScopeViolation,
 };
 use crate::approval::infrastructure::repository::ApprovalRepository;
 
@@ -130,6 +131,34 @@ impl ApprovalServiceImpl {
             approver_scope: input.declared_scope.clone().unwrap_or_default(),
             mac: None,
         })
+    }
+}
+
+impl ApprovalServiceImpl {
+    async fn consume_with(
+        &self,
+        node_id: Uuid,
+        settlement: Option<ConsumptionSettlement>,
+    ) -> Result<(), ApprovalError> {
+        let mut record = self
+            .repo
+            .load(node_id)
+            .await?
+            .ok_or(ApprovalError::NotFound(node_id))?;
+        if !record.verify_integrity(&self.run_key) {
+            return Err(ApprovalError::RecordIntegrity {
+                node_id: record.node_id,
+                step_name: record.step_name,
+            });
+        }
+        record.consume()?;
+        record.seal(&self.run_key)?;
+        match settlement {
+            Some(settlement) => self.repo.save_with_settlement(&record, settlement).await?,
+            None => self.repo.save(&record).await?,
+        }
+        tracing::info!(node_id = %node_id, "approval consumed (single-use, terminal outcome)");
+        Ok(())
     }
 }
 
@@ -284,22 +313,23 @@ impl ApprovalService for ApprovalServiceImpl {
 
     #[tracing::instrument(skip_all, name = "approval.consume", fields(node_id = %node_id))]
     async fn consume(&self, node_id: Uuid) -> Result<(), ApprovalError> {
-        let mut record = self
-            .repo
-            .load(node_id)
-            .await?
-            .ok_or(ApprovalError::NotFound(node_id))?;
-        if !record.verify_integrity(&self.run_key) {
-            return Err(ApprovalError::RecordIntegrity {
-                node_id: record.node_id,
-                step_name: record.step_name,
-            });
-        }
-        record.consume()?;
-        record.seal(&self.run_key)?;
-        self.repo.save(&record).await?;
-        tracing::info!(node_id = %node_id, "approval consumed (single-use, terminal outcome)");
-        Ok(())
+        self.consume_with(node_id, None).await
+    }
+
+    #[tracing::instrument(skip_all, name = "approval.consume_for_settlement", fields(node_id = %node_id))]
+    async fn consume_for_settlement(
+        &self,
+        node_id: Uuid,
+        settlement: ConsumptionSettlement,
+    ) -> Result<(), ApprovalError> {
+        self.consume_with(node_id, Some(settlement)).await
+    }
+
+    async fn consumption_settlement(
+        &self,
+        node_id: Uuid,
+    ) -> Result<Option<ConsumptionSettlement>, ApprovalError> {
+        self.repo.consumption_settlement(node_id).await
     }
 
     #[tracing::instrument(skip_all, name = "approval.record_scope_violation", fields(node_id = %violation.node_id, out_of_scope_count = violation.out_of_scope.len()))]

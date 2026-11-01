@@ -119,6 +119,11 @@ refusal, not a no-op: the ledger is the only witness that those approvals were
 spent, and a fresh host or a restored store cannot prove otherwise. Restore the
 ledger at the path named in the error, or re-approve the affected steps. An
 absent ledger with no terminal records is allowed.
+
+Consumption markers now record the settling `(dag_id, node_id, attempt)`. Markers
+written before this change still verify unchanged; they carry no attribution, so
+a replay against one is classified as another settlement (fail-safe) rather than
+as a benign retry.
 - No configuration change is required. The ledger still defaults outside the
   repository (`$HOME/.rigorix/approval-consumption-<key-fingerprint>.json`); override with
   `RIGORIX_APPROVAL_CONSUMPTION_LEDGER`.

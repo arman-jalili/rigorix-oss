@@ -22,7 +22,9 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use uuid::Uuid;
 
-use crate::approval::domain::{ApprovalError, ApprovalRecord, ApprovalStatus};
+use crate::approval::domain::{
+    ApprovalError, ApprovalRecord, ApprovalStatus, ConsumptionSettlement,
+};
 use crate::approval::infrastructure::repository::LedgerMigration;
 
 /// One recorded terminal transition, kept outside the store file (#1241).
@@ -32,6 +34,13 @@ struct ConsumptionMarker {
     nonce: Uuid,
     status: ApprovalStatus,
     recorded_at: DateTime<Utc>,
+    /// The run that consumed it. Omitted on legacy markers; omission keeps
+    /// their canonical MAC bytes unchanged (#1267).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    dag_id: Option<Uuid>,
+    /// The 1-indexed attempt that settled. Omitted on legacy markers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    attempt: Option<u32>,
 }
 
 fn marker_key(node_id: Uuid, nonce: Uuid) -> String {
@@ -300,6 +309,8 @@ fn unprotected_terminal_records(
                         nonce: record.nonce,
                         status: record.status,
                         recorded_at: record.decided_at,
+                        dag_id: None,
+                        attempt: None,
                     },
                 ));
             }
@@ -700,7 +711,11 @@ impl FileBackedApprovalRepository {
 
     /// Record terminal consumption under the ledger lock, re-reading the file
     /// first so a marker another writer added is preserved (#1254).
-    fn record_consumption(&self, record: &ApprovalRecord) -> Result<(), ApprovalError> {
+    fn record_consumption(
+        &self,
+        record: &ApprovalRecord,
+        settlement: Option<ConsumptionSettlement>,
+    ) -> Result<(), ApprovalError> {
         let Some(path) = self.consumption_path.as_ref() else {
             return Ok(());
         };
@@ -737,6 +752,8 @@ impl FileBackedApprovalRepository {
                     nonce: record.nonce,
                     status: record.status,
                     recorded_at: Utc::now(),
+                    dag_id: settlement.map(|s| s.dag_id),
+                    attempt: settlement.map(|s| s.attempt),
                 },
             );
             write_consumption_ledger(path, &consumed, self.mac_key.as_deref())?;
@@ -805,10 +822,49 @@ impl crate::approval::infrastructure::repository::ApprovalRepository
         let sealed = seal_if_keyed(record, self.mac_key.as_deref())?;
         // Marker first: a marker without a record is visible and safe, a
         // terminal record without a marker is the invisible failure (#1254).
-        self.record_consumption(&sealed)?;
+        self.record_consumption(&sealed, None)?;
         self.update_store(|map| {
             map.insert(record.node_id, sealed);
         })
+    }
+
+    async fn save_with_settlement(
+        &self,
+        record: &ApprovalRecord,
+        settlement: ConsumptionSettlement,
+    ) -> Result<(), ApprovalError> {
+        let _guard = self
+            .write_lock
+            .lock()
+            .map_err(|_| ApprovalError::Internal("file repo write lock poisoned".into()))?;
+        let sealed = seal_if_keyed(record, self.mac_key.as_deref())?;
+        self.record_consumption(&sealed, Some(settlement))?;
+        self.update_store(|map| {
+            map.insert(record.node_id, sealed);
+        })
+    }
+
+    async fn consumption_settlement(
+        &self,
+        node_id: Uuid,
+    ) -> Result<Option<ConsumptionSettlement>, ApprovalError> {
+        if self.consumption_path.is_none() {
+            return Ok(None);
+        }
+        let snapshot = self.read_snapshot()?;
+        Ok(snapshot
+            .consumed
+            .values()
+            .filter(|marker| marker.node_id == node_id)
+            .max_by_key(|marker| marker.recorded_at)
+            .and_then(|marker| match (marker.dag_id, marker.attempt) {
+                (Some(dag_id), Some(attempt)) => Some(ConsumptionSettlement {
+                    dag_id,
+                    node_id: marker.node_id,
+                    attempt,
+                }),
+                _ => None,
+            }))
     }
 
     async fn load(&self, node_id: Uuid) -> Result<Option<ApprovalRecord>, ApprovalError> {
