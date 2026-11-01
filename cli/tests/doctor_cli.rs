@@ -666,15 +666,23 @@ async fn doctor_reports_attributed_and_unattributed_markers_separately() {
     repo.save(&legacy).await.expect("unattributed marker");
 
     let (success, report) = run_doctor(&store, &ledger);
-    assert!(success, "{report}");
     assert!(
-        report.contains("2 marker(s): 1 attributed, 1 without a settlement"),
+        success,
+        "verification succeeded, so the exit stays 0: {report}"
+    );
+    assert!(
+        report.contains("verified with gaps, 2 marker(s): 1 attributed, 1 without a settlement"),
         "{report}"
     );
-    assert!(report.contains("capability gap"), "{report}");
     assert!(
-        !report.contains("2 marker(s)\n"),
-        "the split must be on the ledger line: {report}"
+        !report.contains("verified, 2 marker(s)"),
+        "the weak population must not begin the verdict with a bare `verified`: {report}"
+    );
+    assert!(
+        report
+            .lines()
+            .any(|line| line.trim_start().starts_with("→ capability gap:")),
+        "the gap must have its own line, not trail the verdict: {report}"
     );
 }
 
@@ -708,8 +716,50 @@ async fn doctor_reports_zero_unattributed_markers_explicitly() {
     let (success, report) = run_doctor(&store, &ledger);
     assert!(success, "{report}");
     assert!(
-        report.contains("1 marker(s): 1 attributed, 0 without a settlement"),
+        report.contains("verified, 1 marker(s): 1 attributed, 0 without a settlement"),
         "{report}"
     );
     assert!(!report.contains("capability gap"), "{report}");
+    assert!(!report.contains("verified with gaps"), "{report}");
+}
+
+/// #1275: every marker unattributed is still a successful verification, but the
+/// verdict must be the weak one.
+#[tokio::test]
+async fn doctor_marks_an_all_unattributed_ledger_verified_with_gaps() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = dir.path().join("approvals.json");
+    let ledger = dir.path().join("consumed.json");
+    let repo = FileBackedApprovalRepository::open_with_key_and_ledger(
+        &store,
+        Some(DOCTOR_KEY.as_bytes()),
+        Some(&ledger),
+    )
+    .expect("open");
+
+    for _ in 0..2 {
+        let mut legacy = doctor_approval_record(Uuid::new_v4());
+        legacy.status = ApprovalStatus::Consumed;
+        repo.save(&legacy).await.expect("unattributed marker");
+    }
+
+    let (success, report) = run_doctor(&store, &ledger);
+    assert!(
+        success,
+        "a capability gap is not a failed check, so the exit stays 0: {report}"
+    );
+    assert!(
+        report.contains("verified with gaps, 2 marker(s): 0 attributed, 2 without a settlement"),
+        "{report}"
+    );
+    assert!(
+        !report.contains("verified, 2 marker(s)"),
+        "no bare verified verdict is available when every marker is unattributed: {report}"
+    );
+    assert!(
+        report
+            .lines()
+            .any(|line| line.trim_start().starts_with("→ capability gap: 2 of 2")),
+        "the gap must have its own line and a count: {report}"
+    );
 }

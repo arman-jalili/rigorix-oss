@@ -3,7 +3,7 @@
 ## Status
 
 **Status:** ✅ Architecture defined — source code implemented
-**Last reviewed:** 2026-11-01 — doctor splits attributed and unattributed consumption markers (#1272)
+**Last reviewed:** 2026-11-01 — doctor reports the weakest verdict and its own capability-gap line (#1272, #1275)
 
 ## Description
 
@@ -192,7 +192,9 @@ the report explaining why has to survive that. A diagnostic that only works when
 the thing it diagnoses is healthy is not a diagnostic. The approval-binding row
 reports the consumption ledger's marker population split — attributed versus
 without a settlement — so `verified` is not read as "every marker can classify a
-re-settlement as benign" (#1272).
+re-settlement as benign" (#1272). The verdict is the weakest property the row
+carries: `verified` only when every marker is attributed, `verified with gaps`
+otherwise, with the gap on its own line and the exit still 0 (#1275).
 
 ### OrchestratorBuilder
 

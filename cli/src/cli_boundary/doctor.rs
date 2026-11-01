@@ -87,6 +87,9 @@ pub struct SeamReport {
     pub state: SeamState,
     /// Why, when the state is not the obvious one.
     pub detail: Option<String>,
+    /// A weakness the row carries without failing it, rendered as its own line
+    /// so a `verified` verdict is not the last word (#1275).
+    pub gap: Option<String>,
 }
 
 impl SeamReport {
@@ -97,6 +100,7 @@ impl SeamReport {
             source,
             state: SeamState::Armed,
             detail: None,
+            gap: None,
         }
     }
 
@@ -107,6 +111,7 @@ impl SeamReport {
             source,
             state: SeamState::Unarmed,
             detail: None,
+            gap: None,
         }
     }
 
@@ -122,6 +127,7 @@ impl SeamReport {
             source,
             state: SeamState::Misconfigured,
             detail: Some(detail),
+            gap: None,
         }
     }
 }
@@ -188,6 +194,9 @@ impl DoctorReport {
             out.push_str(&format!("      {}\n", row.effect));
             if let Some(detail) = &row.detail {
                 out.push_str(&format!("      → {detail}\n"));
+            }
+            if let Some(gap) = &row.gap {
+                out.push_str(&format!("      → {gap}\n"));
             }
         }
 
@@ -305,9 +314,15 @@ pub async fn probe(repo_root: &Path) -> DoctorReport {
                                     "verified, {markers} marker(s): {known} attributed, 0 without a settlement"
                                 )
                             } else {
+                                // Verification passed, but the row's weakest
+                                // property is not "every marker can classify a
+                                // re-settlement", so the verdict says so and the
+                                // gap is not a trailing clause (#1275).
+                                row.gap = Some(format!(
+                                    "capability gap: {unknown} of {markers} marker(s) carry no settlement, so a re-settlement named by one is refused"
+                                ));
                                 format!(
-                                    "verified, {markers} marker(s): {known} attributed, {unknown} without a settlement; \
-                                     the {unknown} unattributed marker(s) are a capability gap — a re-settlement named by one is refused"
+                                    "verified with gaps, {markers} marker(s): {known} attributed, {unknown} without a settlement"
                                 )
                             }
                         } else {
@@ -445,6 +460,7 @@ pub async fn probe(repo_root: &Path) -> DoctorReport {
             source: "RIGORIX_SEQUENCE_POLICY=0".to_string(),
             state: SeamState::Disabled,
             detail: Some("explicitly disabled by the operator".to_string()),
+            gap: None,
         }
     } else if !sequence_present && !bundle_configured {
         SeamReport {
@@ -456,6 +472,7 @@ pub async fn probe(repo_root: &Path) -> DoctorReport {
                 "the gate is built but has no rules: no file and no bundle, so nothing is gated"
                     .to_string(),
             ),
+            gap: None,
         }
     } else {
         match rigorix_engine::execution_engine::application::factory::SequencePolicySetup::from_env(
@@ -480,6 +497,7 @@ pub async fn probe(repo_root: &Path) -> DoctorReport {
                 source: "RIGORIX_SEQUENCE_POLICY=0".to_string(),
                 state: SeamState::Disabled,
                 detail: Some("explicitly disabled by the operator".to_string()),
+                gap: None,
             },
         }
     });
@@ -677,6 +695,7 @@ mod tests {
             source: "file.toml".to_string(),
             state,
             detail: None,
+            gap: None,
         }
     }
 
