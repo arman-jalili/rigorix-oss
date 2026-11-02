@@ -1,6 +1,6 @@
 # Issue Implementation Groups
 
-**Generated:** Sun Nov  1 22:06:20 CET 2026
+**Generated:** Mon Nov  2 10:40:31 CET 2026
 **Total Issues:** 2
 
 ---
@@ -19,5 +19,5 @@ Issues are grouped by:
 
 Each requires separate branch: `issue/{number}`
 
-- #1282: the unverified refusal says the IdP was unreachable when the server started, even when it failed mid-session, and never shows the error it recorded → branch: `issue/1282`
-- #1281: check_architecture_conformance.sh either dies before its summary or reports 32 failures from a rule inherited from a React module template → branch: `issue/1281`
+- #1286: Preflight's 10-minute timeout is inside its own cold-cache runtime, so a passing PR is killed mid-upload → branch: `issue/1286`
+- #1285: an unverified session reports reason null when discovery had succeeded, and the refusal says the discovery attempt failed → branch: `issue/1285`
