@@ -58,7 +58,7 @@ jobs:
         timeout-minutes: 8
         uses: ./.github/actions/setup
         with:
-          cache-key: preflight-coldseed-1286
+          cache-key: preflight
 
       - name: 📐 Format check
         id: fmt
