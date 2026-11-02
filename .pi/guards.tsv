@@ -21,6 +21,7 @@
 .pi/scripts/validate-panic-sites.sh	panic-surface	gating	yes	security	new production panic is removed or baselined (ratchet)
 .pi/scripts/validate-unsafe-sites.sh	unsafe	gating	yes	security	new production unsafe is removed or baselined (ratchet)
 .pi/scripts/validate-secret-logs.sh	secret-in-log	gating	yes	security	tracing a secret-ish identifier must be redacted
+.pi/scripts/validate-shell-exit-status.sh	shell-exit-status	gating	no	tooling	a `(( X++ ))` under errexit ends the script on bash 4.4+ (and silently, before any verdict); gates via its own `Shell exit status` CI stage, and scans every copy of the mirrored scripts (#1291)
 .pi/scripts/validate-script-drift.sh	mirror-drift	gating	yes	build	mirrored .pi/scripts must be byte-identical across trees unless recorded (with a reason) in .pi/script-drift-allow.tsv
 .pi/scripts/validate-docs.sh	docs-truth	gating	yes	docs	every relative doc link must resolve; CHANGELOG.md's newest version must equal engine/Cargo.toml's; every backticked identifier in a README must exist in the source — a doc may not point at a removed file, drift behind the tags, or name a type that is not in the code
 .pi/scripts/validate-wiring-claims.sh	wiring-claims	gating	yes	series-#1100	claims that a control is wired, re-resolved against the code (both directions: evidence gone, or a GAP silently restored)
