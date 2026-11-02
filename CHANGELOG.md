@@ -19,6 +19,12 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 _No unreleased changes._
 
+## [1.12.1] - 2026-11-02
+
+### Fixed
+
+- `rigorix_auth_status` reports the recorded cause beside `unverified` for a **JWKS** failure as well as a discovery failure, and the L1 refusal quotes it instead of naming a discovery attempt that may have succeeded. Before this, a session that had logged in and then lost its IdP reported `reason: null` — the field was empty exactly when an operator needed it — and the refusal blamed the wrong stage (#1285)
+
 ## [1.12.0] - 2026-11-01
 
 ### Changed
