@@ -26,7 +26,7 @@ if command -v git &>/dev/null; then
         files_without_ref=0
         while IFS= read -r file; do
             if ! grep -q "Canonical Reference\|canonical.*reference" "$file" 2>/dev/null; then
-                ((files_without_ref++))
+                files_without_ref=$((files_without_ref + 1))
                 log_fail "MR traceability" "${file} missing canonical reference to architecture"
             fi
         done <<< "$changed_files"

@@ -13,8 +13,8 @@ PI_DIR=".pi"
 FAIL=0
 PASS=0
 
-log_pass() { echo "  ✓ PASS: $1"; ((PASS++)); }
-log_fail() { echo "  ✗ FAIL: $1 — $2"; ((FAIL++)); }
+log_pass() { echo "  ✓ PASS: $1"; PASS=$((PASS + 1)); }
+log_fail() { echo "  ✗ FAIL: $1 — $2"; FAIL=$((FAIL + 1)); }
 
 STAGE="${1:-all}"
 
@@ -69,7 +69,7 @@ run_stage_7_security() {
         local secrets_found=0
         for pattern in "sk-[A-Za-z0-9]{32,}" "ghp_[A-Za-z0-9]{36}" "AKIA[0-9A-Z]{16}" "BEGIN (RSA |EC )?PRIVATE KEY"; do
             if grep -rE "$pattern" . --include="*.py" --include="*.ts" --include="*.env" 2>/dev/null | grep -v ".git" | grep -v "node_modules" | head -1 | grep -q .; then
-                ((secrets_found++))
+                secrets_found=$((secrets_found + 1))
                 log_fail "secret scan" "Potential secret pattern detected: $pattern"
             fi
         done

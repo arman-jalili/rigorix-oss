@@ -102,14 +102,14 @@ run_stage() {
         return 0
     fi
 
-    ((TOTAL_STAGES++))
+    TOTAL_STAGES=$((TOTAL_STAGES + 1))
 
     # Check conditional
     case "$conditional" in
         main_only)
             if [[ "${CI_COMMIT_BRANCH:-}" != "main" && "${GITHUB_REF_NAME:-}" != "main" ]]; then
                 log_stage_skip "$stage_name" "Not on main branch"
-                ((SKIPPED_STAGES++))
+                SKIPPED_STAGES=$((SKIPPED_STAGES + 1))
                 return 0
             fi
             ;;
@@ -122,14 +122,14 @@ run_stage() {
             fi
             if [[ "$has_migration" == "false" ]]; then
                 log_stage_skip "$stage_name" "No migration changes detected"
-                ((SKIPPED_STAGES++))
+                SKIPPED_STAGES=$((SKIPPED_STAGES + 1))
                 return 0
             fi
             ;;
         sonar_required)
             if [[ -z "${SONAR_TOKEN:-}" || -z "${SONAR_HOST_URL:-}" ]]; then
                 log_stage_skip "$stage_name" "SONAR_TOKEN or SONAR_HOST_URL not set"
-                ((SKIPPED_STAGES++))
+                SKIPPED_STAGES=$((SKIPPED_STAGES + 1))
                 return 0
             fi
             ;;
@@ -139,21 +139,21 @@ run_stage() {
 
     if [[ ! -f "$stage_script" ]]; then
         log_stage_skip "$stage_name" "Script not found: $stage_script"
-        ((SKIPPED_STAGES++))
+        SKIPPED_STAGES=$((SKIPPED_STAGES + 1))
         return 0
     fi
 
     local output
     if output=$(bash "$stage_script" 2>&1); then
         log_stage_pass "$stage_name"
-        ((PASSED_STAGES++))
+        PASSED_STAGES=$((PASSED_STAGES + 1))
         STAGE_RESULTS+=("PASS:$stage_name")
         if [[ "$VERBOSE" == "true" ]]; then
             echo "$output"
         fi
     else
         log_stage_fail "$stage_name" "$output"
-        ((FAILED_STAGES++))
+        FAILED_STAGES=$((FAILED_STAGES + 1))
         STAGE_RESULTS+=("FAIL:$stage_name:$(echo "$output" | head -5)")
     fi
 }

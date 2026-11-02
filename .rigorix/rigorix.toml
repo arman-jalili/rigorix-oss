@@ -1,0 +1,29 @@
+# Rigorix Configuration
+[orchestrator]
+max_parallel_tasks = 4
+max_retries = 3
+default_timeout_secs = 120
+
+[logging]
+level = "info"
+format = "text"
+
+[llm]
+provider = "anthropic"
+model = "claude-sonnet-4-6"
+
+# ── Enforcement seams — ALL UNARMED AS WRITTEN (#1101) ──────────────────────
+# Nothing below is active. Each line names the file or variable that arms a
+# seam; uncommenting a file path is not enough on its own — read the comment.
+#
+#   precondition gate   .rigorix/preconditions.toml     (argv checks, ADR-017)
+#                       re-reads authoritative state before dispatch; a
+#                       malformed file arms a refuse-everything gate
+#   sequence policy     .rigorix/sequence-policy.toml   (promote/prerequisite rules)
+#   capacity ledger     .rigorix/capacity.toml          (contested limits, ADR-018)
+#   approval binding    RIGORIX_APPROVAL_BINDING=1 + RIGORIX_HMAC_KEY=<secret>
+#                       binding without a key is a startup error, not a warning
+#   history anchor      RIGORIX_ANCHOR_URL + RIGORIX_ANCHOR_PUBLIC_KEY
+#   envelope signing    RIGORIX_HMAC_KEY=<secret>       (run `rigorix key`)
+#
+# `rigorix doctor` prints which of these are armed in this repository.

@@ -326,13 +326,26 @@ jobs:
         run: |
           cargo test --manifest-path rigorix-sdk/rust/Cargo.toml -p rigorix-verifier
 
+  # ── Stage 6b: Shell exit status ───────────────────────────────
+  # `(( x++ ))` returns 1 when the result is 0, so the first increment of a
+  # counter that starts at 0 fails. bash 3.2 hides it; bash 4.4+ (this runner)
+  # ends the script — silently, before any verdict is printed (#1291).
+  shell:
+    name: 🐚 Shell exit status
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: 🔐 errexit arithmetic (no script may end on `(( x++ ))`)
+        run: bash .pi/scripts/validate-shell-exit-status.sh
+
   # ── Stage 7: Stage report ─────────────────────────────────────
   # Always runs, always green: it exists so a superseded run still shows
   # *which* stages reported `cancelled` (#1289) — the Final Gate is skipped in
   # that case and could not tell that story.
   ci-report:
     name: 📋 Stage report
-    needs: [lint, build, test, audit, docs, integration, conformance]
+    needs: [lint, build, test, audit, docs, integration, conformance, shell]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -346,12 +359,13 @@ jobs:
           RESULT_DOCS: ${{ needs.docs.result }}
           RESULT_INTEGRATION: ${{ needs.integration.result }}
           RESULT_CONFORMANCE: ${{ needs.conformance.result }}
+          RESULT_SHELL: ${{ needs.shell.result }}
         run: .github/scripts/ci_report.sh
 
   # ── Stage 8: Final Gate ───────────────────────────────────────
   gate:
     name: 🚪 Final Gate
-    needs: [lint, build, test, audit, docs, integration, conformance]
+    needs: [lint, build, test, audit, docs, integration, conformance, shell]
     # A superseded run gets no verdict (#1289). `cancelled` is the scheduler's
     # fact, not the change's: with `cancel-in-progress` every push to the same
     # ref cancels the previous run, so the old `!= 'success'` test accused the
@@ -370,4 +384,5 @@ jobs:
           RESULT_DOCS: ${{ needs.docs.result }}
           RESULT_INTEGRATION: ${{ needs.integration.result }}
           RESULT_CONFORMANCE: ${{ needs.conformance.result }}
+          RESULT_SHELL: ${{ needs.shell.result }}
         run: .github/scripts/ci_verdict.sh

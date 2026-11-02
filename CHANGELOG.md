@@ -17,7 +17,11 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Fixed
+
+- 177 arithmetic commands in the repository's shell scripts no longer end their script under `errexit`: `(( X++ ))` returns 1 when the result is 0, so the first increment of a zeroed counter failed. `bash 3.2` (macOS) hides it; the `bash 4.4+` on CI ended the script silently, before any verdict was printed — `validate_agent_output.sh` printed 0 lines there against 21 on a Mac. Ten of the sites were `log_pass() { …; ((PASS++)); }` one-liners, which returned 1 on **every** shell: `stage_docs_policy.sh` died after its first passing check on macOS too. A guard (`.pi/scripts/validate-shell-exit-status.sh`, 6-case self-test) now runs in CI beside the gate and fails with `path:line` (#1291)
+- A superseded CI run no longer accuses the commit: the Final Gate skips when a dependency was `cancelled` — the scheduler's fact, not the change's — and a `📋 Stage report` job prints the per-stage results that the skipped gate cannot (#1289)
+- Preflight's budget is a margin over the measured runtime (20 min job backstop, per-step budgets) instead of a 10-minute timeout inside its own cold-cache runtime, and a timeout is reported as a named budget verdict rather than a failure of the change (#1286)
 
 ## [1.12.1] - 2026-11-02
 

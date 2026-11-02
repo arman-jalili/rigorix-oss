@@ -1,7 +1,7 @@
 # Issue Implementation Groups
 
-**Generated:** Sun Nov  1 22:06:20 CET 2026
-**Total Issues:** 2
+**Generated:** Mon Nov  2 19:10:26 CET 2026
+**Total Issues:** 1
 
 ---
 
@@ -19,5 +19,4 @@ Issues are grouped by:
 
 Each requires separate branch: `issue/{number}`
 
-- #1282: the unverified refusal says the IdP was unreachable when the server started, even when it failed mid-session, and never shows the error it recorded → branch: `issue/1282`
-- #1281: check_architecture_conformance.sh either dies before its summary or reports 32 failures from a rule inherited from a React module template → branch: `issue/1281`
+- #1291: 167 arithmetic counters end their scripts silently on bash 4.4+, and every measurement of them so far was taken on macOS bash 3.2 → branch: `issue/1291`
