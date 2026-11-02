@@ -31,6 +31,7 @@ impl EngineFacade for MockEngineForHandler {
         _repository: Option<String>,
         _author: Option<String>,
         _identity: Option<rigorix_engine::identity::IdentityRef>,
+        _verification_failure: Option<String>,
     ) -> Result<ExecutionResult, EngineFacadeError> {
         Ok(ExecutionResult::new(
             uuid::Uuid::nil(),
@@ -51,6 +52,7 @@ impl EngineFacade for MockEngineForHandler {
         &self,
         _p: PlanTemplate,
         _i: Option<rigorix_engine::identity::IdentityRef>,
+        _v: Option<String>,
     ) -> Result<ValidationResult, EngineFacadeError> {
         Ok(ValidationResult::new(true, vec![], vec![], None))
     }
@@ -153,6 +155,7 @@ fn test_executehandler_handles_execution() {
         repository: None,
         author: None,
         identity: None,
+        identity_verification_failure: None,
     }));
     assert!(result.is_ok());
     assert!(!result.unwrap().is_error);

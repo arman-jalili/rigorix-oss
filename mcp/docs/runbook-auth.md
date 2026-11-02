@@ -103,7 +103,7 @@ gateway's health surface covers it. Operator equivalents:
   `identity: unverified` envelope marker
 - **Recovery**: restore IdP connectivity; retry login. No data loss.
 
-### IdP unreachable — `unverified` session (#1277, #1282)
+### IdP unreachable — `unverified` session (#1277, #1282, #1285)
 
 - **Symptom**: the server log shows
   `auth: IdP discovery failed (…) — claims degrade to unverified until it
@@ -111,22 +111,25 @@ gateway's health surface covers it. Operator equivalents:
   reports `unverified` with a claim summary **and a `reason`** naming the
   recorded failure, while a run over a `require_identity` step is refused with
   `… the caller is unverified — the claim is present and the last
-  identity-provider discovery attempt failed: re-run once the IdP answers
-  (attestation re-attempts discovery), or fix RIGORIX_IDP_ISSUER;
-  rigorix_auth_status reports the recorded error`
+  credential-verification attempt failed: <the recorded cause>. Re-run once the
+  IdP answers (verification is re-attempted on the next call), or fix
+  RIGORIX_IDP_ISSUER`
 - **Why it refuses**: the L1 identity gate fails closed. A claim this process
   cannot check is not an attested identity (ADR-012 option c)
 - **Why the status is not `unauthenticated`**: the caller did log in. One word
   for one fact — `unverified` is the same word the refusal prints
-- **Why the message does not say when it failed**: it can fail at startup or
-  minutes into a healthy session (the same retry that recovers also re-fails).
-  The refusal states the condition that holds; the `reason` field carries the
-  error the verifier recorded
-- **Recovery**: bring the IdP up. Attestation re-attempts discovery (bounded
-  to one attempt per 30 s per process), so the next run succeeds **without a
-  restart**. If the IdP is up and discovery still fails, the issuer is wrong —
-  fix `RIGORIX_IDP_ISSUER` (or `[auth] issuer` in `.rigorix/auth.toml`) and
-  restart the server
+- **Why the message names no stage and no time**: verification has two stages
+  (discovery, then the JWKS fetch against the cached verifier) and either can
+  fail at startup or minutes into a healthy session. The engine sees only the
+  claim's `source`, so it quotes the cause the MCP process recorded instead of
+  guessing — `reason` in `rigorix_auth_status` and the refusal carry the same
+  words
+- **Recovery**: bring the IdP up. Verification is re-attempted on the next call
+  — the JWKS fetch when the verifier is cached, discovery when it is not
+  (bounded to one attempt per 30 s per process) — so the next run succeeds
+  **without a restart**. If the IdP is up and discovery still fails, the issuer
+  is wrong — fix `RIGORIX_IDP_ISSUER` (or `[auth] issuer` in
+  `.rigorix/auth.toml`) and restart the server
 
 ### User denies / device code expires
 

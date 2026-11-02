@@ -25,6 +25,7 @@ impl EngineFacade for MockEngineForEnforcer {
         _repository: Option<String>,
         _author: Option<String>,
         _identity: Option<rigorix_engine::identity::IdentityRef>,
+        _verification_failure: Option<String>,
     ) -> Result<ExecutionResult, EngineFacadeError> {
         Ok(ExecutionResult::new(
             uuid::Uuid::nil(),
@@ -39,6 +40,7 @@ impl EngineFacade for MockEngineForEnforcer {
         &self,
         _p: PlanTemplate,
         _i: Option<rigorix_engine::identity::IdentityRef>,
+        _v: Option<String>,
     ) -> Result<ValidationResult, EngineFacadeError> {
         Ok(ValidationResult::new(true, vec![], vec![], None))
     }

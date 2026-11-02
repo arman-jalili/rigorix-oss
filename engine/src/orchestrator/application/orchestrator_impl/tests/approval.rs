@@ -53,6 +53,7 @@ async fn test_run_from_template_pauses_for_approval_and_resumes() {
         repository: None,
         author: None,
         identity: None,
+        identity_verification_failure: None,
         enforcement_preset: None,
     };
 
@@ -108,6 +109,7 @@ async fn test_sequence_policy_promote_pauses_runbook_and_approve_executes_later_
         template_name: "conf-registration".into(),
         repository: None,
         identity: None,
+        identity_verification_failure: None,
         author: None,
         enforcement_preset: None,
     };
@@ -194,6 +196,7 @@ async fn test_sequence_policy_declined_later_step_is_never_dispatched() {
             template_name: "conf-registration".into(),
             repository: None,
             identity: None,
+            identity_verification_failure: None,
             author: None,
             enforcement_preset: None,
         })
@@ -289,6 +292,7 @@ async fn test_sequence_policy_absent_config_run_executes_unchanged() {
             template_name: "conf-registration".into(),
             repository: None,
             identity: None,
+            identity_verification_failure: None,
             author: None,
             enforcement_preset: None,
         })
@@ -428,6 +432,7 @@ async fn test_plan_from_template_reports_promote_finding_before_run() {
             repo_root: "/tmp/t".into(),
             template_name: "conf-registration".into(),
             identity: None,
+            identity_verification_failure: None,
             author: None,
         })
         .await

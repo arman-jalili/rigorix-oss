@@ -128,14 +128,19 @@ pub enum EngineFacadeError {
     /// A step declares `require_identity = true` but the caller has no
     /// attested identity. Refused at plan time; the native API maps this to
     /// `identity_required` (ADR-0001 D6). The recovery sentence follows the
-    /// status (#1277): `unverified` names the restart/issuer fix, because the
-    /// caller already logged in.
-    #[error("{}", identity_required_message(.step, .status))]
+    /// status (#1277): `unverified` names the issuer fix, because the caller
+    /// already logged in.
+    #[error(
+        "{}",
+        identity_required_message(.step, .status, .reason.as_deref())
+    )]
     IdentityRequired {
         /// Name of the step that requires an attested identity.
         step: String,
         /// Identity status at refusal time ("unauthenticated" / "unverified").
         status: String,
+        /// The verifier's recorded cause, when this process had one (#1285).
+        reason: Option<String>,
     },
 }
 
@@ -143,12 +148,25 @@ pub enum EngineFacadeError {
 ///
 /// Mirrors `rigorix_engine::orchestrator::domain::error` verbatim so the OSS
 /// surface and the native API print one message for one fact (#1277).
-fn identity_required_message(step: &str, status: &str) -> String {
+fn identity_required_message(step: &str, status: &str, reason: Option<&str>) -> String {
     if status == "unverified" {
-        format!(
-            "Step '{step}' requires an attested identity but the caller is unverified — the claim is \
-             present and the last identity-provider discovery attempt failed: re-run once the IdP answers (attestation re-attempts discovery), or fix RIGORIX_IDP_ISSUER; rigorix_auth_status reports the recorded error"
-        )
+        // #1285 — no stage is named: the process that verified knows whether
+        // discovery or the JWKS fetch failed, and it records the cause; the
+        // refusal quotes that instead of guessing.
+        match reason {
+            Some(cause) => format!(
+                "Step '{step}' requires an attested identity but the caller is unverified — the \
+                 claim is present and the last credential-verification attempt failed: {cause}. \
+                 Re-run once the IdP answers (verification is re-attempted on the next call), or \
+                 fix RIGORIX_IDP_ISSUER"
+            ),
+            None => format!(
+                "Step '{step}' requires an attested identity but the caller is unverified — the \
+                 claim is present and this process could not verify it: re-run once the IdP \
+                 answers (verification is re-attempted on the next call), or fix \
+                 RIGORIX_IDP_ISSUER; rigorix_auth_status reports the recorded cause"
+            ),
+        }
     } else {
         format!(
             "Step '{step}' requires an attested identity but the caller is unauthenticated — run \

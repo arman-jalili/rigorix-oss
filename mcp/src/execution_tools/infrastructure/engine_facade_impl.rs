@@ -243,12 +243,15 @@ fn map_orchestrator_error(err: OrchestratorError) -> EngineFacadeError {
             step: step.clone(),
             unmet: unmet.clone(),
         },
-        OrchestratorError::IdentityRequired { step, status } => {
-            EngineFacadeError::IdentityRequired {
-                step: step.clone(),
-                status: status.clone(),
-            }
-        }
+        OrchestratorError::IdentityRequired {
+            step,
+            status,
+            reason,
+        } => EngineFacadeError::IdentityRequired {
+            step: step.clone(),
+            status: status.clone(),
+            reason: reason.clone(),
+        },
         _ => EngineFacadeError::Internal(err.to_string()),
     }
 }
@@ -292,6 +295,7 @@ impl EngineFacade for EngineFacadeImpl {
         repository: Option<String>,
         author: Option<String>,
         identity: Option<rigorix_engine::identity::IdentityRef>,
+        verification_failure: Option<String>,
     ) -> Result<ExecutionResult, EngineFacadeError> {
         // Optional enforcement pre-check
         if self.config.enforcement_enabled {
@@ -320,6 +324,7 @@ impl EngineFacade for EngineFacadeImpl {
             repository,
             author,
             identity,
+            identity_verification_failure: verification_failure,
             enforcement_preset: None,
         };
 
@@ -370,6 +375,7 @@ impl EngineFacade for EngineFacadeImpl {
         &self,
         plan: PlanTemplate,
         identity: Option<rigorix_engine::identity::IdentityRef>,
+        verification_failure: Option<String>,
     ) -> Result<ValidationResult, EngineFacadeError> {
         let steps_def = plan_to_step_defs(&plan);
         let template_name = plan.name().to_string();
@@ -384,6 +390,7 @@ impl EngineFacade for EngineFacadeImpl {
             template_name,
             author,
             identity,
+            identity_verification_failure: verification_failure,
         };
 
         // R2 sequence-policy gate runs inside the orchestrator preview. A
@@ -975,7 +982,7 @@ mod tests {
         let facade = validate_facade(PlanStubOrchestrator::promote(vec![finding]));
 
         let result = facade
-            .validate_plan(plan_with_approval_flags(&[false, false]), None)
+            .validate_plan(plan_with_approval_flags(&[false, false]), None, None)
             .await;
         let validation = result.expect("promote plan validates");
         assert!(validation.is_valid());
@@ -1007,7 +1014,7 @@ mod tests {
         ));
 
         let result = facade
-            .validate_plan(plan_with_approval_flags(&[false, false]), None)
+            .validate_plan(plan_with_approval_flags(&[false, false]), None, None)
             .await;
         let validation = result.expect("deny surfaces as structured invalid result");
         assert!(!validation.is_valid(), "denied plan must not validate");

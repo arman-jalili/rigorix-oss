@@ -100,6 +100,13 @@ impl AuthToolHandler for AuthToolHandlerImpl {
         })
     }
 
+    /// #1285 — hand the engine the cause its gate cannot see, so the refusal
+    /// quotes it instead of blaming a verification stage.
+    async fn verification_failure(&self) -> Option<String> {
+        let out: StatusOutput = self.service.status(&StatusInput::default()).await.ok()?;
+        out.reason
+    }
+
     async fn handle_auth_logout(&self, params: Value) -> Result<Value, AuthError> {
         let _ = params;
         let output: LogoutOutput = self.service.logout(&LogoutInput::default()).await?;
@@ -167,6 +174,40 @@ mod tests {
             authority: None,
             expires_at: None,
         }
+    }
+
+    /// #1285 — the same cause is handed to the engine beside the claim, so the
+    /// refusal quotes it instead of naming a stage the engine cannot see.
+    #[tokio::test]
+    async fn verification_failure_hands_the_recorded_cause_to_the_engine() {
+        let unverified = || {
+            AuthToolHandlerImpl::new(Arc::new(ScriptedAuth {
+                output: StatusOutput {
+                    status: TokenStatus::Unverified,
+                    claim_summary: Some(summary()),
+                    source: IdentitySource::Unverified,
+                    reason: Some("the JWKS fetch failed: connection refused".to_string()),
+                },
+            }))
+        };
+        assert_eq!(
+            unverified().verification_failure().await.as_deref(),
+            Some("the JWKS fetch failed: connection refused"),
+            "the engine must receive the cause, not just the unverified source"
+        );
+
+        let attested = AuthToolHandlerImpl::new(Arc::new(ScriptedAuth {
+            output: StatusOutput {
+                status: TokenStatus::Authenticated,
+                claim_summary: Some(summary()),
+                source: IdentitySource::IdpToken,
+                reason: None,
+            },
+        }));
+        assert!(
+            attested.verification_failure().await.is_none(),
+            "an attested claim carries no failure beside it"
+        );
     }
 
     /// #1282 — `rigorix_auth_status` reports the recorded cause beside

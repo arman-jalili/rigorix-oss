@@ -130,6 +130,12 @@ pub struct ExecuteInput {
     /// Gates `require_identity` steps and binds the policy principal.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub identity: Option<rigorix_engine::identity::IdentityRef>,
+
+    /// The verifier's recorded failure, injected server-side beside `identity`
+    /// (#1285): the engine cannot know which verification stage failed, so the
+    /// refusal quotes what this process recorded instead of guessing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity_verification_failure: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -149,6 +155,12 @@ pub struct ValidateInput {
     /// preview when absent/unverified.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub identity: Option<rigorix_engine::identity::IdentityRef>,
+
+    /// The verifier's recorded failure, injected server-side beside `identity`
+    /// (#1285): the engine cannot know which verification stage failed, so the
+    /// refusal quotes what this process recorded instead of guessing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity_verification_failure: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

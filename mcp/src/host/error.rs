@@ -210,7 +210,7 @@ impl HostError {
                     .with_sequence(rule_id.clone(), step.clone())
                     .with_details(serde_json::json!({ "reason": "history_unanchored" }))
             }
-            EngineFacadeError::IdentityRequired { step, status } => {
+            EngineFacadeError::IdentityRequired { step, status, .. } => {
                 Self::new(ErrorType::IdentityRequired, error.to_string())
                     .with_details(serde_json::json!({ "step": step, "status": status }))
             }
@@ -409,6 +409,7 @@ mod tests {
         let error = EngineFacadeError::IdentityRequired {
             step: "pay".to_string(),
             status: "unauthenticated".to_string(),
+            reason: None,
         };
         let host = HostError::from_engine_facade(&error);
         assert_eq!(host.error_type, ErrorType::IdentityRequired);

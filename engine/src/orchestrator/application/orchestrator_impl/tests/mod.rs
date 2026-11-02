@@ -298,6 +298,7 @@ fn payout_input(
         template_name: "payout".into(),
         repository: None,
         identity,
+        identity_verification_failure: None,
         author: None,
         enforcement_preset: None,
     }

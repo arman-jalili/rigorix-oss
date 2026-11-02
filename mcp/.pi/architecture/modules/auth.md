@@ -119,7 +119,7 @@ stdio-only (GAP-A-10: SSE transport removed), so no runtime path constructs
 | Method (tool name) | Handler | Input | Output | Auth |
 |--------------------|---------|-------|--------|------|
 | `rigorix_auth_login` | handle_auth_login | `{}` (or `{ client_id, issuer }` overrides) | `{ status, verification_uri, user_code, expires_in }` | None (bootstraps identity) |
-| `rigorix_auth_status` | handle_auth_status | `{}` | `{ status, claim_summary: { subject, issuer, authority, expires_at }, source, reason? }` — `reason` is present only beside `unverified` and carries the verifier's recorded failure (#1282) | None (read-only, redacted) |
+| `rigorix_auth_status` | handle_auth_status | `{}` | `{ status, claim_summary: { subject, issuer, authority, expires_at }, source, reason? }` — `reason` is present only beside `unverified` and carries the verifier's recorded failure (#1282); the same cause is handed to the engine beside the claim so a `require_identity` refusal quotes it instead of naming a verification stage (#1285) | None (read-only, redacted) |
 | `rigorix_auth_logout` | handle_auth_logout | `{}` | `{ status: "logged_out" }` | None (self-service) |
 
 All three tools return **redacted** output — never the raw token.

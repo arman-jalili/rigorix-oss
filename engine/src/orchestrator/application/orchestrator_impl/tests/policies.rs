@@ -169,6 +169,7 @@ async fn test_sequence_policy_deny_refuses_runbook_before_any_step() {
             template_name: "conf-registration".into(),
             repository: None,
             identity: None,
+            identity_verification_failure: None,
             author: None,
             enforcement_preset: None,
         })
@@ -249,6 +250,7 @@ async fn test_sequence_policy_corrupt_config_refuses_run_no_steps_execute() {
             template_name: "conf-registration".into(),
             repository: None,
             identity: None,
+            identity_verification_failure: None,
             author: None,
             enforcement_preset: None,
         })
@@ -328,6 +330,7 @@ async fn test_sequence_policy_promotion_recorded_in_envelope_events_redacted() {
             template_name: "conf-registration".into(),
             repository: None,
             identity: None,
+            identity_verification_failure: None,
             author: None,
             enforcement_preset: None,
         })
@@ -399,8 +402,48 @@ async fn test_requirement_identity_refuses_unauthenticated_composed_plan() {
         .await
         .expect_err("identity requirement must refuse");
     assert!(
-        matches!(err, OrchestratorError::IdentityRequired { ref step, ref status } if step == "payout" && status == "unauthenticated"),
+        matches!(err, OrchestratorError::IdentityRequired { ref step, ref status, .. } if step == "payout" && status == "unauthenticated"),
         "unexpected: {err:?}"
+    );
+}
+
+/// #1285 — the cause the calling process recorded travels with the request and
+/// is quoted by the refusal. The engine sees an `IdentityRef`, not a verifier:
+/// it cannot tell whether discovery failed or the JWKS fetch did, so it must
+/// quote what it was told rather than name a stage.
+#[tokio::test]
+async fn test_requirement_identity_refusal_quotes_the_recorded_cause() {
+    let orch = real_orchestrator_with_requirement(payout_requirement(RequirementAction::Promote));
+    let mut input = payout_input(false, true, None);
+    input.identity = Some(crate::identity::domain::IdentityRef {
+        subject: "demo@corp.demo".into(),
+        issuer: "local".into(),
+        source: crate::identity::domain::IdentitySource::Unverified,
+        authority: None,
+        expires_at: None,
+    });
+    input.identity_verification_failure = Some("the JWKS fetch failed: connection refused".into());
+
+    let err = orch
+        .run_from_template(input)
+        .await
+        .expect_err("an unverified claim must refuse a require_identity step");
+    let rendered = err.to_string();
+    assert!(
+        rendered.contains("the JWKS fetch failed: connection refused"),
+        "the refusal must quote the cause carried by the request: {rendered}"
+    );
+    assert!(
+        rendered.contains("last credential-verification attempt failed"),
+        "the condition is verification, whichever stage failed: {rendered}"
+    );
+    assert!(
+        !rendered.contains("discovery"),
+        "the engine must not blame a stage it cannot see: {rendered}"
+    );
+    assert!(
+        !rendered.contains("rigorix_auth_login"),
+        "the caller did log in: {rendered}"
     );
 }
 
@@ -450,6 +493,7 @@ async fn test_plan_from_template_reports_requirement_promote_finding() {
             repo_root: "/tmp/t".into(),
             template_name: "payout".into(),
             identity: None,
+            identity_verification_failure: None,
             author: None,
         })
         .await
@@ -482,6 +526,7 @@ async fn test_plan_from_template_refuses_denied_sequence() {
             repo_root: "/tmp/t".into(),
             template_name: "conf-registration".into(),
             identity: None,
+            identity_verification_failure: None,
             author: None,
         })
         .await
@@ -682,6 +727,7 @@ async fn test_r7_cross_run_same_principal_remove_then_add_refused_at_plan_time()
             template_name: "attendance-add".into(),
             repository: None,
             identity: None,
+            identity_verification_failure: None,
             author: Some("jeff@corp".to_string()),
             enforcement_preset: None,
         })
@@ -715,6 +761,7 @@ async fn policy_pipeline_runs_sequence_policy_before_requirements() {
             repo_root: "/tmp/t".into(),
             template_name: "payout".into(),
             identity: None,
+            identity_verification_failure: None,
             author: None,
         })
         .await;

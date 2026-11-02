@@ -329,6 +329,21 @@ impl AppState {
         }
     }
 
+    /// The verifier's recorded cause for an unattested claim, injected beside
+    /// `identity` (#1285).
+    ///
+    /// The engine sees only that the source is `unverified`; it cannot tell
+    /// whether discovery failed or the JWKS fetch did. This process can, so it
+    /// hands over what its verifier recorded and the refusal quotes it instead
+    /// of naming a stage. `None` when nothing is recorded — the refusal then
+    /// states the condition without a cause.
+    async fn session_verification_failure(&self) -> Option<String> {
+        match &self.auth_handler {
+            Some(handler) => handler.verification_failure().await,
+            None => None,
+        }
+    }
+
     /// Route a tool call by name to the appropriate handler.
     pub async fn handle_tool_call(
         &self,
@@ -368,6 +383,8 @@ impl AppState {
                 // identity — caller-supplied params never set the policy
                 // principal.
                 input.identity = self.session_identity().await;
+                // #1285 — and why the claim was not attested, when recorded.
+                input.identity_verification_failure = self.session_verification_failure().await;
 
                 let result = self
                     .execute_handler
@@ -441,6 +458,7 @@ impl AppState {
                     repository: params["repository"].as_str().map(|s| s.to_string()),
                     author: params["author"].as_str().map(|s| s.to_string()),
                     identity: self.session_identity().await,
+                    identity_verification_failure: self.session_verification_failure().await,
                 };
 
                 let result = self
