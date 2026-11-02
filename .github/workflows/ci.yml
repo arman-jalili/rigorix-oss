@@ -326,36 +326,48 @@ jobs:
         run: |
           cargo test --manifest-path rigorix-sdk/rust/Cargo.toml -p rigorix-verifier
 
-  # ── Stage 7: Final Gate ───────────────────────────────────────
-  gate:
-    name: 🚪 Final Gate
+  # ── Stage 7: Stage report ─────────────────────────────────────
+  # Always runs, always green: it exists so a superseded run still shows
+  # *which* stages reported `cancelled` (#1289) — the Final Gate is skipped in
+  # that case and could not tell that story.
+  ci-report:
+    name: 📋 Stage report
     needs: [lint, build, test, audit, docs, integration, conformance]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - run: |
-          echo "Lint:        ${{ needs.lint.result }}"
-          echo "Build:       ${{ needs.build.result }}"
-          echo "Test:        ${{ needs.test.result }}"
-          echo "Audit:       ${{ needs.audit.result }}"
-          echo "Docs:        ${{ needs.docs.result }}"
-          echo "Integration: ${{ needs.integration.result }}"
-          echo "Conformance: ${{ needs.conformance.result }}"
-      - name: ✅ All mandatory stages passed
-        if: |
-          needs.lint.result == 'success' &&
-          needs.build.result == 'success' &&
-          needs.test.result == 'success' &&
-          needs.audit.result == 'success' &&
-          needs.conformance.result == 'success'
-        run: echo "✅ All mandatory stages passed"
-      - name: ❌ Some mandatory stages failed
-        if: |
-          needs.lint.result != 'success' ||
-          needs.build.result != 'success' ||
-          needs.test.result != 'success' ||
-          needs.audit.result != 'success' ||
-          needs.conformance.result != 'success'
-        run: |
-          echo "❌ Mandatory stage(s) failed"
-          exit 1
+      - uses: actions/checkout@v4
+      - name: 📋 Stage results
+        env:
+          RESULT_LINT: ${{ needs.lint.result }}
+          RESULT_BUILD: ${{ needs.build.result }}
+          RESULT_TEST: ${{ needs.test.result }}
+          RESULT_AUDIT: ${{ needs.audit.result }}
+          RESULT_DOCS: ${{ needs.docs.result }}
+          RESULT_INTEGRATION: ${{ needs.integration.result }}
+          RESULT_CONFORMANCE: ${{ needs.conformance.result }}
+        run: .github/scripts/ci_report.sh
+
+  # ── Stage 8: Final Gate ───────────────────────────────────────
+  gate:
+    name: 🚪 Final Gate
+    needs: [lint, build, test, audit, docs, integration, conformance]
+    # A superseded run gets no verdict (#1289). `cancelled` is the scheduler's
+    # fact, not the change's: with `cancel-in-progress` every push to the same
+    # ref cancels the previous run, so the old `!= 'success'` test accused the
+    # commit of a failure that never ran. Skipped (grey) rather than green —
+    # green would be a verdict too. The report job above prints the stages.
+    if: always() && !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 🚦 Verdict
+        env:
+          RESULT_LINT: ${{ needs.lint.result }}
+          RESULT_BUILD: ${{ needs.build.result }}
+          RESULT_TEST: ${{ needs.test.result }}
+          RESULT_AUDIT: ${{ needs.audit.result }}
+          RESULT_DOCS: ${{ needs.docs.result }}
+          RESULT_INTEGRATION: ${{ needs.integration.result }}
+          RESULT_CONFORMANCE: ${{ needs.conformance.result }}
+        run: .github/scripts/ci_verdict.sh
