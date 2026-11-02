@@ -36,7 +36,7 @@ if command -v git &>/dev/null; then
                 file_path="$repo_root/$file"
             fi
             if ! grep -qE "@canonical|Canonical Reference|canonical.*reference" "$file_path" 2>/dev/null; then
-                ((files_without_ref++))
+                files_without_ref=$((files_without_ref + 1))
                 log_fail "MR traceability" "${file} missing canonical reference to architecture"
             fi
         done <<< "$changed_files"

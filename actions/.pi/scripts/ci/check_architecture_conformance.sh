@@ -555,7 +555,7 @@ check_runtime_baseline() {
         while IFS= read -r var; do
             var_name=$(echo "$var" | cut -d= -f1)
             if [[ -z "${!var_name:-}" ]]; then
-                ((unbound++))
+                unbound=$((unbound + 1))
             fi
         done < <(grep -v "^#" .env.example 2>/dev/null | grep "=" || true)
         if [[ $unbound -eq 0 ]]; then
@@ -637,7 +637,7 @@ check_arch_sanity() {
     local orphaned_imports=0
     for f in $(scan_code_files | head -30); do
         if grep -qE "^import.*UNUSED|^from.*UNUSED" "$f" 2>/dev/null; then
-            ((orphaned_imports++))
+            orphaned_imports=$((orphaned_imports + 1))
         fi
     done
     if [[ $orphaned_imports -gt 0 ]]; then
@@ -670,7 +670,7 @@ check_arch_sanity() {
                 example_val=$(grep "^${var_name}=" ".env.example" | cut -d= -f2-)
                 actual_val=$(grep "^${var_name}=" ".env" | cut -d= -f2-)
                 if [[ "$example_val" == "$actual_val" ]]; then
-                    ((collisions++))
+                    collisions=$((collisions + 1))
                 fi
             fi
         done < <(grep -v "^#" .env.example 2>/dev/null | grep "=" || true)

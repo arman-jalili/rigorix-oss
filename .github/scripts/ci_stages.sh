@@ -9,7 +9,7 @@
 # ─────────────────────────────────────────────────────────────────────
 
 # Mandatory stages: the gate has a verdict on these.
-CI_MANDATORY_STAGES="lint build test audit conformance"
+CI_MANDATORY_STAGES="lint build test audit conformance shell"
 # Reported but not required — whether they should be is a separate decision.
 CI_REPORTED_STAGES="docs integration"
 

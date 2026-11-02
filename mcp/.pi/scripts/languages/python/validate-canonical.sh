@@ -55,7 +55,7 @@ if [ -d ".pi/architecture/modules" ]; then
             if [ -n "$impl_path" ]; then
                 if [ ! -f "$impl_path" ]; then
                     warn "Architecture references $impl_path but file does not exist"
-                    ((MISSING++))
+                    MISSING=$((MISSING + 1))
                 fi
             fi
         done < <(grep -oE '`[a-z_/]+\.py`' "$module_file" 2>/dev/null || true)
@@ -76,9 +76,9 @@ INIT_DOCS=0
 INIT_WITHOUT_DOCS=0
 for init_file in $(find "$SRC_DIR" -name "__init__.py" 2>/dev/null | head -20); do
     if grep -qE '"""|"""' "$init_file" 2>/dev/null; then
-        ((INIT_DOCS++))
+        INIT_DOCS=$((INIT_DOCS + 1))
     else
-        ((INIT_WITHOUT_DOCS++))
+        INIT_WITHOUT_DOCS=$((INIT_WITHOUT_DOCS + 1))
     fi
 done
 if [ "$INIT_DOCS" -gt 0 ]; then

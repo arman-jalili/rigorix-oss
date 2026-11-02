@@ -65,8 +65,8 @@ log_pass() {
     if [[ "$JSON" == "false" ]]; then
         echo -e "  ${GREEN}[PASS]${NC} $1 (${2}s)"
     fi
-    ((PASSED++))
-    ((TOTAL++))
+    PASSED=$((PASSED + 1))
+    TOTAL=$((TOTAL + 1))
     RESULTS+=("{\"name\": \"$1\", \"status\": \"pass\", \"message\": \"\", \"duration\": $2}")
 }
 
@@ -74,8 +74,8 @@ log_fail() {
     if [[ "$JSON" == "false" ]]; then
         echo -e "  ${RED}[FAIL]${NC} $1 — $2 (${3}s)"
     fi
-    ((FAILED++))
-    ((TOTAL++))
+    FAILED=$((FAILED + 1))
+    TOTAL=$((TOTAL + 1))
     RESULTS+=("{\"name\": \"$1\", \"status\": \"fail\", \"message\": \"$2\", \"duration\": $3}")
 }
 
@@ -83,8 +83,8 @@ log_skip() {
     if [[ "$JSON" == "false" ]]; then
         echo -e "  ${YELLOW}[SKIP]${NC} $1 — $2"
     fi
-    ((SKIPPED++))
-    ((TOTAL++))
+    SKIPPED=$((SKIPPED + 1))
+    TOTAL=$((TOTAL + 1))
     RESULTS+=("{\"name\": \"$1\", \"status\": \"skip\", \"message\": \"$2\", \"duration\": 0}")
 }
 

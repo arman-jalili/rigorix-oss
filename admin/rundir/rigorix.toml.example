@@ -1,0 +1,13 @@
+# Example: a completely offline, enterprise-free `rigorix.toml`.
+#
+# Intentionally no `RIGORIX_ENTERPRISE_URL`, no `RIGORIX_ENTERPRISE_TOKEN`, and
+# no `RIGORIX_ANCHOR_URL`. When those are absent the history-anchor seam stays
+# `unarmed` and the OSS engine resolves and runs locally.
+#
+# Override only via `RIGORIX_HMAC_KEY` (run `rigorix key`) in the environment.
+
+[enforcement]
+preset = "minimal"
+
+[audit]
+hmac_key = "placeholder-insecure-key-replace-me"
