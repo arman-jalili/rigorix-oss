@@ -36,4 +36,28 @@ no wiring (empty envs)        → exit 1  ❌ (a missing stage is not a pass)
 docs cancelled, mandatory ok  → exit 0  ✅ (docs is reported, not required)
 ```
 
-Live: this branch carries one empty commit pushed shortly after the PR opened, which cancels the previous run — the first run's `🚪 Final Gate` is `skipped` and the commit has no failing check. Empty commits change no tree content; the squash merge collapses them.
+Live seed: this branch carries empty commits pushed one at a time so the previous run is superseded. Measured on the superseded commit `a7cbcee8` (`gh api …/commits/a7cbcee8/check-runs`):
+
+```
+📋 Stage report:      success      ← the new job, printing the evidence the gate can no longer print
+🚪 Final Gate:        cancelled    ← not `failure`; no failing check on the commit
+🔎 Lint (×5), 📦 Build, 🧪 Test, 🔒 Audit, 📐 Conformance, 🔗 Integration, 📝 Docs: cancelled
+```
+
+and the report job's own log on that cancelled run:
+
+```
+| Stage       | Result        | Mandatory |
+|-------------|---------------|-----------|
+| lint        | ⏹️ cancelled | yes       |
+| build       | ⏹️ cancelled | yes       |
+| test        | ⏹️ cancelled | yes       |
+| audit       | ⏹️ cancelled | yes       |
+| conformance | ⏹️ cancelled | yes       |
+| docs        | ⏹️ cancelled | no        |
+| integration | ⏹️ cancelled | no        |
+```
+
+(The gate lands on `cancelled` rather than `skipped` when the run is torn down mid-flight; both are "no verdict" and neither is a `failure`. The `skipped` path is the job-level `if`, and the discriminating proof that `cancelled` no longer produces a verdict is the script seed above — the old condition, `!= 'success'`, turns that exact table into `exit 1`.)
+
+Empty commits change no tree content; the squash merge collapses them.
