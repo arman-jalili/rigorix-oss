@@ -59,6 +59,12 @@ impl Default for IdentityAttestationServiceImpl {
 
 #[async_trait]
 impl IdentityAttestationService for IdentityAttestationServiceImpl {
+    /// Delegate to the verifier's own account of why it could not check
+    /// (#1282): the attestation layer adds no interpretation of its own.
+    fn verification_failure(&self) -> Option<String> {
+        self.verifier.last_failure()
+    }
+
     /// Attest from a presented token/principal → `IdentityClaim`.
     ///
     /// # Observability (SpanPrivacy)

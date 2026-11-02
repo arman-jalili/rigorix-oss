@@ -81,6 +81,7 @@ impl AuthService for StubAuthService {
             status: TokenStatus::Unauthenticated,
             claim_summary: None,
             source: rigorix_engine::identity::IdentitySource::Unverified,
+            reason: None,
         })
     }
 

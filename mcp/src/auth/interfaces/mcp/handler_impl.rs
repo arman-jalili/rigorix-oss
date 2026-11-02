@@ -74,6 +74,10 @@ impl AuthToolHandler for AuthToolHandlerImpl {
             "status": output.status,
             "claim_summary": output.claim_summary,
             "source": output.source,
+            // #1282: present only beside `unverified` — why the claim could
+            // not be checked, so an operator can act without provoking a
+            // refusal first.
+            "reason": output.reason,
         }))
     }
 
@@ -165,6 +169,27 @@ mod tests {
         }
     }
 
+    /// #1282 — `rigorix_auth_status` reports the recorded cause beside
+    /// `unverified`, so an operator can see why without provoking a refusal.
+    #[tokio::test]
+    async fn status_reports_the_reason_beside_unverified() {
+        let handler = AuthToolHandlerImpl::new(Arc::new(ScriptedAuth {
+            output: StatusOutput {
+                status: TokenStatus::Unverified,
+                claim_summary: Some(summary()),
+                source: IdentitySource::Unverified,
+                reason: Some("the IdP was unreachable (connection refused)".to_string()),
+            },
+        }));
+
+        let out = handler.handle_auth_status(Value::Null).await.unwrap();
+        assert_eq!(out["status"], "unverified");
+        assert_eq!(
+            out["reason"], "the IdP was unreachable (connection refused)",
+            "the status output must carry the recorded cause: {out}"
+        );
+    }
+
     /// #1277 — a session that logged in while the IdP was unreachable yields a
     /// claim tagged `unverified`; it must not be dropped on the floor.
     #[tokio::test]
@@ -174,6 +199,7 @@ mod tests {
                 status: TokenStatus::Unverified,
                 claim_summary: Some(summary()),
                 source: IdentitySource::Unverified,
+                reason: None,
             },
         }));
 
@@ -191,6 +217,7 @@ mod tests {
                 status: TokenStatus::Authenticated,
                 claim_summary: Some(summary()),
                 source: IdentitySource::IdpToken,
+                reason: None,
             },
         }));
         let identity = attested.current_engine_identity().await.unwrap();
@@ -201,6 +228,7 @@ mod tests {
                 status: TokenStatus::Unauthenticated,
                 claim_summary: None,
                 source: IdentitySource::Unverified,
+                reason: None,
             },
         }));
         assert!(absent.current_engine_identity().await.is_none());

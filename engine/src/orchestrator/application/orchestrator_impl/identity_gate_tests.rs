@@ -49,8 +49,13 @@ fn unverified_identity_refuses_flagged_step() {
 /// #1277 — the refusal names the recovery that can help. A caller whose claim
 /// is present but unchecked already logged in; `rigorix_auth_login` is the one
 /// action that cannot fix it.
+///
+/// #1282 — and it states the *condition*, not a history. The gate cannot know
+/// when discovery failed, so it may not say "when the server started": with the
+/// cooldown retry that failure can happen mid-session, minutes after a healthy
+/// start, and a restart is not required either way.
 #[test]
-fn unverified_refusal_names_the_restart_recovery_not_the_login() {
+fn unverified_refusal_states_the_condition_not_a_startup_history() {
     let err = check_identity_gate(
         &[step("registration_add", true)],
         Some(&ref_with(IdentitySource::Unverified)),
@@ -62,8 +67,24 @@ fn unverified_refusal_names_the_restart_recovery_not_the_login() {
         "the refusal must use the same word as the status: {rendered}"
     );
     assert!(
-        rendered.contains("restart the MCP server") && rendered.contains("RIGORIX_IDP_ISSUER"),
-        "the refusal must name the real recovery: {rendered}"
+        rendered.contains("last identity-provider discovery attempt failed"),
+        "the refusal must name the condition that holds: {rendered}"
+    );
+    assert!(
+        !rendered.contains("when the server started"),
+        "the gate cannot know when discovery failed, so it must not assert it: {rendered}"
+    );
+    assert!(
+        !rendered.contains("restart"),
+        "a restart is not required — attestation re-attempts discovery: {rendered}"
+    );
+    assert!(
+        rendered.contains("RIGORIX_IDP_ISSUER"),
+        "the refusal must name the recovery that can help: {rendered}"
+    );
+    assert!(
+        rendered.contains("rigorix_auth_status"),
+        "the refusal must say where the recorded error is: {rendered}"
     );
     assert!(
         !rendered.contains("rigorix_auth_login"),
