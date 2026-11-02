@@ -29,6 +29,7 @@ impl EngineFacade for MockEngineForValidator {
         _repository: Option<String>,
         _author: Option<String>,
         _identity: Option<rigorix_engine::identity::IdentityRef>,
+        _verification_failure: Option<String>,
     ) -> Result<ExecutionResult, EngineFacadeError> {
         Ok(ExecutionResult::new(
             uuid::Uuid::nil(),
@@ -43,6 +44,7 @@ impl EngineFacade for MockEngineForValidator {
         &self,
         _p: PlanTemplate,
         _i: Option<rigorix_engine::identity::IdentityRef>,
+        _v: Option<String>,
     ) -> Result<ValidationResult, EngineFacadeError> {
         Ok(ValidationResult::new(true, vec![], vec![], None))
     }
@@ -127,6 +129,7 @@ fn test_validateplanhandler_validates_plan() {
     let result = rt.block_on(handler.handle(ValidateInput {
         plan,
         identity: None,
+        identity_verification_failure: None,
     }));
     assert!(result.is_ok());
 }

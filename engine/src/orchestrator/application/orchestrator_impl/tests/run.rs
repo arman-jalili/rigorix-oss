@@ -31,6 +31,7 @@ async fn test_run_from_template_records_effect_key_on_envelope() {
         template_name: "payout".into(),
         repository: None,
         identity: None,
+        identity_verification_failure: None,
         author: Some("user@org".to_string()),
         enforcement_preset: None,
     })
@@ -112,6 +113,7 @@ async fn test_run_from_template_refused_when_budget_exhausted() {
         template_name: "budget-test".into(),
         repository: None,
         identity: None,
+        identity_verification_failure: None,
         author: None,
         enforcement_preset: None,
     };

@@ -700,7 +700,11 @@ impl OrchestratorService for OrchestratorServiceImpl {
         // possibly-confusing sequence denial. Steps declaring
         // `require_identity = true` refuse an unauthenticated / unverified
         // caller at plan time; the step's tool is never called.
-        self.enforce_identity_requirement(&input.steps, input.identity.as_ref())?;
+        self.enforce_identity_requirement(
+            &input.steps,
+            input.identity.as_ref(),
+            input.identity_verification_failure.as_deref(),
+        )?;
 
         // Sequence-policy (R2) plan-time gate — evaluate the ordered runbook
         // BEFORE any state is written or step executes. Promote matches flip
@@ -727,6 +731,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     Some(execution_id),
                     principal,
                     input.identity.as_ref(),
+                    input.identity_verification_failure.as_deref(),
                 )
                 .await?;
 
@@ -1166,7 +1171,11 @@ impl OrchestratorService for OrchestratorServiceImpl {
     ) -> Result<PlanOnlyOutput, OrchestratorError> {
         // L1 identity gate — a preview must show the same refusal the run it
         // precedes would hit (require_identity without attested caller).
-        self.enforce_identity_requirement(&input.steps, input.identity.as_ref())?;
+        self.enforce_identity_requirement(
+            &input.steps,
+            input.identity.as_ref(),
+            input.identity_verification_failure.as_deref(),
+        )?;
         // Same R2 gate as `run_from_template` — a preview must show the same
         // promotion/denial decisions as the run it precedes. L2: principal
         // prefers the attested claim's subject.
@@ -1177,7 +1186,13 @@ impl OrchestratorService for OrchestratorServiceImpl {
             .or(input.author.as_deref());
         let (gated_steps, findings, requirement_findings) =
             policy_pipeline::PolicyPipeline::new(self)
-                .apply(&input.steps, None, principal, input.identity.as_ref())
+                .apply(
+                    &input.steps,
+                    None,
+                    principal,
+                    input.identity.as_ref(),
+                    input.identity_verification_failure.as_deref(),
+                )
                 .await?;
         let steps: &[super::dto::TemplateStepDef] = &gated_steps;
         let graph = self.build_graph_from_steps(steps)?;
@@ -1235,6 +1250,7 @@ mod tests;
 fn check_identity_gate(
     steps: &[super::dto::TemplateStepDef],
     identity: Option<&crate::identity::domain::IdentityRef>,
+    verification_failure: Option<&str>,
 ) -> Result<(), OrchestratorError> {
     let attested = identity
         .filter(|i| {
@@ -1253,6 +1269,9 @@ fn check_identity_gate(
                 } else {
                     "unauthenticated".to_string()
                 },
+                // Only meaningful when a claim is present (#1285): with no
+                // claim there is no verification attempt to blame.
+                reason: identity.and(verification_failure.map(str::to_string)),
             });
         }
     }

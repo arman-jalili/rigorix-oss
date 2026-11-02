@@ -50,6 +50,7 @@ impl ExecuteHandler for ExecuteHandlerImpl {
                 input.repository.clone(),
                 input.author.clone(),
                 input.identity.clone(),
+                input.identity_verification_failure.clone(),
             )
             .await
             .map_err(HandlerError::EngineError)?;
@@ -102,7 +103,11 @@ impl ValidatePlanHandler for ValidatePlanHandlerImpl {
     async fn handle(&self, input: ValidateInput) -> Result<ToolCallResult, HandlerError> {
         let result = self
             .engine
-            .validate_plan(input.plan, input.identity.clone())
+            .validate_plan(
+                input.plan,
+                input.identity.clone(),
+                input.identity_verification_failure.clone(),
+            )
             .await
             .map_err(HandlerError::EngineError)?;
 
@@ -226,7 +231,7 @@ impl PlanHandler for PlanHandlerImpl {
         // attested session identity is injected).
         let validation = self
             .engine
-            .validate_plan(exec_plan.clone(), None)
+            .validate_plan(exec_plan.clone(), None, None)
             .await
             .map_err(HandlerError::EngineError)?;
 

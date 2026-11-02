@@ -457,6 +457,7 @@ action = "deny"
                 repository: None,
                 author: None,
                 identity: None,
+                identity_verification_failure: None,
                 enforcement_preset: None,
             })
             .await

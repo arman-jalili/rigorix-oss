@@ -14,8 +14,9 @@ impl OrchestratorServiceImpl {
         &self,
         steps: &[super::super::dto::TemplateStepDef],
         identity: Option<&crate::identity::domain::IdentityRef>,
+        verification_failure: Option<&str>,
     ) -> Result<(), OrchestratorError> {
-        check_identity_gate(steps, identity)
+        check_identity_gate(steps, identity, verification_failure)
     }
 
     /// R2 — plan-time sequence-policy evaluation over an ordered runbook.
@@ -154,6 +155,7 @@ impl OrchestratorServiceImpl {
         steps: &[super::super::dto::TemplateStepDef],
         execution_id: Option<uuid::Uuid>,
         identity: Option<&crate::identity::domain::IdentityRef>,
+        verification_failure: Option<&str>,
     ) -> Result<
         (
             Option<Vec<super::super::dto::TemplateStepDef>>,
@@ -206,6 +208,7 @@ impl OrchestratorServiceImpl {
                         return Err(OrchestratorError::IdentityRequired {
                             step: f.step.clone(),
                             status: status.to_string(),
+                            reason: identity.and(verification_failure.map(str::to_string)),
                         });
                     }
                     return Err(OrchestratorError::RequirementUnmet {
@@ -282,6 +285,7 @@ impl<'a> PolicyPipeline<'a> {
         execution_id: Option<uuid::Uuid>,
         principal: Option<&str>,
         identity: Option<&crate::identity::domain::IdentityRef>,
+        verification_failure: Option<&str>,
     ) -> Result<
         (
             Vec<super::super::dto::TemplateStepDef>,
@@ -298,7 +302,12 @@ impl<'a> PolicyPipeline<'a> {
             sequence_enforced.as_deref().unwrap_or(steps);
         let (requirement_enforced, requirement_findings) = self
             .service
-            .apply_plan_time_requirements(sequence_steps, execution_id, identity)
+            .apply_plan_time_requirements(
+                sequence_steps,
+                execution_id,
+                identity,
+                verification_failure,
+            )
             .await?;
         let steps = requirement_enforced
             .or(sequence_enforced)

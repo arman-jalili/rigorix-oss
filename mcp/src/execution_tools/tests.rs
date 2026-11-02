@@ -150,6 +150,7 @@ mod tests {
             _repository: Option<String>,
             _author: Option<String>,
             _identity: Option<rigorix_engine::identity::IdentityRef>,
+            _verification_failure: Option<String>,
         ) -> Result<ExecutionResult, EngineFacadeError> {
             self.execute_result
                 .clone()
@@ -160,6 +161,7 @@ mod tests {
             &self,
             _plan: PlanTemplate,
             _identity: Option<rigorix_engine::identity::IdentityRef>,
+            _verification_failure: Option<String>,
         ) -> Result<ValidationResult, EngineFacadeError> {
             self.validate_result
                 .clone()
@@ -246,7 +248,7 @@ mod tests {
     #[tokio::test]
     async fn test_enginefacade_execute_success() {
         let mock = Arc::new(MockEngineFacade::new().with_execute_ok());
-        let result = mock.execute(make_test_plan(), None, None, None).await;
+        let result = mock.execute(make_test_plan(), None, None, None, None).await;
         assert!(result.is_ok());
         let exec = result.unwrap();
         assert_eq!(*exec.status(), ExecutionStatus::Completed);
@@ -256,7 +258,7 @@ mod tests {
     #[tokio::test]
     async fn test_enginefacade_execute_budget_exceeded() {
         let mock = Arc::new(MockEngineFacade::new().with_execute_err());
-        let result = mock.execute(make_test_plan(), None, None, None).await;
+        let result = mock.execute(make_test_plan(), None, None, None, None).await;
         assert!(result.is_err());
         match result.unwrap_err() {
             EngineFacadeError::BudgetExceeded { .. } => {}
@@ -267,7 +269,7 @@ mod tests {
     #[tokio::test]
     async fn test_enginefacade_validate_plan() {
         let mock = Arc::new(MockEngineFacade::new().with_validate_ok());
-        let result = mock.validate_plan(make_test_plan(), None).await;
+        let result = mock.validate_plan(make_test_plan(), None, None).await;
         assert!(result.is_ok());
         let validation = result.unwrap();
         assert!(validation.is_valid());
@@ -277,7 +279,7 @@ mod tests {
     #[tokio::test]
     async fn test_enginefacade_validate_plan_rejected() {
         let mock = Arc::new(MockEngineFacade::new().with_validate_err());
-        let result = mock.validate_plan(make_test_plan(), None).await;
+        let result = mock.validate_plan(make_test_plan(), None, None).await;
         assert!(result.is_ok());
         let validation = result.unwrap();
         assert!(!validation.is_valid());
@@ -342,6 +344,7 @@ mod tests {
             repository: None,
             author: None,
             identity: None,
+            identity_verification_failure: None,
         };
 
         let result = handler.handle(input).await;
@@ -360,6 +363,7 @@ mod tests {
         let input = ValidateInput {
             plan: make_test_plan(),
             identity: None,
+            identity_verification_failure: None,
         };
 
         let result = handler.handle(input).await;
@@ -376,6 +380,7 @@ mod tests {
         let input = ValidateInput {
             plan: make_test_plan(),
             identity: None,
+            identity_verification_failure: None,
         };
 
         let result = handler.handle(input).await;
@@ -395,6 +400,7 @@ mod tests {
         let input = ValidateInput {
             plan: make_test_plan(),
             identity: None,
+            identity_verification_failure: None,
         };
 
         let result = handler.handle(input).await;
@@ -432,6 +438,7 @@ mod tests {
         let input = ValidateInput {
             plan: make_test_plan(),
             identity: None,
+            identity_verification_failure: None,
         };
 
         let tc = handler.handle(input).await.expect("handler ok");

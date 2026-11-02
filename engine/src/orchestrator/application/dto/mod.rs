@@ -192,6 +192,17 @@ pub struct RunFromTemplateInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub identity: Option<crate::identity::domain::IdentityRef>,
 
+    /// The identity provider's recorded failure, supplied by the process that
+    /// performed verification (#1285).
+    ///
+    /// The engine cannot know which stage of verification failed — discovery or
+    /// the JWKS fetch — so it does not guess: when the caller's verifier
+    /// recorded a cause, the refusal quotes it and names no stage. Request-side
+    /// only: this never enters an audit envelope (`IdentityRef` carries the
+    /// claim and stays frozen, ADR-016).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity_verification_failure: Option<String>,
+
     /// Optional enforcement preset override.
     pub enforcement_preset: Option<String>,
 }
@@ -220,6 +231,17 @@ pub struct PlanFromTemplateInput {
     /// sequence-policy principal prefers this claim's subject.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub identity: Option<crate::identity::domain::IdentityRef>,
+
+    /// The identity provider's recorded failure, supplied by the process that
+    /// performed verification (#1285).
+    ///
+    /// The engine cannot know which stage of verification failed — discovery or
+    /// the JWKS fetch — so it does not guess: when the caller's verifier
+    /// recorded a cause, the refusal quotes it and names no stage. Request-side
+    /// only: this never enters an audit envelope (`IdentityRef` carries the
+    /// claim and stays frozen, ADR-016).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity_verification_failure: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

@@ -155,17 +155,30 @@ impl TokenVerifier for DiscoveryBackedVerifier {
         claim: &IdentityClaim,
     ) -> Result<VerificationOutcome, IdentityError> {
         let (verifier, last_error) = self.resolve().await;
-        match verifier {
-            Some(verifier) => verifier.verify(token, claim).await,
-            None => Ok(VerificationOutcome::Unverified {
+        let outcome = match verifier {
+            // The cached verifier's own `Unverified` is a verification failure
+            // as much as a discovery failure: before #1285 its reason was
+            // returned to the caller and recorded nowhere, so `last_failure()`
+            // — and therefore `rigorix_auth_status.reason` — was empty exactly
+            // when the operator needed it.
+            Some(verifier) => verifier.verify(token, claim).await?,
+            None => VerificationOutcome::Unverified {
                 reason: format!(
-                    "{} — attestation re-attempts discovery on the next call, so this clears once \
-                     the IdP answers; if it keeps failing, fix RIGORIX_IDP_ISSUER",
+                    "{} — verification is re-attempted on the next call, so this clears once the \
+                     IdP answers; if it keeps failing, fix RIGORIX_IDP_ISSUER",
                     last_error
                         .unwrap_or_else(|| "no verifier is available for this claim".to_string())
                 ),
-            }),
-        }
+            },
+        };
+        // One place records what this verifier reports: whatever reason the
+        // returned outcome carries (discovery or JWKS), and `None` once a
+        // credential verifies again (#1285).
+        self.remember(match &outcome {
+            VerificationOutcome::Unverified { reason } => Some(reason.clone()),
+            VerificationOutcome::Verified => None,
+        });
+        Ok(outcome)
     }
 
     /// #1282 — the operator-facing reason, readable without an `await`.
@@ -324,6 +337,73 @@ mod tests {
         assert!(
             verifier.last_failure().is_none(),
             "the recorded failure must clear when discovery succeeds"
+        );
+    }
+
+    /// #1285 — the case that happens most often: discovery succeeded and the
+    /// verifier was cached, so it is the **JWKS fetch** that fails when the IdP
+    /// goes away. Before this the reason was returned to the caller and
+    /// recorded nowhere, so `rigorix_auth_status.reason` was `null` exactly
+    /// when the operator needed it, and the refusal blamed a discovery attempt
+    /// that had not failed.
+    #[tokio::test]
+    async fn a_jwks_failure_after_a_successful_discovery_is_recorded() {
+        // Discovery answers, and points the cached verifier at a port with no
+        // listener: the credential cannot be checked, and discovery is not
+        // what failed.
+        let idp = Arc::new(FlakyIdp::new(
+            0,
+            Some("http://127.0.0.1:1/.well-known/jwks.json"),
+        ));
+        let verifier = DiscoveryBackedVerifier::with_retry_after(idp.clone(), Duration::ZERO);
+
+        // A parseable RS256 header is enough to reach the JWKS fetch.
+        let token = "eyJhbGciOiJSUzI1NiIsImtpZCI6Im1vY2staWRwLWtleS0xIn0.payload.signature";
+        let out = verifier.verify(token, &claim()).await.unwrap();
+        let outcome_reason = unverified_reason(&out);
+
+        assert!(
+            verifier.is_resolved().await,
+            "discovery succeeded — the verifier is cached, not rediscovered"
+        );
+        assert_eq!(idp.attempts(), 1, "one discovery attempt, not one per call");
+
+        let recorded = verifier
+            .last_failure()
+            .expect("the JWKS failure must be recorded, not dropped");
+        assert!(
+            !recorded.contains("discovery"),
+            "discovery did not fail; the recorded cause must not blame it: {recorded}"
+        );
+        assert!(
+            recorded.contains("http://127.0.0.1:1") || recorded.contains("connection refused"),
+            "the recorded cause must name the failing fetch: {recorded}"
+        );
+        assert_eq!(
+            recorded, outcome_reason,
+            "the surface and the outcome must report the same cause"
+        );
+
+        // End of the chain: the refusal the operator reads (#1285) — the
+        // engine quotes the cause and names no stage, because this process is
+        // the only one that knows which stage failed.
+        let refusal = rigorix_engine::orchestrator::domain::OrchestratorError::IdentityRequired {
+            step: "payout".to_string(),
+            status: "unverified".to_string(),
+            reason: Some(recorded.clone()),
+        }
+        .to_string();
+        assert!(
+            refusal.contains(&recorded),
+            "the refusal must quote the cause the verifier recorded: {refusal}"
+        );
+        assert!(
+            !refusal.contains("discovery"),
+            "the refusal must not blame a stage: {refusal}"
+        );
+        assert!(
+            !refusal.contains("restart"),
+            "a restart is not what recovers: {refusal}"
         );
     }
 

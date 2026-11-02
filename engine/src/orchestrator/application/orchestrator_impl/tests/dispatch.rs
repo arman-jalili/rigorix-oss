@@ -135,6 +135,7 @@ async fn test_r7_unanchored_history_refusal_is_structured() {
             template_name: "attendance-add".into(),
             repository: None,
             identity: None,
+            identity_verification_failure: None,
             author: Some("jeff@corp".to_string()),
             enforcement_preset: None,
         })

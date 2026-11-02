@@ -163,6 +163,17 @@ pub trait AuthToolHandler: Send + Sync {
         None
     }
 
+    /// The verifier's recorded reason for an unattested claim (#1285).
+    ///
+    /// The engine gates on `IdentityRef` alone and cannot know which stage of
+    /// verification failed (discovery or the JWKS fetch), so the process that
+    /// verified hands over what it recorded and the refusal quotes it. Default
+    /// `None` — a session with nothing recorded still refuses, just without a
+    /// cause.
+    async fn verification_failure(&self) -> Option<String> {
+        None
+    }
+
     /// Handle `rigorix_auth_logout` — clear identity material.
     ///
     /// Returns `{ status: "logged_out" }`.

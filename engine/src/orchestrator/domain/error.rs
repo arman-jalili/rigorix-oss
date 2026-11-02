@@ -128,12 +128,18 @@ pub enum OrchestratorError {
     /// gate (F-20260907-05): an unauthenticated caller cannot run
     /// consequential steps; the error names the recovery that can actually
     /// help (#1277).
-    #[error("{}", identity_required_message(.step, .status))]
+    #[error(
+        "{}",
+        identity_required_message(.step, .status, .reason.as_deref())
+    )]
     IdentityRequired {
         /// Name of the step that requires an attested identity.
         step: String,
         /// Identity status at refusal time ("unauthenticated" / "unverified").
         status: String,
+        /// The verifier's recorded cause, when the calling process had one
+        /// (#1285). Quoted instead of naming a stage the engine cannot see.
+        reason: Option<String>,
     },
 
     /// An internal orchestrator error occurred.
@@ -162,15 +168,31 @@ impl OrchestratorError {
 ///
 /// `unauthenticated` means there is no credential to check — logging in is the
 /// fix. `unverified` means the credential is present and this process could
-/// not check it (the IdP was unreachable at discovery); telling the caller to
-/// log in points at the one action that cannot help, so the message names the
-/// two recoveries that can.
-fn identity_required_message(step: &str, status: &str) -> String {
+/// not check it; telling the caller to log in points at the one action that
+/// cannot help, so the message names the two recoveries that can.
+///
+/// #1285 — the sentence names no stage. The engine sees an `IdentityRef` whose
+/// source is `Unverified`; it cannot tell whether discovery failed or the JWKS
+/// fetch did, and saying "discovery" was wrong for the common case (a session
+/// whose IdP went away after discovery succeeded). When the calling process
+/// recorded a cause it is quoted; verification — not rediscovery — is what is
+/// re-attempted, so that is what the recovery sentence promises.
+fn identity_required_message(step: &str, status: &str, reason: Option<&str>) -> String {
     if status == "unverified" {
-        format!(
-            "Step '{step}' requires an attested identity but the caller is unverified — the claim is \
-             present and the last identity-provider discovery attempt failed: re-run once the IdP answers (attestation re-attempts discovery), or fix RIGORIX_IDP_ISSUER; rigorix_auth_status reports the recorded error"
-        )
+        match reason {
+            Some(cause) => format!(
+                "Step '{step}' requires an attested identity but the caller is unverified — the \
+                 claim is present and the last credential-verification attempt failed: {cause}. \
+                 Re-run once the IdP answers (verification is re-attempted on the next call), or \
+                 fix RIGORIX_IDP_ISSUER"
+            ),
+            None => format!(
+                "Step '{step}' requires an attested identity but the caller is unverified — the \
+                 claim is present and this process could not verify it: re-run once the IdP \
+                 answers (verification is re-attempted on the next call), or fix \
+                 RIGORIX_IDP_ISSUER; rigorix_auth_status reports the recorded cause"
+            ),
+        }
     } else {
         format!(
             "Step '{step}' requires an attested identity but the caller is unauthenticated — run \

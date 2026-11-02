@@ -77,6 +77,7 @@ impl EngineFacade for TddMockEngine {
         _repository: Option<String>,
         _author: Option<String>,
         _identity: Option<rigorix_engine::identity::IdentityRef>,
+        _verification_failure: Option<String>,
     ) -> Result<ExecutionResult, EngineFacadeError> {
         self.execute_result
             .clone()
@@ -87,6 +88,7 @@ impl EngineFacade for TddMockEngine {
         &self,
         _plan: PlanTemplate,
         _identity: Option<rigorix_engine::identity::IdentityRef>,
+        _verification_failure: Option<String>,
     ) -> Result<ValidationResult, EngineFacadeError> {
         self.validate_result
             .clone()
@@ -179,7 +181,7 @@ fn test_enginefacade_is_defined() {
 #[tokio::test]
 async fn test_enginefacade_executes_plan() {
     let engine = Arc::new(TddMockEngine::with_defaults());
-    let result = engine.execute(make_plan(), None, None, None).await;
+    let result = engine.execute(make_plan(), None, None, None, None).await;
     assert!(result.is_ok(), "EngineFacade should execute a plan");
     let exec = result.unwrap();
     assert_eq!(*exec.status(), ExecutionStatus::Completed);
@@ -189,7 +191,7 @@ async fn test_enginefacade_executes_plan() {
 #[tokio::test]
 async fn test_enginefacade_validates_plan() {
     let engine = Arc::new(TddMockEngine::with_defaults());
-    let result = engine.validate_plan(make_plan(), None).await;
+    let result = engine.validate_plan(make_plan(), None, None).await;
     assert!(result.is_ok());
     assert!(result.unwrap().is_valid());
 }
@@ -228,6 +230,7 @@ async fn test_executehandler_handles_execution() {
             repository: None,
             author: None,
             identity: None,
+            identity_verification_failure: None,
         })
         .await;
 
@@ -257,6 +260,7 @@ async fn test_validateplanhandler_handles_validation() {
         .handle(ValidateInput {
             plan: make_plan(),
             identity: None,
+            identity_verification_failure: None,
         })
         .await;
 
