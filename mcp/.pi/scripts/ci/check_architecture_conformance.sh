@@ -10,6 +10,21 @@
 #   0 — All conformance checks passed
 #   1 — One or more conformance checks failed
 #   2 — Architecture module not found or invalid
+#
+# This file is copied verbatim to each crate that ships the gate. The copies MUST
+# stay byte-identical (#1281): they had drifted enough that the same command
+# reported "no summary, exit 1" from the repository root, "32 failures" from a
+# crate directory, and "0 failures" through the crate's own copy — three
+# different answers from one gate. Edit this file, then copy it:
+#
+#   for d in . actions cli engine mcp; do
+#     cp .pi/scripts/ci/check_architecture_conformance.sh "$d/.pi/scripts/ci/"
+#   done
+#
+# Behavior that must hold in every directory:
+#   - no `src/` at this level        → SKIP, summary, exit 0
+#   - a check that aborts            → a failure line naming that check, summary
+#   - the summary always prints      → including on an early exit (EXIT trap)
 
 set -euo pipefail
 
@@ -40,16 +55,35 @@ log_pass() {
 }
 
 log_fail() {
-    echo -e "  ${RED}✗ FAIL${NC} $1 — $2"
+    if [[ -n "${2:-}" ]]; then
+        echo -e "  ${RED}✗ FAIL${NC} $1 — $2"
+    else
+        echo -e "  ${RED}✗ FAIL${NC} $1"
+    fi
     FAIL_COUNT=$((FAIL_COUNT + 1))
     TOTAL_COUNT=$((TOTAL_COUNT + 1))
     FAILURES+=("$1: $2")
 }
 
 log_skip() {
-    echo -e "  ${YELLOW}⊘ SKIP${NC} $1 — $2"
+    if [[ -n "${2:-}" ]]; then
+        echo -e "  ${YELLOW}⊘ SKIP${NC} $1 — $2"
+    else
+        echo -e "  ${YELLOW}⊘ SKIP${NC} $1"
+    fi
     SKIP_COUNT=$((SKIP_COUNT + 1))
     TOTAL_COUNT=$((TOTAL_COUNT + 1))
+}
+
+# Source files worth scanning. Build trees and vendored dependencies are PRUNED,
+# not filtered: `-not -path "*/target/*"` still descends into `target/` and pays
+# for every file in it (0.04s vs 8.6s on this repo, once per check), which is how
+# a gate that scans "a few dozen files" takes minutes from the repository root.
+scan_code_files() {
+    local root="${1:-.}"
+    find "$root" \
+        \( -name target -o -name .git -o -name node_modules -o -name .venv -o -name graphify-out \) -prune -o \
+        -type f \( -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" \) -print 2>/dev/null
 }
 
 # ── Language Detection ──
@@ -149,11 +183,11 @@ check_tenant_isolation() {
                     has_tenant_filter=true
                 fi
                 if [[ "$has_tenant_filter" == "false" ]]; then
-                    ((violations++))
+                    violations=$((violations + 1))
                     log_fail "$check_name" "Model $(basename "$model_file") has tenant_id but no tenant-scoped queries"
                 fi
             fi
-        done < <(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -50)
+        done < <(scan_code_files | head -50)
     fi
 
     if [[ $violations -eq 0 ]]; then
@@ -187,7 +221,7 @@ check_event_ordering() {
     esac
 
     local has_ordering=false
-    for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
+    for f in $(scan_code_files | head -30); do
         if grep -qE "(sequence|sequence_num|causal|version|timestamp.*order)" "$f" 2>/dev/null; then
             has_ordering=true
             break
@@ -229,7 +263,7 @@ check_outbox_dlq() {
     local has_outbox=false
     local has_dlq=false
 
-    for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
+    for f in $(scan_code_files | head -30); do
         grep -qi "outbox" "$f" 2>/dev/null && has_outbox=true
         grep -qi "dead.letter\|dlq\|failed.queue" "$f" 2>/dev/null && has_dlq=true
     done
@@ -269,7 +303,7 @@ check_replay_upcaster() {
     local has_replay=false
     local has_upcaster=false
 
-    for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
+    for f in $(scan_code_files | head -30); do
         grep -qi "replay\|replay_from\|replay_events" "$f" 2>/dev/null && has_replay=true
         grep -qi "upcast\|schema.*version\|migrate.*event" "$f" 2>/dev/null && has_upcaster=true
     done
@@ -307,7 +341,7 @@ check_runstarted_publication() {
     esac
 
     local has_publication=false
-    for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
+    for f in $(scan_code_files | head -30); do
         if grep -qi "run.started\|run_started\|RunStarted\|runstarted" "$f" 2>/dev/null; then
             has_publication=true
             break
@@ -347,7 +381,7 @@ check_runstarted_worker_activation() {
     esac
 
     local has_worker_activation=false
-    for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
+    for f in $(scan_code_files | head -30); do
         if grep -qi "worker.*start\|activate.*worker\|on_run.*start" "$f" 2>/dev/null; then
             has_worker_activation=true
             break
@@ -387,7 +421,7 @@ check_bounded_execution() {
     esac
 
     local has_bounds=false
-    for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
+    for f in $(scan_code_files | head -30); do
         if grep -qiE "(timeout|max_steps|max_tokens|step_limit|bounded|circuit.breaker)" "$f" 2>/dev/null; then
             has_bounds=true
             break
@@ -427,7 +461,7 @@ check_artifact_proof_surfaces() {
     esac
 
     local has_proof=false
-    for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
+    for f in $(scan_code_files | head -30); do
         if grep -qiE "(artifact.*proof|proof.*surface|verification.*artifact|artifact_hash)" "$f" 2>/dev/null; then
             has_proof=true
             break
@@ -560,7 +594,7 @@ check_controlled_stage_progression() {
     esac
 
     local has_state_machine=false
-    for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
+    for f in $(scan_code_files | head -30); do
         if grep -qiE "(state_machine|transition|Stage\(|step_to|next_stage|progression)" "$f" 2>/dev/null; then
             has_state_machine=true
             break
@@ -601,7 +635,7 @@ check_arch_sanity() {
 
     # Generic: no orphaned imports
     local orphaned_imports=0
-    for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
+    for f in $(scan_code_files | head -30); do
         if grep -qE "^import.*UNUSED|^from.*UNUSED" "$f" 2>/dev/null; then
             ((orphaned_imports++))
         fi
@@ -614,7 +648,7 @@ check_arch_sanity() {
 
     # Concurrency safety patterns
     local has_concurrency_safety=false
-    for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
+    for f in $(scan_code_files | head -30); do
         if grep -qiE "(lock|mutex|atomic|transaction|isolation|concurrent\.)" "$f" 2>/dev/null; then
             has_concurrency_safety=true
             break
@@ -683,45 +717,135 @@ check_import_boundaries() {
             [[ -f "$file" ]] || continue
             if [[ "$layer_dir" == *"domain" ]]; then
                 if grep -qE "from.*infrastructure|from.*api|from.*interfaces|import.*infrastructure|import.*api|import.*interfaces" "$file" 2>/dev/null; then
-                    ((violations++))
+                    violations=$((violations + 1))
                     log_fail "$check_name" "Domain layer imports from outer layer in $(basename "$file")"
                 fi
             fi
             if [[ "$layer_dir" == *"application" ]]; then
                 if grep -qE "from.*api|from.*interfaces|import.*api|import.*interfaces" "$file" 2>/dev/null; then
-                    ((violations++))
+                    violations=$((violations + 1))
                     log_fail "$check_name" "Application layer imports from api/interfaces in $(basename "$file")"
                 fi
             fi
-        done < <(find "$layer_dir" -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -20)
+        done < <(scan_code_files "$layer_dir" | head -20)
     done
 
-    # Also check per-module 4-layer DDD structure directly under src/
+    # ── per-module layout + boundary check ──────────────────────────────────
+    #
+    # The required layer set is derived from THIS repository's modules, never
+    # from `.pi/architecture/modules/module-template.md`'s React/Next.js table
+    # (#1281). That template asks every module for an `interfaces/` layer
+    # ("UI components, pages, layouts — React, Next.js"), so 32 of the engine's
+    # 33 three-layer modules were reported "incomplete" for a layout this
+    # codebase does not use. A gate that is wrong 32 times out of 37 is a gate
+    # that gets ignored, and the one real violation is the 33rd line of noise.
+    #
+    # A *DDD module* here is a module with a `domain/` layer — the marker of the
+    # pattern in this codebase. Modules without one (a `host/` of wiring, a
+    # `usage_guide/` with only interfaces/, a `shared/` of helpers) are not DDD
+    # modules and are not judged by this rule.
+    #
+    # The required set is the dominant signature among the DDD modules: a module
+    # missing a layer its peers all have is drift; an extra layer is not a
+    # violation. Pin it instead with ARCH_REQUIRED_LAYERS=domain,application,…
+    if [[ ! -d src ]]; then
+        log_skip "Import boundary conformance — no src/ at this level, nothing to scan"
+        return
+    fi
+
     local module_dirs
-    module_dirs=$(find src -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
+    module_dirs=$(find src -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort || true)
+
+    # Collect the DDD modules (module => layers present).
+    local ddd_modules=""
+    local module_dir module layer signature other other_sig
+    local match_count best_count best_sig required candidate
     for module_dir in $module_dirs; do
         module=$(basename "$module_dir")
-        # Skip non-DDD modules (CLI, config, shared)
-        case "$module" in shared|common|config|lib|bin|usage_guide) continue ;; esac
-        
-        # Check contracts/ anti-pattern
-        if [[ -d "${module_dir}/contracts" ]]; then
-            log_fail "$check_name" "Module '${module}' has contracts/ wrapper — should use domain/ application/ infrastructure/ interfaces/"
-        fi
-        
-        # Check required DDD layers
-        local layers_present=0
-        local layers_missing=""
+        case "$module" in shared|common|config|lib|bin) continue ;; esac
+        [[ -d "${module_dir}/domain" ]] || continue
+        ddd_modules="${ddd_modules}${module_dir} "
+    done
+
+    if [[ -z "$ddd_modules" ]]; then
+        log_skip "Import boundary conformance — no DDD module (domain/ layer) under src/ to check"
+        return
+    fi
+
+    # Dominant layer signature — O(n²) over a few dozen modules, and portable to
+    # bash 3.2 (no associative arrays).
+    best_count=0
+    best_sig=""
+    for module_dir in $ddd_modules; do
+        candidate=""
         for layer in domain application infrastructure interfaces; do
-            if [[ -d "${module_dir}/${layer}" ]]; then
-                layers_present=$((layers_present + 1))
-            else
-                layers_missing="${layers_missing} ${layer}"
-            fi
+            [[ -d "${module_dir}/${layer}" ]] && candidate="${candidate}${layer},"
         done
-        
-        if [[ "$layers_present" -gt 0 ]] && [[ "$layers_present" -lt 4 ]]; then
-            log_fail "$check_name" "Module '${module}' has incomplete DDD layers (missing:${layers_missing})"
+        match_count=0
+        for other in $ddd_modules; do
+            other_sig=""
+            for layer in domain application infrastructure interfaces; do
+                [[ -d "${other}/${layer}" ]] && other_sig="${other_sig}${layer},"
+            done
+            [[ "$other_sig" == "$candidate" ]] && match_count=$((match_count + 1))
+        done
+        if [[ $match_count -gt $best_count ]] ||
+            { [[ $match_count -eq $best_count ]] && [[ ${#candidate} -gt ${#best_sig} ]]; }; then
+            best_count=$match_count
+            best_sig="$candidate"
+        fi
+    done
+    required="$best_sig"
+    [[ -n "${ARCH_REQUIRED_LAYERS:-}" ]] && required="${ARCH_REQUIRED_LAYERS// /},"
+
+    for module_dir in $ddd_modules; do
+        module=$(basename "$module_dir")
+
+        # contracts/ wrapper anti-pattern — a port belongs in domain/.
+        if [[ -d "${module_dir}/contracts" ]]; then
+            violations=$((violations + 1))
+            log_fail "$check_name" "Module '${module}' has a contracts/ wrapper — ports belong in domain/"
+        fi
+
+        # Every declared layer present?
+        local missing=""
+        local required_layer
+        for required_layer in ${required//,/ }; do
+            [[ -d "${module_dir}/${required_layer}" ]] || missing="${missing} ${required_layer}"
+        done
+        if [[ -n "$missing" ]]; then
+            violations=$((violations + 1))
+            log_fail "$check_name" "Module '${module}' is missing declared layer(s):${missing}"
+        fi
+
+        # The boundary this codebase holds everywhere: `domain/` is pure and
+        # may not reach outward (application / infrastructure / interfaces).
+        # A module may reference ANOTHER module freely — that is composition,
+        # not a layer violation.
+        #
+        # The module template's "application/ may not import interfaces/" rule
+        # is NOT enforced: in this repository `interfaces/` is the incoming
+        # port as often as it is the outermost adapter layer, and application
+        # factories legitimately wire it (e.g.
+        # `capacity_ledger/application/factory.rs` returns
+        # `crate::capacity_ledger::interfaces::CapacityLedger`). Enforcing a
+        # rule the codebase does not follow is how the layer check earned its
+        # 32 false failures; a gate may only be as strict as the truth here.
+        #
+        # Comments are stripped first: a doc link such as
+        # `[`CapacityLedger`]: crate::capacity_ledger::interfaces::CapacityLedger`
+        # documents an edge, it is not one. (Heuristic, as everywhere here: a
+        # `//` inside a string literal truncates the rest of that line.)
+        if [[ -d "${module_dir}/domain" ]]; then
+            local domain_file
+            while IFS= read -r domain_file; do
+                [[ -f "$domain_file" ]] || continue
+                if sed -E 's,//.*,,' "$domain_file" |
+                    grep -qE "(crate|super)::[A-Za-z0-9_:]*(application|infrastructure|interfaces)"; then
+                    violations=$((violations + 1))
+                    log_fail "$check_name" "Module '${module}': domain/$(basename "$domain_file") references an outer layer (application|infrastructure|interfaces)"
+                fi
+            done < <(scan_code_files "${module_dir}/domain" || true)
         fi
     done
 
@@ -732,41 +856,77 @@ check_import_boundaries() {
 
 # ── Main ──
 
+SUMMARY_PRINTED=0
+
+print_summary() {
+    SUMMARY_PRINTED=1
+    echo ""
+    echo "═══ Conformance Summary ═══"
+    echo -e "  ${GREEN}Pass: ${PASS_COUNT}${NC}"
+    echo -e "  ${RED}Fail: ${FAIL_COUNT}${NC}"
+    echo -e "  ${YELLOW}Skip: ${SKIP_COUNT}${NC}"
+    echo "  Total: ${TOTAL_COUNT}"
+
+    if [[ ${FAIL_COUNT} -gt 0 ]]; then
+        echo ""
+        echo "Failures:"
+        local f
+        for f in "${FAILURES[@]}"; do
+            echo -e "  ${RED}✗${NC} $f"
+        done
+    fi
+}
+
+# The summary prints in every outcome, including an early exit (#1281). Without
+# this, a check that aborted under `set -e` produced `exit 1` and no failure
+# line at all — `validate-architecture-readiness.sh` then reported "conformance
+# failed" for a tree on which nothing failed. The trap does not change the exit
+# code.
+on_exit() {
+    if [[ "${SUMMARY_PRINTED:-0}" -eq 0 ]]; then
+        echo ""
+        echo -e "  ${YELLOW}(the run ended before the summary — a check aborted; the counts below are partial)${NC}"
+        print_summary
+    fi
+}
+trap on_exit EXIT
+
+# A check that aborts must be *named*, not silent. `if ! cmd` also suspends
+# `set -e` inside the check, so one bad `find` can no longer kill the run before
+# the other checks and the summary.
+run_check() {
+    local fn="$1"
+    shift
+    if ! "$fn" "$@"; then
+        log_fail "$fn" "check aborted — the last line above names where"
+    fi
+}
+
 echo "═══ Architecture Conformance Checks ═══"
 echo ""
 
 # Run all conformance checks
-check_tenant_isolation "" "$PROJECT_LANG"
-check_event_ordering "$PROJECT_LANG"
-check_outbox_dlq "$PROJECT_LANG"
-check_replay_upcaster "$PROJECT_LANG"
-check_runstarted_publication "$PROJECT_LANG"
-check_runstarted_worker_activation "$PROJECT_LANG"
-check_bounded_execution "$PROJECT_LANG"
-check_artifact_proof_surfaces "$PROJECT_LANG"
-check_runtime_baseline "$PROJECT_LANG"
-check_controlled_stage_progression "$PROJECT_LANG"
+run_check check_tenant_isolation "" "$PROJECT_LANG"
+run_check check_event_ordering "$PROJECT_LANG"
+run_check check_outbox_dlq "$PROJECT_LANG"
+run_check check_replay_upcaster "$PROJECT_LANG"
+run_check check_runstarted_publication "$PROJECT_LANG"
+run_check check_runstarted_worker_activation "$PROJECT_LANG"
+run_check check_bounded_execution "$PROJECT_LANG"
+run_check check_artifact_proof_surfaces "$PROJECT_LANG"
+run_check check_runtime_baseline "$PROJECT_LANG"
+run_check check_controlled_stage_progression "$PROJECT_LANG"
 
 echo ""
 echo "═══ Architecture Sanity Checks ═══"
 echo ""
 
-check_arch_sanity "" "$PROJECT_LANG"
-check_import_boundaries "$PROJECT_LANG"
+run_check check_arch_sanity "" "$PROJECT_LANG"
+run_check check_import_boundaries "$PROJECT_LANG"
 
-echo ""
-echo "═══ Conformance Summary ═══"
-echo -e "  ${GREEN}Pass: ${PASS_COUNT}${NC}"
-echo -e "  ${RED}Fail: ${FAIL_COUNT}${NC}"
-echo -e "  ${YELLOW}Skip: ${SKIP_COUNT}${NC}"
-echo "  Total: ${TOTAL_COUNT}"
+print_summary
 
 if [[ ${FAIL_COUNT} -gt 0 ]]; then
-    echo ""
-    echo "Failures:"
-    for f in "${FAILURES[@]}"; do
-        echo -e "  ${RED}✗${NC} $f"
-    done
     echo ""
     echo "Architecture conformance FAILED. Fix the issues above before proceeding."
     exit 1

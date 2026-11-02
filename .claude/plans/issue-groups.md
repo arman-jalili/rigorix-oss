@@ -1,6 +1,6 @@
 # Issue Implementation Groups
 
-**Generated:** Sun Nov  1 18:35:30 CET 2026
+**Generated:** Sun Nov  1 22:06:20 CET 2026
 **Total Issues:** 2
 
 ---
@@ -19,5 +19,5 @@ Issues are grouped by:
 
 Each requires separate branch: `issue/{number}`
 
-- #1278: demo/anchor-e2e cannot pass: it seeds an envelope with signature null, and ingest rejects unsigned envelopes → branch: `issue/1278`
-- #1277: an IdP that is unreachable at MCP startup disables attestation for the life of the process, and the refusal says the caller is unauthenticated → branch: `issue/1277`
+- #1282: the unverified refusal says the IdP was unreachable when the server started, even when it failed mid-session, and never shows the error it recorded → branch: `issue/1282`
+- #1281: check_architecture_conformance.sh either dies before its summary or reports 32 failures from a rule inherited from a React module template → branch: `issue/1281`
