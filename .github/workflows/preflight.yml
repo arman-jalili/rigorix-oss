@@ -1,5 +1,5 @@
 # ═════════════════════════════════════════════════════════════════════
-# Rigorix Preflight — Fast pre-merge validation (sub-3 min target)
+# Rigorix Preflight — pre-merge validation
 #
 # Runs on every PR change. Only the fastest/most critical checks.
 # Full pipeline runs in ci.yml (parallelizable, includes coverage/security/docs).
@@ -10,6 +10,23 @@
 #   3. fmt    — cargo fmt --check
 #   4. clippy — cargo clippy (all crates, -D warnings)
 #   5. test   — cargo test --lib (quick: no integration)
+#
+# ── Budgets (#1286) ───────────────────────────────────────────────────
+# Measured runtimes of this job (GitHub's own duration, queueing excluded):
+#
+#   warm cache   6m51s  7m23s  7m26s  8m04s        → ~6–9 min
+#   cold cache   20m41s (end to end, queueing included; the steps it spent
+#                        compiling were ~14 min)
+#
+# Each step therefore carries its own budget, listed below, and the job
+# carries a backstop above their sum. The earlier single job budget of 10
+# minutes sat *below* the cold-cache runtime, so it killed passing PRs
+# mid-cache-upload (#1284: 10m2s and 10m3s, twice, after every step had
+# passed) and made the verdict depend on whether the Rust cache was warm.
+#
+# A step budget fails the step and names it (`preflight_step.sh` writes the
+# reason), leaving the job budget for the post-step cache save — which is
+# what keeps the next run warm.
 # ═════════════════════════════════════════════════════════════════════
 
 name: Preflight
@@ -31,35 +48,42 @@ jobs:
   preflight:
     name: 🏃 Preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Backstop only: each step below has its own budget, and their sum plus the
+    # cache save stays under this. Reaching it means something unexpected hung.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
       - name: 🔧 Setup Rust
+        timeout-minutes: 8
         uses: ./.github/actions/setup
         with:
           cache-key: preflight
 
       - name: 📐 Format check
-        run: cargo fmt --check
+        id: fmt
+        timeout-minutes: 3
+        run: .github/scripts/preflight_step.sh "Formatting" 180 -- cargo fmt --check
 
       - name: ⚡ Clippy (workspace)
-        run: cargo clippy --workspace -- -D warnings
+        id: clippy
+        timeout-minutes: 10
+        run: .github/scripts/preflight_step.sh "Clippy" 600 -- cargo clippy --workspace -- -D warnings
 
       - name: 🏗️ Check compilation (all crates)
-        run: cargo check --workspace
+        id: check
+        timeout-minutes: 7
+        run: .github/scripts/preflight_step.sh "Compilation" 420 -- cargo check --workspace
 
       - name: 🧪 Quick tests (lib only, no integration)
-        run: cargo test --workspace --lib
+        id: tests
+        timeout-minutes: 12
+        run: .github/scripts/preflight_step.sh "Tests" 720 -- cargo test --workspace --lib
 
+      # Runs even when a step above failed, so the summary always says which
+      # one — the old summary was skipped itself, leaving a red job with no
+      # explanation.
       - name: ✅ Summary
+        if: always()
         shell: bash
-        run: |
-          echo "## ✅ Preflight Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Formatting | ✅ |" >> $GITHUB_STEP_SUMMARY
-          echo "| Clippy | ✅ |" >> $GITHUB_STEP_SUMMARY
-          echo "| Compilation | ✅ |" >> $GITHUB_STEP_SUMMARY
-          echo "| Tests | ✅ |" >> $GITHUB_STEP_SUMMARY
+        run: .github/scripts/preflight_summary.sh >> "$GITHUB_STEP_SUMMARY"
