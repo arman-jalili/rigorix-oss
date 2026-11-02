@@ -48,6 +48,17 @@ pub trait TokenVerifier: Send + Sync {
         token: &str,
         claim: &IdentityClaim,
     ) -> Result<VerificationOutcome, IdentityError>;
+
+    /// Why the last verification attempt could not check the credential, when
+    /// the verifier records one (#1282).
+    ///
+    /// This is the operator-facing half of `Unverified`: the outcome says *that*
+    /// it degraded, this says *why*, in the verifier's own words (for a
+    /// discovering verifier: the last discovery failure). Default `None` — a
+    /// verifier that has nothing to add (the offline default) stays silent.
+    fn last_failure(&self) -> Option<String> {
+        None
+    }
 }
 
 /// Offline default — attestation proceeds without network verification

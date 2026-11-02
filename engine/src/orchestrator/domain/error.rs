@@ -169,8 +169,7 @@ fn identity_required_message(step: &str, status: &str) -> String {
     if status == "unverified" {
         format!(
             "Step '{step}' requires an attested identity but the caller is unverified — the claim is \
-             present and this process could not verify it (the IdP was unreachable when the server \
-             started): restart the MCP server once the IdP answers, or fix RIGORIX_IDP_ISSUER"
+             present and the last identity-provider discovery attempt failed: re-run once the IdP answers (attestation re-attempts discovery), or fix RIGORIX_IDP_ISSUER; rigorix_auth_status reports the recorded error"
         )
     } else {
         format!(

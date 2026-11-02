@@ -394,6 +394,7 @@ impl AuthService for AuthServiceImpl {
                 status: TokenStatus::Expired,
                 claim_summary: None,
                 source: IdentitySource::Unverified,
+                reason: None,
             });
         }
 
@@ -410,16 +411,26 @@ impl AuthService for AuthServiceImpl {
                 } else {
                     TokenStatus::Authenticated
                 };
+                // #1282 — the verdict says *that* the claim could not be
+                // checked; this says *why*, without the caller having to
+                // trigger a refusal to find out.
+                let reason = if matches!(status, TokenStatus::Unverified) {
+                    self.attestation.verification_failure()
+                } else {
+                    None
+                };
                 StatusOutput {
                     status,
                     claim_summary,
                     source,
+                    reason,
                 }
             }
             None => StatusOutput {
                 status: TokenStatus::Unauthenticated,
                 claim_summary: None,
                 source: IdentitySource::Unverified,
+                reason: None,
             },
         };
 
@@ -798,6 +809,8 @@ mod tests {
         /// When set, claims come back with `source = Unverified` (the IdP could
         /// not be reached at discovery) — #1277.
         unverifiable: std::sync::atomic::AtomicBool,
+        /// The verifier's recorded failure, surfaced through `status` — #1282.
+        failure_reason: Mutex<Option<String>>,
     }
 
     fn claim_from_token(token: &str, issuer: Option<&str>, method: &str) -> IdentityClaim {
@@ -816,6 +829,10 @@ mod tests {
 
     #[async_trait]
     impl IdentityAttestationService for FakeAttestation {
+        fn verification_failure(&self) -> Option<String> {
+            self.failure_reason.lock().unwrap().clone()
+        }
+
         async fn attest(&self, input: AttestInput) -> Result<IdentityClaim, IdentityError> {
             if *self.failures.lock().unwrap() > 0 {
                 *self.failures.lock().unwrap() -= 1;
@@ -1072,6 +1089,8 @@ mod tests {
         h.service.poll(&PollInput::default()).await.unwrap();
         h.service.poll(&PollInput::default()).await.unwrap();
         h.attestation.unverifiable.store(true, Ordering::SeqCst);
+        *h.attestation.failure_reason.lock().unwrap() =
+            Some("the IdP was unreachable (connection refused)".to_string());
 
         let out = h.service.status(&StatusInput::default()).await.unwrap();
         assert_eq!(out.status, TokenStatus::Unverified);
@@ -1081,6 +1100,35 @@ mod tests {
             .claim_summary
             .expect("the claim is carried, not dropped");
         assert!(summary.subject.starts_with("user-from-access-token-1"));
+        // #1282 — the operator sees why, without triggering a refusal first,
+        // and the reason is the verifier's own words (no invented history).
+        let reason = out.reason.expect("unverified carries the recorded cause");
+        assert!(
+            reason.contains("connection refused"),
+            "unexpected: {reason}"
+        );
+        assert!(
+            !reason.contains("when the server started"),
+            "the reason must not assert when discovery failed: {reason}"
+        );
+    }
+
+    /// A healthy session carries no stale reason.
+    #[tokio::test]
+    async fn status_authenticated_has_no_reason() {
+        let h = harness();
+        h.service.login(&LoginInput::default()).await.unwrap();
+        h.service.poll(&PollInput::default()).await.unwrap();
+        h.service.poll(&PollInput::default()).await.unwrap();
+        *h.attestation.failure_reason.lock().unwrap() =
+            Some("a stale failure from an earlier attempt".to_string());
+
+        let out = h.service.status(&StatusInput::default()).await.unwrap();
+        assert_eq!(out.status, TokenStatus::Authenticated);
+        assert!(
+            out.reason.is_none(),
+            "a checked claim reports no reason, even if an older attempt failed"
+        );
     }
 
     // ---------------------------------------------------------------------

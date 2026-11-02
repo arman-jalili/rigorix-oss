@@ -48,6 +48,16 @@ pub enum VerificationOutcome {
 /// `infrastructure/verifier.rs` and ADR-012 option c).
 #[async_trait]
 pub trait IdentityAttestationService: Send + Sync {
+    /// Why the last attestation could not verify the presented credential, when
+    /// the injected verifier records one (#1282) — `None` when verification is
+    /// healthy or when the verifier has nothing to add.
+    ///
+    /// `rigorix_auth_status` reports this beside `unverified` so an operator can
+    /// see the cause without triggering a refusal.
+    fn verification_failure(&self) -> Option<String> {
+        None
+    }
+
     /// Attest from a presented token/principal → `IdentityClaim`.
     ///
     /// # Errors

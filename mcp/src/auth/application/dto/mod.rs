@@ -107,6 +107,13 @@ pub struct StatusOutput {
 
     /// Identity source marker (`idp_token`, `local_principal`, `unverified`).
     pub source: IdentitySource,
+
+    /// Why the credential could not be verified, in the verifier's own words
+    /// (#1282). Present only beside `unverified` — the refusal at the L1 gate
+    /// names the condition and points here for the cause, because a refusal
+    /// cannot know it and must not invent one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

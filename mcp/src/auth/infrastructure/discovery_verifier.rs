@@ -48,6 +48,10 @@ pub struct DiscoveryBackedVerifier {
     retry_after: Duration,
     /// Resolver state — `verifier` is `None` until discovery succeeds.
     state: Mutex<DiscoveryState>,
+    /// Mirror of `DiscoveryState::last_error` that is readable without an
+    /// `await`, so `rigorix_auth_status` can report *why* `unverified` without
+    /// taking the resolver lock (#1282). Written only in `resolve`.
+    last_failure: std::sync::Mutex<Option<String>>,
 }
 
 /// Cached outcome of the most recent discovery attempt.
@@ -73,12 +77,20 @@ impl DiscoveryBackedVerifier {
             idp,
             retry_after,
             state: Mutex::new(DiscoveryState::default()),
+            last_failure: std::sync::Mutex::new(None),
         }
     }
 
     /// True when attestation holds a resolved verifier (observability/tests).
     pub async fn is_resolved(&self) -> bool {
         self.state.lock().await.verifier.is_some()
+    }
+
+    /// Record (or clear) the reason a verification could not be performed.
+    fn remember(&self, reason: Option<String>) {
+        if let Ok(mut slot) = self.last_failure.lock() {
+            *slot = reason;
+        }
     }
 
     /// Attempt discovery if the cooldown allows it; returns the resolved
@@ -104,6 +116,7 @@ impl DiscoveryBackedVerifier {
                         );
                         state.verifier = Some(Arc::new(JwksVerifier::new(jwks_url)));
                         state.last_error = None;
+                        self.remember(None);
                     }
                     None => {
                         tracing::warn!(
@@ -111,6 +124,7 @@ impl DiscoveryBackedVerifier {
                         );
                         state.last_error =
                             Some("the IdP discovered but advertises no jwks_uri".to_string());
+                        self.remember(state.last_error.clone());
                     }
                 },
                 Err(e) => {
@@ -118,6 +132,7 @@ impl DiscoveryBackedVerifier {
                         "auth: IdP discovery failed ({e}) — claims degrade to unverified until it answers"
                     );
                     state.last_error = Some(format!("the IdP was unreachable ({e})"));
+                    self.remember(state.last_error.clone());
                 }
             }
         }
@@ -144,13 +159,18 @@ impl TokenVerifier for DiscoveryBackedVerifier {
             Some(verifier) => verifier.verify(token, claim).await,
             None => Ok(VerificationOutcome::Unverified {
                 reason: format!(
-                    "{} — attestation re-attempts discovery; restart the MCP server once the IdP \
-                     answers, or fix RIGORIX_IDP_ISSUER",
+                    "{} — attestation re-attempts discovery on the next call, so this clears once \
+                     the IdP answers; if it keeps failing, fix RIGORIX_IDP_ISSUER",
                     last_error
                         .unwrap_or_else(|| "no verifier is available for this claim".to_string())
                 ),
             }),
         }
+    }
+
+    /// #1282 — the operator-facing reason, readable without an `await`.
+    fn last_failure(&self) -> Option<String> {
+        self.last_failure.lock().ok().and_then(|slot| slot.clone())
     }
 }
 
@@ -273,8 +293,19 @@ mod tests {
         let cold = verifier.verify("a.b.c", &claim()).await.unwrap();
         let reason = unverified_reason(&cold);
         assert!(
-            reason.contains("unreachable") && reason.contains("restart the MCP server"),
-            "the reason must name the cause and the recovery: {reason}"
+            reason.contains("unreachable"),
+            "the reason must name the cause: {reason}"
+        );
+        assert!(
+            !reason.contains("restart"),
+            "a restart is not required — the next attestation re-attempts discovery: {reason}"
+        );
+        // #1282 — the recorded failure is readable without triggering a refusal,
+        // which is what `rigorix_auth_status` reports.
+        let recorded = verifier.last_failure().expect("a failure was recorded");
+        assert!(
+            recorded.contains("unreachable") && recorded.contains("connection refused"),
+            "the recorded failure must name the underlying error: {recorded}"
         );
         assert_eq!(idp.attempts(), 1);
         assert!(!verifier.is_resolved().await);
@@ -288,6 +319,11 @@ mod tests {
         assert!(
             verifier.is_resolved().await,
             "a recovered IdP must resolve the verifier without a restart"
+        );
+        // #1282 — a recovered process reports no stale reason.
+        assert!(
+            verifier.last_failure().is_none(),
+            "the recorded failure must clear when discovery succeeds"
         );
     }
 
@@ -317,5 +353,11 @@ mod tests {
             "unexpected reason: {reason}"
         );
         assert!(!verifier.is_resolved().await);
+        assert!(
+            verifier
+                .last_failure()
+                .is_some_and(|r| r.contains("no jwks_uri")),
+            "the recorded failure must name the missing jwks_uri"
+        );
     }
 }
