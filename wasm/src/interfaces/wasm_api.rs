@@ -14,8 +14,9 @@
 //! ```
 //!
 //! # Contract
-//! - JSON strings in, JSON strings out. The `#[wasm_bindgen]` attribute layer is applied by
-//!   the packaging issue; these signatures are the contract
+//! - JSON strings in, JSON strings out. The `#[wasm_bindgen]` attribute layer lives in
+//!   `mod exported` at the foot of this file (wasm32 only, #1349): these signatures are the
+//!   contract, and that module is the binding a host actually calls
 //! - Every DTO rejects unknown fields (`deny_unknown_fields`), so a typo is a refusal, not
 //!   a silently ignored field (criterion 15)
 //! - A refusal or a gate failure is `Ok(json)`. The **only** `Err` is a malformed handle,
@@ -373,3 +374,55 @@ impl ReplaySessionQueryHolder {
 /// projection type, and naming it here documents why the import exists.
 const _: fn(&BusinessWording, crate::domain::outcome::RefusalKind) -> &'static str =
     RefusalVocabulary::reason;
+
+// ── The host-facing export layer (#1349) ─────────────────────────────────────
+//
+// `cargo build --target wasm32-unknown-unknown` produced a 368-byte module with
+// no exported symbol: the functions above are the contract, but nothing bound
+// them to a name a host could call, so every gate passed on a module that did
+// nothing. This module is that binding — thin wrappers with the same signatures,
+// mapping the one `Err` (a malformed handle: a programmer mistake, not a gate
+// decision) to a JS exception and everything else to JSON as before.
+//
+// Compiled only for wasm32: the crate's native API and its tests are unchanged,
+// and the native dependency graph stays empty of wasm-bindgen.
+#[cfg(target_arch = "wasm32")]
+pub mod exported {
+    use wasm_bindgen::prelude::*;
+
+    /// Assemble a replayable session — `open_session(scenario, fixtures, clock, seed)`.
+    ///
+    /// Returns a handle, or a refusal as a return value.
+    #[wasm_bindgen]
+    pub fn open_session(
+        scenario_json: String,
+        fixtures_json: String,
+        clock_json: String,
+        seed_json: String,
+    ) -> Result<String, JsValue> {
+        super::open_session(scenario_json, fixtures_json, clock_json, seed_json)
+            .map_err(|e| JsValue::from_str(&e))
+    }
+
+    /// Evaluate a proposed action inside the session — `attempt_run(handle, action)`.
+    ///
+    /// A refusal is `Ok(json)`. The only exception is a malformed handle.
+    #[wasm_bindgen]
+    pub fn attempt_run(handle_json: String, action_json: String) -> Result<String, JsValue> {
+        super::attempt_run(handle_json, action_json).map_err(|e| JsValue::from_str(&e))
+    }
+
+    /// Export the session's artifact set — `export_artifact_set(handle)`.
+    ///
+    /// Before an attempt this is a refusal (`seal_failed`), not an error.
+    #[wasm_bindgen]
+    pub fn export_artifact_set(handle_json: String) -> Result<String, JsValue> {
+        super::export_artifact_set(handle_json).map_err(|e| JsValue::from_str(&e))
+    }
+
+    /// The three version numbers — `contract_version()`.
+    #[wasm_bindgen]
+    pub fn contract_version() -> String {
+        super::contract_version()
+    }
+}

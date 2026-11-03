@@ -103,8 +103,48 @@ fn the_budget_file_states_which_artifact_it_measures() {
     // A budget without a named artifact can be satisfied by measuring the wrong file.
     assert!(budget.contains("artifact: pkg/rigorix_gate_wasm_bg.wasm"));
     assert!(budget.contains("budget_bytes:"));
-    // And it must say when the ceiling is not yet in force rather than implying it is.
-    assert!(budget.contains("state: awaiting-packaging"));
+    // #1349 — the ceiling is in force now that an artifact a host can load exists.
+    // Before the export layer the module was 368 B with no exported symbol, so
+    // there was no subject to measure; the file said `awaiting-packaging` and the
+    // gate said so out loud. Either state must be declared, never implied.
+    // Three states, one meaning each: `awaiting-packaging` (no artifact), `packaged`
+    // (an artifact exists and the ceiling is in force, nothing published), `shipped`
+    // (published — the release-train guard then requires the npm job to gate the
+    // release). An undeclared or invented state is a failure here, not a default.
+    let state = budget
+        .lines()
+        .find_map(|l| l.strip_prefix("state:"))
+        .map(|v| v.trim().to_string())
+        .unwrap_or_default();
+    assert!(
+        matches!(
+            state.as_str(),
+            "awaiting-packaging" | "packaged" | "shipped"
+        ),
+        "the budget file must declare a known state, got {state:?}"
+    );
+    if state != "awaiting-packaging" {
+        // A ceiling with no numbers is a ceiling with no subject.
+        let measured: u64 = budget
+            .lines()
+            .find_map(|l| l.strip_prefix("measured_bytes:"))
+            .and_then(|v| v.trim().parse().ok())
+            .expect("measured_bytes parses");
+        let limit: u64 = budget
+            .lines()
+            .find_map(|l| l.strip_prefix("budget_bytes:"))
+            .and_then(|v| v.trim().parse().ok())
+            .expect("budget_bytes parses");
+        assert!(
+            measured > 0,
+            "an artifact that exists has a measurable size"
+        );
+        // measured + 25% (NFR-002), allowing for integer truncation.
+        assert!(
+            limit >= measured + measured / 4,
+            "budget {limit} must be at least measured + 25% of {measured}"
+        );
+    }
     assert!(budget.contains("25%"));
 }
 

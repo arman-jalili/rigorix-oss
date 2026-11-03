@@ -7,12 +7,18 @@
 #
 # budget = measured + 25%, per NFR-002: measured first, then a hard gate, never a guess.
 artifact: pkg/rigorix_gate_wasm_bg.wasm
-measured_bytes: 0
-budget_bytes: 0
-state: awaiting-packaging
+measured_bytes: 243366
+budget_bytes: 304207
+state: packaged
 note: >-
-  The release cdylib currently builds to 368 bytes because no symbol is exported yet (the
-  wasm-bindgen attribute layer belongs to the packaging issue). The gate therefore records
-  the trend instead of enforcing a ceiling, and says so out loud. Once pkg/*.wasm exists,
-  `measured_bytes` is filled from it and `budget_bytes` becomes measured + 25% — from that
-  commit on, a regression fails the build.
+  Re-measured on 2026-11-03 (#1349): the export layer landed (`#[wasm_bindgen]` on
+  the four contract functions), so the module a host loads now exists and this
+  ceiling has a subject. measured_bytes is that artifact —
+  `wasm-bindgen --target nodejs` output, 243366 B — not the raw release cdylib
+  (which was 368 B when nothing was exported, before that 277,829 B once the
+  symbols existed but the module still could not be loaded). budget_bytes is
+  measured + 25 % per NFR-002: measured first, then a hard gate, never a guess.
+  From this commit on, a regression beyond the budget fails the build. The state is
+  `packaged`, not `shipped`: the artifact a host loads exists and is measured, but no
+  version has been published to npm, so `publish-wasm-npm` stays outside
+  `github-release.needs` — the release-train guard enforces that distinction.

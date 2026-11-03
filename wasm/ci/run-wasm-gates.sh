@@ -40,12 +40,19 @@ gate() {
 
 gate "domain isolation"        bash ci/check-domain-isolation.sh
 gate "bundle independence"     bash ci/check-bundle-independence.sh
-gate "bundle size"             bash ci/check-bundle-size.sh
 gate "failure tiers"           bash ci/check-failure-tiers.sh
 gate "conformance"             bash ci/run-conformance.sh
 gate "panic sites"             bash ../.pi/scripts/validate-panic-sites.sh
 gate "unit + contract tests"   cargo test --quiet
 gate "release build for wasm"  cargo build --quiet --release --target wasm32-unknown-unknown
+# #1349: the build gate above proves the crate compiles; this one proves the
+# artifact is callable. It packages the release module the way a host consumes it,
+# loads it in Node, and calls all four exports — so a module with no exported
+# symbol fails here instead of passing every gate.
+gate "module smoke (a host can call it)" bash ci/run-module-smoke.sh
+# After the smoke gate, because it produces the packaged artifact this measures:
+# a size ceiling needs a subject, and the subject is what a host loads.
+gate "bundle size"             bash ci/check-bundle-size.sh
 gate "workspace pins"          bash ../.pi/scripts/validate-workspace-pins.sh
 
 if [ "$WITH_NPM" -eq 1 ]; then
