@@ -1,20 +1,22 @@
-//! `SeededIdSource` — mints identifiers from a declared sequence.
+//! `SeededIdSource` — mints identifiers from declared sequences.
 //!
 //! @canonical .pi/architecture/modules/portable-session.md#ports-declared-by-the-domain
-//! Implements: Contract Freeze — SeededIdSource
-//! Issue: #1294 (contract freeze)
+//! Implements: `IdSource`
+//! Issue: #1298 (infrastructure layer)
+//!
+//! # Contract
+//! - Deterministic across runs and instances: the same sequences yield the same ids
+//! - Never `Uuid::new_v4` (invariant 5)
+//! - A kind with no declared sequence is `Missing`; a used-up sequence is `Exhausted`.
+//!   The two are kept apart because they mean different things to a fixture author
 
 use std::collections::HashMap;
 
 use crate::domain::ports::{IdKind, IdSource};
-use crate::domain::value::PortFailure;
+use crate::domain::value::{PortFailure, PortFailureKind, PortId};
 
 /// Answers from the transcript's declared id sequences.
-///
-/// # Contract (Frozen)
-/// - Deterministic across runs and instances: the same transcript yields the same ids
-/// - Never `Uuid::new_v4` (invariant 5); a sequence that cannot answer is
-///   `PortFailure { IdSource, .. }`
+#[derive(Debug, Default)]
 pub struct SeededIdSource {
     sequences: HashMap<IdKind, Vec<String>>,
     cursor: HashMap<IdKind, usize>,
@@ -32,7 +34,25 @@ impl SeededIdSource {
 
 impl IdSource for SeededIdSource {
     fn next_id(&mut self, kind: IdKind) -> Result<String, PortFailure> {
-        let _ = (&self.sequences, &self.cursor, kind);
-        todo!("contract freeze: SeededIdSource::next_id lands with #1298")
+        let pos = self.cursor.entry(kind).or_insert(0);
+        let next = self
+            .sequences
+            .get(&kind)
+            .and_then(|ids| ids.get(*pos))
+            .cloned();
+        match next {
+            Some(id) => {
+                *pos += 1;
+                Ok(id)
+            }
+            None => Err(PortFailure::new(
+                PortId::IdSource,
+                if self.sequences.contains_key(&kind) {
+                    PortFailureKind::Exhausted
+                } else {
+                    PortFailureKind::Missing
+                },
+            )),
+        }
     }
 }
