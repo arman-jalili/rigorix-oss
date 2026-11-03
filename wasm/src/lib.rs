@@ -75,6 +75,26 @@
 //! The gate path carries no `todo!()`: a stub that panics would trap the module
 //! (ADR-012 tier 3), so unimplemented behaviour refuses instead.
 
+// ADR-012 tier 2: a program defect on the gate path fails the build rather than becoming a
+// handled case. `wasm32-unknown-unknown` has no unwinder, so a panic aborts the module and
+// the host sees a trap — which is why these are denied rather than caught.
+//
+// `not(test)` because the lint attributes of a crate root do not reach the integration test
+// crates, and those legitimately use `expect` on fixtures.
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::todo,
+        clippy::unimplemented,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        clippy::exit
+    )
+)]
+
 pub mod application;
 pub mod domain;
 pub mod error;
