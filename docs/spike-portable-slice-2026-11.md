@@ -5,11 +5,28 @@
 was recorded on). Every command below was run on that branch; the branch is pushed and is the
 reproduction, because §5 of the issue says only the report and the inventory merge.
 
-> **Verdict: branch C — the bundle does not fit.** M1 and M2's in-crate half hold, M3 misses
-> the decided ceiling by 7.4 % (111 377 B) as built and by 0.8 % (12 420 B) at maximum
-> trimming, and M4 holds only once the clock is pinned. The port is not impossible; the
-> **ceiling the demo can afford is smaller than the engine's gate slice**, so the demo narrows
-> rather than the spike continuing.
+> **Verdict (corrected, #1354): M3 holds on the shipped artifact, and M2's CLI half is the only
+> outstanding measurement.** On the module a host actually loads the engine-linked bundle is
+> **1 170 635 B — 78.0 % of the 1 500 000 B ceiling** — and the stripped module passes all fifteen
+> `module-smoke.mjs` assertions identically.
+>
+> This document originally concluded **branch C — that the bundle exceeded the ceiling** — from
+> 1 611 377 B and 1 512 420 B measured against it. Both numbers were of `wasm-bindgen`'s *emitted* file, of
+> which 341 785 B (22.6 %) is a `name` custom section — the debug symbol table — that ships to no
+> host. **That verdict is withdrawn**, and with it the narrowed-demo decision it produced. The
+> ceiling was never missed; the subject was wrong.
+>
+> M1, M1b (see §1), M2's in-crate half, M3 and M4 hold. What remains is M2's CLI half: the CLI has
+> never produced a comparable envelope, so "the browser decides the same as the engine" is still a
+> design intention rather than a measured property.
+
+| | measurement | status |
+|---|---|---|
+| **M1** dependency surface | exit 0; 74 crates (normal+build), none of tree-sitter / reqwest / ring / libc / prometheus / tracing-appender | **holds** |
+| **M1b** four published crates | engine 2909, mcp 376, cli 118, actions 460 — 0 failed | **holds scoped to `portable`**; the strict reading is met by #1355, which replaces the DTO field |
+| **M2** one operation, two runtimes | in-crate `32211b9d…` twice; **CLI not reached** | **in part** — the CLI half is #1355 |
+| **M3** bundle with the engine inside | **1 170 635 B** shipped vs 1 500 000 B ceiling | **holds** (78.0 %) |
+| **M4** determinism across processes | identical once the clock is pinned, different before | **holds, and only then** |
 
 ---
 
@@ -113,8 +130,14 @@ $ git diff -U0 -- '*tests*' | grep '^+' | grep -v 'pinned_timestamp: None' | gre
 
 Eleven insertions, no assertion touched, all of them the new field. Read strictly ("if any test
 needed an edit, M1 has failed"), M1b fails — because of the M2 seam, not because of `portable`.
-The two changes are separable and were built to be: drop `pinned_timestamp` and M1b's strict
-form passes. The report keeps both readings because the merged tree contains neither.
+
+**That caveat resolves by deletion, not by argument (#1355).** `pinned_timestamp` is a public field
+on a public, literally constructible DTO, and two other crates in this workspace construct that DTO
+literally — `server/tests/audit_scope_check_verify.rs:20` and `mcp/src/host/mod.rs:681`. Adding a
+field to a non-`#[non_exhaustive]` struct is a semver break that only shows up for a downstream user
+who never appears in this workspace's test run. The carrier becomes a new type plus an additive
+method instead: the field goes, the eleven edits go with it, and M1b passes under its strict reading
+with no qualifier.
 
 ---
 
@@ -179,6 +202,15 @@ construction).** No normalised comparison was introduced to make it "pass".
 
 ## 3. M3 — the bundle with the engine inside it
 
+> **Corrected (#1354).** The numbers below are of the *emitted* file. The subject of a size ceiling
+> is the artifact a host loads, and that artifact is **1 170 635 B**: 1 512 420 B minus the
+> 341 785 B `name` custom section (debug symbols, 22.6 %), which
+> `wasm/ci/strip_name_section.py` has removed in the packaging path since #1353. 1 170 635 B is
+> **78.0 % of the 1 500 000 B ceiling**, so **M3 passes**, with 22 % headroom, and the stripped
+> module passes all fifteen `module-smoke.mjs` assertions identically. The `regex` trim named at
+> the end of this section is **unrun and unnecessary**: the excess was a debug section, not a
+> dependency.
+
 Declaring the dependency alone changes nothing, and this is worth stating as a measurement of its
 own:
 
@@ -196,18 +228,30 @@ $ wc -c /tmp/pkg-engine/rigorix_gate_wasm_bg.wasm
 1611377           ← raw cdylib: 2 218 545 B
 ```
 
-That is **6.6× the empty seam** (243 366 → 1 611 377), close to the issue's "order of magnitude"
-warning and 111 377 B (7.4 %) over the decided 1 500 000 B ceiling.
+That is **6.6× the empty seam** (243 366 → 1 611 377) — close to the issue's "order of magnitude"
+warning — and, on the emitted file, 111 377 B (7.4 %) over the decided 1 500 000 B ceiling. On the
+shipped file it is 329 365 B *under* it.
 
-A ceiling miss this small deserves the trimming attempt before it is called a verdict:
+A ceiling miss this small deserved a trimming attempt before it was called a verdict. The attempt
+below is kept as recorded — it trimmed the wrong artifact, and that is the point worth preserving:
 
 ```
 $ CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_OPT_LEVEL=z \
   CARGO_PROFILE_RELEASE_PANIC=abort CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
   cargo build --release --target wasm32-unknown-unknown -p rigorix-gate-wasm --features engine
 $ wc -c /tmp/pkg-engine-z/rigorix_gate_wasm_bg.wasm
-1512420           ← still 12 420 B (0.8 %) over
+1512420           ← still 12 420 B (0.8 %) over — of the *emitted* file
+$ python3 wasm/ci/strip_name_section.py /tmp/pkg-engine-z/rigorix_gate_wasm_bg.wasm
+✅ stripped 1 `name` section(s): -341785 B (1512420 → 1170635)
+$ python3 -c 'print(f"{1170635/1500000*100:.1f}%")'
+78.0%
 ```
+
+**1 170 635 B ≤ 1 500 000 B: M3 passes.** The engine-linked module's sections are `code`
+763 164 B (50.5 %), `data` 400 735 B (26.5 %) and `custom` 341 781 B (22.6 %) — of the custom
+bytes, `name` is 341 785, `target_features` 148 and `producers` 112. If the demo ever needs to
+shrink further, `data` at a quarter of the module is where the bytes are: not the dependencies,
+and not `regex`.
 
 **Largest contributors.** No `wasm-objdump`, `twiggy` or `cargo-bloat` is installed here, so the
 attribution is by retained-symbol evidence rather than by per-crate bytes:
@@ -223,10 +267,9 @@ toml / chrono / uuid / hmac / tracing / indexmap   0 or absent
 ```
 
 `regex` (with `regex-automata` + `regex-syntax` + `aho-corasick`) is the only lexer-class
-dependency retained, and it is plausibly the "single trimable dependency" the branch table asks
-about. **Removing it was not attempted inside the timebox**, so the report does not claim the
-excess is untrimable — it claims the ceiling is missed *as built*, and names the first experiment
-for whoever owns the decision.
+dependency retained. It **stays**: on the shipped artifact the ceiling has 22 % headroom, so
+removing a dependency the requirement matcher genuinely uses would be optimisation without a
+problem. The trim suggested above was aimed at the wrong artifact.
 
 ---
 
@@ -251,22 +294,28 @@ with a real `StepRequirement`, on the real clock seam — and it passes once the
 |---|---|---|
 | **A** — extract `rigorix-gate-core` | M1 fails after the exclusions, or the exclusion list is larger than predicted | **Does not fire.** M1 exits 0 with 74 crates and no forbidden crate. The exclusion list *is* large (22 of 40 modules, 20 inner items) but it is now written down, which is what the branch was meant to detect. |
 | **B** — byte equality not reached | M2 fails inside the timebox | **Fires in part.** In-crate: reached, 1 threaded site. CLI: not reached — no injection point on the Tier-1 path. The seam exists at the bottom and not at the top. |
-| **C** — bundle exceeds 1 500 000 B | the excess is not one trimable dependency | **Fires.** 1 611 377 B as built, 1 512 420 B trimmed. The untried trim (`regex`) is named; the decision does not wait on it, because the demo must not assume the full gate slice. |
-| **D** — all four pass | — | Does not fire (M3, and M2's CLI half). |
+| **C** — bundle exceeds 1 500 000 B | the excess is not one trimable dependency | **Did not fire — verdict withdrawn (#1354).** On the shipped artifact the bundle is **1 170 635 B, 78.0 % of the ceiling**. The excess was a 341 785 B debug `name` section, not a dependency, so the condition above was never met; the `regex` trim the row named is unrun and unnecessary. Recorded originally as "fires" on the emitted file. |
+| **D** — all four pass | — | Does not fire **yet**: M3 now passes, but M2 reached only its in-crate half. D is one measurement away, and that measurement is #1355. |
 
-Branches are not exclusive and **C carries A's inventory**. Concretely, the recommendation:
+**C did not fire, so nothing it decided stands.** In particular the narrowed demo — "the browser
+verifies, the gate stays server/CLI-side" — was the answer to a size problem that does not exist
+on the shipped artifact, and it is **withdrawn**. Gate evaluation in the browser remains on the
+table.
 
-1. **The demo ships the narrowed slice** (branch C's decision): the browser verifies — envelope
-   signature, chain, envelope shape — and the gate *evaluates* server/CLI-side. That keeps the
-   module at ~243 KB, i.e. inside the ceiling with 5× headroom, and it is honest about what a
-   browser can do today.
-2. **The ceiling question is reopened with data, not rewritten**: `regex` out of the requirement
-   matcher is the first experiment; if that alone lands under 1 500 000 B, the full slice is a
-   later demo, and the ceiling stands.
-3. **Phase B is scheduled against the inventory, not against "151 sites"**: 1 site per
+What replaces it:
+
+1. **M2's CLI half is the whole of the remaining question** (#1355). Byte identity between the CLI
+   and the crate is what makes a browser gate mean anything, and it was reached on one side only.
+   A demo built now would demonstrate a link that has never produced a comparable envelope.
+2. **M1's inventory stands** and is unaffected: 22 of 40 modules excluded, 11 of them for a
+   forbidden crate, `CoreOrchestratorError` at 85 sites. It is an argument *against* extraction
+   (branch A) and *for* the exclusions it enumerates.
+3. **Phase B is scheduled against the inventory, not against "151 sites"**: one threaded site per
    operation for the envelope, and the id/clock sites in the callers are the cost.
-4. **No ADR is written here.** Branch D is what produces the decision ADR; this is C, so the
-   ADR's first step is the narrowing decision above, owned by whoever accepts it.
+4. **No ADR is written here.** Branch D needs M2, so the decision ADR waits for #1355 — and its
+   content shrinks to two things: what `portable` excludes (the inventory, now measured) and the
+   pinned-input carrier. The determinism seam as an abstraction has no business in it: one
+   operation, one site.
 
 ---
 
@@ -289,12 +338,31 @@ Two found here:
 8. **A declared dependency is not a linked one.** With `engine` on but nothing calling it, the
    packaged module was byte-identical (243 366 B). Any "we added the dependency, so the bundle grew /
    the gate is wired" claim must show a retained symbol, not a manifest line.
+9. **`wc -c` on a build output is not a size measurement of the deliverable** (#1353, #1354). The
+   emitted file carries a `name` custom section — the debug symbol table — of 33 485 B on the empty
+   seam and 341 785 B with the engine linked. Measuring it produced this report's wrong verdict. The
+   bytes a host loads are the bytes *after* the section walk; `wasm/ci/strip_name_section.py` now
+   does that in the packaging path, and the size gate asserts the artifact carries no `name` section
+   because size alone cannot prove the strip ran.
+
+## 7b. What this cost, and the discipline that made it cheap
+
+The wrong verdict was reachable and was reached: the issue's ceiling was applied correctly to an
+artifact that was not the deliverable. Two things contained the damage, and both are worth keeping:
+
+- **The verdict was recorded as provisional on an untried trim** rather than as a flat negative. A
+  stated condition — "the excess is not one trimable dependency" — is falsifiable in an hour; a
+  conclusion is not. The one experiment named but never run (`regex`) is what pointed at the
+  dependency assumption, and the artifact turned out to be the real subject.
+- **Every number carried its command.** Re-measuring was mechanical, and both sizes reproduced
+  bit-exactly on the first attempt.
 
 ## 7. Reproducing
 
 ```bash
 git clone https://github.com/arman-jalili/rigorix-oss && cd rigorix-oss
 git checkout issue/1351          # the apparatus; not merged, by §5
+                                 # (the strip helper is on main: wasm/ci/strip_name_section.py)
 
 # M1
 cargo check -p rigorix-engine --features portable --target wasm32-unknown-unknown
@@ -308,11 +376,17 @@ cargo test -p rigorix-cli && cargo test -p rigorix-actions
 cargo run -q -p rigorix-engine --example spike_m2_envelope                  # differs per process
 SPIKE_PINNED_CLOCK=1 cargo run -q -p rigorix-engine --example spike_m2_envelope  # identical
 
-# M3
-cargo build --release --target wasm32-unknown-unknown -p rigorix-gate-wasm --features engine
+# M3 — and the two artifacts, which differ by the debug section
+CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_OPT_LEVEL=z \
+CARGO_PROFILE_RELEASE_PANIC=abort CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
+  cargo build --release --target wasm32-unknown-unknown -p rigorix-gate-wasm --features engine
 wasm-bindgen --target nodejs --out-dir /tmp/pkg-engine \
   target/wasm32-unknown-unknown/release/rigorix_gate_wasm.wasm
-wc -c /tmp/pkg-engine/rigorix_gate_wasm_bg.wasm
+wc -c /tmp/pkg-engine/rigorix_gate_wasm_bg.wasm          # 1512420  emitted
+python3 wasm/ci/strip_name_section.py /tmp/pkg-engine/rigorix_gate_wasm_bg.wasm
+wc -c /tmp/pkg-engine/rigorix_gate_wasm_bg.wasm          # 1170635  shipped  → 78.0 % of 1500000
+node wasm/ci/module-smoke.mjs /tmp/pkg-engine/rigorix_gate_wasm.js \
+  attempt_run,contract_version,export_artifact_set,open_session   # 15/15, identical to unstripped
 ```
 
 `wasm-bindgen` must match the crate's `wasm-bindgen` version (`0.2.130` here); a mismatch is an
