@@ -26,6 +26,8 @@ default = []
 engine = []
 # Test-only: conformance vector replay (ADR-009). Never part of the bundle.
 conformance = []
+# Off by default: a release bundle keeps no diagnostic channel (ADR-003, criterion 17).
+diagnostics = []
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

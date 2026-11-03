@@ -32,11 +32,13 @@
 
 pub mod dto;
 pub mod errors;
+pub mod events;
 pub mod registry;
 pub mod wasm_api;
 
 pub use dtos::*;
 pub use errors::RefusalDto;
+pub use events::{Observed, TelemetryObserver};
 pub use wasm_api::{
     CONTRACT_FUNCTIONS, ContractVersion, attempt_run, contract_version, export_artifact_set,
     open_session,
