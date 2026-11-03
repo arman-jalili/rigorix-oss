@@ -160,3 +160,25 @@ fn the_host_obligation_is_documented_where_a_host_will_look() {
     assert!(readme.contains("never loaded the wasm module"));
     assert!(readme.contains("unverifiable"));
 }
+
+#[test]
+fn the_probe_prints_the_wire_shape_the_host_reads() {
+    // The independence check reads the artifact the probe prints. If the probe printed the
+    // *domain* struct (`{"stamp":{…}}`), the script would report "artifact is missing
+    // artifact_format_version" and the check would fail on a field name rather than on the
+    // record — which is exactly what happened in CI once.
+    let probe = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/determinism_probe.rs"),
+    )
+    .expect("probe exists");
+    assert!(
+        probe.contains("ArtifactSetDto::from(&artifact)"),
+        "the probe does not print the wire shape"
+    );
+
+    let script = script();
+    assert!(
+        script.contains("artifact_format_version"),
+        "the host script does not read the field the probe prints"
+    );
+}

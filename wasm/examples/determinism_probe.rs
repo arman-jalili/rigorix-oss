@@ -135,7 +135,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .execute(&mut session)?;
 
+    // Print the **wire** shape, not the domain struct: the host verifier reads the DTO, and a
+    // probe that printed `{"stamp":{…}}` would make the independence check fail on a field
+    // name rather than on the record (found the hard way, in CI).
+    let wire = rigorix_gate_wasm::interfaces::dto::ArtifactSetDto::from(&artifact);
     // The probe must not print anything else: the test compares the whole of stdout.
-    println!("{}", String::from_utf8(serde_json::to_vec(&artifact)?)?);
+    println!("{}", String::from_utf8(serde_json::to_vec(&wire)?)?);
     Ok(())
 }
