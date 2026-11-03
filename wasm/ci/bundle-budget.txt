@@ -1,0 +1,18 @@
+# Bundle size budget (NFR-002, criterion 23).
+#
+# `measured` is the artifact CI actually ships, not the raw cdylib: wasm-bindgen output
+# after wasm-opt. Until the packaging issue produces that artifact, the recorded number is
+# the raw release cdylib and is labelled as such — a budget over a module that exports
+# nothing would be a number with no owner.
+#
+# budget = measured + 25%, per NFR-002: measured first, then a hard gate, never a guess.
+artifact: pkg/rigorix_gate_wasm_bg.wasm
+measured_bytes: 0
+budget_bytes: 0
+state: awaiting-packaging
+note: >-
+  The release cdylib currently builds to 368 bytes because no symbol is exported yet (the
+  wasm-bindgen attribute layer belongs to the packaging issue). The gate therefore records
+  the trend instead of enforcing a ceiling, and says so out loud. Once pkg/*.wasm exists,
+  `measured_bytes` is filled from it and `budget_bytes` becomes measured + 25% — from that
+  commit on, a regression fails the build.

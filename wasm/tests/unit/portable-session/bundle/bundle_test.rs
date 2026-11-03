@@ -58,3 +58,61 @@ fn the_engine_dependency_is_optional_by_contract() {
         "the engine must not be a default dependency: the four published crates build from the same commit"
     );
 }
+
+// ---------------------------------------------------------------------------
+// The size gate (issue #1314)
+// ---------------------------------------------------------------------------
+
+fn size_gate() -> String {
+    std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ci/check-bundle-size.sh"),
+    )
+    .expect("size gate exists")
+}
+
+fn budget_file() -> String {
+    std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ci/bundle-budget.txt"),
+    )
+    .expect("budget file exists")
+}
+
+#[test]
+fn the_gate_enforces_measured_plus_twenty_five_percent() {
+    let script = size_gate();
+    // NFR-002: the number is measured first, never guessed, and the ceiling is +25%.
+    assert!(script.contains("budget_bytes"));
+    assert!(script.contains("measured_bytes"));
+    assert!(script.contains("measured + 25%"));
+    assert!(script.contains("exit 1"));
+}
+
+#[test]
+fn the_gate_refuses_to_pass_on_an_unmeasurable_artifact() {
+    let script = size_gate();
+    // A missing artifact, an unparseable budget and a shipped artifact with no budget are
+    // all errors — the gate must not read "nothing to measure" as "within budget".
+    assert!(script.contains("a size gate without a budget is an opinion"));
+    assert!(script.contains("the budget file is unparseable"));
+    assert!(script.contains("a shipped artifact exists but no budget was set"));
+}
+
+#[test]
+fn the_budget_file_states_which_artifact_it_measures() {
+    let budget = budget_file();
+    // A budget without a named artifact can be satisfied by measuring the wrong file.
+    assert!(budget.contains("artifact: pkg/rigorix_gate_wasm_bg.wasm"));
+    assert!(budget.contains("budget_bytes:"));
+    // And it must say when the ceiling is not yet in force rather than implying it is.
+    assert!(budget.contains("state: awaiting-packaging"));
+    assert!(budget.contains("25%"));
+}
+
+#[test]
+fn the_two_modes_are_explicit_rather_than_implicit() {
+    let script = size_gate();
+    assert!(script.contains("== shipped artifact"));
+    assert!(script.contains("== no shipped artifact yet"));
+    // The trend path names why it is not enforcing, instead of exiting quietly.
+    assert!(script.contains("ceiling not yet in force"));
+}
