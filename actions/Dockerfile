@@ -24,6 +24,11 @@ COPY mcp/Cargo.toml mcp/
 # building `-p rigorix-actions`, so its manifest (and src, to resolve targets)
 # must be present or the workspace fails to load (#888 PR B regression).
 COPY server/Cargo.toml server/
+# `wasm` is a workspace member too (ADR-011). Same rule as `server`: its manifest and
+# source must be present or `cargo` cannot load the workspace at all — the image build is
+# the one consumer that copies the tree by hand and therefore the one that breaks first
+# when a member is added.
+COPY wasm/Cargo.toml wasm/
 
 # Copy source code
 COPY engine/src engine/src/
@@ -32,6 +37,7 @@ COPY cli/src cli/src/
 COPY actions/src actions/src/
 COPY mcp/src mcp/src/
 COPY server/src server/src/
+COPY wasm/src wasm/src/
 
 # Build release binary
 RUN cargo build --release -p rigorix-actions --bin rigorix-action
