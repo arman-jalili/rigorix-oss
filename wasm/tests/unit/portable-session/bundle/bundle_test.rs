@@ -116,3 +116,67 @@ fn the_two_modes_are_explicit_rather_than_implicit() {
     // The trend path names why it is not enforcing, instead of exiting quietly.
     assert!(script.contains("ceiling not yet in force"));
 }
+
+// ---------------------------------------------------------------------------
+// The single gate entrypoint (issue #1318)
+// ---------------------------------------------------------------------------
+
+fn gates_runner() -> String {
+    std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ci/run-wasm-gates.sh"),
+    )
+    .expect("gate runner exists")
+}
+
+#[test]
+fn one_command_runs_every_gate_this_crate_claims() {
+    let runner = gates_runner();
+    for gate in [
+        "check-domain-isolation.sh",
+        "check-bundle-independence.sh",
+        "check-bundle-size.sh",
+        "check-failure-tiers.sh",
+        "run-conformance.sh",
+        "validate-workspace-pins.sh",
+    ] {
+        assert!(runner.contains(gate), "the runner does not call {gate}");
+    }
+    // And the crate's own tests and its wasm release build, which are gates too.
+    assert!(runner.contains("cargo test"));
+    assert!(runner.contains("--target wasm32-unknown-unknown"));
+}
+
+#[test]
+fn the_runner_fails_closed_and_labels_what_it_could_not_run() {
+    let runner = gates_runner();
+    // A failed gate must produce a non-zero exit.
+    assert!(runner.contains("FAILED"));
+    assert!(runner.contains("exit 1"));
+    // Host verification needs npm: it is *labelled* as not run rather than passing silently.
+    assert!(runner.contains("Not run (labelled, not silently passing)"));
+    assert!(runner.contains("host verification"));
+}
+
+#[test]
+fn ci_invokes_the_runner_and_the_gate_treats_it_as_mandatory() {
+    let workflow = read_manifest("../.github/workflows/ci.yml");
+    assert!(
+        workflow.contains("wasm/ci/run-wasm-gates.sh"),
+        "CI does not run the wasm gates"
+    );
+    assert!(
+        workflow.contains("wasm/ci/run-host-verification.sh"),
+        "CI does not run the independence check"
+    );
+
+    // A job that runs but does not gate is a report, not a gate.
+    let stages = read_manifest("../.github/scripts/ci_stages.sh");
+    let mandatory = stages
+        .lines()
+        .find(|line| line.starts_with("CI_MANDATORY_STAGES="))
+        .expect("the stage table");
+    assert!(
+        mandatory.contains("wasm-gates"),
+        "the wasm gates are not mandatory: {mandatory}"
+    );
+}

@@ -343,9 +343,31 @@ jobs:
   # Always runs, always green: it exists so a superseded run still shows
   # *which* stages reported `cancelled` (#1289) — the Final Gate is skipped in
   # that case and could not tell that story.
+
+  # ── Stage 7: wasm gates (criterion-level checks for rigorix-gate-wasm) ──
+  wasm-gates:
+    name: 🧭 wasm gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: 🧱 Install wasm target
+        run: rustup target add wasm32-unknown-unknown
+      - name: 🧭 Run every wasm gate
+        # One entrypoint: domain isolation, bundle independence, size budget, failure tiers,
+        # conformance (including the must-fail vector), unit tests, the wasm release build and
+        # workspace pins. Host verification needs npm and network, so it runs separately.
+        run: bash wasm/ci/run-wasm-gates.sh
+      - name: 🤝 Host verification with the independent SDK
+        # Criterion 13: a Node process that never loads the wasm module verifies the record.
+        run: bash wasm/ci/run-host-verification.sh
+
   ci-report:
     name: 📋 Stage report
-    needs: [lint, build, test, audit, docs, integration, conformance, shell]
+    needs: [lint, build, test, audit, docs, integration, conformance, shell, wasm-gates]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -360,12 +382,13 @@ jobs:
           RESULT_INTEGRATION: ${{ needs.integration.result }}
           RESULT_CONFORMANCE: ${{ needs.conformance.result }}
           RESULT_SHELL: ${{ needs.shell.result }}
+          RESULT_WASM: ${{ needs.wasm-gates.result }}
         run: .github/scripts/ci_report.sh
 
   # ── Stage 8: Final Gate ───────────────────────────────────────
   gate:
     name: 🚪 Final Gate
-    needs: [lint, build, test, audit, docs, integration, conformance, shell]
+    needs: [lint, build, test, audit, docs, integration, conformance, shell, wasm-gates]
     # A superseded run gets no verdict (#1289). `cancelled` is the scheduler's
     # fact, not the change's: with `cancel-in-progress` every push to the same
     # ref cancels the previous run, so the old `!= 'success'` test accused the
@@ -385,4 +408,5 @@ jobs:
           RESULT_INTEGRATION: ${{ needs.integration.result }}
           RESULT_CONFORMANCE: ${{ needs.conformance.result }}
           RESULT_SHELL: ${{ needs.shell.result }}
+          RESULT_WASM: ${{ needs.wasm-gates.result }}
         run: .github/scripts/ci_verdict.sh
