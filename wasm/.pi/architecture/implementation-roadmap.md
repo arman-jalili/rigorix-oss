@@ -69,11 +69,25 @@ later code can invent an ambient capability or a new verdict shape.
 
 ### Workspace Registration (ADR-011)
 
-- [x] `wasm/` is in `[workspace] members`; `wasm/Cargo.toml` inherits licence, edition and lints.
+- [x] `wasm/` is in `[workspace] members`; `wasm/Cargo.toml` inherits lints.
+      *Proof:* `Cargo.toml:2` lists `wasm`; `wasm/Cargo.toml` now carries `[lints] workspace = true`
+      and `unsafe_code = "forbid"` at the crate root (`src/lib.rs`).
+      **This was false when first checked**: the manifest declared a local `[lints.rust]` block with
+      no `workspace = true`, which silently opts out of *every* workspace lint — this crate was the
+      only member doing that, so `clippy::disallowed_types` (clippy.toml, #1083) never applied here
+      while ADR-011 claimed it did. Proven fixed: a seeded `std::process::Command` is now denied by
+      `disallowed-types`, and a seeded `unsafe` block is still denied by `forbid(unsafe_code)`.
+      `edition`/`license` remain literals with the same values as `[workspace.package]` — equal by
+      value, not inherited; recorded rather than claimed as inheritance.
 - [x] `release.yml` tag loop names `wasm` (the directory, matching the loop's convention);
       `publish-wasm` publishes `rigorix-gate-wasm` to crates.io; `publish-wasm-npm` plus
       `.github/scripts/publish-npm-package.sh` register the host-facing `rigorix-gate`.
 - [x] `.pi/panic-baseline.tsv` covers the new crate.
+      *Proof:* the scanner walks this tree and reports per-file. Seeding
+      `let x: Option<u32> = None; x.unwrap()` into `wasm/src/lib.rs` makes
+      `panic_audit.py` report `wasm/src/lib.rs`; with the tree as committed it reports 0 wasm sites.
+      The baseline therefore holds **0 rows** for this crate because it has 0 sites — the deny-lints
+      in `src/lib.rs` keep it at zero — not because the crate is unscanned.
 - [x] `.pi/scripts/validate-release-train.sh` derives the four points above from
       `cargo metadata`, so the next member cannot join the workspace and miss the train
       the way `rigorix-actions` did (#1346).
@@ -94,10 +108,25 @@ the guard enforces.
 
 ### Acceptance Criteria
 
-- [ ] `domain_isolation` architecture test exists and fails on `std::time`, `std::env`, `Uuid::new_v4`, `reqwest`, `rand::thread_rng`, or any `infrastructure`/`interfaces` path.
-- [ ] `RefusalVocabulary` is an exhaustive match: adding an engine refusal kind without wording is a compile error (AC 8).
+- [x] `domain_isolation` gate exists and fails on `std::time`, `std::env`, `Uuid::new_v4`, `reqwest`, `rand::thread_rng`, or any `infrastructure`/`interfaces` path.
+      *Proof:* `ci/check-domain-isolation.sh:24-45` (13 capability needles + 3 outward needles, fail-closed
+      when `src/domain/` is absent). Seeded `std::time::Instant::now()` + `Uuid::new_v4()` into
+      `src/domain/value/digest.rs` ⇒ exit 1 naming both; clean ⇒ exit 0. It is a gate script, not a
+      `#[test]`, and runs as a mandatory wasm gate.
+- [x] `RefusalVocabulary` is an exhaustive match: adding an engine refusal kind without wording is a compile error (AC 8).
+      *Proof:* `src/domain/services/business_wording.rs:33-49` — 13 `RefusalKind` variants, 13 arms, no
+      wildcard. Seeded a 14th variant (`ProbeUnworded`) ⇒ `error[E0004]: non-exhaustive patterns`.
 - [ ] `VerificationResult` has exactly three variants; `reason` exists only on `Unverifiable` (AC 12).
-- [ ] `ReplaySessionId` is derived from (scenario digest, fixture digest, seed): two identical inputs ⇒ identical id (AC 2).
+      **Superseded by ADR-013, and must not be implemented here.** There is no such type in `src/`
+      (checked: `grep -rni verification src/` returns only comments saying it is absent), because the
+      producer may not verify its own record. The three-valued verdict lives in the host:
+      `tests/host_verification/verify.mjs:24-28` defines `verified` / `not_verified` / `unverifiable`
+      with `unverifiable` carrying a reason, and the gate proves the mapping — the 10th wasm gate
+      prints `{"verdict":"unverifiable","reason":"key_not_held"}` and exits 2.
+- [x] `ReplaySessionId` is derived from (scenario digest, fixture digest, seed): two identical inputs ⇒ identical id (AC 2).
+      *Proof:* `src/domain/value/ids.rs:32-39` (domain separator + the three digests);
+      tests `determinism::the_same_inputs_derive_the_same_session_identity` and
+      `determinism::a_different_seed_derives_a_different_identity`.
 
 ---
 
@@ -124,13 +153,43 @@ and no setters.
 
 ### Acceptance Criteria
 
-- [ ] FR-001: unparseable scenario or incomplete fixture ⇒ typed `SessionOpenError`, no default, no panic (AC 1).
-- [ ] Invariant 4: second `attempt` ⇒ `AlreadyAttempted`; second `seal` ⇒ `AlreadySealed` (AC 3, AC 6).
-- [ ] FR-002: no `RunOutcome` reports `refused` without naming the causing step (AC 10).
-- [ ] FR-004: identity-port failure yields engine status `unverified`; no message contains `unauthenticated` (AC 5).
-- [ ] `not_reached` is preserved as a distinct `StepOutcome` decision (AC 9).
-- [ ] `RandomDrawConsumed` cannot reach `ArtifactSet` — test `telemetry_never_reaches_artifact_set` passes (AC 17).
+- [x] FR-001: unparseable scenario or incomplete fixture ⇒ typed `SessionOpenError`, no default, no panic (AC 1).
+      *Proof:* typed error in `src/domain/errors/session_open.rs`; tests
+      `replaysession::open_refuses_instead_of_defaulting`,
+      `wasmcontract::open_session_refuses_unpinnable_input`,
+      `attemptrun::the_open_service_refuses_the_same_way_the_aggregate_does`; deny-lints in
+      `src/lib.rs` make a panic on this path a build failure.
+- [x] Invariant 4: second `attempt` ⇒ `AlreadyAttempted`; second `seal` ⇒ `AlreadySealed` (AC 3, AC 6).
+      *Proof:* tests `replaysession_attempt::a_second_attempt_is_refused_and_the_first_outcome_is_unchanged`
+      and `replaysession_seal::seal_returns_a_stamped_container_and_refuses_the_second_call`;
+      error variants in `src/domain/errors/{attempt,seal}.rs`.
+- [x] FR-002: no `RunOutcome` reports `refused` without naming the causing step (AC 10).
+      *Proof:* `StepOutcome::causing_step()` on `Refusal`; tests
+      `replaysession_attempt::a_refused_run_always_names_its_causing_step` and
+      `…::a_refused_run_names_the_causing_step_and_preserves_not_reached`; the 24-case fault matrix
+      asserts a cause on every case.
+- [x] FR-004: identity-port failure yields engine status `unverified`; no message contains `unauthenticated` (AC 5).
+      *Proof:* `RefusalKind::IdentityUnverified` → *"the identity could not be checked"*
+      (`src/domain/services/business_wording.rs:45`); test
+      `refusalvocabulary` forbids `["unauthenticated", "not_verified", "unverifiable", "forged"]`
+      in every rendered string (`refusalvocabulary_test.rs:77`), plus a source-level scan at :176.
+- [x] `not_reached` is preserved as a distinct `StepOutcome` decision (AC 9).
+      *Proof:* `StepOutcome::NotReached` in `src/domain/outcome/step_outcome.rs`; tests
+      `evidenceprojection::not_reached_is_distinct_from_refused` and
+      `…::the_shipped_projection_preserves_order_and_not_reached`.
+- [x] `RandomDrawConsumed` cannot reach `ArtifactSet` (AC 17).
+      *Proof:* three tests in `tests/unit/portable-session/telemetryobserver/`:
+      `a_random_draw_is_telemetry_and_never_evidence`,
+      `an_artifact_set_has_no_slot_for_an_event_at_all` (the type has no field that could hold one —
+      this is the structural half, and it is what makes the property unbreakable rather than
+      merely tested), `telemetry_is_dropped_from_a_release_build_by_construction`.
+      *Note:* the criterion names a test `telemetry_never_reaches_artifact_set`; no test carries that
+      name. The property is checked, the name is not — recorded rather than renamed to fit the doc.
 - [ ] Domain coverage ≥95%.
+      **Measured 89.52 % lines** (735 lines, 77 missed) —
+      `cargo llvm-cov --test unit --summary-only --ignore-filename-regex 'src/(application|interfaces|infrastructure)/'`.
+      Nothing gates this: CI's coverage stage gates *workspace* lines at 60 %
+      (`.github/workflows/ci.yml:175`), so the number could fall to 61 % and stay green.
 
 ---
 
@@ -157,10 +216,25 @@ never a default.
 
 ### Acceptance Criteria
 
-- [ ] Fault matrix: for each of six ports × {missing, exhausted, malformed, failed}, `attempt` returns `refused` in 100% of cases and `allowed` in 0% (AC 4, NFR-004).
-- [ ] `cargo tree --target wasm32-unknown-unknown` contains no `tokio`, `reqwest`, `tree-sitter*`, `prometheus`, `tracing-appender`, `libc` (NFR-002).
+- [x] Fault matrix: for each of six ports × {missing, exhausted, malformed, failed}, `attempt` returns `refused` in 100% of cases and `allowed` in 0% (AC 4, NFR-004).
+      *Proof:* `tests/unit/portable-session/replaysession-attempt/replaysession-attempt_test.rs:231-302`,
+      `the_full_fault_matrix_refuses_every_case`: 6 `PortId` × 4 `PortFailureKind`, asserts
+      `cases == 24` and `allowed.is_empty()`.
+- [x] `cargo tree --target wasm32-unknown-unknown` contains no `tokio`, `reqwest`, `tree-sitter*`, `prometheus`, `tracing-appender`, `libc` (NFR-002).
+      *Proof:* `cargo tree --target wasm32-unknown-unknown -p rigorix-gate-wasm` = 21 crates
+      (serde, serde_json, sha2/digest chain, thiserror, …); none of the banned names appear.
 - [ ] `KeySource` adapters return only an opaque `KeyRef`; no key bytes reach any output (AC 7).
-- [ ] Two runs over the same transcript produce byte-identical clock/ids/draws (NFR-001).
+      **Type is opaque; the "no bytes" half has no test.**
+      `src/domain/value/key.rs:19` — `pub struct KeyRef(String)`, constructible only via
+      `from_trusted`; the exported artifact carries it via
+      `export_stamp::an_artifact_set_carries_both_digests_and_an_opaque_key_ref`. But `KeyRef` wraps
+      a `String` and no test asserts that a `SeededKeySource`'s material never appears in the
+      serialized output — the property rests on adapter discipline, not on a check.
+- [x] Two runs over the same transcript produce byte-identical clock/ids/draws (NFR-001).
+      *Proof:* tests `determinism::the_same_vector_replays_to_the_same_bytes_twice_in_one_instance`,
+      `…::a_fresh_process_produces_the_same_bytes_as_this_one` (a second OS process),
+      `…::no_source_file_reaches_a_real_clock_or_entropy_source`,
+      `runconformancevector::replaying_the_same_vector_twice_produces_identical_bytes`.
 
 ---
 
@@ -189,10 +263,33 @@ of their own.
 ### Acceptance Criteria
 
 - [ ] Artifact stamps carry `artifact_format_version`, `engine_version` (from `ENGINE_VERSION`), scenario digest, fixture digest, `outcome_digest` (AC 11).
+      **All five facts are present; `engine_version` is not from `ENGINE_VERSION`.**
+      Fields: `src/domain/artifact/version_stamp.rs:23-25`; proof of all five in
+      `replaysession_seal::the_stamp_carries_the_five_facts_criterion_11_asks_for`. That test asserts
+      `engine_version == env!("CARGO_PKG_VERSION")`, with a comment that it becomes the engine's
+      constant once FR-011 lands — so today the number is right by coincidence (both 1.12.1) and the
+      stated source is not.
 - [ ] Unknown format version ⇒ `unverifiable(UnsupportedFormatVersion)`; never `not_verified`, never a thrown error (AC 12).
-- [ ] Pre-export scan refuses (does not sanitise) on secret/key/path/PII; bytes of a rejected set never leave (AC 7).
-- [ ] The crate contains no verification logic and no verifier dependency; the bundle's dependency tree is clean (ADR-013, AC 14).
+      **Superseded by ADR-013 and deliberately not implemented as written.** The crate cannot emit a
+      verdict: it exposes a shape question, `ArtifactSet::supports(version) -> bool`
+      (`src/domain/artifact/artifact_set.rs:60`). Tests
+      `export_stamp::an_unknown_format_is_identifiable_without_any_verdict_from_the_crate` and
+      `…::the_crate_never_emits_the_hosts_verdict_vocabulary`. The host maps `false` to
+      `unverifiable` — proven in the host harness, not here.
+- [x] Pre-export scan refuses (does not sanitise) on secret/key/path/PII; bytes of a rejected set never leave (AC 7).
+      *Proof:* `src/infrastructure/content_policy.rs` (`ScanningContentPolicy`) consulted by `seal`;
+      tests `replaysession_seal::a_violated_content_rule_refuses_the_export_and_drops_the_bytes`,
+      `…::an_envelope_carrying_a_host_path_is_refused_at_export`,
+      `…::our_own_policy_would_catch_a_path_in_the_metadata_too`,
+      `attemptrun::the_export_service_refuses_a_rejected_content_rule`.
+- [x] The crate contains no verification logic and no verifier dependency; the bundle's dependency tree is clean (ADR-013, AC 14).
+      *Proof:* no `verifier` in `wasm/Cargo.toml`; `cargo tree --target wasm32-unknown-unknown` (21
+      crates) contains none; the `bundle independence` wasm gate enforces it and the host harness
+      imports only `rigorix-verifier` (`tests/host_verification/verify.mjs:6-8`).
 - [ ] Application coverage ≥90%.
+      **Measured 89.64 % lines** (251 lines, 26 missed) —
+      `--ignore-filename-regex 'src/(domain|interfaces|infrastructure)/'`. Functions are at 73.33 %,
+      with `run_conformance_vector.rs` at 57.89 % functions. Not gated anywhere.
 
 ---
 
@@ -218,11 +315,33 @@ of their own.
 
 ### Acceptance Criteria
 
-- [ ] No exported function accepts a verdict, `allow` flag or policy override (AC 15, FR-009).
-- [ ] Unknown DTO fields rejected; malformed handle is the only thrown error; every refusal is a return value (AC 16).
+- [x] No exported function accepts a verdict, `allow` flag or policy override (AC 15, FR-009).
+      *Proof:* tests `wasmcontract::no_dto_carries_a_verdict_shaped_field` and
+      `attemptrun::execute_has_no_way_to_ask_for_an_allow`; the four signatures in
+      `src/interfaces/wasm_api.rs` take only scenario/fixture/action inputs.
+- [x] Unknown DTO fields rejected; malformed handle is the only thrown error; every refusal is a return value (AC 16).
+      *Proof:* `#[serde(deny_unknown_fields)]` on the input DTOs in `src/interfaces/dto/`; tests
+      `wasmcontract::unknown_dto_fields_are_refusals_not_ignored`,
+      `…::unknown_fields_are_rejected_not_ignored`,
+      `…::a_refusal_is_a_return_value_and_the_only_error_is_a_bad_handle`,
+      `…::refusal_shape_is_redacted`.
 - [ ] wasm-pack + node harness round-trips all four functions (AC 13; the host-side independence check is Phase 6).
-- [ ] `contract_version` matches the published semver (ADR-004).
+      **Not implemented.** There is no `wasm-bindgen` dependency, no `#[wasm_bindgen]` attribute and no
+      `wasm-pack` invocation anywhere: `src/interfaces/wasm_api.rs:17` says the attribute layer "is
+      applied by the packaging issue", and `ci/check-bundle-size.sh:6` documents the same gap from the
+      size side (`state: awaiting-packaging`). The node harness that exists
+      (`tests/host_verification/verify.mjs`) verifies *artifact bytes*; it never loads the module, which
+      is the point of Phase 6 — but it is not a round-trip of the four functions.
+- [x] `contract_version` matches the published semver (ADR-004).
+      *Proof:* `src/interfaces/wasm_api.rs:249-255` builds all three numbers from
+      `env!("CARGO_PKG_VERSION")`, `EngineArtifactStamp::engine_version()` and
+      `ArtifactSet::FORMAT_VERSION`; test
+      `wasmcontract::export_before_an_attempt_is_a_refusal_and_contract_version_reports_three_numbers`.
+      Crate version is 1.12.1 (`wasm/Cargo.toml:3`), equal to the train.
 - [ ] Interface coverage ≥85%.
+      **Measured 70.69 % lines** (481 lines, 141 missed) —
+      `--ignore-filename-regex 'src/(domain|application|infrastructure)/'`. Per file:
+      `wasm_api.rs` 69.61 %, `registry.rs` 75.00 %, `errors.rs` 69.47 %. Not gated anywhere.
 
 ---
 
@@ -253,9 +372,23 @@ from the CLI behind a non-default feature.
 ### Acceptance Criteria
 
 - [ ] Call-site inventory: every gate-path `Utc::now()` (292 measured) and identifier mint (37 measured) is either routed through the seam or listed with a reason it cannot be.
-- [ ] Default-feature suites of engine, mcp, cli, actions pass unchanged from the same commit (NFR-005).
+      **Not started.** The counts appear as a measured total in `ADR-009` and this roadmap, but there is
+      no per-site inventory: no list routes a site through the seam and none records a reason. FR-011 has
+      not begun in `engine/` (no `portable` feature exists — `wasm/Cargo.toml` declares
+      `engine = []` as an empty placeholder).
+- [x] Default-feature suites of engine, mcp, cli, actions pass unchanged from the same commit (NFR-005).
+      *Proof:* the CI `test` stage is green on this branch for all four crates, and locally
+      `cargo test -p rigorix-engine --lib` (and cli/mcp/actions/server) pass. **Currently vacuous** —
+      no engine-side change has been made, so nothing could break. It becomes a real check the moment
+      FR-011 lands.
 - [ ] CLI built from the same commit accepts pinned clock/ids and produces the same envelopes twice (NFR-001).
+      **Not implemented.** `grep -rn 'pinned|--clock|--seed|--ids' cli/src` returns nothing: the CLI has
+      no flag for a pinned clock or identifier sequence, so NFR-001 can only be exercised inside this
+      crate (`determinism::a_fresh_process_produces_the_same_bytes_as_this_one`), not across the CLI.
 - [ ] `cargo tree` diff for the wasm target shows no new native-only dependency (NFR-002).
+      **Cannot be evaluated.** A diff needs a before/after pair, and there is no seam to add: with the
+      `engine` feature empty, the "after" tree is the "before" tree. The static half is satisfied —
+      the current tree (21 crates) carries no native-only dependency.
 
 ---
 
@@ -283,11 +416,35 @@ release train.
 ### Acceptance Criteria
 
 - [ ] Live CLI diff: byte-identical artifacts for every vector; any difference fails the build (AC 19, FR-007).
+      **Not implemented, blocked on FR-011.** `ci/run-conformance.sh` replays the committed vector and
+      compares it to the committed expectation; nothing invokes the CLI. Blocked for the same reason
+      criterion 19 is: the CLI cannot be given the crate's clock/ids.
 - [ ] Committed goldens match; a stale golden fails the live diff instead of being silently regenerated (AC 20).
-- [ ] `seeded_divergence` diverges as required; if the comparator reports equality the build fails (AC 21, FR-008).
-- [ ] A skipped or missing vector fails the run; `normalised_comparison=true` only as a labelled interim, deleted when FR-011 lands (AC 22, FR-012).
+      **Half met.** A stale golden does fail: `runconformancevector::a_matching_vector_passes_and_a_mutated_expected_fails`
+      shows a mutated expectation failing the run, and nothing regenerates the vector automatically. But
+      the criterion is about the *live diff*, which does not exist — see AC 19.
+- [x] `seeded_divergence` diverges as required; if the comparator reports equality the build fails (AC 21, FR-008).
+      *Proof:* `tests/unit/portable-session/seeded-divergence/` — six tests including
+      `a_seeded_vector_that_starts_matching_fails_the_build` and `equality_on_the_seeded_vector_is_a_failure`;
+      enforced by `ci/run-conformance.sh`, which fails the `conformance` wasm gate.
+- [x] A skipped or missing vector fails the run; `normalised_comparison=true` only as a labelled interim, deleted when FR-011 lands (AC 22, FR-012).
+      *Proof:* `runconformancevector::a_skip_is_a_failure_never_a_pass`,
+      `…::an_unreplayable_vector_is_a_skip_and_a_skip_is_a_failure`,
+      `…::a_normalised_comparison_is_labelled`, `…::a_report_never_claims_a_normalised_comparison`.
+      The shipped report sets `normalised_comparison: false` (`run_conformance_vector.rs:152`) — byte
+      comparison today, no interim flag in use.
 - [ ] Browser-produced artifact set verifies under `rigorix-verifier` with no shared code (AC 13, FR-006).
+      **Independence is proven; the browser is not.** `tests/host_verification/verify.mjs` uses
+      `rigorix-verifier@0.9.0` alone (`verifySignature`, `validateEnvelope`, `verifyChain`) and imports
+      nothing from this crate; `ci/run-host-verification.sh` runs it in a separate Node process as the
+      10th gate, printing `unverifiable(key_not_held)` with exit 2 — the three-valued contract. What is
+      missing is a *browser*: no wasm-bindgen bundle exists yet, so the environment is Node.
 - [ ] Bundle within measured budget +25%; npm version equals `rigorix-engine` version (AC 23, AC 24).
+      **Neither half holds yet.** `ci/bundle-budget.txt` states `state: awaiting-packaging` with
+      `measured_bytes: 0` / `budget_bytes: 0`: the size gate records the trend and explicitly does not
+      enforce a ceiling. There is no npm package to compare — `rigorix-gate` is registered on the train
+      (#1346) but `publish-wasm-npm` is deliberately outside `github-release.needs` until the bundle is
+      shippable, so no version has been published.
 
 ---
 
