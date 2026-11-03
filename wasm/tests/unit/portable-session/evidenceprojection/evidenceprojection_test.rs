@@ -137,3 +137,110 @@ fn an_unknown_engine_label_becomes_the_neutral_refusal_never_an_allow() {
         Some(rigorix_gate_wasm::domain::outcome::RefusalKind::PreconditionError)
     );
 }
+
+// ---------------------------------------------------------------------------
+// The projection is a pure, total, order-preserving map (issue #1303)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn duplicate_gate_ids_are_preserved_not_deduplicated() {
+    use rigorix_gate_wasm::domain::services::{BusinessWording, EngineFindingsProjection};
+
+    // The engine can evaluate the same gate twice (a retried step, two matched
+    // preconditions with one id). Grouping or de-duplicating would silently drop a
+    // decision the record is supposed to contain.
+    let findings = vec![
+        EngineFinding {
+            gate_id: "precondition.a".into(),
+            outcome: EngineFindingOutcome::Passed,
+            refusal: None,
+            evidence: None,
+            opaque: None,
+        },
+        EngineFinding {
+            gate_id: "precondition.a".into(),
+            outcome: EngineFindingOutcome::Refused,
+            refusal: Some("precondition_failed".into()),
+            evidence: None,
+            opaque: None,
+        },
+    ];
+    let steps = EngineFindingsProjection::new(BusinessWording::new()).project(&findings);
+    assert_eq!(steps.len(), 2, "a decision was dropped");
+    assert_eq!(steps[0].decision, StepDecision::Allowed);
+    assert_eq!(steps[1].decision, StepDecision::Refused);
+}
+
+#[test]
+fn no_findings_yields_no_steps() {
+    use rigorix_gate_wasm::domain::services::{BusinessWording, EngineFindingsProjection};
+
+    let steps = EngineFindingsProjection::new(BusinessWording::new()).project(&[]);
+    assert!(steps.is_empty());
+    // The projection never invents a step to explain an empty run; whether an empty run is
+    // allowed is the aggregate's decision, not the projector's.
+}
+
+#[test]
+fn the_projection_is_total_over_the_engine_outcome_enum() {
+    use rigorix_gate_wasm::domain::services::{BusinessWording, EngineFindingsProjection};
+
+    // Every outcome maps: Passed→Allowed, Refused/Error→Refused, NotReached→NotReached.
+    let outcomes = [
+        (EngineFindingOutcome::Passed, StepDecision::Allowed),
+        (EngineFindingOutcome::Refused, StepDecision::Refused),
+        (EngineFindingOutcome::Error, StepDecision::Refused),
+        (EngineFindingOutcome::NotReached, StepDecision::NotReached),
+    ];
+    let projection = EngineFindingsProjection::new(BusinessWording::new());
+    for (engine_outcome, expected) in outcomes {
+        let findings = vec![EngineFinding {
+            gate_id: "g".into(),
+            outcome: engine_outcome,
+            refusal: None,
+            evidence: None,
+            opaque: None,
+        }];
+        assert_eq!(
+            projection.project(&findings)[0].decision,
+            expected,
+            "{engine_outcome:?}"
+        );
+    }
+}
+
+#[test]
+fn only_refused_steps_carry_a_reason() {
+    use rigorix_gate_wasm::domain::services::{BusinessWording, EngineFindingsProjection};
+
+    let findings = vec![
+        EngineFinding {
+            gate_id: "a".into(),
+            outcome: EngineFindingOutcome::Passed,
+            refusal: None,
+            evidence: None,
+            opaque: None,
+        },
+        EngineFinding {
+            gate_id: "b".into(),
+            outcome: EngineFindingOutcome::NotReached,
+            refusal: Some("ignored_label".into()),
+            evidence: None,
+            opaque: None,
+        },
+        EngineFinding {
+            gate_id: "c".into(),
+            outcome: EngineFindingOutcome::Refused,
+            refusal: Some("precondition_failed".into()),
+            evidence: None,
+            opaque: None,
+        },
+    ];
+    let steps = EngineFindingsProjection::new(BusinessWording::new()).project(&findings);
+    assert!(steps[0].reason.is_none());
+    // A `NotReached` step has no reason even if the engine sent a stray label: we did not
+    // ask the question, so we must not answer it.
+    assert!(steps[1].reason.is_none());
+    assert!(steps[1].kind.is_none());
+    assert!(steps[2].reason.is_some());
+}
