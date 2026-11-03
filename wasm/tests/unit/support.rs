@@ -231,6 +231,15 @@ impl FakeGate {
         }
     }
 
+    /// A gate whose envelopes carry arbitrary bytes — for the export-scan tests.
+    pub fn with_envelopes(envelopes: Vec<Vec<u8>>) -> Self {
+        Self {
+            findings: vec![finding("precondition.a", EngineFindingOutcome::Passed)],
+            port_failures: Vec::new(),
+            envelopes,
+        }
+    }
+
     pub fn aborting() -> Self {
         Self {
             findings: Vec::new(),
