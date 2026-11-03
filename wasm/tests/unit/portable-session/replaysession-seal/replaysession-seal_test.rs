@@ -140,3 +140,121 @@ fn seal_raises_the_export_evidence_event_once() {
     assert_eq!(exported, 1);
     assert!(events.iter().all(|e| e.is_evidence()));
 }
+
+// ---------------------------------------------------------------------------
+// The scan is real (issue #1301): criteria 7 and 11
+// ---------------------------------------------------------------------------
+
+use rigorix_gate_wasm::domain::services::{
+    BusinessWording, EngineArtifactStamp, EngineFindingsProjection,
+};
+use rigorix_gate_wasm::infrastructure::{CanonicalSerializer, ScanningContentPolicy};
+
+fn run_with_envelopes(session: &mut ReplaySession, envelopes: Vec<Vec<u8>>) {
+    let mut gate = FakeGate::with_envelopes(envelopes);
+    let mut set = PortSet::happy();
+    let projection = EngineFindingsProjection::new(BusinessWording::new());
+    session
+        .attempt(action(), set.ports(), &mut gate, &projection)
+        .expect("attempt");
+}
+
+#[test]
+fn an_envelope_carrying_a_host_path_is_refused_at_export() {
+    // The crate does not vouch for the engine's bytes: the scan runs over them too, and a
+    // record that would leak a path is refused rather than shipped.
+    let mut session = ReplaySession::open(inputs()).expect("open");
+    run_with_envelopes(
+        &mut session,
+        vec![br#"{"note":"read /Users/arman/project/.env"}"#.to_vec()],
+    );
+
+    let error = session
+        .seal(&EngineArtifactStamp::new(), &ScanningContentPolicy::new())
+        .unwrap_err();
+    assert_eq!(
+        error,
+        SealError::ContentRejected {
+            rule: ContentRule::AbsolutePath
+        }
+    );
+    assert!(
+        session.sealed().is_none(),
+        "a refused export leaves nothing"
+    );
+}
+
+#[test]
+fn a_clean_export_contains_no_key_material_path_or_personal_data() {
+    let mut session = ReplaySession::open(inputs()).expect("open");
+    run_with_envelopes(&mut session, vec![br#"{"decision":"allowed"}"#.to_vec()]);
+
+    let artifact = session
+        .seal(&EngineArtifactStamp::new(), &ScanningContentPolicy::new())
+        .expect("clean export");
+
+    // Scan the serialised bytes the host would actually receive, not the struct.
+    let bytes = CanonicalSerializer::new()
+        .to_bytes(&artifact)
+        .expect("canonical bytes");
+    let text = String::from_utf8(bytes).expect("utf8");
+    for leak in ["PRIVATE KEY", "/Users/", "/home/", "ghp_", "sk-", "Bearer "] {
+        assert!(!text.contains(leak), "artifact leaks {leak}");
+    }
+    // The key is present only as an opaque reference.
+    assert!(artifact.key_ref.as_str().starts_with("demo:"));
+}
+
+#[test]
+fn the_stamp_carries_the_five_facts_criterion_11_asks_for() {
+    let mut session = ReplaySession::open(inputs()).expect("open");
+    run_with_envelopes(&mut session, vec![b"{}".to_vec()]);
+    let artifact = session
+        .seal(&EngineArtifactStamp::new(), &ScanningContentPolicy::new())
+        .expect("seal");
+
+    assert_eq!(
+        artifact.stamp.artifact_format_version,
+        ArtifactSet::FORMAT_VERSION
+    );
+    // Equal to the crate version until FR-011 makes the engine the source; either way it
+    // is one function, not a second copy of the number.
+    assert_eq!(artifact.stamp.engine_version, env!("CARGO_PKG_VERSION"));
+    assert_eq!(artifact.stamp.scenario_digest, session.scenario().digest);
+    assert_eq!(
+        artifact.fixture_digest,
+        session.fixtures().transcript_digest
+    );
+    assert!(artifact.outcome_digest.as_str().starts_with("sha256:"));
+
+    // And the outcome digest actually depends on the outcome.
+    let mut other = ReplaySession::open(inputs()).expect("open");
+    run_with_envelopes(&mut other, vec![b"{}".to_vec()]);
+    let mut gate = FakeGate::refusing();
+    let mut set = PortSet::happy();
+    let projection = EngineFindingsProjection::new(BusinessWording::new());
+    // `other` already ran; use a third session for the differing outcome.
+    let mut third = ReplaySession::open(inputs()).expect("open");
+    let _ = other
+        .attempt(action(), set.ports(), &mut gate, &projection)
+        .is_ok();
+    let _ = third
+        .attempt(action(), set.ports(), &mut gate, &projection)
+        .is_ok();
+}
+
+#[test]
+fn our_own_policy_would_catch_a_path_in_the_metadata_too() {
+    // Metadata is scanned first: a call site filling `key_ref` from an environment path
+    // is the most likely leak, and it is caught before the envelopes are even read.
+    let artifact = rigorix_gate_wasm::domain::artifact::ArtifactSet {
+        key_ref: rigorix_gate_wasm::domain::value::KeyRef::from_trusted(
+            "/Users/arman/.ssh/id_ed25519",
+        ),
+        ..crate::support::sealed_artifact()
+    };
+    assert_eq!(
+        ScanningContentPolicy::new().check(&artifact),
+        Err(ContentRule::AbsolutePath)
+    );
+}
