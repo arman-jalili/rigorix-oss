@@ -135,7 +135,7 @@ fi
 echo ""
 echo "--- Dependency Direction ---"
 if [ -d "src/domain" ]; then
-    DOMAIN_DEPS=$(grep -rE 'use\s+crate::infrastructure' src/domain/ 2>/dev/null | wc -l | tr -d ' ')
+    DOMAIN_DEPS=$( (grep -rE 'use\s+crate::infrastructure' src/domain/ 2>/dev/null || true) | wc -l | tr -d ' ')
     if [ "$DOMAIN_DEPS" -eq 0 ]; then
         pass "Domain layer does not depend on infrastructure"
     else
@@ -158,7 +158,7 @@ if command -v cargo &>/dev/null; then
     fi
 fi
 # Also check for custom error enum definitions
-CUSTOM_ERRORS=$(grep -rE 'enum\s+\w*Error' src/ 2>/dev/null | wc -l | tr -d ' ')
+CUSTOM_ERRORS=$( (grep -rE 'enum\s+\w*Error' src/ 2>/dev/null || true) | wc -l | tr -d ' ')
 if [ "$HAS_ERROR_TYPES" -eq 1 ] || [ "$CUSTOM_ERRORS" -gt 0 ]; then
     pass "Custom error handling detected"
 else
@@ -170,7 +170,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Trait Definitions ---"
-TRAITS=$(grep -rE '^\s*(pub\s+)?trait\s+' src/ 2>/dev/null | wc -l | tr -d ' ')
+TRAITS=$( (grep -rE '^\s*(pub\s+)?trait\s+' src/ 2>/dev/null || true) | wc -l | tr -d ' ')
 if [ "$TRAITS" -gt 0 ]; then
     pass "Trait definitions found ($TRAITS interfaces)"
 else
