@@ -85,6 +85,34 @@ Each entry follows this structure:
 
 ## Entries
 
+## [2026-11-03] - Architecture readiness: runbook, recovery plan, crate README
+
+### Changed
+- `runbook.md` — the operational document: day-to-day commands, **what to do for each
+  failing gate** (including "do not relax the gate" and the two legitimate fixes for a
+  domain-isolation hit), what `gate_unavailable` means and when it disappears (FR-011),
+  the release steps, the known limits in a table, and escalation triggers.
+- `disaster-recovery.md` — what can actually be lost, and by whom. The crate is stateless by
+  design, so the honest DR answer is "the record is the host's": key loss, format rollback,
+  a leaked artifact (never edited — an edited record is not evidence), and a quarterly drill.
+- `../../README.md` — the crate's front door: four functions, what a refusal is, what is
+  deliberately absent (network, fs, persistence, verification), the honest status
+  (`gate_unavailable` until FR-011), and how to run the gates.
+
+### Why these are gates, not prose
+Tests assert the documents exist and stay useful: every gate is named in the runbook with its
+command, `gate_unavailable`'s exit condition is findable without reading code, the known
+limits are stated rather than implied, and the recovery plan separates what we hold from what
+the host holds. A runbook that drifts from the gates is worse than none, because it is
+believed.
+
+### Status
+- [x] Architecture docs complete for this crate
+- [x] All 26 pipeline items closed
+- [x] 180 tests, clippy clean, every tree validator green
+
+---
+
 ## [2026-11-03] - Validate step: context façade + tree validator sync
 
 ### Changed
