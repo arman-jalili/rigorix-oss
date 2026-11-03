@@ -350,6 +350,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: 🔐 errexit arithmetic (no script may end on `(( x++ ))`)
         run: bash .pi/scripts/validate-shell-exit-status.sh
+      - name: 🧮 CI stage table (a hyphenated job id must still resolve)
+        # `wasm-gates` -> RESULT_WASM_GATES. When this was wrong, a green job read as
+        # `missing` and the merge gate failed on a stage that had passed.
+        run: bash .github/scripts/ci_stages.sh --self-test
 
   # ── Stage 7: Stage report ─────────────────────────────────────
   # Always runs, always green: it exists so a superseded run still shows
@@ -394,7 +398,7 @@ jobs:
           RESULT_INTEGRATION: ${{ needs.integration.result }}
           RESULT_CONFORMANCE: ${{ needs.conformance.result }}
           RESULT_SHELL: ${{ needs.shell.result }}
-          RESULT_WASM: ${{ needs.wasm-gates.result }}
+          RESULT_WASM_GATES: ${{ needs.wasm-gates.result }}
         run: .github/scripts/ci_report.sh
 
   # ── Stage 8: Final Gate ───────────────────────────────────────
@@ -420,5 +424,5 @@ jobs:
           RESULT_INTEGRATION: ${{ needs.integration.result }}
           RESULT_CONFORMANCE: ${{ needs.conformance.result }}
           RESULT_SHELL: ${{ needs.shell.result }}
-          RESULT_WASM: ${{ needs.wasm-gates.result }}
+          RESULT_WASM_GATES: ${{ needs.wasm-gates.result }}
         run: .github/scripts/ci_verdict.sh
