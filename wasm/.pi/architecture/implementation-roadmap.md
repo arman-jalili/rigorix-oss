@@ -69,10 +69,20 @@ later code can invent an ambient capability or a new verdict shape.
 
 ### Workspace Registration (ADR-011)
 
-- [ ] `wasm/` is in `[workspace] members`; `wasm/Cargo.toml` inherits licence, edition and lints.
-- [ ] `release.yml` tag loop includes `gate-wasm`; a crates.io publish step exists; an npm
-      step is scaffolded (this repo has none today).
-- [ ] `.pi/panic-baseline.tsv` covers the new crate.
+- [x] `wasm/` is in `[workspace] members`; `wasm/Cargo.toml` inherits licence, edition and lints.
+- [x] `release.yml` tag loop names `wasm` (the directory, matching the loop's convention);
+      `publish-wasm` publishes `rigorix-gate-wasm` to crates.io; `publish-wasm-npm` plus
+      `.github/scripts/publish-npm-package.sh` register the host-facing `rigorix-gate`.
+- [x] `.pi/panic-baseline.tsv` covers the new crate.
+- [x] `.pi/scripts/validate-release-train.sh` derives the four points above from
+      `cargo metadata`, so the next member cannot join the workspace and miss the train
+      the way `rigorix-actions` did (#1346).
+
+The npm *publication* is not done and is not claimed here: `publish-wasm-npm` sits outside
+`github-release.needs` while `wasm/ci/bundle-budget.txt` says `state: awaiting-packaging`,
+because the cdylib exports nothing yet. Criterion 24 stays unmet until a tag produces the
+package; flipping that state requires wiring the job into `needs` on the same commit, which
+the guard enforces.
 
 ### Dependencies
 

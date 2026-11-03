@@ -19,6 +19,11 @@ jobs:
   verify:
     name: 🔍 Verify
     runs-on: ubuntu-latest
+    # `npm_ready` is read from the committed readiness state, not guessed. `hashFiles`
+    # cannot be used for this: a job-level `if` is evaluated before `actions/checkout`, so
+    # it would answer "no artifact" forever and quietly never publish.
+    outputs:
+      npm_ready: ${{ steps.npm.outputs.ready }}
     steps:
       - uses: actions/checkout@v4
 
@@ -34,6 +39,11 @@ jobs:
           # on 1.4.0 for seven weeks while `actions/` took 307 lines of change.
           # An excluded crate is an unreleased crate; the gate is what makes
           # `skip if exists` mean "rerun" instead of "never".
+          #
+          # This literal is not the source of truth: `.pi/scripts/validate-release-train.sh`
+          # derives the train from `cargo metadata` and fails when a publishable member is
+          # missing from this loop, from the publish steps, or from the release notes. A
+          # literal cannot notice the next member — that is how `actions` sat on 1.4.0.
           for crate in engine cli mcp actions wasm; do
             CRATE_VERSION=$(grep '^version' "$crate/Cargo.toml" | head -1 | sed 's/version = "//;s/"//')
             echo "$crate: $CRATE_VERSION"
@@ -43,6 +53,24 @@ jobs:
             fi
           done
           echo "✅ All versions match tag"
+
+      - name: Read npm packaging readiness
+        id: npm
+        shell: bash
+        run: |
+          state=$(sed -n 's/^state:[[:space:]]*\([^[:space:]]*\).*/\1/p' wasm/ci/bundle-budget.txt | head -1)
+          case "$state" in
+            shipped)
+              echo "ready=true" >> "$GITHUB_OUTPUT"
+              echo "bundle state: shipped — rigorix-gate will be published to npm" ;;
+            awaiting-packaging)
+              echo "ready=false" >> "$GITHUB_OUTPUT"
+              echo "bundle state: awaiting-packaging — rigorix-gate is registered but NOT published"
+              echo "  (its module has no exports yet; see wasm/ci/bundle-budget.txt)" ;;
+            *)
+              echo "❌ bundle state '$state' is not shipped|awaiting-packaging" >&2
+              exit 1 ;;
+          esac
 
   # ── Publish each crate in dependency order ────────────────────
   # Each step delegates to .github/scripts/publish-crate.sh, which asks the
@@ -99,6 +127,48 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: bash .github/scripts/publish-crate.sh rigorix-actions actions/Cargo.toml
 
+  publish-wasm:
+    name: 📦 Publish gate (crates.io)
+    # ADR-011 registration point 4. On the train from the start, even while the `engine`
+    # feature is off: registration is about the version not drifting silently, not about
+    # shipping today. Ordered after `publish-engine` because the crate pins the engine
+    # version it was written against.
+    needs: [publish-engine]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: Publish rigorix-gate-wasm (skip if exists)
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: bash .github/scripts/publish-crate.sh rigorix-gate-wasm wasm/Cargo.toml
+
+  publish-wasm-npm:
+    name: 📦 Publish gate (npm)
+    # ADR-011 registration point 5: the host-facing name is `rigorix-gate`, and it ships
+    # at the same version as the engine. Idempotent (`npm view` before `npm publish`), so a
+    # replay of a finished tag is a skip rather than a red job.
+    #
+    # This job is deliberately NOT in `github-release.needs` while
+    # `wasm/ci/bundle-budget.txt` says `state: awaiting-packaging`: the bundle exports
+    # nothing yet, and `publish-npm-package.sh` refuses to publish a module with no
+    # exports. The coupling is machine-checked by `.pi/scripts/validate-release-train.sh`
+    # — the moment the state becomes `shipped`, this job must gate the release page, or
+    # the guard fails. A package that does not exist must not look published; a package
+    # that does must not be quietly left out of the train.
+    needs: [verify, publish-wasm]
+    runs-on: ubuntu-latest
+    if: needs.verify.outputs.npm_ready == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: Publish rigorix-gate (skip if exists)
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: bash .github/scripts/publish-npm-package.sh rigorix-gate wasm/Cargo.toml wasm/pkg
+
   # ── Create GitHub Release ─────────────────────────────────────
   github-release:
     name: 🏷️ GitHub Release
@@ -107,7 +177,11 @@ jobs:
     # page that omits it would advertise a train with a missing car. The `verify`
     # gate now requires all four versions to equal the tag, so the only way
     # `publish-actions` skips is a rerun, where the skip is correct.
-    needs: [publish-engine, publish-cli, publish-mcp, publish-actions]
+    # `publish-wasm` is on the train (crates.io). `publish-wasm-npm` is not in this list
+    # yet: its bundle is unshippable (`state: awaiting-packaging`), and
+    # `validate-release-train.sh` requires it to be added here on the same commit that
+    # flips that state — the release page and the npm package cannot disagree.
+    needs: [publish-engine, publish-cli, publish-mcp, publish-actions, publish-wasm]
     # Announce the release only once every train crate is actually on crates.io.
     # Previously `if: always()`, which meant a failed publish still produced a
     # release page advertising crates that did not exist in the registry — the
@@ -132,7 +206,7 @@ jobs:
           {
             echo "# Rigorix ${{ github.ref_name }}"
             echo ""
-            echo "Release train: \`engine\` / \`mcp\` / \`cli\` / \`actions\` → \`$VERSION\`."
+            echo "Release train: \`engine\` / \`mcp\` / \`cli\` / \`actions\` / \`gate\` → \`$VERSION\`."
             echo ""
             # Point at the repo's changelog (CHANGELOG.md). This previously read
             # `.pi/architecture/CHANGELOG.md`, which is the GUARDIAN framework's
@@ -146,6 +220,17 @@ jobs:
             echo "- [rigorix-mcp $VERSION](https://crates.io/crates/rigorix-mcp/$VERSION)"
             echo "- [rigorix-cli $VERSION](https://crates.io/crates/rigorix-cli/$VERSION)"
             echo "- [rigorix-actions $VERSION](https://crates.io/crates/rigorix-actions/$VERSION)"
+            echo "- [rigorix-gate-wasm $VERSION](https://crates.io/crates/rigorix-gate-wasm/$VERSION)"
+            # The npm package is announced only when it actually shipped. Reading the
+            # readiness state here is what stops the page claiming a package that
+            # `publish-wasm-npm` is deliberately holding back.
+            if grep -q '^state: shipped' wasm/ci/bundle-budget.txt 2>/dev/null; then
+              echo "- [rigorix-gate $VERSION](https://www.npmjs.com/package/rigorix-gate/v/$VERSION)"
+            else
+              echo ""
+              echo "\`rigorix-gate\` on npm is not published at $VERSION — the bundle is still"
+              echo "\`awaiting-packaging\` (see \`wasm/ci/bundle-budget.txt\`)."
+            fi
           } > release-notes.md
 
       - name: Create Release
