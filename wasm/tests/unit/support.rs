@@ -324,3 +324,22 @@ impl rigorix_gate_wasm::domain::services::ArtifactContentPolicy for RejectPolicy
         Err(self.0)
     }
 }
+
+/// A sealed artifact set, for adapter and policy tests.
+pub fn sealed_artifact() -> rigorix_gate_wasm::domain::artifact::ArtifactSet {
+    use rigorix_gate_wasm::domain::artifact::{ArtifactSet, EnvelopeBytes, VersionStamp};
+
+    ArtifactSet {
+        stamp: VersionStamp {
+            artifact_format_version: ArtifactSet::FORMAT_VERSION,
+            engine_version: "1.12.1".to_string(),
+            scenario_digest: digest('a'),
+        },
+        fixture_digest: digest('b'),
+        session_id: rigorix_gate_wasm::domain::value::ReplaySessionId::from_digest(digest('c')),
+        key_ref: KeyRef::from_trusted("demo:sha256:abcd"),
+        envelopes: vec![EnvelopeBytes(br#"{"decision":"refused"}"#.to_vec())],
+        evidence: Vec::new(),
+        outcome_digest: digest('d'),
+    }
+}
