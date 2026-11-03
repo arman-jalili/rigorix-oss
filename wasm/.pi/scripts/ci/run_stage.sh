@@ -76,7 +76,7 @@ case "$STAGE" in
             ruff check . && ruff format --check .
         elif [[ -f "package.json" ]]; then
             echo "TypeScript project detected"
-            biome check . && biome ci .
+            biome check . && biome format --check .
         elif [[ -f "Cargo.toml" ]]; then
             echo "Rust project detected"
             cargo clippy -- -D warnings && cargo fmt --check

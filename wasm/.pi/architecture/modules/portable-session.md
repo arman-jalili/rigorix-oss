@@ -528,11 +528,11 @@ Prohibited aliases (from `.pi/domain/ubiquitous-language.md`): attempt/session/r
 | 21 | `seeded_divergence` | The deliberately altered vector **must** diverge; if the comparator reports equality, the build fails | CI (must-fail test) |
 | 22 | `RunConformanceVector` | A skipped or missing vector fails the run; `normalised_comparison=true` is permitted only while FR-011 is unimplemented and is labelled in the report | CI | **blocked until FR-011 (P2)** |
 | 23 | Bundle | Release wasm stays within the measured budget (+25%, NFR-002) and contains no tokio/reqwest/tree-sitter/prometheus/tracing-appender/libc | CI (size gate + `cargo tree`) |
-| 24 | Release train | npm package version equals `rigorix-engine` version; default-feature suites of engine/mcp/cli/actions pass unchanged from the same commit | CI |
+| 24 | Release train | npm package version equals `rigorix-engine` version; default-feature suites of engine/mcp/cli/actions pass unchanged from the same commit | CI | **not met**: the npm step is registered but publishes nothing while the bundle is `awaiting-packaging` (#1346) |
 
 | 25 | Determinism | The same vector replayed twice in one wasm instance and once in a freshly instantiated module produces byte-identical artifact sets (NFR-001, across instances) | integration test |
 | 26 | Failure tiers | A panic on the gate path fails the build (panic-site baseline); a trap is surfaced to the host as fatal and is never rendered as a refusal or an allow (ADR-012) | architecture test + host-contract test |
-| 27 | Release train | `wasm/Cargo.toml` is in `[workspace] members`, the tag/version loop in `release.yml` names it, and `validate-workspace-pins.sh` passes with the engine pin (ADR-011) | CI |
+| 27 | Release train | `wasm/Cargo.toml` is in `[workspace] members`, the tag/version loop in `release.yml` names it, and `validate-workspace-pins.sh` passes with the engine pin (ADR-011) | CI | met, and now derived rather than asserted: `validate-release-train.sh` fails when any publishable member is missing from the loop, the publish steps or the notes (#1346) |
 
 ## Components
 

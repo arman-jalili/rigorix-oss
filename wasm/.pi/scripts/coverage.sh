@@ -1,58 +1,71 @@
 #!/usr/bin/env bash
 # ============================================================================
-# coverage.sh — Real project coverage measurement + gate (dispatcher)
+# coverage.sh — workspace line-coverage measurement (cargo-llvm-cov).
 #
-# Runs the project's REAL coverage tool for the detected language and reports
-# line coverage. This is the honest replacement for the old per-module
-# heuristic `*_coverage.sh` checks (coverage-theater — they counted test
-# functions via grep, never a real percentage).
-#
-# Delegates to languages/<lang>/coverage.sh. Real coverage tool per language:
-#   rust        — cargo llvm-cov (workspace line coverage, lcov artifact)
-#   python      — coverage.py (pytest/unittest)
-#   typescript  — vitest / jest / bun test --coverage (istanbul text)
-#   go          — go test -coverprofile + go tool cover
-#   java        — JaCoCo (maven/gradle)
+# Produces the REAL coverage number (not heuristic grep checks):
+#   cargo llvm-cov --workspace --summary-only
 #
 # Usage:
 #   bash .pi/scripts/coverage.sh            # measure + print summary
-#   bash .pi/scripts/coverage.sh --gate     # exit 1 if lines < COVERAGE_THRESHOLD
-#   bash .pi/scripts/coverage.sh --lcov     # also emit the tool's report artifact
+#   bash .pi/scripts/coverage.sh --lcov     # also write target/coverage.lcov
+#   bash .pi/scripts/coverage.sh --gate     # fail if lines < COVERAGE_THRESHOLD
 #
 # Env:
-#   COVERAGE_THRESHOLD  minimum line-coverage % (default: 60 — a conservative
-#                       floor; set it to the threshold your CI actually enforces)
+#   COVERAGE_THRESHOLD  minimum line-coverage % (default: 60)
 #
-# Exit codes:
-#   0 — measured and (with --gate) meets threshold, or language not applicable
-#   1 — coverage tool missing / below threshold / could not measure (honest
-#       fail — never fake-pass)
-#   2 — unknown argument
+# Baseline: 78.92% line coverage (2026-08-31, workspace).
 # ============================================================================
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+COVERAGE_THRESHOLD="${COVERAGE_THRESHOLD:-60}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+GATE=0
+LCOV=0
 
-detect_language() {
-    if [ -f "Cargo.lock" ] || [ -f "Cargo.toml" ]; then echo "rust"
-    elif [ -f "go.mod" ]; then echo "go"
-    elif [ -f "pom.xml" ] || [ -f "build.gradle" ] || [ -f "build.gradle.kts" ] || [ -d "src/main/java" ]; then echo "java"
-    elif [ -f "package.json" ]; then echo "typescript"
-    elif [ -f "pyproject.toml" ] || [ -f "requirements.txt" ]; then echo "python"
-    else echo "unknown"; fi
-}
+for arg in "$@"; do
+  case "$arg" in
+    --gate) GATE=1 ;;
+    --lcov) LCOV=1 ;;
+    *) echo "unknown arg: $arg" >&2; exit 2 ;;
+  esac
+done
 
-LANG="$(detect_language)"
-
-if [ "C.UTF-8" = "unknown" ]; then
-    echo "⚠️  No project language detected — no real coverage gate applies." >&2
-    exit 0
+if ! command -v cargo-llvm-cov >/dev/null 2>&1; then
+  echo "cargo-llvm-cov not found — run .pi/scripts/install_coverage_tools.sh" >&2
+  exit 1
 fi
 
-LANG_SCRIPT="${SCRIPT_DIR}/languages/${LANG}/coverage.sh"
-if [ ! -f "$LANG_SCRIPT" ]; then
-    echo "⚠️  No coverage gate script for '${LANG}' yet (${LANG_SCRIPT})." >&2
-    exit 0
+cd "$ROOT"
+
+echo "═══ Workspace coverage (cargo llvm-cov) ═══"
+SUMMARY="$(cargo llvm-cov --workspace --summary-only)"
+if [ "$LCOV" -eq 1 ]; then
+  mkdir -p target
+  cargo llvm-cov --workspace --lcov --output-path target/coverage.lcov >/dev/null 2>&1
 fi
 
-exec bash "$LANG_SCRIPT" "$@"
+# Print the per-file table + TOTAL row (summary tail), then extract the
+# TOTAL line-coverage percentage from the final line.
+echo "$SUMMARY" | tail -12
+COVERAGE="$(echo "$SUMMARY" | tail -1 | grep -oE '[0-9]+\.[0-9]+%' | head -1 | sed 's/%//')"
+# Honest failure: without `set -e`, a failed `cargo llvm-cov` (e.g. a failing
+# test) leaves $COVERAGE empty, and the awk comparison below then dies with a
+# confusing syntax error plus a bogus "% < 60%" message. Fail explicitly.
+if ! [[ "$COVERAGE" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+  echo "" >&2
+  echo "✗ Could not determine line coverage (extracted: '${COVERAGE}') —" >&2
+  echo "  \`cargo llvm-cov --workspace\` likely failed; see the test output above." >&2
+  exit 1
+fi
+echo ""
+echo "Line coverage: ${COVERAGE}% (threshold: ${COVERAGE_THRESHOLD}%)"
+
+if [ "$GATE" -eq 1 ]; then
+  if awk "BEGIN { exit !($COVERAGE >= $COVERAGE_THRESHOLD) }"; then
+    echo "✓ Coverage gate passed"
+  else
+    echo "✗ Coverage below threshold (${COVERAGE}% < ${COVERAGE_THRESHOLD}%)" >&2
+    exit 1
+  fi
+fi
+exit 0

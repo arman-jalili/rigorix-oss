@@ -39,25 +39,36 @@ train has a forced sequence that nothing in the current docs states.
 | Engine dependency | `rigorix-engine = { path = "../engine", version = "<train>", features = ["portable"] }` |
 | Publish order | engine (carrying `portable`) → `rigorix-gate-wasm` (crates.io) → `rigorix-gate` (npm) |
 
-Registration is a checklist, not an assumption. A crate that is not in all six places
+Registration is a checklist, not an assumption. A crate that is not in all seven places
 is not on the train:
 
 1. `Cargo.toml` → `members += "wasm"`.
 2. `wasm/Cargo.toml` exists with the workspace-inherited fields and the engine pin.
-3. `release.yml` version-consistency loop: `for crate in engine cli mcp actions gate-wasm`.
+3. `release.yml` version-consistency loop: `for crate in engine cli mcp actions wasm`
+   — the *directory* name, matching the loop's existing convention. ✅ (#1315)
 4. `release.yml`: a publish step `publish-crate.sh rigorix-gate-wasm wasm/Cargo.toml`,
-   ordered after engine.
-5. `release.yml`: an npm publish step at the tag version — **new work**; this repo
-   currently has zero `npm publish` invocations (the SDK publishes from its own repo).
+   ordered after engine. ✅ (#1346, `publish-wasm`)
+5. `release.yml`: an npm publish step at the tag version — this repo had zero `npm publish`
+   invocations (the SDK publishes from its own repo). ✅ registered (#1346,
+   `publish-wasm-npm` + `.github/scripts/publish-npm-package.sh`), ⏸ **publishing is held
+   back** while `wasm/ci/bundle-budget.txt` says `state: awaiting-packaging`: a module with
+   no exports is a version a consumer would pin and could not use.
 6. `.pi/panic-baseline.tsv` regenerated (`validate-panic-sites.sh --update`) so the new
    crate's surfaces are classed; `.pi/scripts/validate-workspace-pins.sh` needs no
-   change — it reads `cargo metadata` and picks the member up automatically.
+   change — it reads `cargo metadata` and picks the member up automatically. ✅
+7. *(added by #1346)* `.pi/scripts/validate-release-train.sh` derives these points from
+   `cargo metadata` and fails when a publishable member is missing any of them — the
+   checklist above is prose, and prose cannot notice the next member. It must not be
+   read as evidence that this one is on the train; the guard is.
 
 ## Consequences
 
 ### Positive
-- The crate cannot silently fall off the train; the `for crate in …` entry is the
-  exact defect that kept `actions` at 1.4.0 for seven weeks.
+- The crate cannot silently fall off the train. The `for crate in …` entry alone did *not*
+  achieve that — the crate joined the workspace and the CI while two registration points
+  were still missing, and every gate stayed green because none of them looked here. What
+  achieves it is `validate-release-train.sh`, which derives the train from the manifests
+  rather than trusting the literal that the `actions` defect showed can be wrong.
 - Version identity across crates.io and npm is enforced by the same tag check that
   already guards the other four.
 - Licence and edition stay single-sourced; the SDK's licence question cannot be

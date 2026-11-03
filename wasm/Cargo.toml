@@ -31,9 +31,14 @@ thiserror = "2"
 # requirement, not a preference (ADR-010).
 sha2 = "0.11"
 
-[lints.rust]
-# ADR-012 tier 2: a panic on the gate path is a defect, not a handled case.
-unsafe_code = "forbid"
+[lints]
+# Inherited, not re-listed. Declaring a local `[lints.rust]` block without
+# `workspace = true` opts out of *every* workspace lint, silently — this crate was the only
+# member doing that, so `clippy::disallowed_types` (clippy.toml, #1083: process spawning is a
+# privileged sink) never applied here even though ADR-011 said it did.
+# `unsafe_code = "forbid"` (ADR-012 tier 2) moved to the crate root in src/lib.rs, because
+# cargo does not allow mixing `workspace = true` with local overrides.
+workspace = true
 
 [[test]]
 name = "unit"

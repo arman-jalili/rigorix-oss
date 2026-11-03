@@ -107,13 +107,33 @@ because a gate that cannot evaluate must not allow one.
 
 ## 4. Releasing
 
+The train is **derived**, not remembered: `.pi/scripts/validate-release-train.sh` reads
+`cargo metadata`, takes every member without `publish = false`, and requires each one to be
+named in `release.yml`'s version loop, to have a `publish-crate.sh` step, to carry the train
+version, and to appear in the release notes. A member that is added to the workspace but not
+to the train fails that guard, which is the defect `rigorix-actions` carried for seven weeks.
+
 1. `bash wasm/ci/run-wasm-gates.sh --with-npm` — all gates including independence.
-2. Bump `version` in `wasm/Cargo.toml` **and** in the four published crates: the release gate
-   fails when any crate's version differs from the tag.
-3. `release.yml` version-checks `engine cli mcp actions wasm`; the npm package
-   (`rigorix-gate`) publishes at the same version.
-4. Tag. The npm version must equal `rigorix-engine`'s — a host pinning both must never
-   reconcile two numbers.
+2. `bash .pi/scripts/validate-release-train.sh` — the train matches the manifests.
+3. Bump `version` in `wasm/Cargo.toml` **and** in `engine`, `cli`, `mcp`, `actions`: the
+   release `verify` job fails when any crate's version differs from the tag, and the guard
+   above fails when the train versions differ from each other.
+4. Tag. Publish order is `engine` → `rigorix-gate-wasm` (crates.io) → `rigorix-gate` (npm),
+   so a host that pins both the engine and the npm package resolves one version.
+
+**Two secrets, not one.** `CARGO_REGISTRY_TOKEN` (already used) and **`NPM_TOKEN`** (new:
+this repository had no npm publish before the gate crate joined the train). A publish step
+that runs without `NPM_TOKEN` fails by design — `publish-npm-package.sh` refuses rather than
+silently degrading to a dry run. Treat a missing token as a release blocker, not as a reason
+to drop the step.
+
+**The npm package is held back until the bundle is shippable.** `wasm/ci/bundle-budget.txt`
+carries `state: awaiting-packaging` while the cdylib exports no symbols; in that state
+`publish-wasm-npm` is registered but deliberately outside `github-release.needs`, and
+`publish-npm-package.sh` refuses to publish a module with nothing in it. The guard enforces
+the coupling in both directions: flipping the state to `shipped` **requires** the npm job to
+gate the release page, and leaving it `awaiting-packaging` **forbids** it. Publishing a
+package consumers can pin but not use is worse than publishing nothing.
 
 ---
 
