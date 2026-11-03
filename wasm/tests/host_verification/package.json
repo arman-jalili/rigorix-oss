@@ -1,0 +1,12 @@
+{
+  "name": "rigorix-gate-host-verification",
+  "private": true,
+  "type": "module",
+  "description": "Criterion 13: verify a wasm-produced artifact set with the independent SDK, in a process that never loads the wasm module.",
+  "scripts": {
+    "verify": "node verify.mjs"
+  },
+  "dependencies": {
+    "rigorix-verifier": "^0.9.0"
+  }
+}
