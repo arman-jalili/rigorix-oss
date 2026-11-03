@@ -22,10 +22,30 @@ use super::Digest;
 pub struct ReplaySessionId(Digest);
 
 impl ReplaySessionId {
-    /// Wrap the derived digest.
+    /// Derive the identity from the session's four pinned inputs.
+    ///
+    /// # Contract (Frozen)
+    /// - Equal inputs ⇒ equal id; a different seed ⇒ a different id (criterion 2)
+    /// - The order of the parts is fixed by `SESSION_ID_DOMAIN`, so a change to the
+    ///   derivation is a change to every id ever produced — it needs its own issue
+    /// - The seed's **digest** is hashed, never the seed
+    pub fn derive(scenario: &Digest, fixtures: &Digest, seed: &Digest) -> Self {
+        let mut material = Vec::with_capacity(96);
+        material.extend_from_slice(Self::SESSION_ID_DOMAIN.as_bytes());
+        material.extend_from_slice(scenario.as_str().as_bytes());
+        material.extend_from_slice(fixtures.as_str().as_bytes());
+        material.extend_from_slice(seed.as_str().as_bytes());
+        Self(Digest::of(&material))
+    }
+
+    /// Wrap an already-derived digest.
     pub fn from_digest(digest: Digest) -> Self {
         Self(digest)
     }
+
+    /// Domain separator, so a session id can never collide with a digest of the same
+    /// three parts taken for another purpose.
+    const SESSION_ID_DOMAIN: &'static str = "rigorix-gate/session\u{1f}";
 
     /// The underlying digest.
     pub fn as_digest(&self) -> &Digest {

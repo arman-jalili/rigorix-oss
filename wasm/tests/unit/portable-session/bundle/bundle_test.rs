@@ -5,7 +5,9 @@
 use crate::read_manifest;
 
 /// The dependency floor: serde, serde_json, thiserror. Everything else needs a reason.
-const ALLOWED_DEPENDENCIES: [&str; 3] = ["serde", "serde_json", "thiserror"];
+// sha2 is the engine's own hash crate: a different implementation would produce
+// different digests for the same bytes, which is the one thing this crate may not do.
+const ALLOWED_DEPENDENCIES: [&str; 4] = ["serde", "serde_json", "sha2", "thiserror"];
 
 #[test]
 fn the_dependency_set_is_deliberate() {

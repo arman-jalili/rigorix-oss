@@ -32,8 +32,22 @@ use crate::domain::outcome::RunOutcome;
 use crate::domain::ports::Ports;
 use crate::domain::services::{ArtifactContentPolicy, ArtifactStamp};
 use crate::domain::session::GateAttempt;
+
+/// The one scenario format this build evaluates.
+///
+/// # Contract (Frozen)
+/// - A scenario declaring anything else is refused **before** evaluation, so an unknown
+///   policy format is never judged by today's rules (FR-010, criterion 12)
+pub struct SupportedScenarioFormat;
+
+impl SupportedScenarioFormat {
+    /// The supported engine scenario format version.
+    pub const VERSION: ScenarioFormatVersion = ScenarioFormatVersion(1);
+}
+use crate::domain::events::SessionOpened;
 use crate::domain::value::{
-    ClockTrack, FixtureWorld, GatedAction, RandomSeed, ReplaySessionId, ScenarioRef,
+    ClockTrack, FixtureWorld, GatedAction, RandomSeed, ReplaySessionId, ScenarioFormatVersion,
+    ScenarioRef,
 };
 
 /// The inputs a session is opened from — all four of them pinned.
@@ -62,10 +76,25 @@ pub struct ReplaySession {
     events: Vec<DomainEvent>,
 }
 
+/// Redacted: an aggregate holds the host's fixture world, and a `Debug` that printed it
+/// would put host data into every `{session:?}` in a log (NFR-003). The shape is shown;
+/// the contents never are.
+impl std::fmt::Debug for ReplaySession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ReplaySession")
+            .field("id", &self.id.as_str())
+            .field("scenario", &self.inputs.scenario.digest.as_str())
+            .field("fixtures", &self.inputs.fixtures.transcript_digest.as_str())
+            .field("clock_readings", &self.inputs.clock.readings().len())
+            .field("has_attempt", &self.attempt.is_some())
+            .field("sealed", &self.sealed.is_some())
+            .field("events", &self.events.len())
+            .finish()
+    }
+}
+
 impl ReplaySession {
     /// Assemble a replayable session from pinned inputs.
-    ///
-    /// TODO(#1295): parse with engine types; derive the id; pin the series and seed.
     ///
     /// # Contract (Frozen)
     /// - Unparseable scenario ⇒ `ScenarioUnparseable`; incomplete fixtures ⇒
@@ -73,8 +102,60 @@ impl ReplaySession {
     /// - The id is derived from (scenario, fixtures, seed) (criterion 2)
     /// - Raises [`DomainEvent::ReplaySessionOpened`]
     pub fn open(inputs: OpenInputs) -> Result<Self, SessionOpenError> {
-        let _ = inputs;
-        todo!("contract freeze: ReplaySession::open lands with the aggregate issue")
+        Self::validate(&inputs)?;
+
+        let id = ReplaySessionId::derive(
+            &inputs.scenario.digest,
+            &inputs.fixtures.transcript_digest,
+            &inputs.seed.seed_digest,
+        );
+
+        let opened = DomainEvent::ReplaySessionOpened(SessionOpened {
+            session_id: id.clone(),
+            scenario_digest: inputs.scenario.digest.clone(),
+            fixture_digest: inputs.fixtures.transcript_digest.clone(),
+            seed_digest: inputs.seed.seed_digest.clone(),
+            clock_len: inputs.clock.readings().len(),
+        });
+
+        Ok(Self {
+            id,
+            inputs,
+            attempt: None,
+            sealed: None,
+            events: vec![opened],
+        })
+    }
+
+    /// Reject inputs the session cannot honestly pin.
+    ///
+    /// # Contract (Frozen)
+    /// - Each check has its own variant, so a caller learns *which* input was wrong
+    ///   (criterion 1: a typed refusal, never a default)
+    /// - Nothing is repaired, defaulted or trimmed: an input that does not fit is
+    ///   refused here, not silently adapted downstream
+    fn validate(inputs: &OpenInputs) -> Result<(), SessionOpenError> {
+        if inputs.scenario.format_version != SupportedScenarioFormat::VERSION {
+            return Err(SessionOpenError::UnsupportedScenarioFormat {
+                found: inputs.scenario.format_version,
+            });
+        }
+
+        if inputs.clock.readings().is_empty() {
+            return Err(SessionOpenError::ClockSeriesEmpty);
+        }
+
+        // The transcript is host data, so its *shape* is the only thing we can check
+        // without owning the business meaning of its contents.
+        let Some(object) = inputs.fixtures.transcript.0.as_object() else {
+            return Err(SessionOpenError::FixtureUnparseable);
+        };
+
+        match object.get("approvals") {
+            None => Err(SessionOpenError::FixtureIncomplete { field: "approvals" }),
+            Some(serde_json::Value::Array(_)) => Ok(()),
+            Some(_) => Err(SessionOpenError::FixtureIncomplete { field: "approvals" }),
+        }
     }
 
     /// Drive the session's one attempt through the engine's gate.

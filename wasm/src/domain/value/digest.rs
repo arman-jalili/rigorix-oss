@@ -1,14 +1,19 @@
 //! `Digest` — a one-way `sha256:<hex>` reference to bytes.
 //!
 //! @canonical .pi/architecture/modules/portable-session.md#value-objects-entity-vs-vo-justification
-//! Implements: Contract Freeze — Digest
-//! Issue: #1294 (contract freeze)
+//! Implements: Contract Freeze — Digest; AC 2 (derived session identity)
+//! Issue: #1295
 //!
 //! Digests are how the record binds artifacts without carrying them: scenario,
 //! fixture transcript, outcome, envelopes. A digest is safe to export; the bytes it
 //! names are not necessarily.
+//!
+//! The hash is `sha2`, the same crate the engine uses. That is a byte-identity
+//! requirement rather than a taste: a second implementation would produce different
+//! digests for the same bytes and break conformance with the CLI (ADR-009, ADR-010).
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest as _, Sha256};
 
 /// A stable, one-way reference to some bytes.
 ///
@@ -24,12 +29,50 @@ impl Digest {
     /// The canonical prefix.
     pub const PREFIX: &'static str = "sha256:";
 
+    /// Number of hex characters in the body.
+    const BODY_LEN: usize = 64;
+
+    /// Hash bytes into their canonical reference.
+    ///
+    /// Pure: no clock, no entropy, no allocation beyond the string. Same bytes in, same
+    /// digest out, in any process and on any target.
+    pub fn of(bytes: &[u8]) -> Self {
+        let mut hasher = Sha256::new();
+        hasher.update(bytes);
+        let out = hasher.finalize();
+
+        let mut hex = String::with_capacity(Self::BODY_LEN);
+        for byte in out {
+            use std::fmt::Write as _;
+            // Writing into a String cannot fail; the result is ignored deliberately.
+            let _ = write!(hex, "{byte:02x}");
+        }
+        Self(format!("{}{hex}", Self::PREFIX))
+    }
+
     /// Parse a wire-format digest.
     ///
-    /// TODO(#1294): validate prefix, length and hex alphabet.
+    /// # Contract (Frozen)
+    /// - Prefix and alphabet are checked; a malformed digest is a refusal, never a
+    ///   value the record then carries (FR-001)
     pub fn parse(raw: impl Into<String>) -> Result<Self, DigestError> {
-        let _raw = raw.into();
-        todo!("contract freeze: Digest::parse lands with domain value objects")
+        let raw = raw.into();
+        let body = raw
+            .strip_prefix(Self::PREFIX)
+            .ok_or(DigestError::MissingPrefix)?;
+
+        if body.len() != Self::BODY_LEN {
+            return Err(DigestError::Malformed);
+        }
+        if !body
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            // Uppercase hex is rejected on purpose: two spellings of one hash would
+            // make two artifacts look different for the same bytes.
+            return Err(DigestError::Malformed);
+        }
+        Ok(Self(raw))
     }
 
     /// Reconstruct from a known-good value (adapter boundary only).
