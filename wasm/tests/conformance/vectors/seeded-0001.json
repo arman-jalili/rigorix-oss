@@ -1,0 +1,51 @@
+{
+  "id": "seeded-0001",
+  "gate": "seeded",
+  "note": "Deliberately altered vector (FR-008). One field differs from vec-0001, so a comparator that works MUST report a divergence. If this vector ever starts matching, the harness is broken and the build must fail \u2014 the test asserts divergence, so equality is the failure.",
+  "scenario": {
+    "format_version": 1,
+    "steps": [],
+    "action": {
+      "name": "payment_execute",
+      "params": {
+        "amount": "100.00"
+      }
+    }
+  },
+  "fixtures": {
+    "approvals": [],
+    "providers": {
+      "eligibility.check": {
+        "determination": "failed",
+        "payload": {
+          "tier": "blocked"
+        }
+      }
+    },
+    "ids": {
+      "attempt": [
+        "attempt-0"
+      ],
+      "step": [
+        "step-0"
+      ],
+      "envelope": [
+        "envelope-0"
+      ]
+    }
+  },
+  "clock": [
+    {
+      "instant": "2026-11-03T09:00:00Z",
+      "index": 0
+    }
+  ],
+  "seed": {
+    "seed_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "draws": [
+      "00"
+    ]
+  },
+  "seeded_divergence": true,
+  "expected": []
+}

@@ -56,3 +56,80 @@ fn a_skipped_seeded_vector_cannot_hide() {
     };
     assert!(!skipped.is_pass(true));
 }
+
+// ---------------------------------------------------------------------------
+// The committed must-fail vector (issue #1313)
+// ---------------------------------------------------------------------------
+
+use crate::support::FakeGate;
+use rigorix_gate_wasm::application::{ConformanceRunner, RunConformanceVector, default_projection};
+
+type GateFactory = fn() -> Box<dyn rigorix_gate_wasm::domain::engine_seam::GateEvaluator>;
+type ProjectionFactory = fn() -> Box<dyn rigorix_gate_wasm::domain::services::EvidenceProjection>;
+
+fn runner() -> ConformanceRunner<GateFactory, ProjectionFactory> {
+    fn gate() -> Box<dyn rigorix_gate_wasm::domain::engine_seam::GateEvaluator> {
+        Box::new(FakeGate::allowing())
+    }
+    ConformanceRunner::new(gate as fn() -> _, default_projection as fn() -> _)
+}
+
+fn load(name: &str) -> ConformanceVector {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/conformance/vectors")
+        .join(name);
+    serde_json::from_str(&std::fs::read_to_string(path).expect("vector exists"))
+        .expect("vector parses")
+}
+
+#[test]
+fn the_committed_seeded_vector_must_diverge() {
+    // The single most important assertion in the harness: a vector that is *known* to
+    // differ must be reported as differing. If this passes with `matched: true`, the
+    // comparator is broken and the suite must go red.
+    let seeded = load("seeded-0001.json");
+    assert!(
+        seeded.seeded_divergence,
+        "the must-fail vector lost its flag"
+    );
+
+    let report = runner().execute(&seeded);
+    assert!(!report.skipped, "the seeded vector must be replayable");
+    assert!(
+        !report.matched,
+        "the seeded vector matched: the comparator cannot fail"
+    );
+    assert!(report.is_pass(true), "a divergence is the expected outcome");
+}
+
+#[test]
+fn the_seeded_vector_differs_from_its_sibling_by_the_fixture_only() {
+    // The divergence is *seeded*, not accidental: same scenario, same clock, same seed,
+    // same expected bytes — one provider determination flipped. That makes a mismatch
+    // attributable to the change rather than to noise.
+    let plain = load("vec-0001.json");
+    let seeded = load("seeded-0001.json");
+
+    assert_eq!(plain.scenario, seeded.scenario);
+    assert_eq!(plain.clock, seeded.clock);
+    assert_eq!(plain.seed, seeded.seed);
+    assert_eq!(plain.expected, seeded.expected);
+    assert_ne!(plain.fixtures, seeded.fixtures);
+}
+
+#[test]
+fn a_seeded_vector_that_starts_matching_fails_the_build() {
+    // Simulate the regression: if the two became identical, `is_pass(true)` is false and
+    // the suite goes red — which is what keeps the guard from rotting into a green tick.
+    let mut seeded = load("seeded-0001.json");
+    let produced = serde_json::to_vec(&runner().replay(&seeded).expect("replay")).expect("bytes");
+
+    // Force a match: this is exactly the state a broken comparator would report.
+    seeded.expected = produced;
+    let report = runner().execute(&seeded);
+    assert!(report.matched);
+    assert!(
+        !report.is_pass(true),
+        "equality on the seeded vector must never be a pass"
+    );
+}
