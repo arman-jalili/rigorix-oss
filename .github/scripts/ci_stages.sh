@@ -13,6 +13,10 @@ CI_MANDATORY_STAGES="lint build test audit conformance shell wasm-gates"
 # Reported but not required — whether they should be is a separate decision.
 CI_REPORTED_STAGES="docs integration"
 
+# This file lives in <repo>/.github/scripts/, so the repo root is two levels up. Only the
+# self-test uses it (to cross-check the workflow's env vars); the gate itself stays path-free.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd || echo "")"
+
 ci_stage_result() {
     # Reads RESULT_<STAGE> from the environment. Job ids may contain hyphens
     # (`wasm-gates`), which are not legal in a shell variable name, so they map to
@@ -80,6 +84,25 @@ ci_stages_selftest() {
     RESULT_LINT=failure
     expect "plain name still works" failure "$(ci_stage_result lint)"
     expect "absent stage reads as missing" missing "$(ci_stage_result nonexistent-stage)"
+
+    # The half the value fixtures above cannot prove: that the *workflow* actually supplies
+    # a variable for every mandatory stage, under the name this function computes. Without
+    # this, a mismatch between a job id and its `RESULT_*` env var only shows up as a red
+    # merge gate, reported as "never ran" — the symptom, not the bug.
+    local workflow="$REPO_ROOT/.github/workflows/ci.yml" stage var
+    if [ -f "$workflow" ]; then
+        for stage in $CI_MANDATORY_STAGES; do
+            var="RESULT_$(printf '%s' "$stage" | tr '[:lower:]-' '[:upper:]_')"
+            if grep -qE "^[[:space:]]*${var}:" "$workflow"; then
+                echo "  ✅ workflow supplies $var"
+            else
+                echo "  ❌ workflow never sets $var (stage '$stage' would read as missing)" >&2
+                failures=$((failures + 1))
+            fi
+        done
+    else
+        echo "  ⚠️  no workflow to cross-check (not a repo checkout)"
+    fi
 
     if [ "$failures" -ne 0 ]; then
         echo "❌ ci_stages self-test failed ($failures)" >&2
