@@ -31,7 +31,7 @@ pub mod export_artifact_set;
 pub mod open_replay_session;
 pub mod run_conformance_vector;
 
-pub use artifact_query::ArtifactQuery;
+pub use artifact_query::{ArtifactQuery, ReplaySessionQuery};
 pub use attempt_run::{AttemptRun, AttemptRunService};
 pub use dto::OpenSessionInput;
 pub use export_artifact_set::{ExportArtifactSet, ExportArtifactSetService};
