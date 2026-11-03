@@ -93,8 +93,9 @@ later code can invent an ambient capability or a new verdict shape.
       the way `rigorix-actions` did (#1346).
 
 The npm *publication* is not done and is not claimed here: `publish-wasm-npm` sits outside
-`github-release.needs` while `wasm/ci/bundle-budget.txt` says `state: awaiting-packaging`,
-because the cdylib exports nothing yet. Criterion 24 stays unmet until a tag produces the
+`github-release.needs`. The packaging gap that used to block it is closed — the export layer and the
+measured size budget landed in #1349, `state: shipped` — so what remains is the publication job
+itself, not the artifact. Criterion 24 stays unmet until a tag produces the
 package; flipping that state requires wiring the job into `needs` on the same commit, which
 the guard enforces.
 
@@ -186,10 +187,12 @@ and no setters.
       *Note:* the criterion names a test `telemetry_never_reaches_artifact_set`; no test carries that
       name. The property is checked, the name is not — recorded rather than renamed to fit the doc.
 - [ ] Domain coverage ≥95%.
-      **Measured 89.52 % lines** (735 lines, 77 missed) —
-      `cargo llvm-cov --test unit --summary-only --ignore-filename-regex 'src/(application|interfaces|infrastructure)/'`.
-      Nothing gates this: CI's coverage stage gates *workspace* lines at 60 %
-      (`.github/workflows/ci.yml:175`), so the number could fall to 61 % and stay green.
+      **Measured 91.62 % lines** (585 lines, 49 missed) / 89.52 % regions —
+      `cargo llvm-cov -p rigorix-gate-wasm --test unit --summary-only --ignore-filename-regex 'src/(application|interfaces|infrastructure)/'`,
+      2026-11-03. The earlier figure in this line was **89.52 %, which is the regions
+      column**, not lines (#1348). Gated as a ratchet at 91.62 % lines
+      (`.pi/coverage-layers.tsv`, `coverage.sh --gate-layers`), so it cannot regress;
+      the 3.38 pp to the criterion is a gap, not a pass.
 
 ---
 
@@ -221,7 +224,7 @@ never a default.
       `the_full_fault_matrix_refuses_every_case`: 6 `PortId` × 4 `PortFailureKind`, asserts
       `cases == 24` and `allowed.is_empty()`.
 - [x] `cargo tree --target wasm32-unknown-unknown` contains no `tokio`, `reqwest`, `tree-sitter*`, `prometheus`, `tracing-appender`, `libc` (NFR-002).
-      *Proof:* `cargo tree --target wasm32-unknown-unknown -p rigorix-gate-wasm` = 21 crates
+      *Proof:* `cargo tree --target wasm32-unknown-unknown -p rigorix-gate-wasm` = 27 crates (the six over the earlier 21 are the export layer: `wasm-bindgen`, `-macro`, `-macro-support`, `-shared`)
       (serde, serde_json, sha2/digest chain, thiserror, …); none of the banned names appear.
 - [ ] `KeySource` adapters return only an opaque `KeyRef`; no key bytes reach any output (AC 7).
       **Type is opaque; the "no bytes" half has no test.**
@@ -286,10 +289,12 @@ of their own.
       *Proof:* no `verifier` in `wasm/Cargo.toml`; `cargo tree --target wasm32-unknown-unknown` (21
       crates) contains none; the `bundle independence` wasm gate enforces it and the host harness
       imports only `rigorix-verifier` (`tests/host_verification/verify.mjs:6-8`).
-- [ ] Application coverage ≥90%.
-      **Measured 89.64 % lines** (251 lines, 26 missed) —
-      `--ignore-filename-regex 'src/(domain|interfaces|infrastructure)/'`. Functions are at 73.33 %,
-      with `run_conformance_vector.rs` at 57.89 % functions. Not gated anywhere.
+- [x] Application coverage ≥90%.
+      **Measured 93.49 % lines** (169 lines, 11 missed) / 89.64 % regions — the earlier
+      figure here was the **regions** column, so this criterion was recorded as unmet
+      while it meets its stated threshold on the metric it is written against (#1348).
+      Gated as a ratchet at 93.49 % lines (`.pi/coverage-layers.tsv`), 3.49 pp above the
+      criterion. Functions are at 73.33 %, with `run_conformance_vector.rs` at 57.89 %.
 
 ---
 
@@ -325,13 +330,16 @@ of their own.
       `…::unknown_fields_are_rejected_not_ignored`,
       `…::a_refusal_is_a_return_value_and_the_only_error_is_a_bad_handle`,
       `…::refusal_shape_is_redacted`.
-- [ ] wasm-pack + node harness round-trips all four functions (AC 13; the host-side independence check is Phase 6).
-      **Not implemented.** There is no `wasm-bindgen` dependency, no `#[wasm_bindgen]` attribute and no
-      `wasm-pack` invocation anywhere: `src/interfaces/wasm_api.rs:17` says the attribute layer "is
-      applied by the packaging issue", and `ci/check-bundle-size.sh:6` documents the same gap from the
-      size side (`state: awaiting-packaging`). The node harness that exists
-      (`tests/host_verification/verify.mjs`) verifies *artifact bytes*; it never loads the module, which
-      is the point of Phase 6 — but it is not a round-trip of the four functions.
+- [x] A host can load the module and round-trip all four functions (AC 13; the host-side independence check is Phase 6).
+      *Proof:* `src/interfaces/wasm_api.rs` carries the `#[wasm_bindgen]` export layer (`pub mod exported`,
+      wasm32 only), and `ci/run-module-smoke.sh` packages the release artifact with `wasm-bindgen
+      --target nodejs`, loads it in Node and calls all four: `contract_version` reports the three
+      numbers, `open_session` returns `gate:sha256:…`, `attempt_run` on the unlinked seam returns
+      `kind: "gate_unavailable"` as a *value*, `export_artifact_set` before an attempt is the
+      `seal_failed` refusal, and a malformed handle is the one throw (#1349). The gate fails on a
+      missing export, an unannounced fifth export, an instantiation error or a wrong return value —
+      seeded by deleting one attribute, which fails it by name. Before this, every gate passed on a
+      368-byte module with no exported symbol.
 - [x] `contract_version` matches the published semver (ADR-004).
       *Proof:* `src/interfaces/wasm_api.rs:249-255` builds all three numbers from
       `env!("CARGO_PKG_VERSION")`, `EngineArtifactStamp::engine_version()` and
@@ -339,9 +347,11 @@ of their own.
       `wasmcontract::export_before_an_attempt_is_a_refusal_and_contract_version_reports_three_numbers`.
       Crate version is 1.12.1 (`wasm/Cargo.toml:3`), equal to the train.
 - [ ] Interface coverage ≥85%.
-      **Measured 70.69 % lines** (481 lines, 141 missed) —
-      `--ignore-filename-regex 'src/(domain|application|infrastructure)/'`. Per file:
-      `wasm_api.rs` 69.61 %, `registry.rs` 75.00 %, `errors.rs` 69.47 %. Not gated anywhere.
+      **Measured 74.47 % lines** (329 lines, 84 missed) / 75.68 % regions —
+      `--ignore-filename-regex 'src/(domain|application|infrastructure)/'`, 2026-11-03.
+      Gated as a ratchet at 74.47 % lines (`.pi/coverage-layers.tsv`); the 10.53 pp to the
+      criterion is a gap. Per file: `wasm_api.rs` 65.48 %, `registry.rs` 79.49 %,
+      `errors.rs` 71.83 % (lines).
 
 ---
 
@@ -388,7 +398,7 @@ from the CLI behind a non-default feature.
 - [ ] `cargo tree` diff for the wasm target shows no new native-only dependency (NFR-002).
       **Cannot be evaluated.** A diff needs a before/after pair, and there is no seam to add: with the
       `engine` feature empty, the "after" tree is the "before" tree. The static half is satisfied —
-      the current tree (21 crates) carries no native-only dependency.
+      the current tree (27 crates, including the export layer) carries no native-only dependency.
 
 ---
 
@@ -438,13 +448,15 @@ release train.
       `rigorix-verifier@0.9.0` alone (`verifySignature`, `validateEnvelope`, `verifyChain`) and imports
       nothing from this crate; `ci/run-host-verification.sh` runs it in a separate Node process as the
       10th gate, printing `unverifiable(key_not_held)` with exit 2 — the three-valued contract. What is
-      missing is a *browser*: no wasm-bindgen bundle exists yet, so the environment is Node.
+      missing is a *browser*: the bundle the smoke gate packages is `--target nodejs` (#1349), so the
+      environment it runs in is still Node.
 - [ ] Bundle within measured budget +25%; npm version equals `rigorix-engine` version (AC 23, AC 24).
-      **Neither half holds yet.** `ci/bundle-budget.txt` states `state: awaiting-packaging` with
-      `measured_bytes: 0` / `budget_bytes: 0`: the size gate records the trend and explicitly does not
-      enforce a ceiling. There is no npm package to compare — `rigorix-gate` is registered on the train
-      (#1346) but `publish-wasm-npm` is deliberately outside `github-release.needs` until the bundle is
-      shippable, so no version has been published.
+      **The ceiling is in force; the publication is not.** `ci/bundle-budget.txt` now states
+      `state: shipped` with `measured_bytes: 243366` / `budget_bytes: 304207` (measured + 25 %) — the
+      packaged `pkg/rigorix_gate_wasm_bg.wasm` a host loads, not the raw cdylib — so a regression
+      beyond the budget fails the build (#1349). The npm half stays unmet: no version has been
+      published, and `publish-wasm-npm` remains outside `github-release.needs` until a tag produces the
+      package.
 
 ---
 

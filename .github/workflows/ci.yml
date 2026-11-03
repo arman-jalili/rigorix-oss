@@ -171,8 +171,19 @@ jobs:
         with:
           cache-key: coverage
       - run: bash .pi/scripts/install_coverage_tools.sh
-      - name: Workspace coverage (gated at 60%, baseline 78.92%)
+      - name: Coverage — workspace lines (gated at 60%, baseline 78.92%)
+        # #1348: the gate reads the TOTAL row's **Lines** column, found by
+        # header. It used to take the first percentage on the row, which is
+        # Regions, and print it as "Line coverage".
         run: bash .pi/scripts/coverage.sh --gate --lcov
+      - name: Coverage — per-layer line floors (ratchet)
+        # The three thresholds the roadmap documents (domain ≥95, application
+        # ≥90, interface ≥85) had no gate that read them: the only gate was
+        # workspace-wide at 60%. Each layer is now measured on its own slice and
+        # cannot regress below the floor in .pi/coverage-layers.tsv; the target
+        # is printed beside it with the gap, so an unmet criterion reads as a
+        # gap rather than as a threshold something enforces.
+        run: bash .pi/scripts/coverage.sh --gate-layers
       - uses: actions/upload-artifact@v4
         with:
           name: coverage-lcov
@@ -372,10 +383,32 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: 🧱 Install wasm target
         run: rustup target add wasm32-unknown-unknown
+      - name: 🔖 Resolve the wasm-bindgen version the crate uses
+        # The module smoke gate packages the artifact with this exact CLI: a
+        # mismatch is an ABI mismatch, so the version comes from the lockfile
+        # rather than being restated here and drifting (#1349).
+        run: |
+          V=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/[",]/, "", $3); print $3; exit }' Cargo.lock)
+          test -n "$V" || { echo "could not resolve wasm-bindgen from Cargo.lock"; exit 1; }
+          echo "WASM_BINDGEN_VERSION=$V" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-bindgen
+          key: wasm-bindgen-${{ env.WASM_BINDGEN_VERSION }}-${{ runner.os }}
+      - name: 🔧 wasm-bindgen CLI (the packaging step, pinned)
+        # Without it the smoke gate fails: a module that is never packaged is a
+        # module no host can call, which is what #1349 is about.
+        run: |
+          if command -v wasm-bindgen > /dev/null 2>&1; then
+            wasm-bindgen --version
+          else
+            cargo install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION" --locked
+          fi
       - name: 🧭 Run every wasm gate
-        # One entrypoint: domain isolation, bundle independence, size budget, failure tiers,
-        # conformance (including the must-fail vector), unit tests, the wasm release build and
-        # workspace pins. Host verification needs npm and network, so it runs separately.
+        # One entrypoint: domain isolation, bundle independence, failure tiers, conformance
+        # (including the must-fail vector), unit tests, the wasm release build, the module
+        # smoke gate (a host can call it), the size budget and workspace pins. Host
+        # verification needs npm and network, so it runs separately.
         run: bash wasm/ci/run-wasm-gates.sh
       - name: 🤝 Host verification with the independent SDK
         # Criterion 13: a Node process that never loads the wasm module verifies the record.

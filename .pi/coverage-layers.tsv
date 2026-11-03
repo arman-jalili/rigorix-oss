@@ -1,0 +1,19 @@
+# Per-layer line-coverage floors (#1348).
+#
+# A floor is a ratchet: the measured line coverage on the date in the last
+# column. It exists so a layer cannot regress while the crate-wide number
+# stays green — before this, three documented thresholds (domain ≥95,
+# application ≥90, interface ≥85) were compared to nothing: the only gate
+# was workspace-wide at 60 %.
+#
+# The `target` column is the criterion from
+# wasm/.pi/architecture/implementation-roadmap.md. Where the measured value is
+# below it the gap is printed, so an unmet criterion reads as a gap rather
+# than as a threshold something enforces. Raise a floor when a layer improves;
+# never lower one to make a build pass.
+#
+# Columns (tab-separated):
+#   layer  crate  test-target  ignore-filename-regex  floor  target  measured-on
+domain	rigorix-gate-wasm	unit	src/(application|interfaces|infrastructure)/	91.62	95.00	2026-11-03
+application	rigorix-gate-wasm	unit	src/(domain|interfaces|infrastructure)/	93.49	90.00	2026-11-03
+interface	rigorix-gate-wasm	unit	src/(domain|application|infrastructure)/	74.47	85.00	2026-11-03

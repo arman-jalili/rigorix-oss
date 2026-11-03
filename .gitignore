@@ -94,3 +94,6 @@ mcp/.rigorix/
 cli/.rigorix/state/
 *.mov
 profraw  # coverage artifacts (cargo-llvm-cov)
+
+# wasm packaging output (built by wasm/ci/run-module-smoke.sh)
+wasm/pkg/

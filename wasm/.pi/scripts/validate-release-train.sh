@@ -20,8 +20,14 @@
 #   5. a member with a host-facing npm package has an npm step — and the coupling
 #      between readiness and wiring is enforced, not remembered:
 #         state: shipped             -> the npm job MUST be in `github-release.needs`
-#         state: awaiting-packaging  -> the job MUST exist and MUST NOT be in `needs`
+#         state: packaged            -> an artifact a host can load exists (the size ceiling is
+#                                       in force), but no version has been published: the job
+#                                       MUST exist, MUST NOT be in `needs`, and MUST be gated
+#         state: awaiting-packaging  -> no artifact yet: the job MUST exist and MUST NOT be in `needs`
 #         anything else              -> fail closed
+#
+#      `packaged` was added by #1349: an artifact can be callable and measured without
+#      having been published, and `shipped` would have claimed the publication.
 #      A package that does not exist yet must not look published; a package that does
 #      exist must not be quietly excluded from the release.
 #
@@ -262,24 +268,25 @@ else:
         if any(re.match(r"^\s+if:\s*", l) for l in npm_block):
             bad(f"bundle state is `shipped` but `{NPM_JOB}` is still conditional on readiness "
                 f"— the condition now hides a failure instead of preventing a false one")
-    elif state == "awaiting-packaging":
+    elif state in ("awaiting-packaging", "packaged"):
         if NPM_JOB in needs:
-            bad(f"bundle state is `awaiting-packaging` but `{NPM_JOB}` is in "
-                f"`github-release.needs` — it cannot succeed, so the whole release would fail "
-                f"on a package that was never meant to ship yet")
+            bad(f"bundle state is `{state}` but `{NPM_JOB}` is in "
+                f"`github-release.needs` — no version has been published, so the whole release "
+                f"would fail on a package that has not shipped yet")
         else:
-            ok(f"bundle state is `awaiting-packaging` and `{NPM_JOB}` is correctly outside `needs`")
+            ok(f"bundle state is `{state}` and `{NPM_JOB}` is correctly outside `needs`")
         ready_if = [l for l in npm_block if re.match(r"^\s+if:\s*", l)]
         if not ready_if:
-            bad(f"bundle state is `awaiting-packaging` but `{NPM_JOB}` is unconditional — it would "
-                f"run against a module with nothing to publish and fail the tag")
+            bad(f"bundle state is `{state}` but `{NPM_JOB}` is unconditional — it would "
+                f"run against a package no version has been published from, and fail the tag")
         elif not any("npm_ready" in l for l in ready_if):
             bad(f"`{NPM_JOB}` is conditional, but not on `needs.verify.outputs.npm_ready` — the "
                 f"condition must read the committed readiness state, not guess at an artifact")
         else:
             ok(f"`{NPM_JOB}` is gated on `npm_ready` (registered, visibly not published until packaging)")
     elif state is not None:
-        bad(f"bundle state `{state}` is not one this guard understands (shipped | awaiting-packaging) "
+        bad(f"bundle state `{state}` is not one this guard understands "
+            f"(shipped | packaged | awaiting-packaging) "
             f"— an unknown state is not a reason to assume the npm wiring is correct")
 
 # ── verdict ─────────────────────────────────────────────────────────────────
