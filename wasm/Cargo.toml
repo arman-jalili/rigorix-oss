@@ -9,12 +9,6 @@ repository = "https://github.com/arman-jalili/rigorix-oss"
 documentation = "https://docs.rs/rigorix-gate-wasm"
 rust-version = "1.85"
 
-# ADR-011: this crate ships in the engine's release train at the engine's version.
-# Registration in the root [workspace] members is issue-scoped (ADR-011 Phase 0):
-# the crate declares its own workspace root until the engine's `portable` feature
-# exists, so the four published crates keep building from the same commit (NFR-005).
-[workspace]
-
 [lib]
 crate-type = ["rlib", "cdylib"]
 
