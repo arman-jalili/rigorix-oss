@@ -1,21 +1,21 @@
 //! `AttemptRun` — drive one attempt through the gate (FR-002, FR-004, FR-009, FR-013).
 //!
 //! @canonical .pi/architecture/modules/portable-session.md#application-services-from-exploration-use-cases
-//! Implements: Contract Freeze — AttemptRun, AttemptRunService
-//! Issue: #1294 (contract freeze)
+//! Implements: `AttemptRun` (AC 3, 4, 5, 10)
+//! Issue: #1297 (application layer)
 //!
-//! # Contract (Frozen)
+//! # Contract
 //! - Resolves **every** port answer from the transcript before handing the run to the
 //!   engine; a missing or failed answer becomes a refusal (invariant 2)
 //! - Returns the projected `RunOutcome` with ordered `StepOutcome`s and evidence
-//!   references (criterion 9, 10)
-//! - No parameter, flag or argument can request an allow: the only inputs are the
-//!   session, the action and the ports (FR-009)
-//! - An approval enters as a **claim** inside the fixture data; this service never
-//!   grants one and never binds it (the engine binds it, FR-013)
-//! - A run-level failure to evaluate is `AttemptError::EngineFailure` → refusal
+//!   references (criteria 9, 10)
+//! - No parameter, flag or argument can request an allow: the only inputs are the session,
+//!   the action, the ports and the gate (FR-009)
+//! - An approval enters as a **claim** inside the fixture data; this service never grants
+//!   one and never binds it (the engine binds it, FR-013)
+//! - A run-level failure to evaluate is `AttemptError::EngineFailure`, which the interface
+//!   layer renders as a refusal
 
-use crate::application::dto::OpenSessionInput;
 use crate::domain::engine_seam::GateEvaluator;
 use crate::domain::errors::AttemptError;
 use crate::domain::outcome::RunOutcome;
@@ -36,11 +36,11 @@ pub trait AttemptRun {
     ) -> Result<RunOutcome, AttemptError>;
 }
 
-/// The shipped implementation (wired in #1296).
+/// The shipped implementation.
 ///
-/// The projection is injected because wording and ordering are policy, not plumbing:
-/// a test double can assert the aggregate called it exactly once with the engine's
-/// findings in the engine's order.
+/// The projection is injected because wording and ordering are policy, not plumbing: a
+/// test double can assert the service passed the engine's findings through exactly once,
+/// in the engine's order.
 pub struct AttemptRunService<P: EvidenceProjection> {
     projection: P,
 }
@@ -65,13 +65,9 @@ impl<P: EvidenceProjection> AttemptRun for AttemptRunService<P> {
         ports: Ports<'_>,
         gate: &mut dyn GateEvaluator,
     ) -> Result<RunOutcome, AttemptError> {
-        let _ = (session, action, ports, gate, &self.projection);
-        todo!("contract freeze: AttemptRun::execute lands with #1296")
+        // Orchestration only: the aggregate decides, this service hands it the pieces.
+        // Deliberately no pre-check that could turn a refusal into a pass, and no catch
+        // that could turn a failure into an allow.
+        session.attempt(action, ports, gate, &self.projection)
     }
 }
-
-/// The inputs `AttemptRun` receives from the aggregate at open.
-///
-/// Retained so the service can document what it may read without widening the
-/// aggregate's surface.
-pub type SessionInputs = OpenSessionInput;
