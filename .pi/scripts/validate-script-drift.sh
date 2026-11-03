@@ -22,7 +22,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ALLOW="$ROOT/.pi/script-drift-allow.tsv"
-TREES=(. engine mcp cli actions)
+TREES=(. engine mcp cli actions wasm)
 
 run_check() { # $1 base dir, $2 allow file, $3 mode (check|list)
     python3 - "$1" "$2" "$3" "${TREES[@]}" <<'PY'

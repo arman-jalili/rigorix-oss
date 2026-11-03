@@ -255,10 +255,10 @@ run_stage_lint() {
                     log_fail "biome check" "lint errors found" "$(( $(date +%s) - t ))"
                 fi
                 t=$(date +%s)
-                if biome ci . >/dev/null 2>&1; then
-                    log_pass "biome ci" "$(( $(date +%s) - t ))"
+                if biome format --check . >/dev/null 2>&1; then
+                    log_pass "biome format --check" "$(( $(date +%s) - t ))"
                 else
-                    log_fail "biome ci" "format errors found" "$(( $(date +%s) - t ))"
+                    log_fail "biome format --check" "format errors found" "$(( $(date +%s) - t ))"
                 fi
             else
                 log_skip "biome" "not installed"
