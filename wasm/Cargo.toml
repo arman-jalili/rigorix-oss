@@ -1,0 +1,41 @@
+[package]
+name = "rigorix-gate-wasm"
+version = "1.12.1"
+edition = "2024"
+description = "Portable Rigorix gate seam — deterministic WebAssembly slice that evaluates a proposed action and exports a verifiable record"
+license = "MIT OR Apache-2.0"
+authors = ["Arman Wolkensteiner-Jalili and Rigorix contributors"]
+repository = "https://github.com/arman-jalili/rigorix-oss"
+documentation = "https://docs.rs/rigorix-gate-wasm"
+rust-version = "1.85"
+
+# ADR-011: this crate ships in the engine's release train at the engine's version.
+# Registration in the root [workspace] members is issue-scoped (ADR-011 Phase 0):
+# the crate declares its own workspace root until the engine's `portable` feature
+# exists, so the four published crates keep building from the same commit (NFR-005).
+[workspace]
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[features]
+default = []
+# The in-repo seam: binds rigorix-engine's gate behind its additive, non-default
+# feature. Off until FR-011 lands, so the contract crate has no native dependency
+# and `cargo check` proves nothing about a feature that does not exist yet.
+engine = []
+# Test-only: conformance vector replay (ADR-009). Never part of the bundle.
+conformance = []
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[lints.rust]
+# ADR-012 tier 2: a panic on the gate path is a defect, not a handled case.
+unsafe_code = "forbid"
+
+[[test]]
+name = "unit"
+path = "tests/unit/mod.rs"

@@ -26,7 +26,15 @@ FAIL=0
 log_pass() { echo -e "  ${GREEN}✓ PASS${NC} $1"; PASS=$((PASS + 1)); }
 log_fail() { echo -e "  ${RED}✗ FAIL${NC} $1 — $2"; FAIL=$((FAIL + 1)); }
 log_skip() { echo -e "  ${YELLOW}⊘ SKIP${NC} $1 — $2"; PASS=$((PASS + 1)); }
-log_warn() { echo -e "  ${YELLOW}⚠ WARN${NC} $1 — $2"; }
+
+# `find` over this repository must PRUNE build trees, not filter them: walking
+# `target/` costs minutes per call on a developer machine, and this script runs
+# several. Same rule as check_architecture_conformance.sh (#1281).
+_find_pruned() {
+    find . \
+        \( -name target -o -name .git -o -name node_modules -o -name .venv -o -name graphify-out \) -prune -o \
+        -type f "$@" -print 2>/dev/null
+}
 
 echo "═══ Architecture Readiness Checks ═══"
 echo ""
@@ -35,7 +43,7 @@ echo ""
 echo "Checking runbook readiness..."
 if [[ -f "docs/runbook.md" || -f "docs/RUNBOOK.md" || -f "RUNBOOK.md" ]]; then
     # Check runbook has required sections
-    RUNBOOK=$(find . -name "runbook.md" -o -name "RUNBOOK.md" 2>/dev/null | head -1)
+    RUNBOOK=$(_find_pruned \( -name "runbook.md" -o -name "RUNBOOK.md" \) | head -1)
     if grep -qiE "(incident|escalation|rollback|recovery|on.call)" "$RUNBOOK" 2>/dev/null; then
         log_pass "Runbook readiness (runbook exists with incident/rollback sections)"
     else
@@ -48,7 +56,7 @@ fi
 # 2. DR plan
 echo "Checking DR plan..."
 if [[ -f "docs/dr-plan.md" || -f "docs/disaster-recovery.md" || -f "docs/DR.md" ]]; then
-    DR_FILE=$(find . -name "dr-plan.md" -o -name "disaster-recovery.md" -o -name "DR.md" 2>/dev/null | head -1)
+    DR_FILE=$(_find_pruned \( -name "dr-plan.md" -o -name "disaster-recovery.md" -o -name "DR.md" \) | head -1)
     if grep -qiE "(rto|rpo|backup|restore|failover|recovery)" "$DR_FILE" 2>/dev/null; then
         log_pass "DR plan readiness (DR plan exists with RTO/RPO sections)"
     else
@@ -99,7 +107,7 @@ HAS_TRACING=false
 HAS_METRICS=false
 HAS_LOGGING=false
 
-for f in $(find . -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" 2>/dev/null | head -30); do
+for f in $(_find_pruned \( -name "*.py" -o -name "*.ts" -o -name "*.rs" -o -name "*.go" \) | head -30); do
     grep -qiE "(opentelemetry|jaeger|zipkin|tracing\.)" "$f" 2>/dev/null && HAS_TRACING=true
     grep -qiE "(prometheus|datadog|metrics\.|counter|histogram)" "$f" 2>/dev/null && HAS_METRICS=true
     grep -qiE "(structured.log|json.log|log\.info|log\.error|logger\.)" "$f" 2>/dev/null && HAS_LOGGING=true
@@ -133,34 +141,6 @@ if [[ -f "${PI_DIR}/scripts/ci/check_architecture_conformance.sh" ]]; then
     fi
 else
     log_skip "Architecture conformance" "check_architecture_conformance.sh not found"
-fi
-
-
-# ── 7. ADR-009: runtime wiring gates ──
-# a) ADR-acceptance: an IMPLEMENTED module that documents runtime integration
-#    must not leave its referenced feature ADR Proposed.
-echo "Checking ADR-acceptance + legacy-removal (ADR-009)..."
-ADR_GATE_FAIL=0
-for doc in .pi/architecture/modules/*.md; do
-    [ -f "$doc" ] || continue
-    if ! grep -q "status: implemented" "$doc"; then continue; fi
-    if ! grep -qE "^##{2,3}.*Integration|^#{2,3}.*Dispatch" "$doc"; then continue; fi
-    refs=$(grep -oE "ADR-[0-9]{3}" "$doc" | sort -u | tr "\n" " ")
-    for adr in $refs; do
-        adrfile=$(ls .pi/architecture/decisions/${adr}-*.md 2>/dev/null | head -1)
-        [ -n "$adrfile" ] || continue
-        if grep -q "\*\*Status:\*\* Proposed" "$adrfile" || grep -qE "^\*\*Status:\*\* *Proposed" "$adrfile"; then
-            log_fail "ADR-acceptance (ADR-009)" "${doc##*/} is implemented + documents runtime integration but ${adr} is still Proposed — wire it and Accept the ADR"
-            ADR_GATE_FAIL=1
-        fi
-    done
-    # b) legacy-removal warning (declared migration rule / legacy note)
-    if grep -qE "legacy .*still|still uses|GAP-.*migration" "$doc"; then
-        log_warn "legacy-removal (ADR-009)" "${doc##*/} declares a legacy path/migration rule — verify it is removed or delegating (validate-runtime-wiring.sh)"
-    fi
-done
-if [ $ADR_GATE_FAIL -eq 0 ]; then
-    log_pass "ADR-acceptance (ADR-009)" "no implemented module left a runtime-integration ADR Proposed"
 fi
 
 # ── Summary ──

@@ -1,0 +1,41 @@
+# Self-owned guard registry (ISSUE-SELF-OWNED-VULN-CHECKS).
+#
+# Every root .pi/scripts/validate-*.sh must appear here. `validate-guards.sh`
+# fails the build if a guard script exists but is not registered, so a new guard
+# cannot be silently left unclassified.
+#
+# Columns (tab-separated):
+#   guard      path to the guard script, relative to the repo root
+#   class      the pattern class it owns
+#   tier       gating | advisory
+#              gating   = a non-zero exit fails a mandatory build path
+#              advisory = informational; it does not stop a merge
+#   run_here   yes | no
+#              yes = `validate-guards.sh` runs it (in the ci.yml `audit` job)
+#              no  = it gates elsewhere (noted) or is advisory
+#   owner      the team accountable for the class
+#   notes      how it gates / what it does
+#
+# guard	class	tier	run_here	owner	notes
+.pi/scripts/validate-guards.sh	guards	advisory	no	security	meta: registry integrity; runs the gating set below
+.pi/scripts/validate-panic-sites.sh	panic-surface	gating	yes	security	new production panic is removed or baselined (ratchet)
+.pi/scripts/validate-unsafe-sites.sh	unsafe	gating	yes	security	new production unsafe is removed or baselined (ratchet)
+.pi/scripts/validate-secret-logs.sh	secret-in-log	gating	yes	security	tracing a secret-ish identifier must be redacted
+.pi/scripts/validate-shell-exit-status.sh	shell-exit-status	gating	no	tooling	a `(( X++ ))` under errexit ends the script on bash 4.4+ (and silently, before any verdict); gates via its own `Shell exit status` CI stage, and scans every copy of the mirrored scripts (#1291)
+.pi/scripts/validate-script-drift.sh	mirror-drift	gating	yes	build	mirrored .pi/scripts must be byte-identical across trees unless recorded (with a reason) in .pi/script-drift-allow.tsv
+.pi/scripts/validate-docs.sh	docs-truth	gating	yes	docs	every relative doc link must resolve; CHANGELOG.md's newest version must equal engine/Cargo.toml's; every backticked identifier in a README must exist in the source — a doc may not point at a removed file, drift behind the tags, or name a type that is not in the code
+.pi/scripts/validate-wiring-claims.sh	wiring-claims	gating	yes	series-#1100	claims that a control is wired, re-resolved against the code (both directions: evidence gone, or a GAP silently restored)
+.pi/scripts/validate-ci.sh	ci	gating	no	build	gates via the CI lint+build+test jobs; aggregate fmt/clippy/test/audit
+.pi/scripts/validate-tests.sh	tests	gating	no	testing	gates via the CI test job and conformance
+.pi/scripts/validate-security.sh	deps-secrets	advisory	no	security	cargo audit + ad-hoc secret scan; WARN-only. Installed in all 5 trees; resolves its crate(s) from its OWN path, so it is cwd-independent (tree root = every crate). Advisory because its heuristics are noisy — the real dependency audit + secret scan gate in the CI audit job
+.pi/scripts/validate-architecture.sh	architecture	advisory	no	architecture	module-layering heuristic
+.pi/scripts/validate-architecture-readiness.sh	architecture	advisory	no	architecture	release-readiness heuristic
+.pi/scripts/validate-canonical.sh	canonical	advisory	no	architecture	@canonical reference check
+.pi/scripts/validate-ubiquitous-language.sh	domain	advisory	no	domain	glossary drift check
+.pi/scripts/validate-operations.sh	operations	advisory	no	ops	production-readiness heuristic
+.pi/scripts/validate-integration.sh	integration	advisory	no	integration	integration heuristic
+.pi/scripts/ci/check_effect-commitment_contracts.sh	contract-proofing	gating	yes	architecture	the 150-check effect-commitment contract proof runs here with a real exit code; --self-test seeds a removed contract and requires a failure (#1186)
+.pi/scripts/ci/check_capacity-ledger_contracts.sh	contract-proofing	gating	yes	architecture	the capacity-ledger contract proof runs here with a real exit code; --self-test seeds a removed contract and requires a failure (#1186)
+.pi/scripts/ci/stage_workspace_check.sh	compile	gating	yes	architecture	cargo check --workspace --all-targets; catches a public-enum addition breaking a downstream exhaustive match (#1195)
+.pi/scripts/validate-decision-expiry.sh	decisions	gating	yes	architecture	audit-ignore expiry and docs/issues front-matter vocabulary; --self-test seeds both violations (#1203)
+.pi/scripts/validate-workspace-pins.sh	workspace-pins	gating	yes	supply-chain	an intra-workspace path-dep pin equals the crate it points at

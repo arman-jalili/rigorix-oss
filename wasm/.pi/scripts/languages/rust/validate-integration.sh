@@ -4,6 +4,20 @@
 # ============================================================================
 set -euo pipefail
 
+# ---------------------------------------------------------------------------
+# Resolve the tree this validator belongs to, rather than trusting the caller's
+# cwd. The hardening discovery loop and the CI integration job both invoke these
+# from the repository root without `cd`, where a cwd-relative `src/` does not
+# exist — so the checks either failed spuriously or passed while silently
+# skipping the work they claim to do.
+# ---------------------------------------------------------------------------
+_TREE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+cd "$_TREE_ROOT" || exit 1
+if [ -f Cargo.toml ] && [ ! -d src ]; then
+    echo "⏭️  Workspace root (no src/) — the per-crate copies validate each crate."
+    exit 0
+fi
+
 PASS_COUNT=0
 ERRORS=()
 WARNINGS=()
@@ -42,7 +56,10 @@ echo "--- Integration Test Runner ---"
 if [ -d "tests" ]; then
     INT_TEST_FILES=$(find tests -name "*.rs" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$INT_TEST_FILES" -gt 0 ]; then
-        if cargo test --test '*' --quiet 2>/dev/null; then
+        # `--tests`, not `--test '*'`: cargo errors when an explicitly selected
+        # target declares `required-features` that are not enabled, which made
+        # this validator report a false failure. `--tests` skips such targets.
+        if cargo test --tests --quiet 2>/dev/null; then
             pass "Integration tests passed ($INT_TEST_FILES test files)"
         else
             fail "Integration tests failed"
