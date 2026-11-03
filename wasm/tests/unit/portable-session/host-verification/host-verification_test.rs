@@ -93,9 +93,16 @@ fn the_host_verifier_emits_exactly_three_verdicts() {
         assert!(script.contains(verdict), "missing verdict: {verdict}");
     }
     // Exit codes are distinct, so a shell caller cannot confuse "could not ask" with
-    // "compared and failed".
-    for code in ["process.exit(verdict === VERDICT.VERIFIED ? 0", "1", "2"] {
-        assert!(script.contains(code), "missing exit mapping: {code}");
+    // "compared and failed": 0 verified, 1 not_verified, 2 unverifiable, 3 tooling.
+    assert!(script.contains("VERIFIED ? 0"));
+    assert!(script.contains("NOT_VERIFIED ? 1"));
+    assert!(script.contains(": 2"));
+    assert!(script.contains("process.exit(3)"));
+    for verdict in ["verified", "not_verified", "unverifiable"] {
+        assert!(
+            script.contains(&format!("\"{verdict}\"")),
+            "missing verdict literal {verdict}"
+        );
     }
 }
 
@@ -106,10 +113,11 @@ fn the_host_verifier_fails_closed_when_the_sdk_is_absent() {
     // never `not_verified`.
     assert!(script.contains("verifier_unavailable"));
     let missing_sdk = script
-        .split("if (verifier === null)")
+        .split("if (sdk === null)")
         .nth(1)
         .expect("explicit missing-SDK branch");
     assert!(missing_sdk.contains("UNVERIFIABLE"));
+    assert!(missing_sdk.contains("verifier_unavailable"));
     assert!(
         !missing_sdk
             .split('}')
