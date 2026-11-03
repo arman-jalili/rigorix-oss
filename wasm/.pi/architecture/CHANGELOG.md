@@ -85,6 +85,50 @@ Each entry follows this structure:
 
 ## Entries
 
+## [2026-11-03] - Contract Freeze: portable-session interfaces frozen
+
+### Changed
+- Crate: `rigorix-gate-wasm` skeleton created (`wasm/Cargo.toml`, `wasm/src/lib.rs`).
+  Declares its own workspace root until ADR-011 registration lands, so the four
+  published crates keep building from the same commit (NFR-005).
+- Interfaces frozen (contract-only, `todo!()` bodies):
+  - `domain/`: `ReplaySession` (open/attempt/seal/take_events, no setters), `GateAttempt`,
+    12 value objects, 6 capability ports + domain-owned `SessionStore`, 7 events with
+    evidence/telemetry classification, `RefusalVocabulary`, `EvidenceProjection`,
+    `ArtifactStamp`, `ArtifactContentPolicy`, 3 error enums.
+  - `domain/engine_seam.rs`: `GateEvaluator` + carrier types — the engine binding, kept as
+    a port because `rigorix-engine` has no wasm-facing feature yet (FR-011).
+  - `application/`: the four catalog services + `ArtifactQuery` read helper.
+  - `infrastructure/`: six fixture-backed adapters, `InMemorySessionStore`,
+    `ScanningContentPolicy`, `CanonicalSerializer`.
+  - `interfaces/`: the four exported functions, strict DTOs (`deny_unknown_fields`),
+    redacted refusal projection.
+- `VerificationResult` and `VerifyExportedArtifacts` are **absent** by design (ADR-013):
+  the crate produces, the host verifies. Criterion 12/14 rewritten accordingly in code.
+- Tests: the 23 inert generated stubs (which could not compile — hyphenated fn names)
+  replaced by 76 real contract tests covering AC 1–27's structural half.
+
+### Impact Analysis
+- Files added: `wasm/Cargo.toml`, `wasm/src/**` (31 files), `wasm/tests/unit/**` (24 files)
+- Canonical refs: every source file carries `@canonical` + `@adr` headers pointing at
+  `.pi/architecture/modules/portable-session.md` and the ADRs
+- Validators required: architecture (domain isolation, layer direction), security
+  (redaction, no secrets), test (contract suite)
+
+### Migration Steps
+1. Implementation issues fill `todo!()` bodies in sequence (see roadmap Phases 0–6).
+2. `domain/engine_seam.rs` carrier types are replaced by concrete engine types when
+   FR-011's `portable` feature lands; the trait stays.
+3. ADR-011 workspace registration removes the crate-local `[workspace]` table.
+
+### Status
+- [x] Architecture doc updated
+- [x] Contracts frozen (interfaces, DTOs, errors, events)
+- [x] Contract test suite green (76 tests, `cargo clippy` clean, `cargo fmt --check` clean)
+- [ ] Behaviour implemented (tracked per component issue)
+
+---
+
 ## [2026-11-03] - Architecture Package: ADRs, Diagrams, Module Enrichment, Roadmap
 
 ### Changed
@@ -169,7 +213,8 @@ Track which changes have been synced to implementation:
 | 2026-11-03 | system-context.md rewritten; event-flow.md created | portable-session | doc complete | n/a |
 | 2026-11-03 | Module doc enriched (aggregate, VOs, ports, events, endpoints, 24 ACs, patterns) | portable-session | doc complete, impl pending | pending |
 | 2026-11-03 | implementation-roadmap.md generated (7 phases, Days 1-52) | portable-session | doc complete | n/a |
-| 2026-11-03 | Source drift validation FAILS by construction (crate source does not exist) | ALL | expected | fail until Phase 0 |
+| 2026-11-03 | Contract freeze: interfaces + DTOs + 76 contract tests (#1294) | portable-session | doc + code complete, behaviour pending | pass (clippy/fmt/tests) |
+| 2026-11-03 | Source drift validation no longer fails by construction: `wasm/src` now exists | ALL | partial | pending re-index |
 
 ---
 

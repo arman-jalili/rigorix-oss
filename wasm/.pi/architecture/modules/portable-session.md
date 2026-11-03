@@ -7,7 +7,7 @@ Module depth: tactical (core domain) — see ADR-008
 
 ## Module Status
 
-**Status:** Planned
+**Status:** Contract frozen (#1294) — behaviour pending per component
 **Last reviewed:** 2026-11-03
 **Source session:** 3baf6e5c-e352-4127-af09-a5e7fe0a2d29
 
