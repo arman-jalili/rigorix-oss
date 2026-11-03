@@ -13,6 +13,7 @@ fn seeded_vector() -> ConformanceVector {
         seed: serde_json::json!({ "seed_digest": "sha256:00", "draws": [] }),
         expected: b"{}".to_vec(),
         seeded_divergence: true,
+        gate: Some("fixture".to_string()),
     }
 }
 
