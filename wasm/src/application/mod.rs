@@ -36,4 +36,7 @@ pub use attempt_run::{AttemptRun, AttemptRunService};
 pub use dto::OpenSessionInput;
 pub use export_artifact_set::{ExportArtifactSet, ExportArtifactSetService};
 pub use open_replay_session::{OpenReplaySession, OpenReplaySessionService};
-pub use run_conformance_vector::{ConformanceReport, ConformanceVector, RunConformanceVector};
+pub use run_conformance_vector::{
+    ConformanceReport, ConformanceRunner, ConformanceVector, RunConformanceVector,
+    default_projection,
+};
