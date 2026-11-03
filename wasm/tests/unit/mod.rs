@@ -11,6 +11,9 @@
 //! adding a `RefusalKind` without wording, a domain error without a projection, or a
 //! fifth exported function all break the build rather than sliding through review.
 
+/// Test doubles for the ports and the engine gate (issue #1296).
+mod support;
+
 #[path = "portable-session/replaysession/replaysession_test.rs"]
 mod replaysession;
 

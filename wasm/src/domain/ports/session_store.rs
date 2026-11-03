@@ -12,11 +12,11 @@
 //! There is no database behind it. The shipped adapter is in memory, the record that
 //! survives is the exported `ArtifactSet`, and persistence is the host's business.
 
+use crate::domain::artifact::ArtifactSet;
 use crate::domain::errors::SealError;
-use crate::domain::session::ReplaySession;
 use crate::domain::value::ReplaySessionId;
 
-/// Stores and retrieves sessions by identity.
+/// Stores and retrieves **sealed records** by session identity.
 ///
 /// # Contract (Frozen)
 /// - Synchronous and in-memory for the shipped adapter; no file, no network, no SQL
@@ -24,12 +24,12 @@ use crate::domain::value::ReplaySessionId;
 ///   record and is not persisted
 /// - A missing id is `Ok(None)`, never an error: absence is a legitimate answer
 pub trait SessionStore {
-    /// Save a sealed session.
-    fn put(&mut self, session: &ReplaySession) -> Result<(), SealError>;
+    /// Save a sealed record.
+    fn put(&mut self, artifact: &ArtifactSet) -> Result<(), SealError>;
 
-    /// Retrieve a session by identity.
-    fn get(&self, id: &ReplaySessionId) -> Option<&ReplaySession>;
+    /// Retrieve a sealed record by session identity.
+    fn get(&self, id: &ReplaySessionId) -> Option<&ArtifactSet>;
 
-    /// Drop a session. Not part of any production flow; present for tests.
-    fn remove(&mut self, id: &ReplaySessionId) -> Option<ReplaySession>;
+    /// Drop a record. Not part of any production flow; present for tests.
+    fn remove(&mut self, id: &ReplaySessionId) -> Option<ArtifactSet>;
 }

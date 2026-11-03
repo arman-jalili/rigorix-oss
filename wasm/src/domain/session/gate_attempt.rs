@@ -2,10 +2,11 @@
 //!
 //! @canonical .pi/architecture/modules/portable-session.md#aggregates
 //! Implements: Contract Freeze — GateAttempt
-//! Issue: #1294 (contract freeze)
+//! Issue: #1294 (contract freeze), #1296 (domain layer)
 
+use crate::domain::artifact::EnvelopeBytes;
 use crate::domain::outcome::RunOutcome;
-use crate::domain::value::{GateAttemptId, GatedAction};
+use crate::domain::value::{GateAttemptId, GatedAction, KeyRef};
 
 /// One proposed run under evaluation.
 ///
@@ -19,6 +20,8 @@ pub struct GateAttempt {
     id: GateAttemptId,
     action: GatedAction,
     outcome: RunOutcome,
+    key_ref: KeyRef,
+    envelopes: Vec<EnvelopeBytes>,
 }
 
 impl GateAttempt {
@@ -27,11 +30,19 @@ impl GateAttempt {
         dead_code,
         reason = "the aggregate is the sole caller and lands with #1296"
     )]
-    pub(crate) fn record(id: GateAttemptId, action: GatedAction, outcome: RunOutcome) -> Self {
+    pub(crate) fn record(
+        id: GateAttemptId,
+        action: GatedAction,
+        outcome: RunOutcome,
+        key_ref: KeyRef,
+        envelopes: Vec<EnvelopeBytes>,
+    ) -> Self {
         Self {
             id,
             action,
             outcome,
+            key_ref,
+            envelopes,
         }
     }
 
@@ -48,5 +59,15 @@ impl GateAttempt {
     /// The run's outcome.
     pub fn outcome(&self) -> &RunOutcome {
         &self.outcome
+    }
+
+    /// The opaque reference of the key that signed this run's envelopes.
+    pub fn key_ref(&self) -> &KeyRef {
+        &self.key_ref
+    }
+
+    /// The engine's signed envelopes, byte for byte (never re-encoded).
+    pub fn envelopes(&self) -> &[EnvelopeBytes] {
+        &self.envelopes
     }
 }
