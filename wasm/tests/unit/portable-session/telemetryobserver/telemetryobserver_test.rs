@@ -88,3 +88,82 @@ fn telemetry_is_dropped_from_a_release_build_by_construction() {
     });
     assert!(!telemetry.is_evidence());
 }
+
+// ---------------------------------------------------------------------------
+// The observer is the diagnostic path; the type is the guarantee (issue #1310)
+// ---------------------------------------------------------------------------
+
+use rigorix_gate_wasm::interfaces::{Observed, TelemetryObserver};
+
+#[test]
+fn the_observer_never_promotes_telemetry_to_evidence() {
+    let observer = TelemetryObserver::new();
+    let observed: Observed = observer.observe(vec![
+        DomainEvent::RandomDrawConsumed(RandomDrawConsumed {
+            draw_index: 0,
+            purpose: "nonce".into(),
+        }),
+        DomainEvent::ReplaySessionOpened(SessionOpened {
+            session_id: ReplaySessionId::from_digest(digest('b')),
+            scenario_digest: digest('a'),
+            fixture_digest: digest('c'),
+            seed_digest: digest('d'),
+            clock_len: 1,
+        }),
+    ]);
+
+    assert_eq!(observed.evidence.len(), 1);
+    assert!(observed.evidence.iter().all(DomainEvent::is_evidence));
+    // Whatever the build keeps, telemetry is never counted as evidence.
+    for event in &observed.telemetry {
+        assert!(!event.is_evidence());
+    }
+}
+
+#[test]
+fn a_default_build_keeps_no_telemetry_channel() {
+    let observer = TelemetryObserver::new();
+    assert!(
+        !observer.keeps_telemetry(),
+        "diagnostics must be opt-in: an unused channel is still a channel"
+    );
+    let observed = observer.observe(vec![DomainEvent::RandomDrawConsumed(RandomDrawConsumed {
+        draw_index: 0,
+        purpose: "nonce".into(),
+    })]);
+    assert!(observed.telemetry.is_empty());
+    assert!(observed.evidence.is_empty());
+}
+
+#[test]
+fn an_artifact_set_has_no_slot_for_an_event_at_all() {
+    // The guarantee is structural: `ArtifactSet` carries evidence *references*, not events,
+    // so no class of event — telemetry included — can be stored in a record even by mistake.
+    let artifact = crate::support::sealed_artifact();
+    let json = serde_json::to_value(&artifact).expect("serialises");
+    for forbidden in ["event", "events", "telemetry", "random_draw", "draw_index"] {
+        assert!(
+            json.get(forbidden).is_none(),
+            "an artifact set exposes a slot for {forbidden}"
+        );
+    }
+    // And the wire shape the host receives has no such slot either.
+    let dto = rigorix_gate_wasm::interfaces::dto::ArtifactSetDto {
+        artifact_format_version: 1,
+        engine_version: "1.12.1".into(),
+        scenario_digest: "sha256:a".into(),
+        fixture_digest: "sha256:b".into(),
+        session_id: "sha256:c".into(),
+        key_ref: "demo:key".into(),
+        envelopes: vec![],
+        evidence: vec![],
+        outcome_digest: "sha256:d".into(),
+    };
+    let json = serde_json::to_value(&dto).expect("serialises");
+    for forbidden in ["event", "events", "telemetry"] {
+        assert!(
+            json.get(forbidden).is_none(),
+            "wire shape exposes {forbidden}"
+        );
+    }
+}
