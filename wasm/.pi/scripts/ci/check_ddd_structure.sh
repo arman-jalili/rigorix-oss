@@ -154,10 +154,35 @@ echo ""
 # ── Required DDD layers ──
 DDD_LAYERS=("domain" "application" "infrastructure" "interfaces")
 
+# ── Single-context crates (ADR-001) ──
+# A crate that owns exactly ONE bounded context puts the four layers at `src/` rather than
+# under `src/<context>/`. That is a deliberate layout, not a missing module: engine/ has 36
+# contexts and needs the directory per context; rigorix-gate-wasm has one and is the context.
+# Without this branch the check reports the four layer directories as four broken modules,
+# which is a false finding — and a false finding trains people to ignore the check.
+SINGLE_CONTEXT=false
+all_layers_at_root=true
+for layer in "${DDD_LAYERS[@]}"; do
+    if [[ ! -d "${SRC_DIR}/${layer}" ]]; then
+        all_layers_at_root=false
+        break
+    fi
+done
+if [[ "$all_layers_at_root" == "true" ]]; then
+    SINGLE_CONTEXT=true
+    MODULES=()
+    echo "Layout: single bounded context — the four layers live at src/ (ADR-001)"
+    echo ""
+fi
+
 # ── Check 1: Every module has the 4 DDD layers ──
 echo "--- Layer Structure ---"
 
-for module in "${MODULES[@]}"; do
+if [[ "$SINGLE_CONTEXT" == "true" ]]; then
+    pass "single-context crate: src/{domain,application,infrastructure,interfaces} all present"
+fi
+
+for module in "${MODULES[@]+"${MODULES[@]}"}"; do
     module_dir="${SRC_DIR}/${module}"
     missing=()
     contracts_wrapper=false
@@ -187,7 +212,7 @@ echo ""
 # ── Check 2: No contracts/ wrapper ──
 echo "--- Anti-Pattern: contracts/ Wrapper ---"
 CONTRACTS_COUNT=0
-for module in "${MODULES[@]}"; do
+for module in "${MODULES[@]+"${MODULES[@]}"}"; do
     if [[ -d "${SRC_DIR}/${module}/contracts" ]]; then
         CONTRACTS_COUNT=$((CONTRACTS_COUNT + 1))
 
@@ -210,7 +235,7 @@ echo ""
 echo "--- Dependency Direction ---"
 VIOLATIONS=0
 
-for module in "${MODULES[@]}"; do
+for module in "${MODULES[@]+"${MODULES[@]}"}"; do
     domain_dir="${SRC_DIR}/${module}/domain"
     if [[ ! -d "$domain_dir" ]]; then
         continue
@@ -244,7 +269,7 @@ echo "--- Repository Pattern ---"
 REPO_INFRA_ONLY=0
 REPO_MISSING_INFRA=0
 
-for module in "${MODULES[@]}"; do
+for module in "${MODULES[@]+"${MODULES[@]}"}"; do
     infra_repo_dir="${SRC_DIR}/${module}/infrastructure/repository"
     domain_repo_file=""
     
