@@ -85,6 +85,40 @@ Each entry follows this structure:
 
 ## Entries
 
+## [2026-11-03] - Validate step: context façade + tree validator sync
+
+### Changed
+- `src/portable_session.rs` added as the context façade: the architecture doc
+  `portable-session.md` now has a path of its own (the crate root is the context, so the
+  layers sit at `src/{domain,application,infrastructure,interfaces}` rather than under a
+  per-context directory). Re-exports only — no logic, no second API. This also makes the
+  canonical validator's module-to-implementation mapping real rather than waived.
+- `wasm/.pi/scripts/{validate-*.sh,languages/rust/*.sh}` replaced with the current
+  tree-agnostic copies. The scaffold's copies predated two fixes the repo has since made:
+  the `LANG=` locale-variable collision (the dispatcher reported
+  "No validator for language: C.UTF-8") and `grep` under `pipefail` aborting mid-run so a
+  truncated report looked like a result.
+- Root `.pi/scripts/languages/rust/validate-architecture.sh`: the three `grep … | wc -l`
+  sites now tolerate "no matches" (`|| true`). Same failure class the security validator's
+  header documents. Without it the architecture validator exited 1 with no finding.
+
+### Validation
+- `cargo fmt --check` clean; `cargo clippy --all-targets` 0 warnings; 76/76 tests green.
+- Tree validators: architecture, security, tests, canonical, ci, operations, integration
+  all PASS.
+- **Known-red guard, deliberately not baselined:** `validate-panic-sites.sh` reports the 15
+  `todo!()` contract stubs as production panic sites. That is the guard working — a
+  `todo!()` on the gate path would trap the module (ADR-012 tier 3). Exit condition: each
+  implementation issue deletes its stub; the guard turns green with the last one.
+  Baselining them would hide exactly the defect criterion 26 exists to catch.
+
+### Status
+- [x] Architecture doc updated
+- [x] Contracts frozen
+- [x] Tree validators green (panic-site guard red by design, documented)
+
+---
+
 ## [2026-11-03] - Contract Freeze: portable-session interfaces frozen
 
 ### Changed

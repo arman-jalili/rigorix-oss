@@ -4,6 +4,20 @@
 # ============================================================================
 set -euo pipefail
 
+# ---------------------------------------------------------------------------
+# Resolve the tree this validator belongs to, rather than trusting the caller's
+# cwd. The hardening discovery loop and the CI integration job both invoke these
+# from the repository root without `cd`, where a cwd-relative `src/` does not
+# exist — so the checks either failed spuriously or passed while silently
+# skipping the work they claim to do.
+# ---------------------------------------------------------------------------
+_TREE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+cd "$_TREE_ROOT" || exit 1
+if [ -f Cargo.toml ] && [ ! -d src ]; then
+    echo "⏭️  Workspace root (no src/) — the per-crate copies validate each crate."
+    exit 0
+fi
+
 PASS_COUNT=0
 ERRORS=()
 WARNINGS=()
@@ -45,16 +59,33 @@ for layer in src/domain src/application src/infrastructure; do
         LAYERS_FOUND=$((LAYERS_FOUND + 1))
     fi
 done
+
+# Check per-module layers (e.g. src/{module}/domain/)
+MODULE_LAYERS=0
+for layer_pattern in domain application infrastructure; do
+    count=$(find src -maxdepth 2 -type d -name "$layer_pattern" 2>/dev/null | wc -l | tr -d ' ' || true)
+    MODULE_LAYERS=$((MODULE_LAYERS + count))
+done
+if [ "$MODULE_LAYERS" -gt 0 ]; then
+    LAYERS_FOUND=$((LAYERS_FOUND + MODULE_LAYERS))
+fi
+
 if [ "$LAYERS_FOUND" -ge 2 ]; then
-    pass "Clean architecture layers detected ($LAYERS_FOUND/3)"
+    pass "Clean architecture layers detected ($LAYERS_FOUND layers across root + modules)"
 elif [ "$LAYERS_FOUND" -eq 1 ]; then
-    warn "Partial layer structure found (1/3 layers)"
+    warn "Partial layer structure found (1 layer)"
 else
     # Check for alternative common structures
     if [ -d "src/models" ] || [ -d "src/handlers" ] || [ -d "src/services" ]; then
         warn "Alternative project structure detected (no clean architecture layers)"
     else
-        fail "No architectural layers found (no src/domain/, src/application/, or src/infrastructure/)"
+        # One more check: does the crate have any source files at all?
+        rs_count=$(find src -name "*.rs" 2>/dev/null | wc -l || true)
+        if [ "$rs_count" -gt 0 ]; then
+            pass "Source files found in flat structure ($rs_count files — acceptable for thin crate)"
+        else
+            fail "No architectural layers found (no src/domain/, src/application/, or src/infrastructure/)"
+        fi
     fi
 fi
 
@@ -64,7 +95,7 @@ fi
 echo ""
 echo "--- Canonical References ---"
 if [ -d ".pi/architecture/modules" ]; then
-    MODULE_COUNT=$(find .pi/architecture/modules -name "*.md" 2>/dev/null | wc -l | tr -d ' ') || true
+    MODULE_COUNT=$(find .pi/architecture/modules -name "*.md" 2>/dev/null | wc -l | tr -d ' ' || true)
     if [ "$MODULE_COUNT" -gt 0 ]; then
         pass "Architecture modules defined ($MODULE_COUNT module files)"
     else
@@ -82,7 +113,7 @@ echo "--- Domain Models ---"
 DOMAIN_MODELS=0
 for dir in src/domain src/models; do
     if [ -d "$dir" ]; then
-        MODELS=$(grep -rlE '^\s*(pub\s+)?struct\s' "$dir" 2>/dev/null | wc -l | tr -d ' ') || true
+        MODELS=$(grep -rlE '^\s*(pub\s+)?struct\s' "$dir" 2>/dev/null | wc -l | tr -d ' ' || true)
         DOMAIN_MODELS=$((DOMAIN_MODELS + MODELS))
     fi
 done
@@ -90,7 +121,7 @@ if [ "$DOMAIN_MODELS" -gt 0 ]; then
     pass "Domain models found ($DOMAIN_MODELS files with struct definitions)"
 else
     # Check all of src as fallback
-    ALL_MODELS=$(grep -rlE '^\s*(pub\s+)?struct\s' src/ 2>/dev/null | wc -l | tr -d ' ') || true
+    ALL_MODELS=$(grep -rlE '^\s*(pub\s+)?struct\s' src/ 2>/dev/null | wc -l | tr -d ' ' || true)
     if [ "$ALL_MODELS" -gt 0 ]; then
         pass "Struct definitions found in src/ ($ALL_MODELS files)"
     else
@@ -104,7 +135,7 @@ fi
 echo ""
 echo "--- Dependency Direction ---"
 if [ -d "src/domain" ]; then
-    DOMAIN_DEPS=$(grep -rE 'use\s+crate::infrastructure' src/domain/ 2>/dev/null | wc -l | tr -d ' ') || true
+    DOMAIN_DEPS=$( (grep -rE 'use\s+crate::infrastructure' src/domain/ 2>/dev/null || true) | wc -l | tr -d ' ')
     if [ "$DOMAIN_DEPS" -eq 0 ]; then
         pass "Domain layer does not depend on infrastructure"
     else
@@ -127,7 +158,7 @@ if command -v cargo &>/dev/null; then
     fi
 fi
 # Also check for custom error enum definitions
-CUSTOM_ERRORS=$(grep -rE 'enum\s+\w*Error' src/ 2>/dev/null | wc -l | tr -d ' ') || true
+CUSTOM_ERRORS=$( (grep -rE 'enum\s+\w*Error' src/ 2>/dev/null || true) | wc -l | tr -d ' ')
 if [ "$HAS_ERROR_TYPES" -eq 1 ] || [ "$CUSTOM_ERRORS" -gt 0 ]; then
     pass "Custom error handling detected"
 else
@@ -139,7 +170,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Trait Definitions ---"
-TRAITS=$(grep -rE '^\s*(pub\s+)?trait\s+' src/ 2>/dev/null | wc -l | tr -d ' ') || true
+TRAITS=$( (grep -rE '^\s*(pub\s+)?trait\s+' src/ 2>/dev/null || true) | wc -l | tr -d ' ')
 if [ "$TRAITS" -gt 0 ]; then
     pass "Trait definitions found ($TRAITS interfaces)"
 else

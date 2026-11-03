@@ -1,0 +1,52 @@
+# Recorded per-tree differences for .pi/scripts (ISSUE-VALIDATOR-SINGLE-SOURCE, #1004).
+#
+# validate-script-drift.sh fails when a file mirrored across trees differs and is
+# NOT matched by a pattern here, and prints the disagreeing trees. A pattern present
+# below means the difference is known; the reason says whether it is by design, inert,
+# or drift that this issue deliberately did not reconcile.
+#
+# Columns (tab-separated): pattern  trees  reason
+#   pattern  glob matched against the path relative to <tree>/.pi/scripts
+#   trees    which trees carry the file (informational)
+#   reason   why the difference is tolerated
+#
+# pattern	trees	reason
+categorize-issues.sh	.,engine,mcp,cli,actions	per-tree workflow helper; recorded drift, not reconciled in #1004
+ci/check_architecture_conformance.sh	.,engine,mcp,cli,actions	per-crate hardening stage/config; each crate's stages differ by design (not reconciled in #1004)
+ci/check_ddd_structure.sh	.,engine,mcp,cli	per-crate hardening stage/config; each crate's stages differ by design (not reconciled in #1004)
+ci/run_hardening_stages.sh	.,engine,mcp,cli,actions	per-crate hardening stage/config; each crate's stages differ by design (not reconciled in #1004)
+ci/stage_docs_policy.sh	.,engine,mcp,cli,actions	per-crate hardening stage/config; each crate's stages differ by design (not reconciled in #1004)
+ci/stage_lint.sh	.,engine,mcp,cli,actions	per-crate hardening stage/config; each crate's stages differ by design (not reconciled in #1004)
+ci/stage_remaining.sh	.,engine,mcp,cli,actions	per-crate hardening stage/config; each crate's stages differ by design (not reconciled in #1004)
+ci/stage_static_analysis.sh	.,engine,mcp,cli,actions	per-crate hardening stage/config; each crate's stages differ by design (not reconciled in #1004)
+ci/stage_unit.sh	.,engine,mcp,cli,actions	per-crate hardening stage/config; each crate's stages differ by design (not reconciled in #1004)
+create-mr.sh	.,engine,mcp,cli,actions	per-tree workflow helper; recorded drift, not reconciled in #1004
+git/close-epic.sh	.,engine,mcp,cli,actions	per-tree issue/epic workflow helper; recorded drift, not reconciled in #1004
+git/close-issue.sh	.,engine,mcp,cli,actions	per-tree issue/epic workflow helper; recorded drift, not reconciled in #1004
+git/create-tracking-issue.sh	.,engine,mcp,cli,actions	per-tree issue/epic workflow helper; recorded drift, not reconciled in #1004
+git/link-issue-to-epic.sh	.,engine,mcp,cli,actions	per-tree issue/epic workflow helper; recorded drift, not reconciled in #1004
+git/update-tracking-issue.sh	.,engine,mcp,cli,actions	per-tree issue/epic workflow helper; recorded drift, not reconciled in #1004
+languages/go/validate-architecture.sh	.,engine,mcp,cli	inert here (detect_language always resolves to rust); cosmetic drift; out of scope per the issue
+languages/go/validate-canonical.sh	.,engine,mcp,cli	inert here (detect_language always resolves to rust); cosmetic drift; out of scope per the issue
+languages/go/validate-ci.sh	.,engine,mcp,cli	inert here (detect_language always resolves to rust); cosmetic drift; out of scope per the issue
+languages/go/validate-integration.sh	.,engine,mcp,cli	inert here (detect_language always resolves to rust); cosmetic drift; out of scope per the issue
+languages/go/validate-operations.sh	.,engine,mcp,cli	inert here (detect_language always resolves to rust); cosmetic drift; out of scope per the issue
+languages/go/validate-security.sh	.,engine,mcp,cli	inert here (detect_language always resolves to rust); cosmetic drift; out of scope per the issue
+languages/java/validate-annotations.sh	.,engine,mcp,cli	inert here (detect_language always resolves to rust); cosmetic drift; out of scope per the issue
+languages/java/validate-architecture.sh	.,engine,mcp,cli	inert here (detect_language always resolves to rust); cosmetic drift; out of scope per the issue
+languages/java/validate-canonical.sh	.,engine,mcp,cli	inert here (detect_language always resolves to rust); cosmetic drift; out of scope per the issue
+languages/java/validate-integration.sh	.,engine,mcp,cli	inert here (detect_language always resolves to rust); cosmetic drift; out of scope per the issue
+languages/java/validate-operations.sh	.,engine,mcp,cli	inert here (detect_language always resolves to rust); cosmetic drift; out of scope per the issue
+languages/python/validate-architecture.sh	.,engine,mcp,cli	inert here (detect_language always resolves to rust); cosmetic drift; out of scope per the issue
+languages/python/validate-canonical.sh	.,engine,mcp,cli	inert here (detect_language always resolves to rust); cosmetic drift; out of scope per the issue
+languages/python/validate-integration.sh	.,engine,mcp,cli	inert here (detect_language always resolves to rust); cosmetic drift; out of scope per the issue
+languages/python/validate-security.sh	.,engine,mcp,cli	inert here (detect_language always resolves to rust); cosmetic drift; out of scope per the issue
+languages/typescript/validate-architecture.sh	.,engine,mcp,cli	inert here (detect_language always resolves to rust); cosmetic drift; out of scope per the issue
+languages/typescript/validate-canonical.sh	.,engine,mcp,cli	inert here (detect_language always resolves to rust); cosmetic drift; out of scope per the issue
+languages/typescript/validate-integration.sh	.,engine,mcp,cli	inert here (detect_language always resolves to rust); cosmetic drift; out of scope per the issue
+languages/typescript/validate-operations.sh	.,engine,mcp,cli	inert here (detect_language always resolves to rust); cosmetic drift; out of scope per the issue
+languages/typescript/validate-security.sh	.,engine,mcp,cli	inert here (detect_language always resolves to rust); cosmetic drift; out of scope per the issue
+merge-mr.sh	.,engine,mcp,cli,actions	per-tree workflow helper; recorded drift, not reconciled in #1004
+mr-validation.sh	.,engine,mcp,cli,actions	per-tree workflow helper; recorded drift, not reconciled in #1004
+validate-architecture-readiness.sh	.,engine,mcp,cli,actions	substantive drift (runbook-*.md / dr-plan-*.md support); not a rust validator, outside #1004's reconciliation set
+validate-ubiquitous-language.sh	.,engine,mcp,cli,actions	substantive drift; the engine/cli/actions variant carries a machine-specific absolute path - needs its own issue

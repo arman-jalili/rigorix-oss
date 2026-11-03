@@ -18,8 +18,6 @@ detect_language() {
         echo "rust"
     elif [ -f "go.mod" ]; then
         echo "go"
-    elif [ -f "pom.xml" ] || [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
-        echo "java"
     elif [ -f "package.json" ]; then
         echo "typescript"
     else
@@ -27,13 +25,13 @@ detect_language() {
     fi
 }
 
-LANG=$(detect_language)
-LANG_SCRIPT="${SCRIPT_DIR}/languages/${LANG}/validate-ci.sh"
+LANG_DETECTED=$(detect_language)
+LANG_SCRIPT="${SCRIPT_DIR}/languages/${LANG_DETECTED}/validate-ci.sh"
 
 if [ -f "$LANG_SCRIPT" ]; then
     exec bash "$LANG_SCRIPT" "$@"
 else
-    echo "No CI validator for language: C.UTF-8"
+    echo "No CI validator for language: ${LANG_DETECTED}"
     echo "Create: $LANG_SCRIPT"
     exit 0
 fi
