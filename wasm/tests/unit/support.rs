@@ -54,6 +54,29 @@ impl IdSource for OkIds {
     }
 }
 
+/// An id source that cannot mint — the fault case for the aggregate's own port call.
+pub struct FailingIds(pub PortFailureKind);
+impl IdSource for FailingIds {
+    fn next_id(&mut self, _kind: IdKind) -> Result<String, PortFailure> {
+        Err(PortFailure::new(PortId::IdSource, self.0))
+    }
+}
+
+/// Either a working or a failing id source.
+pub enum AnyIds {
+    Ok(OkIds),
+    Failing(FailingIds),
+}
+
+impl IdSource for AnyIds {
+    fn next_id(&mut self, kind: IdKind) -> Result<String, PortFailure> {
+        match self {
+            Self::Ok(source) => source.next_id(kind),
+            Self::Failing(source) => source.next_id(kind),
+        }
+    }
+}
+
 pub struct OkRandom;
 impl Randomness for OkRandom {
     fn draw(&mut self) -> Result<Draw, PortFailure> {
@@ -127,7 +150,7 @@ impl FailingKey {
 
 pub struct PortSet {
     pub clock: OkClock,
-    pub ids: OkIds,
+    pub ids: AnyIds,
     pub random: OkRandom,
     pub key: AnyKey,
     pub provider: OkProvider,
@@ -138,7 +161,7 @@ impl PortSet {
     pub fn happy() -> Self {
         Self {
             clock: OkClock::new(),
-            ids: OkIds,
+            ids: AnyIds::Ok(OkIds),
             random: OkRandom,
             key: AnyKey::Ok(OkKey),
             provider: OkProvider,

@@ -222,3 +222,106 @@ fn an_engine_binding_failure_is_an_error_not_an_allow() {
     // Nothing was recorded as an outcome: there is no allow to find.
     assert!(session.outcome().is_none());
 }
+
+// ---------------------------------------------------------------------------
+// Fault matrix (issue #1300): criterion 4 — six ports × four kinds
+// ---------------------------------------------------------------------------
+
+#[test]
+fn the_full_fault_matrix_refuses_every_case() {
+    use crate::support::{AnyIds, FailingIds};
+    use rigorix_gate_wasm::domain::value::PortFailure;
+
+    let kinds = [
+        PortFailureKind::Missing,
+        PortFailureKind::Exhausted,
+        PortFailureKind::Malformed,
+        PortFailureKind::Failed,
+    ];
+    let ports = [
+        PortId::Clock,
+        PortId::IdSource,
+        PortId::Randomness,
+        PortId::KeySource,
+        PortId::ProviderTransport,
+        PortId::BusinessSink,
+    ];
+
+    let mut cases = 0;
+    let mut allowed = Vec::new();
+
+    for port in ports {
+        for kind in kinds {
+            cases += 1;
+
+            // The port the aggregate consults itself: the id source.
+            if port == PortId::IdSource {
+                let mut session = ReplaySession::open(inputs()).expect("open");
+                let mut gate = FakeGate::allowing();
+                let mut set = PortSet::happy();
+                set.ids = AnyIds::Failing(FailingIds(kind));
+                let outcome = session
+                    .attempt(action(), set.ports(), &mut gate, &projection())
+                    .expect("attempt");
+                if outcome.status != OutcomeStatus::Refused {
+                    allowed.push(format!("{port:?}/{kind:?}"));
+                }
+                continue;
+            }
+
+            // The port the aggregate consults before the gate: the key source.
+            if port == PortId::KeySource {
+                let mut session = ReplaySession::open(inputs()).expect("open");
+                let mut gate = FakeGate::allowing();
+                let mut set = PortSet::happy();
+                set.key = FailingKey(kind).into_key();
+                let outcome = session
+                    .attempt(action(), set.ports(), &mut gate, &projection())
+                    .expect("attempt");
+                if outcome.status != OutcomeStatus::Refused {
+                    allowed.push(format!("{port:?}/{kind:?}"));
+                }
+                continue;
+            }
+
+            // Every other port is reported by the gate, which answers with all findings
+            // passed — the strictest version of the case: an unavailable check plus a
+            // green gate must still refuse.
+            let mut session = ReplaySession::open(inputs()).expect("open");
+            let mut gate = FakeGate::with_port_failure(PortFailure::new(port, kind));
+            let mut set = PortSet::happy();
+            let outcome = session
+                .attempt(action(), set.ports(), &mut gate, &projection())
+                .expect("attempt");
+            if outcome.status != OutcomeStatus::Refused {
+                allowed.push(format!("{port:?}/{kind:?}"));
+            }
+        }
+    }
+
+    assert_eq!(cases, 24, "six ports × four failure kinds");
+    assert!(allowed.is_empty(), "these cases allowed a run: {allowed:?}");
+}
+
+#[test]
+fn a_failed_first_attempt_leaves_the_outcome_readable_and_unsealed() {
+    // A refused run is still a decision: it can be read and sealed (the record of a
+    // refusal is the point of the crate). What it cannot be is re-run.
+    let mut session = ReplaySession::open(inputs()).expect("open");
+    let mut gate = FakeGate::refusing();
+    let mut set = PortSet::happy();
+
+    let outcome = session
+        .attempt(action(), set.ports(), &mut gate, &projection())
+        .expect("attempt");
+    assert_eq!(outcome.status, OutcomeStatus::Refused);
+    assert_eq!(session.outcome(), Some(&outcome));
+
+    let mut gate_again = FakeGate::allowing();
+    assert_eq!(
+        session
+            .attempt(action(), set.ports(), &mut gate_again, &projection())
+            .unwrap_err(),
+        AttemptError::AlreadyAttempted
+    );
+}
