@@ -1007,6 +1007,7 @@ impl ExecutionEvent {
     /// - `NodeFailed` / `ExecutionFailed` → `Failure`
     /// - `ExecutionCancelled` → `Info`
     /// - All other variants → `Success`
+    #[cfg(not(feature = "portable"))]
     pub fn event_info_status(&self) -> crate::orchestrator::domain::record::EventInfoStatus {
         match self {
             ExecutionEvent::NodeFailed { .. } | ExecutionEvent::ExecutionFailed { .. } => {

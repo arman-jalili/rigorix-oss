@@ -15,7 +15,9 @@
 //! - Raw tokens stored by reference (`token_ref`), never embedded in records
 
 pub mod identity_repository;
+#[cfg(not(feature = "portable"))]
 pub mod identity_repository_impl;
 
 pub use identity_repository::IdentityRepository;
+#[cfg(not(feature = "portable"))]
 pub use identity_repository_impl::FileSystemIdentityRepository;

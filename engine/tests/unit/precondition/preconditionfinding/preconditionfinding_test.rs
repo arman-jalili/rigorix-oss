@@ -129,6 +129,7 @@ async fn test_envelope_precondition_findings_records_evidence_and_redacts_values
         metadata: None,
         scoring_results: std::collections::HashMap::new(),
         sign: false,
+        pinned_timestamp: None,
         repository: None,
         author: None,
         identity: None,

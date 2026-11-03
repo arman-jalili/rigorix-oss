@@ -21,6 +21,10 @@ pub mod canonical_serializer;
 pub mod content_policy;
 pub mod repository;
 pub mod seam_gate;
+// #1351 (spike): the seam linked to the engine's portable slice. Compiled only
+// under `--features engine`, and only to measure/verify the link — see the file.
+#[cfg(feature = "engine")]
+pub mod engine_gate;
 
 pub use adapters::{
     FixtureClock, FixtureProviderTransport, FixtureRandomness, MemoryBusinessSink, SeededIdSource,
@@ -28,5 +32,7 @@ pub use adapters::{
 };
 pub use canonical_serializer::CanonicalSerializer;
 pub use content_policy::ScanningContentPolicy;
+#[cfg(feature = "engine")]
+pub use engine_gate::EngineGate;
 pub use repository::InMemorySessionStore;
 pub use seam_gate::SeamGate;

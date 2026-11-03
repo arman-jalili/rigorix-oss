@@ -69,6 +69,7 @@ fn minimal_input() -> BuildEnvelopeInput {
         metadata: None,
         scoring_results: std::collections::HashMap::new(),
         sign: false,
+        pinned_timestamp: None,
     }
 }
 

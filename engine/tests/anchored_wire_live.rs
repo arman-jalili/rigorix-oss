@@ -157,6 +157,7 @@ fn envelope_input() -> BuildEnvelopeInput {
         file_paths: Vec::new(),
         metadata: None,
         sign: false,
+        pinned_timestamp: None,
         scoring_results: std::collections::HashMap::new(),
     }
 }

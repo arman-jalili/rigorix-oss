@@ -68,6 +68,7 @@ fn base_input() -> BuildEnvelopeInput {
         metadata: None,
         scoring_results: std::collections::HashMap::new(),
         sign: true,
+        pinned_timestamp: None,
     }
 }
 

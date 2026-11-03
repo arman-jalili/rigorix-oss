@@ -165,7 +165,12 @@ pub fn open_session(
         session,
         // The engine seam, plugged in by the packaging issue (FR-011). Until then it
         // refuses — never allows — and says so.
+        #[cfg(not(feature = "engine"))]
         gate: Box::new(crate::infrastructure::SeamGate::not_linked()),
+        // #1351 (spike): with `engine` on, the seam *is* the engine call, so the
+        // linker cannot drop the slice and M3 measures a module that uses it.
+        #[cfg(feature = "engine")]
+        gate: Box::new(crate::infrastructure::EngineGate::new()),
     });
 
     Ok(render(&SessionHandleDto { handle }))

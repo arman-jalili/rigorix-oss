@@ -52,6 +52,7 @@ async fn test_r7_unanchored_history_refusal_is_structured() {
             metadata: None,
             scoring_results: std::collections::HashMap::new(),
             sign: true,
+            pinned_timestamp: None,
             repository: None,
             author: Some("jeff@corp".to_string()),
             identity: None,

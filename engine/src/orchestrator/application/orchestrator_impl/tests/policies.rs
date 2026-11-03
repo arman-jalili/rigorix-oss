@@ -637,6 +637,7 @@ async fn test_r7_cross_run_same_principal_remove_then_add_refused_at_plan_time()
             metadata: None,
             scoring_results: std::collections::HashMap::new(),
             sign: true,
+            pinned_timestamp: None,
             repository: None,
             author: Some("jeff@corp".to_string()),
             identity: None,

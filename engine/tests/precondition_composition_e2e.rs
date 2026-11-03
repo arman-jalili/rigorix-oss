@@ -145,6 +145,7 @@ fn envelope_input(execution_id: Uuid, events: Vec<ExecutionEventRef>) -> BuildEn
         file_paths: vec![],
         metadata: None,
         sign: true,
+        pinned_timestamp: None,
         scoring_results: HashMap::new(),
     }
 }

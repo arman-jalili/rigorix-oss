@@ -15,9 +15,10 @@ crate-type = ["rlib", "cdylib"]
 [features]
 default = []
 # The in-repo seam: binds rigorix-engine's gate behind its additive, non-default
-# feature. Off until FR-011 lands, so the contract crate has no native dependency
-# and `cargo check` proves nothing about a feature that does not exist yet.
-engine = []
+# `portable` feature (#1351). Off by default, so the contract crate has no native
+# dependency; on, the module carries the engine's gate slice and the bundle is
+# measured with it inside (M3).
+engine = ["dep:rigorix-engine", "rigorix-engine/portable"]
 # Test-only: conformance vector replay (ADR-009). Never part of the bundle.
 conformance = []
 # Off by default: a release bundle keeps no diagnostic channel (ADR-003, criterion 17).
@@ -30,6 +31,10 @@ thiserror = "2"
 # The engine hashes canonical forms with sha2; matching it is a byte-identity
 # requirement, not a preference (ADR-010).
 sha2 = "0.11"
+# The engine slice, only when `engine` is on (#1351). Its `portable` feature is what
+# keeps the native graph out of the module: the banned crates are excluded by target
+# there, not merely by feature.
+rigorix-engine = { path = "../engine", optional = true }
 
 [lints]
 # Inherited, not re-listed. Declaring a local `[lints.rust]` block without

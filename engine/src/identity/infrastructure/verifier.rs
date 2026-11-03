@@ -18,10 +18,12 @@
 //! - `JwksVerifier` (JWKS-backed, RS256) lands in ISSUE-IDENTITY-3
 
 use async_trait::async_trait;
+#[cfg(not(feature = "portable"))]
 use base64::Engine as _;
 // RUSTSEC-2023-0071 (rsa, Marvin): verification-only usage — no private-key
 // operation exists here. Replaced rsa with ring (maintained, BoringSSL-derived)
 // which exposes no private-key path at all.
+#[cfg(not(feature = "portable"))]
 use ring::signature::{RSA_PKCS1_2048_8192_SHA256, RsaPublicKeyComponents};
 
 use crate::identity::application::service::VerificationOutcome;
@@ -100,6 +102,7 @@ impl TokenVerifier for NullVerifier {
     }
 }
 
+#[cfg(not(feature = "portable"))]
 /// JWKS-backed best-effort token verifier (RS256).
 ///
 /// Fetches the IdP's JSON Web Key Set (`/.well-known/jwks.json`), resolves the
@@ -113,6 +116,7 @@ pub struct JwksVerifier {
     client: reqwest::Client,
 }
 
+#[cfg(not(feature = "portable"))]
 impl JwksVerifier {
     /// Create a JWKS-backed verifier for the given IdP JWKS endpoint.
     pub fn new(jwks_url: impl Into<String>) -> Self {
@@ -173,6 +177,7 @@ impl JwksVerifier {
     }
 }
 
+#[cfg(not(feature = "portable"))]
 #[async_trait]
 impl TokenVerifier for JwksVerifier {
     /// Verify a token signature against the IdP JWKS.

@@ -113,6 +113,16 @@ pub struct BuildEnvelopeInput {
     /// Whether to include HMAC signature (requires signing key config).
     pub sign: bool,
 
+    /// #1351 (spike): the instant to stamp, when the caller has one.
+    ///
+    /// `None` keeps today's behaviour — the factory reads the wall clock — so the
+    /// field is additive and every existing caller compiles unchanged. `Some` is what
+    /// makes the operation reproducible: the envelope's own `timestamp` is the one
+    /// value in it that a caller cannot otherwise supply, and it is signed, so a
+    /// wall-clock read makes two identical decisions produce different bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pinned_timestamp: Option<chrono::DateTime<chrono::Utc>>,
+
     /// Scoring results from scored evaluation nodes, keyed by node_id.
     #[serde(default)]
     pub scoring_results: HashMap<String, crate::audit::domain::ScoringResultRef>,

@@ -52,6 +52,7 @@ fn envelope_input(identity: Option<IdentityRef>) -> BuildEnvelopeInput {
         metadata: None,
         scoring_results: std::collections::HashMap::new(),
         sign: false,
+        pinned_timestamp: None,
     }
 }
 

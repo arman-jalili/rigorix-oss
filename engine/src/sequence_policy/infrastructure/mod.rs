@@ -18,13 +18,16 @@
 //!   evaluation — prior decisions stand (documented in the module spec)
 
 mod history;
+#[cfg(not(feature = "portable"))]
 mod history_anchored;
 pub mod repository;
 
 pub use history::{EnvelopeHistoryAdapter, ExecutionHistory};
+#[cfg(not(feature = "portable"))]
 pub use history_anchored::AnchoredHistoryAdapter;
 pub use repository::{
-    AUDIT_RETENTION_ENV, BundleSequencePolicyRepository, PrecedenceSequencePolicyRepository,
+    AUDIT_RETENTION_ENV, PrecedenceSequencePolicyRepository,
     RetentionCoupledSequencePolicyRepository, SequencePolicyPrecedence, SequencePolicyRepository,
-    TomlSequencePolicyRepository,
 };
+#[cfg(not(feature = "portable"))]
+pub use repository::{BundleSequencePolicyRepository, TomlSequencePolicyRepository};

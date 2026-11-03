@@ -229,6 +229,7 @@ mod tests {
             metadata: None,
             scoring_results: std::collections::HashMap::new(),
             sign: false,
+            pinned_timestamp: None,
             repository: None,
             author: Some(author.to_string()),
             identity: None,

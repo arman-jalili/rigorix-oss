@@ -701,6 +701,7 @@ impl AppState {
                                 file_paths: Vec::new(),
                                 metadata: None,
                                 sign: true,
+                                pinned_timestamp: None,
                                 scoring_results: Default::default(),
                             })
                             .await;

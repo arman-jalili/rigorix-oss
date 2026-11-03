@@ -574,6 +574,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     metadata: None,
                     scoring_results: self.collect_scoring_results(record.execution_id).await,
                     sign: true,
+                    pinned_timestamp: None,
                     repository: input.repository.clone(),
                     author: input.author.clone(),
                     identity: input.identity.as_ref().map(IdentityRef::from_claim),
@@ -1116,6 +1117,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     metadata: None,
                     scoring_results: self.collect_scoring_results(record.execution_id).await,
                     sign: true,
+                    pinned_timestamp: None,
                     repository: input.repository.clone(),
                     author: input.author.clone(),
                     // L2 (F-20260907-05): stamp the ATTESTED claim on the signed

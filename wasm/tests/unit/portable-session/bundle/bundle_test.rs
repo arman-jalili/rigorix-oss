@@ -7,7 +7,10 @@ use crate::read_manifest;
 /// The dependency floor: serde, serde_json, thiserror. Everything else needs a reason.
 // sha2 is the engine's own hash crate: a different implementation would produce
 // different digests for the same bytes, which is the one thing this crate may not do.
-const ALLOWED_DEPENDENCIES: [&str; 4] = ["serde", "serde_json", "sha2", "thiserror"];
+// #1351: `rigorix-engine` joins the floor, optional and off by default, bound to the
+// engine's `portable` feat  — the one dependency whose *purpose* is to be the gate.
+const ALLOWED_DEPENDENCIES: [&str; 5] =
+    ["serde", "serde_json", "sha2", "thiserror", "rigorix-engine"];
 
 #[test]
 fn the_dependency_set_is_deliberate() {
@@ -49,13 +52,15 @@ fn the_size_gate_is_declared_where_ci_can_read_it() {
 #[test]
 fn the_engine_dependency_is_optional_by_contract() {
     let manifest = read_manifest("Cargo.toml");
-    // FR-011 has not landed: the seam is declared as a feature with no dependency behind
-    // it yet. When it lands, it must be optional and non-default (NFR-005).
-    assert!(manifest.contains("engine = []"));
+    // #1351: the seam now has a dependency behind it. What must not change is the shape:
+    // optional, absent from the default feature set, and bound to the engine's `portable`
+    // feature — an `engine` that pulled the native stack would bloat the browser bundle
+    // and break the four published crates that build from the same commit.
+    assert!(manifest.contains(r#"engine = ["dep:rigorix-engine", "rigorix-engine/portable"]"#));
     let deps = manifest.split("[dependencies]").nth(1).unwrap_or_default();
     assert!(
-        !deps.contains("rigorix-engine"),
-        "the engine must not be a default dependency: the four published crates build from the same commit"
+        deps.contains("rigorix-engine = { path = \"../engine\", optional = true }"),
+        "the engine must be an optional dependency: a default one would follow the crate everywhere"
     );
 }
 

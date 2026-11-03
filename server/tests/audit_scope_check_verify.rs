@@ -47,6 +47,7 @@ fn input(execution_id: Uuid, sequence: u64, prev_hash: Option<String>) -> BuildE
         file_paths: vec![],
         metadata: None,
         sign: true,
+        pinned_timestamp: None,
         scoring_results: std::collections::HashMap::new(),
     }
 }

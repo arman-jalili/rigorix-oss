@@ -21,15 +21,18 @@
 //!   vocabulary all map to [`ProviderDetermination::Unknown`] (or an error),
 //!   which refuses.
 
+#[cfg(not(feature = "portable"))]
 use std::time::Duration;
 
 use async_trait::async_trait;
+#[cfg(not(feature = "portable"))]
 use chrono::Utc;
 
 use crate::precondition::application::dto::PreconditionCheckInput;
-use crate::precondition::domain::{
-    PreconditionError, ProviderDetermination, ProviderMethod, ProviderObservation, ProviderSpec,
-};
+use crate::precondition::domain::{PreconditionError, ProviderObservation, ProviderSpec};
+#[cfg(not(feature = "portable"))]
+use crate::precondition::domain::{ProviderDetermination, ProviderMethod};
+#[cfg(not(feature = "portable"))]
 use crate::precondition::infrastructure::sha256_hex;
 
 /// Maximum response body the client will read (bytes). A larger body is refused
@@ -61,10 +64,36 @@ pub trait ProviderClient: Send + Sync {
     ) -> Result<ProviderObservation, PreconditionError>;
 }
 
+/// The slice's provider seam: there is no HTTP transport under `portable`, so a
+/// provider-determined precondition refuses with `Provider` — the same verdict a
+/// deployment that never configured the client gets, recorded honestly (#1351).
+#[cfg(feature = "portable")]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct UnavailableProviderClient;
+
+#[cfg(feature = "portable")]
+#[async_trait]
+impl ProviderClient for UnavailableProviderClient {
+    async fn determine(
+        &self,
+        _spec: &ProviderSpec,
+        input: &PreconditionCheckInput,
+    ) -> Result<ProviderObservation, PreconditionError> {
+        Err(PreconditionError::Provider {
+            precondition_id: input.precondition_id.clone(),
+            detail:
+                "no provider transport under `portable` (the slice evaluates local checks only)"
+                    .to_string(),
+        })
+    }
+}
+
 /// Production client over `reqwest` (rustls, redirects disabled).
+#[cfg(not(feature = "portable"))]
 #[derive(Debug, Default, Clone, Copy)]
 pub struct HttpProviderClient;
 
+#[cfg(not(feature = "portable"))]
 impl HttpProviderClient {
     /// Redaction-safe endpoint reference for the signed record: the scheme and
     /// host stay (operability), the rest is replaced by a one-way hash of the
@@ -83,11 +112,13 @@ impl HttpProviderClient {
     }
 }
 
+#[cfg(not(feature = "portable"))]
 fn base64url(bytes: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
+#[cfg(not(feature = "portable"))]
 #[async_trait]
 impl ProviderClient for HttpProviderClient {
     async fn determine(

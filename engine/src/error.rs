@@ -24,23 +24,37 @@
 use thiserror::Error;
 
 use crate::audit::domain::AuditError;
+#[cfg(not(feature = "portable"))]
 use crate::budget_tracking::domain::LlmBudgetError;
+#[cfg(not(feature = "portable"))]
 use crate::cancellation::domain::CancellationError;
 use crate::configuration::domain::ConfigurationError;
+#[cfg(not(feature = "portable"))]
 use crate::dag_engine::domain::DagError;
 use crate::enforcement::domain::EnforcementError;
+#[cfg(not(feature = "portable"))]
 use crate::event_system::domain::EventSystemError;
+#[cfg(not(feature = "portable"))]
 use crate::execution_engine::domain::ExecutionError;
 use crate::failure_classification::domain::FailureClassificationError;
 use crate::identity::domain::IdentityError;
+#[cfg(not(feature = "portable"))]
 use crate::llm_step::domain::LlmStepError;
+#[cfg(not(feature = "portable"))]
 use crate::orchestrator::domain::OrchestratorError;
+#[cfg(not(feature = "portable"))]
 use crate::planning::domain::PlanningError;
+#[cfg(not(feature = "portable"))]
 use crate::quality_gates::domain::QualityGateError;
+#[cfg(not(feature = "portable"))]
 use crate::recovery_recipes::domain::RecoveryError;
+#[cfg(not(feature = "portable"))]
 use crate::repo_engine::domain::RepoEngineError;
+#[cfg(not(feature = "portable"))]
 use crate::state_persistence::domain::StateError;
+#[cfg(not(feature = "portable"))]
 use crate::templates::domain::TemplateError;
+#[cfg(not(feature = "portable"))]
 use crate::tools::domain::ToolError;
 
 /// Root error type for the Rigorix orchestrator.
@@ -56,11 +70,13 @@ pub enum CoreOrchestratorError {
     // ------------------------------------------------------------------ /
     /// DAG engine error — graph construction, validation, lifecycle.
     #[error("DAG error: {0}")]
+    #[cfg(not(feature = "portable"))]
     Dag(#[from] DagError),
 
     /// Planning pipeline error — template matching, classification,
     /// parameter extraction, validation.
     #[error("Planning error: {0}")]
+    #[cfg(not(feature = "portable"))]
     Planning(#[from] PlanningError),
 
     /// Enforcement error — policy violations, budget limits,
@@ -70,19 +86,23 @@ pub enum CoreOrchestratorError {
 
     /// Budget tracking error — LLM call/token budget exceeded.
     #[error("Budget error: {0}")]
+    #[cfg(not(feature = "portable"))]
     Budget(#[from] LlmBudgetError),
 
     /// Execution error — task failures, timeouts, fallback handling.
     #[error("Execution error: {0}")]
+    #[cfg(not(feature = "portable"))]
     Execution(#[from] ExecutionError),
 
     /// Tool error — tool execution failures, path denials,
     /// validation errors.
     #[error("Tool error: {0}")]
+    #[cfg(not(feature = "portable"))]
     Tool(#[from] ToolError),
 
     /// Repo engine (symbol graph) error — indexing, lookup, parsing.
     #[error("Symbol graph error: {0}")]
+    #[cfg(not(feature = "portable"))]
     SymbolGraph(#[from] RepoEngineError),
 
     /// Configuration error — file not found, parse errors,
@@ -93,10 +113,12 @@ pub enum CoreOrchestratorError {
     /// Cancellation error — task not found, already cancelled,
     /// shutdown timeout.
     #[error("Cancellation error: {0}")]
+    #[cfg(not(feature = "portable"))]
     Cancellation(#[from] CancellationError),
 
     /// Event system error — publish, subscribe, drain failures.
     #[error("Event system error: {0}")]
+    #[cfg(not(feature = "portable"))]
     EventSystem(#[from] EventSystemError),
 
     /// Audit error — send failures, serialisation, queue full.
@@ -105,27 +127,33 @@ pub enum CoreOrchestratorError {
 
     /// LLM step error — LLM generation, context building, retries.
     #[error("LLM step error: {0}")]
+    #[cfg(not(feature = "portable"))]
     LlmStep(#[from] LlmStepError),
 
     /// State persistence error — save/load failures, corruption,
     /// lock errors.
     #[error("State error: {0}")]
+    #[cfg(not(feature = "portable"))]
     State(#[from] StateError),
 
     /// Template error — parse, validation, generation failures.
     #[error("Template error: {0}")]
+    #[cfg(not(feature = "portable"))]
     Template(#[from] TemplateError),
 
     /// Orchestrator error — lifecycle failures, sub-service wiring.
     #[error("Orchestrator error: {0}")]
+    #[cfg(not(feature = "portable"))]
     Orchestrator(#[from] OrchestratorError),
 
     /// Recovery recipes error — no recipe, max attempts, step failures.
     #[error("Recovery error: {0}")]
+    #[cfg(not(feature = "portable"))]
     Recovery(#[from] RecoveryError),
 
     /// Quality gates error — scope classification, contract evaluation.
     #[error("Quality gate error: {0}")]
+    #[cfg(not(feature = "portable"))]
     QualityGate(#[from] QualityGateError),
 
     /// Failure classification error — classification failures,
@@ -188,22 +216,36 @@ impl CoreOrchestratorError {
             CoreOrchestratorError::Http { status, .. } if *status >= 500 => true,
             CoreOrchestratorError::Http { .. } => false,
             // Delegate to domain-specific retriable logic
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Dag(e) => e.is_retriable(),
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Planning(e) => e.is_retriable(),
             CoreOrchestratorError::Enforcement(e) => e.is_retriable(),
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Budget(e) => e.is_retriable(),
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Execution(e) => e.is_retriable(),
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Tool(e) => e.is_retriable(),
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::SymbolGraph(e) => e.is_retriable(),
             CoreOrchestratorError::Configuration(e) => e.is_retriable(),
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Cancellation(e) => e.is_retriable(),
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::EventSystem(e) => e.is_retriable(),
             CoreOrchestratorError::Audit(e) => e.is_retriable(),
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::State(e) => e.is_retriable(),
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Template(e) => e.is_retriable(),
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Orchestrator(e) => e.is_retriable(),
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::LlmStep(e) => e.is_retriable(),
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Recovery(e) => e.is_retriable(),
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::QualityGate(e) => e.is_retriable(),
             CoreOrchestratorError::FailureClassification(e) => e.is_retriable(),
             // Identity errors are never retriable in the retry sense —
@@ -219,22 +261,36 @@ impl CoreOrchestratorError {
     /// Get a machine-readable error code for this error.
     pub fn error_code(&self) -> &'static str {
         match self {
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Dag(_) => "DAG_ERROR",
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Planning(_) => "PLANNING_ERROR",
             CoreOrchestratorError::Enforcement(_) => "ENFORCEMENT_ERROR",
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Budget(_) => "BUDGET_ERROR",
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Execution(_) => "EXECUTION_ERROR",
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Tool(_) => "TOOL_ERROR",
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::SymbolGraph(_) => "SYMBOL_GRAPH_ERROR",
             CoreOrchestratorError::Configuration(_) => "CONFIGURATION_ERROR",
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Cancellation(_) => "CANCELLATION_ERROR",
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::EventSystem(_) => "EVENT_SYSTEM_ERROR",
             CoreOrchestratorError::Audit(_) => "AUDIT_ERROR",
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::State(_) => "STATE_ERROR",
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Template(_) => "TEMPLATE_ERROR",
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Orchestrator(_) => "ORCHESTRATOR_ERROR",
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::LlmStep(_) => "LLM_STEP_ERROR",
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Recovery(_) => "RECOVERY_ERROR",
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::QualityGate(_) => "QUALITY_GATE_ERROR",
             CoreOrchestratorError::FailureClassification(_) => "FAILURE_CLASSIFICATION_ERROR",
             CoreOrchestratorError::Identity(_) => "IDENTITY_ERROR",
@@ -248,22 +304,36 @@ impl CoreOrchestratorError {
     /// Get the HTTP status code that best represents this error.
     pub fn http_status(&self) -> u16 {
         match self {
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Dag(_) => 500,
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Planning(_) => 400,
             CoreOrchestratorError::Enforcement(_) => 429,
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Budget(_) => 429,
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Execution(_) => 500,
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Tool(_) => 500,
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::SymbolGraph(_) => 500,
             CoreOrchestratorError::Configuration(_) => 500,
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Cancellation(_) => 400,
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::EventSystem(_) => 500,
             CoreOrchestratorError::Audit(_) => 500,
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::State(_) => 500,
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Template(_) => 400,
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Orchestrator(_) => 500,
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::LlmStep(_) => 500,
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::Recovery(_) => 500,
+            #[cfg(not(feature = "portable"))]
             CoreOrchestratorError::QualityGate(_) => 500,
             CoreOrchestratorError::FailureClassification(_) => 500,
             CoreOrchestratorError::Identity(_) => 400, // invalid/missing claims, expired

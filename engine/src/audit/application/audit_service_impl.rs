@@ -13,9 +13,12 @@ use std::sync::Arc;
 
 use crate::audit::domain::{AuditError, HistoryPolicy};
 
+#[cfg(not(feature = "portable"))]
 use super::audit_queue_impl::AuditQueueImpl;
+#[cfg(not(feature = "portable"))]
 use super::audit_sender_impl::AuditSenderImpl;
 use super::dto::{BuildEnvelopeInput, BuildEnvelopeOutput, DeliverEnvelopeInput, EnqueueInput};
+#[cfg(not(feature = "portable"))]
 use super::envelope_factory_impl::AuditEnvelopeFactoryImpl;
 use super::factory::AuditEnvelopeFactory;
 use super::service::RetryPendingOutput;
@@ -161,6 +164,7 @@ impl AuditServiceImpl {
     /// Create a default audit service with in-memory queue and no sender.
     ///
     /// Useful for testing.
+    #[cfg(not(feature = "portable"))]
     pub fn default_test() -> Self {
         Self::new(
             Box::new(AuditEnvelopeFactoryImpl::default()),
@@ -380,6 +384,7 @@ mod tests {
             metadata: None,
             scoring_results: std::collections::HashMap::new(),
             sign: false,
+            pinned_timestamp: None,
             repository: None,
             author: None,
             identity: None,

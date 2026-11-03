@@ -54,6 +54,7 @@ fn input(node: &str) -> BuildEnvelopeInput {
         metadata: None,
         scoring_results: std::collections::HashMap::new(),
         sign: true,
+        pinned_timestamp: None,
     }
 }
 
