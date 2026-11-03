@@ -57,9 +57,12 @@ impl GateEvaluator for FixedGate {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let vector = std::env::args()
-        .nth(1)
-        .expect("usage: determinism_probe <vector.json>");
+    // No `expect`: the panic-site guard is right that a production target should not abort on
+    // a usage mistake, and this probe is compiled as part of the crate. `main` returning an
+    // error prints it and exits non-zero, which is the same outcome without a panic.
+    let Some(vector) = std::env::args().nth(1) else {
+        return Err("usage: determinism_probe <vector.json>".into());
+    };
     let raw = std::fs::read_to_string(&vector)?;
     let vector: rigorix_gate_wasm::application::ConformanceVector = serde_json::from_str(&raw)?;
 
