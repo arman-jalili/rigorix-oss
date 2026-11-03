@@ -32,6 +32,7 @@
 
 pub mod dto;
 pub mod errors;
+pub mod registry;
 pub mod wasm_api;
 
 pub use dtos::*;

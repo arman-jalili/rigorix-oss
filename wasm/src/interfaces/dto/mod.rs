@@ -21,6 +21,6 @@ mod refusal;
 
 pub use artifact_set::ArtifactSetDto;
 pub use attempt::{GatedActionDto, SessionHandleDto};
-pub use open_session::OpenSessionDto;
+pub use open_session::{ClockReadingDto, OpenSessionDto, SeedDto};
 pub use outcome::{EvidenceRefDto, RunOutcomeDto, StepOutcomeDto};
 pub use refusal::RefusalDto;
