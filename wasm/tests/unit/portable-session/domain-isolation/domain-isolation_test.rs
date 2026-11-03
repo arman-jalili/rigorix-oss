@@ -86,3 +86,59 @@ fn the_domain_owns_its_ports_and_repository() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// The CI gate and the test must not drift (issue #1311)
+// ---------------------------------------------------------------------------
+
+fn gate_script() -> String {
+    std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ci/check-domain-isolation.sh"),
+    )
+    .expect("domain isolation gate exists")
+}
+
+#[test]
+fn the_ci_gate_bans_every_symbol_the_test_bans() {
+    // Two checks that drift apart are worse than one: the script is what CI runs, the test
+    // is what a contributor sees locally.
+    let script = gate_script();
+    for banned in FORBIDDEN {
+        assert!(
+            script.contains(banned),
+            "the CI gate does not ban {banned}, which the test bans"
+        );
+    }
+    for outward in [
+        "crate::infrastructure",
+        "crate::interfaces",
+        "crate::application",
+    ] {
+        assert!(
+            script.contains(outward),
+            "the CI gate does not forbid {outward} from domain/"
+        );
+    }
+}
+
+#[test]
+fn the_ci_gate_fails_closed_and_skips_comments() {
+    let script = gate_script();
+    // A gate that passes when it could not look is not a gate.
+    assert!(script.contains("the gate cannot look"));
+    assert!(script.contains("exit 1"));
+    // And documentation may still name the forbidden things — that is how the rule is
+    // explained, so comment lines are stripped rather than the docs being made vague.
+    assert!(script.contains("strip_comments"));
+}
+
+#[test]
+fn the_gate_covers_more_capabilities_than_the_rust_test() {
+    // The script is the stricter of the two: it also forbids the process environment, the
+    // network and an async runtime, which a source scan in Rust would otherwise have to
+    // duplicate.
+    let script = gate_script();
+    for extra in ["std::process", "std::net", "tokio", "OsRng", "getrandom"] {
+        assert!(script.contains(extra), "the CI gate misses {extra}");
+    }
+}
