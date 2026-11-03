@@ -3,34 +3,60 @@
 //! @canonical .pi/architecture/decisions/ADR-004-api-design.md
 //! @canonical .pi/architecture/decisions/ADR-013-who-verifies.md
 //! @canonical .pi/architecture/decisions/ADR-012-failure-semantics-on-wasm32.md
-//! Implements: Contract Freeze — the four exports, ContractVersion
-//! Issue: #1294 (contract freeze)
+//! Implements: `WasmContract` (AC 15, 16)
+//! Issue: #1309 (WasmContract)
 //!
 //! ```text
 //! open_session(scenario, fixtures, clock, seed) -> handle
 //! attempt_run(handle, action)                   -> run_outcome
 //! export_artifact_set(handle)                   -> artifact_set
-//! contract_version()                            -> { format, engine }
+//! contract_version()                            -> { contract, engine, artifact_format }
 //! ```
 //!
-//! # Contract (Frozen)
-//! - JSON strings in, JSON strings out. The `#[wasm_bindgen]` attribute layer is applied
-//!   by the interface implementation issue; the **signatures** are frozen here
-//! - Every DTO rejects unknown fields (`deny_unknown_fields`), so a typo is a refusal,
-//!   not a silently ignored field (criterion 15)
-//! - A refusal is `Ok(refusal_json)` — an outcome, not an error. Only a malformed
-//!   handle is a `JsValue` error, because that is a programmer mistake in the host
-//!   (criterion 16)
-//! - No panic may cross this line (ADR-012 tier 2/3): a panic fails the build, a trap is
-//!   the host's to surface as *fatal*, never as an allow
+//! # Contract
+//! - JSON strings in, JSON strings out. The `#[wasm_bindgen]` attribute layer is applied by
+//!   the packaging issue; these signatures are the contract
+//! - Every DTO rejects unknown fields (`deny_unknown_fields`), so a typo is a refusal, not
+//!   a silently ignored field (criterion 15)
+//! - A refusal or a gate failure is `Ok(json)`. The **only** `Err` is a malformed handle,
+//!   because that is a programmer mistake, not a gate decision (criterion 16)
+//! - No panic may cross this line (ADR-012): every fallible step is mapped, and `?` is used
+//!   only on `Result<_, String>` that the caller receives
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+
+use crate::application::{
+    ArtifactQuery, AttemptRun, AttemptRunService, ExportArtifactSet, ExportArtifactSetService,
+    OpenReplaySession, OpenReplaySessionService, OpenSessionInput, ReplaySessionQuery,
+};
+use crate::domain::artifact::ArtifactSet;
+use crate::domain::ports::Ports;
+use crate::domain::services::{
+    ArtifactContentPolicy, ArtifactStamp, BusinessWording, EngineArtifactStamp,
+    EngineFindingsProjection, RefusalVocabulary,
+};
+use crate::domain::value::{
+    ClockReading, ClockTrack, Draw, FixtureWorld, GatedAction, Params, RandomSeed, ScenarioRef,
+    Timestamp,
+};
+use crate::infrastructure::{
+    FixtureClock, FixtureProviderTransport, FixtureRandomness, MemoryBusinessSink,
+    ScanningContentPolicy, SeededIdSource, SeededKeySource,
+};
+use crate::interfaces::dto::{
+    ArtifactSetDto, ClockReadingDto, EvidenceRefDto, GatedActionDto, RunOutcomeDto, SeedDto,
+    SessionHandleDto, StepOutcomeDto,
+};
+use crate::interfaces::errors::{
+    project_attempt, project_handle, project_request, project_seal, project_session_open,
+};
+use crate::interfaces::registry::{self, SessionSlot};
 
 /// The frozen list of exported function names.
 ///
-/// # Contract (Frozen)
-/// - Exactly four. A fifth requires an ADR: the fifth was verification, and ADR-013
-///   removed it deliberately
+/// # Contract
+/// - Exactly four. A fifth requires an ADR: the fifth was verification, and ADR-013 removed
+///   it deliberately
 pub const CONTRACT_FUNCTIONS: [&str; 4] = [
     "open_session",
     "attempt_run",
@@ -39,11 +65,7 @@ pub const CONTRACT_FUNCTIONS: [&str; 4] = [
 ];
 
 /// The version triple a host checks before it trusts the shape of the JSON.
-///
-/// # Contract (Frozen)
-/// - Three numbers, deliberately distinct: package version (release train),
-///   contract version (this surface), artifact format version (the bytes)
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContractVersion {
     /// Semver of this host contract.
@@ -54,53 +76,300 @@ pub struct ContractVersion {
     pub artifact_format: u32,
 }
 
+/// Serialise a value for the host. Encoding our own types cannot fail short of a bug, and
+/// a bug must not cross the boundary as a panic (ADR-012), so it becomes a refusal string.
+fn render<T: Serialize>(value: &T) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| {
+        r#"{"kind":"request_invalid","message":"the response could not be encoded"}"#.to_string()
+    })
+}
+
 /// Assemble a replayable session.
 ///
-/// TODO(#1300): parse DTOs, call `OpenReplaySession`, render a handle.
-///
-/// # Contract (Frozen)
+/// # Contract
 /// - Four JSON inputs, all required: scenario, fixtures, clock, seed
-/// - Returns a JSON handle (opaque to the host) or a JSON refusal
+/// - Returns a handle, or a refusal when the input cannot be pinned
 pub fn open_session(
     scenario_json: String,
     fixtures_json: String,
     clock_json: String,
     seed_json: String,
 ) -> Result<String, String> {
-    let _ = (scenario_json, fixtures_json, clock_json, seed_json);
-    todo!("contract freeze: open_session lands with #1300")
+    let scenario: serde_json::Value = match serde_json::from_str(&scenario_json) {
+        Ok(value) => value,
+        Err(_) => return Ok(render(&project_request("scenario"))),
+    };
+    let scenario = match ScenarioRef::identify(&scenario) {
+        Ok(reference) => reference,
+        Err(_) => {
+            return Ok(render(&project_session_open(
+                &crate::domain::errors::SessionOpenError::ScenarioUnparseable,
+            )));
+        }
+    };
+
+    let fixtures: serde_json::Value = match serde_json::from_str(&fixtures_json) {
+        Ok(value) => value,
+        Err(_) => return Ok(render(&project_request("fixtures"))),
+    };
+    let fixtures = match FixtureWorld::identify(fixtures) {
+        Ok(world) => world,
+        Err(_) => {
+            return Ok(render(&project_session_open(
+                &crate::domain::errors::SessionOpenError::FixtureUnparseable,
+            )));
+        }
+    };
+
+    let clock: Vec<ClockReadingDto> = match serde_json::from_str(&clock_json) {
+        Ok(value) => value,
+        Err(_) => return Ok(render(&project_request("clock"))),
+    };
+    let seed: SeedDto = match serde_json::from_str(&seed_json) {
+        Ok(value) => value,
+        Err(_) => return Ok(render(&project_request("seed"))),
+    };
+
+    let clock = ClockTrack::new(
+        clock
+            .into_iter()
+            .map(|reading| ClockReading {
+                instant: Timestamp::from_trusted(reading.instant),
+                index: reading.index,
+            })
+            .collect(),
+    );
+
+    let seed_digest = match crate::domain::value::Digest::parse(seed.seed_digest) {
+        Ok(digest) => digest,
+        Err(_) => return Ok(render(&project_request("seed.seed_digest"))),
+    };
+    let seed = RandomSeed::new(
+        seed_digest,
+        seed.draws.into_iter().map(Draw::from_trusted).collect(),
+    );
+
+    let opener = OpenReplaySessionService::new();
+    let session = match opener.execute(OpenSessionInput {
+        scenario,
+        fixtures,
+        clock,
+        seed,
+    }) {
+        Ok(session) => session,
+        Err(error) => return Ok(render(&project_session_open(&error))),
+    };
+
+    let handle = registry::insert(SessionSlot {
+        session,
+        // The engine seam, plugged in by the packaging issue (FR-011). Until then it
+        // refuses — never allows — and says so.
+        gate: Box::new(crate::infrastructure::SeamGate::not_linked()),
+    });
+
+    Ok(render(&SessionHandleDto { handle }))
 }
 
 /// Drive the session's one attempt.
 ///
-/// TODO(#1300): parse handle + action, call `AttemptRun`, render the outcome.
-///
-/// # Contract (Frozen)
+/// # Contract
 /// - Returns `{ status, steps[], evidence[] }`; `steps` preserves engine order
 /// - A refusal is a normal return value
 pub fn attempt_run(handle_json: String, action_json: String) -> Result<String, String> {
-    let _ = (handle_json, action_json);
-    todo!("contract freeze: attempt_run lands with #1300")
+    let handle: SessionHandleDto = match serde_json::from_str(&handle_json) {
+        Ok(value) => value,
+        Err(_) => return Ok(render(&project_request("handle"))),
+    };
+    let action: GatedActionDto = match serde_json::from_str(&action_json) {
+        Ok(value) => value,
+        Err(_) => return Ok(render(&project_request("action"))),
+    };
+
+    let action = GatedAction::new(action.name, Params(action.params));
+    let wording = BusinessWording::new();
+    let projection = EngineFindingsProjection::new(wording);
+
+    registry::with(&handle.handle, |slot| {
+        // The ports are rebuilt per attempt from the session's pinned transcript: a port
+        // that kept state across attempts would make the second attempt differ.
+        let mut clock = FixtureClock::new(slot.session.inputs().clock.clone());
+        let mut ids = ids_from_transcript(slot.session.fixtures().transcript.0.clone());
+        let mut random = FixtureRandomness::new(slot.session.inputs().seed.clone());
+        let key = SeededKeySource::new(crate::domain::value::KeyRef::from_trusted("demo:key"));
+        let mut provider =
+            FixtureProviderTransport::new(slot.session.fixtures().transcript.0.clone());
+        let mut sink = MemoryBusinessSink::new();
+
+        let ports = Ports {
+            clock: &mut clock,
+            ids: &mut ids,
+            randomness: &mut random,
+            key_source: &key,
+            provider: &mut provider,
+            sink: &mut sink,
+        };
+
+        let runner = AttemptRunService::new(projection);
+        match runner.execute(&mut slot.session, action, ports, slot.gate.as_mut()) {
+            Ok(outcome) => render(&RunOutcomeDto::from(&outcome)),
+            Err(error) => render(&project_attempt(&error)),
+        }
+    })
+    .map_err(|error| render(&project_handle(&error)))
 }
 
 /// Seal and export the artifact set.
 ///
-/// TODO(#1300): call `ExportArtifactSet`, render the sealed bytes + stamp.
-///
-/// # Contract (Frozen)
+/// # Contract
 /// - Returns the stamped container; the host verifies it with `rigorix-verifier`
 /// - A content-rule violation is a refusal, and the bytes do not leave
 pub fn export_artifact_set(handle_json: String) -> Result<String, String> {
-    let _ = handle_json;
-    todo!("contract freeze: export_artifact_set lands with #1300")
+    let handle: SessionHandleDto = match serde_json::from_str(&handle_json) {
+        Ok(value) => value,
+        Err(_) => return Ok(render(&project_request("handle"))),
+    };
+
+    registry::with(&handle.handle, |slot| {
+        let stamp = EngineArtifactStamp::new();
+        let policy = ScanningContentPolicy::new();
+        let exporter = ExportArtifactSetService::new(stamp, policy);
+        // Stamps are `dyn`-safe but the service wants sized types; the concrete ones here
+        // are unit structs, so this borrows nothing from the host.
+        let _: Option<&dyn ArtifactStamp> = Some(&stamp);
+        let _: Option<&dyn ArtifactContentPolicy> = Some(&policy);
+        match exporter.execute(&mut slot.session) {
+            Ok(artifact) => render(&ArtifactSetDto::from(&artifact)),
+            Err(error) => render(&project_seal(&error)),
+        }
+    })
+    .map_err(|error| render(&project_handle(&error)))
 }
 
 /// Report the three version numbers.
 pub fn contract_version() -> String {
-    let _version = ContractVersion {
+    render(&ContractVersion {
         contract: env!("CARGO_PKG_VERSION").to_string(),
-        engine: env!("CARGO_PKG_VERSION").to_string(),
-        artifact_format: crate::domain::artifact::ArtifactSet::FORMAT_VERSION,
-    };
-    todo!("contract freeze: contract_version lands with #1300")
+        engine: EngineArtifactStamp::engine_version().to_string(),
+        artifact_format: ArtifactSet::FORMAT_VERSION,
+    })
 }
+
+// --- projections to the wire ------------------------------------------------
+
+impl From<&crate::domain::outcome::RunOutcome> for RunOutcomeDto {
+    fn from(outcome: &crate::domain::outcome::RunOutcome) -> Self {
+        Self {
+            status: match outcome.status {
+                crate::domain::outcome::OutcomeStatus::Allowed => "allowed",
+                crate::domain::outcome::OutcomeStatus::Refused => "refused",
+            }
+            .to_string(),
+            steps: outcome.steps.iter().map(StepOutcomeDto::from).collect(),
+            evidence: outcome.evidence.iter().map(EvidenceRefDto::from).collect(),
+        }
+    }
+}
+
+impl From<&crate::domain::outcome::StepOutcome> for StepOutcomeDto {
+    fn from(step: &crate::domain::outcome::StepOutcome) -> Self {
+        Self {
+            gate_id: step.gate_id.clone(),
+            decision: match step.decision {
+                crate::domain::outcome::StepDecision::Allowed => "allowed",
+                crate::domain::outcome::StepDecision::Refused => "refused",
+                crate::domain::outcome::StepDecision::NotReached => "not_reached",
+            }
+            .to_string(),
+            kind: step.kind.map(|kind| format!("{kind:?}").to_lowercase()),
+            reason: step.reason.clone(),
+            evidence: step.evidence.as_ref().map(EvidenceRefDto::from),
+        }
+    }
+}
+
+impl From<&crate::domain::outcome::EvidenceRef> for EvidenceRefDto {
+    fn from(evidence: &crate::domain::outcome::EvidenceRef) -> Self {
+        Self {
+            digest: evidence.digest.as_str().to_string(),
+            kind: match evidence.kind {
+                crate::domain::outcome::EvidenceKind::Precondition => "precondition",
+                crate::domain::outcome::EvidenceKind::SequencePolicy => "sequence_policy",
+                crate::domain::outcome::EvidenceKind::Requirement => "requirement",
+                crate::domain::outcome::EvidenceKind::Approval => "approval",
+                crate::domain::outcome::EvidenceKind::Identity => "identity",
+                crate::domain::outcome::EvidenceKind::PortFailure => "port_failure",
+            }
+            .to_string(),
+        }
+    }
+}
+
+impl From<&ArtifactSet> for ArtifactSetDto {
+    fn from(artifact: &ArtifactSet) -> Self {
+        Self {
+            artifact_format_version: artifact.stamp.artifact_format_version,
+            engine_version: artifact.stamp.engine_version.clone(),
+            scenario_digest: artifact.stamp.scenario_digest.as_str().to_string(),
+            fixture_digest: artifact.fixture_digest.as_str().to_string(),
+            session_id: artifact.session_id.as_str().to_string(),
+            key_ref: artifact.key_ref.as_str().to_string(),
+            envelopes: artifact
+                .envelopes
+                .iter()
+                .map(|envelope| String::from_utf8_lossy(&envelope.0).into_owned())
+                .collect(),
+            evidence: artifact.evidence.iter().map(EvidenceRefDto::from).collect(),
+            outcome_digest: artifact.outcome_digest.as_str().to_string(),
+        }
+    }
+}
+
+/// Build the id sequences from the fixture transcript.
+///
+/// The transcript supplies them as data:
+/// `{ "ids": { "attempt": ["a-0"], "step": ["s-0"], "envelope": ["e-0"] } }`. A transcript
+/// with no `ids` yields empty sequences, so a missing sequence is `PortFailure::Missing` at
+/// the moment it is needed — refused, never fabricated (invariant 5).
+fn ids_from_transcript(transcript: serde_json::Value) -> SeededIdSource {
+    use crate::domain::ports::IdKind;
+    use std::collections::HashMap;
+
+    let mut sequences: HashMap<IdKind, Vec<String>> = HashMap::new();
+    let Some(ids) = transcript.get("ids").and_then(|value| value.as_object()) else {
+        return SeededIdSource::new(sequences);
+    };
+
+    for (key, kind) in [
+        ("attempt", IdKind::Attempt),
+        ("step", IdKind::Step),
+        ("envelope", IdKind::Envelope),
+    ] {
+        if let Some(values) = ids.get(key).and_then(|value| value.as_array()) {
+            sequences.insert(
+                kind,
+                values
+                    .iter()
+                    .filter_map(|value| value.as_str().map(str::to_string))
+                    .collect(),
+            );
+        }
+    }
+    SeededIdSource::new(sequences)
+}
+
+/// The read helper, exposed for the host's polling UI.
+pub fn artifact_query() -> &'static dyn ArtifactQuery {
+    &ReplaySessionQueryHolder::QUERY
+}
+
+/// Keeps a `'static` query value without a `static mut`.
+struct ReplaySessionQueryHolder;
+
+impl ReplaySessionQueryHolder {
+    const QUERY: ReplaySessionQuery = ReplaySessionQuery::new();
+}
+
+/// Silence the unused-import lint for the vocabulary trait: it is used through the
+/// projection type, and naming it here documents why the import exists.
+const _: fn(&BusinessWording, crate::domain::outcome::RefusalKind) -> &'static str =
+    RefusalVocabulary::reason;

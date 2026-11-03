@@ -72,7 +72,8 @@
 //!
 //! Every public item in `domain/` and `application/` is a **frozen contract**.
 //! Implementation issues satisfy these signatures; they do not edit them.
-//! Behaviour lives in `todo!()` bodies until its implementation issue lands.
+//! The gate path carries no `todo!()`: a stub that panics would trap the module
+//! (ADR-012 tier 3), so unimplemented behaviour refuses instead.
 
 pub mod application;
 pub mod domain;

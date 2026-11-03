@@ -101,3 +101,130 @@ fn outcome_status_is_two_valued_on_the_wire() {
         assert!(json.get(key).is_none(), "ArtifactSetDto exposes {key}");
     }
 }
+
+// ---------------------------------------------------------------------------
+// The four functions, end to end (issue #1309)
+// ---------------------------------------------------------------------------
+
+fn scenario() -> String {
+    serde_json::json!({ "format_version": 1, "steps": [] }).to_string()
+}
+fn fixtures() -> String {
+    serde_json::json!({
+        "approvals": [],
+        "providers": {},
+        // The transcript supplies the id sequence as data (invariant 5: never minted).
+        "ids": { "attempt": ["attempt-0"], "step": ["step-0", "step-1"], "envelope": ["env-0"] }
+    })
+    .to_string()
+}
+fn clock() -> String {
+    serde_json::json!([{ "instant": "2026-11-03T09:00:00Z", "index": 0 }]).to_string()
+}
+fn seed() -> String {
+    format!(
+        r#"{{"seed_digest":"sha256:{}","draws":["00"]}}"#,
+        "d".repeat(64)
+    )
+}
+
+fn open() -> String {
+    rigorix_gate_wasm::interfaces::open_session(scenario(), fixtures(), clock(), seed())
+        .expect("open never errors")
+}
+
+#[test]
+fn open_session_returns_an_opaque_handle() {
+    let handle: serde_json::Value = serde_json::from_str(&open()).expect("json");
+    let handle = handle["handle"].as_str().expect("handle field");
+    assert!(handle.starts_with("gate:sha256:"));
+    // Opening twice from the same inputs yields the same handle: the identity is derived,
+    // not minted.
+    let again: serde_json::Value = serde_json::from_str(&open()).expect("json");
+    assert_eq!(again["handle"].as_str().expect("handle"), handle);
+}
+
+#[test]
+fn a_refusal_is_a_return_value_and_the_only_error_is_a_bad_handle() {
+    let handle = open();
+
+    // The gate is not linked in this build, so the run refuses — as a return value.
+    let outcome = rigorix_gate_wasm::interfaces::attempt_run(
+        handle.clone(),
+        serde_json::json!({ "name": "payment_execute", "params": {} }).to_string(),
+    )
+    .expect("a refusal must not be an error");
+    let outcome: serde_json::Value = serde_json::from_str(&outcome).expect("json");
+    assert_eq!(outcome["kind"], "gate_unavailable");
+
+    // A malformed handle is the programmer error, and it is an `Err`.
+    assert!(
+        rigorix_gate_wasm::interfaces::attempt_run(
+            serde_json::json!({ "handle": "not-a-handle" }).to_string(),
+            serde_json::json!({ "name": "x", "params": {} }).to_string(),
+        )
+        .is_err()
+    );
+
+    // An unknown but well-formed handle is also an error, not a refusal.
+    assert!(
+        rigorix_gate_wasm::interfaces::attempt_run(
+            format!(r#"{{"handle":"gate:sha256:{}"}}"#, "0".repeat(64)),
+            serde_json::json!({ "name": "x", "params": {} }).to_string(),
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn unknown_dto_fields_are_refusals_not_ignored() {
+    // `allow: true` must not be silently dropped: it is a refusal saying the request could
+    // not be read (criterion 15).
+    let handle = open();
+    let denied = rigorix_gate_wasm::interfaces::attempt_run(
+        handle,
+        serde_json::json!({ "name": "x", "params": {}, "allow": true }).to_string(),
+    )
+    .expect("returns");
+    let denied: serde_json::Value = serde_json::from_str(&denied).expect("json");
+    assert_eq!(denied["kind"], "request_invalid");
+}
+
+#[test]
+fn open_session_refuses_unpinnable_input() {
+    // An empty clock series cannot be defaulted.
+    let refused = rigorix_gate_wasm::interfaces::open_session(
+        scenario(),
+        fixtures(),
+        "[]".to_string(),
+        seed(),
+    )
+    .expect("returns");
+    let refused: serde_json::Value = serde_json::from_str(&refused).expect("json");
+    assert_eq!(refused["kind"], "session_open_failed");
+
+    // A scenario with no declared version is refused before anything runs.
+    let refused = rigorix_gate_wasm::interfaces::open_session(
+        serde_json::json!({ "steps": [] }).to_string(),
+        fixtures(),
+        clock(),
+        seed(),
+    )
+    .expect("returns");
+    let refused: serde_json::Value = serde_json::from_str(&refused).expect("json");
+    assert_eq!(refused["kind"], "session_open_failed");
+}
+
+#[test]
+fn export_before_an_attempt_is_a_refusal_and_contract_version_reports_three_numbers() {
+    let handle = open();
+    let refused = rigorix_gate_wasm::interfaces::export_artifact_set(handle).expect("returns");
+    let refused: serde_json::Value = serde_json::from_str(&refused).expect("json");
+    assert_eq!(refused["kind"], "seal_failed");
+
+    let version: serde_json::Value =
+        serde_json::from_str(&rigorix_gate_wasm::interfaces::contract_version()).expect("json");
+    assert_eq!(version["artifact_format"], 1);
+    assert_eq!(version["contract"], version["engine"]);
+    assert!(version.get("verified").is_none());
+}

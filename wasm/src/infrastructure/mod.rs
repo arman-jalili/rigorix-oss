@@ -20,6 +20,7 @@ pub mod adapters;
 pub mod canonical_serializer;
 pub mod content_policy;
 pub mod repository;
+pub mod seam_gate;
 
 pub use adapters::{
     FixtureClock, FixtureProviderTransport, FixtureRandomness, MemoryBusinessSink, SeededIdSource,
@@ -28,3 +29,4 @@ pub use adapters::{
 pub use canonical_serializer::CanonicalSerializer;
 pub use content_policy::ScanningContentPolicy;
 pub use repository::InMemorySessionStore;
+pub use seam_gate::SeamGate;
