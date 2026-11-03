@@ -165,3 +165,79 @@ fn an_identity_port_failure_says_it_could_not_check() {
     ));
     assert_eq!(reason, "the identity could not be checked");
 }
+
+// ---------------------------------------------------------------------------
+// Message allow-list scan (issue #1302): criteria 5 and 12
+// ---------------------------------------------------------------------------
+
+#[test]
+fn no_source_file_puts_the_forbidden_words_in_a_string_literal() {
+    // The wording test above can only check the vocabulary it can see. This scans the
+    // source: the words `unauthenticated`, `not_verified` and `unverifiable` may appear in
+    // documentation (that is how the rule is explained) but never in a string literal,
+    // because a literal is what reaches a host (criterion 5, 12; ADR-013).
+    let forbidden = ["unauthenticated", "not_verified", "unverifiable"];
+    let mut offenders = Vec::new();
+
+    for (path, body) in crate::src_files() {
+        for line in crate::code_lines(&body) {
+            let lower = line.to_lowercase();
+            if !lower.contains('"') {
+                continue;
+            }
+            for word in forbidden {
+                if lower.contains(word) {
+                    offenders.push(format!("{path}: {word} in {line}"));
+                }
+            }
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "accusatory vocabulary in a literal:\n{}",
+        offenders.join("\n")
+    );
+}
+
+#[test]
+fn every_kind_is_reachable_from_the_engine_label_mapping() {
+    use rigorix_gate_wasm::domain::engine_seam::{EngineFinding, EngineFindingOutcome};
+    use rigorix_gate_wasm::domain::outcome::{RefusalKind as Kind, StepDecision};
+    use rigorix_gate_wasm::domain::services::EvidenceProjection;
+    use rigorix_gate_wasm::domain::services::{BusinessWording, EngineFindingsProjection};
+
+    // The labels the engine may send, and the kind each must become. A label outside this
+    // table is not silently dropped: it becomes `PreconditionError`, which still refuses.
+    let table = [
+        ("precondition_failed", Kind::PreconditionFailed),
+        ("precondition_timeout", Kind::PreconditionTimeout),
+        ("requirement_unsatisfied", Kind::RequirementUnsatisfied),
+        ("companion_step_missing", Kind::CompanionStepMissing),
+        ("sequence_violation", Kind::SequenceViolation),
+        ("history_integrity_violated", Kind::HistoryIntegrityViolated),
+        ("approval_unbound", Kind::ApprovalUnbound),
+        ("approval_expired", Kind::ApprovalExpired),
+        ("identity_unverified", Kind::IdentityUnverified),
+        ("unverified", Kind::IdentityUnverified),
+        ("port_unavailable", Kind::PortUnavailable),
+    ];
+
+    let projection = EngineFindingsProjection::new(BusinessWording::new());
+    for (label, expected) in table {
+        let findings = vec![EngineFinding {
+            gate_id: format!("gate.{label}"),
+            outcome: EngineFindingOutcome::Refused,
+            refusal: Some(label.to_string()),
+            evidence: None,
+            opaque: None,
+        }];
+        let step = &projection.project(&findings)[0];
+        assert_eq!(
+            step.decision,
+            StepDecision::Refused,
+            "label {label} allowed"
+        );
+        assert_eq!(step.kind, Some(expected), "label {label} mapped wrong");
+    }
+}
