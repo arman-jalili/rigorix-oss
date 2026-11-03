@@ -93,3 +93,4 @@ mcp/.rigorix/
 # CLI runtime state + demo media
 cli/.rigorix/state/
 *.mov
+profraw  # coverage artifacts (cargo-llvm-cov)

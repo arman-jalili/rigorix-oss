@@ -12,8 +12,8 @@ set -euo pipefail
 FAIL=0
 PASS=0
 
-log_pass() { echo "  ✓ PASS: $1"; ((PASS++)); }
-log_fail() { echo "  ✗ FAIL: $1 — $2"; ((FAIL++)); }
+log_pass() { echo "  ✓ PASS: $1"; PASS=$((PASS + 1)); }
+log_fail() { echo "  ✗ FAIL: $1 — $2"; FAIL=$((FAIL + 1)); }
 
 echo "  Running static analysis..."
 
@@ -61,7 +61,7 @@ else
     if [[ -d "app/domain" ]]; then
         while IFS= read -r file; do
             if grep -qE "from.*infrastructure|from.*api|import.*infrastructure" "$file" 2>/dev/null; then
-                ((violations++))
+                violations=$((violations + 1))
                 log_fail "import boundary" "$(basename "$file") imports from infrastructure/api"
             fi
         done < <(find app/domain -name "*.py" 2>/dev/null)
@@ -93,7 +93,7 @@ if [[ -f ".env.example" && -f ".env" ]]; then
             example_val=$(grep "^${var_name}=" ".env.example" 2>/dev/null | cut -d= -f2-)
             actual_val=$(grep "^${var_name}=" ".env" 2>/dev/null | cut -d= -f2-)
             if [[ "$example_val" == "$actual_val" && -n "$example_val" ]]; then
-                ((collisions++))
+                collisions=$((collisions + 1))
                 log_fail "env collision" "${var_name} in .env matches .env.example value"
             fi
         fi

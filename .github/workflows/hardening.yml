@@ -50,6 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       crates: ${{ steps.crates.outputs.matrix }}
+      packages: ${{ steps.crates.outputs.packages }}
     steps:
       - uses: actions/checkout@v4
       - name: 🔍 Detect workspace crates
@@ -59,8 +60,17 @@ jobs:
           CRATES=$(for d in */; do
             [ -d "${d}.pi/scripts" ] && echo "${d%/}"
           done | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          # Directory -> package, resolved from the manifest (the gate crate is
+          # `rigorix-gate-wasm`, not `rigorix-wasm` — ADR-011).
+          PACKAGES=$(for d in */; do
+            [ -f "${d}Cargo.toml" ] && [ -d "${d}.pi/scripts" ] && \
+              jq -n --arg dir "${d%/}" --arg pkg "$(grep -m1 '^name =' "${d}Cargo.toml" | sed 's/name = "//;s/"//')" \
+                '{($dir): $pkg}'
+          done | jq -s 'add // {}' -c)
           echo "matrix=$CRATES" >> "$GITHUB_OUTPUT"
+          echo "packages=$PACKAGES" >> "$GITHUB_OUTPUT"
           echo "Crates: $CRATES"
+          echo "Packages: $PACKAGES"
 
   # ── Stage 1: Docs Policy ──────────────────────────────────────
   docs_policy:
@@ -126,10 +136,10 @@ jobs:
           cache-key: lint-${{ matrix.crate }}
 
       - name: Format check
-        run: cargo fmt --check -p rigorix-${{ matrix.crate }}
+        run: cargo fmt --check -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}"
 
       - name: Clippy
-        run: cargo clippy -p rigorix-${{ matrix.crate }} -- -D warnings
+        run: cargo clippy -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}" -- -D warnings
 
       - name: Lint scripts (all conventions)
         continue-on-error: true
@@ -173,7 +183,7 @@ jobs:
           cache-key: unit-${{ matrix.crate }}
 
       - name: Run unit tests
-        run: cargo test -p rigorix-${{ matrix.crate }} --lib
+        run: cargo test -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}" --lib
 
       - name: Test scripts (all conventions)
         continue-on-error: true
@@ -291,7 +301,7 @@ jobs:
           cache-key: build-${{ matrix.crate }}
 
       - name: Release build
-        run: cargo build -p rigorix-${{ matrix.crate }} --release
+        run: cargo build -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}" --release
 
       - name: Build scripts (all conventions)
         continue-on-error: true

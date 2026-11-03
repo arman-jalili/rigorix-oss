@@ -43,6 +43,7 @@ gate "bundle independence"     bash ci/check-bundle-independence.sh
 gate "bundle size"             bash ci/check-bundle-size.sh
 gate "failure tiers"           bash ci/check-failure-tiers.sh
 gate "conformance"             bash ci/run-conformance.sh
+gate "panic sites"             bash ../.pi/scripts/validate-panic-sites.sh
 gate "unit + contract tests"   cargo test --quiet
 gate "release build for wasm"  cargo build --quiet --release --target wasm32-unknown-unknown
 gate "workspace pins"          bash ../.pi/scripts/validate-workspace-pins.sh

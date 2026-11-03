@@ -226,18 +226,18 @@ where
             sink: &mut sink,
         };
 
-        let action = serde_json::from_value::<crate::interfaces::dto::GatedActionDto>(
-            vector
-                .scenario
-                .get("action")
-                .cloned()
-                .unwrap_or(serde_json::json!({
+        // The action shape is declared in this layer rather than imported from the outer
+        // one: an application-to-outer-layer import is a layering violation, and the
+        // architecture conformance gate checks for it.
+        let action: VectorAction =
+            serde_json::from_value(vector.scenario.get("action").cloned().unwrap_or(
+                serde_json::json!({
                     "name": "vector.action",
                     "params": {}
-                })),
-        )
-        .map(|action| GatedAction::new(action.name, Params(action.params)))
-        .map_err(|_| "vector action is malformed".to_string())?;
+                }),
+            ))
+            .map_err(|_| "vector action is malformed".to_string())?;
+        let action = GatedAction::new(action.name, Params(action.params));
 
         let runner = AttemptRunService::new((self.projection)());
         let mut gate = match self.gate.try_borrow_mut() {
@@ -252,6 +252,14 @@ where
             ExportArtifactSetService::new(EngineArtifactStamp::new(), ScanningContentPolicy::new());
         exporter.execute(&mut session).map_err(|e| e.to_string())
     }
+}
+
+/// The action a vector proposes, as the application layer sees it.
+#[derive(Debug, Clone, serde::Deserialize)]
+struct VectorAction {
+    name: String,
+    #[serde(default)]
+    params: serde_json::Map<String, serde_json::Value>,
 }
 
 /// The wire shapes a vector carries, mirrored from the interface layer.

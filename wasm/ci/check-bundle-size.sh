@@ -18,8 +18,20 @@ set -euo pipefail
 CRATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUDGET_FILE="$CRATE_DIR/ci/bundle-budget.txt"
 SHIPPED="$CRATE_DIR/pkg/rigorix_gate_wasm_bg.wasm"
-RAW="$CRATE_DIR/target/wasm32-unknown-unknown/release/rigorix_gate_wasm.wasm"
 cd "$CRATE_DIR"
+
+# The target directory belongs to the *workspace*, not to this crate: since the crate became
+# a member (ADR-011) cargo writes to <repo>/target. Ask cargo rather than guessing, so the
+# gate reads the same artifact the build produced — a gate pointing at a path that cannot
+# exist fails for the wrong reason, which reads like a finding.
+TARGET_DIR="$(cargo metadata --no-deps --format-version 1 2>/dev/null \
+    | sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p' | head -1)"
+if [ -z "${TARGET_DIR:-}" ]; then
+    echo "❌ could not resolve the target directory (cargo metadata failed)" >&2
+    echo "   a gate that cannot find what it measures does not pass" >&2
+    exit 1
+fi
+RAW="$TARGET_DIR/wasm32-unknown-unknown/release/rigorix_gate_wasm.wasm"
 
 if [ ! -f "$BUDGET_FILE" ]; then
     echo "❌ no budget file: a size gate without a budget is an opinion" >&2

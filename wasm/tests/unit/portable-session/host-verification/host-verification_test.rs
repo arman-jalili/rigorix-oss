@@ -93,9 +93,16 @@ fn the_host_verifier_emits_exactly_three_verdicts() {
         assert!(script.contains(verdict), "missing verdict: {verdict}");
     }
     // Exit codes are distinct, so a shell caller cannot confuse "could not ask" with
-    // "compared and failed".
-    for code in ["process.exit(verdict === VERDICT.VERIFIED ? 0", "1", "2"] {
-        assert!(script.contains(code), "missing exit mapping: {code}");
+    // "compared and failed": 0 verified, 1 not_verified, 2 unverifiable, 3 tooling.
+    assert!(script.contains("VERIFIED ? 0"));
+    assert!(script.contains("NOT_VERIFIED ? 1"));
+    assert!(script.contains(": 2"));
+    assert!(script.contains("process.exit(3)"));
+    for verdict in ["verified", "not_verified", "unverifiable"] {
+        assert!(
+            script.contains(&format!("\"{verdict}\"")),
+            "missing verdict literal {verdict}"
+        );
     }
 }
 
@@ -106,10 +113,11 @@ fn the_host_verifier_fails_closed_when_the_sdk_is_absent() {
     // never `not_verified`.
     assert!(script.contains("verifier_unavailable"));
     let missing_sdk = script
-        .split("if (verifier === null)")
+        .split("if (sdk === null)")
         .nth(1)
         .expect("explicit missing-SDK branch");
     assert!(missing_sdk.contains("UNVERIFIABLE"));
+    assert!(missing_sdk.contains("verifier_unavailable"));
     assert!(
         !missing_sdk
             .split('}')
@@ -159,4 +167,26 @@ fn the_host_obligation_is_documented_where_a_host_will_look() {
     .expect("README exists");
     assert!(readme.contains("never loaded the wasm module"));
     assert!(readme.contains("unverifiable"));
+}
+
+#[test]
+fn the_probe_prints_the_wire_shape_the_host_reads() {
+    // The independence check reads the artifact the probe prints. If the probe printed the
+    // *domain* struct (`{"stamp":{…}}`), the script would report "artifact is missing
+    // artifact_format_version" and the check would fail on a field name rather than on the
+    // record — which is exactly what happened in CI once.
+    let probe = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/determinism_probe.rs"),
+    )
+    .expect("probe exists");
+    assert!(
+        probe.contains("ArtifactSetDto::from(&artifact)"),
+        "the probe does not print the wire shape"
+    );
+
+    let script = script();
+    assert!(
+        script.contains("artifact_format_version"),
+        "the host script does not read the field the probe prints"
+    );
 }

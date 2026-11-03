@@ -44,6 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       crates: ${{ steps.crates.outputs.matrix }}
+      packages: ${{ steps.crates.outputs.packages }}
     steps:
       - uses: actions/checkout@v4
       - name: 🔍 Detect workspace crates
@@ -53,8 +54,19 @@ jobs:
           CRATES=$(for d in */; do
             [ -d "${d}.pi/scripts" ] && echo "${d%/}"
           done | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          # Directory name -> package name, resolved from the manifest. The four original
+          # crates happen to be `rigorix-<dir>`, but the gate crate is deliberately
+          # `rigorix-gate-wasm` (ADR-011: crate and npm package names are a public
+          # commitment), so the matrix must not infer the package from the directory.
+          PACKAGES=$(for d in */; do
+            [ -f "${d}Cargo.toml" ] && [ -d "${d}.pi/scripts" ] && \
+              jq -n --arg dir "${d%/}" --arg pkg "$(grep -m1 '^name =' "${d}Cargo.toml" | sed 's/name = "//;s/"//')" \
+                '{($dir): $pkg}'
+          done | jq -s 'add // {}' -c)
           echo "matrix=$CRATES" >> "$GITHUB_OUTPUT"
+          echo "packages=$PACKAGES" >> "$GITHUB_OUTPUT"
           echo "Crates: $CRATES"
+          echo "Packages: $PACKAGES"
 
   # ── Stage 1: Lint (fmt + clippy) ──────────────────────────────
   lint:
@@ -71,8 +83,8 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cache-key: lint-${{ matrix.crate }}
-      - run: cargo fmt --check -p rigorix-${{ matrix.crate }}
-      - run: cargo clippy -p rigorix-${{ matrix.crate }} -- -D warnings
+      - run: cargo fmt --check -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}"
+      - run: cargo clippy -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}" -- -D warnings
       - name: Per-crate conventions (conformance suite)
         # GAP-A-27: conventions gate the job. Scope: the check_*.sh suite
         # (contract implementations, DDD structure, architecture conformance).
@@ -102,7 +114,7 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cache-key: build-${{ matrix.crate }}
-      - run: cargo check -p rigorix-${{ matrix.crate }}
+      - run: cargo check -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}"
       - name: Per-crate conventions (conformance suite)
         # GAP-A-27: conventions gate the job. Scope: the check_*.sh suite
         # (contract implementations, DDD structure, architecture conformance).
@@ -132,7 +144,7 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cache-key: test-${{ matrix.crate }}
-      - run: cargo test -p rigorix-${{ matrix.crate }} --lib
+      - run: cargo test -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}" --lib
       - name: Per-crate conventions (conformance suite)
         # GAP-A-27: conventions gate the job. Scope: the check_*.sh suite
         # (contract implementations, DDD structure, architecture conformance).
@@ -338,6 +350,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: 🔐 errexit arithmetic (no script may end on `(( x++ ))`)
         run: bash .pi/scripts/validate-shell-exit-status.sh
+      - name: 🧮 CI stage table (a hyphenated job id must still resolve)
+        # `wasm-gates` -> RESULT_WASM_GATES. When this was wrong, a green job read as
+        # `missing` and the merge gate failed on a stage that had passed.
+        run: bash .github/scripts/ci_stages.sh --self-test
 
   # ── Stage 7: Stage report ─────────────────────────────────────
   # Always runs, always green: it exists so a superseded run still shows
@@ -382,7 +398,7 @@ jobs:
           RESULT_INTEGRATION: ${{ needs.integration.result }}
           RESULT_CONFORMANCE: ${{ needs.conformance.result }}
           RESULT_SHELL: ${{ needs.shell.result }}
-          RESULT_WASM: ${{ needs.wasm-gates.result }}
+          RESULT_WASM_GATES: ${{ needs.wasm-gates.result }}
         run: .github/scripts/ci_report.sh
 
   # ── Stage 8: Final Gate ───────────────────────────────────────
@@ -408,5 +424,5 @@ jobs:
           RESULT_INTEGRATION: ${{ needs.integration.result }}
           RESULT_CONFORMANCE: ${{ needs.conformance.result }}
           RESULT_SHELL: ${{ needs.shell.result }}
-          RESULT_WASM: ${{ needs.wasm-gates.result }}
+          RESULT_WASM_GATES: ${{ needs.wasm-gates.result }}
         run: .github/scripts/ci_verdict.sh
