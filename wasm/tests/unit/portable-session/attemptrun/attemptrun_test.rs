@@ -204,3 +204,120 @@ fn the_open_service_refuses_the_same_way_the_aggregate_does() {
     assert_eq!(error, SessionOpenError::ClockSeriesEmpty);
     let _ = digest('a');
 }
+
+// ---------------------------------------------------------------------------
+// The run's event stream (issue #1304): criterion 10 in evidence form
+// ---------------------------------------------------------------------------
+
+use rigorix_gate_wasm::domain::events::DomainEvent;
+
+fn open() -> rigorix_gate_wasm::domain::session::ReplaySession {
+    OpenReplaySessionService::new()
+        .execute(rigorix_gate_wasm::application::OpenSessionInput {
+            scenario: inputs().scenario,
+            fixtures: inputs().fixtures,
+            clock: inputs().clock,
+            seed: inputs().seed,
+        })
+        .expect("open")
+}
+
+#[test]
+fn a_refused_run_raises_one_step_event_per_decision_and_one_run_event() {
+    let mut session = open();
+    let runner = rigorix_gate_wasm::application::AttemptRunService::new(projection());
+    let mut gate = FakeGate::refusing();
+    let mut set = PortSet::happy();
+    let outcome = runner
+        .execute(&mut session, action(), set.ports(), &mut gate)
+        .expect("run");
+
+    let events = session.take_events();
+    let steps: Vec<_> = events
+        .iter()
+        .filter_map(|e| match e {
+            DomainEvent::StepDecisionRecorded(recorded) => Some(recorded),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        steps.len(),
+        outcome.steps.len(),
+        "every decision must be recorded, and no more"
+    );
+    assert_eq!(
+        steps
+            .iter()
+            .map(|s| s.decision.as_str())
+            .collect::<Vec<_>>(),
+        vec!["allowed", "refused", "not_reached"]
+    );
+    // Step indexes are positions, not a counter that could skip.
+    assert_eq!(
+        steps.iter().map(|s| s.step_index).collect::<Vec<_>>(),
+        vec![0, 1, 2]
+    );
+
+    let refused = events.iter().find_map(|e| match e {
+        DomainEvent::RunRefused(refused) => Some(refused),
+        _ => None,
+    });
+    let refused = refused.expect("a refused run raises RunRefused");
+    // The event names the step and carries the business wording, not the engine's label.
+    assert_eq!(refused.caused_by_step, "precondition.budget");
+    assert_eq!(refused.reason, "the required check did not pass");
+    assert!(refused.evidence.is_some());
+
+    // A refused run raises no `RunAllowed`.
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, DomainEvent::RunAllowed(_)))
+    );
+}
+
+#[test]
+fn an_allowed_run_raises_run_allowed_with_the_action_and_evidence() {
+    let mut session = open();
+    let runner = rigorix_gate_wasm::application::AttemptRunService::new(projection());
+    let mut gate = FakeGate::allowing();
+    let mut set = PortSet::happy();
+    runner
+        .execute(&mut session, action(), set.ports(), &mut gate)
+        .expect("run");
+
+    let events = session.take_events();
+    let allowed = events
+        .iter()
+        .find_map(|e| match e {
+            DomainEvent::RunAllowed(allowed) => Some(allowed),
+            _ => None,
+        })
+        .expect("RunAllowed");
+    assert_eq!(allowed.action.name, "payment_execute");
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, DomainEvent::RunRefused(_)))
+    );
+}
+
+#[test]
+fn every_event_a_run_raises_is_evidence() {
+    // The run path must not leak telemetry into the record: only `RandomDrawConsumed` is
+    // telemetry, and the run does not raise it.
+    let mut session = open();
+    let runner = rigorix_gate_wasm::application::AttemptRunService::new(projection());
+    let mut gate = FakeGate::refusing();
+    let mut set = PortSet::happy();
+    runner
+        .execute(&mut session, action(), set.ports(), &mut gate)
+        .expect("run");
+
+    for event in session.take_events() {
+        assert!(
+            event.is_evidence(),
+            "{event:?} is telemetry on the run path"
+        );
+    }
+}
