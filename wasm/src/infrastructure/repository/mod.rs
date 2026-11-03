@@ -1,38 +1,40 @@
-//! Repository adapters — re-export of the domain-owned interface (ADR-002).
+//! Repository adapters — the domain-owned interface, implemented in memory (ADR-002).
 //!
 //! @canonical .pi/architecture/decisions/ADR-002-data-storage.md
-//! Implements: Contract Freeze — InMemorySessionStore
-//! Issue: #1294 (contract freeze)
+//! Implements: `InMemorySessionStore` (AC: no persistence, no migrations)
+//! Issue: #1298 (infrastructure layer)
 //!
-//! # Why there is a re-export here
+//! # Why the trait lives in `domain/`
 //!
-//! The repository **interface** is owned by `domain/ports/session_store.rs`, because the
-//! aggregate — not the adapter — decides what reconstitution means (ADR-008). This
-//! module exists so the adapter lives where the layer table says adapters live, without
-//! a second, forked trait. There is one definition; this is the folder it is implemented
-//! in.
+//! The aggregate — not the adapter — decides what reconstitution means, so the interface
+//! is owned by `domain/ports/session_store.rs` and this module implements it. There is one
+//! definition and no fork; the folder exists because adapters live with adapters.
 //!
-//! # Contract (Frozen)
-//! - The shipped adapter is in memory: no file, no SQL, no migration (ADR-002)
-//! - `put` happens once, at seal; an unsealed session is not a record
+//! # What is stored
+//!
+//! The **sealed `ArtifactSet`**, not the session. A session is a live object with a
+//! fixture transcript and an unscored outcome; the record is the artifact set. Storing the
+//! session would let a host resume one and append a second run to it, which is exactly
+//! what invariant 4 forbids (ADR-002).
+//!
+//! # Contract
+//! - No file, no SQL, no migration, no eviction policy
+//! - An unsealed set cannot be stored: there is nothing to record yet
+//! - A missing id is `None`, never an error — absence is a legitimate answer
 
 use std::collections::HashMap;
 
+use crate::domain::artifact::ArtifactSet;
 use crate::domain::errors::SealError;
 use crate::domain::ports::SessionStore;
-use crate::domain::session::ReplaySession;
 use crate::domain::value::ReplaySessionId;
 
 pub use crate::domain::ports::SessionStore as SessionRepository;
 
-/// Sessions kept for the life of the host page.
-///
-/// # Contract (Frozen)
-/// - No capacity policy, no eviction: a browser session holds one or two records and the
-///   host owns how long they live
-#[derive(Default)]
+/// Sealed records kept for the life of the host page.
+#[derive(Debug, Default)]
 pub struct InMemorySessionStore {
-    sessions: HashMap<ReplaySessionId, ReplaySession>,
+    records: HashMap<ReplaySessionId, ArtifactSet>,
 }
 
 impl InMemorySessionStore {
@@ -41,33 +43,34 @@ impl InMemorySessionStore {
         Self::default()
     }
 
-    /// How many sessions are held.
+    /// How many records are held.
     pub fn len(&self) -> usize {
-        self.sessions.len()
+        self.records.len()
     }
 
     /// Whether the store is empty.
     pub fn is_empty(&self) -> bool {
-        self.sessions.is_empty()
+        self.records.is_empty()
     }
 }
 
 impl SessionStore for InMemorySessionStore {
-    fn put(&mut self, session: &ReplaySession) -> Result<(), SealError> {
-        if session.sealed().is_none() {
-            return Err(SealError::NoAttempt);
+    fn put(&mut self, artifact: &ArtifactSet) -> Result<(), SealError> {
+        // Overwriting would silently replace a record with a different one under the same
+        // identity; the identity is derived, so a second put for one id is a defect.
+        if self.records.contains_key(&artifact.session_id) {
+            return Err(SealError::AlreadySealed);
         }
-        // ReplaySession is not Clone by contract (an aggregate is moved, not copied);
-        // the implementation issue owns the reconstitution strategy.
-        let _ = &self.sessions;
-        todo!("contract freeze: InMemorySessionStore::put lands with #1299")
+        self.records
+            .insert(artifact.session_id.clone(), artifact.clone());
+        Ok(())
     }
 
-    fn get(&self, id: &ReplaySessionId) -> Option<&ReplaySession> {
-        self.sessions.get(id)
+    fn get(&self, id: &ReplaySessionId) -> Option<&ArtifactSet> {
+        self.records.get(id)
     }
 
-    fn remove(&mut self, id: &ReplaySessionId) -> Option<ReplaySession> {
-        self.sessions.remove(id)
+    fn remove(&mut self, id: &ReplaySessionId) -> Option<ArtifactSet> {
+        self.records.remove(id)
     }
 }

@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::outcome::EvidenceRef;
 use crate::domain::ports::Ports;
-use crate::domain::value::{GateAttemptId, GatedAction, ScenarioRef};
+use crate::domain::value::{GateAttemptId, GatedAction, PortFailure, ScenarioRef};
 
 /// The engine's outcome for one gated step.
 ///
@@ -80,11 +80,22 @@ pub struct EngineEvaluation {
     pub findings: Vec<EngineFinding>,
     /// Signed envelopes, byte for byte.
     pub envelopes: Vec<Vec<u8>>,
+    /// Capabilities that could not answer during evaluation.
+    ///
+    /// The aggregate refuses on a non-empty list even if every finding says
+    /// `Passed`: an unavailable check must never read as a passed one (invariant 2),
+    /// and trusting the adapter to have handled it would put that guarantee in the
+    /// adapter rather than in the aggregate.
+    pub port_failures: Vec<PortFailure>,
 }
 
 /// What the crate asks the gate to evaluate.
+///
+/// Two lifetimes on purpose: the data being evaluated (`'a`) is built inside the run and
+/// lives for the call, while the capability bundle (`'p`) is borrowed from the host and
+/// outlives it. One lifetime would forbid the aggregate from naming its own attempt id.
 #[derive(Debug)]
-pub struct GateEvaluationRequest<'a> {
+pub struct GateEvaluationRequest<'a, 'p> {
     /// Attempt identity, minted from the `IdSource` port.
     pub attempt_id: &'a GateAttemptId,
     /// The scenario the session pinned.
@@ -92,7 +103,7 @@ pub struct GateEvaluationRequest<'a> {
     /// The proposed action.
     pub action: &'a GatedAction,
     /// Capabilities the engine may consult. The engine never reaches past these.
-    pub ports: Ports<'a>,
+    pub ports: Ports<'p>,
 }
 
 /// Why the binding could not evaluate a run.
@@ -127,6 +138,6 @@ pub trait GateEvaluator {
     /// Evaluate one run.
     fn evaluate(
         &mut self,
-        request: GateEvaluationRequest<'_>,
+        request: GateEvaluationRequest<'_, '_>,
     ) -> Result<EngineEvaluation, EngineBindingError>;
 }

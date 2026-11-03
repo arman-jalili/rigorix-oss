@@ -52,6 +52,7 @@ fn engine_findings_carry_their_own_outcome_and_evidence() {
     let evaluation = EngineEvaluation {
         findings,
         envelopes: vec![],
+        port_failures: vec![],
     };
     assert_eq!(evaluation.findings.len(), 3);
     assert_eq!(
@@ -62,5 +63,77 @@ fn engine_findings_carry_their_own_outcome_and_evidence() {
     assert_eq!(
         evaluation.findings[1].refusal.as_deref(),
         Some("precondition_failed")
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Shipped projection (issue #1296): criterion 9
+// ---------------------------------------------------------------------------
+
+#[test]
+fn the_shipped_projection_preserves_order_and_not_reached() {
+    use rigorix_gate_wasm::domain::services::{BusinessWording, EngineFindingsProjection};
+
+    let findings = vec![
+        EngineFinding {
+            gate_id: "a.first".into(),
+            outcome: EngineFindingOutcome::Passed,
+            refusal: None,
+            evidence: None,
+            opaque: None,
+        },
+        EngineFinding {
+            gate_id: "b.second".into(),
+            outcome: EngineFindingOutcome::Error,
+            refusal: Some("precondition_timeout".into()),
+            evidence: None,
+            opaque: None,
+        },
+        EngineFinding {
+            gate_id: "c.third".into(),
+            outcome: EngineFindingOutcome::NotReached,
+            refusal: None,
+            evidence: None,
+            opaque: None,
+        },
+    ];
+
+    let projection = EngineFindingsProjection::new(BusinessWording::new());
+    let steps = projection.project(&findings);
+
+    assert_eq!(
+        steps.iter().map(|s| s.gate_id.as_str()).collect::<Vec<_>>(),
+        vec!["a.first", "b.second", "c.third"],
+        "order must be the engine's order, not a sorted one"
+    );
+    assert_eq!(steps[1].decision, StepDecision::Refused);
+    assert_eq!(
+        steps[1].kind,
+        Some(rigorix_gate_wasm::domain::outcome::RefusalKind::PreconditionTimeout)
+    );
+    assert_eq!(
+        steps[1].reason.as_deref(),
+        Some("the required check did not finish in time")
+    );
+    assert_eq!(steps[2].decision, StepDecision::NotReached);
+    assert!(steps[2].kind.is_none());
+}
+
+#[test]
+fn an_unknown_engine_label_becomes_the_neutral_refusal_never_an_allow() {
+    use rigorix_gate_wasm::domain::services::{BusinessWording, EngineFindingsProjection};
+
+    let findings = vec![EngineFinding {
+        gate_id: "x".into(),
+        outcome: EngineFindingOutcome::Refused,
+        refusal: Some("some_future_kind".into()),
+        evidence: None,
+        opaque: None,
+    }];
+    let steps = EngineFindingsProjection::new(BusinessWording::new()).project(&findings);
+    assert_eq!(steps[0].decision, StepDecision::Refused);
+    assert_eq!(
+        steps[0].kind,
+        Some(rigorix_gate_wasm::domain::outcome::RefusalKind::PreconditionError)
     );
 }

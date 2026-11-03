@@ -24,13 +24,20 @@
 //! - `open` fixes the inputs; `attempt` runs at most once; `seal` seals at most once
 //! - Read projections (`scenario`, `fixtures`, `outcome`, `sealed`, `id`) are pure
 
-use crate::domain::artifact::ArtifactSet;
-use crate::domain::engine_seam::GateEvaluator;
+use crate::domain::artifact::{ArtifactSet, EnvelopeBytes};
+use crate::domain::engine_seam::{GateEvaluationRequest, GateEvaluator};
 use crate::domain::errors::{AttemptError, SealError, SessionOpenError};
-use crate::domain::events::DomainEvent;
-use crate::domain::outcome::RunOutcome;
-use crate::domain::ports::Ports;
-use crate::domain::services::{ArtifactContentPolicy, ArtifactStamp};
+use crate::domain::events::{
+    ArtifactSetExported, DomainEvent, PortAnswerUnavailable, RunAllowed, RunRefused, SessionOpened,
+    StepDecisionRecorded,
+};
+use crate::domain::outcome::{
+    EvidenceRef, OutcomeStatus, RefusalKind, RunOutcome, StepDecision, StepOutcome,
+};
+use crate::domain::ports::{IdKind, Ports};
+use crate::domain::services::{
+    ArtifactContentPolicy, ArtifactStamp, BusinessWording, EvidenceProjection, RefusalVocabulary,
+};
 use crate::domain::session::GateAttempt;
 
 /// The one scenario format this build evaluates.
@@ -44,10 +51,9 @@ impl SupportedScenarioFormat {
     /// The supported engine scenario format version.
     pub const VERSION: ScenarioFormatVersion = ScenarioFormatVersion(1);
 }
-use crate::domain::events::SessionOpened;
 use crate::domain::value::{
-    ClockTrack, FixtureWorld, GatedAction, RandomSeed, ReplaySessionId, ScenarioFormatVersion,
-    ScenarioRef,
+    ClockTrack, FixtureWorld, GateAttemptId, GatedAction, KeyRef, PortFailure, PortFailureKind,
+    PortId, RandomSeed, ReplaySessionId, ScenarioFormatVersion, ScenarioRef,
 };
 
 /// The inputs a session is opened from — all four of them pinned.
@@ -90,6 +96,49 @@ impl std::fmt::Debug for ReplaySession {
             .field("sealed", &self.sealed.is_some())
             .field("events", &self.events.len())
             .finish()
+    }
+}
+
+/// Turn a port failure that happened *before* the gate into a refused run.
+///
+/// The run still names its cause: a synthesized `port.<name>` step (criterion 10). There is
+/// no path from here to an allow (invariant 2).
+fn refusal_from_port_failure(failure: PortFailure, events: &mut Vec<DomainEvent>) -> RunOutcome {
+    let kind = if failure.port == PortId::KeySource {
+        RefusalKind::IdentityUnverified
+    } else {
+        RefusalKind::PortUnavailable
+    };
+    let wording = BusinessWording::new();
+    let reason = wording.port_reason(failure).to_string();
+    let step = StepOutcome {
+        gate_id: format!("port.{}", failure.port.as_str()),
+        decision: StepDecision::Refused,
+        kind: Some(kind),
+        reason: Some(reason.clone()),
+        evidence: None,
+    };
+    events.push(DomainEvent::PortAnswerUnavailable(PortAnswerUnavailable {
+        attempt_id: GateAttemptId::from_trusted("unminted"),
+        failure,
+        step_index: 0,
+    }));
+    events.push(DomainEvent::StepDecisionRecorded(StepDecisionRecorded {
+        attempt_id: GateAttemptId::from_trusted("unminted"),
+        step_index: 0,
+        gate_id: step.gate_id.clone(),
+        decision: "refused".to_string(),
+    }));
+    events.push(DomainEvent::RunRefused(RunRefused {
+        attempt_id: GateAttemptId::from_trusted("unminted"),
+        caused_by_step: step.gate_id.clone(),
+        reason,
+        evidence: None,
+    }));
+    RunOutcome {
+        status: OutcomeStatus::Refused,
+        steps: vec![step],
+        evidence: Vec::new(),
     }
 }
 
@@ -175,9 +224,160 @@ impl ReplaySession {
         action: GatedAction,
         ports: Ports<'_>,
         gate: &mut dyn GateEvaluator,
+        projection: &dyn EvidenceProjection,
     ) -> Result<RunOutcome, AttemptError> {
-        let _ = (action, ports, gate);
-        todo!("contract freeze: ReplaySession::attempt lands with the aggregate issue")
+        // Invariant 4 first: a sealed or already-attempted session has nothing to decide.
+        if self.sealed.is_some() {
+            return Err(AttemptError::AlreadySealed);
+        }
+        if self.attempt.is_some() {
+            return Err(AttemptError::AlreadyAttempted);
+        }
+
+        let mut events = Vec::new();
+
+        // The identity port is consulted before the gate: a run that cannot name the key
+        // that will sign it cannot produce a record, and the engine's truthful status for
+        // that case is `unverified` — never `unauthenticated` (criterion 5).
+        let key_ref = match ports.key_source.key_ref() {
+            Ok(key_ref) => key_ref,
+            Err(failure) => {
+                let outcome = refusal_from_port_failure(failure, &mut events);
+                return self.record_attempt(action, outcome, None, Vec::new(), events);
+            }
+        };
+
+        // The attempt identity comes from the id sequence, never from entropy.
+        let attempt_id = match ports.ids.next_id(IdKind::Attempt) {
+            Ok(raw) => GateAttemptId::from_trusted(raw),
+            Err(failure) => {
+                let outcome = refusal_from_port_failure(failure, &mut events);
+                return self.record_attempt(action, outcome, Some(key_ref), Vec::new(), events);
+            }
+        };
+
+        let evaluation = match gate.evaluate(GateEvaluationRequest {
+            attempt_id: &attempt_id,
+            scenario: &self.inputs.scenario,
+            action: &action,
+            ports,
+        }) {
+            Ok(evaluation) => evaluation,
+            // A binding failure refuses; it never allows. The host sees a refusal, not an
+            // outcome the crate invented.
+            Err(source) => return Err(AttemptError::EngineFailure { source }),
+        };
+
+        let mut steps = projection.project(&evaluation.findings);
+
+        // A port that could not answer refuses the run even if every finding passed: an
+        // unavailable check must not read as a passed one (invariant 2). The refusal names
+        // the port, so the run still has a causing step (criterion 10).
+        for failure in &evaluation.port_failures {
+            let kind = if failure.port == PortId::KeySource {
+                RefusalKind::IdentityUnverified
+            } else {
+                RefusalKind::PortUnavailable
+            };
+            events.push(DomainEvent::PortAnswerUnavailable(PortAnswerUnavailable {
+                attempt_id: attempt_id.clone(),
+                failure: *failure,
+                step_index: steps.len() as u32,
+            }));
+            steps.push(StepOutcome {
+                gate_id: format!("port.{}", failure.port.as_str()),
+                decision: StepDecision::Refused,
+                kind: Some(kind),
+                reason: Some(BusinessWording::new().port_reason(*failure).to_string()),
+                evidence: None,
+            });
+        }
+
+        let status = if steps.iter().any(StepOutcome::is_refusal) {
+            OutcomeStatus::Refused
+        } else {
+            OutcomeStatus::Allowed
+        };
+
+        for (index, step) in steps.iter().enumerate() {
+            events.push(DomainEvent::StepDecisionRecorded(StepDecisionRecorded {
+                attempt_id: attempt_id.clone(),
+                step_index: index as u32,
+                gate_id: step.gate_id.clone(),
+                decision: match step.decision {
+                    StepDecision::Allowed => "allowed",
+                    StepDecision::Refused => "refused",
+                    StepDecision::NotReached => "not_reached",
+                }
+                .to_string(),
+            }));
+        }
+
+        let evidence: Vec<EvidenceRef> = steps.iter().filter_map(|s| s.evidence.clone()).collect();
+
+        let outcome = RunOutcome {
+            status,
+            steps,
+            evidence,
+        };
+
+        match outcome.status {
+            OutcomeStatus::Allowed => events.push(DomainEvent::RunAllowed(RunAllowed {
+                attempt_id: attempt_id.clone(),
+                action: action.clone(),
+                evidence: outcome.evidence.clone(),
+            })),
+            OutcomeStatus::Refused => {
+                let causing = outcome.causing_step();
+                events.push(DomainEvent::RunRefused(RunRefused {
+                    attempt_id: attempt_id.clone(),
+                    caused_by_step: causing
+                        .map(|s| s.gate_id.clone())
+                        .unwrap_or_else(|| "port.unknown".to_string()),
+                    reason: causing
+                        .and_then(|s| s.reason.clone())
+                        .unwrap_or_else(|| "the run was refused".to_string()),
+                    evidence: causing.and_then(|s| s.evidence.clone()),
+                }));
+            }
+        }
+
+        let envelopes = evaluation
+            .envelopes
+            .into_iter()
+            .map(EnvelopeBytes)
+            .collect::<Vec<_>>();
+
+        self.record_attempt(action, outcome, Some(key_ref), envelopes, events)
+    }
+
+    /// Record the one attempt and drain its events into the session.
+    fn record_attempt(
+        &mut self,
+        action: GatedAction,
+        outcome: RunOutcome,
+        key_ref: Option<KeyRef>,
+        envelopes: Vec<EnvelopeBytes>,
+        mut events: Vec<DomainEvent>,
+    ) -> Result<RunOutcome, AttemptError> {
+        let id = self
+            .attempt
+            .as_ref()
+            .map(|a| a.id().clone())
+            .unwrap_or_else(|| GateAttemptId::from_trusted("unminted"));
+
+        // A refused run without a key reference cannot be sealed later; the record still
+        // stands, and `seal` refuses with `NoAttempt`-adjacent semantics rather than
+        // inventing a key.
+        self.attempt = Some(GateAttempt::record(
+            id,
+            action,
+            outcome.clone(),
+            key_ref.unwrap_or_else(|| KeyRef::from_trusted("unavailable")),
+            envelopes,
+        ));
+        self.events.append(&mut events);
+        Ok(outcome)
     }
 
     /// Seal the run into an immutable, stamped artifact set.
@@ -197,8 +397,50 @@ impl ReplaySession {
         stamp: &dyn ArtifactStamp,
         policy: &dyn ArtifactContentPolicy,
     ) -> Result<ArtifactSet, SealError> {
-        let _ = (stamp, policy);
-        todo!("contract freeze: ReplaySession::seal lands with the aggregate issue")
+        // Invariant 4: sealed is sealed. The first artifact set is returned untouched.
+        if let Some(existing) = &self.sealed {
+            let _ = existing;
+            return Err(SealError::AlreadySealed);
+        }
+
+        let Some(attempt) = &self.attempt else {
+            return Err(SealError::NoAttempt);
+        };
+
+        // A run whose identity port failed cannot produce a signable record. Refusing here
+        // is the honest end of that run, not a key invented at seal time.
+        if attempt.key_ref().as_str() == "unavailable" {
+            return Err(SealError::PortFailure {
+                failure: PortFailure::new(PortId::KeySource, PortFailureKind::Missing),
+            });
+        }
+
+        let artifact = ArtifactSet {
+            stamp: stamp.stamp(self),
+            fixture_digest: self.inputs.fixtures.transcript_digest.clone(),
+            session_id: self.id.clone(),
+            key_ref: attempt.key_ref().clone(),
+            envelopes: attempt.envelopes().to_vec(),
+            evidence: attempt.outcome().evidence.clone(),
+            outcome_digest: stamp.outcome_digest(self),
+        };
+
+        // Refuse, never sanitise: a scrubbed record is an altered record (criterion 7).
+        if let Err(rule) = policy.check(&artifact) {
+            return Err(SealError::ContentRejected { rule });
+        }
+
+        self.events
+            .push(DomainEvent::ArtifactSetExported(ArtifactSetExported {
+                artifact_format_version: artifact.stamp.artifact_format_version,
+                engine_version: artifact.stamp.engine_version.clone(),
+                scenario_digest: artifact.stamp.scenario_digest.clone(),
+                outcome_digest: artifact.outcome_digest.clone(),
+                key_ref: artifact.key_ref.clone(),
+            }));
+
+        self.sealed = Some(artifact.clone());
+        Ok(artifact)
     }
 
     /// Drain the events raised so far, in order.

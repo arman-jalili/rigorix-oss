@@ -112,3 +112,56 @@ fn a_port_failure_always_has_wording_per_port() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Shipped wording (issue #1296): criterion 8
+// ---------------------------------------------------------------------------
+
+#[test]
+fn the_shipped_wording_covers_every_kind_and_accuses_nobody() {
+    use rigorix_gate_wasm::domain::services::BusinessWording;
+
+    let shipped = BusinessWording::new();
+    let kinds = [
+        RefusalKind::PreconditionFailed,
+        RefusalKind::PreconditionError,
+        RefusalKind::PreconditionTimeout,
+        RefusalKind::RequirementUnsatisfied,
+        RefusalKind::CompanionStepMissing,
+        RefusalKind::SequenceViolation,
+        RefusalKind::HistoryIntegrityViolated,
+        RefusalKind::ApprovalUnbound,
+        RefusalKind::ApprovalExpired,
+        RefusalKind::IdentityUnverified,
+        RefusalKind::PortUnavailable,
+        RefusalKind::ScenarioUnsupported,
+        RefusalKind::SessionSealed,
+    ];
+    let mut seen = std::collections::HashSet::new();
+    for kind in kinds {
+        let reason = shipped.reason(kind);
+        assert!(seen.insert(reason), "two kinds share wording: {kind:?}");
+        let lower = reason.to_lowercase();
+        for forbidden in [
+            "unauthenticated",
+            "forged",
+            "tampered",
+            "not_verified",
+            "unverifiable",
+        ] {
+            assert!(!lower.contains(forbidden), "{kind:?} says {forbidden}");
+        }
+    }
+}
+
+#[test]
+fn an_identity_port_failure_says_it_could_not_check() {
+    use rigorix_gate_wasm::domain::services::{BusinessWording, RefusalVocabulary};
+
+    // The truthful sentence: we never got to ask. Not "the identity is wrong".
+    let reason = BusinessWording::new().port_reason(PortFailure::new(
+        PortId::KeySource,
+        PortFailureKind::Missing,
+    ));
+    assert_eq!(reason, "the identity could not be checked");
+}

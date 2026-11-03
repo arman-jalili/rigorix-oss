@@ -57,3 +57,86 @@ fn seal_failures_are_exhaustive() {
         "the artifact set was rejected: key_material"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Behaviour (issue #1296): criterion 6
+// ---------------------------------------------------------------------------
+
+use crate::support::{AllowPolicy, FakeGate, PortSet, RejectPolicy, TestStamp, action, inputs};
+
+fn run_once(session: &mut ReplaySession) -> bool {
+    let mut gate = FakeGate::allowing();
+    let mut set = PortSet::happy();
+    let projection = rigorix_gate_wasm::domain::services::EngineFindingsProjection::new(
+        rigorix_gate_wasm::domain::services::BusinessWording::new(),
+    );
+    session
+        .attempt(action(), set.ports(), &mut gate, &projection)
+        .is_ok()
+}
+
+#[test]
+fn seal_returns_a_stamped_container_and_refuses_the_second_call() {
+    let mut session = ReplaySession::open(inputs()).expect("open");
+    assert!(run_once(&mut session));
+
+    let first = session.seal(&TestStamp, &AllowPolicy).expect("first seal");
+    assert_eq!(
+        first.stamp.artifact_format_version,
+        ArtifactSet::FORMAT_VERSION
+    );
+    assert_eq!(first.session_id, *session.id());
+    assert_eq!(first.envelopes.len(), 1);
+    assert_eq!(first.envelopes[0].0, br#"{"envelope":1}"#.to_vec());
+
+    let second = session.seal(&TestStamp, &AllowPolicy);
+    assert_eq!(second.unwrap_err(), SealError::AlreadySealed);
+
+    // The first set is untouched: sealing again cannot rewrite bytes already exported.
+    assert_eq!(session.sealed(), Some(&first));
+}
+
+#[test]
+fn sealing_without_an_attempt_is_refused() {
+    let mut session = ReplaySession::open(inputs()).expect("open");
+    assert_eq!(
+        session.seal(&TestStamp, &AllowPolicy).unwrap_err(),
+        SealError::NoAttempt
+    );
+}
+
+#[test]
+fn a_violated_content_rule_refuses_the_export_and_drops_the_bytes() {
+    let mut session = ReplaySession::open(inputs()).expect("open");
+    assert!(run_once(&mut session));
+
+    let result = session.seal(&TestStamp, &RejectPolicy(ContentRule::KeyMaterial));
+    assert_eq!(
+        result.unwrap_err(),
+        SealError::ContentRejected {
+            rule: ContentRule::KeyMaterial
+        }
+    );
+    // Nothing was sealed: a refused export leaves no record behind.
+    assert!(session.sealed().is_none());
+}
+
+#[test]
+fn seal_raises_the_export_evidence_event_once() {
+    let mut session = ReplaySession::open(inputs()).expect("open");
+    assert!(run_once(&mut session));
+    let _ = session.seal(&TestStamp, &AllowPolicy).expect("seal");
+
+    let events = session.take_events();
+    let exported = events
+        .iter()
+        .filter(|e| {
+            matches!(
+                e,
+                rigorix_gate_wasm::domain::events::DomainEvent::ArtifactSetExported(_)
+            )
+        })
+        .count();
+    assert_eq!(exported, 1);
+    assert!(events.iter().all(|e| e.is_evidence()));
+}

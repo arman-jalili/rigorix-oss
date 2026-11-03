@@ -19,15 +19,18 @@ fn one_attempt_per_session_is_a_value() {
 }
 
 #[test]
-fn attempt_signature_requires_ports_and_a_gate() {
-    // A capability cannot be reached without being handed in, and the gate cannot be
-    // skipped: both appear in the signature (invariant 1).
-    let _attempt: fn(
+fn attempt_signature_requires_ports_a_gate_and_a_projection() {
+    // A capability cannot be reached without being handed in; the gate cannot be skipped;
+    // and the ordering rule cannot be re-invented per caller (invariant 1, criterion 9).
+    type AttemptFn = fn(
         &mut ReplaySession,
         GatedAction,
         Ports<'_>,
         &mut dyn rigorix_gate_wasm::domain::engine_seam::GateEvaluator,
-    ) -> Result<RunOutcome, AttemptError> = ReplaySession::attempt;
+        &dyn rigorix_gate_wasm::domain::services::EvidenceProjection,
+    ) -> Result<RunOutcome, AttemptError>;
+
+    let _attempt: AttemptFn = ReplaySession::attempt;
 }
 
 #[test]
@@ -89,4 +92,133 @@ fn identity_failure_has_its_own_kind_and_wording() {
     let label = format!("{:?}", RefusalKind::IdentityUnverified).to_lowercase();
     assert!(label.contains("unverified"));
     assert!(!label.contains("unauthenticated"));
+}
+
+// ---------------------------------------------------------------------------
+// Behaviour (issue #1296): criteria 3, 4, 5, 10
+// ---------------------------------------------------------------------------
+
+use crate::support::{FailingKey, FakeGate, PortSet, action, digest, inputs};
+use rigorix_gate_wasm::domain::outcome::RefusalKind as Kind;
+use rigorix_gate_wasm::domain::services::{BusinessWording, EngineFindingsProjection};
+
+fn projection() -> EngineFindingsProjection<BusinessWording> {
+    EngineFindingsProjection::new(BusinessWording::new())
+}
+
+#[test]
+fn an_allowed_run_names_no_cause_and_carries_evidence_order() {
+    let mut session = ReplaySession::open(inputs()).expect("open");
+    let mut gate = FakeGate::allowing();
+    let mut set = PortSet::happy();
+
+    let outcome = session
+        .attempt(action(), set.ports(), &mut gate, &projection())
+        .expect("attempt");
+
+    assert_eq!(outcome.status, OutcomeStatus::Allowed);
+    assert_eq!(outcome.steps.len(), 1);
+    assert_eq!(outcome.steps[0].decision, StepDecision::Allowed);
+    assert!(outcome.causing_step().is_none());
+}
+
+#[test]
+fn a_refused_run_names_the_causing_step_and_preserves_not_reached() {
+    let mut session = ReplaySession::open(inputs()).expect("open");
+    let mut gate = FakeGate::refusing();
+    let mut set = PortSet::happy();
+
+    let outcome = session
+        .attempt(action(), set.ports(), &mut gate, &projection())
+        .expect("attempt");
+
+    assert_eq!(outcome.status, OutcomeStatus::Refused);
+    // Order is the engine's order, and `NotReached` was not collapsed into `Refused`.
+    assert_eq!(
+        outcome.steps.iter().map(|s| s.decision).collect::<Vec<_>>(),
+        vec![
+            StepDecision::Allowed,
+            StepDecision::Refused,
+            StepDecision::NotReached
+        ]
+    );
+    let causing = outcome.causing_step().expect("names its cause");
+    assert_eq!(causing.gate_id, "precondition.budget");
+    assert_eq!(causing.kind, Some(Kind::PreconditionFailed));
+    // Evidence travels with the outcome, in step order.
+    assert_eq!(outcome.evidence.len(), 1);
+    assert_eq!(outcome.evidence[0].digest, digest('7'));
+}
+
+#[test]
+fn a_second_attempt_is_refused_and_the_first_outcome_is_unchanged() {
+    let mut session = ReplaySession::open(inputs()).expect("open");
+    let mut gate = FakeGate::allowing();
+    let mut set = PortSet::happy();
+
+    let first = session
+        .attempt(action(), set.ports(), &mut gate, &projection())
+        .expect("first attempt");
+    let second = session.attempt(action(), set.ports(), &mut gate, &projection());
+    assert_eq!(second.unwrap_err(), AttemptError::AlreadyAttempted);
+
+    // The recorded outcome is still the first one, byte for byte.
+    assert_eq!(session.outcome(), Some(&first));
+}
+
+#[test]
+fn every_port_failure_kind_refuses_and_never_allows() {
+    // Criterion 4 as a matrix: each of the four failure kinds, for the port that the
+    // aggregate consults itself (the id source) and for a port the gate reports.
+    let kinds = [
+        PortFailureKind::Missing,
+        PortFailureKind::Exhausted,
+        PortFailureKind::Malformed,
+        PortFailureKind::Failed,
+    ];
+
+    for kind in kinds {
+        // (a) the gate reports the failure after answering every finding as passed
+        let mut session = ReplaySession::open(inputs()).expect("open");
+        let mut gate =
+            FakeGate::with_port_failure(PortFailure::new(PortId::ProviderTransport, kind));
+        let mut set = PortSet::happy();
+        let outcome = session
+            .attempt(action(), set.ports(), &mut gate, &projection())
+            .expect("attempt");
+        assert_eq!(
+            outcome.status,
+            OutcomeStatus::Refused,
+            "a passed finding plus an unavailable check must still refuse ({kind:?})"
+        );
+        let causing = outcome.causing_step().expect("names its cause");
+        assert_eq!(causing.gate_id, "port.provider_transport");
+        assert_eq!(causing.kind, Some(Kind::PortUnavailable));
+
+        // (b) the identity port cannot answer *before* the gate runs
+        let mut session = ReplaySession::open(inputs()).expect("open");
+        let mut gate = FakeGate::allowing();
+        let mut set = PortSet::happy();
+        set.key = FailingKey(kind).into_key();
+        let outcome = session
+            .attempt(action(), set.ports(), &mut gate, &projection())
+            .expect("attempt");
+        assert_eq!(outcome.status, OutcomeStatus::Refused);
+        assert_eq!(
+            outcome.causing_step().expect("cause").kind,
+            Some(Kind::IdentityUnverified)
+        );
+    }
+}
+
+#[test]
+fn an_engine_binding_failure_is_an_error_not_an_allow() {
+    let mut session = ReplaySession::open(inputs()).expect("open");
+    let mut gate = FakeGate::aborting();
+    let mut set = PortSet::happy();
+
+    let result = session.attempt(action(), set.ports(), &mut gate, &projection());
+    assert!(matches!(result, Err(AttemptError::EngineFailure { .. })));
+    // Nothing was recorded as an outcome: there is no allow to find.
+    assert!(session.outcome().is_none());
 }
