@@ -46,4 +46,18 @@ pub struct ArtifactSet {
 impl ArtifactSet {
     /// The container format this crate emits.
     pub const FORMAT_VERSION: u32 = 1;
+
+    /// Whether this crate can emit or read `version`.
+    ///
+    /// # Why this is not a verdict
+    ///
+    /// It answers "is this a container shape I understand", which is a question about
+    /// *bytes*. It deliberately does not answer "is this record authentic": that is the
+    /// host's act, performed with `rigorix-verifier`, and the crate has no vocabulary for
+    /// it (ADR-013, criterion 12). A host combines the two — its own support table and the
+    /// SDK's answer — and renders exactly one of `verified`, `not_verified`,
+    /// `unverifiable(reason)`.
+    pub const fn supports(version: u32) -> bool {
+        version == Self::FORMAT_VERSION
+    }
 }
