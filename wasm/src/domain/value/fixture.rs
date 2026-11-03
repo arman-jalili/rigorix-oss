@@ -42,4 +42,31 @@ impl FixtureWorld {
             transcript,
         }
     }
+
+    /// Pin a transcript from raw host JSON.
+    ///
+    /// # Contract
+    /// - A non-object transcript is `FixtureUnparseable`; there is no empty default,
+    ///   because an empty world is indistinguishable from a world with no answers and
+    ///   would turn every check into "missing" instead of telling the host what is wrong
+    /// - The digest is over the canonical bytes, so equal transcripts are equal worlds
+    pub fn identify(transcript: serde_json::Value) -> Result<Self, FixtureWorldError> {
+        if !transcript.is_object() {
+            return Err(FixtureWorldError::NotAnObject);
+        }
+        let canonical =
+            serde_json::to_vec(&transcript).map_err(|_| FixtureWorldError::NotAnObject)?;
+        Ok(Self {
+            transcript_digest: Digest::of(&canonical),
+            transcript: FixtureTranscript(transcript),
+        })
+    }
+}
+
+/// Why a transcript could not be identified.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum FixtureWorldError {
+    /// The value was not a JSON object.
+    #[error("the fixture transcript is not a JSON object")]
+    NotAnObject,
 }
