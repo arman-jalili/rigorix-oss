@@ -34,7 +34,7 @@ jobs:
           # on 1.4.0 for seven weeks while `actions/` took 307 lines of change.
           # An excluded crate is an unreleased crate; the gate is what makes
           # `skip if exists` mean "rerun" instead of "never".
-          for crate in engine cli mcp actions; do
+          for crate in engine cli mcp actions wasm; do
             CRATE_VERSION=$(grep '^version' "$crate/Cargo.toml" | head -1 | sed 's/version = "//;s/"//')
             echo "$crate: $CRATE_VERSION"
             if [[ "$CRATE_VERSION" != "$TAG_VERSION" ]]; then
