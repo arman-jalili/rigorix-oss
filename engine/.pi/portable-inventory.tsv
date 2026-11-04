@@ -24,7 +24,7 @@ dependency	ed25519-dalek	crate	anchor signature verification (ADR-016 Phase C); 
 dependency	tokio	features pinned to sync/macros/rt/time/io-util	mio and the reactor do not exist on wasm32-unknown-unknown	those five features	—
 dependency	rand	crate	jitter on audit retry backoff	no delivery path to jitter	1
 #
-# ── modules excluded wholesale (22 of 38 public modules) ─────────────────────────────
+# ── modules excluded wholesale (22 of 39 public modules) ─────────────────────────────
 # direct: excluded because the module itself references a crate above.
 module	code_gen	whole module	tree_sitter	syntax gate not evaluated in the browser	5
 module	repo_engine	whole module	tree_sitter	no repository indexing in the slice	8
@@ -66,6 +66,7 @@ item	precondition::infrastructure::provider_client	HttpProviderClient	reqwest	Un
 item	precondition::infrastructure::repository	toml_repository	tokio::fs	PreconditionRepository trait stays	0
 item	precondition::application::service_impl	default provider	names HttpProviderClient	UnavailableProviderClient	2
 item	precondition::application::setup	whole module (native composition root)	names ProcessPreconditionRunner + TomlPreconditionRepository	—	2
+item	gate::application::setup	whole module (native composition root)	names `PreconditionSetup` + `SequencePolicySetup` (both native-only)	`gate::application::compose` + `dto` stay: the composition and its carriers are portable, the config loading is not	2
 item	policy_engine::infrastructure::default_policy_repository	whole file	tokio::fs	policy rules are supplied	0
 item	sequence_policy::infrastructure::repository	toml_repository + bundle_repository	tokio::fs	precedence/retention repositories stay	4
 item	sequence_policy::infrastructure::history_anchored	AnchoredHistoryAdapter	names the audit anchor	EnvelopeHistoryAdapter stays	1
@@ -77,7 +78,7 @@ item	error	14 of the root enum's variants + their `use`/match arms	names exclude
 #
 # ── summary ──────────────────────────────────────────────────────────────────────────
 # 6 forbidden crates + 3 crates with no wasm support + 1 narrowed feature set
-# 22 of the crate's 38 public modules are excluded wholesale (#1361, corrected by #1374). Counted from the rows,
+# 22 of the crate's 39 public modules are excluded wholesale (#1361, corrected by #1374). Counted from the rows,
 # not estimated — re-derive with:
 #   awk -F'\t' '$1=="module"{ if ($4 ~ /tree_sitter|reqwest|prometheus/) d++;
 #                                 else if ($4 ~ /tokio/) t++; else c++ }
@@ -85,8 +86,10 @@ item	error	14 of the root enum's variants + their `use`/match arms	names exclude
 #     engine/.pi/portable-inventory.tsv
 #   grep -cE '^pub mod' engine/src/lib.rs
 # → 10 for a forbidden crate + 6 for the narrowed tokio feature set = 16 direct, 6 by closure,
-#   22 total, of 38 (`pub mod` in `lib.rs`; the denominator was documented as 40 and has never
-#   been anything but 38). `validate-portable-inventory.sh` recomputes all of it.
+#   22 total, of 39 (`pub mod` in `lib.rs`; the denominator was documented as 40 and has never
+#   been right — it was 38 until #1381 added `gate`, which the slice keeps). The item rows that
+#   follow are counted separately: `grep -cE '^item' engine/.pi/portable-inventory.tsv` = 23.
+#   `validate-portable-inventory.sh` recomputes all of it.
 #
 # #1374 corrected three rows that claimed `whole module` for modules the build does not remove:
 # `dag_engine` (nothing inside it is gated, and gating it fails to compile: `crate::dag_engine`
@@ -95,6 +98,6 @@ item	error	14 of the root enum's variants + their `use`/match arms	names exclude
 # submodule goes, the logging does not). They are item rows now; `--gates` compares the
 # manifest with `cfg(not(feature = "portable"))` in both directions, so a row cannot claim an
 # exclusion the code does not perform.
-# 22 items gated inside the 22 modules that remain
+# 23 items gated inside the 22 modules that remain (the 23rd is gate::application::setup, #1381)
 # `cargo check -p rigorix-engine --features portable --target wasm32-unknown-unknown` → exit 0
 # normal+build tree: 74 crates, none of tree-sitter/reqwest/ring/libc/prometheus/tracing-appender

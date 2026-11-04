@@ -38,9 +38,64 @@ pub struct PreconditionSetup {
     pub gate: Arc<dyn DispatchGate>,
     /// R2 step-outcome gating (`[gating].release_dependents_on_failure`).
     pub gating_mode: GatingMode,
+    /// The service behind the gate.
+    ///
+    /// The gate is one consumer of the service; the gate *composition*
+    /// (`crate::gate::application::evaluate_gate`) is another, because it needs the
+    /// findings as well as the verdict. Both share this one instance, so both read
+    /// the operator file at the same per-dispatch moment (ADR-017 forbids caching).
+    service: Arc<dyn crate::precondition::application::service::PreconditionService>,
+}
+
+/// A `PreconditionService` view over a shared instance.
+///
+/// `PreconditionDispatchGate` takes ownership of a `Box<dyn PreconditionService>`;
+/// the gate composition needs to consult the *same* service, so the box wraps this
+/// forwarder rather than a second instance (two instances would mean two reads of the
+/// operator file per dispatch, and two answers that could disagree).
+struct SharedService(Arc<dyn crate::precondition::application::service::PreconditionService>);
+
+#[async_trait::async_trait]
+impl crate::precondition::application::service::PreconditionService for SharedService {
+    async fn evaluate(
+        &self,
+        execution_id: uuid::Uuid,
+        step: &crate::precondition::application::dto::DispatchStep,
+    ) -> Result<crate::precondition::domain::PreconditionVerdict, PreconditionError> {
+        self.0.evaluate(execution_id, step).await
+    }
+
+    async fn is_configured(&self) -> Result<bool, PreconditionError> {
+        self.0.is_configured().await
+    }
+
+    async fn evaluate_with_findings(
+        &self,
+        execution_id: uuid::Uuid,
+        step: &crate::precondition::application::dto::DispatchStep,
+    ) -> Result<
+        (
+            crate::precondition::domain::PreconditionVerdict,
+            Vec<crate::precondition::domain::PreconditionFinding>,
+        ),
+        PreconditionError,
+    > {
+        self.0.evaluate_with_findings(execution_id, step).await
+    }
 }
 
 impl PreconditionSetup {
+    /// The service behind the armed gate.
+    ///
+    /// One instance per setup: the dispatch gate and the gate composition consult the
+    /// same object, so a decision and its evidence cannot disagree.
+    #[must_use]
+    pub fn service(
+        &self,
+    ) -> Arc<dyn crate::precondition::application::service::PreconditionService> {
+        Arc::clone(&self.service)
+    }
+
     /// Build the precondition setup from the repository's operator config.
     ///
     /// Reads `<repo_root>/.rigorix/preconditions.toml` synchronously (the same
@@ -67,15 +122,24 @@ impl PreconditionSetup {
         };
         let gating_mode = config.gating;
         let runner = ProcessPreconditionRunner::new(repo_root);
-        let service = PreconditionServiceImpl::new(Box::new(repository), Box::new(runner));
-        let gate: Arc<dyn DispatchGate> =
-            Arc::new(PreconditionDispatchGate::new(Box::new(service)));
+        let service: Arc<dyn crate::precondition::application::service::PreconditionService> =
+            Arc::new(PreconditionServiceImpl::new(
+                Box::new(repository),
+                Box::new(runner),
+            ));
+        let gate: Arc<dyn DispatchGate> = Arc::new(PreconditionDispatchGate::new(Box::new(
+            SharedService(Arc::clone(&service)),
+        )));
         tracing::info!(
             path = %config_path.display(),
             release_dependents_on_failure = gating_mode.release_dependents_on_failure,
             "precondition: dispatch gate ARMED from operator config (ADR-017)"
         );
-        Ok(Some(Self { gate, gating_mode }))
+        Ok(Some(Self {
+            gate,
+            gating_mode,
+            service,
+        }))
     }
 
     /// Build a fail-closed setup that refuses every assessed step.
@@ -87,12 +151,19 @@ impl PreconditionSetup {
         let config_path = repo_root.join(".rigorix").join("preconditions.toml");
         let repository = TomlPreconditionRepository::new(config_path);
         let runner = ProcessPreconditionRunner::new(repo_root);
-        let service = PreconditionServiceImpl::new(Box::new(repository), Box::new(runner));
-        let gate: Arc<dyn DispatchGate> =
-            Arc::new(PreconditionDispatchGate::unarmed(Box::new(service), detail));
+        let service: Arc<dyn crate::precondition::application::service::PreconditionService> =
+            Arc::new(PreconditionServiceImpl::new(
+                Box::new(repository),
+                Box::new(runner),
+            ));
+        let gate: Arc<dyn DispatchGate> = Arc::new(PreconditionDispatchGate::unarmed(
+            Box::new(SharedService(Arc::clone(&service))),
+            detail,
+        ));
         Self {
             gate,
             gating_mode: GatingMode::default(),
+            service,
         }
     }
 }

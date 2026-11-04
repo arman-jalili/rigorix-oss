@@ -25,6 +25,16 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- `rigorix_engine::gate` — one composition for a gate decision, so a second runtime can decide the same way rather than imitate it. `evaluate_gate` runs `preconditions` → `requirements` in a fixed fail-closed order and returns the findings in that order plus a SHA-256 over the decision's canonical bytes; `GateSetup::from_env` is the single composition root that knows a malformed `preconditions.toml` arms a fail-closed gate rather than none (#1381)
+- `gate` is 9 new tests, including the two that hold the order: an order-recording port (`the_order_is_preconditions_then_requirements`) and a behaviour (`a_refusal_precondition_is_not_displaced_by_a_requirement_promotion`). Swapping the two composition blocks fails four of them (#1381)
+
+### Changed
+
+- The CLI no longer composes the gate: `cli/src/cli_boundary/orchestrator.rs` asks `GateSetup` for both ports and hands them on, so `grep -c sequence_policy` on that file is `0` and the ordering has one home. Its test suite passes with **zero edits** — `git diff --stat cli/tests cli/src/cli_boundary/tests.rs` is empty (#1382)
+- A new top-level module moves the portable denominator: `gate` stays in the slice, so the inventory is **22 of 39** public modules and **23** gated inner items (was 38 and 22). The bare-count guard from #1377 caught the drift on the first run and every derived site was updated with it (#1381)
+
+### Also added (previous release train)
+
 - `rigorix-engine` has the `portable` feature ADR-014 §1 decided on: `cargo check -p rigorix-engine --features portable --target wasm32-unknown-unknown` succeeds, the wasm32 normal+build graph excludes `tree-sitter`, `reqwest`, `ring`, `libc`, `prometheus` and `tracing-appender`, and the slice's own 880 tests run natively (`cargo test --features portable --tests`). Native-only dependencies moved under `cfg(not(target_arch = "wasm32"))`, `tokio` narrowed for the browser, and 170 `cfg(not(feature = "portable"))` sites gate the excluded modules and items (#1374)
 - `validate-portable-inventory.sh --gates` compares `engine/.pi/portable-inventory.tsv` with the code in both directions: a gate without a manifest row fails, and a row without a gate fails — the compiler can only name a build script when a gate is missing (#1374)
 - CI stage `portable` (mandatory): builds the slice for wasm32, asserts the graph, runs the slice's tests natively, and runs `--gates`

@@ -399,9 +399,9 @@ self-test)
     expect "the tree's own manifest" 0 "$MANIFEST" "$LIB" "$ADR"
 
     # 1. a summary that undercounts the denominator
-    sed -e 's/22 of the crate'"'"'s 38 public modules/22 of 40 public modules/' \
-        -e 's/(22 of 38 public modules)/(22 of 40 public modules)/' "$MANIFEST" > "$tmp/m22.tsv"
-    expect "summary says 22 of 40" 1 "$tmp/m22.tsv" "$LIB" "$ADR"
+    sed -e 's/22 of the crate'"'"'s 39 public modules/22 of 41 public modules/' \
+        -e 's/(22 of 39 public modules)/(22 of 41 public modules)/' "$MANIFEST" > "$tmp/m22.tsv"
+    expect "summary says 22 of 41" 1 "$tmp/m22.tsv" "$LIB" "$ADR"
 
     # 2. the bucket collapse that caused #1361 (six narrowed modules counted as closure)
     sed 's/= 16 direct, 6 by closure,/= 11 indirect,/' "$MANIFEST" > "$tmp/mbucket.tsv"
@@ -432,11 +432,11 @@ self-test)
 
     # 8. #1363 seed A — the prose ratio, inside markdown emphasis, with the table
     #    ratio left correct. Emphasis is stripped before matching, so this cannot hide.
-    sed 's/\*\*22 of 38\*\*/**22 of 40**/' "$ADR" > "$tmp/aprose.md"
+    sed 's/\*\*22 of 39\*\*/**22 of 41**/' "$ADR" > "$tmp/aprose.md"
     expect "prose ratio wrong while the table is right (#1363 seed A)" 1 "$MANIFEST" "$LIB" "$tmp/aprose.md"
 
     # 9. #1363 seed B — the table ratio, prose untouched.
-    sed 's/22 of 38 public modules (10 forbidden crate/22 of 40 public modules (10 forbidden crate/' \
+    sed 's/22 of 39 public modules (10 forbidden crate/22 of 41 public modules (10 forbidden crate/' \
         "$ADR" > "$tmp/atable.md"
     expect "table ratio wrong while the prose is right (#1363 seed B)" 1 "$MANIFEST" "$LIB" "$tmp/atable.md"
 
@@ -454,7 +454,7 @@ self-test)
 
     # 12. #1365 seed H — a manifest-derived count, off by one. The guard used to
     #     compute it, print it, and never look at the record's copy.
-    sed 's/22 inner items/21 inner items/' "$ADR" > "$tmp/acountH.md"
+    sed 's/23 inner items/22 inner items/' "$ADR" > "$tmp/acountH.md"
     expect "derived count off by one: inner items (#1365 seed H)" 1 "$MANIFEST" "$LIB" "$tmp/acountH.md"
 
     # 13. #1365 seed I — the dependency count, likewise.
