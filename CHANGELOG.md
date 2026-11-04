@@ -17,6 +17,12 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ## [Unreleased]
 
+### Fixed
+
+- Ten doctests in `rigorix_engine` were ```ignore, which is not a slow example but an example that is **never compiled**. Two were factually wrong about the API they documented (`MockClassifier::with_low_confidence` does not exist; `OrchestratorBuilder::new` is a trait method whose impl is `OrchestratorBuilderImpl`), and nothing could have noticed. All ten now compile: seven run, three are ```no_run (a live provider, an async runtime, real services). The doctest floor rises 6 → 16, and `run-doctests.sh` now fails on any ```ignore fence with no row in `.pi/doctest-exemptions.tsv` (#1379)
+- ADR-014 §1 carried two bare counts that never moved when #1374 re-derived the inventory: "Of those 25, only 11 leave for a forbidden crate" sat in the same paragraph as the corrected "12 of 22" and "10 of 22", arithmetically self-consistent and factually wrong. The guard checked ratio-shaped tokens and `N of M` but not a bare "N modules". It now derives `modules`, `items`, `dependencies`, `crates`, `direct` and `closure`, checks every bare count against the derived value, resolves the pronominal and elliptical forms (`Of those 22`, `only 10 leave for a forbidden crate`, `6 because they need`), and fails with a named reason when a count has no derivable subject (#1377)
+- The spike report's M1 inventory bullet still stated "25 of 38 modules excluded, 11 of them for a forbidden crate" as a current count. It keeps the branch-era figures and gains the correction (22 and 10, from #1374's `--gates`, which found three `whole module` rows that the build does not remove) at all three sites, per the report's convention that a superseded number stays visible with its correction attached (#1378)
+
 ### Added
 
 - `rigorix-engine` has the `portable` feature ADR-014 §1 decided on: `cargo check -p rigorix-engine --features portable --target wasm32-unknown-unknown` succeeds, the wasm32 normal+build graph excludes `tree-sitter`, `reqwest`, `ring`, `libc`, `prometheus` and `tracing-appender`, and the slice's own 880 tests run natively (`cargo test --features portable --tests`). Native-only dependencies moved under `cfg(not(target_arch = "wasm32"))`, `tokio` narrowed for the browser, and 170 `cfg(not(feature = "portable"))` sites gate the excluded modules and items (#1374)
