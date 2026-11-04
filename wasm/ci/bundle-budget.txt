@@ -25,3 +25,24 @@ note: >-
   The state is `packaged`, not `shipped`: the artifact a host loads exists and is
   measured, but no version has been published to npm, so `publish-wasm-npm` stays outside
   `github-release.needs` — the release-train guard enforces that distinction.
+
+# ── Phase C.3 step 1 (#1383): one reachable engine call, measured ────────────────────────
+# `--features engine` with `infrastructure::engine_probe` reachable from the exported
+# `engine_probe`: the composition links into wasm32 and the linker keeps it.
+#
+#   command: cargo build --release --target wasm32-unknown-unknown --features engine
+#            wasm-bindgen --target nodejs --out-dir …
+#            python3 ci/strip_name_section.py …/rigorix_gate_wasm_bg.wasm
+#   emitted 415169 B → name section -58971 B → shipped 356198 B
+#   ceiling  1500000 B → 23.7 % used, 1143802 B headroom
+#   baseline (contract-only seam, 2026-11-03): 209881 B shipped → delta +146317 B (+69.7 %)
+#
+# This is a LOWER BOUND for the wired build: the probe passes `GatePorts::none()` and
+# `run_context: None`, so `PreconditionServiceImpl`, `SequencePolicyServiceImpl` and
+# `AuditEnvelopeFactoryImpl` are not reachable and are dropped. The 1 170 635 B figure of
+# record came from an apparatus that evaluated a step requirement; neither is the real
+# number. Dependency graph: 93 unique crates, and `toml`, `regex`, `regex-automata` and
+# `regex-syntax` do NOT appear — so the growth is engine code, not a new parser.
+#
+# state: measured, not adopted — `engine` is not a default feature yet (C.4 flips it), and
+# this number is not the budget. It answers only "does linking the composition fit".

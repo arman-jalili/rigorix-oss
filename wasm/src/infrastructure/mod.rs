@@ -17,6 +17,8 @@
 //! - No persistence beyond an in-memory session store (ADR-002)
 
 pub mod adapters;
+#[cfg(feature = "engine")]
+pub mod engine_probe;
 pub mod canonical_serializer;
 pub mod content_policy;
 pub mod repository;

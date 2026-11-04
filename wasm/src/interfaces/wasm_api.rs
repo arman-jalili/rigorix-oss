@@ -415,6 +415,15 @@ pub mod exported {
     /// Export the session's artifact set — `export_artifact_set(handle)`.
     ///
     /// Before an attempt this is a refusal (`seal_failed`), not an error.
+    /// Measurement-only export (Issue #1383): makes one engine gate call reachable from the
+    /// bundle so the size gate measures the engine's real cost rather than a droppable symbol.
+    /// Removed when `EngineGate` replaces the probe.
+    #[cfg(feature = "engine")]
+    #[wasm_bindgen]
+    pub fn engine_probe(execution_id: &str) -> Option<bool> {
+        crate::infrastructure::engine_probe::probe_engine_gate(execution_id)
+    }
+
     #[wasm_bindgen]
     pub fn export_artifact_set(handle_json: String) -> Result<String, JsValue> {
         super::export_artifact_set(handle_json).map_err(|e| JsValue::from_str(&e))

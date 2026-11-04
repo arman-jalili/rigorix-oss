@@ -2940,10 +2940,12 @@ dependencies = [
 name = "rigorix-gate-wasm"
 version = "1.12.1"
 dependencies = [
+ "rigorix-engine",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "thiserror 2.0.18",
+ "uuid",
  "wasm-bindgen",
 ]
 
