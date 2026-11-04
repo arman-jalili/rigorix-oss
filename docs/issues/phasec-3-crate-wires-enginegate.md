@@ -11,6 +11,7 @@ guardian_issue:
   dependencies:
     - "Phase C.1 — the engine gate entry point (must be merged)"
     - "Phase C.2 — the CLI calls it (must be merged)"
+    - "Phase C.1b #1389 — the sync façade and engine-owned envelope assembly (must be merged)"
 
   intent: |
     The crate already has the carrier: `GateEvaluator::evaluate` takes a `GateEvaluationRequest` and
@@ -24,14 +25,16 @@ guardian_issue:
     the whole point of C.1 existing.
 
   in_scope:
-    - "`EngineGate` implements `GateEvaluator` by calling the engine entry point once, with the feature `engine` on"
+    - "`EngineGate` implements `GateEvaluator` by calling `evaluate_gate_sync` once, with the feature `engine` on; it does not drive, poll or assemble anything itself"
+    - "The crate supplies a fixture-backed `PreconditionService` answering from the session fixture world (`fixtures.providers` already models determinations), because the slice's `gate::application::setup` — the native composition root — is excluded by the manifest and `GatePorts` therefore has to be built outside the engine. `UnavailableProviderClient` stays the default when the host supplies no determination, so a forgotten fixture refuses rather than passes"
     - "Ports are satisfied from the crate's `Ports` struct: `provider` implements the engine's provider port, `key_source` signs, and `PinnedInputs` supplies the instant and the ids — no port is left to a default that could silently answer"
     - "A port that cannot answer produces an entry in `port_failures`; the aggregate refuses on a non-empty list even when every finding says `Passed` (invariant 2, already enforced in the domain)"
     - "`SeamGate::not_linked()` and its `gate_unavailable` path for a linked build are deleted; `mod.rs` wiring picks `EngineGate` whenever the feature is on"
     - "The contract tests that asserted `gate_unavailable` now assert a real decision; the seeded-divergence and malformed-handle assertions are unchanged"
 
   out_of_scope:
-    - "Inventing the composition, the port mapping or the envelope input — C.1 supplies all three. If the entry point's shape does not fit the carrier, stop and file the delta; do not work around it inside the crate"
+    - "Inventing the composition, the port mapping or the envelope input — C.1 and C.1b supply all three. If the shape does not fit the carrier, stop and file the delta; do not work around it inside the crate"
+    - "A portable precondition evaluator inside the engine. That would put fixture logic on the production path and make `portable` mean 'the engine with stand-in checks' — the stub problem the inventory's `replaces-with` column exists to make visible"
     - "Conformance (`gate: \"cli\"`) — Phase C.5"
     - "The size budget — Phase C.6"
     - "Any engine type re-modelled in the crate. The carrier is opaque on purpose (ADR-013): findings and envelopes cross, nothing else"
@@ -62,8 +65,9 @@ guardian_issue:
     - "Seed: return a non-empty `port_failures` with all findings `Passed` → the aggregate refuses (invariant 2 fires)"
     - "`cargo check -p rigorix-gate-wasm --target wasm32-unknown-unknown --features engine` exits 0 and the bundle still carries no verifier (the architecture test from ADR-013 stays green)"
     - "Two calls with the same pinned inputs produce identical envelope bytes — the witness `c47b27f9…`-class check, now produced by the crate rather than by an example"
+    - "The same fixture world through the CLI (once `--fixture-world` lands in C.5) produces the same envelope bytes as the crate — the comparison C.5 then labels `gate: \"cli\"`"
 ---
-**This issue is C.3 (#1383). Prerequisite: C.1 (#1381) and C.2 (#1382).** Do not begin work before every
+**This issue is C.3 (#1383). Prerequisite: C.1 (#1381), C.2 (#1382) and C.1b (#1389).** Do not begin work before every
 prerequisite listed above is *merged* — a locally patched engine or a stubbed crate makes
 this issue's acceptance criteria untestable.
 
