@@ -81,11 +81,21 @@ impl Default for LlmExtractorConfig {
 ///
 /// # Usage
 ///
-/// ```rust,ignore
-/// let extractor = LlmParameterExtractor::new(api_key, Some(config));
+/// ```no_run
+/// # async fn extract() -> Result<(), Box<dyn std::error::Error>> {
+/// use rigorix_engine::planning::domain::ParameterExtractor;
+/// use rigorix_engine::planning::infrastructure::llm_extractor::LlmParameterExtractor;
+///
+/// let api_key = std::env::var("ANTHROPIC_API_KEY")?;
+/// let extractor = LlmParameterExtractor::new(api_key, None);
+/// // `intent` and `budget` come from the pipeline: the intent that matched the
+/// // template, and the reservation that pays for this call.
+/// # let intent = todo!(); let budget = todo!();
 /// let result = extractor
-///     .extract(&intent, &budget, "validate-rust-project", &["project_path"])
+///     .extract(&intent, &budget, "validate-rust-project", &["project_path".to_string()])
 ///     .await?;
+/// # Ok(())
+/// # }
 /// ```
 pub struct LlmParameterExtractor {
     /// API key for authentication.

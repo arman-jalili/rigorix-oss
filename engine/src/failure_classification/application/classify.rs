@@ -11,8 +11,9 @@
 //!
 //! # Usage
 //!
-//! ```ignore
-//! use rigorix::failure_classification::application::classify::classify_failure;
+//! ```
+//! use rigorix_engine::failure_classification::application::classify::classify_failure;
+//! use rigorix_engine::failure_classification::domain::FailureType;
 //!
 //! let failure_type = classify_failure("connection timeout");
 //! assert_eq!(failure_type, FailureType::Transient);

@@ -94,7 +94,12 @@ would have been a false positive in the other direction.
 ### What the exclusion cost — `engine/.pi/portable-inventory.tsv`
 
 **25 of the crate's 38 public modules leave the slice, and only 11 of them for a forbidden
-crate.** The reasons split three ways, and only the first is what a dependency list describes
+crate** — as measured on branch `c118cb06`. **Superseded (#1374): the re-derived counts are 22 and
+10.** The `--gates` check compared this manifest with the code and found three rows claiming
+`whole module` that the build does not remove (`dag_engine`, `event_system`, `observability` — the
+first is not excluded at all, and gating it wholesale fails to compile); they are item rows now.
+ADR-014 §1 states the current counts and `engine/.pi/portable-inventory.tsv` derives them.
+The reasons split three ways, and only the first is what a dependency list describes
 (#1361 — the summary in the manifest said "22 of 40 (11 direct, 11 indirect)", which was an
 estimate of the second bucket rather than a count of it):
 
@@ -383,7 +388,8 @@ clock is supplied.
 
 | Branch | Fires when | Verdict here |
 |---|---|---|
-| **A** — extract `rigorix-gate-core` | M1 fails after the exclusions, or the exclusion list is larger than predicted | **Does not fire.** M1 exits 0 with 74 crates and no forbidden crate. The exclusion list *is* large (25 of 38 modules, 20 inner items) but it is now written down, which is what the branch was meant to detect. |
+| **A** — extract `rigorix-gate-core` | M1 fails after the exclusions, or the exclusion list is larger than predicted | **Does not fire.** M1 exits 0 with 74 crates and no forbidden crate. The exclusion list *is* large (25 of 38 modules, 20 inner items at the time — **22 and 22 as
+re-derived in #1374**, see ADR-014 §1) but it is now written down, which is what the branch was meant to detect. |
 | **B** — byte equality not reached | M2 fails inside the timebox | **Fired at the time, superseded (#1355)** — not a current verdict. It fired in part: in-crate was reached through 1 threaded site, the CLI was not, because there is no injection point on the Tier-1 path and the seam sits at the bottom of the stack (`BuildEnvelopeInput`) rather than the top. #1355 then **reached the CLI half** by centralising the operation in `audit::application::pinned`, so the condition no longer holds and **D covers this row**. Kept in the table because a branch that fired and was then overtaken is part of the record. |
 | **C** — bundle exceeds 1 500 000 B | the excess is not one trimable dependency | **Did not fire — verdict withdrawn (#1354).** On the shipped artifact the bundle is **1 170 635 B, 78.0 % of the ceiling**. The excess was a 341 785 B debug `name` section, not a dependency, so the condition above was never met; the `regex` trim the row named is unrun and unnecessary. Recorded originally as "fires" on the emitted file. |
 | **D** — all four pass | — | **Fires.** M1, M1b, M2, M3 and M4 all hold: the engine's gate slice compiles for wasm32, the CLI and the crate produce one digest for one refusal, and the shipped bundle is 78.0 % of the ceiling. What D produces — the decision ADR — is the next step, not this issue's. |
@@ -402,6 +408,12 @@ What replaces it — **D now holds** (#1355 measured the last row):
 2. **M1's inventory stands** and is unaffected: 25 of 38 modules excluded, 11 of them for a
    forbidden crate, `CoreOrchestratorError` at 85 sites. It is an argument *against* extraction
    (branch A) and *for* the exclusions it enumerates.
+   **Correction (#1374, post-spike): 22 of 38, and 10 for a forbidden crate.** The finding stands
+   — the inventory is the argument — but three rows claimed `whole module` for modules the build
+   keeps, which `validate-portable-inventory.sh --gates` established by trying to gate them whole
+   and failing to compile. The current counts are in ADR-014 §1 and the manifest summary; the
+   branch figures above are kept because they are what M1 measured, and because a count that moved
+   after the measurement is itself the record of the manifest's cost.
 3. **Phase B is scheduled against the inventory, not against "151 sites"**: one threaded site per
    operation for the envelope, and the id/clock sites in the callers are the cost.
 4. **No ADR is written here.** This document is the measurement; the ADR that D produces is its

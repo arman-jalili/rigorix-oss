@@ -32,11 +32,13 @@ use crate::planning::domain::intent::UserIntent;
 ///
 /// # Usage
 ///
-/// ```rust,ignore
+/// ```
+/// use rigorix_engine::planning::application::mock_classifier::MockClassifier;
+///
 /// let classifier = MockClassifier::new()
 ///     .with_match("read file", "template-read-file", 0.95)
 ///     .with_match("ambiguous", "template-a", 0.45)
-///     .with_low_confidence("write", 0.15);
+///     .with_match_and_reasoning("write", "template-write", 0.15, "low confidence on purpose");
 /// ```
 pub struct MockClassifier {
     /// Mapping from intent substring → (template_id, confidence, reasoning)

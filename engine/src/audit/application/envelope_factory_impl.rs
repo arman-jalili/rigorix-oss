@@ -66,9 +66,23 @@ impl AuditEnvelopeFactoryImpl {
     /// `#[non_exhaustive]`, and two other crates in this workspace construct it
     /// literally. A new method changes nothing that already compiled.
     ///
-    /// ```ignore
-    /// let factory = AuditEnvelopeFactoryImpl::new(Some(key.into()))
-    ///     .with_pinned_inputs(PinnedInputs::none().with_timestamp(instant));
+    /// ```
+    /// use rigorix_engine::audit::application::dto::pinned_inputs::PinnedInputs;
+    /// use rigorix_engine::audit::application::envelope_factory_impl::AuditEnvelopeFactoryImpl;
+    ///
+    /// // A pinned instant is what makes two identical decisions produce identical bytes:
+    /// // the envelope's own `timestamp` is signed, and a wall-clock read is not reproducible.
+    /// let instant = chrono::NaiveDate::from_ymd_opt(2026, 11, 3)
+    ///     .and_then(|d| d.and_hms_opt(12, 0, 0))
+    ///     .map(|n| n.and_utc());
+    /// let Some(instant) = instant else { return };
+    ///
+    /// let pinned = PinnedInputs::none().with_timestamp(instant);
+    /// assert!(!pinned.is_empty());
+    ///
+    /// // The factory derives nothing it was given: same pins, same bytes.
+    /// let factory = AuditEnvelopeFactoryImpl::new(None).with_pinned_inputs(pinned);
+    /// # let _ = factory;
     /// ```
     #[must_use]
     pub fn with_pinned_inputs(mut self, pinned: PinnedInputs) -> Self {

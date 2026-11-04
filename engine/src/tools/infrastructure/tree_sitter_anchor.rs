@@ -33,14 +33,19 @@ use crate::tools::domain::error::ToolError;
 ///
 /// # Examples
 ///
-/// ```ignore
-/// // Used via TreeSitterAnchorFinder::find_anchor() — not constructed directly
-/// AnchorParams {
+/// ```
+/// use rigorix_engine::tools::infrastructure::tree_sitter_anchor::AnchorParams;
+///
+/// // Usually built by the finder from a search string; constructible when the
+/// // caller already knows the node's identity.
+/// let params = AnchorParams {
 ///     anchor_type: "method".to_string(),
 ///     anchor_name: "activeCount".to_string(),
 ///     container: Some("TaskList".to_string()),
 ///     position: "after".to_string(),
-/// }
+/// };
+/// assert_eq!(params.anchor_type, "method");
+/// assert!(params.container.is_some());
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct AnchorParams {

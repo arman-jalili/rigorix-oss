@@ -22,15 +22,28 @@ use crate::recovery_recipes::domain::{FailureScenario, RecoveryEvent, RecoveryRe
 ///
 /// # Usage
 ///
-/// ```ignore
-/// let mut ctx = RecoveryContext::new();
+/// ```
+/// use rigorix_engine::recovery_recipes::application::RecoveryContext;
+/// use rigorix_engine::recovery_recipes::domain::{
+///     EscalationPolicy, FailureScenario, RecoveryRecipe,
+/// };
 ///
-/// if ctx.can_attempt(scenario, &recipe) {
-///     // execute recovery steps
-///     ctx.record_attempt(scenario);
-/// } else {
-///     // escalate
-/// }
+/// let recipe = RecoveryRecipe {
+///     scenario: FailureScenario::CompileError,
+///     steps: Vec::new(),
+///     max_attempts: 2,
+///     escalation_policy: EscalationPolicy::AlertHuman,
+/// };
+/// let scenario = FailureScenario::CompileError;
+///
+/// let mut ctx = RecoveryContext::new();
+/// assert!(ctx.can_attempt(scenario, &recipe));
+/// assert_eq!(ctx.record_attempt(scenario), 1);
+/// assert_eq!(ctx.remaining_attempts(scenario, &recipe), 1);
+/// // `max_attempts = 2` means "try twice, then escalate".
+/// assert_eq!(ctx.record_attempt(scenario), 2);
+/// assert!(!ctx.can_attempt(scenario, &recipe));
+/// assert_eq!(ctx.remaining_attempts(scenario, &recipe), 0);
 /// ```
 #[derive(Debug, Clone)]
 pub struct RecoveryContext {
