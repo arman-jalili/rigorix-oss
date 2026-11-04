@@ -53,10 +53,12 @@ phase — it is the cheapest possible discovery of the constraint that matters.
 **Recorded outcome (#1366): branch D — all four measurements hold.** The spike ran as `#1351` and
 its report is `docs/spike-portable-slice-2026-11.md`; the decision it produced is
 `decisions/ADR-014-portable-slice-and-pinned-inputs.md`. `portable` compiles the slice for `wasm32`
-(74 crates, no forbidden crate), both runtimes produce `c47b27f9…` for one pinned refusal, and the
-shipped engine-linked bundle is 78.0 % of the ceiling. The one assertion it did not reach is
-assertion 3 above — the crate's gate does not yet *evaluate* the engine envelope — and that is
-Phase 5's remaining work, not the spike's failure.
+(74 crates, no forbidden crate) **on branch `c118cb06`, not on `main`** — the feature is 170 gated
+sites across 23 files there, and that branch is 16 commits behind, so landing it is its own phase
+(#1374, ADR-014 §Implementation step 1) rather than a merge. Both runtimes produce `c47b27f9…` for
+one pinned refusal, and the shipped engine-linked bundle is 78.0 % of the ceiling. The one assertion
+it did not reach is assertion 3 above — the crate's gate does not yet *evaluate* the engine
+envelope — and that is Phase 5's remaining work, not the spike's failure.
 
 See `decisions/ADR-009-conformance-harness.md#prerequisite-ordering`.
 

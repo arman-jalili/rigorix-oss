@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! Integration tests for TemplateFailure — typed classification of execution failures.
 //!
 //! @canonical .pi/architecture/modules/failure-parser.md#failure

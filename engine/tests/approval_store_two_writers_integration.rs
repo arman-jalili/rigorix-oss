@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! Two writers on one approval store and one consumption ledger (#1254).
 //!
 //! @canonical .pi/architecture/modules/approval.md#durability

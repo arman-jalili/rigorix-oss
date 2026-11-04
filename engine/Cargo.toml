@@ -14,14 +14,18 @@ live-tests = []
 # CI conformance job checks out rigorix-sdk (RIGORIX_SDK_TOKEN) and sets
 # RIGORIX_SDK_SCHEMAS; runs: cargo test -p rigorix-engine --features conformance
 conformance = []
+# The gate slice a browser can compile (#1351 M1). `portable` compiles out every
+# engine module that needs an OS, a socket, a C lexer, a crypto provider or a
+# metrics sink; the native-only crates are absent from the wasm32 graph by
+# target, so the tree cannot smuggle one back in. Native builds ignore it, and
+# a native `--features portable` build is how the slice's own tests run fast.
+portable = []
 
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
-tokio-util.workspace = true
 async-trait.workspace = true
 uuid.workspace = true
 chrono.workspace = true
@@ -29,25 +33,48 @@ sha2 = { workspace = true }
 hmac = { workspace = true }
 hex = "0.4"
 base64 = "0.22"
+tracing.workspace = true
+tracing-subscriber.workspace = true
+regex.workspace = true
+indexmap = { version = "2", features = ["serde"] }
+
+# ── Native-only graph (#1351) ────────────────────────────────────────────────
+# Everything below needs a real OS, socket, C toolchain, crypto provider or
+# metrics sink, so it is not fetched at all when the target is wasm32. This is
+# the dependency half of `--features portable`; the source half is the cfg gates
+# in `src/`. Keeping the exclusion here (rather than in a feature) is what makes
+# `cargo tree --target wasm32` provably free of them: an absent dependency
+# cannot be re-enabled by another crate in the graph.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio.workspace = true
 ring = "0.17"
 # ADR-016 Phase C: verify the anchor's Ed25519 signature over a history slice
 # (asymmetric — the host holds only the public key).
 ed25519-dalek = "2"
 reqwest.workspace = true
-tracing.workspace = true
-tracing-subscriber.workspace = true
-regex.workspace = true
 # POSIX euid + supplementary-group checks for the precondition trust boundary
-# (`require_immutable_check`). Unix-only use; already in the dependency graph.
+# (`require_immutable_check`). Unix-only use.
 libc = "0.2"
-indexmap = { version = "2", features = ["serde"] }
-rand = "0.10.1"
 tree-sitter = "0.25"
 tree-sitter-rust = "0.23"
 tree-sitter-typescript = "0.23"
 tree-sitter-python = "0.21"
 tracing-appender = "0.2"
 prometheus = "0.14.0"
+tokio-util.workspace = true
+rand = "0.10.1"
+
+# The browser has no mio, so tokio is narrowed to the parts that are
+# target-independent. Declared explicitly (not `workspace = true`) because the
+# workspace's `["full"]` cannot be un-inherited.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+tokio = { version = "1", default-features = false, features = [
+    "sync", "macros", "rt", "time", "io-util",
+] }
+# uuid refuses to build for wasm32 without a randomness backend; `js` is the
+# browser's (getrandom -> wasm-bindgen -> crypto.getRandomValues). The pin is
+# only the *source*: `portable` code paths take ids from a supplied source.
+uuid = { workspace = true, features = ["js"] }
 
 [dev-dependencies]
 tempfile.workspace = true

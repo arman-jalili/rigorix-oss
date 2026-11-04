@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! IntentKeyDerivation integration: the service records the derived key.
 //!
 //! @canonical .pi/architecture/modules/effect-commitment.md#intentkeyderivation

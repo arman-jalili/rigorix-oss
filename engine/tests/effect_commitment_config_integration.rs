@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! EffectCommitmentConfig integration: declaration -> adapters.
 //!
 //! @canonical .pi/architecture/modules/effect-commitment.md#effectcommitmentconfig

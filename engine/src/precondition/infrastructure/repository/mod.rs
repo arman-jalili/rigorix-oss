@@ -15,12 +15,14 @@
 //! - The config lives in `.rigorix/**`, which agents are denied write access to
 //!   by default (ADR-013 R5)
 
+#[cfg(not(feature = "portable"))]
 pub mod toml_repository;
 
 use async_trait::async_trait;
 
 use crate::precondition::domain::{PreconditionConfig, PreconditionError};
 
+#[cfg(not(feature = "portable"))]
 pub use toml_repository::TomlPreconditionRepository;
 
 /// Repository for the operator-authored precondition config.

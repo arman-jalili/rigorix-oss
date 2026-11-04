@@ -164,6 +164,26 @@ def span_end(masked_lines, start):
     return start
 
 
+CFG_ATTR = re.compile(r'#\[cfg\((?P<inner>.*)\)\]')
+
+
+def is_test_cfg(line):
+    """True when this line is a `cfg` attribute that scopes its item to TESTS.
+
+    `#[cfg(test)]` was the only form recognised, so `#[cfg(all(test, not(feature = "portable")))]`
+    — the form the portable slice needs, because a test that spawns a process cannot compile
+    into the slice — read as *production* and reported six test-only panics as new debt.
+    `#[cfg(not(test))]` is the opposite case and must stay production.
+    """
+    m = CFG_ATTR.search(line)
+    if not m:
+        return False
+    inner = m.group('inner')
+    if re.search(r'not\s*\(\s*test\s*\)', inner):
+        return False
+    return re.search(r'\btest\b', inner) is not None
+
+
 def production_mask(masked_lines):
     """Boolean per line: True when the line is PRODUCTION code.
 
@@ -173,7 +193,7 @@ def production_mask(masked_lines):
     """
     prod = [True] * len(masked_lines)
     for i, line in enumerate(masked_lines):
-        if "#[cfg(test)]" in line or any(a in line for a in TEST_ATTRS):
+        if is_test_cfg(line) or any(a in line for a in TEST_ATTRS):
             end = span_end(masked_lines, i)
             for k in range(i, min(end + 1, len(masked_lines))):
                 prod[k] = False
@@ -196,7 +216,7 @@ def collect_test_only_files(root):
             masked = mask_code(text)
             lines = masked.split("\n")
             for i, line in enumerate(lines):
-                if "#[cfg(test)]" not in line:
+                if not is_test_cfg(line):
                     continue
                 for k in range(i, min(i + 4, len(lines))):
                     m = re.match(r"\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*;", lines[k])

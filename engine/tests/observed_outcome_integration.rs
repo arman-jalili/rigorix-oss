@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! ObservedOutcome integration: provider evidence ↔ settlement.
 //!
 //! @canonical .pi/architecture/modules/effect-commitment.md#observedoutcome

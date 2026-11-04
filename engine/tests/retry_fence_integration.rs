@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! RetryFence integration: an unsettled intent is never re-dispatched.
 //!
 //! @canonical .pi/architecture/modules/effect-commitment.md#retryfence

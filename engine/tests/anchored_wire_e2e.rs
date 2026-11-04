@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! Live anchored-path wire E2E (ADR-016 Phase C, #912).
 //!
 //! Fixture parity is not wire parity: this drives the **real**

@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! Integration test: verify against a mock JWKS — valid → Verified;
 //! tampered → Unverified.
 //!

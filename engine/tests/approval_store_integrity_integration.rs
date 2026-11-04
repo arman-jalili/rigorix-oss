@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! Approval store integrity (#1237).
 //!
 //! @canonical .pi/architecture/modules/approval.md#durability

@@ -31,6 +31,7 @@ pub mod gate_impl;
 pub mod hardening;
 pub mod service;
 pub mod service_impl;
+#[cfg(not(feature = "portable"))]
 pub mod setup;
 pub mod surfaces;
 
@@ -41,5 +42,6 @@ pub use gate_impl::PreconditionDispatchGate;
 pub use hardening::HardeningConfig;
 pub use service::PreconditionService;
 pub use service_impl::PreconditionServiceImpl;
+#[cfg(not(feature = "portable"))]
 pub use setup::PreconditionSetup;
 pub use surfaces::{PreconditionPolicyViolation, PreconditionSurfaces, PreconditionSurfacesImpl};

@@ -19,4 +19,6 @@ pub mod repository;
 pub mod verifier;
 
 pub use repository::IdentityRepository;
-pub use verifier::{JwksVerifier, NullVerifier, TokenVerifier};
+#[cfg(not(feature = "portable"))]
+pub use verifier::JwksVerifier;
+pub use verifier::{NullVerifier, TokenVerifier};

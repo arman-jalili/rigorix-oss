@@ -389,7 +389,7 @@ impl SequencePolicyService for SequencePolicyServiceImpl {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "portable")))]
 mod tests {
     use super::*;
     use crate::sequence_policy::domain::{

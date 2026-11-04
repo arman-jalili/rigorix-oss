@@ -10,6 +10,7 @@
 
 pub mod config_factory_impl;
 pub mod config_write_repository_impl;
+#[cfg(not(feature = "portable"))]
 pub mod filesystem_config_repository;
 pub mod repository;
 pub mod secret_factory_impl;

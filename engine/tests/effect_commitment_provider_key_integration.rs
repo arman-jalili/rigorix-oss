@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! #1165 / #1174: the receipt reader resolves an `Ambiguous` record when the
 //! provider echoes the intent key.
 //!

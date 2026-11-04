@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! ReconciliationPolicy integration: F3/F4 as the runtime gate.
 //!
 //! @canonical .pi/architecture/modules/effect-commitment.md#reconciliationpolicy

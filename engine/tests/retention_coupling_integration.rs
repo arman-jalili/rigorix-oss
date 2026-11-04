@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! GAP-A-29 (#895) / ADR-014 — the retention coupling is enforced on the REAL
 //! composition path.
 //!

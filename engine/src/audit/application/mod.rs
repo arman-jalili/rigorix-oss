@@ -16,6 +16,7 @@
 //! - No implementation logic — only trait definitions
 
 pub mod audit_queue_impl;
+#[cfg(not(feature = "portable"))]
 pub mod audit_sender_impl;
 pub mod audit_service_impl;
 pub mod chain;
@@ -28,6 +29,7 @@ pub mod projection;
 pub mod service;
 
 pub use audit_queue_impl::*;
+#[cfg(not(feature = "portable"))]
 pub use audit_sender_impl::*;
 pub use audit_service_impl::*;
 pub use chain::*;

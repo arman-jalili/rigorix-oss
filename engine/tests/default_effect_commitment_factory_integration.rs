@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! DefaultEffectCommitmentFactory integration: composition actually runs.
 //!
 //! @canonical .pi/architecture/modules/effect-commitment.md#defaulteffectcommitmentfactory

@@ -196,7 +196,7 @@ impl ExecutionHistory for EnvelopeHistoryAdapter {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "portable")))]
 mod tests {
     use super::*;
     use crate::audit::application::dto::BuildEnvelopeInput;

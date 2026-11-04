@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! #1163: the capacity hold and the effect record share one intent identity.
 //!
 //! @canonical .pi/architecture/modules/capacity-ledger.md#idempotency

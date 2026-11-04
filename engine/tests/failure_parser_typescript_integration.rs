@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! Integration tests for TypeScriptParser — parse `tsc --noEmit --pretty false` output.
 //!
 //! @canonical .pi/architecture/modules/failure-parser.md#ts-parser

@@ -26,6 +26,7 @@ mod identity {
 mod pinnedinputs {
     mod pinnedinputs_test;
 }
+#[cfg(not(feature = "portable"))]
 mod approval {
     mod approvalerror {
         mod approvalerror_test;
@@ -55,6 +56,7 @@ mod approval {
     }
 }
 #[path = "scored-evaluation"]
+#[cfg(not(feature = "portable"))]
 mod scored_evaluation {
     #[path = "application-layer-application"]
     mod application_layer_application {
@@ -126,6 +128,7 @@ mod scored_evaluation {
     }
 }
 #[path = "sequence-policy"]
+#[cfg(not(feature = "portable"))]
 mod sequence_policy {
     #[path = "audit-r6"]
     mod audit_r6 {
@@ -203,6 +206,7 @@ mod sequence_policy {
 // design), so silence the module-inception lint locally.
 #[allow(clippy::module_inception)]
 #[path = "precondition"]
+#[cfg(not(feature = "portable"))]
 mod precondition {
     #[path = "dispatchgate"]
     mod dispatchgate {
@@ -219,6 +223,7 @@ mod precondition {
         #[path = "hardeningconfig_test.rs"]
         mod hardeningconfig_test;
     }
+    #[cfg(not(feature = "portable"))]
     mod precondition {
         mod precondition_test;
     }
@@ -250,6 +255,7 @@ mod precondition {
 // `capacity-ledger` is hyphenated on disk and underscored in Rust; the outer
 // `#[path]` makes the inner module names (single words) resolve relative to it.
 #[path = "capacity-ledger"]
+#[cfg(not(feature = "portable"))]
 mod capacity_ledger {
     mod capacityledger {
         mod capacityledger_test;
@@ -290,6 +296,7 @@ mod capacity_ledger {
 // inner module names resolve relative to it.
 // @canonical .pi/architecture/modules/effect-commitment.md
 #[path = "effect-commitment"]
+#[cfg(not(feature = "portable"))]
 mod effect_commitment {
     mod commitmenterror {
         mod commitmenterror_test;

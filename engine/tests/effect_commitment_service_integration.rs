@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! EffectCommitmentService integration: service ↔ ledger port.
 //!
 //! @canonical .pi/architecture/modules/effect-commitment.md#effectcommitmentservice

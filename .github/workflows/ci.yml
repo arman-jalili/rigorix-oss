@@ -167,6 +167,53 @@ jobs:
           done
         working-directory: ${{ matrix.crate }}
 
+  # ── Stage 3c: Portable slice (ADR-014 §1, #1374) ───────────────
+  # A configuration outside CI is a configuration that rots: without this job
+  # `--features portable` would be a decision nothing builds, and the first
+  # person to try it would meet a build-script failure rather than a named module.
+  portable:
+    name: 🧳 Portable slice
+    needs: [workspace, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          cache-key: portable
+      - name: The slice compiles for wasm32
+        # ADR-014 §1: the engine compiles for `wasm32-unknown-unknown` with
+        # `--features portable`.
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo check -p rigorix-engine --features portable --target wasm32-unknown-unknown
+      - name: No forbidden crate in the wasm32 graph
+        # `-e normal,build` is the SUBJECT. The dev-inclusive tree pulls `reqwest` in
+        # through `jsonschema` (a dev-dependency), so a plain `cargo tree` here fails
+        # while saying nothing about what ships — the wrong-subject defect this
+        # repository keeps finding, in the assertion ADR-014 leans on.
+        shell: bash
+        run: |
+          tree="$(cargo tree -p rigorix-engine --features portable --target wasm32-unknown-unknown -e normal,build)"
+          bad=0
+          for crate in tree-sitter reqwest ring libc prometheus tracing-appender; do
+            if printf '%s\n' "$tree" | sed 's/^[│├└─ ]*//' | grep -qE "^${crate} v"; then
+              echo "::error::${crate} is in the wasm32 normal+build graph"
+              bad=1
+            fi
+          done
+          [ "$bad" -eq 0 ] || exit 1
+          echo "✅ none of the six forbidden crates in the wasm32 graph"
+      - name: The slice's own tests run natively
+        # `--tests`, not the whole suite: an example demonstrating an excluded module
+        # cannot exist in the slice, and gating an example file leaves no `main` (E0601).
+        run: cargo test -p rigorix-engine --features portable --tests
+      - name: Manifest versus cfg gates, both directions
+        # A gate with no row is an exclusion nobody reviewed; a row with no gate is a
+        # claim about a build that still compiles the module. The compiler can say
+        # neither: removing a gate names a build script (`tree-sitter`), not the module.
+        run: bash .pi/scripts/validate-portable-inventory.sh --gates
+
   # ── Stage 3b: Coverage (real line coverage via cargo-llvm-cov) ──
   coverage:
     name: 📊 Coverage (workspace)
@@ -445,7 +492,7 @@ jobs:
 
   ci-report:
     name: 📋 Stage report
-    needs: [lint, build, test, audit, docs, integration, conformance, shell, wasm-gates]
+    needs: [lint, build, test, portable, audit, docs, integration, conformance, shell, wasm-gates]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -455,6 +502,7 @@ jobs:
           RESULT_LINT: ${{ needs.lint.result }}
           RESULT_BUILD: ${{ needs.build.result }}
           RESULT_TEST: ${{ needs.test.result }}
+          RESULT_PORTABLE: ${{ needs.portable.result }}
           RESULT_AUDIT: ${{ needs.audit.result }}
           RESULT_DOCS: ${{ needs.docs.result }}
           RESULT_INTEGRATION: ${{ needs.integration.result }}
@@ -466,7 +514,7 @@ jobs:
   # ── Stage 8: Final Gate ───────────────────────────────────────
   gate:
     name: 🚪 Final Gate
-    needs: [lint, build, test, audit, docs, integration, conformance, shell, wasm-gates]
+    needs: [lint, build, test, portable, audit, docs, integration, conformance, shell, wasm-gates]
     # A superseded run gets no verdict (#1289). `cancelled` is the scheduler's
     # fact, not the change's: with `cancel-in-progress` every push to the same
     # ref cancels the previous run, so the old `!= 'success'` test accused the
@@ -481,6 +529,7 @@ jobs:
           RESULT_LINT: ${{ needs.lint.result }}
           RESULT_BUILD: ${{ needs.build.result }}
           RESULT_TEST: ${{ needs.test.result }}
+          RESULT_PORTABLE: ${{ needs.portable.result }}
           RESULT_AUDIT: ${{ needs.audit.result }}
           RESULT_DOCS: ${{ needs.docs.result }}
           RESULT_INTEGRATION: ${{ needs.integration.result }}

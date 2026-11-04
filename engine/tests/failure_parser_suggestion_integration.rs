@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! Integration tests for FixSuggestionServiceImpl — suggested fix generation.
 //!
 //! @canonical .pi/architecture/modules/failure-parser.md#suggested-fix-generation

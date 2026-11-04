@@ -16,7 +16,9 @@ use crate::configuration::application::dto::{
 use crate::configuration::application::factory::ConfigFactory;
 use crate::configuration::application::service::ConfigService;
 use crate::configuration::domain::{AuditConfig, ConfigurationError, EnforcementPreset, Secret};
+#[cfg(not(feature = "portable"))]
 use crate::configuration::infrastructure::config_factory_impl::ConfigFactoryImpl;
+#[cfg(not(feature = "portable"))]
 use crate::configuration::infrastructure::filesystem_config_repository::FilesystemConfigRepository;
 use crate::configuration::infrastructure::repository::ConfigRepository;
 
@@ -45,6 +47,9 @@ impl ConfigServiceImpl {
     }
 }
 
+/// The slice has no filesystem config source, so there is no honest default:
+/// a caller must supply a repository (an in-memory one, in the smoke test).
+#[cfg(not(feature = "portable"))]
 impl Default for ConfigServiceImpl {
     #[tracing::instrument(skip_all)]
     fn default() -> Self {

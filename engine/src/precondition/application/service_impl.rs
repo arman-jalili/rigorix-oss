@@ -36,8 +36,12 @@ use crate::precondition::domain::{
     AttributionReason, Precondition, PreconditionConfig, PreconditionError, PreconditionFinding,
     PreconditionOutcome, PreconditionVerdict, ProviderSpec,
 };
+#[cfg(not(feature = "portable"))]
+use crate::precondition::infrastructure::HttpProviderClient;
+#[cfg(feature = "portable")]
+use crate::precondition::infrastructure::UnavailableProviderClient;
 use crate::precondition::infrastructure::repository::PreconditionRepository;
-use crate::precondition::infrastructure::{HttpProviderClient, PreconditionRunner, ProviderClient};
+use crate::precondition::infrastructure::{PreconditionRunner, ProviderClient};
 
 use super::dto::{DispatchStep, PreconditionCheckInput};
 use super::service::PreconditionService;
@@ -64,7 +68,10 @@ impl PreconditionServiceImpl {
         Self {
             repository,
             runner,
+            #[cfg(not(feature = "portable"))]
             provider: Box::new(HttpProviderClient),
+            #[cfg(feature = "portable")]
+            provider: Box::new(UnavailableProviderClient),
         }
     }
 

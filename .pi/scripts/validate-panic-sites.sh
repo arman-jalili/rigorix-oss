@@ -42,6 +42,26 @@ if [ "${1:-}" = "--self-test" ]; then
     exit 1
   fi
   echo -e "${GREEN}✅ self-test: scanner caught the planted unwrap${NC}"
+
+  # #1374: the test-scope rule must read `cfg(all(test, …))` as test scope — the form
+  # the portable slice needs — while `cfg(not(test))` stays production. Without the
+  # first, six test-only panics in the precondition runner reported as new production
+  # debt; without the second, a real panic could hide behind a negation.
+  mkdir -p "$TMP/crate/src"
+  printf '#[cfg(all(test, not(feature = "x")))]\nmod tests {\n    fn t() { Some(1).unwrap(); }\n}\n' \
+    > "$TMP/crate/src/gated_tests.rs"
+  printf '#[cfg(not(test))]\nfn prod() -> i32 { Some(1).unwrap() }\n' \
+    > "$TMP/crate/src/negated.rs"
+  sites="$(python3 "$SCANNER" "$TMP" --json | python3 -c '
+import json, sys
+rows = json.load(sys.stdin)
+paths = {r.get("file", "") for r in rows}
+print("negated" if any("negated" in p for p in paths) else "no-negated",
+      "gated_tests" if any("gated_tests" in p for p in paths) else "no-gated")')"
+  case "$sites" in
+    "negated no-gated") echo -e "${GREEN}✅ self-test: \`all(test, …)\` is test scope, \`not(test)\` is production${NC}" ;;
+    *) echo -e "${RED}❌ self-test: test-scope rule wrong ($sites)${NC}" >&2; exit 1 ;;
+  esac
   exit 0
 fi
 

@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! CommitmentError integration: typed failure ↔ HTTP error body.
 //!
 //! @canonical .pi/architecture/modules/effect-commitment.md#commitmenterror

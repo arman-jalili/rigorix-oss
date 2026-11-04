@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! EffectCommitment composition e2e: declaration -> seam -> dispatch -> record.
 //!
 //! @canonical .pi/architecture/modules/effect-commitment.md#compositionroots

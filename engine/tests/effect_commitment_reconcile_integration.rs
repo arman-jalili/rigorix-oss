@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! #1164: a `Dispatched` record with no live owner becomes `Ambiguous`.
 //!
 //! @canonical .pi/architecture/modules/effect-commitment.md#effectcommitmentservice
