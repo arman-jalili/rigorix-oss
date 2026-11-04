@@ -133,6 +133,12 @@ fn open() -> String {
         .expect("open never errors")
 }
 
+/// A build that can evaluate, which is what these tests are about.
+///
+/// The unlinked build refuses every `open_session` with `gate_unavailable` before looking at
+/// its inputs (C.4), so its input handling is not observable — that is the point of the
+/// narrowing, and `the_unlinked_build_refuses_at_open_session` states it instead.
+#[cfg(feature = "engine")]
 #[test]
 fn open_session_returns_an_opaque_handle() {
     let handle: serde_json::Value = serde_json::from_str(&open()).expect("json");
@@ -148,14 +154,19 @@ fn open_session_returns_an_opaque_handle() {
 fn a_refusal_is_a_return_value_and_the_only_error_is_a_bad_handle() {
     let handle = open();
 
-    // The gate is not linked in this build, so the run refuses — as a return value.
+    // The gate *is* linked in this build (C.4), so the run evaluates — and the one thing it
+    // must never return is `gate_unavailable`: that kind means "this build cannot decide",
+    // and a build that can must not report it however the evaluation went.
     let outcome = rigorix_gate_wasm::interfaces::attempt_run(
         handle.clone(),
         serde_json::json!({ "name": "payment_execute", "params": {} }).to_string(),
     )
     .expect("a refusal must not be an error");
     let outcome: serde_json::Value = serde_json::from_str(&outcome).expect("json");
-    assert_eq!(outcome["kind"], "gate_unavailable");
+    assert_ne!(
+        outcome["kind"], "gate_unavailable",
+        "an evaluating build must never report a missing capability: {outcome}"
+    );
 
     // A malformed handle is the programmer error, and it is an `Err`.
     assert!(
@@ -190,6 +201,12 @@ fn unknown_dto_fields_are_refusals_not_ignored() {
     assert_eq!(denied["kind"], "request_invalid");
 }
 
+/// A build that can evaluate, which is what these tests are about.
+///
+/// The unlinked build refuses every `open_session` with `gate_unavailable` before looking at
+/// its inputs (C.4), so its input handling is not observable — that is the point of the
+/// narrowing, and `the_unlinked_build_refuses_at_open_session` states it instead.
+#[cfg(feature = "engine")]
 #[test]
 fn open_session_refuses_unpinnable_input() {
     // An empty clock series cannot be defaulted.
@@ -215,6 +232,12 @@ fn open_session_refuses_unpinnable_input() {
     assert_eq!(refused["kind"], "session_open_failed");
 }
 
+/// A build that can evaluate, which is what these tests are about.
+///
+/// The unlinked build refuses every `open_session` with `gate_unavailable` before looking at
+/// its inputs (C.4), so its input handling is not observable — that is the point of the
+/// narrowing, and `the_unlinked_build_refuses_at_open_session` states it instead.
+#[cfg(feature = "engine")]
 #[test]
 fn export_before_an_attempt_is_a_refusal_and_contract_version_reports_three_numbers() {
     let handle = open();
@@ -227,4 +250,26 @@ fn export_before_an_attempt_is_a_refusal_and_contract_version_reports_three_numb
     assert_eq!(version["artifact_format"], 2);
     assert_eq!(version["contract"], version["engine"]);
     assert!(version.get("verified").is_none());
+}
+
+/// The unlinked build's one behaviour: it cannot open a session, and says which fact that is.
+#[cfg(not(feature = "engine"))]
+#[test]
+fn the_unlinked_build_refuses_at_open_session_and_reports_the_capability() {
+    let version: serde_json::Value =
+        serde_json::from_str(&rigorix_gate_wasm::interfaces::contract_version()).expect("json");
+    assert_eq!(
+        version["gate_evaluation"], false,
+        "a host must learn the build cannot decide before it tries"
+    );
+
+    let refusal = rigorix_gate_wasm::interfaces::open_session(
+        scenario(),
+        fixtures(),
+        clock(),
+        seed(),
+    )
+    .expect("a refusal is a return value");
+    let refusal: serde_json::Value = serde_json::from_str(&refusal).expect("json");
+    assert_eq!(refusal["kind"], "gate_unavailable");
 }

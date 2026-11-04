@@ -29,16 +29,20 @@ fn the_four_functions_are_the_frozen_surface() {
 }
 
 #[test]
-fn the_host_is_told_the_three_versions() {
+fn the_host_is_told_the_three_versions_and_whether_the_build_can_decide() {
     // The host must be able to decide, before trusting the shape, which contract,
     // which engine and which container it is talking to.
     let version = ContractVersion {
         contract: "1.12.1".into(),
         engine: "1.12.1".into(),
-        artifact_format: 1,
+        artifact_format: 2,
+        // The capability is a fourth fact, and a host may read it before opening a session
+        // (#1384). It is reported, not inferred from a later refusal.
+        gate_evaluation: true,
     };
     assert_eq!(version.contract, version.engine);
-    assert_eq!(version.artifact_format, 1);
+    assert_eq!(version.artifact_format, 2);
+    assert!(version.gate_evaluation);
 }
 
 // ---------------------------------------------------------------------------

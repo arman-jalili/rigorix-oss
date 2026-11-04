@@ -53,6 +53,22 @@ pub fn project_session_open(error: &crate::domain::errors::SessionOpenError) -> 
     }
 }
 
+/// The refusal a build without gate evaluation returns from `open_session`.
+///
+/// One kind, one meaning: *this build cannot decide*. A run that fails to evaluate on a
+/// build that **can** decide is an `attempt_failed`, not this — conflating the two told a
+/// host to check its build when it should have checked its ports (#1384).
+pub fn project_gate_unavailable() -> RefusalDto {
+    RefusalDto {
+        kind: KIND_GATE.to_string(),
+        message: "this build cannot evaluate a gate: it was compiled without engine \
+                  evaluation, so no session can be opened"
+            .to_string(),
+        port: None,
+        evidence_ref: None,
+    }
+}
+
 /// Maps an attempt failure to the wire refusal.
 pub fn project_attempt(error: &crate::domain::errors::AttemptError) -> RefusalDto {
     use crate::domain::errors::AttemptError as E;
@@ -62,9 +78,10 @@ pub fn project_attempt(error: &crate::domain::errors::AttemptError) -> RefusalDt
     let (kind, message) = match error {
         E::AlreadyAttempted => (KIND_ATTEMPT, "this session has already run its one attempt"),
         E::AlreadySealed => (KIND_ATTEMPT, "this record is already sealed"),
-        // The gate could not evaluate. A refusal — and the wording says "could not", not
-        // "did not pass": the two are different facts about the world.
-        E::EngineFailure { .. } => (KIND_GATE, "the gate could not evaluate the run"),
+        // The gate was asked and could not answer. A refusal — and the wording says "could
+        // not", not "did not pass": different facts about the world. Not `gate_unavailable`:
+        // this build *can* evaluate, so the capability is not what failed (#1384).
+        E::EngineFailure { .. } => (KIND_ATTEMPT, "the gate could not evaluate this attempt"),
     };
     let _ = wording.reason(crate::domain::outcome::RefusalKind::PreconditionError);
     RefusalDto {

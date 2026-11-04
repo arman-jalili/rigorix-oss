@@ -57,17 +57,23 @@ fn the_size_gate_is_declared_where_ci_can_read_it() {
     assert!(manifest.contains("[features]"));
     // The engine seam is opt-in and off by default: a default-on engine dependency would
     // pull the native stack into the browser bundle.
+    // C.4 (#1384) intends `default = ["engine"]` — the gate on the default path, so the size
+    // gate measures the artifact a host loads. It cannot land yet: the linked artifact
+    // measures 1 706 234 B against the 1 500 000 B ceiling (a filed finding, not a ceiling
+    // move — see `ci/bundle-budget.txt`). The flip lands with the size work, C.6 (#1386).
+    // Until then the default stays the unlinked build, and it refuses at open with a reason.
     assert!(manifest.contains("default = []"));
 }
 
 #[test]
 fn the_engine_dependency_is_optional_by_contract() {
     let manifest = read_manifest("Cargo.toml");
-    // C.3 landed the dependency: it is opt-in, behind `engine`, and the feature carries the
-    // `portable` slice rather than a `default` list (NFR-005).
+    // The dependency is optional and off by default: a browser bundle pays for what it can
+    // use. The build it produces is not useless — it refuses at open with `gate_unavailable`
+    // and says so — which is exactly what makes shipping it defensible until C.6.
     assert!(
         !manifest.contains("default = [\"engine\"]"),
-        "the engine must never be a default feature: a browser bundle would grow by the whole slice"
+        "the default build currently carries no engine; flipping it is C.6, with the size finding"
     );
     let deps = manifest.split("[dependencies]").nth(1).unwrap_or_default();
     let engine_line = deps

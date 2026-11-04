@@ -90,10 +90,16 @@ fn a_trap_is_representable_and_never_reads_as_a_verdict() {
     use rigorix_gate_wasm::interfaces::errors::project_attempt;
 
     // Tier 3 has a value, so a host can tell "the gate stopped" from "the gate said no".
+    // It is `attempt_failed`, not `gate_unavailable`: this build can evaluate, so the
+    // capability is not what failed (#1384). `gate_unavailable` means "compiled without
+    // evaluation" and is emitted at `open_session`, before any handle exists.
     let refusal = project_attempt(&AttemptError::EngineFailure {
         source: EngineBindingError::Aborted,
     });
-    assert_eq!(refusal.kind, "gate_unavailable");
+    assert_eq!(refusal.kind, "attempt_failed");
+    let build_level = rigorix_gate_wasm::interfaces::errors::project_gate_unavailable();
+    assert_eq!(build_level.kind, "gate_unavailable");
+    assert_ne!(refusal.kind, build_level.kind);
     let text = refusal.message.to_lowercase();
     for forbidden in ["refused", "allowed", "denied", "verified"] {
         assert!(!text.contains(forbidden), "a trap reads as {forbidden}");

@@ -94,10 +94,17 @@ and prove self-consistency only.
 
 ## 3. When a run refuses with `gate_unavailable`
 
-Expected in a build compiled without the `engine` feature: `EngineGate::unavailable()`
-refuses every run, because a gate that cannot evaluate must not allow one. A build with the
-feature evaluates the real gate over the session's fixtures; if it still reports
-`gate_unavailable`, the port answers are the thing to read, not the wiring.
+Only a build compiled **without** the `engine` feature emits this — the one
+`EngineGate::unavailable()` answers for — and only from `open_session`: such a build cannot decide, so it refuses before minting a handle, and
+`contract_version()` reports `"gate_evaluation": false` so a host learns it first rather than
+provoking a refusal.
+
+A build **with** the feature never emits it. If an attempt fails to evaluate there, the kind
+is `attempt_failed` and the gate's own reason travels in the refusal — that is a port that
+could not answer, not a missing capability. Read the port answers, not the wiring.
+
+Exit condition: C.6 makes `engine` the default, once the linked artifact fits the 1 500 000 B
+ceiling (it currently measures 1 706 234 B — see `wasm/ci/bundle-budget.txt`).
 
 - The refusal kind is `gate_unavailable`, **not** "denied" — the gate did not answer no, it
   could not answer at all.
