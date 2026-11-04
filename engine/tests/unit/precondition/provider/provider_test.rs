@@ -395,3 +395,51 @@ async fn provider_verdict_is_deterministic() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// #1393 — one axis, one conversion
+// ---------------------------------------------------------------------------
+
+/// The conversion is total in both directions of meaning, and `Unknown` does not become
+/// `Failed`: a check that could not answer is not a check that answered "no".
+#[test]
+fn the_determination_conversion_keeps_the_third_value() {
+    use rigorix_engine::precondition::domain::{PreconditionOutcome, ProviderDetermination};
+
+    assert_eq!(
+        PreconditionOutcome::from(ProviderDetermination::Permit),
+        PreconditionOutcome::Passed
+    );
+    assert_eq!(
+        PreconditionOutcome::from(ProviderDetermination::Deny),
+        PreconditionOutcome::Failed
+    );
+    // The arm that was previously absorbed: `permits()` is false for both `Deny` and
+    // `Unknown`, so an if/else recorded an indeterminate check as a failed one.
+    assert_eq!(
+        PreconditionOutcome::from(ProviderDetermination::Unknown),
+        PreconditionOutcome::Error
+    );
+}
+
+/// The two vocabularies are disjoint by design, and the conversion is what bridges them.
+/// A `From` impl with a wildcard arm would silently absorb a fourth value; this test cannot
+/// prove there is no wildcard (the compiler does that), but it can prove no value is
+/// absorbed *today* — all three differ between input and output names.
+#[test]
+fn no_determination_maps_to_itself_by_name() {
+    use rigorix_engine::precondition::domain::{PreconditionOutcome, ProviderDetermination};
+
+    for determination in [
+        ProviderDetermination::Permit,
+        ProviderDetermination::Deny,
+        ProviderDetermination::Unknown,
+    ] {
+        let outcome = PreconditionOutcome::from(determination);
+        assert_ne!(
+            determination.as_str(),
+            outcome.as_str(),
+            "a shared spelling would mean the conversion is a rename, not a translation"
+        );
+    }
+}

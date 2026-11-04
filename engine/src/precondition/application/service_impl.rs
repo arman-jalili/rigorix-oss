@@ -146,11 +146,11 @@ impl PreconditionServiceImpl {
     ) -> Result<(Option<PreconditionVerdict>, Option<PreconditionFinding>), PreconditionError> {
         match self.provider.determine(spec, input).await {
             Ok(observation) => {
-                let outcome = if observation.determination.permits() {
-                    PreconditionOutcome::Passed
-                } else {
-                    PreconditionOutcome::Failed
-                };
+                // #1393: the one conversion, not an if/else. `permits()` is a two-way
+                // question, and asking it folded `Unknown` — the provider could not
+                // establish an answer — into `Failed`, which the record reads as "the check
+                // ran and said no". `From` keeps the third value.
+                let outcome = PreconditionOutcome::from(observation.determination);
                 let version = observation
                     .provider_version
                     .as_deref()

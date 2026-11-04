@@ -32,7 +32,7 @@ thiserror = "2"
 sha2 = "0.11"
 # Phase C.3: the engine's portable slice. Optional so the default (contract-only)
 # build still proves the crate compiles without it.
-rigorix-engine = { path = "../engine", features = ["portable"], optional = true }
+rigorix-engine = { path = "../engine", version = "1.12.1", features = ["portable"], optional = true }
 # The execution id the gate pins (ADR-014 §2) is a `Uuid` in the engine's API; the crate
 # passes it through rather than re-modelling it. Optional and `js`-featured: `uuid` refuses
 # to build for wasm32 without a randomness source, and the default (contract-only) build

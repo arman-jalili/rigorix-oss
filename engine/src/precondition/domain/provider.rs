@@ -184,6 +184,37 @@ pub enum ProviderDetermination {
     Unknown,
 }
 
+/// The one conversion between the provider's words and the record's words.
+///
+/// #1393: a check's answer is one axis with three values, and the repository spelled it four
+/// ways. `ProviderDetermination` is what the provider boundary produces; `PreconditionOutcome`
+/// is what the finding — and therefore the evidence — carries. This is the only place the two
+/// meet, and it is deliberately **total with no wildcard arm**: a new variant on either side is
+/// a compile error here rather than a silent default at a call site.
+///
+/// The arm that matters is `Unknown → Error`. It used to be written as
+///
+/// ```ignore
+/// let outcome = if observation.determination.permits() { Passed } else { Failed };
+/// ```
+///
+/// which collapsed "the check could not establish an answer" into "the check ran and said no".
+/// Those are different facts in a record — the same distinction the refusal vocabulary draws
+/// between a refusal and an unavailable evaluation.
+impl From<ProviderDetermination> for crate::precondition::domain::PreconditionOutcome {
+    fn from(determination: ProviderDetermination) -> Self {
+        match determination {
+            ProviderDetermination::Permit => {
+                crate::precondition::domain::PreconditionOutcome::Passed
+            }
+            ProviderDetermination::Deny => crate::precondition::domain::PreconditionOutcome::Failed,
+            ProviderDetermination::Unknown => {
+                crate::precondition::domain::PreconditionOutcome::Error
+            }
+        }
+    }
+}
+
 impl ProviderDetermination {
     /// Canonical lowercase wire string.
     pub fn as_str(&self) -> &'static str {
