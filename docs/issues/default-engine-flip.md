@@ -25,6 +25,8 @@ guardian_issue:
 
   in_scope:
     - "`wasm/Cargo.toml`: `default = [\"engine\"]`. The feature's contents do not change; `engine` remains selectable off with `--no-default-features`, and that configuration keeps refusing at `open_session`"
+    - "`wasm/ci/check-bundle-independence.sh` asserts the **property** instead of the crate name: the `tokio` entry in its `BANNED` list currently reads 'no async runtime in a single-threaded module', and after the flip the module legitimately carries `tokio` with `sync` only, so the rule as written would fail on the design. It must assert that the wasm32 graph's tokio feature set is a subset of `{sync}` and that the module contains no timer or spawn symbol"
+    - "The wasm32 clippy run's three diagnostics are resolved or explicitly allowed, because the flip makes wasm32 the shipped artifact: `clippy.toml`'s `tokio::process::Command` disallowed-type is unresolvable on this target (it warns rather than enforcing), plus a pre-existing `default_timeout` dead field and its `Duration` import"
     - "The budget is re-recorded from the *flipped* artifact under the size profile, in the same PR: `measured_bytes` = that artifact, `budget_bytes` = +25 %, `ceiling_bytes` unchanged at 1 500 000"
     - "`contract_version()` on a default build reports `\"gate_evaluation\": true`, and `open_session` succeeds"
     - "The `--no-default-features` path keeps its test: `gate_evaluation: false`, `open_session` refuses with `gate_unavailable`"
