@@ -23,9 +23,8 @@ use uuid::Uuid;
 use rigorix_engine::audit::application::dto::PinnedInputs;
 use rigorix_engine::audit::application::envelope_factory_impl::AuditEnvelopeFactoryImpl;
 use rigorix_engine::configuration::domain::Secret;
-use rigorix_engine::gate::application::{
-    GatePorts, GateRequest, GatedStep, RunContext, evaluate_gate_sync,
-};
+use rigorix_engine::gate::application::{GatePorts, GateRequest, RunContext, evaluate_gate_sync};
+use rigorix_engine::gate::domain::GatedStep;
 
 const EXEC: Uuid = Uuid::from_u128(0x018f_5b8e_0000_7000_8000_0000_0000_0002);
 const DEV_KEY: &str = "rigorix-dev-envelope-hmac-key";
@@ -56,7 +55,7 @@ fn run_context() -> RunContext {
 fn the_cli_composes_its_gate_through_the_engine_and_the_engine_signs() {
     let repo = tempfile::tempdir().expect("a temp repo");
     // An unconfigured repo: no `.rigorix/` files, so no gates arm and the step dispatches.
-    let setup = rigorix_engine::gate::application::GateSetup::from_env(repo.path());
+    let setup = rigorix_engine::gate::infrastructure::GateSetup::from_env(repo.path());
     // `is_empty` is about *ports*, not about rules: the sequence-policy service is armed and
     // re-reads the operator's file per run (ADR-013 R3), so it is present even when the file
     // is absent. What this test asserts is the decision, not the wiring.
