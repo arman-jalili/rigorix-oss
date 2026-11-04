@@ -68,9 +68,17 @@ rand = "0.10.1"
 # target-independent. Declared explicitly (not `workspace = true`) because the
 # workspace's `["full"]` cannot be un-inherited.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-tokio = { version = "1", default-features = false, features = [
-    "sync", "macros", "rt", "time", "io-util",
-] }
+# `sync` only. The rest of tokio is a *runtime*, and a single-threaded module has none:
+# `rt` spawns, `time` drives a timer, `macros` expands to both. The four modules that keep
+# tokio on this target (event_system, audit, configuration, dag_engine) use `sync`
+# primitives and nothing else; the features that remain here are the ones a wasm build would
+# need only if a module that is excluded from the slice came back in.
+#
+# This is the line #1400 is about: the dependency that reached wasm32 was never the
+# `cfg(not(wasm32))` one at the top of this file, and narrowing it here is what lets
+# `wasm/ci/check-bundle-independence.sh` assert "no runtime on the gate path" rather than
+# "no crate named tokio".
+tokio = { version = "1", default-features = false, features = ["sync"] }
 # uuid refuses to build for wasm32 without a randomness backend; `js` is the
 # browser's (getrandom -> wasm-bindgen -> crypto.getRandomValues). The pin is
 # only the *source*: `portable` code paths take ids from a supplied source.
