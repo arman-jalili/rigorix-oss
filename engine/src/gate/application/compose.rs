@@ -171,10 +171,30 @@ pub async fn evaluate_gate(request: GateRequest<'_>) -> Result<GateDecision, Gat
         pinned: !request.pins.is_empty(),
     };
 
+    // The record, when the caller supplied the facts a gate cannot know. Assembled here —
+    // not in the runtime — so two runtimes cannot agree on the digest and disagree on the
+    // signed bytes.
+    let envelope_evidence = match request.run_context {
+        Some(context) => Some(
+            super::envelope::decision_evidence(
+                execution_id,
+                &verdict,
+                &findings,
+                request.step,
+                request.proposed_action,
+                &request.pins,
+                context,
+            )
+            .await?,
+        ),
+        None => None,
+    };
+
     Ok(GateDecision {
         verdict,
         findings,
         envelope,
+        envelope_evidence,
     })
 }
 

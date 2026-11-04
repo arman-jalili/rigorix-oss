@@ -93,6 +93,49 @@ impl GatePorts {
     }
 }
 
+/// The facts a gate cannot derive, and therefore cannot honestly invent.
+///
+/// # Why this type exists
+///
+/// A gate decision knows a verdict and its findings. Signed evidence knows a template,
+/// a planning prompt, an author, token totals, a duration and a commit — none of which a
+/// gate can produce. The first version left envelope assembly to the caller, which moved
+/// the composition boundary instead of removing it: two runtimes that each assemble their
+/// own envelope produce the same `decision_digest` and different signed bytes.
+///
+/// So the caller supplies the facts and the engine assembles the envelope. Every field is
+/// required that a record requires: there is no `Default`, because a default here is a
+/// fabrication that lands inside a signature.
+#[derive(Debug, Clone)]
+pub struct RunContext {
+    /// Template that generated the run.
+    pub template_id: String,
+    /// The planning prompt (hashed into the envelope, never stored raw here).
+    pub planning_prompt: String,
+    /// What triggered the run (e.g. `rigorix_cli`).
+    pub source: Option<String>,
+    /// Repository the run acted on (`owner/name`).
+    pub repository: Option<String>,
+    /// Who triggered it.
+    pub author: Option<String>,
+    /// Attributed identity, when the run carries one.
+    pub identity: Option<crate::identity::domain::IdentityRef>,
+    /// Tokens the run consumed.
+    pub total_tokens: u32,
+    /// Wall-clock duration, in milliseconds.
+    pub duration_ms: u64,
+    /// Commit the run observed.
+    pub git_commit: Option<String>,
+    /// Branch the run observed.
+    pub git_branch: Option<String>,
+    /// The key source's answer, when this runtime signs.
+    ///
+    /// `Secret` rather than `String` so a `Debug` of a request cannot print a key. `None`
+    /// produces an unsigned envelope — a record that says what happened without claiming
+    /// who attested it, which is a different thing from a forged signature.
+    pub signing_key: Option<crate::configuration::domain::Secret>,
+}
+
 /// What a caller asks the gate.
 ///
 /// # Why the pins are here and not in a port
@@ -117,6 +160,11 @@ pub struct GateRequest<'a> {
     pub pins: PinnedInputs,
     /// The capabilities the composition consults.
     pub ports: GatePorts,
+    /// The run's facts, when the caller wants a signed envelope rather than a digest.
+    ///
+    /// `None` keeps the digest-only decision a library caller needs: a decision is still
+    /// a decision without a record of who ran it.
+    pub run_context: Option<RunContext>,
 }
 
 /// Which gate produced a finding, by the module that owns it.
@@ -226,8 +274,22 @@ pub struct GateEnvelopeBinding {
     pub pinned: bool,
 }
 
+/// The signed record of a decision, when the caller supplied a [`RunContext`].
+///
+/// Equality is by the bytes and the hash, not by the envelope's own derives: two records
+/// are the same record when a verifier would see the same bytes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GateEnvelopeEvidence {
+    /// The envelope the engine built and signed.
+    pub envelope: crate::audit::domain::AuditEnvelope,
+    /// Its canonical bytes — the exact bytes a signature covers (ADR-010).
+    pub canonical_bytes: Vec<u8>,
+    /// Its hash, as a verifier computes it.
+    pub envelope_hash: String,
+}
+
 /// What the gate answers.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GateDecision {
     /// May the step dispatch.
     pub verdict: GateVerdict,
@@ -235,6 +297,32 @@ pub struct GateDecision {
     pub findings: Vec<GateFinding>,
     /// The identity a signer binds.
     pub envelope: GateEnvelopeBinding,
+    /// The signed record, when a [`RunContext`] was supplied.
+    ///
+    /// Assembled here rather than by each runtime, so the CLI and the crate cannot
+    /// produce matching digests over differing signed bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub envelope_evidence: Option<GateEnvelopeEvidence>,
+}
+
+impl PartialEq for GateDecision {
+    /// Two decisions are the same decision when the verdict, the findings and — if a record
+    /// was built — the canonical bytes and hash agree. Comparing the envelope's fields one
+    /// by one would make equality a property of the factory's internals rather than of what
+    /// a verifier sees.
+    fn eq(&self, other: &Self) -> bool {
+        let evidence_eq = match (&self.envelope_evidence, &other.envelope_evidence) {
+            (None, None) => true,
+            (Some(a), Some(b)) => {
+                a.canonical_bytes == b.canonical_bytes && a.envelope_hash == b.envelope_hash
+            }
+            _ => false,
+        };
+        self.verdict == other.verdict
+            && self.findings == other.findings
+            && self.envelope == other.envelope
+            && evidence_eq
+    }
 }
 
 impl GateDecision {
@@ -262,6 +350,23 @@ pub enum GateError {
     /// The precondition gate could not evaluate.
     #[error("the precondition gate could not evaluate: {detail}")]
     Precondition {
+        /// Redacted detail.
+        detail: String,
+    },
+
+    /// The composition was not ready on its first poll.
+    ///
+    /// The slice's gate path must resolve without awaiting I/O: a port that awaits real
+    /// I/O here is a build defect the caller is told about, not a hang or a panic
+    /// (ADR-012 forbids the panic). See `evaluate_gate_sync`.
+    #[error(
+        "the gate composition was not ready on its first poll — a port on this path awaits I/O"
+    )]
+    NotReady,
+
+    /// The envelope could not be assembled or signed.
+    #[error("the gate decision could not be recorded: {detail}")]
+    Envelope {
         /// Redacted detail.
         detail: String,
     },
