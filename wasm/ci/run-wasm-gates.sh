@@ -38,6 +38,34 @@ gate() {
     fi
 }
 
+# The runbook states how many gates this script has, and a stated count is the cheapest
+# claim to leave behind (#1368): `runbook.md` said "eight" while ten ran. Checked before
+# the gates run, not as a gate — counting the gates must not change the count.
+SELF="$CRATE_DIR/ci/run-wasm-gates.sh"
+RUNBOOK="$CRATE_DIR/.pi/architecture/runbook.md"
+DECLARED_GATES=$(grep -c '^gate "' "$SELF")
+STATED_WORD=$(sed -n 's/.*one command, \([a-z][a-z]*\) gates.*/\1/p' "$RUNBOOK" 2>/dev/null | head -1)
+if [ -z "$STATED_WORD" ]; then
+    echo "❌ cannot read the gate count from $RUNBOOK — a count nobody can find is a count nobody checks" >&2
+    exit 1
+fi
+STATED_NUM=""
+n=0
+for word in one two three four five six seven eight nine ten eleven twelve; do
+    n=$((n + 1))
+    [ "$word" = "$STATED_WORD" ] && STATED_NUM="$n"
+done
+if [ -z "$STATED_NUM" ]; then
+    echo "❌ runbook.md states '${STATED_WORD} gates', which this check cannot convert to a number" >&2
+    exit 1
+fi
+if [ "$STATED_NUM" -ne "$DECLARED_GATES" ]; then
+    echo "❌ runbook.md says '${STATED_WORD} gates' (${STATED_NUM}); this script declares ${DECLARED_GATES}" >&2
+    echo "   fix the sentence or add the gate — a count nobody compares is a count that drifts" >&2
+    exit 1
+fi
+echo "runbook gate count: ${DECLARED_GATES} (matches runbook.md)"
+
 gate "domain isolation"        bash ci/check-domain-isolation.sh
 gate "bundle independence"     bash ci/check-bundle-independence.sh
 gate "failure tiers"           bash ci/check-failure-tiers.sh

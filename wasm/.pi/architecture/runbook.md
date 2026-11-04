@@ -2,7 +2,7 @@
 
 **Scope:** operating, debugging and releasing the WebAssembly gate seam.
 **Canonical module:** `.pi/architecture/modules/portable-session.md`.
-**Gates:** `wasm/ci/run-wasm-gates.sh` (one command, eight gates).
+**Gates:** `wasm/ci/run-wasm-gates.sh` (one command, ten gates — the script asserts this line).
 
 ---
 
@@ -82,7 +82,8 @@ nothing to catch.
 
 Adding a vector: put `scenario`, `fixtures`, `clock`, `seed`, `expected`, `seeded_divergence`
 and `gate` in `wasm/tests/conformance/vectors/<id>.json`. Expected bytes come from the CLI
-once FR-011 lands; until then they are `"fixture"` and prove self-consistency only.
+once Phase C lands (`EngineGate` evaluating the real envelope); until then they are `"fixture"`
+and prove self-consistency only.
 
 ### `workspace pins` — a path dependency carries a stale version
 
@@ -99,9 +100,11 @@ because a gate that cannot evaluate must not allow one.
 - The refusal kind is `gate_unavailable`, **not** "denied" — the gate did not answer no, it
   could not answer at all.
 - `export_artifact_set` still works: a refusal is a record.
-- Exit condition: FR-011 (engine `Clock`/`IdSource` seam) — see
-  `.pi/architecture/implementation-roadmap.md` Phase 5. When it lands, only `SeamGate`
-  changes and `gate_unavailable` disappears from a linked build.
+- Exit condition: **Phase C** — `EngineGate` calls the real envelope and conformance reports
+  `gate: "cli"` (ADR-014; `.pi/architecture/implementation-roadmap.md` Phase 5). It is not the
+  `Clock`/`IdSource` seam FR-011 described: that was superseded, and #1355 reached byte identity
+  with one pinned site instead. When Phase C lands, only the gate implementation changes and
+  `gate_unavailable` disappears from a linked build.
 
 ---
 
@@ -141,11 +144,11 @@ package consumers can pin but not use is worse than publishing nothing.
 
 | Limit | Consequence |
 |-------|-------------|
-| Engine seam unlinked | every run refuses `gate_unavailable`; FR-007 blocked on FR-011 |
+| Engine seam unlinked | every run refuses `gate_unavailable`; FR-007 blocked on **Phase C** (ADR-014), not on a `Clock`/`IdSource` seam |
 | Demo key in-page | a signature proves integrity and binding, not third-party non-repudiation |
 | Content scan is shape-based | unusual PII shapes pass; the artifact carries fixtures, not customers |
 | No persistence | a reloaded page starts empty; the host keeps the artifact |
-| Byte identity unproven until FR-011 | the CLI cannot yet be given the same pinned clock/ids |
+| Byte identity proven for **one operation**, not yet inside the crate's gate | both runtimes print `c47b27f9…` at 853 B for the documented pins, pinned by `tests/unit/pinnedinputs::the_documented_pins_produce_the_golden_digest`; the crate's own gate still refuses until Phase C |
 
 ---
 

@@ -17,11 +17,12 @@ feasibility spike (P1), the engine's determinism seam (P2/FR-011) and workspace 
 
 Three constraints shape the order:
 
-- **FR-011 blocks FR-007.** The conformance claim cannot be proven until the engine
-  exposes an additive `Clock`/`IdSource` seam reachable from the CLI. It is therefore a
-  **parallel track from day 11** (Phase 5), not a later phase: the crate's central claim
-  must not sit behind the crate's own last phase. Until it lands, criteria 19–22 read
-  *blocked* — `normalised_comparison=true` is a report label on a failing claim, never a pass.
+- **FR-011 no longer blocks FR-007, and the seam it described does not exist (ADR-014, #1366).**
+  Determinism is one operation plus `PinnedInputs`, proven byte-identical from both runtimes
+  (#1355). What remains is Phase 5's **Phase C**: `EngineGate` evaluating the real envelope and
+  conformance reporting `gate: "cli"`. Criteria 19–22 are restated against that, and
+  `normalised_comparison=true` is **forbidden** rather than labelled — see the module doc and
+  `wasm/ci/run-conformance.sh`, which now refuses it (#1367).
 - **The spike precedes the crate.** Phase -1 proves the engine slice compiles to wasm and
   that one envelope matches, before Phase 0 commits four days.
 - **No phase ships a green build that hides a red claim.** A normalised comparison is a
@@ -48,6 +49,14 @@ the slice does not compile would spend a month to learn what ten days can tell.
 
 **Exit:** bytes match, or the architecture changes here. A failed spike is a successful
 phase — it is the cheapest possible discovery of the constraint that matters.
+
+**Recorded outcome (#1366): branch D — all four measurements hold.** The spike ran as `#1351` and
+its report is `docs/spike-portable-slice-2026-11.md`; the decision it produced is
+`decisions/ADR-014-portable-slice-and-pinned-inputs.md`. `portable` compiles the slice for `wasm32`
+(74 crates, no forbidden crate), both runtimes produce `c47b27f9…` for one pinned refusal, and the
+shipped engine-linked bundle is 78.0 % of the ceiling. The one assertion it did not reach is
+assertion 3 above — the crate's gate does not yet *evaluate* the engine envelope — and that is
+Phase 5's remaining work, not the spike's failure.
 
 See `decisions/ADR-009-conformance-harness.md#prerequisite-ordering`.
 
@@ -355,11 +364,17 @@ of their own.
 
 ---
 
-## Phase 5: Engine Seam — FR-011 (Days 11–41, parallel cross-crate track)
+## Phase 5: EngineGate wiring — what remains of FR-011 (Days 11–14, no longer parallel)
 
-**Goal:** Make deterministic inputs the engine's responsibility: an additive
-`Clock` + `IdSource` seam covering the gate path, defaulting to system time, reachable
-from the CLI behind a non-default feature.
+> **Superseded in scope by ADR-014 (#1366).** The phase was 31 parallel days for a crate-wide
+> `Clock` + `IdSource` seam. The spike measured that away: one operation needs one pinned site,
+> and #1355 reached byte identity with it (`c47b27f9…`, pinned by a test). What remains is
+> **Phase C**: wire `EngineGate` to the real envelope, flip conformance to `gate: "cli"`, and
+> regenerate goldens from the same-commit CLI.
+
+**Goal:** prove the crate's central claim in the crate's own build — the wasm gate evaluates the
+real envelope and produces the bytes the CLI produces, with conformance reporting `gate: "cli"`
+rather than `fixture`.
 
 ### Modules
 
@@ -367,13 +382,14 @@ from the CLI behind a non-default feature.
 |--------|-------------|------------------|
 | rigorix-engine (additive features) | **Superseded by ADR-014 for the determinism seam:** `PinnedInputs` + the additive `with_pinned_inputs` behind the non-default `portable` feature, with the pin applied inside one shared operation (`audit::application::pinned`). No `Clock`/`IdSource` trait pair on the gate path — one operation, one site; those ports belong to `portable-session`'s domain when a second consumer exists | `engine/src/audit/application/`, gate modules; `.pi/architecture/decisions/ADR-014-portable-slice-and-pinned-inputs.md` |
 | rigorix-cli (non-default feature) | `--pinned-clock`, `--pinned-ids` so the oracle can be given the same inputs | cli |
-| rigorix-gate-wasm | consume the seam instead of crate-local assumption | this module |
+| rigorix-gate-wasm | **Phase C**: `EngineGate` calls the real envelope instead of `SeamGate::not_linked()`; conformance flips to `gate: "cli"`; goldens regenerated from the same-commit CLI | this module |
 
 ### Dependencies
 
-- Phase -1 (the spike builds this seam's skeleton) and Phase 4 (its consumers justify each
-  call-site). The track runs **in parallel** from day 11: it is engine work, not crate work,
-  and waiting for Phase 4 would put the crate's central claim after its last phase.
+- Phase -1 (the spike, done: `docs/spike-portable-slice-2026-11.md`) and Phase 4 (the host
+  contract the gate produces for). No longer parallel with 0–4: the seam it waited on was
+  removed by ADR-014, so this phase consumes an existing engine operation rather than building
+  one.
 
 ### Database Migrations
 
@@ -381,17 +397,22 @@ from the CLI behind a non-default feature.
 
 ### Acceptance Criteria
 
-- [ ] Call-site inventory: every gate-path `Utc::now()` (292 measured) and identifier mint (37 measured) is either routed through the seam or listed with a reason it cannot be.
-      **Not started.** The counts appear as a measured total in `ADR-009` and this roadmap, but there is
-      no per-site inventory: no list routes a site through the seam and none records a reason. FR-011 has
-      not begun in `engine/` (no `portable` feature exists — `wasm/Cargo.toml` declares
-      `engine = []` as an empty placeholder).
+- [x] **Superseded (#1366): the 292-site / 37-site inventory is void.** It was the cost estimate
+      for a crate-wide seam that ADR-014 removed. The determinism path is one operation
+      (`audit::application::pinned::refusal_envelope_input`) and one pinned site, measured and
+      pinned by `tests/unit/pinnedinputs::the_documented_pins_produce_the_golden_digest`.
+- [ ] `EngineGate` evaluates the real envelope: a vector's bytes from the wasm module equal the
+      same commit's CLI bytes, and conformance reports `gate: "cli"` for them.
+      **Phase C, not started.** Until it lands, ADR-014's three `no, yet` rows (engine-linked
+      bundle, `name`-section size, `wasm32` crate count) cannot be stated as facts about `main`.
 - [x] Default-feature suites of engine, mcp, cli, actions pass unchanged from the same commit (NFR-005).
       *Proof:* the CI `test` stage is green on this branch for all four crates, and locally
       `cargo test -p rigorix-engine --lib` (and cli/mcp/actions/server) pass. **Currently vacuous** —
       no engine-side change has been made, so nothing could break. It becomes a real check the moment
       FR-011 lands.
-- [ ] CLI built from the same commit accepts pinned clock/ids and produces the same envelopes twice (NFR-001).
+- [x] CLI built from the same commit accepts pinned clock/ids and produces the same envelopes twice (NFR-001).
+      *Proof (#1355):* `rigorix pinned-refusal --pinned-clock 2026-11-03T12:00:00Z --pinned-ids
+      018f5b8e-0000-7000-8000-000000000001` and the in-crate example both print `c47b27f9…` at 853 B.
       **Not implemented.** `grep -rn 'pinned|--clock|--seed|--ids' cli/src` returns nothing: the CLI has
       no flag for a pinned clock or identifier sequence, so NFR-001 can only be exercised inside this
       crate (`determinism::a_fresh_process_produces_the_same_bytes_as_this_one`), not across the CLI.
@@ -437,10 +458,12 @@ release train.
       *Proof:* `tests/unit/portable-session/seeded-divergence/` — six tests including
       `a_seeded_vector_that_starts_matching_fails_the_build` and `equality_on_the_seeded_vector_is_a_failure`;
       enforced by `ci/run-conformance.sh`, which fails the `conformance` wasm gate.
-- [x] A skipped or missing vector fails the run; `normalised_comparison=true` only as a labelled interim, deleted when FR-011 lands (AC 22, FR-012).
+- [x] A skipped or missing vector fails the run, and `normalised_comparison: true` is **refused**
+      rather than labelled (AC 22; the permission was withdrawn with FR-011, #1367).
       *Proof:* `runconformancevector::a_skip_is_a_failure_never_a_pass`,
       `…::an_unreplayable_vector_is_a_skip_and_a_skip_is_a_failure`,
-      `…::a_normalised_comparison_is_labelled`, `…::a_report_never_claims_a_normalised_comparison`.
+      `…::a_normalised_comparison_is_never_a_pass`, `…::a_report_never_claims_a_normalised_comparison`,
+      and `ci/run-conformance.sh`, which fails a vector carrying the flag and names it.
       The shipped report sets `normalised_comparison: false` (`run_conformance_vector.rs:152`) — byte
       comparison today, no interim flag in use.
 - [ ] Browser-produced artifact set verifies under `rigorix-verifier` with no shared code (AC 13, FR-006).
@@ -493,9 +516,9 @@ graph TD
 | 2 — Adapters | 6 | An adapter that silently defaults | Fault matrix over 6 ports × 4 failure kinds |
 | 3 — App services | 8 | A rule leaking into orchestration | Architecture test + review against ADR-007 |
 | 4 — Host contract | 6 | DTO drift, panic across FFI | Golden DTO snapshots; fault matrix at the boundary |
-| 5 — Engine seam | 31 (parallel) | Touching 292 time sites without changing released behaviour | Non-default feature only; default suites must pass unchanged from the same commit |
+| 5 — EngineGate wiring (Phase C) | 4 | A gate that "evaluates" without the real envelope | Conformance reports `gate: "cli"` only when the bytes came from the CLI; goldens regenerate from the same commit |
 | 6 — Conformance | 10 | A comparator that cannot fail | Seeded divergence is a required negative test |
-| **Total** | **61** (51 after the spike) | | |
+| **Total** | **55** (45 after the spike) | the sum of this column: 10+4+7+6+8+6+4+10 — recomputed after ADR-014 removed the 31-day seam (#1366) | |
 
 ## Key Milestones
 

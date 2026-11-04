@@ -7,9 +7,11 @@
 //! # Contract (Frozen)
 //! - Test-only: gated behind `cfg(any(test, feature = "conformance"))` and **never**
 //!   part of the bundle (NFR-002)
-//! - Comparison is **byte-exact**. `normalised_comparison` exists only to label an
-//!   interim while FR-011 is unimplemented; a labelled normalised pass is still a
-//!   failing claim (FR-012)
+//! - Comparison is **byte-exact**, and nothing may normalise it. The report's
+//!   `normalised_comparison` field is retained only so the harness can assert it is
+//!   `false`: the label-and-continue shape it once described is **refused** (ADR-014,
+//!   #1367), because a comparison that normalises a field compares that field, not the
+//!   artifacts.
 //! - A skipped or missing vector is a failure, never a pass (criterion 20)
 //! - `SeededDivergence` must diverge; equality is a build failure (criterion 21)
 
@@ -52,7 +54,9 @@ pub struct ConformanceReport {
     pub vector_id: String,
     /// Whether the bytes matched.
     pub matched: bool,
-    /// Whether the comparison was normalised rather than byte-exact (interim label).
+    /// Whether the comparison was normalised rather than byte-exact. **Always `false`:**
+    /// a normalised comparison is refused (ADR-014, #1367), and the field survives only so
+    /// this assertion has somewhere to land.
     pub normalised_comparison: bool,
     /// Whether the vector was skipped. A skip is a failure.
     pub skipped: bool,
@@ -81,10 +85,9 @@ pub trait RunConformanceVector {
 // What this does today: builds a session from the vector's four inputs, runs one attempt
 // with an **injected** gate, exports the artifact set and compares the canonical bytes to
 // the vector's `expected`. What it deliberately does not do: pretend that comparison is CLI
-// conformance. Until FR-011 gives both runtimes the same pinned clock and id source, a
-// vector's `expected` bytes cannot come from the CLI, so every vector carries a `gate`
-// label and the report says `normalised_comparison: false` — a byte comparison, of bytes
-// this side produced.
+// conformance. The bytes are this side's, so every vector carries a `gate` label — and the
+// label is the only interim allowed. `normalised_comparison` is not: a difference is a
+// finding, and the one it would absorb (884 B unpinned vs 877 B pinned) is the finding.
 //
 // The plumbing is the deliverable here: when the engine lands, only the gate factory
 // changes.

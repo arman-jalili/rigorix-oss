@@ -35,6 +35,19 @@ if ! grep -L '"gate"' "$VECTOR_DIR"/*.json >/dev/null 2>&1; then
     fi
 fi
 
+# No vector may set `normalised_comparison: true` (ADR-014, #1367). The permission that
+# allowed it — "while FR-011 is unimplemented" — lost its precondition when ADR-014
+# superseded FR-011, and what it permits is the one thing this harness exists to catch: an
+# unpinned envelope is 884 B and a pinned one 877 B for the same decision, so a comparator
+# that normalises timestamps reports two different byte strings as equal.
+NORMALISED=$(grep -l '"normalised_comparison"[[:space:]]*:[[:space:]]*true' "$VECTOR_DIR"/*.json 2>/dev/null || true)
+if [ -n "$NORMALISED" ]; then
+    echo "❌ vector(s) set normalised_comparison: true — that is a comparison of the thing" >&2
+    echo "   normalised, not of the artifact (ADR-014, #1367):" >&2
+    printf '   %s\n' $NORMALISED >&2
+    exit 1
+fi
+
 # And at least one must be the must-fail vector.
 if ! grep -l '"seeded_divergence": true' "$VECTOR_DIR"/*.json >/dev/null 2>&1; then
     echo "❌ no seeded-divergence vector: the comparator is unproven" >&2

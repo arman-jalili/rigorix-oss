@@ -56,10 +56,14 @@ Two rules follow, and they are the difference between a harness and a hope:
 
 Rules:
 
-- **No approximate comparison.** A nondeterministic field must be pinned (FR-011), not
-  stripped before comparison. A normalised comparison may exist only as a labelled
-  interim (`normalised_comparison=true` in the report) and must be **deleted**, not
-  relaxed, when FR-011 lands (FR-012).
+- **No approximate comparison.** A nondeterministic field must be pinned, not stripped
+  before comparison. ~~A normalised comparison may exist only as a labelled interim
+  (`normalised_comparison=true` in the report) and must be deleted when FR-011 lands.~~
+  **Withdrawn (ADR-014, #1367):** FR-011 was superseded, so the permission's precondition
+  can never be true again, and the flag is refused outright — `wasm/ci/run-conformance.sh`
+  fails a vector that sets it. A comparison that normalises anything compares the thing
+  normalised, not the artifacts; the difference it would absorb is the one the oracle
+  already measured (884 B unpinned vs 877 B pinned for the same decision).
 - **A skipped or missing vector is a failure**, never a pass (FR-007).
 - Vectors are immutable once committed; changing one is a reviewed artifact, not an
   edit-in-passing.

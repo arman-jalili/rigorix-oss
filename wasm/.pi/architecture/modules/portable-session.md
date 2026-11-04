@@ -45,11 +45,12 @@ key source; memory vs test-file session store).
 | [ADR-006](../decisions/ADR-006-cost-tracking.md) | No cost tracking or metering in-crate | Why the run path holds no counters or wall-clock reads |
 | [ADR-007](../decisions/ADR-007-compliance-engine.md) | Execute the gate, do not judge compliance | Vocabularly discipline: allowed/refused/verified/unverifiable only |
 | [ADR-008](../decisions/ADR-008-proportional-modeling-depth.md) | Proportional modeling depth | Justifies tactical depth and forbids invented modeling |
-| [ADR-009](../decisions/ADR-009-conformance-harness.md) | Conformance harness: live diff + goldens + seeded divergence | How FR-007/FR-008/FR-012 are proven, and that FR-011 blocks FR-007 |
+| [ADR-009](../decisions/ADR-009-conformance-harness.md) | Conformance harness: live diff + goldens + seeded divergence | How FR-007/FR-008/FR-012 are proven. Its "FR-011 blocks FR-007" ordering is superseded by ADR-014 |
 | [ADR-010](../decisions/ADR-010-artifact-format.md) | Artifact set: engine-owned bytes, sealed, stamped, three-valued | The container shape and the `VerificationResult` enum |
 | [ADR-011](../decisions/ADR-011-crate-identity-and-release-train.md) | Crate identity, version lockstep, release-train membership | Which crate, which npm name, which manifest fields, which release steps |
 | [ADR-012](../decisions/ADR-012-failure-semantics-on-wasm32.md) | Failure semantics on wasm32: abort is not a refusal | What may be promised on the gate path, and what is a fatal host-visible error |
 | [ADR-013](../decisions/ADR-013-who-verifies.md) | The crate produces; the host verifies | Four exported functions, no verifier in the bundle, three-valued vocabulary rendered host-side |
+| [ADR-014](../decisions/ADR-014-portable-slice-and-pinned-inputs.md) | The portable slice and the pinned-input carrier | What `portable` excludes (a manifest, cited not restated), and that determinism is one operation plus `PinnedInputs` — **no `Clock`/`IdSource` seam on the gate path** |
 
 ## Architecture
 
@@ -499,9 +500,14 @@ Prohibited aliases (from `.pi/domain/ubiquitous-language.md`): attempt/session/r
 
 ## Acceptance Criteria
 
-> **19, 20 and 21 are blocked until P2 (FR-011) lands.** A `normalised_comparison=true`
-> report is a label on a failing claim, never a pass (ADR-009). The proof that the status
-> changed is the deletion of that flag, not a checkbox.
+> **Restated against ADR-014 and #1355 (#1366).** Determinism is one operation
+> (`audit::application::pinned::refusal_envelope_input`) reached through `PinnedInputs` +
+> `with_pinned_inputs`; both runtimes produce `c47b27f9…` at 853 B for the documented pins, and
+> `tests/unit/pinnedinputs::the_documented_pins_produce_the_golden_digest` pins the value.
+> The `Clock`/`IdSource` seam these criteria were blocked on was **superseded** — criteria 19–22
+> no longer wait for it, they wait for **Phase C** (the crate's gate evaluating the real
+> envelope). `normalised_comparison=true` is **forbidden**, not labelled (#1367): a comparison
+> that normalises anything compares the thing normalised, not the artifact.
 
 | # | Component | Criterion | Verify In |
 |---|-----------|-----------|-----------|
@@ -523,10 +529,10 @@ Prohibited aliases (from `.pi/domain/ubiquitous-language.md`): attempt/session/r
 | 16 | `WasmContract` | No exported function panics or throws on a refusal; only a malformed handle produces an error | integration test (fault matrix) |
 | 17 | `TelemetryObserver` | `RandomDrawConsumed` never appears in any exported artifact set | unit test |
 | 18 | `domain_isolation` | `domain/` names no `std::time`, `std::env`, `Uuid::new_v4`, `reqwest`, `rand::thread_rng`, no `infrastructure`/`interfaces` path | architecture test (CI) |
-| 19 | `RunConformanceVector` | Live CLI diff: wasm and CLI artifacts are byte-identical for every vector with FR-011 inputs; a difference fails the build | CI (live diff) | **blocked until FR-011 (P2)** |
+| 19 | `RunConformanceVector` | Live CLI diff: wasm and CLI artifacts are byte-identical for every vector, with the pinned inputs supplied to both; a difference fails the build. The proof of the mechanism is #1355's `c47b27f9…`; what remains is the crate's gate calling the same operation | CI (live diff) | **Phase C** (was: blocked until FR-011) |
 | 20 | `RunConformanceVector` | Committed goldens match; a stale golden fails the live diff rather than being regenerated silently | CI |
 | 21 | `seeded_divergence` | The deliberately altered vector **must** diverge; if the comparator reports equality, the build fails | CI (must-fail test) |
-| 22 | `RunConformanceVector` | A skipped or missing vector fails the run; `normalised_comparison=true` is permitted only while FR-011 is unimplemented and is labelled in the report | CI | **blocked until FR-011 (P2)** |
+| 22 | `RunConformanceVector` | A skipped or missing vector fails the run; **no vector may set `normalised_comparison: true`**, and one that does fails the gate naming it (ADR-014, #1367). The permission that allowed it while FR-011 was unimplemented is deleted: FR-011 was superseded, so its precondition can no longer be true, and the flag is the one shape the metric was built to forbid | CI (`run-conformance.sh` asserts the field is absent or false) | met |
 | 23 | Bundle | Release wasm stays within the measured budget (+25%, NFR-002) and contains no tokio/reqwest/tree-sitter/prometheus/tracing-appender/libc | CI (size gate + `cargo tree`) |
 | 24 | Release train | npm package version equals `rigorix-engine` version; default-feature suites of engine/mcp/cli/actions pass unchanged from the same commit | CI | **not met**: the npm step is registered but publishes nothing while the bundle is `awaiting-packaging` (#1346) |
 
@@ -597,11 +603,12 @@ Status markers: `status: planned|in-progress|done`, `depends:` upstream componen
 
 | # | Prerequisite | Why it gates everything else | State |
 |---|--------------|------------------------------|-------|
-| P1 | **Feasibility spike** — `rigorix-engine`'s gate slice compiles to `wasm32-unknown-unknown` behind the `portable` feature, and one envelope's bytes match between the CLI and the wasm build with pinned inputs | The 292 `Utc::now()` / 37 `Uuid::new_v4()` inventory is the measured risk to the whole crate; discovering it after Phase 4 wastes four phases | not started |
-| P2 | **Engine seam (FR-011)** — additive `Clock` + `IdSource` over the gate path, reachable from the CLI behind a non-default feature | Criteria 19–22 read *blocked* until it lands; `normalised_comparison=true` is a label on a failing claim, not a pass (ADR-009) | not started |
+| P1 | **Feasibility spike** — `rigorix-engine`'s gate slice compiles to `wasm32-unknown-unknown` behind the `portable` feature, and one envelope's bytes match between the CLI and the wasm build with pinned inputs | The measured risk to the whole crate; discovering it after Phase 4 wastes four phases | **done — branch D**: `docs/spike-portable-slice-2026-11.md`, decision in ADR-014 |
+| P2 | **Superseded by ADR-014** — the crate-wide `Clock` + `IdSource` seam is replaced by one operation plus `PinnedInputs`; what remains is **Phase C** (`EngineGate` evaluating the real envelope, conformance reporting `gate: "cli"`) | Criteria 19–21 read *Phase C* rather than *blocked*; criterion 22 forbids `normalised_comparison` outright | operation done (#1355), wiring not started |
 | P3 | **Workspace registration** — member entry, manifest, tag loop, npm step, panic baseline (the six places in ADR-011) | A crate outside the loop is an unreleased crate: the `rigorix-actions` 1.4.0 defect | not started |
 
-P1 must come first and may fail cheaply. P2 runs in parallel with Phases 0–4. P3 lands
+P1 must come first and may fail cheaply — it did, and it passed. P2 is no longer a phase to
+schedule: ADR-014 replaced the seam it named, and Phase 5 is the wiring that remains. P3 lands
 with the first commit, not with the release.
 
 ## Dependencies
@@ -650,11 +657,12 @@ with the first commit, not with the release.
     `ContentScanner`. Three services, not four.
 11. **`interfaces::WasmContract`** — four exported functions, DTOs with
     `deny_unknown_fields`, mapper, redacted errors, `contract_version`.
-12. **Engine seam (P2/FR-011), in parallel from step 1** — call-site inventory, the two
-    traits, CLI pinned-input flags, the four published crates' default suites unchanged.
+12. **Determinism (ADR-014), independent of the crate** — one operation plus `PinnedInputs`,
+    done in `#1355`; no seam, no call-site inventory, and the four published crates' default
+    suites unchanged (M1b, measured).
 13. **Conformance harness** — goldens, live CLI diff, then the seeded divergence
-    (must-fail) test; byte-exact from day one, `normalised_comparison` deleted the day
-    FR-011 lands.
+    (must-fail) test; byte-exact from day one, and `normalised_comparison` **is refused by the
+    gate** rather than deleted on a future day (#1367).
 14. **CI gates** — size budget, dependency ban list, `domain_isolation`,
     no-verifier-in-bundle (ADR-013), PII scanner, panic baseline.
 15. **npm packaging** — `rigorix-gate` at the engine version (ADR-011).
