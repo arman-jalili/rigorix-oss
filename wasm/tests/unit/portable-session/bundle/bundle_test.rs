@@ -55,29 +55,26 @@ fn the_size_gate_is_declared_where_ci_can_read_it() {
     // contract is: the crate has no feature that would bloat the bundle.
     let manifest = read_manifest("Cargo.toml");
     assert!(manifest.contains("[features]"));
-    // The engine seam is opt-in and off by default: a default-on engine dependency would
-    // pull the native stack into the browser bundle.
-    // C.6 (#1386) solved the *size*: `ci/wasm-build.sh` builds the size profile, and the
-    // linked artifact is 1 337 205 B against the 1 500 000 B ceiling (-10.9 %). The flip to
-    // `default = ["engine"]` is still blocked — by a different gate. `rigorix-engine` declares
-    // `tokio` as a required dependency (`engine/Cargo.toml:49`), `portable = []` does not
-    // remove it, and `check-bundle-independence.sh` refuses an async runtime in a
-    // single-threaded module. Until tokio is feature-gated on the engine side, the default
-    // stays unlinked: it refuses at open, by name, and reports the capability.
+    // C.6 (#1386) solved the *size*; #1400 narrowed the wasm32 tokio declaration to `sync`,
+    // which is an absence of runtime rather than an unused dependency; #1401 replaced the
+    // independence gate's crate-name ban with the property it was always trying to state.
+    // Those three are the whole reason this line could flip, so the contract now asserts the
+    // flip rather than the block: the shipped artifact decides.
     assert!(
-        manifest.contains("default = []"),
-        "the default flip waits on tokio leaving the wasm graph, not on size"
+        manifest.contains("default = [\"engine\"]"),
+        "the shipped default must evaluate: an artifact that cannot decide is not a gate (#1401)"
     );
 }
 
 #[test]
 fn the_engine_dependency_is_optional_by_contract() {
     let manifest = read_manifest("Cargo.toml");
-    // Optional and off by default; the build it produces compiles and refuses at open with
-    // `gate_unavailable`. The default flip is #1386's remaining item, blocked on tokio.
+    // On by default since #1401 — and still *optional*, because `--no-default-features` is the
+    // contract-only build: it compiles, reports `gate_evaluation: false`, and refuses at
+    // `open_session`. Both configurations ship a truth; one of them just cannot decide.
     assert!(
-        !manifest.contains("default = [\"engine\"]"),
-        "the default is unlinked until tokio leaves the wasm graph"
+        manifest.contains("default = [\"engine\"]"),
+        "the default build must be the one that evaluates (#1401)"
     );
     let deps = manifest.split("[dependencies]").nth(1).unwrap_or_default();
     let engine_line = deps
@@ -86,7 +83,7 @@ fn the_engine_dependency_is_optional_by_contract() {
         .expect("the engine dependency is declared under [dependencies]");
     assert!(
         engine_line.contains("optional = true"),
-        "the engine must be an optional dependency, not a default one: {engine_line}"
+        "the engine must stay an optional dependency, so --no-default-features still builds: {engine_line}"
     );
     assert!(
         manifest.contains("rigorix-engine/portable"),

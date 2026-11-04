@@ -29,6 +29,12 @@ pub struct HealthService {
     /// Registered health checks.
     checks: RwLock<Vec<Arc<dyn HealthCheck>>>,
     /// Default timeout for health checks.
+    ///
+    /// Unread on wasm32, and left in place rather than `cfg`'d away: there is no timer to
+    /// enforce a timeout on that target (#1400), so the aggregate polls each check's own
+    /// future instead. Keeping the field keeps `new` one signature on both targets — the
+    /// absent timeout is what the target *is*, not a setting nobody supplied.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     default_timeout: Duration,
 }
 
