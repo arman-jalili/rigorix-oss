@@ -92,7 +92,7 @@ a branch name means the apparatus is still there and the number cannot be reprod
 | `name` section removed by the strip | 341 785 B = 22.6 % of the emitted engine-linked module | same branch | **no** — same reason |
 | `wasm32` dependency graph under `portable` | 74 crates (normal + build), exit 0 | `cargo tree -p rigorix-engine --features portable --target wasm32-unknown-unknown -e normal,build` on `issue/1351` @ `c118cb06` | **no, yet** — `portable` is not on `main`; `Cargo.lock`-pinned when it is |
 | Modules excluded by the slice | 25 of 38 public modules (11 forbidden crate, 6 narrowed `tokio`, 8 closure), 20 inner items | `engine/.pi/portable-inventory.tsv` | **yes** — the manifest's rows; every count recomputed by `validate-portable-inventory.sh` |
-| M2 witness: pinned refusal, both entry points | `c47b27f9…`, 853 B, equal across two runs | `main`, `engine/examples/pinned_refusal.rs` and `rigorix-cli --features spike-m2 pinned-refusal` | **yes** — `tests/unit/pinnedinputs::the_documented_pins_produce_the_golden_digest` |
+| M2 witness: pinned refusal, both entry points | `c47b27f9…`, 853 B, equal across two runs | `main`, `engine/examples/pinned_refusal.rs` and `rigorix-cli --features pinned-inputs pinned-refusal` | **yes** — `tests/unit/pinnedinputs::the_documented_pins_produce_the_golden_digest` |
 | Unpinned control | **the digest differs every run**, 860 B | `main`, same two commands | the variance *is* the result; no value is claimed |
 | Apparatus-era readings | 877 B pinned / 884 B unpinned, `32211b9d…` | `examples/spike_m2_envelope.rs` on `issue/1351` @ `c118cb06` | **no** — the fixture was renamed in the port (#1357); kept as history in §2 of the report |
 | Remaining size lever | `data` = 400 735 B = **34.2 %** of the shipped 1 170 635 B module — and 26.5 % of the emitted engine-linked module | section table, same branch | **no, yet** — named here so the next size question starts from the section table, not from a dependency hunt |
@@ -143,8 +143,11 @@ cargo run -q -p rigorix-engine --example pinned_refusal -- \
 
 - `portable` is non-default, so nothing about the normal build changes and the wasm crate's contract
   tests keep their allow-list.
-- The `spike-m2` feature on the CLI stays non-default and hidden: it exists to make the witness
-  runnable from both entry points, not as a supported surface.
+- The `pinned-inputs` feature on the CLI stays non-default and hidden: it is this record's
+  carrier exposed at the CLI, so it is named for what it does rather than for the spike that first
+  needed a measurement (#1369), and it exists to make the witness runnable from both entry points,
+  not as a supported surface. `cli/tests/pinned_inputs_surface.rs` fails if the default build ever
+  advertises it.
 - `criterion 25`'s second-process test and M4's cross-process determinism remain distinct; M4 runs
   real policy evaluation, not the stub gate.
 

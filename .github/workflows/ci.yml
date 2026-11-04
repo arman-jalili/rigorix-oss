@@ -270,6 +270,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - run: cargo test --workspace
+      - name: CLI pinned-inputs surface (#1369)
+        # The feature is non-default, so `cargo test --workspace` proves only the absence half of
+        # the pair in `cli/tests/pinned_inputs_surface.rs`. Both halves must run: one fails if the
+        # command leaks into a default build, the other if the feature stops adding it.
+        run: |
+          cargo test -p rigorix-cli --test pinned_inputs_surface
+          cargo test -p rigorix-cli --features pinned-inputs --test pinned_inputs_surface
       - name: Per-crate conformance + integration validators
         # GAP-A-27: conventions gate the stage. Per-crate check_*.sh suite +
         # root integration/operations validators (local-ci Stage 6).

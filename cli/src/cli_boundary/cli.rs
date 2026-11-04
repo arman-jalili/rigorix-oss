@@ -278,13 +278,13 @@ pub enum CliCommand {
         label: Option<String>,
     },
 
-    // ── Measurement-only (#1355) — absent unless `spike-m2` is on ──
+    // ── Measurement-only (#1355) — absent unless `pinned-inputs` is on ──
     /// Build one precondition-refusal envelope from pinned inputs and print its digest.
     ///
     /// This is the CLI half of the M2 measurement: the same operation the crate performs
     /// in `rigorix_engine::audit::application::pinned`, so two runtimes can be compared
     /// byte for byte. It performs no I/O beyond stdout, mints no id and reads no clock.
-    #[cfg(feature = "spike-m2")]
+    #[cfg(feature = "pinned-inputs")]
     #[command(name = "pinned-refusal", hide = true)]
     PinnedRefusal {
         /// The instant to stamp, RFC 3339. Omitted, the wall clock is read (the control).
