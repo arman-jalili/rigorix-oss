@@ -36,6 +36,8 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Changed
 
+- A `promote` rule is no longer recorded as "passed, dispatch". `GateVerdict` gains `Promote` and `GateOutcome` gains `Promoted`, so the third outcome the specification names has a home in the type; the composition maps `RequirementAction::Promote` to it instead of folding it into `Passed` via a `matches!(action, Deny)` check. `permits_dispatch()` is `Dispatch` only, and `awaits_approval()` names the new state, so a caller cannot read "not refused" as "may proceed". The decision digest covers the third verdict: two decisions differing only by a promotion are not the same decision (#1392)
+- The compiler states the exhaustiveness the flattening hid: adding `Promote` failed three `match` sites (`gate/application/envelope.rs`, and two in the gate tests), because a two-valued enum with a `matches!` check has no missing arm to fail on (#1392)
 - The CLI no longer composes the gate: `cli/src/cli_boundary/orchestrator.rs` asks `GateSetup` for both ports and hands them on, so `grep -c sequence_policy` on that file is `0` and the ordering has one home. Its test suite passes with **zero edits** — `git diff --stat cli/tests cli/src/cli_boundary/tests.rs` is empty (#1382)
 - A new top-level module moves the portable denominator: `gate` stays in the slice, so the inventory is **22 of 39** public modules and **23** gated inner items (was 38 and 22). The bare-count guard from #1377 caught the drift on the first run and every derived site was updated with it (#1381)
 
