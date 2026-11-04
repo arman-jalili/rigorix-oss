@@ -84,6 +84,15 @@ pub trait HealthCheck: Send + Sync {
     async fn check_health(&self) -> HealthReport;
 
     /// Run the health check with a timeout.
+    ///
+    /// # Not on wasm32
+    ///
+    /// This default body is the only place on the gate path that needed a *timer*:
+    /// `tokio::select!` plus `tokio::time::sleep` plus `std::time::Instant`. A single-threaded
+    /// module has no runtime to drive either, and no component whose health it would probe —
+    /// so it is compiled out there rather than kept alive by widening the tokio feature list
+    /// (#1400). `tokio` on wasm32 is now `sync` alone: no `rt`, no `time`, no `macros`.
+    #[cfg(not(target_arch = "wasm32"))]
     async fn check_health_with_timeout(&self, timeout: Duration) -> HealthReport {
         let start = std::time::Instant::now();
         let check = self.check_health();

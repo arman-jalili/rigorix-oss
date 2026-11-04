@@ -53,7 +53,14 @@ impl HealthService {
         let mut reports = Vec::with_capacity(checks.len());
 
         for check in checks.iter() {
+            // `default_timeout` needs a timer, and this target has none (#1400): the check's
+            // own future is polled to completion instead. Nothing on the gate path registers
+            // a health check, so this branch is a compile-time courtesy rather than a
+            // behaviour anyone reaches.
+            #[cfg(not(target_arch = "wasm32"))]
             let report = check.check_health_with_timeout(self.default_timeout).await;
+            #[cfg(target_arch = "wasm32")]
+            let report = check.check_health().await;
             reports.push(report);
         }
 
