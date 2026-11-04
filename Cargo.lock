@@ -2940,6 +2940,8 @@ dependencies = [
 name = "rigorix-gate-wasm"
 version = "1.12.1"
 dependencies = [
+ "async-trait",
+ "chrono",
  "rigorix-engine",
  "serde",
  "serde_json",

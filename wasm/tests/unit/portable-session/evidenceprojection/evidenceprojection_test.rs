@@ -185,9 +185,11 @@ fn no_findings_yields_no_steps() {
 fn the_projection_is_total_over_the_engine_outcome_enum() {
     use rigorix_gate_wasm::domain::services::{BusinessWording, EngineFindingsProjection};
 
-    // Every outcome maps: Passed→Allowed, Refused/Error→Refused, NotReached→NotReached.
+    // Every outcome maps: Passed→Allowed, Promoted→Promoted, Refused/Error→Refused,
+    // NotReached→NotReached.
     let outcomes = [
         (EngineFindingOutcome::Passed, StepDecision::Allowed),
+        (EngineFindingOutcome::Promoted, StepDecision::Promoted),
         (EngineFindingOutcome::Refused, StepDecision::Refused),
         (EngineFindingOutcome::Error, StepDecision::Refused),
         (EngineFindingOutcome::NotReached, StepDecision::NotReached),
@@ -243,4 +245,33 @@ fn only_refused_steps_carry_a_reason() {
     assert!(steps[1].reason.is_none());
     assert!(steps[1].kind.is_none());
     assert!(steps[2].reason.is_some());
+}
+
+#[test]
+fn a_promotion_is_never_an_error_and_never_an_allow() {
+    use rigorix_gate_wasm::domain::services::{BusinessWording, EngineFindingsProjection};
+
+    // #1383 step 1. The third gate outcome had no home in `EngineFindingOutcome`, so a
+    // draft adapter mapped it to `Error` — absorbing it into the terminal value, exactly as
+    // `Unknown` became `Failed` (#1393) and `Promote` became `Passed` (#1392).
+    let projection = EngineFindingsProjection::new(BusinessWording::new());
+    let findings = vec![EngineFinding {
+        gate_id: "requirements".into(),
+        outcome: EngineFindingOutcome::Promoted,
+        refusal: None,
+        evidence: None,
+        opaque: None,
+    }];
+    let projected = &projection.project(&findings)[0];
+
+    assert_eq!(projected.decision, StepDecision::Promoted);
+    assert_ne!(projected.decision, StepDecision::Allowed);
+    assert_ne!(projected.decision, StepDecision::Refused);
+    // Nothing was refused, so no refusal kind and no business wording may be attached: a
+    // reason here would say a check said no about a check that said "ask a human".
+    assert!(projected.kind.is_none(), "a promotion has no refusal kind");
+    assert!(projected.reason.is_none(), "a promotion has no refusal reason");
+    // And the step-level convenience follows: a paused run is not a stopped one.
+    assert!(!projected.is_refusal());
+    assert!(projected.awaits_approval());
 }

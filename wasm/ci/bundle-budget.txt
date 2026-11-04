@@ -26,6 +26,13 @@ note: >-
   measured, but no version has been published to npm, so `publish-wasm-npm` stays outside
   `github-release.needs` — the release-train guard enforces that distinction.
 
+# ── Phase C.3 (#1383): the probe is gone, the gate is the real one ───────────────────────
+# `EngineGate` replaced `SeamGate::not_linked()` and the measurement-only `engine_probe`
+# export, so the engine call reachable from the bundle is the composition a host actually
+# runs. The figure above (209881 B) is still the **default** build: `engine` is not on by
+# default until C.4, so the engine's bytes enter this budget then, and C.6 re-records it.
+# This is not a gap in the gate — it is what the gate currently measures, stated.
+
 # ── Phase C.3 step 1 (#1383): one reachable engine call, measured ────────────────────────
 # `--features engine` with `infrastructure::engine_probe` reachable from the exported
 # `engine_probe`: the composition links into wasm32 and the linker keeps it.

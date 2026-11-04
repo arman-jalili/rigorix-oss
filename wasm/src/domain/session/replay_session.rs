@@ -306,6 +306,7 @@ impl ReplaySession {
                 gate_id: step.gate_id.clone(),
                 decision: match step.decision {
                     StepDecision::Allowed => "allowed",
+                    StepDecision::Promoted => "promoted",
                     StepDecision::Refused => "refused",
                     StepDecision::NotReached => "not_reached",
                 }

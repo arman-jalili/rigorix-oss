@@ -150,6 +150,11 @@ pub fn open_session(
         seed.draws.into_iter().map(Draw::from_trusted).collect(),
     );
 
+    // The gate is built from the same fixture world the session pins: one transcript, one
+    // set of port answers, so the engine evaluates the data the record cites.
+    #[cfg(feature = "engine")]
+    let gate_transcript = fixtures.transcript.0.clone();
+
     let opener = OpenReplaySessionService::new();
     let session = match opener.execute(OpenSessionInput {
         scenario,
@@ -161,12 +166,15 @@ pub fn open_session(
         Err(error) => return Ok(render(&project_session_open(&error))),
     };
 
-    let handle = registry::insert(SessionSlot {
-        session,
-        // The engine seam, plugged in by the packaging issue (FR-011). Until then it
-        // refuses — never allows — and says so.
-        gate: Box::new(crate::infrastructure::SeamGate::not_linked()),
-    });
+    // C.3: the engine's composition, over four host-supplied ports. A build without the
+    // slice answers `EngineGate::unavailable()` — still a refusal that says why, never an
+    // allow, and the kind distinguishes "could not answer" from "answered no".
+    #[cfg(feature = "engine")]
+    let gate = Box::new(crate::infrastructure::EngineGate::new(gate_transcript));
+    #[cfg(not(feature = "engine"))]
+    let gate = Box::new(crate::infrastructure::EngineGate::unavailable());
+
+    let handle = registry::insert(SessionSlot { session, gate });
 
     Ok(render(&SessionHandleDto { handle }))
 }
@@ -277,6 +285,7 @@ impl From<&crate::domain::outcome::StepOutcome> for StepOutcomeDto {
             gate_id: step.gate_id.clone(),
             decision: match step.decision {
                 crate::domain::outcome::StepDecision::Allowed => "allowed",
+                crate::domain::outcome::StepDecision::Promoted => "promoted",
                 crate::domain::outcome::StepDecision::Refused => "refused",
                 crate::domain::outcome::StepDecision::NotReached => "not_reached",
             }
@@ -415,15 +424,6 @@ pub mod exported {
     /// Export the session's artifact set — `export_artifact_set(handle)`.
     ///
     /// Before an attempt this is a refusal (`seal_failed`), not an error.
-    /// Measurement-only export (Issue #1383): makes one engine gate call reachable from the
-    /// bundle so the size gate measures the engine's real cost rather than a droppable symbol.
-    /// Removed when `EngineGate` replaces the probe.
-    #[cfg(feature = "engine")]
-    #[wasm_bindgen]
-    pub fn engine_probe(execution_id: &str) -> Option<bool> {
-        crate::infrastructure::engine_probe::probe_engine_gate(execution_id)
-    }
-
     #[wasm_bindgen]
     pub fn export_artifact_set(handle_json: String) -> Result<String, JsValue> {
         super::export_artifact_set(handle_json).map_err(|e| JsValue::from_str(&e))

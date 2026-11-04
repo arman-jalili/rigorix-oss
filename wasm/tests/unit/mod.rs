@@ -14,6 +14,10 @@
 /// Test doubles for the ports and the engine gate (issue #1296).
 mod support;
 
+#[cfg(feature = "engine")]
+#[path = "portable-session/enginegate/enginegate_test.rs"]
+mod enginegate;
+
 #[path = "portable-session/replaysession/replaysession_test.rs"]
 mod replaysession;
 

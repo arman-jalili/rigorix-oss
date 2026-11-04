@@ -228,5 +228,5 @@ fn a_fresh_process_produces_the_same_bytes_as_this_one() {
         .expect("the probe runs twice");
     let remote_again: serde_json::Value = serde_json::from_slice(&second.stdout).expect("artifact");
     assert_eq!(remote, remote_again, "two fresh processes disagreed");
-    assert_eq!(remote["artifact_format_version"], 1);
+    assert_eq!(remote["artifact_format_version"], 2);
 }

@@ -45,7 +45,10 @@ pub struct ArtifactSet {
 
 impl ArtifactSet {
     /// The container format this crate emits.
-    pub const FORMAT_VERSION: u32 = 1;
+    /// 2 — `StepDecision` and `EngineFindingOutcome` gained `Promoted` (#1383). A reader
+    /// that assumed a two-valued decision would read a paused run as an allowed one, so the
+    /// vocabulary change is a format change.
+    pub const FORMAT_VERSION: u32 = 2;
 
     /// Whether this crate can emit or read `version`.
     ///

@@ -224,7 +224,7 @@ fn export_before_an_attempt_is_a_refusal_and_contract_version_reports_three_numb
 
     let version: serde_json::Value =
         serde_json::from_str(&rigorix_gate_wasm::interfaces::contract_version()).expect("json");
-    assert_eq!(version["artifact_format"], 1);
+    assert_eq!(version["artifact_format"], 2);
     assert_eq!(version["contract"], version["engine"]);
     assert!(version.get("verified").is_none());
 }
