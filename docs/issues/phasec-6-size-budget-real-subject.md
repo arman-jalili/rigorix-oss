@@ -113,8 +113,11 @@ overridden per package. Therefore:
    It is stale right now: the file records 209 881 B while the default artifact measures **186 249 B**
    (C.3 deleted `SeamGate` and its probe), and the 262 351 B budget is +25 % of the stale number. The
    gate gains `ACTUAL == MEASURED`, seeded by a budget file whose `measured_bytes` is off by one.
-3. **Then the budget is re-recorded from the flipped, profile-built artifact**, and `default`,
-   `engine` flip in the same PR — the number, its subject and its build configuration move together.
+3. **The flip is no longer part of this issue.** It is #1401, blocked on #1400 (the wasm32 graph
+   carries `tokio` with `rt`/`time`). This issue closes when the budget measures the artifact it
+   claims: `ci/wasm-build.sh` owns the profile, `measured_bytes` is the artifact, `ceiling_bytes` binds
+   separately. The flip re-records the budget in its own PR, because a number whose subject changes
+   belongs with the change that moved it.
 
 # Before you start
 
