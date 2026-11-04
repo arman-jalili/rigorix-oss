@@ -47,11 +47,12 @@ fn the_seeded_vector_passes_only_when_it_diverges() {
 }
 
 #[test]
-fn a_normalised_comparison_is_labelled() {
-    // Allowed only as an interim while FR-011 is unimplemented — and it is reported as
-    // what it is, so nobody can mistake it for byte identity (FR-012).
+fn a_normalised_comparison_is_never_a_pass() {
+    // No longer a labelled interim: the permission that allowed one — "while FR-011 is
+    // unimplemented" — lost its precondition when ADR-014 superseded FR-011 (#1367).
+    // The field survives so this assertion has somewhere to land, and the runner always
+    // sets it false; the gate refuses a vector that asks for the comparison at all.
     let interim = report(true, false, true);
-    assert!(interim.normalised_comparison);
     assert!(
         !interim.is_pass(true),
         "a normalised pass is not a conformance pass"
