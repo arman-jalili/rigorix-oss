@@ -24,7 +24,6 @@ default = ["engine"]
 # in the engine; this crate supplies the ports and calls one function.
 engine = [
     "dep:rigorix-engine",
-    "rigorix-engine/portable",
     "dep:uuid",
     "dep:async-trait",
     "dep:chrono",
@@ -43,7 +42,19 @@ thiserror = "2"
 sha2 = "0.11"
 # Phase C.3: the engine's portable slice. Optional so the default (contract-only)
 # build still proves the crate compiles without it.
-rigorix-engine = { path = "../engine", version = "1.12.1", features = ["portable"], optional = true }
+#
+# #1401: declared **twice on purpose**, and the second declaration is the load-bearing one.
+# `portable` is a *subtractive* feature — it `cfg(not(...))`-s native modules out — so it is
+# the one kind of feature Cargo's unification cannot be allowed to spread. With a single
+# `features = ["portable"]` here, any workspace build that includes this crate and `mcp` or
+# `actions` unifies `portable` for the whole graph and removes `identity::infrastructure::
+# JwksVerifier`, `orchestrator`, `plan_validation` and ~80 other items from under them. That
+# is what `cargo clippy --workspace --all-targets` reported the moment `default = ["engine"]`
+# landed — a workspace clippy failure caused by a wasm manifest line.
+#
+# Host builds therefore link the engine *whole* (tests, clippy, benches: no slice needed),
+# and the wasm32 target links the slice. Unification is per-target, so the slice cannot leak
+# into a native build and the native modules cannot be needed by a wasm build.
 async-trait = { workspace = true, optional = true }
 chrono = { workspace = true, optional = true }
 # The execution id the gate pins (ADR-014 §2) is a `Uuid` in the engine's API; the crate
@@ -51,6 +62,18 @@ chrono = { workspace = true, optional = true }
 # to build for wasm32 without a randomness source, and the default (contract-only) build
 # must not acquire one it never uses.
 uuid = { workspace = true, features = ["js"], optional = true }
+
+# The wasm32 target gets the slice, and only the wasm32 target (#1401). Feature unification is
+# per-target, so a wasm32-only `portable` cannot reach a native build of `mcp`/`actions` that
+# shares the graph — which is what happened when the feature list carried
+# `rigorix-engine/portable` unconditionally: `cargo clippy --workspace --all-targets` lost
+# `identity::infrastructure::JwksVerifier`, `orchestrator` and `plan_validation` from under
+# `mcp` and `actions`.
+#
+# Cargo will not accept this package in `[dependencies]` *and* here ("duplicate key"), so both
+# targets are declared — the same shape `engine/Cargo.toml` uses for `tokio`.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rigorix-engine = { path = "../engine", version = "1.12.1", optional = true }
 
 [lints]
 # Inherited, not re-listed. Declaring a local `[lints.rust]` block without
@@ -67,3 +90,5 @@ path = "tests/unit/mod.rs"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.130"
+# The slice, wasm32 only (#1401) — the counterpart of the `not(wasm32)` declaration above.
+rigorix-engine = { path = "../engine", version = "1.12.1", features = ["portable"], optional = true }
