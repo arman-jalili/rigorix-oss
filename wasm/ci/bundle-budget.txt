@@ -48,6 +48,28 @@ note: >-
 # `gate_evaluation: false`, and still refuses at open. That is a dev configuration with an
 # honest capability report — not the default.
 
+# ── #1405: the measurement is a per-machine fact ────────────────────────────────────────
+# `check-bundle-size.sh` refused an artifact whose recorded size did not match exactly. On the
+# same commit, same pinned toolchain (1.96), same `wasm-bindgen` (0.2.130):
+#
+#   macOS            shipped 1337205 B
+#   Linux CI runner  shipped 1335752 B   (-1453 B, -0.11 %)
+#
+# Neither is wrong. Panic messages and debug strings embed absolute paths, and the two hosts
+# build from different ones. A byte-exact floor is therefore a claim about one machine, and
+# asserting it in CI refused a correct artifact on every run — a gate that is always red hides
+# the ones that are sometimes red.
+#
+# So the floor comparison carries a declared 1 % build-environment tolerance. The property
+# #1386 added it for is intact: it caught the 169250 → 1337205 change (a 690 % delta) the
+# moment the flip landed, and 1 % is two orders of magnitude below any change worth a
+# re-record. `budget_bytes` and `ceiling_bytes` remain hard, exact comparisons.
+#
+# If byte-reproducibility across machines is ever wanted, the route is `--remap-path-prefix`
+# in `ci/wasm-build.sh`: measured locally it removes 1344 of the 1453 B. It is not done here,
+# because it changes the artifact — and a change to the artifact is what this file records,
+# not something to slip in with a gate fix.
+
 # ── Phase C.6 (#1386): the profile, not the code ─────────────────────────────────────────
 # The 1 706 234 B below was correct and was not the number that matters: `wasm/Cargo.toml`
 # declared no `[profile.release]`, so the artifact shipped with opt-level 3, no LTO and 16

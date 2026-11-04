@@ -263,13 +263,9 @@ fn the_unlinked_build_refuses_at_open_session_and_reports_the_capability() {
         "a host must learn the build cannot decide before it tries"
     );
 
-    let refusal = rigorix_gate_wasm::interfaces::open_session(
-        scenario(),
-        fixtures(),
-        clock(),
-        seed(),
-    )
-    .expect("a refusal is a return value");
+    let refusal =
+        rigorix_gate_wasm::interfaces::open_session(scenario(), fixtures(), clock(), seed())
+            .expect("a refusal is a return value");
     let refusal: serde_json::Value = serde_json::from_str(&refusal).expect("json");
     assert_eq!(refusal["kind"], "gate_unavailable");
 }

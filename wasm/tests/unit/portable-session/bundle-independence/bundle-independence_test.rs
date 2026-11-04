@@ -89,8 +89,7 @@ fn the_bundle_gate_asserts_the_tokio_property_not_the_crate_name() {
     // feature set is `sync` alone" — rather than as a crate name that the design legitimately
     // violates.
     let script = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("ci/check-bundle-independence.sh"),
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ci/check-bundle-independence.sh"),
     )
     .expect("bundle gate exists");
 

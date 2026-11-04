@@ -20,8 +20,8 @@ use rigorix_engine::precondition::application::dto::PreconditionCheckInput;
 use rigorix_engine::precondition::application::service::PreconditionService;
 use rigorix_engine::precondition::application::service_impl::PreconditionServiceImpl;
 use rigorix_engine::precondition::domain::{
-    Precondition, PreconditionConfig, PreconditionError,
-    ProviderDetermination, ProviderObservation, ProviderSpec,
+    Precondition, PreconditionConfig, PreconditionError, ProviderDetermination,
+    ProviderObservation, ProviderSpec,
 };
 use rigorix_engine::precondition::infrastructure::provider_client::ProviderClient;
 use rigorix_engine::precondition::infrastructure::repository::PreconditionRepository;
@@ -43,9 +43,7 @@ pub fn precondition_service(transcript: &serde_json::Value) -> Arc<dyn Precondit
         transcript: transcript.clone(),
     });
 
-    Arc::new(
-        PreconditionServiceImpl::new(repository, runner).with_provider_client(client),
-    )
+    Arc::new(PreconditionServiceImpl::new(repository, runner).with_provider_client(client))
 }
 
 /// The sequence-policy service, over fixture-backed rule data.
@@ -80,13 +78,14 @@ impl PreconditionRepository for FixturePreconditionRepository {
             // Absent means "no dispatch-time gating": the operator's decision, not an error.
             return Ok(None);
         };
-        let config: PreconditionConfig = serde_json::from_value(document.clone()).map_err(|error| {
-            // Present but unparseable is fail-closed: the engine refuses rather than
-            // evaluating a partially understood rule set.
-            PreconditionError::ConfigInvalid(format!(
-                "the session's preconditions document is not a valid precondition set: {error}"
-            ))
-        })?;
+        let config: PreconditionConfig =
+            serde_json::from_value(document.clone()).map_err(|error| {
+                // Present but unparseable is fail-closed: the engine refuses rather than
+                // evaluating a partially understood rule set.
+                PreconditionError::ConfigInvalid(format!(
+                    "the session's preconditions document is not a valid precondition set: {error}"
+                ))
+            })?;
         Ok(Some(config))
     }
 }

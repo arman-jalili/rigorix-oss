@@ -17,11 +17,11 @@
 //! - No persistence beyond an in-memory session store (ADR-002)
 
 pub mod adapters;
+pub mod canonical_serializer;
+pub mod content_policy;
 pub mod engine_gate;
 #[cfg(feature = "engine")]
 pub mod engine_ports;
-pub mod canonical_serializer;
-pub mod content_policy;
 pub mod repository;
 
 pub use adapters::{
@@ -30,5 +30,5 @@ pub use adapters::{
 };
 pub use canonical_serializer::CanonicalSerializer;
 pub use content_policy::ScanningContentPolicy;
-pub use repository::InMemorySessionStore;
 pub use engine_gate::EngineGate;
+pub use repository::InMemorySessionStore;
