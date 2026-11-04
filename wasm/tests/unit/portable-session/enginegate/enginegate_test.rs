@@ -23,8 +23,8 @@ use rigorix_gate_wasm::domain::value::{
 };
 use rigorix_gate_wasm::infrastructure::engine_gate::EngineGate;
 use rigorix_gate_wasm::infrastructure::engine_ports::{
-    precondition_service, sequence_service, FixturePreconditionRepository,
-    FixtureSequencePolicyRepository, TranscriptProviderClient, TranscriptRunner,
+    FixturePreconditionRepository, FixtureSequencePolicyRepository, TranscriptProviderClient,
+    TranscriptRunner, precondition_service, sequence_service,
 };
 use serde_json::json;
 
@@ -87,132 +87,138 @@ fn transcript(determination: &str) -> serde_json::Value {
 #[test]
 fn the_fixture_writes_the_engines_own_determination_vocabulary() {
     block_on(async {
-    // The fixture format *is* `ProviderDetermination`, so there is no second vocabulary to
-    // drift: `permit` parses, and a word the engine does not know is `Unknown` — never a
-    // permit. This is the one bridge #1393 established, seen from the adapter side.
-    for (token, expected) in [
-        ("permit", ProviderDetermination::Permit),
-        ("deny", ProviderDetermination::Deny),
-        ("unknown", ProviderDetermination::Unknown),
-        ("ALLOW", ProviderDetermination::Unknown),
-    ] {
-        let client = TranscriptProviderClient::new(transcript(token));
-        let observation = client
-            .determine(&provider_spec(), &check_input())
-            .await
-            .expect("the transcript answers");
-        assert_eq!(observation.determination, expected, "token {token}");
-        assert_eq!(observation.raw_value.as_deref(), Some(token));
-    }
+        // The fixture format *is* `ProviderDetermination`, so there is no second vocabulary to
+        // drift: `permit` parses, and a word the engine does not know is `Unknown` — never a
+        // permit. This is the one bridge #1393 established, seen from the adapter side.
+        for (token, expected) in [
+            ("permit", ProviderDetermination::Permit),
+            ("deny", ProviderDetermination::Deny),
+            ("unknown", ProviderDetermination::Unknown),
+            ("ALLOW", ProviderDetermination::Unknown),
+        ] {
+            let client = TranscriptProviderClient::new(transcript(token));
+            let observation = client
+                .determine(&provider_spec(), &check_input())
+                .await
+                .expect("the transcript answers");
+            assert_eq!(observation.determination, expected, "token {token}");
+            assert_eq!(observation.raw_value.as_deref(), Some(token));
+        }
     })
 }
 
 #[test]
 fn an_absent_determination_is_unknown_and_never_a_permit() {
     block_on(async {
-    // The world declares when it was captured, so an absent provider is still an
-    // observation — of nothing.
-    let client = TranscriptProviderClient::new(json!({
-        "observed_at": "2026-01-01T00:00:00Z",
-        "providers": {}
-    }));
-    let observation = client
-        .determine(&provider_spec(), &check_input())
-        .await
-        .expect("an absent provider is still an observation");
-    assert_eq!(observation.determination, ProviderDetermination::Unknown);
-    assert_eq!(observation.raw_value, None);
+        // The world declares when it was captured, so an absent provider is still an
+        // observation — of nothing.
+        let client = TranscriptProviderClient::new(json!({
+            "observed_at": "2026-01-01T00:00:00Z",
+            "providers": {}
+        }));
+        let observation = client
+            .determine(&provider_spec(), &check_input())
+            .await
+            .expect("an absent provider is still an observation");
+        assert_eq!(observation.determination, ProviderDetermination::Unknown);
+        assert_eq!(observation.raw_value, None);
     })
 }
 
 #[test]
 fn the_recorded_endpoint_carries_no_query_string() {
     block_on(async {
-    let client = TranscriptProviderClient::new(transcript("permit"));
-    let observation = client
-        .determine(&provider_spec(), &check_input())
-        .await
-        .expect("answers");
-    assert_eq!(
-        observation.endpoint_redacted, "https://determine.example",
-        "the record keeps scheme and host, and drops the path and the query — a query string \
+        let client = TranscriptProviderClient::new(transcript("permit"));
+        let observation = client
+            .determine(&provider_spec(), &check_input())
+            .await
+            .expect("answers");
+        assert_eq!(
+            observation.endpoint_redacted, "https://determine.example",
+            "the record keeps scheme and host, and drops the path and the query — a query string \
          is where credentials live"
-    );
-    assert!(!observation.endpoint_redacted.contains("secret"));
+        );
+        assert!(!observation.endpoint_redacted.contains("secret"));
     })
 }
 
 #[test]
 fn a_provider_with_no_observation_time_is_a_refusal_not_a_guess() {
     block_on(async {
-    // `observed_at` is a fact only the fixture has. Synthesising one would put an invented
-    // instant inside signed evidence, so its absence fails closed and names the field.
-    let client = TranscriptProviderClient::new(json!({
-        "providers": { "standing": { "determination": "permit" } }
-    }));
-    let error = client
-        .determine(&provider_spec(), &check_input())
-        .await
-        .expect_err("no observation time must refuse");
-    assert!(error.to_string().contains("observed_at"), "{error}");
+        // `observed_at` is a fact only the fixture has. Synthesising one would put an invented
+        // instant inside signed evidence, so its absence fails closed and names the field.
+        let client = TranscriptProviderClient::new(json!({
+            "providers": { "standing": { "determination": "permit" } }
+        }));
+        let error = client
+            .determine(&provider_spec(), &check_input())
+            .await
+            .expect_err("no observation time must refuse");
+        assert!(error.to_string().contains("observed_at"), "{error}");
     })
 }
 
 #[test]
 fn a_browser_runs_no_check_programs_and_says_so() {
     block_on(async {
-    let runner = TranscriptRunner::new(json!({ "providers": {} }));
-    let precondition = Precondition {
-        id: "beneficiary-eligible".to_string(),
-        r#match: serde_json::from_value(json!({ "tool": "transfer" })).expect("predicate"),
-        require_params: vec![],
-        command: vec!["check".to_string()],
-        failure: rigorix_engine::precondition::domain::FailureAction::default(),
-        timeout_ms: 1000,
-        capture_output: false,
-        provider: None,
-        authority_path: None,
-        require_immutable_check: false,
-    };
-    let error = runner
-        .run(&precondition, &check_input())
-        .await
-        .expect_err("a browser cannot spawn a check");
-    assert!(matches!(error, PreconditionError::Spawn { .. }), "{error}");
-    // Fail closed, and the message names the way out — a host reading this should know
-    // what to declare instead.
-    assert!(error.to_string().contains("provider precondition"), "{error}");
+        let runner = TranscriptRunner::new(json!({ "providers": {} }));
+        let precondition = Precondition {
+            id: "beneficiary-eligible".to_string(),
+            r#match: serde_json::from_value(json!({ "tool": "transfer" })).expect("predicate"),
+            require_params: vec![],
+            command: vec!["check".to_string()],
+            failure: rigorix_engine::precondition::domain::FailureAction::default(),
+            timeout_ms: 1000,
+            capture_output: false,
+            provider: None,
+            authority_path: None,
+            require_immutable_check: false,
+        };
+        let error = runner
+            .run(&precondition, &check_input())
+            .await
+            .expect_err("a browser cannot spawn a check");
+        assert!(matches!(error, PreconditionError::Spawn { .. }), "{error}");
+        // Fail closed, and the message names the way out — a host reading this should know
+        // what to declare instead.
+        assert!(
+            error.to_string().contains("provider precondition"),
+            "{error}"
+        );
     })
 }
 
 #[test]
 fn no_rule_document_means_no_gating_and_never_a_permit() {
     block_on(async {
-    // `Ok(None)` is "the operator configured nothing", which is what the trait documents.
-    // A repository that turned an empty document into a permit would make absence authority.
-    let repository = FixturePreconditionRepository::new(None);
-    assert!(repository.load_config().await.expect("answers").is_none());
+        // `Ok(None)` is "the operator configured nothing", which is what the trait documents.
+        // A repository that turned an empty document into a permit would make absence authority.
+        let repository = FixturePreconditionRepository::new(None);
+        assert!(repository.load_config().await.expect("answers").is_none());
 
-    let sequence = FixtureSequencePolicyRepository::new(None);
-    assert!(sequence.load_config().await.expect("answers").is_none());
+        let sequence = FixtureSequencePolicyRepository::new(None);
+        assert!(sequence.load_config().await.expect("answers").is_none());
     })
 }
 
 #[test]
 fn a_corrupt_rule_document_refuses_rather_than_evaluating_part_of_it() {
     block_on(async {
-    let repository = FixturePreconditionRepository::new(Some(json!({ "preconditions": "no" })));
-    let error = repository
-        .load_config()
-        .await
-        .expect_err("a document that does not parse must refuse");
-    assert!(matches!(error, PreconditionError::ConfigInvalid(_)), "{error}");
+        let repository = FixturePreconditionRepository::new(Some(json!({ "preconditions": "no" })));
+        let error = repository
+            .load_config()
+            .await
+            .expect_err("a document that does not parse must refuse");
+        assert!(
+            matches!(error, PreconditionError::ConfigInvalid(_)),
+            "{error}"
+        );
 
-    let sequence = FixtureSequencePolicyRepository::new(Some(json!({ "rules": 3 })));
-    assert!(
-        sequence.load_config().await.is_err(),
-        "a corrupt policy must refuse; failing open here would drop every requirement"
-    );
+        let sequence = FixtureSequencePolicyRepository::new(Some(json!({ "rules": 3 })));
+        assert!(
+            sequence.load_config().await.is_err(),
+            "a corrupt policy must refuse; failing open here would drop every requirement"
+        );
     })
 }
 
@@ -221,42 +227,52 @@ fn the_engine_services_are_the_engines_over_fixture_data() {
     // The crate supplies rule *data*; the service types are the engine's own. If this
     // ever becomes a crate-side evaluator, C.5's conformance claim becomes a coincidence.
     let transcript = json!({ "providers": {} });
-    let _: std::sync::Arc<dyn rigorix_engine::precondition::application::service::PreconditionService> =
-        precondition_service(&transcript);
-    let _: std::sync::Arc<dyn rigorix_engine::sequence_policy::application::service::SequencePolicyService> =
-        sequence_service(&transcript);
+    let _: std::sync::Arc<
+        dyn rigorix_engine::precondition::application::service::PreconditionService,
+    > = precondition_service(&transcript);
+    let _: std::sync::Arc<
+        dyn rigorix_engine::sequence_policy::application::service::SequencePolicyService,
+    > = sequence_service(&transcript);
 }
 
 #[test]
 fn the_empty_fixture_world_evaluates_to_a_dispatch() {
     block_on(async {
-    // End to end through the seam: no rules means no gating, and the composition still
-    // answers on the first poll (the readiness property C.1b states where the composition
-    // lives). A `NotReady` here would mean an adapter yields, which none of them do.
-    use rigorix_engine::gate::application::{evaluate_gate, GateOutcome, GatePorts, GateRequest, GatedStep};
+        // End to end through the seam: no rules means no gating, and the composition still
+        // answers on the first poll (the readiness property C.1b states where the composition
+        // lives). A `NotReady` here would mean an adapter yields, which none of them do.
+        use rigorix_engine::gate::application::{
+            GateOutcome, GatePorts, GateRequest, GatedStep, evaluate_gate,
+        };
 
-    let decision = evaluate_gate(GateRequest {
-        step: &GatedStep::new("transfer", "transfer", json!({})),
-        proposed_action: "transfer",
-        identity_attested: false,
-        // The execution id is required and never defaulted (#1381); the test supplies one.
-        pins: rigorix_engine::audit::application::dto::PinnedInputs::none()
-            .with_execution_id(uuid::Uuid::nil()),
-        ports: GatePorts {
-            precondition: Some(precondition_service(&json!({ "providers": {} }))),
-            sequence: Some(sequence_service(&json!({}))),
-        },
-        run_context: None,
-    })
-    .await
-    .expect("the gate answers");
+        let decision = evaluate_gate(GateRequest {
+            step: &GatedStep::new("transfer", "transfer", json!({})),
+            proposed_action: "transfer",
+            identity_attested: false,
+            // The execution id is required and never defaulted (#1381); the test supplies one.
+            pins: rigorix_engine::audit::application::dto::PinnedInputs::none()
+                .with_execution_id(uuid::Uuid::nil()),
+            ports: GatePorts {
+                precondition: Some(precondition_service(&json!({ "providers": {} }))),
+                sequence: Some(sequence_service(&json!({}))),
+            },
+            run_context: None,
+        })
+        .await
+        .expect("the gate answers");
 
-    assert!(decision.verdict.permits_dispatch());
-    assert!(decision.findings.is_empty() || decision.findings.iter().all(|f| f.outcome == GateOutcome::Passed));
-    assert!(
-        decision.envelope_evidence.is_none(),
-        "no run context means no envelope: the engine assembles evidence from facts, never from nothing"
-    );
+        assert!(decision.verdict.permits_dispatch());
+        assert!(
+            decision.findings.is_empty()
+                || decision
+                    .findings
+                    .iter()
+                    .all(|f| f.outcome == GateOutcome::Passed)
+        );
+        assert!(
+            decision.envelope_evidence.is_none(),
+            "no run context means no envelope: the engine assembles evidence from facts, never from nothing"
+        );
     })
 }
 

@@ -75,10 +75,26 @@ if [ -f "$SHIPPED" ]; then
     # #1386: `measured_bytes` claims to *be* the measurement, so the artifact must match it.
     # Without this, a stale floor is invisible: the budget below is derived from a number
     # nobody checked, and it drifts with every rebuild that changes size.
-    if [ "$ACTUAL" -ne "$MEASURED" ]; then
+    #
+    # #1405: but a byte-*exact* floor is a per-machine fact, not a cross-machine one. Same
+    # commit, same pinned toolchain (1.96), same `wasm-bindgen` (0.2.130): 1337205 B on macOS,
+    # 1335752 B on the Linux runner — 1453 B (0.11 %) of absolute paths baked into panic
+    # messages. The exact assertion refused a correct artifact on every CI run, and a gate that
+    # is always red hides the ones that are sometimes red. So the comparison carries a
+    # declared tolerance, and the *property* #1386 wanted is intact: a stale floor is caught
+    # by an order of magnitude (169250 → 1337205 is +690 %), and 1 % is far below any change
+    # worth a re-record. `budget_bytes` and `ceiling_bytes` stay hard, exact comparisons.
+    MEASUREMENT_TOLERANCE_PERCENT=1
+    DELTA=$(( ACTUAL > MEASURED ? ACTUAL - MEASURED : MEASURED - ACTUAL ))
+    ALLOWED_DELTA=$(( MEASURED / 100 * MEASUREMENT_TOLERANCE_PERCENT ))
+    if [ "$DELTA" -gt "$ALLOWED_DELTA" ]; then
         echo "❌ the recorded measurement is not this artifact: actual ${ACTUAL} B, recorded ${MEASURED} B" >&2
+        echo "   delta ${DELTA} B exceeds the ${MEASUREMENT_TOLERANCE_PERCENT} % build-environment tolerance (${ALLOWED_DELTA} B)" >&2
         echo "   re-record measured_bytes from the artifact this build produced, then derive budget" >&2
         exit 1
+    fi
+    if [ "$DELTA" -gt 0 ]; then
+        echo "   recorded measurement differs by ${DELTA} B — build environment, within tolerance"
     fi
     if [ "${BUDGET:-0}" -eq 0 ]; then
         echo "❌ a shipped artifact exists but no budget was set: measure it first" >&2

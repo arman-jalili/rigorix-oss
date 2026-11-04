@@ -26,12 +26,12 @@
 
 use serde::Serialize;
 
+#[cfg(feature = "engine")]
+use crate::application::OpenReplaySession;
 use crate::application::{
     ArtifactQuery, AttemptRun, AttemptRunService, ExportArtifactSet, ExportArtifactSetService,
     ReplaySessionQuery,
 };
-#[cfg(feature = "engine")]
-use crate::application::OpenReplaySession;
 #[cfg(feature = "engine")]
 use crate::application::{OpenReplaySessionService, OpenSessionInput};
 use crate::domain::artifact::ArtifactSet;
@@ -59,9 +59,9 @@ use crate::interfaces::dto::{ClockReadingDto, SeedDto};
 #[cfg(feature = "engine")]
 use crate::interfaces::errors::project_session_open;
 use crate::interfaces::errors::{project_attempt, project_handle, project_request, project_seal};
+use crate::interfaces::registry;
 #[cfg(feature = "engine")]
 use crate::interfaces::registry::SessionSlot;
-use crate::interfaces::registry;
 
 /// The frozen list of exported function names.
 ///
@@ -119,7 +119,9 @@ pub fn open_session(
     #[cfg(not(feature = "engine"))]
     {
         let _ = (scenario_json, fixtures_json, clock_json, seed_json);
-        Ok(render(&crate::interfaces::errors::project_gate_unavailable()))
+        Ok(render(
+            &crate::interfaces::errors::project_gate_unavailable(),
+        ))
     }
     #[cfg(feature = "engine")]
     {

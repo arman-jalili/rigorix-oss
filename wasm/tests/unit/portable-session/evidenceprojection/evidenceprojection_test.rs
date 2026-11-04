@@ -270,7 +270,10 @@ fn a_promotion_is_never_an_error_and_never_an_allow() {
     // Nothing was refused, so no refusal kind and no business wording may be attached: a
     // reason here would say a check said no about a check that said "ask a human".
     assert!(projected.kind.is_none(), "a promotion has no refusal kind");
-    assert!(projected.reason.is_none(), "a promotion has no refusal reason");
+    assert!(
+        projected.reason.is_none(),
+        "a promotion has no refusal reason"
+    );
     // And the step-level convenience follows: a paused run is not a stopped one.
     assert!(!projected.is_refusal());
     assert!(projected.awaits_approval());

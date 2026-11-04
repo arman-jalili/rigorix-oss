@@ -80,10 +80,9 @@ impl GateEvaluator for EngineGate {
                 request.ports,
             );
             Err(EngineBindingError::Rejected {
-                detail:
-                    "this build was compiled without gate evaluation: the engine slice is not \
+                detail: "this build was compiled without gate evaluation: the engine slice is not \
                      linked (FR-011)"
-                        .to_string(),
+                    .to_string(),
             })
         }
 
@@ -101,7 +100,7 @@ fn evaluate_with_engine(
 ) -> Result<EngineEvaluation, EngineBindingError> {
     use rigorix_engine::audit::application::dto::PinnedInputs;
     use rigorix_engine::gate::application::{
-        evaluate_gate_sync, GateError, GateOutcome, GatePorts, GateRequest, GateVerdict, GatedStep,
+        GateError, GateOutcome, GatePorts, GateRequest, GateVerdict, GatedStep, evaluate_gate_sync,
     };
 
     let execution_id = uuid::Uuid::parse_str(request.attempt_id.as_str()).map_err(|_| {
