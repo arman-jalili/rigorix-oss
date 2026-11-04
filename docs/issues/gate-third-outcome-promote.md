@@ -61,7 +61,7 @@ guardian_issue:
   in_scope:
     - "`GateVerdict` gains `Promote { gate, rule_id, reason }`; `GateOutcome` gains `Promoted`; the decision digest covers the third outcome, so two decisions differing only by promotion are not the same decision"
     - "The composition maps `RequirementAction::Promote` to `Promoted` and to a `Promote` verdict, never to `Passed`/`Dispatch`"
-    - "The **dispatch path** applies the promotion: a step with a `Promote` verdict must not dispatch until the approval chain says so. The gate itself does not mutate the plan — it reports, the dispatcher acts. Where the CLI has no approval path at that point it must refuse with a reason naming the missing capability, not dispatch"
+    - "The **dispatch path** applies the promotion by consulting the verdict, not by mutating the plan: `needs_approval = (node.requires_approval || verdict == Promote) && !approved.contains(&node_id)`, the existing line in `dispatch.rs:54`. The CLI *has* the mechanism — `approved` is persisted in the session (`service_impl.rs:882-891`), so a promoted step requeues and resumes once approved. The refusal path is therefore only for a host with no approval chain (the browser), and it must name the missing capability"
     - "The crate's `StepDecision` gains the third value (`Promoted`) and the wire contract version records it; the demo's honesty panel may then show a promotion it actually produced rather than describing one it cannot"
 
   out_of_scope:
@@ -95,7 +95,8 @@ guardian_issue:
   verification:
     - "Seed: a sequence-policy rule with `action = \"promote\"` matching the step → `GateVerdict::Promote`, and `GateOutcome::Promoted` — not `Dispatch`/`Passed`. The seed is the current behaviour as a failing test"
     - "The digest differs between a decision that promotes and one that dispatches: two evaluations of the same step under different rules do not produce the same `decision_digest`"
-    - "CLI: a step under a promote rule does not dispatch before approval — seeded by running the CLI with a promote rule and asserting the run stops (or refuses naming the missing approval path)"
+    - "CLI, end to end: a promote rule → the run pauses with the node requeued and the verdict naming the rule → `approve` → the run resumes and completes. The current suite says nothing about promote, and that silence is itself a finding: the new test is the proof the wiring exists"
+    - "Seed: revert the dispatch line to `node.requires_approval && …` only → the end-to-end promote test dispatches without approval and fails, proving the verdict is read"
     - "Crate: a `Promote` verdict projects to `StepDecision::Promoted`, and a host reading only `verdict` can tell all three apart"
     - "`grep -rn 'requires_approval = true' engine/src cli/src | grep -v test` shows at least one non-doc assignment, or the dispatch path's refusal names why it cannot honour it"
 ---
