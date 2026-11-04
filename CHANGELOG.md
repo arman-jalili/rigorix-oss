@@ -25,6 +25,12 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- `gate::evaluate_gate_sync` — the bridge for a runtime with no executor. It polls the async composition once with a no-op waker; a composition that pends returns a typed `GateError::NotReady` rather than hanging (wasm has nothing to drive a future) or panicking (ADR-012 forbids a panic as a control path). The property behind it is asserted by polling every port the slice can construct and requiring `Ready` on the first poll, so a port that starts awaiting real I/O fails at the definition rather than in a browser (#1389)
+- `gate::RunContext` and the envelope step: when a caller supplies the facts a gate cannot derive (template, prompt, source/repository, author, token totals, duration, commit, key source), the engine assembles and signs the record through `AuditEnvelopeFactoryImpl` and returns it as `GateDecision::envelope_evidence`. Without one the decision carries the digest alone. This is the second composition #1381 could not see at the time: two runtimes building their own `BuildEnvelopeInput` would agree on `decision_digest` and differ in the signed bytes (#1389)
+- `GateDecision` equality is now defined by what a verifier sees — verdict, findings, canonical bytes, hash — rather than by the envelope's internal fields (#1389)
+
+### Fixed
+
 - `rigorix_engine::gate` — one composition for a gate decision, so a second runtime can decide the same way rather than imitate it. `evaluate_gate` runs `preconditions` → `requirements` in a fixed fail-closed order and returns the findings in that order plus a SHA-256 over the decision's canonical bytes; `GateSetup::from_env` is the single composition root that knows a malformed `preconditions.toml` arms a fail-closed gate rather than none (#1381)
 - `gate` is 9 new tests, including the two that hold the order: an order-recording port (`the_order_is_preconditions_then_requirements`) and a behaviour (`a_refusal_precondition_is_not_displaced_by_a_requirement_promotion`). Swapping the two composition blocks fails four of them (#1381)
 

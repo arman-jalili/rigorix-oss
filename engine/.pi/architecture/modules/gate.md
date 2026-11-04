@@ -18,6 +18,8 @@ decides. The module owns **the order** in which the existing gates run, and noth
 |---|---|---|
 | `application/compose.rs` | `evaluate_gate` — the composition; `decision_digest` | yes |
 | `application/dto.rs` | `GateRequest`, `GateDecision`, `GateFinding`, `GatePorts`, `GateError` | yes |
+| `application/envelope.rs` | the record step: `RunContext` in, signed envelope out | yes |
+| `application/sync.rs` | `evaluate_gate_sync` — one poll, `NotReady` if it pends | yes |
 | `application/setup.rs` | `GateSetup::from_env` — reads `.rigorix/`, arms or fails closed | **no** (native composition root) |
 
 `setup` is the only gated file, and the reason is a dependency, not a preference: it names
@@ -46,8 +48,14 @@ fails four tests.
   re-labelled with the gate that produced it.
 - **No configuration.** Absence of a gate is a decision the operator made, so `GatePorts::none()`
   dispatches with no findings; it is never an error.
-- **No signing.** The engine publishes the decision's digest; the runtime that holds a key signs
-  it. The wasm bundle carries no key and no verifier (ADR-013).
+- **No signing without facts.** When the caller supplies a `RunContext` — template, prompt, author,
+  token totals, duration, commit, and its key source — the engine assembles and signs the record
+  through `AuditEnvelopeFactoryImpl`. Without one, the decision carries the digest alone. The
+  assembly is here on purpose: two runtimes that each built their own `BuildEnvelopeInput` would
+  agree on the digest and differ in the signed bytes (#1389).
+- **No executor.** `evaluate_gate_sync` polls once with a no-op waker and returns
+  `GateError::NotReady` if the composition pends, so the readiness property is stated and tested
+  where the composition lives rather than inside an adapter that cannot test it.
 - **No defaults for identity.** `PinnedInputs::execution_id()` is required — `GateError::UnpinnedExecution`
   rather than a nil UUID, because a defaulted id makes two runs collide in one record.
 
@@ -61,6 +69,6 @@ fails four tests.
 ## Verification
 
 ```
-cargo test -p rigorix-engine --test unit gatecomposition     9 tests
+cargo test -p rigorix-engine --test unit gatecomposition     15 tests
 bash .pi/scripts/validate-portable-inventory.sh [--gates]   manifest agrees with the code
 ```
