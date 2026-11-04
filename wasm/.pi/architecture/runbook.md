@@ -14,7 +14,8 @@
 | Fast loop | `cd wasm && cargo test` |
 | Contract tests only | `cargo test --test unit` |
 | Format / lint | `cargo fmt --check && cargo clippy --all-targets` |
-| wasm release build | `cargo build --release --target wasm32-unknown-unknown` |
+| wasm release build | `bash wasm/ci/wasm-build.sh` — the profile the budget assumes |
+| where artifacts land | the **workspace-root** `target/wasm32-unknown-unknown/release/`: `wasm` is a workspace member, so its target-dir is the root's. A crate-local `target/` under `wasm/` is never written — and a `.wasm` found there is stale by definition, whatever size it reports (#1398) |
 | Host verification | `bash wasm/ci/run-wasm-gates.sh --with-npm` |
 
 Local `cargo test` from the repo root also covers the crate: it is a workspace member
