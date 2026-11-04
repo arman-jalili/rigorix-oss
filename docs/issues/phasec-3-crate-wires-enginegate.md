@@ -100,6 +100,7 @@ built on four invented ones.
 | a precondition | `Precondition { id: String, r#match: StepPredicate, require_params: Vec<String>, … }` | `precondition/domain/precondition.rs:90` |
 | a provider's answer | `ProviderObservation { determination: ProviderDetermination, raw_value: Option<String>, observed_at: DateTime<Utc>, provider_version: Option<String>, request_digest: String, … }` | `precondition/domain/provider.rs:242` |
 | a provider's spec | `ProviderSpec { id: String, endpoint: String, method: ProviderMethod, timeout_ms: u64, … }` | `provider.rs:80` |
+| the engine's sequence-policy service | `SequencePolicyServiceImpl::new(repository: Box<dyn SequencePolicyRepository>)` — also in the slice; returns `Ok(Some(config))` / `Ok(None)` (= no policy) / `Err` (= corrupt, refuse) | `sequence_policy/application/service_impl.rs:74`; trait at `sequence_policy/infrastructure/repository/mod.rs:44` |
 | the three gate outcomes | `GateVerdict { Dispatch, Promote { … }, Refuse { … } }` · `GateOutcome { Passed, Refused, Promoted }` | `gate/application/dto.rs:236`, `:196` |
 | the crate's carriers | `EngineFindingOutcome { Passed, Refused, Error, NotReached }` · `StepDecision { Allowed, Refused, NotReached }` | `engine_seam.rs:41`, `step_outcome.rs:18` |
 | the check axis | `PreconditionOutcome { Passed, Failed, Error }` — **three**, no fourth | `precondition/domain/finding.rs:34` |
@@ -123,10 +124,13 @@ unused import is the signature of an adapter written to satisfy the compiler ins
 
 1. **Crate contract**: `Promoted` in `EngineFindingOutcome` and `StepDecision`, the wire contract
    version recorded, and the mapping tests (promoted → `Promoted`; never `Error`, never `Allowed`).
-2. **The three ports**: fixture-backed `PreconditionRepository`, `PreconditionRunner`,
-   `ProviderClient` reading from the session fixture world.
+2. **The four ports**: fixture-backed `PreconditionRepository`, `PreconditionRunner`,
+   `ProviderClient` and `SequencePolicyRepository`, all reading from the session fixture world. The
+   second service is the engine's too — `SequencePolicyServiceImpl::new(repository)` — so the crate
+   supplies the rule *data*, and the engine still evaluates it. `Ok(None)` must mean "no policy
+   configured" (that is what the trait documents), never "no rules matched".
 3. **The adapter**: build `GatedStep` from the session's step and the `GatedAction`, build `GatePorts`
-   from the engine's service plus a fixture `SequencePolicyService`, call `evaluate_gate_sync`.
+   from the two engine services, call `evaluate_gate_sync`.
 4. **The projection**: `GateDecision` → the crate's carriers, `port_failures` populated, no engine type
    re-modelled.
 
