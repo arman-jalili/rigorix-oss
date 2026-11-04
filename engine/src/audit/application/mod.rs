@@ -33,7 +33,10 @@ pub use audit_service_impl::*;
 pub use chain::*;
 pub use circuit_breaker_factory_impl::*;
 pub use circuit_breaker_impl::*;
+pub mod pinned;
+
 pub use dto::*;
 pub use envelope_factory_impl::*;
 pub use factory::*;
+pub use pinned::refusal_envelope_input;
 pub use service::*;

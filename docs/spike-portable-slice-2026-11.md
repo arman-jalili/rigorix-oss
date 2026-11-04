@@ -5,8 +5,14 @@
 was recorded on). Every command below was run on that branch; the branch is pushed and is the
 reproduction, because §5 of the issue says only the report and the inventory merge.
 
-> **Verdict (corrected, #1354): M3 holds on the shipped artifact, and M2's CLI half is the only
-> outstanding measurement.** On the module a host actually loads the engine-linked bundle is
+> **Verdict (corrected #1354, completed #1355): all four measurements hold — branch D.** M2's CLI
+> half was the last one outstanding, and it now measures: one precondition refusal, built by
+> `rigorix_engine::audit::application::pinned` and invoked through both the CLI
+> (`rigorix pinned-refusal`, behind `--features spike-m2`) and the crate
+> (`cargo run --example pinned_refusal`), produces **one digest** — `8b2cc83d…`, 853 bytes — with
+> nothing normalised. See §2.
+>
+> **M3 holds on the shipped artifact.** On the module a host actually loads the engine-linked bundle is
 > **1 170 635 B — 78.0 % of the 1 500 000 B ceiling** — and the stripped module passes all fifteen
 > `module-smoke.mjs` assertions identically.
 >
@@ -16,15 +22,15 @@ reproduction, because §5 of the issue says only the report and the inventory me
 > host. **That verdict is withdrawn**, and with it the narrowed-demo decision it produced. The
 > ceiling was never missed; the subject was wrong.
 >
-> M1, M1b (see §1), M2's in-crate half, M3 and M4 hold. What remains is M2's CLI half: the CLI has
-> never produced a comparable envelope, so "the browser decides the same as the engine" is still a
-> design intention rather than a measured property.
+> The narrowed demo stays withdrawn, and the crate's value proposition is now a measurement rather
+> than a design intention: on identical pinned input, the CLI and the engine's own call produce one
+> byte string.
 
 | | measurement | status |
 |---|---|---|
 | **M1** dependency surface | exit 0; 74 crates (normal+build), none of tree-sitter / reqwest / ring / libc / prometheus / tracing-appender | **holds** |
-| **M1b** four published crates | engine 2909, mcp 376, cli 118, actions 460 — 0 failed | **holds scoped to `portable`**; the strict reading is met by #1355, which replaces the DTO field |
-| **M2** one operation, two runtimes | in-crate `32211b9d…` twice; **CLI not reached** | **in part** — the CLI half is #1355 |
+| **M1b** four published crates | engine 2915, mcp 376, server 63, cli 118, actions 460 — 0 failed, **no test edited** | **holds, unqualified** |
+| **M2** one operation, two runtimes | CLI and in-crate both `8b2cc83d…`, 853 B, pinned (#1355) | **holds** |
 | **M3** bundle with the engine inside | **1 170 635 B** shipped vs 1 500 000 B ceiling | **holds** (78.0 %) |
 | **M4** determinism across processes | identical once the clock is pinned, different before | **holds, and only then** |
 
@@ -182,7 +188,7 @@ Crate-wide the inventory still reads 94 `Utc::now()` + 57 `Uuid::new_v4()` on ga
 (`cli/src` 4+7, `engine/src/orchestrator` 18+11, `audit` 30+11, `precondition` 4+2,
 `sequence_policy` 20+4), and *that* is the number Phase B pays for.
 
-### The CLI half — not reached, and why
+### The CLI half — reached (#1355)
 
 `rigorix run` is Tier 1: `OrchestratorServiceImpl::run_from_template` → LLM planning → dispatch →
 audit. There is **no injection point** on that path for a clock or an id source:
@@ -295,27 +301,26 @@ with a real `StepRequirement`, on the real clock seam — and it passes once the
 | **A** — extract `rigorix-gate-core` | M1 fails after the exclusions, or the exclusion list is larger than predicted | **Does not fire.** M1 exits 0 with 74 crates and no forbidden crate. The exclusion list *is* large (22 of 40 modules, 20 inner items) but it is now written down, which is what the branch was meant to detect. |
 | **B** — byte equality not reached | M2 fails inside the timebox | **Fires in part.** In-crate: reached, 1 threaded site. CLI: not reached — no injection point on the Tier-1 path. The seam exists at the bottom and not at the top. |
 | **C** — bundle exceeds 1 500 000 B | the excess is not one trimable dependency | **Did not fire — verdict withdrawn (#1354).** On the shipped artifact the bundle is **1 170 635 B, 78.0 % of the ceiling**. The excess was a 341 785 B debug `name` section, not a dependency, so the condition above was never met; the `regex` trim the row named is unrun and unnecessary. Recorded originally as "fires" on the emitted file. |
-| **D** — all four pass | — | Does not fire **yet**: M3 now passes, but M2 reached only its in-crate half. D is one measurement away, and that measurement is #1355. |
+| **D** — all four pass | — | **Fires.** M1, M1b, M2, M3 and M4 all hold: the engine's gate slice compiles for wasm32, the CLI and the crate produce one digest for one refusal, and the shipped bundle is 78.0 % of the ceiling. What D produces — the decision ADR — is the next step, not this issue's. |
 
 **C did not fire, so nothing it decided stands.** In particular the narrowed demo — "the browser
 verifies, the gate stays server/CLI-side" — was the answer to a size problem that does not exist
 on the shipped artifact, and it is **withdrawn**. Gate evaluation in the browser remains on the
 table.
 
-What replaces it:
+What replaces it — **D now holds** (#1355 measured the last row):
 
-1. **M2's CLI half is the whole of the remaining question** (#1355). Byte identity between the CLI
-   and the crate is what makes a browser gate mean anything, and it was reached on one side only.
-   A demo built now would demonstrate a link that has never produced a comparable envelope.
+1. **The decision ADR is warranted, and its content has shrunk** to two things: what `portable`
+   excludes (the inventory, now measured) and the pinned-input carrier (`PinnedInputs` + the
+   additive method). The determinism seam as an abstraction does not belong in it — one operation,
+   one site.
 2. **M1's inventory stands** and is unaffected: 22 of 40 modules excluded, 11 of them for a
    forbidden crate, `CoreOrchestratorError` at 85 sites. It is an argument *against* extraction
    (branch A) and *for* the exclusions it enumerates.
 3. **Phase B is scheduled against the inventory, not against "151 sites"**: one threaded site per
    operation for the envelope, and the id/clock sites in the callers are the cost.
-4. **No ADR is written here.** Branch D needs M2, so the decision ADR waits for #1355 — and its
-   content shrinks to two things: what `portable` excludes (the inventory, now measured) and the
-   pinned-input carrier. The determinism seam as an abstraction has no business in it: one
-   operation, one site.
+4. **No ADR is written here.** This document is the measurement; the ADR that D produces is its
+   own artefact, written after it.
 
 ---
 
