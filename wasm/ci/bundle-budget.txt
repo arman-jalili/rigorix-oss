@@ -9,8 +9,9 @@
 #
 # budget = measured + 25%, per NFR-002: measured first, then a hard gate, never a guess.
 artifact: pkg/rigorix_gate_wasm_bg.wasm
-measured_bytes: 209881
-budget_bytes: 262351
+ceiling_bytes: 1500000
+measured_bytes: 169250
+budget_bytes: 211562
 state: packaged
 note: >-
   Re-measured on 2026-11-03 (#1353): the subject moved from the emitted file to the
@@ -26,7 +27,40 @@ note: >-
   measured, but no version has been published to npm, so `publish-wasm-npm` stays outside
   `github-release.needs` — the release-train guard enforces that distinction.
 
-# ── Phase C.4 (#1384): the measurement that blocks the default flip ─────────────────────
+# ── Phase C.6 (#1386): the profile, not the code ─────────────────────────────────────────
+# The 1 706 234 B below was correct and was not the number that matters: `wasm/Cargo.toml`
+# declared no `[profile.release]`, so the artifact shipped with opt-level 3, no LTO and 16
+# codegen units. `ci/wasm-build.sh` now owns the profile (fat LTO, opt-level z, panic=abort,
+# codegen-units 1) and every build in `ci/` goes through it:
+#
+#   default release profile         emitted 1918610 · name 212376 · shipped 1706234  (+13.7 %)
+#   size profile (#1386)            emitted 1769863 · name 432658 · shipped 1337205  (-10.9 %)
+#
+# `measured_bytes` describes the artifact this gate measures — the **default** build, which
+# is still unlinked, hence 169250 B (down from 209881 B: C.3 deleted `SeamGate` and the probe).
+# The engine-linked figure the flip decision rests on is 1337205 B; both are measured from
+# this commit's packaging path, and the gate refuses a `measured_bytes` that does not equal
+# the artifact it just measured. `budget_bytes` is measured + 25 % (1671506), which is *above* the
+# `ceiling_bytes` of 1500000 — so the ceiling binds, deliberately: the ratchet is derived
+# and the ceiling was fixed by the specification. Both are asserted, and the size gate now
+# also refuses a `measured_bytes` that does not equal the artifact (`ACTUAL == MEASURED`),
+# because a stale floor was previously invisible.
+#
+# Still blocked: the **default** flip. Not by size — 1337205 B fits — but by
+# `check-bundle-independence.sh`: `rigorix-engine` declares `tokio` as a required dependency
+# (`engine/Cargo.toml:49 tokio.workspace = true`) and `portable = []` does not remove it, so
+# the engine-linked graph carries an async runtime into a single-threaded module. ADR-014's
+# inventory excludes tokio-using *modules*; it never excluded the *crate* dependency, and this
+# gate is the first thing to say so out loud. Follow-up is engine-side (make tokio optional /
+# feature-gate it), with its own blast radius — it is not a bundle change.
+#
+# Lesson, verbatim, because it has now cost two verdicts: **the artifact is whatever the
+# packaging path builds, and the packaging path must build the profile the budget assumes.**
+# A `[profile.release]` in `wasm/Cargo.toml` would have been ignored — `wasm` is a member of
+# the root workspace, and lto/panic cannot be overridden per package — so the profile cannot
+# live in a manifest where it would read as a decision and change nothing.
+
+# ── Phase C.4 (#1384): the measurement that was blocking the default flip ────────────────
 # `EngineGate` reachable from the exported `open_session` — i.e. the artifact a host would
 # load once `engine` is the default — measures:
 #

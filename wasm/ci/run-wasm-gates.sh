@@ -72,7 +72,7 @@ gate "failure tiers"           bash ci/check-failure-tiers.sh
 gate "conformance"             bash ci/run-conformance.sh
 gate "panic sites"             bash ../.pi/scripts/validate-panic-sites.sh
 gate "unit + contract tests"   cargo test --quiet
-gate "release build for wasm"  cargo build --quiet --release --target wasm32-unknown-unknown
+gate "release build for wasm"  bash "$CRATE_DIR/ci/wasm-build.sh"
 # #1349: the build gate above proves the crate compiles; this one proves the
 # artifact is callable. It packages the release module the way a host consumes it,
 # loads it in Node, and calls all four exports — so a module with no exported

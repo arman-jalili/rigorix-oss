@@ -69,7 +69,7 @@ if [ "$HAVE_BINDGEN" != "$WANT_BINDGEN" ]; then
 fi
 
 echo "== building the release module =="
-if ! cargo build --release --target wasm32-unknown-unknown --quiet; then
+if ! bash "$CRATE_DIR/ci/wasm-build.sh"; then
     echo "❌ the release module does not build" >&2
     exit 1
 fi

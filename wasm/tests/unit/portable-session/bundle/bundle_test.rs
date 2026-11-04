@@ -57,23 +57,27 @@ fn the_size_gate_is_declared_where_ci_can_read_it() {
     assert!(manifest.contains("[features]"));
     // The engine seam is opt-in and off by default: a default-on engine dependency would
     // pull the native stack into the browser bundle.
-    // C.4 (#1384) intends `default = ["engine"]` — the gate on the default path, so the size
-    // gate measures the artifact a host loads. It cannot land yet: the linked artifact
-    // measures 1 706 234 B against the 1 500 000 B ceiling (a filed finding, not a ceiling
-    // move — see `ci/bundle-budget.txt`). The flip lands with the size work, C.6 (#1386).
-    // Until then the default stays the unlinked build, and it refuses at open with a reason.
-    assert!(manifest.contains("default = []"));
+    // C.6 (#1386) solved the *size*: `ci/wasm-build.sh` builds the size profile, and the
+    // linked artifact is 1 337 205 B against the 1 500 000 B ceiling (-10.9 %). The flip to
+    // `default = ["engine"]` is still blocked — by a different gate. `rigorix-engine` declares
+    // `tokio` as a required dependency (`engine/Cargo.toml:49`), `portable = []` does not
+    // remove it, and `check-bundle-independence.sh` refuses an async runtime in a
+    // single-threaded module. Until tokio is feature-gated on the engine side, the default
+    // stays unlinked: it refuses at open, by name, and reports the capability.
+    assert!(
+        manifest.contains("default = []"),
+        "the default flip waits on tokio leaving the wasm graph, not on size"
+    );
 }
 
 #[test]
 fn the_engine_dependency_is_optional_by_contract() {
     let manifest = read_manifest("Cargo.toml");
-    // The dependency is optional and off by default: a browser bundle pays for what it can
-    // use. The build it produces is not useless — it refuses at open with `gate_unavailable`
-    // and says so — which is exactly what makes shipping it defensible until C.6.
+    // Optional and off by default; the build it produces compiles and refuses at open with
+    // `gate_unavailable`. The default flip is #1386's remaining item, blocked on tokio.
     assert!(
         !manifest.contains("default = [\"engine\"]"),
-        "the default build currently carries no engine; flipping it is C.6, with the size finding"
+        "the default is unlinked until tokio leaves the wasm graph"
     );
     let deps = manifest.split("[dependencies]").nth(1).unwrap_or_default();
     let engine_line = deps
@@ -212,9 +216,16 @@ fn one_command_runs_every_gate_this_crate_claims() {
     ] {
         assert!(runner.contains(gate), "the runner does not call {gate}");
     }
-    // And the crate's own tests and its wasm release build, which are gates too.
+    // And the crate's own tests and its wasm release build, which are gates too. The build
+    // goes through `ci/wasm-build.sh` because the size profile lives there (#1386) — a gate
+    // that called `cargo build` directly would measure a different artifact than the one
+    // `bundle-budget.txt` was derived from.
     assert!(runner.contains("cargo test"));
-    assert!(runner.contains("--target wasm32-unknown-unknown"));
+    assert!(
+        runner.contains("ci/wasm-build.sh"),
+        "the gates must build through the script that owns the release profile"
+    );
+    gates_runner_contains_build_profile();
 }
 
 #[test]
@@ -250,4 +261,25 @@ fn ci_invokes_the_runner_and_the_gate_treats_it_as_mandatory() {
         mandatory.contains("wasm-gates"),
         "the wasm gates are not mandatory: {mandatory}"
     );
+}
+
+/// The build the budget assumes is the build every gate performs.
+#[test]
+fn gates_runner_contains_build_profile() {
+    let build = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ci/wasm-build.sh"),
+    )
+    .expect("the build script is in the tree");
+    for setting in [
+        "CARGO_PROFILE_RELEASE_LTO=fat",
+        "CARGO_PROFILE_RELEASE_OPT_LEVEL=z",
+        "CARGO_PROFILE_RELEASE_PANIC=abort",
+        "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1",
+    ] {
+        assert!(
+            build.contains(setting),
+            "the size profile is missing {setting}; the measured number would not describe \
+             the artifact this build produces"
+        );
+    }
 }
