@@ -105,7 +105,7 @@ Two things follow, and both are checkable rather than asserted:
   recorded instant — the sentence the specification needs (`05-evidence-model.md`) and could not
   make until this existed.
 
-`GateSetup` (native-only, `gate::application::setup`) is the composition root: it is the one place
+`GateSetup` (native-only, `gate::infrastructure`) is the composition root: it is the one place
 that knows a malformed `preconditions.toml` arms a fail-closed gate rather than none. It is gated
 out of the portable slice — the slice takes ports from the host — and
 `validate-portable-inventory.sh --gates` holds the manifest to that, in both directions: every gated
