@@ -208,17 +208,59 @@ async fn decide(
 }
 
 #[tokio::test]
-async fn a_passing_pair_dispatches_and_carries_both_findings() {
+async fn a_promotion_is_not_a_pass_and_is_not_a_dispatch() {
+    // #1392: before this, a `promote` rule was recorded as `Passed` and the verdict stayed
+    // `Dispatch` — the operator asked for human approval and got "it passed".
     let decision = decide(PreconditionAnswer::Pass, RequirementAnswer::Promote).await;
 
-    assert!(decision.verdict.permits_dispatch());
+    assert!(
+        !decision.verdict.permits_dispatch(),
+        "a promoted step must not dispatch"
+    );
+    assert!(decision.verdict.awaits_approval());
+    match &decision.verdict {
+        GateVerdict::Promote { gate, rule_id, .. } => {
+            assert_eq!(*gate, GateId::Requirements);
+            assert_eq!(rule_id, "require-approval");
+        }
+        other => panic!("expected a promotion, got {other:?}"),
+    }
     assert_eq!(decision.findings.len(), 2);
     assert_eq!(decision.findings[0].gate_id, GateId::Preconditions);
     assert_eq!(decision.findings[0].outcome, GateOutcome::Passed);
     assert_eq!(decision.findings[1].gate_id, GateId::Requirements);
-    // A `promote` is evidence, not a refusal: the step still dispatches with the
-    // operator's promotion recorded.
-    assert_eq!(decision.findings[1].outcome, GateOutcome::Passed);
+    assert_eq!(
+        decision.findings[1].outcome,
+        GateOutcome::Promoted,
+        "the finding names the third outcome, not `Passed`"
+    );
+}
+
+#[tokio::test]
+async fn a_promotion_changes_the_decision_digest() {
+    // Two decisions that differ only by a promotion must not be the same decision: the
+    // digest covers the verdict, and the verdict now has three values.
+    let promoted = decide(PreconditionAnswer::Pass, RequirementAnswer::Promote).await;
+    let denied = decide(PreconditionAnswer::Pass, RequirementAnswer::Deny).await;
+    let plain = rigorix_engine::gate::application::evaluate_gate(GateRequest {
+        step: &step(),
+        proposed_action: "move 10 units",
+        identity_attested: true,
+        pins: pins(),
+        ports: GatePorts::none(),
+        run_context: None,
+    })
+    .await
+    .expect("the gate answers");
+
+    assert_ne!(
+        promoted.envelope.decision_digest, plain.envelope.decision_digest,
+        "a promotion must not digest like a plain dispatch"
+    );
+    assert_ne!(
+        promoted.envelope.decision_digest,
+        denied.envelope.decision_digest
+    );
 }
 
 #[tokio::test]
@@ -253,7 +295,11 @@ async fn a_refusal_precondition_is_not_displaced_by_a_requirement_promotion() {
             assert_eq!(*gate, GateId::Preconditions);
             assert_eq!(rule_id.as_deref(), Some("no-unguarded-transfer"));
         }
-        GateVerdict::Dispatch => panic!("a denied precondition must refuse the step"),
+        // Both non-refusals are listed rather than caught by a wildcard: a fourth verdict
+        // must fail to compile here too, or this test stops being a test.
+        GateVerdict::Dispatch | GateVerdict::Promote { .. } => {
+            panic!("a denied precondition must refuse the step")
+        }
     }
     // The requirements were never consulted: a step that cannot dispatch has no
     // obligations to satisfy, and asking would produce evidence about a run that
@@ -271,7 +317,9 @@ async fn a_denied_requirement_refuses_after_the_precondition_passed() {
             assert_eq!(*gate, GateId::Requirements);
             assert_eq!(rule_id.as_deref(), Some("require-approval"));
         }
-        GateVerdict::Dispatch => panic!("a denied requirement must refuse the step"),
+        GateVerdict::Dispatch | GateVerdict::Promote { .. } => {
+            panic!("a denied requirement must refuse the step")
+        }
     }
     assert_eq!(decision.findings.len(), 2);
 }
@@ -515,7 +563,13 @@ fn the_slice_ports_are_ready_on_the_first_poll() {
     let mut cx = Context::from_waker(waker);
 
     match future.as_mut().poll(&mut cx) {
-        Poll::Ready(Ok(decision)) => assert!(decision.verdict.permits_dispatch()),
+        // The property under test is *readiness*, not the verdict: these fixture ports
+        // promote, so the decision is a promotion and dispatch is beside the point.
+        Poll::Ready(Ok(decision)) => assert_ne!(
+            decision.envelope.decision_digest.len(),
+            0,
+            "a first poll that returns a decision has evaluated everything"
+        ),
         Poll::Ready(Err(error)) => panic!("the fixture ports must answer, got {error}"),
         Poll::Pending => panic!(
             "a port on the slice's gate path awaited I/O — evaluate_gate_sync would return \

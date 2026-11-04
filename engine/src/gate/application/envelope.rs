@@ -124,6 +124,23 @@ fn decision_event(
                 findings.len()
             ),
         ),
+        // A promotion is a decision that has not been made yet: `Skipped` is the closest
+        // status that is neither "it happened" nor "it failed" — the event records that the
+        // gate stopped here and a human must continue.
+        GateVerdict::Promote {
+            gate,
+            rule_id,
+            reason,
+        } => (
+            "gate_promoted",
+            EventStatus::Skipped,
+            format!(
+                "the gate promoted '{}' ({}: {action}) at {}: {reason} [{rule_id}] — awaiting approval",
+                step.name,
+                step.tool,
+                gate.as_str()
+            ),
+        ),
         GateVerdict::Refuse {
             gate,
             rule_id,

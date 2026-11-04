@@ -138,21 +138,23 @@ pub async fn evaluate_gate(request: GateRequest<'_>) -> Result<GateDecision, Gat
             })?;
 
         for finding in requirement_findings {
-            let refused = matches!(finding.action, RequirementAction::Deny);
+            // #1392: three actions, three outcomes. `Promote` used to be recorded as
+            // `Passed` because the mapping asked a two-way question — `matches!(Deny)` —
+            // and a two-valued answer cannot name the third value.
+            let (outcome, promotion) = match finding.action {
+                RequirementAction::Deny => (GateOutcome::Refused, None),
+                RequirementAction::Promote => (GateOutcome::Promoted, Some(())),
+            };
             findings.push(GateFinding {
                 gate_id: GateId::Requirements,
                 step: finding.step.clone(),
-                outcome: if refused {
-                    GateOutcome::Refused
-                } else {
-                    GateOutcome::Passed
-                },
+                outcome,
                 rule_id: Some(finding.requirement_id.clone()),
                 detail: Some(finding.decision_summary()),
                 evidence: serde_json::to_value(&finding).ok(),
             });
-            if refused {
-                let summary = finding.decision_summary();
+            let summary = finding.decision_summary();
+            if matches!(finding.action, RequirementAction::Deny) {
                 if verdict.permits_dispatch() {
                     verdict = GateVerdict::Refuse {
                         gate: GateId::Requirements,
@@ -160,6 +162,14 @@ pub async fn evaluate_gate(request: GateRequest<'_>) -> Result<GateDecision, Gat
                         reason: summary,
                     };
                 }
+            } else if promotion.is_some() && verdict.permits_dispatch() {
+                // Refuse wins over promote: a step that must not run cannot be made
+                // runnable by approving it.
+                verdict = GateVerdict::Promote {
+                    gate: GateId::Requirements,
+                    rule_id: finding.requirement_id,
+                    reason: summary,
+                };
             }
         }
     }
