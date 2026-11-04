@@ -48,3 +48,5 @@ count	25 of 38	mods	declared	25 of 38 public modules (11 forbidden crate	evidenc
 count	14 of 25	excluded_closure_and_narrow	excluded_total	14 of 25 leave for something	Decision §1: the 6 narrowed + 8 closure modules
 count	11 of 25	excluded_crate	excluded_total	reaches only 11 of 25	Decision §1: a dependency list describes 11 of the 25
 count	8 of 25	excluded_closure	excluded_total	8 of 25 module exclusions follow	Consequences § Negative
+total	20 inner items	items	-	20 inner items	evidence table: items gated inside the 18 modules that remain (#1365)
+total	9 dependencies	deps	-	9 dependencies	Decision §1: the dependency rows of the manifest (#1365)

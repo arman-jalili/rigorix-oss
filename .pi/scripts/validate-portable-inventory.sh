@@ -214,7 +214,14 @@ check_ratios() {
         local num_v den_v
         num_v="$(resolve_quantity "$num" "$subst")"
         den_v="$(resolve_quantity "$den" "$subst")"
-        if [ -z "$num_v" ] || [ -z "$den_v" ] || [ "$den_v" = "0" ]; then
+        if [ "$kind" = "total" ]; then
+            # A derived count with no denominator: "20 inner items". Only the
+            # numerator has to resolve.
+            if [ -z "$num_v" ]; then
+                bad "  ratios: cannot derive '$stated' — quantity '$num' does not resolve"
+                continue
+            fi
+        elif [ -z "$num_v" ] || [ -z "$den_v" ] || [ "$den_v" = "0" ]; then
             bad "  ratios: cannot derive '$stated' — operands $num/$den do not resolve ($num_v/$den_v)"
             continue
         fi
@@ -236,6 +243,13 @@ check_ratios() {
             count)
                 [ "$stated" = "$num_v of $den_v" ] \
                     || bad "  ratios: '$stated' does not derive — rows give '$num_v of $den_v' (row: '$note')" ;;
+            total)
+                # A count of a derived quantity, written "N <noun>". The noun stays
+                # in `stated`, so the record's own wording is what gets checked.
+                case "$stated" in
+                    "$num_v "*) : ;;
+                    *) bad "  ratios: '$stated' does not derive — the manifest holds $num_v (row: '$note')" ;;
+                esac ;;
             *)
                 bad "  ratios: unknown kind '$kind' for '$stated'" ;;
         esac
@@ -255,7 +269,7 @@ check_ratios() {
     local hits lineno token stripped
     stripped="$(sed 's/\*\*//g' "$adr")"
     hits="$(printf '%s\n' "$stripped" \
-        | grep -inEo '[0-9]+(\.[0-9]+)? ?%|[0-9]+ of [0-9]+|(^|[^A-Za-z])(half|majority|most|quarter|third|twice|double)([^A-Za-z]|$)' \
+        | grep -inEo '[0-9]+(\.[0-9]+)? ?%|[0-9]+ of [0-9]+|[0-9]+ (inner items|items|dependencies)|(^|[^A-Za-z])(half|majority|most|quarter|third|twice|double)([^A-Za-z]|$)' \
         | sed -E 's/^([0-9]+):/\1\t/' \
         | while IFS="$(printf '\t')" read -r n text; do
               printf '%s\t%s\n' "$n" "$(printf '%s' "$text" | sed -E 's/^[^A-Za-z0-9]+//; s/[^A-Za-z0-9%.]+$//' | tr 'A-Z' 'a-z')"
@@ -422,6 +436,15 @@ self-test)
     #     with a reason, never a skip.
     { cat "$ADR"; printf '\nHalf the excluded modules are not dependency statements.\n'; } > "$tmp/aword.md"
     expect "an underivable ratio-shaped claim" 1 "$MANIFEST" "$LIB" "$tmp/aword.md"
+
+    # 12. #1365 seed H — a manifest-derived count, off by one. The guard used to
+    #     compute it, print it, and never look at the record's copy.
+    sed 's/20 inner items/21 inner items/' "$ADR" > "$tmp/acountH.md"
+    expect "derived count off by one: inner items (#1365 seed H)" 1 "$MANIFEST" "$LIB" "$tmp/acountH.md"
+
+    # 13. #1365 seed I — the dependency count, likewise.
+    sed 's/9 dependencies/10 dependencies/' "$ADR" > "$tmp/acountI.md"
+    expect "derived count off by one: dependencies (#1365 seed I)" 1 "$MANIFEST" "$LIB" "$tmp/acountI.md"
 
     printf '  self-test: %d/%d assertions\n' "$ok" "$((ok + ko))"
     [ "$ko" -eq 0 ] || exit 1
