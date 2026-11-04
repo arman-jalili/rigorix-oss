@@ -28,30 +28,40 @@ use serde::Serialize;
 
 use crate::application::{
     ArtifactQuery, AttemptRun, AttemptRunService, ExportArtifactSet, ExportArtifactSetService,
-    OpenReplaySession, OpenReplaySessionService, OpenSessionInput, ReplaySessionQuery,
+    ReplaySessionQuery,
 };
+#[cfg(feature = "engine")]
+use crate::application::OpenReplaySession;
+#[cfg(feature = "engine")]
+use crate::application::{OpenReplaySessionService, OpenSessionInput};
 use crate::domain::artifact::ArtifactSet;
 use crate::domain::ports::Ports;
 use crate::domain::services::{
     ArtifactContentPolicy, ArtifactStamp, BusinessWording, EngineArtifactStamp,
     EngineFindingsProjection, RefusalVocabulary,
 };
+#[cfg(feature = "engine")]
 use crate::domain::value::{
     ClockReading, ClockTrack, Draw, FixtureWorld, GatedAction, Params, RandomSeed, ScenarioRef,
     Timestamp,
 };
+#[cfg(not(feature = "engine"))]
+use crate::domain::value::{GatedAction, Params};
 use crate::infrastructure::{
     FixtureClock, FixtureProviderTransport, FixtureRandomness, MemoryBusinessSink,
     ScanningContentPolicy, SeededIdSource, SeededKeySource,
 };
 use crate::interfaces::dto::{
-    ArtifactSetDto, ClockReadingDto, EvidenceRefDto, GatedActionDto, RunOutcomeDto, SeedDto,
-    SessionHandleDto, StepOutcomeDto,
+    ArtifactSetDto, EvidenceRefDto, GatedActionDto, RunOutcomeDto, SessionHandleDto, StepOutcomeDto,
 };
-use crate::interfaces::errors::{
-    project_attempt, project_handle, project_request, project_seal, project_session_open,
-};
-use crate::interfaces::registry::{self, SessionSlot};
+#[cfg(feature = "engine")]
+use crate::interfaces::dto::{ClockReadingDto, SeedDto};
+#[cfg(feature = "engine")]
+use crate::interfaces::errors::project_session_open;
+use crate::interfaces::errors::{project_attempt, project_handle, project_request, project_seal};
+#[cfg(feature = "engine")]
+use crate::interfaces::registry::SessionSlot;
+use crate::interfaces::registry;
 
 /// The frozen list of exported function names.
 ///
@@ -75,6 +85,12 @@ pub struct ContractVersion {
     pub engine: String,
     /// Artifact container format this bundle emits.
     pub artifact_format: u32,
+    /// Whether this build can evaluate a gate at all.
+    ///
+    /// A host learns the build's capability *before* opening a session, rather than
+    /// inferring it from a refusal later (#1384). `false` means every `open_session` will
+    /// refuse with `gate_unavailable` — the one condition that kind is reserved for.
+    pub gate_evaluation: bool,
 }
 
 /// Serialise a value for the host. Encoding our own types cannot fail short of a bug, and
@@ -86,11 +102,34 @@ fn render<T: Serialize>(value: &T) -> String {
 }
 
 /// Assemble a replayable session.
+/// Assemble a replayable session — `open_session(scenario, fixtures, clock, seed)`.
 ///
 /// # Contract
 /// - Four JSON inputs, all required: scenario, fixtures, clock, seed
 /// - Returns a handle, or a refusal when the input cannot be pinned
+/// - A build without gate evaluation refuses here, and only here: `gate_unavailable` names
+///   "this build cannot decide", so it is emitted before any handle exists (#1384). A run
+///   that fails to evaluate on a build that *can* decide is an `attempt_failed`.
 pub fn open_session(
+    scenario_json: String,
+    fixtures_json: String,
+    clock_json: String,
+    seed_json: String,
+) -> Result<String, String> {
+    #[cfg(not(feature = "engine"))]
+    {
+        let _ = (scenario_json, fixtures_json, clock_json, seed_json);
+        Ok(render(&crate::interfaces::errors::project_gate_unavailable()))
+    }
+    #[cfg(feature = "engine")]
+    {
+        open_session_evaluate(scenario_json, fixtures_json, clock_json, seed_json)
+    }
+}
+
+/// The same call on a build that can evaluate.
+#[cfg(feature = "engine")]
+fn open_session_evaluate(
     scenario_json: String,
     fixtures_json: String,
     clock_json: String,
@@ -254,12 +293,13 @@ pub fn export_artifact_set(handle_json: String) -> Result<String, String> {
     .map_err(|error| render(&project_handle(&error)))
 }
 
-/// Report the three version numbers.
+/// Report the version numbers and the build's gate capability.
 pub fn contract_version() -> String {
     render(&ContractVersion {
         contract: env!("CARGO_PKG_VERSION").to_string(),
         engine: EngineArtifactStamp::engine_version().to_string(),
         artifact_format: ArtifactSet::FORMAT_VERSION,
+        gate_evaluation: cfg!(feature = "engine"),
     })
 }
 

@@ -26,6 +26,21 @@ note: >-
   measured, but no version has been published to npm, so `publish-wasm-npm` stays outside
   `github-release.needs` — the release-train guard enforces that distinction.
 
+# ── Phase C.4 (#1384): the measurement that blocks the default flip ─────────────────────
+# `EngineGate` reachable from the exported `open_session` — i.e. the artifact a host would
+# load once `engine` is the default — measures:
+#
+#   command: cargo build --release --target wasm32-unknown-unknown --features engine
+#            wasm-bindgen --target nodejs --out-dir …
+#            python3 ci/strip_name_section.py …/rigorix_gate_wasm_bg.wasm
+#   shipped  1706234 B   (name section stripped; measured 2026-02, this commit)
+#   spec ceiling 1500000 B  →  over by 206234 B (+13.7 % of the ceiling)
+#
+# This is a **finding, not a ceiling move**: `default = ["engine"]` is deferred to C.6 until
+# the artifact fits. The +25 % ratchet above is a floor derived from a *shipped* build; it is
+# not a licence to raise the only number the specification fixed. The named levers, from the
+# step-1 note, are the `data` segment (400735 B) and a name strip — not the dependency list.
+
 # ── Phase C.3 (#1383): the probe is gone, the gate is the real one ───────────────────────
 # `EngineGate` replaced `SeamGate::not_linked()` and the measurement-only `engine_probe`
 # export, so the engine call reachable from the bundle is the composition a host actually

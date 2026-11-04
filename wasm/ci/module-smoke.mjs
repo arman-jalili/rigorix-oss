@@ -95,6 +95,13 @@ if (version) {
         version.artifact_format === 2,
         `artifact_format is 2 (${version.artifact_format})`,
     );
+    // C.4 (#1384): the capability is reported before a host opens anything, so a build that
+    // cannot decide is knowable without provoking a refusal. Both builds must answer this
+    // honestly; which one is packaged is the feature decision, not the smoke test's.
+    check(
+        typeof version.gate_evaluation === 'boolean',
+        `contract_version reports gate_evaluation (${version.gate_evaluation})`,
+    );
     check(
         version.verified === undefined,
         'contract_version carries no verdict-shaped field',
@@ -102,21 +109,37 @@ if (version) {
 }
 
 // ── open_session: a handle, not a refusal ───────────────────────────────────
+const canEvaluate = version && version.gate_evaluation === true;
 const handleJson = m.open_session(scenario, fixtures, clock, seed);
 const handle = parse('open_session', handleJson);
-if (handle) {
+// The two builds have one observable difference, and the smoke test states both sides of it
+// rather than assuming which build it is measuring.
+if (canEvaluate) {
+    if (handle) {
+        check(
+            typeof handle.handle === 'string' && handle.handle.startsWith('gate:sha256:'),
+            `open_session returns an opaque handle (${String(handle.handle).slice(0, 24)}…)`,
+        );
+        check(
+            handle.kind === undefined,
+            'open_session on a valid fixture is a handle, not a refusal',
+        );
+    }
+} else if (handle) {
     check(
-        typeof handle.handle === 'string' && handle.handle.startsWith('gate:sha256:'),
-        `open_session returns an opaque handle (${String(handle.handle).slice(0, 24)}…)`,
+        handle.kind === 'gate_unavailable',
+        `a build without evaluation refuses at open, by name (kind: ${handle.kind})`,
     );
     check(
-        handle.kind === undefined,
-        'open_session on a valid fixture is a handle, not a refusal',
+        handle.handle === undefined,
+        'the refusal mints no handle: there is nothing to try',
     );
 }
 
 // ── export_artifact_set before an attempt: a refusal ────────────────────────
-if (handle) {
+// Only meaningful where a handle exists: the unlinked build produces none, and a fabricated
+// handle is `request_invalid` — a different fact, correctly labelled.
+if (handle && canEvaluate) {
     const sealed = parse('export_artifact_set', m.export_artifact_set(handleJson));
     if (sealed) {
         check(
@@ -135,9 +158,11 @@ if (handle) {
         fail(`attempt_run threw on the unlinked seam — a refusal must be a return value: ${err}`);
     }
     if (outcome) {
+        // Flipped by #1384: this build *can* evaluate, so `gate_unavailable` would be a
+        // missing-capability claim about a build that has the capability.
         check(
-            outcome.kind === 'gate_unavailable',
-            `the unlinked seam refuses with gate_unavailable (kind: ${outcome.kind})`,
+            outcome.kind !== 'gate_unavailable',
+            `an evaluating build never reports gate_unavailable (kind: ${outcome.kind})`,
         );
     }
 }

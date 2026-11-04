@@ -58,6 +58,7 @@ pub(crate) fn handle_for(id: &crate::domain::value::ReplaySessionId) -> String {
 }
 
 /// Insert a session and return its handle.
+#[cfg_attr(not(feature = "engine"), allow(dead_code))]
 pub(crate) fn insert(slot: SessionSlot) -> String {
     let handle = handle_for(slot.session.id());
     // A failed borrow would leave the session unregistered, which the caller sees as an
