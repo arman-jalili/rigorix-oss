@@ -196,13 +196,24 @@ if should_run "build"; then
 fi
 
 # ═════════════════════════════════════════════════════════════════
-# Stage 3: Test (cargo test + all proofing scripts)
+# Stage 3: Test (cargo nextest + doctests + all proofing scripts)
 # ═════════════════════════════════════════════════════════════════
 if should_run "test"; then
     header "Stage 3: Test"
     for crate in "${CRATES[@]}"; do
         subheader "Test: $crate"
-        run_cmd "cargo test -p rigorix-$crate" cargo test -p "rigorix-$crate"
+        # #1373: nextest is the runner (per-test process isolation, per-test timing).
+        # Falling back to `cargo test` rather than failing keeps a contributor without
+        # the tool unblocked — but the fallback is announced, because the two runners do
+        # not report the same way and a silent substitution is how a result gets quoted
+        # against the wrong subject.
+        if command -v cargo-nextest >/dev/null 2>&1; then
+            run_cmd "cargo nextest run -p rigorix-$crate" cargo nextest run -p "rigorix-$crate"
+        else
+            echo "  ⚠️  cargo-nextest not installed — falling back to cargo test (https://get.nexte.st)"
+            run_cmd "cargo test -p rigorix-$crate" cargo test -p "rigorix-$crate"
+        fi
+        run_cmd "doctests -p rigorix-$crate" bash .pi/scripts/run-doctests.sh -p "rigorix-$crate"
         # All stage_*.sh scripts that aren't already in lint/build
         for script in "$crate/.pi/scripts/ci/stage_unit.sh" "$crate/.pi/scripts/ci/stage_integration.sh"; do
             [[ -f "$script" ]] && run_script "$(basename "$script") ($crate)" "$crate" "$script"

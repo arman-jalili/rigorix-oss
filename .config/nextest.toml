@@ -1,0 +1,26 @@
+# cargo-nextest configuration (#1373, ADR-015 context: the runner, not the layout)
+#
+# No retry keys are configured, deliberately and permanently: a retried pass is a
+# normalised comparison, reporting green for a test that is not reliably green.
+# ADR-014 refuses normalisation on the determinism path for the same reason, and
+# the repository's own flakiness history (`--test-threads=16`, disproved by 20
+# repetitions) is a reason to make a flaky test fail alone and loudly, not to
+# paper over it. CI asserts no such key is added here (`.github/workflows/ci.yml`,
+# "no silent retry" step) — the comment is a reason, the assertion is the gate.
+
+[profile.default]
+# Why 5 s: the whole engine suite executes 2910 tests in ~8.5 s, so a single test
+# above 5 s is the outlier that a suite-level total cannot name. Measured
+# 2026-11-04: `reconciliation_policy_integration` held 43 s across four tests.
+slow-timeout = { period = "5s", terminate-after = 60 }
+
+# Print a line per test at or above the threshold (and every failure), instead of
+# 2910 PASS lines. These two keys are what turn a wall-clock total into an
+# attribution: the slow test names itself.
+status-level = "slow"
+final-status-level = "slow"
+
+# `terminate-after = 60` = 5 minutes per test: a hang is named within five minutes
+# instead of holding a job to its 30-minute timeout with no output. Deliberately far
+# above the slowest measured test (43 s for a whole 4-test target, so well under
+# that for any single test) — a cap that a legitimate test meets is a flaky gate.

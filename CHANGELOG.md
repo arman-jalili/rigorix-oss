@@ -19,6 +19,8 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Changed
 
+- The test loops run `cargo nextest` (pinned 0.9.151, pin verified at install) instead of `cargo test`, in CI's test and integration stages and in `local-ci.sh`; `cargo test` still works and is the announced fallback when the tool is absent. A separate **required** `bash .pi/scripts/run-doctests.sh` step carries the doc tests nextest does not run: it prints discovered/executed/ignored per crate and fails when a crate falls below its floor in `.pi/doctest-floors.tsv` (#1373)
+- Doc tests are a smaller channel than they look: `cargo test --doc --workspace` reports **16 discovered, 6 executed, 10 ignored** — the ignored ones are ```ignore examples on public APIs (`PinnedInputs::with_pinned_inputs`, `Secret`, `RecoveryContext`, …), which are never compiled. The floor is over *executed*, because a count of discovered tests is not a count of tests that ran (#1373)
 - `rigorix-cli`'s opt-in feature is renamed `spike-m2` → `pinned-inputs`, and `rigorix pinned-refusal` becomes the documented CLI surface of ADR-014's pinned-input carrier rather than a measurement leftover. Still non-default and still hidden: a default build's commands, flags and behaviour are unchanged, and `cli/tests/pinned_inputs_surface.rs` now fails if the default build accepts the command or the feature silently becomes default (#1369)
 
 ### Fixed
