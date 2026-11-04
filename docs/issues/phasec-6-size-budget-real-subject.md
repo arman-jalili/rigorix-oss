@@ -77,6 +77,45 @@ C.7 #1387  spec records the evidence     needs C.4, C.5
 ```
 
 
+## Measured today at `86664f7b` — the blocker is a build profile, not code
+
+C.4 recorded `default = ["engine"]` as blocked on size: shipped **1 706 234 B** vs the 1 500 000 B
+ceiling (+13.7 %). That number is real, and it is the **default release profile** — `wasm/Cargo.toml`
+declares no `[profile.release]` at all, so the shipped artifact is built with `opt-level = 3`, no LTO
+and 16 codegen units.
+
+| build | emitted | `name` section | shipped | vs ceiling |
+|---|---|---|---|---|
+| default release profile | 1 918 610 | 212 376 | **1 706 234** | +13.7 % |
+| `lto=fat, opt-level=z, panic=abort, codegen-units=1` | 1 769 863 | 432 658 | **1 337 205** | **−10.9 %** |
+
+Same code, same features, same commit. Sections of the default build: `code` 1 233 868 B (72.3 %),
+`data` 466 676 B (27.4 %). The wasm32 graph now carries `regex`, `toml`, `regex-automata` and
+`aho-corasick` — the probe build did not, because it never reached the policy parser.
+
+**So the ceiling is met, and no trimming is needed.** This is the second time a size verdict was
+decided by a build configuration rather than by code; the first was the `name` section (341 785 B,
+#1353). The pattern is worth naming in the budget file: *the artifact is whatever the packaging path
+builds, and it must build the profile the budget assumes.*
+
+## Decided mechanism
+
+Profiles are workspace-global here — `wasm` is a member of the root workspace (`members = [ …,
+"wasm"]`), so `[profile.release]` in `wasm/Cargo.toml` would be ignored, and `lto`/`panic` cannot be
+overridden per package. Therefore:
+
+1. **The packaging path owns the profile.** The build that produces `pkg/*.wasm` sets
+   `CARGO_PROFILE_RELEASE_LTO=fat`, `…OPT_LEVEL=z`, `…PANIC=abort`, `…CODEGEN_UNITS=1`, in the script
+   that already builds and packages — one place, and the artifact CI ships is the artifact the gate
+   measures.
+2. **`measured_bytes` must be the artifact.** Today `check-bundle-size.sh` compares `ACTUAL` against
+   `budget_bytes` only, and prints `measured_bytes` as provenance — so a stale floor passes silently.
+   It is stale right now: the file records 209 881 B while the default artifact measures **186 249 B**
+   (C.3 deleted `SeamGate` and its probe), and the 262 351 B budget is +25 % of the stale number. The
+   gate gains `ACTUAL == MEASURED`, seeded by a budget file whose `measured_bytes` is off by one.
+3. **Then the budget is re-recorded from the flipped, profile-built artifact**, and `default`,
+   `engine` flip in the same PR — the number, its subject and its build configuration move together.
+
 # Before you start
 
 **C.3, C.4 and C.5 must be merged.** Re-recording a budget against an artifact that still links
