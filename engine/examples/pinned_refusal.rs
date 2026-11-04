@@ -1,7 +1,7 @@
 //! #1355 — the in-crate half of the M2 measurement.
 //!
 //! One precondition refusal, one signed envelope, printed as the SHA-256 of the canonical
-//! bytes. The CLI half is `rigorix pinned-refusal` (behind `--features spike-m2`), which
+//! bytes. The CLI half is `rigorix pinned-refusal` (behind `--features pinned-inputs`), which
 //! calls the same operation in `rigorix_engine::audit::application::pinned`; if the two
 //! digests differ, the difference is in the runtime.
 //!

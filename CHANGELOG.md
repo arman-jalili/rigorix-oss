@@ -17,6 +17,10 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ## [Unreleased]
 
+### Changed
+
+- `rigorix-cli`'s opt-in feature is renamed `spike-m2` → `pinned-inputs`, and `rigorix pinned-refusal` becomes the documented CLI surface of ADR-014's pinned-input carrier rather than a measurement leftover. Still non-default and still hidden: a default build's commands, flags and behaviour are unchanged, and `cli/tests/pinned_inputs_surface.rs` now fails if the default build accepts the command or the feature silently becomes default (#1369)
+
 ### Fixed
 
 - 177 arithmetic commands in the repository's shell scripts no longer end their script under `errexit`: `(( X++ ))` returns 1 when the result is 0, so the first increment of a zeroed counter failed. `bash 3.2` (macOS) hides it; the `bash 4.4+` on CI ended the script silently, before any verdict was printed — `validate_agent_output.sh` printed 0 lines there against 21 on a Mac. Ten of the sites were `log_pass() { …; ((PASS++)); }` one-liners, which returned 1 on **every** shell: `stage_docs_policy.sh` died after its first passing check on macOS too. A guard (`.pi/scripts/validate-shell-exit-status.sh`, 6-case self-test) now runs in CI beside the gate and fails with `path:line` (#1291)

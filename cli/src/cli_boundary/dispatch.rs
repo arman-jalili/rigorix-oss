@@ -115,7 +115,7 @@ async fn cmd_doctor() -> DispatchResult {
 /// if the two runtimes disagree, the disagreement is in the runtime and not in two
 /// hand-written fixtures. Nothing here normalises the digest — a difference of one second
 /// in the pin, or one byte in the payload, must change the number.
-#[cfg(feature = "spike-m2")]
+#[cfg(feature = "pinned-inputs")]
 async fn cmd_pinned_refusal(clock: Option<&str>, ids: Option<&str>) -> DispatchResult {
     use rigorix_engine::audit::application::dto::PinnedInputs;
     use rigorix_engine::audit::application::factory::AuditEnvelopeFactory;
@@ -1140,7 +1140,7 @@ pub async fn dispatch(
     // commands are answered before any service is built. `init` is here for the
     // same reason: it is how a fresh repo gets a config at all.
     match &command {
-        #[cfg(feature = "spike-m2")]
+        #[cfg(feature = "pinned-inputs")]
         CliCommand::PinnedRefusal {
             pinned_clock,
             pinned_ids,
@@ -1318,7 +1318,7 @@ pub async fn dispatch(
         CliCommand::Doctor | CliCommand::Init => {
             DispatchResult::error("internal: handled before dispatch".to_string(), 1)
         }
-        #[cfg(feature = "spike-m2")]
+        #[cfg(feature = "pinned-inputs")]
         CliCommand::PinnedRefusal { .. } => {
             DispatchResult::error("internal: handled before dispatch".to_string(), 1)
         }

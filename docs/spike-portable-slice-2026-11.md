@@ -8,7 +8,7 @@ reproduction, because §5 of the issue says only the report and the inventory me
 > **Verdict (corrected #1354, completed #1355): all four measurements hold — branch D.** M2's CLI
 > half was the last one outstanding, and it now measures: one precondition refusal, built by
 > `rigorix_engine::audit::application::pinned` and invoked through both the CLI
-> (`rigorix pinned-refusal`, behind `--features spike-m2`) and the crate
+> (`rigorix pinned-refusal`, behind `--features pinned-inputs`) and the crate
 > (`cargo run --example pinned_refusal`), produces **one digest** — `c47b27f9…`, 853 bytes — with
 > nothing normalised. The value is pinned by
 > `tests/unit/pinnedinputs::the_documented_pins_produce_the_golden_digest`, which is where it
