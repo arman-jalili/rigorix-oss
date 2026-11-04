@@ -173,7 +173,14 @@ jobs:
   # person to try it would meet a build-script failure rather than a named module.
   portable:
     name: 🧳 Portable slice
-    needs: [workspace, build]
+    # `[workspace]` only, deliberately (#1407 follow-up). This job consumes no build
+    # artifact — it compiles the slice for wasm32, runs `cargo test -p rigorix-engine
+    # --features portable --tests` and validates the inventory against the cfg gates. Making
+    # it depend on `build` (which depends on `lint`) meant a red lint job in *any* crate
+    # skipped it, and the slice's 897 native tests stopped running while the stage still
+    # read as configured. An independent subject must fail on its own subject, not inherit
+    # someone else's; the Final Gate still fails on the lint job itself.
+    needs: [workspace]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
