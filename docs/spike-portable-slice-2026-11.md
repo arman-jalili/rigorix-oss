@@ -154,6 +154,12 @@ with no qualifier.
 The operation is the issue's: **a precondition refusal that produces a signed envelope.** It is
 implemented once, and the measurement asks whether two *processes* and two *entry points* agree.
 
+**Branch-era block — not reproducible on `main`.** The numbers below come from
+`examples/spike_m2_envelope.rs`, the apparatus, whose fixture was renamed and partly dropped when the
+operation was ported into `audit::application::pinned` (#1357). Keep them as the evidence that the
+input moved; do not try to reproduce them on the merged tree. The current-era witnesses are in
+§2's second half and in §4, and they are the ones the verdict table carries.
+
 ```
 $ cargo run -q -p rigorix-engine --example spike_m2_envelope
 pinned_clock=false timestamp=2026-11-03T18:51:18.132269+00:00 bytes=884 sha256=4fe4487db00f1961a1f82d1eb500cd5e873b2e17f65395bfe2f6c98a0a9e9369
@@ -223,7 +229,7 @@ pinned_clock=true timestamp=2026-11-03T12:00:00+00:00 bytes=853 sha256=c47b27f93
 | the documented pins (the witness) | `c47b27f9…`, 853 B |
 | `--pinned-clock …T12:00:01Z` (one second off) | `662e92b6…` — the same 853 B, different bytes |
 | `--pinned-ids …0002` | `d5fdedae…` |
-| unpinned (control) | `031232ce…` in-crate, `6ee9a632…` in the CLI — 860 B, and they differ from each other |
+| unpinned (control) | **no digest claimed** — every run differs, at 860 B in both entry points |
 
 The pinned (853 B) and unpinned (860 B) envelopes differ in size because a whole-second instant
 serialises shorter than a nanosecond one. A comparison that normalised timestamps would have hidden
@@ -342,16 +348,32 @@ problem. The trim suggested above was aimed at the wrong artifact.
 
 ## 4. M4 — determinism across processes
 
-Same command as M2, two fresh processes, pinned:
+Same command as M2 — **the same witness, not a second one**. Two fresh processes, pinned:
 
 ```
-32211b9d0e1f51c939328c04a54ce7df8baad093453144ecadcd81e958839107
-32211b9d0e1f51c939328c04a54ce7df8baad093453144ecadcd81e958839107   ← equal
+$ cargo run -q -p rigorix-engine --example pinned_refusal -- \
+    --pinned-clock 2026-11-03T12:00:00Z --pinned-ids 018f5b8e-0000-7000-8000-000000000001
+pinned_clock=true timestamp=2026-11-03T12:00:00+00:00 bytes=853 sha256=c47b27f9300ed91b06e9712ac5df60714aa77a2a23d9bf41aa7d52f87393bc96
+                                                                         ↑ run twice, identical
 ```
 
-Unpinned they differ (`4fe4487d…` vs `d1e9cf0d…`), which is the control. This is **not** criterion
-25's second-process test: that one runs the stub gate. This one runs the real policy evaluation
-with a real `StepRequirement`, on the real clock seam — and it passes once the clock is supplied.
+The value is pinned by `tests/unit/pinnedinputs::the_documented_pins_produce_the_golden_digest`; this
+section cites it rather than holding a copy (§2 explains why).
+
+Unpinned, the control: **the digest differs on every run, at 860 B** — no digest is claimed here,
+because an unpinned run is not reproducible by construction. Publishing one would invite a reader to
+run the command and fail, and that failure is indistinguishable from a broken claim. The witness for
+"unpinned differs" is two runs that disagree plus a byte count; the digest is not evidence, the
+disagreement is.
+
+The apparatus-era readings — two identical digests at 877 B with the clock pinned, two different
+ones at 884 B without — are kept in §2, labelled branch-era and deliberately not restated here. They
+are what showed the input moving, and the 7-byte pinned difference they turned on (877 vs 884 B,
+sub-second precision) is the same effect visible today as 853 vs 860 B.
+
+This is **not** criterion 25's second-process test: that one runs the stub gate. This one runs the
+real policy evaluation with a real `StepRequirement`, on the real clock seam — and it passes once the
+clock is supplied.
 
 ---
 
@@ -360,7 +382,7 @@ with a real `StepRequirement`, on the real clock seam — and it passes once the
 | Branch | Fires when | Verdict here |
 |---|---|---|
 | **A** — extract `rigorix-gate-core` | M1 fails after the exclusions, or the exclusion list is larger than predicted | **Does not fire.** M1 exits 0 with 74 crates and no forbidden crate. The exclusion list *is* large (22 of 40 modules, 20 inner items) but it is now written down, which is what the branch was meant to detect. |
-| **B** — byte equality not reached | M2 fails inside the timebox | **Fires in part.** In-crate: reached, 1 threaded site. CLI: not reached — no injection point on the Tier-1 path. The seam exists at the bottom and not at the top. |
+| **B** — byte equality not reached | M2 fails inside the timebox | **Fired at the time, superseded (#1355)** — not a current verdict. It fired in part: in-crate was reached through 1 threaded site, the CLI was not, because there is no injection point on the Tier-1 path and the seam sits at the bottom of the stack (`BuildEnvelopeInput`) rather than the top. #1355 then **reached the CLI half** by centralising the operation in `audit::application::pinned`, so the condition no longer holds and **D covers this row**. Kept in the table because a branch that fired and was then overtaken is part of the record. |
 | **C** — bundle exceeds 1 500 000 B | the excess is not one trimable dependency | **Did not fire — verdict withdrawn (#1354).** On the shipped artifact the bundle is **1 170 635 B, 78.0 % of the ceiling**. The excess was a 341 785 B debug `name` section, not a dependency, so the condition above was never met; the `regex` trim the row named is unrun and unnecessary. Recorded originally as "fires" on the emitted file. |
 | **D** — all four pass | — | **Fires.** M1, M1b, M2, M3 and M4 all hold: the engine's gate slice compiles for wasm32, the CLI and the crate produce one digest for one refusal, and the shipped bundle is 78.0 % of the ceiling. What D produces — the decision ADR — is the next step, not this issue's. |
 
@@ -385,7 +407,7 @@ What replaces it — **D now holds** (#1355 measured the last row):
 
 ---
 
-## 6. Traps confirmed, and two new ones
+## 6. Traps confirmed, and five new ones
 
 The issue's six traps all held: tree-sitter fails first at its build script; a boundary-less grep
 lies (`ring` 270 → 1); the 243 366 B number had no engine in it; `ENGINE_VERSION` vs
@@ -410,6 +432,19 @@ Two found here:
    bytes a host loads are the bytes *after* the section walk; `wasm/ci/strip_name_section.py` now
    does that in the packaging path, and the size gate asserts the artifact carries no `name` section
    because size alone cannot prove the strip ran.
+
+10. **A measurement against an artifact that predates the edit is not a measurement** (#1357).
+    After the panic-surface guard forced an edit to the fixture, the digest was re-checked by
+    running the previous binary; it "had not changed", so the change went unnoticed — one instance
+    of a defect this epic produced three times (a gate passing on a 368-byte module, #1349; a size
+    gate weighing a file no host loads, #1353; a digest read from a stale binary, #1357). The rule
+    is one sentence: **no measurement without a rebuild in the same command.** Written down for
+    `cargo install --path` already; it applies to anything carrying a build output forward.
+11. **An unpinned run's digest is not evidence, and must not be quoted** (#1359). The control for
+    M4 is "the digest differs between runs, at 860 B" — two runs that disagree plus a byte count.
+    A published digest from an unpinned run asks a reader to run a command that cannot agree, and
+    the failure reads as the document's error. The same applies to any measurement whose input
+    includes the wall clock: state what varies, never a value that only one run produced.
 
 ## 7b. What this cost, and the discipline that made it cheap
 
