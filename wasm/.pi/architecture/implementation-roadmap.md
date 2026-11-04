@@ -365,7 +365,7 @@ from the CLI behind a non-default feature.
 
 | Module | Deliverables | Architecture Doc |
 |--------|-------------|------------------|
-| rigorix-engine (additive features) | `Clock`, `IdSource` traits + default system impls behind non-default `portable` feature; gate path takes them | engine `src/common`, gate modules |
+| rigorix-engine (additive features) | **Superseded by ADR-014 for the determinism seam:** `PinnedInputs` + the additive `with_pinned_inputs` behind the non-default `portable` feature, with the pin applied inside one shared operation (`audit::application::pinned`). No `Clock`/`IdSource` trait pair on the gate path — one operation, one site; those ports belong to `portable-session`'s domain when a second consumer exists | `engine/src/audit/application/`, gate modules; `.pi/architecture/decisions/ADR-014-portable-slice-and-pinned-inputs.md` |
 | rigorix-cli (non-default feature) | `--pinned-clock`, `--pinned-ids` so the oracle can be given the same inputs | cli |
 | rigorix-gate-wasm | consume the seam instead of crate-local assumption | this module |
 

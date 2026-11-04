@@ -93,14 +93,16 @@ would have been a false positive in the other direction.
 
 ### What the exclusion cost — `engine/.pi/portable-inventory.tsv`
 
-**22 of the crate's 40 public modules leave the slice, and only 11 of them for a forbidden
-crate.** The other 11 have no `reqwest`/`libc`/`tree-sitter` reference of their own — they are
-excluded because they *name a symbol* from an excluded module:
+**25 of the crate's 38 public modules leave the slice, and only 11 of them for a forbidden
+crate.** The reasons split three ways, and only the first is what a dependency list describes
+(#1361 — the summary in the manifest said "22 of 40 (11 direct, 11 indirect)", which was an
+estimate of the second bucket rather than a count of it):
 
-| Trigger | Modules |
-|---|---|
-| direct — references a forbidden crate | `code_gen`, `repo_engine`, `tools`, `template_generation`, `planning`, `llm_step`, `scored_evaluation`, `effect_commitment`, `capacity_ledger`, `backend`, `observability` |
-| indirect — names an excluded symbol | `state_persistence`, `execution_engine`, `hooks`, `templates`, `code_graph`, `orchestrator`, `plan_validation`, `quality_gates`, `recovery_recipes`, `failure_parser`, `dag_engine`, `event_system`, `cancellation`, `budget_tracking` |
+| Trigger | Count | Modules |
+|---|---|---|
+| references a forbidden crate | 11 | `code_gen`, `repo_engine`, `tools`, `template_generation`, `planning`, `llm_step`, `scored_evaluation`, `effect_commitment`, `capacity_ledger`, `backend`, `observability` |
+| needs a `tokio` feature the slice narrows away | 6 | `state_persistence`, `execution_engine`, `hooks`, `templates`, `code_graph`, `orchestrator` |
+| names a symbol from an excluded module | 8 | `plan_validation`, `quality_gates`, `recovery_recipes`, `failure_parser`, `dag_engine`, `event_system`, `cancellation`, `budget_tracking` |
 
 That ratio is the spike's most useful structural finding: the crate's *edges* are already
 separable, but its *middle* is not. `CoreOrchestratorError` alone carries 14 `#[from]` variants
@@ -381,7 +383,7 @@ clock is supplied.
 
 | Branch | Fires when | Verdict here |
 |---|---|---|
-| **A** — extract `rigorix-gate-core` | M1 fails after the exclusions, or the exclusion list is larger than predicted | **Does not fire.** M1 exits 0 with 74 crates and no forbidden crate. The exclusion list *is* large (22 of 40 modules, 20 inner items) but it is now written down, which is what the branch was meant to detect. |
+| **A** — extract `rigorix-gate-core` | M1 fails after the exclusions, or the exclusion list is larger than predicted | **Does not fire.** M1 exits 0 with 74 crates and no forbidden crate. The exclusion list *is* large (25 of 38 modules, 20 inner items) but it is now written down, which is what the branch was meant to detect. |
 | **B** — byte equality not reached | M2 fails inside the timebox | **Fired at the time, superseded (#1355)** — not a current verdict. It fired in part: in-crate was reached through 1 threaded site, the CLI was not, because there is no injection point on the Tier-1 path and the seam sits at the bottom of the stack (`BuildEnvelopeInput`) rather than the top. #1355 then **reached the CLI half** by centralising the operation in `audit::application::pinned`, so the condition no longer holds and **D covers this row**. Kept in the table because a branch that fired and was then overtaken is part of the record. |
 | **C** — bundle exceeds 1 500 000 B | the excess is not one trimable dependency | **Did not fire — verdict withdrawn (#1354).** On the shipped artifact the bundle is **1 170 635 B, 78.0 % of the ceiling**. The excess was a 341 785 B debug `name` section, not a dependency, so the condition above was never met; the `regex` trim the row named is unrun and unnecessary. Recorded originally as "fires" on the emitted file. |
 | **D** — all four pass | — | **Fires.** M1, M1b, M2, M3 and M4 all hold: the engine's gate slice compiles for wasm32, the CLI and the crate produce one digest for one refusal, and the shipped bundle is 78.0 % of the ceiling. What D produces — the decision ADR — is the next step, not this issue's. |
@@ -397,7 +399,7 @@ What replaces it — **D now holds** (#1355 measured the last row):
    excludes (the inventory, now measured) and the pinned-input carrier (`PinnedInputs` + the
    additive method). The determinism seam as an abstraction does not belong in it — one operation,
    one site.
-2. **M1's inventory stands** and is unaffected: 22 of 40 modules excluded, 11 of them for a
+2. **M1's inventory stands** and is unaffected: 25 of 38 modules excluded, 11 of them for a
    forbidden crate, `CoreOrchestratorError` at 85 sites. It is an argument *against* extraction
    (branch A) and *for* the exclusions it enumerates.
 3. **Phase B is scheduled against the inventory, not against "151 sites"**: one threaded site per

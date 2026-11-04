@@ -10,6 +10,37 @@ This document tracks all architecture changes requiring implementation updates.
 
 ---
 
+## 2026-11-04 — The portable slice and its witness
+
+The Phase -1 spike closed on branch D: the engine's gate slice compiles for
+`wasm32-unknown-unknown` (74 crates), both entry points produce one digest for one refusal, and the
+shipped bundle is 78.0 % of the ceiling.
+
+- **ADR-014 — The portable slice and the pinned-input carrier.** `portable`'s exclusions are a
+  manifest (`engine/.pi/portable-inventory.tsv`) that this record cites rather than restates:
+  **25 of 38** public modules leave the slice — 11 for a forbidden crate, 6 for a narrowed `tokio`
+  feature set, 8 by closure — which means most of the surface reduction is not a dependency
+  statement. Determinism is witnessed by one shared operation plus `PinnedInputs` (a
+  `#[non_exhaustive]` type through an additive method), and **not** by a `Clock`/`IdSource` trait
+  pair: the roadmap line that promised those is superseded for the engine's gate path, because a
+  trait pair with one implementor is paid for by every future caller. Every number in the record
+  states the artifact it came from and whether it reproduces; the two rows that do not (the
+  engine-linked bundle, the dependency graph) are marked as branch-bound until Phase C lands the
+  wiring.
+- `.pi/scripts/validate-portable-inventory.sh` guards the record's evidence in both directions:
+  the counts are recomputed from the manifest's rows, the manifest's subjects must exist, and the
+  record may cite the list but not restate it. It exists because the summary block said "22 of 40
+  (11 direct, 11 indirect)" while the rows held 25 of 38 (#1361) — the second bucket had been
+  estimated, and had swallowed the six modules a narrowed feature set removes.
+- **M3 was read off the wrong artifact and withdrawn (#1354).** The 1 500 000 B ceiling applies to
+  the module a host loads; the emitted file carries a 341 785 B `name` debug section. Stripped, the
+  engine-linked bundle is 1 170 635 B — 78.0 % — so the size condition never fired and the
+  "browser verifies, gate stays server-side" narrowing is withdrawn with it.
+- **M2's witness is a test, not a paragraph (#1357, #1359).** The published digest belonged to an
+  input that no longer existed and nothing failed loudly, because the tests asserted the property
+  (two runs agree) and never a value. `the_documented_pins_produce_the_golden_digest` now pins it;
+  an unpinned run's digest is stated as variance plus a byte count, never as a value.
+
 ## 2026-11-03 — Review pass: identity, failure semantics, verification ownership
 
 Decisions added after reviewing the first generation of this documentation set
