@@ -40,6 +40,27 @@ runs:
         cargo install cargo-llvm-cov --locked 2>/dev/null || true
         rustup component add llvm-tools-preview 2>/dev/null || true
 
+    - name: Install cargo-nextest (pinned)
+      shell: bash
+      # #1373: the test runner is pinned the way the toolchain is, and the pin is
+      # VERIFIED — a version that floats is a test result that floats, and an
+      # unverified pin is just a comment. Prebuilt binary, not `cargo install`:
+      # compiling nextest would cost more than the tests it runs.
+      env:
+        NEXTEST_VERSION: "0.9.151"
+      run: |
+        if [ -x "$HOME/.cargo/bin/cargo-nextest" ] && \
+           "$HOME/.cargo/bin/cargo-nextest" nextest --version 2>/dev/null | grep -q "$NEXTEST_VERSION"; then
+          echo "cargo-nextest $NEXTEST_VERSION already installed"
+        else
+          curl -LsSf "https://get.nexte.st/${NEXTEST_VERSION}/linux" | tar zxf - -C "$HOME/.cargo/bin"
+        fi
+        installed="$(cargo nextest --version | head -1)"
+        case "$installed" in
+          *"$NEXTEST_VERSION"*) echo "✅ $installed" ;;
+          *) echo "::error::cargo-nextest pin mismatch: wanted $NEXTEST_VERSION, got $installed"; exit 1 ;;
+        esac
+
     - name: Verify workspace
       shell: bash
       run: cargo metadata --format-version 1 --no-deps > /dev/null

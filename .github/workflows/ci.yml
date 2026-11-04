@@ -144,7 +144,15 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cache-key: test-${{ matrix.crate }}
-      - run: cargo test -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}" --lib
+      - run: cargo nextest run -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}" --lib
+      - name: Doctests for this crate (#1373)
+        # `cargo nextest` runs no doc tests, so deleting `cargo test` without this step
+        # would delete a coverage channel and leave the job green. Per-crate run: a crate
+        # with no floor is reported and not judged (five of the six have never had one);
+        # the crate that carries the channel has a floor in .pi/doctest-floors.tsv.
+        env:
+          PKG: ${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}
+        run: bash .pi/scripts/run-doctests.sh -p "$PKG"
       - name: Per-crate conventions (conformance suite)
         # GAP-A-27: conventions gate the job. Scope: the check_*.sh suite
         # (contract implementations, DDD structure, architecture conformance).
@@ -269,7 +277,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      - run: cargo test --workspace
+      - run: cargo nextest run --workspace
+      - name: No silent retry (#1373)
+        # A retried pass is a normalised comparison. The key must not exist in the
+        # nextest config, and this asserts the key rather than the prose.
+        shell: bash
+        run: |
+          if grep -qE '^\s*retries\s*=' .config/nextest.toml; then
+            echo "::error::.config/nextest.toml enables retries; a retried pass is not a pass"
+            grep -nE '^\s*retries\s*=' .config/nextest.toml
+            exit 1
+          fi
+          echo "✅ no retry keys configured"
+      - name: Doctests — the channel nextest does not run (#1373)
+        # Required, with its count printed; a run that executes zero doctests fails.
+        run: bash .pi/scripts/run-doctests.sh
       - name: CLI pinned-inputs surface (#1369)
         # The feature is non-default, so `cargo test --workspace` proves only the absence half of
         # the pair in `cli/tests/pinned_inputs_surface.rs`. Both halves must run: one fails if the

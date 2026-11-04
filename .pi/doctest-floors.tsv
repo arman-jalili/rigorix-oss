@@ -1,0 +1,22 @@
+# Doc-test floors — a RATCHET over *executed* doctests, per crate (#1373).
+#
+# Why `executed` and not `discovered`: `cargo test --doc` prints `running 16 tests`
+# for crate `rigorix_engine` and then executes **six**. The other ten are
+# ```ignore examples on public APIs, which are never compiled and never run, so a
+# floor over the discovered count would certify a channel that runs nothing.
+#
+# Measured 2026-11-04 at 75e93eec (`bash .pi/scripts/run-doctests.sh`):
+#   rigorix_engine   16 discovered   6 executed   10 ignored
+#   rigorix_actions   0               0            0
+#   rigorix           0               0            0   (workspace root)
+#   rigorix_gate_wasm 0               0            0
+#   rigorix_mcp       0               0            0
+#   rigorix_server    0               0            0
+#
+# Rules:
+#   * A crate absent from this file has no floor and is only reported.
+#   * Falling below a floor fails `run-doctests.sh` with the crate named.
+#   * Raising a floor is a normal edit; lower it only with the reason in the commit.
+#   * `cargo nextest` runs no doctests, so this file is the only record that the
+#     channel still carries anything — hence it is a floor, not a target.
+rigorix_engine	6

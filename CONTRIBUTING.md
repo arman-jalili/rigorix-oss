@@ -20,8 +20,11 @@ cd rigorix-oss
 # Build everything
 cargo build --workspace
 
-# Run all tests
-cargo test --workspace
+# Run all tests (nextest: one process per test, per-test timing)
+cargo nextest run --workspace
+
+# Doc tests are a SEPARATE step — nextest runs none of them
+bash .pi/scripts/run-doctests.sh
 ```
 
 ---
@@ -64,7 +67,7 @@ bash .pi/scripts/local-ci.sh
 
 # Or run specific stages
 bash .pi/scripts/local-ci.sh --stage=lint      # formatting + clippy
-bash .pi/scripts/local-ci.sh --stage=test      # cargo test + proofing scripts
+bash .pi/scripts/local-ci.sh --stage=test      # nextest + doctests + proofing scripts
 bash .pi/scripts/local-ci.sh --stage=security  # audit + secret scan
 
 # Quick mode (skip release builds)
@@ -81,7 +84,11 @@ cargo clippy --workspace
 cargo fmt --check
 
 # Tests — all must pass
-cargo test --workspace
+cargo nextest run --workspace
+
+# Doc tests — a required separate step, because nextest does not run them.
+# It prints discovered/executed/ignored per crate and fails on zero executed.
+bash .pi/scripts/run-doctests.sh
 
 # Security audit
 cargo audit
@@ -167,12 +174,21 @@ rigorix-oss/
 
 ```bash
 # Run all tests
-cargo test --workspace
+cargo nextest run --workspace
+
+# Doc tests — nextest runs none of them, so this is not optional
+bash .pi/scripts/run-doctests.sh              # whole workspace
+bash .pi/scripts/run-doctests.sh -p rigorix-engine
 
 # Run a specific crate's tests
-cargo test -p rigorix-engine
-cargo test -p rigorix-cli
-cargo test -p rigorix-actions
+cargo nextest run -p rigorix-engine
+cargo nextest run -p rigorix-cli
+cargo nextest run -p rigorix-actions
+
+# `cargo test` still works and still runs everything; it is no longer what CI runs.
+# Measured 2026-11-04, warm: 64 s for the engine suite under `cargo test`, 10 s under
+# nextest, same 2910 rust tests. Doctests (6 executed of 16 discovered) take ~11 s as
+# their own step. No retries are configured, deliberately: a retried pass is not a pass.
 
 # With live LLM calls (requires API key)
 cargo test -p rigorix-engine --features live-tests
