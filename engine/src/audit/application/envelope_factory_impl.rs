@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 
 use crate::audit::domain::{AuditEnvelope, AuditError, HistoryIntegrity};
 
-use super::dto::BuildEnvelopeInput;
+use super::dto::{BuildEnvelopeInput, PinnedInputs};
 use super::factory::AuditEnvelopeFactory;
 
 /// Implementation of `AuditEnvelopeFactory`.
@@ -28,6 +28,9 @@ pub struct AuditEnvelopeFactoryImpl {
     /// present and anchored, envelopes are tagged `history_integrity = anchored`
     /// and carry the verified `anchor_head`.
     anchor: Option<std::sync::Arc<crate::audit::infrastructure::anchor::AnchorRuntime>>,
+    /// #1355: values the caller pinned, so one operation can produce one byte string.
+    /// Empty by default — an unpinned factory behaves exactly as it always has.
+    pinned: PinnedInputs,
 }
 
 impl AuditEnvelopeFactoryImpl {
@@ -36,6 +39,7 @@ impl AuditEnvelopeFactoryImpl {
         Self {
             signing_key,
             anchor: None,
+            pinned: PinnedInputs::none(),
         }
     }
 
@@ -46,6 +50,23 @@ impl AuditEnvelopeFactoryImpl {
         anchor: std::sync::Arc<crate::audit::infrastructure::anchor::AnchorRuntime>,
     ) -> Self {
         self.anchor = Some(anchor);
+        self
+    }
+
+    /// #1355: pin the values this factory would otherwise derive.
+    ///
+    /// Additive on purpose. The alternative — a `pinned_timestamp` field on
+    /// `BuildEnvelopeInput` — is a semver break: that DTO is public, not
+    /// `#[non_exhaustive]`, and two other crates in this workspace construct it
+    /// literally. A new method changes nothing that already compiled.
+    ///
+    /// ```ignore
+    /// let factory = AuditEnvelopeFactoryImpl::new(Some(key.into()))
+    ///     .with_pinned_inputs(PinnedInputs::none().with_timestamp(instant));
+    /// ```
+    #[must_use]
+    pub fn with_pinned_inputs(mut self, pinned: PinnedInputs) -> Self {
+        self.pinned = pinned;
         self
     }
 
@@ -165,8 +186,9 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
         };
 
         let mut envelope = AuditEnvelope {
-            execution_id: input.execution_id,
-            timestamp: chrono::Utc::now(),
+            execution_id: self.pinned.execution_id().unwrap_or(input.execution_id),
+            // #1355: a pinned instant wins; the wall clock is the fallback, not the rule.
+            timestamp: self.pinned.timestamp().unwrap_or_else(chrono::Utc::now),
             template_id: input.template_id,
             planning_hash,
             source: input.source,

@@ -10,6 +10,13 @@ documentation = "https://docs.rs/rigorix-cli"
 [lib]
 name = "rigorix"
 
+[features]
+default = []
+# #1355: the M2 measurement surface — pinned clock and id flags for one precondition
+# refusal, so the CLI and the crate can be compared byte for byte. Non-default: a
+# default build's commands, flags and behaviour are exactly 1.12.1's.
+spike-m2 = []
+
 [dependencies]
 rigorix-engine = { path = "../engine", version = "1.12.1" }
 serde.workspace = true

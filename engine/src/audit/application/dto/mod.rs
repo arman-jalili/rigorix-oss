@@ -19,6 +19,9 @@ use std::collections::HashMap;
 use crate::audit::domain::{AuditEnvelope, ExecutionEventRef};
 use crate::identity::domain::IdentityRef;
 
+pub mod pinned_inputs;
+pub use pinned_inputs::PinnedInputs;
+
 // ---------------------------------------------------------------------------
 // Build Envelope DTOs
 // ---------------------------------------------------------------------------

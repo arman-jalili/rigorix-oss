@@ -3,9 +3,11 @@
 #
 # Two modes, and the difference matters:
 #
-#   shipped  — a wasm-bindgen artifact exists (pkg/*.wasm). The budget is enforced:
-#              measured_bytes and budget_bytes are read from ci/bundle-budget.txt and a
-#              regression beyond +25% fails the build.
+#   shipped  — a shipped artifact exists (pkg/*.wasm). Two assertions, both required:
+#              (1) it carries no `name` custom section — size alone cannot prove the
+#                  strip ran, since an unstripped 243 366 B file sits under a 262 351 B
+#                  budget (#1353); (2) measured_bytes and budget_bytes, read from
+#                  ci/bundle-budget.txt, are not exceeded by +25%.
 #   awaiting — there is no shipped artifact yet (packaging pending). The gate records the
 #              release cdylib size and says it is not enforcing a ceiling. It does NOT
 #              silently pass: it prints the state and the reason, and it refuses to treat
@@ -49,9 +51,25 @@ if [ -z "${MEASURED:-}" ] || [ -z "${BUDGET:-}" ]; then
     exit 1
 fi
 
+STRIP="$CRATE_DIR/ci/strip_name_section.py"
+
 if [ -f "$SHIPPED" ]; then
-    ACTUAL=$(wc -c <"$SHIPPED" | tr -d ' ')
+    # #1353: the presence assertion comes first and is the load-bearing one. The subject
+    # of this gate is the artifact a host ships, and a host ships no debug symbols; the
+    # size check alone would pass on an unstripped file because unstripped < budget.
     echo "== shipped artifact: $(basename "$SHIPPED") =="
+    # Prove the parser can see a `name` section before trusting it to say there is none
+    # (`.pi/scripts/validate-release-train.sh` sets the same precedent).
+    if ! python3 "$STRIP" --self-test; then
+        echo "❌ the strip helper cannot detect a `name` section, so its verdict means nothing" >&2
+        exit 1
+    fi
+    if ! python3 "$STRIP" --check "$SHIPPED"; then
+        echo "❌ the artifact under measurement still carries its debug section" >&2
+        echo "   the packaging step (ci/run-module-smoke.sh) must strip it before this gate" >&2
+        exit 1
+    fi
+    ACTUAL=$(wc -c <"$SHIPPED" | tr -d ' ')
     echo "   measured ${MEASURED} B · budget ${BUDGET} B · actual ${ACTUAL} B"
     if [ "${BUDGET:-0}" -eq 0 ]; then
         echo "❌ a shipped artifact exists but no budget was set: measure it first" >&2

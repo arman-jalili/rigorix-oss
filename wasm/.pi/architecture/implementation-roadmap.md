@@ -451,12 +451,15 @@ release train.
       missing is a *browser*: the bundle the smoke gate packages is `--target nodejs` (#1349), so the
       environment it runs in is still Node.
 - [ ] Bundle within measured budget +25%; npm version equals `rigorix-engine` version (AC 23, AC 24).
-      **The ceiling is in force; the publication is not.** `ci/bundle-budget.txt` now states
-      `state: shipped` with `measured_bytes: 243366` / `budget_bytes: 304207` (measured + 25 %) — the
-      packaged `pkg/rigorix_gate_wasm_bg.wasm` a host loads, not the raw cdylib — so a regression
-      beyond the budget fails the build (#1349). The npm half stays unmet: no version has been
-      published, and `publish-wasm-npm` remains outside `github-release.needs` until a tag produces the
-      package.
+      **The ceiling is in force on the shipped artifact; the publication is not.** `ci/bundle-budget.txt`
+      states `state: packaged` with `measured_bytes: 209881` / `budget_bytes: 262351` (measured + 25 %).
+      The subject changed in #1353: `wasm-bindgen` emits 243 366 B, of which **33 485 B (13.8 %) is the
+      `name` custom section** — the debug symbol table, which no host reads — so `ci/strip_name_section.py`
+      strips it in the packaging path and the number above is what a host actually loads. Two assertions,
+      both required: the artifact carries no `name` section (size alone cannot prove the strip ran — an
+      unstripped 243 366 B file sits under a 262 351 B budget) and it is within budget. The npm half stays
+      unmet: no version has been published, and `publish-wasm-npm` remains outside `github-release.needs`
+      until a tag produces the package.
 
 ---
 

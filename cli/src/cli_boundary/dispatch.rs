@@ -109,6 +109,77 @@ async fn cmd_doctor() -> DispatchResult {
     }
 }
 
+/// `rigorix pinned-refusal` (#1355) — the CLI half of the M2 measurement.
+///
+/// It calls the engine's operation rather than reproducing it, which is the whole point:
+/// if the two runtimes disagree, the disagreement is in the runtime and not in two
+/// hand-written fixtures. Nothing here normalises the digest — a difference of one second
+/// in the pin, or one byte in the payload, must change the number.
+#[cfg(feature = "spike-m2")]
+async fn cmd_pinned_refusal(clock: Option<&str>, ids: Option<&str>) -> DispatchResult {
+    use rigorix_engine::audit::application::dto::PinnedInputs;
+    use rigorix_engine::audit::application::factory::AuditEnvelopeFactory;
+    use rigorix_engine::audit::application::pinned::{parse_pinned_clock, parse_pinned_id};
+
+    let mut pins = PinnedInputs::none();
+    if let Some(value) = clock {
+        match parse_pinned_clock(value) {
+            Ok(instant) => pins = pins.with_timestamp(instant),
+            Err(error) => return DispatchResult::error(error, 2),
+        }
+    }
+    if let Some(value) = ids {
+        match parse_pinned_id(value) {
+            Ok(id) => pins = pins.with_execution_id(id),
+            Err(error) => return DispatchResult::error(error, 2),
+        }
+    }
+
+    // A fixed development key: the measurement is about the envelope's bytes, and a key
+    // read from the environment would make two runs differ for a reason unrelated to the
+    // question. It is not a secret and is not used to secure anything.
+    let factory =
+        rigorix_engine::audit::application::envelope_factory_impl::AuditEnvelopeFactoryImpl::new(
+            Some("m2-pinned-key".to_string()),
+        )
+        .with_pinned_inputs(pins.clone());
+
+    let mut envelope = match factory
+        .build_envelope(rigorix_engine::audit::application::pinned::refusal_envelope_input(&pins))
+        .await
+    {
+        Ok(envelope) => envelope,
+        Err(error) => {
+            return DispatchResult::error(format!("could not build the envelope: {error}"), 1);
+        }
+    };
+    if let Err(error) = factory.sign(&mut envelope) {
+        return DispatchResult::error(format!("could not sign the envelope: {error}"), 1);
+    }
+
+    let bytes = match rigorix_engine::audit::application::envelope_factory_impl::AuditEnvelopeFactoryImpl::canonical_envelope_bytes(&envelope) {
+        Ok(bytes) => bytes,
+        Err(error) => return DispatchResult::error(format!("could not canonicalise: {error}"), 1),
+    };
+    use sha2::{Digest, Sha256};
+    let digest = hex::encode(Sha256::digest(&bytes));
+
+    DispatchResult::success_with_data(
+        format!(
+            "pinned_clock={} timestamp={} bytes={} sha256={digest}",
+            clock.is_some(),
+            envelope.timestamp.to_rfc3339(),
+            bytes.len()
+        ),
+        serde_json::json!({
+            "pinned_clock": clock.is_some(),
+            "timestamp": envelope.timestamp.to_rfc3339(),
+            "bytes": bytes.len(),
+            "sha256": digest,
+        }),
+    )
+}
+
 /// `rigorix approve ledger migrate` — the only path that adopts a legacy
 /// bare-map consumption ledger (#1247).
 ///
@@ -1069,6 +1140,11 @@ pub async fn dispatch(
     // commands are answered before any service is built. `init` is here for the
     // same reason: it is how a fresh repo gets a config at all.
     match &command {
+        #[cfg(feature = "spike-m2")]
+        CliCommand::PinnedRefusal {
+            pinned_clock,
+            pinned_ids,
+        } => return cmd_pinned_refusal(pinned_clock.as_deref(), pinned_ids.as_deref()).await,
         CliCommand::Doctor => return cmd_doctor().await,
         CliCommand::Init => return cmd_init().await,
         CliCommand::Approve {
@@ -1240,6 +1316,10 @@ pub async fn dispatch(
             DispatchResult::error("internal: handled before dispatch".to_string(), 1)
         }
         CliCommand::Doctor | CliCommand::Init => {
+            DispatchResult::error("internal: handled before dispatch".to_string(), 1)
+        }
+        #[cfg(feature = "spike-m2")]
+        CliCommand::PinnedRefusal { .. } => {
             DispatchResult::error("internal: handled before dispatch".to_string(), 1)
         }
         CliCommand::Tui { .. } => DispatchResult::success("TUI mode"),

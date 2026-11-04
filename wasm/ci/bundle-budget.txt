@@ -1,24 +1,27 @@
 # Bundle size budget (NFR-002, criterion 23).
 #
-# `measured` is the artifact CI actually ships, not the raw cdylib: wasm-bindgen output
-# after wasm-opt. Until the packaging issue produces that artifact, the recorded number is
-# the raw release cdylib and is labelled as such — a budget over a module that exports
-# nothing would be a number with no owner.
+# `measured` is the artifact a host actually loads: the `wasm-bindgen --target nodejs`
+# module with its debug `name` custom section stripped by `ci/strip_name_section.py`, in
+# the packaging path (#1353). Not the raw cdylib, and not the emitted file: a host reads
+# neither the symbols nor the unstripped bytes. `wasm-opt` is not used — it is absent from
+# this machine and from CI, and a gate whose subject depends on an absent tool is not a
+# gate.
 #
 # budget = measured + 25%, per NFR-002: measured first, then a hard gate, never a guess.
 artifact: pkg/rigorix_gate_wasm_bg.wasm
-measured_bytes: 243366
-budget_bytes: 304207
+measured_bytes: 209881
+budget_bytes: 262351
 state: packaged
 note: >-
-  Re-measured on 2026-11-03 (#1349): the export layer landed (`#[wasm_bindgen]` on
-  the four contract functions), so the module a host loads now exists and this
-  ceiling has a subject. measured_bytes is that artifact —
-  `wasm-bindgen --target nodejs` output, 243366 B — not the raw release cdylib
-  (which was 368 B when nothing was exported, before that 277,829 B once the
-  symbols existed but the module still could not be loaded). budget_bytes is
-  measured + 25 % per NFR-002: measured first, then a hard gate, never a guess.
-  From this commit on, a regression beyond the budget fails the build. The state is
-  `packaged`, not `shipped`: the artifact a host loads exists and is measured, but no
-  version has been published to npm, so `publish-wasm-npm` stays outside
+  Re-measured on 2026-11-03 (#1353): the subject moved from the emitted file to the
+  shipped one. `wasm-bindgen --target nodejs` emits 243366 B, of which 33485 B (13.8 %)
+  is the ``name`` custom section — the debug symbol table, which no host reads. Stripped
+  by ``ci/strip_name_section.py`` in the packaging path, the artifact is 209881 B; the
+  stripped module passes all fifteen ``module-smoke.mjs`` assertions identically.
+  budget_bytes is measured + 25 % per NFR-002: measured first, then a hard gate, never a
+  guess. Size alone cannot prove the strip ran (an unstripped 243366 B file is under this
+  262351 B budget), so ``check-bundle-size.sh`` also asserts the artifact carries no
+  ``name`` section — that assertion is what fails when the strip is skipped.
+  The state is `packaged`, not `shipped`: the artifact a host loads exists and is
+  measured, but no version has been published to npm, so `publish-wasm-npm` stays outside
   `github-release.needs` — the release-train guard enforces that distinction.

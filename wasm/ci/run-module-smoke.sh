@@ -36,6 +36,8 @@ fi
 RAW="$TARGET_DIR/wasm32-unknown-unknown/release/rigorix_gate_wasm.wasm"
 PKG_DIR="$CRATE_DIR/pkg"
 GLUE="$PKG_DIR/rigorix_gate_wasm.js"
+MODULE="$PKG_DIR/rigorix_gate_wasm_bg.wasm"
+STRIP="$CRATE_DIR/ci/strip_name_section.py"
 
 # The CLI version must equal the crate's, or the glue and the module disagree
 # about the ABI and every import resolves to the wrong signature.
@@ -80,6 +82,18 @@ if ! wasm-bindgen --target nodejs --out-dir "$PKG_DIR" "$RAW" 2>&1 | tail -3; th
 fi
 if [ ! -f "$GLUE" ]; then
     echo "❌ expected the glue at ${GLUE}" >&2
+    exit 1
+fi
+
+# #1353: the emitted file is not the deliverable. wasm-bindgen output carries a
+# custom `name` section (the debug symbol table) — 33 485 B of this module, 341 785 B
+# of the engine-linked one — which no production host reads. The strip happens in
+# the packaging path, not in a later step, so the artifact this gate loads, the
+# artifact the size gate measures and the artifact host verification loads are one
+# and the same file.
+echo "== stripping the debug \`name\` section (the deliverable, not the emitted file) =="
+if ! python3 "$STRIP" "$MODULE"; then
+    echo "❌ could not strip the packaged artifact: the size gate would then measure a debug file" >&2
     exit 1
 fi
 
