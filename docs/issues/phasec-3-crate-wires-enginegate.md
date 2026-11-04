@@ -86,6 +86,51 @@ C.7 #1387  spec records the evidence     needs C.4, C.5
 ```
 
 
+## Signatures you will implement against — verified at `28b9fe3d`
+
+Read these, do not guess them. Every one is a `grep` away, and the last session's deleted draft was
+built on four invented ones.
+
+| what | exact shape | where |
+|---|---|---|
+| the crate's proposed action | `GatedAction { name: String, params: Params }` — **two** fields, no accessors | `wasm/src/domain/value/action.rs:26` |
+| what the engine's request wants | `GatedStep { name: String, tool: String, parameters: serde_json::Value }` | `engine/src/gate/application/dto.rs:33` |
+| the gate's ports | `GatePorts { precondition: Option<Arc<dyn PreconditionService>>, sequence: Option<Arc<dyn SequencePolicyService>> }` | `dto.rs:66` |
+| the engine's precondition service | `PreconditionServiceImpl::new(repository: Box<dyn PreconditionRepository>, runner: Box<dyn PreconditionRunner>)` then `.with_provider_client(Box<dyn ProviderClient>)` — **the service is in the slice; only its three ports are missing** | `precondition/application/service_impl.rs:63`, `:80` |
+| a precondition | `Precondition { id: String, r#match: StepPredicate, require_params: Vec<String>, … }` | `precondition/domain/precondition.rs:90` |
+| a provider's answer | `ProviderObservation { determination: ProviderDetermination, raw_value: Option<String>, observed_at: DateTime<Utc>, provider_version: Option<String>, request_digest: String, … }` | `precondition/domain/provider.rs:242` |
+| a provider's spec | `ProviderSpec { id: String, endpoint: String, method: ProviderMethod, timeout_ms: u64, … }` | `provider.rs:80` |
+| the three gate outcomes | `GateVerdict { Dispatch, Promote { … }, Refuse { … } }` · `GateOutcome { Passed, Refused, Promoted }` | `gate/application/dto.rs:236`, `:196` |
+| the crate's carriers | `EngineFindingOutcome { Passed, Refused, Error, NotReached }` · `StepDecision { Allowed, Refused, NotReached }` | `engine_seam.rs:41`, `step_outcome.rs:18` |
+| the check axis | `PreconditionOutcome { Passed, Failed, Error }` — **three**, no fourth | `precondition/domain/finding.rs:34` |
+
+Two consequences that decide the shape of this issue:
+
+- **`Promoted` is missing from both crate enums.** `GateOutcome::Promoted` exists (#1392); the crate's
+  `EngineFindingOutcome` and `StepDecision` do not carry it. A promoted finding mapped to `Error`
+  repeats the lie #1392 fixed, and mapped to `Passed`/`Allowed` it reads as permission. So the
+  contract change is **step 1**, before any adapter exists.
+- **The crate implements three ports, not a service.** `PreconditionServiceImpl` is in the slice and
+  takes `Box<dyn PreconditionRepository>`, `Box<dyn PreconditionRunner>` and a provider client. The
+  `cfg` inside `new` only chooses `UnavailableProviderClient` under `portable`; the host overrides it
+  with `.with_provider_client(...)`.
+
+**If a signature above is wrong at your commit, file the delta — do not invent an accessor, and do not
+add a helper to make the compiler accept a guess.** A `Pipe`-style helper or an `fn _x()` to silence an
+unused import is the signature of an adapter written to satisfy the compiler instead of the contract.
+
+## Order of work in this issue
+
+1. **Crate contract**: `Promoted` in `EngineFindingOutcome` and `StepDecision`, the wire contract
+   version recorded, and the mapping tests (promoted → `Promoted`; never `Error`, never `Allowed`).
+2. **The three ports**: fixture-backed `PreconditionRepository`, `PreconditionRunner`,
+   `ProviderClient` reading from the session fixture world.
+3. **The adapter**: build `GatedStep` from the session's step and the `GatedAction`, build `GatePorts`
+   from the engine's service plus a fixture `SequencePolicyService`, call `evaluate_gate_sync`.
+4. **The projection**: `GateDecision` → the crate's carriers, `port_failures` populated, no engine type
+   re-modelled.
+
+
 # Before you start
 
 **Phase C.1 and C.2 must be merged.** This issue is deliberately the third: it consumes an entry point
