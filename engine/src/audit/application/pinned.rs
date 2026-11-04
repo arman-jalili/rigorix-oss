@@ -21,7 +21,7 @@
 //! One refusal, not a run. It does not reach the orchestrator, the planner or the LLM; the
 //! refusal is a fact of this fixture, recorded the way a real precondition refusal would be.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 
 use crate::audit::application::dto::{BuildEnvelopeInput, PinnedInputs};
 use crate::audit::domain::{EventStatus, ExecutionEventRef};
@@ -30,12 +30,24 @@ use crate::audit::domain::{EventStatus, ExecutionEventRef};
 ///
 /// A fixed value, deliberately: the event is part of the record's content, not of the
 /// runtime's state, so it is pinned by construction rather than by the caller.
+///
+/// 2026-11-03T12:39:59Z — the value that shipped in 24e6dd6f and therefore the one the golden
+/// digest in `tests/unit/pinnedinputs` pins. It carries no meaning beyond being fixed; what
+/// matters is that this construction and the digest agree, because a fixture whose bytes move
+/// silently moves every documented witness with it.
 #[must_use]
 fn event_instant() -> DateTime<Utc> {
-    // 2026-11-03T11:59:59Z, built from the epoch so there is no fallible constructor on the
-    // path: a fixture that could panic is a fixture the panic-surface gate rightly rejects.
-    // `MIN_UTC` is the unreachable fallback — the constant below is a valid instant.
-    DateTime::from_timestamp(1_793_709_599, 0).unwrap_or(DateTime::<Utc>::MIN_UTC)
+    // Written as the instant it *is*, not as a hand-computed epoch. #1357 surfaced the
+    // difference: this value shipped as `DateTime::from_timestamp(1_793_709_599, 0)` under a
+    // comment saying 11:59:59Z, and that epoch is 12:39:59Z — forty minutes later than its own
+    // documentation, which moved the signed bytes without changing their length. The instant is
+    // arbitrary fixture content, so the value that shipped is kept and the construction now
+    // names it; the date/time parts are checked at runtime and the fallback is unreachable,
+    // because a fixture that panics is a fixture the panic-surface gate rightly rejects.
+    NaiveDate::from_ymd_opt(2026, 11, 3)
+        .and_then(|date| date.and_hms_opt(12, 39, 59))
+        .map(|naive| naive.and_utc())
+        .unwrap_or(DateTime::<Utc>::MIN_UTC)
 }
 
 /// The execution id the fixture uses when the caller does not pin one.

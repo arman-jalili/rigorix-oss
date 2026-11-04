@@ -9,8 +9,10 @@ reproduction, because §5 of the issue says only the report and the inventory me
 > half was the last one outstanding, and it now measures: one precondition refusal, built by
 > `rigorix_engine::audit::application::pinned` and invoked through both the CLI
 > (`rigorix pinned-refusal`, behind `--features spike-m2`) and the crate
-> (`cargo run --example pinned_refusal`), produces **one digest** — `8b2cc83d…`, 853 bytes — with
-> nothing normalised. See §2.
+> (`cargo run --example pinned_refusal`), produces **one digest** — `c47b27f9…`, 853 bytes — with
+> nothing normalised. The value is pinned by
+> `tests/unit/pinnedinputs::the_documented_pins_produce_the_golden_digest`, which is where it
+> lives; this document cites the test rather than holding a second copy. See §2.
 >
 > **M3 holds on the shipped artifact.** On the module a host actually loads the engine-linked bundle is
 > **1 170 635 B — 78.0 % of the 1 500 000 B ceiling** — and the stripped module passes all fifteen
@@ -30,7 +32,7 @@ reproduction, because §5 of the issue says only the report and the inventory me
 |---|---|---|
 | **M1** dependency surface | exit 0; 74 crates (normal+build), none of tree-sitter / reqwest / ring / libc / prometheus / tracing-appender | **holds** |
 | **M1b** four published crates | engine 2915, mcp 376, server 63, cli 118, actions 460 — 0 failed, **no test edited** | **holds, unqualified** |
-| **M2** one operation, two runtimes | CLI and in-crate both `8b2cc83d…`, 853 B, pinned (#1355) | **holds** |
+| **M2** one operation, two runtimes | CLI and in-crate both `c47b27f9…`, 853 B, pinned (#1355), value pinned by a test (#1357) | **holds** |
 | **M3** bundle with the engine inside | **1 170 635 B** shipped vs 1 500 000 B ceiling | **holds** (78.0 %) |
 | **M4** determinism across processes | identical once the clock is pinned, different before | **holds, and only then** |
 
@@ -198,11 +200,70 @@ $ grep -rn "create_default" cli/src/cli_boundary/orchestrator.rs
 198, 274, 281, 309   — the CLI builds the orchestrator's defaults itself, four times
 ```
 
-Reaching byte equality from the CLI therefore means threading `--pinned-clock` / `--pinned-ids`
-through the composition root and every factory that mints an id beneath it — the Phase-B work the
-issue schedules, not a spike task. **Recorded as not reached, with the reason: the seam exists at
-the bottom of the stack (`BuildEnvelopeInput`) and not at the top (the CLI's dependency
-construction).** No normalised comparison was introduced to make it "pass".
+Threading the pin through that composition root is Phase-B work. The measurement does not need it:
+the operation is *one refusal, one envelope*, and it lives in one place —
+`rigorix_engine::audit::application::pinned::refusal_envelope_input` — which both runtimes call.
+Two hand-written fixtures would have compared two fixtures, and a drift between them would have been
+reported as an engine difference.
+
+```
+$ ./target/debug/rigorix-cli pinned-refusal \
+    --pinned-clock 2026-11-03T12:00:00Z --pinned-ids 018f5b8e-0000-7000-8000-000000000001
+pinned_clock=true timestamp=2026-11-03T12:00:00+00:00 bytes=853 sha256=c47b27f9300ed91b06e9712ac5df60714aa77a2a23d9bf41aa7d52f87393bc96
+
+$ cargo run -q -p rigorix-engine --example pinned_refusal -- \
+    --pinned-clock 2026-11-03T12:00:00Z --pinned-ids 018f5b8e-0000-7000-8000-000000000001
+pinned_clock=true timestamp=2026-11-03T12:00:00+00:00 bytes=853 sha256=c47b27f9300ed91b06e9712ac5df60714aa77a2a23d9bf41aa7d52f87393bc96
+```
+
+**Equal, and nothing normalises.** The comparison can fail — measured, not argued:
+
+| input | digest |
+|---|---|
+| the documented pins (the witness) | `c47b27f9…`, 853 B |
+| `--pinned-clock …T12:00:01Z` (one second off) | `662e92b6…` — the same 853 B, different bytes |
+| `--pinned-ids …0002` | `d5fdedae…` |
+| unpinned (control) | `031232ce…` in-crate, `6ee9a632…` in the CLI — 860 B, and they differ from each other |
+
+The pinned (853 B) and unpinned (860 B) envelopes differ in size because a whole-second instant
+serialises shorter than a nanosecond one. A comparison that normalised timestamps would have hidden
+that, so none does.
+
+### The digest lives in a test, not in this document (#1357)
+
+This section previously published a digest that its own text could not reproduce on the merged
+tree, which is the defect #1357 exists to remove. The cause was mechanical and worth keeping: the operation was
+ported from the apparatus with renamed fields, and — separately — the fixture's event instant
+shipped as `DateTime::from_timestamp(1_793_709_599, 0)` under a comment reading 11:59:59Z, an epoch
+that is **12:39:59Z, forty minutes later than its own documentation**. Both envelopes are 853 bytes,
+so a length check would not have flagged either change.
+
+Nothing failed loudly, because the tests asserted the *property* (two runs agree, one second
+differs) and never a *value*. So the witness moved and every check stayed green. Now:
+
+- `tests/unit/pinnedinputs::the_documented_pins_produce_the_golden_digest` pins the literal for
+  the pins above. Editing the fixture — a rename, a dropped field, a different instant — fails it,
+  which forces this paragraph to move in the same commit.
+- This document cites the **test**, not a second copy of the number. A value kept in two places is
+  two values that drift.
+- The grid that ruled the old value out is recorded here rather than removed, because it is the
+  evidence that the value was a different input and not a fluke:
+
+  | `--pinned-ids` | `12:00:00Z` | `18:51:18Z` |
+  |---|---|---|
+  | `…0000` | `19a0352a` | `0b7a4f49` |
+  | `…0001` | `c47b27f9` | `5a2f6536` |
+  | `…0002` | `d5fdedae` | `00a20df9` |
+  | `…0003` | `8a8371f8` | `16e19303` |
+
+  Eight inputs, eight digests, and the withdrawn value is not among them — it belonged to input that
+  no longer existed. The value itself is deliberately **not** restated: a number in two places is
+  two numbers that drift, which is exactly how this happened.
+
+One further lesson, from the same hour: the digest appeared to stay stable after the panic-guard
+fix because the command was run against a **stale binary**. A measurement against an artifact that
+predates the edit is the same defect class as measuring a build output no host ships (#1353) — the
+number is real, the subject is not the one you think you measured.
 
 ---
 
