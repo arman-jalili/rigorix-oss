@@ -26,9 +26,7 @@ use crate::audit::application::factory::AuditEnvelopeFactory;
 use crate::audit::domain::{EventStatus, ExecutionEventRef};
 
 use super::request::RunContext;
-use crate::gate::domain::{
-    GateEnvelopeEvidence, GateError, GateFinding, GateVerdict, GatedStep,
-};
+use crate::gate::domain::{GateEnvelopeEvidence, GateError, GateFinding, GateVerdict, GatedStep};
 
 /// Assemble and sign the decision's record.
 ///

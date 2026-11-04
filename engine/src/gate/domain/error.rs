@@ -2,7 +2,6 @@
 //!
 //! @canonical .pi/architecture/modules/gate.md
 
-
 /// Why the gate could not answer.
 ///
 /// Every variant is a refusal at the caller (fail closed). Note what is *absent*: a

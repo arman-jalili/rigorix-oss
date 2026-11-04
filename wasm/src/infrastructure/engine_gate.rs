@@ -99,9 +99,7 @@ fn evaluate_with_engine(
     request: GateEvaluationRequest<'_, '_>,
 ) -> Result<EngineEvaluation, EngineBindingError> {
     use rigorix_engine::audit::application::dto::PinnedInputs;
-    use rigorix_engine::gate::application::{
-        GatePorts, GateRequest, evaluate_gate_sync,
-    };
+    use rigorix_engine::gate::application::{GatePorts, GateRequest, evaluate_gate_sync};
     use rigorix_engine::gate::domain::{GateError, GateOutcome, GateVerdict, GatedStep};
 
     let execution_id = uuid::Uuid::parse_str(request.attempt_id.as_str()).map_err(|_| {
