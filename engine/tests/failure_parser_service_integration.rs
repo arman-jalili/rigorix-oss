@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! Integration tests for FailureParserService — parse raw output into structured failures.
 //!
 //! @canonical .pi/architecture/modules/failure-parser.md#service

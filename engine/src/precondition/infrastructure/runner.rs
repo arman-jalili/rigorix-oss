@@ -41,15 +41,20 @@
 // See `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
 #![allow(clippy::disallowed_types)]
 
+#[cfg(not(feature = "portable"))]
 use std::path::{Path, PathBuf};
+#[cfg(not(feature = "portable"))]
 use std::process::Stdio;
 
 use async_trait::async_trait;
+#[cfg(not(feature = "portable"))]
 use tokio::io::AsyncWriteExt;
+#[cfg(not(feature = "portable"))]
 use tokio::process::Command;
 
 use crate::precondition::application::PreconditionCheckInput;
 use crate::precondition::domain::{Precondition, PreconditionError, PreconditionOutcome};
+#[cfg(not(feature = "portable"))]
 use crate::precondition::infrastructure::{described_program, redacted_path, sha256_hex};
 
 /// Maximum number of stdout bytes recorded when `capture_output = true`.
@@ -112,12 +117,14 @@ pub trait PreconditionRunner: Send + Sync {
 ///
 /// Constructed with the **agent-writable workspace root** so the trust-boundary
 /// check (`command[0]` resolves outside it) can be enforced before spawn.
+#[cfg(not(feature = "portable"))]
 pub struct ProcessPreconditionRunner {
     /// Root of the agent-writable workspace. A `command[0]` resolving inside
     /// this root is refused.
     workspace_root: PathBuf,
 }
 
+#[cfg(not(feature = "portable"))]
 impl ProcessPreconditionRunner {
     /// Create the runner over the agent-writable workspace root.
     pub fn new(workspace_root: impl Into<PathBuf>) -> Self {
@@ -139,6 +146,7 @@ impl ProcessPreconditionRunner {
 ///
 /// A program that cannot be resolved is a [`PreconditionError::Spawn`] (fail
 /// closed) — never an implicit pass.
+#[cfg(not(feature = "portable"))]
 fn resolve_program(program: &str, precondition_id: &str) -> Result<PathBuf, PreconditionError> {
     let spawn_error = |detail: String| PreconditionError::Spawn {
         precondition_id: precondition_id.to_string(),
@@ -183,6 +191,7 @@ fn resolve_program(program: &str, precondition_id: &str) -> Result<PathBuf, Prec
 /// invoked as `["node", "check.mjs"]` or with a bare script name on `PATH`).
 /// Non-files (flags, inline code, values) return `None` and are ignored — they
 /// are not check artifacts.
+#[cfg(not(feature = "portable"))]
 fn resolve_existing_file(argument: &str) -> Option<PathBuf> {
     let candidate = Path::new(argument);
     if candidate.is_file()
@@ -213,6 +222,7 @@ fn resolve_existing_file(argument: &str) -> Option<PathBuf> {
 /// name the argv position the operator actually wrote (`command[index + 1]`).
 /// The index must not be derived from the filtered list: dropping an argument
 /// that is not a file would shift every later position.
+#[cfg(not(feature = "portable"))]
 fn resolve_check_artifacts(arguments: &[String]) -> Vec<(usize, PathBuf)> {
     let mut seen = std::collections::HashSet::new();
     let mut artifacts = Vec::new();
@@ -232,6 +242,7 @@ fn resolve_check_artifacts(arguments: &[String]) -> Vec<(usize, PathBuf)> {
 /// file) keeps the plain file digest, so `check_digest` still equals
 /// `sha256sum` of the check. Multiple artifacts are bound deterministically as
 /// `sha256(("path\0sha256:<hex>\n")*)`.
+#[cfg(not(feature = "portable"))]
 fn check_artifacts_digest(artifacts: &[PathBuf]) -> Option<String> {
     match artifacts {
         [] => None,
@@ -260,6 +271,7 @@ fn check_artifacts_digest(artifacts: &[PathBuf]) -> Option<String> {
 /// `argument_index` is the artifact's position in `command`, so the refusal
 /// names the argument the engine actually checked. The signed error carries the
 /// artifact **redacted** ([`redacted_path`]); the full path is logged locally.
+#[cfg(not(feature = "portable"))]
 fn ensure_outside_workspace(
     artifact: &Path,
     argument_index: usize,
@@ -290,6 +302,7 @@ fn ensure_outside_workspace(
 /// Used for signed attribution: `check_digest` (the check program) and
 /// `authority_digest` (the artifact the check consults). Contents never enter
 /// the record — only the one-way digest (SpanPrivacy).
+#[cfg(not(feature = "portable"))]
 fn sha256_file(path: &Path) -> Option<String> {
     std::fs::read(path).ok().map(|bytes| sha256_hex(&bytes))
 }
@@ -306,6 +319,7 @@ fn sha256_file(path: &Path) -> Option<String> {
 /// Root is deliberately **not** special-cased: the assessment reports the
 /// mode/ownership fact, and running the engine as root voids an immutability
 /// claim anyway.
+#[cfg(not(feature = "portable"))]
 #[cfg(unix)]
 fn writable_by_euid(path: &Path) -> std::io::Result<bool> {
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
@@ -326,6 +340,7 @@ fn writable_by_euid(path: &Path) -> std::io::Result<bool> {
 }
 
 /// Whether the engine's effective UID is the egid or in the file's group.
+#[cfg(not(feature = "portable"))]
 #[cfg(unix)]
 fn euid_in_group(gid: u32) -> bool {
     // SAFETY: `getgroups` is called with a buffer sized by the first call.
@@ -349,6 +364,7 @@ fn euid_in_group(gid: u32) -> bool {
 
 /// Best-effort on non-unix: the boundary strength cannot be assessed, so the
 /// caller treats it as unknown (fail closed under `require_immutable_check`).
+#[cfg(not(feature = "portable"))]
 #[cfg(not(unix))]
 fn writable_by_euid(_path: &Path) -> std::io::Result<bool> {
     Err(std::io::Error::new(
@@ -361,6 +377,7 @@ fn writable_by_euid(_path: &Path) -> std::io::Result<bool> {
 /// `require_immutable_check`, an unreadable/unknown assessment is a
 /// [`PreconditionError::Boundary`] (fail closed); otherwise it is `None` and
 /// the run proceeds unchanged.
+#[cfg(not(feature = "portable"))]
 fn assess_boundary(
     precondition: &Precondition,
     path: &Path,
@@ -406,6 +423,7 @@ fn assess_boundary(
 
 /// The fail-closed refusal for a writable boundary under
 /// `require_immutable_check`.
+#[cfg(not(feature = "portable"))]
 fn boundary_error(precondition: &Precondition, path: &Path, label: &str) -> PreconditionError {
     tracing::warn!(
         precondition = %precondition.id,
@@ -422,6 +440,7 @@ fn boundary_error(precondition: &Precondition, path: &Path, label: &str) -> Prec
     }
 }
 
+#[cfg(not(feature = "portable"))]
 #[async_trait]
 impl PreconditionRunner for ProcessPreconditionRunner {
     async fn run(
@@ -616,7 +635,7 @@ impl PreconditionRunner for ProcessPreconditionRunner {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "portable")))]
 mod tests {
     use super::*;
     use crate::precondition::domain::{FailureAction, Precondition};

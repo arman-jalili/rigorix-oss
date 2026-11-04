@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! ResolverIdentity integration: who may settle, and on what evidence.
 //!
 //! @canonical .pi/architecture/modules/effect-commitment.md#resolveridentity

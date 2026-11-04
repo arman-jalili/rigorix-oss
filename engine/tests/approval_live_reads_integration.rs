@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! A live approval repository re-reads the store and ledger (#1261).
 //!
 //! @canonical .pi/architecture/modules/approval.md#durability

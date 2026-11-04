@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! EffectIntent integration: intent → record → event.
 //!
 //! @canonical .pi/architecture/modules/effect-commitment.md#effectintent

@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! Provider transport hardening (ISSUE-PRECONDITION-PROVIDERS).
 //!
 //! The provider unit tests inject a **stub** `ProviderClient`, so the real

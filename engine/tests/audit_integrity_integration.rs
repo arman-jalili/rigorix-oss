@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! ADR-016 Phase A integration — local chain, verify-on-read, mode tagging.
 //!
 //! Exercises the REAL composition pieces (`AuditServiceImpl` + the local

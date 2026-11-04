@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! InMemoryEffectLedger integration: the L1 seam end to end.
 //!
 //! @canonical .pi/architecture/modules/effect-commitment.md#inmemoryeffectledger

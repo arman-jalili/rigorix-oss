@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! ProviderReceiptReader integration: L3 evidence settles an ambiguous effect.
 //!
 //! @canonical .pi/architecture/modules/effect-commitment.md#providerreceiptreader

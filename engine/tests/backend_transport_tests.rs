@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! HTTP/MCP backend transport tests (GAP-A-23) using wiremock.
 //!
 //! Verifies the network transports actually work: HttpBackend posts the

@@ -13,7 +13,9 @@
 //! - `delete` removes a record (consumed-record compaction / test cleanup)
 
 pub mod approval_repository;
+#[cfg(not(feature = "portable"))]
 pub mod approval_repository_impl;
 
 pub use approval_repository::{ApprovalRepository, ConsumptionMarkerAttribution, LedgerMigration};
+#[cfg(not(feature = "portable"))]
 pub use approval_repository_impl::{FileBackedApprovalRepository, InMemoryApprovalRepository};

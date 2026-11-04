@@ -20,12 +20,20 @@ pub mod provider_client;
 pub mod repository;
 pub mod runner;
 
+#[cfg(not(feature = "portable"))]
 use std::path::Path;
 
-pub use provider_client::{HttpProviderClient, MAX_RESPONSE_BYTES, ProviderClient};
-pub use runner::{PreconditionRun, PreconditionRunner, ProcessPreconditionRunner};
+#[cfg(not(feature = "portable"))]
+pub use provider_client::HttpProviderClient;
+#[cfg(feature = "portable")]
+pub use provider_client::UnavailableProviderClient;
+pub use provider_client::{MAX_RESPONSE_BYTES, ProviderClient};
+#[cfg(not(feature = "portable"))]
+pub use runner::ProcessPreconditionRunner;
+pub use runner::{PreconditionRun, PreconditionRunner};
 
 /// One-way `sha256:<hex>` of arbitrary bytes.
+#[cfg(not(feature = "portable"))]
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
@@ -44,6 +52,7 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
 /// (a digest, never the path). The full path stays in the local log.
 ///
 /// SpanPrivacy; ADR-017 §Honest boundary.
+#[cfg(not(feature = "portable"))]
 pub(crate) fn redacted_path(path: &Path) -> String {
     let basename = path
         .file_name()
@@ -59,6 +68,7 @@ pub(crate) fn redacted_path(path: &Path) -> String {
 ///
 /// A bare name (`node`, `check`) is already safe and stays readable; anything
 /// path-like is reduced to basename + path hash by [`redacted_path`].
+#[cfg(not(feature = "portable"))]
 pub(crate) fn described_program(program: &str) -> String {
     if program.contains('/') {
         redacted_path(Path::new(program))

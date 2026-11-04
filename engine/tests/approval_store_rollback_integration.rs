@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! Approval store anti-rollback (#1241).
 //!
 //! @canonical .pi/architecture/modules/approval.md#durability

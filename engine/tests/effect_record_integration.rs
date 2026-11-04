@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! EffectRecord integration: persisted aggregate ↔ query surface.
 //!
 //! @canonical .pi/architecture/modules/effect-commitment.md#effectrecord

@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! EffectState integration: vocabulary, records, and fences agree.
 //!
 //! @canonical .pi/architecture/modules/effect-commitment.md#effectstate

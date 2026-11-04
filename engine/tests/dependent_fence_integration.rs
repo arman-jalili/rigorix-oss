@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! DependentFence integration: an ambiguous upstream keeps dependents fenced.
 //!
 //! @canonical .pi/architecture/modules/effect-commitment.md#dependentfence

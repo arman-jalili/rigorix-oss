@@ -27,6 +27,7 @@ pub struct AuditEnvelopeFactoryImpl {
     /// ADR-016 Phase C: the anchor runtime, when the host is anchored. When
     /// present and anchored, envelopes are tagged `history_integrity = anchored`
     /// and carry the verified `anchor_head`.
+    #[cfg(not(feature = "portable"))]
     anchor: Option<std::sync::Arc<crate::audit::infrastructure::anchor::AnchorRuntime>>,
     /// #1355: values the caller pinned, so one operation can produce one byte string.
     /// Empty by default — an unpinned factory behaves exactly as it always has.
@@ -38,6 +39,7 @@ impl AuditEnvelopeFactoryImpl {
     pub fn new(signing_key: Option<String>) -> Self {
         Self {
             signing_key,
+            #[cfg(not(feature = "portable"))]
             anchor: None,
             pinned: PinnedInputs::none(),
         }
@@ -45,6 +47,10 @@ impl AuditEnvelopeFactoryImpl {
 
     /// ADR-016 Phase C: attach the anchor runtime so built envelopes record the
     /// active mode and the verified head.
+    ///
+    /// Absent under `portable`: the adapter verifies Ed25519 history slices over
+    /// HTTP, and the slice has neither (#1351).
+    #[cfg(not(feature = "portable"))]
     pub fn with_anchor(
         mut self,
         anchor: std::sync::Arc<crate::audit::infrastructure::anchor::AnchorRuntime>,
@@ -172,6 +178,7 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
         // Anchored mode with no verified head is `anchored_pending`: the anchor
         // was asked for, but nothing has been verified yet (the startup window),
         // so the record must not read as authenticated.
+        #[cfg(not(feature = "portable"))]
         let (history_integrity, anchor_head) = match &self.anchor {
             Some(runtime) => match (runtime.mode(), runtime.head()) {
                 (crate::audit::domain::anchor::AnchorMode::Anchored, Some(head)) => {
@@ -184,10 +191,18 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
             },
             None => (Some(HistoryIntegrity::LocalUnanchored), None),
         };
+        // #1351: with no anchor adapter in the slice the evidence is the same as
+        // an unanchored host — the label says so rather than claiming a head.
+        #[cfg(feature = "portable")]
+        let (history_integrity, anchor_head): (Option<HistoryIntegrity>, Option<_>) =
+            (Some(HistoryIntegrity::LocalUnanchored), None);
 
         let mut envelope = AuditEnvelope {
             execution_id: self.pinned.execution_id().unwrap_or(input.execution_id),
-            // #1355: a pinned instant wins; the wall clock is the fallback, not the rule.
+            // #1355 / ADR-014: a pinned instant wins; the wall clock is the fallback, not
+            // the rule. This line came from the `c118cb06` apparatus (`input.pinned_timestamp`)
+            // and was rebased onto main's `PinnedInputs` carrier by hand — the apparatus put the
+            // pins in the DTO, main puts them in a shared carrier the gate path owns.
             timestamp: self.pinned.timestamp().unwrap_or_else(chrono::Utc::now),
             template_id: input.template_id,
             planning_hash,
@@ -264,7 +279,7 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "portable")))]
 mod tests {
     use super::*;
     use crate::audit::domain::{EventStatus, ExecutionEventRef};

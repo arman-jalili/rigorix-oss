@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! Integration test: plan pipeline type construction.
 //!
 //! Verifies key domain types can be constructed and their basic

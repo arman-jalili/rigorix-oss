@@ -43,6 +43,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --self-test) MODE="self-test"; shift ;;
         --counts)    MODE="counts"; shift ;;
+        --gates)     MODE="gates"; shift ;;
         --manifest)  MANIFEST="$2"; shift 2 ;;
         --lib)       LIB="$2"; shift 2 ;;
         --adr)       ADR="$2"; shift 2 ;;
@@ -377,19 +378,19 @@ self-test)
     cp "$MANIFEST" "$tmp/m.tsv"; cp "$ADR" "$tmp/a.md"
     printf '# a lib with the right declarations\n' > "$tmp/lib.rs"
     awk -F'\t' '$1=="module"{print "pub mod " $2 ";"}' "$MANIFEST" >> "$tmp/lib.rs"
-    # 25 excluded of 38 declared: the 13 that stay are placeholders, because the
+    # 22 excluded of 38 declared: the 16 that stay are placeholders, because the
     # ratio's denominator is the count of `pub mod` lines, not the exclusion list.
-    for i in $(seq 1 13); do printf 'pub mod kept_%s;\n' "$i"; done >> "$tmp/lib.rs"
+    for i in $(seq 1 16); do printf 'pub mod kept_%s;\n' "$i"; done >> "$tmp/lib.rs"
 
     expect "the tree's own manifest" 0 "$MANIFEST" "$LIB" "$ADR"
 
     # 1. a summary that undercounts the denominator
-    sed -e 's/25 of the crate'"'"'s 38 public modules/22 of 40 public modules/' \
-        -e 's/(25 of 38 public modules)/(22 of 40 public modules)/' "$MANIFEST" > "$tmp/m22.tsv"
+    sed -e 's/22 of the crate'"'"'s 38 public modules/22 of 40 public modules/' \
+        -e 's/(22 of 38 public modules)/(22 of 40 public modules)/' "$MANIFEST" > "$tmp/m22.tsv"
     expect "summary says 22 of 40" 1 "$tmp/m22.tsv" "$LIB" "$ADR"
 
     # 2. the bucket collapse that caused #1361 (six narrowed modules counted as closure)
-    sed 's/= 17 direct, 8 by closure,/= 11 indirect,/' "$MANIFEST" > "$tmp/mbucket.tsv"
+    sed 's/= 16 direct, 6 by closure,/= 11 indirect,/' "$MANIFEST" > "$tmp/mbucket.tsv"
     expect "summary collapses three buckets into two" 1 "$tmp/mbucket.tsv" "$LIB" "$ADR"
 
     # 3. a row naming a module that does not exist
@@ -417,11 +418,11 @@ self-test)
 
     # 8. #1363 seed A — the prose ratio, inside markdown emphasis, with the table
     #    ratio left correct. Emphasis is stripped before matching, so this cannot hide.
-    sed 's/\*\*25 of 38\*\*/**22 of 40**/' "$ADR" > "$tmp/aprose.md"
+    sed 's/\*\*22 of 38\*\*/**22 of 40**/' "$ADR" > "$tmp/aprose.md"
     expect "prose ratio wrong while the table is right (#1363 seed A)" 1 "$MANIFEST" "$LIB" "$tmp/aprose.md"
 
     # 9. #1363 seed B — the table ratio, prose untouched.
-    sed 's/25 of 38 public modules (11 forbidden crate/22 of 40 public modules (11 forbidden crate/' \
+    sed 's/22 of 38 public modules (10 forbidden crate/22 of 40 public modules (10 forbidden crate/' \
         "$ADR" > "$tmp/atable.md"
     expect "table ratio wrong while the prose is right (#1363 seed B)" 1 "$MANIFEST" "$LIB" "$tmp/atable.md"
 
@@ -439,7 +440,7 @@ self-test)
 
     # 12. #1365 seed H — a manifest-derived count, off by one. The guard used to
     #     compute it, print it, and never look at the record's copy.
-    sed 's/20 inner items/21 inner items/' "$ADR" > "$tmp/acountH.md"
+    sed 's/22 inner items/21 inner items/' "$ADR" > "$tmp/acountH.md"
     expect "derived count off by one: inner items (#1365 seed H)" 1 "$MANIFEST" "$LIB" "$tmp/acountH.md"
 
     # 13. #1365 seed I — the dependency count, likewise.
@@ -449,6 +450,113 @@ self-test)
     printf '  self-test: %d/%d assertions\n' "$ok" "$((ok + ko))"
     [ "$ko" -eq 0 ] || exit 1
     exit 0
+    ;;
+gates)
+    # ── ADR-014 §1 versus its implementation (#1374) ──────────────────────
+    # The manifest is only a decision until the code carries it. This mode asks the two
+    # questions the compiler cannot: does every `pub mod` the slice excludes have a row,
+    # and does every `cfg(not(feature = "portable"))` site sit in a module the manifest
+    # names? A gate with no row is an exclusion nobody reviewed; a row with no gate is a
+    # claim about a build that still compiles the module.
+    python3 - "$MANIFEST" "$LIB" "$ROOT/engine/src" <<'PYGATES'
+import os, re, sys
+
+manifest, lib, src = sys.argv[1], sys.argv[2], sys.argv[3]
+
+mod_rows, item_rows = set(), set()
+for line in open(manifest, encoding='utf-8'):
+    if line.startswith('#'):
+        continue
+    cols = line.rstrip('\n').split('\t')
+    if len(cols) < 2:
+        continue
+    if cols[0] == 'module':
+        mod_rows.add(cols[1])
+    elif cols[0] == 'item':
+        item_rows.add(cols[1])
+
+GATE = re.compile(r'#\[cfg\(not\(feature = "portable"\)\)\]')
+sites = []           # (path, lineno, name)
+for root, _dirs, files in os.walk(src):
+    for fn in files:
+        if not fn.endswith('.rs'):
+            continue
+        path = os.path.join(root, fn)
+        lines = open(path, encoding='utf-8').read().splitlines()
+        for i, line in enumerate(lines):
+            if not GATE.search(line):
+                continue
+            for j in range(i + 1, min(i + 4, len(lines))):
+                m = re.match(r'\s*(?:pub )?(mod|use|struct|enum|fn|impl|trait|const|static|type)\s+'
+                             r'([A-Za-z0-9_]+)', lines[j])
+                if m:
+                    sites.append((path, i + 1, m.group(2), m.group(1)))
+                    break
+                if lines[j].strip():
+                    break
+
+problems = []
+
+lib_gated = set()
+lines = open(lib, encoding='utf-8').read().splitlines()
+for i, line in enumerate(lines):
+    if GATE.search(line):
+        for j in range(i + 1, min(i + 3, len(lines))):
+            m = re.match(r'\s*pub mod ([A-Za-z0-9_]+);', lines[j])
+            if m:
+                lib_gated.add(m.group(1))
+                break
+
+for m in sorted(lib_gated - mod_rows):
+    problems.append(f"engine/src/lib.rs: `pub mod {m};` is gated but has no `module` row in the manifest")
+for m in sorted(mod_rows - lib_gated):
+    problems.append(f"{manifest}: module row `{m}` has no cfg(not(feature = \"portable\")) gate in "
+                    f"engine/src/lib.rs — the module still compiles into the slice")
+
+# Gates are judged per FILE, not per site. A file's gates are one decision: `use std::path::Path`
+# next to `pub use runner::ProcessPreconditionRunner` is the same exclusion seen twice, and the
+# manifest records the subject once. An internal import gate on its own can exclude nothing.
+by_file = {}
+for path, lineno, name, kind in sites:
+    rel = os.path.relpath(path, src)
+    parts = rel[:-3].split(os.sep)
+    if parts[-1] == 'lib':
+        parts = []                       # the crate root names top-level modules
+    elif parts[-1] == 'mod':
+        parts = parts[:-1]
+    base = {'::'.join(parts[:k]) for k in range(1, len(parts) + 1)} if parts else set()
+    if not parts:
+        candidates = {name}
+    else:
+        # `x/mod.rs` gating `mod name;` or `pub use name::…` names its child: x::name.
+        candidates = base | {f"{m}::{name}" for m in base}
+    by_file.setdefault(rel, []).append((lineno, name, candidates, base))
+
+for rel, entries in sorted(by_file.items()):
+    covered = False
+    for _lineno, _name, candidates, base in entries:
+        if (candidates & mod_rows) or (candidates & item_rows) or (base & mod_rows) or (base & item_rows):
+            covered = True
+            break
+    if covered:
+        continue
+    lineno, name, candidates, _base = entries[0]
+    problems.append(f"engine/src/{rel}:{lineno}: gate on `{name}` has no manifest row "
+                    f"(looked for {sorted(candidates)})")
+
+print(f"gates: {len(lib_gated)} gated pub mod, {len(sites)} gate sites, "
+      f"{len(mod_rows)} module rows, {len(item_rows)} item rows")
+for p in problems:
+    print(f"❌ {p}")
+sys.exit(1 if problems else 0)
+PYGATES
+    rc=$?
+    if [ "$rc" -eq 0 ]; then
+        printf '%b✅%b every excluded module is gated and every gate has a row\n' "$GREEN" "$NC"
+        exit 0
+    fi
+    printf '%bsee the rows above%b\n' "$RED" "$NC" >&2
+    exit 1
     ;;
 check)
     note "── portable inventory ──"

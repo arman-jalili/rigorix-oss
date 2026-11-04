@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! ACT-3: end-to-end composition reachability test for the ADR-017 gate.
 //!
 //! @canonical .pi/architecture/modules/precondition.md#acceptance-criteria

@@ -359,7 +359,7 @@ impl ApprovalService for ApprovalServiceImpl {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "portable")))]
 mod tests {
     use super::*;
 

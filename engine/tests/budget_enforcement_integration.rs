@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! Integration test: budget enforcement triggers cancellation.
 //!
 //! Tests that budget exhaustion correctly prevents execution from starting

@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! Live anchored-path E2E against a real enterprise anchor (#912).
 //!
 //! This is the **wire** counterpart to `anchored_wire_e2e.rs`: it drives the

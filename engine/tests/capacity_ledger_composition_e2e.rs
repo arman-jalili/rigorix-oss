@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! ADR-018: end-to-end composition **reachability** test for the capacity seam.
 //!
 //! @canonical .pi/architecture/modules/capacity-ledger.md#enforcementseam

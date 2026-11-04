@@ -24,7 +24,7 @@ dependency	ed25519-dalek	crate	anchor signature verification (ADR-016 Phase C); 
 dependency	tokio	features pinned to sync/macros/rt/time/io-util	mio and the reactor do not exist on wasm32-unknown-unknown	those five features	—
 dependency	rand	crate	jitter on audit retry backoff	no delivery path to jitter	1
 #
-# ── modules excluded wholesale (25 of 38 public modules) ─────────────────────────────
+# ── modules excluded wholesale (22 of 38 public modules) ─────────────────────────────
 # direct: excluded because the module itself references a crate above.
 module	code_gen	whole module	tree_sitter	syntax gate not evaluated in the browser	5
 module	repo_engine	whole module	tree_sitter	no repository indexing in the slice	8
@@ -36,7 +36,7 @@ module	scored_evaluation	whole module	reqwest	no scoring backends in the slice	9
 module	effect_commitment	whole module	reqwest	no receipt providers in the slice	15
 module	capacity_ledger	whole module	reqwest	no ledger backend in the slice	8
 module	backend	whole module	reqwest	no remote backend in the slice	5
-module	observability	whole module	prometheus	metrics registry; `metrics_registry` gated inside	14
+item	observability::metrics	metrics registry (both `metrics_registry` sites)	prometheus	the registry is not in the slice; logging stays	14
 # indirect: excluded because it *names a symbol* from an excluded module. This half is the
 # finding — 14 of the 22 have no forbidden crate of their own.
 module	state_persistence	whole module	tokio::fs (5 sites)	the slice holds no durable state	5
@@ -49,8 +49,7 @@ module	plan_validation	whole module	names planning/quality_gates/templates	plan 
 module	quality_gates	whole module	named by plan_validation	—	0
 module	recovery_recipes	whole module	named by the root error type only	—	0
 module	failure_parser	whole module	named by plan_validation	—	0
-module	dag_engine	whole module	named by approval/precondition domain types	DAG execution is not in the slice	0
-module	event_system	whole module	`event_info_status` projects onto an orchestrator DTO	the events themselves stay	1
+item	event_system::domain::event	event_info_status	`event_info_status` projects onto an orchestrator DTO	the events themselves stay	1
 module	cancellation	whole module	named by the root error type only	the slice's one attempt is synchronous	0
 module	budget_tracking	whole module	named by the root error type only	no LLM budget in the slice	0
 #
@@ -78,16 +77,24 @@ item	error	14 of the root enum's variants + their `use`/match arms	names exclude
 #
 # ── summary ──────────────────────────────────────────────────────────────────────────
 # 6 forbidden crates + 3 crates with no wasm support + 1 narrowed feature set
-# 25 of the crate's 38 public modules are excluded wholesale (#1361). Counted from the rows,
+# 22 of the crate's 38 public modules are excluded wholesale (#1361, corrected by #1374). Counted from the rows,
 # not estimated — re-derive with:
 #   awk -F'\t' '$1=="module"{ if ($4 ~ /tree_sitter|reqwest|prometheus/) d++;
 #                                 else if ($4 ~ /tokio/) t++; else c++ }
 #                 END {print "forbidden-crate:", d, "narrowed-tokio:", t, "closure:", c, "total:", d+t+c}' \
 #     engine/.pi/portable-inventory.tsv
 #   grep -cE '^pub mod' engine/src/lib.rs
-# → 11 for a forbidden crate + 6 for the narrowed tokio feature set = 17 direct, 8 by closure,
-#   25 total, of 38 (`pub mod` in `lib.rs`; the denominator was documented as 40 and has never
+# → 10 for a forbidden crate + 6 for the narrowed tokio feature set = 16 direct, 6 by closure,
+#   22 total, of 38 (`pub mod` in `lib.rs`; the denominator was documented as 40 and has never
 #   been anything but 38). `validate-portable-inventory.sh` recomputes all of it.
-# 20 items gated inside the 18 modules that remain
+#
+# #1374 corrected three rows that claimed `whole module` for modules the build does not remove:
+# `dag_engine` (nothing inside it is gated, and gating it fails to compile: `crate::dag_engine`
+# and `super::GatingMode` are used by modules that stay), `event_system` (one inner item is
+# gated — `event_info_status` — and the events stay) and `observability` (its `metrics`
+# submodule goes, the logging does not). They are item rows now; `--gates` compares the
+# manifest with `cfg(not(feature = "portable"))` in both directions, so a row cannot claim an
+# exclusion the code does not perform.
+# 22 items gated inside the 22 modules that remain
 # `cargo check -p rigorix-engine --features portable --target wasm32-unknown-unknown` → exit 0
 # normal+build tree: 74 crates, none of tree-sitter/reqwest/ring/libc/prometheus/tracing-appender

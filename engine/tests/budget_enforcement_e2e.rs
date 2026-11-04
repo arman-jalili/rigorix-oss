@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! ADR-008 budget enforcement reaches the dispatch path (#1108).
 //!
 //! @canonical .pi/architecture/modules/enforcement.md#enforcementservice

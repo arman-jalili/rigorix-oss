@@ -1,3 +1,4 @@
+#![cfg(not(feature = "portable"))]
 //! DispatchSeam integration: the execution engine writes ahead and settles.
 //!
 //! @canonical .pi/architecture/modules/effect-commitment.md#dispatchseam

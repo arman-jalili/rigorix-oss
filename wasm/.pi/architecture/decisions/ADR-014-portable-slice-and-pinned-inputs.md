@@ -43,11 +43,11 @@ manifest must name things that exist (a rename cannot leave a stale row), and th
 reproduce the list (a second authority cannot appear quietly).
 
 Four counts are recorded here because they are the decision, not the detail: **74 crates** in the
-`wasm32` graph (normal + build), **25 of 38** public modules excluded, **20 inner items** gated
+`wasm32` graph (normal + build), **22 of 38** public modules excluded, **22 inner items** gated
 inside the modules that stay, and **9 dependencies** removed. Of those 25, **only 11
 leave for a forbidden crate**; 6 leave because they need a `tokio` feature the slice narrows away
-and 8 because they name a symbol from an excluded module. So 14 of 25 leave for something that is
-*not* a dependency statement, and any future "just remove `reqwest`" reasoning reaches only 11 of 25.
+and 6 because they name a symbol from an excluded module. So 12 of 22 leave for something that is
+*not* a dependency statement, and any future "just remove `reqwest`" reasoning reaches only 10 of 22.
 `CoreOrchestratorError` alone carries 14 `#[from]` variants across 85 gate sites; the slice's cost
 is concentrated in error plumbing, not in lexing.
 
@@ -91,7 +91,7 @@ a branch name means the apparatus is still there and the number cannot be reprod
 | Engine-linked module, as shipped | 1 170 635 B = **78.0 %** of the 1 500 000 B ceiling | `portable` + `EngineGate` wired, stripped; measured on branch `issue/1351` @ `c118cb06` | **no, yet** — the wiring is Phase C; the emitted file was 1 512 420 B, i.e. 100.8 % of the ceiling |
 | `name` section removed by the strip | 341 785 B = 22.6 % of the emitted engine-linked module | same branch | **no** — same reason |
 | `wasm32` dependency graph under `portable` | 74 crates (normal + build), exit 0 | `cargo tree -p rigorix-engine --features portable --target wasm32-unknown-unknown -e normal,build` on `issue/1351` @ `c118cb06` | **no, yet** — `portable` is not on `main`; `Cargo.lock`-pinned when it is |
-| Modules excluded by the slice | 25 of 38 public modules (11 forbidden crate, 6 narrowed `tokio`, 8 closure), 20 inner items | `engine/.pi/portable-inventory.tsv` | **yes** — the manifest's rows; every count recomputed by `validate-portable-inventory.sh` |
+| Modules excluded by the slice | 22 of 38 public modules (10 forbidden crate, 6 narrowed `tokio`, 6 closure), 22 inner items | `engine/.pi/portable-inventory.tsv` | **yes** — the manifest's rows; every count recomputed by `validate-portable-inventory.sh` |
 | M2 witness: pinned refusal, both entry points | `c47b27f9…`, 853 B, equal across two runs | `main`, `engine/examples/pinned_refusal.rs` and `rigorix-cli --features pinned-inputs pinned-refusal` | **yes** — `tests/unit/pinnedinputs::the_documented_pins_produce_the_golden_digest` |
 | Unpinned control | **the digest differs every run**, 860 B | `main`, same two commands | the variance *is* the result; no value is claimed |
 | Apparatus-era readings | 877 B pinned / 884 B unpinned, `32211b9d…` | `examples/spike_m2_envelope.rs` on `issue/1351` @ `c118cb06` | **no** — the fixture was renamed in the port (#1357); kept as history in §2 of the report |
@@ -129,7 +129,7 @@ cargo run -q -p rigorix-engine --example pinned_refusal -- \
 
 ### Negative
 
-- 8 of 25 module exclusions follow only from another exclusion being named, and 6 more from a
+- 6 of 22 module exclusions follow only from another exclusion being named, and 6 more from a
   `tokio` feature the slice drops — so the dependency list understates the real cost, and the graph
   is closed over error types and ports.
 - The inventory is measured on a branch, not on `main`, until Phase C lands the wiring — the two
@@ -165,9 +165,19 @@ cargo run -q -p rigorix-engine --example pinned_refusal -- \
 - `wasm/ci/strip_name_section.py`, `wasm/ci/check-bundle-size.sh` — the size subject
 - `.pi/scripts/validate-portable-inventory.sh` — the guard behind §1
 
-**Next:** Phase C wires `EngineGate` to the real envelope, conformance flips to `gate: "cli"`, and
-goldens are regenerated from the same-commit CLI. After that, the two "no, yet" rows above become
-reproducible on `main` and this record's evidence table has no branch-bound entries.
+**Next, in this order:**
+
+1. **§1 lands in the engine** (#1374). Until it does, `--features portable` does not exist in
+   `engine/Cargo.toml` and `cargo check --features portable --target wasm32-unknown-unknown` fails in
+   `tree-sitter`'s build script. The mechanism is measured — 170 `cfg(not(feature = "portable"))`
+   sites across 23 files on branch `c118cb06` — but that branch is 16 commits behind `main` and
+   merging it would revert them, so it lands as an implementation: gates rebased onto `main`'s
+   `PinnedInputs` carrier (the apparatus put the pins in `BuildEnvelopeInput`, which this record's
+   §2 refuses), a CI job that builds and tests the configuration, and `validate-portable-inventory.sh
+   --gates` comparing this manifest with the code in both directions.
+2. **Phase C** wires `EngineGate` to the real envelope, conformance flips to `gate: "cli"`, and
+   goldens are regenerated from the same-commit CLI. After that, the two "no, yet" rows above become
+   reproducible on `main` and this record's evidence table has no branch-bound entries.
 
 ## Validation
 
