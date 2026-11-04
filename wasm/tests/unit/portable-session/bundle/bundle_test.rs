@@ -7,7 +7,21 @@ use crate::read_manifest;
 /// The dependency floor: serde, serde_json, thiserror. Everything else needs a reason.
 // sha2 is the engine's own hash crate: a different implementation would produce
 // different digests for the same bytes, which is the one thing this crate may not do.
-const ALLOWED_DEPENDENCIES: [&str; 4] = ["serde", "serde_json", "sha2", "thiserror"];
+/// Each one costs bundle size and needs a decision. The three additions are #1383's:
+/// `rigorix-engine` (the gate, behind the opt-in `engine` feature — ADR-014), `async-trait`
+/// (the engine's port traits are `async_trait`, so implementing them without it is not
+/// possible), `chrono` (the engine records *when* a provider was consulted, and an instant
+/// this host invented would be a fabrication inside evidence).
+const ALLOWED_DEPENDENCIES: [&str; 8] = [
+    "serde",
+    "serde_json",
+    "sha2",
+    "thiserror",
+    "rigorix-engine",
+    "async-trait",
+    "chrono",
+    "uuid",
+];
 
 #[test]
 fn the_dependency_set_is_deliberate() {
@@ -49,13 +63,24 @@ fn the_size_gate_is_declared_where_ci_can_read_it() {
 #[test]
 fn the_engine_dependency_is_optional_by_contract() {
     let manifest = read_manifest("Cargo.toml");
-    // FR-011 has not landed: the seam is declared as a feature with no dependency behind
-    // it yet. When it lands, it must be optional and non-default (NFR-005).
-    assert!(manifest.contains("engine = []"));
-    let deps = manifest.split("[dependencies]").nth(1).unwrap_or_default();
+    // C.3 landed the dependency: it is opt-in, behind `engine`, and the feature carries the
+    // `portable` slice rather than a `default` list (NFR-005).
     assert!(
-        !deps.contains("rigorix-engine"),
-        "the engine must not be a default dependency: the four published crates build from the same commit"
+        !manifest.contains("default = [\"engine\"]"),
+        "the engine must never be a default feature: a browser bundle would grow by the whole slice"
+    );
+    let deps = manifest.split("[dependencies]").nth(1).unwrap_or_default();
+    let engine_line = deps
+        .lines()
+        .find(|line| line.trim_start().starts_with("rigorix-engine"))
+        .expect("the engine dependency is declared under [dependencies]");
+    assert!(
+        engine_line.contains("optional = true"),
+        "the engine must be an optional dependency, not a default one: {engine_line}"
+    );
+    assert!(
+        manifest.contains("rigorix-engine/portable"),
+        "the feature must name the portable slice; otherwise the native gating seam links too"
     );
 }
 

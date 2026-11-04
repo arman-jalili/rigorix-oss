@@ -94,14 +94,18 @@ and prove self-consistency only.
 
 ## 3. When a run refuses with `gate_unavailable`
 
-Expected, today. The engine seam is not linked: `SeamGate::not_linked()` refuses every run,
-because a gate that cannot evaluate must not allow one.
+Expected in a build compiled without the `engine` feature: `EngineGate::unavailable()`
+refuses every run, because a gate that cannot evaluate must not allow one. A build with the
+feature evaluates the real gate over the session's fixtures; if it still reports
+`gate_unavailable`, the port answers are the thing to read, not the wiring.
 
 - The refusal kind is `gate_unavailable`, **not** "denied" — the gate did not answer no, it
   could not answer at all.
 - `export_artifact_set` still works: a refusal is a record.
 - Exit condition: **Phase C** — `EngineGate` calls the real envelope and conformance reports
-  `gate: "cli"` (ADR-014; `.pi/architecture/implementation-roadmap.md` Phase 5). It is not the
+  `gate: "cli"` (ADR-014; `.pi/architecture/implementation-roadmap.md` Phase 5). C.3 landed
+  `EngineGate`; what remains is the default build evaluating and conformance reporting the
+  provenance. It is not the
   `Clock`/`IdSource` seam FR-011 described: that was superseded, and #1355 reached byte identity
   with one pinned site instead. When Phase C lands, only the gate implementation changes and
   `gate_unavailable` disappears from a linked build.

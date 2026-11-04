@@ -113,7 +113,7 @@ fn the_runbook_states_the_gate_unavailable_exit_condition() {
     let runbook = read_doc(".pi/architecture/runbook.md");
     assert!(runbook.contains("gate_unavailable"));
     assert!(runbook.contains("FR-011"));
-    assert!(runbook.contains("SeamGate"));
+    assert!(runbook.contains("EngineGate::unavailable()"));
 }
 
 #[test]

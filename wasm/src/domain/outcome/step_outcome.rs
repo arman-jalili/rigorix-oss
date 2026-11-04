@@ -18,6 +18,11 @@ use super::{EvidenceRef, RefusalKind};
 pub enum StepDecision {
     /// The step was permitted.
     Allowed,
+    /// The step was promoted: it may not proceed until a human approves it.
+    ///
+    /// Distinct from `Allowed` (which proceeds) and from `Refused` (which is final). A run
+    /// carrying one must not be reported as green — nothing was decided yet.
+    Promoted,
     /// The step was evaluated and denied.
     Refused,
     /// The step was not evaluated because an earlier step refused.
@@ -49,5 +54,14 @@ impl StepOutcome {
     /// Whether this step stopped the run.
     pub fn is_refusal(&self) -> bool {
         matches!(self.decision, StepDecision::Refused)
+    }
+
+    /// Whether this step is waiting for a human.
+    ///
+    /// `is_refusal()` is false for a promotion and `is_allowed()`-style checks are false too:
+    /// a caller asking "did anything stop?" must ask this as well, or a paused run reads as
+    /// a completed one.
+    pub fn awaits_approval(&self) -> bool {
+        matches!(self.decision, StepDecision::Promoted)
     }
 }

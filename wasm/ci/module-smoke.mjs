@@ -92,8 +92,8 @@ if (version) {
         `contract and engine versions agree (${version.contract} = ${version.engine})`,
     );
     check(
-        version.artifact_format === 1,
-        `artifact_format is 1 (${version.artifact_format})`,
+        version.artifact_format === 2,
+        `artifact_format is 2 (${version.artifact_format})`,
     );
     check(
         version.verified === undefined,

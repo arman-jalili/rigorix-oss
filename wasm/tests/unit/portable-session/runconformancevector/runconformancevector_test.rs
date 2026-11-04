@@ -95,7 +95,7 @@ fn runner() -> ConformanceRunner<GateFactory, ProjectionFactory> {
 fn a_vector_replays_to_a_stamped_artifact() {
     let vector = vector_from_disk();
     let artifact = runner().replay(&vector).expect("replay");
-    assert_eq!(artifact.stamp.artifact_format_version, 1);
+    assert_eq!(artifact.stamp.artifact_format_version, 2);
     assert_eq!(artifact.envelopes.len(), 1);
     assert!(artifact.outcome_digest.as_str().starts_with("sha256:"));
 }

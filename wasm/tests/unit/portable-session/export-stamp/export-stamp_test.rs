@@ -12,7 +12,7 @@ fn digest(byte: char) -> Digest {
 #[test]
 fn the_container_has_a_format_version() {
     // A container without a version is a record nobody can decide how to read.
-    assert_eq!(ArtifactSet::FORMAT_VERSION, 1);
+    assert_eq!(ArtifactSet::FORMAT_VERSION, 2);
 }
 
 #[test]
@@ -24,7 +24,7 @@ fn the_stamp_carries_three_facts() {
     };
     // Engine provenance, container version, and which scenario produced it: a record
     // missing any of the three cannot be re-read honestly.
-    assert_eq!(stamp.artifact_format_version, 1);
+    assert_eq!(stamp.artifact_format_version, 2);
     assert!(!stamp.engine_version.is_empty());
     assert_eq!(stamp.scenario_digest, digest('a'));
 }
@@ -59,9 +59,8 @@ fn an_artifact_set_carries_both_digests_and_an_opaque_key_ref() {
 #[test]
 fn the_crate_knows_which_container_shapes_it_understands() {
     assert!(ArtifactSet::supports(ArtifactSet::FORMAT_VERSION));
-    assert!(ArtifactSet::supports(1));
     // A future container shape is not readable by this build, and says so.
-    assert!(!ArtifactSet::supports(2));
+    assert!(!ArtifactSet::supports(ArtifactSet::FORMAT_VERSION + 1));
     assert!(!ArtifactSet::supports(0));
 }
 
@@ -91,7 +90,7 @@ fn the_crate_never_emits_the_hosts_verdict_vocabulary() {
         rigorix_gate_wasm::interfaces::CONTRACT_FUNCTIONS,
         {
             let dto = rigorix_gate_wasm::interfaces::dto::ArtifactSetDto {
-                artifact_format_version: 1,
+                artifact_format_version: 2,
                 engine_version: "1.12.1".into(),
                 scenario_digest: "sha256:a".into(),
                 fixture_digest: "sha256:b".into(),

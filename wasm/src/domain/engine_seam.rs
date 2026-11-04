@@ -35,7 +35,7 @@ use crate::domain::value::{GateAttemptId, GatedAction, PortFailure, ScenarioRef}
 /// The engine's outcome for one gated step.
 ///
 /// # Contract (Frozen)
-/// - Three values, matching the engine's determination vocabulary plus "not evaluated"
+/// - Four values, matching the engine's three gate outcomes plus "not evaluated"
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EngineFindingOutcome {
@@ -45,6 +45,13 @@ pub enum EngineFindingOutcome {
     Refused,
     /// A check could not run; the engine refuses on error.
     Error,
+    /// The gate promoted the step: it awaits a human, and the run may not proceed.
+    ///
+    /// The third gate outcome had no home here until #1383, so a draft adapter mapped it to
+    /// `Error` — the same two-valued slot that turned `Unknown` into `Failed` and `Promote`
+    /// into `Passed`. A fail-closed vocabulary is only fail-closed if the third value has
+    /// somewhere to go.
+    Promoted,
     /// The engine never evaluated this step because an earlier one refused.
     NotReached,
 }

@@ -47,6 +47,16 @@ impl<V: RefusalVocabulary> EvidenceProjection for EngineFindingsProjection<V> {
                         evidence: finding.evidence.clone(),
                     }
                 }
+                // A promotion is a decision that has not been made yet: not `Allowed`
+                // (which proceeds) and not `Refused` (which is final). It carries no
+                // refusal kind for the same reason — nothing was refused.
+                EngineFindingOutcome::Promoted => StepOutcome {
+                    gate_id: finding.gate_id.clone(),
+                    decision: StepDecision::Promoted,
+                    kind: None,
+                    reason: None,
+                    evidence: finding.evidence.clone(),
+                },
                 // The gate never asked the question; say so rather than pretending it
                 // answered no.
                 EngineFindingOutcome::NotReached => StepOutcome {
