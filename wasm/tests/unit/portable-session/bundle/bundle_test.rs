@@ -76,18 +76,64 @@ fn the_engine_dependency_is_optional_by_contract() {
         manifest.contains("default = [\"engine\"]"),
         "the default build must be the one that evaluates (#1401)"
     );
-    let deps = manifest.split("[dependencies]").nth(1).unwrap_or_default();
-    let engine_line = deps
+    // Declared once per target (#1401): host builds link the engine whole, wasm32 links the
+    // slice. Both must stay optional, or `--no-default-features` loses its meaning.
+    let engine_lines: Vec<&str> = manifest
         .lines()
-        .find(|line| line.trim_start().starts_with("rigorix-engine"))
-        .expect("the engine dependency is declared under [dependencies]");
-    assert!(
-        engine_line.contains("optional = true"),
-        "the engine must stay an optional dependency, so --no-default-features still builds: {engine_line}"
+        .map(str::trim)
+        .filter(|line| line.starts_with("rigorix-engine ="))
+        .collect();
+    assert_eq!(
+        engine_lines.len(),
+        2,
+        "one declaration per target, host and wasm32: {engine_lines:?}"
     );
+    for line in &engine_lines {
+        assert!(
+            line.contains("optional = true"),
+            "the engine must stay optional so --no-default-features still builds: {line}"
+        );
+    }
+}
+
+#[test]
+fn the_portable_slice_is_scoped_to_wasm32() {
+    // #1401, the regression this test exists for: `portable` is a *subtractive* feature — it
+    // `cfg`s native modules out. Declared unconditionally (in `[dependencies]`, or through a
+    // `rigorix-engine/portable` entry in the `engine` feature), any workspace build that
+    // includes this crate unifies it into `mcp` and `actions`, and `JwksVerifier`,
+    // `orchestrator` and `plan_validation` vanish from under them. That is exactly what
+    // `cargo clippy --workspace --all-targets` reported once `default = ["engine"]` landed.
+    //
+    // The property is about *where* the slice is enabled, not whether the string appears.
+    let manifest = read_manifest("Cargo.toml");
+
+    let features = manifest
+        .split("[features]")
+        .nth(1)
+        .unwrap_or_default()
+        .split("\n[")
+        .next()
+        .unwrap_or_default();
     assert!(
-        manifest.contains("rigorix-engine/portable"),
-        "the feature must name the portable slice; otherwise the native gating seam links too"
+        !features.contains("rigorix-engine/portable"),
+        "the `engine` feature must not enable the slice for every target — it subtracts native \
+         modules from any crate that shares the graph"
+    );
+
+    let wasm32 = manifest
+        .lines()
+        .position(|line| line.trim() == "[target.'cfg(target_arch = \"wasm32\")'.dependencies]")
+        .expect("the wasm32 target table exists");
+    let wasm32_block: String = manifest
+        .lines()
+        .skip(wasm32 + 1)
+        .take_while(|line| !line.starts_with('['))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        wasm32_block.contains("features = [\"portable\"]"),
+        "the wasm32 declaration must name the portable slice: {wasm32_block}"
     );
 }
 
