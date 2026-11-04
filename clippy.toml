@@ -13,5 +13,9 @@
 # `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
 disallowed-types = [
   { path = "std::process::Command", reason = "process spawning is a privileged sink: route it through an approved sink (tools/application/run_command_tool.rs or shell_policy.rs) or write an #[allow] with a reason — see tool-system.md#process-spawning-sinks" },
-  { path = "tokio::process::Command", reason = "process spawning is a privileged sink: route it through an approved sink (tools/application/run_command_tool.rs or shell_policy.rs) or write an #[allow] with a reason — see tool-system.md#process-spawning-sinks" },
+  # `allow-invalid`: the type is unreachable on wasm32, where tokio carries `sync` alone and
+  # `tokio::process` does not exist (#1400, #1401). The ban is still enforced on every target
+  # where the type does exist; without this flag the *shipped* target reports a clippy warning
+  # that it cannot enforce the rule, which is noise, not a finding.
+  { path = "tokio::process::Command", allow-invalid = true, reason = "process spawning is a privileged sink: route it through an approved sink (tools/application/run_command_tool.rs or shell_policy.rs) or write an #[allow] with a reason — see tool-system.md#process-spawning-sinks" },
 ]

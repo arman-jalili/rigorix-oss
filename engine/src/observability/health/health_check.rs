@@ -3,6 +3,10 @@
 //! @canonical .pi/architecture/modules/observability.md#health-check
 
 use serde::Serialize;
+// Only `check_health_with_timeout`'s default body takes a `Duration`, and it is compiled out on
+// wasm32 — a single-threaded module has no timer (#1400). The import follows it rather than
+// warning on the target that ships.
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 
 /// The health status of a single component.

@@ -5,9 +5,13 @@
 use crate::read_manifest;
 
 /// Dependencies that must never appear in the shipped dependency graph (NFR-002).
-const BANNED: [&str; 8] = [
+///
+/// `tokio` is not here (#1400, #1401): the slice needs `tokio::sync` for the engine modules that
+/// stay, and the prohibition is an async *runtime*, not the crate name. Banning the name refused
+/// the design. The property — the wasm32 tokio feature set is `sync` alone — is asserted below and
+/// in the gate script, which is what CI runs.
+const BANNED: [&str; 7] = [
     "rigorix-verifier",
-    "tokio",
     "reqwest",
     "tree-sitter",
     "prometheus",
@@ -76,6 +80,38 @@ fn the_bundle_gate_bans_everything_the_tests_ban() {
             "the CI gate does not ban {banned}, which the test bans"
         );
     }
+}
+
+#[test]
+fn the_bundle_gate_asserts_the_tokio_property_not_the_crate_name() {
+    // #1401: `sync` is in the shipped graph, and it has to be. Twice now a manifest line decided
+    // a verdict, so the rule is stated as a property the gate can evaluate — "the wasm32 tokio
+    // feature set is `sync` alone" — rather than as a crate name that the design legitimately
+    // violates.
+    let script = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("ci/check-bundle-independence.sh"),
+    )
+    .expect("bundle gate exists");
+
+    assert!(
+        script.contains("TOKIO_ALLOWED_FEATURES"),
+        "the gate must name the allowed feature set"
+    );
+    assert!(
+        script.contains("tokio feature"),
+        "the gate must read tokio's feature edges, not its name"
+    );
+    assert!(
+        !script.contains("\"tokio|"),
+        "the gate bans tokio by crate name again — sync is allowed (#1401)"
+    );
+    // The source half: the defect `check-domain-isolation.sh` could not see, because it looks
+    // for `std::time` and a timer can arrive as `tokio::time`.
+    assert!(
+        script.contains("tokio::(time|spawn|runtime)"),
+        "the gate must refuse a timer or a spawn named in source"
+    );
 }
 
 #[test]

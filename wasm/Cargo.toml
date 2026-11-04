@@ -13,7 +13,12 @@ rust-version = "1.85"
 crate-type = ["rlib", "cdylib"]
 
 [features]
-default = []
+# #1401: the shipped artifact decides. The engine composition, the four host ports and the
+# envelope were merged in C.3–C.6; a crate whose default configuration cannot evaluate is a
+# contract with a gate behind a flag, not a gate. `--no-default-features` keeps the
+# contract-only build, which still refuses at `open_session` with `gate_unavailable` — that is
+# what a build that cannot evaluate *is*, and its test is unchanged.
+default = ["engine"]
 # The in-repo seam: binds rigorix-engine's gate behind its additive, non-default
 # feature. Phase C.3 (#1383): the composition, the ports and the envelope all live
 # in the engine; this crate supplies the ports and calls one function.

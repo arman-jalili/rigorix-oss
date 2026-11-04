@@ -10,8 +10,8 @@
 # budget = measured + 25%, per NFR-002: measured first, then a hard gate, never a guess.
 artifact: pkg/rigorix_gate_wasm_bg.wasm
 ceiling_bytes: 1500000
-measured_bytes: 169250
-budget_bytes: 211562
+measured_bytes: 1337205
+budget_bytes: 1671506
 state: packaged
 note: >-
   Re-measured on 2026-11-03 (#1353): the subject moved from the emitted file to the
@@ -27,6 +27,27 @@ note: >-
   measured, but no version has been published to npm, so `publish-wasm-npm` stays outside
   `github-release.needs` — the release-train guard enforces that distinction.
 
+# ── #1401: the default build is the one that decides ────────────────────────────────────
+# ``default = ["engine"]``. Every number in this file before this section described a build a
+# host would never load: the crate shipped contract-only, refused at `open_session` with
+# `gate_unavailable`, and reported `"gate_evaluation": false`. The gate was behind a flag.
+#
+#   command: bash wasm/ci/wasm-build.sh            (no feature flags — the default)
+#            wasm-bindgen --target nodejs --out-dir wasm/pkg
+#            python3 wasm/ci/strip_name_section.py .../rigorix_gate_wasm_bg.wasm
+#   emitted 1769863 B · name section 432658 B · shipped 1337205 B
+#   ceiling 1500000 B  →  10.9 % headroom   ·   budget (measured + 25 %) 1671506 B
+#
+# What unblocked it was not a byte. It was three statements being made true at once: `sync` is
+# not a runtime (#1400); the independence gate asserts the feature-set property rather than
+# banning a crate name the design legitimately uses; and this file's `measured_bytes` is now
+# the artifact it claims to be. The budget moved 169250 → 1337205 for the only reason that
+# justifies it: **the measured artifact changed**, from the unlinked build to the shipped one.
+#
+# The unlinked build still exists (`--no-default-features`), still compiles, still reports
+# `gate_evaluation: false`, and still refuses at open. That is a dev configuration with an
+# honest capability report — not the default.
+
 # ── Phase C.6 (#1386): the profile, not the code ─────────────────────────────────────────
 # The 1 706 234 B below was correct and was not the number that matters: `wasm/Cargo.toml`
 # declared no `[profile.release]`, so the artifact shipped with opt-level 3, no LTO and 16
@@ -36,23 +57,24 @@ note: >-
 #   default release profile         emitted 1918610 · name 212376 · shipped 1706234  (+13.7 %)
 #   size profile (#1386)            emitted 1769863 · name 432658 · shipped 1337205  (-10.9 %)
 #
-# `measured_bytes` describes the artifact this gate measures — the **default** build, which
-# is still unlinked, hence 169250 B (down from 209881 B: C.3 deleted `SeamGate` and the probe).
-# The engine-linked figure the flip decision rests on is 1337205 B; both are measured from
-# this commit's packaging path, and the gate refuses a `measured_bytes` that does not equal
-# the artifact it just measured. `budget_bytes` is measured + 25 % (1671506), which is *above* the
-# `ceiling_bytes` of 1500000 — so the ceiling binds, deliberately: the ratchet is derived
-# and the ceiling was fixed by the specification. Both are asserted, and the size gate now
+# `measured_bytes` described the artifact this gate measured at the time — the **default**
+# build, which was then unlinked, hence 169250 B (down from 209881 B: C.3 deleted `SeamGate`
+# and the probe). The engine-linked figure the flip decision rested on is 1337205 B; both were
+# measured through this commit's packaging path, and the gate refuses a `measured_bytes` that
+# does not equal the artifact it just measured. That is what caught the 169250 as stale the
+# moment `default = ["engine"]` landed (#1401, above). `budget_bytes` is measured + 25 % (1671506),
+# which is *above* the `ceiling_bytes` of 1500000 — so the ceiling binds, deliberately: the
+# ratchet is derived and the ceiling was fixed by the specification. Both are asserted, and the size gate now
 # also refuses a `measured_bytes` that does not equal the artifact (`ACTUAL == MEASURED`),
 # because a stale floor was previously invisible.
 #
-# Still blocked: the **default** flip. Not by size — 1337205 B fits — but by
-# `check-bundle-independence.sh`: `rigorix-engine` declares `tokio` as a required dependency
-# (`engine/Cargo.toml:49 tokio.workspace = true`) and `portable = []` does not remove it, so
-# the engine-linked graph carries an async runtime into a single-threaded module. ADR-014's
-# inventory excludes tokio-using *modules*; it never excluded the *crate* dependency, and this
-# gate is the first thing to say so out loud. Follow-up is engine-side (make tokio optional /
-# feature-gate it), with its own blast radius — it is not a bundle change.
+# Then blocked: the **default** flip. Not by size — 1337205 B fits — but by
+# `check-bundle-independence.sh`, which banned the *crate name* `tokio`: the engine-linked graph
+# carries it, and `portable = []` does not remove a target-specific dependency. Two corrections
+# came out of that, and both are the finding: the tokio that reached wasm32 was the
+# target-specific declaration narrowed to `["sync"]` (#1402), and the rule that refused it was
+# banning a name instead of asserting a property (#1401, top of this file). Neither was a bundle
+# change, which is why both were filed instead of patched here.
 #
 # Lesson, verbatim, because it has now cost two verdicts: **the artifact is whatever the
 # packaging path builds, and the packaging path must build the profile the budget assumes.**
