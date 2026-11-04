@@ -149,6 +149,163 @@ check_counts() {
     note "  derived: ${direct} forbidden-crate + ${narrow} narrowed-tokio = ${total_direct} direct, ${closure} closure · ${mods} of ${declared} modules · ${items} items · ${deps} dependencies"
 }
 
+# ---------------------------------------------------------------------------
+# Ratios are derived, not pattern-matched (#1363).
+#
+# The rule: anything that looks like a ratio, and cannot be derived, is a failure
+# with a named reason — never a skip. A guard that silently skips what it does not
+# understand is always narrower than the document it certifies, and the ratio it
+# skips is exactly the one the record gets wrong.
+# ---------------------------------------------------------------------------
+RATIOS="$ROOT/wasm/.pi/adr-014-ratios.tsv"
+
+check_ratios() {
+    local manifest="$1" lib="$2" adr="$3"
+    local ratios="${4:-$RATIOS}"
+
+    [ -f "$ratios" ] || { bad "  $ratios is missing — the record's ratios have no derivations"; return; }
+    local local_fail_before="$fail"
+
+    local direct narrow closure mods items deps declared
+    read -r direct narrow closure mods items deps < <(derive_counts "$manifest")
+    declared="$(grep -cE '^pub mod' "$lib")"
+    local excluded_total=$((direct + narrow + closure))
+    local excluded_closure_and_narrow=$((narrow + closure))
+
+    # Substitutions available to the derivation rows. Bytes come from the ratios
+    # file itself, so the arithmetic below is the only place they are used.
+    local subst=""
+    subst=" mods=$mods declared=$declared excluded_crate=$direct excluded_narrow=$narrow"
+    subst="$subst excluded_closure=$closure excluded_total=$excluded_total"
+    subst="$subst excluded_closure_and_narrow=$excluded_closure_and_narrow items=$items deps=$deps"
+
+    # 1. every quantity row's value must be cross-checked where it can be.
+    local kind name value
+    while IFS=$'\t' read -r kind name value _den _phrase _note; do
+        [ "$kind" = "quantity" ] || continue
+        case "$name" in
+            seam_shipped)
+                local budget_file="$ROOT/wasm/ci/bundle-budget.txt"
+                if [ -f "$budget_file" ]; then
+                    local file_value
+                    file_value="$(sed -n 's/^measured_bytes:[[:space:]]*//p' "$budget_file")"
+                    [ "$file_value" = "$value" ] \
+                        || bad "  ratios: $name is $value but bundle-budget.txt says ${file_value:-<absent>}"
+                fi ;;
+            seam_budget)
+                local budget_file2="$ROOT/wasm/ci/bundle-budget.txt"
+                if [ -f "$budget_file2" ]; then
+                    local file_budget
+                    file_budget="$(sed -n 's/^budget_bytes:[[:space:]]*//p' "$budget_file2")"
+                    [ "$file_budget" = "$value" ] \
+                        || bad "  ratios: $name is $value but bundle-budget.txt says ${file_budget:-<absent>}"
+                fi ;;
+        esac
+        subst="$subst $name=$value"
+    done < "$ratios"
+
+    # 2. each derivation row: the arithmetic must reproduce `stated`, the fragment
+    #    must be in the record, and `stated` must sit inside it. The fragment is what
+    #    pins the subject — a token on a line with an unrelated "of the …" clause is
+    #    exactly the mistake #1363 found.
+    local stated num den says note
+    while IFS=$'\t' read -r kind stated num den says note; do
+        case "$kind" in \#*|quantity|"") continue ;; esac
+        local num_v den_v
+        num_v="$(resolve_quantity "$num" "$subst")"
+        den_v="$(resolve_quantity "$den" "$subst")"
+        if [ -z "$num_v" ] || [ -z "$den_v" ] || [ "$den_v" = "0" ]; then
+            bad "  ratios: cannot derive '$stated' — operands $num/$den do not resolve ($num_v/$den_v)"
+            continue
+        fi
+        case "$kind" in
+            share)
+                decimals="$(printf '%s' "$stated" | sed -n 's/.*\.\([0-9][0-9]*\).*/\1/p' | tr -d '\n' | wc -c | tr -d ' ')"
+                [ "$decimals" -gt 0 ] || decimals=0
+                computed="$(awk -v n="$num_v" -v d="$den_v" -v p="$decimals" \
+                    'BEGIN { printf "%.*f", p, n / d * 100 }')"
+                [ "$computed" = "$(printf '%s' "$stated" | tr -d ' %')" ] \
+                    || bad "  ratios: '$stated' does not derive — $num/$den = ${computed} % (row: '$note')" ;;
+            growth)
+                decimals="$(printf '%s' "$stated" | sed -n 's/.*\.\([0-9][0-9]*\).*/\1/p' | tr -d '\n' | wc -c | tr -d ' ')"
+                [ "$decimals" -gt 0 ] || decimals=0
+                computed="$(awk -v n="$num_v" -v d="$den_v" -v p="$decimals" \
+                    'BEGIN { printf "%.*f", p, (n / d - 1) * 100 }')"
+                [ "$computed" = "$(printf '%s' "$stated" | tr -d ' +%')" ] \
+                    || bad "  ratios: '$stated' does not derive — $num/$den is +${computed} % (row: '$note')" ;;
+            count)
+                [ "$stated" = "$num_v of $den_v" ] \
+                    || bad "  ratios: '$stated' does not derive — rows give '$num_v of $den_v' (row: '$note')" ;;
+            *)
+                bad "  ratios: unknown kind '$kind' for '$stated'" ;;
+        esac
+        # The fragment, and the token inside it.
+        if ! sed 's/\*\*//g' "$adr" | grep -qF -- "$says"; then
+            bad "  ratios: '$stated' — the record no longer contains its subject fragment \"$says\" (row: '$note')"
+        fi
+        case "$says" in
+            *"$stated"*) : ;;
+            *) bad "  ratios: row '$stated' has a fragment that does not contain the token: \"$says\"" ;;
+        esac
+    done < "$ratios"
+
+    # 3. nothing ratio-shaped may go unchecked, and the check is per site: the token
+    #    on line N must be covered by a row whose fragment is also on line N.
+    #    Emphasis is stripped first, so `**25 of 38**` reads as `25 of 38`.
+    local hits lineno token stripped
+    stripped="$(sed 's/\*\*//g' "$adr")"
+    hits="$(printf '%s\n' "$stripped" \
+        | grep -inEo '[0-9]+(\.[0-9]+)? ?%|[0-9]+ of [0-9]+|(^|[^A-Za-z])(half|majority|most|quarter|third|twice|double)([^A-Za-z]|$)' \
+        | sed -E 's/^([0-9]+):/\1\t/' \
+        | while IFS="$(printf '\t')" read -r n text; do
+              printf '%s\t%s\n' "$n" "$(printf '%s' "$text" | sed -E 's/^[^A-Za-z0-9]+//; s/[^A-Za-z0-9%.]+$//' | tr 'A-Z' 'a-z')"
+          done | sort -u)"
+    while IFS="$(printf '\t')" read -r lineno token; do
+        [ -n "$token" ] || continue
+        local line covered=0 row_stated row_says
+        line="$(printf '%s\n' "$stripped" | sed -n "${lineno}p")"
+        while IFS=$'\t' read -r kind row_stated _n _d row_says _note2; do
+            case "$kind" in \#*|quantity|"") continue ;; esac
+            [ "$(printf '%s' "$row_stated" | tr 'A-Z' 'a-z')" = "$token" ] || continue
+            case "$line" in
+                *"$row_says"*) covered=1; break ;;
+            esac
+        done < "$ratios"
+        if [ "$covered" -eq 0 ]; then
+            case " $hits " in
+                *" $token "*) : ;;
+            esac
+            bad "  ratios: $(basename "$adr"):$lineno states '$token' with no derivation covering that site — cannot derive is a failure, not a skip"
+        fi
+    done <<EOF
+$hits
+EOF
+
+    local n
+    n="$(grep -vcE '^#|^$' "$ratios")"
+    if [ "$fail" -eq "$local_fail_before" ]; then
+        note "  ratios: $n derivation rows; every ratio-shaped token in the record is covered"
+    else
+        note "  ratios: $n derivation rows; $(($fail - local_fail_before)) ratio check(s) failed"
+    fi
+}
+
+# Resolve an operand: a number is itself, a name is looked up in the substitution list.
+resolve_quantity() {
+    local want="$1" subst="$2" pair
+    case "$want" in
+        ''|-) printf ''; return ;;
+        *[!0-9]*) : ;;
+        *) printf '%s' "$want"; return ;;
+    esac
+    for pair in $subst; do
+        case "$pair" in
+            "$want"=*) printf '%s' "${pair#*=}"; return ;;
+        esac
+    done
+    printf ''
+}
+
 check_no_restatement() {
     local manifest="$1" adr="$2" lib="$3"
     [ -f "$adr" ] || { bad "  $adr is missing — ADR-014 is the record that cites this manifest"; return; }
@@ -167,28 +324,16 @@ check_no_restatement() {
         bad "  $(basename "$adr") names $named excluded modules (e.g. '$module') — cite the manifest, do not restate it"
     fi
     note "  citation: $(basename "$adr") names $named excluded modules (limit 3)"
-
-    # A number in the record is a claim: if it states the ratio, it must be the
-    # derived one. This is the check that #1361 needed and did not have.
-    local ratio
-    ratio="$(grep -oE '[0-9]+ of [0-9]+ public modules' "$adr" | head -1)"
-    if [ -n "$ratio" ]; then
-        local direct narrow closure mods items deps declared want
-        read -r direct narrow closure mods items deps < <(derive_counts "$manifest")
-        declared="$(grep -cE '^pub mod' "$lib")"
-        want="${mods} of ${declared} public modules"
-        [ "$ratio" = "$want" ] || bad "  $(basename "$adr") states '$ratio' but the rows give '$want'"
-        note "  record's ratio: $ratio"
-    fi
 }
 
 run_check() {
-    local manifest="$1" lib="$2" adr="$3"
+    local manifest="$1" lib="$2" adr="$3" ratios="${4:-$RATIOS}"
     fail=0
     check_structure "$manifest"
     check_subjects "$manifest" "$lib"
     check_counts "$manifest" "$lib"
     check_no_restatement "$manifest" "$adr" "$lib"
+    check_ratios "$manifest" "$lib" "$adr" "$ratios"
 }
 
 # --- modes ------------------------------------------------------------------
@@ -204,9 +349,9 @@ self-test)
     tmp="$(mktemp -d)"
     trap 'find "$tmp" -type f -delete; rmdir "$tmp"' EXIT
     ok=0; ko=0
-    expect() { # expect <label> <wanted-exit> <manifest> <lib> <adr>
-        local label="$1" want="$2" m="$3" l="$4" a="$5"
-        run_check "$m" "$l" "$a" >/dev/null 2>&1
+    expect() { # expect <label> <wanted-exit> <manifest> <lib> <adr> [ratios]
+        local label="$1" want="$2" m="$3" l="$4" a="$5" r="${6:-$RATIOS}"
+        run_check "$m" "$l" "$a" "$r" >/dev/null 2>&1
         if [ "$want" = "0" ] && [ "$fail" -eq 0 ]; then
             printf '  %b✅%b %s\n' "$GREEN" "$NC" "$label"; ok=$((ok + 1))
         elif [ "$want" = "1" ] && [ "$fail" -gt 0 ]; then
@@ -218,6 +363,9 @@ self-test)
     cp "$MANIFEST" "$tmp/m.tsv"; cp "$ADR" "$tmp/a.md"
     printf '# a lib with the right declarations\n' > "$tmp/lib.rs"
     awk -F'\t' '$1=="module"{print "pub mod " $2 ";"}' "$MANIFEST" >> "$tmp/lib.rs"
+    # 25 excluded of 38 declared: the 13 that stay are placeholders, because the
+    # ratio's denominator is the count of `pub mod` lines, not the exclusion list.
+    for i in $(seq 1 13); do printf 'pub mod kept_%s;\n' "$i"; done >> "$tmp/lib.rs"
 
     expect "the tree's own manifest" 0 "$MANIFEST" "$LIB" "$ADR"
 
@@ -252,6 +400,28 @@ self-test)
     # 7. the denominator drifting in lib.rs (a module removed but the summary unchanged)
     grep -v '^pub mod hooks;' "$tmp/lib.rs" > "$tmp/lib37.rs"
     expect "lib.rs declares one module fewer than the summary claims" 1 "$MANIFEST" "$tmp/lib37.rs" "$ADR"
+
+    # 8. #1363 seed A — the prose ratio, inside markdown emphasis, with the table
+    #    ratio left correct. Emphasis is stripped before matching, so this cannot hide.
+    sed 's/\*\*25 of 38\*\*/**22 of 40**/' "$ADR" > "$tmp/aprose.md"
+    expect "prose ratio wrong while the table is right (#1363 seed A)" 1 "$MANIFEST" "$LIB" "$tmp/aprose.md"
+
+    # 9. #1363 seed B — the table ratio, prose untouched.
+    sed 's/25 of 38 public modules (11 forbidden crate/22 of 40 public modules (11 forbidden crate/' \
+        "$ADR" > "$tmp/atable.md"
+    expect "table ratio wrong while the prose is right (#1363 seed B)" 1 "$MANIFEST" "$LIB" "$tmp/atable.md"
+
+    # 10. the right percentage with the wrong denominator: 26.5 % is the emitted
+    #     share, so in a cell that says "shipped" it must fail with 34.2 %.
+    #     Emphasis splits the phrase in the record (`**34.2 %**`), so seed the token
+    #     itself — a seed that silently matches nothing is its own trap.
+    sed 's/34\.2 %/26.5 %/g' "$ADR" > "$tmp/adenom.md"
+    expect "percentage whose denominator is the wrong module (#1363)" 1 "$MANIFEST" "$LIB" "$tmp/adenom.md"
+
+    # 11. a ratio-shaped claim with no derivation at all — the rule is a failure
+    #     with a reason, never a skip.
+    { cat "$ADR"; printf '\nHalf the excluded modules are not dependency statements.\n'; } > "$tmp/aword.md"
+    expect "an underivable ratio-shaped claim" 1 "$MANIFEST" "$LIB" "$tmp/aword.md"
 
     printf '  self-test: %d/%d assertions\n' "$ok" "$((ok + ko))"
     [ "$ko" -eq 0 ] || exit 1
