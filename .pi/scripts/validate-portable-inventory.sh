@@ -296,6 +296,20 @@ check_ratios() {
 $hits
 EOF
 
+    # 3b. Bare counts (#1377). #1374 re-derived every token the ratio check reads and left
+    #     the prose beside it describing the previous inventory: "Of those 25, only 11" sat
+    #     next to "12 of 22" and "10 of 22" in one paragraph, arithmetically self-consistent
+    #     and factually wrong. `N of M` and `N %` have shapes; "25 modules" does not, so a
+    #     count noun is matched by NAME against the derived value for that noun.
+    #
+    #     A count noun the guard cannot derive is a failure with a reason — the rule #1363
+    #     applied to ratios, applied to bare integers.
+    local crates_value
+    crates_value="$(awk -F'\t' '$1=="quantity" && $2=="crates" {print $3}' "$ratios")"
+    python3 "$ROOT/.pi/scripts/bare-counts.py" \
+        "$adr" "$mods" "$declared" "$items" "$deps" "$narrow" "$direct" "$closure" "${crates_value:-0}" \
+        || fail=$((fail + 1))
+
     local n
     n="$(grep -vcE '^#|^$' "$ratios")"
     if [ "$fail" -eq "$local_fail_before" ]; then
@@ -446,6 +460,22 @@ self-test)
     # 13. #1365 seed I — the dependency count, likewise.
     sed 's/9 dependencies/10 dependencies/' "$ADR" > "$tmp/acountI.md"
     expect "derived count off by one: dependencies (#1365 seed I)" 1 "$MANIFEST" "$LIB" "$tmp/acountI.md"
+
+    # 14. #1377 seed A — a pronoun count that never moved with #1374. It sat next to the
+    #     ratios that did move, in one arithmetically self-consistent paragraph.
+    sed 's/Of those 22/Of those 25/' "$ADR" > "$tmp/abareA.md"
+    expect "bare count: 'Of those 25' (#1377 seed A)" 1 "$MANIFEST" "$LIB" "$tmp/abareA.md"
+
+    # 15. #1377 seed B — the elliptical form, wrapped across two lines: `only 10` on one,
+    #     `leave for a forbidden crate` on the next. Per-line matching read it as a bare
+    #     number with no subject, which is how it survived the first version of this check.
+    sed 's/only 10/only 11/' "$ADR" > "$tmp/abareB.md"
+    expect "bare count: 'only 11 leave for a forbidden crate' (#1377 seed B)" 1 \
+        "$MANIFEST" "$LIB" "$tmp/abareB.md"
+
+    # 16. #1377 seed C — a plain noun count with a stale value.
+    sed 's/and \*\*9 dependencies\*\* removed/and **8 dependencies** removed/' "$ADR" > "$tmp/abareC.md"
+    expect "bare count: '8 dependencies' (#1377 seed C)" 1 "$MANIFEST" "$LIB" "$tmp/abareC.md"
 
     printf '  self-test: %d/%d assertions\n' "$ok" "$((ok + ko))"
     [ "$ko" -eq 0 ] || exit 1

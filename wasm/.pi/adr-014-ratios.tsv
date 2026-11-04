@@ -28,6 +28,7 @@
 # `count`  = "<numerator> of <denominator>", both exact integers
 #
 # kind	stated	numerator	denominator	says	note
+quantity	crates	74	-	-	cargo tree -p rigorix-engine --features portable --target wasm32-unknown-unknown -e normal,build | sort -u (#1374, re-measured on the merged tree)
 quantity	seam_shipped	209881	-	-	wasm/ci/bundle-budget.txt measured_bytes (cross-checked by the guard)
 quantity	seam_budget	262351	-	-	wasm/ci/bundle-budget.txt budget_bytes (measured + 25 %, NFR-002)
 quantity	engine_shipped	1170635	-	-	stripped, branch issue/1351 @ c118cb06 (§3; #1353, #1354)
@@ -46,7 +47,7 @@ growth	25 %	seam_budget	seam_shipped	25 % over the measured 209 881 B	evidence t
 count	22 of 38	mods	declared	22 of 38 public modules excluded	Decision §1
 count	22 of 38	mods	declared	22 of 38 public modules (10 forbidden crate	evidence table
 count	12 of 22	excluded_closure_and_narrow	excluded_total	12 of 22 leave for something	Decision §1: the 6 narrowed + 6 closure modules
-count	10 of 22	excluded_crate	excluded_total	reaches only 10 of 22	Decision §1: a dependency list describes 11 of the 25
+count	10 of 22	excluded_crate	excluded_total	reaches only 10 of 22	Decision §1: a dependency list describes 10 of the 22
 count	6 of 22	excluded_closure	excluded_total	6 of 22 module exclusions follow	Consequences § Negative
 total	22 inner items	items	-	22 inner items	evidence table: items gated inside the 22 modules that remain (#1365, re-derived by #1374)
 total	9 dependencies	deps	-	9 dependencies	Decision §1: the dependency rows of the manifest (#1365)

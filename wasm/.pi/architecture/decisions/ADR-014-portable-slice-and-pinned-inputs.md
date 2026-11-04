@@ -44,7 +44,7 @@ reproduce the list (a second authority cannot appear quietly).
 
 Four counts are recorded here because they are the decision, not the detail: **74 crates** in the
 `wasm32` graph (normal + build), **22 of 38** public modules excluded, **22 inner items** gated
-inside the modules that stay, and **9 dependencies** removed. Of those 25, **only 11
+inside the modules that stay, and **9 dependencies** removed. Of those 22, **only 10
 leave for a forbidden crate**; 6 leave because they need a `tokio` feature the slice narrows away
 and 6 because they name a symbol from an excluded module. So 12 of 22 leave for something that is
 *not* a dependency statement, and any future "just remove `reqwest`" reasoning reaches only 10 of 22.
@@ -129,8 +129,8 @@ cargo run -q -p rigorix-engine --example pinned_refusal -- \
 
 ### Negative
 
-- 6 of 22 module exclusions follow only from another exclusion being named, and 6 more from a
-  `tokio` feature the slice drops — so the dependency list understates the real cost, and the graph
+- 6 of 22 module exclusions follow only from another exclusion being named, and 6 because they need
+  a `tokio` feature the slice drops — so the dependency list understates the real cost, and the graph
   is closed over error types and ports.
 - The inventory is measured on a branch, not on `main`, until Phase C lands the wiring — the two
   rows marked "no, yet" above are the debt that Phase C converts into reproducible facts.
