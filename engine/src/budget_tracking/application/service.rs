@@ -103,13 +103,28 @@ pub trait LlmBudgetService: Send + Sync {
 ///
 /// # Example Lifecycle
 ///
-/// ```ignore
-/// let guard = budget.reserve(100).await?;
-/// let response = llm_call(prompt).await;
-/// match response {
-///     Ok(output) => { guard.commit(output.tokens_used).await?; }
-///     Err(_) => { /* guard drops, auto-rollback */ }
+/// ```no_run
+/// # async fn lifecycle() -> Result<(), Box<dyn std::error::Error>> {
+/// use rigorix_engine::budget_tracking::application::{
+///     LlmBudgetImpl, LlmBudgetService, ReserveBudgetInput,
+/// };
+///
+/// let budget = LlmBudgetImpl::new(10, 10_000, "audit".to_string());
+/// let reserved = budget
+///     .reserve(ReserveBudgetInput {
+///         execution_id: uuid::Uuid::nil(),
+///         estimated_tokens: 100,
+///         call_label: Some("classify".to_string()),
+///     })
+///     .await?;
+///
+/// // The guard is the reservation's owner: commit it once on success.
+/// if let Some(guard) = reserved.reservation_guard {
+///     guard.commit(87).await?;
 /// }
+/// // Dropping it uncommitted rolls the reservation back atomically.
+/// # Ok(())
+/// # }
 /// ```
 #[async_trait]
 pub trait LlmBudgetReservation: Send + Sync {

@@ -5,7 +5,17 @@
 # ```ignore examples on public APIs, which are never compiled and never run, so a
 # floor over the discovered count would certify a channel that runs nothing.
 #
-# Measured 2026-11-04 at 75e93eec (`bash .pi/scripts/run-doctests.sh`):
+# Measured 2026-11-05 (#1379, `bash .pi/scripts/run-doctests.sh`):
+#   rigorix_engine   16 discovered   16 executed   0 ignored
+#
+# Before #1379 the same 16 discovered only 6 executed: ten fences were ```ignore, which
+# is not a slow example but an example that is NEVER COMPILED. Two of the ten were
+# factually wrong about the API they documented — `MockClassifier::with_low_confidence`
+# does not exist, and `OrchestratorBuilder::new(config)` is a trait method whose impl is
+# `OrchestratorBuilderImpl` — and nothing could have noticed. Three are ```no_run (they
+# need a live provider, a runtime, or real services) and still compile.
+#
+# Measured 2026-11-04 at 75e93eec, for the record:
 #   rigorix_engine   16 discovered   6 executed   10 ignored
 #   rigorix_actions   0               0            0
 #   rigorix           0               0            0   (workspace root)
@@ -19,4 +29,4 @@
 #   * Raising a floor is a normal edit; lower it only with the reason in the commit.
 #   * `cargo nextest` runs no doctests, so this file is the only record that the
 #     channel still carries anything — hence it is a floor, not a target.
-rigorix_engine	6
+rigorix_engine	16

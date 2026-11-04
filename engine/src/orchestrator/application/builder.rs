@@ -9,14 +9,21 @@
 //! StateManagerService, CancellationService, EventBus, AuditService).
 //!
 //! Usage:
-//! ```rust,ignore
-//! let orchestrator = OrchestratorBuilder::new(config)
+//! ```no_run
+//! # async fn build() -> Result<(), Box<dyn std::error::Error>> {
+//! use rigorix_engine::orchestrator::application::builder::OrchestratorBuilder;
+//! use rigorix_engine::orchestrator::application::builder_impl::OrchestratorBuilderImpl;
+//! use rigorix_engine::orchestrator::domain::OrchestratorConfig;
+//!
+//! # let repo_root = "/path/to/repo".to_string();
+//! # let enforcement_preset = "standard".to_string();
+//! let orchestrator = OrchestratorBuilderImpl::new(OrchestratorConfig::default())
 //!     .with_repo_root(repo_root)
 //!     .with_enforcement_preset(enforcement_preset)
 //!     .build()
 //!     .await?;
-//!
-//! let result = orchestrator.run(RunInput { intent }).await?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! # Contract (Frozen)

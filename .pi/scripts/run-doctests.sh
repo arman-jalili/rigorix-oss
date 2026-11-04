@@ -132,7 +132,62 @@ print(f"✅ doctest channel intact ({label})")
 PY
 }
 
+# ---------------------------------------------------------------------------
+# An ```ignore fence is not a slow example: it is an example that is never
+# compiled. #1379 found ten of them, two of which were factually wrong about the
+# API they documented — `MockClassifier::with_low_confidence` has never existed,
+# and `OrchestratorBuilder::new` is a trait method on an impl named otherwise —
+# and nothing could have noticed, because nothing built them.
+#
+# The rule: a fence marked `ignore` needs a row in .pi/doctest-exemptions.tsv.
+# Converting one to `no_run` is preferred: it still compiles.
+# ---------------------------------------------------------------------------
+check_ignore_fences() { # $1 repo root, $2 exemptions file
+    python3 - "$1" "$2" <<'PYFENCE'
+import os, re, sys
+
+root, exemptions = sys.argv[1], sys.argv[2]
+FENCE = re.compile(r'^\s*(?:///|//!)\s*```(?:rust,\s*)?ignore\b')
+
+allowed = set()
+try:
+    with open(exemptions, encoding='utf-8') as fh:
+        for line in fh:
+            if line.strip() and not line.lstrip().startswith('#'):
+                allowed.add(line.split('\t')[0].strip())
+except FileNotFoundError:
+    pass
+
+offenders = []
+for crate in sorted(os.listdir(root)):
+    src = os.path.join(root, crate, 'src')
+    if not os.path.isdir(src):
+        continue
+    for dirpath, dirnames, filenames in os.walk(src):
+        dirnames[:] = [d for d in dirnames if d not in ('target', 'node_modules')]
+        for fn in filenames:
+            if not fn.endswith('.rs'):
+                continue
+            path = os.path.join(dirpath, fn)
+            rel = os.path.relpath(path, root)
+            if rel in allowed:
+                continue
+            for lineno, line in enumerate(open(path, encoding='utf-8', errors='replace'), start=1):
+                if FENCE.match(line):
+                    offenders.append(f"{rel}:{lineno}")
+
+if offenders:
+    for o in offenders:
+        print(f"❌ {o}: ```ignore fence with no row in .pi/doctest-exemptions.tsv — "
+              f"convert it to a compiling example (``` or ```no_run), or record why it cannot be")
+    sys.exit(1)
+print(f"✅ no unexempted ```ignore fences ({len(allowed)} exemption row(s) recorded)")
+PYFENCE
+}
+
 run_workspace() {
+    local log fences_rc=0
+    check_ignore_fences "$ROOT" "$ROOT/.pi/doctest-exemptions.tsv" || fences_rc=1
     local log
     log="$(mktemp -t doctests)"
     local rc=0
@@ -142,7 +197,7 @@ run_workspace() {
     local verdict_rc=0
     verdict "$FLOORS" "workspace" "$log" 1 || verdict_rc=$?
     rm -f "$log"
-    if [ "$rc" -ne 0 ] || [ "$verdict_rc" -ne 0 ]; then
+    if [ "$rc" -ne 0 ] || [ "$verdict_rc" -ne 0 ] || [ "$fences_rc" -ne 0 ]; then
         return 1
     fi
 }
@@ -156,7 +211,7 @@ run_package() { # $1 crate name
     local verdict_rc=0
     verdict "$FLOORS" "$pkg" "$log" 0 || verdict_rc=$?
     rm -f "$log"
-    if [ "$rc" -ne 0 ] || [ "$verdict_rc" -ne 0 ]; then
+    if [ "$rc" -ne 0 ] || [ "$verdict_rc" -ne 0 ] || [ "$fences_rc" -ne 0 ]; then
         return 1
     fi
 }
@@ -240,6 +295,27 @@ pub fn adds() {}'
 
     find "$tmp" -type f -delete 2>/dev/null || true
     find "$tmp" -depth -type d -exec rmdir {} + 2>/dev/null || true
+
+    # 7-8. the ignore-fence rule: an unexempted fence fails, a recorded path passes.
+    mkdir -p "$tmp/fencetree/crate/src"
+    printf '/// ```ignore\n/// never compiled\n/// ```\npub fn f() {}\n' > "$tmp/fencetree/crate/src/lib.rs"
+    fences=0
+    ( check_ignore_fences "$tmp/fencetree" "$tmp/fencetree/.pi/doctest-exemptions.tsv" ) >/dev/null 2>&1 || fences=$?
+    if [ "$fences" -ne 0 ]; then
+        pass=$((pass + 1)); echo "  ok   an unexempted \`ignore\` fence → fail"
+    else
+        fail=$((fail + 1)); echo "  FAIL an unexempted \`ignore\` fence passed"
+    fi
+    mkdir -p "$tmp/fencetree/.pi"
+    printf 'crate/src/lib.rs\twhole file\tSEED: the exemption row is the unit of review\n' \
+        > "$tmp/fencetree/.pi/doctest-exemptions.tsv"
+    fences=0
+    ( check_ignore_fences "$tmp/fencetree" "$tmp/fencetree/.pi/doctest-exemptions.tsv" ) >/dev/null 2>&1 || fences=$?
+    if [ "$fences" -eq 0 ]; then
+        pass=$((pass + 1)); echo "  ok   a recorded exemption → pass"
+    else
+        fail=$((fail + 1)); echo "  FAIL a recorded exemption still failed"
+    fi
 
     echo "run-doctests self-test: $pass/$((pass + fail)) assertions passed"
     [ "$fail" -eq 0 ]

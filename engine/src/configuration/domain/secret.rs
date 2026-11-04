@@ -28,7 +28,9 @@ use std::fmt;
 /// - Serde deserialization wraps the string
 ///
 /// # Example
-/// ```ignore
+/// ```
+/// use rigorix_engine::configuration::domain::Secret;
+///
 /// let key = Secret::new("sk-ant-abc123");
 /// assert_eq!(format!("{key:?}"), "[REDACTED]");
 /// assert_eq!(key.expose(), "sk-ant-abc123");

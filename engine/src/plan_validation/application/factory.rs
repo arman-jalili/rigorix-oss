@@ -115,7 +115,10 @@ impl ValidationLoopConfigPresets {
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```
+/// use rigorix_engine::plan_validation::application::factory::ValidationLoopConfigBuilder;
+/// use rigorix_engine::quality_gates::domain::QualityLevel;
+///
 /// let config = ValidationLoopConfigBuilder::new()
 ///     .max_iterations(5)
 ///     .required_quality(QualityLevel::Workspace)
