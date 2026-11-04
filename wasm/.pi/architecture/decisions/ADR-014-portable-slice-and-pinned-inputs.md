@@ -42,8 +42,9 @@ drift. `.pi/scripts/validate-portable-inventory.sh` keeps the citation honest in
 manifest must name things that exist (a rename cannot leave a stale row), and this record must not
 reproduce the list (a second authority cannot appear quietly).
 
-Two counts are recorded here because they are the decision, not the detail: **74 crates** in the
-`wasm32` graph (normal + build) and **25 of 38** public modules excluded. Of those 25, **only 11
+Four counts are recorded here because they are the decision, not the detail: **74 crates** in the
+`wasm32` graph (normal + build), **25 of 38** public modules excluded, **20 inner items** gated
+inside the modules that stay, and **9 dependencies** removed. Of those 25, **only 11
 leave for a forbidden crate**; 6 leave because they need a `tokio` feature the slice narrows away
 and 8 because they name a symbol from an excluded module. So 14 of 25 leave for something that is
 *not* a dependency statement, and any future "just remove `reqwest`" reasoning reaches only 11 of 25.
