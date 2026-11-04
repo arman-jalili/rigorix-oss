@@ -44,10 +44,10 @@ share	34.2 %	data_emitted	engine_shipped	34.2 % of the shipped 1 170 635 B modul
 share	34.2 %	data_emitted	engine_shipped	34.2 % of the shipped module	Consequences § Negative, same operands
 share	26.5 %	data_emitted	engine_emitted	26.5 % of the emitted engine-linked module	same row: the emitted share, with its own denominator
 growth	25 %	seam_budget	seam_shipped	25 % over the measured 209 881 B	evidence table: the budget is the measurement plus a quarter
-count	22 of 38	mods	declared	22 of 38 public modules excluded	Decision §1
-count	22 of 38	mods	declared	22 of 38 public modules (10 forbidden crate	evidence table
+count	22 of 39	mods	declared	22 of 39 public modules excluded	Decision §1
+count	22 of 39	mods	declared	22 of 39 public modules (10 forbidden crate	evidence table
 count	12 of 22	excluded_closure_and_narrow	excluded_total	12 of 22 leave for something	Decision §1: the 6 narrowed + 6 closure modules
 count	10 of 22	excluded_crate	excluded_total	reaches only 10 of 22	Decision §1: a dependency list describes 10 of the 22
 count	6 of 22	excluded_closure	excluded_total	6 of 22 module exclusions follow	Consequences § Negative
-total	22 inner items	items	-	22 inner items	evidence table: items gated inside the 22 modules that remain (#1365, re-derived by #1374)
+total	23 inner items	items	-	23 inner items	evidence table: items gated inside the 22 modules that remain (#1365, re-derived by #1374 and #1381)
 total	9 dependencies	deps	-	9 dependencies	Decision §1: the dependency rows of the manifest (#1365)

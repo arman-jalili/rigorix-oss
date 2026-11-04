@@ -43,7 +43,7 @@ manifest must name things that exist (a rename cannot leave a stale row), and th
 reproduce the list (a second authority cannot appear quietly).
 
 Four counts are recorded here because they are the decision, not the detail: **74 crates** in the
-`wasm32` graph (normal + build), **22 of 38** public modules excluded, **22 inner items** gated
+`wasm32` graph (normal + build), **22 of 39** public modules excluded, **23 inner items** gated
 inside the modules that stay, and **9 dependencies** removed. Of those 22, **only 10
 leave for a forbidden crate**; 6 leave because they need a `tokio` feature the slice narrows away
 and 6 because they name a symbol from an excluded module. So 12 of 22 leave for something that is
@@ -80,6 +80,37 @@ than a field, because the alternative was a semver break that only surfaces for 
 (`server/tests/audit_scope_check_verify.rs`, `mcp/src/host/mod.rs`), so a new field would have edited
 eleven call sites here and broken everyone outside.
 
+#### The decision's second consequence: one gate entry point, and it is the engine's
+
+Phase C rests on a claim this record has to make explicitly: **both runtimes call the same
+composition**, not the same parts.
+
+`engine/src/gate/application/compose.rs::evaluate_gate` is that composition. It takes a
+[`GateRequest`] — the step and its proposed action, the `PinnedInputs` above, and the ports as
+injected trait objects — and returns a `GateDecision` with findings in evaluation order and a
+`decision_digest` over the decision's canonical bytes. It owns the *order*
+(`preconditions` → `requirements`, fail closed at the first refusal) and nothing else: no domain,
+no configuration, no signing.
+
+Two things follow, and both are checkable rather than asserted:
+
+- **The order cannot drift.** `cli/src/cli_boundary/orchestrator.rs` no longer composes the two
+  services; it asks `GateSetup::from_env` for them and hands them on
+  (`grep -c sequence_policy cli/src/cli_boundary/orchestrator.rs` → `0`). A browser build calls
+  the same function with its own ports, so "the browser decides the same as the engine" is the
+  only possible outcome, not a maintained coincidence.
+- **The decision has an identity.** `decision_digest` is SHA-256 over `[verdict, findings]` in
+  declaration order, with no wall clock and no map iteration inside it. The pin
+  (`pinned_timestamp`) travels *beside* the digest, not inside it, so a verifier replays with the
+  recorded instant — the sentence the specification needs (`05-evidence-model.md`) and could not
+  make until this existed.
+
+`GateSetup` (native-only, `gate::application::setup`) is the composition root: it is the one place
+that knows a malformed `preconditions.toml` arms a fail-closed gate rather than none. It is gated
+out of the portable slice — the slice takes ports from the host — and
+`validate-portable-inventory.sh --gates` holds the manifest to that, in both directions: every gated
+`pub mod` needs a row and every row needs a gate.
+
 ## Evidence
 
 Every number states its artifact and whether it reproduces. `main` means the merged default branch;
@@ -91,7 +122,7 @@ a branch name means the apparatus is still there and the number cannot be reprod
 | Engine-linked module, as shipped | 1 170 635 B = **78.0 %** of the 1 500 000 B ceiling | `portable` + `EngineGate` wired, stripped; measured on branch `issue/1351` @ `c118cb06` | **no, yet** — the wiring is Phase C; the emitted file was 1 512 420 B, i.e. 100.8 % of the ceiling |
 | `name` section removed by the strip | 341 785 B = 22.6 % of the emitted engine-linked module | same branch | **no** — same reason |
 | `wasm32` dependency graph under `portable` | 74 crates (normal + build), exit 0 | `cargo tree -p rigorix-engine --features portable --target wasm32-unknown-unknown -e normal,build` on `issue/1351` @ `c118cb06` | **no, yet** — `portable` is not on `main`; `Cargo.lock`-pinned when it is |
-| Modules excluded by the slice | 22 of 38 public modules (10 forbidden crate, 6 narrowed `tokio`, 6 closure), 22 inner items | `engine/.pi/portable-inventory.tsv` | **yes** — the manifest's rows; every count recomputed by `validate-portable-inventory.sh` |
+| Modules excluded by the slice | 22 of 39 public modules (10 forbidden crate, 6 narrowed `tokio`, 6 closure), 23 inner items | `engine/.pi/portable-inventory.tsv` | **yes** — the manifest's rows; every count recomputed by `validate-portable-inventory.sh` |
 | M2 witness: pinned refusal, both entry points | `c47b27f9…`, 853 B, equal across two runs | `main`, `engine/examples/pinned_refusal.rs` and `rigorix-cli --features pinned-inputs pinned-refusal` | **yes** — `tests/unit/pinnedinputs::the_documented_pins_produce_the_golden_digest` |
 | Unpinned control | **the digest differs every run**, 860 B | `main`, same two commands | the variance *is* the result; no value is claimed |
 | Apparatus-era readings | 877 B pinned / 884 B unpinned, `32211b9d…` | `examples/spike_m2_envelope.rs` on `issue/1351` @ `c118cb06` | **no** — the fixture was renamed in the port (#1357); kept as history in §2 of the report |

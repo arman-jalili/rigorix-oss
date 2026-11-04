@@ -23,6 +23,11 @@ mod identity {
         mod tokenverifier_test;
     }
 }
+mod gate {
+    mod gatecomposition {
+        mod gatecomposition_test;
+    }
+}
 mod pinnedinputs {
     mod pinnedinputs_test;
 }

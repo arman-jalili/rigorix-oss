@@ -55,6 +55,8 @@ pub mod execution_engine;
 pub mod failure_classification;
 #[cfg(not(feature = "portable"))]
 pub mod failure_parser;
+pub mod gate;
+
 #[cfg(not(feature = "portable"))]
 pub mod hooks;
 pub mod identity;
