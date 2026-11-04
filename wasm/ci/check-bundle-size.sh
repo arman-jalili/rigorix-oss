@@ -46,8 +46,9 @@ read_field() {
 
 MEASURED=$(read_field measured_bytes)
 BUDGET=$(read_field budget_bytes)
-if [ -z "${MEASURED:-}" ] || [ -z "${BUDGET:-}" ]; then
-    echo "❌ the budget file is unparseable (measured_bytes / budget_bytes)" >&2
+CEILING=$(read_field ceiling_bytes)
+if [ -z "${MEASURED:-}" ] || [ -z "${BUDGET:-}" ] || [ -z "${CEILING:-}" ]; then
+    echo "❌ the budget file is unparseable (measured_bytes / budget_bytes / ceiling_bytes)" >&2
     exit 1
 fi
 
@@ -70,13 +71,27 @@ if [ -f "$SHIPPED" ]; then
         exit 1
     fi
     ACTUAL=$(wc -c <"$SHIPPED" | tr -d ' ')
-    echo "   measured ${MEASURED} B · budget ${BUDGET} B · actual ${ACTUAL} B"
+    echo "   measured ${MEASURED} B · budget ${BUDGET} B · ceiling ${CEILING} B · actual ${ACTUAL} B"
+    # #1386: `measured_bytes` claims to *be* the measurement, so the artifact must match it.
+    # Without this, a stale floor is invisible: the budget below is derived from a number
+    # nobody checked, and it drifts with every rebuild that changes size.
+    if [ "$ACTUAL" -ne "$MEASURED" ]; then
+        echo "❌ the recorded measurement is not this artifact: actual ${ACTUAL} B, recorded ${MEASURED} B" >&2
+        echo "   re-record measured_bytes from the artifact this build produced, then derive budget" >&2
+        exit 1
+    fi
     if [ "${BUDGET:-0}" -eq 0 ]; then
         echo "❌ a shipped artifact exists but no budget was set: measure it first" >&2
         exit 1
     fi
     if [ "$ACTUAL" -gt "$BUDGET" ]; then
         echo "❌ over budget by $((ACTUAL - BUDGET)) B (limit = measured + 25%)" >&2
+        exit 1
+    fi
+    # The +25 % ratchet is derived; the ceiling is the number the specification fixed, and a
+    # raised ratchet must never carry an artifact past it (#1386).
+    if [ "$ACTUAL" -gt "$CEILING" ]; then
+        echo "❌ over the ${CEILING} B ceiling by $((ACTUAL - CEILING)) B" >&2
         exit 1
     fi
     echo "✅ within budget ($((BUDGET - ACTUAL)) B headroom)"
@@ -87,7 +102,7 @@ echo "== no shipped artifact yet (packaging pending) =="
 echo "   expected at pkg/$(basename "$SHIPPED")"
 if [ ! -f "$RAW" ]; then
     echo "   building the release cdylib to record the trend..."
-    if ! cargo build --release --target wasm32-unknown-unknown --quiet; then
+    if ! bash "$CRATE_DIR/ci/wasm-build.sh"; then
         echo "❌ the release cdylib does not build, so nothing can be measured" >&2
         exit 1
     fi

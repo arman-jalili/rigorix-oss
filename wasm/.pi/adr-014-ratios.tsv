@@ -29,21 +29,21 @@
 #
 # kind	stated	numerator	denominator	says	note
 quantity	crates	74	-	-	cargo tree -p rigorix-engine --features portable --target wasm32-unknown-unknown -e normal,build | sort -u (#1374, re-measured on the merged tree)
-quantity	seam_shipped	209881	-	-	wasm/ci/bundle-budget.txt measured_bytes (cross-checked by the guard)
-quantity	seam_budget	262351	-	-	wasm/ci/bundle-budget.txt budget_bytes (measured + 25 %, NFR-002)
-quantity	engine_shipped	1170635	-	-	stripped, branch issue/1351 @ c118cb06 (§3; #1353, #1354)
-quantity	engine_emitted	1512420	-	-	as emitted, same branch — carries the `name` debug section
-quantity	name_section	341785	-	-	the `name` custom section removed by the strip, same branch
+quantity	seam_shipped	169250	-	-	wasm/ci/bundle-budget.txt measured_bytes (cross-checked by the guard); default build after #1386's profile and C.3's deletions
+quantity	seam_budget	211562	-	-	wasm/ci/bundle-budget.txt budget_bytes (measured + 25 %, NFR-002)
+quantity	engine_shipped	1337205	-	-	stripped, size profile (#1386) — 1769863 emitted, 432658 name section
+quantity	engine_emitted	1769863	-	-	as emitted with the size profile (#1386) — carries the `name` debug section
+quantity	name_section	432658	-	-	the `name` custom section removed by the strip (#1386)
 quantity	data_emitted	400735	-	-	section table: `data`, same branch
 quantity	ceiling	1500000	-	-	NFR-002 bundle ceiling for the engine-linked module
-share	78.0 %	engine_shipped	ceiling	78.0 % of the 1 500 000 B ceiling	evidence table: engine-linked module vs NFR-002
-share	78.0 %	engine_shipped	ceiling	78.0 % of the ceiling	Context and Consequences § Positive (one row, both sites)
-share	100.8 %	engine_emitted	ceiling	100.8 % of the ceiling	evidence table, reproducibility cell: as emitted
-share	22.6 %	name_section	engine_emitted	22.6 % of the emitted engine-linked module	evidence table: the strip's contribution
-share	34.2 %	data_emitted	engine_shipped	34.2 % of the shipped 1 170 635 B module	evidence table: the remaining size lever — the correction in #1363
-share	34.2 %	data_emitted	engine_shipped	34.2 % of the shipped module	Consequences § Negative, same operands
-share	26.5 %	data_emitted	engine_emitted	26.5 % of the emitted engine-linked module	same row: the emitted share, with its own denominator
-growth	25 %	seam_budget	seam_shipped	25 % over the measured 209 881 B	evidence table: the budget is the measurement plus a quarter
+share	89.1 %	engine_shipped	ceiling	89.1 % of the 1 500 000 B ceiling	evidence table: engine-linked module vs NFR-002
+share	89.1 %	engine_shipped	ceiling	89.1 % of the 1 500 000 B ceiling	Context and Consequences § Positive (one row, both sites)
+share	117.99 %	engine_emitted	ceiling	117.99 % of the 1 500 000 B ceiling	evidence table, reproducibility cell: as emitted; see the derivation table
+share	24.45 %	name_section	engine_emitted	24.45 % of the 1 769 863 B emitted engine-linked module	evidence table: the strip's contribution; see the derivation table
+share	30.0 %	data_emitted	engine_shipped	30.0 % of the 1 337 205 B shipped engine-linked module	evidence table: the remaining size lever — the correction in #1363, re-derived for the profile build
+share	30.0 %	data_emitted	engine_shipped	30.0 % of the shipped module	Consequences § Negative, same operands
+share	22.6 %	data_emitted	engine_emitted	22.6 % of the 1 769 863 B emitted engine-linked module	same row: the emitted share, with its own denominator
+growth	25 %	seam_budget	seam_shipped	25 % over the measured 169 250 B	evidence table: the budget is the measurement plus a quarter
 count	22 of 39	mods	declared	22 of 39 public modules excluded	Decision §1
 count	22 of 39	mods	declared	22 of 39 public modules (10 forbidden crate	evidence table
 count	12 of 22	excluded_closure_and_narrow	excluded_total	12 of 22 leave for something	Decision §1: the 6 narrowed + 6 closure modules
