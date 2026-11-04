@@ -1,0 +1,50 @@
+# Every ratio in ADR-014, and the operands it is derived from (#1363).
+#
+# The rule this file exists to enforce: a percentage without a named subject is not
+# a fact. `400 735 B = 26.5 %` was true of the emitted module and was written into a
+# cell that said "shipped", where it is 34.2 % — off by 7.7 points, and the first
+# guard could not see it because it pattern-matched one ratio on one line.
+#
+# So the record's ratios are not matched, they are DERIVED. Each row names:
+#   * the literal token as it appears in the record (`stated`),
+#   * its numerator and denominator, which the guard recomputes,
+#   * the exact sentence fragment the token sits in (`says`) — this is what pins
+#     the subject, and it must appear *on the same line* as the token.
+#
+# A ratio-shaped token in the record that no row covers is a failure with a named
+# reason, never a skip: an unreadable claim is an unchecked claim.
+#
+# Columns (tab-separated):
+#   kind         quantity | share | growth | count
+#   stated       for quantity: the name · otherwise: the literal token
+#   numerator    quantity name or literal number
+#   denominator  quantity name or literal number
+#   says         exact fragment of the record containing `stated`, with markdown
+#                emphasis removed (`**`). `-` for quantities.
+#   note         where the operands came from (provenance, not checked)
+#
+# `share`  = numerator / denominator × 100
+# `growth` = (numerator / denominator − 1) × 100
+# `count`  = "<numerator> of <denominator>", both exact integers
+#
+# kind	stated	numerator	denominator	says	note
+quantity	seam_shipped	209881	-	-	wasm/ci/bundle-budget.txt measured_bytes (cross-checked by the guard)
+quantity	seam_budget	262351	-	-	wasm/ci/bundle-budget.txt budget_bytes (measured + 25 %, NFR-002)
+quantity	engine_shipped	1170635	-	-	stripped, branch issue/1351 @ c118cb06 (§3; #1353, #1354)
+quantity	engine_emitted	1512420	-	-	as emitted, same branch — carries the `name` debug section
+quantity	name_section	341785	-	-	the `name` custom section removed by the strip, same branch
+quantity	data_emitted	400735	-	-	section table: `data`, same branch
+quantity	ceiling	1500000	-	-	NFR-002 bundle ceiling for the engine-linked module
+share	78.0 %	engine_shipped	ceiling	78.0 % of the 1 500 000 B ceiling	evidence table: engine-linked module vs NFR-002
+share	78.0 %	engine_shipped	ceiling	78.0 % of the ceiling	Context and Consequences § Positive (one row, both sites)
+share	100.8 %	engine_emitted	ceiling	100.8 % of the ceiling	evidence table, reproducibility cell: as emitted
+share	22.6 %	name_section	engine_emitted	22.6 % of the emitted engine-linked module	evidence table: the strip's contribution
+share	34.2 %	data_emitted	engine_shipped	34.2 % of the shipped 1 170 635 B module	evidence table: the remaining size lever — the correction in #1363
+share	34.2 %	data_emitted	engine_shipped	34.2 % of the shipped module	Consequences § Negative, same operands
+share	26.5 %	data_emitted	engine_emitted	26.5 % of the emitted engine-linked module	same row: the emitted share, with its own denominator
+growth	25 %	seam_budget	seam_shipped	25 % over the measured 209 881 B	evidence table: the budget is the measurement plus a quarter
+count	25 of 38	mods	declared	25 of 38 public modules excluded	Decision §1
+count	25 of 38	mods	declared	25 of 38 public modules (11 forbidden crate	evidence table
+count	14 of 25	excluded_closure_and_narrow	excluded_total	14 of 25 leave for something	Decision §1: the 6 narrowed + 8 closure modules
+count	11 of 25	excluded_crate	excluded_total	reaches only 11 of 25	Decision §1: a dependency list describes 11 of the 25
+count	8 of 25	excluded_closure	excluded_total	8 of 25 module exclusions follow	Consequences § Negative

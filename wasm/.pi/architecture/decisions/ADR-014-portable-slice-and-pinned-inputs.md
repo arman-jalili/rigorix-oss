@@ -45,8 +45,8 @@ reproduce the list (a second authority cannot appear quietly).
 Two counts are recorded here because they are the decision, not the detail: **74 crates** in the
 `wasm32` graph (normal + build) and **25 of 38** public modules excluded. Of those 25, **only 11
 leave for a forbidden crate**; 6 leave because they need a `tokio` feature the slice narrows away
-and 8 because they name a symbol from an excluded module. So the majority of the surface reduction
-is *not* a dependency statement, and any future "just remove `reqwest`" reasoning addresses 11 of 25.
+and 8 because they name a symbol from an excluded module. So 14 of 25 leave for something that is
+*not* a dependency statement, and any future "just remove `reqwest`" reasoning reaches only 11 of 25.
 `CoreOrchestratorError` alone carries 14 `#[from]` variants across 85 gate sites; the slice's cost
 is concentrated in error plumbing, not in lexing.
 
@@ -86,15 +86,15 @@ a branch name means the apparatus is still there and the number cannot be reprod
 
 | Fact | Value | Artifact | Reproducible |
 |---|---|---|---|
-| Empty-seam module, as shipped | 209 881 B (budget 262 351 B, +25 %) | `wasm/pkg/*.wasm` after `strip_name_section.py`; `wasm-bindgen` 0.2.130 | **yes** — `wasm/ci/check-bundle-size.sh`, presence assertion first |
-| Engine-linked module, as shipped | 1 170 635 B = **78.0 %** of the 1 500 000 B ceiling | `portable` + `EngineGate` wired, stripped; measured on branch `issue/1351` @ `c118cb06` | **no, yet** — the wiring is Phase C; the emitted file was 1 512 420 B (100.8 %) |
+| Empty-seam module, as shipped | 209 881 B (budget 262 351 B, i.e. 25 % over the measured 209 881 B) | `wasm/pkg/*.wasm` after `strip_name_section.py`; `wasm-bindgen` 0.2.130 | **yes** — `wasm/ci/check-bundle-size.sh`, presence assertion first |
+| Engine-linked module, as shipped | 1 170 635 B = **78.0 %** of the 1 500 000 B ceiling | `portable` + `EngineGate` wired, stripped; measured on branch `issue/1351` @ `c118cb06` | **no, yet** — the wiring is Phase C; the emitted file was 1 512 420 B, i.e. 100.8 % of the ceiling |
 | `name` section removed by the strip | 341 785 B = 22.6 % of the emitted engine-linked module | same branch | **no** — same reason |
 | `wasm32` dependency graph under `portable` | 74 crates (normal + build), exit 0 | `cargo tree -p rigorix-engine --features portable --target wasm32-unknown-unknown -e normal,build` on `issue/1351` @ `c118cb06` | **no, yet** — `portable` is not on `main`; `Cargo.lock`-pinned when it is |
 | Modules excluded by the slice | 25 of 38 public modules (11 forbidden crate, 6 narrowed `tokio`, 8 closure), 20 inner items | `engine/.pi/portable-inventory.tsv` | **yes** — the manifest's rows; every count recomputed by `validate-portable-inventory.sh` |
-| M2 witness: pinned refusal, both entry points | `c47b27f9…`, 853 B, twice equal | `main`, `engine/examples/pinned_refusal.rs` and `rigorix-cli --features spike-m2 pinned-refusal` | **yes** — `tests/unit/pinnedinputs::the_documented_pins_produce_the_golden_digest` |
+| M2 witness: pinned refusal, both entry points | `c47b27f9…`, 853 B, equal across two runs | `main`, `engine/examples/pinned_refusal.rs` and `rigorix-cli --features spike-m2 pinned-refusal` | **yes** — `tests/unit/pinnedinputs::the_documented_pins_produce_the_golden_digest` |
 | Unpinned control | **the digest differs every run**, 860 B | `main`, same two commands | the variance *is* the result; no value is claimed |
 | Apparatus-era readings | 877 B pinned / 884 B unpinned, `32211b9d…` | `examples/spike_m2_envelope.rs` on `issue/1351` @ `c118cb06` | **no** — the fixture was renamed in the port (#1357); kept as history in §2 of the report |
-| Remaining size lever | `data` = 400 735 B = 26.5 % of the shipped engine-linked module | same branch | **no, yet** — named here so the next size question starts from the section table, not from a dependency hunt |
+| Remaining size lever | `data` = 400 735 B = **34.2 %** of the shipped 1 170 635 B module — and 26.5 % of the emitted engine-linked module | section table, same branch | **no, yet** — named here so the next size question starts from the section table, not from a dependency hunt |
 
 The witness command, so the claim above is one line:
 
@@ -128,12 +128,13 @@ cargo run -q -p rigorix-engine --example pinned_refusal -- \
 
 ### Negative
 
-- Half of the slice's module exclusions follow from other exclusions, so the dependency list
-  understates the real cost; the graph is closed over error types and ports.
+- 8 of 25 module exclusions follow only from another exclusion being named, and 6 more from a
+  `tokio` feature the slice drops — so the dependency list understates the real cost, and the graph
+  is closed over error types and ports.
 - The inventory is measured on a branch, not on `main`, until Phase C lands the wiring — the two
   rows marked "no, yet" above are the debt that Phase C converts into reproducible facts.
-- `data` is a quarter of the shipped module. If the demo ever needs to shrink, that is the lever, and
-  it is not a dependency question.
+- `data` is 34.2 % of the shipped module (400 735 B of 1 170 635 B). If the demo ever needs to
+  shrink, that is the lever, and it is not a dependency question.
 - The golden digest is a ratchet: any deliberate fixture change now costs a test edit *and* a report
   edit in the same commit. That is the intent, and it is not free.
 
