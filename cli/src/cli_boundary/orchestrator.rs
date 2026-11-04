@@ -332,31 +332,11 @@ pub async fn build_orchestrator_with_budget(
             engine_config.audit_hmac_key.as_deref(),
         )
         .map_err(|e| CliError::General(format!("approval binding: {e}")))?;
-    // ADR-013 R3: operator-authored .rigorix/sequence-policy.toml gates the
-    // dispatch prefix (absent file = no gating). Shared by the executor
-    // (R3) and the orchestrator builder (R2 plan-time) below.
-    let sequence_policy =
-        rigorix_engine::execution_engine::application::factory::SequencePolicySetup::from_env(
-            std::path::Path::new(&repo_root),
-        );
-    // ADR-017 R1/R2: operator-authored `.rigorix/preconditions.toml` arms the
-    // dispatch-time precondition gate. Malformed config is fail-closed: arm an
-    // unarmed (refuse-everything) gate instead of silently dispatching.
-    let precondition = match rigorix_engine::precondition::PreconditionSetup::from_env(
-        std::path::Path::new(&repo_root),
-    ) {
-        Ok(setup) => setup,
-        Err(error) => {
-            tracing::error!(
-                %error,
-                "precondition config invalid — arming fail-closed refusal gate (ADR-017)"
-            );
-            Some(rigorix_engine::precondition::PreconditionSetup::unarmed(
-                std::path::Path::new(&repo_root),
-                error.to_string(),
-            ))
-        }
-    };
+    // ADR-013 R3 + ADR-017 R1/R2: one composition root for both operator gates.
+    // The engine owns *which* file arms *which* gate and what a malformed file
+    // means; the CLI only hands the result to the services (Phase C.1, #1381).
+    let gate =
+        rigorix_engine::gate::application::GateSetup::from_env(std::path::Path::new(&repo_root));
     // ADR-018: operator-declared capacity ledger (`.rigorix/capacity.toml`).
     // Absent file = no seam (status quo). A malformed declaration is fail-closed:
     // governance that cannot be established must not silently disappear, so the
@@ -385,45 +365,46 @@ pub async fn build_orchestrator_with_budget(
             }
             None => None,
         };
+    let exec_config = ParallelExecutionFactoryConfig {
+        executor_config: ParallelExecutorConfig {
+            max_concurrent_executions: engine_config.orchestrator.max_parallel_tasks,
+            default_retry_policy: RetryPolicy::default(),
+            enable_cancellation: true,
+            enable_enforcement: true,
+            max_total_retries_per_session: engine_config.orchestrator.max_retries,
+            // ADR-017 hardening: `max_failures_before_abort` from
+            // rigorix.toml (None/0 = unlimited, today's behavior).
+            max_failures_before_abort: engine_config.max_failures_before_abort.unwrap_or(0),
+            enable_fallback: true,
+            enable_validation: true,
+            // ADR-011 R5: the effect-scope oracle needs a repo to diff.
+            // It stays inert unless the approved intent declared a scope,
+            // so this wiring cannot invent a violation (#1099).
+            approval_repo_path: Some(repo_root.clone()),
+            // ADR-008 (#1108): budgets are evaluated before each tool call.
+            // The preset comes from `[enforcement] preset`; the per-run CLI
+            // flag is refused (#1156), and the standard limits apply when
+            // no preset is configured (500 calls, 3600s, 100k tokens).
+            enforcement: Some(enforcement_config_from_engine(&engine_config.enforcement)),
+        },
+        register_event_handlers: true,
+        enable_progress_callbacks: true,
+        event_channel_capacity: 1024,
+        event_bus: Some(Arc::clone(&event_bus)),
+        permission_enforcer,
+        hook_runner,
+        approval_binding,
+        capacity,
+        effect_commitment,
+        // #1108: recovery recipes are opt-in (RIGORIX_RECOVERY=1). They add an
+        // attempt to the failure path, so they are not on by default.
+        recovery: rigorix_engine::execution_engine::application::factory::RecoverySetup::from_env(),
+        // Both gate ports come from the one setup; nothing here names them
+        // individually, so a caller cannot wire one and forget the other.
+        ..gate.execution_config(ParallelExecutionFactoryConfig::default())
+    };
     let execution = ParallelExecutionFactoryImpl
-        .create(ParallelExecutionFactoryConfig {
-            executor_config: ParallelExecutorConfig {
-                max_concurrent_executions: engine_config.orchestrator.max_parallel_tasks,
-                default_retry_policy: RetryPolicy::default(),
-                enable_cancellation: true,
-                enable_enforcement: true,
-                max_total_retries_per_session: engine_config.orchestrator.max_retries,
-                // ADR-017 hardening: `max_failures_before_abort` from
-                // rigorix.toml (None/0 = unlimited, today's behavior).
-                max_failures_before_abort: engine_config.max_failures_before_abort.unwrap_or(0),
-                enable_fallback: true,
-                enable_validation: true,
-                // ADR-011 R5: the effect-scope oracle needs a repo to diff.
-                // It stays inert unless the approved intent declared a scope,
-                // so this wiring cannot invent a violation (#1099).
-                approval_repo_path: Some(repo_root.clone()),
-                // ADR-008 (#1108): budgets are evaluated before each tool call.
-                // The preset comes from `[enforcement] preset`; the per-run CLI
-                // flag is refused (#1156), and the standard limits apply when
-                // no preset is configured (500 calls, 3600s, 100k tokens).
-                enforcement: Some(enforcement_config_from_engine(&engine_config.enforcement)),
-            },
-            register_event_handlers: true,
-            enable_progress_callbacks: true,
-            event_channel_capacity: 1024,
-            event_bus: Some(Arc::clone(&event_bus)),
-            permission_enforcer,
-            hook_runner,
-            approval_binding,
-            sequence_policy: sequence_policy.clone(),
-            precondition,
-            capacity,
-            effect_commitment,
-            // #1108: recovery recipes are opt-in (RIGORIX_RECOVERY=1). They add an
-            // attempt to the failure path, so they are not on by default.
-            recovery:
-                rigorix_engine::execution_engine::application::factory::RecoverySetup::from_env(),
-        })
+        .create(exec_config)
         .await
         .map_err(|e| CliError::General(format!("execution: {e}")))?;
 
@@ -695,12 +676,8 @@ pub async fn build_orchestrator_with_budget(
     };
 
     // ── Wire everything ────────────────────────────────────────────────
-    // ADR-013 R2: plan-time sequence-policy gate — the same operator-authored
-    // rule file the executor reads at R3 (per-run reads keep both fresh).
-    let sequence_policy =
-        rigorix_engine::execution_engine::application::factory::SequencePolicySetup::from_env(
-            std::path::Path::new(&repo_root),
-        );
+    // ADR-013 R2: the plan-time gate uses the same setup as the dispatch-time
+    // one, so both read one policy (per-run reads keep them fresh).
     let mut builder = OrchestratorBuilderImpl::new(orch_domain_config)
         .with_repo_root(repo_root)
         .with_cancellation_service(Arc::from(cancellation))
@@ -715,9 +692,7 @@ pub async fn build_orchestrator_with_budget(
         builder = builder.with_scored_evaluation_service(se_svc);
     }
 
-    if let Some(policy) = sequence_policy {
-        builder = builder.with_sequence_policy(policy);
-    }
+    let builder = gate.orchestrator_builder(builder);
 
     let orchestrator = builder.build().await.map_err(CliError::Engine)?;
 
