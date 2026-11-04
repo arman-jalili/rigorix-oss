@@ -17,6 +17,26 @@ use rigorix_engine::audit::application::pinned::{parse_pinned_clock, refusal_env
 
 const KEY: &str = "m2-pinned-key";
 
+/// The witness, in one place (#1357).
+///
+/// This is the digest the *shipped* operation produces for the pins in
+/// `docs/spike-portable-slice-2026-11.md` §2 — and the only place the value is stated. The
+/// report cites this test instead of holding a second copy, because a value kept in two
+/// places is two values that drift: the previous version of the report published
+/// `8b2cc83d…`, which belonged to the discarded apparatus and reproduced nowhere on the
+/// merged tree, and **no assertion noticed** because both runs still agreed with each other.
+///
+/// Editing the fixture in `audit::application::pinned` (a rename, a dropped field, a
+/// different event instant) now fails here, which forces the report's number to move in the
+/// same commit.
+const GOLDEN_DIGEST: &str = "c47b27f9300ed91b06e9712ac5df60714aa77a2a23d9bf41aa7d52f87393bc96";
+
+/// The pins the report documents.
+const GOLDEN_PINS: (&str, &str) = (
+    "2026-11-03T12:00:00Z",
+    "018f5b8e-0000-7000-8000-000000000001",
+);
+
 fn pinned_at() -> chrono::DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 11, 3, 12, 0, 0).unwrap()
 }
@@ -36,6 +56,31 @@ async fn signed_digest(pins: &PinnedInputs) -> (String, usize, String) {
         hex::encode(Sha256::digest(&bytes))
     };
     (digest, bytes.len(), envelope.timestamp.to_rfc3339())
+}
+
+#[tokio::test]
+async fn the_documented_pins_produce_the_golden_digest() {
+    use rigorix_engine::audit::application::pinned::parse_pinned_id;
+
+    let (clock, ids) = GOLDEN_PINS;
+    let pins = PinnedInputs::none()
+        .with_timestamp(parse_pinned_clock(clock).expect("the documented clock parses"))
+        .with_execution_id(parse_pinned_id(ids).expect("the documented id parses"));
+    let (digest, bytes, _) = signed_digest(&pins).await;
+
+    assert_eq!(
+        digest, GOLDEN_DIGEST,
+        "the shipped fixture no longer produces the digest the report cites.\n\
+         If the fixture changed on purpose, re-measure with\n  \
+         cargo run -q -p rigorix-engine --example pinned_refusal -- \\\n    \
+         --pinned-clock {clock} --pinned-ids {ids}\n\
+         and move this constant and docs/spike-portable-slice-2026-11.md §2 in the same commit."
+    );
+    assert_eq!(
+        bytes, 853,
+        "the golden envelope's length moved too — a length is not a fingerprint, but a change \
+         in both means the subject changed, not just its content"
+    );
 }
 
 #[tokio::test]
