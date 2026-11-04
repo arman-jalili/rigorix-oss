@@ -1,26 +1,18 @@
-//! Application layer: the composition entry point and its DTOs.
+//! Application layer: the use case, its two entry points, and what they take.
 //!
-//! The only layer in this module. `compose` is the decision; `dto` is what crosses
-//! the boundary; `setup` builds ports from operator configuration for a native
-//! runtime and is therefore not part of the portable slice.
+//! @canonical .pi/architecture/modules/gate.md
+//!
+//! `compose` is the decision; `sync` is its one-poll bridge for a host with no executor;
+//! `envelope` assembles and signs the record when the caller supplies the run's facts;
+//! `request` is what a caller hands over — the step, the pins, and the ports.
 
 pub mod compose;
-pub mod dto;
 /// The envelope step: facts the caller has, assembly and signing done here (#1389).
 pub mod envelope;
-/// Native-only: builds ports from `.rigorix/` operator configuration. The portable
-/// slice takes its ports from the host instead, so this file is not compiled there
-/// (`--gates` holds the inventory to that).
-#[cfg(not(feature = "portable"))]
-pub mod setup;
+pub mod request;
 /// The sync bridge for a runtime with no executor (#1389).
 pub mod sync;
 
 pub use compose::evaluate_gate;
-pub use dto::{
-    GateDecision, GateEnvelopeBinding, GateEnvelopeEvidence, GateError, GateFinding, GateId,
-    GateOutcome, GatePorts, GateRequest, GateVerdict, GatedStep, RunContext,
-};
-#[cfg(not(feature = "portable"))]
-pub use setup::GateSetup;
+pub use request::{GatePorts, GateRequest, RunContext};
 pub use sync::evaluate_gate_sync;

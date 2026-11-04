@@ -336,7 +336,7 @@ pub async fn build_orchestrator_with_budget(
     // The engine owns *which* file arms *which* gate and what a malformed file
     // means; the CLI only hands the result to the services (Phase C.1, #1381).
     let gate =
-        rigorix_engine::gate::application::GateSetup::from_env(std::path::Path::new(&repo_root));
+        rigorix_engine::gate::infrastructure::GateSetup::from_env(std::path::Path::new(&repo_root));
     // ADR-018: operator-declared capacity ledger (`.rigorix/capacity.toml`).
     // Absent file = no seam (status quo). A malformed declaration is fail-closed:
     // governance that cannot be established must not silently disappear, so the

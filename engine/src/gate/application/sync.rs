@@ -22,7 +22,8 @@
 use std::task::{Context, Poll, Waker};
 
 use super::compose::evaluate_gate;
-use super::dto::{GateDecision, GateError, GateRequest};
+use super::request::GateRequest;
+use crate::gate::domain::{GateDecision, GateError};
 
 /// Evaluate one run, requiring the composition to complete on its first poll.
 ///

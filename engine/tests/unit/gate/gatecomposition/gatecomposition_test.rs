@@ -13,9 +13,9 @@ use chrono::{TimeZone, Utc};
 use uuid::Uuid;
 
 use rigorix_engine::audit::application::dto::PinnedInputs;
-use rigorix_engine::gate::application::{
-    GateDecision, GateError, GateFinding, GateId, GateOutcome, GatePorts, GateRequest, GateVerdict,
-    GatedStep, evaluate_gate,
+use rigorix_engine::gate::application::{GatePorts, GateRequest, evaluate_gate};
+use rigorix_engine::gate::domain::{
+    GateDecision, GateError, GateFinding, GateId, GateOutcome, GateVerdict, GatedStep,
 };
 use rigorix_engine::precondition::application::dto::DispatchStep;
 use rigorix_engine::precondition::application::service::PreconditionService;

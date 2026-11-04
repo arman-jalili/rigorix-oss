@@ -33,7 +33,7 @@ use crate::orchestrator::application::builder::OrchestratorBuilder;
 use crate::precondition::PreconditionSetup;
 use crate::sequence_policy::application::service::SequencePolicyService;
 
-use super::dto::GatePorts;
+use crate::gate::application::GatePorts;
 
 /// The gate's ports plus the services a runtime wires around them.
 ///

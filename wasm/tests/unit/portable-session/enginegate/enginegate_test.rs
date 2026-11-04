@@ -241,9 +241,8 @@ fn the_empty_fixture_world_evaluates_to_a_dispatch() {
         // End to end through the seam: no rules means no gating, and the composition still
         // answers on the first poll (the readiness property C.1b states where the composition
         // lives). A `NotReady` here would mean an adapter yields, which none of them do.
-        use rigorix_engine::gate::application::{
-            GateOutcome, GatePorts, GateRequest, GatedStep, evaluate_gate,
-        };
+        use rigorix_engine::gate::application::{GatePorts, GateRequest, evaluate_gate};
+        use rigorix_engine::gate::domain::{GateOutcome, GatedStep};
 
         let decision = evaluate_gate(GateRequest {
             step: &GatedStep::new("transfer", "transfer", json!({})),

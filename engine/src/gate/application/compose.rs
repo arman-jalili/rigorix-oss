@@ -23,15 +23,14 @@
 //! says so is `a_refusal_precondition_is_not_displaced_by_a_requirement_promotion`
 //! plus the order-recording port in `the_order_is_preconditions_then_requirements`.
 
-use sha2::{Digest, Sha256};
-
 use crate::precondition::application::dto::DispatchStep;
 use crate::sequence_policy::application::dto::PlannedStep;
 use crate::sequence_policy::domain::RequirementAction;
 
-use super::dto::{
-    GateDecision, GateEnvelopeBinding, GateError, GateFinding, GateId, GateOutcome, GateRequest,
-    GateVerdict,
+use super::request::GateRequest;
+use crate::gate::domain::{
+    GateDecision, GateEnvelopeBinding, GateError, GateFinding, GateId, GateOutcome, GateVerdict,
+    decision_digest,
 };
 
 /// Evaluate one run through every configured gate, in the fixed order.
@@ -218,22 +217,4 @@ fn verdict_reason(verdict: &crate::precondition::domain::PreconditionVerdict) ->
             "precondition gate did not permit dispatch".to_string()
         }
     }
-}
-
-/// SHA-256 (hex) of the decision's canonical bytes.
-///
-/// The bytes are `[verdict, findings]` in serde declaration order. Nothing
-/// ambient — no `Utc::now()`, no hash-map iteration — enters them, so two calls with
-/// the same request produce the same digest. That is what `determinism_test` asserts,
-/// and what makes the digest worth signing.
-#[must_use]
-pub fn decision_digest(verdict: &GateVerdict, findings: &[GateFinding]) -> String {
-    let canonical = serde_json::to_vec(&(verdict, findings)).unwrap_or_else(|_| Vec::new());
-    let mut hasher = Sha256::new();
-    hasher.update(&canonical);
-    hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
 }

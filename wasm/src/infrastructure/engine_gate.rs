@@ -7,7 +7,7 @@
 //!
 //! # What the crate supplies, and what the engine does
 //!
-//! The crate supplies **ports**; the engine composes the decision. `gate::application::setup`
+//! The crate supplies **ports**; the engine composes the decision. `gate::infrastructure::setup`
 //! is a native composition root and stays outside the portable slice, so the four things it
 //! builds are the four things a host must answer:
 //!
@@ -100,8 +100,9 @@ fn evaluate_with_engine(
 ) -> Result<EngineEvaluation, EngineBindingError> {
     use rigorix_engine::audit::application::dto::PinnedInputs;
     use rigorix_engine::gate::application::{
-        GateError, GateOutcome, GatePorts, GateRequest, GateVerdict, GatedStep, evaluate_gate_sync,
+        GatePorts, GateRequest, evaluate_gate_sync,
     };
+    use rigorix_engine::gate::domain::{GateError, GateOutcome, GateVerdict, GatedStep};
 
     let execution_id = uuid::Uuid::parse_str(request.attempt_id.as_str()).map_err(|_| {
         // The execution id is required, never defaulted: a gate that invents one puts a
