@@ -40,12 +40,24 @@ fi
 mkdir -p "$(dirname "$ARTIFACT")"
 if [ ! -f "$ARTIFACT" ]; then
     echo "== producing an artifact set from the wasm seam =="
+    # The example declares `required-features = ["conformance"]` in wasm/Cargo.toml, because
+    # the probe replays a vector. This caller has to pass it: without it cargo refuses the
+    # target by name ("requires the features: conformance") and the gate fails before it
+    # looks at anything (#1421 — #1385 fixed run-conformance.sh and missed this caller).
+    # ...and the redirect lands in a temporary file that is only moved into place on
+    # success. `>"$ARTIFACT"` truncates on open, so a failed production used to leave an
+    # empty artifact behind and the *next* run would read `[ -f "$ARTIFACT" ]` as "already
+    # produced" and verify nothing.
+    TMP_ARTIFACT="$ARTIFACT.tmp.$$"
     if ! cargo run --quiet --manifest-path "$CRATE_DIR/Cargo.toml" \
+        --features conformance \
         --example determinism_probe -- \
-        "$CRATE_DIR/tests/conformance/vectors/vec-0001.json" >"$ARTIFACT"; then
+        "$CRATE_DIR/tests/conformance/vectors/vec-0001.json" >"$TMP_ARTIFACT"; then
+        rm -f "$TMP_ARTIFACT"
         echo "❌ could not produce an artifact set" >&2
         exit 1
     fi
+    mv "$TMP_ARTIFACT" "$ARTIFACT"
 fi
 
 echo "== verifying with the independent SDK (no wasm loaded) =="

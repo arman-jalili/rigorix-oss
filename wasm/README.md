@@ -42,10 +42,11 @@ byte-identical guarantee.
 ## Building and testing
 
 ```bash
-cargo test                                  # 176 contract + behaviour tests
+cargo test                                  # 174 contract + behaviour tests
+cargo test --features conformance           # 198: adds the conformance harness (#1385)
 cargo build --release --target wasm32-unknown-unknown
-bash ci/run-wasm-gates.sh                   # every gate, one command
-bash ci/run-wasm-gates.sh --with-npm        # + host verification (needs npm)
+bash ci/run-wasm-gates.sh                   # every gate it can run without npm: 10 of 11
+bash ci/run-wasm-gates.sh --with-npm        # 11 of 11, + host verification (needs npm)
 ```
 
 ## Status

@@ -2,7 +2,7 @@
 
 **Scope:** operating, debugging and releasing the WebAssembly gate seam.
 **Canonical module:** `.pi/architecture/modules/portable-session.md`.
-**Gates:** `wasm/ci/run-wasm-gates.sh` (one command, ten gates — the script asserts this line).
+**Gates:** `wasm/ci/run-wasm-gates.sh` (one command, eleven gates — the script asserts this line).
 
 ---
 
@@ -10,7 +10,7 @@
 
 | Task | Command |
 |------|---------|
-| Run everything | `bash wasm/ci/run-wasm-gates.sh` |
+| Run everything | `bash wasm/ci/run-wasm-gates.sh` — eleven declared, ten run: host verification needs npm |
 | Fast loop | `cd wasm && cargo test` |
 | Contract tests only | `cargo test --test unit` |
 | Format / lint | `cargo fmt --check && cargo clippy --all-targets` |

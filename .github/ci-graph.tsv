@@ -29,6 +29,6 @@ conformance	build	replays against the built crate
 integration	test	end-to-end over the tested binaries
 portable	workspace	its own subject: the slice builds for wasm32 and its tests run natively
 shell	-	its own subject: exit statuses in scripts
-wasm-gates	-	its own subject: the crate's ten gates
+wasm-gates	-	its own subject: the crate's eleven gates
 ci-report	lint,build,test,coverage,portable,audit,docs,integration,conformance,shell,wasm-gates	reports every stage; a leaf
 gate	lint,build,test,coverage,portable,audit,docs,integration,conformance,shell,wasm-gates	the verdict; requires every mandatory stage

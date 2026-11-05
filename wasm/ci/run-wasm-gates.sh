@@ -10,9 +10,14 @@
 # it is *labelled* as not run rather than reported as passing. A silent skip is the failure
 # mode the rest of these gates exist to prevent.
 #
+# `host-verification` is still a *declared* gate: it sits inside the `--with-npm` branch, so a
+# grep for the unconditional declarations cannot see it. It is counted anyway, and the
+# summary always states the fraction that ran (#1421 — the local run said "10 gates passed"
+# while the eleventh, the one that was failing in CI, had never been given a denominator).
+#
 # Usage:
-#   bash wasm/ci/run-wasm-gates.sh            # everything except host verification
-#   bash wasm/ci/run-wasm-gates.sh --with-npm # include host verification (needs npm)
+#   bash wasm/ci/run-wasm-gates.sh            # 10 of 11: everything except host verification
+#   bash wasm/ci/run-wasm-gates.sh --with-npm # 11 of 11: + host verification (needs npm) — CI's form
 set -uo pipefail
 
 CRATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -43,7 +48,9 @@ gate() {
 # the gates run, not as a gate — counting the gates must not change the count.
 SELF="$CRATE_DIR/ci/run-wasm-gates.sh"
 RUNBOOK="$CRATE_DIR/.pi/architecture/runbook.md"
-DECLARED_GATES=$(grep -c '^gate "' "$SELF")
+# Every `gate "` declaration, conditional ones included: the `--with-npm` branch declares a
+# gate too, and a count that only sees unconditional lines understates the suite by one.
+DECLARED_GATES=$(grep -cE '^[[:space:]]*gate[[:space:]]+"' "$SELF")
 STATED_WORD=$(sed -n 's/.*one command, \([a-z][a-z]*\) gates.*/\1/p' "$RUNBOOK" 2>/dev/null | head -1)
 if [ -z "$STATED_WORD" ]; then
     echo "❌ cannot read the gate count from $RUNBOOK — a count nobody can find is a count nobody checks" >&2
@@ -94,8 +101,11 @@ if [ "${#SKIPPED[@]}" -gt 0 ]; then
     echo "Not run (labelled, not silently passing):"
     for item in "${SKIPPED[@]}"; do echo "  · $item"; done
 fi
+# The denominator, always. The old summary stated a bare count, which was true and
+# misleading: the suite has eleven subjects, and the missing one was the gate failing in CI
+# (#1421). A reader could not tell full coverage from a fraction.
 if [ "$FAILED" -ne 0 ]; then
-    echo "❌ $FAILED of $RAN gate(s) failed"
+    echo "❌ $FAILED of $DECLARED_GATES gate(s) failed"
     exit 1
 fi
-echo "✅ $RAN gate(s) passed"
+echo "✅ $RAN of $DECLARED_GATES gate(s) ran"
