@@ -34,14 +34,21 @@ env:
   RUSTFLAGS: "-D warnings"
 
 # #1422: a pull request replaces its predecessor — a new commit supersedes the old, so
-# cancelling the superseded run is correct and cheap. `main` inverts that: each merge *adds*
-# a commit that must be verified, and cancelling the previous run deletes the verification of
-# the merge before it. Five merges landed on `main` with no run that reached a conclusion
-# because this was the literal `true`. Do not "optimise" it back;
-# `.github/scripts/workflow_concurrency_check.sh` reads this block and fails on the literal.
+# cancelling the superseded run is correct and cheap. `main` inverts that: each merge *adds* a
+# commit that must be verified, and cancelling the previous run deletes the verification of
+# the merge before it.
+#
+# **The group is the mechanism, not the expression.** `cancel-in-progress: ${{ github.ref !=
+# 'refs/heads/main' }}` was tried first and did not hold: a run carrying it (73c376d8) was
+# still cancelled by the next merge's run (70763393), because the value is a *stringified*
+# boolean and `cancel-in-progress` reads a non-empty string as true. So main's group is keyed
+# by the commit: each merge lands in a group of its own, and there is nothing older in it to
+# cancel. Pull requests keep one group per ref, which is what makes a superseded run stale.
+# `.github/scripts/workflow_concurrency_check.sh` reads both keys and fails when the group is
+# not commit-keyed on `main` — do not "optimise" either back.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.ref == 'refs/heads/main' && format('-{0}', github.sha) || '' }}
+  cancel-in-progress: true
 
 jobs:
   # ── Stage 0: Workspace Overview ───────────────────────────────
