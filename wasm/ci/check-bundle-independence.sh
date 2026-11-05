@@ -10,6 +10,10 @@
 # passes when it could not look is the failure mode this whole epic is about.
 #
 # Usage: bash wasm/ci/check-bundle-independence.sh [target]
+#        bash wasm/ci/check-bundle-independence.sh --self-test
+#
+# This file is the **only** list of forbidden crates (#1412). `.github/workflows/ci.yml` calls
+# it rather than carrying a second, shorter copy whose success line counted neither list.
 set -euo pipefail
 
 TARGET="${1:-wasm32-unknown-unknown}"
@@ -30,7 +34,82 @@ BANNED=(
     "rusqlite|no persistence (ADR-002)"
     "sqlx|no persistence (ADR-002)"
     "web-sys|storage belongs to the host, not the seam (ADR-002)"
+    # #1412: the inline CI list named `ring` and this one did not, so a tree carrying it failed
+    # in one place and passed in the other. It joins the list deliberately: `ring` is declared
+    # under `[target.'cfg(not(target_arch = "wasm32"))'.dependencies]` (`engine/Cargo.toml:50`),
+    # so its absence is a property of that target gate rather than of luck. A `ring` in the
+    # wasm32 graph therefore means the gate was lifted — a native crypto provider in a module
+    # that only produces evidence.
+    "ring|native crypto provider; present in wasm32 only if the target gate was lifted (ADR-013)"
 )
+
+# One matcher, used by the gate below and by the self-test, so a seed cannot drift from the
+# check it is supposed to exercise (#1412). The graph text names a package as `<name> v<semver>`.
+banned_hit() {
+    local entry="$1" tree="$2"
+    printf '%s\n' "$tree" | grep -qE "^[│├└─ ]*${entry%%|*} v"
+}
+
+# Every banned name the tree carries, one per line. Used by the self-test.
+banned_violations() {
+    local tree="$1" entry
+    for entry in "${BANNED[@]}"; do
+        if banned_hit "$entry" "$tree"; then printf '%s\n' "${entry%%|*}"; fi
+    done
+}
+
+# The success line, and the count, come from the array — not from a sentence (#1412).
+banned_summary() {
+    echo "✅ none of the ${#BANNED[@]} forbidden crates in the wasm32 graph"
+    echo "   checked: ${BANNED[@]%%|*}"
+}
+
+if [ "${1:-}" = "--self-test" ]; then
+    failures=0
+    expect_violations() {
+        local label="$1" expected="$2" tree="$3" got
+        got="$(banned_violations "$tree" | tr '\n' ' ' | sed 's/ *$//')"
+        if [ "$got" = "$expected" ]; then
+            echo "  ✅ $label → [${got}]"
+        else
+            echo "  ❌ $label → expected [${expected}], got [${got}]" >&2
+            failures=$((failures + 1))
+        fi
+    }
+
+    clean='rigorix-gate-wasm v1.12.1
+├── serde v1.0.0
+├── sha2 v0.11.0
+└── wasm-bindgen v0.2.130'
+
+    # Seed 1: the tree this gate is meant to pass.
+    expect_violations "clean tree passes" "" "$clean"
+    # Seed 2: `sqlx` — the crate the deleted inline list did not name at all (#1412).
+    expect_violations "sqlx fails" "sqlx" "$clean
+├── sqlx v0.8.6"
+    # Seed 3: `ring` — the crate the inline list named and this one did not.
+    expect_violations "ring fails" "ring" "$clean
+└── ring v0.17.14"
+    # Seed 4: the count in the message is derived from the array, so a removed entry moves it.
+    summary_count="$(banned_summary | head -1 | sed -nE 's/.*none of the ([0-9]+) forbidden.*/\1/p')"
+    if [ "$summary_count" = "${#BANNED[@]}" ] && [ "$summary_count" -gt 0 ]; then
+        echo "  ✅ derived count → ${summary_count}"
+    else
+        echo "  ❌ derived count → message says '${summary_count}', array has ${#BANNED[@]}" >&2
+        failures=$((failures + 1))
+    fi
+    if [ "$(banned_violations "$clean" | wc -l | tr -d ' ')" -ne 0 ]; then
+        echo "  ❌ a clean tree produced violations" >&2
+        failures=$((failures + 1))
+    fi
+
+    if [ "$failures" -ne 0 ]; then
+        echo "❌ check-bundle-independence self-test failed ($failures)" >&2
+        exit 1
+    fi
+    echo "✅ check-bundle-independence self-test: 3 seeds fired, 1 clean pass, derived count"
+    exit 0
+fi
 
 cd "$CRATE_DIR"
 
@@ -43,16 +122,21 @@ if ! TREE="$(cargo tree --target "$TARGET" --edges normal 2>&1)"; then
 fi
 
 FAILED=0
+BANNED_FAILED=0
 for entry in "${BANNED[@]}"; do
     name="${entry%%|*}"
     why="${entry#*|}"
-    if printf '%s\n' "$TREE" | grep -qE "^[│├└─ ]*${name} v"; then
+    if banned_hit "$entry" "$TREE"; then
         echo "❌ $name is in the wasm graph — $why"
         FAILED=1
+        BANNED_FAILED=1
     else
         echo "✅ $name absent"
     fi
 done
+if [ "$BANNED_FAILED" -eq 0 ]; then
+    banned_summary
+fi
 
 echo
 # ── tokio: the property, not the crate name (#1400, #1401) ───────────────────────────────
