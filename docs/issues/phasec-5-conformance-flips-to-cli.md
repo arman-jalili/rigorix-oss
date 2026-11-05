@@ -42,6 +42,8 @@ guardian_issue:
       `cfg(any(test, feature = "conformance"))`.
 
   prerequisites:
+    - "#1416 — the crate hands EngineGate the whole fixture world. Until it lands, the crate's
+      conformance bytes come from FakeGate and this issue's two-hash comparison has one hash."
     - "#1414 — the fixture world is engine data both runtimes construct. Without it the CLI has
       no world to replay and \"same fixture world, same bytes\" is undefined; this issue's step 5
       (goldens from the same-commit CLI) cannot exist."

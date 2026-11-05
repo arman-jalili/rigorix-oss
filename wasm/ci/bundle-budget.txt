@@ -24,6 +24,15 @@ measured_bytes: 1334325
 budget_bytes: 1667906
 emitted_bytes: 1766960
 name_section_bytes: 432635
+# #1417: a dated observation of ONE build on ONE host, compared to nothing. Two builds of one
+# branch on one machine differed by 64 B (checkout path, `-C metadata`, LTO reachability —
+# unattributed), and macOS against the Linux runner by 429 B. `measured_bytes` above is the
+# accounting operand (`emitted - name_section`); these three are the record of who measured
+# what, so the gate can print the drift instead of pretending it is an identity.
+observed_bytes: 1334325
+observed_on: aarch64-apple-darwin
+observed_at: 2026-11-05T13:05:00Z
+observed_sha256: b911e1fe8acc2be8b370b361f1a8ea6a5ab1679a6e0673ef8b447d8b76c3c27f
 state: packaged
 note: >-
   The artifact a host loads is 1334325 B: `wasm-bindgen --target nodejs` emits 1766960 B, of
@@ -37,6 +46,9 @@ note: >-
   so `check-bundle-size.sh` asserts the artifact carries no `name` section, and asserts that
   emitted_bytes minus name_section_bytes equals measured_bytes. Neither assertion can be
   satisfied by a number that was not measured from this build.
+  The artifact's size is NOT compared to observed_bytes: that is one build on one host, and
+  the drift is printed rather than enforced. The ceiling, the budget headroom and the absence
+  of builder paths are compared, because they hold on every host.
   The artifact is host-independent: the build remaps both toolchain prefixes, so the bytes
   carry no filesystem, and the size comparison is exact rather than tolerant.
   state is `packaged`, not `shipped`: the artifact a host loads exists and is measured, but no
