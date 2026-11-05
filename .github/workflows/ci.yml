@@ -1,31 +1,20 @@
 # ═════════════════════════════════════════════════════════════════════
-# Rigorix CI — PR merge gate
+# Rigorix CI — the merge gate.
 #
-# Runs on every push to feat/fix branches and all PRs. Fast enough for
-# the inner dev loop, comprehensive enough that a green build means
-# main won't break. Uses cargo check (not --release) and skips coverage
-# for speed — hardening.yml handles those on main.
+# Runs on pull requests to main, and on every push to main.
 #
-# Stages:
-#   0. workspace  — detect crates dynamically
-#   1. lint       — cargo fmt + clippy (matrix per crate)
-#   2. build      — cargo check (matrix per crate)
-#   3. test       — cargo test --lib (matrix per crate, 30m timeout)
-#   4. security   — cargo audit + secret scan
-#   5. docs       — documentation + architecture validation
-#   6. integration— cargo test --workspace + integration validation
-#   7. gate       — final mandatory check
-#
-# Script discovery uses comprehensive globs — new scripts of any
-# convention (check_*, run_*, stage_*, validate_*, validate-*)
-# auto-run without workflow changes.
+# Fourteen jobs: twelve stages, an aggregate (`ci-report`) and a verdict
+# (`gate`, which requires every mandatory stage). Coverage runs here, not in
+# hardening.yml. Which stage requires which is declared in
+# `.github/ci-graph.tsv`, and `.github/scripts/ci_graph_check.sh` fails when
+# that file and this workflow disagree — so the graph is the only stage list,
+# and a second one here could only drift.
 # ═════════════════════════════════════════════════════════════════════
-
 name: CI
 
 on:
   push:
-    branches: [main, "feat/**", "fix/**"]
+    branches: [main]
   pull_request:
     branches: [main]
 
@@ -33,35 +22,9 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-D warnings"
 
-# #1422: a pull request replaces its predecessor — a new commit supersedes the old, so
-# cancelling the superseded run is correct and cheap. `main` inverts that: each merge *adds* a
-# commit that must be verified, and cancelling the previous run deletes the verification of the
-# merge before it.
-#
-# **The group makes that arithmetically impossible on `main`, instead of conditionally.** Every
-# run of this workflow gets a group that is unique to it unless the run belongs to a pull
-# request:
-#
-#   pull request → one group per PR        → a superseded commit cancels the run it replaced
-#   anything else → one group per run id   → a merge has no older group-mate to cancel
-#
-# `github.run_id` is an integer that never is empty, so there is no branch of this expression
-# that can collapse two runs into one group — which is what makes it a mechanism rather than a
-# hope. `cancel-in-progress: true` then reads as it should: inside a group of one it can cancel
-# nothing, and on a PR it cancels exactly the run the new commit supersedes.
-#
-# Two earlier shapes were measured and rejected, so they are not tried again:
-#
-#   · `cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}` — run 73c376d8 carried it and
-#     was still cancelled by the next merge's run (70763393): the value stringifies to "false",
-#     and `cancel-in-progress` reads non-empty text as true.
-#   · a group keyed by the commit (`…-${{ format('-{0}', github.sha) }}`) — run 42079428759
-#     (2dcfc933) was cancelled 108 s after 42087059012 (9fecc28f) was created, with nothing in
-#     the record attributing the cancel. A key that can be absent or equal cannot be relied on;
-#     a key that is unique per run cannot collide.
-#
-# `.github/scripts/workflow_concurrency_check.sh` enforces this shape and seeds both rejected
-# ones — do not "optimise" it back to a ref comparison.
+# A pull request replaces its predecessor; a merge on main never does. So a pull request
+# shares one group per PR, and every other run gets a group of its own — a group with a
+# single member has nothing older to cancel.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
