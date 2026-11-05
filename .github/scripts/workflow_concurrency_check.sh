@@ -12,9 +12,16 @@
 #     landed on `main` with no run that reached a conclusion because the value was the
 #     literal `true` (#1422); the first run allowed to finish found #1421.
 #
-# So the value must be an expression, and it must exempt `refs/heads/main`. This script is
-# what makes that a check rather than a comment: the literal fails, naming the file and the
-# line, and `--self-test` plants the literal in a temporary workflow to show the check fires.
+# **An expression on `cancel-in-progress` is not enough, and the first attempt proved it:**
+# `${{ github.ref != 'refs/heads/main' }}` was carried by run 42057939858 (for 73c376d8) and
+# that run was still cancelled by the next merge's run (for 70763393). The value is a
+# stringified boolean, and non-empty text is true. The load-bearing mechanism is therefore the
+# **group**: on `main` it must be keyed by the commit, so each merge lands in a group of its
+# own and there is nothing older in it to cancel. Pull requests keep one group per ref, which
+# is what makes a superseded run stale.
+#
+# This script checks both keys and fails when `main` is not commit-keyed. `--self-test` plants
+# each defect in a temporary workflow and shows the check fires, naming file and line.
 #
 # Advisory workflows keep `cancel-in-progress: true` on purpose (`hardening.yml:42-44`): they
 # are not a verdict on a commit, and their cancellation is therefore not one either. This
@@ -37,75 +44,84 @@ block_start() {
     grep -n '^concurrency:' "$1" 2> /dev/null | head -1 | cut -d: -f1
 }
 
-cancel_line() {
-    local file="$1" start="$2"
-    awk -v s="$start" '
+# `key_line <file> <block-start> <key>` — the line number of a key inside the block.
+key_line() {
+    local file="$1" start="$2" key="$3"
+    awk -v s="$start" -v k="$key" '
         NR <= s { next }
         /^#/ { next }
         /^[^[:space:]#]/ { exit }
-        /^[[:space:]]*cancel-in-progress:/ { print NR; exit }
+        index($0, k) > 0 { print NR; exit }
     ' "$file"
+}
+
+value_of() {
+    local file="$1" line="$2" key="$3"
+    sed -n "${line}p" "$file" \
+        | sed -E "s/^[[:space:]]*${key}:[[:space:]]*//; s/[[:space:]]+$//"
 }
 
 check() {
     local file="${1:-$WORKFLOW}"
-    local start line value
+    local block group_line cancel_line_no group value
 
     if [ ! -f "$file" ]; then
         echo "❌ no workflow: $file" >&2
         return 1
     fi
 
-    start=$(block_start "$file")
-    if [ -z "$start" ]; then
+    block=$(block_start "$file")
+    if [ -z "$block" ]; then
         echo "❌ $file: no top-level \`concurrency:\` — the behaviour is the default, which nobody chose and nobody stated" >&2
         return 1
     fi
 
-    line=$(cancel_line "$file" "$start")
-    if [ -z "$line" ]; then
-        echo "❌ $file:$start: the concurrency block declares no \`cancel-in-progress:\`" >&2
+    group_line=$(key_line "$file" "$block" "group:")
+    cancel_line_no=$(key_line "$file" "$block" "cancel-in-progress:")
+    if [ -z "$group_line" ] || [ -z "$cancel_line_no" ]; then
+        echo "❌ $file:$block: the concurrency block needs both \`group:\` and \`cancel-in-progress:\`" >&2
         echo "   a value that is not written down is a value the next session cannot check" >&2
         return 1
     fi
+    group=$(value_of "$file" "$group_line" "group")
+    value=$(value_of "$file" "$cancel_line_no" "cancel-in-progress")
 
-    value=$(sed -n "${line}p" "$file" \
-        | sed -E 's/^[[:space:]]*cancel-in-progress:[[:space:]]*//; s/[[:space:]]+$//')
-
-    # (1) The literal was the defect. It cannot distinguish a PR from main, whichever value
-    #     it holds, so both literals are refused: `true` cancels main's merges, `false` makes
-    #     every PR run queue behind the one it supersedes.
-    case "$value" in
-        true | True | TRUE | false | False | FALSE)
-            echo "❌ $file:$line: cancel-in-progress is the literal '$value'" >&2
-            echo "   on refs/heads/main, \`true\` cancels the verification of the merge before each merge (#1422)" >&2
-            echo "   use \${{ github.ref != 'refs/heads/main' }}: a pull request still cancels, main never does" >&2
-            return 1
+    # (1) The mechanism: on `main`, each merge must land in a group of its own. A group keyed
+    #     only by the ref puts every merge of `main` in one group, and the next one cancels
+    #     the last — which is #1422, whatever `cancel-in-progress` says (run 42057939858 kept
+    #     the expression and was cancelled anyway).
+    case "$group" in
+        *github.sha* | *github.run_id*)
+            case "$group" in
+                *refs/heads/main* | *github.ref*)
+                    : ;;
+                *)
+                    echo "❌ $file:$group_line: the group is per-commit but does not name the ref" >&2
+                    echo "   pull requests would share a group and cancel each other's re-runs" >&2
+                    return 1
+                    ;;
+            esac
             ;;
-    esac
-
-    # (2) An expression, because only an expression can read the ref.
-    case "$value" in
-        *'${{'*'}}'*) : ;;
         *)
-            echo "❌ $file:$line: cancel-in-progress is '$value', which is not an expression" >&2
-            echo "   only an expression can tell a pull request from refs/heads/main" >&2
+            echo "❌ $file:$group_line: group '$group' is not keyed by the commit" >&2
+            echo "   every merge on refs/heads/main shares this group, so the next merge cancels the last (#1422)" >&2
+            echo "   key it by github.sha on main: \${{ github.ref == 'refs/heads/main' && format('-{0}', github.sha) || '' }}" >&2
             return 1
             ;;
     esac
 
-    # (3) The exemption, named. An expression that does not mention main has not stated the
-    #     asymmetry, and a reader cannot tell whether the omission was deliberate.
+    # (2) `cancel-in-progress` inside a per-commit group is correct: it can only cancel a
+    #     re-run of the same commit. On a pull request it is what makes a superseded run stale.
     case "$value" in
-        *refs/heads/main*) : ;;
+        true | True | TRUE) : ;;
         *)
-            echo "❌ $file:$line: '$value' does not exempt refs/heads/main" >&2
-            echo "   main's merges would still cancel each other's verification (#1422)" >&2
+            echo "❌ $file:$cancel_line_no: cancel-in-progress is '$value'" >&2
+            echo "   with a per-commit group, \`true\` cancels only a re-run of the same commit; a boolean expression here was measured to cancel main anyway" >&2
             return 1
             ;;
     esac
 
-    echo "✅ $file:$line cancel-in-progress: $value"
+    echo "✅ $file:$group_line group is per-commit on main; $file:$cancel_line_no cancel-in-progress: $value"
     echo "   a pull request replaces its predecessor; a merge on main always gets a run of its own"
     return 0
 }
@@ -141,8 +157,8 @@ self_test() {
     # shellcheck disable=SC2064
     trap "rm -rf '$tmp'" EXIT
 
-    # S1: the literal, exactly as #1422 found it. `cancel-in-progress` is line 5.
-    cat > "$tmp/literal.yml" <<'YAML'
+    # S1: the literal `true` with a per-ref group — #1422 exactly as it was found.
+    cat > "$tmp/shared-group.yml" <<'YAML'
 name: CI
 on: [push]
 concurrency:
@@ -153,25 +169,26 @@ jobs:
     runs-on: ubuntu-latest
 YAML
 
-    # S2: the value the workflow is supposed to carry.
-    cat > "$tmp/exempting.yml" <<'YAML'
+    # S2: the fix.
+    cat > "$tmp/per-commit.yml" <<'YAML'
 name: CI
 on: [push]
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.ref == 'refs/heads/main' && format('-{0}', github.sha) || '' }}
+  cancel-in-progress: true
 jobs:
   x:
     runs-on: ubuntu-latest
 YAML
 
-    # S3: an expression that never looks at main — the asymmetry is unstated.
-    cat > "$tmp/ref-agnostic.yml" <<'YAML'
+    # S3: the expression that was tried first and did not hold (run 42057939858). A per-ref
+    #     group with an exempting expression is still one group per merge on main.
+    cat > "$tmp/expression-only.yml" <<'YAML'
 name: CI
 on: [push]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
   x:
     runs-on: ubuntu-latest
@@ -186,11 +203,11 @@ jobs:
     runs-on: ubuntu-latest
 YAML
 
-    run_case fail "$tmp/literal.yml" "$tmp/literal.yml:5" "the literal 'true' fails, naming file and line" \
+    run_case fail "$tmp/shared-group.yml" "$tmp/shared-group.yml:4" "a per-ref group shares main's merges, so they cancel each other" \
         || failures=$((failures + 1))
-    run_case pass "$tmp/exempting.yml" "always gets a run of its own" "the exempting expression passes" \
+    run_case pass "$tmp/per-commit.yml" "always gets a run of its own" "a per-commit group on main passes" \
         || failures=$((failures + 1))
-    run_case fail "$tmp/ref-agnostic.yml" "does not exempt refs/heads/main" "an expression that ignores main fails" \
+    run_case fail "$tmp/expression-only.yml" "is not keyed by the commit" "an exempting expression with a per-ref group still fails" \
         || failures=$((failures + 1))
     run_case fail "$tmp/absent.yml" "no top-level" "a workflow with no concurrency fails" \
         || failures=$((failures + 1))
@@ -203,7 +220,7 @@ YAML
         echo "❌ $failures concurrency check(s) failed"
         return 1
     fi
-    echo "✅ concurrency: main never cancels, pull requests do (4 seeds)"
+    echo "✅ concurrency: main's group is per-commit, pull requests cancel (4 seeds)"
     return 0
 }
 
