@@ -50,6 +50,22 @@ The definition precedes the directory. In order:
 A layer that is deliberately absent is declared **in the doc, with a reason** — that is different
 from an exemption that lets any module omit any layer.
 
+## A seed is a hypothesis about a line, not a wish
+
+Every seed in an issue asserts what a mutation will do. That assertion is about code, so it has to
+be read off the code before it is written down — from the line that computes the value, not from the
+name of the property.
+
+The failure this rule exists for (#1414, revision 1): a seed required the decision digest to be
+*unchanged* when a declared instant changed. `gate/domain/decision.rs:64` hashes `(verdict,
+findings)`; `compose.rs:81` puts the whole finding into `evidence`; `service_impl.rs:177` sets
+`checked_at` from the observation. A correct implementation therefore *had* to fail the seed. The
+worker could not satisfy it and was forbidden to invent, so it stopped and asked — the issue became
+the blocker, and the architect became the pipeline's bottleneck.
+
+Before writing a seed, name the computing line and say what it reads. Two failure modes disappear
+with that one habit: a seed that cannot fire, and a seed whose required outcome is backwards.
+
 ## Before saying "done"
 
 1. **Run the command, not the reasoning.** The CI job's own command, from the directory the job
