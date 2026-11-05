@@ -282,8 +282,13 @@ jobs:
         # not be lowered, and a layer may not lose its row. Compared with `origin/main` on a
         # pull request and with `HEAD~1` on `main`, so the check reads history rather than a
         # hardcoded number.
+        #
+        # `--depth=2` is load-bearing. The first version of this step fetched `--depth=1`,
+        # which on a push to `main` makes HEAD its own shallow boundary: `origin/main` then
+        # equals HEAD and `HEAD~1` is gone, so the guard failed in 1 s with "nothing to
+        # compare" (run 42079709444). Two commits is exactly what the fallback needs.
         run: |
-          git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
+          git fetch --no-tags --depth=2 origin +refs/heads/main:refs/remotes/origin/main
           bash .pi/scripts/validate-coverage-floors.sh --base origin/main
       - uses: actions/upload-artifact@v4
         with:
