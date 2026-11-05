@@ -97,7 +97,13 @@ jobs:
                        */.pi/scripts/ci/check_*.sh */.pi/scripts/ci/run_*.sh \
                        */.pi/scripts/ci/stage_*.sh */.pi/scripts/ci/validate_*.sh \
                        */.pi/scripts/validate-*.sh; do
-            [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
+            [ -f "$script" ] || continue
+            # Runners, not checks: they run cargo build/clippy/test per crate (ci.yml excludes them too).
+            case "$(basename "$script")" in
+                run_* | stage_*) echo "--- $script (skipped: CI runner, not a check)" >&2; continue ;;
+            esac
+            echo "--- $script ---"
+            bash "$script" || true
           done
 
   # ── Stage 2: Architecture Conformance ─────────────────────────
@@ -117,7 +123,13 @@ jobs:
                        */.pi/scripts/ci/check_*.sh */.pi/scripts/ci/run_*.sh \
                        */.pi/scripts/ci/stage_*.sh */.pi/scripts/ci/validate_*.sh \
                        */.pi/scripts/validate-*.sh; do
-            [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
+            [ -f "$script" ] || continue
+            # Runners, not checks: they run cargo build/clippy/test per crate (ci.yml excludes them too).
+            case "$(basename "$script")" in
+                run_* | stage_*) echo "--- $script (skipped: CI runner, not a check)" >&2; continue ;;
+            esac
+            echo "--- $script ---"
+            bash "$script" || true
           done
 
   # ── Stage 3: Lint (matrix per crate) ──────────────────────────
@@ -148,7 +160,13 @@ jobs:
           for script in .pi/scripts/ci/check_*.sh .pi/scripts/ci/run_*.sh \
                        .pi/scripts/ci/stage_*.sh .pi/scripts/ci/validate_*.sh \
                        .pi/scripts/validate-*.sh; do
-            [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
+            [ -f "$script" ] || continue
+            # Runners, not checks: they run cargo build/clippy/test per crate (ci.yml excludes them too).
+            case "$(basename "$script")" in
+                run_* | stage_*) echo "--- $script (skipped: CI runner, not a check)" >&2; continue ;;
+            esac
+            echo "--- $script ---"
+            bash "$script" || true
           done
         working-directory: ${{ matrix.crate }}
 
@@ -197,7 +215,13 @@ jobs:
           for script in .pi/scripts/ci/check_*.sh .pi/scripts/ci/run_*.sh \
                        .pi/scripts/ci/stage_*.sh .pi/scripts/ci/validate_*.sh \
                        .pi/scripts/validate-*.sh; do
-            [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
+            [ -f "$script" ] || continue
+            # Runners, not checks: they run cargo build/clippy/test per crate (ci.yml excludes them too).
+            case "$(basename "$script")" in
+                run_* | stage_*) echo "--- $script (skipped: CI runner, not a check)" >&2; continue ;;
+            esac
+            echo "--- $script ---"
+            bash "$script" || true
           done
         working-directory: ${{ matrix.crate }}
 
@@ -222,7 +246,13 @@ jobs:
                        */.pi/scripts/ci/check_*.sh */.pi/scripts/ci/run_*.sh \
                        */.pi/scripts/ci/stage_*.sh */.pi/scripts/ci/validate_*.sh \
                        */.pi/scripts/validate-*.sh; do
-            [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
+            [ -f "$script" ] || continue
+            # Runners, not checks: they run cargo build/clippy/test per crate (ci.yml excludes them too).
+            case "$(basename "$script")" in
+                run_* | stage_*) echo "--- $script (skipped: CI runner, not a check)" >&2; continue ;;
+            esac
+            echo "--- $script ---"
+            bash "$script" || true
           done
 
   # ── Stage 7: Security ─────────────────────────────────────────
@@ -279,7 +309,13 @@ jobs:
                        */.pi/scripts/ci/check_*.sh */.pi/scripts/ci/run_*.sh \
                        */.pi/scripts/ci/stage_*.sh */.pi/scripts/ci/validate_*.sh \
                        */.pi/scripts/validate-*.sh; do
-            [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
+            [ -f "$script" ] || continue
+            # Runners, not checks: they run cargo build/clippy/test per crate (ci.yml excludes them too).
+            case "$(basename "$script")" in
+                run_* | stage_*) echo "--- $script (skipped: CI runner, not a check)" >&2; continue ;;
+            esac
+            echo "--- $script ---"
+            bash "$script" || true
           done
 
   # ── Stage 8: Migration Verify ─────────────────────────────────
@@ -315,7 +351,13 @@ jobs:
           for script in .pi/scripts/ci/check_*.sh .pi/scripts/ci/run_*.sh \
                        .pi/scripts/ci/stage_*.sh .pi/scripts/ci/validate_*.sh \
                        .pi/scripts/validate-*.sh; do
-            [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
+            [ -f "$script" ] || continue
+            # Runners, not checks: they run cargo build/clippy/test per crate (ci.yml excludes them too).
+            case "$(basename "$script")" in
+                run_* | stage_*) echo "--- $script (skipped: CI runner, not a check)" >&2; continue ;;
+            esac
+            echo "--- $script ---"
+            bash "$script" || true
           done
         working-directory: ${{ matrix.crate }}
 
@@ -338,7 +380,13 @@ jobs:
                        */.pi/scripts/ci/check_*.sh */.pi/scripts/ci/run_*.sh \
                        */.pi/scripts/ci/stage_*.sh */.pi/scripts/ci/validate_*.sh \
                        */.pi/scripts/validate-*.sh; do
-            [ -f "$script" ] && echo "--- $script ---" && bash "$script" || true
+            [ -f "$script" ] || continue
+            # Runners, not checks: they run cargo build/clippy/test per crate (ci.yml excludes them too).
+            case "$(basename "$script")" in
+                run_* | stage_*) echo "--- $script (skipped: CI runner, not a check)" >&2; continue ;;
+            esac
+            echo "--- $script ---"
+            bash "$script" || true
           done
 
       - name: 📋 Final hardening summary
