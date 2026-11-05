@@ -33,6 +33,23 @@ A planning packet containing:
 - First implementation issue recommendation
 - Open questions and escalation items
 
+## Before a bounded context: the definition precedes the directory
+
+A new module is not a folder. In this repository `engine/src/gate/` was built first and documented
+afterwards, so the doc described what the code happened to be — its own table certified that the
+module's whole vocabulary belonged in `application/`, and the module shipped with one DDD layer
+(#1406). The order is:
+
+1. the module doc in `.pi/architecture/modules/module-template.md`'s shape, with `## DDD Layers`
+   naming **exactly** the directories that will exist, and a reason for each layer that is
+   deliberately absent;
+2. one ADR if a decision is being made — amending the existing ADRs where it belongs, not sitting
+   beside them;
+3. the issue chain, with verified signatures (see `.pi/agents/issue-factory.md`);
+4. the code.
+
+Full rules: `docs/process/architect-operating-rules.md`.
+
 ## Definition of Done
 Done when a downstream agent (Issue Factory) can create epics and issues without ambiguity. The planning packet must pass `check_planning_packet.py` deterministic validation before handoff.
 
