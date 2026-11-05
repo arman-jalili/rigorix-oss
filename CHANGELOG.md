@@ -63,6 +63,27 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 - A superseded CI run no longer accuses the commit: the Final Gate skips when a dependency was `cancelled` — the scheduler's fact, not the change's — and a `📋 Stage report` job prints the per-stage results that the skipped gate cannot (#1289)
 - Preflight's budget is a margin over the measured runtime (20 min job backstop, per-step budgets) instead of a 10-minute timeout inside its own cold-cache runtime, and a timeout is reported as a named budget verdict rather than a failure of the change (#1286)
 
+## [1.13.0] - 2026-11-05
+
+### Added
+
+- **One gate entry point for every runtime.** `engine::gate::application::evaluate_gate` takes ports and is the only composition; the CLI calls it (#1381, #1382) and `rigorix-gate-wasm`'s `EngineGate` calls it (#1383), with a synchronous façade for hosts that cannot await (#1389).
+- **The gate has a domain.** `gate::domain` names what the context decides: three verdicts with `Promote` distinct from `Dispatch` (#1392), `Refused` distinct from `CouldNotEvaluate` (#1393), and a digest over `{verdict, findings}` and nothing ambient (#1406).
+- **A declared fixture world that both runtimes construct.** `gate::application::fixtures` reads a vector's declaration — providers, observation instants, ids, pins — so `rigorix gate-vector` and the crate replay the same world (#1414, #1416).
+- **Conformance names its producer.** Every vector carries `expected_decision` and `produced_by {command, commit}`, and the harness refuses provenance it cannot check (#1385).
+- `rigorix-gate-wasm` joins the release train and publishes to npm beside the crates (#1346).
+
+### Changed
+
+- **`gate_unavailable` means "this build cannot evaluate"** and nothing else; a refusal and an inability are different answers (#1384).
+- **The specification is 0.3.0.** It records producer/verifier deployment modes, the decision instant as evidence rather than as a property of the record, refused-versus-unavailable, and the `Refusal` glossary entry (#1387).
+- The size budget records one artifact per build triple: the ceiling, the budget and the absence of builder paths are the gates, and a cross-host byte equality is no longer claimed (#1408, #1409, #1417).
+
+### Fixed
+
+- CI reports what it ran: the verdict names the failing stage first, `lint` is a leaf for every stage, a test stage with no subject fails instead of passing, doctests are a counted channel, and the forbidden-crate list has one owner (#1411, #1412, #1421, #1427).
+- `main` no longer cancels the verification of the merge before it — a pull request shares one concurrency group, every other run gets a group of its own (#1422).
+
 ## [1.12.1] - 2026-11-02
 
 ### Fixed
