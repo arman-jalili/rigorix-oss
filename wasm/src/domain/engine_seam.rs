@@ -87,6 +87,14 @@ pub struct EngineEvaluation {
     pub findings: Vec<EngineFinding>,
     /// Signed envelopes, byte for byte.
     pub envelopes: Vec<Vec<u8>>,
+    /// The engine's canonical decision bytes — `{verdict, findings}` — forwarded exactly as
+    /// the engine produced them (#1385).
+    ///
+    /// This is the conformance subject: the CLI prints these bytes with `gate-vector`, and a
+    /// vector's `expected_decision` is them. Empty when the binding could not canonicalise
+    /// (an unlinked build, or a stub that answers without deciding) — never re-encoded here,
+    /// because a re-encoding would be a second producer of the thing being compared.
+    pub decision: Vec<u8>,
     /// Capabilities that could not answer during evaluation.
     ///
     /// The aggregate refuses on a non-empty list even if every finding says

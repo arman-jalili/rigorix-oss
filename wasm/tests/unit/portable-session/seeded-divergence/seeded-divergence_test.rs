@@ -11,7 +11,13 @@ fn seeded_vector() -> ConformanceVector {
         fixtures: serde_json::json!({ "providers": {} }),
         clock: serde_json::json!([{ "instant": "2026-11-03T09:00:00Z", "index": 0 }]),
         seed: serde_json::json!({ "seed_digest": "sha256:00", "draws": [] }),
-        expected: b"{}".to_vec(),
+        expected_decision: rigorix_gate_wasm::application::ExpectedDecision {
+            hex: "7b7d".to_string(),
+            sha256: "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+                .to_string(),
+            envelopes: Vec::new(),
+        },
+        produced_by: None,
         seeded_divergence: true,
         gate: Some("fixture".to_string()),
     }
@@ -61,17 +67,35 @@ fn a_skipped_seeded_vector_cannot_hide() {
 // The committed must-fail vector (issue #1313)
 // ---------------------------------------------------------------------------
 
-use crate::support::RunnerStubGate;
 use rigorix_gate_wasm::application::{ConformanceRunner, RunConformanceVector, default_projection};
 
-type GateFactory = fn() -> Box<dyn rigorix_gate_wasm::domain::engine_seam::GateEvaluator>;
+type GateFactory =
+    fn(&ConformanceVector) -> Box<dyn rigorix_gate_wasm::domain::engine_seam::GateEvaluator>;
 type ProjectionFactory = fn() -> Box<dyn rigorix_gate_wasm::domain::services::EvidenceProjection>;
 
 fn runner() -> ConformanceRunner<GateFactory, ProjectionFactory> {
-    fn gate() -> Box<dyn rigorix_gate_wasm::domain::engine_seam::GateEvaluator> {
-        Box::new(RunnerStubGate::allowing())
+    fn gate(
+        vector: &ConformanceVector,
+    ) -> Box<dyn rigorix_gate_wasm::domain::engine_seam::GateEvaluator> {
+        #[cfg(feature = "engine")]
+        {
+            use rigorix_gate_wasm::infrastructure::EngineGate;
+            Box::new(EngineGate::new(serde_json::json!({
+                "fixtures": vector.fixtures,
+                "clock": vector.clock,
+                "seed": vector.seed,
+            })))
+        }
+        #[cfg(not(feature = "engine"))]
+        {
+            let _ = vector;
+            Box::new(EngineGate::unavailable())
+        }
     }
-    ConformanceRunner::new(gate as fn() -> _, default_projection as fn() -> _)
+    ConformanceRunner::new(
+        gate as fn(&ConformanceVector) -> _,
+        default_projection as fn() -> _,
+    )
 }
 
 fn load(name: &str) -> ConformanceVector {
@@ -113,23 +137,30 @@ fn the_seeded_vector_differs_from_its_sibling_by_the_fixture_only() {
     assert_eq!(plain.scenario, seeded.scenario);
     assert_eq!(plain.clock, seeded.clock);
     assert_eq!(plain.seed, seeded.seed);
-    assert_eq!(plain.expected, seeded.expected);
+    assert_eq!(plain.expected_decision, seeded.expected_decision);
     assert_ne!(plain.fixtures, seeded.fixtures);
 }
 
 #[test]
 fn a_seeded_vector_that_starts_matching_fails_the_build() {
-    // Simulate the regression: if the two became identical, `is_pass(true)` is false and
-    // the suite goes red — which is what keeps the guard from rotting into a green tick.
-    let mut seeded = load("seeded-0001.json");
-    let produced = serde_json::to_vec(&runner().replay(&seeded).expect("replay")).expect("bytes");
-
-    // Force a match: this is exactly the state a broken comparator would report.
-    seeded.expected = produced;
+    // The seeded vector carries its sibling's golden and flips one determination, so the
+    // engine's decision differs from the recorded bytes — the divergence is real, produced
+    // by the engine, not staged by a stub.
+    let seeded = load("seeded-0001.json");
     let report = runner().execute(&seeded);
-    assert!(report.matched);
+    assert!(!report.matched, "the flipped determination must diverge");
+    assert!(report.is_pass(true), "a divergence is the expected outcome");
+
+    // And equality can never be a pass for a seeded vector: if a regression made the two
+    // worlds agree, `is_pass(true)` is false and the build goes red.
+    let equal = ConformanceReport {
+        vector_id: seeded.id.clone(),
+        matched: true,
+        normalised_comparison: false,
+        skipped: false,
+    };
     assert!(
-        !report.is_pass(true),
+        !equal.is_pass(true),
         "equality on the seeded vector must never be a pass"
     );
 }

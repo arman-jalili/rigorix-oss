@@ -92,3 +92,9 @@ path = "tests/unit/mod.rs"
 wasm-bindgen = "0.2.130"
 # The slice, wasm32 only (#1401) — the counterpart of the `not(wasm32)` declaration above.
 rigorix-engine = { path = "../engine", version = "1.12.1", features = ["portable"], optional = true }
+
+[[example]]
+name = "determinism_probe"
+# The probe replays a vector, so it needs the harness the `conformance` feature compiles in
+# (#1385). Without this the example fails to build in a default-feature test run.
+required-features = ["conformance"]

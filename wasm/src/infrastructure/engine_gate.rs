@@ -219,14 +219,28 @@ fn evaluate_with_engine(
         })
         .collect();
 
+    // The decision's own bytes, from the engine's canonicaliser — the same function the CLI
+    // prints and a vector records (#1385). A canonicalisation failure is a binding failure:
+    // there are no bytes, so there is nothing a vector could compare against.
+    let decision_bytes = rigorix_engine::gate::domain::decision_canonical_bytes(
+        &decision.verdict,
+        &decision.findings,
+    )
+    .map_err(|error| EngineBindingError::Rejected {
+        detail: format!("the decision could not be canonicalised: {error}"),
+    })?;
+
+    let envelopes = decision
+        .envelope_evidence
+        .map(|evidence| vec![evidence.canonical_bytes])
+        .unwrap_or_default();
+
     Ok(EngineEvaluation {
         findings,
         // The engine's signed bytes, never re-encoded (ADR-010). Absent when the host
         // supplied no run context: the engine does not assemble an envelope from nothing.
-        envelopes: decision
-            .envelope_evidence
-            .map(|evidence| vec![evidence.canonical_bytes])
-            .unwrap_or_default(),
+        envelopes,
+        decision: decision_bytes,
         port_failures: Vec::new(),
     })
 }

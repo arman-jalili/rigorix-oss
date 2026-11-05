@@ -60,9 +60,11 @@ mod telemetryobserver;
 #[path = "portable-session/domain-isolation/domain-isolation_test.rs"]
 mod domain_isolation;
 
+#[cfg(feature = "conformance")]
 #[path = "portable-session/runconformancevector/runconformancevector_test.rs"]
 mod runconformancevector;
 
+#[cfg(feature = "conformance")]
 #[path = "portable-session/seeded-divergence/seeded-divergence_test.rs"]
 mod seeded_divergence;
 
@@ -72,6 +74,9 @@ mod bundle;
 #[path = "portable-session/release-train/release-train_test.rs"]
 mod release_train;
 
+// The cross-process determinism subject is a vector replay: without the `conformance`
+// feature there is no harness to replay with, so the module is gated with it (#1385).
+#[cfg(feature = "conformance")]
 #[path = "portable-session/determinism/determinism_test.rs"]
 mod determinism;
 

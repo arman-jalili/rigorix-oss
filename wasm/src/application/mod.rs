@@ -29,6 +29,14 @@ pub mod attempt_run;
 pub mod dto;
 pub mod export_artifact_set;
 pub mod open_replay_session;
+/// Test-only: the conformance harness (ADR-009). Behind `conformance` so it is never
+/// compiled into a bundle — the attribute the module doc has always claimed (#1385).
+///
+/// `cfg(test)` would not be enough: an integration test compiles this library as a
+/// dependency, where `cfg(test)` is already false, so a `conformance` feature is the only
+/// gate that both keeps the harness out of the artifact and makes it reachable from
+/// `tests/`.
+#[cfg(feature = "conformance")]
 pub mod run_conformance_vector;
 
 pub use artifact_query::{ArtifactQuery, ReplaySessionQuery};
@@ -36,7 +44,8 @@ pub use attempt_run::{AttemptRun, AttemptRunService};
 pub use dto::OpenSessionInput;
 pub use export_artifact_set::{ExportArtifactSet, ExportArtifactSetService};
 pub use open_replay_session::{OpenReplaySession, OpenReplaySessionService};
+#[cfg(feature = "conformance")]
 pub use run_conformance_vector::{
-    ConformanceReport, ConformanceRunner, ConformanceVector, RunConformanceVector,
-    default_projection,
+    ConformanceReport, ConformanceRunner, ConformanceVector, ExpectedDecision, ProducedBy,
+    RunConformanceVector, default_projection,
 };
