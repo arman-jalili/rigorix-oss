@@ -9,7 +9,13 @@
 # ─────────────────────────────────────────────────────────────────────
 
 # Mandatory stages: the gate has a verdict on these.
-CI_MANDATORY_STAGES="lint build test portable audit conformance shell wasm-gates"
+#
+# `coverage` was in NEITHER this list nor the reported one (#1411): the workflow set
+# RESULT_COVERAGE, the graph declared the stage, the job ran for 45 minutes, and the verdict
+# ignored it — so a red coverage run could sit under a green gate. A stage the workflow reports
+# must be a stage the table shows; the self-test below now checks that in the other direction
+# too.
+CI_MANDATORY_STAGES="lint build test coverage portable audit conformance shell wasm-gates"
 # Reported but not required — whether they should be is a separate decision.
 CI_REPORTED_STAGES="docs integration"
 
@@ -27,6 +33,76 @@ ci_stage_result() {
     printf '%s' "${!var:-missing}"
 }
 
+# ── The declared graph, and why a stage did not run (#1411) ──────────────────
+#
+# One lint edge hid seven stages: `build: needs: [workspace, lint]` meant a style finding
+# skipped the build and everything downstream, and the verdict then accused all eight of
+# failing. The fix in the workflow was to drop the edge; the fix here is to say *why* a stage
+# did not run, using the graph the workflow is checked against — not a guess, and not the
+# list of symptoms.
+CI_GRAPH="${REPO_ROOT}/.github/ci-graph.tsv"
+
+# Is this a stage the verdict has a result for? `workspace` is a job and a row in the graph,
+# but it is a prerequisite rather than a stage: `ci.yml` does not pass its result to the gate.
+# Attributing a skip to a node with no input would invent a cause.
+ci_stage_is_stage() {
+    case " ${CI_MANDATORY_STAGES} ${CI_REPORTED_STAGES} " in
+        *" $1 "*) return 0 ;;
+    esac
+    return 1
+}
+
+# The declared `needs` of a stage, comma-separated, or `-`.
+ci_stage_needs() {
+    local needs=""
+    if [ -f "$CI_GRAPH" ]; then
+        needs="$(awk -F'\t' -v s="$1" '!/^#/ && $1 == s { print $2; exit }' "$CI_GRAPH")"
+    fi
+    printf '%s' "${needs:--}"
+}
+
+# The transitive `needs` of a stage, nearest first. Bounded: a cycle in the declared graph is
+# a fact about the graph, not a reason to hang the merge gate.
+ci_stage_upstream() {
+    local frontier="$1" seen=" " out="" rounds=0 stage dep next
+    while [ -n "$frontier" ] && [ "$rounds" -lt 32 ]; do
+        next=""
+        for stage in $frontier; do
+            for dep in $(ci_stage_needs "$stage" | tr ',' ' '); do
+                [ -z "$dep" ] && continue
+                [ "$dep" = "-" ] && continue
+                case "$seen" in *" $dep "*) continue ;; esac
+                seen="$seen$dep "
+                out="$out $dep"
+                next="$next $dep"
+            done
+        done
+        frontier="$next"
+        rounds=$((rounds + 1))
+    done
+    printf '%s' "${out# }"
+}
+
+# The stage that explains `$1` not passing, or nothing when the graph does not explain it.
+#   - a stage that failed (or never reported) is its own cause;
+#   - a skipped stage is attributed to the nearest declared upstream stage that failed;
+#   - anything else prints nothing, and the caller must say so rather than guess.
+ci_stage_cause() {
+    local stage="$1" dep dep_result
+    case "$(ci_stage_result "$stage")" in
+        success|cancelled) return 0 ;;
+        failure|missing) printf '%s' "$stage"; return 0 ;;
+    esac
+    for dep in $(ci_stage_upstream "$stage"); do
+        ci_stage_is_stage "$dep" || continue
+        dep_result="$(ci_stage_result "$dep")"
+        case "$dep_result" in
+            failure|missing) printf '%s' "$dep"; return 0 ;;
+        esac
+    done
+    return 0
+}
+
 ci_stage_icon() {
     case "$1" in
         success) printf '✅' ;;
@@ -42,16 +118,18 @@ ci_stage_icon() {
 ci_print_stage_table() {
     echo "## 🚪 CI stage results"
     echo ""
-    echo "| Stage | Result | Mandatory |"
-    echo "|-------|--------|-----------|"
-    local stage result required
+    echo "| Stage | Result | Mandatory | Cause |"
+    echo "|-------|--------|-----------|-------|"
+    local stage result required cause
     for stage in $CI_MANDATORY_STAGES; do
         result=$(ci_stage_result "$stage")
-        printf '| %s | %s %s | yes |\n' "$stage" "$(ci_stage_icon "$result")" "$result"
+        cause=$(ci_stage_cause "$stage")
+        printf '| %s | %s %s | yes | %s |\n' "$stage" "$(ci_stage_icon "$result")" "$result" "${cause:--}"
     done
     for stage in $CI_REPORTED_STAGES; do
         result=$(ci_stage_result "$stage")
-        printf '| %s | %s %s | no |\n' "$stage" "$(ci_stage_icon "$result")" "$result"
+        cause=$(ci_stage_cause "$stage")
+        printf '| %s | %s %s | no | %s |\n' "$stage" "$(ci_stage_icon "$result")" "$result" "${cause:--}"
     done
     echo ""
 }
@@ -104,6 +182,24 @@ ci_stages_selftest() {
         echo "  ⚠️  no workflow to cross-check (not a repo checkout)"
     fi
 
+    # The other half (#1411): every RESULT_* the workflow passes to the gate must belong to a
+    # stage the table knows. `coverage` was passed, declared in the graph, and in neither list,
+    # so the verdict could not see a red coverage run at all — a stage that runs and does not
+    # gate is a report, and a report nobody reads is not one.
+    if [ -f "$workflow" ]; then
+        local supplied
+        supplied="$(grep -oE '^[[:space:]]*RESULT_[A-Z_]+:' "$workflow" | tr -d ' :' | sed 's/^RESULT_//' | sort -u)"
+        for var in $supplied; do
+            stage="$(printf '%s' "$var" | tr '[:upper:]_' '[:lower:]-')"
+            if ci_stage_is_stage "$stage"; then
+                echo "  ✅ $var belongs to a stage the table shows ($stage)"
+            else
+                echo "  ❌ workflow passes $var but '$stage' is in neither stage list" >&2
+                failures=$((failures + 1))
+            fi
+        done
+    fi
+
     if [ "$failures" -ne 0 ]; then
         echo "❌ ci_stages self-test failed ($failures)" >&2
         return 1
@@ -111,7 +207,10 @@ ci_stages_selftest() {
     echo "✅ ci_stages self-test: stage names and result lookups agree"
 }
 
-if [ "${1:-}" = "--self-test" ]; then
+# Only when this file is *run*, not sourced: `ci_verdict.sh --self-test` sources it, and a
+# sourced file that reads the caller's `$1` would run the stage self-test and exit before the
+# verdict. `BASH_SOURCE[0]` is this file; `$0` is the caller when sourced.
+if [ "${BASH_SOURCE[0]}" = "$0" ] && [ "${1:-}" = "--self-test" ]; then
     ci_stages_selftest
     exit $?
 fi
