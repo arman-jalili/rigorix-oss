@@ -149,19 +149,26 @@ jobs:
     # at the same version as the engine. Idempotent (`npm view` before `npm publish`), so a
     # replay of a finished tag is a skip rather than a red job.
     #
-    # This job is deliberately NOT in `github-release.needs` while
-    # `wasm/ci/bundle-budget.txt` says `state: awaiting-packaging`: the bundle exports
-    # nothing yet, and `publish-npm-package.sh` refuses to publish a module with no
-    # exports. The coupling is machine-checked by `.pi/scripts/validate-release-train.sh`
-    # — the moment the state becomes `shipped`, this job must gate the release page, or
-    # the guard fails. A package that does not exist must not look published; a package
-    # that does must not be quietly left out of the train.
+    # `rigorix-gate@1.13.0` is on npm, so `wasm/ci/bundle-budget.txt` says `state: shipped`
+    # and this job gates the release page: a page must not announce a version npm does not
+    # carry. `.pi/scripts/validate-release-train.sh` enforces the coupling in both directions,
+    # so neither the state nor this wiring can change alone.
+    #
+    # The steps build what they publish: `wasm/pkg` is gitignored, and the smoke gate is the
+    # packaging path (build, `wasm-bindgen --target nodejs`, strip, assert the exports).
     needs: [verify, publish-wasm]
     runs-on: ubuntu-latest
-    if: needs.verify.outputs.npm_ready == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
+
+      # `wasm/pkg` is gitignored, so this job used to publish a directory no step had written:
+      # the script's first refusal would have fired, and nobody saw it because the job was
+      # skipped while the state was `packaged`. The smoke gate *is* the packaging path — it
+      # builds, runs `wasm-bindgen --target nodejs`, strips the debug `name` section and
+      # asserts the exports — so npm ships the artifact the gates measured, not a second build.
+      - name: Build and package the module the gates measure
+        run: bash wasm/ci/run-module-smoke.sh
 
       - name: Publish rigorix-gate (skip if exists)
         env:
@@ -176,11 +183,10 @@ jobs:
     # page that omits it would advertise a train with a missing car. The `verify`
     # gate now requires all four versions to equal the tag, so the only way
     # `publish-actions` skips is a rerun, where the skip is correct.
-    # `publish-wasm` is on the train (crates.io). `publish-wasm-npm` is not in this list
-    # yet: its bundle is unshippable (`state: awaiting-packaging`), and
-    # `validate-release-train.sh` requires it to be added here on the same commit that
-    # flips that state — the release page and the npm package cannot disagree.
-    needs: [publish-engine, publish-cli, publish-mcp, publish-actions, publish-wasm]
+    # `publish-wasm` is on the train (crates.io), and `publish-wasm-npm` gates this page now
+    # that the bundle state is `shipped` — the two are wired together because a release page
+    # that promises npm without it is the half-published release ADR-011 names.
+    needs: [publish-engine, publish-cli, publish-mcp, publish-actions, publish-wasm, publish-wasm-npm]
     # Announce the release only once every train crate is actually on crates.io.
     # Previously `if: always()`, which meant a failed publish still produced a
     # release page advertising crates that did not exist in the registry — the

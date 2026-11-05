@@ -33,7 +33,7 @@ observed_bytes: 1334325
 observed_on: aarch64-apple-darwin
 observed_at: 2026-11-05T13:05:00Z
 observed_sha256: b911e1fe8acc2be8b370b361f1a8ea6a5ab1679a6e0673ef8b447d8b76c3c27f
-state: packaged
+state: shipped
 note: >-
   The artifact a host loads is 1334325 B: `wasm-bindgen --target nodejs` emits 1766960 B, of
   which 432635 B (24.48 % of the emitted module) is the `name` custom section - the debug

@@ -143,8 +143,9 @@ silently degrading to a dry run. Treat a missing token as a release blocker, not
 to drop the step.
 
 **The npm package is held back until the bundle is shippable.** `wasm/ci/bundle-budget.txt`
-carries `state: awaiting-packaging` while the cdylib exports no symbols; in that state
-`publish-wasm-npm` is registered but deliberately outside `github-release.needs`, and
+carries `state: awaiting-packaging` (no artifact) or `packaged` (an artifact, never published);
+in those states `publish-wasm-npm` is registered but deliberately outside `github-release.needs`,
+and
 `publish-npm-package.sh` refuses to publish a module with nothing in it. The guard enforces
 the coupling in both directions: flipping the state to `shipped` **requires** the npm job to
 gate the release page, and leaving it `awaiting-packaging` **forbids** it. Publishing a
