@@ -280,6 +280,16 @@ fn the_runner_fails_closed_and_labels_what_it_could_not_run() {
     // Host verification needs npm: it is *labelled* as not run rather than passing silently.
     assert!(runner.contains("Not run (labelled, not silently passing)"));
     assert!(runner.contains("host verification"));
+    // And it is counted anyway (#1421): the summary states the fraction, so "N gates passed"
+    // cannot be read as full coverage of a suite whose declared gate did not run.
+    assert!(
+        runner.contains("of $DECLARED_GATES gate(s) ran"),
+        "the summary does not state how many of the declared gates ran"
+    );
+    assert!(
+        !runner.contains("gate(s) passed"),
+        "a bare 'N gate(s) passed' understates a suite with a declared gate that did not run"
+    );
 }
 
 #[test]
@@ -289,9 +299,13 @@ fn ci_invokes_the_runner_and_the_gate_treats_it_as_mandatory() {
         workflow.contains("wasm/ci/run-wasm-gates.sh"),
         "CI does not run the wasm gates"
     );
+    // #1421: host verification is a *declared* gate of the suite — declared inside the
+    // `--with-npm` branch, which is why the count could not see it. CI must ask for it by
+    // that flag: a separate `run-host-verification.sh` step would declare the same gate twice
+    // and leave the suite's own count at ten.
     assert!(
-        workflow.contains("wasm/ci/run-host-verification.sh"),
-        "CI does not run the independence check"
+        workflow.contains("wasm/ci/run-wasm-gates.sh --with-npm"),
+        "CI does not run the independence check as part of the declared gate set"
     );
 
     // A job that runs but does not gate is a report, not a gate.

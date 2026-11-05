@@ -500,14 +500,16 @@ jobs:
             cargo install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION" --locked
           fi
       - name: 🧭 Run every wasm gate
-        # One entrypoint: domain isolation, bundle independence, failure tiers, conformance
-        # (including the must-fail vector), unit tests, the wasm release build, the module
-        # smoke gate (a host can call it), the size budget and workspace pins. Host
-        # verification needs npm and network, so it runs separately.
-        run: bash wasm/ci/run-wasm-gates.sh
-      - name: 🤝 Host verification with the independent SDK
-        # Criterion 13: a Node process that never loads the wasm module verifies the record.
-        run: bash wasm/ci/run-host-verification.sh
+        # One entrypoint, and all eleven of its gates: domain isolation, bundle independence,
+        # failure tiers, conformance (including the must-fail vector), unit tests, the wasm
+        # release build, the module smoke gate (a host can call it), the size budget,
+        # workspace pins and host verification.
+        #
+        # `--with-npm` because CI has npm, and because the suite must *count* host
+        # verification: it was declared inside the `--with-npm` branch and invisible to the
+        # count, so the local run reported "10 gates passed" while the failing gate was the
+        # eleventh (#1421). A separate step here would declare the same gate twice.
+        run: bash wasm/ci/run-wasm-gates.sh --with-npm
 
   ci-report:
     name: 📋 Stage report
