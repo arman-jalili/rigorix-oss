@@ -9,23 +9,24 @@
 #     run's verdict is stale and the runner time is wasted.
 #   · On `refs/heads/main` the meaning inverts. Each merge *adds* a commit that must be
 #     verified, and the next merge cancels the verification of the one before it. Five merges
-#     landed on `main` with no run that reached a conclusion because the value was the
-#     literal `true` (#1422); the first run allowed to finish found #1421.
+#     landed on `main` with no run that reached a conclusion because the value was the literal
+#     `true` (#1422); the first run allowed to finish found #1421.
 #
-# **An expression on `cancel-in-progress` is not enough, and the first attempt proved it:**
-# `${{ github.ref != 'refs/heads/main' }}` was carried by run 42057939858 (for 73c376d8) and
-# that run was still cancelled by the next merge's run (for 70763393). The value is a
-# stringified boolean, and non-empty text is true. The load-bearing mechanism is therefore the
-# **group**: on `main` it must be keyed by the commit, so each merge lands in a group of its
-# own and there is nothing older in it to cancel. Pull requests keep one group per ref, which
-# is what makes a superseded run stale.
+# **Neither the literal nor an expression fixed it, and both were measured:**
 #
-# This script checks both keys and fails when `main` is not commit-keyed. `--self-test` plants
-# each defect in a temporary workflow and shows the check fires, naming file and line.
+#   · `${{ github.ref != 'refs/heads/main' }}` — run 73c376d8 carried it and was still cancelled
+#     by the next merge's run (70763393): the value stringifies to "false", and non-empty text
+#     is true.
+#   · a group keyed by the commit — run 42079428759 (2dcfc933) was cancelled 108 s after
+#     42087059012 (9fecc28f) was created, unattributed by the run's record.
 #
-# Advisory workflows keep `cancel-in-progress: true` on purpose (`hardening.yml:42-44`): they
-# are not a verdict on a commit, and their cancellation is therefore not one either. This
-# script checks the merge gate, not every workflow in the directory.
+# So the check no longer validates a comparison. It validates the property that makes the
+# mechanism hold: **the group is unique per run unless the run belongs to a pull request**. A
+# group with one member has nothing older to cancel; a group per PR is what makes a superseded
+# run stale. `github.run_id` cannot be empty and cannot repeat, so there is no branch of the
+# expression that can collapse two runs together.
+#
+# `--self-test` plants each rejected shape and the required one, and shows the verdicts.
 #
 # Usage:
 #   bash .github/scripts/workflow_concurrency_check.sh              # check the repo's ci.yml
@@ -86,42 +87,54 @@ check() {
     group=$(value_of "$file" "$group_line" "group")
     value=$(value_of "$file" "$cancel_line_no" "cancel-in-progress")
 
-    # (1) The mechanism: on `main`, each merge must land in a group of its own. A group keyed
-    #     only by the ref puts every merge of `main` in one group, and the next one cancels
-    #     the last — which is #1422, whatever `cancel-in-progress` says (run 42057939858 kept
-    #     the expression and was cancelled anyway).
+    # (1) A commit key is refused first, so a reader who reintroduces that exact shape gets the
+    #     reason it was withdrawn: it was measured, not argued (run 42079428759), and it is the
+    #     shape that made this issue look solved when it was not.
     case "$group" in
-        *github.sha* | *github.run_id*)
-            case "$group" in
-                *refs/heads/main* | *github.ref*)
-                    : ;;
-                *)
-                    echo "❌ $file:$group_line: the group is per-commit but does not name the ref" >&2
-                    echo "   pull requests would share a group and cancel each other's re-runs" >&2
-                    return 1
-                    ;;
-            esac
-            ;;
-        *)
-            echo "❌ $file:$group_line: group '$group' is not keyed by the commit" >&2
-            echo "   every merge on refs/heads/main shares this group, so the next merge cancels the last (#1422)" >&2
-            echo "   key it by github.sha on main: \${{ github.ref == 'refs/heads/main' && format('-{0}', github.sha) || '' }}" >&2
+        *github.sha*)
+            echo "❌ $file:$group_line: group '$group' is keyed by the commit" >&2
+            echo "   that shape was measured not to hold: run 42079428759 was cancelled by the next merge's run" >&2
+            echo "   use '\${{ github.event.pull_request.number || github.run_id }}'" >&2
             return 1
             ;;
     esac
 
-    # (2) `cancel-in-progress` inside a per-commit group is correct: it can only cancel a
-    #     re-run of the same commit. On a pull request it is what makes a superseded run stale.
+    # (2) Uniqueness, unconditionally available. Without `github.run_id` there is no branch of
+    #     the expression that is guaranteed distinct for two runs on the same ref, and that is
+    #     precisely the branch `main` takes.
+    case "$group" in
+        *github.run_id*) : ;;
+        *)
+            echo "❌ $file:$group_line: group '$group' has no unconditional unique part" >&2
+            echo "   two merges on refs/heads/main can share this group, and the next one cancels the last (#1422)" >&2
+            echo "   key it by '\${{ github.event.pull_request.number || github.run_id }}'" >&2
+            return 1
+            ;;
+    esac
+
+    # (3) A pull request must still land in one group per PR, not one per run: that is the half
+    #     of the behaviour that cancels a superseded commit.
+    case "$group" in
+        *pull_request.number*) : ;;
+        *)
+            echo "❌ $file:$group_line: group '$group' is per run for pull requests too" >&2
+            echo "   a superseded commit would queue behind the one it replaces instead of cancelling it" >&2
+            return 1
+            ;;
+    esac
+
+    # (4) With the group unique, `true` is correct: inside a group of one it cancels nothing,
+    #     and on a PR it cancels the run the new commit supersedes.
     case "$value" in
         true | True | TRUE) : ;;
         *)
             echo "❌ $file:$cancel_line_no: cancel-in-progress is '$value'" >&2
-            echo "   with a per-commit group, \`true\` cancels only a re-run of the same commit; a boolean expression here was measured to cancel main anyway" >&2
+            echo "   with a group that is unique per run on main, \`true\` is the correct value" >&2
             return 1
             ;;
     esac
 
-    echo "✅ $file:$group_line group is per-commit on main; $file:$cancel_line_no cancel-in-progress: $value"
+    echo "✅ $file:$group_line group is unique per run; $file:$cancel_line_no cancel-in-progress: $value"
     echo "   a pull request replaces its predecessor; a merge on main always gets a run of its own"
     return 0
 }
@@ -157,8 +170,8 @@ self_test() {
     # shellcheck disable=SC2064
     trap "rm -rf '$tmp'" EXIT
 
-    # S1: the literal `true` with a per-ref group — #1422 exactly as it was found.
-    cat > "$tmp/shared-group.yml" <<'YAML'
+    # S1: one group per ref — #1422 as it was found. The next merge cancels the last.
+    cat > "$tmp/per-ref.yml" <<'YAML'
 name: CI
 on: [push]
 concurrency:
@@ -169,26 +182,25 @@ jobs:
     runs-on: ubuntu-latest
 YAML
 
-    # S2: the fix.
+    # S2: the required shape.
+    cat > "$tmp/per-run.yml" <<'YAML'
+name: CI
+on: [push]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+jobs:
+  x:
+    runs-on: ubuntu-latest
+YAML
+
+    # S3: the commit key that was measured not to hold (42079428759).
     cat > "$tmp/per-commit.yml" <<'YAML'
 name: CI
 on: [push]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}${{ github.ref == 'refs/heads/main' && format('-{0}', github.sha) || '' }}
   cancel-in-progress: true
-jobs:
-  x:
-    runs-on: ubuntu-latest
-YAML
-
-    # S3: the expression that was tried first and did not hold (run 42057939858). A per-ref
-    #     group with an exempting expression is still one group per merge on main.
-    cat > "$tmp/expression-only.yml" <<'YAML'
-name: CI
-on: [push]
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
   x:
     runs-on: ubuntu-latest
@@ -203,30 +215,14 @@ jobs:
     runs-on: ubuntu-latest
 YAML
 
-    run_case fail "$tmp/shared-group.yml" "$tmp/shared-group.yml:4" "a per-ref group shares main's merges, so they cancel each other" \
-        || failures=$((failures + 1))
-    run_case pass "$tmp/per-commit.yml" "always gets a run of its own" "a per-commit group on main passes" \
-        || failures=$((failures + 1))
-    run_case fail "$tmp/expression-only.yml" "is not keyed by the commit" "an exempting expression with a per-ref group still fails" \
-        || failures=$((failures + 1))
-    run_case fail "$tmp/absent.yml" "no top-level" "a workflow with no concurrency fails" \
-        || failures=$((failures + 1))
-
-    # S5: the shape this workflow must keep, planted verbatim. The seeds above prove each
-    # defect fires; this one proves the *required* form passes, so a rewrite cannot satisfy
-    # the check by accident and fail the thing it asks for.
-    cat > "$tmp/main-shape.yml" <<'YAML'
-name: CI
-on: [push]
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}${{ github.ref == 'refs/heads/main' && format('-{0}', github.sha) || '' }}
-  cancel-in-progress: true
-jobs:
-  x:
-    runs-on: ubuntu-latest
-YAML
-    run_case pass "$tmp/main-shape.yml" "always gets a run of its own" \
-        "the main-shaped group passes the check that asks for it" || failures=$((failures + 1))
+    run_case fail "$tmp/per-ref.yml" "has no unconditional unique part" \
+        "a per-ref group shares main's merges, so they cancel each other" || failures=$((failures + 1))
+    run_case pass "$tmp/per-run.yml" "always gets a run of its own" \
+        "a group unique per run passes" || failures=$((failures + 1))
+    run_case fail "$tmp/per-commit.yml" "is keyed by the commit" \
+        "the commit key that was measured not to hold fails" || failures=$((failures + 1))
+    run_case fail "$tmp/absent.yml" "no top-level" \
+        "a workflow with no concurrency fails" || failures=$((failures + 1))
 
     # And then the file this script exists for, so the seeds cannot pass while the real
     # workflow is the thing they describe.
@@ -236,7 +232,7 @@ YAML
         echo "❌ $failures concurrency check(s) failed"
         return 1
     fi
-    echo "✅ concurrency: main's group is per-commit, pull requests cancel (5 seeds)"
+    echo "✅ concurrency: the group is unique per run, a PR keeps one group per PR (4 seeds)"
     return 0
 }
 

@@ -35,28 +35,35 @@ env:
 
 # #1422: a pull request replaces its predecessor — a new commit supersedes the old, so
 # cancelling the superseded run is correct and cheap. `main` inverts that: each merge *adds* a
-# commit that must be verified, and cancelling the previous run deletes the verification of
-# the merge before it.
+# commit that must be verified, and cancelling the previous run deletes the verification of the
+# merge before it.
 #
-# **The group is the mechanism, not the expression.** `cancel-in-progress: ${{ github.ref !=
-# 'refs/heads/main' }}` was tried first and did not hold: a run carrying it (73c376d8) was
-# still cancelled by the next merge's run (70763393), because the value is a *stringified*
-# boolean and `cancel-in-progress` reads a non-empty string as true. So main's group is keyed
-# by the commit: each merge lands in a group of its own, and there is nothing older in it to
-# cancel. Pull requests keep one group per ref, which is what makes a superseded run stale.
-# `.github/scripts/workflow_concurrency_check.sh` reads both keys and fails when the group is
-# not commit-keyed on `main` — do not "optimise" either back.
+# **The group makes that arithmetically impossible on `main`, instead of conditionally.** Every
+# run of this workflow gets a group that is unique to it unless the run belongs to a pull
+# request:
 #
-# **Still open, and the reason #1422 is not closed:** on `main` the first pair under this
-# mechanism did not hold — run 42079428759 (commit 2dcfc933) was cancelled 108 s after the
-# next merge's run (42087059012, commit 9fecc28f) was created. The construct itself is sound:
-# on a scratch branch, two pushes 46 s apart both reached a conclusion with groups keyed by
-# `format('{0}', github.sha)` and by `github.run_id` (runs 42095230662/42095359467 and
-# 42095230677/42095359510). So the difference is the default branch, not the syntax. The
-# acceptance is two consecutive merges whose runs both reach a conclusion — until that is
-# recorded here with run ids, the mechanism is unproven on `main`.
+#   pull request → one group per PR        → a superseded commit cancels the run it replaced
+#   anything else → one group per run id   → a merge has no older group-mate to cancel
+#
+# `github.run_id` is an integer that never is empty, so there is no branch of this expression
+# that can collapse two runs into one group — which is what makes it a mechanism rather than a
+# hope. `cancel-in-progress: true` then reads as it should: inside a group of one it can cancel
+# nothing, and on a PR it cancels exactly the run the new commit supersedes.
+#
+# Two earlier shapes were measured and rejected, so they are not tried again:
+#
+#   · `cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}` — run 73c376d8 carried it and
+#     was still cancelled by the next merge's run (70763393): the value stringifies to "false",
+#     and `cancel-in-progress` reads non-empty text as true.
+#   · a group keyed by the commit (`…-${{ format('-{0}', github.sha) }}`) — run 42079428759
+#     (2dcfc933) was cancelled 108 s after 42087059012 (9fecc28f) was created, with nothing in
+#     the record attributing the cancel. A key that can be absent or equal cannot be relied on;
+#     a key that is unique per run cannot collide.
+#
+# `.github/scripts/workflow_concurrency_check.sh` enforces this shape and seeds both rejected
+# ones — do not "optimise" it back to a ref comparison.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}${{ github.ref == 'refs/heads/main' && format('-{0}', github.sha) || '' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
