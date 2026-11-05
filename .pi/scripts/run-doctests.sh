@@ -53,8 +53,11 @@ floors_path, label, strict = sys.argv[1], sys.argv[2], sys.argv[4] == '1'
 with open(sys.argv[3], encoding='utf-8', errors='replace') as fh:
     text = fh.read()
 
+ANSI = re.compile(r'\x1b\[[0-9;]*m')
+
 crate, rows = None, []
 for line in text.splitlines():
+    line = ANSI.sub('', line)
     m = re.match(r'\s*Doc-tests\s+(\S+)', line)
     if m:
         crate = m.group(1)
@@ -190,7 +193,7 @@ run_workspace() {
     check_ignore_fences "$ROOT" "$ROOT/.pi/doctest-exemptions.tsv" || fences_rc=1
     log="$(mktemp "${TMPDIR:-/tmp}/doctests.XXXXXX")"
     local rc=0
-    cargo test --doc --workspace --no-fail-fast >"$log" 2>&1 || rc=$?
+    cargo test --doc --workspace --no-fail-fast --color never >"$log" 2>&1 || rc=$?
     # The log is always printed: a failing run is the one whose numbers are needed.
     cat "$log"
     local verdict_rc=0
@@ -206,7 +209,7 @@ run_package() { # $1 crate name
     check_ignore_fences "$ROOT" "$ROOT/.pi/doctest-exemptions.tsv" || fences_rc=1
     log="$(mktemp "${TMPDIR:-/tmp}/doctests.XXXXXX")"
     local rc=0
-    cargo test --doc -p "$pkg" --no-fail-fast >"$log" 2>&1 || rc=$?
+    cargo test --doc -p "$pkg" --no-fail-fast --color never >"$log" 2>&1 || rc=$?
     cat "$log"
     local verdict_rc=0
     verdict "$FLOORS" "$pkg" "$log" 0 || verdict_rc=$?
@@ -315,6 +318,20 @@ pub fn adds() {}'
         pass=$((pass + 1)); echo "  ok   a recorded exemption → pass"
     else
         fail=$((fail + 1)); echo "  FAIL a recorded exemption still failed"
+    fi
+
+    # The CI environment exports `CARGO_TERM_COLOR=always`, so the log the verdict reads
+    # carries escape sequences. This seed IS that log: a coloured `Doc-tests` heading and
+    # a coloured `test result:` line. Without the strip, every crate reads as
+    # "no Doc-tests section found" while its doctests passed — which is what happened.
+    printf '\033[1m\033[92m   Doc-tests\033[0m seed_crate\n\nrunning 2 tests\n\ntest result: \033[1m\033[92mok\033[0m. 2 passed; 0 failed; 0 ignored; 0 measured; finished in 0.01s\n' > "$tmp/coloured.log"
+    printf 'seed_crate\t2\t2\t0\tok\n' > "$tmp/coloured.tsv"
+    coloured_rc=0
+    ( cd "$tmp" && verdict "$tmp/coloured.tsv" "seed_crate" "$tmp/coloured.log" 1 ) >"$tmp/out" 2>&1 || coloured_rc=$?
+    if [ "$coloured_rc" -eq 0 ]; then
+        pass=$((pass + 1)); echo "  ok   a coloured CI log parses (CARGO_TERM_COLOR=always)"
+    else
+        fail=$((fail + 1)); echo "  FAIL a coloured CI log is unreadable: $(head -2 "$tmp/out" | tr '\n' ' ')"
     fi
 
     echo "run-doctests self-test: $pass/$((pass + fail)) assertions passed"
