@@ -1,0 +1,34 @@
+# The CI dependency graph (#1411). This file is the source; the workflow is checked
+# against it, not the other way round.
+#
+#   stage <TAB> needs (comma-separated, `-` for none) <TAB> why the edge exists
+#
+# Two rules are enforced by `.github/scripts/ci_graph_check.sh`:
+#
+#   1. `lint` is a leaf for every *stage*. No stage may list it in `needs`. A lint finding is
+#      a verdict on the tree, not on whether anything compiles: `build: needs: [workspace,
+#      lint]` once skipped the build, and every stage downstream of it, so seven subjects
+#      never ran and the gate accused five of them of failing (#1411).
+#
+#      `ci-report` and `gate` are the exception because they are not stages: their subject
+#      IS every stage's result, so they must name every stage, `lint` included. The set is
+#      fixed in the checker; a third aggregator is an error, not a convention.
+#   2. An edge exists only when the upstream's result decides the downstream's subject. A
+#      workspace that does not compile makes a test run meaningless; a lint finding does not.
+#
+# `portable`, `shell` and `wasm-gates` hang off nothing, because each has its own subject and
+# none consumes a build artifact (#1410 is the same rule applied to one stage).
+workspace	-	splits the crate matrix; not a stage, a prerequisite
+lint	workspace	style and architecture over the tree — a leaf, deliberate
+build	workspace	compiles the workspace
+test	workspace,build	runs what was compiled
+coverage	workspace,build	instruments what was compiled
+audit	build	audits the built graph
+docs	build	claims checked against the built crate
+conformance	build	replays against the built crate
+integration	test	end-to-end over the tested binaries
+portable	workspace	its own subject: the slice builds for wasm32 and its tests run natively
+shell	-	its own subject: exit statuses in scripts
+wasm-gates	-	its own subject: the crate's ten gates
+ci-report	lint,build,test,coverage,portable,audit,docs,integration,conformance,shell,wasm-gates	reports every stage; a leaf
+gate	lint,build,test,coverage,portable,audit,docs,integration,conformance,shell,wasm-gates	the verdict; requires every mandatory stage
