@@ -212,6 +212,22 @@ YAML
     run_case fail "$tmp/absent.yml" "no top-level" "a workflow with no concurrency fails" \
         || failures=$((failures + 1))
 
+    # S5: the shape this workflow must keep, planted verbatim. The seeds above prove each
+    # defect fires; this one proves the *required* form passes, so a rewrite cannot satisfy
+    # the check by accident and fail the thing it asks for.
+    cat > "$tmp/main-shape.yml" <<'YAML'
+name: CI
+on: [push]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.ref == 'refs/heads/main' && format('-{0}', github.sha) || '' }}
+  cancel-in-progress: true
+jobs:
+  x:
+    runs-on: ubuntu-latest
+YAML
+    run_case pass "$tmp/main-shape.yml" "always gets a run of its own" \
+        "the main-shaped group passes the check that asks for it" || failures=$((failures + 1))
+
     # And then the file this script exists for, so the seeds cannot pass while the real
     # workflow is the thing they describe.
     check "$WORKFLOW" || failures=$((failures + 1))
@@ -220,7 +236,7 @@ YAML
         echo "❌ $failures concurrency check(s) failed"
         return 1
     fi
-    echo "✅ concurrency: main's group is per-commit, pull requests cancel (4 seeds)"
+    echo "✅ concurrency: main's group is per-commit, pull requests cancel (5 seeds)"
     return 0
 }
 
