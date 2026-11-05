@@ -46,6 +46,15 @@ env:
 # cancel. Pull requests keep one group per ref, which is what makes a superseded run stale.
 # `.github/scripts/workflow_concurrency_check.sh` reads both keys and fails when the group is
 # not commit-keyed on `main` — do not "optimise" either back.
+#
+# **Still open, and the reason #1422 is not closed:** on `main` the first pair under this
+# mechanism did not hold — run 42079428759 (commit 2dcfc933) was cancelled 108 s after the
+# next merge's run (42087059012, commit 9fecc28f) was created. The construct itself is sound:
+# on a scratch branch, two pushes 46 s apart both reached a conclusion with groups keyed by
+# `format('{0}', github.sha)` and by `github.run_id` (runs 42095230662/42095359467 and
+# 42095230677/42095359510). So the difference is the default branch, not the syntax. The
+# acceptance is two consecutive merges whose runs both reach a conclusion — until that is
+# recorded here with run ids, the mechanism is unproven on `main`.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}${{ github.ref == 'refs/heads/main' && format('-{0}', github.sha) || '' }}
   cancel-in-progress: true
