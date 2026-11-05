@@ -64,7 +64,7 @@ fn engine_failure_is_an_error_not_an_allow() {
 // ---------------------------------------------------------------------------
 
 use crate::support::{
-    AllowPolicy, FailingKey, FakeGate, PortSet, TestStamp, action, digest, inputs,
+    AllowPolicy, FailingKey, PortSet, RunnerStubGate, TestStamp, action, digest, inputs,
 };
 use rigorix_gate_wasm::application::{
     ArtifactQuery, ExportArtifactSet, ExportArtifactSetService, OpenReplaySession,
@@ -90,7 +90,7 @@ fn open_then_run_then_export_is_one_straight_use_case_chain() {
         .expect("open");
 
     let runner = rigorix_gate_wasm::application::AttemptRunService::new(projection());
-    let mut gate = FakeGate::allowing();
+    let mut gate = RunnerStubGate::allowing();
     let mut set = PortSet::happy();
     let outcome = runner
         .execute(&mut session, action(), set.ports(), &mut gate)
@@ -120,7 +120,7 @@ fn the_run_service_never_turns_a_refusal_into_a_pass() {
         .expect("open");
 
     let runner = rigorix_gate_wasm::application::AttemptRunService::new(projection());
-    let mut gate = FakeGate::refusing();
+    let mut gate = RunnerStubGate::refusing();
     let mut set = PortSet::happy();
     let outcome = runner
         .execute(&mut session, action(), set.ports(), &mut gate)
@@ -142,7 +142,7 @@ fn a_failed_identity_port_through_the_service_is_still_a_refusal() {
         .expect("open");
 
     let runner = rigorix_gate_wasm::application::AttemptRunService::new(projection());
-    let mut gate = FakeGate::allowing();
+    let mut gate = RunnerStubGate::allowing();
     let mut set = PortSet::happy();
     set.key = FailingKey(rigorix_gate_wasm::domain::value::PortFailureKind::Missing).into_key();
 
@@ -174,7 +174,7 @@ fn the_export_service_refuses_a_rejected_content_rule() {
         })
         .expect("open");
     let runner = rigorix_gate_wasm::application::AttemptRunService::new(projection());
-    let mut gate = FakeGate::allowing();
+    let mut gate = RunnerStubGate::allowing();
     let mut set = PortSet::happy();
     runner
         .execute(&mut session, action(), set.ports(), &mut gate)
@@ -226,7 +226,7 @@ fn open() -> rigorix_gate_wasm::domain::session::ReplaySession {
 fn a_refused_run_raises_one_step_event_per_decision_and_one_run_event() {
     let mut session = open();
     let runner = rigorix_gate_wasm::application::AttemptRunService::new(projection());
-    let mut gate = FakeGate::refusing();
+    let mut gate = RunnerStubGate::refusing();
     let mut set = PortSet::happy();
     let outcome = runner
         .execute(&mut session, action(), set.ports(), &mut gate)
@@ -280,7 +280,7 @@ fn a_refused_run_raises_one_step_event_per_decision_and_one_run_event() {
 fn an_allowed_run_raises_run_allowed_with_the_action_and_evidence() {
     let mut session = open();
     let runner = rigorix_gate_wasm::application::AttemptRunService::new(projection());
-    let mut gate = FakeGate::allowing();
+    let mut gate = RunnerStubGate::allowing();
     let mut set = PortSet::happy();
     runner
         .execute(&mut session, action(), set.ports(), &mut gate)
@@ -308,7 +308,7 @@ fn every_event_a_run_raises_is_evidence() {
     // telemetry, and the run does not raise it.
     let mut session = open();
     let runner = rigorix_gate_wasm::application::AttemptRunService::new(projection());
-    let mut gate = FakeGate::refusing();
+    let mut gate = RunnerStubGate::refusing();
     let mut set = PortSet::happy();
     runner
         .execute(&mut session, action(), set.ports(), &mut gate)

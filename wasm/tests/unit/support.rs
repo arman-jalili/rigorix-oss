@@ -183,14 +183,19 @@ impl PortSet {
 
 // --- gate ------------------------------------------------------------------
 
-/// A gate that answers with a fixed evaluation.
-pub struct FakeGate {
+/// A **runner** stub: a fixed evaluation, for tests whose subject is what the session and
+/// the conformance runner do with an answer.
+///
+/// It never supplies a *decision*: no vector's bytes come from here (#1416). A test that
+/// wants a decision builds one with [`EngineGate`](rigorix_gate_wasm::infrastructure::EngineGate)
+/// over the vector's own declaration, so the engine — not a fixture — decides.
+pub struct RunnerStubGate {
     pub findings: Vec<EngineFinding>,
     pub port_failures: Vec<PortFailure>,
     pub envelopes: Vec<Vec<u8>>,
 }
 
-impl FakeGate {
+impl RunnerStubGate {
     pub fn allowing() -> Self {
         Self {
             findings: vec![finding(
@@ -249,7 +254,7 @@ impl FakeGate {
     }
 }
 
-impl GateEvaluator for FakeGate {
+impl GateEvaluator for RunnerStubGate {
     fn evaluate(
         &mut self,
         request: GateEvaluationRequest<'_, '_>,

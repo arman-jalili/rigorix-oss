@@ -323,3 +323,116 @@ fn an_attempt_id_that_is_not_an_execution_id_is_rejected_not_defaulted() {
         .expect_err("a non-uuid attempt id cannot pin an execution");
     assert!(error.to_string().contains("not an execution id"), "{error}");
 }
+
+// ---------------------------------------------------------------------------
+// The whole world, not a transcript (issue #1416)
+// ---------------------------------------------------------------------------
+
+/// The vector's own declaration, in the shape the host sends: `fixtures`, `clock`, `seed`.
+fn fixture_vector() -> serde_json::Value {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/conformance/vectors/vec-fixture-0001.json");
+    let raw = std::fs::read_to_string(path).expect("committed vector exists");
+    serde_json::from_str(&raw).expect("vector parses")
+}
+
+fn declaration_of(vector: &serde_json::Value) -> serde_json::Value {
+    json!({
+        "fixtures": vector["fixtures"],
+        "clock": vector["clock"],
+        "seed": vector["seed"],
+    })
+}
+
+fn request_of(vector: &serde_json::Value) -> (String, String) {
+    let attempt = vector["fixtures"]["ids"]["attempt"][0]
+        .as_str()
+        .expect("the vector declares an execution id")
+        .to_string();
+    let action = vector["scenario"]["action"]["name"]
+        .as_str()
+        .expect("the vector declares an action")
+        .to_string();
+    (attempt, action)
+}
+
+#[test]
+fn the_crate_evaluates_the_vector_declaration_through_the_engine() {
+    // The gate is handed the whole declaration and builds the world with the engine's own
+    // constructor. Both declared providers answer: `eligibility.check` passes and
+    // `budget.check` denies, so the decision refuses — reached by the engine, not by a
+    // fixture answering for it (#1416).
+    let vector = fixture_vector();
+    let (attempt, action_name) = request_of(&vector);
+    let mut gate = EngineGate::new(declaration_of(&vector));
+    let mut ports = crate::support::PortSet::happy();
+    let attempt_id = GateAttemptId::from_trusted(attempt);
+    let scenario = ScenarioRef::new(crate::support::digest('a'), ScenarioFormatVersion(1));
+    let action = GatedAction::new(action_name, Params::default());
+
+    let evaluation = gate
+        .evaluate(GateEvaluationRequest {
+            attempt_id: &attempt_id,
+            scenario: &scenario,
+            action: &action,
+            ports: ports.ports(),
+        })
+        .expect("the declared world is evaluable");
+
+    // The engine aggregates the declared preconditions into one finding, naming the rule
+    // that refused — so the subject is asserted where the engine puts it, not where a
+    // convenient field would be.
+    let refused = evaluation
+        .findings
+        .iter()
+        .find(|finding| {
+            finding.outcome == rigorix_gate_wasm::domain::engine_seam::EngineFindingOutcome::Refused
+        })
+        .unwrap_or_else(|| panic!("the declared denial must refuse: {:?}", evaluation.findings));
+    let detail = refused.refusal.clone().unwrap_or_default();
+    assert!(detail.contains("budget.check"), "{detail}");
+    // D1 reaches the decision: the finding is stamped with the *observation* instant the
+    // declaration names, not with the decision instant from `clock[0]`.
+    assert!(detail.contains("2026-11-03T08:59:59"), "{detail}");
+    assert!(
+        !detail.contains("2026-11-03T09:00:00"),
+        "an observation is not a decision timestamp: {detail}"
+    );
+    assert!(
+        evaluation.envelopes.is_empty(),
+        "no run context means no envelope — the engine assembles evidence from facts"
+    );
+}
+
+#[test]
+fn a_declaration_that_is_not_a_world_is_refused_naming_the_provider() {
+    // The crate does not repair a declaration: a provider with no endpoint is a
+    // configuration error, and the subject — which provider — is in the message.
+    let vector = fixture_vector();
+    let (attempt, action_name) = request_of(&vector);
+    let mut declaration = declaration_of(&vector);
+    declaration["fixtures"]["providers"]["budget.check"]
+        .as_object_mut()
+        .expect("provider is an object")
+        .remove("endpoint");
+
+    let mut gate = EngineGate::new(declaration);
+    let mut ports = crate::support::PortSet::happy();
+    let attempt_id = GateAttemptId::from_trusted(attempt);
+    let scenario = ScenarioRef::new(crate::support::digest('a'), ScenarioFormatVersion(1));
+    let action = GatedAction::new(action_name, Params::default());
+    let error = gate
+        .evaluate(GateEvaluationRequest {
+            attempt_id: &attempt_id,
+            scenario: &scenario,
+            action: &action,
+            ports: ports.ports(),
+        })
+        .expect_err("a provider with no endpoint cannot be evaluated");
+
+    assert!(
+        error.to_string().contains("declares no endpoint"),
+        "{error}"
+    );
+    assert!(error.to_string().contains("budget.check"), "{error}");
+}

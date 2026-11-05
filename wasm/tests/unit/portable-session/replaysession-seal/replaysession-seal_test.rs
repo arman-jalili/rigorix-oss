@@ -62,10 +62,12 @@ fn seal_failures_are_exhaustive() {
 // Behaviour (issue #1296): criterion 6
 // ---------------------------------------------------------------------------
 
-use crate::support::{AllowPolicy, FakeGate, PortSet, RejectPolicy, TestStamp, action, inputs};
+use crate::support::{
+    AllowPolicy, PortSet, RejectPolicy, RunnerStubGate, TestStamp, action, inputs,
+};
 
 fn run_once(session: &mut ReplaySession) -> bool {
-    let mut gate = FakeGate::allowing();
+    let mut gate = RunnerStubGate::allowing();
     let mut set = PortSet::happy();
     let projection = rigorix_gate_wasm::domain::services::EngineFindingsProjection::new(
         rigorix_gate_wasm::domain::services::BusinessWording::new(),
@@ -151,7 +153,7 @@ use rigorix_gate_wasm::domain::services::{
 use rigorix_gate_wasm::infrastructure::{CanonicalSerializer, ScanningContentPolicy};
 
 fn run_with_envelopes(session: &mut ReplaySession, envelopes: Vec<Vec<u8>>) {
-    let mut gate = FakeGate::with_envelopes(envelopes);
+    let mut gate = RunnerStubGate::with_envelopes(envelopes);
     let mut set = PortSet::happy();
     let projection = EngineFindingsProjection::new(BusinessWording::new());
     session
@@ -230,7 +232,7 @@ fn the_stamp_carries_the_five_facts_criterion_11_asks_for() {
     // And the outcome digest actually depends on the outcome.
     let mut other = ReplaySession::open(inputs()).expect("open");
     run_with_envelopes(&mut other, vec![b"{}".to_vec()]);
-    let mut gate = FakeGate::refusing();
+    let mut gate = RunnerStubGate::refusing();
     let mut set = PortSet::happy();
     let projection = EngineFindingsProjection::new(BusinessWording::new());
     // `other` already ran; use a third session for the differing outcome.

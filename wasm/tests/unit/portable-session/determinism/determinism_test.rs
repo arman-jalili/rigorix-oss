@@ -81,7 +81,7 @@ fn no_source_file_reaches_a_real_clock_or_entropy_source() {
 // Criterion 25: same bytes in one instance and in a fresh one (issue #1316)
 // ---------------------------------------------------------------------------
 
-use crate::support::FakeGate;
+use crate::support::RunnerStubGate;
 use rigorix_gate_wasm::application::{
     AttemptRun, AttemptRunService, ExportArtifactSet, ExportArtifactSetService, OpenReplaySession,
     OpenReplaySessionService, OpenSessionInput, default_projection,
@@ -142,7 +142,7 @@ fn replay_here() -> Vec<u8> {
         sink: &mut sink,
     };
 
-    let mut gate = FakeGate::allowing();
+    let mut gate = RunnerStubGate::allowing();
     let runner = AttemptRunService::new(default_projection());
     // The id source has no sequence here, so the run refuses at the aggregate. That is the
     // deterministic case worth pinning: a refusal record must be as reproducible as an allow.
