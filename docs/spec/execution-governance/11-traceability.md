@@ -10,7 +10,7 @@ stays honest.
 | RS-001 plan before execution | planning pipeline, DAG engine | integration tests; all demos |
 | RS-002 sealed acyclic plan | dag-engine (two-phase, Kahn, cycle detection) | unit + integration tests |
 | RS-003 no model in decision path | dispatch path; no LLM in gates | code review; ADR-007 |
-| RS-004 reject unevaluable plan | fail-closed evaluation in sequence/precondition modules | negative tests |
+| RS-004 reject unevaluable plan | fail-closed evaluation in sequence/precondition modules; one composition (`gate::application::compose.rs evaluate_gate_sync`) shared by both runtimes (ADR-014 §2) | negative tests; the golden digest `09a99c1f…` (`1521 B`) produced by `cargo run -q -p rigorix-cli --features pinned-inputs -- gate-vector wasm/tests/conformance/vectors/vec-fixture-0001.json`, and the `gate: "cli"` vectors in `wasm/tests/conformance/vectors/` re-derived by the crate through `EngineGate` (`runconformancevector::a_matching_vector_passes_and_a_mutated_expected_fails`) |
 | RS-010 approval required | approval module; `requires_approval` | migration/conference demos |
 | RS-011 intent-bound, single-use, time-bound | ADR-011 canonical intent + HMAC | `approval_binding_tests` |
 | RS-012 re-derive at dispatch, halt on mismatch | dispatch loop `HaltIntent` | approval-binding tests |

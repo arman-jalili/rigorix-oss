@@ -155,7 +155,18 @@ An operator-authored, deterministic check evaluated immediately before a step
 dispatches. It returns a determination; it does not negotiate. Failure, absence,
 timeout, unparseable output and unknown all refuse.
 
+An unavailable evaluation is not a determination and is not a refusal: if the check
+could not be evaluated at all, the evidence records that it could not, never that it
+refused. See `05-evidence-model.md` §2, *Refused is a decision; unavailable is not*.
+
 *Anchor:* ADR-017.
+
+### Refusal
+A decision that the step must not proceed, reached by evaluating the inputs. It
+carries a reason and is recorded as an outcome.
+
+*Avoid:* failure (the precondition's determination, not the gate's decision),
+rejection (the proposal's fate in prose, not a recorded outcome).
 
 ### Authority source
 The operator-controlled system that holds the truth a precondition consults: an

@@ -24,6 +24,36 @@ This document separates four properties and defines a verification level for eac
 | History slice | signed range of the history, for offline verification | anchor |
 | Checkpoint | signed state at a sequence, used for compaction | anchor |
 
+### The decision record's `time`
+
+The `time` of a decision record is **the instant the decision was evaluated with** —
+not the instant at which the record was written, and not the wall clock at
+verification time. With pinned inputs it may be supplied by the caller and is signed
+with them (ADR-014 §2), so the instant is part of the evidence rather than a property
+of the machine that happened to run the gate.
+
+A verifier replays a decision with the recorded instant. Substituting the wall clock
+makes the replay a new decision with new inputs, and any difference it reports is a
+property of the verifier's clock rather than of the record — which is why replay with
+**any** recorded instant is normative and replay with the current instant is not.
+
+### Refused is a decision; unavailable is not
+
+The distinction is normative wherever a decision is recorded:
+
+- A **refusal** is a decision. The gate evaluated the inputs and concluded that the
+  step must not proceed. It carries a refusal reason, and the evidence records it as
+  an outcome (see `01-terminology.md`, *Refusal*).
+- An **unavailable evaluation** is the absence of a decision. The gate could not
+  evaluate — the engine was not linked, a port could not answer, the inputs were
+  unparseable. It MUST NOT be recorded as a refusal, and a host MUST NOT be able to
+  read it as an allow either.
+
+Both fail closed, and that is the point of keeping them apart: a refusal says the
+system decided, an unavailable evaluation says the system did not. Collapsing the two
+loses the only fact an auditor needs to tell a policy that fired from a gate that was
+not there.
+
 ## 3. The four properties
 
 **P1 — Internal consistency.** The envelopes form a valid chain: hashes link,
