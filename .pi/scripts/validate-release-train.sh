@@ -37,6 +37,9 @@
 #   .pi/scripts/validate-release-train.sh                 # check the repo
 #   .pi/scripts/validate-release-train.sh --self-test     # prove each check bites
 #   .pi/scripts/validate-release-train.sh --root <dir>    # check another tree
+#   .pi/scripts/validate-release-train.sh --npm-ready <state>   # true|false, or fail closed
+#       the ONE owner of `state:` -> npm readiness; release.yml calls it instead of
+#       keeping a second copy of the vocabulary (a `packaged` tag could not publish)
 #
 # An empty scan is a failure: a guard that checks nothing passes everything.
 
@@ -49,6 +52,7 @@ ROOT=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --self-test) MODE="--self-test"; shift ;;
+    --npm-ready) MODE="--npm-ready"; NPM_READY_STATE="${2:-}"; shift 2 ;;
     --root)
       [ $# -ge 2 ] || { echo "validate-release-train: --root requires a directory" >&2; exit 2; }
       ROOT="$2"; shift 2 ;;
@@ -75,6 +79,26 @@ if [ -z "$ROOT" ] || [ ! -f "$ROOT/.github/workflows/release.yml" ]; then
   echo "❌ could not locate the repo root (no .github/workflows/release.yml above $(dirname "$SELF"))" >&2
   echo "   a guard that cannot find what it checks does not pass" >&2
   exit 1
+fi
+
+# The state vocabulary has exactly one owner: this function. `release.yml` asks it rather
+# than repeating the list, so a state understood here cannot be "not shipped|awaiting-packaging"
+# there. The two drifted once: this guard accepted `packaged` and the release refused the tag.
+#   shipped            -> published before; this tag publishes a new version
+#   packaged           -> an artifact exists and passes the ceiling, never published: it must
+#                         not run (no prior version, no token) and must not gate the page
+#   awaiting-packaging -> no artifact; nothing to publish
+npm_ready() {
+  case "$1" in
+    shipped) echo true ;;
+    packaged | awaiting-packaging) echo false ;;
+    *) echo "❌ bundle state '$1' is not shipped|packaged|awaiting-packaging" >&2; return 1 ;;
+  esac
+}
+
+if [ "$MODE" = "--npm-ready" ]; then
+  npm_ready "$NPM_READY_STATE" || exit 1
+  exit 0
 fi
 
 CORE=$(cat <<'PY'
@@ -401,6 +425,12 @@ if [ "$MODE" = "--self-test" ]; then
 
   make_tree "$TMP/unknown" "engine wasm" yes measuring "publish-engine publish-wasm" yes
   expect 1 "unknown packaging state: fails closed" "$TMP/unknown"
+  # --npm-ready is the single owner of the vocabulary: three arms, one seed each.
+  [ "$(bash "$SELF" --npm-ready shipped)" = true ] || bad "shipped must be npm-ready"
+  [ "$(bash "$SELF" --npm-ready packaged)" = false ] || bad "packaged must not be npm-ready"
+  [ "$(bash "$SELF" --npm-ready awaiting-packaging)" = false ] || \
+      bad "awaiting-packaging must not be npm-ready"
+  if bash "$SELF" --npm-ready nonsense >/dev/null 2>&1; then bad "an unknown state must fail"; fi
 
   make_tree "$TMP/nonpm" "engine wasm" yes awaiting-packaging "publish-engine publish-wasm" yes
   sed -i.bak 's/publish-npm-package\.sh rigorix-gate/publish-npm-package.sh other-name/' "$TMP/nonpm/.github/workflows/release.yml"

@@ -57,20 +57,19 @@ jobs:
       - name: Read npm packaging readiness
         id: npm
         shell: bash
+        # The vocabulary has one owner: `validate-release-train.sh --npm-ready`. It used to be
+        # copied here, and the copies drifted — this step rejected `packaged` while the guard
+        # accepted it, so a valid tag could not publish. Ask, do not restate.
         run: |
           state=$(sed -n 's/^state:[[:space:]]*\([^[:space:]]*\).*/\1/p' wasm/ci/bundle-budget.txt | head -1)
-          case "$state" in
-            shipped)
-              echo "ready=true" >> "$GITHUB_OUTPUT"
-              echo "bundle state: shipped — rigorix-gate will be published to npm" ;;
-            awaiting-packaging)
-              echo "ready=false" >> "$GITHUB_OUTPUT"
-              echo "bundle state: awaiting-packaging — rigorix-gate is registered but NOT published"
-              echo "  (its module has no exports yet; see wasm/ci/bundle-budget.txt)" ;;
-            *)
-              echo "❌ bundle state '$state' is not shipped|awaiting-packaging" >&2
-              exit 1 ;;
-          esac
+          ready=$(bash wasm/.pi/scripts/validate-release-train.sh --npm-ready "$state") || exit 1
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+          if [ "$ready" = true ]; then
+            echo "bundle state: $state — rigorix-gate will be published to npm"
+          else
+            echo "bundle state: $state — rigorix-gate is on the train but NOT published by this tag"
+            echo "  (no version has shipped from it yet; see wasm/ci/bundle-budget.txt)"
+          fi
 
   # ── Publish each crate in dependency order ────────────────────
   # Each step delegates to .github/scripts/publish-crate.sh, which asks the
