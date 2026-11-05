@@ -71,7 +71,7 @@ fn the_policy_refuses_and_the_rule_is_what_surfaces() {
 // The export service (issue #1305): envelope bytes are never re-encoded
 // ---------------------------------------------------------------------------
 
-use crate::support::{AllowPolicy, FakeGate, PortSet, TestStamp, action, inputs};
+use crate::support::{AllowPolicy, PortSet, RunnerStubGate, TestStamp, action, inputs};
 use rigorix_gate_wasm::application::{
     AttemptRun, AttemptRunService, ExportArtifactSetService, OpenReplaySession,
     OpenReplaySessionService,
@@ -90,7 +90,7 @@ fn open_and_run(envelopes: Vec<Vec<u8>>) -> rigorix_gate_wasm::domain::session::
         .expect("open");
 
     let runner = AttemptRunService::new(EngineFindingsProjection::new(BusinessWording::new()));
-    let mut gate = FakeGate::with_envelopes(envelopes);
+    let mut gate = RunnerStubGate::with_envelopes(envelopes);
     let mut set = PortSet::happy();
     runner
         .execute(&mut session, action(), set.ports(), &mut gate)

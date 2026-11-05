@@ -191,10 +191,20 @@ fn open_session_evaluate(
         seed.draws.into_iter().map(Draw::from_trusted).collect(),
     );
 
-    // The gate is built from the same fixture world the session pins: one transcript, one
-    // set of port answers, so the engine evaluates the data the record cites.
+    // The gate is built from the **same declaration** the session pins — fixtures, clock and
+    // seed — parsed by the engine's own constructor, so there is one interpretation of a
+    // vector in the workspace and the crate does not hold a second one (#1416).
     #[cfg(feature = "engine")]
-    let gate_transcript = fixtures.transcript.0.clone();
+    let gate_declaration = {
+        let field = |json: &str| {
+            serde_json::from_str::<serde_json::Value>(json).unwrap_or(serde_json::Value::Null)
+        };
+        serde_json::json!({
+            "fixtures": field(&fixtures_json),
+            "clock": field(&clock_json),
+            "seed": field(&seed_json),
+        })
+    };
 
     let opener = OpenReplaySessionService::new();
     let session = match opener.execute(OpenSessionInput {
@@ -211,7 +221,7 @@ fn open_session_evaluate(
     // slice answers `EngineGate::unavailable()` — still a refusal that says why, never an
     // allow, and the kind distinguishes "could not answer" from "answered no".
     #[cfg(feature = "engine")]
-    let gate = Box::new(crate::infrastructure::EngineGate::new(gate_transcript));
+    let gate = Box::new(crate::infrastructure::EngineGate::new(gate_declaration));
     #[cfg(not(feature = "engine"))]
     let gate = Box::new(crate::infrastructure::EngineGate::unavailable());
 

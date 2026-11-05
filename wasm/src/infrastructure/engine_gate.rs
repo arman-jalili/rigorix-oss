@@ -41,26 +41,42 @@ use crate::domain::engine_seam::{
 };
 #[cfg(not(feature = "engine"))]
 use crate::domain::engine_seam::{GateEvaluationRequest, GateEvaluator};
+#[cfg(feature = "engine")]
+use rigorix_engine::gate::application::fixtures::{FixtureDeclaration, FixtureWorld};
 
 /// The crate's gate: one call, and the engine decides.
+///
+/// The gate holds the **whole world** — the declaration, parsed and validated once by the
+/// engine's own constructor — not a transcript the crate re-interprets (#1416). A host that
+/// assembled one world for the gate and another for the session would be comparing two
+/// interpretations and calling the agreement a conformance.
 pub struct EngineGate {
-    /// The transcript the four port adapters answer from.
+    /// The world, or the reason this declaration is not one. A declaration that does not
+    /// build is a *refusal with a subject* at evaluation time, not a panic at session open.
     #[cfg(feature = "engine")]
-    transcript: serde_json::Value,
+    world: Result<FixtureWorld, String>,
 }
 
 impl EngineGate {
-    /// Build the gate over the session's fixture world.
+    /// Build the gate over the session's whole declaration: `fixtures`, `clock` and `seed`.
+    ///
+    /// `FixtureWorld::from_declaration` is the only interpretation of a declaration in the
+    /// workspace, so a vector that the CLI evaluates is the same world this gate evaluates.
     #[cfg(feature = "engine")]
-    pub const fn new(transcript: serde_json::Value) -> Self {
-        Self { transcript }
+    pub fn new(declaration: serde_json::Value) -> Self {
+        let world = serde_json::from_value::<FixtureDeclaration>(declaration)
+            .map_err(|error| format!("the declaration is not a fixture declaration: {error}"))
+            .and_then(|declaration| {
+                FixtureWorld::from_declaration(&declaration).map_err(|error| error.to_string())
+            });
+        Self { world }
     }
 
     /// The gate with no engine linked — every evaluation refuses, and says why.
     pub const fn unavailable() -> Self {
         Self {
             #[cfg(feature = "engine")]
-            transcript: serde_json::Value::Null,
+            world: Err(String::new()),
         }
     }
 }
@@ -98,17 +114,48 @@ fn evaluate_with_engine(
     gate: &EngineGate,
     request: GateEvaluationRequest<'_, '_>,
 ) -> Result<EngineEvaluation, EngineBindingError> {
-    use rigorix_engine::audit::application::dto::PinnedInputs;
-    use rigorix_engine::gate::application::{GatePorts, GateRequest, evaluate_gate_sync};
+    use rigorix_engine::gate::application::{GateRequest, evaluate_gate_sync};
     use rigorix_engine::gate::domain::{GateError, GateOutcome, GateVerdict, GatedStep};
 
-    let execution_id = uuid::Uuid::parse_str(request.attempt_id.as_str()).map_err(|_| {
+    uuid::Uuid::parse_str(request.attempt_id.as_str()).map_err(|_| {
         // The execution id is required, never defaulted: a gate that invents one puts a
         // guess inside signed evidence (#1381).
         EngineBindingError::Rejected {
             detail: "the attempt id is not an execution id".to_string(),
         }
     })?;
+
+    // The world decides the pins; the request only has to agree with it. Two executions in
+    // one decision is the failure this comparison names, and `PinnedInputs` cannot record
+    // both — so a disagreement is refused rather than resolved in favour of either.
+    let world = gate
+        .world
+        .as_ref()
+        .map_err(|detail| EngineBindingError::Rejected {
+            detail: if detail.is_empty() {
+                "this build was compiled without gate evaluation: the engine slice is not linked \
+             (FR-011)"
+                    .to_string()
+            } else {
+                detail.clone()
+            },
+        })?;
+    let declared_attempt = world
+        .declaration()
+        .fixtures
+        .ids
+        .attempt
+        .first()
+        .cloned()
+        .unwrap_or_default();
+    if declared_attempt != request.attempt_id.as_str() {
+        return Err(EngineBindingError::Rejected {
+            detail: format!(
+                "attempt '{}' is not the execution id this world declares ('{declared_attempt}')",
+                request.attempt_id.as_str()
+            ),
+        });
+    }
 
     let parameters = serde_json::Value::Object(request.action.params.0.clone());
     // The engine takes the three parts separately: the action's `name` is the step identity
@@ -120,17 +167,12 @@ fn evaluate_with_engine(
         parameters,
     );
 
-    let ports = GatePorts {
-        precondition: Some(super::engine_ports::precondition_service(&gate.transcript)),
-        sequence: Some(super::engine_ports::sequence_service(&gate.transcript)),
-    };
-
     let decision = evaluate_gate_sync(GateRequest {
         step: &step,
         proposed_action: &request.action.name,
         identity_attested: false,
-        pins: PinnedInputs::none().with_execution_id(execution_id),
-        ports,
+        pins: world.pins(),
+        ports: world.ports(),
         run_context: None,
     })
     .map_err(|error| match error {

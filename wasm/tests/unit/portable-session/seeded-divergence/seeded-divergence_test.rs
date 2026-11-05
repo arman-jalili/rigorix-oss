@@ -61,7 +61,7 @@ fn a_skipped_seeded_vector_cannot_hide() {
 // The committed must-fail vector (issue #1313)
 // ---------------------------------------------------------------------------
 
-use crate::support::FakeGate;
+use crate::support::RunnerStubGate;
 use rigorix_gate_wasm::application::{ConformanceRunner, RunConformanceVector, default_projection};
 
 type GateFactory = fn() -> Box<dyn rigorix_gate_wasm::domain::engine_seam::GateEvaluator>;
@@ -69,7 +69,7 @@ type ProjectionFactory = fn() -> Box<dyn rigorix_gate_wasm::domain::services::Ev
 
 fn runner() -> ConformanceRunner<GateFactory, ProjectionFactory> {
     fn gate() -> Box<dyn rigorix_gate_wasm::domain::engine_seam::GateEvaluator> {
-        Box::new(FakeGate::allowing())
+        Box::new(RunnerStubGate::allowing())
     }
     ConformanceRunner::new(gate as fn() -> _, default_projection as fn() -> _)
 }

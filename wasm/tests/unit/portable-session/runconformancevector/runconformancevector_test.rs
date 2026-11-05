@@ -71,7 +71,7 @@ fn vectors_are_immutable_artifacts_with_an_id() {
 // The runner (issue #1312)
 // ---------------------------------------------------------------------------
 
-use crate::support::FakeGate;
+use crate::support::RunnerStubGate;
 use rigorix_gate_wasm::application::{ConformanceRunner, RunConformanceVector, default_projection};
 
 fn vector_from_disk() -> ConformanceVector {
@@ -86,7 +86,7 @@ type ProjectionFactory = fn() -> Box<dyn rigorix_gate_wasm::domain::services::Ev
 
 fn runner() -> ConformanceRunner<GateFactory, ProjectionFactory> {
     fn gate() -> Box<dyn rigorix_gate_wasm::domain::engine_seam::GateEvaluator> {
-        Box::new(FakeGate::allowing())
+        Box::new(RunnerStubGate::allowing())
     }
     ConformanceRunner::new(gate as fn() -> _, default_projection as fn() -> _)
 }

@@ -98,7 +98,7 @@ fn identity_failure_has_its_own_kind_and_wording() {
 // Behaviour (issue #1296): criteria 3, 4, 5, 10
 // ---------------------------------------------------------------------------
 
-use crate::support::{FailingKey, FakeGate, PortSet, action, digest, inputs};
+use crate::support::{FailingKey, PortSet, RunnerStubGate, action, digest, inputs};
 use rigorix_gate_wasm::domain::outcome::RefusalKind as Kind;
 use rigorix_gate_wasm::domain::services::{BusinessWording, EngineFindingsProjection};
 
@@ -109,7 +109,7 @@ fn projection() -> EngineFindingsProjection<BusinessWording> {
 #[test]
 fn an_allowed_run_names_no_cause_and_carries_evidence_order() {
     let mut session = ReplaySession::open(inputs()).expect("open");
-    let mut gate = FakeGate::allowing();
+    let mut gate = RunnerStubGate::allowing();
     let mut set = PortSet::happy();
 
     let outcome = session
@@ -125,7 +125,7 @@ fn an_allowed_run_names_no_cause_and_carries_evidence_order() {
 #[test]
 fn a_refused_run_names_the_causing_step_and_preserves_not_reached() {
     let mut session = ReplaySession::open(inputs()).expect("open");
-    let mut gate = FakeGate::refusing();
+    let mut gate = RunnerStubGate::refusing();
     let mut set = PortSet::happy();
 
     let outcome = session
@@ -153,7 +153,7 @@ fn a_refused_run_names_the_causing_step_and_preserves_not_reached() {
 #[test]
 fn a_second_attempt_is_refused_and_the_first_outcome_is_unchanged() {
     let mut session = ReplaySession::open(inputs()).expect("open");
-    let mut gate = FakeGate::allowing();
+    let mut gate = RunnerStubGate::allowing();
     let mut set = PortSet::happy();
 
     let first = session
@@ -181,7 +181,7 @@ fn every_port_failure_kind_refuses_and_never_allows() {
         // (a) the gate reports the failure after answering every finding as passed
         let mut session = ReplaySession::open(inputs()).expect("open");
         let mut gate =
-            FakeGate::with_port_failure(PortFailure::new(PortId::ProviderTransport, kind));
+            RunnerStubGate::with_port_failure(PortFailure::new(PortId::ProviderTransport, kind));
         let mut set = PortSet::happy();
         let outcome = session
             .attempt(action(), set.ports(), &mut gate, &projection())
@@ -197,7 +197,7 @@ fn every_port_failure_kind_refuses_and_never_allows() {
 
         // (b) the identity port cannot answer *before* the gate runs
         let mut session = ReplaySession::open(inputs()).expect("open");
-        let mut gate = FakeGate::allowing();
+        let mut gate = RunnerStubGate::allowing();
         let mut set = PortSet::happy();
         set.key = FailingKey(kind).into_key();
         let outcome = session
@@ -214,7 +214,7 @@ fn every_port_failure_kind_refuses_and_never_allows() {
 #[test]
 fn an_engine_binding_failure_is_an_error_not_an_allow() {
     let mut session = ReplaySession::open(inputs()).expect("open");
-    let mut gate = FakeGate::aborting();
+    let mut gate = RunnerStubGate::aborting();
     let mut set = PortSet::happy();
 
     let result = session.attempt(action(), set.ports(), &mut gate, &projection());
@@ -257,7 +257,7 @@ fn the_full_fault_matrix_refuses_every_case() {
             // The port the aggregate consults itself: the id source.
             if port == PortId::IdSource {
                 let mut session = ReplaySession::open(inputs()).expect("open");
-                let mut gate = FakeGate::allowing();
+                let mut gate = RunnerStubGate::allowing();
                 let mut set = PortSet::happy();
                 set.ids = AnyIds::Failing(FailingIds(kind));
                 let outcome = session
@@ -272,7 +272,7 @@ fn the_full_fault_matrix_refuses_every_case() {
             // The port the aggregate consults before the gate: the key source.
             if port == PortId::KeySource {
                 let mut session = ReplaySession::open(inputs()).expect("open");
-                let mut gate = FakeGate::allowing();
+                let mut gate = RunnerStubGate::allowing();
                 let mut set = PortSet::happy();
                 set.key = FailingKey(kind).into_key();
                 let outcome = session
@@ -288,7 +288,7 @@ fn the_full_fault_matrix_refuses_every_case() {
             // passed — the strictest version of the case: an unavailable check plus a
             // green gate must still refuse.
             let mut session = ReplaySession::open(inputs()).expect("open");
-            let mut gate = FakeGate::with_port_failure(PortFailure::new(port, kind));
+            let mut gate = RunnerStubGate::with_port_failure(PortFailure::new(port, kind));
             let mut set = PortSet::happy();
             let outcome = session
                 .attempt(action(), set.ports(), &mut gate, &projection())
@@ -308,7 +308,7 @@ fn a_failed_first_attempt_leaves_the_outcome_readable_and_unsealed() {
     // A refused run is still a decision: it can be read and sealed (the record of a
     // refusal is the point of the crate). What it cannot be is re-run.
     let mut session = ReplaySession::open(inputs()).expect("open");
-    let mut gate = FakeGate::refusing();
+    let mut gate = RunnerStubGate::refusing();
     let mut set = PortSet::happy();
 
     let outcome = session
@@ -317,7 +317,7 @@ fn a_failed_first_attempt_leaves_the_outcome_readable_and_unsealed() {
     assert_eq!(outcome.status, OutcomeStatus::Refused);
     assert_eq!(session.outcome(), Some(&outcome));
 
-    let mut gate_again = FakeGate::allowing();
+    let mut gate_again = RunnerStubGate::allowing();
     assert_eq!(
         session
             .attempt(action(), set.ports(), &mut gate_again, &projection())
