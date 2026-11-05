@@ -54,7 +54,8 @@ guardian_issue:
     (`application/sync.rs`), envelope assembly (`application/envelope.rs`), and the crate wired
     to it (`wasm/src/infrastructure/engine_gate.rs`). The spec does not yet record any of it.
 
-    Prerequisite: **#1385** (C.5) must land first. This issue's job is to make the specification
+    Prerequisite: **#1385** (C.5) must land first, and #1385 is itself blocked by #1414
+    (the fixture world both runtimes construct). This issue's job is to make the specification
     describe what C made true *and prove it*: each claim gets a traceability row pointing at the
     code that makes it true.
 

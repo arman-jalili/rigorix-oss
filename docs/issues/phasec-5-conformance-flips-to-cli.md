@@ -41,6 +41,11 @@ guardian_issue:
       attribute, while the module doc at `run_conformance_vector.rs:8` claims
       `cfg(any(test, feature = "conformance"))`.
 
+  prerequisites:
+    - "#1414 — the fixture world is engine data both runtimes construct. Without it the CLI has
+      no world to replay and \"same fixture world, same bytes\" is undefined; this issue's step 5
+      (goldens from the same-commit CLI) cannot exist."
+
   implementation_order: |
     One PR, in this order; the label does not move until steps 1-4 are true.
 
