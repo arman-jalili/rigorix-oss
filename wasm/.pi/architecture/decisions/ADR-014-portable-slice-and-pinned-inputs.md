@@ -215,8 +215,10 @@ cargo run -q -p rigorix-engine --example pinned_refusal -- \
 - `.pi/scripts/validate-portable-inventory.sh` — the manifest exists, names real things, and is not
   restated here.
 - `cargo test -p rigorix-engine --test unit pinned` — the witness, plus its sensitivity seeds.
-- `wasm/ci/run-wasm-gates.sh` — ten gates, including the module smoke (packaged artifact, stripped)
-  and the size gate (presence assertion before the measurement).
+- `wasm/ci/run-wasm-gates.sh` — eleven gates, including the module smoke (packaged artifact,
+  stripped), the size gate (presence assertion before the measurement) and host verification
+  (`--with-npm`, the form CI runs; without npm the summary states the fraction it ran rather
+  than a bare count, #1421).
 - `.pi/scripts/validate-docs.sh` — every backticked identifier in the report and this record exists.
 
 ## References
