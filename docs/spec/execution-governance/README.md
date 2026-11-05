@@ -1,12 +1,12 @@
 # Rigorix Specification — Execution Governance
 
-**Version:** 0.2.0 (public review draft)
+**Version:** 0.3.0 (public review draft)
 **Status:** Published for review and quotation. Cite it, quote it, and disagree with it
 in public — that is what a review draft is for. Two limits remain: no conformance
 claim may be made against a draft version (see `09-conformance.md` §7), and a
 published version is immutable, so corrections arrive as a new patch version
 (`12-versioning.md` §5).
-**Date:** 2026-10-25
+**Date:** 2026-11-05
 
 ---
 

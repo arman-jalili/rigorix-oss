@@ -20,7 +20,11 @@ contract_version()                            -> { contract, engine, artifact_fo
 ```
 
 - **A refusal is a return value**, never a thrown error. The only error a host can provoke is
-  a malformed handle.
+  a malformed handle. A refusal is a *decision*, and the vocabulary is the specification's:
+  `01-terminology.md` (*Refusal*) and `05-evidence-model.md` §2. An evaluation that could not
+  happen is reported as unavailable, never as a refusal — `gate_unavailable` is the
+  "could not answer" answer, and a host must not be able to read it as either an allow or a
+  refusal.
 - **Verification is not here.** The host verifies with `rigorix-verifier`, in a process that
   never loads this module (ADR-013). The crate has no verifier dependency and no verdict
   vocabulary.

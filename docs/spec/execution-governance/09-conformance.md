@@ -12,6 +12,27 @@ in a declared deployment mode, with stated exceptions.
 A claim is a statement of evidence, not of intent. "We are designed to" is not a
 claim.
 
+## 1a. Deployment modes
+
+A deployment mode is the set of capabilities an implementation ships. Two modes are
+defined here because the difference changes what a claim may say:
+
+- **Producer** — evaluates, decides, and writes signed evidence. It may ship without
+  any verifier, as the wasm build does (ADR-013): the artifact produces evidence and
+  cannot perform offline verification of it.
+- **Verifier** — independently verifies evidence produced elsewhere: chain integrity,
+  signatures, anchors, and replay of the decision inputs.
+
+A producer-only deployment MUST state its mode in the claim and MUST NOT claim a
+level whose evidence requires independent verification — that is Level 4 (verifiable
+evidence) and above. It claims the levels its production evidence actually satisfies,
+with the verification rows marked *excepted, producer-only mode* (see §6).
+
+The obligation is not that every deployment verify. It is that a claim names which
+side of the boundary the deployment is on: evidence that nobody can verify is not
+verifiable evidence, and a claim that conflates the two is the claim `10-non-claims.md`
+refuses.
+
 ## 2. Levels
 
 Levels are cumulative. An implementation declares the highest level it satisfies.
@@ -89,7 +110,7 @@ exceptions, and stating them is what makes the rest credible.
 | 1 | a run showing plan, gate, approval binding, refusal, decision record |
 | 2 | a run showing a sequence constraint promoting or refusing, including a cross-run case |
 | 3 | a run showing a precondition refusing after the world changed, with a signed finding |
-| 4 | an offline verification at V2 and V3, with the verifier's own level report |
+| 4 | an offline verification at V2 and V3, with the verifier's own level report — **not satisfiable by a producer-only deployment**, which by §1a ships no verifier and MUST NOT claim this level |
 | 5 | a concurrency test where a naive counter breaches and reservation holds |
 | 6 | a run where a dispatched effect is left unsettled: the retry is refused, a dependent is fenced, and a resolver settles it with a provider receipt — with the durability and settlement axes named |
 
@@ -120,6 +141,11 @@ then declares Level 3 with a note that chain and signature exist but no anchor.
 
 What is not allowed is declaring Level 4 while the anchor is self-held and calling it
 external provenance (RS-064, RS-081).
+
+A producer-only deployment (§1a) records the verification rows as
+*excepted, producer-only mode* rather than omitting them: the exception names the
+capability it does not ship, so a reader can see that the deployment produces
+verifiable evidence without claiming that this deployment verified it.
 
 ## 7. Conformance of this specification itself
 
