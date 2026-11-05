@@ -1,3 +1,16 @@
+## [2026-11-05] — ADR-021 is Proposed: the signed record carries a subject, and the human is erasable
+
+### Added
+- **ADR-021 (Proposed, not scheduled).** The approval evidence records an opaque `approver_subject`
+  assigned by the authenticating surface, never an identifier; the subject-to-human mapping lives in a
+  separate store that no signature covers, and erasure is a sealed `subject_erased` event rather than
+  an edit. Authority survives erasure as a claim, so a verifier can still answer *was this approved
+  within policy* when it can no longer answer *by whom*.
+- It completes the item ADR-020 § D7 deferred, and reuses the `claim().subject()` vocabulary the
+  enterprise path already writes (`execution_api/application/services.rs:257`).
+- The legal question — retention basis, who may resolve a subject — is stated in § Open questions and
+  deliberately **not** decided by the ADR.
+
 ## [2026-10-31] — ADR-020 is Proposed, not accepted
 
 ### Changed
