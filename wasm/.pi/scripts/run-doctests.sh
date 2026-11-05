@@ -188,8 +188,7 @@ PYFENCE
 run_workspace() {
     local log fences_rc=0
     check_ignore_fences "$ROOT" "$ROOT/.pi/doctest-exemptions.tsv" || fences_rc=1
-    local log
-    log="$(mktemp -t doctests)"
+    log="$(mktemp "${TMPDIR:-/tmp}/doctests.XXXXXX")"
     local rc=0
     cargo test --doc --workspace --no-fail-fast >"$log" 2>&1 || rc=$?
     # The log is always printed: a failing run is the one whose numbers are needed.
@@ -203,8 +202,9 @@ run_workspace() {
 }
 
 run_package() { # $1 crate name
-    local pkg="$1" log
-    log="$(mktemp -t doctests)"
+    local pkg="$1" log fences_rc=0
+    check_ignore_fences "$ROOT" "$ROOT/.pi/doctest-exemptions.tsv" || fences_rc=1
+    log="$(mktemp "${TMPDIR:-/tmp}/doctests.XXXXXX")"
     local rc=0
     cargo test --doc -p "$pkg" --no-fail-fast >"$log" 2>&1 || rc=$?
     cat "$log"
@@ -225,7 +225,7 @@ run_package() { # $1 crate name
 # ---------------------------------------------------------------------------
 self_test() {
     local tmp pass=0 fail=0
-    tmp="$(mktemp -d -t doctest-selftest)"
+    tmp="$(mktemp -d "${TMPDIR:-/tmp}/doctest-selftest.XXXXXX")"
     # NOTE: no `trap … RETURN` here. bash fires a RETURN trap after EVERY function
     # return, which deleted the throwaway crates right after `mk` created them and
     # left every case with an empty log — the self-test "passed" four assertions by

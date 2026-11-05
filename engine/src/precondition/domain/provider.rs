@@ -192,9 +192,10 @@ pub enum ProviderDetermination {
 /// meet, and it is deliberately **total with no wildcard arm**: a new variant on either side is
 /// a compile error here rather than a silent default at a call site.
 ///
-/// The arm that matters is `Unknown → Error`. It used to be written as
+/// The arm that matters is `Unknown → Error`. It used to be written as the line below, which
+/// is quoted for its meaning and is not an example to run:
 ///
-/// ```ignore
+/// ```text
 /// let outcome = if observation.determination.permits() { Passed } else { Failed };
 /// ```
 ///
