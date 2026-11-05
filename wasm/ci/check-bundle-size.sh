@@ -103,17 +103,22 @@ if [ -f "$SHIPPED" ]; then
     fi
     ACTUAL=$(wc -c <"$SHIPPED" | tr -d ' ')
     # #1408: the artifact is portable, so its size is a property of the source and the pinned
-    # toolchain. Assert the property the tolerance used to stand in for: the module names no
-    # builder directory. A path would either be an absolute-path regression or a remap that did
-    # not reach the build; both make the recorded measurement a per-machine fact again.
-    if ! command -v strings > /dev/null 2>&1; then
-        echo "❌ \`strings\` is required to assert the artifact's portability; install binutils" >&2
+    # toolchain. Assert the property the tolerance used to stand in for: no path from the host
+    # that built it. The prefixes come from `ci/builder-paths.sh`, shared with the packaging
+    # path, because a gate that checks `$HOME` alone passes an artifact that still names its
+    # toolchain directory.
+    # shellcheck source=builder-paths.sh
+    . "$CRATE_DIR/ci/builder-paths.sh"
+    if ! BUILDER_PATHS="$(builder_path_report "$SHIPPED")"; then
         exit 1
     fi
-    BUILDER_PATHS="$(strings -a "$SHIPPED" | grep -c "$HOME" || true)"
-    if [ "${BUILDER_PATHS:-0}" -ne 0 ]; then
-        echo "❌ the artifact names ${HOME} ${BUILDER_PATHS} time(s) — it is not machine-independent" >&2
-        echo "   the packaging path must remap CARGO_HOME/RUSTUP_HOME (ci/wasm-build.sh, #1408)" >&2
+    if [ -n "$BUILDER_PATHS" ]; then
+        while IFS="$(printf '\t')" read -r count prefix; do
+            echo "❌ ${count} occurrence(s) of the builder path ${prefix} — the artifact is not machine-independent" >&2
+        done <<EOF
+$BUILDER_PATHS
+EOF
+        echo "   the packaging path must remap the registry, the toolchain and the sysroot (ci/wasm-build.sh, #1408)" >&2
         exit 1
     fi
     echo "   emitted ${EMITTED} B · name section ${NAME_SECTION} B · measured ${MEASURED} B · budget ${BUDGET} B · ceiling ${CEILING} B · actual ${ACTUAL} B"

@@ -19,7 +19,7 @@ there are load-bearing for this record:
 
 - **The size verdict was wrong once and was withdrawn (#1354).** M3 was first read off the emitted
   build output, which carries the `name` custom section — 341 785 B of debug symbols on an engine-linked
-  module. With the size profile (#1386) the artifact a host loads is 1 334 837 B, i.e. 89.0 % of the 1 500 000 B ceiling, so the size condition
+  module. With the size profile (#1386) the artifact a host loads is 1 334 325 B, i.e. 88.95 % of the 1 500 000 B ceiling, so the size condition
   never fired and the decision that depended on it (*"the browser verifies, the gate stays
   server-side"*) is withdrawn with it. A decision record written before that correction would have
   narrowed the product for a problem that did not exist. **This ADR is written after it, not instead
@@ -119,14 +119,14 @@ a branch name means the apparatus is still there and the number cannot be reprod
 | Fact | Value | Artifact | Reproducible |
 |---|---|---|---|
 | Empty seam (`--no-default-features`), before #1401 made the engine-linked module the default | 169 250 B (budget 211 562 B, i.e. 25 % over the measured 169 250 B) | `wasm/pkg/*.wasm` after `strip_name_section.py`; `ci/wasm-build.sh` profile; `wasm-bindgen` 0.2.130 | **yes** — `wasm/ci/check-bundle-size.sh`, presence assertion first, and `ACTUAL == MEASURED` |
-| Engine-linked module, as shipped | 1 334 837 B = **89.0 %** of the 1 500 000 B ceiling (#1386: the size profile is the difference — 1 334 837 B is the ceiling minus 165 163 B; #1408: the build remaps its own toolchain paths, so this number is host-independent); emitted 1 767 472 B = **117.83 %** of the 1 500 000 B ceiling before the strip | | `default`/`--features engine`, `ci/wasm-build.sh` (fat LTO, opt-level z, panic abort, cgu 1), stripped | **yes** — `wasm/ci/run-wasm-gates.sh`; the number the flip decision rests on |
-| `name` section removed by the strip | 432 635 B = **24.48 %** of the 1 767 472 B emitted engine-linked module — larger under LTO, not smaller, because symbols survive inlining | same build | **yes** — `ci/strip_name_section.py --self-test`, then `--check` on the artifact |
+| Engine-linked module, as shipped | 1 334 325 B = **88.95 %** of the 1 500 000 B ceiling (#1386: the size profile is the difference — 1 334 325 B is the ceiling minus 165 675 B; #1408: the build remaps the registry, the toolchain and the sysroot, so this number is host-independent); emitted 1 766 960 B = **117.80 %** of the 1 500 000 B ceiling before the strip | | `default`/`--features engine`, `ci/wasm-build.sh` (fat LTO, opt-level z, panic abort, cgu 1), stripped | **yes** — `wasm/ci/run-wasm-gates.sh`; the number the flip decision rests on |
+| `name` section removed by the strip | 432 635 B = **24.48 %** of the 1 766 960 B emitted engine-linked module — larger under LTO, not smaller, because symbols survive inlining | same build | **yes** — `ci/strip_name_section.py --self-test`, then `--check` on the artifact |
 | `wasm32` dependency graph under `portable` | 74 crates (normal + build), exit 0 | `cargo tree -p rigorix-engine --features portable --target wasm32-unknown-unknown -e normal,build` on `issue/1351` @ `c118cb06` | **no, yet** — `portable` is not on `main`; `Cargo.lock`-pinned when it is |
 | Modules excluded by the slice | 22 of 39 public modules (10 forbidden crate, 6 narrowed `tokio`, 6 closure), 23 inner items | `engine/.pi/portable-inventory.tsv` | **yes** — the manifest's rows; every count recomputed by `validate-portable-inventory.sh` |
 | M2 witness: pinned refusal, both entry points | `c47b27f9…`, 853 B, equal across two runs | `main`, `engine/examples/pinned_refusal.rs` and `rigorix-cli --features pinned-inputs pinned-refusal` | **yes** — `tests/unit/pinnedinputs::the_documented_pins_produce_the_golden_digest` |
 | Unpinned control | **the digest differs every run**, 860 B | `main`, same two commands | the variance *is* the result; no value is claimed |
 | Apparatus-era readings | 877 B pinned / 884 B unpinned, `32211b9d…` | `examples/spike_m2_envelope.rs` on `issue/1351` @ `c118cb06` | **no** — the fixture was renamed in the port (#1357); kept as history in §2 of the report |
-| Remaining size lever | `data` = 416 784 B = **31.22 %** of the 1 334 837 B shipped engine-linked module — and 23.58 % of the 1 767 472 B emitted engine-linked module | section table, same branch | **no, yet** — named here so the next size question starts from the section table, not from a dependency hunt |
+| Remaining size lever | `data` = 416 784 B = **31.24 %** of the 1 334 325 B shipped engine-linked module — and 23.59 % of the 1 766 960 B emitted engine-linked module | section table, same branch | **no, yet** — named here so the next size question starts from the section table, not from a dependency hunt |
 
 The witness command, so the claim above is one line:
 
@@ -150,7 +150,7 @@ cargo run -q -p rigorix-engine --example pinned_refusal -- \
 
 ### Positive
 
-- Browser gate evaluation is unblocked on evidence: 89.0 % of the 1 500 000 B ceiling with headroom, and byte
+- Browser gate evaluation is unblocked on evidence: 88.95 % of the 1 500 000 B ceiling with headroom, and byte
   equality that fails if the fixture moves.
 - The determinism witness is one command and one test, so "the browser decides the same" can be
   re-checked by anyone in a minute instead of trusted.
@@ -165,7 +165,7 @@ cargo run -q -p rigorix-engine --example pinned_refusal -- \
   is closed over error types and ports.
 - The inventory is measured on a branch, not on `main`, until Phase C lands the wiring — the two
   rows marked "no, yet" above are the debt that Phase C converts into reproducible facts.
-- `data` is 31.22 % of the shipped module (416 784 B of 1 334 837 B). If the demo ever needs to
+- `data` is 31.24 % of the shipped module (416 784 B of 1 334 325 B). If the demo ever needs to
   shrink, that is the lever, and it is not a dependency question.
 - The golden digest is a ratchet: any deliberate fixture change now costs a test edit *and* a report
   edit in the same commit. That is the intent, and it is not free.
@@ -237,9 +237,9 @@ cargo run -q -p rigorix-engine --example pinned_refusal -- \
 
 | Ratio | Operands | Value |
 |---|---|---|
-| engine-linked, as shipped vs ceiling | 1 334 837 / 1 500 000 | **89.0 %** of the 1 500 000 B ceiling |
-| engine-linked, as emitted vs ceiling | 1 767 472 / 1 500 000 | **117.83 %** of the 1 500 000 B ceiling |
-| `name` section share of the emitted module | 432 635 / 1 767 472 | **24.48 %** of the 1 767 472 B emitted engine-linked module |
-| `data` segment share of the shipped module | 416 784 / 1 334 837 | **31.22 %** of the 1 334 837 B shipped engine-linked module |
-| `data` segment share of the emitted module | 416 784 / 1 767 472 | **23.58 %** of the 1 767 472 B emitted engine-linked module |
+| engine-linked, as shipped vs ceiling | 1 334 325 / 1 500 000 | **88.95 %** of the 1 500 000 B ceiling |
+| engine-linked, as emitted vs ceiling | 1 766 960 / 1 500 000 | **117.80 %** of the 1 500 000 B ceiling |
+| `name` section share of the emitted module | 432 635 / 1 766 960 | **24.48 %** of the 1 766 960 B emitted engine-linked module |
+| `data` segment share of the shipped module | 416 784 / 1 334 325 | **31.24 %** of the 1 334 325 B shipped engine-linked module |
+| `data` segment share of the emitted module | 416 784 / 1 766 960 | **23.59 %** of the 1 766 960 B emitted engine-linked module |
 | default module vs its budget | 169 250 × 1.25 = 211 562 | **25 % over the measured 169 250 B** |

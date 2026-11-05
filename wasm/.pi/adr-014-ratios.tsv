@@ -29,22 +29,22 @@
 #
 # kind	stated	numerator	denominator	says	note
 quantity	crates	74	-	-	cargo tree -p rigorix-engine --features portable --target wasm32-unknown-unknown -e normal,build | sort -u (#1374, re-measured on the merged tree)
-quantity	seam_shipped	1334837	-	-	wasm/ci/bundle-budget.txt measured_bytes (cross-checked by the guard); re-recorded by #1408 after the build began remapping CARGO_HOME/RUSTUP_HOME, so the bytes no longer depend on the builder's paths
-quantity	seam_budget	1668546	-	-	wasm/ci/bundle-budget.txt budget_bytes (measured + 25 %, NFR-002; 1 334 837 x 1.25 = 1 668 546.25, floored)
+quantity	seam_shipped	1334325	-	-	wasm/ci/bundle-budget.txt measured_bytes (cross-checked by the guard); re-recorded by #1408 after the build began remapping CARGO_HOME/RUSTUP_HOME, so the bytes no longer depend on the builder's paths
+quantity	seam_budget	1667906	-	-	wasm/ci/bundle-budget.txt budget_bytes (measured + 25 %, NFR-002; 1 334 325 x 1.25 = 1 667 906.25, floored)
 quantity	seam_empty_shipped	169250	-	-	the empty seam (`--no-default-features`) before #1401 made the engine-linked module the default; ADR-014 evidence table, first row
 quantity	seam_empty_budget	211562	-	-	169 250 x 1.25, the empty seam's budget; ADR-014 evidence table, first row
-quantity	engine_shipped	1334837	-	-	stripped, size profile (#1386); re-measured by #1408 — 1767472 emitted, 432635 name section
-quantity	engine_emitted	1767472	-	-	as emitted with the size profile, re-measured by #1408 — carries the `name` debug section
+quantity	engine_shipped	1334325	-	-	stripped, size profile (#1386); re-measured by #1408 — 1766960 emitted, 432635 name section
+quantity	engine_emitted	1766960	-	-	as emitted with the size profile, re-measured by #1408 — carries the `name` debug section
 quantity	name_section	432635	-	-	the `name` custom section removed by the strip (#1386), re-measured by #1408
 quantity	data_emitted	416784	-	-	section table: `data` on the #1408 artifact (the previous 400735 was a pre-C.3/C.4 build)
 quantity	ceiling	1500000	-	-	NFR-002 bundle ceiling for the engine-linked module
-share	89.0 %	engine_shipped	ceiling	89.0 % of the 1 500 000 B ceiling	evidence table: engine-linked module vs NFR-002
-share	89.0 %	engine_shipped	ceiling	89.0 % of the 1 500 000 B ceiling	Context and Consequences § Positive (one row, both sites)
-share	117.83 %	engine_emitted	ceiling	117.83 % of the 1 500 000 B ceiling	evidence table, reproducibility cell: as emitted; see the derivation table
-share	24.48 %	name_section	engine_emitted	24.48 % of the 1 767 472 B emitted engine-linked module	evidence table: the strip's contribution; see the derivation table
-share	31.22 %	data_emitted	engine_shipped	31.22 % of the 1 334 837 B shipped engine-linked module	evidence table: the remaining size lever — the correction in #1363, re-derived by #1408
-share	31.22 %	data_emitted	engine_shipped	31.22 % of the shipped module	Consequences § Negative, same operands
-share	23.58 %	data_emitted	engine_emitted	23.58 % of the 1 767 472 B emitted engine-linked module	same row: the emitted share, with its own denominator
+share	88.95 %	engine_shipped	ceiling	88.95 % of the 1 500 000 B ceiling	evidence table: engine-linked module vs NFR-002
+share	88.95 %	engine_shipped	ceiling	88.95 % of the 1 500 000 B ceiling	Context and Consequences § Positive (one row, both sites)
+share	117.80 %	engine_emitted	ceiling	117.80 % of the 1 500 000 B ceiling	evidence table, reproducibility cell: as emitted; see the derivation table
+share	24.48 %	name_section	engine_emitted	24.48 % of the 1 766 960 B emitted engine-linked module	evidence table: the strip's contribution; see the derivation table
+share	31.24 %	data_emitted	engine_shipped	31.24 % of the 1 334 325 B shipped engine-linked module	evidence table: the remaining size lever — the correction in #1363, re-derived by #1408
+share	31.24 %	data_emitted	engine_shipped	31.24 % of the shipped module	Consequences § Negative, same operands
+share	23.59 %	data_emitted	engine_emitted	23.59 % of the 1 766 960 B emitted engine-linked module	same row: the emitted share, with its own denominator
 growth	25 %	seam_empty_budget	seam_empty_shipped	25 % over the measured 169 250 B	ADR-014 evidence table (the empty-seam row) and the derivation table's last row
 count	22 of 39	mods	declared	22 of 39 public modules excluded	Decision §1
 count	22 of 39	mods	declared	22 of 39 public modules (10 forbidden crate	evidence table

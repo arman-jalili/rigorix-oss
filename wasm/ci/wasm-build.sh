@@ -50,7 +50,18 @@ set -euo pipefail
 # Defaults, because these are frequently unset even though cargo and rustup use them.
 : "${CARGO_HOME:=$HOME/.cargo}"
 : "${RUSTUP_HOME:=$HOME/.rustup}"
+# The sysroot, not just its parent: remapping `${RUSTUP_HOME}/toolchains` to `/rustc` rewrites
+# `/home/runner/.rustup/toolchains/1.96-x86_64-unknown-linux-gnu/lib/…` into
+# `/rustc/1.96-x86_64-unknown-linux-gnu/lib/…` — the *directory name* of the toolchain survives,
+# and it is host-specific (19 occurrences of it in the macOS build). The two hosts then differ
+# by the length of that name, which is the same per-host size fact in a new place. Remapping the
+# sysroot itself is what actually removes it.
+RUST_SYSROOT="$(rustc --print sysroot 2>/dev/null || true)"
 export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=${CARGO_HOME}/registry=/registry --remap-path-prefix=${RUSTUP_HOME}/toolchains=/rustc"
+if [ -n "${RUST_SYSROOT:-}" ]; then
+    # The longest prefix wins, so a host with a normal rustup layout keeps the sysroot mapping.
+    export RUSTFLAGS="${RUSTFLAGS} --remap-path-prefix=${RUST_SYSROOT}=/rustc"
+fi
 
 export CARGO_PROFILE_RELEASE_LTO=fat
 export CARGO_PROFILE_RELEASE_OPT_LEVEL=z

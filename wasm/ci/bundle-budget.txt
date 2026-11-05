@@ -20,17 +20,17 @@
 # added is gone, and so is the cause it was standing in for.
 artifact: pkg/rigorix_gate_wasm_bg.wasm
 ceiling_bytes: 1500000
-measured_bytes: 1334837
-budget_bytes: 1668546
-emitted_bytes: 1767472
+measured_bytes: 1334325
+budget_bytes: 1667906
+emitted_bytes: 1766960
 name_section_bytes: 432635
 state: packaged
 note: >-
-  The artifact a host loads is 1334837 B: `wasm-bindgen --target nodejs` emits 1767472 B, of
+  The artifact a host loads is 1334325 B: `wasm-bindgen --target nodejs` emits 1766960 B, of
   which 432635 B (24.48 % of the emitted module) is the `name` custom section - the debug
   symbol table, which no host reads. `ci/strip_name_section.py` removes it in the packaging
   path, before any measurement, so the emitted file is never the subject. budget_bytes is
-  that measurement + 25% per NFR-002 (1668546 B), measured first and then enforced.
+  that measurement + 25% per NFR-002 (1667906 B), measured first and then enforced.
   ceiling_bytes 1500000 B is the number the specification fixed; it binds before the ratchet
   does, deliberately, so a derived number can never raise the fixed one.
   Size alone cannot prove the strip ran - an unstripped module is smaller than this budget -
