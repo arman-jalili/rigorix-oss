@@ -9,11 +9,18 @@
 # The `target` column is the criterion from
 # wasm/.pi/architecture/implementation-roadmap.md. Where the measured value is
 # below it the gap is printed, so an unmet criterion reads as a gap rather
-# than as a threshold something enforces. Raise a floor when a layer improves;
-# never lower one to make a build pass.
+# than as a threshold something enforces.
+#
+# Two half-rules, both executable now:
+#   · a floor may not be LOWERED — `.pi/scripts/validate-coverage-floors.sh`
+#     compares this file with the base commit and fails naming the layer, the
+#     old value and the new one (#1427);
+#   · a floor may not be STALE — `coverage.sh --gate-layers` fails when the
+#     measured value is above the floor, because a floor below the measurement
+#     is a floor nobody raised.
 #
 # Columns (tab-separated):
 #   layer  crate  test-target  ignore-filename-regex  floor  target  measured-on
-domain	rigorix-gate-wasm	unit	src/(application|interfaces|infrastructure)/	91.62	95.00	2026-11-03
-application	rigorix-gate-wasm	unit	src/(domain|interfaces|infrastructure)/	93.49	90.00	2026-11-03
-interface	rigorix-gate-wasm	unit	src/(domain|application|infrastructure)/	74.47	85.00	2026-11-03
+domain	rigorix-gate-wasm	unit	src/(application|interfaces|infrastructure)/	92.45	95.00	2026-11-05
+application	rigorix-gate-wasm	unit	src/(domain|interfaces|infrastructure)/	100.00	90.00	2026-11-05
+interface	rigorix-gate-wasm	unit	src/(domain|application|infrastructure)/	88.70	85.00	2026-11-05

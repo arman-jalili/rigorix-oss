@@ -201,18 +201,27 @@ gate_layers() {
       if (v >= w) printf "target %s%% met (+%.2fpp)", w, v - w
       else printf "target %s%%, gap %.2fpp", w, w - v
     }')"
-    if awk -v v="$value" -v f="$floor" 'BEGIN { exit !(v >= f) }'; then
-      echo "  ✓ ${layer}: ${value}% lines (floor ${floor}%) — ${verdict}"
-    else
+    # The ratchet has two halves and both are enforced (#1427):
+    #   below the floor  → a regression, and the build stops;
+    #   above the floor  → a floor nobody raised, which is how a ratchet becomes a
+    #                      tripwire: the measurement has moved and the record has not.
+    if awk -v v="$value" -v f="$floor" 'BEGIN { exit !(v < f) }'; then
       echo "  ✗ ${layer}: ${value}% lines is below the floor ${floor}% (regression)" >&2
       failed=1
+    elif awk -v v="$value" -v f="$floor" 'BEGIN { exit !(v > f + 0.0001) }'; then
+      echo "  ✗ ${layer}: the floor is stale: measured ${value}% ≥ floor ${floor}%" >&2
+      echo "    raise the floor in ${table} to ${value} and date the row — a floor below the" >&2
+      echo "    measurement guards nothing that the measurement has already moved past" >&2
+      failed=1
+    else
+      echo "  ✓ ${layer}: ${value}% lines (floor ${floor}%) — ${verdict}"
     fi
   done < "$table"
 
   if [ "$failed" -ne 0 ]; then
     echo ""
-    echo "✗ A layer regressed below its floor. Floors are ratchets: raise them when a" >&2
-    echo "  layer improves (edit ${table}), do not lower them to make a build pass." >&2
+    echo "✗ A layer's floor and its measurement disagree. Floors are ratchets: raise them" >&2
+    echo "  when a layer improves (edit ${table}), never lower one to make a build pass." >&2
     return 1
   fi
   return 0
