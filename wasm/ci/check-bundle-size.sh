@@ -3,11 +3,14 @@
 #
 # Two modes, and the difference matters:
 #
-#   shipped  — a shipped artifact exists (pkg/*.wasm). Two assertions, both required:
+#   shipped  — a shipped artifact exists (pkg/*.wasm). Three assertions, all required:
 #              (1) it carries no `name` custom section — size alone cannot prove the
-#                  strip ran, since an unstripped 243 366 B file sits under a 262 351 B
-#                  budget (#1353); (2) measured_bytes and budget_bytes, read from
-#                  ci/bundle-budget.txt, are not exceeded by +25%.
+#                  strip ran, since an unstripped module is *smaller* than the budget
+#                  (#1353); (2) measured_bytes and budget_bytes, read from
+#                  ci/bundle-budget.txt, are not exceeded by +25 %; (3) the record's own
+#                  arithmetic reconciles — emitted_bytes minus name_section_bytes must be
+#                  measured_bytes, and every integer in its note must be a recorded field
+#                  (#1409). A record with two measurements has no measurement.
 #   awaiting — there is no shipped artifact yet (packaging pending). The gate records the
 #              release cdylib size and says it is not enforcing a ceiling. It does NOT
 #              silently pass: it prints the state and the reason, and it refuses to treat
@@ -47,10 +50,38 @@ read_field() {
 MEASURED=$(read_field measured_bytes)
 BUDGET=$(read_field budget_bytes)
 CEILING=$(read_field ceiling_bytes)
-if [ -z "${MEASURED:-}" ] || [ -z "${BUDGET:-}" ] || [ -z "${CEILING:-}" ]; then
-    echo "❌ the budget file is unparseable (measured_bytes / budget_bytes / ceiling_bytes)" >&2
+EMITTED=$(read_field emitted_bytes)
+NAME_SECTION=$(read_field name_section_bytes)
+if [ -z "${MEASURED:-}" ] || [ -z "${BUDGET:-}" ] || [ -z "${CEILING:-}" ] ||
+   [ -z "${EMITTED:-}" ] || [ -z "${NAME_SECTION:-}" ]; then
+    echo "❌ the budget file is unparseable" >&2
+    echo "   need measured_bytes, budget_bytes, ceiling_bytes, emitted_bytes, name_section_bytes" >&2
     exit 1
 fi
+
+# #1409: the note beside the fields is prose the gate used to ignore, so it could describe an
+# artifact two orders of magnitude away and nothing noticed. Two rules make it falsifiable: the
+# strip's arithmetic must reconcile the three sizes, and every integer in the note must be one
+# of the recorded fields. A statement the gate cannot reconcile does not belong in the file
+# the gate reads.
+if [ $((EMITTED - NAME_SECTION)) -ne "$MEASURED" ]; then
+    echo "❌ the record does not reconcile: emitted ${EMITTED} minus name section ${NAME_SECTION}" >&2
+    echo "   is $((EMITTED - NAME_SECTION)), but measured_bytes is ${MEASURED}" >&2
+    echo "   re-record all three from one build; a record with two measurements has none" >&2
+    exit 1
+fi
+ACCOUNTED=" ${MEASURED} ${BUDGET} ${CEILING} ${EMITTED} ${NAME_SECTION} "
+for integer in $(sed -n '/^note:/,$p' "$BUDGET_FILE" \
+    | grep -oE '(^|[^0-9A-Za-z_-])[0-9][0-9][0-9]+' \
+    | tr -dc '0-9\n'); do
+    case "$ACCOUNTED" in
+        *" ${integer} "*) : ;;
+        *)
+            echo "❌ the note states ${integer}, which is not a recorded measurement" >&2
+            echo "   the note describes this artifact only; superseded numbers belong in ADR-014" >&2
+            exit 1 ;;
+    esac
+done
 
 STRIP="$CRATE_DIR/ci/strip_name_section.py"
 
@@ -85,7 +116,7 @@ if [ -f "$SHIPPED" ]; then
         echo "   the packaging path must remap CARGO_HOME/RUSTUP_HOME (ci/wasm-build.sh, #1408)" >&2
         exit 1
     fi
-    echo "   measured ${MEASURED} B · budget ${BUDGET} B · ceiling ${CEILING} B · actual ${ACTUAL} B"
+    echo "   emitted ${EMITTED} B · name section ${NAME_SECTION} B · measured ${MEASURED} B · budget ${BUDGET} B · ceiling ${CEILING} B · actual ${ACTUAL} B"
     # #1386: `measured_bytes` claims to *be* the measurement, so the artifact must match it.
     # Without this, a stale floor is invisible: the budget below is derived from a number
     # nobody checked, and it drifts with every rebuild that changes size.
