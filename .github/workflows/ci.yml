@@ -47,6 +47,12 @@ jobs:
       packages: ${{ steps.crates.outputs.packages }}
     steps:
       - uses: actions/checkout@v4
+      - name: 🕸 The CI graph is the declared one
+        # `.github/ci-graph.tsv` is the source; this makes it the source rather than a
+        # description. It refuses a `needs` naming `lint`, an edge with no row, a row with
+        # no edge, and any disagreement between the two — the class of defect that once hid
+        # seven stages behind one edge while the gate still reported a verdict (#1411).
+        run: bash .github/scripts/ci_graph_check.sh
       - name: 🔍 Detect workspace crates
         id: crates
         shell: bash
@@ -102,7 +108,12 @@ jobs:
   # ── Stage 2: Build (cargo check — fast compile verification) ─
   build:
     name: 📦 Build (${{ matrix.crate }})
-    needs: [workspace, lint]
+    # `workspace`, not `workspace, lint` (#1411). `build` consumes nothing a lint finding
+    # produces, and the edge that said otherwise skipped the build — and every stage
+    # downstream of it — whenever any crate had a lint failure. The graph and the reason
+    # for each edge live in `.github/ci-graph.tsv`, and
+    # `.github/scripts/ci_graph_check.sh` refuses an edge it does not find there.
+    needs: [workspace]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -144,7 +155,13 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cache-key: test-${{ matrix.crate }}
-      - run: cargo nextest run -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}" --lib
+      - name: Tests for this crate
+        # No `--lib`: that selects a *target*, not the crate's tests. `rigorix-gate-wasm` keeps
+        # all 195 of its tests in the `unit` integration binary and has no `#[cfg(test)]` in
+        # `src/`, so `--lib` compiled a target with zero tests and nextest exited 4 ("no tests
+        # to run") — the honest failure, and the reason this is not silenced with
+        # `--no-tests=warn`. `local-ci.sh` has always run the crate's full set.
+        run: cargo nextest run -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}"
       - name: Doctests for this crate (#1373)
         # `cargo nextest` runs no doc tests, so deleting `cargo test` without this step
         # would delete a coverage channel and leave the job green. Per-crate run: a crate
@@ -499,7 +516,7 @@ jobs:
 
   ci-report:
     name: 📋 Stage report
-    needs: [lint, build, test, portable, audit, docs, integration, conformance, shell, wasm-gates]
+    needs: [lint, build, test, coverage, portable, audit, docs, integration, conformance, shell, wasm-gates]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -509,6 +526,7 @@ jobs:
           RESULT_LINT: ${{ needs.lint.result }}
           RESULT_BUILD: ${{ needs.build.result }}
           RESULT_TEST: ${{ needs.test.result }}
+          RESULT_COVERAGE: ${{ needs.coverage.result }}
           RESULT_PORTABLE: ${{ needs.portable.result }}
           RESULT_AUDIT: ${{ needs.audit.result }}
           RESULT_DOCS: ${{ needs.docs.result }}
@@ -521,7 +539,7 @@ jobs:
   # ── Stage 8: Final Gate ───────────────────────────────────────
   gate:
     name: 🚪 Final Gate
-    needs: [lint, build, test, portable, audit, docs, integration, conformance, shell, wasm-gates]
+    needs: [lint, build, test, coverage, portable, audit, docs, integration, conformance, shell, wasm-gates]
     # A superseded run gets no verdict (#1289). `cancelled` is the scheduler's
     # fact, not the change's: with `cancel-in-progress` every push to the same
     # ref cancels the previous run, so the old `!= 'success'` test accused the
@@ -536,6 +554,7 @@ jobs:
           RESULT_LINT: ${{ needs.lint.result }}
           RESULT_BUILD: ${{ needs.build.result }}
           RESULT_TEST: ${{ needs.test.result }}
+          RESULT_COVERAGE: ${{ needs.coverage.result }}
           RESULT_PORTABLE: ${{ needs.portable.result }}
           RESULT_AUDIT: ${{ needs.audit.result }}
           RESULT_DOCS: ${{ needs.docs.result }}

@@ -14,7 +14,7 @@
 #   2. architecture         — contract checks, canonical references
 #   3. lint                 — cargo fmt + clippy (matrix per crate)
 #   4. static_analysis      — cargo check, import boundaries
-#   5. unit                 — cargo test --lib (matrix per crate)
+#   5. unit                 — the crate's tests, all targets (matrix per crate)
 #   6. integration          — cargo test --workspace + all scripts
 #   7. security             — cargo audit + secret scan
 #   8. migration_verify     — Schema checks (conditional)
@@ -182,8 +182,13 @@ jobs:
         with:
           cache-key: unit-${{ matrix.crate }}
 
-      - name: Run unit tests
-        run: cargo test -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}" --lib
+      - name: Run this crate's tests
+        # No `--lib`: that selects a *target*, not the crate's tests. A crate whose tests
+        # live in an integration binary (the wasm crate: 195 tests in `tests/unit`) would
+        # report "running 0 tests" and exit 0 — a stage that passes because it has no
+        # subject. The CI workflow had the same defect and failed loudly instead; this one
+        # was silent, which is worse.
+        run: cargo test -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}"
 
       - name: Test scripts (all conventions)
         continue-on-error: true
