@@ -41,3 +41,18 @@ This project is indexed by GitNexus as **rigorix-oss** (27338 symbols, 53321 rel
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+## Architect workflow — read before filing an issue or editing engine code
+
+`docs/process/architect-operating-rules.md` is binding for the architect role. The short form:
+
+- **Decide and specify; do not implement.** A specification the worker cannot execute without a
+  choice is unfinished. When the architect implements, the module doc gets written after the code
+  and certifies it (#1406), and verification becomes a defence of the author's reasoning.
+- **Every code-bearing statement carries `file:line`, verified in the tree the worker starts
+  from.** Otherwise the worker invents the interface.
+- **Definitions precede directories** for a bounded context: module doc (template shape, `## DDD
+  Layers` naming exactly the directories that will exist) → ADR → issue chain → code.
+- **Run the command before saying done**, from the directory CI runs it in, in the environment CI
+  provides; a gate that has never run is not a gate.
+- **Fix the cause, not the symptom**; never widen a check to get a green run.
