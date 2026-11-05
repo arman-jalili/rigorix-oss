@@ -33,9 +33,15 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-D warnings"
 
+# #1422: a pull request replaces its predecessor — a new commit supersedes the old, so
+# cancelling the superseded run is correct and cheap. `main` inverts that: each merge *adds*
+# a commit that must be verified, and cancelling the previous run deletes the verification of
+# the merge before it. Five merges landed on `main` with no run that reached a conclusion
+# because this was the literal `true`. Do not "optimise" it back;
+# `.github/scripts/workflow_concurrency_check.sh` reads this block and fails on the literal.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   # ── Stage 0: Workspace Overview ───────────────────────────────
@@ -53,6 +59,10 @@ jobs:
         # no edge, and any disagreement between the two — the class of defect that once hid
         # seven stages behind one edge while the gate still reported a verdict (#1411).
         run: bash .github/scripts/ci_graph_check.sh
+      - name: 🧷 main's verification is never cancelled
+        # #1422: the concurrency block decides whether a merge commit gets a run of its own.
+        # Checked before the matrix so it is the cheapest thing this workflow refuses.
+        run: bash .github/scripts/workflow_concurrency_check.sh --self-test
       - name: 🔍 Detect workspace crates
         id: crates
         shell: bash
@@ -511,6 +521,10 @@ jobs:
         # eleventh (#1421). A separate step here would declare the same gate twice.
         run: bash wasm/ci/run-wasm-gates.sh --with-npm
 
+  # The required check is the aggregate (#1422), not a subset: `ci-report` depends on every
+  # mandatory stage, so a merge cannot pass on the stages that happened to finish. Which
+  # check branch protection *requires* is a repository setting, not code — require
+  # `ci-report` there (`📋 Stage report`).
   ci-report:
     name: 📋 Stage report
     needs: [lint, build, test, coverage, portable, audit, docs, integration, conformance, shell, wasm-gates]
