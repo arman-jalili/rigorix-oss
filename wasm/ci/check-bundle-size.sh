@@ -71,30 +71,34 @@ if [ -f "$SHIPPED" ]; then
         exit 1
     fi
     ACTUAL=$(wc -c <"$SHIPPED" | tr -d ' ')
+    # #1408: the artifact is portable, so its size is a property of the source and the pinned
+    # toolchain. Assert the property the tolerance used to stand in for: the module names no
+    # builder directory. A path would either be an absolute-path regression or a remap that did
+    # not reach the build; both make the recorded measurement a per-machine fact again.
+    if ! command -v strings > /dev/null 2>&1; then
+        echo "❌ \`strings\` is required to assert the artifact's portability; install binutils" >&2
+        exit 1
+    fi
+    BUILDER_PATHS="$(strings -a "$SHIPPED" | grep -c "$HOME" || true)"
+    if [ "${BUILDER_PATHS:-0}" -ne 0 ]; then
+        echo "❌ the artifact names ${HOME} ${BUILDER_PATHS} time(s) — it is not machine-independent" >&2
+        echo "   the packaging path must remap CARGO_HOME/RUSTUP_HOME (ci/wasm-build.sh, #1408)" >&2
+        exit 1
+    fi
     echo "   measured ${MEASURED} B · budget ${BUDGET} B · ceiling ${CEILING} B · actual ${ACTUAL} B"
     # #1386: `measured_bytes` claims to *be* the measurement, so the artifact must match it.
     # Without this, a stale floor is invisible: the budget below is derived from a number
     # nobody checked, and it drifts with every rebuild that changes size.
     #
-    # #1405: but a byte-*exact* floor is a per-machine fact, not a cross-machine one. Same
-    # commit, same pinned toolchain (1.96), same `wasm-bindgen` (0.2.130): 1337205 B on macOS,
-    # 1335752 B on the Linux runner — 1453 B (0.11 %) of absolute paths baked into panic
-    # messages. The exact assertion refused a correct artifact on every CI run, and a gate that
-    # is always red hides the ones that are sometimes red. So the comparison carries a
-    # declared tolerance, and the *property* #1386 wanted is intact: a stale floor is caught
-    # by an order of magnitude (169250 → 1337205 is +690 %), and 1 % is far below any change
-    # worth a re-record. `budget_bytes` and `ceiling_bytes` stay hard, exact comparisons.
-    MEASUREMENT_TOLERANCE_PERCENT=1
-    DELTA=$(( ACTUAL > MEASURED ? ACTUAL - MEASURED : MEASURED - ACTUAL ))
-    ALLOWED_DELTA=$(( MEASURED / 100 * MEASUREMENT_TOLERANCE_PERCENT ))
-    if [ "$DELTA" -gt "$ALLOWED_DELTA" ]; then
+    # #1405 put a 1 % tolerance here because absolute build paths made the same commit measure
+    # 1 337 205 B on macOS and 1 335 752 B on Linux. #1408 removed the cause — the build now
+    # remaps both toolchain prefixes and both gates assert no builder path remains — so the
+    # comparison is exact again. A tolerance would only re-hide a remap that stopped working.
+    if [ "$ACTUAL" -ne "$MEASURED" ]; then
         echo "❌ the recorded measurement is not this artifact: actual ${ACTUAL} B, recorded ${MEASURED} B" >&2
-        echo "   delta ${DELTA} B exceeds the ${MEASUREMENT_TOLERANCE_PERCENT} % build-environment tolerance (${ALLOWED_DELTA} B)" >&2
-        echo "   re-record measured_bytes from the artifact this build produced, then derive budget" >&2
+        echo "   delta $(( ACTUAL - MEASURED )) B — re-record measured_bytes from the artifact this build" >&2
+        echo "   produced, then derive budget_bytes as measured + 25 % (#1408, #1409)" >&2
         exit 1
-    fi
-    if [ "$DELTA" -gt 0 ]; then
-        echo "   recorded measurement differs by ${DELTA} B — build environment, within tolerance"
     fi
     if [ "${BUDGET:-0}" -eq 0 ]; then
         echo "❌ a shipped artifact exists but no budget was set: measure it first" >&2

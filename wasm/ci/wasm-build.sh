@@ -28,7 +28,29 @@
 # `strip` is deliberately not set: the `name` custom section is removed by
 # `ci/strip_name_section.py`, whose own assertions prove it ran (a stripped artifact is
 # smaller than the unstripped one, so size alone cannot prove it).
+#
+# # #1408: the artifact must not carry the builder's filesystem
+#
+# Panic messages and debug strings embed absolute paths from the toolchain that compiled
+# them, so the same source built on macOS and on the Linux runner differed by 1 453 B
+# (0.11 %) — and the shipped module carried 118 occurrences of the maintainer's home
+# directory. #1405 answered that with a 1 % size tolerance, which is a gate widened to
+# accommodate the defect: 13 372 B of band, wider than the change the floor exists to catch.
+#
+# The fix is here, at the packaging path, because this is where the bytes are decided.
+# Remapping the two prefixes that appear in the graph rewrites the *text* of every path —
+# panic locations, `file!()`/`line!()` payloads, crate metadata — while leaving the code
+# identical. The artifact then depends on the source and the pinned toolchain, not on whose
+# home directory ran the build, which is what ADR-014 §2's byte-identity claim requires.
+#
+# `ci/run-module-smoke.sh` asserts the property on the packaged module before it reports a
+# size: `strings -a <module> | grep -c "$HOME"` must be 0. A tolerance cannot hide a path.
 set -euo pipefail
+
+# Defaults, because these are frequently unset even though cargo and rustup use them.
+: "${CARGO_HOME:=$HOME/.cargo}"
+: "${RUSTUP_HOME:=$HOME/.rustup}"
+export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=${CARGO_HOME}/registry=/registry --remap-path-prefix=${RUSTUP_HOME}/toolchains=/rustc"
 
 export CARGO_PROFILE_RELEASE_LTO=fat
 export CARGO_PROFILE_RELEASE_OPT_LEVEL=z

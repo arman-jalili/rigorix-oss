@@ -10,8 +10,8 @@
 # budget = measured + 25%, per NFR-002: measured first, then a hard gate, never a guess.
 artifact: pkg/rigorix_gate_wasm_bg.wasm
 ceiling_bytes: 1500000
-measured_bytes: 1337205
-budget_bytes: 1671506
+measured_bytes: 1334837
+budget_bytes: 1668546
 state: packaged
 note: >-
   Re-measured on 2026-11-03 (#1353): the subject moved from the emitted file to the

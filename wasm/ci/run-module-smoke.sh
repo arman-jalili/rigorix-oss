@@ -97,6 +97,25 @@ if ! python3 "$STRIP" "$MODULE"; then
     exit 1
 fi
 
+# #1408: the shipped module must not carry the builder's filesystem. `ci/wasm-build.sh`
+# remaps CARGO_HOME and RUSTUP_HOME, so a path in this file means the remap did not reach the
+# build — the assertion is on the property, not on the size, because a size tolerance hid 118
+# occurrences of a home directory for two releases. Fail-closed: `strings` absent is an error,
+# not a pass.
+echo "== the shipped module carries no builder paths (#1408) =="
+if ! command -v strings > /dev/null 2>&1; then
+    echo "❌ \`strings\` is required to assert the artifact's portability; install binutils" >&2
+    exit 1
+fi
+BUILDER_PATHS="$(strings -a "$MODULE" | grep -c "$HOME" || true)"
+if [ "${BUILDER_PATHS:-0}" -ne 0 ]; then
+    echo "❌ the packaged module carries ${BUILDER_PATHS} occurrence(s) of ${HOME}" >&2
+    echo "   the build did not remap CARGO_HOME/RUSTUP_HOME — see ci/wasm-build.sh (#1408)" >&2
+    strings -a "$MODULE" | grep -m3 "$HOME" >&2 || true
+    exit 1
+fi
+echo "✅ 0 occurrences of ${HOME} in the packaged module"
+
 # The frozen list, read from the source of truth rather than restated here: a
 # rename in `CONTRACT_FUNCTIONS` must reach this gate.
 CONTRACT="$(sed -n '/pub const CONTRACT_FUNCTIONS/,/];/p' src/interfaces/wasm_api.rs \
