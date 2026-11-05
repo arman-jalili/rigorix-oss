@@ -255,6 +255,11 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          # #1427: the floors guard compares `.pi/coverage-layers.tsv` with the base commit.
+          # Two commits are enough — `origin/main` for a pull request, `HEAD~1` for a run on
+          # `main` itself — and the explicit fetch below supplies the first.
+          fetch-depth: 2
       - uses: ./.github/actions/setup
         with:
           cache-key: coverage
@@ -272,6 +277,14 @@ jobs:
         # is printed beside it with the gap, so an unmet criterion reads as a
         # gap rather than as a threshold something enforces.
         run: bash .pi/scripts/coverage.sh --gate-layers
+      - name: 📉 Coverage floors never fall (#1427)
+        # The other half of the ratchet, and the half that was only a sentence: a floor may
+        # not be lowered, and a layer may not lose its row. Compared with `origin/main` on a
+        # pull request and with `HEAD~1` on `main`, so the check reads history rather than a
+        # hardcoded number.
+        run: |
+          git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
+          bash .pi/scripts/validate-coverage-floors.sh --base origin/main
       - uses: actions/upload-artifact@v4
         with:
           name: coverage-lcov

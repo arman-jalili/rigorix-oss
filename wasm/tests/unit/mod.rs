@@ -57,6 +57,12 @@ mod wasmcontract;
 #[path = "portable-session/telemetryobserver/telemetryobserver_test.rs"]
 mod telemetryobserver;
 
+// The crate's public surface, named by a test (#1427). The interface floor caught fourteen
+// new uncovered lines in `wasm/src/interfaces/` that no unit test executed; this module is
+// the subject that was missing.
+#[path = "interfaces/interfaces_test.rs"]
+mod interfaces;
+
 #[path = "portable-session/domain-isolation/domain-isolation_test.rs"]
 mod domain_isolation;
 
