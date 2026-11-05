@@ -189,13 +189,16 @@ if [ -z "${BASE_FILE:-}" ]; then
     resolved="$(base_of "$BASE_REF")"
     if [ -z "$resolved" ]; then
         echo -e "${RED}❌ cannot resolve the base ref '${BASE_REF}' — the floors cannot be compared${NC}" >&2
-        echo "   fetch it (git fetch --depth=1 origin main:refs/remotes/origin/main) or pass --base <ref>" >&2
+        echo "   fetch it (git fetch --depth=2 origin main:refs/remotes/origin/main) or pass --base <ref>" >&2
         exit 1
     fi
     if [ "$resolved" = "$head" ]; then
         resolved="$(base_of "HEAD~1")"
         if [ -z "$resolved" ]; then
             echo -e "${RED}❌ ${BASE_REF} is this commit and HEAD~1 is unavailable — nothing to compare${NC}" >&2
+            # A depth-1 fetch makes this commit its own shallow boundary, which is how the
+            # first version of the CI step failed: the base *was* there, one commit deep.
+            echo "   history is shallow: the base needs one more commit (git fetch --deepen=1 origin)" >&2
             exit 1
         fi
     fi
