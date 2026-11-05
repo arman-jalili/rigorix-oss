@@ -47,6 +47,26 @@ guardian_issue:
        the two apart: a refusal is a decision, an unavailable evaluation is not, and a host must not
        be able to read the second as the first. This is the normative home of `gate_unavailable`.
 
+  state_at_c5e08788: |
+    The spec is `docs/spec/execution-governance/`, at **0.2.0 (public review draft)**
+    (`README.md:3`). Phase C has landed the engine side: one gate entry point
+    (`engine/src/gate/application/compose.rs:46 evaluate_gate`), the sync façade
+    (`application/sync.rs`), envelope assembly (`application/envelope.rs`), and the crate wired
+    to it (`wasm/src/infrastructure/engine_gate.rs`). The spec does not yet record any of it.
+
+    Prerequisite: **#1385** (C.5) must land first. This issue's job is to make the specification
+    describe what C made true *and prove it*: each claim gets a traceability row pointing at the
+    code that makes it true.
+
+  files_this_touches: |
+    - `docs/spec/execution-governance/03-requirements.md` — RS-004's producer/consumer split.
+    - `docs/spec/execution-governance/05-evidence-model.md` — who supplies the decision instant,
+      the refused-vs-could-not-evaluate distinction.
+    - `docs/spec/execution-governance/09-conformance.md` — the conformance level a
+      producer-only deployment may claim.
+    - `docs/spec/execution-governance/11-traceability.md` — the traceability rows.
+    - `docs/spec/execution-governance/12-versioning.md` + `README.md:3` — the minor bump.
+
   in_scope:
     - "The four edits above, each citing the artifact that demonstrates it (ADR-014 §2, the golden test, the `gate: \"cli\"` vectors, ADR-013)"
     - "`11-traceability.md`: the RS-004 row and any row whose evidence is now a command rather than a test name"
