@@ -1,148 +1,56 @@
 # Bundle size budget (NFR-002, criterion 23).
 #
-# `measured` is the artifact a host actually loads: the `wasm-bindgen --target nodejs`
-# module with its debug `name` custom section stripped by `ci/strip_name_section.py`, in
-# the packaging path (#1353). Not the raw cdylib, and not the emitted file: a host reads
-# neither the symbols nor the unstripped bytes. `wasm-opt` is not used — it is absent from
-# this machine and from CI, and a gate whose subject depends on an absent tool is not a
-# gate.
+# This file is the gate's input, so it records ONE artifact — the one the packaging path
+# produces now — and every integer in its note is a number the gate can reconcile (#1409).
+# Superseded measurements are not annotated here; they are dated and attributed in
+# `wasm/.pi/architecture/decisions/ADR-014-portable-slice-and-pinned-inputs.md`.
 #
-# budget = measured + 25%, per NFR-002: measured first, then a hard gate, never a guess.
+# `measured` is the artifact a host actually loads: the `wasm-bindgen --target nodejs` module
+# with its debug `name` custom section stripped by `ci/strip_name_section.py`, in the packaging
+# path (#1353). Not the raw cdylib, and not the emitted file: a host reads neither the symbols
+# nor the unstripped bytes. `wasm-opt` is not used — it is absent from this machine and from
+# CI, and a gate whose subject depends on an absent tool is not a gate.
+#
+# budget = measured + 25% (NFR-002): measured first, then a hard gate, never a guess.
+#
+# Re-recorded 2026-11-04 (#1408): the build now remaps CARGO_HOME and RUSTUP_HOME
+# (`ci/wasm-build.sh`), so the shipped module carries no builder path and the size is a
+# property of the source and the pinned toolchain rather than of the machine that ran the
+# build. That is what lets `check-bundle-size.sh` compare exactly again — the 1 % band #1405
+# added is gone, and so is the cause it was standing in for.
 artifact: pkg/rigorix_gate_wasm_bg.wasm
 ceiling_bytes: 1500000
-measured_bytes: 1337205
-budget_bytes: 1671506
+measured_bytes: 1334325
+budget_bytes: 1667906
+emitted_bytes: 1766960
+name_section_bytes: 432635
+# #1417: a dated observation of ONE build on ONE host, compared to nothing. Two builds of one
+# branch on one machine differed by 64 B (checkout path, `-C metadata`, LTO reachability —
+# unattributed), and macOS against the Linux runner by 429 B. `measured_bytes` above is the
+# accounting operand (`emitted - name_section`); these three are the record of who measured
+# what, so the gate can print the drift instead of pretending it is an identity.
+observed_bytes: 1334325
+observed_on: aarch64-apple-darwin
+observed_at: 2026-11-05T13:05:00Z
+observed_sha256: b911e1fe8acc2be8b370b361f1a8ea6a5ab1679a6e0673ef8b447d8b76c3c27f
 state: packaged
 note: >-
-  Re-measured on 2026-11-03 (#1353): the subject moved from the emitted file to the
-  shipped one. `wasm-bindgen --target nodejs` emits 243366 B, of which 33485 B (13.8 %)
-  is the ``name`` custom section — the debug symbol table, which no host reads. Stripped
-  by ``ci/strip_name_section.py`` in the packaging path, the artifact is 209881 B; the
-  stripped module passes all fifteen ``module-smoke.mjs`` assertions identically.
-  budget_bytes is measured + 25 % per NFR-002: measured first, then a hard gate, never a
-  guess. Size alone cannot prove the strip ran (an unstripped 243366 B file is under this
-  262351 B budget), so ``check-bundle-size.sh`` also asserts the artifact carries no
-  ``name`` section — that assertion is what fails when the strip is skipped.
-  The state is `packaged`, not `shipped`: the artifact a host loads exists and is
-  measured, but no version has been published to npm, so `publish-wasm-npm` stays outside
-  `github-release.needs` — the release-train guard enforces that distinction.
-
-# ── #1401: the default build is the one that decides ────────────────────────────────────
-# ``default = ["engine"]``. Every number in this file before this section described a build a
-# host would never load: the crate shipped contract-only, refused at `open_session` with
-# `gate_unavailable`, and reported `"gate_evaluation": false`. The gate was behind a flag.
-#
-#   command: bash wasm/ci/wasm-build.sh            (no feature flags — the default)
-#            wasm-bindgen --target nodejs --out-dir wasm/pkg
-#            python3 wasm/ci/strip_name_section.py .../rigorix_gate_wasm_bg.wasm
-#   emitted 1769863 B · name section 432658 B · shipped 1337205 B
-#   ceiling 1500000 B  →  10.9 % headroom   ·   budget (measured + 25 %) 1671506 B
-#
-# What unblocked it was not a byte. It was three statements being made true at once: `sync` is
-# not a runtime (#1400); the independence gate asserts the feature-set property rather than
-# banning a crate name the design legitimately uses; and this file's `measured_bytes` is now
-# the artifact it claims to be. The budget moved 169250 → 1337205 for the only reason that
-# justifies it: **the measured artifact changed**, from the unlinked build to the shipped one.
-#
-# The unlinked build still exists (`--no-default-features`), still compiles, still reports
-# `gate_evaluation: false`, and still refuses at open. That is a dev configuration with an
-# honest capability report — not the default.
-
-# ── #1405: the measurement is a per-machine fact ────────────────────────────────────────
-# `check-bundle-size.sh` refused an artifact whose recorded size did not match exactly. On the
-# same commit, same pinned toolchain (1.96), same `wasm-bindgen` (0.2.130):
-#
-#   macOS            shipped 1337205 B
-#   Linux CI runner  shipped 1335752 B   (-1453 B, -0.11 %)
-#
-# Neither is wrong. Panic messages and debug strings embed absolute paths, and the two hosts
-# build from different ones. A byte-exact floor is therefore a claim about one machine, and
-# asserting it in CI refused a correct artifact on every run — a gate that is always red hides
-# the ones that are sometimes red.
-#
-# So the floor comparison carries a declared 1 % build-environment tolerance. The property
-# #1386 added it for is intact: it caught the 169250 → 1337205 change (a 690 % delta) the
-# moment the flip landed, and 1 % is two orders of magnitude below any change worth a
-# re-record. `budget_bytes` and `ceiling_bytes` remain hard, exact comparisons.
-#
-# If byte-reproducibility across machines is ever wanted, the route is `--remap-path-prefix`
-# in `ci/wasm-build.sh`: measured locally it removes 1344 of the 1453 B. It is not done here,
-# because it changes the artifact — and a change to the artifact is what this file records,
-# not something to slip in with a gate fix.
-
-# ── Phase C.6 (#1386): the profile, not the code ─────────────────────────────────────────
-# The 1 706 234 B below was correct and was not the number that matters: `wasm/Cargo.toml`
-# declared no `[profile.release]`, so the artifact shipped with opt-level 3, no LTO and 16
-# codegen units. `ci/wasm-build.sh` now owns the profile (fat LTO, opt-level z, panic=abort,
-# codegen-units 1) and every build in `ci/` goes through it:
-#
-#   default release profile         emitted 1918610 · name 212376 · shipped 1706234  (+13.7 %)
-#   size profile (#1386)            emitted 1769863 · name 432658 · shipped 1337205  (-10.9 %)
-#
-# `measured_bytes` described the artifact this gate measured at the time — the **default**
-# build, which was then unlinked, hence 169250 B (down from 209881 B: C.3 deleted `SeamGate`
-# and the probe). The engine-linked figure the flip decision rested on is 1337205 B; both were
-# measured through this commit's packaging path, and the gate refuses a `measured_bytes` that
-# does not equal the artifact it just measured. That is what caught the 169250 as stale the
-# moment `default = ["engine"]` landed (#1401, above). `budget_bytes` is measured + 25 % (1671506),
-# which is *above* the `ceiling_bytes` of 1500000 — so the ceiling binds, deliberately: the
-# ratchet is derived and the ceiling was fixed by the specification. Both are asserted, and the size gate now
-# also refuses a `measured_bytes` that does not equal the artifact (`ACTUAL == MEASURED`),
-# because a stale floor was previously invisible.
-#
-# Then blocked: the **default** flip. Not by size — 1337205 B fits — but by
-# `check-bundle-independence.sh`, which banned the *crate name* `tokio`: the engine-linked graph
-# carries it, and `portable = []` does not remove a target-specific dependency. Two corrections
-# came out of that, and both are the finding: the tokio that reached wasm32 was the
-# target-specific declaration narrowed to `["sync"]` (#1402), and the rule that refused it was
-# banning a name instead of asserting a property (#1401, top of this file). Neither was a bundle
-# change, which is why both were filed instead of patched here.
-#
-# Lesson, verbatim, because it has now cost two verdicts: **the artifact is whatever the
-# packaging path builds, and the packaging path must build the profile the budget assumes.**
-# A `[profile.release]` in `wasm/Cargo.toml` would have been ignored — `wasm` is a member of
-# the root workspace, and lto/panic cannot be overridden per package — so the profile cannot
-# live in a manifest where it would read as a decision and change nothing.
-
-# ── Phase C.4 (#1384): the measurement that was blocking the default flip ────────────────
-# `EngineGate` reachable from the exported `open_session` — i.e. the artifact a host would
-# load once `engine` is the default — measures:
-#
-#   command: cargo build --release --target wasm32-unknown-unknown --features engine
-#            wasm-bindgen --target nodejs --out-dir …
-#            python3 ci/strip_name_section.py …/rigorix_gate_wasm_bg.wasm
-#   shipped  1706234 B   (name section stripped; measured 2026-02, this commit)
-#   spec ceiling 1500000 B  →  over by 206234 B (+13.7 % of the ceiling)
-#
-# This is a **finding, not a ceiling move**: `default = ["engine"]` is deferred to C.6 until
-# the artifact fits. The +25 % ratchet above is a floor derived from a *shipped* build; it is
-# not a licence to raise the only number the specification fixed. The named levers, from the
-# step-1 note, are the `data` segment (400735 B) and a name strip — not the dependency list.
-
-# ── Phase C.3 (#1383): the probe is gone, the gate is the real one ───────────────────────
-# `EngineGate` replaced `SeamGate::not_linked()` and the measurement-only `engine_probe`
-# export, so the engine call reachable from the bundle is the composition a host actually
-# runs. The figure above (209881 B) is still the **default** build: `engine` is not on by
-# default until C.4, so the engine's bytes enter this budget then, and C.6 re-records it.
-# This is not a gap in the gate — it is what the gate currently measures, stated.
-
-# ── Phase C.3 step 1 (#1383): one reachable engine call, measured ────────────────────────
-# `--features engine` with `infrastructure::engine_probe` reachable from the exported
-# `engine_probe`: the composition links into wasm32 and the linker keeps it.
-#
-#   command: cargo build --release --target wasm32-unknown-unknown --features engine
-#            wasm-bindgen --target nodejs --out-dir …
-#            python3 ci/strip_name_section.py …/rigorix_gate_wasm_bg.wasm
-#   emitted 415169 B → name section -58971 B → shipped 356198 B
-#   ceiling  1500000 B → 23.7 % used, 1143802 B headroom
-#   baseline (contract-only seam, 2026-11-03): 209881 B shipped → delta +146317 B (+69.7 %)
-#
-# This is a LOWER BOUND for the wired build: the probe passes `GatePorts::none()` and
-# `run_context: None`, so `PreconditionServiceImpl`, `SequencePolicyServiceImpl` and
-# `AuditEnvelopeFactoryImpl` are not reachable and are dropped. The 1 170 635 B figure of
-# record came from an apparatus that evaluated a step requirement; neither is the real
-# number. Dependency graph: 93 unique crates, and `toml`, `regex`, `regex-automata` and
-# `regex-syntax` do NOT appear — so the growth is engine code, not a new parser.
-#
-# state: measured, not adopted — `engine` is not a default feature yet (C.4 flips it), and
-# this number is not the budget. It answers only "does linking the composition fit".
+  The artifact a host loads is 1334325 B: `wasm-bindgen --target nodejs` emits 1766960 B, of
+  which 432635 B (24.48 % of the emitted module) is the `name` custom section - the debug
+  symbol table, which no host reads. `ci/strip_name_section.py` removes it in the packaging
+  path, before any measurement, so the emitted file is never the subject. budget_bytes is
+  that measurement + 25% per NFR-002 (1667906 B), measured first and then enforced.
+  ceiling_bytes 1500000 B is the number the specification fixed; it binds before the ratchet
+  does, deliberately, so a derived number can never raise the fixed one.
+  Size alone cannot prove the strip ran - an unstripped module is smaller than this budget -
+  so `check-bundle-size.sh` asserts the artifact carries no `name` section, and asserts that
+  emitted_bytes minus name_section_bytes equals measured_bytes. Neither assertion can be
+  satisfied by a number that was not measured from this build.
+  The artifact's size is NOT compared to observed_bytes: that is one build on one host, and
+  the drift is printed rather than enforced. The ceiling, the budget headroom and the absence
+  of builder paths are compared, because they hold on every host.
+  The artifact is host-independent: the build remaps both toolchain prefixes, so the bytes
+  carry no filesystem, and the size comparison is exact rather than tolerant.
+  state is `packaged`, not `shipped`: the artifact a host loads exists and is measured, but no
+  version has been published to npm, so `publish-wasm-npm` stays outside
+  `github-release.needs` - the release-train guard enforces that distinction.

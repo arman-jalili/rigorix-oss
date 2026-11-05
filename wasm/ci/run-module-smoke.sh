@@ -97,6 +97,28 @@ if ! python3 "$STRIP" "$MODULE"; then
     exit 1
 fi
 
+# #1408: the shipped module must not carry the builder's filesystem. `ci/wasm-build.sh`
+# remaps the registry, the toolchain and the sysroot, so a path in this file means the remap did
+# not reach the build — the assertion is on the property, not on the size, because a size
+# tolerance hid 118 occurrences of a home directory for two releases. The prefix list lives in
+# `ci/builder-paths.sh` so this gate and the size gate cannot disagree about what counts.
+echo "== the shipped module carries no builder paths (#1408) =="
+# shellcheck source=builder-paths.sh
+. "$CRATE_DIR/ci/builder-paths.sh"
+if ! BUILDER_PATHS="$(builder_path_report "$MODULE")"; then
+    exit 1
+fi
+if [ -n "$BUILDER_PATHS" ]; then
+    while IFS="$(printf '\t')" read -r count prefix; do
+        echo "❌ ${count} occurrence(s) of the builder path ${prefix}" >&2
+    done <<EOF
+$BUILDER_PATHS
+EOF
+    echo "   the build did not remap its own toolchain — see ci/wasm-build.sh (#1408)" >&2
+    exit 1
+fi
+echo "✅ no builder path in the packaged module"
+
 # The frozen list, read from the source of truth rather than restated here: a
 # rename in `CONTRACT_FUNCTIONS` must reach this gate.
 CONTRACT="$(sed -n '/pub const CONTRACT_FUNCTIONS/,/];/p' src/interfaces/wasm_api.rs \

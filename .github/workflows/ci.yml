@@ -212,22 +212,14 @@ jobs:
           rustup target add wasm32-unknown-unknown
           cargo check -p rigorix-engine --features portable --target wasm32-unknown-unknown
       - name: No forbidden crate in the wasm32 graph
-        # `-e normal,build` is the SUBJECT. The dev-inclusive tree pulls `reqwest` in
-        # through `jsonschema` (a dev-dependency), so a plain `cargo tree` here fails
-        # while saying nothing about what ships — the wrong-subject defect this
-        # repository keeps finding, in the assertion ADR-014 leans on.
-        shell: bash
-        run: |
-          tree="$(cargo tree -p rigorix-engine --features portable --target wasm32-unknown-unknown -e normal,build)"
-          bad=0
-          for crate in tree-sitter reqwest ring libc prometheus tracing-appender; do
-            if printf '%s\n' "$tree" | sed 's/^[│├└─ ]*//' | grep -qE "^${crate} v"; then
-              echo "::error::${crate} is in the wasm32 normal+build graph"
-              bad=1
-            fi
-          done
-          [ "$bad" -eq 0 ] || exit 1
-          echo "✅ none of the six forbidden crates in the wasm32 graph"
+        # #1412: the step calls the owner. `wasm/ci/check-bundle-independence.sh` holds the
+        # list, the reason per entry and the tokio feature-set rule; a second inline list here
+        # disagreed with it (six names against ten, plus `ring` which the script permitted) and
+        # its success line counted neither. The script's subject is the shipped crate's graph,
+        # which is what ADR-014's independence claim is about.
+        #
+        # The script is fail-closed: it refuses when the tree cannot be computed.
+        run: bash wasm/ci/check-bundle-independence.sh
       - name: The slice's own tests run natively
         # `--tests`, not the whole suite: an example demonstrating an excluded module
         # cannot exist in the slice, and gating an example file leaves no `main` (E0601).
@@ -329,13 +321,16 @@ jobs:
         # canonical/architecture/readiness doc validators (local-ci Stage 5).
         shell: bash
         run: |
-          for crate in engine mcp cli actions; do
-            echo "── $crate conformance"
-            for script in "$crate"/.pi/scripts/ci/check_*.sh; do
-              [ -f "$script" ] && (cd "$crate" && bash ".pi/scripts/ci/$(basename "$script")")
+          # #1412: the loop variable is `pkg`, not `crate`. These blocks iterate workspace
+          # directories, and a `crate` loop variable made the acceptance grep for the (now
+          # deleted) forbidden-crate loop match five unrelated lines.
+          for pkg in engine mcp cli actions; do
+            echo "── $pkg conformance"
+            for script in "$pkg"/.pi/scripts/ci/check_*.sh; do
+              [ -f "$script" ] && (cd "$pkg" && bash ".pi/scripts/ci/$(basename "$script")")
             done
             for v in validate-canonical.sh validate-architecture.sh validate-architecture-readiness.sh; do
-              [ -f "$crate/.pi/scripts/$v" ] && echo "--- $v ($crate) ---" && (cd "$crate" && bash ".pi/scripts/$v")
+              [ -f "$pkg/.pi/scripts/$v" ] && echo "--- $v ($pkg) ---" && (cd "$pkg" && bash ".pi/scripts/$v")
             done
           done
 
@@ -375,10 +370,10 @@ jobs:
         # root integration/operations validators (local-ci Stage 6).
         shell: bash
         run: |
-          for crate in engine mcp cli actions; do
-            echo "── $crate conformance"
-            for script in "$crate"/.pi/scripts/ci/check_*.sh; do
-              [ -f "$script" ] && (cd "$crate" && bash ".pi/scripts/ci/$(basename "$script")")
+          for pkg in engine mcp cli actions; do
+            echo "── $pkg conformance"
+            for script in "$pkg"/.pi/scripts/ci/check_*.sh; do
+              [ -f "$script" ] && (cd "$pkg" && bash ".pi/scripts/ci/$(basename "$script")")
             done
           done
           # Run the PER-CRATE copies, not the repo-root dispatcher. From the
@@ -387,8 +382,8 @@ jobs:
           # copy resolves its tree from its own path (see the preamble in
           # languages/rust/validate-*.sh).
           for v in validate-integration.sh validate-operations.sh; do
-            for crate in engine mcp cli actions; do
-              [ -f "$crate/.pi/scripts/$v" ] && echo "--- $crate $v ---" && bash "$crate/.pi/scripts/$v"
+            for pkg in engine mcp cli actions; do
+              [ -f "$pkg/.pi/scripts/$v" ] && echo "--- $pkg $v ---" && bash "$pkg/.pi/scripts/$v"
             done
           done
 

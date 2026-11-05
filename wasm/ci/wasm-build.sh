@@ -28,7 +28,40 @@
 # `strip` is deliberately not set: the `name` custom section is removed by
 # `ci/strip_name_section.py`, whose own assertions prove it ran (a stripped artifact is
 # smaller than the unstripped one, so size alone cannot prove it).
+#
+# # #1408: the artifact must not carry the builder's filesystem
+#
+# Panic messages and debug strings embed absolute paths from the toolchain that compiled
+# them, so the same source built on macOS and on the Linux runner differed by 1 453 B
+# (0.11 %) — and the shipped module carried 118 occurrences of the maintainer's home
+# directory. #1405 answered that with a 1 % size tolerance, which is a gate widened to
+# accommodate the defect: 13 372 B of band, wider than the change the floor exists to catch.
+#
+# The fix is here, at the packaging path, because this is where the bytes are decided.
+# Remapping the two prefixes that appear in the graph rewrites the *text* of every path —
+# panic locations, `file!()`/`line!()` payloads, crate metadata — while leaving the code
+# identical. The artifact then depends on the source and the pinned toolchain, not on whose
+# home directory ran the build, which is what ADR-014 §2's byte-identity claim requires.
+#
+# `ci/run-module-smoke.sh` asserts the property on the packaged module before it reports a
+# size: `strings -a <module> | grep -c "$HOME"` must be 0. A tolerance cannot hide a path.
 set -euo pipefail
+
+# Defaults, because these are frequently unset even though cargo and rustup use them.
+: "${CARGO_HOME:=$HOME/.cargo}"
+: "${RUSTUP_HOME:=$HOME/.rustup}"
+# The sysroot, not just its parent: remapping `${RUSTUP_HOME}/toolchains` to `/rustc` rewrites
+# `/home/runner/.rustup/toolchains/1.96-x86_64-unknown-linux-gnu/lib/…` into
+# `/rustc/1.96-x86_64-unknown-linux-gnu/lib/…` — the *directory name* of the toolchain survives,
+# and it is host-specific (19 occurrences of it in the macOS build). The two hosts then differ
+# by the length of that name, which is the same per-host size fact in a new place. Remapping the
+# sysroot itself is what actually removes it.
+RUST_SYSROOT="$(rustc --print sysroot 2>/dev/null || true)"
+export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=${CARGO_HOME}/registry=/registry --remap-path-prefix=${RUSTUP_HOME}/toolchains=/rustc"
+if [ -n "${RUST_SYSROOT:-}" ]; then
+    # The longest prefix wins, so a host with a normal rustup layout keeps the sysroot mapping.
+    export RUSTFLAGS="${RUSTFLAGS} --remap-path-prefix=${RUST_SYSROOT}=/rustc"
+fi
 
 export CARGO_PROFILE_RELEASE_LTO=fat
 export CARGO_PROFILE_RELEASE_OPT_LEVEL=z

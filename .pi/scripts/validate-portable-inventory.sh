@@ -440,18 +440,21 @@ self-test)
         "$ADR" > "$tmp/atable.md"
     expect "table ratio wrong while the prose is right (#1363 seed B)" 1 "$MANIFEST" "$LIB" "$tmp/atable.md"
 
-    # 10. the right percentage with the wrong denominator: 22.6 % is the *emitted*
-    #     share, so in a cell that says "shipped" it must fail. The token is seeded by
-    #     its own value, and the seed asserts that it matched: this one had been
-    #     matching nothing for two revisions (it stitched `34.2 %`, which the record no
-    #     longer contains) and still read as a pass, because the tree it ran against was
-    #     failing for an unrelated reason. A seed that matches nothing is its own trap.
-    if ! grep -q '30\.0 %' "$ADR"; then
+    # 10. The right percentage with the wrong denominator: the emitted share in a cell whose
+    #     subject is the shipped module. Both tokens are read from the ratios file rather than
+    #     written here. A seed keyed to a literal went inert three times (#1363 stitched
+    #     `34.2 %`, #1408 moved `30.0 %` and then `31.22 %`), each time reporting only that it
+    #     was inert, and each time while the tree it ran against was failing for an unrelated
+    #     reason. What the seed asserts is the *substitution*, so the substitution is what it
+    #     derives; a re-record can move the numbers without disarming the seed.
+    shipped_token="$(awk -F'\t' '$1 == "share" && $3 == "data_emitted" && $4 == "engine_shipped" { print $2; exit }' "$RATIOS")"
+    emitted_token="$(awk -F'\t' '$1 == "share" && $3 == "data_emitted" && $4 == "engine_emitted" { print $2; exit }' "$RATIOS")"
+    if [ -z "$shipped_token" ] || [ -z "$emitted_token" ] || ! grep -qF -- "$shipped_token" "$ADR" 2>/dev/null; then
         printf '  %b❌%b %s (the seed token matches nothing in the record)\n' "$RED" "$NC" \
             "percentage whose denominator is the wrong module (#1363)"
         ko=$((ko + 1))
     else
-        sed 's/30\.0 %/22.6 %/g' "$ADR" > "$tmp/adenom.md"
+        sed "s/${shipped_token//./\\.}/${emitted_token//\\/\\\\}/g" "$ADR" > "$tmp/adenom.md"
         expect "percentage whose denominator is the wrong module (#1363)" 1 "$MANIFEST" "$LIB" "$tmp/adenom.md"
     fi
 
