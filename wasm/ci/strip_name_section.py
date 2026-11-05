@@ -169,9 +169,36 @@ def _refuses(buf):
     return False
 
 
+SECTION_NAMES = {
+    0: "custom", 1: "type", 2: "import", 3: "function", 4: "table", 5: "memory",
+    6: "global", 7: "export", 8: "start", 9: "element", 10: "code", 11: "data",
+    12: "datacount",
+}
+
+
+def print_sections(buf):
+    """The section table, from the file itself (#1385). The ADR's size rows cite this."""
+    total = len(buf)
+    print(f"{total} B total")
+    for section_id, start, end, name in sections(buf):
+        size = end - start
+        label = SECTION_NAMES.get(section_id, str(section_id))
+        if name:
+            label += f":{name.decode('utf-8', 'replace')}"
+        print(f"  {label:<24} {size:>9} B  {100 * size / total:6.2f} %")
+
+
 def main(argv):
     if len(argv) > 1 and argv[1] == "--self-test":
         return self_test()
+    if len(argv) > 2 and argv[1] == "--sections":
+        try:
+            with open(argv[2], "rb") as handle:
+                print_sections(handle.read())
+        except (OSError, ValueError) as error:
+            print(f"❌ {argv[2]}: {error}", file=sys.stderr)
+            return 1
+        return 0
     args = argv[1:]
     check = False
     out_path = None
@@ -182,7 +209,10 @@ def main(argv):
         out_path = args[1]
         args = args[2:]
     if len(args) != 1:
-        print("usage: strip_name_section.py [--check | --out DST] <module.wasm>", file=sys.stderr)
+        print(
+            "usage: strip_name_section.py [--check | --out DST | --sections] <module.wasm>",
+            file=sys.stderr,
+        )
         return 2
 
     path = args[0]

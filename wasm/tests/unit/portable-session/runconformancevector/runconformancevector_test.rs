@@ -11,7 +11,13 @@ fn vector(seeded: bool) -> ConformanceVector {
         fixtures: serde_json::json!({}),
         clock: serde_json::json!([]),
         seed: serde_json::json!({}),
-        expected: b"{}".to_vec(),
+        expected_decision: rigorix_gate_wasm::application::ExpectedDecision {
+            hex: "7b7d".to_string(),
+            sha256: "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+                .to_string(),
+            envelopes: Vec::new(),
+        },
+        produced_by: None,
         seeded_divergence: seeded,
         gate: Some("fixture".to_string()),
     }
@@ -71,7 +77,6 @@ fn vectors_are_immutable_artifacts_with_an_id() {
 // The runner (issue #1312)
 // ---------------------------------------------------------------------------
 
-use crate::support::RunnerStubGate;
 use rigorix_gate_wasm::application::{ConformanceRunner, RunConformanceVector, default_projection};
 
 fn vector_from_disk() -> ConformanceVector {
@@ -81,14 +86,42 @@ fn vector_from_disk() -> ConformanceVector {
     serde_json::from_str(&raw).expect("vector parses")
 }
 
-type GateFactory = fn() -> Box<dyn rigorix_gate_wasm::domain::engine_seam::GateEvaluator>;
+type GateFactory =
+    fn(&ConformanceVector) -> Box<dyn rigorix_gate_wasm::domain::engine_seam::GateEvaluator>;
 type ProjectionFactory = fn() -> Box<dyn rigorix_gate_wasm::domain::services::EvidenceProjection>;
 
+/// The real gate, built per vector from that vector's own declaration (#1385).
+///
+/// The factory takes the vector because the world does: a gate constructed without one is a
+/// gate that cannot decide, and a conformance run that never decides certifies the plumbing.
 fn runner() -> ConformanceRunner<GateFactory, ProjectionFactory> {
-    fn gate() -> Box<dyn rigorix_gate_wasm::domain::engine_seam::GateEvaluator> {
-        Box::new(RunnerStubGate::allowing())
+    fn gate(
+        vector: &ConformanceVector,
+    ) -> Box<dyn rigorix_gate_wasm::domain::engine_seam::GateEvaluator> {
+        #[cfg(feature = "engine")]
+        {
+            use rigorix_gate_wasm::infrastructure::EngineGate;
+            Box::new(EngineGate::new(declaration_of(vector)))
+        }
+        #[cfg(not(feature = "engine"))]
+        {
+            let _ = vector;
+            Box::new(EngineGate::unavailable())
+        }
     }
-    ConformanceRunner::new(gate as fn() -> _, default_projection as fn() -> _)
+    ConformanceRunner::new(
+        gate as fn(&ConformanceVector) -> _,
+        default_projection as fn() -> _,
+    )
+}
+
+/// The declaration a host sends: `fixtures`, `clock`, `seed`.
+fn declaration_of(vector: &ConformanceVector) -> serde_json::Value {
+    serde_json::json!({
+        "fixtures": vector.fixtures,
+        "clock": vector.clock,
+        "seed": vector.seed,
+    })
 }
 
 #[test]
@@ -96,7 +129,10 @@ fn a_vector_replays_to_a_stamped_artifact() {
     let vector = vector_from_disk();
     let artifact = runner().replay(&vector).expect("replay");
     assert_eq!(artifact.stamp.artifact_format_version, 2);
-    assert_eq!(artifact.envelopes.len(), 1);
+    // The engine assembles no envelope without a run context, and the vector supplies none:
+    // the artifact therefore carries the findings, not a signed envelope it would have had
+    // to invent (ADR-010). It carried one while the gate was a stub answering with one.
+    assert_eq!(artifact.envelopes.len(), 0);
     assert!(artifact.outcome_digest.as_str().starts_with("sha256:"));
 }
 
@@ -112,22 +148,24 @@ fn replaying_the_same_vector_twice_produces_identical_bytes() {
 
 #[test]
 fn a_matching_vector_passes_and_a_mutated_expected_fails() {
+    // The golden is the CLI's, recorded in the vector; the engine re-derives it here. That
+    // is the comparison `gate: "cli"` claims (#1385), not a crate-vs-itself mismatch.
     let mut vector = vector_from_disk();
-    let produced = serde_json::to_vec(&runner().replay(&vector).expect("replay")).expect("bytes");
-
-    vector.expected = produced.clone();
     let report = runner().execute(&vector);
-    assert!(report.matched);
+    assert!(
+        report.matched,
+        "the committed golden must match the engine's decision ({:?})",
+        report
+    );
     assert!(
         !report.normalised_comparison,
         "never claim a normalised pass"
     );
     assert!(report.is_pass(false));
 
-    // One extra byte in the expected artifact is a divergence.
-    let mut wrong = produced.clone();
-    wrong.push(b' ');
-    vector.expected = wrong;
+    // One added byte in the recorded decision is a divergence, and the digest the vector
+    // carries goes stale with it — both are findings.
+    vector.expected_decision.hex.push_str("20");
     let report = runner().execute(&vector);
     assert!(!report.matched);
     assert!(!report.is_pass(false));
@@ -146,29 +184,56 @@ fn an_unreplayable_vector_is_a_skip_and_a_skip_is_a_failure() {
 
 #[test]
 fn the_committed_vector_carries_its_own_provenance_label() {
-    // A vector must say where its expected bytes came from. Ours say `fixture`: produced by
-    // this crate, not by the CLI. When FR-011 lands, the CLI vectors say `cli` and this
-    // test's expectation moves with them.
+    // A vector must say where its expected bytes came from, and a `cli` label must name the
+    // command and the commit that produced them (#1385).
     let raw = std::fs::read_to_string(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests/conformance/vectors/vec-0001.json"),
     )
     .expect("vector");
     let parsed: serde_json::Value = serde_json::from_str(&raw).expect("json");
-    assert_eq!(parsed["gate"], "fixture");
+    assert_eq!(parsed["gate"], "cli");
     assert!(
-        parsed["note"]
+        parsed["produced_by"]["command"]
             .as_str()
-            .expect("note")
-            .contains("does NOT prove byte identity with the CLI")
+            .expect("command")
+            .contains("gate-vector"),
+        "the provenance names the command that produced the bytes"
+    );
+    assert_eq!(
+        parsed["produced_by"]["commit"]
+            .as_str()
+            .expect("commit")
+            .len(),
+        40,
+        "the provenance names a commit"
     );
 }
 
 #[test]
 fn a_report_never_claims_a_normalised_comparison() {
-    let mut vector = vector_from_disk();
-    let produced = serde_json::to_vec(&runner().replay(&vector).expect("replay")).expect("bytes");
-    vector.expected = produced;
+    let vector = vector_from_disk();
     let report: ConformanceReport = runner().execute(&vector);
     assert!(!report.normalised_comparison);
+}
+
+#[test]
+fn the_runner_decides_with_the_engine_rather_than_a_fixture() {
+    // #1385: the harness had never run the real gate. A runner that answers from a stub
+    // cannot notice an engine that changed its mind, so the divergence below is the proof
+    // that this one can.
+    let mut vector = vector_from_disk();
+    let report = runner().execute(&vector);
+    assert!(report.matched);
+    assert!(!report.skipped);
+
+    // Flip the declared determination: the engine now refuses where it passed, so the
+    // committed golden no longer matches — and it is the *engine's* change that is detected.
+    vector.fixtures["providers"]["eligibility.check"]["determination"] =
+        serde_json::json!("denied");
+    let report = runner().execute(&vector);
+    assert!(
+        !report.matched,
+        "a changed determination must change the decision the runner compares"
+    );
 }

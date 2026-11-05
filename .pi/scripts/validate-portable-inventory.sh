@@ -255,9 +255,15 @@ check_ratios() {
                 bad "  ratios: unknown kind '$kind' for '$stated'" ;;
         esac
         # The fragment, and the token inside it.
-        if ! sed 's/\*\*//g' "$adr" | grep -qF -- "$says"; then
-            bad "  ratios: '$stated' — the record no longer contains its subject fragment \"$says\" (row: '$note')"
-        fi
+        # No `sed | grep -q`: under `pipefail`, `grep -q` exits at the first match, `sed`
+        # takes EPIPE, and the pipeline reports 141 — so the check would fail on a *present*
+        # fragment whenever the file grew past a pipe buffer. The fragment is read into a
+        # variable instead, which has neither an early exit nor a pipeline.
+        normalised="$(sed 's/\*\*//g' "$adr")"
+        case "$normalised" in
+            *"$says"*) : ;;
+            *) bad "  ratios: '$stated' — the record no longer contains its subject fragment \"$says\" (row: '$note')" ;;
+        esac
         case "$says" in
             *"$stated"*) : ;;
             *) bad "  ratios: row '$stated' has a fragment that does not contain the token: \"$says\"" ;;
@@ -447,14 +453,18 @@ self-test)
     #     was inert, and each time while the tree it ran against was failing for an unrelated
     #     reason. What the seed asserts is the *substitution*, so the substitution is what it
     #     derives; a re-record can move the numbers without disarming the seed.
-    shipped_token="$(awk -F'\t' '$1 == "share" && $3 == "data_emitted" && $4 == "engine_shipped" { print $2; exit }' "$RATIOS")"
-    emitted_token="$(awk -F'\t' '$1 == "share" && $3 == "data_emitted" && $4 == "engine_emitted" { print $2; exit }' "$RATIOS")"
-    if [ -z "$shipped_token" ] || [ -z "$emitted_token" ] || ! grep -qF -- "$shipped_token" "$ADR" 2>/dev/null; then
+    # #1385 moved the section-table rows from `data_emitted`/`engine_emitted` to
+    # `data_shipped`/`engine_shipped`, so the seed reads the operands the record actually
+    # has: the shipped share of `data`, and a share whose denominator is the *emitted*
+    # module (`name_section`). Substituting one for the other is still the defect.
+    shipped_token="$(awk -F'\t' '$1 == "share" && $3 == "data_shipped" && $4 == "engine_shipped" { print $2; exit }' "$RATIOS")"
+    other_token="$(awk -F'\t' '$1 == "share" && $3 == "name_section" && $4 == "engine_emitted" { print $2; exit }' "$RATIOS")"
+    if [ -z "$shipped_token" ] || [ -z "$other_token" ] || ! grep -qF -- "$shipped_token" "$ADR" 2>/dev/null; then
         printf '  %b❌%b %s (the seed token matches nothing in the record)\n' "$RED" "$NC" \
             "percentage whose denominator is the wrong module (#1363)"
         ko=$((ko + 1))
     else
-        sed "s/${shipped_token//./\\.}/${emitted_token//\\/\\\\}/g" "$ADR" > "$tmp/adenom.md"
+        sed "s/${shipped_token//./\\.}/${other_token//./\\.}/g" "$ADR" > "$tmp/adenom.md"
         expect "percentage whose denominator is the wrong module (#1363)" 1 "$MANIFEST" "$LIB" "$tmp/adenom.md"
     fi
 

@@ -266,6 +266,9 @@ impl GateEvaluator for RunnerStubGate {
         Ok(EngineEvaluation {
             findings: self.findings.clone(),
             envelopes: self.envelopes.clone(),
+            // A stub answers without deciding, so it has no canonical bytes to forward — one
+            // more reason it can never be the conformance subject (#1385).
+            decision: Vec::new(),
             port_failures: self.port_failures.clone(),
         })
     }

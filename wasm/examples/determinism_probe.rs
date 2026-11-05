@@ -43,6 +43,7 @@ impl GateEvaluator for FixedGate {
     ) -> Result<EngineEvaluation, EngineBindingError> {
         let _ = (request.attempt_id, request.scenario, request.action);
         Ok(EngineEvaluation {
+            decision: Vec::new(),
             findings: vec![EngineFinding {
                 gate_id: "precondition.beneficiary-eligible".to_string(),
                 outcome: EngineFindingOutcome::Passed,

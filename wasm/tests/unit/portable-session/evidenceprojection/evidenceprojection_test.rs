@@ -50,6 +50,7 @@ fn engine_findings_carry_their_own_outcome_and_evidence() {
         },
     ];
     let evaluation = EngineEvaluation {
+        decision: Vec::new(),
         findings,
         envelopes: vec![],
         port_failures: vec![],
