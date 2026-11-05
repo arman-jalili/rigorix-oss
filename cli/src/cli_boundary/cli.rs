@@ -296,6 +296,18 @@ pub enum CliCommand {
         pinned_ids: Option<String>,
     },
 
+    /// Replay one conformance vector through the engine's gate; print the decision bytes.
+    ///
+    /// The canonical bytes of `(verdict, findings)` are the subject a conformance vector
+    /// compares (#1414, #1385): same fixture world, same pins, same bytes. Nothing else is
+    /// printed — no clock is read, no id is minted, no colour is applied.
+    #[cfg(feature = "pinned-inputs")]
+    #[command(name = "gate-vector", hide = true)]
+    GateVector {
+        /// The vector file to replay.
+        vector: String,
+    },
+
     // ── TUI (hidden from help — default with no subcommand) ──────
     /// Launch the interactive terminal UI.
     #[command(hide = true)]

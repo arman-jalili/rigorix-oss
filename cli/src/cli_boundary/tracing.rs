@@ -32,12 +32,27 @@
 /// - Respect `RIGORIX_LOG` env var (not `RUST_LOG`, to avoid conflicts)
 /// - Call `tracing_subscriber::fmt().with_env_filter(...).init()`
 pub fn init_tracing() {
+    init_tracing_with(false);
+}
+
+/// Initialise tracing, choosing whether the log stream is stdout or stderr.
+///
+/// `write_to_stderr` exists for the commands whose stdout **is** an artifact (#1414: a
+/// conformance vector's subject is the canonical decision bytes). A log line interleaved
+/// with those bytes changes the hash, so a byte comparison would fail for a reason that has
+/// nothing to do with the decision — and it would fail *silently*, in the digest, which is
+/// the one place this repository refuses to be approximate.
+pub fn init_tracing_with(write_to_stderr: bool) {
     // Delegate to the engine's centralized observability layer so the
     // `rigorix_engine::observability` module is the single tracing
     // initializer across all entry points. RIGORIX_LOG controls the level;
     // debug builds get human-readable output, release builds JSON.
     use rigorix_engine::observability::TracingConfig;
-    if let Err(e) = rigorix_engine::observability::init_tracing(&TracingConfig::default()) {
+    let config = TracingConfig {
+        write_to_stderr,
+        ..TracingConfig::default()
+    };
+    if let Err(e) = rigorix_engine::observability::init_tracing(&config) {
         eprintln!("Failed to initialize tracing: {e}");
     }
 }

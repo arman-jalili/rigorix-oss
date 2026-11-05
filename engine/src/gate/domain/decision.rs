@@ -62,7 +62,7 @@ impl GateDecision {
 /// and what makes the digest worth signing.
 #[must_use]
 pub fn decision_digest(verdict: &GateVerdict, findings: &[GateFinding]) -> String {
-    let canonical = serde_json::to_vec(&(verdict, findings)).unwrap_or_else(|_| Vec::new());
+    let canonical = decision_canonical_bytes(verdict, findings).unwrap_or_default();
     let mut hasher = Sha256::new();
     hasher.update(&canonical);
     hasher
@@ -70,4 +70,21 @@ pub fn decision_digest(verdict: &GateVerdict, findings: &[GateFinding]) -> Strin
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
+}
+
+/// The decision's canonical bytes — the exact bytes [`decision_digest`] hashes.
+///
+/// Published as a function because a conformance vector's subject *is* these bytes: a CLI
+/// and a crate that each serialise `(verdict, findings)` themselves could agree on the
+/// digest and disagree on the artifact, and the label `gate: "cli"` is about the artifact
+/// (#1414, #1385).
+///
+/// # Errors
+/// - the serialisation failed, which for these types means an invariant broke rather than a
+///   caller error
+pub fn decision_canonical_bytes(
+    verdict: &GateVerdict,
+    findings: &[GateFinding],
+) -> Result<Vec<u8>, serde_json::Error> {
+    serde_json::to_vec(&(verdict, findings))
 }
