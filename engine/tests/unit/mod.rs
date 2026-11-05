@@ -24,6 +24,9 @@ mod identity {
     }
 }
 mod gate {
+    mod fixtures {
+        mod fixtures_test;
+    }
     mod gatecomposition {
         mod gatecomposition_test;
     }

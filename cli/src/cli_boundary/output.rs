@@ -177,6 +177,16 @@ pub fn formatter_for(format: Format) -> Box<dyn LogFormatter> {
 ///
 /// This function never returns — it always calls `process::exit()`.
 pub fn format_and_exit(result: DispatchResult, format: Format) -> ! {
+    // An artifact's output is its bytes (#1414). Interleaving a summary, a banner or even a
+    // trailing newline here would make a byte comparison fail for a reason that has nothing
+    // to do with the decision.
+    if let Some(raw) = &result.raw {
+        use std::io::Write;
+        let mut stdout = std::io::stdout();
+        let _ = stdout.write_all(raw);
+        let _ = stdout.flush();
+        std::process::exit(result.exit_code);
+    }
     let formatter = formatter_for(format);
     if result.is_success() {
         let summary = formatter.format_summary(&result);

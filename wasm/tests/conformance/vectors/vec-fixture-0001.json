@@ -1,0 +1,38 @@
+{
+  "id": "vec-fixture-0001",
+  "gate": "fixture",
+  "note": "The reference vector for #1414: its world is a declaration the engine consumes (FixturesWorld::from_declaration), so both runtimes build the same ports from the same bytes. Its execution id is a real Uuid, its observation instant (fixtures.observed_at) is deliberately distinct from the decision instant (clock[0].instant), and its endpoints are declared. One provider passes and one refuses, so the committed verdict is Refuse. This file is the input to `rigorix gate-vector`; `expected` is left empty because the golden bytes are #1385's (expected_decision, gate: \"cli\"). It is not vec-0001 and does not replace it.",
+  "scenario": {
+    "format_version": 1,
+    "steps": [],
+    "action": { "name": "payment_execute", "params": { "amount": "100.00", "beneficiary": "acct-42" } }
+  },
+  "fixtures": {
+    "observed_at": "2026-11-03T08:59:59Z",
+    "approvals": [],
+    "providers": {
+      "budget.check": {
+        "determination": "denied",
+        "payload": { "reason": "over-limit", "limit": "50.00" },
+        "endpoint": "https://budget.check.fixture.invalid"
+      },
+      "eligibility.check": {
+        "determination": "passed",
+        "payload": { "tier": "gold" },
+        "endpoint": "https://eligibility.check.fixture.invalid"
+      }
+    },
+    "ids": {
+      "attempt": ["018f5b8e-0000-7000-8000-000000000001"],
+      "step": ["018f5b8e-0000-7000-8000-000000000002"],
+      "envelope": ["018f5b8e-0000-7000-8000-000000000003"]
+    }
+  },
+  "clock": [{ "instant": "2026-11-03T09:00:00Z", "index": 0 }],
+  "seed": {
+    "seed_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "draws": ["00"]
+  },
+  "seeded_divergence": false,
+  "expected": []
+}

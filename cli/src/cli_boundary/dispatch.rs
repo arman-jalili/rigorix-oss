@@ -55,6 +55,13 @@ pub struct DispatchResult {
     pub data: Option<JsonValue>,
     /// Exit code to return (0 = success, non-zero = error).
     pub exit_code: i32,
+    /// Bytes a command's output *is*, when its output is an artifact rather than a summary.
+    ///
+    /// A conformance vector's subject is the canonical decision bytes (#1414), so the command
+    /// that prints them must print them and nothing else: no banner, no summary, no trailing
+    /// newline. When this is `Some`, [`crate::cli_boundary::output::format_and_exit`] writes
+    /// the bytes verbatim and ignores `summary`/`data`.
+    pub raw: Option<Vec<u8>>,
 }
 
 impl DispatchResult {
@@ -63,6 +70,7 @@ impl DispatchResult {
             summary: summary.into(),
             data: None,
             exit_code: 0,
+            raw: None,
         }
     }
     pub fn success_with_data(summary: impl Into<String>, data: JsonValue) -> Self {
@@ -70,6 +78,18 @@ impl DispatchResult {
             summary: summary.into(),
             data: Some(data),
             exit_code: 0,
+            raw: None,
+        }
+    }
+
+    /// A result whose output is an artifact: the bytes go to stdout verbatim.
+    #[must_use]
+    pub const fn raw(bytes: Vec<u8>) -> Self {
+        DispatchResult {
+            summary: String::new(),
+            data: None,
+            exit_code: 0,
+            raw: Some(bytes),
         }
     }
     pub fn error(summary: impl Into<String>, exit_code: i32) -> Self {
@@ -77,6 +97,7 @@ impl DispatchResult {
             summary: summary.into(),
             data: None,
             exit_code,
+            raw: None,
         }
     }
     pub fn is_success(&self) -> bool {
@@ -178,6 +199,99 @@ async fn cmd_pinned_refusal(clock: Option<&str>, ids: Option<&str>) -> DispatchR
             "sha256": digest,
         }),
     )
+}
+
+/// `rigorix gate-vector <vector.json>` (#1414) — the CLI half of a conformance replay.
+///
+/// It builds the world from the vector's own declaration through
+/// `rigorix_engine::gate::application::fixtures`, calls the same `evaluate_gate_sync` the
+/// crate calls, and prints the canonical decision bytes — the exact bytes the digest covers,
+/// which is what a vector compares.
+///
+/// Every failure is a non-zero exit naming its subject: a declaration with no observation
+/// instant or no endpoint is a configuration error, and it is the operator's declaration
+/// that is wrong, not this command.
+#[cfg(feature = "pinned-inputs")]
+async fn cmd_gate_vector(path: &str) -> DispatchResult {
+    use rigorix_engine::gate::application::fixtures::{FixtureDeclaration, FixtureWorld};
+    use rigorix_engine::gate::application::{GateRequest, evaluate_gate_sync};
+    use rigorix_engine::gate::domain::{GatedStep, decision_canonical_bytes};
+
+    #[derive(serde::Deserialize)]
+    struct VectorFile {
+        #[serde(flatten)]
+        declaration: FixtureDeclaration,
+        scenario: ScenarioFile,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct ScenarioFile {
+        action: ActionFile,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct ActionFile {
+        name: String,
+        #[serde(default)]
+        params: serde_json::Value,
+    }
+
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) => return DispatchResult::error(format!("could not read {path}: {error}"), 2),
+    };
+    let vector: VectorFile = match serde_json::from_str(&text) {
+        Ok(vector) => vector,
+        Err(error) => {
+            return DispatchResult::error(
+                format!("{path} is not a conformance vector: {error}"),
+                2,
+            );
+        }
+    };
+
+    let world = match FixtureWorld::from_declaration(&vector.declaration) {
+        Ok(world) => world,
+        Err(error) => return DispatchResult::error(format!("{path}: {error}"), 2),
+    };
+
+    let parameters = match vector.scenario.action.params {
+        serde_json::Value::Object(parameters) => parameters,
+        serde_json::Value::Null => serde_json::Map::new(),
+        other => {
+            return DispatchResult::error(
+                format!("the vector's action params must be an object, not {other}"),
+                2,
+            );
+        }
+    };
+    let name = vector.scenario.action.name;
+    let step = GatedStep::new(
+        name.clone(),
+        name.clone(),
+        serde_json::Value::Object(parameters),
+    );
+
+    let decision = match evaluate_gate_sync(GateRequest {
+        step: &step,
+        proposed_action: &name,
+        identity_attested: false,
+        pins: world.pins(),
+        ports: world.ports(),
+        run_context: None,
+    }) {
+        Ok(decision) => decision,
+        Err(error) => {
+            return DispatchResult::error(format!("the gate could not evaluate: {error}"), 1);
+        }
+    };
+
+    match decision_canonical_bytes(&decision.verdict, &decision.findings) {
+        Ok(bytes) => DispatchResult::raw(bytes),
+        Err(error) => {
+            DispatchResult::error(format!("could not canonicalise the decision: {error}"), 1)
+        }
+    }
 }
 
 /// `rigorix approve ledger migrate` — the only path that adopts a legacy
@@ -1145,6 +1259,8 @@ pub async fn dispatch(
             pinned_clock,
             pinned_ids,
         } => return cmd_pinned_refusal(pinned_clock.as_deref(), pinned_ids.as_deref()).await,
+        #[cfg(feature = "pinned-inputs")]
+        CliCommand::GateVector { vector } => return cmd_gate_vector(vector).await,
         CliCommand::Doctor => return cmd_doctor().await,
         CliCommand::Init => return cmd_init().await,
         CliCommand::Approve {
@@ -1319,7 +1435,7 @@ pub async fn dispatch(
             DispatchResult::error("internal: handled before dispatch".to_string(), 1)
         }
         #[cfg(feature = "pinned-inputs")]
-        CliCommand::PinnedRefusal { .. } => {
+        CliCommand::PinnedRefusal { .. } | CliCommand::GateVector { .. } => {
             DispatchResult::error("internal: handled before dispatch".to_string(), 1)
         }
         CliCommand::Tui { .. } => DispatchResult::success("TUI mode"),
