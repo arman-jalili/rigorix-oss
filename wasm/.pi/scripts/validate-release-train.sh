@@ -20,6 +20,9 @@
 #   5. a member with a host-facing npm package has an npm step — and the coupling
 #      between readiness and wiring is enforced, not remembered:
 #         state: shipped             -> the npm job MUST be in `github-release.needs`
+#         state: ready-to-publish    -> an artifact exists and THIS tag publishes it for the first
+#                                       time: wired exactly like `shipped` (in `needs`, and no
+#                                       `if:`), because that is what the page promises
 #         state: packaged            -> an artifact a host can load exists (the size ceiling is
 #                                       in force), but no version has been published: the job
 #                                       MUST exist, MUST NOT be in `needs`, and MUST be gated
@@ -28,6 +31,10 @@
 #
 #      `packaged` was added by #1349: an artifact can be callable and measured without
 #      having been published, and `shipped` would have claimed the publication.
+#      `ready-to-publish` was added by #1434: the first publication fell between `packaged`
+#      (which forbids the job) and `shipped` (which claims a publication that has not
+#      happened), so `rigorix-gate@1.13.0` was published by hand, outside CI. A state that
+#      cannot be written is not a policy — it is a hole that paperwork fills.
 #      A package that does not exist yet must not look published; a package that does
 #      exist must not be quietly excluded from the release.
 #
@@ -85,14 +92,16 @@ fi
 # than repeating the list, so a state understood here cannot be "not shipped|awaiting-packaging"
 # there. The two drifted once: this guard accepted `packaged` and the release refused the tag.
 #   shipped            -> published before; this tag publishes a new version
+#   ready-to-publish   -> an artifact exists and this tag is its FIRST publication: ready, and
+#                         `shipped` may only be claimed once the registry resolves the version
 #   packaged           -> an artifact exists and passes the ceiling, never published: it must
 #                         not run (no prior version, no token) and must not gate the page
 #   awaiting-packaging -> no artifact; nothing to publish
 npm_ready() {
   case "$1" in
-    shipped) echo true ;;
+    shipped | ready-to-publish) echo true ;;
     packaged | awaiting-packaging) echo false ;;
-    *) echo "❌ bundle state '$1' is not shipped|packaged|awaiting-packaging" >&2; return 1 ;;
+    *) echo "❌ bundle state '$1' is not shipped|ready-to-publish|packaged|awaiting-packaging" >&2; return 1 ;;
   esac
 }
 
@@ -282,8 +291,10 @@ else:
     if npm_block is None:
         bad(f"release.yml has no `{NPM_JOB}` job — the npm step is not a job, so nothing "
             f"can report whether it ran")
-    elif state == "shipped":
-        # Shippable: the release page must not be published before the package is.
+    elif state in ("shipped", "ready-to-publish"):
+        # Shippable — published before (`shipped`) or published by this tag for the first time
+        # (`ready-to-publish`): either way the release page must not be published before the
+        # package is. One branch, because the wiring is the same and two copies could drift.
         if NPM_JOB not in needs:
             bad(f"bundle state is `shipped` but `{NPM_JOB}` is not in `github-release.needs` — "
                 f"a release page would announce a version that npm does not have")
@@ -420,17 +431,31 @@ if [ "$MODE" = "--self-test" ]; then
   make_tree "$TMP/shipped-cond" "engine wasm" yes shipped "publish-engine publish-wasm publish-wasm-npm" yes
   expect 1 "shipped but npm job still conditional: fails" "$TMP/shipped-cond"
 
+  # #1434: the first publication. It must gate the page exactly as `shipped` does, and it must
+  # not fail when the wiring is right — a rule that only ever fails is a rule that fires at
+  # nothing.
+  make_tree "$TMP/first-out" "engine wasm" yes ready-to-publish "publish-engine publish-wasm" no
+  expect 1 "ready-to-publish but npm job outside needs: fails" "$TMP/first-out"
+
+  make_tree "$TMP/first-in" "engine wasm" yes ready-to-publish "publish-engine publish-wasm publish-wasm-npm" no
+  expect 0 "ready-to-publish and npm job gates the release page: passes" "$TMP/first-in"
+
   make_tree "$TMP/await-in" "engine wasm" yes awaiting-packaging "publish-engine publish-wasm publish-wasm-npm" yes
   expect 1 "awaiting packaging but npm job in needs: fails" "$TMP/await-in"
 
   make_tree "$TMP/unknown" "engine wasm" yes measuring "publish-engine publish-wasm" yes
   expect 1 "unknown packaging state: fails closed" "$TMP/unknown"
-  # --npm-ready is the single owner of the vocabulary: three arms, one seed each.
-  [ "$(bash "$SELF" --npm-ready shipped)" = true ] || bad "shipped must be npm-ready"
-  [ "$(bash "$SELF" --npm-ready packaged)" = false ] || bad "packaged must not be npm-ready"
+  # --npm-ready is the single owner of the vocabulary: four arms, one seed each. The
+  # assertions used to call `bad`, which is a Python function in this file — a failing arm
+  # raised "command not found" instead of naming the arm.
+  vocab_fail() { echo "  ❌ $*"; fails=$((fails + 1)); }
+  [ "$(bash "$SELF" --npm-ready shipped)" = true ] || vocab_fail "shipped must be npm-ready"
+  [ "$(bash "$SELF" --npm-ready ready-to-publish)" = true ] || \
+      vocab_fail "ready-to-publish must be npm-ready"
+  [ "$(bash "$SELF" --npm-ready packaged)" = false ] || vocab_fail "packaged must not be npm-ready"
   [ "$(bash "$SELF" --npm-ready awaiting-packaging)" = false ] || \
-      bad "awaiting-packaging must not be npm-ready"
-  if bash "$SELF" --npm-ready nonsense >/dev/null 2>&1; then bad "an unknown state must fail"; fi
+      vocab_fail "awaiting-packaging must not be npm-ready"
+  if bash "$SELF" --npm-ready nonsense >/dev/null 2>&1; then vocab_fail "an unknown state must fail"; fi
 
   make_tree "$TMP/nonpm" "engine wasm" yes awaiting-packaging "publish-engine publish-wasm" yes
   sed -i.bak 's/publish-npm-package\.sh rigorix-gate/publish-npm-package.sh other-name/' "$TMP/nonpm/.github/workflows/release.yml"

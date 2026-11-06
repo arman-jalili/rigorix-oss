@@ -143,13 +143,35 @@ silently degrading to a dry run. Treat a missing token as a release blocker, not
 to drop the step.
 
 **The npm package is held back until the bundle is shippable.** `wasm/ci/bundle-budget.txt`
-carries `state: awaiting-packaging` (no artifact) or `packaged` (an artifact, never published);
-in those states `publish-wasm-npm` is registered but deliberately outside `github-release.needs`,
-and
-`publish-npm-package.sh` refuses to publish a module with nothing in it. The guard enforces
-the coupling in both directions: flipping the state to `shipped` **requires** the npm job to
-gate the release page, and leaving it `awaiting-packaging` **forbids** it. Publishing a
-package consumers can pin but not use is worse than publishing nothing.
+carries one of four states, and `validate-release-train.sh --npm-ready` is the only place that
+maps them to a verdict:
+
+| state | `publish-wasm-npm` | meaning |
+|-------|--------------------|---------|
+| `awaiting-packaging` | registered, outside `needs`, gated on `npm_ready` | no artifact yet |
+| `packaged` | the same | an artifact exists; no version has ever been published |
+| `ready-to-publish` | **in** `needs`, no `if:` | an artifact exists and this tag publishes it for the first time |
+| `shipped` | **in** `needs`, no `if:` | a version has been published before |
+
+`ready-to-publish` exists because the first publication used to fall between the other rows:
+`packaged` forbids the job, and `shipped` claims a publication that has not happened. A state
+that cannot be written is not a policy, so `rigorix-gate@1.13.0` was published by hand, outside
+CI (#1434). Flip the state to `shipped` once the registry resolves the version — the state file
+is the human's switch, deliberately, and no first publication is automatic.
+
+**Recovering a half-published tag.** If a tag reached the registry but the state was not
+flipped, or the state was flipped and the job did not run, the bootstrap path is still the way
+back:
+
+```bash
+git worktree add /tmp/wt-tag <tag>
+bash wasm/ci/run-module-smoke.sh                       # the packaging path the gates measure
+NPM_TOKEN=… bash .github/scripts/publish-npm-package.sh rigorix-gate wasm/Cargo.toml wasm/pkg
+```
+
+It is the **recovery** path, not the publication path: `publish-npm-package.sh` refuses rather
+than degrades, and reads the registry before writing, so a replay of a finished tag is a skip.
+Verify from the registry, not from the log — `npm view rigorix-gate version` and the tarball.
 
 ---
 

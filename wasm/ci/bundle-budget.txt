@@ -51,6 +51,9 @@ note: >-
   of builder paths are compared, because they hold on every host.
   The artifact is host-independent: the build remaps both toolchain prefixes, so the bytes
   carry no filesystem, and the size comparison is exact rather than tolerant.
-  state is `packaged`, not `shipped`: the artifact a host loads exists and is measured, but no
-  version has been published to npm, so `publish-wasm-npm` stays outside
-  `github-release.needs` - the release-train guard enforces that distinction.
+  state is `shipped`: `rigorix-gate@1.13.0` is on npm, so `publish-wasm-npm` is in
+  `github-release.needs` - the release page must not announce a version npm does not carry.
+  The four states are `awaiting-packaging`, `packaged`, `ready-to-publish` (the first
+  publication: wired exactly like `shipped`) and `shipped`; `validate-release-train.sh
+  --npm-ready` is the only owner of that vocabulary, and the release-train guard enforces the
+  coupling in both directions.
