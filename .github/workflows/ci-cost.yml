@@ -1,0 +1,69 @@
+name: CI Cost
+
+# The pipeline's cost, reported and budgeted (#1437, child 1 of #1436).
+#
+# A run cannot price itself — the numbers only exist once it has finished — so the price of a
+# run is reported out of band, on a schedule, against `.github/ci-budgets.tsv`. Two consequences
+# that are deliberate:
+#
+#   · this workflow is **not** on the merge path. A breach is a number to fix, not a reason to
+#     block the change that exposed it; the stage gates keep their own verdicts.
+#   · it fails when a budget is exceeded, when a stage the run reports has no budget, and when a
+#     budget was raised without a new `set_from`. Those are the three ways a number stops being
+#     a check.
+#
+# `workflow_dispatch` takes a run id so a specific run can be priced by hand, which is how the
+# two halves of the epic's before/after are quoted in the issues.
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Run id to price (default: the last completed run on main)"
+        required: false
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  budget:
+    name: 💸 Cost and budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Two commits, because the ratchet compares the budgets file with the base commit and
+          # `--depth=1` makes HEAD its own boundary (#1429 was exactly this).
+          fetch-depth: 2
+
+      - name: Price the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -n "${RUN_ID:-}" ]; then
+            bash .github/scripts/ci_critical_path.sh "$RUN_ID"
+          else
+            bash .github/scripts/ci_critical_path.sh latest
+          fi
+
+      - name: Compare with the declared budgets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -n "${RUN_ID:-}" ]; then
+            bash .github/scripts/ci_budget_report.sh --run "$RUN_ID"
+          else
+            bash .github/scripts/ci_budget_report.sh
+          fi
