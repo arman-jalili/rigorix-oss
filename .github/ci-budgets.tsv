@@ -27,7 +27,6 @@
 # stage	budget_minutes	set_at	set_from
 workspace	1	2026-11-06	"run 42229151064: 0.1 min"
 lint	8	2026-11-06	"run 42229151064: 5.7-7.7 per leg, 36.7 job-min over 6 legs"
-build	7	2026-11-06	"run 42229151064: 4.0-6.2 per leg, 29.7 job-min over 6 legs"
 test	9	2026-11-06	"run 42229151064: 4.8-8.6 per leg, 37.2 job-min over 6 legs"
 coverage	16	2026-11-06	"run 42229151064: 15.3 min"
 audit	6	2026-11-06	"run 42229151064: 5.3 min"

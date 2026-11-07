@@ -1,34 +1,44 @@
 # The CI dependency graph (#1411). This file is the source; the workflow is checked
 # against it, not the other way round.
 #
-#   stage <TAB> needs (comma-separated, `-` for none) <TAB> why the edge exists
+#   stage <TAB> needs (comma-separated, `-` for none) <TAB> exports (`-` for nothing) <TAB> why
 #
-# Two rules are enforced by `.github/scripts/ci_graph_check.sh`:
+# Three rules are enforced by `.github/scripts/ci_graph_check.sh`:
 #
-#   1. `lint` is a leaf for every *stage*. No stage may list it in `needs`. A lint finding is
-#      a verdict on the tree, not on whether anything compiles: `build: needs: [workspace,
-#      lint]` once skipped the build, and every stage downstream of it, so seven subjects
-#      never ran and the gate accused five of them of failing (#1411).
+#   1. A stage fixes nothing downstream by existing. `exports` is what it hands to a dependent:
+#      an artifact, an output, or a compiled tree. A stage whose `exports` is `-` may not appear
+#      in another stage's `needs` — a barrier is not a dependency, it is eleven minutes of wall
+#      clock that produces nothing. `build` was exactly that: six `cargo check` legs plus a
+#      `check_*.sh` loop, no `upload-artifact`, and five stages waiting on it (#1438).
 #
-#      `ci-report` and `gate` are the exception because they are not stages: their subject
-#      IS every stage's result, so they must name every stage, `lint` included. The set is
-#      fixed in the checker; a third aggregator is an error, not a convention.
-#   2. An edge exists only when the upstream's result decides the downstream's subject. A
+#   2. `lint` is a leaf for every *stage* — now a consequence of rule 1, kept as its own error
+#      because it cost seven subjects once. `build: needs: [workspace, lint]` skipped the build
+#      and every stage downstream of it, so seven subjects never ran and the gate accused five
+#      of them of failing (#1411).
+#
+#      `ci-report` and `gate` are the exception because they are not stages: their subject IS
+#      every stage's result, so they must name every stage, `lint` included. The set is fixed in
+#      the checker; a third aggregator is an error, not a convention.
+#
+#   3. An edge exists only when the upstream's result decides the downstream's subject. A
 #      workspace that does not compile makes a test run meaningless; a lint finding does not.
 #
 # `portable`, `shell` and `wasm-gates` hang off nothing, because each has its own subject and
-# none consumes a build artifact (#1410 is the same rule applied to one stage).
-workspace	-	splits the crate matrix; not a stage, a prerequisite
-lint	workspace	style and architecture over the tree — a leaf, deliberate
-build	workspace	compiles the workspace
-test	workspace,build	runs what was compiled
-coverage	workspace,build	instruments what was compiled
-audit	build	audits the built graph
-docs	build	claims checked against the built crate
-conformance	build	replays against the built crate
-integration	test	end-to-end over the tested binaries
-portable	workspace	its own subject: the slice builds for wasm32 and its tests run natively
-shell	-	its own subject: exit statuses in scripts
-wasm-gates	-	its own subject: the crate's eleven gates
-ci-report	lint,build,test,coverage,portable,audit,docs,integration,conformance,shell,wasm-gates	reports every stage; a leaf
-gate	lint,build,test,coverage,portable,audit,docs,integration,conformance,shell,wasm-gates	the verdict; requires every mandatory stage
+# none consumes a build artifact (#1410 is the same rule applied to one stage). `audit`, `docs`
+# and `conformance` hang off nothing for the same reason: each compiles what it needs, and each
+# waited eleven minutes for `build` to hand it nothing (#1438).
+#
+# stage	needs	exports	why
+workspace	-	crate matrix	splits the crate matrix; not a stage, a prerequisite
+lint	workspace	-	style, architecture and the conventions suite over the tree — a leaf, deliberate
+test	workspace	tested binaries	runs what the workspace compiles, one leg per crate
+coverage	workspace	-	instruments the whole workspace; its LCOV is uploaded, not consumed
+audit	-	-	audits the dependency graph from the lockfile — compiles nothing it does not need
+docs	-	-	claims checked against the source and the canonical documents
+conformance	-	-	replays the vectors against the crate it builds itself
+integration	test	tested binaries	end-to-end over the binaries `test` already ran
+portable	workspace	-	its own subject: the slice builds for wasm32 and its tests run natively
+shell	-	-	its own subject: exit statuses in scripts
+wasm-gates	-	-	its own subject: the crate's eleven gates
+ci-report	lint,test,coverage,portable,audit,docs,integration,conformance,shell,wasm-gates	-	reports every stage; a leaf
+gate	lint,test,coverage,portable,audit,docs,integration,conformance,shell,wasm-gates	-	the verdict; requires every mandatory stage

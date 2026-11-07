@@ -3,7 +3,7 @@
 #
 # Runs on pull requests to main, and on every push to main.
 #
-# Fourteen jobs: twelve stages, an aggregate (`ci-report`) and a verdict
+# Thirteen jobs: eleven stages, an aggregate (`ci-report`) and a verdict
 # (`gate`, which requires every mandatory stage). Coverage runs here, not in
 # hardening.yml. Which stage requires which is declared in
 # `.github/ci-graph.tsv`, and `.github/scripts/ci_graph_check.sh` fails when
@@ -45,6 +45,13 @@ jobs:
         # no edge, and any disagreement between the two — the class of defect that once hid
         # seven stages behind one edge while the gate still reported a verdict (#1411).
         run: bash .github/scripts/ci_graph_check.sh
+      - name: 🧮 The conventions suite runs once, and somewhere
+        # #1438: the `check_*.sh` suite is one subject; it ran in five jobs, and the copy in
+        # the deleted `build` job is why five stages waited eleven minutes for a job that
+        # uploaded nothing. The census refuses a second invocation, a repo-root invocation
+        # (which skips out green), and a crate whose directory the loop visits but checks
+        # nothing in.
+        run: bash .github/scripts/check_conventions_census.sh --self-test
       - name: 🧷 main's verification is never cancelled
         # #1422: the concurrency block decides whether a merge commit gets a run of its own.
         # Checked before the matrix so it is the cheapest thing this workflow refuses.
@@ -88,48 +95,12 @@ jobs:
       - run: cargo fmt --check -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}"
       - run: cargo clippy -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}" -- -D warnings
       - name: Per-crate conventions (conformance suite)
-        # GAP-A-27: conventions gate the job. Scope: the check_*.sh suite
-        # (contract implementations, DDD structure, architecture conformance).
-        # run_/stage_/validate_*.sh orchestrators + aggregate validators are
-        # excluded — manual runners (run_stage.sh, validate_agent_output.sh
-        # need args), full-suite duplicates (run_preflight.sh,
-        # run_hardening_stages.sh, validate-ci.sh, validate-tests.sh), or run
-        # by the docs/integration jobs.
-        run: |
-          for script in .pi/scripts/ci/check_*.sh; do
-            [ -f "$script" ] && echo "--- $script ---" && bash "$script"
-          done
-        working-directory: ${{ matrix.crate }}
-
-  # ── Stage 2: Build (cargo check — fast compile verification) ─
-  build:
-    name: 📦 Build (${{ matrix.crate }})
-    # `workspace`, not `workspace, lint` (#1411). `build` consumes nothing a lint finding
-    # produces, and the edge that said otherwise skipped the build — and every stage
-    # downstream of it — whenever any crate had a lint failure. The graph and the reason
-    # for each edge live in `.github/ci-graph.tsv`, and
-    # `.github/scripts/ci_graph_check.sh` refuses an edge it does not find there.
-    needs: [workspace]
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        crate: ${{ fromJson(needs.workspace.outputs.crates) }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup
-        with:
-          cache-key: build-${{ matrix.crate }}
-      - run: cargo check -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}"
-      - name: Per-crate conventions (conformance suite)
-        # GAP-A-27: conventions gate the job. Scope: the check_*.sh suite
-        # (contract implementations, DDD structure, architecture conformance).
-        # run_/stage_/validate_*.sh orchestrators + aggregate validators are
-        # excluded — manual runners (run_stage.sh, validate_agent_output.sh
-        # need args), full-suite duplicates (run_preflight.sh,
-        # run_hardening_stages.sh, validate-ci.sh, validate-tests.sh), or run
-        # by the docs/integration jobs.
+        # GAP-A-27: conventions gate the job — and now gate it *once*. The suite ran in five
+        # jobs before #1438 (`lint`, `build`, `test`, `docs`, `integration`): five executions of
+        # one verdict, and the copy in `build` was the whole reason five stages waited eleven
+        # minutes for a job that handed them nothing. Scope is the `check_*.sh` suite (contract
+        # implementations, DDD structure, architecture conformance); run_/stage_/validate_*
+        # orchestrators need arguments and are not part of it.
         run: |
           for script in .pi/scripts/ci/check_*.sh; do
             [ -f "$script" ] && echo "--- $script ---" && bash "$script"
@@ -139,7 +110,7 @@ jobs:
   # ── Stage 3: Test ─────────────────────────────────────────────
   test:
     name: 🧪 Test (${{ matrix.crate }})
-    needs: [workspace, build]
+    needs: [workspace]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -166,19 +137,6 @@ jobs:
         env:
           PKG: ${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}
         run: bash .pi/scripts/run-doctests.sh -p "$PKG"
-      - name: Per-crate conventions (conformance suite)
-        # GAP-A-27: conventions gate the job. Scope: the check_*.sh suite
-        # (contract implementations, DDD structure, architecture conformance).
-        # run_/stage_/validate_*.sh orchestrators + aggregate validators are
-        # excluded — manual runners (run_stage.sh, validate_agent_output.sh
-        # need args), full-suite duplicates (run_preflight.sh,
-        # run_hardening_stages.sh, validate-ci.sh, validate-tests.sh), or run
-        # by the docs/integration jobs.
-        run: |
-          for script in .pi/scripts/ci/check_*.sh; do
-            [ -f "$script" ] && echo "--- $script ---" && bash "$script"
-          done
-        working-directory: ${{ matrix.crate }}
 
   # ── Stage 3c: Portable slice (ADR-014 §1, #1374) ───────────────
   # A configuration outside CI is a configuration that rots: without this job
@@ -229,7 +187,7 @@ jobs:
   # ── Stage 3b: Coverage (real line coverage via cargo-llvm-cov) ──
   coverage:
     name: 📊 Coverage (workspace)
-    needs: [workspace, build]
+    needs: [workspace]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -278,7 +236,6 @@ jobs:
   # ── Stage 4: Security ─────────────────────────────────────────
   audit:
     name: 🔒 Audit
-    needs: [build]
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -325,24 +282,21 @@ jobs:
   # ── Stage 5: Documentation + Architecture ─────────────────────
   docs:
     name: 📝 Documentation
-    needs: [build]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - name: Per-crate conformance + docs conventions
-        # GAP-A-27: conventions gate the stage. Per-crate check_*.sh suite +
-        # canonical/architecture/readiness doc validators (local-ci Stage 5).
+      - name: Per-crate architecture + docs conventions
+        # GAP-A-27: conventions gate the stage. Canonical/architecture/readiness doc validators
+        # (local-ci Stage 5); the `check_*.sh` suite is `lint`'s, once.
         shell: bash
         run: |
           # #1412: the loop variable is `pkg`, not `crate`. These blocks iterate workspace
           # directories, and a `crate` loop variable made the acceptance grep for the (now
           # deleted) forbidden-crate loop match five unrelated lines.
           for pkg in engine mcp cli actions; do
-            echo "── $pkg conformance"
-            for script in "$pkg"/.pi/scripts/ci/check_*.sh; do
-              [ -f "$script" ] && (cd "$pkg" && bash ".pi/scripts/ci/$(basename "$script")")
-            done
+            # The `check_*.sh` suite is not repeated here: it gates `lint`, once (#1438). What
+            # this stage owns is the doc and architecture verdict over each crate.
             for v in validate-canonical.sh validate-architecture.sh validate-architecture-readiness.sh; do
               [ -f "$pkg/.pi/scripts/$v" ] && echo "--- $v ($pkg) ---" && (cd "$pkg" && bash ".pi/scripts/$v")
             done
@@ -379,17 +333,13 @@ jobs:
         run: |
           cargo test -p rigorix-cli --test pinned_inputs_surface
           cargo test -p rigorix-cli --features pinned-inputs --test pinned_inputs_surface
-      - name: Per-crate conformance + integration validators
-        # GAP-A-27: conventions gate the stage. Per-crate check_*.sh suite +
-        # root integration/operations validators (local-ci Stage 6).
+      - name: Per-crate integration + operations validators
+        # GAP-A-27: conventions gate the stage. Root integration/operations validators
+        # (local-ci Stage 6); the `check_*.sh` suite is `lint`'s, once.
         shell: bash
         run: |
-          for pkg in engine mcp cli actions; do
-            echo "── $pkg conformance"
-            for script in "$pkg"/.pi/scripts/ci/check_*.sh; do
-              [ -f "$script" ] && (cd "$pkg" && bash ".pi/scripts/ci/$(basename "$script")")
-            done
-          done
+          # The `check_*.sh` suite gates `lint`, once (#1438). This stage's subject is the
+          # boundary: what only runs when several crates are exercised together.
           # Run the PER-CRATE copies, not the repo-root dispatcher. From the
           # repo root the root copy has no `src/` to inspect, so it skipped out
           # with a green summary while the real check never ran. Each crate's own
@@ -414,7 +364,6 @@ jobs:
   # schemas/fixtures/envelope corpus + the verifier fixture test.
   conformance:
     name: 📐 SDK-schema conformance
-    needs: [build]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -531,7 +480,7 @@ jobs:
   # `ci-report` there (`📋 Stage report`).
   ci-report:
     name: 📋 Stage report
-    needs: [lint, build, test, coverage, portable, audit, docs, integration, conformance, shell, wasm-gates]
+    needs: [lint, test, coverage, portable, audit, docs, integration, conformance, shell, wasm-gates]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -539,7 +488,6 @@ jobs:
       - name: 📋 Stage results
         env:
           RESULT_LINT: ${{ needs.lint.result }}
-          RESULT_BUILD: ${{ needs.build.result }}
           RESULT_TEST: ${{ needs.test.result }}
           RESULT_COVERAGE: ${{ needs.coverage.result }}
           RESULT_PORTABLE: ${{ needs.portable.result }}
@@ -554,7 +502,7 @@ jobs:
   # ── Stage 8: Final Gate ───────────────────────────────────────
   gate:
     name: 🚪 Final Gate
-    needs: [lint, build, test, coverage, portable, audit, docs, integration, conformance, shell, wasm-gates]
+    needs: [lint, test, coverage, portable, audit, docs, integration, conformance, shell, wasm-gates]
     # A superseded run gets no verdict (#1289). `cancelled` is the scheduler's
     # fact, not the change's: with `cancel-in-progress` every push to the same
     # ref cancels the previous run, so the old `!= 'success'` test accused the
@@ -567,7 +515,6 @@ jobs:
       - name: 🚦 Verdict
         env:
           RESULT_LINT: ${{ needs.lint.result }}
-          RESULT_BUILD: ${{ needs.build.result }}
           RESULT_TEST: ${{ needs.test.result }}
           RESULT_COVERAGE: ${{ needs.coverage.result }}
           RESULT_PORTABLE: ${{ needs.portable.result }}

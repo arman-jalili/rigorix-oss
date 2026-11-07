@@ -15,7 +15,10 @@
 # ignored it — so a red coverage run could sit under a green gate. A stage the workflow reports
 # must be a stage the table shows; the self-test below now checks that in the other direction
 # too.
-CI_MANDATORY_STAGES="lint build test coverage portable audit conformance shell wasm-gates"
+# `build` left this list with the job (#1438): it decided nothing, uploaded nothing, and five
+# stages waited eleven minutes for it. Its two subjects live in `lint` (clippy and the
+# conventions suite) and in the stages that compile what they need.
+CI_MANDATORY_STAGES="lint test coverage portable audit conformance shell wasm-gates"
 # Reported but not required — whether they should be is a separate decision.
 CI_REPORTED_STAGES="docs integration"
 
