@@ -100,7 +100,11 @@ async fn a_declared_cap_refuses_and_names_the_operands() {
     .await;
 
     let (gate, reason) = refusal(&decision);
-    assert_eq!(*gate, GateId::Capacity, "the capacity gate is the one that refused");
+    assert_eq!(
+        *gate,
+        GateId::Capacity,
+        "the capacity gate is the one that refused"
+    );
     assert!(
         reason.contains("18420"),
         "the requested amount is on the wire: {reason}"
@@ -117,8 +121,14 @@ async fn a_declared_cap_refuses_and_names_the_operands() {
         .iter()
         .find(|f| f.gate_id == GateId::Capacity)
         .expect("a refusal is never an unfindable verdict");
-    assert_eq!(finding.outcome, rigorix_engine::gate::domain::GateOutcome::Refused);
-    let evidence = finding.evidence.as_ref().expect("the operands survive as evidence");
+    assert_eq!(
+        finding.outcome,
+        rigorix_engine::gate::domain::GateOutcome::Refused
+    );
+    let evidence = finding
+        .evidence
+        .as_ref()
+        .expect("the operands survive as evidence");
     assert_eq!(evidence["overage"], 7_420);
     assert_eq!(evidence["available"], 11_000);
     assert_eq!(evidence["committed"], 1_409_000);

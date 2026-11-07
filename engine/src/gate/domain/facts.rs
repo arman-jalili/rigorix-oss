@@ -84,7 +84,8 @@ impl CommittedEffect {
         format!(
             "{} at {} by {}",
             self.record_id,
-            self.instant.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            self.instant
+                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
             self.actor
         )
     }
@@ -113,6 +114,9 @@ mod tests {
                 .expect("fixture instant")
                 .with_timezone(&Utc),
         );
-        assert_eq!(effect.describe(), "QR-2041 at 2026-11-04T14:02:00Z by finance");
+        assert_eq!(
+            effect.describe(),
+            "QR-2041 at 2026-11-04T14:02:00Z by finance"
+        );
     }
 }

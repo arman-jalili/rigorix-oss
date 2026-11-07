@@ -80,7 +80,10 @@ async fn a_repeated_effect_is_refused_naming_its_record_and_instant() {
         other => panic!("expected a refusal, got {other:?}"),
     };
     assert_eq!(*gate, GateId::Effects);
-    assert!(reason.contains("QR-2041"), "the record id is named: {reason}");
+    assert!(
+        reason.contains("QR-2041"),
+        "the record id is named: {reason}"
+    );
     assert!(
         reason.contains("2026-11-04T14:02:00Z"),
         "the instant it happened is named, not the instant we looked: {reason}"
@@ -91,7 +94,10 @@ async fn a_repeated_effect_is_refused_naming_its_record_and_instant() {
         .iter()
         .find(|f| f.gate_id == GateId::Effects)
         .expect("a refusal is never an unfindable verdict");
-    let evidence = finding.evidence.as_ref().expect("the identity survives as evidence");
+    let evidence = finding
+        .evidence
+        .as_ref()
+        .expect("the identity survives as evidence");
     assert_eq!(evidence["record_id"], "QR-2041");
     assert_eq!(evidence["instant"], "2026-11-04T14:02:00Z");
 }
@@ -114,7 +120,12 @@ async fn an_effect_that_has_not_committed_is_admitted() {
 async fn no_declared_effect_produces_no_finding() {
     let decision = evaluate(GatePorts::none()).await;
     assert!(decision.verdict.permits_dispatch());
-    assert!(decision.findings.iter().all(|f| f.gate_id != GateId::Effects));
+    assert!(
+        decision
+            .findings
+            .iter()
+            .all(|f| f.gate_id != GateId::Effects)
+    );
 }
 
 /// The digest binds the identity: two commitments that differ only in the instant are two
