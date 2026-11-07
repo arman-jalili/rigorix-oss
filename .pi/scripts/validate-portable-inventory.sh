@@ -384,6 +384,22 @@ self-test)
     tmp="$(mktemp -d)"
     trap 'find "$tmp" -type f -delete; rmdir "$tmp"' EXIT
     ok=0; ko=0
+    # mutate <from> <to> <out> — a substitution that changed nothing is a **failure**, not a
+    # skip. Every seed below is anchored on a literal from the record, so a re-record moves the
+    # literal out from under the seed and the seed quietly stops firing: that happened five
+    # times in one commit when the counts were re-derived by #1443, and the guard reported
+    # "exit 0, wanted 1" for seeds that had never been applied.
+    mutate() {
+        local from="$1" to="$2" out="$3"
+        sed "s/$from/$to/" "$ADR" > "$out"
+        if cmp -s "$ADR" "$out"; then
+            printf '  %b❌%b seed inert: %s matches nothing in the record\n' "$RED" "$NC" "$from"
+            ko=$((ko + 1))
+            return 1
+        fi
+        return 0
+    }
+
     expect() { # expect <label> <wanted-exit> <manifest> <lib> <adr> [ratios]
         local label="$1" want="$2" m="$3" l="$4" a="$5" r="${6:-$RATIOS}"
         run_check "$m" "$l" "$a" "$r" >/dev/null 2>&1
@@ -405,12 +421,20 @@ self-test)
     expect "the tree's own manifest" 0 "$MANIFEST" "$LIB" "$ADR"
 
     # 1. a summary that undercounts the denominator
-    sed -e 's/22 of the crate'"'"'s 39 public modules/22 of 41 public modules/' \
-        -e 's/(22 of 39 public modules)/(22 of 41 public modules)/' "$MANIFEST" > "$tmp/m22.tsv"
-    expect "summary says 22 of 41" 1 "$tmp/m22.tsv" "$LIB" "$ADR"
+    sed -e 's/20 of the crate'"'"'s 39 public modules/20 of 41 public modules/' \
+        -e 's/(20 of 39 public modules)/(20 of 41 public modules)/' "$MANIFEST" > "$tmp/m22.tsv"
+    if cmp -s "$MANIFEST" "$tmp/m22.tsv"; then
+        printf '  %b❌%b seed inert: the summary line matches nothing\n' "$RED" "$NC"
+        ko=$((ko + 1))
+    fi
+    expect "summary says 20 of 41" 1 "$tmp/m22.tsv" "$LIB" "$ADR"
 
     # 2. the bucket collapse that caused #1361 (six narrowed modules counted as closure)
-    sed 's/= 16 direct, 6 by closure,/= 11 indirect,/' "$MANIFEST" > "$tmp/mbucket.tsv"
+    sed 's/= 14 direct, 6 by closure,/= 11 indirect,/' "$MANIFEST" > "$tmp/mbucket.tsv"
+    if cmp -s "$MANIFEST" "$tmp/mbucket.tsv"; then
+        printf '  %b❌%b seed inert: the bucket sentence matches nothing\n' "$RED" "$NC"
+        ko=$((ko + 1))
+    fi
     expect "summary collapses three buckets into two" 1 "$tmp/mbucket.tsv" "$LIB" "$ADR"
 
     # 3. a row naming a module that does not exist
@@ -438,12 +462,12 @@ self-test)
 
     # 8. #1363 seed A — the prose ratio, inside markdown emphasis, with the table
     #    ratio left correct. Emphasis is stripped before matching, so this cannot hide.
-    sed 's/\*\*22 of 39\*\*/**22 of 41**/' "$ADR" > "$tmp/aprose.md"
+    mutate '\*\*20 of 39\*\*' '**20 of 41**' "$tmp/aprose.md"
     expect "prose ratio wrong while the table is right (#1363 seed A)" 1 "$MANIFEST" "$LIB" "$tmp/aprose.md"
 
     # 9. #1363 seed B — the table ratio, prose untouched.
-    sed 's/22 of 39 public modules (10 forbidden crate/22 of 41 public modules (10 forbidden crate/' \
-        "$ADR" > "$tmp/atable.md"
+    mutate '20 of 39 public modules (8 forbidden crate' '20 of 41 public modules (8 forbidden crate' \
+        "$tmp/atable.md"
     expect "table ratio wrong while the prose is right (#1363 seed B)" 1 "$MANIFEST" "$LIB" "$tmp/atable.md"
 
     # 10. The right percentage with the wrong denominator: the emitted share in a cell whose
@@ -475,7 +499,7 @@ self-test)
 
     # 12. #1365 seed H — a manifest-derived count, off by one. The guard used to
     #     compute it, print it, and never look at the record's copy.
-    sed 's/23 inner items/22 inner items/' "$ADR" > "$tmp/acountH.md"
+    mutate '29 inner items' '28 inner items' "$tmp/acountH.md"
     expect "derived count off by one: inner items (#1365 seed H)" 1 "$MANIFEST" "$LIB" "$tmp/acountH.md"
 
     # 13. #1365 seed I — the dependency count, likewise.
@@ -484,13 +508,13 @@ self-test)
 
     # 14. #1377 seed A — a pronoun count that never moved with #1374. It sat next to the
     #     ratios that did move, in one arithmetically self-consistent paragraph.
-    sed 's/Of those 22/Of those 25/' "$ADR" > "$tmp/abareA.md"
+    mutate 'Of those 20' 'Of those 25' "$tmp/abareA.md"
     expect "bare count: 'Of those 25' (#1377 seed A)" 1 "$MANIFEST" "$LIB" "$tmp/abareA.md"
 
     # 15. #1377 seed B — the elliptical form, wrapped across two lines: `only 10` on one,
     #     `leave for a forbidden crate` on the next. Per-line matching read it as a bare
     #     number with no subject, which is how it survived the first version of this check.
-    sed 's/only 10/only 11/' "$ADR" > "$tmp/abareB.md"
+    mutate 'only 8' 'only 11' "$tmp/abareB.md"
     expect "bare count: 'only 11 leave for a forbidden crate' (#1377 seed B)" 1 \
         "$MANIFEST" "$LIB" "$tmp/abareB.md"
 
