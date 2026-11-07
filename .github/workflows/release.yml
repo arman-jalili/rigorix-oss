@@ -185,6 +185,24 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: bash .github/scripts/publish-npm-package.sh rigorix-gate wasm/Cargo.toml wasm/pkg
 
+  verify-published:
+    name: ✅ Verify the published module
+    # The tree being green is not the artifact being right: 1.14.0 shipped
+    # `kind: "capacityexceeded"` with 207 tests passing, because nothing had ever
+    # driven the tarball the registry serves (#1464). This asks npm for the version
+    # the manifest declares, replays the committed capability vectors through it,
+    # and asserts the decision digest AND the wire words — every number derived
+    # from the vector's own declared world.
+    needs: [publish-wasm-npm]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Drive the version the registry serves
+        run: node wasm/ci/verify-published-module.mjs
+
   # ── Create GitHub Release ─────────────────────────────────────
   github-release:
     name: 🏷️ GitHub Release
@@ -196,7 +214,7 @@ jobs:
     # `publish-wasm` is on the train (crates.io), and `publish-wasm-npm` gates this page now
     # that the bundle state is `shipped` — the two are wired together because a release page
     # that promises npm without it is the half-published release ADR-011 names.
-    needs: [publish-engine, publish-cli, publish-mcp, publish-actions, publish-wasm, publish-wasm-npm]
+    needs: [publish-engine, publish-cli, publish-mcp, publish-actions, publish-wasm, publish-wasm-npm, verify-published]
     # Announce the release only once every train crate is actually on crates.io.
     # Previously `if: always()`, which meant a failed publish still produced a
     # release page advertising crates that did not exist in the registry — the
