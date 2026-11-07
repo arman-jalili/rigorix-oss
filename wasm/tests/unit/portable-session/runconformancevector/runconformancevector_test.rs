@@ -80,11 +80,48 @@ fn vectors_are_immutable_artifacts_with_an_id() {
 
 use rigorix_gate_wasm::application::{ConformanceRunner, RunConformanceVector, default_projection};
 
+fn vector_dir() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/conformance/vectors")
+}
+
 fn vector_from_disk() -> ConformanceVector {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/conformance/vectors/vec-0001.json");
-    let raw = std::fs::read_to_string(path).expect("committed vector exists");
+    let raw = std::fs::read_to_string(vector_dir().join("vec-0001.json"))
+        .expect("committed vector exists");
     serde_json::from_str(&raw).expect("vector parses")
+}
+
+/// **Every** committed vector, not the one this file happens to name.
+///
+/// #1457 found the gap the hard way: `run-conformance.sh` globbed all the vectors for the
+/// provenance check — printing "3 committed vector(s)" — and then replayed exactly one, by a
+/// path written into this test. Recording a fourth vector with a deliberately wrong golden
+/// and watching the suite report 12/12 is what made it visible. A vector that is not replayed
+/// is decoration, and a harness that skips one reads as success.
+fn all_vectors() -> Vec<ConformanceVector> {
+    let mut paths: Vec<std::path::PathBuf> = std::fs::read_dir(vector_dir())
+        .expect("the vector directory exists")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "json")
+        })
+        .collect();
+    paths.sort();
+    assert!(
+        paths.len() >= 3,
+        "a skip is a failure: {} vector(s) found",
+        paths.len()
+    );
+    paths
+        .iter()
+        .map(|path| {
+            let raw = std::fs::read_to_string(path)
+                .unwrap_or_else(|error| panic!("{} is unreadable: {error}", path.display()));
+            serde_json::from_str(&raw)
+                .unwrap_or_else(|error| panic!("{} is not a vector: {error}", path.display()))
+        })
+        .collect()
 }
 
 type GateFactory =
@@ -261,4 +298,33 @@ fn the_runner_decides_with_the_engine_rather_than_a_fixture() {
         !report.matched,
         "a changed determination must change the decision the runner compares"
     );
+}
+
+// ── #1457 · the harness replays what it claims to replay ───────────────────────────
+
+#[test]
+fn every_committed_vector_replays_to_the_bytes_it_recorded() {
+    for vector in &all_vectors() {
+        let report = runner().execute(vector);
+        assert!(
+            report.is_pass(vector.seeded_divergence),
+            "{} did not replay to its recorded bytes: {report:?}",
+            vector.id
+        );
+    }
+}
+
+#[test]
+fn a_wrong_golden_fails_for_every_committed_vector() {
+    // The harness's own seed. Without it, "the vectors replay" is a claim about whichever
+    // vector this file names, and a broken golden gets a shrug (#1457).
+    for vector in &all_vectors() {
+        let mut mutated = vector.clone();
+        mutated.expected_decision.sha256 = format!("sha256:{}", "0".repeat(64));
+        assert!(
+            !runner().execute(&mutated).is_pass(vector.seeded_divergence),
+            "{} passed with a zeroed golden — the comparison was never reached",
+            vector.id
+        );
+    }
 }
