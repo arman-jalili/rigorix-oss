@@ -14,6 +14,12 @@ pub enum GateId {
     Preconditions,
     /// `sequence_policy` — operator requirements (ADR-013 R9 / ADR-015).
     Requirements,
+    /// `capacity_ledger` — the declared cap for the resource this step would consume
+    /// (ADR-018 / ADR-010, #1455).
+    Capacity,
+    /// `effect_commitment` — the declared prior commitment of the same effect
+    /// (ADR-019, #1455).
+    Effects,
 }
 
 impl GateId {
@@ -23,6 +29,8 @@ impl GateId {
         match self {
             Self::Preconditions => "preconditions",
             Self::Requirements => "requirements",
+            Self::Capacity => "capacity",
+            Self::Effects => "effects",
         }
     }
 }

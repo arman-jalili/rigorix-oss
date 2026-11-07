@@ -29,6 +29,7 @@
 pub mod binding;
 pub mod decision;
 pub mod error;
+pub mod facts;
 pub mod finding;
 pub mod outcome;
 pub mod step;
@@ -37,6 +38,7 @@ pub mod verdict;
 pub use binding::{GateEnvelopeBinding, GateEnvelopeEvidence};
 pub use decision::{GateDecision, decision_canonical_bytes, decision_digest};
 pub use error::GateError;
+pub use facts::{CapacityFacts, CommittedEffect, EffectFacts};
 pub use finding::{GateFinding, GateId};
 pub use outcome::GateOutcome;
 pub use step::GatedStep;

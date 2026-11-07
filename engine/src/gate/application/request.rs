@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use crate::audit::application::dto::PinnedInputs;
-use crate::gate::domain::GatedStep;
+use crate::gate::domain::{CapacityFacts, EffectFacts, GatedStep};
 use crate::precondition::application::service::PreconditionService;
 use crate::sequence_policy::application::service::SequencePolicyService;
 
@@ -22,6 +22,14 @@ pub struct GatePorts {
     pub precondition: Option<Arc<dyn PreconditionService>>,
     /// Operator requirements (ADR-013 R9 / ADR-015). `None` = no policy configured.
     pub sequence: Option<Arc<dyn SequencePolicyService>>,
+    /// The resource exposure and amount for the step's declared cap (ADR-018). `None` = no
+    /// capacity obligation declared for this step.
+    ///
+    /// A *fact* port, not a predicate: the ledger's own `Exposure::would_fit` decides, so two
+    /// runtimes cannot disagree about the same declared cap (#1455).
+    pub capacity: Option<Arc<dyn CapacityFacts>>,
+    /// The prior commitment of the same effect (ADR-019). `None` = no effect obligation.
+    pub effect: Option<Arc<dyn EffectFacts>>,
 }
 
 impl std::fmt::Debug for GatePorts {
@@ -29,6 +37,8 @@ impl std::fmt::Debug for GatePorts {
         f.debug_struct("GatePorts")
             .field("precondition", &self.precondition.is_some())
             .field("sequence", &self.sequence.is_some())
+            .field("capacity", &self.capacity.is_some())
+            .field("effect", &self.effect.is_some())
             .finish()
     }
 }
@@ -43,7 +53,10 @@ impl GatePorts {
     /// Whether any capability is configured at all.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.precondition.is_none() && self.sequence.is_none()
+        self.precondition.is_none()
+            && self.sequence.is_none()
+            && self.capacity.is_none()
+            && self.effect.is_none()
     }
 }
 

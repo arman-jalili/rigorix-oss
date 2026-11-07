@@ -254,6 +254,8 @@ fn the_empty_fixture_world_evaluates_to_a_dispatch() {
             ports: GatePorts {
                 precondition: Some(precondition_service(&json!({ "providers": {} }))),
                 sequence: Some(sequence_service(&json!({}))),
+                capacity: None,
+                effect: None,
             },
             run_context: None,
         })
