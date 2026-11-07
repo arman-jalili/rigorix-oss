@@ -66,6 +66,9 @@ mod interfaces;
 #[path = "portable-session/domain-isolation/domain-isolation_test.rs"]
 mod domain_isolation;
 
+#[path = "portable-session/refusaldetail/refusaldetail_test.rs"]
+mod refusaldetail;
+
 #[cfg(feature = "conformance")]
 #[path = "portable-session/runconformancevector/runconformancevector_test.rs"]
 mod runconformancevector;

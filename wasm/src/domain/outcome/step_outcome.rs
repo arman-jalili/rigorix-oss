@@ -48,6 +48,43 @@ pub struct StepOutcome {
     pub reason: Option<String>,
     /// The evidence this decision produced, when it produced any.
     pub evidence: Option<EvidenceRef>,
+    /// The operands the engine computed, when the refusal has any (#1462).
+    ///
+    /// **Not evidence.** An [`EvidenceRef`] is a pointer to bytes and stays that way; this is
+    /// the decision record saying *what the numbers were*, which is the difference between
+    /// "capacity exceeded" and the sentence a form validator produces. Absent on `Allowed` and
+    /// on `NotReached`: a step that was never evaluated has no operands to report.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<RefusalDetail>,
+}
+
+/// The operands a refusal can name, typed rather than free JSON (#1462).
+///
+/// A host renders these; it must not have to parse the engine's payload to find them, and it
+/// must never be handed a `0` in place of a number the engine did not compute — a zero overage
+/// reads as a pass. The projection therefore produces `None` rather than a default when an
+/// operand is missing, and says so by refusing with a port-failure kind.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RefusalDetail {
+    /// What the declared cap refused, and by how much.
+    Capacity {
+        /// The amount this attempt asked for.
+        requested: u64,
+        /// What the resource would total if it were admitted (`committed + outstanding + requested`).
+        claimed: u64,
+        /// The configured cap.
+        hard_limit: u64,
+        /// `claimed - hard_limit`: how much over the request goes.
+        overage: u64,
+    },
+    /// Which prior commitment a repeated effect collided with.
+    DuplicateEffect {
+        /// The provider's record identity.
+        record_id: String,
+        /// RFC 3339 instant the earlier commitment happened.
+        instant: String,
+    },
 }
 
 impl StepOutcome {

@@ -17,4 +17,4 @@ mod step_outcome;
 pub use evidence::{EvidenceKind, EvidenceRef};
 pub use refusal::RefusalKind;
 pub use run_outcome::{OutcomeStatus, RunOutcome};
-pub use step_outcome::{StepDecision, StepOutcome};
+pub use step_outcome::{RefusalDetail, StepDecision, StepOutcome};

@@ -44,6 +44,7 @@ fn a_refused_run_always_names_its_causing_step() {
                 kind: None,
                 reason: None,
                 evidence: None,
+                detail: None,
             },
             StepOutcome {
                 gate_id: "precondition.budget".into(),
@@ -51,6 +52,7 @@ fn a_refused_run_always_names_its_causing_step() {
                 kind: Some(RefusalKind::PreconditionFailed),
                 reason: Some("the budget check did not pass".into()),
                 evidence: None,
+                detail: None,
             },
         ],
         evidence: vec![],
@@ -68,6 +70,7 @@ fn a_refused_run_always_names_its_causing_step() {
             kind: None,
             reason: None,
             evidence: None,
+            detail: None,
         }],
         evidence: vec![],
         decision: Vec::new(),

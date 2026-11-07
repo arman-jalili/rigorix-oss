@@ -10,7 +10,7 @@
 //! record starts implying a decision nobody made.
 
 use crate::domain::engine_seam::{EngineFinding, EngineFindingOutcome};
-use crate::domain::outcome::{RefusalKind, StepDecision, StepOutcome};
+use crate::domain::outcome::{RefusalDetail, RefusalKind, StepDecision, StepOutcome};
 use crate::domain::services::{EvidenceProjection, RefusalVocabulary};
 
 /// Projects findings with business wording.
@@ -36,15 +36,31 @@ impl<V: RefusalVocabulary> EvidenceProjection for EngineFindingsProjection<V> {
                     kind: None,
                     reason: None,
                     evidence: finding.evidence.clone(),
+                    detail: None,
                 },
                 EngineFindingOutcome::Refused | EngineFindingOutcome::Error => {
-                    let kind = refusal_kind(finding);
+                    // One read of the payload produces both the kind and the operands, so a
+                    // refusal cannot name an obligation in `kind` and a different one in
+                    // `detail`. A missing operand is a port-failure refusal, never a zero:
+                    // `overage: 0` reads as a pass (#1462).
+                    let detail = refusal_detail(finding);
+                    // A capacity or effect finding whose operands did not survive is **not**
+                    // that obligation's refusal any more: the crate cannot say what the
+                    // numbers were, so it says a check could not answer. Reporting
+                    // `capacity_exceeded` with no operands, or with a zeroed overage, would be
+                    // inventing the very facts the refusal is about.
+                    let kind = if is_operand_gate(&finding.gate_id) && detail.is_none() {
+                        RefusalKind::PortUnavailable
+                    } else {
+                        refusal_kind(finding)
+                    };
                     StepOutcome {
                         gate_id: finding.gate_id.clone(),
                         decision: StepDecision::Refused,
                         kind: Some(kind),
                         reason: Some(self.vocabulary.reason(kind).to_string()),
                         evidence: finding.evidence.clone(),
+                        detail,
                     }
                 }
                 // A promotion is a decision that has not been made yet: not `Allowed`
@@ -56,6 +72,7 @@ impl<V: RefusalVocabulary> EvidenceProjection for EngineFindingsProjection<V> {
                     kind: None,
                     reason: None,
                     evidence: finding.evidence.clone(),
+                    detail: None,
                 },
                 // The gate never asked the question; say so rather than pretending it
                 // answered no.
@@ -65,6 +82,7 @@ impl<V: RefusalVocabulary> EvidenceProjection for EngineFindingsProjection<V> {
                     kind: None,
                     reason: None,
                     evidence: finding.evidence.clone(),
+                    detail: None,
                 },
             })
             .collect()
@@ -97,5 +115,36 @@ fn refusal_kind(finding: &EngineFinding) -> RefusalKind {
         Some("identity_unverified") | Some("unverified") => RefusalKind::IdentityUnverified,
         Some("port_unavailable") => RefusalKind::PortUnavailable,
         Some(_) | None => RefusalKind::PreconditionError,
+    }
+}
+
+/// Which gates carry operands on their findings (#1462).
+fn is_operand_gate(gate_id: &str) -> bool {
+    matches!(gate_id, "capacity" | "effects")
+}
+
+/// The typed operands of a refusal, read from the engine's own payload.
+///
+/// `EngineFinding.evidence` is an [`EvidenceRef`](crate::domain::outcome::EvidenceRef) — a
+/// pointer to bytes, by design — but `opaque` holds the finding the engine produced, and that
+/// finding carries the structured `evidence` object it built when it refused. Projecting it is
+/// a typed read of a payload the crate already has, not a new allowance.
+///
+/// Every operand is required: a missing one yields `None`, and the caller turns that into a
+/// port-failure refusal. A default here would invent a number — `overage: 0` is a *pass*.
+fn refusal_detail(finding: &EngineFinding) -> Option<RefusalDetail> {
+    let evidence = finding.opaque.as_ref()?.get("evidence")?;
+    match finding.gate_id.as_str() {
+        "capacity" => Some(RefusalDetail::Capacity {
+            requested: evidence.get("requested")?.as_u64()?,
+            claimed: evidence.get("claimed")?.as_u64()?,
+            hard_limit: evidence.get("hard_limit")?.as_u64()?,
+            overage: evidence.get("overage")?.as_u64()?,
+        }),
+        "effects" => Some(RefusalDetail::DuplicateEffect {
+            record_id: evidence.get("record_id")?.as_str()?.to_string(),
+            instant: evidence.get("instant")?.as_str()?.to_string(),
+        }),
+        _ => None,
     }
 }

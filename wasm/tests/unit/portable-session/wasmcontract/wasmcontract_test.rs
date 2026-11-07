@@ -44,6 +44,7 @@ fn no_dto_carries_a_verdict_shaped_field() {
         kind: Some("precondition_failed".into()),
         reason: Some("the required check did not pass".into()),
         evidence: None,
+        detail: None,
     };
     let json = serde_json::to_value(&step).expect("serialises");
     for key in forbidden {
@@ -78,6 +79,7 @@ fn outcome_status_is_two_valued_on_the_wire() {
             kind: None,
             reason: None,
             evidence: None,
+            detail: None,
         }],
         evidence: vec![],
         decision_canonical: None,
