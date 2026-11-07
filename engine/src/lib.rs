@@ -36,7 +36,9 @@ pub mod backend;
 pub mod budget_tracking;
 #[cfg(not(feature = "portable"))]
 pub mod cancellation;
-#[cfg(not(feature = "portable"))]
+// #1443: the module is unconditional; its `domain` layer is what the slice needs (the
+// capacity arithmetic the gate consults at the moment of consequence). `application`,
+// `infrastructure` and `interfaces` stay gated inside the module root.
 pub mod capacity_ledger;
 #[cfg(not(feature = "portable"))]
 pub mod code_gen;
@@ -45,7 +47,7 @@ pub mod code_graph;
 pub mod common;
 pub mod configuration;
 pub mod dag_engine;
-#[cfg(not(feature = "portable"))]
+// #1443: as with `capacity_ledger`, only the domain layer crosses into the slice.
 pub mod effect_commitment;
 pub mod enforcement;
 pub mod error;

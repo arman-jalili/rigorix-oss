@@ -43,11 +43,11 @@ manifest must name things that exist (a rename cannot leave a stale row), and th
 reproduce the list (a second authority cannot appear quietly).
 
 Four counts are recorded here because they are the decision, not the detail: **72 crates** in the
-`wasm32` graph (normal + build), **22 of 39** public modules excluded, **23 inner items** gated
-inside the modules that stay, and **9 dependencies** removed. Of those 22, **only 10
+`wasm32` graph (normal + build), **20 of 39** public modules excluded, **29 inner items** gated
+inside the modules that stay, and **9 dependencies** removed. Of those 20, **only 8
 leave for a forbidden crate**; 6 leave because they need a `tokio` feature the slice narrows away
-and 6 because they name a symbol from an excluded module. So 12 of 22 leave for something that is
-*not* a dependency statement, and any future "just remove `reqwest`" reasoning reaches only 10 of 22.
+and 6 because they name a symbol from an excluded module. So 12 of 20 leave for something that is
+*not* a dependency statement, and any future "just remove `reqwest`" reasoning reaches only 8 of 20.
 `CoreOrchestratorError` alone carries 14 `#[from]` variants across 85 gate sites; the slice's cost
 is concentrated in error plumbing, not in lexing.
 
@@ -122,7 +122,7 @@ a branch name means the apparatus is still there and the number cannot be reprod
 | Engine-linked module, as shipped | 1 349 900 B = **89.99 %** of the 1 500 000 B ceiling (#1386: the size profile is the difference; #1408: the build remaps the registry, the toolchain and the sysroot, so no host path is baked in; #1416: +15 575 B for the fixture world the crate now builds through the engine) | `wasm/pkg/*.wasm` after `strip_name_section.py`; `ci/wasm-build.sh` profile; `wasm-bindgen` 0.2.130 | **yes** — `wasm/ci/check-bundle-size.sh`; the recorded 1 334 325 B is a dated *observation*, printed as drift and not compared (#1417), while the ceiling and the budget are exact |
 | `name` section removed by the strip | 432 635 B = **24.48 %** of the 1 766 960 B emitted engine-linked module — larger under LTO, not smaller, because symbols survive inlining | same build | **yes** — `ci/strip_name_section.py --self-test`, then `--check` on the artifact |
 | `wasm32` dependency graph under `portable` | 72 crates (normal + build), exit 0 | `cargo tree -p rigorix-engine --features portable --target wasm32-unknown-unknown -e normal,build \| sed -E 's/^[│├└─ ]+//' \| grep -E '^[A-Za-z0-9_.-]+ v[0-9]' \| sed -E 's/ v[0-9].*//' \| sort -u \| wc -l` on `main` @ `01ad1e40` | **yes** |
-| Modules excluded by the slice | 22 of 39 public modules (10 forbidden crate, 6 narrowed `tokio`, 6 closure), 23 inner items | `engine/.pi/portable-inventory.tsv` | **yes** — the manifest's rows; every count recomputed by `validate-portable-inventory.sh` |
+| Modules excluded by the slice | 20 of 39 public modules (8 forbidden crate, 6 narrowed `tokio`, 6 closure), 29 inner items | `engine/.pi/portable-inventory.tsv` | **yes** — the manifest's rows; every count recomputed by `validate-portable-inventory.sh` |
 | M2 witness: pinned refusal, both entry points | `c47b27f9…`, 853 B, equal across two runs | `main`, `engine/examples/pinned_refusal.rs` and `rigorix-cli --features pinned-inputs pinned-refusal` | **yes** — `tests/unit/pinnedinputs::the_documented_pins_produce_the_golden_digest` |
 | Unpinned control | **the digest differs every run**, 860 B | `main`, same two commands | the variance *is* the result; no value is claimed |
 | Apparatus-era readings | 877 B pinned / 884 B unpinned, `32211b9d…` | `examples/spike_m2_envelope.rs` on `issue/1351` @ `c118cb06` | **no** — the fixture was renamed in the port (#1357); kept as history in §2 of the report |
@@ -160,7 +160,7 @@ cargo run -q -p rigorix-engine --example pinned_refusal -- \
 
 ### Negative
 
-- 6 of 22 module exclusions follow only from another exclusion being named, and 6 because they need
+- 6 of 20 module exclusions follow only from another exclusion being named, and 6 because they need
   a `tokio` feature the slice drops — so the dependency list understates the real cost, and the graph
   is closed over error types and ports.
 - The inventory is measured on a branch, not on `main`, until Phase C lands the wiring — the two

@@ -48,10 +48,17 @@
 //! resulting service and reserves/commits/releases around dispatch. With no
 //! declaration the module is inert and the previous code path is unchanged.
 
+#![cfg_attr(feature = "portable", allow(unused_imports))]
+
+#[cfg(not(feature = "portable"))]
 pub mod application;
 pub mod domain;
+#[cfg(not(feature = "portable"))]
 pub mod infrastructure;
+#[cfg(not(feature = "portable"))]
 pub mod interfaces;
 
+#[cfg(not(feature = "portable"))]
 pub use application::{CapacityGrantRule, CapacityLedgerConfig, CapacitySetup, CapacitySetupError};
+#[cfg(not(feature = "portable"))]
 pub use interfaces::CapacityLedger;

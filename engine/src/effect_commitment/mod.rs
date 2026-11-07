@@ -44,11 +44,15 @@
 //! closed. No implementation change may alter these signatures without an
 //! explicit contract change.
 
+#[cfg(not(feature = "portable"))]
 pub mod application;
 pub mod domain;
+#[cfg(not(feature = "portable"))]
 pub mod infrastructure;
+#[cfg(not(feature = "portable"))]
 pub mod interfaces;
 
+#[cfg(not(feature = "portable"))]
 pub use application::{
     BeginEffectInput, BeginEffectOutput, CommitmentDurability, CommitmentSettlement,
     DependentFence, DispatchObservation, DispatchSeam, EffectCommitmentBackendConfig,
@@ -64,8 +68,10 @@ pub use domain::{
     CommitmentError, EffectEvent, EffectIntent, EffectQuery, EffectRecord, EffectRecordId,
     EffectState, ObservedOutcome, OutcomeVerdict, ResolverIdentity, ResolverKind,
 };
+#[cfg(not(feature = "portable"))]
 pub use infrastructure::{
     DefaultEffectCommitmentFactory, HttpEffectLedger, HttpEffectLedgerConfig,
     HttpProviderReceiptReader, InMemoryEffectLedger,
 };
+#[cfg(not(feature = "portable"))]
 pub use interfaces::EffectCommitmentLedger;
