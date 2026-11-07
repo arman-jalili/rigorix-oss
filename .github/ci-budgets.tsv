@@ -18,6 +18,18 @@
 #
 # ## The rows below are the post-children-2-4 workflow
 #
+# **Measured, run 42388558670 (`3eafc20b`, warm cache, nothing narrowed): 12.4 min wall,
+# 49.5 job-minutes over 24 jobs.** The epic's targets were <= 22 min wall and <= 70
+# job-minutes; from 43.5 / 159.4 the pipeline now costs 12.4 / 49.5 in the case that runs
+# *everything*. The ceilings stay at the cold-cache worst case (23 / 115), because that is what
+# a refused restore costs, and a ceiling that only holds when the cache hits is not a ceiling.
+#
+# **Measured, run 42388558670 (`3eafc20b`, warm cache, nothing narrowed): 12.4 min wall,
+# 49.5 job-minutes over 24 jobs.** The epic's targets were ≤ 22 min wall and ≤ 70 job-minutes;
+# from 43.5 / 159.4 the pipeline now costs 12.4 / 49.5 in the case that runs *everything*.
+# The ceilings stay at the cold-cache worst case (23 / 115) because that is what a refused
+# restore costs, and a ceiling that only holds when the cache hits is not a ceiling.
+#
 # Set from run 42373245654 (`9105cf8b`) — the first run with no `build` job (#1438), one shared
 # cache (#1439) and the suite partitioned (#1440) — and that run was **cold**: the shared cache
 # key had never been written. The baseline it replaced, for the record:
@@ -34,6 +46,7 @@
 # the warm cache and the narrowing (#1441's second half).
 #
 # stage	budget_minutes	set_at	set_from
+affected	1	2026-11-07	"run 42388558670: 0.1 min — the map that decides what this diff requires (#1441)"
 workspace	1	2026-11-07	"run 42373245654: 0.1"
 lint	6	2026-11-07	"run 42373245654: 5.7 slowest leg, 31.5 job-min over 6 legs"
 test	8	2026-11-07	"run 42373245654: 7.7 slowest leg, 37.4 job-min over 6 legs"
