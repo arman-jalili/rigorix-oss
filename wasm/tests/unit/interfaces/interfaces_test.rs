@@ -422,10 +422,16 @@ fn every_refusal_kind_reaches_the_wire_under_its_own_name() {
         (RefusalKind::PreconditionFailed, "precondition_failed"),
         (RefusalKind::PreconditionError, "precondition_error"),
         (RefusalKind::PreconditionTimeout, "precondition_timeout"),
-        (RefusalKind::RequirementUnsatisfied, "requirement_unsatisfied"),
+        (
+            RefusalKind::RequirementUnsatisfied,
+            "requirement_unsatisfied",
+        ),
         (RefusalKind::CompanionStepMissing, "companion_step_missing"),
         (RefusalKind::SequenceViolation, "sequence_violation"),
-        (RefusalKind::HistoryIntegrityViolated, "history_integrity_violated"),
+        (
+            RefusalKind::HistoryIntegrityViolated,
+            "history_integrity_violated",
+        ),
         (RefusalKind::ApprovalUnbound, "approval_unbound"),
         (RefusalKind::ApprovalExpired, "approval_expired"),
         (RefusalKind::IdentityUnverified, "identity_unverified"),
