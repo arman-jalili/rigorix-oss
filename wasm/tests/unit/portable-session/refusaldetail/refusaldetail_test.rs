@@ -175,3 +175,61 @@ fn a_precondition_refusal_is_unchanged_by_the_new_field() {
     assert!(outcome.detail.is_none());
     assert_eq!(outcome.kind, Some(RefusalKind::PreconditionFailed));
 }
+
+// ── the wire ───────────────────────────────────────────────────────────────────────
+//
+// The layer the demo reads. Without these, the mapping is dead code and the interface
+// coverage drops — which is how this file came to exist twice over (#1462).
+
+use rigorix_gate_wasm::interfaces::dto::StepOutcomeDto;
+
+#[test]
+fn a_capacity_detail_reaches_the_wire_as_numbers() {
+    let outcome =
+        projection().project(&[capacity_finding(complete_capacity_evidence())])[0].clone();
+    let json = serde_json::to_value(StepOutcomeDto::from(&outcome)).expect("serialises");
+
+    assert_eq!(json["detail"]["kind"], "capacity");
+    assert_eq!(json["detail"]["requested"], 18_420);
+    assert_eq!(json["detail"]["claimed"], 1_427_420);
+    assert_eq!(json["detail"]["hard_limit"], 1_420_000);
+    assert_eq!(json["detail"]["overage"], 7_420);
+}
+
+#[test]
+fn a_duplicate_effect_detail_reaches_the_wire_with_its_identity() {
+    let finding = EngineFinding {
+        gate_id: "effects".into(),
+        outcome: EngineFindingOutcome::Refused,
+        refusal: Some("effect refused".into()),
+        evidence: None,
+        opaque: Some(serde_json::json!({
+            "evidence": { "record_id": "QR-2041", "instant": "2026-11-04T14:02:00Z" }
+        })),
+    };
+    let outcome = projection().project(&[finding])[0].clone();
+    let json = serde_json::to_value(StepOutcomeDto::from(&outcome)).expect("serialises");
+
+    assert_eq!(json["detail"]["kind"], "duplicate_effect");
+    assert_eq!(json["detail"]["record_id"], "QR-2041");
+    assert_eq!(json["detail"]["instant"], "2026-11-04T14:02:00Z");
+}
+
+#[test]
+fn a_step_without_operands_omits_the_field_entirely() {
+    // Absent, not `null` and not `{}`: a host that checks for the field must not have to
+    // distinguish "no operands" from "operands that render as nothing".
+    let finding = EngineFinding {
+        gate_id: "preconditions".into(),
+        outcome: EngineFindingOutcome::Refused,
+        refusal: Some("precondition_failed".into()),
+        evidence: None,
+        opaque: None,
+    };
+    let outcome = projection().project(&[finding])[0].clone();
+    let json = serde_json::to_value(StepOutcomeDto::from(&outcome)).expect("serialises");
+    assert!(
+        json.get("detail").is_none(),
+        "an absent detail is omitted: {json}"
+    );
+}
