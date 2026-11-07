@@ -19,6 +19,9 @@
 #   4. every cargo invocation carries `--locked`, because a cache that hides a lockfile drift is
 #      worse than a cold build. `cargo fmt` and `cargo audit` do not accept the flag; they are
 #      the only exceptions, and they are written here so a new command cannot inherit one.
+#   5. every subject job is gated on `.github/ci-affected.tsv` (#1441). A stage that forgets its
+#      `if` runs on every diff, so the narrowing silently stops narrowing — and the reader of a
+#      43-minute run has no way to tell that from a diff that needed all of it.
 #
 #   bash .github/scripts/validate-workflows.sh
 #   bash .github/scripts/validate-workflows.sh --self-test
@@ -164,6 +167,28 @@ for name, raw in blocks.items():
         findings.append(f"`{name}` caches `target/` with `actions/cache` — a per-job copy of the "
                         f"workspace")
 
+# ── 5. every subject job is gated on the map (#1441) ───────────────────────
+subjects = ["lint", "test", "portable", "coverage", "audit", "docs", "integration",
+            "conformance", "shell", "wasm-gates"]
+gate = "contains(needs.affected.outputs.subjects"
+for subject in subjects:
+    body = "\n".join(blocks.get(subject, []))
+    if not blocks.get(subject):
+        continue  # no such job: the census over subjects is check_affected_map's
+    if gate not in body:
+        findings.append(f"`{subject}` is a subject in `.github/ci-affected.tsv` and has no "
+                        f"`if: {gate} …)` gate — it runs on every diff, so the narrowing does "
+                        f"not narrow")
+    if "affected" not in [n.strip() for n in re.findall(r"needs:\s*\[([^\]]*)\]", body)[0].split(",")] \
+            if re.search(r"needs:\s*\[([^\]]*)\]", body) else True:
+        findings.append(f"`{subject}` does not list `affected` in its `needs` — it cannot read "
+                        f"the subject set it is gated on")
+for aggregator in ("ci-report", "gate"):
+    body = "\n".join(blocks.get(aggregator, []))
+    if body and "affected" not in body:
+        findings.append(f"`{aggregator}` does not depend on `affected` — its table cannot say "
+                        f"what this diff did not require")
+
 for number, line in enumerate(text.split("\n"), start=1):
     stripped = line.lstrip()
     if stripped.startswith("#") or re.match(r"-?\s*name:", stripped):
@@ -230,11 +255,15 @@ env:
 jobs:
   lint:
     name: Lint
+    if: contains(needs.affected.outputs.subjects, ' lint ')
+    needs: [affected]
     steps:
       - uses: ./.github/actions/setup
       - run: cargo clippy --locked -p rigorix-engine -- -D warnings
   wasm-gates:
     name: wasm gates
+    if: contains(needs.affected.outputs.subjects, ' wasm-gates ')
+    needs: [affected]
     steps:
       - uses: Swatinem/rust-cache@v2
         with:
@@ -311,6 +340,18 @@ open(dst, "w").write(text)
 S4
   expect 1 "a per-job actions/cache on target/ fails" "caches \`target/\`" \
     "$TMP/good.yml" "$TMP/percache.yml"
+
+  # S5 (#1441): a subject job that forgot its gate runs on every diff, so the narrowing stops
+  # narrowing — and a reader of a long run cannot tell that from a diff that needed all of it.
+  python3 - "$TMP/good.yml" "$TMP/ungated.yml" <<'S5'
+import sys
+src, dst = sys.argv[1], sys.argv[2]
+text = open(src).read().replace(
+    "    if: contains(needs.affected.outputs.subjects, ' lint ')\n", "", 1)
+open(dst, "w").write(text)
+S5
+  expect 1 "a subject job with no gate fails" "has no \`if: contains(needs.affected" \
+    "$TMP/ungated.yml" "$TMP/setup.yml"
 
   echo "  self-test: $passes passed, $fails failed"
   [ "$fails" -eq 0 ] || exit 1

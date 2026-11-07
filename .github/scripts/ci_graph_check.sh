@@ -202,12 +202,12 @@ for line in lines:
     stripped = line.strip()
     if line.startswith('  ') and not line.startswith('   ') and stripped.endswith(':'):
         job = stripped[:-1]
-    if job == 'test' and stripped == 'needs: [workspace]':
-        line = line.replace('[workspace]', '[workspace, lint]')
+    if job == 'test' and stripped == 'needs: [affected, workspace]':
+        line = line.replace('[affected, workspace]', '[affected, workspace, lint]')
     out.append(line)
 open(dst, 'w', encoding='utf-8').write('\n'.join(out))
 SEED1
-    if ! grep -q 'needs: \[workspace, lint\]' "$source"; then
+    if ! grep -q 'needs: \[affected, workspace, lint\]' "$source"; then
         echo "  ❌ seed — test needs lint: the mutation matched nothing" >&2
         failures=$((failures + 1))
     else
@@ -245,14 +245,14 @@ for line in lines:
     stripped = line.strip()
     if line.startswith('  ') and not line.startswith('   ') and stripped.endswith(':'):
         job = stripped[:-1]
-    if job == 'test' and stripped == 'needs: [workspace]':
-        line = line.replace('[workspace]', '[workspace, audit]')
+    if job == 'test' and stripped == 'needs: [affected, workspace]':
+        line = line.replace('[affected, workspace]', '[affected, workspace, audit]')
     out.append(line)
 open(dst, 'w', encoding='utf-8').write('\n'.join(out))
 SEED4
-    awk -F'\t' -v OFS='\t' '$1 == "test" { $2 = "workspace,audit" } { print }' "$GRAPH" \
+    awk -F'\t' -v OFS='\t' '$1 == "test" { $2 = "affected,workspace,audit" } { print }' "$GRAPH" \
         > "$tmp/graph-exports.tsv"
-    if ! grep -q 'needs: \[workspace, audit\]' "$tmp/wf-exports.yml"; then
+    if ! grep -q 'needs: \[affected, workspace, audit\]' "$tmp/wf-exports.yml"; then
         echo "  ❌ seed — dependency on a barrier: the mutation matched nothing" >&2
         failures=$((failures + 1))
     else
