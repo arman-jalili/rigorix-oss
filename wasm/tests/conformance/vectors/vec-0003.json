@@ -1,0 +1,58 @@
+{
+  "id": "vec-0003",
+  "gate": "cli",
+  "note": "Duplicate-effect vector: the same effect already committed as QR-2041 at 2026-11-04T14:02:00Z, so a second attempt refuses by identity \u2014 the record and the instant, not the moment of the attempt (#1457).",
+  "scenario": {
+    "format_version": 1,
+    "steps": [],
+    "action": {
+      "name": "refund_execute",
+      "params": {
+        "invoice": "INV-88120"
+      }
+    }
+  },
+  "fixtures": {
+    "approvals": [],
+    "providers": {},
+    "ids": {
+      "attempt": [
+        "018f5b8e-0000-7000-8000-000000000011"
+      ],
+      "step": [
+        "018f5b8e-0000-7000-8000-000000000012"
+      ],
+      "envelope": [
+        "018f5b8e-0000-7000-8000-000000000013"
+      ]
+    },
+    "observed_at": "2026-11-03T08:59:59Z",
+    "effects": {
+      "record_id": "QR-2041",
+      "actor": "finance",
+      "instant": "2026-11-04T14:02:00Z"
+    }
+  },
+  "clock": [
+    {
+      "instant": "2026-11-03T09:00:00Z",
+      "index": 0
+    }
+  ],
+  "seed": {
+    "seed_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "draws": [
+      "00"
+    ]
+  },
+  "seeded_divergence": false,
+  "expected_decision": {
+    "hex": "5b7b22726566757365223a7b2267617465223a2265666665637473222c2272756c655f6964223a226566666563742e6475706c6963617465222c22726561736f6e223a2265666665637420726566757365643a20616c726561647920636f6d6d69747465642061732051522d3230343120617420323032362d31312d30345431343a30323a30305a2062792066696e616e6365227d7d2c5b7b22676174655f6964223a2265666665637473222c2273746570223a22726566756e645f65786563757465222c226f7574636f6d65223a2272656675736564222c2272756c655f6964223a226566666563742e6475706c6963617465222c2264657461696c223a2265666665637420726566757365643a20616c726561647920636f6d6d69747465642061732051522d3230343120617420323032362d31312d30345431343a30323a30305a2062792066696e616e6365222c2265766964656e6365223a7b226163746f72223a2266696e616e6365222c22696e7374616e74223a22323032362d31312d30345431343a30323a30305a222c227265636f72645f6964223a2251522d32303431227d7d5d5d",
+    "sha256": "sha256:399fd7d0a7ebca13b377e9f09fc8efd6bc0cd8bc59bb4ab4cbad828e4c4b17c6",
+    "envelopes": []
+  },
+  "produced_by": {
+    "command": "cargo run -q -p rigorix-cli --features pinned-inputs -- gate-vector wasm/tests/conformance/vectors/vec-0003.json",
+    "commit": "5e8a208f1823e29d5c6aaa0ced334c9bb451e67d"
+  }
+}

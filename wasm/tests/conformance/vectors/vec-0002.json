@@ -1,0 +1,60 @@
+{
+  "id": "vec-0002",
+  "gate": "cli",
+  "note": "Capacity vector: a declared cap of 1 420 000 with 1 409 000 committed refuses a request of 18 420, and the refusal names all four operands \u2014 claimed 1 427 420, cap 1 420 000, overage 7 420. Recorded from the CLI so the crate is compared against the engine, not against itself (#1457).",
+  "scenario": {
+    "format_version": 1,
+    "steps": [],
+    "action": {
+      "name": "payment_execute",
+      "params": {
+        "amount": "184.20"
+      }
+    }
+  },
+  "fixtures": {
+    "approvals": [],
+    "providers": {},
+    "ids": {
+      "attempt": [
+        "018f5b8e-0000-7000-8000-000000000011"
+      ],
+      "step": [
+        "018f5b8e-0000-7000-8000-000000000012"
+      ],
+      "envelope": [
+        "018f5b8e-0000-7000-8000-000000000013"
+      ]
+    },
+    "observed_at": "2026-11-03T08:59:59Z",
+    "capacity": {
+      "resource": "eur.outflow.daily",
+      "hard_limit": 1420000,
+      "committed": 1409000,
+      "requested": 18420,
+      "window_secs": 86400
+    }
+  },
+  "clock": [
+    {
+      "instant": "2026-11-03T09:00:00Z",
+      "index": 0
+    }
+  ],
+  "seed": {
+    "seed_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "draws": [
+      "00"
+    ]
+  },
+  "seeded_divergence": false,
+  "expected_decision": {
+    "hex": "5b7b22726566757365223a7b2267617465223a226361706163697479222c2272756c655f6964223a2263617061636974792e6575722e6f7574666c6f772e6461696c79222c22726561736f6e223a22636170616369747920726566757365643a207265717565737465642031383432302c20636c61696d656420313432373432302c2063617020313432303030302c206f7665726167652037343230227d7d2c5b7b22676174655f6964223a226361706163697479222c2273746570223a227061796d656e745f65786563757465222c226f7574636f6d65223a2272656675736564222c2272756c655f6964223a2263617061636974792e6575722e6f7574666c6f772e6461696c79222c2264657461696c223a22636170616369747920726566757365643a207265717565737465642031383432302c20636c61696d656420313432373432302c2063617020313432303030302c206f7665726167652037343230222c2265766964656e6365223a7b22617661696c61626c65223a31313030302c22636c61696d6564223a313432373432302c22636f6d6d6974746564223a313430393030302c22686172645f6c696d6974223a313432303030302c226f75747374616e64696e67223a302c226f766572616765223a373432302c22726571756573746564223a31383432302c227265736f75726365223a226575722e6f7574666c6f772e6461696c79227d7d5d5d",
+    "sha256": "sha256:ae5ff24c142954cc7dc46f4e664dfaed756cf97f7a4a75b35139f7558cd268bd",
+    "envelopes": []
+  },
+  "produced_by": {
+    "command": "cargo run -q -p rigorix-cli --features pinned-inputs -- gate-vector wasm/tests/conformance/vectors/vec-0002.json",
+    "commit": "5e8a208f1823e29d5c6aaa0ced334c9bb451e67d"
+  }
+}
