@@ -54,6 +54,7 @@ fn a_refused_run_always_names_its_causing_step() {
             },
         ],
         evidence: vec![],
+        decision: Vec::new(),
     };
     let causing = refused.causing_step().expect("a refusal names its step");
     assert_eq!(causing.gate_id, "precondition.budget");
@@ -69,6 +70,7 @@ fn a_refused_run_always_names_its_causing_step() {
             evidence: None,
         }],
         evidence: vec![],
+        decision: Vec::new(),
     };
     assert!(allowed.causing_step().is_none());
 }

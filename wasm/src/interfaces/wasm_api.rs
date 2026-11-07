@@ -327,8 +327,67 @@ impl From<&crate::domain::outcome::RunOutcome> for RunOutcomeDto {
             .to_string(),
             steps: outcome.steps.iter().map(StepOutcomeDto::from).collect(),
             evidence: outcome.evidence.iter().map(EvidenceRefDto::from).collect(),
+            // The bytes cross the boundary unchanged, and the digest is computed here from
+            // *those* bytes — one expression, so the two fields cannot describe different
+            // things (#1442). A host that signs, stores or prints a digest computes nothing:
+            // until this landed every host canonicalised the decision itself, and the first
+            // one hashed a different shape than the engine does.
+            decision_canonical: (!outcome.decision.is_empty())
+                .then(|| base64_encode(&outcome.decision)),
+            decision_digest: (!outcome.decision.is_empty())
+                .then(|| format!("sha256:{}", sha256_hex(&outcome.decision))),
         }
     }
+}
+
+/// Standard base64 with padding, from the bytes as they are (ADR-010: never re-encoded).
+///
+/// Hand-written because the module may not grow a crate for it — `check-bundle-independence.sh`
+/// asserts no new crate reaches the wasm path, and a base64 crate for sixteen lines of table is
+/// the kind of dependency that shows up in a size budget and nowhere else.
+#[must_use]
+fn base64_encode(bytes: &[u8]) -> String {
+    // Arithmetic, not a lookup table: the workspace denies `indexing_slicing`, and a table
+    // read is exactly the slice index that lint exists to refuse.
+    fn sextet(value: u32) -> char {
+        // Mask *before* the match, and use the masked value in the arms: the callers pass
+        // `n >> 6` and `n >> 18`, which are wider than six bits, and an arm that read the
+        // unmasked value would encode a different character for every byte above 63.
+        let sextet = value & 63;
+        match sextet {
+            0..=25 => char::from(b'A' + u8::try_from(sextet).unwrap_or(0)),
+            26..=51 => char::from(b'a' + u8::try_from(sextet - 26).unwrap_or(0)),
+            52..=61 => char::from(b'0' + u8::try_from(sextet - 52).unwrap_or(0)),
+            62 => '+',
+            _ => '/',
+        }
+    }
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let first = u32::from(chunk.first().copied().unwrap_or(0));
+        let second = u32::from(chunk.get(1).copied().unwrap_or(0));
+        let third = u32::from(chunk.get(2).copied().unwrap_or(0));
+        let n = (first << 16) | (second << 8) | third;
+        out.push(sextet(n >> 18));
+        out.push(sextet(n >> 12));
+        out.push(if chunk.len() > 1 { sextet(n >> 6) } else { '=' });
+        out.push(if chunk.len() > 2 { sextet(n) } else { '=' });
+    }
+    out
+}
+
+/// `sha256` over `bytes`, lowercase hex — the digest vocabulary the engine uses.
+///
+/// Same function shape as the conformance harness's, deliberately: the host's digest and the
+/// vector's `sha256` must be the same value for the same bytes, or a vector cannot prove the
+/// boundary handed out what the engine computed.
+#[must_use]
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 impl From<&crate::domain::outcome::StepOutcome> for StepOutcomeDto {

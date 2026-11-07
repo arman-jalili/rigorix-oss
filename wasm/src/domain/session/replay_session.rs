@@ -139,6 +139,9 @@ fn refusal_from_port_failure(failure: PortFailure, events: &mut Vec<DomainEvent>
         status: OutcomeStatus::Refused,
         steps: vec![step],
         evidence: Vec::new(),
+        // No engine decided this one: a port that could not answer refuses before the gate,
+        // so there are no engine bytes to hand out (#1442).
+        decision: Vec::new(),
     }
 }
 
@@ -320,6 +323,7 @@ impl ReplaySession {
             status,
             steps,
             evidence,
+            decision: evaluation.decision.clone(),
         };
 
         match outcome.status {

@@ -80,6 +80,8 @@ fn outcome_status_is_two_valued_on_the_wire() {
             evidence: None,
         }],
         evidence: vec![],
+        decision_canonical: None,
+        decision_digest: None,
     };
     let json = serde_json::to_value(&outcome).expect("serialises");
     assert_eq!(json["status"], "refused");

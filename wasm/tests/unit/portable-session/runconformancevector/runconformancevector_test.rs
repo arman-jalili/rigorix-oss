@@ -29,6 +29,7 @@ fn report(matched: bool, skipped: bool, normalised: bool) -> ConformanceReport {
         matched,
         normalised_comparison: normalised,
         skipped,
+        decision_digest: None,
     }
 }
 
@@ -116,6 +117,14 @@ fn runner() -> ConformanceRunner<GateFactory, ProjectionFactory> {
 }
 
 /// The declaration a host sends: `fixtures`, `clock`, `seed`.
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
 fn declaration_of(vector: &ConformanceVector) -> serde_json::Value {
     serde_json::json!({
         "fixtures": vector.fixtures,
@@ -162,6 +171,22 @@ fn a_matching_vector_passes_and_a_mutated_expected_fails() {
         "never claim a normalised pass"
     );
     assert!(report.is_pass(false));
+
+    // #1442: the report carries the digest of the decision the crate produced, so a vector
+    // proves the boundary handed the host what the engine computed — not a digest the harness
+    // recomputed for the occasion.
+    let digest = report
+        .decision_digest
+        .as_deref()
+        .expect("a vector that decided carries its decision digest");
+    assert_eq!(
+        digest,
+        format!(
+            "sha256:{}",
+            sha256_hex(&vector.expected_decision.bytes().expect("recorded bytes"))
+        ),
+        "the report's digest must name the bytes the vector records as the engine's"
+    );
 
     // One added byte in the recorded decision is a divergence, and the digest the vector
     // carries goes stale with it — both are findings.

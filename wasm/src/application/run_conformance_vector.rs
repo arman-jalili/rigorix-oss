@@ -147,6 +147,13 @@ pub struct ConformanceReport {
     pub normalised_comparison: bool,
     /// Whether the vector was skipped. A skip is a failure.
     pub skipped: bool,
+    /// `sha256:<64 hex>` of the decision the crate produced, when it produced one (#1442).
+    ///
+    /// The report carries the digest the *boundary* hands a host, not one the harness
+    /// recomputed, so a vector proves the wire and the engine agree. `None` when the vector
+    /// was skipped before a decision existed — which is a failure, not a claim.
+    #[serde(default)]
+    pub decision_digest: Option<String>,
 }
 
 impl ConformanceReport {
@@ -239,6 +246,7 @@ where
             // Always false: a normalised comparison would be a claim we cannot make.
             normalised_comparison: false,
             skipped,
+            decision_digest: None,
         };
 
         // The recording must be bytes before anything is compared: a golden that cannot be
@@ -259,7 +267,15 @@ where
             .map(|bytes| to_hex(bytes))
             .eq(vector.expected_decision.envelopes.iter().cloned());
 
-        report(produced.decision == expected && envelopes_match, false)
+        let matched = produced.decision == expected && envelopes_match;
+        ConformanceReport {
+            // Same condition as the DTO (#1442): a decision of zero bytes is no record, and a
+            // digest over it would name nothing. The runner's own stub produces none, which is
+            // the case this guards.
+            decision_digest: (!produced.decision.is_empty())
+                .then(|| format!("sha256:{}", sha256_hex(&produced.decision))),
+            ..report(matched, false)
+        }
     }
 }
 
