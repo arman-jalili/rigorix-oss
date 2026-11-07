@@ -282,3 +282,117 @@ fn the_execution_id_is_never_minted() {
         other => panic!("expected InvalidExecutionId, got {other:?}"),
     }
 }
+
+// ── #1456 · the declared cap and the declared prior commitment ─────────────────────
+//
+// The world declares *facts*; the engine decides. These seeds exist so that neither half can
+// drift: a declaration that was silently ignored would pass every test above, because the
+// world would simply produce no port.
+
+fn declared(fixtures: serde_json::Value) -> FixtureWorld {
+    let mut mutated = vector();
+    mutated.declaration.fixtures = serde_json::from_value(fixtures).expect("declaration");
+    FixtureWorld::from_declaration(&mutated.declaration).expect("valid declaration")
+}
+
+#[tokio::test]
+async fn a_declared_cap_reaches_the_composition_and_refuses_with_its_numbers() {
+    let world = declared(serde_json::json!({
+        "approvals": [],
+        "providers": {},
+        "ids": { "attempt": ["018f5b8e-0000-7000-8000-000000000001"] },
+        "capacity": {
+            "resource": "eur.outflow.daily",
+            "hard_limit": 1_420_000u64,
+            "committed": 1_409_000u64,
+            "requested": 18_420u64,
+            "window_secs": 86_400u64
+        }
+    }));
+    let ports = world.ports();
+    assert!(
+        ports.capacity.is_some(),
+        "the declaration must reach the port"
+    );
+
+    let decision = rigorix_engine::gate::application::evaluate_gate(
+        rigorix_engine::gate::application::GateRequest {
+            step: &rigorix_engine::gate::domain::GatedStep::new(
+                "transfer",
+                "payments.transfer",
+                serde_json::json!({}),
+            ),
+            proposed_action: "move 18420 units",
+            identity_attested: true,
+            pins: world.pins(),
+            ports,
+            run_context: None,
+        },
+    )
+    .await
+    .expect("the gate answers");
+
+    match decision.verdict {
+        rigorix_engine::gate::domain::GateVerdict::Refuse { gate, reason, .. } => {
+            assert_eq!(gate, rigorix_engine::gate::domain::GateId::Capacity);
+            assert!(reason.contains("1427420"), "{reason}");
+            assert!(reason.contains("7420"), "{reason}");
+        }
+        other => panic!("expected a capacity refusal, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_world_that_declares_no_cap_produces_no_capacity_port() {
+    let world = declared(serde_json::json!({
+        "approvals": [],
+        "providers": {},
+        "ids": { "attempt": ["018f5b8e-0000-7000-8000-000000000001"] }
+    }));
+    let ports = world.ports();
+    assert!(
+        ports.capacity.is_none() && ports.effect.is_none(),
+        "absence is a decision the operator already made, not a missing wire"
+    );
+}
+
+#[tokio::test]
+async fn a_declared_prior_commitment_reaches_the_composition() {
+    let world = declared(serde_json::json!({
+        "approvals": [],
+        "providers": {},
+        "ids": { "attempt": ["018f5b8e-0000-7000-8000-000000000001"] },
+        "effects": { "record_id": "QR-2041", "actor": "finance", "instant": "2026-11-04T14:02:00Z" }
+    }));
+    let ports = world.ports();
+    assert!(
+        ports.effect.is_some(),
+        "the declaration must reach the port"
+    );
+
+    let decision = rigorix_engine::gate::application::evaluate_gate(
+        rigorix_engine::gate::application::GateRequest {
+            step: &rigorix_engine::gate::domain::GatedStep::new(
+                "issue_refund",
+                "payments.refund",
+                serde_json::json!({}),
+            ),
+            proposed_action: "refund",
+            identity_attested: true,
+            pins: world.pins(),
+            ports,
+            run_context: None,
+        },
+    )
+    .await
+    .expect("the gate answers");
+
+    match decision.verdict {
+        rigorix_engine::gate::domain::GateVerdict::Refuse { gate, reason, .. } => {
+            assert_eq!(gate, rigorix_engine::gate::domain::GateId::Effects);
+            assert!(reason.contains("QR-2041"), "{reason}");
+            assert!(reason.contains("2026-11-04T14:02:00Z"), "{reason}");
+        }
+        other => panic!("expected an effect refusal, got {other:?}"),
+    }
+}

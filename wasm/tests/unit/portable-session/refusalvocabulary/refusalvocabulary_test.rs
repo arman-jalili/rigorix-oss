@@ -28,6 +28,11 @@ impl RefusalVocabulary for Wording {
             RefusalKind::PortUnavailable => "a required check was unavailable",
             RefusalKind::ScenarioUnsupported => "the scenario version is not supported",
             RefusalKind::SessionSealed => "this record is already sealed",
+            // #1456. Static and value-free: the operands are on the evidence, never here.
+            RefusalKind::CapacityExceeded => {
+                "the amount exceeds the capacity available for this period"
+            }
+            RefusalKind::DuplicateEffect => "this action has already been recorded",
         }
     }
 
@@ -60,6 +65,8 @@ fn every_kind_has_wording() {
         RefusalKind::PortUnavailable,
         RefusalKind::ScenarioUnsupported,
         RefusalKind::SessionSealed,
+        RefusalKind::CapacityExceeded,
+        RefusalKind::DuplicateEffect,
     ] {
         let reason = vocabulary.reason(kind);
         assert!(!reason.is_empty(), "empty wording for {kind:?}");
@@ -136,6 +143,8 @@ fn the_shipped_wording_covers_every_kind_and_accuses_nobody() {
         RefusalKind::PortUnavailable,
         RefusalKind::ScenarioUnsupported,
         RefusalKind::SessionSealed,
+        RefusalKind::CapacityExceeded,
+        RefusalKind::DuplicateEffect,
     ];
     let mut seen = std::collections::HashSet::new();
     for kind in kinds {
