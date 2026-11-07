@@ -1,0 +1,43 @@
+# CI budgets (#1437). The only place a number is typed: `ci_budget_report.sh` reads this file
+# and compares it with a run's own jobs, and the verdict is its exit status.
+#
+#   stage <TAB> budget_minutes <TAB> set_at <TAB> set_from
+#
+# `set_from` is the measurement the number came from, quoted with its run id. A budget without
+# one cannot be compared to the number it should be, so it is not a check — the report fails on
+# the row rather than on the run.
+#
+# The ratchet has two halves, and both are enforced by `ci_budget_report.sh --base <ref>`:
+#
+#   · a budget may be **lowered** after a win, freely — that is the point;
+#   · a budget may **not be raised** unless `set_from` changes too, which is how a raise names
+#     what regressed instead of quietly moving the line;
+#   · a row may not be deleted. A removed budget makes a breach invisible, not fixed.
+#
+# Every row below was set from run 42229151064 (`ef77fb58`, the last full run of the 29-job
+# workflow): wall 43.5 min, 159.4 job-minutes. A matrix stage is priced on its **slowest leg**,
+# because that is what a stage costs in wall clock; its runner time is the sum of the legs and
+# is priced only by TOTAL_JOB_MINUTES.
+#
+# The epic's targets (#1436) are lower than these numbers on purpose: ≤ 22 min wall, ≤ 70
+# job-minutes, ≤ 10 min at p50. Children 2-4 earn them by removing work, and each win lowers a
+# row here. Setting the ceiling to a target nobody has measured yet would fail on the first
+# push and teach everyone to ignore the file.
+#
+# stage	budget_minutes	set_at	set_from
+workspace	1	2026-11-06	"run 42229151064: 0.1 min"
+lint	8	2026-11-06	"run 42229151064: 5.7-7.7 per leg, 36.7 job-min over 6 legs"
+build	7	2026-11-06	"run 42229151064: 4.0-6.2 per leg, 29.7 job-min over 6 legs"
+test	9	2026-11-06	"run 42229151064: 4.8-8.6 per leg, 37.2 job-min over 6 legs"
+coverage	16	2026-11-06	"run 42229151064: 15.3 min"
+audit	6	2026-11-06	"run 42229151064: 5.3 min"
+docs	1	2026-11-06	"run 42229151064: 0.3 min"
+conformance	10	2026-11-06	"run 42229151064: 9.5 min"
+integration	15	2026-11-06	"run 42229151064: 14.9 min; child 4 partitions the suite and lowers this"
+portable	7	2026-11-06	"run 42229151064: 6.4 min"
+shell	1	2026-11-06	"run 42229151064: 0.1 min"
+wasm-gates	4	2026-11-06	"run 42229151064: 3.7 min"
+ci-report	1	2026-11-06	"run 42229151064: 0.1 min"
+gate	1	2026-11-06	"run 42229151064: 0.1 min"
+TOTAL_MINUTES	44	2026-11-06	"run 42229151064: 43.5 min wall; epic #1436 target <= 22 after children 2-4"
+TOTAL_JOB_MINUTES	160	2026-11-06	"run 42229151064: 159.4 job-minutes over 29 jobs; epic #1436 target <= 70"
