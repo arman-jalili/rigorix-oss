@@ -97,6 +97,12 @@ impl GateSetup {
         GatePorts {
             precondition: self.service.clone(),
             sequence: self.sequence.clone(),
+            // The dispatch path composes capacity and effect-commitment against its own
+            // transactional store (ADR-018 / ADR-019), so they are not *wired through the
+            // gate here*. `None` is load-bearing and must stay: routing them through this
+            // struct would give one decision two owners (#1455).
+            capacity: None,
+            effect: None,
         }
     }
 

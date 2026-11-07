@@ -24,6 +24,12 @@ mod identity {
     }
 }
 mod gate {
+    mod capacityfacts {
+        mod capacityfacts_test;
+    }
+    mod effectfacts {
+        mod effectfacts_test;
+    }
     mod fixtures {
         mod fixtures_test;
     }

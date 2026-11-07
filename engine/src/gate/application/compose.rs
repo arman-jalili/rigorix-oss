@@ -8,7 +8,14 @@
 //! ```text
 //! 1. preconditions   (ADR-017)  — may the step dispatch at all?
 //! 2. requirements    (ADR-013 R9 / ADR-015) — which operator obligations does it leave unmet?
+//! 3. capacity        (ADR-018 / ADR-010) — does the declared cap admit this consumption?
+//! 4. effects         (ADR-019) — has this effect already committed?
 //! ```
+//!
+//! Steps 3 and 4 were added by #1455 and are appended, not interleaved, so the findings a
+//! composition produced before they existed keep their order and their bytes. They run only
+//! when the verdict still permits dispatch: a step that must not run cannot be refused for
+//! consuming capacity it never reaches.
 //!
 //! Preconditions run first because they answer a different question. A precondition
 //! is about the step's *consequence* — a command that would run a destructive
@@ -171,6 +178,78 @@ pub async fn evaluate_gate(request: GateRequest<'_>) -> Result<GateDecision, Gat
                 };
             }
         }
+    }
+
+    // ── 3. capacity ──────────────────────────────────────────────────────
+    // The arithmetic is `Exposure::would_fit` — the ledger's function, not a copy of it. The
+    // refusal carries its operands so a caller can answer "how much over" without re-deriving
+    // the subtraction, and so a test can assert the numbers rather than the word "refused".
+    if verdict.permits_dispatch()
+        && let Some(facts) = &request.ports.capacity
+        && let Some(exposure) = facts.exposure()
+    {
+        let requested = facts.requested();
+        if !exposure.would_fit(requested) {
+            let claimed = exposure
+                .committed
+                .saturating_add(exposure.outstanding)
+                .saturating_add(requested);
+            let overage = claimed.saturating_sub(exposure.hard_limit);
+            let reason = format!(
+                "capacity refused: requested {requested}, claimed {claimed}, cap {}, overage {overage}",
+                exposure.hard_limit
+            );
+            findings.push(GateFinding {
+                gate_id: GateId::Capacity,
+                step: request.step.name.clone(),
+                outcome: GateOutcome::Refused,
+                rule_id: Some(format!("capacity.{}", exposure.resource.as_str())),
+                detail: Some(reason.clone()),
+                evidence: Some(serde_json::json!({
+                    "resource": exposure.resource.as_str(),
+                    "requested": requested,
+                    "committed": exposure.committed,
+                    "outstanding": exposure.outstanding,
+                    "claimed": claimed,
+                    "hard_limit": exposure.hard_limit,
+                    "available": exposure.available(),
+                    "overage": overage,
+                })),
+            });
+            verdict = GateVerdict::Refuse {
+                gate: GateId::Capacity,
+                rule_id: Some(format!("capacity.{}", exposure.resource.as_str())),
+                reason,
+            };
+        }
+    }
+
+    // ── 4. effects ───────────────────────────────────────────────────────
+    // A declared prior commitment is a refusal, never a warning: the effect already happened,
+    // and dispatching it again is the double-spend this gate exists to prevent.
+    if verdict.permits_dispatch()
+        && let Some(facts) = &request.ports.effect
+        && let Some(committed) = facts.committed()
+    {
+        let described = committed.describe();
+        let reason = format!("effect refused: already committed as {described}");
+        findings.push(GateFinding {
+            gate_id: GateId::Effects,
+            step: request.step.name.clone(),
+            outcome: GateOutcome::Refused,
+            rule_id: Some("effect.duplicate".to_string()),
+            detail: Some(reason.clone()),
+            evidence: Some(serde_json::json!({
+                "record_id": committed.record_id,
+                "actor": committed.actor,
+                "instant": committed.instant.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            })),
+        });
+        verdict = GateVerdict::Refuse {
+            gate: GateId::Effects,
+            rule_id: Some("effect.duplicate".to_string()),
+            reason,
+        };
     }
 
     let envelope = GateEnvelopeBinding {

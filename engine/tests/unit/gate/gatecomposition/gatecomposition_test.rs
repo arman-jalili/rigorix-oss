@@ -185,6 +185,8 @@ fn fixture_ports(
             answer: requirements,
             order: Arc::clone(&order),
         })),
+        capacity: None,
+        effect: None,
     };
     (ports, order)
 }
@@ -525,6 +527,8 @@ async fn a_port_that_awaits_is_reported_not_ready() {
             polls: Arc::clone(&polls),
         })),
         sequence: None,
+        capacity: None,
+        effect: None,
     };
     let step = step();
     let error = evaluate_gate_sync(GateRequest {

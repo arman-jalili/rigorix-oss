@@ -352,6 +352,11 @@ impl FixtureWorld {
         GatePorts {
             precondition: Some(self.precondition_service()),
             sequence: Some(self.sequence_service()),
+            // #1455: the portable fixture world declares neither a cap nor a prior effect
+            // yet, so both ports are absent — which is "no obligation declared", and produces
+            // no finding. CONSEQ-2 (#1456) adds the declaration sections.
+            capacity: None,
+            effect: None,
         }
     }
 
