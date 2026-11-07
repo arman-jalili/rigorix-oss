@@ -1,6 +1,6 @@
 [package]
 name = "rigorix-gate-wasm"
-version = "1.14.0"
+version = "1.14.1"
 edition = "2024"
 description = "Portable Rigorix gate seam — deterministic WebAssembly slice that evaluates a proposed action and exports a verifiable record"
 license = "MIT OR Apache-2.0"
@@ -73,7 +73,7 @@ uuid = { workspace = true, features = ["js"], optional = true }
 # Cargo will not accept this package in `[dependencies]` *and* here ("duplicate key"), so both
 # targets are declared — the same shape `engine/Cargo.toml` uses for `tokio`.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-rigorix-engine = { path = "../engine", version = "1.14.0", optional = true }
+rigorix-engine = { path = "../engine", version = "1.14.1", optional = true }
 
 [lints]
 # Inherited, not re-listed. Declaring a local `[lints.rust]` block without
@@ -91,7 +91,7 @@ path = "tests/unit/mod.rs"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.130"
 # The slice, wasm32 only (#1401) — the counterpart of the `not(wasm32)` declaration above.
-rigorix-engine = { path = "../engine", version = "1.14.0", features = ["portable"], optional = true }
+rigorix-engine = { path = "../engine", version = "1.14.1", features = ["portable"], optional = true }
 
 [[example]]
 name = "determinism_probe"

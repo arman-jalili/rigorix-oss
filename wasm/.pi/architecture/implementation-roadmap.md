@@ -356,7 +356,7 @@ of their own.
       `env!("CARGO_PKG_VERSION")`, `EngineArtifactStamp::engine_version()` and
       `ArtifactSet::FORMAT_VERSION`; test
       `wasmcontract::export_before_an_attempt_is_a_refusal_and_contract_version_reports_three_numbers`.
-      Crate version is 1.14.0 (`wasm/Cargo.toml:3`), equal to the train.
+      Crate version is 1.14.1 (`wasm/Cargo.toml:3`), equal to the train.
 - [ ] Interface coverage ≥85%.
       **Measured 74.47 % lines** (329 lines, 84 missed) / 75.68 % regions —
       `--ignore-filename-regex 'src/(domain|application|infrastructure)/'`, 2026-11-03.

@@ -17,6 +17,14 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ## [Unreleased]
 
+## [1.14.1] - 2026-11-07
+
+### Fixed
+
+- **The refusal kind on the wire was `Debug` lowercased, so every multi-word kind shipped run together.** `capacity_exceeded` arrived as `capacityexceeded`, `precondition_failed` as `preconditionfailed`, and a host matching the documented snake_case word matched nothing — failing open, because an unrecognised kind is either ignored or read as unknown. It also contradicted the field beside it: `detail.kind` said `capacity` (serde, correct) while `kind` said `capacityexceeded` for the same refusal (#1464).
+- Found by replaying `vec-0002` through the **published** npm tarball rather than the tree — the crate's own tests asserted the enum and never the string, and no test read the wire word. `RefusalKind::as_str` is now the one exhaustive owner of the word (a sixteenth kind cannot be added without deciding it), the DTO calls it, and a frozen table asserts all fifteen against both the wire and serde.
+
+
 ## [1.14.0] - 2026-11-07
 
 ### Added

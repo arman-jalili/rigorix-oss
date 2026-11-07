@@ -402,7 +402,9 @@ impl From<&crate::domain::outcome::StepOutcome> for StepOutcomeDto {
                 crate::domain::outcome::StepDecision::NotReached => "not_reached",
             }
             .to_string(),
-            kind: step.kind.map(|kind| format!("{kind:?}").to_lowercase()),
+            // The domain owns the word: formatting `Debug` shipped `capacityexceeded`
+            // beside a `detail.kind` of `capacity` (#1464).
+            kind: step.kind.map(|kind| kind.as_str().to_string()),
             reason: step.reason.clone(),
             evidence: step.evidence.as_ref().map(EvidenceRefDto::from),
             detail: step.detail.as_ref().map(RefusalDetailDto::from),

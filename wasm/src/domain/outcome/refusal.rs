@@ -58,3 +58,29 @@ pub enum RefusalKind {
     /// The prior record's identity and instant travel in the evidence for the same reason.
     DuplicateEffect,
 }
+
+impl RefusalKind {
+    /// The wire word. One exhaustive match, so a sixteenth kind cannot be added without
+    /// deciding what a host reads — `#[serde(rename_all = "snake_case")]` derives the same
+    /// strings, and this exists because the DTO path formatted `Debug` and shipped
+    /// `capacityexceeded` beside a `detail.kind` of `capacity` (#1464).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::PreconditionFailed => "precondition_failed",
+            Self::PreconditionError => "precondition_error",
+            Self::PreconditionTimeout => "precondition_timeout",
+            Self::RequirementUnsatisfied => "requirement_unsatisfied",
+            Self::CompanionStepMissing => "companion_step_missing",
+            Self::SequenceViolation => "sequence_violation",
+            Self::HistoryIntegrityViolated => "history_integrity_violated",
+            Self::ApprovalUnbound => "approval_unbound",
+            Self::ApprovalExpired => "approval_expired",
+            Self::IdentityUnverified => "identity_unverified",
+            Self::PortUnavailable => "port_unavailable",
+            Self::ScenarioUnsupported => "scenario_unsupported",
+            Self::SessionSealed => "session_sealed",
+            Self::CapacityExceeded => "capacity_exceeded",
+            Self::DuplicateEffect => "duplicate_effect",
+        }
+    }
+}

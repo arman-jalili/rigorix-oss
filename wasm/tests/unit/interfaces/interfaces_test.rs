@@ -22,7 +22,7 @@
 //!   path is the same world `gate-vector` and the conformance harness use, not a second one.
 
 use rigorix_gate_wasm::domain::outcome::{
-    EvidenceKind, EvidenceRef, OutcomeStatus, RunOutcome, StepDecision, StepOutcome,
+    EvidenceKind, EvidenceRef, OutcomeStatus, RefusalKind, RunOutcome, StepDecision, StepOutcome,
 };
 use rigorix_gate_wasm::domain::value::Digest;
 use rigorix_gate_wasm::interfaces::wasm_api::artifact_query;
@@ -409,6 +409,51 @@ fn every_evidence_kind_reaches_the_wire_under_its_own_name() {
             dto.evidence[0].digest.starts_with(Digest::PREFIX),
             "a digest crosses the wire in its canonical form"
         );
+    }
+}
+
+#[test]
+fn every_refusal_kind_reaches_the_wire_under_its_own_name() {
+    // Found on the published artifact, not in the tree: the DTO formatted `Debug` and
+    // lowercased it, so a refusal shipped `capacityexceeded` while the `detail.kind` beside
+    // it said `capacity`. A host matching the documented snake_case word matched nothing and
+    // failed open (#1464).
+    let cases = [
+        (RefusalKind::PreconditionFailed, "precondition_failed"),
+        (RefusalKind::PreconditionError, "precondition_error"),
+        (RefusalKind::PreconditionTimeout, "precondition_timeout"),
+        (RefusalKind::RequirementUnsatisfied, "requirement_unsatisfied"),
+        (RefusalKind::CompanionStepMissing, "companion_step_missing"),
+        (RefusalKind::SequenceViolation, "sequence_violation"),
+        (RefusalKind::HistoryIntegrityViolated, "history_integrity_violated"),
+        (RefusalKind::ApprovalUnbound, "approval_unbound"),
+        (RefusalKind::ApprovalExpired, "approval_expired"),
+        (RefusalKind::IdentityUnverified, "identity_unverified"),
+        (RefusalKind::PortUnavailable, "port_unavailable"),
+        (RefusalKind::ScenarioUnsupported, "scenario_unsupported"),
+        (RefusalKind::SessionSealed, "session_sealed"),
+        (RefusalKind::CapacityExceeded, "capacity_exceeded"),
+        (RefusalKind::DuplicateEffect, "duplicate_effect"),
+    ];
+    for (kind, expected) in cases {
+        let outcome = RunOutcome {
+            status: OutcomeStatus::Refused,
+            steps: vec![StepOutcome {
+                gate_id: "capacity.eur.outflow.daily".to_string(),
+                decision: StepDecision::Refused,
+                kind: Some(kind),
+                reason: Some("a reason".to_string()),
+                evidence: None,
+                detail: None,
+            }],
+            evidence: Vec::new(),
+            decision: Vec::new(),
+        };
+        let dto = RunOutcomeDto::from(&outcome);
+        assert_eq!(dto.steps[0].kind.as_deref(), Some(expected), "{kind:?}");
+        // The domain word and the serde word are the same word, or one of them is a lie.
+        let serde_word = serde_json::to_value(kind).expect("serialises");
+        assert_eq!(serde_word.as_str(), Some(expected), "{kind:?} via serde");
     }
 }
 
