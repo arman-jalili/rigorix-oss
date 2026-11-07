@@ -17,6 +17,23 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-11-07
+
+### Added
+
+- **The crate composes all four families at the moment of consequence.** `GatePorts` gains `capacity` and `effect` as *fact* ports — they return an `Exposure` and a `CommittedEffect`, never a verdict — and `compose` decides them as steps 3 and 4 after preconditions and sequence (#1455). The arithmetic is `Exposure::would_fit` (`capacity_ledger/domain/exposure.rs:72`), the ledger's own function; the gate does not re-derive a cap, and the boundary is inclusive because that function says `available() >= amount`. `GateId` gains `Capacity` and `Effects` (2 → 4).
+- **The refusal names its operands as typed fields.** `RefusalDetail::{Capacity{requested, claimed, hard_limit, overage}, DuplicateEffect{record_id, instant}}` reaches the wire beside the step, projected from the payload the crate already held (#1462). One read of that payload produces both `kind` and `detail`, so a refusal cannot name one obligation in the kind and a different one in the numbers. Wording stays static and value-free (NFR-003); a test asserts the reason string quotes no operand.
+- **The declared world can declare capacity and a prior commitment.** `FixtureDeclaration` gains `capacity` and `effects` sections, wired through `FixtureWorld::ports()` (#1456). `RefusalKind` gains `CapacityExceeded` and `DuplicateEffect` (13 → 15), `EvidenceKind` gains `Capacity` and `Effects` (6 → 8).
+- **A missing operand refuses as a port failure, never as a zero.** `overage: 0` reads as inside the cap, so a partial payload must not keep claiming the obligation answered: the projection downgrades the kind to `PortUnavailable` rather than inventing the number (#1462).
+- Two conformance vectors recorded through the CLI, `vec-0002` (capacity) and `vec-0003` (duplicate effect), each with `produced_by {command, commit}` (#1457).
+
+### Fixed
+
+- **The conformance harness validated three vectors while replaying one.** `run-conformance.sh` globbed every vector for provenance, then replayed `vec-0001` from a hardcoded path — a recorded vector with a zeroed `sha256` still reported 12/12. The harness now enumerates the committed vectors and replays each, with a wrong-golden seed per vector, so a gate that never had a subject cannot pass (#1457).
+- **A refusal's operands were unreachable from a host.** The engine computed them, the crate held them in the opaque payload, and the DTO dropped them: a refusal could say *"capacity exceeded"* and not by how much. The typed `detail` field closes that (#1462).
+- Coverage floors were raised to their measurements and re-dated (`domain` 92.89, `application` 100.00, `interface` 89.76 for `rigorix-gate-wasm`); `validate-coverage-floors.sh` confirms nothing was lowered. The regression that made this necessary was nineteen lines of projection with no test crossing it — CI caught `interface` at 85.37.
+
+
 ### Fixed
 
 - Ten doctests in `rigorix_engine` were ```ignore, which is not a slow example but an example that is **never compiled**. Two were factually wrong about the API they documented (`MockClassifier::with_low_confidence` does not exist; `OrchestratorBuilder::new` is a trait method whose impl is `OrchestratorBuilderImpl`), and nothing could have noticed. All ten now compile: seven run, three are ```no_run (a live provider, an async runtime, real services). The doctest floor rises 6 → 16, and `run-doctests.sh` now fails on any ```ignore fence with no row in `.pi/doctest-exemptions.tsv` (#1379)
