@@ -38,6 +38,11 @@ COPY actions/src actions/src/
 COPY mcp/src mcp/src/
 COPY server/src server/src/
 COPY wasm/src wasm/src/
+# #1452: the manifest names an example (`wasm/Cargo.toml`'s `[[example]] determinism_probe`),
+# and cargo parses every workspace manifest before it builds anything — a declared example with
+# no file fails the *actions* image at parse time, before a single line of `rigorix-action`
+# compiles. The directory is copied, not the file, so a second example does not break it again.
+COPY wasm/examples wasm/examples/
 
 # Build release binary
 RUN cargo build --release -p rigorix-actions --bin rigorix-action

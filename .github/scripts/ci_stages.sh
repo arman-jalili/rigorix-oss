@@ -45,6 +45,38 @@ ci_stage_result() {
 # list of symptoms.
 CI_GRAPH="${REPO_ROOT}/.github/ci-graph.tsv"
 
+# ── what this diff requires (#1441, second half) ────────────────────────────
+#
+# `.github/ci-affected.tsv` says which subjects a change can reach, and `ci.yml` skips the rest
+# through a job-level `if`. That makes "did not run" a *decision* — and a decision the verdict
+# must be told about, or it reads a correctly-skipped stage as a failure and blames the change.
+#
+#   CI_ALL=true            every stage is required (no narrowing: lockfile, workflow, aliases)
+#   CI_SELECTED=" a b "    the required set, space-padded so ` a ` cannot match ` ab `
+#   neither set            fail closed: everything is required, which is today's behaviour
+#
+# Fail closed is the whole rule of this epic — a narrowing that cannot be read must not narrow.
+CI_ALL="${CI_ALL:-true}"
+CI_SELECTED="${CI_SELECTED:-}"
+
+# Is `$1` required by this diff?
+ci_stage_required() {
+    case "${CI_ALL:-true}" in
+        true|True|TRUE) return 0 ;;
+    esac
+    case "${CI_SELECTED:-}" in
+        *" $1 "*) return 0 ;;
+    esac
+    return 1
+}
+
+# Why a stage did not run, when it did not run because this diff cannot reach it.
+ci_stage_not_required() {
+    ci_stage_is_stage "$1" || return 1
+    ci_stage_required "$1" && return 1
+    [ "$(ci_stage_result "$1")" = "skipped" ]
+}
+
 # Is this a stage the verdict has a result for? `workspace` is a job and a row in the graph,
 # but it is a prerequisite rather than a stage: `ci.yml` does not pass its result to the gate.
 # Attributing a skip to a node with no input would invent a cause.
@@ -121,18 +153,24 @@ ci_stage_icon() {
 ci_print_stage_table() {
     echo "## 🚪 CI stage results"
     echo ""
-    echo "| Stage | Result | Mandatory | Cause |"
-    echo "|-------|--------|-----------|-------|"
-    local stage result required cause
+    echo "| Stage | Result | Mandatory | Required by this diff | Cause |"
+    echo "|-------|--------|-----------|-----------------------|-------|"
+    local stage result required cause needed
     for stage in $CI_MANDATORY_STAGES; do
         result=$(ci_stage_result "$stage")
         cause=$(ci_stage_cause "$stage")
-        printf '| %s | %s %s | yes | %s |\n' "$stage" "$(ci_stage_icon "$result")" "$result" "${cause:--}"
+        needed=$(ci_stage_required "$stage" && echo yes || echo no)
+        ci_stage_not_required "$stage" && cause="not required: the diff cannot reach it"
+        printf '| %s | %s %s | yes | %s | %s |\n' \
+            "$stage" "$(ci_stage_icon "$result")" "$result" "$needed" "${cause:--}"
     done
     for stage in $CI_REPORTED_STAGES; do
         result=$(ci_stage_result "$stage")
         cause=$(ci_stage_cause "$stage")
-        printf '| %s | %s %s | no | %s |\n' "$stage" "$(ci_stage_icon "$result")" "$result" "${cause:--}"
+        needed=$(ci_stage_required "$stage" && echo yes || echo no)
+        ci_stage_not_required "$stage" && cause="not required: the diff cannot reach it"
+        printf '| %s | %s %s | no | %s | %s |\n' \
+            "$stage" "$(ci_stage_icon "$result")" "$result" "$needed" "${cause:--}"
     done
     echo ""
 }

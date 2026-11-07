@@ -23,22 +23,27 @@
 #   3. An edge exists only when the upstream's result decides the downstream's subject. A
 #      workspace that does not compile makes a test run meaningless; a lint finding does not.
 #
-# `portable`, `shell` and `wasm-gates` hang off nothing, because each has its own subject and
-# none consumes a build artifact (#1410 is the same rule applied to one stage). `audit`, `docs`
-# and `conformance` hang off nothing for the same reason: each compiles what it needs, and each
-# waited eleven minutes for `build` to hand it nothing (#1438).
+# `portable`, `shell` and `wasm-gates` hang off nothing else, because each has its own subject
+# and none consumes a build artifact (#1410 is the same rule applied to one stage). `audit`,
+# `docs` and `conformance` hang off nothing else for the same reason: each compiles what it
+# needs, and each waited eleven minutes for `build` to hand it nothing (#1438).
+#
+# `affected` is the one edge every stage shares (#1441): it compiles nothing and decides
+# *whether a stage runs at all* — which is exactly the rule for an edge. `workspace` stays the
+# matrix split, a prerequisite of the matrix jobs.
 #
 # stage	needs	exports	why
+affected	-	the subject set	derives what this diff can reach (#1441); every stage is gated on it
 workspace	-	crate matrix	splits the crate matrix; not a stage, a prerequisite
-lint	workspace	-	style, architecture and the conventions suite over the tree — a leaf, deliberate
-test	workspace	tested binaries	runs what the workspace compiles, one leg per crate
-coverage	workspace	-	instruments the whole workspace; its LCOV is uploaded, not consumed
-audit	-	-	audits the dependency graph from the lockfile — compiles nothing it does not need
-docs	-	-	claims checked against the source and the canonical documents
-conformance	-	-	replays the vectors against the crate it builds itself
-integration	test	tested binaries	end-to-end over the binaries `test` already ran
-portable	workspace	-	its own subject: the slice builds for wasm32 and its tests run natively
-shell	-	-	its own subject: exit statuses in scripts
-wasm-gates	-	-	its own subject: the crate's eleven gates
-ci-report	lint,test,coverage,portable,audit,docs,integration,conformance,shell,wasm-gates	-	reports every stage; a leaf
-gate	lint,test,coverage,portable,audit,docs,integration,conformance,shell,wasm-gates	-	the verdict; requires every mandatory stage
+lint	affected,workspace	-	style, architecture and the conventions suite over the tree — a leaf, deliberate
+test	affected,workspace	tested binaries	runs what the workspace compiles, one leg per crate
+coverage	affected,workspace	-	instruments the whole workspace; its LCOV is uploaded, not consumed
+audit	affected	-	audits the dependency graph from the lockfile — compiles nothing it does not need
+docs	affected	-	claims checked against the source and the canonical documents
+conformance	affected	-	replays the vectors against the crate it builds itself
+integration	affected,test	tested binaries	end-to-end over the binaries `test` already ran
+portable	affected,workspace	-	its own subject: the slice builds for wasm32 and its tests run natively
+shell	affected	-	its own subject: exit statuses in scripts
+wasm-gates	affected	-	its own subject: the crate's eleven gates
+ci-report	affected,lint,test,coverage,portable,audit,docs,integration,conformance,shell,wasm-gates	-	reports every stage; a leaf
+gate	affected,lint,test,coverage,portable,audit,docs,integration,conformance,shell,wasm-gates	-	the verdict; requires every mandatory stage

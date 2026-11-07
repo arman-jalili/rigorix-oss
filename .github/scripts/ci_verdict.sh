@@ -3,7 +3,7 @@
 # Classify the CI stage results and give the gate its verdict (#1289, #1411).
 #
 #   failure  — a mandatory stage ran and failed, or was skipped when this
-#              workflow requires it: exit 1
+#              diff requires it: exit 1
 #   cancelled — the run was superseded by a newer one on the same ref: this
 #              is the scheduler's fact, not the change's. No verdict — the
 #              gate job is skipped by `ci.yml`, and this branch is a guard for
@@ -17,6 +17,12 @@
 # resolved from `.github/ci-graph.tsv`, the same file the workflow is checked against; a skip
 # the graph does not explain is reported as wiring, never attributed to a stage that had
 # nothing to do with it.
+#
+# #1441: a stage this diff cannot reach is **not required**, and `ci.yml` skips it through a
+# job-level `if`. The verdict reads the same selection the workflow did (`CI_ALL` /
+# `CI_SELECTED`, from `.github/ci-affected.tsv`) and treats a not-required skip as a decision:
+# named in the summary, absent from the failure list. A required stage that is skipped is still
+# a failure — that is a wiring fault, not a narrowing.
 #
 # The table is printed either way, so `cancelled` is visible per stage
 # instead of appearing only as a red gate.
@@ -90,15 +96,21 @@ ci_verdict_print_summary() {
 }
 
 ci_verdict() {
-    local failed=() cancelled=() passed=() causes=() victims=() unexplained=()
+    local failed=() cancelled=() passed=() causes=() victims=() unexplained=() not_required=()
     local stage cause
 
     for stage in $CI_MANDATORY_STAGES; do
+        # A stage this diff cannot reach did not run, by decision. Named, never counted as
+        # a pass and never counted as a failure (#1441).
+        if ci_stage_not_required "$stage"; then
+            not_required+=("$stage")
+            continue
+        fi
         case "$(ci_stage_result "$stage")" in
             success) passed+=("$stage") ;;
             cancelled) cancelled+=("$stage") ;;
-            # `skipped` keeps today's policy: a mandatory stage that did not run
-            # is not a pass. `missing` means the wiring is broken — also not a pass.
+            # `skipped` keeps today's policy: a mandatory stage that this diff *does* require
+            # and that did not run is not a pass. `missing` means the wiring is broken.
             *) failed+=("$stage") ;;
         esac
     done
@@ -107,6 +119,16 @@ ci_verdict() {
     # two readers.
     ci_print_stage_table
     ci_print_stage_table >>"${GITHUB_STEP_SUMMARY:-/dev/null}"
+
+    if [ "${#not_required[@]}" -gt 0 ]; then
+        echo "⊘ not required by this diff: ${not_required[*]}"
+        echo "   .github/ci-affected.tsv says this change cannot reach them; that is a decision,"
+        echo "   not a pass and not a failure — the report names it so a green run is readable"
+        {
+            echo ""
+            echo "⊘ **not required by this diff:** $(printf '`%s` ' "${not_required[@]}")"
+        } >>"${GITHUB_STEP_SUMMARY:-/dev/null}"
+    fi
 
     if [ "${#failed[@]}" -gt 0 ]; then
         for stage in "${failed[@]}"; do
@@ -138,7 +160,7 @@ ci_verdict() {
         return 0
     fi
 
-    echo "✅ All mandatory stages passed: ${passed[*]}"
+    echo "✅ All mandatory stages this diff requires passed: ${passed[*]}"
     echo "### ✅ All mandatory stages passed" >>"${GITHUB_STEP_SUMMARY:-/dev/null}"
     return 0
 }
@@ -216,7 +238,7 @@ ci_verdict_selftest() {
     # attribution shows in the table's Cause column, and that is what this asserts. Asserting
     # the failure line instead is how this seed first "passed" by matching nothing.
     case "$out" in
-        *"integration |"*"skipped | no | test"*) \
+        *"integration |"*"skipped | no | yes | test"*) \
             echo "  ✅ seed — integration is attributed to test through the declared graph" ;;
         *) echo "  ❌ seed — the graph edge test -> integration is not used for attribution" >&2
            failures=$((failures + 1)) ;;
@@ -234,7 +256,37 @@ ci_verdict_selftest() {
            failures=$((failures + 1)) ;;
     esac
 
-    # Seed 4 — clean pass still passes, so the seeds above are not passing for a broken reason.
+    # Seed 4 (#1441) — a stage this diff cannot reach that did not run is a decision, not a
+    # failure: exit 0, named as not required, and absent from the failure list.
+    reset_results
+    RESULT_COVERAGE=skipped
+    RESULT_CONFORMANCE=skipped
+    CI_ALL=false CI_SELECTED=" lint test portable audit shell wasm-gates docs integration " \
+        out="$(GITHUB_STEP_SUMMARY=/dev/null ci_verdict 2>&1)"
+    status=$?
+    expect "seed — a not-required skip exits 0" 0 "$status"
+    case "$out" in
+        *"not required by this diff: coverage conformance"*) \
+            echo "  ✅ seed — the skipped stages are named as not required" ;;
+        *) echo "  ❌ seed — the not-required stages are not named" >&2
+           failures=$((failures + 1)) ;;
+    esac
+    expect_absent "seed — a not-required stage is not accused" "❌" "$out"
+
+    # Seed 5 (#1441) — the same skip, but the diff *does* require the stage: that is a wiring
+    # fault, and a narrowing must not be able to hide it.
+    reset_results
+    RESULT_COVERAGE=skipped
+    CI_ALL=false CI_SELECTED=" lint test coverage portable audit conformance shell wasm-gates docs integration " \
+        out="$(GITHUB_STEP_SUMMARY=/dev/null ci_verdict 2>&1)"
+    status=$?
+    expect "seed — a required stage that was skipped still exits 1" 1 "$status"
+
+    # Seed 6 — clean pass still passes, so the seeds above are not passing for a broken reason.
+    # Explicitly back to the fail-closed default: an unset selection would be unbound under
+    # `set -u`, and a seed that relies on that reads as a verdict rather than a fixture.
+    CI_ALL=true
+    CI_SELECTED=""
     reset_results
     out="$(GITHUB_STEP_SUMMARY=/dev/null ci_verdict 2>&1)"
     expect "seed — all stages passing exits 0" 0 $?
@@ -243,7 +295,7 @@ ci_verdict_selftest() {
         echo "❌ ci_verdict self-test failed ($failures)" >&2
         return 1
     fi
-    echo "✅ ci_verdict self-test: 4 seeds fired, 1 clean pass"
+    echo "✅ ci_verdict self-test: 6 seeds fired, 1 clean pass"
 }
 
 if [ "${1:-}" = "--self-test" ]; then
