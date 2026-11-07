@@ -116,6 +116,75 @@ pub struct Fixtures {
     /// The observation instant every provider falls back to (D1). Not the decision instant.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observed_at: Option<DateTime<Utc>>,
+    /// The declared cap for the resource this step would consume (#1456).
+    ///
+    /// Absent is *"no capacity obligation"*, not "no answer": a world that declared nothing
+    /// produces no finding, which is why the three vectors recorded before this field existed
+    /// still produce the same decision bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capacity: Option<CapacityDeclaration>,
+    /// The declared prior commitment of the same effect (#1456). Absent = nothing committed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effects: Option<EffectDeclaration>,
+}
+
+/// A declared cap and the amount this attempt would consume (#1456).
+///
+/// The world declares **facts**; the engine decides. There is deliberately no `allowed` field:
+/// a declaration that answered the question would put the decision in the vector.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CapacityDeclaration {
+    /// The resource the cap applies to.
+    pub resource: String,
+    /// The configured cap.
+    pub hard_limit: u64,
+    /// Capacity already spent.
+    #[serde(default)]
+    pub committed: u64,
+    /// Capacity held but not yet resolved.
+    #[serde(default)]
+    pub outstanding: u64,
+    /// Aggregation window in seconds (`0` = unbounded).
+    #[serde(default)]
+    pub window_secs: u64,
+    /// The amount this attempt would consume.
+    pub requested: u64,
+}
+
+/// A declared prior commitment of the same effect (#1456).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EffectDeclaration {
+    /// The provider's record identity.
+    pub record_id: String,
+    /// Who performed it.
+    pub actor: String,
+    /// When it committed.
+    pub instant: DateTime<Utc>,
+}
+
+/// The declared cap, projected onto the fact port.
+struct DeclaredCapacity {
+    exposure: crate::capacity_ledger::domain::Exposure,
+    requested: u64,
+}
+
+impl crate::gate::domain::CapacityFacts for DeclaredCapacity {
+    fn exposure(&self) -> Option<crate::capacity_ledger::domain::Exposure> {
+        Some(self.exposure.clone())
+    }
+
+    fn requested(&self) -> u64 {
+        self.requested
+    }
+}
+
+/// The declared prior commitment, projected onto the fact port.
+struct DeclaredEffect(crate::gate::domain::CommittedEffect);
+
+impl crate::gate::domain::EffectFacts for DeclaredEffect {
+    fn committed(&self) -> Option<crate::gate::domain::CommittedEffect> {
+        Some(self.0.clone())
+    }
 }
 
 /// One declared provider: what it answers, and when it was observed.
@@ -352,11 +421,27 @@ impl FixtureWorld {
         GatePorts {
             precondition: Some(self.precondition_service()),
             sequence: Some(self.sequence_service()),
-            // #1455: the portable fixture world declares neither a cap nor a prior effect
-            // yet, so both ports are absent — which is "no obligation declared", and produces
-            // no finding. CONSEQ-2 (#1456) adds the declaration sections.
-            capacity: None,
-            effect: None,
+            // #1456: a world that declares neither produces neither, and absence is a
+            // decision the operator already made — not a finding.
+            capacity: self.declaration.fixtures.capacity.as_ref().map(|declared| {
+                std::sync::Arc::new(DeclaredCapacity {
+                    exposure: crate::capacity_ledger::domain::Exposure::new(
+                        crate::capacity_ledger::domain::ResourceId::new(&declared.resource),
+                        declared.hard_limit,
+                        declared.committed,
+                        declared.outstanding,
+                        crate::capacity_ledger::domain::Window::bounded(declared.window_secs),
+                    ),
+                    requested: declared.requested,
+                }) as std::sync::Arc<dyn crate::gate::domain::CapacityFacts>
+            }),
+            effect: self.declaration.fixtures.effects.as_ref().map(|declared| {
+                std::sync::Arc::new(DeclaredEffect(crate::gate::domain::CommittedEffect::new(
+                    &declared.record_id,
+                    &declared.actor,
+                    declared.instant,
+                ))) as std::sync::Arc<dyn crate::gate::domain::EffectFacts>
+            }),
         }
     }
 

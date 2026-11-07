@@ -46,6 +46,13 @@ impl RefusalVocabulary for BusinessWording {
             RefusalKind::PortUnavailable => "a required check was unavailable",
             RefusalKind::ScenarioUnsupported => "this scenario version is not supported",
             RefusalKind::SessionSealed => "this record is already sealed",
+            // Deliberately no numbers. `NFR-003` makes every string here static and
+            // value-free; the cap, the request and the overage are on the outcome's
+            // evidence, where a host can read them without the crate quoting its data.
+            RefusalKind::CapacityExceeded => {
+                "the amount exceeds the capacity available for this period"
+            }
+            RefusalKind::DuplicateEffect => "this action has already been recorded",
         }
     }
 

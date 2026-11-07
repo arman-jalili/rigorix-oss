@@ -419,6 +419,8 @@ impl From<&crate::domain::outcome::EvidenceRef> for EvidenceRefDto {
                 crate::domain::outcome::EvidenceKind::Approval => "approval",
                 crate::domain::outcome::EvidenceKind::Identity => "identity",
                 crate::domain::outcome::EvidenceKind::PortFailure => "port_failure",
+                crate::domain::outcome::EvidenceKind::Capacity => "capacity",
+                crate::domain::outcome::EvidenceKind::Effects => "effects",
             }
             .to_string(),
         }

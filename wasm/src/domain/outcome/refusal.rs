@@ -46,4 +46,15 @@ pub enum RefusalKind {
     ScenarioUnsupported,
     /// The session was already sealed; nothing may be appended.
     SessionSealed,
+    /// The declared capacity for the resource does not admit this consumption (#1456).
+    ///
+    /// The kind says *which* obligation refused. The operands — requested, claimed, cap,
+    /// overage — travel in the outcome's evidence, because the wording contract is
+    /// value-free (NFR-003): a sentence that quoted the numbers would put a host's data in
+    /// a static string.
+    CapacityExceeded,
+    /// The same effect has already committed, so dispatching it again would repeat it (#1456).
+    ///
+    /// The prior record's identity and instant travel in the evidence for the same reason.
+    DuplicateEffect,
 }

@@ -279,3 +279,63 @@ fn a_promotion_is_never_an_error_and_never_an_allow() {
     assert!(!projected.is_refusal());
     assert!(projected.awaits_approval());
 }
+
+// ── #1456 · the two capabilities reach the crate's vocabulary ──────────────────────
+//
+// **Delta, recorded rather than invented.** The child asked for "the four numbers in the wire
+// JSON". They cannot be there: `EngineFinding.evidence` is an `EvidenceRef` — a digest and a
+// kind, "never the evidence body" (contract freeze), and `StepOutcome.evidence` is the same
+// type. The operands live in the engine's `opaque` payload and in the engine's own decision
+// bytes; putting them on this wire would break the freeze in the one direction it exists to
+// protect. What the crate can honestly say is *which obligation refused*, which is the whole
+// difference between `capacity_exceeded` and "a required check did not pass".
+
+#[test]
+fn a_capacity_refusal_becomes_capacity_exceeded_and_quotes_no_host_data() {
+    use rigorix_gate_wasm::domain::outcome::RefusalKind;
+    use rigorix_gate_wasm::domain::services::{BusinessWording, EngineFindingsProjection};
+    let projection = EngineFindingsProjection::new(BusinessWording::new());
+
+    // The gate's *identity* decides the kind — the reason string is prose, and matching on
+    // prose is how a projection breaks when somebody rephrases a sentence.
+    let findings = vec![EngineFinding {
+        gate_id: "capacity".into(),
+        outcome: EngineFindingOutcome::Refused,
+        refusal: Some(
+            "capacity refused: requested 18420, claimed 1427420, cap 1420000, overage 7420".into(),
+        ),
+        evidence: None,
+        opaque: Some(serde_json::json!({ "overage": 7_420u64 })),
+    }];
+    let projected = &projection.project(&findings)[0];
+
+    assert_eq!(projected.kind, Some(RefusalKind::CapacityExceeded));
+    let reason = projected.reason.as_deref().expect("a refusal has wording");
+    assert!(
+        !reason.contains("1427420") && !reason.contains("7420"),
+        "the wording is static and value-free (NFR-003): {reason}"
+    );
+}
+
+#[test]
+fn a_committed_effect_becomes_duplicate_effect_not_a_precondition_error() {
+    use rigorix_gate_wasm::domain::outcome::RefusalKind;
+    use rigorix_gate_wasm::domain::services::{BusinessWording, EngineFindingsProjection};
+    let projection = EngineFindingsProjection::new(BusinessWording::new());
+
+    let findings = vec![EngineFinding {
+        gate_id: "effects".into(),
+        outcome: EngineFindingOutcome::Refused,
+        refusal: Some("effect refused: already committed as QR-2041".into()),
+        evidence: None,
+        opaque: None,
+    }];
+    let projected = &projection.project(&findings)[0];
+
+    assert_eq!(projected.kind, Some(RefusalKind::DuplicateEffect));
+    let reason = projected.reason.as_deref().expect("a refusal has wording");
+    assert!(
+        !reason.contains("QR-2041"),
+        "identifiers are not wording: {reason}"
+    );
+}
