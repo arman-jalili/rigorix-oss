@@ -112,11 +112,13 @@ fn refusal_from_port_failure(failure: PortFailure, events: &mut Vec<DomainEvent>
     let wording = BusinessWording::new();
     let reason = wording.port_reason(failure).to_string();
     let step = StepOutcome {
+        // #1462: the session's own record has no engine operands to report.
         gate_id: format!("port.{}", failure.port.as_str()),
         decision: StepDecision::Refused,
         kind: Some(kind),
         reason: Some(reason.clone()),
         evidence: None,
+        detail: None,
     };
     events.push(DomainEvent::PortAnswerUnavailable(PortAnswerUnavailable {
         attempt_id: GateAttemptId::from_trusted("unminted"),
@@ -293,6 +295,8 @@ impl ReplaySession {
                 kind: Some(kind),
                 reason: Some(BusinessWording::new().port_reason(*failure).to_string()),
                 evidence: None,
+                // A port that could not answer has no operands to report (#1462).
+                detail: None,
             });
         }
 

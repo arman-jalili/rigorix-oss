@@ -50,6 +50,39 @@ pub struct StepOutcomeDto {
     pub reason: Option<String>,
     /// Evidence for this decision, when produced.
     pub evidence: Option<EvidenceRefDto>,
+    /// The operands a refusal names, when it names any (#1462).
+    ///
+    /// Absent on `allowed` and on `not_reached`, and absent when the engine's operands did not
+    /// survive — in which case the refusal is a `port_unavailable`, never a zero.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<RefusalDetailDto>,
+}
+
+/// The operands of a refusal, on the wire.
+///
+/// Typed rather than free JSON: a host renders these, and a host that had to parse the
+/// engine's payload would be re-deriving a decision the engine already made.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RefusalDetailDto {
+    /// A declared cap refused this consumption.
+    Capacity {
+        /// The amount this attempt asked for.
+        requested: u64,
+        /// What the resource would total if it were admitted.
+        claimed: u64,
+        /// The configured cap.
+        hard_limit: u64,
+        /// How much over the request goes.
+        overage: u64,
+    },
+    /// The same effect has already committed.
+    DuplicateEffect {
+        /// The earlier commitment's record identity.
+        record_id: String,
+        /// When it happened, RFC 3339.
+        instant: String,
+    },
 }
 
 /// A reference to evidence, on the wire.

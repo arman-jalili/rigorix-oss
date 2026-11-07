@@ -52,7 +52,8 @@ use crate::infrastructure::{
     ScanningContentPolicy, SeededIdSource, SeededKeySource,
 };
 use crate::interfaces::dto::{
-    ArtifactSetDto, EvidenceRefDto, GatedActionDto, RunOutcomeDto, SessionHandleDto, StepOutcomeDto,
+    ArtifactSetDto, EvidenceRefDto, GatedActionDto, RefusalDetailDto, RunOutcomeDto,
+    SessionHandleDto, StepOutcomeDto,
 };
 #[cfg(feature = "engine")]
 use crate::interfaces::dto::{ClockReadingDto, SeedDto};
@@ -404,6 +405,31 @@ impl From<&crate::domain::outcome::StepOutcome> for StepOutcomeDto {
             kind: step.kind.map(|kind| format!("{kind:?}").to_lowercase()),
             reason: step.reason.clone(),
             evidence: step.evidence.as_ref().map(EvidenceRefDto::from),
+            detail: step.detail.as_ref().map(RefusalDetailDto::from),
+        }
+    }
+}
+
+impl From<&crate::domain::outcome::RefusalDetail> for RefusalDetailDto {
+    fn from(detail: &crate::domain::outcome::RefusalDetail) -> Self {
+        match detail {
+            crate::domain::outcome::RefusalDetail::Capacity {
+                requested,
+                claimed,
+                hard_limit,
+                overage,
+            } => RefusalDetailDto::Capacity {
+                requested: *requested,
+                claimed: *claimed,
+                hard_limit: *hard_limit,
+                overage: *overage,
+            },
+            crate::domain::outcome::RefusalDetail::DuplicateEffect { record_id, instant } => {
+                RefusalDetailDto::DuplicateEffect {
+                    record_id: record_id.clone(),
+                    instant: instant.clone(),
+                }
+            }
         }
     }
 }

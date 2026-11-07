@@ -305,7 +305,15 @@ fn a_capacity_refusal_becomes_capacity_exceeded_and_quotes_no_host_data() {
             "capacity refused: requested 18420, claimed 1427420, cap 1420000, overage 7420".into(),
         ),
         evidence: None,
-        opaque: Some(serde_json::json!({ "overage": 7_420u64 })),
+        // #1462: the engine's own payload carries the operands; the projection reads them.
+        opaque: Some(serde_json::json!({
+            "evidence": {
+                "requested": 18_420u64,
+                "claimed": 1_427_420u64,
+                "hard_limit": 1_420_000u64,
+                "overage": 7_420u64
+            }
+        })),
     }];
     let projected = &projection.project(&findings)[0];
 
@@ -328,7 +336,9 @@ fn a_committed_effect_becomes_duplicate_effect_not_a_precondition_error() {
         outcome: EngineFindingOutcome::Refused,
         refusal: Some("effect refused: already committed as QR-2041".into()),
         evidence: None,
-        opaque: None,
+        opaque: Some(serde_json::json!({
+            "evidence": { "record_id": "QR-2041", "instant": "2026-11-04T14:02:00Z" }
+        })),
     }];
     let projected = &projection.project(&findings)[0];
 
