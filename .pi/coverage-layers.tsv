@@ -21,6 +21,6 @@
 #
 # Columns (tab-separated):
 #   layer  crate  test-target  ignore-filename-regex  floor  target  measured-on
-domain	rigorix-gate-wasm	unit	src/(application|interfaces|infrastructure)/	92.89	95.00	2026-11-07
+domain	rigorix-gate-wasm	unit	src/(application|interfaces|infrastructure)/	93.09	95.00	2026-11-07
 application	rigorix-gate-wasm	unit	src/(domain|interfaces|infrastructure)/	100.00	90.00	2026-11-05
 interface	rigorix-gate-wasm	unit	src/(domain|application|infrastructure)/	89.76	85.00	2026-11-07
