@@ -8,7 +8,7 @@ description: Install Rust toolchain, configure cargo cache, prepare workspace
 
 inputs:
   cache-key:
-    description: "Additional cache key suffix (e.g., cargo-ubuntu-latest)"
+    description: "Ignored: kept so the 8 call sites do not need editing in the same change"
     required: false
     default: cargo
 
@@ -22,16 +22,22 @@ runs:
         rustup toolchain install stable --component rustfmt,clippy
         rustup default stable
 
-    - name: Cache cargo registry
-      uses: actions/cache@v4
+    # One cache for the workspace, not fourteen (#1439).
+    #
+    # This used to be `actions/cache@v4` keyed by `${{ inputs.cache-key }}-<lockfile>`, and the
+    # cache key is per job (`lint-<crate>`, `test-<crate>`, …): every job saved its own copy of
+    # `target/` and none of them could restore another's. `Swatinem/rust-cache` knows what a
+    # cargo workspace's `target/` looks like — incremental dirs, build script outputs, the
+    # registry — and `shared-key` makes the key constant across jobs, so a warm cache from any
+    # job serves all of them.
+    #
+    # `save-if` is the other half: only `main` writes. A PR restores the cache main warmed and
+    # does not add fourteen more copies of a tree it did not finish building.
+    - name: Restore the workspace cache
+      uses: Swatinem/rust-cache@v2
       with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ inputs.cache-key }}-${{ hashFiles('Cargo.lock') }}
-        restore-keys: |
-          ${{ inputs.cache-key }}-
+        shared-key: workspace-v1
+        save-if: ${{ github.ref == 'refs/heads/main' }}
 
     - name: Install cargo tools
       shell: bash

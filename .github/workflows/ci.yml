@@ -21,6 +21,10 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-D warnings"
+  # #1439: an incremental `target/` cannot be shared between jobs — the incremental dirs are
+  # per-build and restoring them from a cache written by another job produces rebuilds that
+  # look like hits. Cargo's own docs say the same; this is the flag that stops it.
+  CARGO_INCREMENTAL: "0"
 
 # A pull request replaces its predecessor; a merge on main never does. So a pull request
 # shares one group per PR, and every other run gets a group of its own — a group with a
@@ -45,6 +49,13 @@ jobs:
         # no edge, and any disagreement between the two — the class of defect that once hid
         # seven stages behind one edge while the gate still reported a verdict (#1411).
         run: bash .github/scripts/ci_graph_check.sh
+      - name: 🧰 Every cargo job restores one workspace cache
+        # #1439: `actions/cache` keyed per job meant fourteen copies of one compiled workspace
+        # and no job able to restore another's. One `shared-key`, saved on main only, and
+        # `--locked` on every invocation — a cache that hides a lockfile drift is worse than a
+        # cold build. Seeds: no `shared-key`, no cache at all, a missing `--locked`, and a
+        # per-job `actions/cache` on `target/` growing back.
+        run: bash .github/scripts/validate-workflows.sh --self-test
       - name: 🧮 The conventions suite runs once, and somewhere
         # #1438: the `check_*.sh` suite is one subject; it ran in five jobs, and the copy in
         # the deleted `build` job is why five stages waited eleven minutes for a job that
@@ -93,7 +104,7 @@ jobs:
         with:
           cache-key: lint-${{ matrix.crate }}
       - run: cargo fmt --check -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}"
-      - run: cargo clippy -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}" -- -D warnings
+      - run: cargo clippy --locked -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}" -- -D warnings
       - name: Per-crate conventions (conformance suite)
         # GAP-A-27: conventions gate the job — and now gate it *once*. The suite ran in five
         # jobs before #1438 (`lint`, `build`, `test`, `docs`, `integration`): five executions of
@@ -128,7 +139,7 @@ jobs:
         # `src/`, so `--lib` compiled a target with zero tests and nextest exited 4 ("no tests
         # to run") — the honest failure, and the reason this is not silenced with
         # `--no-tests=warn`. `local-ci.sh` has always run the crate's full set.
-        run: cargo nextest run -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}"
+        run: cargo nextest run --locked -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}"
       - name: Doctests for this crate (#1373)
         # `cargo nextest` runs no doc tests, so deleting `cargo test` without this step
         # would delete a coverage channel and leave the job green. Per-crate run: a crate
@@ -164,7 +175,7 @@ jobs:
         # `--features portable`.
         run: |
           rustup target add wasm32-unknown-unknown
-          cargo check -p rigorix-engine --features portable --target wasm32-unknown-unknown
+          cargo check --locked -p rigorix-engine --features portable --target wasm32-unknown-unknown
       - name: No forbidden crate in the wasm32 graph
         # #1412: the step calls the owner. `wasm/ci/check-bundle-independence.sh` holds the
         # list, the reason per entry and the tokio feature-set rule; a second inline list here
@@ -177,7 +188,7 @@ jobs:
       - name: The slice's own tests run natively
         # `--tests`, not the whole suite: an example demonstrating an excluded module
         # cannot exist in the slice, and gating an example file leaves no `main` (E0601).
-        run: cargo test -p rigorix-engine --features portable --tests
+        run: cargo test --locked -p rigorix-engine --features portable --tests
       - name: Manifest versus cfg gates, both directions
         # A gate with no row is an exclusion nobody reviewed; a row with no gate is a
         # claim about a build that still compiles the module. The compiler can say
@@ -311,7 +322,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      - run: cargo nextest run --workspace
+      - run: cargo nextest run --locked --workspace
       - name: No silent retry (#1373)
         # A retried pass is a normalised comparison. The key must not exist in the
         # nextest config, and this asserts the key rather than the prose.
@@ -331,8 +342,8 @@ jobs:
         # the pair in `cli/tests/pinned_inputs_surface.rs`. Both halves must run: one fails if the
         # command leaks into a default build, the other if the feature stops adding it.
         run: |
-          cargo test -p rigorix-cli --test pinned_inputs_surface
-          cargo test -p rigorix-cli --features pinned-inputs --test pinned_inputs_surface
+          cargo test --locked -p rigorix-cli --test pinned_inputs_surface
+          cargo test --locked -p rigorix-cli --features pinned-inputs --test pinned_inputs_surface
       - name: Per-crate integration + operations validators
         # GAP-A-27: conventions gate the stage. Root integration/operations validators
         # (local-ci Stage 6); the `check_*.sh` suite is `lint`'s, once.
@@ -384,13 +395,13 @@ jobs:
         env:
           RIGORIX_SDK_SCHEMAS: ${{ github.workspace }}/rigorix-sdk/schemas
         run: |
-          cargo test -p rigorix-engine --features conformance --test conformance
+          cargo test --locked -p rigorix-engine --features conformance --test conformance
       - name: 🔗 MCP ↔ catalog drift (ADR-0001 adapter table)
         # Every MCP tool must map 1:1 to a frozen rigorix.* catalog method.
         env:
           RIGORIX_SDK_SCHEMAS: ${{ github.workspace }}/rigorix-sdk/schemas
         run: |
-          cargo test -p rigorix-mcp --bin rigorix-mcp catalog_drift_tests
+          cargo test --locked -p rigorix-mcp --bin rigorix-mcp catalog_drift_tests
       - name: 📚 Server catalog subset (ADR-0001 D3)
         # The OSS server catalog must be a SUBSET of the frozen rigorix.* catalog
         # (never equality: the SDK also declares enterprise `rigorix.auth.verify`).
@@ -398,14 +409,14 @@ jobs:
         env:
           RIGORIX_SDK_SCHEMAS: ${{ github.workspace }}/rigorix-sdk/schemas
         run: |
-          cargo test -p rigorix-server --test catalog_parity oss_catalog_is_a_subset_of_the_sdk_catalog -- --nocapture
+          cargo test --locked -p rigorix-server --test catalog_parity oss_catalog_is_a_subset_of_the_sdk_catalog -- --nocapture
       - name: 🔁 Independent-HMAC proof (engine fixtures via rigorix-verifier)
         # Strategy A: the engine's own canonicalization must be reproducible
         # byte-exact by the SDK's protocol-only verifier. Runs the verifier
         # suite — its engine_signed_fixtures_verify_byte_exact test validates
         # every committed schemas/fixtures/envelope/*.json.
         run: |
-          cargo test --manifest-path rigorix-sdk/rust/Cargo.toml -p rigorix-verifier
+          cargo test --locked --manifest-path rigorix-sdk/rust/Cargo.toml -p rigorix-verifier
 
   # ── Stage 6b: Shell exit status ───────────────────────────────
   # `(( x++ ))` returns 1 when the result is 0, so the first increment of a
@@ -439,6 +450,11 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+        with:
+          # The same key as `.github/actions/setup` (#1439): this job shares a workspace
+          # compilation with the other cargo jobs instead of paying for its own.
+          shared-key: workspace-v1
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: 🧱 Install wasm target
         run: rustup target add wasm32-unknown-unknown
       - name: 🔖 Resolve the wasm-bindgen version the crate uses
