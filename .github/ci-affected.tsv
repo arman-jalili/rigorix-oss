@@ -1,0 +1,57 @@
+# Which subjects a change can reach (#1441). The map is the source: CI and the local runner
+# read this file, so a developer can compute the pipeline's subject before pushing and the
+# pipeline stops being the first oracle.
+#
+#   path-glob <TAB> subjects <TAB> why
+#
+# `subjects` are job ids from `.github/workflows/ci.yml`; `ALL` means "no narrowing is
+# defensible". The rule is the epic's, not a convenience: **a gate's subject does not shrink.**
+# Narrowing is allowed only where the map is derived from the diff and **exhaustive**, and the
+# fallback when a path matches nothing is `ALL`, printed loudly — a changed path that matches no
+# row is not skipped, it is `unmapped: <path> → running ALL`.
+#
+# Anything that can change how *everything* compiles is shared: a lockfile, any manifest, the
+# workflow itself, the guard scripts, the deny list. Those expand to ALL because a cache, a
+# feature flag or a toolchain pin reaches every crate.
+#
+# path-glob	subjects	why
+Cargo.lock	ALL	a lockfile change recompiles every crate and can change every test
+Cargo.toml	ALL	the workspace manifest: members, profiles and the feature graph
+**/Cargo.toml	ALL	features, profiles and pins reach whoever consumes the crate
+.cargo/**	ALL	toolchain and registry configuration applies to every build
+deny.toml	ALL	the audit's subject is the whole dependency graph
+.github/**	ALL	the pipeline is the thing being narrowed
+.pi/**	ALL	the guards and mirrors gate every crate
+.rigorix/**	ALL	product configuration the engine reads at run time
+engine/src/**	engine,test,portable,conformance,coverage	the engine and everything that builds against it
+engine/tests/**	engine,test,portable,conformance,coverage	the engine's test binaries
+engine/.pi/**	engine,test,portable,conformance,coverage	the engine's own guards
+cli/src/**	cli,test,coverage	the CLI surface
+cli/tests/**	cli,test,integration,coverage	the CLI test binaries, incl. the pinned-inputs surface
+mcp/src/**	mcp,test,coverage	the MCP server
+mcp/tests/**	mcp,test,integration,coverage	the MCP test binaries, incl. the stdio e2e
+actions/src/**	actions,test,coverage	the actions adapter
+actions/tests/**	actions,test,integration,coverage	the actions test binaries, incl. process isolation
+server/src/**	server,test,integration,coverage	the HTTP server
+server/tests/**	server,test,integration,coverage	the server's e2e and parity binaries
+wasm/src/**	test,wasm-gates,portable,coverage	the gate crate, its matrix leg, and its eleven gates
+wasm/ci/**	wasm-gates	the gates' own scripts and budgets
+wasm/pkg/**	wasm-gates	the packaged artifact
+rigorix-sdk/**	conformance	the schemas and fixtures the conformance stage replays
+schemas/**	conformance,docs	the contract schemas
+docs/**	docs	documentation and the canonical spec
+demo/**	none	the demo is not built or tested by this pipeline
+admin/**	none	not in this pipeline
+*.md	docs	a document is the docs stage's subject, and prose alone narrows to it
+**/*.md	docs	the same for a document inside a directory
+rust-toolchain.toml	ALL	the pinned toolchain compiles every crate
+clippy.toml	lint	the lints every crate is checked against
+action.yml	ALL	the published action's identity; it names the crates it invokes
+guardian-manifest.json	ALL	the manifest the guards and the pipeline are generated from
+.gitignore	none	it changes what is tracked, not what is built
+LICENSE-*	none	not read by any gate
+**/LICENSE-*	none	not read by any gate
+.config/**	ALL	the test runner's configuration changes how every binary runs
+.claude/**	none	agent scaffolding
+.agents/**	none	agent scaffolding
+.githooks/**	none	not used by CI

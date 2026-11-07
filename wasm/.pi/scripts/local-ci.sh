@@ -6,7 +6,7 @@ set -euo pipefail
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BLUE='\033[0;34m'; NC='\033[0m'
 
-QUICK=false; RELEASE=false; STAGE=""; CRATE_FILTER=""; LIST_ONLY=false; SAVE_OUTPUT=false
+QUICK=false; RELEASE=false; STAGE=""; CRATE_FILTER=""; LIST_ONLY=false; SAVE_OUTPUT=false; AFFECTED=false
 FAILED=0; PASSED=0; SKIPPED=0; START_TIME=$(date +%s)
 FAILURES=()
 CRATES=("engine" "mcp" "cli" "actions" "server")
@@ -16,6 +16,7 @@ VALID_STAGES=" lint build test security coverage docs integration "
 usage() {
     echo "usage: local-ci.sh [--quick] [--release] [--stage=<stage>|--stage <stage>]" >&2
     echo "                   [--crate=<crate>] [--list] [--save]" >&2
+    echo "                   [--affected[=<base>]]  # narrow to what the diff can reach (#1441)" >&2
     echo "stages:${VALID_STAGES}" >&2
 }
 
@@ -32,6 +33,8 @@ while [[ $# -gt 0 ]]; do
             [[ $# -ge 2 ]] || { echo "local-ci: --crate requires a value" >&2; usage; exit 2; }
             CRATE_FILTER="$2"; shift 2 ;;
         --list) LIST_ONLY=true; shift ;;
+        --affected) AFFECTED=true; AFFECTED_BASE="origin/main"; shift ;;
+        --affected=*) AFFECTED=true; AFFECTED_BASE="${1#*=}"; shift ;;
         --save) SAVE_OUTPUT=true; shift ;;
         *)
             echo "local-ci: unknown argument '$1'" >&2
@@ -47,6 +50,33 @@ if [[ -n "$STAGE" && "$VALID_STAGES" != *" $STAGE "* ]]; then
 fi
 
 [[ -n "$CRATE_FILTER" ]] && CRATES=("$CRATE_FILTER")
+
+# ── narrowing by the diff (#1441) ────────────────────────────────────────────
+# The table is `.github/ci-affected.tsv` — the same one CI reads, so the developer computes the
+# pipeline's subject before pushing instead of discovering it afterwards. A crate the map does
+# not select is named as skipped, never silently dropped: a run that quietly checked less than
+# it says is the failure mode the table exists to prevent.
+if [[ "$AFFECTED" == "true" ]]; then
+    AFFECTED_SUBJECTS="$(bash .github/scripts/ci_affected.sh --base "$AFFECTED_BASE" --list 2>/dev/null || echo ALL)"
+    if [[ "$AFFECTED_SUBJECTS" == "ALL" ]]; then
+        echo "  affected: ALL (nothing is narrower than this diff)"
+    else
+        KEPT=()
+        for crate in "${CRATES[@]}"; do
+            if printf '%s\n' "$AFFECTED_SUBJECTS" | grep -qx "$crate"; then
+                KEPT+=("$crate")
+            else
+                echo "  affected: skipping $crate (the diff cannot reach it)"
+            fi
+        done
+        CRATES=("${KEPT[@]}")
+        echo "  affected: ${AFFECTED_SUBJECTS//$'\n'/, }"
+    fi
+    if [[ "$LIST_ONLY" == "true" ]]; then
+        printf '%s\n' "$AFFECTED_SUBJECTS"
+        exit 0
+    fi
+fi
 mkdir -p "$REPORT_DIR"
 REPORT_FILE="$REPORT_DIR/ci-report-$(date +%Y%m%d-%H%M%S).txt"
 
