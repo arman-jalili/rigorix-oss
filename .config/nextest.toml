@@ -24,3 +24,41 @@ final-status-level = "slow"
 # instead of holding a job to its 30-minute timeout with no output. Deliberately far
 # above the slowest measured test (43 s for a whole 4-test target, so well under
 # that for any single test) — a cap that a legitimate test meets is a flaky gate.
+
+# ── The partition: one suite, two subjects (#1440) ──────────────────────────
+#
+# `test` and `integration` used to run the same tests: the matrix ran
+# `cargo nextest run -p <crate>` six times, and `integration` then ran
+# `cargo nextest run --workspace` — the union of exactly what the matrix had just
+# run, under a different label. 30.2 job-minutes plus 14.9, one verdict.
+#
+# The split is by **subject**, and the subject is whether a binary crosses a
+# boundary. A test that stays inside one crate is that crate's; a test that spawns
+# a process, drives a transport, or reads another crate's catalog is the boundary's.
+#
+# The two filters below must describe the **same** partition — `unit` is the exact
+# complement of `cross-crate`, and `.github/scripts/check_test_census.sh` fails when
+# the two lists disagree, name a binary that does not exist, or leave either side
+# empty. A filter that matches nothing passes for the wrong reason.
+#
+#   unit            cargo nextest run -p <crate> --profile unit
+#   cross-crate     cargo nextest run --workspace --profile cross-crate
+#
+# Adding a boundary test means adding one line here, once, and both sides follow.
+
+[profile.unit]
+default-filter = "not (binary_id(rigorix-actions::action_process_integration) | binary_id(rigorix-cli::gate_envelope) | binary_id(rigorix-cli::pinned_inputs_surface) | binary_id(rigorix-mcp::stdio_integration_test) | binary_id(rigorix-mcp::e2e_execute_to_audit_test) | binary_id(rigorix-mcp::e2e_enterprise_proxy_test) | binary_id(rigorix-server::catalog_parity) | binary_id(rigorix-server::http_e2e) | binary_id(rigorix-server::mcp_streamable_http))"
+
+[profile.cross-crate]
+default-filter = "binary_id(rigorix-actions::action_process_integration) | binary_id(rigorix-cli::gate_envelope) | binary_id(rigorix-cli::pinned_inputs_surface) | binary_id(rigorix-mcp::stdio_integration_test) | binary_id(rigorix-mcp::e2e_execute_to_audit_test) | binary_id(rigorix-mcp::e2e_enterprise_proxy_test) | binary_id(rigorix-server::catalog_parity) | binary_id(rigorix-server::http_e2e) | binary_id(rigorix-server::mcp_streamable_http)"
+
+# What is on the boundary, and why:
+#   rigorix-actions::action_process_integration — spawns the action process (ADR-012 isolation)
+#   rigorix-cli::gate_envelope — runs the built CLI binary
+#   rigorix-cli::pinned_inputs_surface — runs the built CLI binary with and without the feature
+#   rigorix-mcp::stdio_integration_test — spawns the MCP server and speaks stdio to it
+#   rigorix-mcp::e2e_execute_to_audit_test — crosses mcp -> engine execution -> audit
+#   rigorix-mcp::e2e_enterprise_proxy_test — crosses mcp -> proxy -> engine
+#   rigorix-server::catalog_parity — compares the engine catalog with the SDK catalog
+#   rigorix-server::http_e2e — drives the HTTP surface end to end
+#   rigorix-server::mcp_streamable_http — crosses server <-> mcp over a transport

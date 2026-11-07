@@ -139,7 +139,7 @@ jobs:
         # `src/`, so `--lib` compiled a target with zero tests and nextest exited 4 ("no tests
         # to run") — the honest failure, and the reason this is not silenced with
         # `--no-tests=warn`. `local-ci.sh` has always run the crate's full set.
-        run: cargo nextest run --locked -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}"
+        run: cargo nextest run --locked -p "${{ fromJson(needs.workspace.outputs.packages)[matrix.crate] }}" --profile unit
       - name: Doctests for this crate (#1373)
         # `cargo nextest` runs no doc tests, so deleting `cargo test` without this step
         # would delete a coverage channel and leave the job green. Per-crate run: a crate
@@ -322,7 +322,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      - run: cargo nextest run --locked --workspace
+      - name: The boundary — only what crosses one (#1440)
+        # `--workspace --profile cross-crate`: the binaries that spawn a process, drive a
+        # transport, or read another crate's catalog. Everything else already ran in `test`,
+        # once, per crate (`--profile unit`); running `--workspace` here re-ran the whole
+        # suite under a second label and decided nothing new. The partition is declared in
+        # `.config/nextest.toml` and `check_test_census.sh` refuses a binary claimed twice,
+        # claimed by nothing, or a filter that matches nothing.
+        run: cargo nextest run --locked --workspace --profile cross-crate
       - name: No silent retry (#1373)
         # A retried pass is a normalised comparison. The key must not exist in the
         # nextest config, and this asserts the key rather than the prose.
