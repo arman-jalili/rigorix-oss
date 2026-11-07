@@ -7,6 +7,12 @@
 # one cannot be compared to the number it should be, so it is not a check — the report fails on
 # the row rather than on the run.
 #
+# **A budget is set from the worst run measured so far, rounded up.** Not from the mean: two runs
+# of the same workflow on the same commit shape differ by 0.4-1.3 minutes per stage (coverage
+# 15.3 → 16.4, audit 5.3 → 6.6, integration 14.9 → 15.6), so a budget set to the best observation
+# fires on noise and is ignored within a week. A breach then means one thing: slower than anything
+# that has been measured. Both runs quoted below are on `main`, both green.
+#
 # The ratchet has two halves, and both are enforced by `ci_budget_report.sh --base <ref>`:
 #
 #   · a budget may be **lowered** after a win, freely — that is the point;
@@ -14,30 +20,32 @@
 #     what regressed instead of quietly moving the line;
 #   · a row may not be deleted. A removed budget makes a breach invisible, not fixed.
 #
-# Every row below was set from run 42229151064 (`ef77fb58`, the last full run of the 29-job
-# workflow): wall 43.5 min, 159.4 job-minutes. A matrix stage is priced on its **slowest leg**,
-# because that is what a stage costs in wall clock; its runner time is the sum of the legs and
-# is priced only by TOTAL_JOB_MINUTES.
+# Every row was set from run 42229151064 (`ef77fb58`) and run 42359491268 (`08062df8`): wall
+# 43.5 / 44.7 min, 159.4 / 164.7 job-minutes. A matrix stage is priced on its **slowest leg**,
+# because that is what a stage costs in wall clock; its runner time is the sum of the legs and is
+# priced only by TOTAL_JOB_MINUTES.
+#
+# `build` had a row and lost it with the job (#1438): six `cargo check` legs and a `check_*.sh`
+# loop, 28-34 job-minutes, no artifact, five stages waiting on it. That deletion is what children
+# 3-5 build on; when they land, every row here drops and the totals follow.
 #
 # The epic's targets (#1436) are lower than these numbers on purpose: ≤ 22 min wall, ≤ 70
 # job-minutes, ≤ 10 min at p50. Children 2-4 earn them by removing work, and each win lowers a
-# row here. Setting the ceiling to a target nobody has measured yet would fail on the first
-# push and teach everyone to ignore the file.
+# row here. Setting the ceiling to a target nobody has measured yet would fail on the first push.
 #
 # stage	budget_minutes	set_at	set_from
-workspace	1	2026-11-06	"run 42229151064: 0.1 min"
-lint	8	2026-11-06	"run 42229151064: 5.7-7.7 per leg, 36.7 job-min over 6 legs"
-build	7	2026-11-06	"run 42229151064: 4.0-6.2 per leg, 29.7 job-min over 6 legs"
-test	9	2026-11-06	"run 42229151064: 4.8-8.6 per leg, 37.2 job-min over 6 legs"
-coverage	16	2026-11-06	"run 42229151064: 15.3 min"
-audit	6	2026-11-06	"run 42229151064: 5.3 min"
-docs	1	2026-11-06	"run 42229151064: 0.3 min"
-conformance	10	2026-11-06	"run 42229151064: 9.5 min"
-integration	15	2026-11-06	"run 42229151064: 14.9 min; child 4 partitions the suite and lowers this"
-portable	7	2026-11-06	"run 42229151064: 6.4 min"
-shell	1	2026-11-06	"run 42229151064: 0.1 min"
-wasm-gates	4	2026-11-06	"run 42229151064: 3.7 min"
-ci-report	1	2026-11-06	"run 42229151064: 0.1 min"
-gate	1	2026-11-06	"run 42229151064: 0.1 min"
-TOTAL_MINUTES	44	2026-11-06	"run 42229151064: 43.5 min wall; epic #1436 target <= 22 after children 2-4"
-TOTAL_JOB_MINUTES	160	2026-11-06	"run 42229151064: 159.4 job-minutes over 29 jobs; epic #1436 target <= 70"
+workspace	1	2026-11-06	"runs 42229151064/42359491268: 0.1 / 0.1"
+lint	8	2026-11-06	"runs 42229151064/42359491268: 7.7 / 7.5 slowest leg, 36.7 / 35.2 job-min over 6 legs"
+test	9	2026-11-06	"runs 42229151064/42359491268: 8.6 / 8.4 slowest leg, 37.2 / 39.2 job-min over 6 legs"
+portable	7	2026-11-06	"runs 42229151064/42359491268: 6.4 / 6.3"
+coverage	17	2026-11-06	"runs 42229151064/42359491268: 15.3 / 16.4"
+audit	7	2026-11-06	"runs 42229151064/42359491268: 5.3 / 6.6"
+docs	1	2026-11-06	"runs 42229151064/42359491268: 0.3 / 0.3"
+conformance	10	2026-11-06	"runs 42229151064/42359491268: 9.5 / 7.6"
+integration	16	2026-11-06	"runs 42229151064/42359491268: 14.9 / 15.6; child 4 partitions the suite and lowers this"
+shell	1	2026-11-06	"runs 42229151064/42359491268: 0.1 / 0.1"
+wasm-gates	4	2026-11-06	"runs 42229151064/42359491268: 3.7 / 3.4"
+ci-report	1	2026-11-06	"runs 42229151064/42359491268: 0.1 / 0.1"
+gate	1	2026-11-06	"runs 42229151064/42359491268: 0.1 / 0.1"
+TOTAL_MINUTES	45	2026-11-06	"runs 42229151064/42359491268: 43.5 / 44.7 wall; epic #1436 target <= 22 after children 3-5"
+TOTAL_JOB_MINUTES	165	2026-11-06	"runs 42229151064/42359491268: 159.4 / 164.7 job-minutes over 29 jobs; epic #1436 target <= 70"

@@ -180,11 +180,13 @@ ci_verdict_selftest() {
     }
 
     # Seed 1 — the shape of #1411: one failure, dependants skipped. The verdict names `lint`,
-    # and does not put the stages that never ran in the failure list.
+    # and does not put the stages that never ran in the failure list. `test` and `coverage` are
+    # skipped without an edge that explains it (both need only `workspace`), which is the case
+    # the verdict has to report as unexplained rather than blame on the failure.
     reset_results
     RESULT_LINT=failure
-    RESULT_BUILD=skipped
     RESULT_TEST=skipped
+    RESULT_COVERAGE=skipped
     out="$(GITHUB_STEP_SUMMARY=/dev/null ci_verdict 2>&1)"
     status=$?
     expect "seed — lint failed plus two skips exits 1" 1 "$status"
@@ -193,26 +195,30 @@ ci_verdict_selftest() {
         *) echo "  ❌ seed — the verdict does not name lint as the cause" >&2
            failures=$((failures + 1)) ;;
     esac
-    expect_absent "seed — build is not accused of failing" "did not pass: lint build" "$out"
+    expect_absent "seed — the skipped stages are not accused of failing" "did not pass: lint test" "$out"
     case "$out" in
-        *"build test"*|*"test build"*) echo "  ✅ seed — the skipped stages are named as skipped" ;;
+        *"test coverage"*|*"coverage test"*) echo "  ✅ seed — the skipped stages are named as skipped" ;;
         *) echo "  ❌ seed — the skipped stages are not named" >&2
            failures=$((failures + 1)) ;;
     esac
 
-    # Seed 2 — a skip the graph *does* explain: `test: needs: [workspace, build]`, so a failed
-    # build is test's cause. This is what `ci_stage_cause` exists for; seed 1 is the case where
+    # Seed 2 — a skip the graph *does* explain: `integration: needs: [test]`, so a failed test
+    # is integration's cause. This is what `ci_stage_cause` exists for; seed 1 is the case where
     # the graph explains nothing and the verdict must say so instead of blaming the failure.
+    # The edge moved here when `build` was deleted (#1438); the seed follows the graph.
     reset_results
-    RESULT_BUILD=failure
-    RESULT_TEST=skipped
+    RESULT_TEST=failure
+    RESULT_INTEGRATION=skipped
     out="$(GITHUB_STEP_SUMMARY=/dev/null ci_verdict 2>&1)"
     status=$?
-    expect "seed — build failed plus test skipped exits 1" 1 "$status"
+    expect "seed — test failed plus integration skipped exits 1" 1 "$status"
+    # `integration` is reported, not mandatory, so it never appears in the failure line — the
+    # attribution shows in the table's Cause column, and that is what this asserts. Asserting
+    # the failure line instead is how this seed first "passed" by matching nothing.
     case "$out" in
-        *"❌ build failed"*"did not run because of it: test"*) \
-            echo "  ✅ seed — test is attributed to build through the declared graph" ;;
-        *) echo "  ❌ seed — the graph edge build -> test is not used for attribution" >&2
+        *"integration |"*"skipped | no | test"*) \
+            echo "  ✅ seed — integration is attributed to test through the declared graph" ;;
+        *) echo "  ❌ seed — the graph edge test -> integration is not used for attribution" >&2
            failures=$((failures + 1)) ;;
     esac
 

@@ -4,8 +4,9 @@
 #
 # `.github/ci-graph.tsv` is the source. This script is what makes it the source rather than
 # a description: a workflow edge with no row fails, a row with no edge fails, a `needs` list
-# that disagrees with its row fails, and any `needs` naming `lint` fails with the reason
-# (#1411 — one edge hid seven stages).
+# that disagrees with its row fails, any `needs` naming `lint` fails with the reason
+# (#1411 — one edge hid seven stages), and any `needs` naming a stage whose `exports` column is
+# `-` fails, because a stage that hands nothing downstream is a barrier (#1438).
 #
 # Usage:
 #   bash .github/scripts/ci_graph_check.sh              # check the repo's workflow
@@ -42,6 +43,11 @@ workflow_edges() {
 # Print `<stage>\t<needs>` from the graph, comments and blanks dropped.
 graph_rows() {
     awk -F'\t' '!/^#/ && NF >= 2 { gsub(/[[:space:]]/, "", $1); gsub(/[[:space:]]/, "", $2); print $1 "\t" $2 }' "$1"
+}
+
+# Print `<stage>\t<exports>` — what each stage hands to a dependent, `-` for nothing.
+graph_exports() {
+    awk -F'\t' '!/^#/ && NF >= 3 { gsub(/[[:space:]]/, "", $1); print $1 "\t" $3 }' "$1"
 }
 
 check() {
@@ -113,6 +119,47 @@ check() {
         fi
     done <<< "$gr"
 
+    # 4. A stage may only be depended on if it exports something. `build` ran six `cargo check`
+    #    legs and a `check_*.sh` loop for 28.3 job-minutes and uploaded nothing, while five
+    #    stages waited ~11 minutes of wall clock for it (#1438). Its two subjects were already
+    #    established elsewhere: `cargo check` is a strict subset of `clippy -D warnings`, and the
+    #    conventions suite ran in five jobs. Deleting the job is the fix; this rule is what stops
+    #    the next barrier from being declared a dependency.
+    local offenders4
+    offenders4="$(awk -F'\t' -v agg="$aggregators" '
+        BEGIN { n = split(agg, a, " "); for (i = 1; i <= n; i++) skip[a[i]] = 1 }
+        !/^#/ && NF >= 3 {
+            stage = $1; gsub(/[[:space:]]/, "", stage)
+            need = $2;  gsub(/[[:space:]]/, "", need)
+            exports = $3; gsub(/[[:space:]]/, "", exports)
+            exports_of[stage] = exports
+            names[++m] = stage
+            edges[stage] = need
+        }
+        END {
+            for (i = 1; i <= m; i++) {
+                stage = names[i]
+                if (stage in skip) continue
+                count = split(edges[stage], list, ",")
+                for (j = 1; j <= count; j++) {
+                    if (list[j] == "" || list[j] == "-") continue
+                    if ((list[j] in exports_of) && exports_of[list[j]] == "-") {
+                        print stage "\t" list[j]
+                    }
+                }
+            }
+        }' "$graph")"
+    if [ -n "$offenders4" ]; then
+        while IFS=$'\t' read -r stage need; do
+            [ -n "$stage" ] || continue
+            echo "❌ '$stage' needs '$need', which exports nothing (its row says \`-\`)" >&2
+            echo "   a stage that hands nothing downstream is a barrier, not a dependency (#1438)" >&2
+            failures=$((failures + 1))
+        done <<< "$offenders4"
+    else
+        echo "✅ every dependency exports something: no stage waits on a barrier"
+    fi
+
     if [ "$failures" -ne 0 ]; then
         echo "❌ CI graph: $failures mismatch(es) between .github/ci-graph.tsv and the workflow" >&2
         return 1
@@ -143,9 +190,9 @@ selftest() {
     check "$WORKFLOW" "$GRAPH" > /dev/null 2>&1
     expect "the committed graph and workflow agree" 0 $?
 
-    # Seed 1: re-add `lint` to build's needs. The mutation is done in python3, not sed:
-    # the earlier sed used GNU-only addressing, so on macOS it errored and the seed "passed"
-    # because the checker ran against an unmodified workflow.
+    # Seed 1: a stage needs `lint`. The mutation is done in python3, not sed: an earlier sed
+    # used GNU-only addressing, so on macOS it errored and the seed "passed" because the checker
+    # ran against an unmodified workflow.
     python3 - "$WORKFLOW" "$source" <<'SEED1'
 import sys
 src, dst = sys.argv[1], sys.argv[2]
@@ -155,17 +202,17 @@ for line in lines:
     stripped = line.strip()
     if line.startswith('  ') and not line.startswith('   ') and stripped.endswith(':'):
         job = stripped[:-1]
-    if job == 'build' and stripped == 'needs: [workspace]':
+    if job == 'test' and stripped == 'needs: [workspace]':
         line = line.replace('[workspace]', '[workspace, lint]')
     out.append(line)
 open(dst, 'w', encoding='utf-8').write('\n'.join(out))
 SEED1
     if ! grep -q 'needs: \[workspace, lint\]' "$source"; then
-        echo "  ❌ seed — build needs lint: the mutation matched nothing" >&2
+        echo "  ❌ seed — test needs lint: the mutation matched nothing" >&2
         failures=$((failures + 1))
     else
         check "$source" "$GRAPH" > /dev/null 2>&1
-        expect "seed — build needs lint fails" 1 $?
+        expect "seed — a stage needing lint fails" 1 $?
     fi
 
     # Seed 2: delete a row while keeping the edge.
@@ -186,11 +233,45 @@ SEED1
         expect "seed — row disagreeing with the workflow fails" 1 $?
     fi
 
+    # Seed 4: a dependency on a stage that exports nothing (#1438). The workflow and the graph
+    # are mutated together, so the `needs`-comparison rule cannot fire: only the exports rule
+    # can, and the seed asserts the message, not just the exit status.
+    python3 - "$WORKFLOW" "$tmp/wf-exports.yml" <<'SEED4'
+import sys
+src, dst = sys.argv[1], sys.argv[2]
+lines = open(src, encoding='utf-8').read().split('\n')
+out, job = [], None
+for line in lines:
+    stripped = line.strip()
+    if line.startswith('  ') and not line.startswith('   ') and stripped.endswith(':'):
+        job = stripped[:-1]
+    if job == 'test' and stripped == 'needs: [workspace]':
+        line = line.replace('[workspace]', '[workspace, audit]')
+    out.append(line)
+open(dst, 'w', encoding='utf-8').write('\n'.join(out))
+SEED4
+    awk -F'\t' -v OFS='\t' '$1 == "test" { $2 = "workspace,audit" } { print }' "$GRAPH" \
+        > "$tmp/graph-exports.tsv"
+    if ! grep -q 'needs: \[workspace, audit\]' "$tmp/wf-exports.yml"; then
+        echo "  ❌ seed — dependency on a barrier: the mutation matched nothing" >&2
+        failures=$((failures + 1))
+    else
+        out="$(check "$tmp/wf-exports.yml" "$tmp/graph-exports.tsv" 2>&1)"
+        got=$?
+        if [ "$got" -eq 1 ] && printf '%s' "$out" | grep -q 'exports nothing'; then
+            expect "seed — a stage depending on a stage that exports nothing fails" 1 "$got"
+        else
+            echo "  ❌ seed — dependency on a barrier: exit $got, and the rule was not the one that fired" >&2
+            printf '%s\n' "$out" | sed 's/^/     /' >&2
+            failures=$((failures + 1))
+        fi
+    fi
+
     if [ "$failures" -ne 0 ]; then
         echo "❌ ci_graph_check self-test failed ($failures)" >&2
         return 1
     fi
-    echo "✅ ci_graph_check self-test: 3 seeds fired, 1 clean pass"
+    echo "✅ ci_graph_check self-test: 4 seeds fired, 1 clean pass"
 }
 
 if [ "${1:-}" = "--self-test" ]; then

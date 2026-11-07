@@ -331,17 +331,19 @@ FIX
   }
 
   # S1: a straight chain. Each stage starts when its dependency ends, so the path is the chain.
+  # The stages are the ones the graph declares now — the fixture follows `.github/ci-graph.tsv`,
+  # and the seed fails if a stage is renamed or a job deleted (#1438 took `build`).
   fixture "$TMP/chain" \
-    "📋 Workspace:0:0.2|📦 Build (cli):0.2:6|🧪 Test (cli):6:14|🚪 Final Gate:14:14.5"
-  expect_path "a straight chain: workspace → build → test → gate" "$TMP/chain" \
-    "workspace,build,test,gate"
+    "📋 Workspace:0:0.2|🧪 Test (cli):0.2:6|🚪 Final Gate:6:6.5"
+  expect_path "a straight chain: workspace → test → gate" "$TMP/chain" \
+    "workspace,test,gate"
 
-  # S2: the binder. `test` and `coverage` both need `build`; `coverage` ends earlier, so the
-  # path must follow `test`. A path that picked the first need would name coverage.
+  # S2: the binder. The gate needs both `lint` and `test`; `lint` ends earlier, so the path must
+  # follow `test`. A walk that took the first declared need would name lint.
   fixture "$TMP/binder" \
-    "📋 Workspace:0:0.2|📦 Build (cli):0.2:6|🧪 Test (cli):6:14|📊 Coverage (workspace):6:12|🚪 Final Gate:14:14.5"
+    "📋 Workspace:0:0.2|🔎 Lint (cli):0.2:4|🧪 Test (cli):0.2:14|🚪 Final Gate:14:14.5"
   expect_path "two needs, one binding edge: the later one is the path" "$TMP/binder" \
-    "workspace,build,test,gate"
+    "workspace,test,gate"
 
   # S3: a run with no completed job is a broken scan, not a 0-minute run.
   fixture "$TMP/empty" "🧪 Test (cli):0:0"
