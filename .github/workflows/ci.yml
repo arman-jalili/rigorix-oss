@@ -34,6 +34,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ── Stage −1: what this diff can reach (#1441) ────────────────
+  #
+  # The map in `.github/ci-affected.tsv` decides which subjects this change can reach, and
+  # every stage below is gated on it. Three outputs and one rule:
+  #
+  #   all       every subject is required (a shared path, or a diff nobody could read)
+  #   subjects  the jobs to run, space-padded so ` a ` cannot match ` ab `
+  #   crates    the matrix for `lint` and `test` — a crate the diff cannot reach is not run
+  #
+  # Fail closed throughout: no diff, an unresolvable base, or a path that matches no row all
+  # mean `all=true`. A pipeline that cannot see what changed runs everything, loudly.
+  affected:
+    name: 🗺 What this diff can reach
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      all: ${{ steps.map.outputs.all }}
+      subjects: ${{ steps.map.outputs.subjects }}
+      crates: ${{ steps.map.outputs.crates }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: 🗺 Read the diff, derive the subjects
+        id: map
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          files=""
+          # `github.event.before` is all zeros on a branch's first push, and a compare against
+          # it is a compare against nothing. Both cases fall through to "run everything".
+          case "${BASE:-}" in
+            "" | 0000000000000000000000000000000000000000) : ;;
+            *)
+              files=$(gh api "repos/$GITHUB_REPOSITORY/compare/$BASE...$HEAD_SHA" \
+                --jq '.files[].filename' 2>/dev/null || true) ;;
+          esac
+          if [ -z "$files" ]; then
+            echo "::notice title=Running every subject::no readable diff — the map cannot narrow this run"
+            bash .github/scripts/ci_affected.sh --all --github >> "$GITHUB_OUTPUT"
+          else
+            # Word splitting on the file list is the point: `--files` takes arguments.
+            # shellcheck disable=SC2086
+            bash .github/scripts/ci_affected.sh --github --files $files >> "$GITHUB_OUTPUT"
+          fi
+          echo "── the map says:"
+          cat "$GITHUB_OUTPUT" | tail -3
+
   # ── Stage 0: Workspace Overview ───────────────────────────────
   workspace:
     name: 📋 Workspace
@@ -91,13 +141,16 @@ jobs:
   # ── Stage 1: Lint (fmt + clippy) ──────────────────────────────
   lint:
     name: 🔎 Lint (${{ matrix.crate }})
-    needs: [workspace]
+    needs: [affected, workspace]
+    if: contains(needs.affected.outputs.subjects, ' lint ')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        crate: ${{ fromJson(needs.workspace.outputs.crates) }}
+        # The crates this diff can reach, not all of them (#1441). The job itself is gated on
+        # `lint`/`test` being required, so the matrix is never empty when it runs.
+        crate: ${{ fromJson(needs.affected.outputs.crates) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -121,13 +174,16 @@ jobs:
   # ── Stage 3: Test ─────────────────────────────────────────────
   test:
     name: 🧪 Test (${{ matrix.crate }})
-    needs: [workspace]
+    needs: [affected, workspace]
+    if: contains(needs.affected.outputs.subjects, ' test ')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        crate: ${{ fromJson(needs.workspace.outputs.crates) }}
+        # The crates this diff can reach, not all of them (#1441). The job itself is gated on
+        # `lint`/`test` being required, so the matrix is never empty when it runs.
+        crate: ${{ fromJson(needs.affected.outputs.crates) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -155,14 +211,15 @@ jobs:
   # person to try it would meet a build-script failure rather than a named module.
   portable:
     name: 🧳 Portable slice
-    # `[workspace]` only, deliberately (#1407 follow-up). This job consumes no build
+    # `[affected, workspace]` only, deliberately (#1407 follow-up, #1441). This job consumes no build
     # artifact — it compiles the slice for wasm32, runs `cargo test -p rigorix-engine
     # --features portable --tests` and validates the inventory against the cfg gates. Making
     # it depend on `build` (which depends on `lint`) meant a red lint job in *any* crate
     # skipped it, and the slice's 897 native tests stopped running while the stage still
     # read as configured. An independent subject must fail on its own subject, not inherit
     # someone else's; the Final Gate still fails on the lint job itself.
-    needs: [workspace]
+    if: contains(needs.affected.outputs.subjects, ' portable ')
+    needs: [affected, workspace]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -198,7 +255,8 @@ jobs:
   # ── Stage 3b: Coverage (real line coverage via cargo-llvm-cov) ──
   coverage:
     name: 📊 Coverage (workspace)
-    needs: [workspace]
+    if: contains(needs.affected.outputs.subjects, ' coverage ')
+    needs: [affected, workspace]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -247,6 +305,8 @@ jobs:
   # ── Stage 4: Security ─────────────────────────────────────────
   audit:
     name: 🔒 Audit
+    if: contains(needs.affected.outputs.subjects, ' audit ')
+    needs: [affected]
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -293,6 +353,8 @@ jobs:
   # ── Stage 5: Documentation + Architecture ─────────────────────
   docs:
     name: 📝 Documentation
+    if: contains(needs.affected.outputs.subjects, ' docs ')
+    needs: [affected]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -316,7 +378,8 @@ jobs:
   # ── Stage 6: Integration ──────────────────────────────────────
   integration:
     name: 🔗 Integration
-    needs: [test]
+    if: contains(needs.affected.outputs.subjects, ' integration ')
+    needs: [affected, test]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -382,6 +445,8 @@ jobs:
   # schemas/fixtures/envelope corpus + the verifier fixture test.
   conformance:
     name: 📐 SDK-schema conformance
+    if: contains(needs.affected.outputs.subjects, ' conformance ')
+    needs: [affected]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -431,6 +496,8 @@ jobs:
   # ends the script — silently, before any verdict is printed (#1291).
   shell:
     name: 🐚 Shell exit status
+    if: contains(needs.affected.outputs.subjects, ' shell ')
+    needs: [affected]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -450,6 +517,8 @@ jobs:
   # ── Stage 7: wasm gates (criterion-level checks for rigorix-gate-wasm) ──
   wasm-gates:
     name: 🧭 wasm gates
+    if: contains(needs.affected.outputs.subjects, ' wasm-gates ')
+    needs: [affected]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -503,13 +572,18 @@ jobs:
   # `ci-report` there (`📋 Stage report`).
   ci-report:
     name: 📋 Stage report
-    needs: [lint, test, coverage, portable, audit, docs, integration, conformance, shell, wasm-gates]
+    needs: [affected, lint, test, coverage, portable, audit, docs, integration, conformance, shell, wasm-gates]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: 📋 Stage results
         env:
+          # What this diff required, from the same table the stages read (#1441). A stage the
+          # map did not select is reported as "not required", never as a pass and never as a
+          # failure — and a *required* stage that was skipped is still a failure.
+          CI_ALL: ${{ needs.affected.outputs.all }}
+          CI_SELECTED: ${{ needs.affected.outputs.subjects }}
           RESULT_LINT: ${{ needs.lint.result }}
           RESULT_TEST: ${{ needs.test.result }}
           RESULT_COVERAGE: ${{ needs.coverage.result }}
@@ -525,7 +599,7 @@ jobs:
   # ── Stage 8: Final Gate ───────────────────────────────────────
   gate:
     name: 🚪 Final Gate
-    needs: [lint, test, coverage, portable, audit, docs, integration, conformance, shell, wasm-gates]
+    needs: [affected, lint, test, coverage, portable, audit, docs, integration, conformance, shell, wasm-gates]
     # A superseded run gets no verdict (#1289). `cancelled` is the scheduler's
     # fact, not the change's: with `cancel-in-progress` every push to the same
     # ref cancels the previous run, so the old `!= 'success'` test accused the
@@ -537,6 +611,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: 🚦 Verdict
         env:
+          # What this diff required, from the same table the stages read (#1441). A stage the
+          # map did not select is reported as "not required", never as a pass and never as a
+          # failure — and a *required* stage that was skipped is still a failure.
+          CI_ALL: ${{ needs.affected.outputs.all }}
+          CI_SELECTED: ${{ needs.affected.outputs.subjects }}
           RESULT_LINT: ${{ needs.lint.result }}
           RESULT_TEST: ${{ needs.test.result }}
           RESULT_COVERAGE: ${{ needs.coverage.result }}
