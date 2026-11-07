@@ -27,6 +27,11 @@ on:
       - 'cli/**'
       - 'mcp/**'
       - 'server/**'
+      # #1452: the image build parses **every** workspace manifest, so a member it does not
+      # copy can still fail it — `wasm/Cargo.toml` is copied and `wasm/examples` was not, and
+      # nothing ran when the probe example landed because `wasm/**` was not in this list. A
+      # workspace member changing is a reason to build the image.
+      - 'wasm/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
   pull_request:
@@ -36,6 +41,11 @@ on:
       - 'cli/**'
       - 'mcp/**'
       - 'server/**'
+      # #1452: the image build parses **every** workspace manifest, so a member it does not
+      # copy can still fail it — `wasm/Cargo.toml` is copied and `wasm/examples` was not, and
+      # nothing ran when the probe example landed because `wasm/**` was not in this list. A
+      # workspace member changing is a reason to build the image.
+      - 'wasm/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
   workflow_dispatch:
