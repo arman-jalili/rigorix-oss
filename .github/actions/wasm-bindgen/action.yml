@@ -1,0 +1,45 @@
+# ─────────────────────────────────────────────────────────────────────
+# One owner for "how this repo gets a wasm-bindgen CLI".
+#
+# The version is not written here: it is read from Cargo.lock, because the CLI
+# must equal the `wasm-bindgen` crate or the glue and the module disagree. Two
+# workflows need it — the wasm gates in CI and the npm publication in the
+# release — and the second one shipped without it once: `publish-wasm-npm`
+# called the packaging path, the packaging path requires the CLI, and the job
+# had never run before, so nothing had ever noticed (release v1.14.0, job
+# "📦 Publish gate (npm)").
+# ─────────────────────────────────────────────────────────────────────
+
+name: wasm-bindgen CLI (pinned to Cargo.lock)
+description: Make a wasm-bindgen CLI whose version equals the crate the workspace pins
+
+outputs:
+  version:
+    description: The wasm-bindgen version resolved from Cargo.lock
+    value: ${{ steps.version.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve the version the crate uses
+      id: version
+      shell: bash
+      run: |
+        V=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/[",]/, "", $3); print $3; exit }' Cargo.lock)
+        test -n "$V" || { echo "could not resolve wasm-bindgen from Cargo.lock"; exit 1; }
+        echo "version=$V" >> "$GITHUB_OUTPUT"
+        echo "WASM_BINDGEN_VERSION=$V" >> "$GITHUB_ENV"
+
+    - uses: actions/cache@v4
+      with:
+        path: ~/.cargo/bin/wasm-bindgen
+        key: wasm-bindgen-${{ steps.version.outputs.version }}-${{ runner.os }}
+
+    - name: Install it if the cache missed
+      shell: bash
+      run: |
+        if command -v wasm-bindgen > /dev/null 2>&1; then
+          wasm-bindgen --version
+        else
+          cargo install wasm-bindgen-cli --version "${{ steps.version.outputs.version }}" --locked
+        fi

@@ -167,6 +167,16 @@ jobs:
       # skipped while the state was `packaged`. The smoke gate *is* the packaging path — it
       # builds, runs `wasm-bindgen --target nodejs`, strips the debug `name` section and
       # asserts the exports — so npm ships the artifact the gates measured, not a second build.
+      # The packaging path needs a wasm-bindgen CLI equal to the crate the lockfile
+      # pins. This job had never run before v1.14.0, so nothing had noticed it did not
+      # have one; the version still comes from one place, not two.
+      - uses: ./.github/actions/wasm-bindgen
+
+      # `wasm-build.sh` builds this target and does not install it; `setup` installs the
+      # toolchain, not its targets. This job needs it and so do the wasm gates in CI.
+      - name: 🧱 Install wasm target
+        run: rustup target add wasm32-unknown-unknown
+
       - name: Build and package the module the gates measure
         run: bash wasm/ci/run-module-smoke.sh
 

@@ -533,27 +533,9 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: 🧱 Install wasm target
         run: rustup target add wasm32-unknown-unknown
-      - name: 🔖 Resolve the wasm-bindgen version the crate uses
-        # The module smoke gate packages the artifact with this exact CLI: a
-        # mismatch is an ABI mismatch, so the version comes from the lockfile
-        # rather than being restated here and drifting (#1349).
-        run: |
-          V=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/[",]/, "", $3); print $3; exit }' Cargo.lock)
-          test -n "$V" || { echo "could not resolve wasm-bindgen from Cargo.lock"; exit 1; }
-          echo "WASM_BINDGEN_VERSION=$V" >> "$GITHUB_ENV"
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/wasm-bindgen
-          key: wasm-bindgen-${{ env.WASM_BINDGEN_VERSION }}-${{ runner.os }}
-      - name: 🔧 wasm-bindgen CLI (the packaging step, pinned)
-        # Without it the smoke gate fails: a module that is never packaged is a
-        # module no host can call, which is what #1349 is about.
-        run: |
-          if command -v wasm-bindgen > /dev/null 2>&1; then
-            wasm-bindgen --version
-          else
-            cargo install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION" --locked
-          fi
+      # One owner for this, shared with the release's npm job: both read the
+      # version from Cargo.lock, so the two cannot pin different ones.
+      - uses: ./.github/actions/wasm-bindgen
       - name: 🧭 Run every wasm gate
         # One entrypoint, and all eleven of its gates: domain isolation, bundle independence,
         # failure tiers, conformance (including the must-fail vector), unit tests, the wasm
