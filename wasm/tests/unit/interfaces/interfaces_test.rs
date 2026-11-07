@@ -391,6 +391,9 @@ fn every_evidence_kind_reaches_the_wire_under_its_own_name() {
         (EvidenceKind::Approval, "approval"),
         (EvidenceKind::Identity, "identity"),
         (EvidenceKind::PortFailure, "port_failure"),
+        // #1456: the two capabilities that now reach the crate.
+        (EvidenceKind::Capacity, "capacity"),
+        (EvidenceKind::Effects, "effects"),
     ];
     for (kind, expected) in cases {
         let outcome = RunOutcome {

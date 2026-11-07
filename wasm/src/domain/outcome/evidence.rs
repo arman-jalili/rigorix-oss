@@ -28,6 +28,10 @@ pub enum EvidenceKind {
     Identity,
     /// A capability port's failure.
     PortFailure,
+    /// A capacity determination (#1456).
+    Capacity,
+    /// An effect-commitment determination (#1456).
+    Effects,
 }
 
 /// A reference to evidence the engine produced.

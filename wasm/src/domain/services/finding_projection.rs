@@ -77,6 +77,14 @@ impl<V: RefusalVocabulary> EvidenceProjection for EngineFindingsProjection<V> {
 /// completed" — rather than inventing a kind or falling through to an allow. The engine's
 /// own label is preserved in the evidence payload, so nothing is lost.
 fn refusal_kind(finding: &EngineFinding) -> RefusalKind {
+    // The two capabilities added by #1455 answer by *which gate refused*, not by a label in
+    // the reason string: `capacity` and `effects` are gate identities the engine owns, so
+    // matching on them cannot be fooled by wording.
+    match finding.gate_id.as_str() {
+        "capacity" => return RefusalKind::CapacityExceeded,
+        "effects" => return RefusalKind::DuplicateEffect,
+        _ => {}
+    }
     match finding.refusal.as_deref() {
         Some("precondition_failed") => RefusalKind::PreconditionFailed,
         Some("precondition_timeout") => RefusalKind::PreconditionTimeout,
