@@ -37,6 +37,7 @@ fn equality_on_the_seeded_vector_is_a_failure() {
         matched: true,
         normalised_comparison: false,
         skipped: false,
+        decision_digest: None,
     };
     assert!(
         !matched_when_it_must_not.is_pass(true),
@@ -48,6 +49,7 @@ fn equality_on_the_seeded_vector_is_a_failure() {
         matched: false,
         normalised_comparison: false,
         skipped: false,
+        decision_digest: None,
     };
     assert!(diverged.is_pass(true));
 }
@@ -59,6 +61,7 @@ fn a_skipped_seeded_vector_cannot_hide() {
         matched: false,
         normalised_comparison: false,
         skipped: true,
+        decision_digest: None,
     };
     assert!(!skipped.is_pass(true));
 }
@@ -158,6 +161,7 @@ fn a_seeded_vector_that_starts_matching_fails_the_build() {
         matched: true,
         normalised_comparison: false,
         skipped: false,
+        decision_digest: None,
     };
     assert!(
         !equal.is_pass(true),

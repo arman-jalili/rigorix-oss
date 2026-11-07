@@ -375,6 +375,7 @@ fn every_step_decision_reaches_the_wire_under_its_own_name() {
                 evidence: Some(evidence(EvidenceKind::Precondition)),
             }],
             evidence: vec![evidence(EvidenceKind::Precondition)],
+            decision: Vec::new(),
         };
         let dto = RunOutcomeDto::from(&outcome);
         assert_eq!(dto.steps[0].decision, expected);
@@ -396,6 +397,7 @@ fn every_evidence_kind_reaches_the_wire_under_its_own_name() {
             status: OutcomeStatus::Allowed,
             steps: Vec::new(),
             evidence: vec![evidence(kind)],
+            decision: Vec::new(),
         };
         let dto = RunOutcomeDto::from(&outcome);
         assert_eq!(dto.evidence[0].kind, expected);
@@ -416,7 +418,145 @@ fn a_run_status_is_two_valued_on_the_wire() {
             status,
             steps: Vec::new(),
             evidence: Vec::new(),
+            decision: Vec::new(),
         };
         assert_eq!(RunOutcomeDto::from(&outcome).status, expected);
     }
+}
+
+// ── #1442: the engine's decision bytes and digest reach the host ────────────
+
+/// Decode standard base64, so S2 can hash what the wire actually carries.
+fn base64_decode(text: &str) -> Vec<u8> {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut index = [0u8; 256];
+    for (position, byte) in ALPHABET.iter().enumerate() {
+        index[*byte as usize] = position as u8;
+    }
+    let mut out = Vec::new();
+    let mut buffer = 0u32;
+    let mut bits = 0u32;
+    for byte in text.bytes() {
+        if byte == b'=' {
+            break;
+        }
+        let value = u32::from(index[byte as usize]);
+        buffer = (buffer << 6) | value;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buffer >> bits) as u8);
+        }
+    }
+    out
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn outcome_with_decision(decision: Vec<u8>, status: OutcomeStatus) -> RunOutcome {
+    RunOutcome {
+        status,
+        steps: vec![StepOutcome {
+            gate_id: "precondition.budget".to_string(),
+            decision: if status == OutcomeStatus::Allowed {
+                StepDecision::Allowed
+            } else {
+                StepDecision::Refused
+            },
+            kind: None,
+            reason: Some("a reason".to_string()),
+            evidence: None,
+        }],
+        evidence: Vec::new(),
+        decision,
+    }
+}
+
+#[test]
+fn s1_decisions_differing_in_one_byte_carry_different_bytes_and_digests() {
+    let first = RunOutcomeDto::from(&outcome_with_decision(
+        br#"{"verdict":"refused","findings":["a"]}"#.to_vec(),
+        OutcomeStatus::Refused,
+    ));
+    let second = RunOutcomeDto::from(&outcome_with_decision(
+        br#"{"verdict":"refused","findings":["b"]}"#.to_vec(),
+        OutcomeStatus::Refused,
+    ));
+
+    assert_ne!(first.decision_canonical, second.decision_canonical);
+    assert_ne!(first.decision_digest, second.decision_digest);
+    // Everything else is identical: the difference is the bytes, not the projection.
+    assert_eq!(first.status, second.status);
+    assert_eq!(first.steps, second.steps);
+    assert_eq!(first.evidence, second.evidence);
+}
+
+#[test]
+fn s2_the_digest_names_the_bytes_beside_it() {
+    let outcome = outcome_with_decision(
+        br#"{"verdict":"allowed","findings":[]}"#.to_vec(),
+        OutcomeStatus::Allowed,
+    );
+    let dto = RunOutcomeDto::from(&outcome);
+    let canonical = dto.decision_canonical.expect("a decision crossed the wire");
+    let digest = dto.decision_digest.expect("a digest crossed with it");
+
+    let bytes = base64_decode(&canonical);
+    assert_eq!(
+        digest,
+        format!("sha256:{}", sha256_hex(&bytes)),
+        "the digest must name the decoded bytes, not the base64 text"
+    );
+    assert_eq!(
+        bytes, outcome.decision,
+        "base64 is a transport, not an encoding"
+    );
+
+    // And the encoding itself is standard base64, not merely self-consistent: `abc` is the
+    // canonical padding example, and a decoder of my own that agreed with a wrong encoder
+    // would pass every assertion above.
+    let abc = RunOutcomeDto::from(&outcome_with_decision(
+        b"abc".to_vec(),
+        OutcomeStatus::Allowed,
+    ));
+    assert_eq!(abc.decision_canonical.as_deref(), Some("YWJj"));
+    let padded = RunOutcomeDto::from(&outcome_with_decision(
+        b"a".to_vec(),
+        OutcomeStatus::Allowed,
+    ));
+    assert_eq!(padded.decision_canonical.as_deref(), Some("YQ=="));
+}
+
+#[test]
+fn s3_a_refused_decision_carries_both_fields() {
+    let dto = RunOutcomeDto::from(&outcome_with_decision(
+        br#"{"verdict":"refused","findings":["x"]}"#.to_vec(),
+        OutcomeStatus::Refused,
+    ));
+    assert_eq!(dto.status, "refused");
+    assert!(
+        dto.decision_canonical.is_some(),
+        "a refusal is a verdict with a record"
+    );
+    assert!(dto.decision_digest.is_some());
+}
+
+#[test]
+fn a_run_with_no_engine_decision_carries_neither_field() {
+    // A port that could not answer refuses before the gate: there is no engine verdict, and a
+    // digest over empty bytes would claim a record that does not exist.
+    let dto = RunOutcomeDto::from(&RunOutcome {
+        status: OutcomeStatus::Refused,
+        steps: Vec::new(),
+        evidence: Vec::new(),
+        decision: Vec::new(),
+    });
+    assert_eq!(dto.decision_canonical, None);
+    assert_eq!(dto.decision_digest, None);
 }

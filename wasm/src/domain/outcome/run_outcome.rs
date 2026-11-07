@@ -37,6 +37,14 @@ pub struct RunOutcome {
     pub steps: Vec<StepOutcome>,
     /// Every evidence reference the run produced.
     pub evidence: Vec<EvidenceRef>,
+    /// The engine's canonical decision bytes — `{verdict, findings}` — exactly as it produced
+    /// them (#1442).
+    ///
+    /// Empty when no engine decided: a run refused *before* the gate (a port that could not
+    /// answer) has no engine verdict, and a digest over empty bytes would claim a record that
+    /// does not exist. Never re-encoded here: a re-encoding would be a second producer of the
+    /// thing the host is told to trust (ADR-010).
+    pub decision: Vec<u8>,
 }
 
 impl RunOutcome {
