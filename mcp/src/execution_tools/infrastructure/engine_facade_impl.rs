@@ -365,7 +365,12 @@ impl EngineFacade for EngineFacadeImpl {
             record.duration_ms,
             None,
             format!("rigorix://audit/{}", run_output.execution_id),
-        );
+        )
+        // #1491: the engine's evidence verdict crosses the facade. Dropping it here
+        // made a lost envelope indistinguishable from a complete one at the surface.
+        .with_evidence(crate::execution_tools::domain::value::EvidenceStatus::from(
+            &run_output.evidence,
+        ));
 
         self.repository.save_execution(&result).await?;
         Ok(result)
@@ -593,7 +598,12 @@ impl EngineFacade for EngineFacadeImpl {
             record.duration_ms,
             None,
             format!("rigorix://audit/{}", run_output.execution_id),
-        );
+        )
+        // #1491: the engine's evidence verdict crosses the facade. Dropping it here
+        // made a lost envelope indistinguishable from a complete one at the surface.
+        .with_evidence(crate::execution_tools::domain::value::EvidenceStatus::from(
+            &run_output.evidence,
+        ));
 
         self.repository.save_execution(&result).await?;
         Ok(result)

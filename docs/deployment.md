@@ -191,3 +191,18 @@ a process lifetime.
   evidence; it cannot verify that the regime is what the operator claims.
 - Secret distribution. The engine withholds `RIGORIX_HMAC_KEY` from children; it does not
   decide where the key is stored.
+
+## Evidence is a run outcome, not a debug field (#1491)
+
+`RunOutput.evidence` reports `not_requested`, `complete`, or `degraded { reason, undelivered }`.
+The engine computes it (#1480); since #1491 both surfaces show it:
+
+- **CLI** — the status bar prints `evidence: complete` / `evidence: degraded — <reason>
+  (<n> undelivered)` next to the run's phase, and the degraded form is red and bold. A
+  completed run with a lost envelope is not the same outcome as a completed run with a
+  complete one, so the two must not render the same.
+- **MCP** — `rigorix_execute` returns `evidence` as `{ "status": …, "reason": …,
+  "undelivered": … }`; `reason` and `undelivered` exist only for `degraded`.
+
+`not_requested` is always stated, never omitted: an absent field cannot be told apart from
+a client that does not know the field, which is how the original defect stayed invisible.

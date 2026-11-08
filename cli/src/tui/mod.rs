@@ -295,6 +295,9 @@ fn apply_vm_command(vm: &mut TuiViewModel, cmd: VmCommand) {
         }
         VmCommand::RunCompleted(output) => {
             vm.execution_id = Some(output.execution_id);
+            // #1491: the summary states whether the evidence is complete, because
+            // that is the question the audit trail exists to answer.
+            vm.evidence = output.evidence.clone();
             // Update node statuses from task results
             for task in &output.record.task_results {
                 if let Some(node) = vm.nodes.get_mut(&task.node_id) {

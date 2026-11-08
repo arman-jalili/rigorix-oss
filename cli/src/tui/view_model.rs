@@ -71,6 +71,12 @@ pub struct TuiViewModel {
     /// Transient message shown when view content is copied to a file.
     #[serde(default)]
     pub copy_message: Option<String>,
+    /// Whether this run's audit evidence is complete (#1491).
+    ///
+    /// The engine computed this from #1480 on, and neither host read it: a run whose
+    /// envelope was rejected or lost looked exactly like a fully evidenced one.
+    #[serde(default)]
+    pub evidence: rigorix_engine::orchestrator::application::dto::EvidenceStatus,
 }
 
 impl Default for TuiViewModel {
@@ -88,6 +94,7 @@ impl Default for TuiViewModel {
             error: None,
             command_bar_history: Vec::new(),
             copy_message: None,
+            evidence: rigorix_engine::orchestrator::application::dto::EvidenceStatus::NotRequested,
         }
     }
 }
