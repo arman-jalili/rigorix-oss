@@ -44,10 +44,28 @@ const fail = (why) => {
 let moduleDir = localModule;
 if (!moduleDir) {
   const work = mkdtempSync(join(tmpdir(), 'rigorix-published-'));
-  try {
-    execFileSync('npm', ['pack', `rigorix-gate@${version}`, '--silent'], { cwd: work, stdio: 'pipe' });
-  } catch (e) {
-    fail(`could not fetch rigorix-gate@${version} from the registry — a version that is not there is not a version that works`);
+  // npm's read path is lazily consistent: for a short window after a successful
+  // publish, `pack` answers "no such version" for a version that already exists.
+  // That is propagation, not a defect — so this retries, and only a tarball that is
+  // still missing after two minutes is treated as missing. The digest and wire-word
+  // assertions below are what actually decide whether the artifact is right.
+  const attempts = 8;
+  let fetched = false;
+  for (let i = 1; i <= attempts && !fetched; i++) {
+    try {
+      // `--prefer-online`: ask the registry, not the local packument cache. The cache
+      // answers "no such version" for minutes after a publish, which is the same class
+      // of mistake as composing a URL instead of asking the registry.
+      execFileSync('npm', ['pack', `rigorix-gate@${version}`, '--silent', '--prefer-online'], { cwd: work, stdio: 'pipe' });
+      fetched = true;
+    } catch (e) {
+      if (i === attempts) break;
+      console.error(`  npm does not serve ${version} yet (attempt ${i}/${attempts}) — waiting 15 s`);
+      execFileSync('sleep', ['15']);
+    }
+  }
+  if (!fetched) {
+    fail(`could not fetch rigorix-gate@${version} from the registry after ${attempts} attempts (~2 min) — a version that is not there is not a version that works`);
   }
   const tarball = readdirSync(work).find((f) => f.endsWith('.tgz'));
   if (!tarball) fail('npm pack produced no tarball');
