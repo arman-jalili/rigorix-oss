@@ -29,6 +29,12 @@ COPY server/Cargo.toml server/
 # the one consumer that copies the tree by hand and therefore the one that breaks first
 # when a member is added.
 COPY wasm/Cargo.toml wasm/
+# `wasi` is the seventh member (#1465, ADR-022) and is not on the crates.io train, but cargo
+# still loads every member manifest before building `-p rigorix-actions`: the image failed
+# with `failed to read /app/wasi/Cargo.toml` the first time this member existed (#1466). The
+# manifest is enough — nothing here builds it, and its `[[test]]` is not a declared example.
+COPY wasi/Cargo.toml wasi/
+COPY wasi/src wasi/src/
 
 # Copy source code
 COPY engine/src engine/src/
