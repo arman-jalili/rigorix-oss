@@ -12,6 +12,7 @@
 #   7. the words equal the record             claims       (#1467: six, not the phrase)
 #   4. the five goldens reproduce             conformance  (through node, in the artifact)
 #   5. a truncated request is a refusal       truncation   (and the instance keeps answering)
+#   8. the ABI under a hostile host           hostile      (eleven named inputs, none traps)
 #   6. the release page carries the artifact  release-wiring
 #
 # A gate that is not applicable is *named* and not counted as a pass: a skipped claim that
@@ -37,6 +38,7 @@ if [ "$MODE" = "self-test" ]; then
   step "self-test: the gates have subjects"
   bash "$HERE/check-imports.sh" --self-test
   bash "$HERE/check-claim-matches-record.sh" --self-test
+  bash "$HERE/run-hostile.sh" --self-test
   # S4 for the goldens: edit one recorded digest and require the harness to name the vector.
   scratch="$(mktemp -d)"
   trap 'find "$scratch" -type f -delete; find "$scratch" -depth -type d -exec rmdir {} + 2>/dev/null || true' EXIT
@@ -74,6 +76,9 @@ bash "$HERE/check-claim-matches-record.sh"
 
 step "conformance (node:wasi)"
 node "$HERE/run-conformance.mjs" "$MODULE"
+
+step "hostile host (eleven named inputs)"
+bash "$HERE/run-hostile.sh"
 
 step "a trap is not a refusal"
 node "$HERE/run-conformance.mjs" "$MODULE" --truncate-request
