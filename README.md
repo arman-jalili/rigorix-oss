@@ -449,8 +449,10 @@ with ADR-011 (approval binding) and ADR-017 (consequence gating).
 ## Releases
 
 Release history is in [CHANGELOG.md](CHANGELOG.md). The release train is
-`rigorix-engine` / `rigorix-mcp` / `rigorix-cli` / `rigorix-actions`, which version
-together — the action adapter always matches the engine it wraps.
+`rigorix-engine` / `rigorix-mcp` / `rigorix-cli` / `rigorix-actions` /
+`rigorix-gate-wasm` / `rigorix-server`, which version together — the action adapter and
+the browser crate always match the engine they expose, and the reference host pins the
+engine and MCP versions it serves.
 
 ---
 

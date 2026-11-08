@@ -44,7 +44,7 @@ jobs:
           # derives the train from `cargo metadata` and fails when a publishable member is
           # missing from this loop, from the publish steps, or from the release notes. A
           # literal cannot notice the next member — that is how `actions` sat on 1.4.0.
-          for crate in engine cli mcp actions wasm; do
+          for crate in engine cli mcp actions wasm server; do
             CRATE_VERSION=$(grep '^version' "$crate/Cargo.toml" | head -1 | sed 's/version = "//;s/"//')
             echo "$crate: $CRATE_VERSION"
             if [[ "$CRATE_VERSION" != "$TAG_VERSION" ]]; then
@@ -143,6 +143,21 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: bash .github/scripts/publish-crate.sh rigorix-gate-wasm wasm/Cargo.toml
 
+  publish-server:
+    name: 📦 Publish server (crates.io)
+    # The OSS reference host: `POST /rpc` over the same frozen catalog the MCP binary
+    # serves, with the same host composition. It pins `rigorix-mcp` and
+    # `rigorix-engine`, so it publishes after them.
+    needs: [publish-mcp]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Publish rigorix-server (skip if exists)
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: bash .github/scripts/publish-crate.sh rigorix-server server/Cargo.toml
+
   publish-wasm-npm:
     name: 📦 Publish gate (npm)
     # ADR-011 registration point 5: the host-facing name is `rigorix-gate`, and it ships
@@ -214,7 +229,7 @@ jobs:
     # `publish-wasm` is on the train (crates.io), and `publish-wasm-npm` gates this page now
     # that the bundle state is `shipped` — the two are wired together because a release page
     # that promises npm without it is the half-published release ADR-011 names.
-    needs: [publish-engine, publish-cli, publish-mcp, publish-actions, publish-wasm, publish-wasm-npm, verify-published]
+    needs: [publish-engine, publish-cli, publish-mcp, publish-actions, publish-wasm, publish-server, publish-wasm-npm, verify-published]
     # Announce the release only once every train crate is actually on crates.io.
     # Previously `if: always()`, which meant a failed publish still produced a
     # release page advertising crates that did not exist in the registry — the
@@ -239,7 +254,7 @@ jobs:
           {
             echo "# Rigorix ${{ github.ref_name }}"
             echo ""
-            echo "Release train: \`engine\` / \`mcp\` / \`cli\` / \`actions\` / \`gate\` → \`$VERSION\`."
+            echo "Release train: \`engine\` / \`mcp\` / \`cli\` / \`actions\` / \`gate\` / \`server\` → \`$VERSION\`."
             echo ""
             # Point at the repo's changelog (CHANGELOG.md). This previously read
             # `.pi/architecture/CHANGELOG.md`, which is the GUARDIAN framework's
@@ -254,6 +269,7 @@ jobs:
             echo "- [rigorix-cli $VERSION](https://crates.io/crates/rigorix-cli/$VERSION)"
             echo "- [rigorix-actions $VERSION](https://crates.io/crates/rigorix-actions/$VERSION)"
             echo "- [rigorix-gate-wasm $VERSION](https://crates.io/crates/rigorix-gate-wasm/$VERSION)"
+            echo "- [rigorix-server $VERSION](https://crates.io/crates/rigorix-server/$VERSION)"
             # The npm package is announced only when it actually shipped. Reading the
             # readiness state here is what stops the page claiming a package that
             # `publish-wasm-npm` is deliberately holding back.

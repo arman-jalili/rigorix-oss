@@ -1,21 +1,23 @@
 [package]
 name = "rigorix-server"
-version = "0.1.0"
+version = "1.14.2"
 edition = "2024"
 description = "OSS reference execution host — axum JSON-RPC 2.0 + SSE over the frozen rigorix.* catalog"
 license = "MIT OR Apache-2.0"
 authors = ["Arman Wolkensteiner-Jalili and Rigorix contributors"]
 repository = "https://github.com/arman-jalili/rigorix-oss"
 documentation = "https://docs.rs/rigorix-server"
-publish = false
+# On the train since 1.14.2: the reference host is a distribution artifact like
+# the rest, and an unpublished host is a claim nobody can point a client at.
+
 
 [[bin]]
 name = "rigorix-server"
 path = "src/main.rs"
 
 [dependencies]
-rigorix-engine = { path = "../engine", version = "1.14.1" }
-rigorix-mcp = { path = "../mcp", version = "1.14.1" }
+rigorix-engine = { path = "../engine", version = "1.14.2" }
+rigorix-mcp = { path = "../mcp", version = "1.14.2" }
 
 serde = { workspace = true }
 serde_json = { workspace = true }

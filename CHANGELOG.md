@@ -17,6 +17,13 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ## [Unreleased]
 
+## [1.14.2] - 2026-11-07
+
+### Added
+
+- **`rigorix-server` joins the train and is published for the first time.** The OSS reference execution host — `POST /rpc` over the frozen `rigorix.*` catalog, plus SSE, with the same host composition the stdio MCP binary uses — was written and tested (63 tests) but carried `publish = false`, so the only way to run a host was to build it from a checkout. A host that nobody can install is a claim nobody can point a client at, and every language SDK's protocol client needs one. Its first published version is `1.14.2`, the same number as the train it now rides: `rigorix-actions` set that precedent when it joined at 1.11.0.
+
+
 ## [1.14.1] - 2026-11-07
 
 ### Fixed
