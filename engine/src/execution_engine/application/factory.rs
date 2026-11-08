@@ -505,9 +505,14 @@ impl ApprovalBindingSetup {
         let configured_ledger = std::env::var("RIGORIX_APPROVAL_CONSUMPTION_LEDGER").ok();
         let consumption_ledger_path =
             resolve_consumption_ledger(repo_root, configured_ledger.as_deref(), key.as_bytes());
-        if let Some(parent) = store_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
+        // #1490: the directory creation is authoritative. Discarding this failure
+        // used to move the error to the first write, where it read as "store
+        // unavailable" instead of "this path cannot be created".
+        crate::tools::infrastructure::fs_at::resolve_absolute_for_write(&store_path).map_err(
+            |e| ApprovalBindingError::StoreUnavailable {
+                detail: format!("{}: {e}", store_path.display()),
+            },
+        )?;
         let run_key = key.as_bytes().to_vec();
         let repository = std::sync::Arc::new(
             crate::approval::infrastructure::repository::FileBackedApprovalRepository::open_with_key_and_ledger(

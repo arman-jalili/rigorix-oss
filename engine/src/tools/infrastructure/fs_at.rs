@@ -378,6 +378,69 @@ mod imp {
         })
     }
 
+    /// Read the target, through the same pinned directory handle as the write.
+    ///
+    /// Separate `fs::read_to_string(path)` then `fs::write(path)` is the SINK-2
+    /// shape one step removed: the read would resolve again. Reading by
+    /// `openat(name, O_NOFOLLOW)` from the pinned parent makes the bytes an edit
+    /// transforms and the file the write lands in the same inode family.
+    pub fn read_file(target: &ValidatedWritePath) -> Result<Vec<u8>, ToolError> {
+        let c_name = cstring(&target.name)?;
+        let flags = libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+        // SAFETY: live directory descriptor, valid NUL-terminated name, owned result.
+        let fd = unsafe { libc::openat(target.dir.as_raw_fd(), c_name.as_ptr(), flags) };
+        if fd < 0 {
+            let error = io::Error::last_os_error();
+            return Err(match error.kind() {
+                io::ErrorKind::NotFound => {
+                    ToolError::NotFound(format!("File not found: {}", target.display.display()))
+                }
+                io::ErrorKind::PermissionDenied => ToolError::PathDenied(format!(
+                    "'{}' is a symlink or is not readable; file operations refuse to follow it",
+                    target.display.display()
+                )),
+                _ => os_error("Cannot read", &target.display, error),
+            });
+        }
+        use std::io::Read;
+        // SAFETY: `fd` is freshly opened, owned, and closed by `File` on drop.
+        let mut file = unsafe { std::fs::File::from_raw_fd(fd) };
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)
+            .map_err(|e| os_error("Cannot read", &target.display, e))?;
+        Ok(bytes)
+    }
+
+    /// Resolve an absolute store path to a pinned parent directory (#1490).
+    ///
+    /// Engine-owned stores (policy config, symbol cache) choose their own absolute
+    /// path; they still benefit from the handle discipline, because "write the
+    /// path, then rename the path" is the same shape wherever it appears. The
+    /// parent is created (the old code did), canonicalized once, and opened; the
+    /// final component stays a name inside that handle. `..` in the parent is
+    /// resolved by `canonicalize`, which is correct here: the path came from the
+    /// engine's configuration, not from a caller.
+    pub fn resolve_absolute_for_write(path: &Path) -> Result<ValidatedWritePath, ToolError> {
+        let parent = path.parent().ok_or_else(|| {
+            ToolError::InvalidInput(format!("'{}' has no parent directory", path.display()))
+        })?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| os_error("Cannot create directory", parent, e))?;
+        let parent = parent
+            .canonicalize()
+            .map_err(|e| os_error("Cannot resolve directory", parent, e))?;
+        let name = path.file_name().ok_or_else(|| {
+            ToolError::InvalidInput(format!("'{}' names no file", path.display()))
+        })?;
+        let dir = std::fs::File::open(&parent)
+            .map_err(|e| os_error("Cannot open directory", &parent, e))?;
+        Ok(ValidatedWritePath {
+            dir,
+            name: name.to_os_string(),
+            display: parent.join(name),
+        })
+    }
+
     fn create_temp(target: &ValidatedWritePath) -> Result<(OsString, std::fs::File), ToolError> {
         let name = format!(".rigorix-tmp-{}", uuid::Uuid::new_v4());
         let name = OsString::from(name);
@@ -541,6 +604,16 @@ mod imp {
     }
 
     /// Always refuses on this target.
+    pub fn read_file(_: &ValidatedWritePath) -> Result<Vec<u8>, ToolError> {
+        unsupported()
+    }
+
+    /// Always refuses on this target.
+    pub fn resolve_absolute_for_write(_: &Path) -> Result<ValidatedWritePath, ToolError> {
+        unsupported()
+    }
+
+    /// Always refuses on this target.
     pub fn append_to_file(_: &ValidatedWritePath, _: &[u8]) -> Result<(), ToolError> {
         unsupported()
     }
@@ -571,8 +644,8 @@ mod imp {
 }
 
 pub use imp::{
-    ValidatedChildDir, ValidatedWritePath, append_to_file, resolve_dir_for_child,
-    resolve_for_write, write_atomic,
+    ValidatedChildDir, ValidatedWritePath, append_to_file, read_file, resolve_absolute_for_write,
+    resolve_dir_for_child, resolve_for_write, write_atomic,
 };
 
 #[cfg(all(test, unix))]

@@ -316,6 +316,16 @@ pub enum GeneratorError {
     MaxRetriesExhausted { attempts: u8, errors: Vec<String> },
     /// The repository context could not be built.
     ContextBuildFailed { detail: String },
+    /// The provider credential the generator needs is absent (#1490).
+    ///
+    /// A missing key used to become `"placeholder-key"`, so the generator carried a
+    /// fake credential and every call failed later as an opaque API error — or, on a
+    /// provider that ignores the header, succeeded with someone else's identity. A
+    /// fail-open where the honest answer is to refuse and say which variable.
+    MissingApiKey {
+        /// The environment variable the deployment must set.
+        variable: String,
+    },
 }
 
 /// An invalid symbol reference found during Phase 3 validation.
@@ -385,6 +395,12 @@ impl fmt::Display for GeneratorError {
                 "Max retries exhausted after {} attempts: {}",
                 attempts,
                 errors.join("; ")
+            ),
+            GeneratorError::MissingApiKey { variable } => write!(
+                f,
+                "template generation needs a provider credential: {variable} is unset. \
+                 The generator refuses rather than substituting a placeholder key, which would \
+                 fail later as an opaque API error (#1490)."
             ),
             GeneratorError::ContextBuildFailed { detail } => {
                 write!(f, "Context build failed: {}", detail)

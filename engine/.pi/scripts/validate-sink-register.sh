@@ -86,6 +86,9 @@ TEST_PATH = re.compile(r"(^|/)(tests?)/|_tests?\.rs$")
 
 TEST_CFG = re.compile(r"^#\[cfg\([^]]*\btest\b[^]]*\)\]")
 
+# Rule 4: an unmitigated row cites the issue that owns the fix.
+ISSUE_REF = re.compile(r"#\d{3,}")
+
 def test_boundary(lines):
     """Index of the first `#[cfg(... test ...)]` line: the test code starts there.
 
@@ -144,6 +147,16 @@ def check_row(row, path, src_dir=None):
     if row["kind"] == "fs-write" and row["mitigation"] == "type" and "handle" not in row["requires"]:
         errors.append(f"{where} ({row['sink']}): an fs-write row mitigated by a type must name the "
                       f"handle in `requires` (validation and mutation share one handle, #1479)")
+    if row["mitigation"] == "none":
+        # Rule 4 (#1490): a description is not a ticket.
+        #
+        # `mitigation=none` is a finding, and a finding with no owner becomes
+        # permanent: the register did its job by naming these three, and nothing was
+        # tracking the fix until the issue numbers were required.
+        if not ISSUE_REF.search(row["requires"]):
+            errors.append(f"{where} ({row['sink']}): mitigation `none` must name the open issue "
+                          f"that owns the fix in `requires` (e.g. `open issue #1490`) — a row "
+                          f"without an owner is how a gap becomes permanent")
     return errors
 
 def matches(module, path):
@@ -401,6 +414,22 @@ RS
 tools:run-command-spawn	tools/application/run_command_tool.rs	process	filtering	deployment isolation (RIGORIX_SANDBOX)	none
 TSV
 	seed "a row without a real does_not is refused" "does_not. is mandatory"
+
+	# --- seed G: an unmitigated row with no owner -------------------------
+	#
+	# #1490: the register named three `none` rows and nothing was tracking the
+	# fix. A finding without an owner becomes permanent, so the row must cite the
+	# issue that owns it.
+	reset_fixture
+	cat >"$WORK/src/tools/application/run_command_tool.rs" <<'RS'
+pub fn f() {
+    let _child = std::process::Command::new("git");
+}
+RS
+	cat >"$WORK/reg.tsv" <<'TSV'
+tools:run-command-spawn	tools/application/run_command_tool.rs	process	none	—	does not execute argv: the string still reaches the shell
+TSV
+	seed "an unmitigated row with no owning issue is refused" "must name the open issue"
 
 	if [ "$failures" -ne 0 ]; then
 		echo "✗ $failures self-test(s) failed"

@@ -142,16 +142,30 @@ build it fails to start, rather than continuing with mode gating skipped.
 
 ---
 
-## `file-write`: handle-coupled, not path-revalidated
+## `file-write`, `file-edit`, `file-patch`: handle-coupled, not path-revalidated
 
-`FileWriteTool` resolves a target once, through `tools/infrastructure/fs_at.rs`, which walks
-each component with `openat(…, O_NOFOLLOW)` and returns the **opened parent directory
-handle**. The temp file is created in that directory and `renameat`-ed within it, so a
+All three file-mutating tools resolve a target once, through
+`tools/infrastructure/fs_at.rs`, which walks each component with `openat(…, O_NOFOLLOW)` and
+returns the **opened parent directory handle**. The temp file is created in that directory and `renameat`-ed within it, so a
 component swapped for a symlink after validation cannot redirect the write. A symlinked
 component is refused by name, not followed.
 
-What it does not do: survive a full disk, or provide durability guarantees beyond the
+Editing and patching read through the same handle (`read_file`) and write through
+`write_atomic`, so the bytes transformed and the file written are one inode family — before
+#1490 those two tools re-resolved the path for the write, which was SINK-2 verbatim in the
+tools next door to the one #1479 fixed.
+
+What they do not do: survive a full disk, or provide durability guarantees beyond the
 `fsync` on the temp file before rename.
+
+## Register rows with `mitigation=none` need an owner (#1490)
+
+A register row is a description; a finding needs a ticket. `validate-sink-register.sh` now
+refuses a `none` row whose `requires` does not cite an issue (`#1490`), and the register has
+no `none` rows left: this batch fixed the five it found (append/edit/patch re-resolution, the
+two non-atomic stores, and the placeholder API key), plus the two the guard surfaced while
+the rule was being written. The self-test seeds an unmitigated row without an owner and
+requires the guard to reject it.
 
 ---
 

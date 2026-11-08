@@ -410,13 +410,11 @@ impl ParallelExecutionServiceImpl {
         let path = parsed["path"].as_str().unwrap_or("");
         let content = parsed["content"].as_str().unwrap_or("");
         let duration_ms = start.elapsed().as_millis() as u64;
-        // Ensure parent dir exists
-        if let Some(parent) = std::path::Path::new(path).parent()
-            && !parent.as_os_str().is_empty()
-        {
-            let _ = tokio::fs::create_dir_all(parent).await;
-        }
-        match tokio::fs::write(path, content).await {
+        // #1490: atomic, through the pinned parent handle — the same discipline
+        // `file_write` got in #1479. The old shape created the parent (ignoring the
+        // failure) and wrote the path, so a concurrent reader could see a partial
+        // file and a missing parent surfaced as a write error.
+        match write_atomically(path, content).await {
             Ok(()) => TaskResult::success(
                 node_id,
                 node_name,
@@ -1057,6 +1055,32 @@ impl ParallelExecutionServiceImpl {
             cb(progress.clone());
         }
     }
+}
+
+/// Write `content` to `path` atomically, creating parents (#1490).
+///
+/// The dispatcher's `file_write` step used `tokio::fs::write` on a re-resolved
+/// path; this routes it through `fs_at`, the one module allowed to resolve and
+/// mutate.
+async fn write_atomically(
+    path: &str,
+    content: &str,
+) -> Result<(), crate::tools::domain::ToolError> {
+    if path.is_empty() {
+        return Err(crate::tools::domain::ToolError::InvalidInput(
+            "file_write step has no path".to_string(),
+        ));
+    }
+    let path = std::path::PathBuf::from(path);
+    let content = content.as_bytes().to_vec();
+    tokio::task::spawn_blocking(move || {
+        let target = crate::tools::infrastructure::fs_at::resolve_absolute_for_write(&path)?;
+        crate::tools::infrastructure::fs_at::write_atomic(&target, &content)
+    })
+    .await
+    .map_err(|e| {
+        crate::tools::domain::ToolError::ExecutionFailed(format!("file write task failed: {e}"))
+    })?
 }
 
 #[cfg(test)]
