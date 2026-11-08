@@ -201,9 +201,12 @@ mod imp {
         let mut dir = std::fs::File::open(&root)
             .map_err(|e| os_error("Cannot open workspace root", &root, e))?;
 
-        let (name, parents) = components
-            .split_last()
-            .expect("relative_components refuses an empty path");
+        let Some((name, parents)) = components.split_last() else {
+            return Err(ToolError::InvalidInput(format!(
+                "Path '{}' names no file",
+                path_str
+            )));
+        };
         // `child_display` is built forward from the root, component by component, so
         // the message and the handle always describe the same directory.
         let mut child_display = root.clone();

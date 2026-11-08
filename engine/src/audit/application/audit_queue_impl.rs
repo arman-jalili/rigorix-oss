@@ -148,10 +148,12 @@ impl AuditQueueImpl {
     /// on disk, which is the only reason the caller may call it durable.
     fn persist(&self, item: &QueuedEnvelope) -> Result<PathBuf, AuditError> {
         use std::io::Write;
-        let dir = self
-            .durable_dir
-            .as_ref()
-            .expect("persist is only called when durable");
+        let Some(dir) = self.durable_dir.as_ref() else {
+            return Err(AuditError::Internal {
+                detail: "the durable queue has no directory; the envelope was not persisted"
+                    .to_string(),
+            });
+        };
         let name = format!(
             "{:013}-{}.json",
             chrono::Utc::now().timestamp_millis(),

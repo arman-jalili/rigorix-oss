@@ -371,9 +371,11 @@ impl cancel_app::CancellationService for MockCancellationService {
     fn subscribe(
         &self,
     ) -> tokio::sync::watch::Receiver<crate::cancellation::domain::ShutdownSignal> {
-        let (tx, rx) =
+        // The sender is kept alive by the returned receiver's channel only for
+        // as long as it is bound; `_tx` names it so it lives to the end of the call
+        // instead of being dropped and closing the channel (#1481 rule 2).
+        let (_tx, rx) =
             tokio::sync::watch::channel(crate::cancellation::domain::ShutdownSignal::Graceful);
-        let _ = tx;
         rx
     }
     fn cancellation_token(&self) -> tokio_util::sync::CancellationToken {
