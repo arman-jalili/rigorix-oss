@@ -66,8 +66,25 @@ async function instantiate(path) {
     const response = instance.exports.rigx_call(ptr, payload.length);
     instance.exports.rigx_free(ptr, payload.length);
     if (response === 0) throw new Error("rigx_call produced no response");
-    const view = new DataView(memory.buffer);
-    const length = view.getUint32(response, true);
+
+    // The host-side rule (#1472): `[len][payload]` lives in linear memory, and the *host* is
+    // what reads it. A host that trusts the length prefix reads past the buffer — a crash in
+    // the caller rather than a refusal in the module, which is the worse of the two. Python
+    // and Go slices would raise or panic here; the rule is the same in every embedder, so it
+    // is asserted rather than described.
+    const bytes = memory.buffer.byteLength;
+    if (response + 4 > bytes) {
+      throw new Error(
+        `the response pointer ${response} leaves no room for a length prefix in ${bytes} bytes`,
+      );
+    }
+    const length = new DataView(memory.buffer).getUint32(response, true);
+    if (length > bytes - response - 4) {
+      throw new Error(
+        `the response claims ${length} bytes at ${response}, but only ${bytes - response - 4} ` +
+        `remain in ${bytes} bytes of memory`,
+      );
+    }
     const answer = decoder.decode(new Uint8Array(memory.buffer, response + 4, length));
     instance.exports.rigx_free(response, length + 4);
     return answer;

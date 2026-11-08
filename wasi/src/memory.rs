@@ -39,6 +39,18 @@ use std::collections::BTreeMap;
 
 use crate::abi::{MAX_REQUEST_BYTES, dispatch};
 
+/// How many buffers one instance may hold for the host at once.
+///
+/// [`MAX_REQUEST_BYTES`] caps *one* buffer; this caps how many. Without it a host that calls
+/// `rigx_call` and never frees grows the module's memory until the allocator cannot grow it —
+/// and on a target with no unwinder that arrives as a trap, not as a refusal (#1472).
+///
+/// The number is a policy, not a measurement: a correct embedder holds two buffers at a time
+/// (its request and the response it is copying out), so 32 is an order of magnitude of slack
+/// for an embedder that batches, and small enough that 32 × 1 MiB stays inside a default
+/// wasm memory reservation. An embedder that needs more is telling us something.
+pub const MAX_OUTSTANDING_BUFFERS: usize = 32;
+
 thread_local! {
     /// `pointer -> length`, for the buffers this module has handed out.
     ///
@@ -49,14 +61,24 @@ thread_local! {
 
 /// Allocate a buffer of `len` zeroed bytes and hand back its pointer.
 ///
-/// A length of zero, or one above [`MAX_REQUEST_BYTES`], is not a request: the answer is
-/// `None`, which the exports turn into `0`.
+/// `None` — which the exports turn into `0` — for four reasons, all of them refusals rather
+/// than traps: a length of zero, a length above [`MAX_REQUEST_BYTES`], a full registry
+/// ([`MAX_OUTSTANDING_BUFFERS`] buffers already outstanding), or an allocator that cannot
+/// satisfy the request.
 #[allow(unsafe_code)]
 pub fn alloc(len: usize) -> Option<usize> {
     if len == 0 || len > MAX_REQUEST_BYTES {
         return None;
     }
     publish(vec![0u8; len])
+}
+
+/// Whether the registry would refuse another buffer right now.
+///
+/// The cap lives in `publish`, so every path that hands a buffer to the host is bound by it —
+/// a request allocated by `rigx_alloc` and a response published by `rigx_call` alike.
+fn at_capacity() -> bool {
+    live_buffers() >= MAX_OUTSTANDING_BUFFERS
 }
 
 /// Release a buffer this module handed out.
@@ -158,6 +180,9 @@ fn publish_payload(payload: &str) -> Option<usize> {
 /// Leak a buffer into the registry and return its pointer.
 #[allow(unsafe_code)]
 fn publish(bytes: Vec<u8>) -> Option<usize> {
+    if at_capacity() {
+        return None;
+    }
     let len = bytes.len();
     let boxed: Box<[u8]> = bytes.into_boxed_slice();
     let ptr = Box::into_raw(boxed).cast::<u8>() as usize;
