@@ -227,6 +227,9 @@ jobs:
         run: |
           bash wasi/ci/check-imports.sh target/wasm32-wasip1/release/rigorix_gate_wasi.wasm
           bash wasi/ci/check-size.sh
+          # #1474: the artifact must not ship the builder's filesystem. Run here as well as in
+          # CI, because this is the copy that gets attached to a release page.
+          bash wasi/ci/check-no-builder-paths.sh
           node wasi/ci/run-conformance.mjs target/wasm32-wasip1/release/rigorix_gate_wasi.wasm
           node wasi/ci/run-conformance.mjs target/wasm32-wasip1/release/rigorix_gate_wasi.wasm --truncate-request
 

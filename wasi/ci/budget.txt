@@ -12,11 +12,14 @@
 # than none because the gate still reports success.
 #
 # Measured 2026-11-08 on wasm32-wasip1, rustc 1.9x, `-C panic=abort`, from a clean
-# `cargo build --release`: 2 158 771 bytes. The ceiling is that run rounded up to the next
-# 100 KiB, which is room for one dependency's debug strings and nothing structural.
+# `cargo build --release`: 2 158 771 bytes — and 1 896 192 once the `name` custom section (the
+# debug symbol table, 261 611 B) is stripped, which is what the artifact ships (#1474). The
+# ceiling is the stripped measurement rounded up to the next 100 KiB: room for one dependency's
+# debug strings and nothing structural, and **lowered** from the unstripped number rather than
+# left as headroom nobody needs.
 #
 # It is deliberately not "the smallest we have seen": this artifact is a cdylib over the whole
 # portable slice, so a size that only holds at the best measurement is not a ceiling.
 state: packaged
-ceiling_bytes: 2359296
-set_from: "2026-11-08, wasm32-wasip1 release build: 2158771 bytes"
+ceiling_bytes: 1945600
+set_from: "2026-11-08, wasm32-wasip1 release build with --remap-path-prefix and the name section stripped: 1896192 bytes (was 2158771 unstripped)"
