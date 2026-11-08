@@ -55,7 +55,7 @@ case "$MODE" in
     [ -n "$MODULE" ] || { echo "check-imports --record: a module path is required" >&2; exit 2; }
     [ -f "$MODULE" ] || { echo "check-imports: $MODULE does not exist" >&2; exit 1; }
     body="$(actual "$MODULE")"
-    printf '%s\n' "$body" | grep -q . || { echo "check-imports: the module imports nothing; record it as such deliberately" >&2; exit 1; }
+    printf '%s\n' "$body" | grep -q . || { echo "check-imports: the module has no recorded entries; write that down deliberately rather than as an empty list" >&2; exit 1; }
     {
       sed -n '1,/^wasi_snapshot/p' "$RECORD" | sed '$d'
       printf '%s\n' "$body"

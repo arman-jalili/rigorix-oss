@@ -9,10 +9,16 @@
 //! # Why this crate exists and `wasm/` did not grow a second entry
 //!
 //! The browser crate's four operations are the contract. A WASI host cannot call them
-//! through `#[wasm_bindgen]`: that attribute layer *is* a JS import set, and the whole claim
-//! of this artifact is that its import section is empty — "this module cannot read a file,
-//! spawn a process, or open a socket" stated in a form a reviewer can check rather than in a
-//! sentence a questionnaire has to believe (ADR-014, ADR-022).
+//! through `#[wasm_bindgen]`: that attribute layer *is* a JS import set. Turning it off is what
+//! makes the rest of the claim checkable — a reviewer reads this module's import section and
+//! sees six `std` prologue functions and nothing else (ADR-014, ADR-022).
+//!
+//! Six, not zero: `std` on `wasm32-wasip1` links `random_get`, `environ_get`,
+//! `environ_sizes_get`, `clock_time_get`, `fd_write` and `proc_exit` into every module. The
+//! claim is that **no decision reads any of them** — `wasi/ci/run-conformance.mjs` answers all
+//! six with a constant and still reproduces the five recorded digests. `wasi/ci/imports.txt`
+//! is the record, and `wasi/ci/check-claim-matches-record.sh` fails when these words and it
+//! disagree (#1467).
 //!
 //! So the four operations stay one implementation, in `rigorix-gate-wasm`, which compiles
 //! for `wasm32-wasip1` because its binding layer is gated on `target_os = "unknown"`. What

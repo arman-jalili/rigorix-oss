@@ -2,7 +2,7 @@
 name = "rigorix-gate-wasi"
 version = "1.14.2"
 edition = "2024"
-description = "The Rigorix gate as a WASI artifact: one JSON entry, zero imports, no host glue"
+description = "The Rigorix gate as a WASI artifact: one JSON entry, six prologue imports that no decision reads, no host glue"
 license = "MIT OR Apache-2.0"
 authors = ["Arman Wolkensteiner-Jalili and Rigorix contributors"]
 repository = "https://github.com/arman-jalili/rigorix-oss"
@@ -22,10 +22,14 @@ crate-type = ["rlib", "cdylib"]
 [dependencies]
 # The four operations are the browser crate's, not a second copy of them (#1465). It builds
 # for `wasm32-wasip1` because its `wasm-bindgen` layer is gated on `target_os = "unknown"`;
-# what crosses into this crate is plain Rust, so the module has nothing to import.
+# what crosses into this crate is plain Rust, so the functions it calls are not host imports.
+# It does not follow that the module is import-free: `std` on `wasm32-wasip1` links six
+# `wasi_snapshot_preview1` prologue functions into every module (measured, in
+# `wasi/ci/imports.txt`), and no decision reads any of them.
 # `bindgen` off: this artifact links the operations, not the JS binding. The attribute layer
-# is `no_mangle` exports, so linking it would drag `__wbindgen_*` imports into a module whose
-# whole claim is an empty import section.
+# is `no_mangle` exports, so linking it would drag `__wbindgen_*` imports into the module.
+# What is left is six std prologue functions, recorded in `wasi/ci/imports.txt` — the claim is
+# that no decision reads any of them, not that they are absent (#1467).
 rigorix-gate-wasm = { path = "../wasm", version = "1.14.2", default-features = false, features = ["engine"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -5,7 +5,7 @@
 //
 // # Why this parses the module instead of trusting a build log
 //
-// "It has no imports" is a claim about a binary, so the check reads the binary. Cargo's link
+// "It carries N imports" is a claim about a binary, so the check reads the binary. Cargo's link
 // line is a claim about an intention: a dependency that acquires a `wasi` call, or a
 // `wasm-bindgen` attribute layer compiled for the wrong target, changes the module without
 // changing the flags. ADR-014's whole argument is that this claim is *inspectable* — an
@@ -20,7 +20,8 @@
 // imported rather than only how many.
 //
 // A section the parser does not know is a failure, not a skip: a checker that stops reading
-// at the first unfamiliar byte reports "zero imports" for a module it did not finish reading.
+// at the first unfamiliar byte reports a section with no entries for a module it did not
+// finish reading.
 
 import { readFileSync } from "node:fs";
 
@@ -164,7 +165,9 @@ function main(argv) {
     }
     return 1;
   }
-  const where = sawImportSection ? "the import section is empty" : "there is no import section";
+  const where = sawImportSection
+    ? "the import section is present and lists no entries"
+    : "the module declares no import section";
   console.log(`✓ ${path} imports ${imports.length} item(s) — ${where}`);
   return 0;
 }
