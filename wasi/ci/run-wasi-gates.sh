@@ -9,6 +9,7 @@
 #   1. it builds for the target              build        (a target nobody built is a plan)
 #   2. the import section is what is recorded imports      (exactly; both directions)
 #   3. the size is inside the ceiling         size         (with its set_from)
+#  10. no builder path in the artifact      builder-paths (reproducible, and not a map of my box)
 #   7. the words equal the record             claims       (#1467: six, not the phrase)
 #   4. the five goldens reproduce             conformance  (through node, in the artifact)
 #   5. a truncated request is a refusal       truncation   (and the instance keeps answering)
@@ -39,6 +40,7 @@ if [ "$MODE" = "self-test" ]; then
   bash "$HERE/check-imports.sh" --self-test
   bash "$HERE/check-claim-matches-record.sh" --self-test
   bash "$HERE/run-hostile.sh" --self-test
+  bash "$HERE/check-no-builder-paths.sh" --self-test
   # The contract's seeds: a moving clock, a leaking stdout, and a `proc_exit` that returns.
   if node "$HERE/embedder-contract.mjs" --self-test "$MODULE" >/dev/null 2>&1; then
     echo "✓ self-test: the embedder contract's seeds all bite (clock, stdout, proc_exit)"
@@ -79,6 +81,9 @@ bash "$HERE/check-imports.sh" "$MODULE"
 step "size"
 bash "$HERE/check-size.sh" "$MODULE"
 
+step "no builder path in the artifact"
+bash "$HERE/check-no-builder-paths.sh" "$MODULE"
+
 step "the words equal the record"
 bash "$HERE/check-claim-matches-record.sh"
 
@@ -99,6 +104,7 @@ node "$HERE/embedder-contract.mjs" --conformance "$MODULE"
 step "release wiring"
 bash "$HERE/check-release-wiring.sh"
 
-printf '\n✓ WASI gates: the artifact builds, imports what is recorded, fits its ceiling,\n'
+printf '\n✓ WASI gates: the artifact builds, imports what is recorded, fits its ceiling, carries\n'
+printf '  no path from the machine that built it,\n'
 printf '  reproduces all five goldens through node, refuses without trapping, and the\n'
 printf '  words in the tree name the same count as the record.\n'
