@@ -123,6 +123,7 @@ pub struct BuildEnvelopeInput {
 
 /// Output from building an audit envelope.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[must_use = "the outcome carries whether the evidence is complete; dropping it is how a run reports success with no evidence (#1480)"]
 pub struct BuildEnvelopeOutput {
     /// The constructed audit envelope.
     pub envelope: AuditEnvelope,
@@ -132,6 +133,33 @@ pub struct BuildEnvelopeOutput {
 
     /// Number of events included in the envelope.
     pub event_count: usize,
+
+    /// Why the evidence is incomplete, when it is (#1480).
+    ///
+    /// `None` means every step that was attempted succeeded: built, signed,
+    /// saved to the local store when one is wired, and delivered or durably
+    /// queued. `Some` names the step that did not, so the caller can report
+    /// `Degraded` instead of inferring success from a log line — the five
+    /// `let _ =` sites this replaces all discarded exactly this fact.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degraded: Option<DegradedEvidence>,
+}
+
+/// Why a run's evidence is incomplete.
+///
+/// A value here is a *state*, not a warning: the run output reports it, the
+/// envelope's `evidence_degraded` marker agrees with it, and the operator can
+/// ask for the run's evidence status without reading logs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DegradedEvidence {
+    /// What failed, in the operator's words.
+    pub reason: String,
+
+    /// Envelopes that reached neither the backend nor a durable queue.
+    ///
+    /// Zero when the envelope was persisted or durably queued and only the
+    /// remote delivery is outstanding.
+    pub undelivered: u32,
 }
 
 // ---------------------------------------------------------------------------

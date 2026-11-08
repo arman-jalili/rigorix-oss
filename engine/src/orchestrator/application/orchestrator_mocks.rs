@@ -525,6 +525,8 @@ impl crate::audit::application::AuditService for MockAuditService {
             },
             signed: false,
             event_count: 0,
+            // the mock records the input, not the evidence state
+            degraded: None,
         })
     }
     async fn retry_pending(

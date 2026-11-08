@@ -567,11 +567,24 @@ pub async fn build_orchestrator_with_budget(
     let audit_backend_key = engine_config.audit_backend_key.clone();
     let sender: Arc<dyn AuditSender> =
         Arc::new(AuditSenderImpl::new(None, audit_backend_url).with_api_key(audit_backend_key));
-    let queue: Box<dyn AuditQueue> = Box::new(AuditQueueImpl::default());
-    let mut audit_service = AuditServiceImpl::new(envelope_factory, sender, queue, audit_enabled);
     // R7: persist envelopes to `.rigorix/audit` (cross-run policy history +
     // offline read-back). Same directory the CliServices read-back repo uses.
     let audit_dir = rigorix_dir.join("audit");
+    // #1480: the retry queue is file-backed beside the local trail, so an
+    // undelivered envelope survives a restart. If the directory cannot be
+    // created the in-memory queue is used and its loss window — lost on restart,
+    // rejected at capacity — is what the run's `evidence` status will report.
+    let queue: Box<dyn AuditQueue> = match AuditQueueImpl::durable(audit_dir.join("queue"), 100) {
+        Ok(durable) => Box::new(durable),
+        Err(error) => {
+            tracing::warn!(
+                "audit: durable retry queue unavailable ({error}); undelivered envelopes will \
+                 be lost on restart"
+            );
+            Box::new(AuditQueueImpl::default())
+        }
+    };
+    let mut audit_service = AuditServiceImpl::new(envelope_factory, sender, queue, audit_enabled);
     if std::fs::create_dir_all(&audit_dir).is_ok() {
         audit_service = audit_service.with_local_repository(std::sync::Arc::new(
             rigorix_engine::audit::infrastructure::LocalAuditEnvelopeRepository::new(audit_dir),

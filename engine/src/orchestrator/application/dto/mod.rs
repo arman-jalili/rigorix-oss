@@ -58,6 +58,40 @@ pub struct RunOutput {
 
     /// The complete execution record with all metadata.
     pub record: ExecutionRecord,
+
+    /// What happened to this run's audit evidence (#1480).
+    ///
+    /// A run that completed but whose evidence did not is requestable here
+    /// instead of inferable from a `tracing::warn!` line. `NotRequested` means
+    /// audit was disabled or unwired — the honest state, not a silent `Complete`.
+    #[serde(default)]
+    pub evidence: EvidenceStatus,
+}
+
+/// The state of a run's audit evidence (#1480).
+///
+/// Before this existed, the orchestrator dropped the `build_and_send` result
+/// under a comment reading "Optional audit (best-effort)", so a run whose
+/// envelope was never built, signed, saved or delivered reported exactly what a
+/// fully evidenced run reported: success.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum EvidenceStatus {
+    /// Audit was disabled, or no audit service is wired.
+    #[default]
+    NotRequested,
+
+    /// Built, signed, saved to the local trail when one is wired, and delivered
+    /// or durably queued.
+    Complete,
+
+    /// At least one step of the evidence path did not succeed.
+    Degraded {
+        /// Which step failed, in the operator's words.
+        reason: String,
+        /// Envelopes that reached neither the backend nor a durable queue.
+        undelivered: u32,
+    },
 }
 
 // ---------------------------------------------------------------------------

@@ -59,6 +59,8 @@ impl audit_app::AuditService for CapturingAuditService {
             },
             signed: false,
             event_count: 0,
+            // the mock records the input, not the evidence state
+            degraded: None,
         })
     }
 
@@ -79,6 +81,53 @@ impl audit_app::AuditService for CapturingAuditService {
             pending_count: 0,
             circuit_breaker_state: crate::audit::domain::CircuitBreakerState::Closed,
             backend_available: false,
+        })
+    }
+}
+
+/// An audit service whose evidence is incomplete, for the #1480 acceptance.
+///
+/// It returns `Ok` with a degraded outcome — the exact shape the orchestrator
+/// used to drop: a successful send call whose *content* said the evidence did
+/// not get written.
+struct DegradedAuditService {
+    /// Builds the envelope the way the capturing mock does.
+    inner: CapturingAuditService,
+    reason: String,
+    undelivered: u32,
+}
+
+#[async_trait]
+impl audit_app::AuditService for DegradedAuditService {
+    async fn build_and_send(
+        &self,
+        input: audit_app::BuildEnvelopeInput,
+    ) -> Result<audit_app::BuildEnvelopeOutput, crate::audit::domain::AuditError> {
+        let mut output = self.inner.build_and_send(input).await?;
+        output.degraded = Some(audit_app::DegradedEvidence {
+            reason: self.reason.clone(),
+            undelivered: self.undelivered,
+        });
+        Ok(output)
+    }
+
+    async fn retry_pending(
+        &self,
+    ) -> Result<audit_app::RetryPendingOutput, crate::audit::domain::AuditError> {
+        Ok(audit_app::RetryPendingOutput {
+            delivered: 0,
+            still_pending: 0,
+            dropped: 0,
+        })
+    }
+
+    async fn status(
+        &self,
+    ) -> Result<audit_app::AuditStatusOutput, crate::audit::domain::AuditError> {
+        Ok(audit_app::AuditStatusOutput {
+            pending_count: 0,
+            circuit_breaker_state: crate::audit::domain::CircuitBreakerState::Closed,
+            backend_available: true,
         })
     }
 }

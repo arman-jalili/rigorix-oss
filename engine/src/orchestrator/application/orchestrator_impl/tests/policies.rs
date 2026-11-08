@@ -273,7 +273,11 @@ async fn test_sequence_policy_corrupt_config_refuses_run_no_steps_execute() {
         state.is_err(),
         "no engine session ⇒ no steps executed under a corrupt rule file"
     );
-    let _ = tokio::fs::remove_file(&path).await;
+    // Cleanup only; a failure leaves the fixture behind for the next run to
+    // overwrite, and cannot change the verdict above.
+    tokio::fs::remove_file(&path)
+        .await
+        .expect("remove corrupt-policy fixture");
 }
 
 /// AC#12: the matched rule + promotion are recorded as first-class
@@ -755,7 +759,9 @@ async fn policy_pipeline_runs_sequence_policy_before_requirements() {
         order: std::sync::Mutex::new(Vec::new()),
     });
     let orch = OrchestratorServiceImpl::default_test().with_sequence_policy(policy.clone());
-    let _ = orch
+    // The verdict is the policy order asserted below, so the plan's own result
+    // is deliberately not asserted — but it is not discarded either (#1481).
+    let planned = orch
         .plan_from_template(PlanFromTemplateInput {
             steps: payout_runbook(true),
             repo_root: "/tmp/t".into(),
@@ -765,6 +771,9 @@ async fn policy_pipeline_runs_sequence_policy_before_requirements() {
             author: None,
         })
         .await;
+    if let Err(error) = &planned {
+        tracing::debug!("policy-pipeline plan returned {error:?}; the order is the assertion");
+    }
     assert_eq!(
         *policy.order.lock().unwrap(),
         vec!["evaluate_plan", "evaluate_requirements"],

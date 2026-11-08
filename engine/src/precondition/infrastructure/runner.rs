@@ -587,8 +587,15 @@ impl PreconditionRunner for ProcessPreconditionRunner {
                 body.push(b'\n');
                 // A check may legitimately ignore stdin (or exit before reading
                 // it), so a broken pipe is NOT a failure — the exit code is the
-                // verdict. Writing errors are deliberately non-fatal here.
-                let _ = stdin.write_all(&body).await;
+                // verdict. Writing errors are deliberately non-fatal here, and
+                // #1481 rule 2 wants the discard to say what it costs: a check
+                // that reads stdin and does not get it is judged on absent input.
+                if let Err(error) = stdin.write_all(&body).await {
+                    tracing::debug!(
+                        "precondition: the check did not read its JSON payload ({error}); \
+                         its verdict is over absent stdin"
+                    );
+                }
                 // Close stdin to signal EOF to the check.
                 drop(stdin);
             }

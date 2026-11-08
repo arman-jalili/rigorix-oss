@@ -21,9 +21,9 @@ use crate::orchestrator::domain::record::TaskStatus;
 use crate::orchestrator::domain::{OrchestratorConfig, OrchestratorError};
 
 use super::dto::{
-    ApproveExecutionInput, ApproveExecutionOutput, CancelInput, CancelOutput, NodeState,
-    PlanFromTemplateInput, PlanOnlyInput, PlanOnlyOutput, RunFromTemplateInput, RunInput,
-    RunOutput, StatusOutput,
+    ApproveExecutionInput, ApproveExecutionOutput, CancelInput, CancelOutput, EvidenceStatus,
+    NodeState, PlanFromTemplateInput, PlanOnlyInput, PlanOnlyOutput, RunFromTemplateInput,
+    RunInput, RunOutput, StatusOutput,
 };
 use super::service::OrchestratorService;
 
@@ -130,6 +130,104 @@ impl OrchestratorServiceImpl {
         self
     }
 
+    /// Build, sign, persist and deliver this run's evidence, and report what
+    /// happened (#1480).
+    ///
+    /// This is the replacement for the pattern that produced the finding:
+    ///
+    /// ```ignore
+    /// // Optional audit (best-effort)
+    /// let _ = audit.build_and_send(..).await;
+    /// ```
+    ///
+    /// The result is the run's evidence *state*. `Complete` requires that every
+    /// attempted step succeeded; `Degraded` names the step that did not and how
+    /// many envelopes reached neither the backend nor a durable queue. Both the
+    /// `Ok(Degraded)` and `Err` outcomes are consumed here — neither is logged
+    /// and dropped, because a log line is not a state a caller can request.
+    async fn record_evidence(
+        &self,
+        record: &ExecutionRecord,
+        repository: Option<String>,
+        author: Option<String>,
+        identity: Option<crate::identity::domain::IdentityRef>,
+    ) -> EvidenceStatus {
+        let Some(ref audit) = self.audit_service else {
+            return EvidenceStatus::NotRequested;
+        };
+        if !self.config.audit_enabled {
+            return EvidenceStatus::NotRequested;
+        }
+
+        let aref: Vec<crate::audit::domain::ExecutionEventRef> = record
+            .events
+            .iter()
+            .map(|e| {
+                let audit_status = match e.status {
+                    EventInfoStatus::Success => crate::audit::domain::EventStatus::Success,
+                    EventInfoStatus::Failure => crate::audit::domain::EventStatus::Failure,
+                    EventInfoStatus::Info => crate::audit::domain::EventStatus::Success,
+                };
+                crate::audit::domain::ExecutionEventRef {
+                    event_type: e.event_type.clone(),
+                    summary: e.summary.clone(),
+                    occurred_at: e.occurred_at,
+                    correlation_id: e.correlation_id,
+                    status: audit_status,
+                    payload: e.payload.clone(),
+                }
+            })
+            .collect();
+
+        let outcome = audit
+            .build_and_send(audit_app::BuildEnvelopeInput {
+                execution_id: record.execution_id,
+                template_id: record.planning.template_id.clone(),
+                planning_prompt: record.planning.prompt_hash.clone(),
+                events: aref,
+                source: Some(record.context.environment.clone()),
+                total_tokens: record.planning.total_tokens,
+                duration_ms: record.duration_ms,
+                git_commit: record.context.git_commit.clone(),
+                git_branch: record.context.git_branch.clone(),
+                model_version: record.planning.model_version.clone(),
+                planning_prompt_content: self.planning_prompt_content(&record.planning),
+                file_paths: Self::extract_file_paths(&record.task_results),
+                metadata: None,
+                scoring_results: self.collect_scoring_results(record.execution_id).await,
+                sign: true,
+                repository,
+                author,
+                // L2 (F-20260907-05): stamp the ATTESTED claim on the signed
+                // envelope so cross-run policy history binds by identity
+                // subject (same principal across runs), not caller/git
+                // display strings. Author stays as display-only.
+                identity,
+                effect_key: effect_key::run_effect_key(&record.planning.parameters),
+                // ADR-016: chain link + history-policy opt-in are resolved
+                // by `AuditServiceImpl::build_and_send` before signing.
+                producer_id: None,
+                sequence: None,
+                prev_hash: None,
+                history_policy: None,
+            })
+            .await;
+
+        match outcome {
+            Ok(output) => match output.degraded {
+                None => EvidenceStatus::Complete,
+                Some(degraded) => EvidenceStatus::Degraded {
+                    reason: degraded.reason,
+                    undelivered: degraded.undelivered,
+                },
+            },
+            Err(error) => EvidenceStatus::Degraded {
+                reason: format!("the audit service could not build the envelope: {error}"),
+                undelivered: 1,
+            },
+        }
+    }
+
     /// Set the quality gate service for post-execution quality evaluation.
     pub fn with_quality_gate_service(mut self, svc: Arc<dyn QualityGateService>) -> Self {
         self.quality_gate_service = Some(svc);
@@ -222,19 +320,28 @@ impl OrchestratorService for OrchestratorServiceImpl {
             return Ok(RunOutput {
                 execution_id,
                 record,
+                // A validation-loop run takes the legacy paths out of scope; no
+                // audit service is consulted here, and saying so is the point.
+                evidence: EvidenceStatus::NotRequested,
             });
         }
 
         // ── Legacy path (no validation loop) ──
 
         // 1. Publish PlanningStarted
-        let _ = self
+        // #1481 rule 2: the publish is best-effort, so a failure is consumed and
+        // reported — a subscriber that never saw PlanningStarted is a fact about
+        // this run, not a silent no-op.
+        if let Err(error) = self
             .event_bus
             .publish(Self::planning_started_event(
                 execution_id,
                 input.intent.clone(),
             ))
-            .await;
+            .await
+        {
+            tracing::warn!(%execution_id, "event bus rejected PlanningStarted ({error})");
+        }
 
         // 2. Build module dependency graph if CodeGraphService is available
         let module_deps = self.build_module_deps(&input.repo_root).await;
@@ -269,13 +376,16 @@ impl OrchestratorService for OrchestratorServiceImpl {
             })?;
 
         // 3. Publish PlanningCompleted
-        let _ = self
+        if let Err(error) = self
             .event_bus
             .publish(Self::planning_completed_event(
                 execution_id,
                 &plan_out.planning_result,
             ))
-            .await;
+            .await
+        {
+            tracing::warn!(%execution_id, "event bus rejected PlanningCompleted ({error})");
+        }
 
         let pmeta = Self::planning_meta(
             &plan_out.planning_result,
@@ -534,59 +644,16 @@ impl OrchestratorService for OrchestratorServiceImpl {
             events,
         );
 
-        // 10. Optional audit (best-effort)
-        if let Some(ref audit) = self.audit_service
-            && self.config.audit_enabled
-        {
-            let aref: Vec<crate::audit::domain::ExecutionEventRef> = record
-                .events
-                .iter()
-                .map(|e| {
-                    let audit_status = match e.status {
-                        EventInfoStatus::Success => crate::audit::domain::EventStatus::Success,
-                        EventInfoStatus::Failure => crate::audit::domain::EventStatus::Failure,
-                        EventInfoStatus::Info => crate::audit::domain::EventStatus::Success,
-                    };
-                    crate::audit::domain::ExecutionEventRef {
-                        event_type: e.event_type.clone(),
-                        summary: e.summary.clone(),
-                        occurred_at: e.occurred_at,
-                        correlation_id: e.correlation_id,
-                        status: audit_status,
-                        payload: e.payload.clone(),
-                    }
-                })
-                .collect();
-            let _ = audit
-                .build_and_send(audit_app::BuildEnvelopeInput {
-                    execution_id: record.execution_id,
-                    template_id: record.planning.template_id.clone(),
-                    planning_prompt: record.planning.prompt_hash.clone(),
-                    events: aref,
-                    source: Some(record.context.environment.clone()),
-                    total_tokens: record.planning.total_tokens,
-                    duration_ms: record.duration_ms,
-                    git_commit: record.context.git_commit.clone(),
-                    git_branch: record.context.git_branch.clone(),
-                    model_version: record.planning.model_version.clone(),
-                    planning_prompt_content: self.planning_prompt_content(&record.planning),
-                    file_paths: Self::extract_file_paths(&record.task_results),
-                    metadata: None,
-                    scoring_results: self.collect_scoring_results(record.execution_id).await,
-                    sign: true,
-                    repository: input.repository.clone(),
-                    author: input.author.clone(),
-                    identity: input.identity.as_ref().map(IdentityRef::from_claim),
-                    effect_key: effect_key::run_effect_key(&record.planning.parameters),
-                    // ADR-016: chain link + history-policy opt-in are resolved
-                    // by `AuditServiceImpl::build_and_send` before signing.
-                    producer_id: None,
-                    sequence: None,
-                    prev_hash: None,
-                    history_policy: None,
-                })
-                .await;
-        }
+        // 10. Evidence: built, signed, persisted and delivered — and the run says
+        // which of those happened (#1480). The result is consumed, never dropped.
+        let evidence = self
+            .record_evidence(
+                &record,
+                input.repository.clone(),
+                input.author.clone(),
+                input.identity.as_ref().map(IdentityRef::from_claim),
+            )
+            .await;
 
         // Update state
         if let Some(ref mut s) = *self.current_execution.write().await {
@@ -597,6 +664,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
         Ok(RunOutput {
             execution_id,
             record,
+            evidence,
         })
     }
 
@@ -1076,63 +1144,16 @@ impl OrchestratorService for OrchestratorServiceImpl {
             events,
         );
 
-        // 10. Optional audit (best-effort)
-        if let Some(ref audit) = self.audit_service
-            && self.config.audit_enabled
-        {
-            let aref: Vec<crate::audit::domain::ExecutionEventRef> = record
-                .events
-                .iter()
-                .map(|e| {
-                    let audit_status = match e.status {
-                        EventInfoStatus::Success => crate::audit::domain::EventStatus::Success,
-                        EventInfoStatus::Failure => crate::audit::domain::EventStatus::Failure,
-                        EventInfoStatus::Info => crate::audit::domain::EventStatus::Success,
-                    };
-                    crate::audit::domain::ExecutionEventRef {
-                        event_type: e.event_type.clone(),
-                        summary: e.summary.clone(),
-                        occurred_at: e.occurred_at,
-                        correlation_id: e.correlation_id,
-                        status: audit_status,
-                        payload: e.payload.clone(),
-                    }
-                })
-                .collect();
-            let _ = audit
-                .build_and_send(audit_app::BuildEnvelopeInput {
-                    execution_id: record.execution_id,
-                    template_id: record.planning.template_id.clone(),
-                    planning_prompt: record.planning.prompt_hash.clone(),
-                    events: aref,
-                    source: Some(record.context.environment.clone()),
-                    total_tokens: record.planning.total_tokens,
-                    duration_ms: record.duration_ms,
-                    git_commit: record.context.git_commit.clone(),
-                    git_branch: record.context.git_branch.clone(),
-                    model_version: record.planning.model_version.clone(),
-                    planning_prompt_content: self.planning_prompt_content(&record.planning),
-                    file_paths: Self::extract_file_paths(&record.task_results),
-                    metadata: None,
-                    scoring_results: self.collect_scoring_results(record.execution_id).await,
-                    sign: true,
-                    repository: input.repository.clone(),
-                    author: input.author.clone(),
-                    // L2 (F-20260907-05): stamp the ATTESTED claim on the signed
-                    // envelope so cross-run policy history binds by identity
-                    // subject (same principal across runs), not caller/git
-                    // display strings. Author stays as display-only.
-                    identity: input.identity.clone(),
-                    effect_key: effect_key::run_effect_key(&record.planning.parameters),
-                    // ADR-016: chain link + history-policy opt-in are resolved
-                    // by `AuditServiceImpl::build_and_send` before signing.
-                    producer_id: None,
-                    sequence: None,
-                    prev_hash: None,
-                    history_policy: None,
-                })
-                .await;
-        }
+        // 10. Evidence: built, signed, persisted and delivered — and the run says
+        // which of those happened (#1480). The result is consumed, never dropped.
+        let evidence = self
+            .record_evidence(
+                &record,
+                input.repository.clone(),
+                input.author.clone(),
+                input.identity.clone(),
+            )
+            .await;
 
         // Update state
         if let Some(ref mut s) = *self.current_execution.write().await {
@@ -1143,18 +1164,29 @@ impl OrchestratorService for OrchestratorServiceImpl {
         // RAII guard (GAP-A-09) reconciles atomically and marks itself
         // committed so its Drop does not roll back a committed reservation.
         for r in &reservations {
-            if let Some(ref guard) = r.reservation_guard {
-                let _ = guard.commit(1).await;
-            } else {
-                let _ = self
-                    .budget_service
-                    .commit(budget_app::CommitReservationInput {
-                        execution_id,
-                        call_id: r.reservation.call_id,
-                        reserved_tokens: r.reservation.reserved_tokens,
-                        actual_tokens: 1,
-                    })
-                    .await;
+            // A commit that fails leaves the reservation to reconcile on drop —
+            // correct, but the ledger should say so rather than the branch being
+            // indistinguishable from a successful commit (#1481 rule 2).
+            let committed: Result<(), crate::budget_tracking::domain::LlmBudgetError> =
+                if let Some(ref guard) = r.reservation_guard {
+                    guard.commit(1).await
+                } else {
+                    self.budget_service
+                        .commit(budget_app::CommitReservationInput {
+                            execution_id,
+                            call_id: r.reservation.call_id,
+                            reserved_tokens: r.reservation.reserved_tokens,
+                            actual_tokens: 1,
+                        })
+                        .await
+                        .map(|_| ())
+                };
+            if let Err(error) = committed {
+                tracing::warn!(
+                    %execution_id,
+                    call_id = %r.reservation.call_id,
+                    "budget reservation commit failed ({error}); the guard reconciles it on drop"
+                );
             }
         }
 
@@ -1162,6 +1194,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
         Ok(RunOutput {
             execution_id,
             record,
+            evidence,
         })
     }
 

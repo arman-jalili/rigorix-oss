@@ -74,10 +74,17 @@ fn audit_service(dir: &std::path::Path) -> AuditServiceImpl {
 
 async fn build_n(service: &AuditServiceImpl, nodes: &[&str]) {
     for node in nodes {
-        service
+        // #1480: the outcome is consumed, not dropped — a degraded outcome here
+        // would make every assertion below test the wrong thing.
+        let output = service
             .build_and_send(input(node))
             .await
             .expect("build + local persist");
+        assert!(
+            output.degraded.is_none(),
+            "evidence must be complete for this fixture: {:?}",
+            output.degraded
+        );
     }
 }
 
@@ -192,18 +199,28 @@ async fn reemission_for_same_execution_reuses_its_chain_link() {
     // A second execution emits its pause-point snapshot (sequence 1).
     let paused = input("transfer_seat");
     let paused_id = paused.execution_id;
-    service
+    let paused_output = service
         .build_and_send(paused)
         .await
         .expect("pause snapshot");
+    assert!(
+        paused_output.degraded.is_none(),
+        "{:?}",
+        paused_output.degraded
+    );
 
     // The SAME execution re-emits with the completed evidence.
     let mut completed = input("transfer_seat");
     completed.execution_id = paused_id;
-    service
+    let completed_output = service
         .build_and_send(completed)
         .await
         .expect("completed re-emission");
+    assert!(
+        completed_output.degraded.is_none(),
+        "{:?}",
+        completed_output.degraded
+    );
 
     let envelopes = repo.list(None, None, Some(u32::MAX)).await.expect("list");
     assert_eq!(envelopes.len(), 2, "one envelope per execution_id");

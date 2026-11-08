@@ -32,9 +32,16 @@ use super::dto::{
 pub trait AuditService: Send + Sync {
     /// Build an audit envelope from execution events and send it.
     ///
-    /// If the audit backend is not configured, returns a no-op success.
-    /// On delivery failure, automatically enqueues for retry.
-    /// Returns the delivery outcome.
+    /// If the audit backend is not configured, returns a no-op success with the
+    /// envelope built and locally persisted. On delivery failure, enqueues for
+    /// retry and says so in [`BuildEnvelopeOutput::degraded`] — "automatically
+    /// enqueues for retry" was true while the durability it implied was not
+    /// (#1480).
+    ///
+    /// The result is `#[must_use]`: whether the evidence is complete is the
+    /// outcome's content, and a caller that drops it is the defect this issue is
+    /// about.
+    #[must_use = "the outcome states whether the evidence is complete (#1480)"]
     async fn build_and_send(
         &self,
         input: BuildEnvelopeInput,
@@ -75,13 +82,34 @@ pub trait AuditSender: Send + Sync {
 
 /// Queue for managing failed audit deliveries.
 ///
-/// Provides bounded in-memory queueing with capacity limits.
-/// When the queue is full, new failed deliveries are dropped.
+/// # The loss window, stated
+///
+/// An implementation may be in-memory or file-backed; [`AuditQueue::durable`]
+/// says which, and the answer is recorded on the envelope's degraded reason so
+/// the operator is not left to infer it from a doc comment (#1480).
+///
+/// - **In-memory (default):** an undelivered envelope is lost on restart, and
+///   when the queue is at capacity a new failed delivery is rejected with
+///   `QueueFull`. Both are loss windows, not delays.
+/// - **Durable (`AuditQueueImpl::durable`):** the envelope is written to disk
+///   before `enqueue` returns, so it survives a restart. It is still bounded by
+///   `capacity` and by the disk.
 #[async_trait]
 pub trait AuditQueue: Send + Sync {
+    /// Whether a queued envelope survives a process restart.
+    ///
+    /// Defaults to `false` (in-memory): a new implementation must opt in to
+    /// claiming durability, because the claim is what the operator relies on.
+    fn durable(&self) -> bool {
+        false
+    }
+
     /// Enqueue a failed envelope for later retry.
     ///
-    /// Returns `QueueFull` error if the queue is at capacity.
+    /// Returns `QueueFull` error if the queue is at capacity. `#[must_use]` for
+    /// the same reason `build_and_send` is: a dropped `enqueue` result is a
+    /// silently lost envelope (#1480).
+    #[must_use = "a dropped enqueue result is a silently lost envelope (#1480)"]
     async fn enqueue(&self, input: EnqueueInput) -> Result<EnqueueOutput, AuditError>;
 
     /// Dequeue the next pending envelope (FIFO order).

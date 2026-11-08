@@ -292,7 +292,8 @@ mod tests {
 
         cb.record_failure().await.unwrap();
         cb.record_failure().await.unwrap();
-        let _ = cb.allow_request().await;
+        // Below the threshold the breaker is closed, so the request is allowed.
+        assert!(cb.allow_request().await.is_ok());
 
         let stats = cb.stats().await.unwrap();
         assert_eq!(stats.consecutive_failures, 2);
