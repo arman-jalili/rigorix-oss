@@ -115,6 +115,15 @@ pub struct ToolResult {
 
     /// Whether the tool was executed in dry-run mode (preview, no side effects).
     pub dry_run: bool,
+
+    /// The file that actually ran, when the tool spawns a process (#1489).
+    ///
+    /// The allowlist compares a word; the kernel executes a path. Recording the
+    /// resolved path is what lets a reader check that the two are the same file —
+    /// a binary located through the engine's `PATH`, before any caller-supplied
+    /// environment was applied. `None` for tools that spawn nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_executable: Option<String>,
 }
 
 impl ToolResult {
@@ -126,7 +135,14 @@ impl ToolResult {
             side_effects: Vec::new(),
             duration_ms: 0,
             dry_run: false,
+            resolved_executable: None,
         }
+    }
+
+    /// Record the executable that actually ran (#1489).
+    pub fn with_resolved_executable(mut self, path: impl Into<String>) -> Self {
+        self.resolved_executable = Some(path.into());
+        self
     }
 
     /// Check if execution was successful.

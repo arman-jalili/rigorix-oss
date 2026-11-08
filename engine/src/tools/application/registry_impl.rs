@@ -189,6 +189,7 @@ impl ToolRegistryService for ToolRegistryImpl {
                 side_effects: vec![],
                 duration_ms: 0,
                 dry_run: true,
+                resolved_executable: None,
             }
         } else if risk_level.is_medium() {
             // Medium risk: would require confirmation
@@ -270,6 +271,7 @@ impl ToolExecutionService for ToolRegistryImpl {
             side_effects: vec![],
             duration_ms: 0,
             dry_run: true,
+            resolved_executable: None,
         })
     }
 }

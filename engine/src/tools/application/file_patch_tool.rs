@@ -19,7 +19,6 @@
 //! Medium — modifies files on disk.
 
 use async_trait::async_trait;
-use std::path::Path;
 
 use crate::tools::application::dto::{SideEffect, ToolInput, ToolResult};
 use crate::tools::domain::{Tool, ToolError};
@@ -63,59 +62,35 @@ impl FilePatchTool {
         }
     }
 
-    fn resolve_path(&self, path_str: &str) -> Result<std::path::PathBuf, ToolError> {
-        let root = Path::new(&self.workspace_root);
+    /// Resolve the target through `fs_at`, so the read and the write share one
+    /// handle (#1490).
+    ///
+    /// The previous shape canonicalized a path for validation and then wrote the
+    /// path again — the SINK-2 split that #1479 removed from `file_write` and left
+    /// standing here. `ValidatedWritePath` exposes no `PathBuf`: the only way to
+    /// touch the file is through `fs_at`.
+    fn resolve_target(
+        &self,
+        path_str: &str,
+    ) -> Result<crate::tools::infrastructure::fs_at::ValidatedWritePath, ToolError> {
+        crate::tools::infrastructure::fs_at::resolve_for_write(&self.workspace_root, path_str)
+    }
 
-        // Check for path traversal before canonicalization
-        let normalized = path_str.replace('\\', "/");
-        if normalized.contains("..") {
-            let path = root.join(path_str);
-            match path.canonicalize() {
-                Ok(canonical) => {
-                    let root_canonical = root.canonicalize().map_err(|_| {
-                        ToolError::ExecutionFailed("Cannot resolve workspace root".to_string())
-                    })?;
-                    if !canonical.starts_with(&root_canonical) {
-                        return Err(ToolError::PathDenied(format!(
-                            "Path '{}' is outside workspace root",
-                            path_str
-                        )));
-                    }
-                    return Ok(canonical);
-                }
-                Err(_) => {
-                    return Err(ToolError::PathDenied(format!(
-                        "Path '{}' contains '..' and could escape workspace root",
-                        path_str
-                    )));
-                }
-            }
-        }
-
-        let path = root.join(path_str);
-        let canonical = path.canonicalize().map_err(|e| {
-            ToolError::ExecutionFailed(format!("Cannot access path '{}': {}", path_str, e))
-        })?;
-
-        let root_canonical = root
-            .canonicalize()
-            .map_err(|_| ToolError::ExecutionFailed("Cannot resolve workspace root".to_string()))?;
-
-        if !canonical.starts_with(&root_canonical) {
-            return Err(ToolError::PathDenied(format!(
-                "Path '{}' is outside workspace root",
-                path_str
-            )));
-        }
-
-        Ok(canonical)
+    /// Read the file through the pinned handle.
+    fn read_target(
+        target: &crate::tools::infrastructure::fs_at::ValidatedWritePath,
+        path_str: &str,
+    ) -> Result<String, ToolError> {
+        let bytes = crate::tools::infrastructure::fs_at::read_file(target)?;
+        String::from_utf8(bytes)
+            .map_err(|_| ToolError::InvalidInput(format!("File '{}' is not valid UTF-8", path_str)))
     }
 
     /// Execute a patch using tree-sitter anchor mode.
     async fn execute_anchor(
         &self,
         path_str: &str,
-        resolved: &std::path::PathBuf,
+        target: &crate::tools::infrastructure::fs_at::ValidatedWritePath,
         insert: &str,
         input: &ToolInput,
     ) -> Result<ToolResult, ToolError> {
@@ -126,9 +101,7 @@ impl FilePatchTool {
             .get_string("position")
             .unwrap_or_else(|| "after".to_string());
 
-        let contents = tokio::fs::read_to_string(resolved).await.map_err(|e| {
-            ToolError::ExecutionFailed(format!("Failed to read file '{}': {}", path_str, e))
-        })?;
+        let contents = Self::read_target(target, path_str)?;
 
         let params = AnchorParams {
             anchor_type: anchor_type.clone(),
@@ -182,14 +155,9 @@ impl FilePatchTool {
             &contents[anchor.insert_offset..]
         );
 
-        tokio::fs::write(resolved, &new_contents)
-            .await
-            .map_err(|e| {
-                ToolError::ExecutionFailed(format!(
-                    "Failed to write patched file '{}': {}",
-                    path_str, e
-                ))
-            })?;
+        // Written inside the pinned parent directory (#1490): the file the bytes
+        // were read from and the file written are one inode family.
+        crate::tools::infrastructure::fs_at::write_atomic(target, new_contents.as_bytes())?;
 
         let patched_len = insert.len();
         let result = ToolResult {
@@ -208,6 +176,7 @@ impl FilePatchTool {
             )],
             duration_ms: 0,
             dry_run: false,
+            resolved_executable: None,
         };
 
         Ok(result)
@@ -217,14 +186,12 @@ impl FilePatchTool {
     async fn execute_search(
         &self,
         path_str: &str,
-        resolved: &std::path::PathBuf,
+        target: &crate::tools::infrastructure::fs_at::ValidatedWritePath,
         search: &str,
         insert: &str,
         before: bool,
     ) -> Result<ToolResult, ToolError> {
-        let contents = tokio::fs::read_to_string(resolved).await.map_err(|e| {
-            ToolError::ExecutionFailed(format!("Failed to read file '{}': {}", path_str, e))
-        })?;
+        let contents = Self::read_target(target, path_str)?;
 
         // Find all occurrences of the search string
         let occurrences: Vec<_> = contents.match_indices(&search).collect();
@@ -272,14 +239,9 @@ impl FilePatchTool {
             &contents[insert_pos..]
         );
 
-        tokio::fs::write(resolved, &new_contents)
-            .await
-            .map_err(|e| {
-                ToolError::ExecutionFailed(format!(
-                    "Failed to write patched file '{}': {}",
-                    path_str, e
-                ))
-            })?;
+        // Written inside the pinned parent directory (#1490): the file the bytes
+        // were read from and the file written are one inode family.
+        crate::tools::infrastructure::fs_at::write_atomic(target, new_contents.as_bytes())?;
 
         let patched_len = insert.len();
         let position_label = if used_smart {
@@ -305,6 +267,7 @@ impl FilePatchTool {
             )],
             duration_ms: 0,
             dry_run: false,
+            resolved_executable: None,
         };
 
         Ok(result)
@@ -320,13 +283,13 @@ impl Tool for FilePatchTool {
     async fn execute(&self, input: &ToolInput) -> Result<ToolResult, ToolError> {
         let path_str = input.require_string("path")?;
         let insert = input.require_string("insert")?;
-        let resolved = self.resolve_path(&path_str)?;
+        let target = self.resolve_target(&path_str)?;
 
         // Determine mode: anchor_mode if anchor_type is provided, otherwise search mode
         let has_anchor = input.get_string("anchor_type").is_some();
 
         if has_anchor {
-            self.execute_anchor(&path_str, &resolved, &insert, input)
+            self.execute_anchor(&path_str, &target, &insert, input)
                 .await
         } else {
             let search = input.require_string("search")?;
@@ -334,7 +297,7 @@ impl Tool for FilePatchTool {
                 .get_string("before")
                 .map(|s| s == "true")
                 .unwrap_or(false);
-            self.execute_search(&path_str, &resolved, &search, &insert, before)
+            self.execute_search(&path_str, &target, &search, &insert, before)
                 .await
         }
     }
@@ -1014,5 +977,54 @@ mod tests {
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), ToolError::PathDenied(_)));
+    }
+
+    // ── #1490 (SINK-7): patch mutates through the validated handle ───────
+
+    /// The `fs_at` swap test, run against this tool.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_symlinked_component_cannot_redirect_the_patch() {
+        let dir = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        std::fs::write(outside.path().join("target.rs"), "fn main() {}\n").unwrap();
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("escape")).unwrap();
+
+        let tool = FilePatchTool::new(dir.path().to_str().unwrap());
+        let mut params: std::collections::HashMap<String, serde_json::Value> =
+            std::collections::HashMap::new();
+        params.insert("path".to_string(), serde_json::json!("escape/target.rs"));
+        params.insert("search".to_string(), serde_json::json!("fn main"));
+        params.insert("insert".to_string(), serde_json::json!("// pwned\n"));
+
+        let error = tool.execute(&ToolInput::new(params)).await.unwrap_err();
+        assert!(matches!(error, ToolError::PathDenied(_)), "{error:?}");
+        assert_eq!(
+            std::fs::read_to_string(outside.path().join("target.rs")).unwrap(),
+            "fn main() {}\n",
+            "the patch crossed the symlink"
+        );
+    }
+
+    /// No raw mutation in the production section.
+    #[test]
+    fn the_tool_does_not_write_paths_itself() {
+        let source = include_str!("file_patch_tool.rs");
+        let production = source
+            .split("#[cfg(test)]")
+            .next()
+            .expect("the file has a production section");
+        let code: String = production
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for forbidden in ["fs::write", "fs::read_to_string"] {
+            assert!(
+                !code.contains(forbidden),
+                "{forbidden} is back in the production section — reads and writes must go \
+                 through fs_at so the check and the mutation share a handle (#1490)"
+            );
+        }
     }
 }

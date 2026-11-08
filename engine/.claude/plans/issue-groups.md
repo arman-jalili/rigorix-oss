@@ -1,61 +1,42 @@
-# Issue Implementation Groups
+# Issue groups — batch 2 (2026-11-08)
 
-**Generated:** 2026-02-13
-**Total Issues:** 4 (open, fetched by `.pi/scripts/fetch-issues.sh`)
-**Branch:** `feature/sink-register-1478-1481`
+Fetched with `.pi/scripts/fetch-issues.sh` (5 open issues, no labels — priority and
+component live in each body's `guardian_issue:` YAML block, which is why the script's
+label-based priority summary reads "No label: 5". The grouping below comes from the
+bodies.)
 
----
+## Batch: sink hardening — `feature/sink-hardening-1487-1491`
 
-## Grouping Strategy
+Every issue in this batch is a direct consequence of what the sink register (#1481)
+recorded: three rows said `mitigation: none`, one row said "NOT yet enforced at this
+site", and #1480's third criterion stopped at the engine boundary. They share files
+(`run_command_tool`, `shell_policy`, the register, the two host composition roots) and
+they share one shape: *a control is present and is not the control the sentence claims*.
 
-These four issues carry **no labels**; priority and component are declared in the
-`guardian_issue:` YAML block of each body. `categorize-issues.sh` reads labels, so its
-"4 individual issues" output is a false negative here — this file is the classification.
+| Order | Issue | ID | Priority | Component | Why this position |
+|---|---|---|---|---|---|
+| 1 | #1487 | SINK-4 | critical | `execution_engine/.../tools.rs`, `service_impl.rs`, cli + mcp composition | The only *reachable* sink. It also edits both host composition roots that #1491 touches, so it goes first to avoid rebasing host code twice. |
+| 2 | #1489 | SINK-5 | high | `tools/application/{run_command_tool,shell_policy}.rs` | Same file as #1488; the env/executable question is upstream of the cwd question (the program is chosen before it runs). |
+| 3 | #1488 | SINK-6 | medium | `tools/application/run_command_tool.rs` | Sequential on the same file as #1489, and it needs the `fs_at` handle discipline #1479 built. |
+| 4 | #1490 | SINK-7 | medium | `tools/application/{file_edit_tool,file_patch_tool}.rs`, template generation, register guard | Independent of 1–3 (different tools), but its third criterion edits the register that 1–3 also touch. |
+| 5 | #1491 | EVID-2 | medium | `cli/src/tui`, `mcp/src/execution_tools` | Surface last: it renders/serialises what 1–4 finished changing, and both hosts are settled by then. |
 
-Grouped by:
-1. **Component** — `tools/application` (2), `audit`+`orchestrator` (1), `.pi/architecture` (1)
-2. **Priority** — `high` ×3, `medium` ×1 (from `guardian_issue.priority`)
-3. **Dependency** — #1481 (`SINK-3`) records the mitigations #1478/#1479/#1480 create,
-   and its acceptance #5 requires "the register matches reality", so it lands last
-4. **Shape** — all four are the same class: *a control is present and is not the control
-   the sentence claims* (a filtering recorded as isolation, a check separated from its
-   mutation, a result computed and dropped). One branch, four commits, one MR.
+Not grouped separately: all five are one series on one branch, the same decision as
+batch 1 (instances before the register that records them).
 
----
+## Validation per issue
 
-### Group: Sink & evidence mechanisms (`SINK-1/2/3`, `EVID-1`)
+| Issue | Deterministic gate | Extra |
+|---|---|---|
+| #1487 | `cargo test -p rigorix-engine` + cli + mcp | docs + canonical (deployment.md, register row) |
+| #1489 | engine lib tests | the "fake `echo` on a caller PATH" test asserts a marker file, not an exit code |
+| #1488 | engine lib tests | symlinked-cwd case uses the same swap discipline as `fs_at` |
+| #1490 | engine lib tests + `validate-sink-register.sh --self-test` | canonical (register is a canonical reference) |
+| #1491 | cli + mcp tests | docs |
 
-**Branch:** `feature/sink-register-1478-1481`
-**Component:** `engine/src/tools/application`, `engine/src/audit/application`,
-`engine/src/orchestrator/application`, `engine/.pi/architecture`
-**Issues:** 4
+## Branch-wide gate (Phase 6)
 
-| Order | Issue | Priority | Component | Files |
-|---|---|---|---|---|
-| 1 | #1478 `SINK-1` | high | run-command | `shell_policy.rs`, `run_command_tool.rs`, `docs/deployment.md` |
-| 2 | #1479 `SINK-2` | medium | file-write | `file_write_tool.rs`, new `tools/infrastructure/fs_at.rs` |
-| 3 | #1480 `EVID-1` | high | evidence path | `audit/application/*`, `orchestrator/application/*` |
-| 4 | #1481 `SINK-3` | high | the mechanism | `sink-register.tsv`, `validate-sink-register.sh`, `.pi/guards.tsv` |
-
-**Plan:** `.claude/plans/feature-sink-register-1478-1481.md`
-**MR body:** `.claude/plans/feature-sink-register-1478-1481-pr-body.md`
-
-**Validation per issue**
-| Issue | Validators |
-|---|---|
-| #1478 | security, docs, tests |
-| #1479 | security, tests |
-| #1480 | tests, security, canonical |
-| #1481 | security, architecture, ci, canonical |
-
-**Exposure, stated once:** #1478 and #1479 are *latent* — no shipped binary constructs
-`RunCommandTool` or `FileWriteTool` (every site is `#[cfg(test)]`; the MCP host dispatches
-catalog methods only). They become reachable the moment a library consumer wires the tools
-module, which is why they are fixed before that rather than after. #1480 is live: it is on
-the orchestrator's run path.
-
----
-
-### Individual Issues (No Grouping)
-
-None. All four issues share one mechanism and one branch.
+`cargo build --workspace`, `cargo test --workspace --all-targets`,
+`cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt --check`,
+`cargo audit`, `.pi/scripts/validate-guards.sh` (+ `--self-test`),
+`.pi/scripts/validate-docs.sh`, and every `engine/.pi/scripts/validate-*.sh`.

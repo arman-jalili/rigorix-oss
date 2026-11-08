@@ -95,6 +95,13 @@ pub struct ParallelExecutionFactoryConfig {
     ///
     /// When set, every tool execution runs the configured shell hooks
     /// (which can block, override permissions, or enrich audit context).
+    /// The declared isolation spawned children run under (#1487).
+    ///
+    /// The dispatcher that runs plan steps is a shell by design, so the boundary
+    /// is the deployment's declaration, exactly as for `RunCommandTool` (#1478).
+    /// Absent ⇒ a `run_command` step fails `sandbox_undeclared` naming the reach,
+    /// and nothing is spawned.
+    pub sandbox: Option<Arc<crate::tools::application::shell_policy::SandboxDeclaration>>,
     pub hook_runner: Option<Arc<dyn HookRunnerService>>,
 
     /// ADR-011: optional approval binding (see [`ApprovalBindingSetup`]).
@@ -185,6 +192,7 @@ impl Default for ParallelExecutionFactoryConfig {
             event_channel_capacity: 1024,
             event_bus: None,
             permission_enforcer: None,
+            sandbox: None,
             hook_runner: None,
             approval_binding: None,
             sequence_policy: None,
@@ -497,9 +505,14 @@ impl ApprovalBindingSetup {
         let configured_ledger = std::env::var("RIGORIX_APPROVAL_CONSUMPTION_LEDGER").ok();
         let consumption_ledger_path =
             resolve_consumption_ledger(repo_root, configured_ledger.as_deref(), key.as_bytes());
-        if let Some(parent) = store_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
+        // #1490: the directory creation is authoritative. Discarding this failure
+        // used to move the error to the first write, where it read as "store
+        // unavailable" instead of "this path cannot be created".
+        crate::tools::infrastructure::fs_at::resolve_absolute_for_write(&store_path).map_err(
+            |e| ApprovalBindingError::StoreUnavailable {
+                detail: format!("{}: {e}", store_path.display()),
+            },
+        )?;
         let run_key = key.as_bytes().to_vec();
         let repository = std::sync::Arc::new(
             crate::approval::infrastructure::repository::FileBackedApprovalRepository::open_with_key_and_ledger(

@@ -74,6 +74,12 @@ pub struct OrchestratorServiceImpl {
     policy_engine: Option<Arc<dyn PolicyEngineService>>,
     validation_loop_service: Option<Arc<dyn ValidationLoopService>>,
     sequence_policy_service: Option<Arc<dyn SequencePolicyService>>,
+    /// The declared isolation the run's spawned steps executed under (#1487).
+    ///
+    /// ADR-016: the envelope records what produced a decision, including the
+    /// regime. Two runs whose `run_command` steps ran under different boundaries
+    /// must not be indistinguishable in the record.
+    sandbox: Option<Arc<crate::tools::application::shell_policy::SandboxDeclaration>>,
     current_execution: Arc<RwLock<Option<CurrentExecutionState>>>,
 }
 
@@ -114,6 +120,7 @@ impl OrchestratorServiceImpl {
             policy_engine: None,
             validation_loop_service: None,
             sequence_policy_service: None,
+            sandbox: None,
             current_execution: Arc::new(RwLock::new(None)),
         }
     }
@@ -145,6 +152,25 @@ impl OrchestratorServiceImpl {
     /// many envelopes reached neither the backend nor a durable queue. Both the
     /// `Ok(Degraded)` and `Err` outcomes are consumed here — neither is logged
     /// and dropped, because a log line is not a state a caller can request.
+    /// The isolation regime, as envelope metadata (#1487).
+    ///
+    /// `None` when nothing is declared, which is also when a `run_command` step
+    /// is refused — so a successful step never reports an unstated regime.
+    fn isolation_metadata(&self) -> Option<HashMap<String, String>> {
+        self.sandbox.as_ref().map(|declaration| {
+            HashMap::from([
+                (
+                    "isolation.regime".to_string(),
+                    declaration.declared().to_string(),
+                ),
+                (
+                    "isolation.requires".to_string(),
+                    declaration.requires().to_string(),
+                ),
+            ])
+        })
+    }
+
     async fn record_evidence(
         &self,
         record: &ExecutionRecord,
@@ -193,7 +219,7 @@ impl OrchestratorServiceImpl {
                 model_version: record.planning.model_version.clone(),
                 planning_prompt_content: self.planning_prompt_content(&record.planning),
                 file_paths: Self::extract_file_paths(&record.task_results),
-                metadata: None,
+                metadata: self.isolation_metadata(),
                 scoring_results: self.collect_scoring_results(record.execution_id).await,
                 sign: true,
                 repository,
@@ -255,6 +281,19 @@ impl OrchestratorServiceImpl {
     /// When unset (default) the runbook executes unchanged — no gating.
     pub fn with_sequence_policy(mut self, svc: Arc<dyn SequencePolicyService>) -> Self {
         self.sequence_policy_service = Some(svc);
+        self
+    }
+
+    /// Declare the isolation the run's spawned steps execute under (#1487).
+    ///
+    /// ADR-016: the envelope records what produced a decision, including its
+    /// regime. Without this, two runs whose `run_command` steps ran under
+    /// different boundaries produce indistinguishable evidence.
+    pub fn with_sandbox_declaration(
+        mut self,
+        declaration: Arc<crate::tools::application::shell_policy::SandboxDeclaration>,
+    ) -> Self {
+        self.sandbox = Some(declaration);
         self
     }
 

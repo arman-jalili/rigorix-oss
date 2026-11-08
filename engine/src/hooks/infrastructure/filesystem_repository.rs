@@ -105,24 +105,22 @@ impl HookCommandRepository for FilesystemHookConfigRepository {
 
         let toml_content = format!("[hooks]\n{}", toml_string);
 
-        // Ensure parent directory exists
-        if let Some(parent) = self.config_path.parent() {
-            fs::create_dir_all(parent).map_err(|e| HookError::Internal {
+        // #1490: atomic, through the pinned parent handle. The hooks file decides
+        // what runs before and after every tool call, so a half-written file is not
+        // a partial config — it is a different set of hooks.
+        let target =
+            crate::tools::infrastructure::fs_at::resolve_absolute_for_write(&self.config_path)
+                .map_err(|e| HookError::Internal {
+                    detail: format!("Cannot prepare hook config path: {e}"),
+                })?;
+        crate::tools::infrastructure::fs_at::write_atomic(&target, toml_content.as_bytes())
+            .map_err(|e| HookError::Internal {
                 detail: format!(
-                    "Failed to create config directory '{}': {}",
-                    parent.display(),
+                    "Failed to write hook config to '{}': {}",
+                    self.config_path.display(),
                     e
                 ),
             })?;
-        }
-
-        fs::write(&self.config_path, &toml_content).map_err(|e| HookError::Internal {
-            detail: format!(
-                "Failed to write hook config to '{}': {}",
-                self.config_path.display(),
-                e
-            ),
-        })?;
 
         Ok(())
     }

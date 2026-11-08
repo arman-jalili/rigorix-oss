@@ -110,17 +110,25 @@ impl FileSystemSymbolRepository {
         &self,
         symbols: &HashMap<String, SymbolDefinition>,
     ) -> Result<(), RepoEngineError> {
-        if let Some(parent) = self.path.parent()
-            && !parent.as_os_str().is_empty()
-        {
-            let _ = tokio::fs::create_dir_all(parent).await;
-        }
         let json =
             serde_json::to_string_pretty(symbols).map_err(|e| RepoEngineError::Internal {
                 detail: format!("serialize symbol cache: {e}"),
             })?;
-        tokio::fs::write(&self.path, json)
-            .await
-            .map_err(RepoEngineError::from)
+        // #1490: atomic, through the pinned parent handle. The old shape discarded
+        // the `create_dir_all` failure and wrote the path directly, so a missing
+        // parent surfaced as a write error and a reader could see a half-written
+        // cache.
+        let path = self.path.clone();
+        tokio::task::spawn_blocking(move || {
+            let target = crate::tools::infrastructure::fs_at::resolve_absolute_for_write(&path)?;
+            crate::tools::infrastructure::fs_at::write_atomic(&target, json.as_bytes())
+        })
+        .await
+        .map_err(|e| RepoEngineError::Internal {
+            detail: format!("symbol cache write task failed: {e}"),
+        })?
+        .map_err(|e| RepoEngineError::Internal {
+            detail: format!("symbol cache write failed: {e}"),
+        })
     }
 }

@@ -83,6 +83,19 @@ async fn executor_with(
     ParallelExecutionFactoryImpl::new()
         .create(ParallelExecutionFactoryConfig {
             executor_config: ParallelExecutorConfig::default(),
+            // #1487: the gate is attached and answers, and the regime is declared —
+            // the factory default refuses both, which is the point.
+            permission_enforcer: Some(Arc::new(
+                rigorix_engine::permission::application::enforcer_impl::PermissionEnforcerImpl::new(
+                    rigorix_engine::permission::domain::policy::PermissionPolicy::default_with_mode(
+                        rigorix_engine::permission::domain::PermissionMode::DangerousFullAccess,
+                    ),
+                    "/",
+                ),
+            )),
+            sandbox: Some(Arc::new(
+                rigorix_engine::tools::application::shell_policy::SandboxDeclaration::container(),
+            )),
             event_bus: Some(event_bus),
             precondition,
             ..Default::default()

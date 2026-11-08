@@ -60,6 +60,12 @@ current_path, baseline_path, mode, root = sys.argv[1:5]
 findings = json.load(open(current_path))
 
 RULES = [
+    (r"^engine/src/tools/application/run_command_tool\.rs$", "libc", "medium",
+     "the `pre_exec` block calls only `libc::fchdir` on the descriptor owned by "
+     "`fs_at::ValidatedChildDir` (#1488): it is async-signal-safe, takes no "
+     "pointer, and its return becomes an `io::Error` immediately. It is the only "
+     "way for the child to enter the directory that was validated rather than a "
+     "path that is resolved again"),
     (r"^engine/src/precondition/infrastructure/runner\.rs$", "libc", "medium",
      "libc::geteuid/getgroups to read the real uid/groups for the precondition "
      "runner; the existing SAFETY note covers the only pointer (a buffer sized "
@@ -74,7 +80,10 @@ RULES = [
      "(#1479): each directory descriptor is opened O_DIRECTORY|O_NOFOLLOW and "
      "owned by an enclosing File, each name is a NUL-terminated CString built in "
      "this module from an already-validated component, every return value is "
-     "checked immediately, and no pointer outlives its call"),
+     "checked immediately, and no pointer outlives its call. The `pre_exec` "
+     "block calls only `fchdir` with a descriptor this module owns (#1488): it is "
+     "async-signal-safe, takes no pointer, and its return is turned into an "
+     "`io::Error` immediately"),
 ]
 
 

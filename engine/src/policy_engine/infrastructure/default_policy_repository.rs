@@ -74,25 +74,10 @@ impl PolicyRepository for DefaultPolicyRepository {
                 detail: format!("Failed to serialize policy config: {}", e),
             })?;
 
-        // Ensure parent directory exists
-        if let Some(parent) = self.config_path.parent() {
-            tokio::fs::create_dir_all(parent).await.map_err(|e| {
-                PolicyEngineError::RepositoryError {
-                    detail: format!("Failed to create directory '{}': {}", parent.display(), e),
-                }
-            })?;
-        }
-
-        tokio::fs::write(&self.config_path, &content)
-            .await
-            .map_err(|e| PolicyEngineError::RepositoryError {
-                detail: format!(
-                    "Failed to write policy file '{}': {}",
-                    self.config_path.display(),
-                    e
-                ),
-            })?;
-
+        // #1490: atomic, through the pinned parent handle. The old shape created
+        // the directory, then wrote the path — a reader could observe a partially
+        // written policy file, which is the file that decides what is allowed.
+        write_atomically(&self.config_path, &content).await?;
         Ok(())
     }
 
@@ -140,6 +125,24 @@ impl PolicyRepository for DefaultPolicyRepository {
         let config = self.load_config().await.unwrap_or_default();
         Ok(config.rules.into_iter().map(|r| r.name).collect())
     }
+}
+
+/// Write `content` to `path` atomically, creating parents (#1490).
+async fn write_atomically(path: &std::path::Path, content: &str) -> Result<(), PolicyEngineError> {
+    let display = path.display().to_string();
+    let path = path.to_path_buf();
+    let content = content.to_string();
+    tokio::task::spawn_blocking(move || {
+        let target = crate::tools::infrastructure::fs_at::resolve_absolute_for_write(&path)?;
+        crate::tools::infrastructure::fs_at::write_atomic(&target, content.as_bytes())
+    })
+    .await
+    .map_err(|e| PolicyEngineError::RepositoryError {
+        detail: format!("policy write task failed: {e}"),
+    })?
+    .map_err(|e| PolicyEngineError::RepositoryError {
+        detail: format!("Failed to write policy file '{}': {e}", display),
+    })
 }
 
 #[cfg(test)]

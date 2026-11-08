@@ -98,6 +98,18 @@ fn executor_with(seam: Arc<dyn DispatchSeam>) -> ParallelExecutionServiceImpl {
         Box::new(RetryEvaluationServiceImpl::new()),
         Arc::new(EventBusServiceImpl::default()),
     )
+    // #1487: the gate is not optional, and a `run_command` step needs a regime.
+    .with_permission_enforcer(Arc::new(
+        rigorix_engine::permission::application::enforcer_impl::PermissionEnforcerImpl::new(
+            rigorix_engine::permission::domain::policy::PermissionPolicy::default_with_mode(
+                rigorix_engine::permission::domain::PermissionMode::DangerousFullAccess,
+            ),
+            "/",
+        ),
+    ))
+    .with_sandbox_declaration(Arc::new(
+        rigorix_engine::tools::application::shell_policy::SandboxDeclaration::container(),
+    ))
     .with_effect_commitment_seam(seam)
 }
 

@@ -73,7 +73,11 @@ async fn test_max_total_retries_per_session_stops_retrying() {
         },
         Box::new(retry),
         event_bus,
-    );
+    )
+    .with_permission_enforcer(crate::execution_engine::tests::allow_all_enforcer())
+    .with_sandbox_declaration(Arc::new(
+        crate::tools::application::shell_policy::SandboxDeclaration::container(),
+    ));
     let dag_id = Uuid::new_v4();
     let node = TaskNode::new(Uuid::new_v4(), "fragile", "no_such_tool", vec![], "boom")
         .with_requires_approval(true);

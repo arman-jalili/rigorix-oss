@@ -298,6 +298,15 @@ pub struct ExecutionResult {
     /// URI to the persistent audit record.
     #[serde(default)]
     audit_uri: String,
+
+    /// Whether this run's audit evidence reached anywhere (#1491).
+    ///
+    /// The engine computes it (#1480) and this response used to drop it, so a run
+    /// whose envelope was rejected looked exactly like a fully evidenced one. The
+    /// field is always present: `not_requested` is a fact about the run, and an
+    /// absent field is indistinguishable from a client that does not know it.
+    #[serde(default)]
+    evidence: EvidenceStatus,
 }
 
 impl ExecutionResult {
@@ -318,6 +327,7 @@ impl ExecutionResult {
             duration_ms,
             tokens_used,
             audit_uri,
+            evidence: EvidenceStatus::NotRequested,
         }
     }
 
@@ -349,6 +359,58 @@ impl ExecutionResult {
     /// Audit record URI.
     pub fn audit_uri(&self) -> &str {
         &self.audit_uri
+    }
+
+    /// Record whether the run's evidence is complete (#1491).
+    pub fn with_evidence(mut self, evidence: EvidenceStatus) -> Self {
+        self.evidence = evidence;
+        self
+    }
+
+    /// Whether the run's evidence is complete.
+    pub fn evidence(&self) -> &EvidenceStatus {
+        &self.evidence
+    }
+}
+
+/// Whether a run's audit evidence is complete, as the MCP client sees it (#1491).
+///
+/// Serialised as `{ "status": "degraded", "reason": "…", "undelivered": 2 }` — the
+/// reason and the count exist only for the degraded variant, so a client cannot
+/// read a meaningless zero for a complete run.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum EvidenceStatus {
+    /// Audit was disabled or unavailable for this run — not the same as complete.
+    #[default]
+    NotRequested,
+
+    /// Built, signed, saved and delivered (or durably queued).
+    Complete,
+
+    /// At least one step of the evidence path did not succeed.
+    Degraded {
+        /// Which step failed, in the operator's words.
+        reason: String,
+        /// Envelopes that reached neither the backend nor a durable queue.
+        undelivered: u32,
+    },
+}
+
+impl From<&rigorix_engine::orchestrator::application::dto::EvidenceStatus> for EvidenceStatus {
+    fn from(engine: &rigorix_engine::orchestrator::application::dto::EvidenceStatus) -> Self {
+        use rigorix_engine::orchestrator::application::dto::EvidenceStatus as Engine;
+        match engine {
+            Engine::NotRequested => EvidenceStatus::NotRequested,
+            Engine::Complete => EvidenceStatus::Complete,
+            Engine::Degraded {
+                reason,
+                undelivered,
+            } => EvidenceStatus::Degraded {
+                reason: reason.clone(),
+                undelivered: *undelivered,
+            },
+        }
     }
 }
 

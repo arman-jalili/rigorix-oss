@@ -23,8 +23,6 @@
 //! Medium — modifies files on disk (same as FileWriteTool).
 
 use async_trait::async_trait;
-use std::fs;
-use std::path::Path;
 
 use crate::code_gen::application::dto::{EditFileOutput, StructuredPatchHunk, SyntaxGateInput};
 use crate::code_gen::application::service::SyntaxGateService;
@@ -100,59 +98,23 @@ impl EditFileTool {
         }
     }
 
-    /// Resolve and validate a file path against the workspace root.
-    fn resolve_path(&self, path_str: &str) -> Result<std::path::PathBuf, ToolError> {
-        let root = Path::new(&self.workspace_root);
-
-        // Check for path traversal
-        let normalized = path_str.replace('\\', "/");
-        if normalized.contains("..") {
-            let path = root.join(path_str);
-            // Try canonicalizing — if it resolves outside workspace, deny
-            match path.canonicalize() {
-                Ok(canonical) => {
-                    let root_canonical = root.canonicalize().map_err(|_| {
-                        ToolError::ExecutionFailed("Cannot resolve workspace root".to_string())
-                    })?;
-                    if !canonical.starts_with(&root_canonical) {
-                        return Err(ToolError::PathDenied(format!(
-                            "Path '{}' is outside workspace root",
-                            path_str
-                        )));
-                    }
-                    return Ok(canonical);
-                }
-                Err(_) => {
-                    return Err(ToolError::PathDenied(format!(
-                        "Path '{}' could not be resolved",
-                        path_str
-                    )));
-                }
-            }
-        }
-
-        let path = root.join(path_str);
-        Ok(path)
+    /// Resolve the target through `fs_at`, so the check and the mutation share a
+    /// handle (#1490).
+    ///
+    /// This used to canonicalize a path, return a `PathBuf`, and then write and
+    /// rename that path — SINK-2 verbatim, in the tool next door to the one #1479
+    /// fixed. The returned value has no `PathBuf` accessor: the only way to touch
+    /// the file is through `fs_at`.
+    fn resolve_target(
+        &self,
+        path_str: &str,
+    ) -> Result<crate::tools::infrastructure::fs_at::ValidatedWritePath, ToolError> {
+        crate::tools::infrastructure::fs_at::resolve_for_write(&self.workspace_root, path_str)
     }
 
-    /// Check if a file is binary by scanning for NUL bytes in the first 8KB.
-    fn is_binary(&self, path: &Path) -> Result<bool, ToolError> {
-        use std::io::Read;
-
-        let mut file = fs::File::open(path).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                ToolError::NotFound(format!("File not found: {}", path.display()))
-            } else {
-                ToolError::ExecutionFailed(format!("Cannot open file: {}", e))
-            }
-        })?;
-
-        let mut buffer = vec![0u8; 8192];
-        let n = file
-            .read(&mut buffer)
-            .map_err(|e| ToolError::ExecutionFailed(format!("Cannot read file: {}", e)))?;
-
-        Ok(buffer[..n].contains(&0u8))
+    /// Binary detection over bytes already read through the pinned handle.
+    fn is_binary_bytes(bytes: &[u8]) -> bool {
+        bytes.iter().take(8192).any(|byte| *byte == 0)
     }
 
     /// Compute a simple unified diff between original and updated content.
@@ -294,17 +256,15 @@ impl EditFileTool {
             ));
         }
 
-        // Gate: Path validation
-        let resolved = self.resolve_path(path_str)?;
+        // Gate: Path validation, through the handle the write will use.
+        let target = self.resolve_target(path_str)?;
 
-        // Check if file exists
-        if !resolved.exists() {
-            return Err(ToolError::NotFound(format!("File not found: {}", path_str)));
-        }
+        // Read original content through the same handle: the bytes transformed
+        // and the file written are one inode family, not two resolutions.
+        let bytes = crate::tools::infrastructure::fs_at::read_file(&target)?;
 
         // Gate: Binary detection
-        let is_binary = self.is_binary(&resolved)?;
-        if is_binary {
+        if Self::is_binary_bytes(&bytes) {
             return Err(ToolError::InvalidInput(format!(
                 "Cannot edit binary file: {}",
                 path_str
@@ -312,18 +272,15 @@ impl EditFileTool {
         }
 
         // Gate: File size check
-        let metadata = fs::metadata(&resolved)
-            .map_err(|e| ToolError::ExecutionFailed(format!("Cannot read file metadata: {}", e)))?;
-        if metadata.len() > self.max_file_size {
+        if bytes.len() as u64 > self.max_file_size {
             return Err(ToolError::InvalidInput(format!(
                 "File too large: {} bytes (max {})",
-                metadata.len(),
+                bytes.len(),
                 self.max_file_size
             )));
         }
 
-        // Read original content
-        let original = fs::read_to_string(&resolved)
+        let original = String::from_utf8(bytes)
             .map_err(|e| ToolError::ExecutionFailed(format!("Cannot read file: {}", e)))?;
 
         // Gate: Existence check
@@ -345,17 +302,11 @@ impl EditFileTool {
         // Compute diff
         let (unified_diff, patch_hunks) = self.compute_diff(&original, &updated, path_str);
 
-        // Atomic write (skip in dry_run mode)
+        // Atomic write in the pinned directory (skip in dry_run mode). The temp
+        // file and the rename happen inside `fs_at`, against the handle resolved
+        // above — a component swapped in between cannot redirect either (#1490).
         if !dry_run {
-            let tmp_path = format!("{}.tmp", resolved.display());
-            fs::write(&tmp_path, &updated).map_err(|e| {
-                ToolError::ExecutionFailed(format!("Cannot write temporary file: {}", e))
-            })?;
-            fs::rename(&tmp_path, &resolved).map_err(|e| {
-                // Clean up temp file on failure
-                let _ = fs::remove_file(&tmp_path);
-                ToolError::ExecutionFailed(format!("Cannot rename temporary file: {}", e))
-            })?;
+            crate::tools::infrastructure::fs_at::write_atomic(&target, updated.as_bytes())?;
         }
 
         // Run syntax gate BEFORE moving `updated`
@@ -418,12 +369,15 @@ impl Tool for EditFileTool {
             },
             duration_ms: 0,
             dry_run,
+            resolved_executable: None,
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
 
     use std::io::Write;
@@ -709,5 +663,56 @@ mod tests {
         let (diff, hunks) = tool.compute_diff("same", "same", "f.txt");
         assert!(diff.is_empty());
         assert!(hunks.is_empty());
+    }
+
+    // ── #1490 (SINK-7): edit mutates through the validated handle ────────
+
+    /// The `fs_at` swap test, run against this tool: a component that is a symlink
+    /// is refused, and nothing is written outside the root.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_symlinked_component_cannot_redirect_the_edit() {
+        let dir = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        std::fs::write(outside.path().join("target.txt"), "outside").unwrap();
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("escape")).unwrap();
+
+        let tool = create_tool(dir.path().to_str().unwrap());
+        let input = make_input(vec![
+            ("path", serde_json::json!("escape/target.txt")),
+            ("old_string", serde_json::json!("outside")),
+            ("new_string", serde_json::json!("pwned")),
+        ]);
+
+        let error = tool.execute(&input).await.unwrap_err();
+        assert!(matches!(error, ToolError::PathDenied(_)), "{error:?}");
+        assert_eq!(
+            std::fs::read_to_string(outside.path().join("target.txt")).unwrap(),
+            "outside",
+            "the edit crossed the symlink"
+        );
+    }
+
+    /// The mutation is a handle operation, not a path operation: the production
+    /// section names no `fs::write` / `fs::rename` at all.
+    #[test]
+    fn the_tool_does_not_write_paths_itself() {
+        let source = include_str!("file_edit_tool.rs");
+        let production = source
+            .split("#[cfg(test)]")
+            .next()
+            .expect("the file has a production section");
+        let code: String = production
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for forbidden in ["fs::write", "fs::rename", "create_dir_all"] {
+            assert!(
+                !code.contains(forbidden),
+                "{forbidden} is back in the production section — the write must go through \
+                 fs_at so the check and the mutation share a handle (#1490)"
+            );
+        }
     }
 }

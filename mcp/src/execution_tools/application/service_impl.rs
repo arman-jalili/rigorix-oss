@@ -62,6 +62,8 @@ impl ExecuteHandler for ExecuteHandlerImpl {
             "duration_ms": result.duration_ms(),
             "tokens_used": result.tokens_used(),
             "audit_uri": result.audit_uri(),
+            // #1491: `evidence` is a fact about the run, not a debug field.
+            "evidence": result.evidence(),
             "steps": result.steps().iter().map(|s| {
                 serde_json::json!({
                     "step_name": s.step_name(),

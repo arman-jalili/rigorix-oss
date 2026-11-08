@@ -97,6 +97,15 @@ pub trait OrchestratorBuilder: Send + Sync {
     ) -> Self
     where
         Self: Sized;
+    /// Declare the isolation the run's spawned steps execute under (#1487).
+    ///
+    /// ADR-016: the envelope records what produced a decision, including the
+    /// regime it ran under. Two runs whose `run_command` steps had different
+    /// boundaries must not be indistinguishable in the record.
+    fn with_sandbox_declaration(
+        self,
+        declaration: Arc<crate::tools::application::shell_policy::SandboxDeclaration>,
+    ) -> Self;
 
     /// Build the `OrchestratorService`.
     ///

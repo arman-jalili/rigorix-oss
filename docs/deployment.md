@@ -46,6 +46,27 @@ Unset, unrecognized, or `none` refuses to construct the tool with a message nami
 the child can reach. A declaration is not a proof — but it converts a silent assumption
 into a recorded one, and it makes "we forgot" a startup failure instead of a finding.
 
+### The same declaration governs plan steps (#1487)
+
+The path that actually runs a plan's `run_command` step is not the tool — it is
+`execution_engine`'s dispatcher, which executes a shell string by design (there is no
+allowlist there; the boundary is the declaration). Since #1487 it requires the **same**
+declaration:
+
+- `RIGORIX_SANDBOX` unset, unrecognized, or `none` ⇒ every `run_command` step fails with
+  the failure type `sandbox_undeclared`, before anything is spawned. The step's error names
+  the reach and the variable.
+- The hosts (`cli`, `mcp`, the Action) print the remedy once at startup and keep running:
+  a plan with no `run_command` step is unaffected, so a missing declaration is a per-step
+  refusal rather than a broken installation.
+
+The declared regime is recorded in the envelope's `metadata` (`isolation.regime`,
+`isolation.requires`), so two runs whose steps ran under different boundaries are
+distinguishable in the audit record.
+
+**Breaking change on upgrade:** a deployment that runs `run_command` steps must set
+`RIGORIX_SANDBOX`. Previously the steps ran with no declaration at all.
+
 ### The allowlist's grain is the executable
 
 `is_command_allowed` matches the first word. `<allowlisted> <arbitrary arguments>` is
@@ -70,21 +91,81 @@ trusted caller, and only the container/VM boundary makes it a control.
 ### Environment
 
 `INHERITED_ENV_ALLOWLIST` = `PATH HOME LANG LC_ALL TMPDIR SHELL TERM`. Everything else is
-cleared before spawn. Per-call `env` overrides are applied last and are the caller's
-responsibility — they are not part of the isolation story.
+cleared before spawn.
+
+Per-call `env` overrides are **not** a free channel (#1489). Two rules:
+
+| Refused | Why |
+|---|---|
+| `PATH`, `LD_*`, `DYLD_*`, `GCONV_PATH`, `IFS` | they change **what executes**: the allowlist compared a name, the kernel runs a path, and the loader runs code before `main` |
+| `BASH_ENV`, `ENV`, `PYTHONSTARTUP`, `NODE_OPTIONS`, `PERL5OPT`, `RUBYOPT` | they make an allowlisted interpreter run a file before the program it was given |
+| any key the tool did not declare | an undeclared channel is how `PATH` became an executable selector; the tool declares the set it needs (`with_declared_env`) |
+
+The program is resolved in the **engine's** `PATH` before any override is applied, and the
+resolved path is returned on the result (`resolved_executable`), so the evidence names the
+file that ran rather than the word that was approved. The step dispatcher's shell path
+cannot make that record: the shell resolves its own argv — that is one of the things the
+`run_command` step's `does_not` column says.
+
+### `cwd` is part of the boundary (#1488)
+
+An allowlisted word plus a caller-chosen directory is still arbitrary execution:
+`cargo build` runs that directory's `build.rs`, `npm run` its lifecycle scripts, `git`
+honours repo-local config. So `cwd` is resolved against the workspace root through
+`tools/infrastructure/fs_at.rs` — each component opened with `O_NOFOLLOW` from the opened
+root — and the child enters the **validated inode** with `fchdir` before `execve`, not a
+path that is resolved again.
+
+| `cwd` | Result |
+|---|---|
+| `/tmp`, or any absolute path outside the root | `PathDenied`, naming the root, before any spawn |
+| anything containing `..` | `PathDenied` (accepted only by re-resolving, which is the defect) |
+| a symlinked component | `PathDenied`, naming the link |
+| a directory inside the root | runs there |
+
+What it does not do: it does not stop a process with write access inside the root from
+swapping a component **before** the resolution runs — the control is over the window
+between validation and spawn, which is the window that existed.
 
 ---
 
-## `file-write`: handle-coupled, not path-revalidated
+## Permission mode: an unrecognized value is refused (#1487)
 
-`FileWriteTool` resolves a target once, through `tools/infrastructure/fs_at.rs`, which walks
-each component with `openat(…, O_NOFOLLOW)` and returns the **opened parent directory
-handle**. The temp file is created in that directory and `renameat`-ed within it, so a
+`RIGORIX_PERMISSION_MODE` (or `rigorix.toml`'s `permission_mode`) accepts
+`read_only`, `workspace_write`, `danger_full_access` and the `action.yml` spelling
+`dangerous_full_access`. Unset means the documented default, `workspace_write`.
+
+Anything else — `read-only`, `readOnly`, a typo — is a **startup error** naming the
+accepted values. It used to be absorbed by `_ => WorkspaceWrite`, so a near-miss silently
+became a permission grant. The enforcer itself is not optional either: a host that cannot
+build it fails to start, rather than continuing with mode gating skipped.
+
+---
+
+## `file-write`, `file-edit`, `file-patch`: handle-coupled, not path-revalidated
+
+All three file-mutating tools resolve a target once, through
+`tools/infrastructure/fs_at.rs`, which walks each component with `openat(…, O_NOFOLLOW)` and
+returns the **opened parent directory handle**. The temp file is created in that directory and `renameat`-ed within it, so a
 component swapped for a symlink after validation cannot redirect the write. A symlinked
 component is refused by name, not followed.
 
-What it does not do: survive a full disk, or provide durability guarantees beyond the
+Editing and patching read through the same handle (`read_file`) and write through
+`write_atomic`, so the bytes transformed and the file written are one inode family — before
+#1490 those two tools re-resolved the path for the write, which was SINK-2 verbatim in the
+tools next door to the one #1479 fixed.
+
+What they do not do: survive a full disk, or provide durability guarantees beyond the
 `fsync` on the temp file before rename.
+
+## Register rows with `mitigation=none` need an owner (#1490)
+
+A register row is a description; a finding needs a ticket. `validate-sink-register.sh` now
+refuses a `none` row whose `requires` does not cite an issue (`#1490`), and the register has
+no `none` rows left: this batch fixed the five it found (append/edit/patch re-resolution, the
+two non-atomic stores, and the placeholder API key), plus the two the guard surfaced while
+the rule was being written. The self-test seeds an unmitigated row without an owner and
+requires the guard to reject it.
 
 ---
 
@@ -110,3 +191,18 @@ a process lifetime.
   evidence; it cannot verify that the regime is what the operator claims.
 - Secret distribution. The engine withholds `RIGORIX_HMAC_KEY` from children; it does not
   decide where the key is stored.
+
+## Evidence is a run outcome, not a debug field (#1491)
+
+`RunOutput.evidence` reports `not_requested`, `complete`, or `degraded { reason, undelivered }`.
+The engine computes it (#1480); since #1491 both surfaces show it:
+
+- **CLI** — the status bar prints `evidence: complete` / `evidence: degraded — <reason>
+  (<n> undelivered)` next to the run's phase, and the degraded form is red and bold. A
+  completed run with a lost envelope is not the same outcome as a completed run with a
+  complete one, so the two must not render the same.
+- **MCP** — `rigorix_execute` returns `evidence` as `{ "status": …, "reason": …,
+  "undelivered": … }`; `reason` and `undelivered` exist only for `degraded`.
+
+`not_requested` is always stated, never omitted: an absent field cannot be told apart from
+a client that does not know the field, which is how the original defect stayed invisible.
