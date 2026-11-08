@@ -32,7 +32,7 @@
 #   does_not    what the control does not do — mandatory, write it as a sentence
 # sink	module	kind	mitigation	requires	does_not
 # ── process: what starts, and what it can do once started ─────────────────────
-tools:run-command-spawn	tools/application/run_command_tool.rs	process	filtering	deployment isolation (RIGORIX_SANDBOX=container|vm), declared at construction	does not constrain what the executable does with its arguments — an allowlisted cargo or npm still runs its own code (#1478)
+tools:run-command-spawn	tools/application/run_command_tool.rs	process	filtering	deployment isolation (RIGORIX_SANDBOX=container|vm), declared at construction; the program is resolved in the engine's PATH before any caller env is applied (#1489)	does not constrain what the executable does with its arguments — an allowlisted cargo or npm still runs its own code (#1478); the resolved path is recorded, but the arguments are still the executable's own program
 tools:shell-policy	tools/application/shell_policy.rs	env-read	operator-declared	RIGORIX_SANDBOX read by SandboxDeclaration::from_env	does not prove the boundary exists — it records that the deployment claimed one
 tools:git-read-fixed-argv	tools/application/git_read_tool.rs	process	trust-boundary	a fixed `git` argv with no caller string and a write/exec flag refusal (#1082)	does not stop git from reading anything the engine's uid can read
 tools:git-stage-fixed-argv	tools/application/git_stage_tool.rs	process	type	a fixed `git add` argv built from validated paths	does not prevent staging a path that changed after validation

@@ -118,6 +118,7 @@ impl Tool for LspQueryTool {
             side_effects: vec![],
             duration_ms: 0,
             dry_run: false,
+            resolved_executable: None,
         })
     }
 }

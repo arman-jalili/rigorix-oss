@@ -418,6 +418,7 @@ impl Tool for EditFileTool {
             },
             duration_ms: 0,
             dry_run,
+            resolved_executable: None,
         })
     }
 }

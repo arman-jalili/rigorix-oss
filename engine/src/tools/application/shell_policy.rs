@@ -60,6 +60,198 @@ use std::borrow::Cow;
 pub const INHERITED_ENV_ALLOWLIST: &[&str] =
     &["PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "SHELL", "TERM"];
 
+/// Environment keys a caller may never set on a child (#1489).
+///
+/// The allowlist compares a *word*; the kernel executes a *path*. `PATH` decides
+/// which file a bare name resolves to, so an override of it replaces the
+/// executable the policy approved. The loader variables are the same class one
+/// step earlier: they run code before the program's own `main`. The runtime hooks
+/// are the same class for the interpreters the allowlist is meant to admit.
+///
+/// Each entry carries the reason, because "refused" without "because" is the
+/// sentence that gets removed again.
+pub const RESERVED_ENV_KEYS: &[(&str, &str)] = &[
+    (
+        "PATH",
+        "the program is resolved through the child's PATH, so the override decides which file \
+         executes — the allowlist compared the name, not the path",
+    ),
+    (
+        "BASH_ENV",
+        "a non-interactive bash sources this file before the command it was given",
+    ),
+    (
+        "ENV",
+        "a POSIX shell sources this file before the command it was given",
+    ),
+    (
+        "PYTHONSTARTUP",
+        "the interpreter executes this file before the source it was given",
+    ),
+    (
+        "NODE_OPTIONS",
+        "the runtime applies these flags, including `--require`, before the program runs",
+    ),
+    (
+        "PERL5OPT",
+        "the interpreter applies these flags, including `-M`, before the program runs",
+    ),
+    (
+        "RUBYOPT",
+        "the interpreter applies these flags, including `-r`, before the program runs",
+    ),
+    (
+        "GCONV_PATH",
+        "the C library loads its conversion modules from this path, which is code execution",
+    ),
+    (
+        "IFS",
+        "word splitting is decided by the child, and every shell string was validated against \
+         the engine's IFS",
+    ),
+];
+
+/// Prefixes whose whole family runs code outside the program (#1489).
+///
+/// `LD_PRELOAD`/`LD_LIBRARY_PATH` (glibc), `DYLD_*` (macOS) and `LD_AUDIT` all
+/// name code the loader maps before `main`. Listing one name each would be the
+/// same mistake the sink register exists to prevent, so the families are matched.
+pub const RESERVED_ENV_PREFIXES: &[(&str, &str)] = &[
+    (
+        "LD_",
+        "the dynamic loader executes what this variable names before the program starts",
+    ),
+    (
+        "DYLD_",
+        "the macOS dynamic loader executes what this variable names before the program starts",
+    ),
+];
+
+/// Why a caller-supplied environment entry was refused (#1489).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EnvOverrideError {
+    /// The key is in the reserved set: setting it changes what runs, not how.
+    ReservedKey {
+        /// The key as supplied.
+        key: String,
+        /// Why it is reserved, in the register's language.
+        reason: &'static str,
+    },
+    /// The key is not in the set the tool declared it needs.
+    UndeclaredKey {
+        /// The key as supplied.
+        key: String,
+        /// The declared set, for the message.
+        declared: Vec<String>,
+    },
+}
+
+impl std::fmt::Display for EnvOverrideError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EnvOverrideError::ReservedKey { key, reason } => write!(
+                f,
+                "environment key {key:?} is reserved and cannot be set by a caller: {reason}. \
+                 The child's environment is not a parameter channel for choosing what executes."
+            ),
+            EnvOverrideError::UndeclaredKey { key, declared } => write!(
+                f,
+                "environment key {key:?} is not declared by this tool, so it would be an env \
+                 entry the deployment never agreed to. Declared keys: {}.",
+                if declared.is_empty() {
+                    "none — this tool accepts no caller environment at all".to_string()
+                } else {
+                    declared.join(", ")
+                }
+            ),
+        }
+    }
+}
+
+impl std::error::Error for EnvOverrideError {}
+
+/// Refuse a caller-supplied environment that could change *what executes* (#1489).
+///
+/// Two rules, in this order so the message is the specific one:
+/// 1. a reserved key is refused by name, with the reason (it changes the
+///    executable or the loader, not the command's inputs);
+/// 2. every other key must be in `declared` — the set the tool said it needs.
+///    An undeclared key is an error, not an environment entry: "anything the
+///    caller sends" is what made the reserved list insufficient to begin with.
+///
+/// Names are compared case-insensitively, because `Path` is `PATH` to the kernel
+/// on the platforms that matter.
+pub fn validate_env_overrides(
+    overrides: &[(String, String)],
+    declared: &std::collections::HashSet<String>,
+) -> Result<(), EnvOverrideError> {
+    for (key, _) in overrides {
+        let upper = key.to_ascii_uppercase();
+        if let Some((_, reason)) = RESERVED_ENV_KEYS.iter().find(|(name, _)| *name == upper) {
+            return Err(EnvOverrideError::ReservedKey {
+                key: key.clone(),
+                reason,
+            });
+        }
+        if let Some((_, reason)) = RESERVED_ENV_PREFIXES
+            .iter()
+            .find(|(prefix, _)| upper.starts_with(prefix))
+        {
+            return Err(EnvOverrideError::ReservedKey {
+                key: key.clone(),
+                reason,
+            });
+        }
+        if !declared.contains(key) && !declared.contains(&upper) {
+            return Err(EnvOverrideError::UndeclaredKey {
+                key: key.clone(),
+                declared: {
+                    let mut names: Vec<String> = declared.iter().cloned().collect();
+                    names.sort();
+                    names
+                },
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Resolve the executable a bare name refers to, in the **engine's** environment.
+///
+/// #1489: `Command::new("echo")` resolves through the child's environment, which
+/// is where a caller-supplied `PATH` used to take over. Resolving here — before
+/// any override is applied — makes the executed file the one the policy saw, and
+/// returns it so the caller can record it: the evidence then names the binary, not
+/// the word that was approved.
+///
+/// A name containing a path separator is taken literally (and must exist); a bare
+/// name is searched in the engine's `PATH` in order.
+pub fn resolve_program(program: &str) -> Result<std::path::PathBuf, String> {
+    use std::path::Path;
+    if program.is_empty() {
+        return Err("the command has no executable".to_string());
+    }
+    if program.contains('/') {
+        let path = Path::new(program);
+        return if path.is_file() {
+            Ok(path.to_path_buf())
+        } else {
+            Err(format!("{program:?} is not an executable file"))
+        };
+    }
+    let search = std::env::var_os("PATH").unwrap_or_default();
+    for dir in std::env::split_paths(&search) {
+        let candidate = dir.join(program);
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+    }
+    Err(format!(
+        "{program:?} was not found in the engine's PATH; the executable is resolved before any \
+         caller-supplied environment is applied, so a caller cannot point it at another file"
+    ))
+}
+
 /// The deployment fact that must exist before `run-command` may be enabled.
 ///
 /// `none` is a recognized value and a refusal: declaring that there is no

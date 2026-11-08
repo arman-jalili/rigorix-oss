@@ -91,8 +91,21 @@ trusted caller, and only the container/VM boundary makes it a control.
 ### Environment
 
 `INHERITED_ENV_ALLOWLIST` = `PATH HOME LANG LC_ALL TMPDIR SHELL TERM`. Everything else is
-cleared before spawn. Per-call `env` overrides are applied last and are the caller's
-responsibility — they are not part of the isolation story.
+cleared before spawn.
+
+Per-call `env` overrides are **not** a free channel (#1489). Two rules:
+
+| Refused | Why |
+|---|---|
+| `PATH`, `LD_*`, `DYLD_*`, `GCONV_PATH`, `IFS` | they change **what executes**: the allowlist compared a name, the kernel runs a path, and the loader runs code before `main` |
+| `BASH_ENV`, `ENV`, `PYTHONSTARTUP`, `NODE_OPTIONS`, `PERL5OPT`, `RUBYOPT` | they make an allowlisted interpreter run a file before the program it was given |
+| any key the tool did not declare | an undeclared channel is how `PATH` became an executable selector; the tool declares the set it needs (`with_declared_env`) |
+
+The program is resolved in the **engine's** `PATH` before any override is applied, and the
+resolved path is returned on the result (`resolved_executable`), so the evidence names the
+file that ran rather than the word that was approved. The step dispatcher's shell path
+cannot make that record: the shell resolves its own argv — that is one of the things the
+`run_command` step's `does_not` column says.
 
 ---
 

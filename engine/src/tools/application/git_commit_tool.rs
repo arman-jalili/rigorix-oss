@@ -123,6 +123,7 @@ impl Tool for GitCommitTool {
             ],
             duration_ms,
             dry_run: false,
+            resolved_executable: None,
         };
 
         Ok(result)

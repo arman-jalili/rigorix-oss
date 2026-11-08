@@ -165,6 +165,7 @@ impl Tool for GitReadTool {
             side_effects: vec![],
             duration_ms,
             dry_run: false,
+            resolved_executable: None,
         })
     }
 }

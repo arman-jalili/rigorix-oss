@@ -208,6 +208,7 @@ impl FilePatchTool {
             )],
             duration_ms: 0,
             dry_run: false,
+            resolved_executable: None,
         };
 
         Ok(result)
@@ -305,6 +306,7 @@ impl FilePatchTool {
             )],
             duration_ms: 0,
             dry_run: false,
+            resolved_executable: None,
         };
 
         Ok(result)
