@@ -10,6 +10,7 @@
 #   2. the import section is what is recorded imports      (exactly; both directions)
 #   3. the size is inside the ceiling         size         (with its set_from)
 #  10. no builder path in the artifact      builder-paths (reproducible, and not a map of my box)
+#  11. every claim has an artifact          responsibility (the page a questionnaire quotes)
 #   7. the words equal the record             claims       (#1467: six, not the phrase)
 #   4. the five goldens reproduce             conformance  (through node, in the artifact)
 #   5. a truncated request is a refusal       truncation   (and the instance keeps answering)
@@ -41,6 +42,7 @@ if [ "$MODE" = "self-test" ]; then
   bash "$HERE/check-claim-matches-record.sh" --self-test
   bash "$HERE/run-hostile.sh" --self-test
   bash "$HERE/check-no-builder-paths.sh" --self-test
+  bash "$HERE/check-responsibility-matrix.sh" --self-test
   # The contract's seeds: a moving clock, a leaking stdout, and a `proc_exit` that returns.
   if node "$HERE/embedder-contract.mjs" --self-test "$MODULE" >/dev/null 2>&1; then
     echo "✓ self-test: the embedder contract's seeds all bite (clock, stdout, proc_exit)"
@@ -100,6 +102,9 @@ step "the embedder contract"
 node "$HERE/embedder-contract.mjs" --self
 node "$HERE/embedder-contract.mjs" --artifact "$MODULE"
 node "$HERE/embedder-contract.mjs" --conformance "$MODULE"
+
+step "the responsibility page's claims"
+bash "$HERE/check-responsibility-matrix.sh"
 
 step "release wiring"
 bash "$HERE/check-release-wiring.sh"
