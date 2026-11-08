@@ -48,11 +48,37 @@ pub(crate) use crate::sequence_policy::domain::{
 
 pub(crate) use crate::sequence_policy::infrastructure::SequencePolicyRepository;
 
+/// An enforcer that permits everything the full-access mode permits.
+///
+/// #1487: a service with no enforcer now refuses every step (`permission_enforcer_unavailable`).
+/// Tests that execute tools attach this one, which is the same value the hosts build
+/// from `PermissionEnforcerFactoryImpl::create_with_mode(WorkspaceWrite)` — the gate is
+/// on, and it answers.
+pub(crate) fn allow_all_enforcer()
+-> Arc<dyn crate::permission::application::enforcer::PermissionEnforcer> {
+    use crate::permission::application::enforcer_impl::PermissionEnforcerImpl;
+    use crate::permission::domain::PermissionMode;
+    use crate::permission::domain::policy::PermissionPolicy;
+    // `dangerous_full_access` on purpose: these tests exercise dispatch, not the
+    // file-write boundary, and several write to the temp directory, which the
+    // dispatcher's own workspace root (".") does not contain. The gate is on and
+    // answers — which is the property #1487 is about.
+    Arc::new(PermissionEnforcerImpl::new(
+        PermissionPolicy::default_with_mode(PermissionMode::DangerousFullAccess),
+        "/",
+    ))
+}
+
 fn create_executor() -> ParallelExecutionServiceImpl {
     let config = ParallelExecutorConfig::default();
     let retry = RetryEvaluationServiceImpl::new();
     let event_bus = Arc::new(EventBusServiceImpl::default());
     ParallelExecutionServiceImpl::new(config, Box::new(retry), event_bus)
+        .with_permission_enforcer(allow_all_enforcer())
+        // #1487: a `run_command` step needs a declared regime, as in production.
+        .with_sandbox_declaration(Arc::new(
+            crate::tools::application::shell_policy::SandboxDeclaration::container(),
+        ))
 }
 
 /// An executor with the ADR-011 binding attached — the configuration every
@@ -82,6 +108,11 @@ fn create_unbound_executor() -> ParallelExecutionServiceImpl {
     let retry = RetryEvaluationServiceImpl::new();
     let event_bus = Arc::new(EventBusServiceImpl::default());
     ParallelExecutionServiceImpl::new(config, Box::new(retry), event_bus)
+        .with_permission_enforcer(allow_all_enforcer())
+        // #1487: a `run_command` step needs a declared regime, as in production.
+        .with_sandbox_declaration(Arc::new(
+            crate::tools::application::shell_policy::SandboxDeclaration::container(),
+        ))
 }
 
 /// A-02: minimal sealed graph for session-setup tests (abort/pause/state).

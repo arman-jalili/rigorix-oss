@@ -242,6 +242,29 @@ impl SandboxDeclaration {
     }
 }
 
+/// Resolve the declaration a host should attach at startup, warning once.
+///
+/// #1487: a host that runs plan steps must declare the isolation those steps run
+/// under, but it must not refuse to *start*: a plan with no `run_command` step is
+/// perfectly serviceable, and turning a missing declaration into a startup failure
+/// would make the failure appear before anyone asked for a shell. So the remedy is
+/// printed once, here, and every `run_command` step then fails with
+/// `sandbox_undeclared` — the refusal happens at the step, where it is evidence.
+///
+/// `host` names the composition root so the message says which binary to fix.
+pub fn declaration_for_host(host: &str) -> Option<std::sync::Arc<SandboxDeclaration>> {
+    match SandboxDeclaration::from_env() {
+        Ok(declaration) => Some(std::sync::Arc::new(declaration)),
+        Err(error) => {
+            tracing::warn!(
+                host = %host,
+                "{error} Until then every run_command step will fail with sandbox_undeclared."
+            );
+            None
+        }
+    }
+}
+
 /// Shell constructs that turn one command into a compound.
 ///
 /// Ordering only affects which operator is named in the rejection message;

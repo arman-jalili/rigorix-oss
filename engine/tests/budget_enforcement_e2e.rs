@@ -87,6 +87,19 @@ async fn a_zero_budget_refuses_the_call_and_the_tool_never_runs() {
     let executor = ParallelExecutionFactoryImpl::new()
         .create(ParallelExecutionFactoryConfig {
             executor_config: config,
+            // #1487: the gate is attached and answers, and the regime is declared —
+            // the factory default refuses both, which is the point.
+            permission_enforcer: Some(Arc::new(
+                rigorix_engine::permission::application::enforcer_impl::PermissionEnforcerImpl::new(
+                    rigorix_engine::permission::domain::policy::PermissionPolicy::default_with_mode(
+                        rigorix_engine::permission::domain::PermissionMode::DangerousFullAccess,
+                    ),
+                    "/",
+                ),
+            )),
+            sandbox: Some(Arc::new(
+                rigorix_engine::tools::application::shell_policy::SandboxDeclaration::container(),
+            )),
             event_bus: Some(event_bus),
             ..Default::default()
         })
@@ -147,6 +160,19 @@ async fn a_step_within_budget_dispatches_runs_and_is_counted() {
     let executor = ParallelExecutionFactoryImpl::new()
         .create(ParallelExecutionFactoryConfig {
             executor_config: config,
+            // #1487: the gate is attached and answers, and the regime is declared —
+            // the factory default refuses both, which is the point.
+            permission_enforcer: Some(Arc::new(
+                rigorix_engine::permission::application::enforcer_impl::PermissionEnforcerImpl::new(
+                    rigorix_engine::permission::domain::policy::PermissionPolicy::default_with_mode(
+                        rigorix_engine::permission::domain::PermissionMode::DangerousFullAccess,
+                    ),
+                    "/",
+                ),
+            )),
+            sandbox: Some(Arc::new(
+                rigorix_engine::tools::application::shell_policy::SandboxDeclaration::container(),
+            )),
             event_bus: Some(event_bus),
             ..Default::default()
         })

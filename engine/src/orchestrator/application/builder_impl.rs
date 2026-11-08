@@ -46,6 +46,8 @@ pub struct OrchestratorBuilderImpl {
     // R2 (ADR-013): plan-time sequence-policy gate.
     sequence_policy_service:
         Option<Arc<dyn crate::sequence_policy::application::service::SequencePolicyService>>,
+    // #1487: the declared isolation, recorded in the envelope.
+    sandbox: Option<Arc<crate::tools::application::shell_policy::SandboxDeclaration>>,
 }
 
 impl OrchestratorBuilderImpl {
@@ -185,6 +187,7 @@ impl OrchestratorBuilder for OrchestratorBuilderImpl {
             code_graph_service: None,
             scored_evaluation_service: None,
             sequence_policy_service: None,
+            sandbox: None,
         }
     }
 
@@ -214,6 +217,14 @@ impl OrchestratorBuilder for OrchestratorBuilderImpl {
         svc: Arc<dyn crate::sequence_policy::application::service::SequencePolicyService>,
     ) -> Self {
         self.sequence_policy_service = Some(svc);
+        self
+    }
+
+    fn with_sandbox_declaration(
+        mut self,
+        declaration: Arc<crate::tools::application::shell_policy::SandboxDeclaration>,
+    ) -> Self {
+        self.sandbox = Some(declaration);
         self
     }
 

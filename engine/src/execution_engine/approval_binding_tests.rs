@@ -93,7 +93,13 @@ fn executor_with_binding(
         ParallelExecutorConfig::default(),
         Box::new(RetryEvaluationServiceImpl::new()),
         Arc::new(EventBusServiceImpl::default()),
-    );
+    )
+    // #1487: absent enforcer = refusal, so the gate is attached the way the hosts
+    // attach it.
+    .with_permission_enforcer(crate::execution_engine::tests::allow_all_enforcer())
+    .with_sandbox_declaration(Arc::new(
+        crate::tools::application::shell_policy::SandboxDeclaration::container(),
+    ));
     executor.with_approval_service(Arc::new(service))
 }
 
@@ -386,6 +392,12 @@ async fn test_factory_attached_binding_captures_verifies_consumes() {
             store_path: std::path::PathBuf::new(),
             consumption_ledger_path: std::path::PathBuf::new(),
         }),
+        // #1487: the factory default attaches no gate and declares no regime, so a
+        // step is refused twice over. A host that runs steps supplies both.
+        permission_enforcer: Some(crate::execution_engine::tests::allow_all_enforcer()),
+        sandbox: Some(Arc::new(
+            crate::tools::application::shell_policy::SandboxDeclaration::container(),
+        )),
         ..ParallelExecutionFactoryConfig::default()
     };
     let executor: Box<dyn ParallelExecutionService> = ParallelExecutionFactoryImpl::new()
@@ -525,6 +537,12 @@ async fn test_bound_cycle_publishes_approval_and_scope_events() {
             store_path: std::path::PathBuf::new(),
             consumption_ledger_path: std::path::PathBuf::new(),
         }),
+        // #1487: the factory default attaches no gate and declares no regime, so a
+        // step is refused twice over. A host that runs steps supplies both.
+        permission_enforcer: Some(crate::execution_engine::tests::allow_all_enforcer()),
+        sandbox: Some(Arc::new(
+            crate::tools::application::shell_policy::SandboxDeclaration::container(),
+        )),
         ..ParallelExecutionFactoryConfig::default()
     };
     let executor: Box<dyn ParallelExecutionService> = ParallelExecutionFactoryImpl::new()

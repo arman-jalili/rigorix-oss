@@ -17,6 +17,23 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- **`run_command` steps require `RIGORIX_SANDBOX`.** The step dispatcher that runs a plan's
+  `run_command` node is a shell by design, so the boundary was never the allowlist — it is
+  the deployment's declared isolation, and until #1487 that declaration was required of the
+  tool (#1478) and never of the path every plan actually uses. A step with no declaration
+  (or `none`) now fails with the failure type `sandbox_undeclared` before anything is
+  spawned; the hosts print the remedy once at startup. The declared regime is recorded in
+  the audit envelope's metadata. Set `RIGORIX_SANDBOX=container` (or `vm`) in any deployment
+  that runs `run_command` steps.
+- **An unrecognized `RIGORIX_PERMISSION_MODE` is a startup error.** `read-only`, `readOnly`
+  and typos used to be absorbed by `_ => PermissionMode::WorkspaceWrite` — a near-miss
+  became a permission grant. Accepted values are `read_only`, `workspace_write`,
+  `danger_full_access` (`dangerous_full_access` also accepted).
+- **A host that cannot build its permission enforcer fails to start** instead of warning
+  and continuing with mode gating skipped.
+
 ## [1.14.2] - 2026-11-07
 
 ### Added

@@ -53,6 +53,11 @@ impl ParallelExecutionFactoryImpl {
         if let Some(enforcer) = config.permission_enforcer {
             executor = executor.with_permission_enforcer(enforcer);
         }
+        // #1487: the declaration is what makes a `run_command` step legal. Absent
+        // here, the step is refused at dispatch and nothing is spawned.
+        if let Some(declaration) = config.sandbox {
+            executor = executor.with_sandbox_declaration(declaration);
+        }
         if let Some(runner) = config.hook_runner {
             executor = executor.with_hook_runner(runner);
         }

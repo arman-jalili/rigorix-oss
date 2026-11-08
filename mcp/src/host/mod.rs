@@ -1184,15 +1184,15 @@ pub fn load_toml_config<T: serde::de::DeserializeOwned + Default>(
 /// env var → `workspace_write` (safe default). Accepts both
 /// `dangerous_full_access` (action.yml spelling) and `danger_full_access`
 /// (engine serde spelling).
-fn resolve_mcp_permission_mode(configured: Option<&String>) -> PermissionMode {
+fn resolve_mcp_permission_mode(configured: Option<&String>) -> Result<PermissionMode, HostError> {
     let raw = configured
         .cloned()
-        .or_else(|| std::env::var("RIGORIX_PERMISSION_MODE").ok())
-        .unwrap_or_else(|| "workspace_write".to_string());
-    match raw.trim().to_lowercase().as_str() {
-        "read_only" => PermissionMode::ReadOnly,
-        "dangerous_full_access" | "danger_full_access" => PermissionMode::DangerousFullAccess,
-        _ => PermissionMode::WorkspaceWrite,
+        .or_else(|| std::env::var("RIGORIX_PERMISSION_MODE").ok());
+    match raw {
+        // Unset is not the same question as unrecognized (#1487).
+        None => Ok(PermissionMode::WorkspaceWrite),
+        Some(value) => PermissionMode::parse_host_value(&value)
+            .map_err(|error| HostError::invalid_params(error.to_string())),
     }
 }
 
@@ -1562,19 +1562,20 @@ pub async fn build_real_engine(
 
     // ── Execution service ──
     // Permission mode: rigorix.toml → RIGORIX_PERMISSION_MODE env → workspace_write.
-    let permission_mode = resolve_mcp_permission_mode(engine_config.permission_mode.as_ref());
+    let permission_mode = resolve_mcp_permission_mode(engine_config.permission_mode.as_ref())?;
+    // #1487: an enforcer that cannot be built is a startup error. The previous
+    // shape warned and continued with `None`, which the dispatcher read as "skip
+    // the gate".
     let permission_enforcer: Option<
         Arc<dyn rigorix_engine::permission::application::enforcer::PermissionEnforcer>,
-    > = match PermissionEnforcerFactoryImpl
-        .create_with_mode(permission_mode)
-        .await
-    {
-        Ok(enforcer) => Some(Arc::from(enforcer)),
-        Err(e) => {
-            tracing::warn!("permission enforcer unavailable ({e}); continuing without mode gating");
-            None
-        }
-    };
+    > = Some(Arc::from(
+        PermissionEnforcerFactoryImpl
+            .create_with_mode(permission_mode)
+            .await?,
+    ));
+    // #1487: the isolation every spawned step runs under. Absent ⇒ the host still
+    // starts, and each `run_command` step is refused with `sandbox_undeclared`.
+    let sandbox = rigorix_engine::tools::application::shell_policy::declaration_for_host("mcp");
     // Hooks: optional `.rigorix/hooks.toml` → PreToolUse/PostToolUse interception.
     let hook_runner = load_mcp_hook_runner(repo_root);
     // ADR-013 R3/R2: operator-authored `.rigorix/sequence-policy.toml` gates
@@ -1633,6 +1634,7 @@ pub async fn build_real_engine(
         ParallelExecutionFactoryImpl::new()
             .create(ParallelExecutionFactoryConfig {
                 permission_enforcer,
+                sandbox: sandbox.clone(),
                 hook_runner,
                 event_bus: Some(Arc::clone(&event_bus)),
                 approval_binding: rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env_with_signing_key(
@@ -1851,6 +1853,10 @@ pub async fn build_real_engine(
 
     if let Some(policy) = sequence_policy {
         builder = builder.with_sequence_policy(policy);
+    }
+    // #1487 / ADR-016: the envelope records the regime the run's steps ran under.
+    if let Some(declaration) = sandbox {
+        builder = builder.with_sandbox_declaration(declaration);
     }
 
     let orchestrator = builder.build().await?;
@@ -2235,5 +2241,33 @@ release_dependents_on_failure = false
         build_with_config("not = valid [[").await.expect(
             "malformed config must not break composition — the root arms a fail-closed gate",
         );
+    }
+
+    /// #1487: the removed sentence, as a guard.
+    ///
+    /// The MCP host and the CLI build the same gate. Both used to warn and pass
+    /// `None`, which the dispatcher read as "skip the gate" — the string is the
+    /// tell, and it must not come back into either file.
+    #[test]
+    fn the_mcp_host_does_not_continue_without_mode_gating() {
+        // Split so this test's own needle does not match itself.
+        let needle = concat!("continuing without ", "mode gating");
+        let source = include_str!("mod.rs");
+        assert!(
+            !source.contains(needle),
+            "the fail-open sentence is back in mcp/src/host/mod.rs"
+        );
+    }
+
+    /// #1487: an enforcer that cannot be built is a startup error, so the
+    /// composition root propagates it instead of handing `None` downstream.
+    #[test]
+    fn an_unrecognized_permission_mode_is_refused_with_the_accepted_values() {
+        let error = super::resolve_mcp_permission_mode(Some(&"read-only".to_string()))
+            .expect_err("a typo must not become the permissive default");
+        let message = error.to_string();
+        assert!(message.contains("read-only"), "{message}");
+        assert!(message.contains("workspace_write"), "{message}");
+        assert!(message.contains("read_only"), "{message}");
     }
 }

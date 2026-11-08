@@ -46,6 +46,27 @@ Unset, unrecognized, or `none` refuses to construct the tool with a message nami
 the child can reach. A declaration is not a proof — but it converts a silent assumption
 into a recorded one, and it makes "we forgot" a startup failure instead of a finding.
 
+### The same declaration governs plan steps (#1487)
+
+The path that actually runs a plan's `run_command` step is not the tool — it is
+`execution_engine`'s dispatcher, which executes a shell string by design (there is no
+allowlist there; the boundary is the declaration). Since #1487 it requires the **same**
+declaration:
+
+- `RIGORIX_SANDBOX` unset, unrecognized, or `none` ⇒ every `run_command` step fails with
+  the failure type `sandbox_undeclared`, before anything is spawned. The step's error names
+  the reach and the variable.
+- The hosts (`cli`, `mcp`, the Action) print the remedy once at startup and keep running:
+  a plan with no `run_command` step is unaffected, so a missing declaration is a per-step
+  refusal rather than a broken installation.
+
+The declared regime is recorded in the envelope's `metadata` (`isolation.regime`,
+`isolation.requires`), so two runs whose steps ran under different boundaries are
+distinguishable in the audit record.
+
+**Breaking change on upgrade:** a deployment that runs `run_command` steps must set
+`RIGORIX_SANDBOX`. Previously the steps ran with no declaration at all.
+
 ### The allowlist's grain is the executable
 
 `is_command_allowed` matches the first word. `<allowlisted> <arbitrary arguments>` is
@@ -72,6 +93,19 @@ trusted caller, and only the container/VM boundary makes it a control.
 `INHERITED_ENV_ALLOWLIST` = `PATH HOME LANG LC_ALL TMPDIR SHELL TERM`. Everything else is
 cleared before spawn. Per-call `env` overrides are applied last and are the caller's
 responsibility — they are not part of the isolation story.
+
+---
+
+## Permission mode: an unrecognized value is refused (#1487)
+
+`RIGORIX_PERMISSION_MODE` (or `rigorix.toml`'s `permission_mode`) accepts
+`read_only`, `workspace_write`, `danger_full_access` and the `action.yml` spelling
+`dangerous_full_access`. Unset means the documented default, `workspace_write`.
+
+Anything else — `read-only`, `readOnly`, a typo — is a **startup error** naming the
+accepted values. It used to be absorbed by `_ => WorkspaceWrite`, so a near-miss silently
+became a permission grant. The enforcer itself is not optional either: a host that cannot
+build it fails to start, rather than continuing with mode gating skipped.
 
 ---
 

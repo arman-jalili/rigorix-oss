@@ -77,6 +77,26 @@ use super::service::{ExecutionProgress, ParallelExecutionService, RetryEvaluatio
 // Parallel execution helpers
 // ---------------------------------------------------------------------------
 
+/// The gate that answers "is this tool allowed in the active mode" is absent.
+///
+/// #1487: the two dispatch paths used `if let Some(enforcer)`, so a service
+/// built without one skipped the mode gate and executed every tool. Absence is
+/// now a refusal, and this is the sentence it carries — one definition, so the
+/// two paths cannot describe it differently.
+pub(super) struct PermissionEnforcerAbsent;
+
+impl PermissionEnforcerAbsent {
+    /// The failure type the step records.
+    pub(super) const FAILURE_TYPE: &'static str = "permission_enforcer_unavailable";
+
+    /// Why the step is refused.
+    pub(super) const REASON: &'static str = "no permission enforcer is attached, so the mode gate \
+         cannot answer whether this tool is allowed. The step is refused rather than executed with \
+         the gate skipped (#1487): attach one at the composition root \
+         (PermissionEnforcerFactoryImpl::create_with_mode) — an enforcer that cannot be built is a \
+         startup error, not a warning.";
+}
+
 /// Spawn a single DAG node as a concurrent task in the JoinSet.
 ///
 /// Handles marking the node as running, emitting NodeStarted, performing
@@ -92,6 +112,7 @@ async fn spawn_concurrent_node(
     dag_id: Uuid,
     node_id: Uuid,
     permission_enforcer: &Option<Arc<dyn PermissionEnforcer>>,
+    sandbox: &Option<Arc<crate::tools::application::shell_policy::SandboxDeclaration>>,
     budget_enforcer: &Option<
         Arc<crate::enforcement::application::enforcer_impl::ExecutionEnforcerImpl>,
     >,
@@ -139,6 +160,7 @@ async fn spawn_concurrent_node(
     let eb = Arc::clone(event_bus);
     let exec_id = dag_id;
     let permission = permission_enforcer.clone();
+    let sandbox = sandbox.clone();
     let budget = budget_enforcer.clone();
     let hook_runner = hook_runner.clone();
 
@@ -187,6 +209,38 @@ async fn spawn_concurrent_node(
 
         // Permission check (gate before execution) — GAP-A-11: gated by the
         // executor's enable_enforcement config flag.
+        //
+        // #1487: absence is not permission. When the gate is meant to run and no
+        // enforcer is attached, the step is refused — the previous shape skipped
+        // the block, so "the enforcer is missing" and "the mode allows it"
+        // produced the same answer.
+        if enforce_permission && permission.is_none() {
+            let dur = start.elapsed().as_millis() as u64;
+            let result = TaskResult::failure(
+                node_id,
+                &node_name,
+                PermissionEnforcerAbsent::REASON.to_string(),
+                PermissionEnforcerAbsent::FAILURE_TYPE.to_string(),
+                dur,
+                0,
+            );
+            if let Err(e) = eb
+                .publish(crate::event_system::application::dto::PublishEventInput {
+                    event: ExecutionEvent::NodeCompleted {
+                        execution_id: exec_id,
+                        node_id: node_id.to_string(),
+                        node_name,
+                        duration_ms: dur,
+                        output: serde_json::json!(null),
+                        timestamp: chrono::Utc::now(),
+                    },
+                })
+                .await
+            {
+                tracing::warn!(error = %e, "event publish failed — evidence may be incomplete");
+            }
+            return (node_id, result);
+        }
         if enforce_permission && let Some(ref enforcer) = permission {
             let outcome = enforcer.check(&node_tool, &node_intent, None).await;
             if let crate::permission::domain::PermissionOutcome::Denied { ref reason, .. } = outcome
@@ -318,14 +372,26 @@ async fn spawn_concurrent_node(
         // (intent: &str, node_id: Uuid, node_name: &str, start: Instant) -> TaskResult
         let result = match node_tool.as_str() {
             "run_command" => {
-                ParallelExecutionServiceImpl::exec_run_command(
-                    &node_intent,
-                    node_id,
-                    &node_name,
-                    start,
-                    effect_key.as_deref(),
-                )
-                .await
+                // #1487: the parallel path is the same sink as the single-node
+                // path, so it answers the same way — no declaration, no spawn.
+                match sandbox.as_ref() {
+                    Some(_declaration) => {
+                        ParallelExecutionServiceImpl::exec_run_command_declared(
+                            &node_intent,
+                            node_id,
+                            &node_name,
+                            start,
+                            effect_key.as_deref(),
+                        )
+                        .await
+                    }
+                    None => ParallelExecutionServiceImpl::exec_run_command_undeclared(
+                        &node_intent,
+                        node_id,
+                        &node_name,
+                        start,
+                    ),
+                }
             }
             "file_read" => {
                 ParallelExecutionServiceImpl::exec_file_read(
@@ -560,7 +626,17 @@ pub struct ParallelExecutionServiceImpl {
     /// Hook runner for PreToolUse / PostToolUse / PostToolUseFailure hooks.
     hook_runner: Option<Arc<dyn HookRunnerService>>,
     /// Permission enforcer for mode-based tool gating.
+    ///
+    /// Absent is a refusal, not a skipped check: a service with no enforcer
+    /// cannot answer the mode question, and "no answer" used to mean "allowed"
+    /// (#1487). Attach one, or steps fail `permission_enforcer_unavailable`.
     permission_enforcer: Option<Arc<dyn PermissionEnforcer>>,
+    /// The declared isolation a `run_command` step runs under (#1487).
+    ///
+    /// The dispatcher that runs plan steps is a shell by design — the register
+    /// row says so — so the boundary is this declaration, not an allowlist.
+    /// Absent ⇒ the step fails `sandbox_undeclared` before anything is spawned.
+    sandbox: Option<Arc<crate::tools::application::shell_policy::SandboxDeclaration>>,
     /// Recovery service for automatic failure recovery.
     recovery_service: Option<Arc<dyn RecoveryService>>,
     /// Recovery context per execution session (dag_id keyed).
@@ -668,6 +744,7 @@ impl ParallelExecutionServiceImpl {
             event_bus,
             hook_runner: None,
             permission_enforcer: None,
+            sandbox: None,
             recovery_service: None,
             recovery_contexts: Mutex::new(HashMap::new()),
             approval_binding: None,
@@ -693,6 +770,18 @@ impl ParallelExecutionServiceImpl {
     /// Set the permission enforcer for mode-based tool gating.
     pub fn with_permission_enforcer(mut self, enforcer: Arc<dyn PermissionEnforcer>) -> Self {
         self.permission_enforcer = Some(enforcer);
+        self
+    }
+
+    /// Declare the isolation a `run_command` step runs under (#1487).
+    ///
+    /// Without it, every `run_command` step is refused with `sandbox_undeclared`:
+    /// the step dispatcher executes a shell string, and filtering is not isolation.
+    pub fn with_sandbox_declaration(
+        mut self,
+        declaration: Arc<crate::tools::application::shell_policy::SandboxDeclaration>,
+    ) -> Self {
+        self.sandbox = Some(declaration);
         self
     }
 

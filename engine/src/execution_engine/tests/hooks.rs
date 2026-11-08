@@ -22,6 +22,10 @@ async fn test_pre_tool_use_hook_blocks_parallel_dispatch() {
         Box::new(retry),
         event_bus,
     )
+    .with_permission_enforcer(crate::execution_engine::tests::allow_all_enforcer())
+    .with_sandbox_declaration(Arc::new(
+        crate::tools::application::shell_policy::SandboxDeclaration::container(),
+    ))
     .with_hook_runner(runner);
 
     let dag_id = Uuid::new_v4();

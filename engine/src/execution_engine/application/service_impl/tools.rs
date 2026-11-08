@@ -7,7 +7,8 @@
 
 use super::*;
 use crate::tools::application::shell_policy::{
-    apply_child_env, command_from_intent, field_from_intent, find_shell_control_operator,
+    SINK_GRAIN, apply_child_env, command_from_intent, field_from_intent,
+    find_shell_control_operator,
 };
 
 impl ParallelExecutionServiceImpl {
@@ -49,7 +50,23 @@ impl ParallelExecutionServiceImpl {
         }
 
         // ── Permission gating ──
-        if let Some(ref enforcer) = self.permission_enforcer {
+        //
+        // #1487: an absent enforcer is a refusal. The previous shape wrapped the
+        // whole block in `if let Some(..)`, so a service built without one
+        // executed every tool with the gate silently skipped — and the hosts
+        // built it that way on purpose, with a warning.
+        let Some(ref enforcer) = self.permission_enforcer else {
+            let duration_ms = start.elapsed().as_millis() as u64;
+            return TaskResult::failure(
+                node_id,
+                &node.name,
+                super::PermissionEnforcerAbsent::REASON.to_string(),
+                super::PermissionEnforcerAbsent::FAILURE_TYPE.to_string(),
+                duration_ms,
+                0,
+            );
+        };
+        {
             let outcome = enforcer.check(tool_name, tool_intent, None).await;
             if let crate::permission::domain::PermissionOutcome::Denied { reason, .. } = outcome {
                 let duration_ms = start.elapsed().as_millis() as u64;
@@ -148,7 +165,7 @@ impl ParallelExecutionServiceImpl {
             .and_then(|keys| keys.get(&node_id).map(|key| key.as_str().to_string()));
         let result = match tool_name {
             "run_command" => {
-                Self::exec_run_command(
+                self.exec_run_command(
                     tool_intent,
                     node_id,
                     &node.name,
@@ -208,7 +225,55 @@ impl ParallelExecutionServiceImpl {
         field_from_intent(intent, field).into_owned()
     }
 
+    /// The single-node route. Both routes answer the same question the same way.
     pub(super) async fn exec_run_command(
+        &self,
+        intent: &str,
+        node_id: Uuid,
+        node_name: &str,
+        start: std::time::Instant,
+        effect_key: Option<&str>,
+    ) -> TaskResult {
+        if self.sandbox.is_some() {
+            Self::exec_run_command_declared(intent, node_id, node_name, start, effect_key).await
+        } else {
+            Self::exec_run_command_undeclared(intent, node_id, node_name, start)
+        }
+    }
+
+    /// #1487: what a `run_command` step is when the deployment declared no boundary.
+    ///
+    /// The refusal happens before anything else is looked at: no operator scan, no
+    /// spawn, no timeout. The test asserts the marker file was never created, not
+    /// that the failure type is right — a failure type alone proves nothing about
+    /// what ran.
+    pub(super) fn exec_run_command_undeclared(
+        intent: &str,
+        node_id: Uuid,
+        node_name: &str,
+        start: std::time::Instant,
+    ) -> TaskResult {
+        let duration_ms = start.elapsed().as_millis() as u64;
+        TaskResult::failure(
+            node_id,
+            node_name,
+            format!(
+                "{}\n\nThe step was not run (intent: {}). This is the step dispatcher, not the \
+                 run-command tool: it executes a shell string, so filtering cannot be the boundary \
+                 ({SINK_GRAIN}).",
+                crate::tools::application::shell_policy::SandboxDeclarationError::Missing,
+                command_from_intent(intent)
+            ),
+            "sandbox_undeclared".to_string(),
+            duration_ms,
+            0,
+        )
+    }
+
+    /// The parallel route: the caller already holds the declaration (it clones the
+    /// `Arc` into the spawned task), so the check is the presence of the value the
+    /// caller chose to pass.
+    pub(super) async fn exec_run_command_declared(
         intent: &str,
         node_id: Uuid,
         node_name: &str,
@@ -236,6 +301,10 @@ impl ParallelExecutionServiceImpl {
         // GAP-A-12: bounded subprocess execution — never block the async
         // runtime on an unbounded `sh -c`. The child gets a cleared environment
         // so it cannot read `RIGORIX_HMAC_KEY` and forge audit envelopes (#1068).
+        //
+        // #1487: the regime itself is recorded where the envelope is built
+        // (`OrchestratorServiceImpl::record_evidence`), so two runs under
+        // different isolation are distinguishable in the record.
         let mut child = tokio::process::Command::new("sh");
         child.arg("-c").arg(command.as_ref());
         // The key is not a secret, but it is the only way a process provider
@@ -1004,7 +1073,7 @@ mod tests {
         // #1165: the provider must receive the intent-derived key. The process
         // channel is an env var because run_command deliberately clears the
         // rest of the environment.
-        let result = ParallelExecutionServiceImpl::exec_run_command(
+        let result = ParallelExecutionServiceImpl::exec_run_command_declared(
             &command_json("printf %s \"$RIGORIX_EFFECT_IDEMPOTENCY_KEY\""),
             Uuid::now_v7(),
             "n",
@@ -1018,7 +1087,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_node_without_a_commitment_does_not_invent_a_key() {
-        let result = ParallelExecutionServiceImpl::exec_run_command(
+        let result = ParallelExecutionServiceImpl::exec_run_command_declared(
             &command_json("printf %s \"$RIGORIX_EFFECT_IDEMPOTENCY_KEY\""),
             Uuid::now_v7(),
             "n",
@@ -1028,5 +1097,73 @@ mod tests {
         .await;
         assert!(result.success, "command failed: {:?}", result.error);
         assert_eq!(result.output.as_deref(), Some(""));
+    }
+
+    // ── #1487: the dispatcher declares its isolation, or refuses ──────────
+
+    fn marker_path(tag: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("rigorix-sink4-{tag}-{}", Uuid::now_v7()))
+    }
+
+    #[tokio::test]
+    async fn a_run_command_step_without_a_declaration_is_refused_before_any_spawn() {
+        // The seed: delete the declaration check and this test passes only by
+        // creating the marker — which is why it asserts the file, not the type.
+        let marker = marker_path("undeclared");
+        let intent = format!("touch {}", marker.display());
+
+        let result = ParallelExecutionServiceImpl::exec_run_command_undeclared(
+            &intent,
+            Uuid::now_v7(),
+            "step",
+            Instant::now(),
+        );
+
+        assert!(!result.success);
+        assert_eq!(result.failure_type.as_deref(), Some("sandbox_undeclared"));
+        assert!(
+            !marker.exists(),
+            "the step spawned a child despite the undeclared regime"
+        );
+        let error = result.error.unwrap_or_default();
+        assert!(
+            error.contains("RIGORIX_SANDBOX"),
+            "the refusal must name the variable that fixes it: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_declared_regime_lets_the_step_run() {
+        let marker = marker_path("declared");
+        let intent = format!("touch {}", marker.display());
+
+        let result = ParallelExecutionServiceImpl::exec_run_command_declared(
+            &intent,
+            Uuid::now_v7(),
+            "step",
+            Instant::now(),
+            None,
+        )
+        .await;
+
+        assert!(result.success, "declared step failed: {:?}", result.error);
+        assert!(marker.exists(), "the declared step did not run");
+        let _ = std::fs::remove_file(&marker);
+    }
+
+    #[tokio::test]
+    async fn the_regime_is_not_something_the_step_output_can_claim() {
+        // The regime lives in the envelope's metadata (#1487), not in the command
+        // output: a step cannot launder the isolation question into its own
+        // stdout, because the record is written by the orchestrator.
+        let result = ParallelExecutionServiceImpl::exec_run_command_declared(
+            &command_json("printf isolation=container"),
+            Uuid::now_v7(),
+            "step",
+            Instant::now(),
+            None,
+        )
+        .await;
+        assert_eq!(result.output.as_deref(), Some("isolation=container"));
     }
 }

@@ -375,11 +375,14 @@ async fn build_action_orchestrator(
         .await
     {
         Ok(enforcer) => Some(Arc::from(enforcer)),
-        Err(e) => {
-            tracing::warn!("permission enforcer unavailable ({e}); continuing without mode gating");
-            None
-        }
+        // #1487: the gate is not optional. The Action is unattended, so a run that
+        // cannot answer "is this allowed in the active mode" must stop here rather
+        // than proceed with the gate skipped.
+        Err(e) => return Err(format!("permission enforcer: {e}")),
     };
+    // #1487: the isolation every spawned step runs under. Absent ⇒ the run still
+    // starts, and each `run_command` step is refused with `sandbox_undeclared`.
+    let sandbox = rigorix_engine::tools::application::shell_policy::declaration_for_host("action");
     let hook_runner = load_hook_runner(repo_root);
     let approval_binding =
         rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env_with_signing_key(
@@ -463,6 +466,7 @@ async fn build_action_orchestrator(
             event_channel_capacity: 1024,
             event_bus: Some(Arc::clone(&event_bus)),
             permission_enforcer,
+            sandbox: sandbox.clone(),
             hook_runner,
             approval_binding,
             sequence_policy: sequence_policy.clone(),
@@ -533,6 +537,10 @@ async fn build_action_orchestrator(
                     .with_planning_pipeline(planning_arc);
                 if let Some(policy) = sequence_policy {
                     builder = builder.with_sequence_policy(policy);
+                }
+                // #1487 / ADR-016: the envelope records the regime the steps ran under.
+                if let Some(declaration) = sandbox.clone() {
+                    builder = builder.with_sandbox_declaration(declaration);
                 }
 
                 let orchestrator = builder
@@ -742,6 +750,11 @@ async fn build_action_orchestrator(
     // Attach audit service (best-effort)
     builder = builder.with_audit_service(audit);
 
+    // #1487 / ADR-016: the envelope records the regime the run's steps ran under.
+    if let Some(declaration) = sandbox {
+        builder = builder.with_sandbox_declaration(declaration);
+    }
+
     let orchestrator = builder
         .build()
         .await
@@ -765,12 +778,13 @@ fn read_input(name: &str) -> Option<String> {
 /// Accepts both `dangerous_full_access` (documented in action.yml) and
 /// `danger_full_access` (engine serde spelling). Unknown values fall back
 /// to `workspace_write` (the action.yml default) rather than failing.
-fn parse_permission_mode(raw: &str) -> PermissionMode {
-    match raw.trim().to_lowercase().as_str() {
-        "read_only" => PermissionMode::ReadOnly,
-        "dangerous_full_access" | "danger_full_access" => PermissionMode::DangerousFullAccess,
-        _ => PermissionMode::WorkspaceWrite,
-    }
+/// Parse the `permission-mode` input.
+///
+/// #1487: an unrecognized value is an error, not the permissive default. The
+/// action's input is operator-written, so a typo must fail the step that
+/// configures it rather than silently granting workspace-write.
+fn parse_permission_mode(raw: &str) -> Result<PermissionMode, String> {
+    PermissionMode::parse_host_value(raw).map_err(|error| error.to_string())
 }
 
 /// Read GITHUB_WORKSPACE.
@@ -802,9 +816,28 @@ async fn main() {
     // 2. Read all action inputs
     let input_mode = read_input("mode").unwrap_or_else(|| "auto".to_string());
     let input_intent = read_input("intent");
-    let permission_mode = read_input("permission-mode")
-        .map(|m| parse_permission_mode(&m))
-        .unwrap_or(PermissionMode::WorkspaceWrite);
+    let permission_mode = match read_input("permission-mode") {
+        Some(raw) => match parse_permission_mode(&raw) {
+            Ok(mode) => mode,
+            Err(message) => {
+                tracing::error!("Invalid permission-mode input: {message}");
+                write_annotation(
+                    "error",
+                    &WorkflowAnnotation {
+                        level: AnnotationLevel::Error,
+                        message,
+                        file: None,
+                        line: None,
+                        column: None,
+                        title: Some("Invalid permission-mode".to_string()),
+                    },
+                );
+                set_github_output("status", "failed").await;
+                std::process::exit(1);
+            }
+        },
+        None => PermissionMode::WorkspaceWrite,
+    };
     let fail_on_violation = read_input("fail-on-violation")
         .map(|v| v == "true")
         .unwrap_or(false);
@@ -1199,13 +1232,16 @@ mod tests {
 
     #[test]
     fn parse_permission_mode_accepts_all_documented_values() {
-        assert_eq!(parse_permission_mode("read_only"), PermissionMode::ReadOnly);
         assert_eq!(
-            parse_permission_mode("workspace_write"),
+            parse_permission_mode("read_only").unwrap(),
+            PermissionMode::ReadOnly
+        );
+        assert_eq!(
+            parse_permission_mode("workspace_write").unwrap(),
             PermissionMode::WorkspaceWrite
         );
         assert_eq!(
-            parse_permission_mode("dangerous_full_access"),
+            parse_permission_mode("dangerous_full_access").unwrap(),
             PermissionMode::DangerousFullAccess
         );
     }
@@ -1213,20 +1249,27 @@ mod tests {
     #[test]
     fn parse_permission_mode_accepts_engine_spelling_and_whitespace() {
         assert_eq!(
-            parse_permission_mode("danger_full_access"),
+            parse_permission_mode("danger_full_access").unwrap(),
             PermissionMode::DangerousFullAccess
         );
         assert_eq!(
-            parse_permission_mode("  READ_ONLY  "),
+            parse_permission_mode("  READ_ONLY  ").unwrap(),
             PermissionMode::ReadOnly
         );
     }
 
+    /// #1487: the action's `permission-mode` input used to fall back to
+    /// `workspace_write` on anything unrecognized — a typo in a workflow file
+    /// became a permission grant.
     #[test]
-    fn parse_permission_mode_falls_back_on_unknown() {
-        assert_eq!(
-            parse_permission_mode("whatever"),
-            PermissionMode::WorkspaceWrite
+    fn an_unrecognized_permission_mode_fails_the_step() {
+        let error = parse_permission_mode("whatever").expect_err("must not fall back");
+        assert!(error.contains("whatever"), "{error}");
+        assert!(error.contains("workspace_write"), "{error}");
+        assert!(
+            parse_permission_mode("read-only")
+                .unwrap_err()
+                .contains("read-only")
         );
     }
 }

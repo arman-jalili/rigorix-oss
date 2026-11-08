@@ -95,7 +95,7 @@ echo ""
 # Track in Plan File
 # ---------------------------------------------------------------------------
 PLAN_FILE=".claude/plans/$BRANCH_NAME.md"
-mkdir -p ".claude/plans"
+mkdir -p "$(dirname "$PLAN_FILE")"
 
 cat > "$PLAN_FILE" << EOF
 # Implementation Plan: $BRANCH_NAME

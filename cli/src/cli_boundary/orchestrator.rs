@@ -312,19 +312,22 @@ pub async fn build_orchestrator_with_budget(
     };
 
     // ── 5. ParallelExecutionService ────────────────────────────────────
-    let permission_mode = resolve_permission_mode(engine_config.permission_mode.as_ref());
+    let permission_mode = resolve_permission_mode(engine_config.permission_mode.as_ref())?;
+    // #1487: an enforcer that cannot be built is a startup error. The previous
+    // shape warned and continued with `None`, which the dispatcher read as "skip
+    // the gate" — governance that disappears under a `warn!`.
     let permission_enforcer: Option<
         Arc<dyn rigorix_engine::permission::application::enforcer::PermissionEnforcer>,
-    > = match PermissionEnforcerFactoryImpl
-        .create_with_mode(permission_mode)
-        .await
-    {
-        Ok(enforcer) => Some(Arc::from(enforcer)),
-        Err(e) => {
-            tracing::warn!("permission enforcer unavailable ({e}); continuing without mode gating");
-            None
-        }
-    };
+    > = Some(Arc::from(
+        PermissionEnforcerFactoryImpl
+            .create_with_mode(permission_mode)
+            .await
+            .map_err(|e| CliError::Config(format!("permission enforcer: {e}")))?,
+    ));
+    // #1487: the isolation every spawned step runs under. Absent ⇒ the host
+    // still starts (a plan without run_command steps works) and each such step
+    // is refused with `sandbox_undeclared`.
+    let sandbox = rigorix_engine::tools::application::shell_policy::declaration_for_host("cli");
     let hook_runner = load_hook_runner(repo_root.as_str());
     let approval_binding =
         rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env_with_signing_key(
@@ -392,6 +395,7 @@ pub async fn build_orchestrator_with_budget(
         event_channel_capacity: 1024,
         event_bus: Some(Arc::clone(&event_bus)),
         permission_enforcer,
+        sandbox: sandbox.clone(),
         hook_runner,
         approval_binding,
         capacity,
@@ -706,6 +710,11 @@ pub async fn build_orchestrator_with_budget(
     }
 
     let builder = gate.orchestrator_builder(builder);
+    // #1487 / ADR-016: the envelope records the regime the run's steps ran under.
+    let builder = match sandbox {
+        Some(declaration) => builder.with_sandbox_declaration(declaration),
+        None => builder,
+    };
 
     let orchestrator = builder.build().await.map_err(CliError::Engine)?;
 
@@ -743,15 +752,16 @@ pub async fn build_orchestrator_with_budget(
 /// → `RIGORIX_PERMISSION_MODE` env var → `workspace_write` (safe default).
 /// Accepts both `dangerous_full_access` (action.yml spelling) and
 /// `danger_full_access` (engine serde spelling).
-fn resolve_permission_mode(configured: Option<&String>) -> PermissionMode {
+fn resolve_permission_mode(configured: Option<&String>) -> Result<PermissionMode, CliError> {
     let raw = configured
         .cloned()
-        .or_else(|| std::env::var("RIGORIX_PERMISSION_MODE").ok())
-        .unwrap_or_else(|| "workspace_write".to_string());
-    match raw.as_str() {
-        "read_only" => PermissionMode::ReadOnly,
-        "dangerous_full_access" | "danger_full_access" => PermissionMode::DangerousFullAccess,
-        _ => PermissionMode::WorkspaceWrite,
+        .or_else(|| std::env::var("RIGORIX_PERMISSION_MODE").ok());
+    match raw {
+        // Unset is not the same question as unrecognized: unset means the operator
+        // stated nothing, so the documented default applies (#1487).
+        None => Ok(PermissionMode::WorkspaceWrite),
+        Some(value) => PermissionMode::parse_host_value(&value)
+            .map_err(|error| CliError::Config(error.to_string())),
     }
 }
 
@@ -801,34 +811,44 @@ mod tests {
     }
 
     #[test]
-    fn permission_mode_defaults_to_workspace_write() {
+    fn permission_mode_defaults_to_workspace_write_when_unset() {
+        // Unset = the operator stated nothing, so the documented default applies.
         assert_eq!(
-            resolve_permission_mode(None),
+            resolve_permission_mode(None).unwrap(),
             PermissionMode::WorkspaceWrite
         );
-        assert_eq!(
-            resolve_permission_mode(mode("bogus").as_ref()),
-            PermissionMode::WorkspaceWrite
-        );
+    }
+
+    /// #1487: `RIGORIX_PERMISSION_MODE=read-only` used to be absorbed by
+    /// `_ => WorkspaceWrite` — a typo is not a permission decision.
+    #[test]
+    fn an_unrecognized_permission_mode_is_an_error_naming_the_accepted_values() {
+        let error = resolve_permission_mode(mode("read-only").as_ref())
+            .expect_err("a typo must not become the permissive default");
+        let message = error.to_string();
+        assert!(message.contains("read-only"), "{message}");
+        assert!(message.contains("read_only"), "{message}");
+        assert!(message.contains("workspace_write"), "{message}");
+        assert!(message.contains("danger_full_access"), "{message}");
     }
 
     #[test]
     fn permission_mode_parses_all_modes() {
         assert_eq!(
-            resolve_permission_mode(mode("read_only").as_ref()),
+            resolve_permission_mode(mode("read_only").as_ref()).unwrap(),
             PermissionMode::ReadOnly
         );
         assert_eq!(
-            resolve_permission_mode(mode("workspace_write").as_ref()),
+            resolve_permission_mode(mode("workspace_write").as_ref()).unwrap(),
             PermissionMode::WorkspaceWrite
         );
         // Both documented spellings of the unrestricted mode are accepted.
         assert_eq!(
-            resolve_permission_mode(mode("dangerous_full_access").as_ref()),
+            resolve_permission_mode(mode("dangerous_full_access").as_ref()).unwrap(),
             PermissionMode::DangerousFullAccess
         );
         assert_eq!(
-            resolve_permission_mode(mode("danger_full_access").as_ref()),
+            resolve_permission_mode(mode("danger_full_access").as_ref()).unwrap(),
             PermissionMode::DangerousFullAccess
         );
     }
@@ -841,5 +861,20 @@ mod tests {
         );
         assert_eq!(resolve_hmac_key(None), None);
         assert_eq!(resolve_hmac_key(mode("").as_ref()), None);
+    }
+
+    /// #1487: the removed sentence, as a guard.
+    ///
+    /// It is a string, not a behaviour, and it is exactly the kind of line that
+    /// gets added back by someone fixing an unrelated startup error.
+    #[test]
+    fn the_cli_does_not_continue_without_mode_gating() {
+        // Split so this test's own needle does not match itself.
+        let needle = concat!("continuing without ", "mode gating");
+        let source = include_str!("orchestrator.rs");
+        assert!(
+            !source.contains(needle),
+            "the fail-open sentence is back in cli/src/cli_boundary/orchestrator.rs"
+        );
     }
 }

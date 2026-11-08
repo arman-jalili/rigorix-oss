@@ -95,6 +95,13 @@ pub struct ParallelExecutionFactoryConfig {
     ///
     /// When set, every tool execution runs the configured shell hooks
     /// (which can block, override permissions, or enrich audit context).
+    /// The declared isolation spawned children run under (#1487).
+    ///
+    /// The dispatcher that runs plan steps is a shell by design, so the boundary
+    /// is the deployment's declaration, exactly as for `RunCommandTool` (#1478).
+    /// Absent ⇒ a `run_command` step fails `sandbox_undeclared` naming the reach,
+    /// and nothing is spawned.
+    pub sandbox: Option<Arc<crate::tools::application::shell_policy::SandboxDeclaration>>,
     pub hook_runner: Option<Arc<dyn HookRunnerService>>,
 
     /// ADR-011: optional approval binding (see [`ApprovalBindingSetup`]).
@@ -185,6 +192,7 @@ impl Default for ParallelExecutionFactoryConfig {
             event_channel_capacity: 1024,
             event_bus: None,
             permission_enforcer: None,
+            sandbox: None,
             hook_runner: None,
             approval_binding: None,
             sequence_policy: None,

@@ -45,7 +45,55 @@ pub enum PermissionMode {
     DangerousFullAccess = 2,
 }
 
+/// Why a host's permission-mode string could not be turned into a mode.
+///
+/// #1487: the hosts used to absorb an unrecognized value into the *permissive*
+/// default — `_ => PermissionMode::WorkspaceWrite` — so a typo, or a value from
+/// a newer/older spelling, silently became "everything in the workspace is
+/// allowed". A three-valued setting with a two-valued parser is a setting that
+/// lies about what it accepted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PermissionModeParseError {
+    /// The value as supplied, for the error message.
+    pub value: String,
+}
+
+impl std::fmt::Display for PermissionModeParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "permission mode {:?} is not recognized — expected one of {}. An unrecognized \
+             value is refused rather than treated as the permissive default (#1487).",
+            self.value,
+            PermissionMode::ACCEPTED_VALUES,
+        )
+    }
+}
+
+impl std::error::Error for PermissionModeParseError {}
+
 impl PermissionMode {
+    /// The values operators may write, for error messages and docs.
+    pub const ACCEPTED_VALUES: &'static str = "read_only | workspace_write | danger_full_access";
+
+    /// Parse the value a host supplies (`RIGORIX_PERMISSION_MODE` / `rigorix.toml`).
+    ///
+    /// Accepts the engine spelling and the `action.yml` spelling
+    /// (`dangerous_full_access`). Numeric prefixes like `2` are *not* accepted:
+    /// guessing at an operator's intent is how a mode becomes its neighbour.
+    pub fn parse_host_value(raw: &str) -> Result<Self, PermissionModeParseError> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "read_only" | "readonly" => Ok(PermissionMode::ReadOnly),
+            "workspace_write" | "workspacewrite" => Ok(PermissionMode::WorkspaceWrite),
+            "danger_full_access" | "dangerous_full_access" | "dangerousfullaccess" => {
+                Ok(PermissionMode::DangerousFullAccess)
+            }
+            other => Err(PermissionModeParseError {
+                value: other.to_string(),
+            }),
+        }
+    }
+
     /// Returns the string representation of this mode.
     pub fn as_str(&self) -> &'static str {
         match self {
