@@ -60,6 +60,7 @@ use crate::tools::application::shell_policy::{
     find_shell_control_operator, resolve_program, validate_env_overrides,
 };
 use crate::tools::domain::{Tool, ToolError};
+use crate::tools::infrastructure::fs_at::resolve_dir_for_child;
 
 /// Tool for executing shell commands with allowlist enforcement.
 ///
@@ -192,9 +193,14 @@ impl Tool for RunCommandTool {
 
     async fn execute(&self, input: &ToolInput) -> Result<ToolResult, ToolError> {
         let command = input.require_string("command")?;
-        let cwd = input
+        // #1488: `cwd` is part of the boundary, not an input. `cargo build` runs the
+        // `build.rs` of the directory it starts in, `npm run` its lifecycle scripts,
+        // and `git` honours repo-local config — so an allowlisted word plus a
+        // caller-chosen directory is still arbitrary execution.
+        let requested_cwd = input
             .get_string("cwd")
             .unwrap_or_else(|| self.workspace_root.clone());
+        let cwd = resolve_dir_for_child(&self.workspace_root, &requested_cwd)?;
         let timeout_secs = input
             .get_u64("timeout_secs")
             .unwrap_or(self.default_timeout);
@@ -264,7 +270,34 @@ impl Tool for RunCommandTool {
         // sink relies on is held on the tool (`self.sandbox`): filtering alone is
         // not isolation, and the deployment stated the boundary at construction.
         let mut cmd = tokio::process::Command::new(&resolved);
-        cmd.args(arguments).current_dir(&cwd);
+        cmd.args(arguments);
+        // #1488: the child enters the validated inode, not a re-resolved path.
+        // `current_dir(path)` would re-resolve in the child, so the directory is
+        // applied by descriptor before `execve`.
+        #[cfg(unix)]
+        {
+            let fd = cwd.raw_fd();
+            // SAFETY: `fchdir` only changes the child's working directory. `fd` is a
+            // live read-only directory descriptor owned by `cwd`, which outlives the
+            // spawn (it is a local of this frame, and `cmd.output()` is awaited
+            // before it drops). `fchdir` is async-signal-safe, which `pre_exec`
+            // requires. `cwd.display()` records which directory this was.
+            unsafe {
+                cmd.pre_exec(move || {
+                    if libc::fchdir(fd) == 0 {
+                        Ok(())
+                    } else {
+                        Err(std::io::Error::last_os_error())
+                    }
+                });
+            }
+        }
+        #[cfg(not(unix))]
+        return Err(ToolError::ExecutionFailed(
+            "cwd needs fchdir semantics; this target has none, and a path-based fallback \
+             would re-resolve (#1488)"
+                .to_string(),
+        ));
         apply_child_env(&mut cmd, &env_overrides);
 
         let output = tokio::time::timeout(timeout_duration, cmd.output())
@@ -696,5 +729,104 @@ mod tests {
             .map(|dir| dir.join("echo"))
             .find(|candidate| candidate.is_file());
         assert_eq!(Some(resolved), expected);
+    }
+
+    // ── #1488: cwd is part of the boundary ───────────────────────────────
+
+    fn input_with_cwd(command: &str, cwd: &str) -> ToolInput {
+        let mut params: HashMap<String, serde_json::Value> = HashMap::new();
+        params.insert(
+            "command".to_string(),
+            serde_json::Value::String(command.to_string()),
+        );
+        params.insert(
+            "cwd".to_string(),
+            serde_json::Value::String(cwd.to_string()),
+        );
+        ToolInput::new(params)
+    }
+
+    #[tokio::test]
+    async fn an_absolute_cwd_outside_the_workspace_is_denied_before_any_spawn() {
+        let (tool, _dir) = allowlist_tool();
+        let error = tool
+            .execute(&input_with_cwd("echo hi", "/tmp"))
+            .await
+            .unwrap_err();
+        assert!(matches!(error, ToolError::PathDenied(_)), "{error:?}");
+        assert!(error.to_string().contains("workspace root"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn a_parent_component_in_cwd_is_denied() {
+        let (tool, dir) = allowlist_tool();
+        // Even when it happens to point back inside, `..` is refused: the check
+        // would have to re-resolve to answer, which is the defect.
+        let escape = format!("{}/../", dir.path().display());
+        let error = tool
+            .execute(&input_with_cwd("echo hi", &escape))
+            .await
+            .unwrap_err();
+        assert!(matches!(error, ToolError::PathDenied(_)), "{error:?}");
+        assert!(error.to_string().contains(".."), "{error}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_symlinked_cwd_cannot_be_used_to_escape() {
+        let dir = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let link = dir.path().join("escape");
+        std::os::unix::fs::symlink(outside.path(), &link).unwrap();
+
+        let tool = RunCommandTool::new(
+            dir.path().to_str().unwrap(),
+            vec!["pwd"],
+            SandboxDeclaration::container(),
+        );
+        let error = tool
+            .execute(&input_with_cwd("pwd", "escape"))
+            .await
+            .unwrap_err();
+        assert!(matches!(error, ToolError::PathDenied(_)), "{error:?}");
+        assert!(
+            error.to_string().contains("symlink"),
+            "the refusal must say why: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_cwd_inside_the_workspace_still_works() {
+        let dir = TempDir::new().unwrap();
+        let sub = dir.path().join("sub");
+        std::fs::create_dir(&sub).unwrap();
+        let tool = RunCommandTool::new(
+            dir.path().to_str().unwrap(),
+            vec!["pwd"],
+            SandboxDeclaration::container(),
+        );
+
+        let result = tool.execute(&input_with_cwd("pwd", "sub")).await.unwrap();
+        assert!(result.is_success(), "{:?}", result.output);
+        let reported = std::path::Path::new(result.output.trim())
+            .canonicalize()
+            .unwrap();
+        assert_eq!(reported, sub.canonicalize().unwrap());
+    }
+
+    #[tokio::test]
+    async fn the_default_cwd_is_the_workspace_root() {
+        let (_allowlist_tool, dir) = allowlist_tool();
+        let tool = RunCommandTool::new(
+            dir.path().to_str().unwrap(),
+            vec!["pwd"],
+            SandboxDeclaration::container(),
+        );
+        let result = tool.execute(&make_input("pwd")).await.unwrap();
+        assert!(result.is_success(), "{:?}", result.output);
+        let reported = std::path::Path::new(result.output.trim())
+            .canonicalize()
+            .unwrap();
+        assert_eq!(reported, dir.path().canonicalize().unwrap());
     }
 }

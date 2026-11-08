@@ -92,6 +92,139 @@ mod imp {
     /// `..` is refused before any syscall: the handle walk cannot escape the root,
     /// but a caller that wrote `..` was asking to, and the refusal should say so
     /// rather than silently normalizing it away.
+    /// A child process's working directory, resolved through an open handle.
+    ///
+    /// #1487's sibling (#1488): `cwd` is caller-supplied, and `cargo build` runs
+    /// the `build.rs` of the directory it is started in. A `starts_with` check on a
+    /// string is not a boundary — the string is resolved again by the child. This
+    /// value pins the **directory inode** the check saw and applies it to the child
+    /// with `fchdir` in the child's own process, so the directory the child enters
+    /// is the directory that was validated, not whatever a path means at spawn time.
+    pub struct ValidatedChildDir {
+        /// The opened directory. Kept so `fchdir` addresses the same inode.
+        dir: std::fs::File,
+        /// The path as validated, for messages only — never used to `chdir`.
+        display: PathBuf,
+    }
+
+    impl ValidatedChildDir {
+        /// The path that was validated (for error messages and evidence).
+        pub fn display(&self) -> &Path {
+            &self.display
+        }
+
+        /// The validated directory's raw descriptor.
+        ///
+        /// The sink module applies it with `fchdir` in the child. It lives here so
+        /// the module that owns the handle is the module that hands it out, and the
+        /// spawn site stays the one place that names a `Command` (the sink lint).
+        ///
+        /// The descriptor is valid for as long as this value is alive; a caller that
+        /// drops it before spawning is holding a dangling descriptor, so the value is
+        /// not `Copy` and the borrow in `spawn_*` signatures keeps it alive.
+        pub fn raw_fd(&self) -> std::os::fd::RawFd {
+            use std::os::fd::AsRawFd;
+            self.dir.as_raw_fd()
+        }
+    }
+
+    /// Resolve a caller-supplied `cwd` against `workspace_root` (#1488).
+    ///
+    /// Every component is opened with `O_NOFOLLOW` from the opened root, so a
+    /// symlinked component is refused with its name rather than followed, `..` is
+    /// refused outright, and an absolute path is only accepted when it is inside
+    /// the root. The returned value holds the pinned directory handle; see
+    /// [`ValidatedChildDir::apply_to`].
+    pub fn resolve_dir_for_child(
+        workspace_root: &str,
+        cwd: &str,
+    ) -> Result<ValidatedChildDir, ToolError> {
+        let root = Path::new(workspace_root).canonicalize().map_err(|e| {
+            ToolError::ExecutionFailed(format!(
+                "Cannot resolve workspace root '{}': {e}",
+                workspace_root
+            ))
+        })?;
+
+        let trimmed = cwd.trim();
+        if trimmed.is_empty() {
+            return Err(ToolError::InvalidInput("cwd is empty".to_string()));
+        }
+        let requested = Path::new(trimmed);
+
+        // An absolute cwd is accepted only when it lies inside the root; strip the
+        // root prefix and treat the rest as components. Anything else would have to
+        // be re-resolved, which is the defect.
+        let relative: PathBuf = if requested.is_absolute() {
+            let canonical = requested.canonicalize().map_err(|e| {
+                ToolError::PathDenied(format!(
+                    "cwd '{}' cannot be resolved ({e}); cwd must be inside the workspace root '{}'",
+                    cwd,
+                    root.display()
+                ))
+            })?;
+            match canonical.strip_prefix(&root) {
+                Ok(rest) => rest.to_path_buf(),
+                Err(_) => {
+                    return Err(ToolError::PathDenied(format!(
+                        "cwd '{}' is outside the workspace root '{}'; an allowlisted tool runs in                          the directory it is started in, so the directory is part of the boundary",
+                        cwd,
+                        root.display()
+                    )));
+                }
+            }
+        } else {
+            requested.to_path_buf()
+        };
+
+        let mut dir = std::fs::File::open(&root)
+            .map_err(|e| os_error("Cannot open workspace root", &root, e))?;
+        let mut current_display = root.clone();
+        for component in relative.components() {
+            match component {
+                std::path::Component::Normal(part) => {
+                    current_display.push(part);
+                    dir = open_dir_at(&dir, part, &current_display).map_err(|e| {
+                        if e.kind() == io::ErrorKind::PermissionDenied {
+                            ToolError::PathDenied(format!(
+                                "cwd '{}' passes through '{}', which is a symlink or not a                                  directory; the child's working directory refuses to follow it",
+                                cwd,
+                                current_display.display()
+                            ))
+                        } else {
+                            ToolError::PathDenied(format!(
+                                "cwd '{}' is not a directory inside the workspace root '{}': {}",
+                                cwd,
+                                root.display(),
+                                e
+                            ))
+                        }
+                    })?;
+                }
+                std::path::Component::CurDir => {}
+                std::path::Component::ParentDir => {
+                    return Err(ToolError::PathDenied(format!(
+                        "cwd '{}' contains '..' and could leave the workspace root '{}'",
+                        cwd,
+                        root.display()
+                    )));
+                }
+                std::path::Component::RootDir | std::path::Component::Prefix(_) => {
+                    return Err(ToolError::PathDenied(format!(
+                        "cwd '{}' is not inside the workspace root '{}'",
+                        cwd,
+                        root.display()
+                    )));
+                }
+            }
+        }
+
+        Ok(ValidatedChildDir {
+            dir,
+            display: current_display,
+        })
+    }
+
     fn relative_components(path_str: &str) -> Result<Vec<OsString>, ToolError> {
         let normalized = path_str.replace('\\', "/");
         let path = Path::new(&normalized);
@@ -411,9 +544,36 @@ mod imp {
     pub fn append_to_file(_: &ValidatedWritePath, _: &[u8]) -> Result<(), ToolError> {
         unsupported()
     }
+
+    /// Placeholder so the API is identical on non-unix targets (never constructible).
+    #[derive(Debug)]
+    pub struct ValidatedChildDir {
+        display: PathBuf,
+    }
+
+    impl ValidatedChildDir {
+        /// The path as requested.
+        pub fn display(&self) -> &Path {
+            &self.display
+        }
+
+        /// Always refuses on this target.
+        pub fn raw_fd(&self) -> std::os::fd::RawFd {
+            -1
+        }
+    }
+
+    /// Always refuses on this target: a child's working directory needs
+    /// `fchdir` semantics, and a path-based fallback would re-resolve (#1488).
+    pub fn resolve_dir_for_child(_: &str, _: &str) -> Result<ValidatedChildDir, ToolError> {
+        unsupported()
+    }
 }
 
-pub use imp::{ValidatedWritePath, append_to_file, resolve_for_write, write_atomic};
+pub use imp::{
+    ValidatedChildDir, ValidatedWritePath, append_to_file, resolve_dir_for_child,
+    resolve_for_write, write_atomic,
+};
 
 #[cfg(all(test, unix))]
 mod tests {

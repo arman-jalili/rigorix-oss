@@ -107,6 +107,26 @@ file that ran rather than the word that was approved. The step dispatcher's shel
 cannot make that record: the shell resolves its own argv — that is one of the things the
 `run_command` step's `does_not` column says.
 
+### `cwd` is part of the boundary (#1488)
+
+An allowlisted word plus a caller-chosen directory is still arbitrary execution:
+`cargo build` runs that directory's `build.rs`, `npm run` its lifecycle scripts, `git`
+honours repo-local config. So `cwd` is resolved against the workspace root through
+`tools/infrastructure/fs_at.rs` — each component opened with `O_NOFOLLOW` from the opened
+root — and the child enters the **validated inode** with `fchdir` before `execve`, not a
+path that is resolved again.
+
+| `cwd` | Result |
+|---|---|
+| `/tmp`, or any absolute path outside the root | `PathDenied`, naming the root, before any spawn |
+| anything containing `..` | `PathDenied` (accepted only by re-resolving, which is the defect) |
+| a symlinked component | `PathDenied`, naming the link |
+| a directory inside the root | runs there |
+
+What it does not do: it does not stop a process with write access inside the root from
+swapping a component **before** the resolution runs — the control is over the window
+between validation and spawn, which is the window that existed.
+
 ---
 
 ## Permission mode: an unrecognized value is refused (#1487)
