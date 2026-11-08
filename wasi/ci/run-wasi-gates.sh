@@ -39,6 +39,14 @@ if [ "$MODE" = "self-test" ]; then
   bash "$HERE/check-imports.sh" --self-test
   bash "$HERE/check-claim-matches-record.sh" --self-test
   bash "$HERE/run-hostile.sh" --self-test
+  # The contract's seeds: a moving clock, a leaking stdout, and a `proc_exit` that returns.
+  if node "$HERE/embedder-contract.mjs" --self-test "$MODULE" >/dev/null 2>&1; then
+    echo "✓ self-test: the embedder contract's seeds all bite (clock, stdout, proc_exit)"
+  else
+    echo "✗ self-test: the embedder contract's seeds did not bite" >&2
+    node "$HERE/embedder-contract.mjs" --self-test "$MODULE" >&2 || true
+    exit 1
+  fi
   # S4 for the goldens: edit one recorded digest and require the harness to name the vector.
   scratch="$(mktemp -d)"
   trap 'find "$scratch" -type f -delete; find "$scratch" -depth -type d -exec rmdir {} + 2>/dev/null || true' EXIT
@@ -82,6 +90,11 @@ bash "$HERE/run-hostile.sh"
 
 step "a trap is not a refusal"
 node "$HERE/run-conformance.mjs" "$MODULE" --truncate-request
+
+step "the embedder contract"
+node "$HERE/embedder-contract.mjs" --self
+node "$HERE/embedder-contract.mjs" --artifact "$MODULE"
+node "$HERE/embedder-contract.mjs" --conformance "$MODULE"
 
 step "release wiring"
 bash "$HERE/check-release-wiring.sh"
