@@ -12,8 +12,10 @@
 # than none because the gate still reports success.
 #
 # Measured 2026-11-08 on wasm32-wasip1, rustc 1.9x, `-C panic=abort`, from a clean
-# `cargo build --release`: 2 158 771 bytes — and 1 896 192 once the `name` custom section (the
-# debug symbol table, 261 611 B) is stripped, which is what the artifact ships (#1474). The
+# `cargo build --release`: 2 158 771 bytes unstripped; the artifact that ships is 1 896 139 bytes,
+# because the `name` custom section (the debug symbol table) is **removed** and it was 261 595 B
+# of the module. Two numbers, and the distinction matters for the ceiling below: the removed
+# section is not the artifact's size (#1474). The
 # ceiling is the stripped measurement rounded up to the next 100 KiB: room for one dependency's
 # debug strings and nothing structural, and **lowered** from the unstripped number rather than
 # left as headroom nobody needs.
@@ -22,4 +24,4 @@
 # portable slice, so a size that only holds at the best measurement is not a ceiling.
 state: packaged
 ceiling_bytes: 1945600
-set_from: "2026-11-08, wasm32-wasip1 release build with --remap-path-prefix and the name section stripped: 1896192 bytes (was 2158771 unstripped)"
+set_from: "2026-11-09, wasm32-wasip1 release build with --remap-path-prefix and the name section stripped: 1896139 bytes shipped (2157734 unstripped, 261595 removed); was 1896192 before #1477"

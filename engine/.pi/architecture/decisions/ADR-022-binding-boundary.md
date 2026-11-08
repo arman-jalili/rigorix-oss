@@ -149,20 +149,28 @@ Two rules, and the second is what makes the first enforceable:
    and refuses anything that is not exactly the six in `wasi/ci/imports.txt`, naming what is
    missing and what is unexpected. An unused capability is still a capability.
 
-#### What rule 1 can and cannot say — measured, not assumed
+#### Rule 1, measured — including the time the sentence was too strong
 
 The clock row was originally written as "the instant comes from the facts, never from the host
-clock". The measurement says something narrower and better: **the allow path does consult the
-host clock** — three `clock_time_get` calls across the five vectors, none on the two refusals —
-because `std` reaches `__clock_gettime` there. What is true is that the value **reaches no
-decision byte**: an embedder that answers with a *moving* clock (`Date.now()`) still reproduces
-all five digests.
+clock". The first measurement did not support that sentence: the allow path consulted the host
+clock **three times** across the five vectors (one per allowed decision, none on the two
+refusals), because `std` reaches `__clock_gettime` there. The value reached no decision byte — an
+embedder answering with a *moving* clock still reproduced all five digests — so the row was
+weakened to what was proven: "the clock does not reach a decision".
 
-So the claim this artifact makes is "the clock does not reach a decision", not "the clock is
-never read", and the embedder counts both the clock and the RNG so that a decision which
-*starts* depending on one moves a number rather than quietly changing a digest. Asserting zero
-clock reads would have failed on the first run and been deleted within a week; measuring them is
-the claim that stays true and stays checkable.
+`#1477` then found the read and removed it. The site was
+`precondition/application/service_impl.rs`: `let checked_at = Utc::now();` at the top of
+`evaluate_match`, evaluated once per matched precondition and **discarded on the passing path**,
+because a passing finding takes `observation.observed_at` from the declaration. Reading a value
+that is then unused is still a read: it is the place where a later edit that replaces the
+discarded value with a duration turns a deterministic gate into a flaky one. The instant is now
+taken lazily, in the branches that actually serialise it, and the counter reads **zero**.
+
+With that, the strong sentence is true again: **no decision path reads the host clock**, and the
+embedder's clock floor is `0` rather than "maintained". The RNG stays a counter with a ceiling of
+one, because one seed of `std`'s hasher is legitimate and a second draw would mean a decision
+using randomness. The order is the point: measure, then require — the guard was loose only for as
+long as the artifact needed it to be.
 
 ### 7. Single-threaded, and that is the design
 
