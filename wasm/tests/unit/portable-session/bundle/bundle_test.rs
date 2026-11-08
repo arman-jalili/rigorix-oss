@@ -60,9 +60,19 @@ fn the_size_gate_is_declared_where_ci_can_read_it() {
     // independence gate's crate-name ban with the property it was always trying to state.
     // Those three are the whole reason this line could flip, so the contract now asserts the
     // flip rather than the block: the shipped artifact decides.
+    // The property is that the shipped default *evaluates*, not the literal line: the JS
+    // binding became a feature when the WASI artifact started linking these operations
+    // without it (#1465, ADR-022), so `default` now names two things and the contract is
+    // still the same one.
+    let default_line = manifest
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with("default = ["))
+        .unwrap_or_default();
     assert!(
-        manifest.contains("default = [\"engine\"]"),
-        "the shipped default must evaluate: an artifact that cannot decide is not a gate (#1401)"
+        default_line.contains("\"engine\""),
+        "the shipped default must evaluate: an artifact that cannot decide is not a gate \
+         (#1401) — default is {default_line:?}"
     );
 }
 
@@ -72,9 +82,14 @@ fn the_engine_dependency_is_optional_by_contract() {
     // On by default since #1401 — and still *optional*, because `--no-default-features` is the
     // contract-only build: it compiles, reports `gate_evaluation: false`, and refuses at
     // `open_session`. Both configurations ship a truth; one of them just cannot decide.
+    let default_line = manifest
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with("default = ["))
+        .unwrap_or_default();
     assert!(
-        manifest.contains("default = [\"engine\"]"),
-        "the default build must be the one that evaluates (#1401)"
+        default_line.contains("\"engine\""),
+        "the default build must be the one that evaluates (#1401) — default is {default_line:?}"
     );
     // Declared once per target (#1401): host builds link the engine whole, wasm32 links the
     // slice. Both must stay optional, or `--no-default-features` loses its meaning.

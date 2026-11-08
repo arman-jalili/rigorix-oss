@@ -34,8 +34,11 @@ actions/src/**	actions,test,coverage	the actions adapter
 actions/tests/**	actions,test,integration,coverage	the actions test binaries, incl. process isolation
 server/src/**	server,test,integration,coverage	the HTTP server
 server/tests/**	server,test,integration,coverage	the server's e2e and parity binaries
-wasm/src/**	test,wasm-gates,portable,coverage	the gate crate, its matrix leg, and its eleven gates
-wasm/ci/**	wasm-gates	the gates' own scripts and budgets
+wasm/src/**	test,wasm-gates,portable,coverage,wasi	the gate crate, its matrix leg, its eleven gates, and the WASI artifact that links its operations
+wasm/ci/**	wasm-gates,wasi	the gates' own scripts and budgets, and the artifact that replays their vectors
+wasi/src/**	test,wasi,coverage	the WASI boundary: its leg, its artifact gates, its coverage
+wasi/ci/**	wasi	the artifact's own gates, budgets and record
+wasi/Cargo.toml	ALL	a manifest change reaches the workspace feature graph
 wasm/pkg/**	wasm-gates	the packaged artifact
 rigorix-sdk/**	conformance	the schemas and fixtures the conformance stage replays
 schemas/**	conformance,docs	the contract schemas

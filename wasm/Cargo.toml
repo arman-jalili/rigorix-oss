@@ -18,7 +18,7 @@ crate-type = ["rlib", "cdylib"]
 # contract with a gate behind a flag, not a gate. `--no-default-features` keeps the
 # contract-only build, which still refuses at `open_session` with `gate_unavailable` — that is
 # what a build that cannot evaluate *is*, and its test is unchanged.
-default = ["engine"]
+default = ["engine", "bindgen"]
 # The in-repo seam: binds rigorix-engine's gate behind its additive, non-default
 # feature. Phase C.3 (#1383): the composition, the ports and the envelope all live
 # in the engine; this crate supplies the ports and calls one function.
@@ -28,6 +28,11 @@ engine = [
     "dep:async-trait",
     "dep:chrono",
 ]
+# The JS export layer (#1349), and the reason it is a feature: a second consumer links this
+# crate's *operations* and must not link its *binding*. `#[wasm_bindgen]` exports are
+# `no_mangle`, so the linker keeps them and their `__wbindgen_*` references with them —
+# which is why the WASI artifact (#1465), which turns this off, imports nothing at all.
+bindgen = []
 # Test-only: conformance vector replay (ADR-009). Never part of the bundle.
 conformance = []
 # Off by default: a release bundle keeps no diagnostic channel (ADR-003, criterion 17).
@@ -49,7 +54,7 @@ sha2 = "0.11"
 # `features = ["portable"]` here, any workspace build that includes this crate and `mcp` or
 # `actions` unifies `portable` for the whole graph and removes `identity::infrastructure::
 # JwksVerifier`, `orchestrator`, `plan_validation` and ~80 other items from under them. That
-# is what `cargo clippy --workspace --all-targets` reported the moment `default = ["engine"]`
+# is what `cargo clippy --workspace --all-targets` reported the moment `default = ["engine", "bindgen"]`
 # landed — a workspace clippy failure caused by a wasm manifest line.
 #
 # Host builds therefore link the engine *whole* (tests, clippy, benches: no slice needed),
@@ -88,9 +93,18 @@ workspace = true
 name = "unit"
 path = "tests/unit/mod.rs"
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
+# The JS binding is for **non-JS-less wasm32** only: `target_os = "unknown"` is
+# `wasm32-unknown-unknown`, the browser/Node target `wasm-bindgen` emits JS glue for. The
+# WASI artifact (#1465) is the same crate on `wasm32-wasip1`, where a `__wbindgen_*` import
+# would be a host dependency the whole boundary exists to avoid — so the attribute layer is
+# gated on the target, not on the architecture. `wasm32-wasip1` still takes the slice below.
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 wasm-bindgen = "0.2.130"
+
 # The slice, wasm32 only (#1401) — the counterpart of the `not(wasm32)` declaration above.
+# Both wasm targets take it: `wasm32-unknown-unknown` for the browser artifact and
+# `wasm32-wasip1` for the WASI one (#1465). The binding is what differs, not the slice.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
 rigorix-engine = { path = "../engine", version = "1.14.2", features = ["portable"], optional = true }
 
 [[example]]

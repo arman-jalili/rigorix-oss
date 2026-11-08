@@ -1,0 +1,38 @@
+# The import section of rigorix_gate_wasi.wasm — recorded, compared exactly, never tolerated.
+#
+#   module::name
+#
+# Why this file exists: the artifact's claim is that a reviewer can *read* what the module
+# can reach. `wasm32-wasip1` does not let that claim be "nothing" — the Rust standard library
+# links its WASI prologue into every module on that target, and six functions arrive whether
+# or not the crate calls them:
+#
+#   random_get          std's hasher seed (std::collections::HashMap's RandomState)
+#   environ_get         std's environment prologue
+#   environ_sizes_get   the same
+#   clock_time_get      std's clock (chrono and tokio's `time` are in the slice's graph)
+#   fd_write            std's panic output
+#   proc_exit           std's abort path
+#
+# So the claim this project can *prove* is narrower and stronger than "imports nothing": it
+# is that **no decision consumes any of them**. `run-conformance.mjs` instantiates the module
+# with every one of these answered by a constant — empty environment, clock frozen at zero,
+# randomness that writes nothing, a writer that discards — and all five recorded digests
+# still reproduce. A capability that is linked and never read is a link-time fact; a
+# capability a decision *read* would move the digests.
+#
+# This file is a ratchet in both directions, which is why it is a list and not a number:
+#
+#   * an import that is not listed here is a FAILURE — something new became reachable;
+#   * a listed import that is gone is a FAILURE too — the record is stale, and deleting the
+#     line is how the next reader learns the truth instead of inheriting a comment.
+#
+# Removing the six is a separate subject (a portable slice with no std prologue, no
+# `getrandom`, no `chrono` clock, and a panic path that does not format). When that lands,
+# this list gets shorter in the same commit and the claim becomes zero rather than never-read.
+wasi_snapshot_preview1::random_get
+wasi_snapshot_preview1::environ_get
+wasi_snapshot_preview1::environ_sizes_get
+wasi_snapshot_preview1::clock_time_get
+wasi_snapshot_preview1::fd_write
+wasi_snapshot_preview1::proc_exit
