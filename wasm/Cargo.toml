@@ -30,8 +30,9 @@ engine = [
 ]
 # The JS export layer (#1349), and the reason it is a feature: a second consumer links this
 # crate's *operations* and must not link its *binding*. `#[wasm_bindgen]` exports are
-# `no_mangle`, so the linker keeps them and their `__wbindgen_*` references with them —
-# which is why the WASI artifact (#1465), which turns this off, imports nothing at all.
+# `no_mangle`, so the linker keeps them and their `__wbindgen_*` references with them — which is
+# why the WASI artifact (#1465) turns this off. It still carries six `std` prologue imports on
+# `wasm32-wasip1` (recorded in `wasi/ci/imports.txt`), none of which a decision reads.
 bindgen = []
 # Test-only: conformance vector replay (ADR-009). Never part of the bundle.
 conformance = []

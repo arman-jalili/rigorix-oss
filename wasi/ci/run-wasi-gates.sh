@@ -9,6 +9,7 @@
 #   1. it builds for the target              build        (a target nobody built is a plan)
 #   2. the import section is what is recorded imports      (exactly; both directions)
 #   3. the size is inside the ceiling         size         (with its set_from)
+#   7. the words equal the record             claims       (#1467: six, not the phrase)
 #   4. the five goldens reproduce             conformance  (through node, in the artifact)
 #   5. a truncated request is a refusal       truncation   (and the instance keeps answering)
 #   6. the release page carries the artifact  release-wiring
@@ -35,6 +36,7 @@ step() { printf '\n── %s ──\n' "$1"; }
 if [ "$MODE" = "self-test" ]; then
   step "self-test: the gates have subjects"
   bash "$HERE/check-imports.sh" --self-test
+  bash "$HERE/check-claim-matches-record.sh" --self-test
   # S4 for the goldens: edit one recorded digest and require the harness to name the vector.
   scratch="$(mktemp -d)"
   trap 'find "$scratch" -type f -delete; find "$scratch" -depth -type d -exec rmdir {} + 2>/dev/null || true' EXIT
@@ -67,6 +69,9 @@ bash "$HERE/check-imports.sh" "$MODULE"
 step "size"
 bash "$HERE/check-size.sh" "$MODULE"
 
+step "the words equal the record"
+bash "$HERE/check-claim-matches-record.sh"
+
 step "conformance (node:wasi)"
 node "$HERE/run-conformance.mjs" "$MODULE"
 
@@ -77,4 +82,5 @@ step "release wiring"
 bash "$HERE/check-release-wiring.sh"
 
 printf '\n✓ WASI gates: the artifact builds, imports what is recorded, fits its ceiling,\n'
-printf '  reproduces all five goldens through node, and refuses without trapping.\n'
+printf '  reproduces all five goldens through node, refuses without trapping, and the\n'
+printf '  words in the tree name the same count as the record.\n'

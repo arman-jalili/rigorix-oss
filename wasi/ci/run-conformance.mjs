@@ -47,15 +47,12 @@ async function instantiate(path) {
   // Deliberately not fatal here: `check-imports.mjs` is the gate for that subject, and this
   // harness reports what it sees so a failure names one thing.
   console.log(`  module imports ${imports.length} item(s)`);
-  // A module with an empty import section instantiates with `{}`; one that carries the WASI
-  // prologue needs the object `node:wasi` builds. Both are the same artifact claim — the
-  // difference is whether the host must supply anything, which is what is being measured.
-  // A module with an empty import section instantiates with `{}`. One that carries std's
-  // WASI prologue needs those imports supplied, and this harness supplies them as
-  // **constants**: an empty environment, a clock frozen at zero, randomness that writes
-  // nothing, and a writer that discards. If the recorded digests still reproduce, the
-  // decision path never consumed a host capability — which is the claim stated as something
-  // that can be wrong rather than as something to believe.
+  // The module carries std's WASI prologue (six functions, recorded in `imports.txt`), so
+  // this harness has to answer them — and answers every one with a **constant**: an empty
+  // environment, a clock frozen at zero, randomness that writes nothing, a writer that
+  // discards, and `proc_exit` throwing so a panic path cannot pass silently. If the recorded
+  // digests still reproduce, the decision path never consumed a host capability — which is
+  // the claim stated as something that can be wrong rather than as something to believe.
   const instance = await WebAssembly.instantiate(module, constantImports(imports));
   const memory = instance.exports.memory;
   if (!memory) throw new Error("the module exports no memory; the ABI needs one");

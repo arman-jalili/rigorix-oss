@@ -4,7 +4,7 @@
 //!
 //! They run **natively**, against the same `dispatch` the artifact calls. That makes them a
 //! test of the protocol and of the engine seam, not of the artifact: the artifact's own
-//! claims — an empty import section, the size ceiling, `node:wasi` loading it — are checked
+//! claims — the recorded import section, the size ceiling, `node:wasi` loading it — are checked
 //! by `wasi/ci/`, because a native test cannot see an import section.
 //!
 //! The goldens are the *browser crate's* vectors, replayed through this boundary. That is
