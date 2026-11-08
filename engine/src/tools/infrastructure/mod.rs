@@ -13,5 +13,6 @@
 //! - All methods are async
 //! - All methods return domain error types
 
+pub mod fs_at;
 pub mod repository;
 pub mod tree_sitter_anchor;

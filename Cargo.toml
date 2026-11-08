@@ -11,6 +11,15 @@ edition = "2024"
 # #1083: a restriction lint, allow-by-default — deny it here so plain
 # `cargo clippy` catches a new spawn site, not only CI. Configured in clippy.toml.
 disallowed_types = "deny"
+# #1481 rule 2 (no dropped evidence) is NOT configured here on purpose. Denying
+# `let_underscore_must_use` workspace-wide fires on ~50 pre-existing best-effort
+# sites (event publishes, temp-file cleanup, channel sends), each of which would
+# need an `#[allow]` — a control that becomes a list of exceptions is noise. The
+# rule is denied where it is about evidence: the module roots of `audit/`,
+# `orchestrator/` and `precondition/` carry
+# `#![deny(clippy::let_underscore_must_use)]`, and
+# `.pi/scripts/validate-sink-register.sh` scans every `let _ =` on those paths
+# for the `// sink: <id>` excuse.
 
 [workspace.dependencies]
 # Shared external dependencies (single version across all crates)

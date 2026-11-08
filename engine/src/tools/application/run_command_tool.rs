@@ -20,6 +20,19 @@
 //! cannot read `RIGORIX_HMAC_KEY` and forge audit envelopes. This is not a
 //! sandbox: the child still runs as the engine's user with its filesystem
 //! access (#1068).
+//!
+//! # Isolation (#1478)
+//!
+//! The tool cannot be constructed without a [`SandboxDeclaration`]: the
+//! deployment must state `RIGORIX_SANDBOX=container` (or `vm`), and `none` is
+//! refused with the reach named. Filtering is not isolation, and the register
+//! says so in the `does_not` column (`.pi/architecture/sink-register.tsv`).
+//!
+//! A proven-single command is executed as argv, never through `sh -c`:
+//! [`argv_from_simple`] refuses anything a shell would expand. The allowlist's
+//! grain is therefore the *executable* — arguments are unconstrained, so
+//! allowlisting `cargo`, `npm`, `python`, `git` or `make` for an untrusted agent
+//! is allowlisting arbitrary code execution. See `docs/deployment.md`.
 
 // #1083: approved process-spawning sink — governed shell sink: allowlist + control-operator refusal + cleared env.
 // See `.pi/architecture/modules/tool-system.md#process-spawning-sinks`.
@@ -31,7 +44,10 @@ use std::time::Duration;
 use std::time::Instant;
 
 use crate::tools::application::dto::{SideEffect, ToolInput, ToolResult};
-use crate::tools::application::shell_policy::{apply_child_env, find_shell_control_operator};
+use crate::tools::application::shell_policy::{
+    SandboxDeclaration, SandboxDeclarationError, apply_child_env, argv_from_simple,
+    find_shell_control_operator,
+};
 use crate::tools::domain::{Tool, ToolError};
 
 /// Tool for executing shell commands with allowlist enforcement.
@@ -56,16 +72,39 @@ pub struct RunCommandTool {
     allowlist: HashSet<String>,
     /// Default timeout in seconds.
     default_timeout: u64,
+    /// The isolation the deployment declared for spawned children.
+    sandbox: SandboxDeclaration,
 }
 
 impl RunCommandTool {
-    /// Create a new RunCommandTool with the given workspace root and allowlist.
-    pub fn new(workspace_root: impl Into<String>, allowlist: Vec<impl Into<String>>) -> Self {
+    /// Create a new RunCommandTool with the given workspace root, allowlist and
+    /// declared isolation.
+    ///
+    /// There is no constructor without a [`SandboxDeclaration`]: a caller that
+    /// has not stated the boundary cannot enable the sink (#1478).
+    pub fn new(
+        workspace_root: impl Into<String>,
+        allowlist: Vec<impl Into<String>>,
+        sandbox: SandboxDeclaration,
+    ) -> Self {
         Self {
             workspace_root: workspace_root.into(),
             allowlist: allowlist.into_iter().map(|s| s.into()).collect(),
             default_timeout: 60,
+            sandbox,
         }
+    }
+
+    /// Read the declared isolation from the deployment (`RIGORIX_SANDBOX`).
+    ///
+    /// Unset, unrecognized, or `none` is an error naming what the child can
+    /// reach — the tool is not constructed.
+    pub fn from_env(
+        workspace_root: impl Into<String>,
+        allowlist: Vec<impl Into<String>>,
+    ) -> Result<Self, SandboxDeclarationError> {
+        let sandbox = SandboxDeclaration::from_env()?;
+        Ok(Self::new(workspace_root, allowlist, sandbox))
     }
 
     /// Create a new RunCommandTool with a custom default timeout.
@@ -73,12 +112,19 @@ impl RunCommandTool {
         workspace_root: impl Into<String>,
         allowlist: Vec<impl Into<String>>,
         default_timeout: u64,
+        sandbox: SandboxDeclaration,
     ) -> Self {
         Self {
             workspace_root: workspace_root.into(),
             allowlist: allowlist.into_iter().map(|s| s.into()).collect(),
             default_timeout,
+            sandbox,
         }
+    }
+
+    /// The isolation the deployment declared.
+    pub fn sandbox(&self) -> &SandboxDeclaration {
+        &self.sandbox
     }
 
     /// Check if the command is allowed by the allowlist.
@@ -156,10 +202,28 @@ impl Tool for RunCommandTool {
 
         let start = Instant::now();
 
-        // Execute the command. The child inherits only the explicit allowlist;
-        // `RIGORIX_HMAC_KEY` and anchor credentials stay in the engine process.
-        let mut cmd = tokio::process::Command::new("/bin/sh");
-        cmd.arg("-c").arg(&command).current_dir(&cwd);
+        // #1478: execute argv, not a shell string. The command was proven single
+        // above (no control operator) and is proven shell-free here: anything a
+        // shell would expand was refused, so `sh -c` would add nothing but the
+        // injection surface it was already filtering by hand.
+        let argv = argv_from_simple(&command).map_err(|e| {
+            ToolError::InvalidInput(format!(
+                "Command '{}' cannot be executed without a shell: {}. run_command executes one \
+                 executable with literal arguments; quote a metacharacter with single quotes if \
+                 it is meant literally.",
+                command, e
+            ))
+        })?;
+        let (program, arguments) = argv.split_first().ok_or_else(|| {
+            ToolError::InvalidInput(format!("Command '{}' has no executable", command))
+        })?;
+
+        // The child inherits only the explicit allowlist; `RIGORIX_HMAC_KEY` and
+        // anchor credentials stay in the engine process. The declaration this
+        // sink relies on is held on the tool (`self.sandbox`): filtering alone is
+        // not isolation, and the deployment stated the boundary at construction.
+        let mut cmd = tokio::process::Command::new(program);
+        cmd.args(arguments).current_dir(&cwd);
         apply_child_env(&mut cmd, &env_overrides);
 
         let output = tokio::time::timeout(timeout_duration, cmd.output())
@@ -225,14 +289,19 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let tool = RunCommandTool::new(
             dir.path().to_str().unwrap(),
-            vec!["echo", "cat", "ls", "cargo", "git"],
+            vec!["echo", "cat", "ls", "cargo", "git", "env", "pwd"],
+            SandboxDeclaration::container(),
         );
         (tool, dir)
     }
 
     fn make_simple_tool() -> (RunCommandTool, TempDir) {
         let dir = TempDir::new().unwrap();
-        let tool = RunCommandTool::new(dir.path().to_str().unwrap(), vec!["echo"]);
+        let tool = RunCommandTool::new(
+            dir.path().to_str().unwrap(),
+            vec!["echo"],
+            SandboxDeclaration::container(),
+        );
         (tool, dir)
     }
 
@@ -303,7 +372,11 @@ mod tests {
     #[tokio::test]
     async fn test_run_with_cwd() {
         let dir = TempDir::new().unwrap();
-        let tool = RunCommandTool::new(dir.path().to_str().unwrap(), vec!["echo", "pwd"]);
+        let tool = RunCommandTool::new(
+            dir.path().to_str().unwrap(),
+            vec!["echo", "pwd"],
+            SandboxDeclaration::container(),
+        );
 
         let mut params = HashMap::new();
         params.insert(
@@ -349,6 +422,10 @@ mod tests {
     /// #1068: the child must not inherit the engine's environment. The engine
     /// signs audit envelopes with `RIGORIX_HMAC_KEY`, so handing it to a child
     /// lets the child forge the records that constrain it.
+    ///
+    /// #1478: measured with `env` rather than `sh -c 'echo "[$VAR]"'` — the argv
+    /// path expands nothing, so the observation has to be the child's own
+    /// environment dump.
     #[tokio::test]
     async fn test_child_does_not_inherit_the_engine_environment() {
         assert!(
@@ -356,27 +433,74 @@ mod tests {
             "test precondition: cargo must set a parent-only variable"
         );
         let (tool, _dir) = allowlist_tool();
-        let result = tool
-            .execute(&make_input("echo \"[$CARGO_MANIFEST_DIR]\""))
-            .await
-            .unwrap();
-        assert_eq!(
-            result.output.trim(),
-            "[]",
-            "the engine environment must not reach the child"
+        let result = tool.execute(&make_input("env")).await.unwrap();
+        assert!(
+            !result.output.contains("CARGO_MANIFEST_DIR="),
+            "the engine environment must not reach the child: {}",
+            result.output
+        );
+        assert!(
+            !result.output.contains("RIGORIX_HMAC_KEY="),
+            "the signing key must never reach a child: {}",
+            result.output
         );
 
         // Explicit per-call overrides still apply after the clear.
         let mut params = HashMap::new();
         params.insert(
             "command".to_string(),
-            serde_json::Value::String("echo \"[$RIGORIX_TEST_OVERRIDE]\"".to_string()),
+            serde_json::Value::String("env".to_string()),
         );
         params.insert(
             "env".to_string(),
             serde_json::json!({ "RIGORIX_TEST_OVERRIDE": "visible" }),
         );
         let result = tool.execute(&ToolInput::new(params)).await.unwrap();
-        assert_eq!(result.output.trim(), "[visible]");
+        assert!(
+            result.output.contains("RIGORIX_TEST_OVERRIDE=visible"),
+            "an explicit override must reach the child: {}",
+            result.output
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // #1478 (SINK-1)
+    // -----------------------------------------------------------------------
+
+    /// The isolation requirement is a construction precondition, not a comment:
+    /// there is no `RunCommandTool` without a declaration, and `none` is not one.
+    #[test]
+    fn the_sink_cannot_be_built_without_a_declared_boundary() {
+        assert!(SandboxDeclaration::from_value("none").is_err());
+        assert_eq!(
+            RunCommandTool::new("/tmp", vec!["echo"], SandboxDeclaration::vm())
+                .sandbox()
+                .requires(),
+            "deployment isolation (RIGORIX_SANDBOX=vm)"
+        );
+    }
+
+    /// #1478 acceptance 3: the simple path executes argv, not `sh -c`.
+    #[test]
+    fn the_source_path_has_no_shell_command_flag() {
+        let source = include_str!("run_command_tool.rs");
+        let code: String = source
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            !code.contains("\"-c\""),
+            "run-command must not invoke a shell; the argv path replaced `-c`"
+        );
+    }
+
+    /// A command that needs a shell is refused instead of silently passed
+    /// through unexpanded — the caller who wrote `$HOME` expected expansion.
+    #[tokio::test]
+    async fn a_command_needing_expansion_is_refused_by_name() {
+        let (tool, _dir) = allowlist_tool();
+        let error = tool.execute(&make_input("echo $HOME")).await.unwrap_err();
+        assert!(matches!(error, ToolError::InvalidInput(_)), "{error:?}");
     }
 }

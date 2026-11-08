@@ -2,83 +2,45 @@
 //!
 //! @canonical .pi/architecture/modules/tool-system.md#file-write
 //! Implements: Tool trait — FileWrite and FileAppend concrete tools
-//! Issue: #125
+//! Issue: #125, #1479
 //!
 //! FileWriteTool writes/overwrites files using an atomic write-rename pattern.
 //! FileAppendTool appends content to existing files.
 //!
-//! Both validate that paths are within the workspace root to prevent
-//! directory traversal attacks.
+//! # Validation and mutation share a handle (#1479, SINK-2)
+//!
+//! This module used to canonicalize the deepest existing ancestor, return a
+//! `PathBuf`, and then re-resolve that path through `create_dir_all` / `fs::write` /
+//! `fs::rename`. The check and the mutation were separate events, so a component
+//! swapped for a symlink in between redirected the write. The mutation now goes
+//! through [`crate::tools::infrastructure::fs_at`], which returns an opened parent
+//! directory handle and mutates relative to it; this file no longer touches the
+//! filesystem itself, and cannot: it never holds a path it can write to.
+//!
+//! # What this does not do
+//!
+//! It refuses a symlinked component rather than following it, and it cannot
+//! survive a full disk. See `.pi/architecture/sink-register.tsv`
+//! (`tools:file-write-path`) for the `does_not` column.
 
 use async_trait::async_trait;
-use std::path::Path;
 
 use crate::tools::application::dto::{SideEffect, ToolInput, ToolResult};
 use crate::tools::domain::{Tool, ToolError};
+use crate::tools::infrastructure::fs_at;
 
-// ---------------------------------------------------------------------------
-// Helper: path validation
-// ---------------------------------------------------------------------------
-
-fn resolve_and_validate_path(
-    workspace_root: &str,
-    path_str: &str,
-) -> Result<std::path::PathBuf, ToolError> {
-    let root = Path::new(workspace_root);
-
-    // Check for path traversal before requiring canonicalization
-    let normalized = path_str.replace('\\', "/");
-    if normalized.contains("..") {
-        return Err(ToolError::PathDenied(format!(
-            "Path '{}' contains '..' and could escape workspace root",
-            path_str
-        )));
-    }
-
-    let path = root.join(path_str);
-
-    // For write operations, the file may not exist yet.
-    // Validate by checking the parent directory exists or can be created.
-    let parent = path
-        .parent()
-        .ok_or_else(|| ToolError::InvalidInput(format!("Invalid path: {}", path_str)))?;
-
-    // Find the deepest existing ancestor to canonicalize and validate
-    let mut check = Some(parent);
-    while let Some(p) = check {
-        if p.exists() {
-            let p_canonical = p
-                .canonicalize()
-                .map_err(|e| ToolError::ExecutionFailed(format!("Cannot resolve path: {}", e)))?;
-            let root_canonical = root.canonicalize().map_err(|_| {
-                ToolError::ExecutionFailed("Cannot resolve workspace root".to_string())
-            })?;
-            if !p_canonical.starts_with(&root_canonical) {
-                return Err(ToolError::PathDenied(format!(
-                    "Path '{}' is outside workspace root",
-                    path_str
-                )));
-            }
-            return Ok(path);
-        }
-        check = p.parent();
-    }
-
-    // No existing ancestor found — validate root itself
-    let root_canonical = root
-        .canonicalize()
-        .map_err(|_| ToolError::ExecutionFailed("Cannot resolve workspace root".to_string()))?;
-
-    // Path must be within workspace root
-    let path_str_abs = root.join(path_str);
-    if !path_str_abs.starts_with(&root_canonical) {
-        return Err(ToolError::PathDenied(format!(
-            "Path '{}' is outside workspace root",
-            path_str
-        )));
-    }
-
-    Ok(path)
+/// Run a blocking, single-directory mutation off the async runtime.
+///
+/// `openat`/`write`/`renameat` are bounded syscalls, but a large `content` is not
+/// something to write inline on a worker thread — the previous implementation used
+/// `tokio::fs` for the same reason.
+async fn off_runtime<F>(operation: F) -> Result<(), ToolError>
+where
+    F: FnOnce() -> Result<(), ToolError> + Send + 'static,
+{
+    tokio::task::spawn_blocking(operation)
+        .await
+        .map_err(|e| ToolError::ExecutionFailed(format!("file task failed: {e}")))?
 }
 
 // ---------------------------------------------------------------------------
@@ -122,51 +84,20 @@ impl Tool for FileWriteTool {
     async fn execute(&self, input: &ToolInput) -> Result<ToolResult, ToolError> {
         let path_str = input.require_string("path")?;
         let content = input.require_string("content")?;
-        let resolved = resolve_and_validate_path(&self.workspace_root, &path_str)?;
 
-        // Ensure parent directory exists
-        if let Some(parent) = resolved.parent() {
-            tokio::fs::create_dir_all(parent).await.map_err(|e| {
-                ToolError::ExecutionFailed(format!(
-                    "Failed to create directory '{}': {}",
-                    parent.display(),
-                    e
-                ))
-            })?;
-        }
-
-        // Atomic write: write to temp file, then rename
-        let temp_path = resolved.with_extension(format!(
-            ".tmp.{}",
-            uuid::Uuid::new_v4()
-                .to_string()
-                .split('-')
-                .next()
-                .unwrap_or_default()
-        ));
-
-        tokio::fs::write(&temp_path, &content).await.map_err(|e| {
-            ToolError::ExecutionFailed(format!("Failed to write file '{}': {}", path_str, e))
-        })?;
-
-        tokio::fs::rename(&temp_path, &resolved)
-            .await
-            .map_err(|e| {
-                // Clean up temp file on rename failure
-                let _ = std::fs::remove_file(&temp_path);
-                ToolError::ExecutionFailed(format!(
-                    "Failed to atomically write file '{}': {}",
-                    path_str, e
-                ))
-            })?;
+        // #1479: one resolution, one handle. The target is opened here and mutated
+        // through the same handle by `fs_at`; nothing in this file re-resolves it.
+        let target = fs_at::resolve_for_write(&self.workspace_root, &path_str)?;
+        let bytes = content.len();
+        off_runtime(move || fs_at::write_atomic(&target, content.as_bytes())).await?;
 
         let result = ToolResult {
-            output: format!("Written {} bytes to '{}'", content.len(), path_str),
+            output: format!("Written {} bytes to '{}'", bytes, path_str),
             exit_code: 0,
             side_effects: vec![SideEffect::new(
                 &path_str,
                 "file_write",
-                format!("Written {} bytes", content.len()),
+                format!("Written {bytes} bytes"),
             )],
             duration_ms: 0,
             dry_run: false,
@@ -213,33 +144,21 @@ impl Tool for FileAppendTool {
     async fn execute(&self, input: &ToolInput) -> Result<ToolResult, ToolError> {
         let path_str = input.require_string("path")?;
         let content = input.require_string("content")?;
-        let resolved = resolve_and_validate_path(&self.workspace_root, &path_str)?;
 
-        // Check file exists before appending
-        if !resolved.exists() {
-            return Err(ToolError::ExecutionFailed(format!(
-                "File '{}' does not exist. Use file-write to create new files.",
-                path_str
-            )));
-        }
-
-        let mut existing = tokio::fs::read_to_string(&resolved).await.map_err(|e| {
-            ToolError::ExecutionFailed(format!("Failed to read file '{}': {}", path_str, e))
-        })?;
-
-        existing.push_str(&content);
-
-        tokio::fs::write(&resolved, &existing).await.map_err(|e| {
-            ToolError::ExecutionFailed(format!("Failed to append to file '{}': {}", path_str, e))
-        })?;
+        // #1479: appended through the pinned parent handle, `O_APPEND|O_NOFOLLOW`.
+        // A missing file is an error (use file-write), and an existing symlink at
+        // the final component is refused rather than written through.
+        let target = fs_at::resolve_for_write(&self.workspace_root, &path_str)?;
+        let bytes = content.len();
+        off_runtime(move || fs_at::append_to_file(&target, content.as_bytes())).await?;
 
         let result = ToolResult {
-            output: format!("Appended {} bytes to '{}'", content.len(), path_str),
+            output: format!("Appended {} bytes to '{}'", bytes, path_str),
             exit_code: 0,
             side_effects: vec![SideEffect::new(
                 &path_str,
                 "file_append",
-                format!("Appended {} bytes", content.len()),
+                format!("Appended {bytes} bytes"),
             )],
             duration_ms: 0,
             dry_run: false,
@@ -343,6 +262,52 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let tool = FileWriteTool::new(dir.path().to_str().unwrap());
         assert_eq!(tool.name(), "file-write");
+    }
+
+    // -----------------------------------------------------------------------
+    // #1479 (SINK-2): the check and the mutation share a handle
+    // -----------------------------------------------------------------------
+
+    /// #1479 acceptance 1: nothing in this file re-resolves a path after
+    /// validation — the mutation lives in `fs_at`, behind an opaque handle.
+    #[test]
+    fn the_tool_does_not_touch_the_filesystem_itself() {
+        // Comments name the calls this file used to make; the code may not.
+        let source = include_str!("file_write_tool.rs");
+        // Only the tool's own code: this test names the forbidden calls, and the
+        // module docs name the calls the file used to make.
+        let production = source.split("#[cfg(test)]").next().unwrap_or(source);
+        let code: String = production
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for forbidden in ["fs::write", "fs::rename", "create_dir_all", "tokio::fs::"] {
+            assert!(
+                !code.contains(forbidden),
+                "file-write must mutate only through fs_at's pinned handle, found `{forbidden}`"
+            );
+        }
+    }
+
+    /// #1479 acceptance 3, at the tool boundary: a symlinked component is a
+    /// `PathDenied`, not a followed link.
+    #[tokio::test]
+    async fn test_write_through_a_symlinked_component_is_denied() {
+        let dir = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("link")).unwrap();
+
+        let tool = FileWriteTool::new(dir.path().to_str().unwrap());
+        let result = tool
+            .execute(&make_input("link/escape.txt", "content"))
+            .await;
+
+        assert!(
+            matches!(result, Err(ToolError::PathDenied(_))),
+            "a symlinked component must be refused: {result:?}"
+        );
+        assert!(!outside.path().join("escape.txt").exists());
     }
 
     // -----------------------------------------------------------------------

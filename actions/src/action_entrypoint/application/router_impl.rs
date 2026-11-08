@@ -496,6 +496,10 @@ mod tests {
                     status:
                         rigorix_engine::orchestrator::domain::record::ExecutionStatus::Completed,
                 },
+                // The mock orchestrator runs no audit path, so it says so
+                // instead of inheriting a silent `Complete` (#1480).
+                evidence:
+                    rigorix_engine::orchestrator::application::dto::EvidenceStatus::NotRequested,
             })
         }
 
@@ -587,6 +591,10 @@ mod tests {
                     status:
                         rigorix_engine::orchestrator::domain::record::ExecutionStatus::Completed,
                 },
+                // The mock orchestrator runs no audit path, so it says so
+                // instead of inheriting a silent `Complete` (#1480).
+                evidence:
+                    rigorix_engine::orchestrator::application::dto::EvidenceStatus::NotRequested,
             })
         }
 

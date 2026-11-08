@@ -17,7 +17,10 @@ use crate::audit::domain::{AuditError, HistoryPolicy};
 use super::audit_queue_impl::AuditQueueImpl;
 #[cfg(not(feature = "portable"))]
 use super::audit_sender_impl::AuditSenderImpl;
-use super::dto::{BuildEnvelopeInput, BuildEnvelopeOutput, DeliverEnvelopeInput, EnqueueInput};
+use super::dto::{
+    BuildEnvelopeInput, BuildEnvelopeOutput, DegradedEvidence, DeliverEnvelopeInput, EnqueueInput,
+    EnqueueOutput,
+};
 #[cfg(not(feature = "portable"))]
 use super::envelope_factory_impl::AuditEnvelopeFactoryImpl;
 use super::factory::AuditEnvelopeFactory;
@@ -175,6 +178,50 @@ impl AuditServiceImpl {
     }
 }
 
+/// The fact a failed delivery leaves behind (#1480).
+///
+/// Three outcomes, three different sentences, because "enqueued for retry" was
+/// true while the durability an operator would infer from it was not:
+///
+/// - rejected: the envelope is gone, and the reason says so with the count;
+/// - in-memory queue: it survives the process only until it does not;
+/// - durable queue: it is recoverable, so `undelivered` is zero — the remaining
+///   fact is that the backend did not receive it during the run.
+fn degraded_or_queue_fact(
+    prior: Option<DegradedEvidence>,
+    queue: &dyn AuditQueue,
+    reason: &str,
+    enqueued: Result<EnqueueOutput, AuditError>,
+) -> DegradedEvidence {
+    let (queue_fact, undelivered) = match enqueued {
+        Err(error) => (
+            format!(
+                "the retry queue rejected the envelope ({error}); it is lost when the process \
+                 exits"
+            ),
+            1,
+        ),
+        Ok(_) if queue.durable() => (
+            "the envelope is queued durably and will be retried".to_string(),
+            0,
+        ),
+        Ok(_) => (
+            "the envelope is queued in memory and is lost on restart".to_string(),
+            1,
+        ),
+    };
+    match prior {
+        Some(prior) => DegradedEvidence {
+            reason: format!("{}; also: {reason}; {queue_fact}", prior.reason),
+            undelivered: prior.undelivered.max(undelivered),
+        },
+        None => DegradedEvidence {
+            reason: format!("{reason}; {queue_fact}"),
+            undelivered,
+        },
+    }
+}
+
 #[async_trait]
 impl AuditService for AuditServiceImpl {
     async fn build_and_send(
@@ -236,6 +283,11 @@ impl AuditService for AuditServiceImpl {
         // `<repo_root>/.rigorix/audit`); coupling it to a configured backend
         // URL silently disabled R7 (envelope never saved → empty history →
         // no-cross-run rules never fire).
+        //
+        // #1480: this save used to be best-effort (warn and continue), so the
+        // artifact the design treats as the evidence of record could be missing
+        // while the run reported success. The failure is now a fact on the output.
+        let mut degraded = None;
         if let Some(repo) = &self.local_repository
             && let Err(e) = repo.save(&envelope).await
         {
@@ -243,6 +295,13 @@ impl AuditService for AuditServiceImpl {
                 execution_id = %envelope.execution_id,
                 "audit: local envelope persistence failed ({e}) — cross-run policy history may be incomplete"
             );
+            degraded = Some(DegradedEvidence {
+                reason: format!(
+                    "the local signed trail rejected the save ({e}); cross-run policy history \
+                     will not include this run"
+                ),
+                undelivered: 0,
+            });
         }
         // Release the chain lock before (potentially slow) remote delivery;
         // the envelope is already persisted and chained.
@@ -255,6 +314,7 @@ impl AuditService for AuditServiceImpl {
                 envelope,
                 signed,
                 event_count,
+                degraded,
             });
         }
 
@@ -268,35 +328,52 @@ impl AuditService for AuditServiceImpl {
 
         let delivery = self.sender.deliver_with_retry(deliver_input).await;
 
+        // #1480: every arm below computes a fact instead of discarding one. The
+        // enqueue result used to be `let _ =`, so a queue that rejected (full, or
+        // in-memory and lossy) looked identical to one that accepted.
         match delivery {
             Ok(output) if output.success => {
-                // Delivered successfully
+                // Delivered successfully: the evidence is complete unless the
+                // local save already failed above.
             }
             Ok(output) => {
-                // Failed after retries — enqueue for later retry
-                if let Some(error) = output.last_error {
-                    let _ = self
-                        .queue
-                        .enqueue(EnqueueInput {
-                            envelope: envelope.clone(),
-                            failure_reason: error,
-                            retry_count: output.attempts,
-                            max_retries: self.max_retries,
-                        })
-                        .await;
-                }
-            }
-            Err(_) => {
-                // Unexpected error from sender — enqueue
-                let _ = self
+                let reason = output
+                    .last_error
+                    .unwrap_or_else(|| "delivery failed after retries".to_string());
+                let enqueued = self
                     .queue
                     .enqueue(EnqueueInput {
                         envelope: envelope.clone(),
-                        failure_reason: "send_error".to_string(),
+                        failure_reason: reason.clone(),
+                        retry_count: output.attempts,
+                        max_retries: self.max_retries,
+                    })
+                    .await;
+                degraded = Some(degraded_or_queue_fact(
+                    degraded,
+                    self.queue.as_ref(),
+                    &reason,
+                    enqueued,
+                ));
+            }
+            Err(error) => {
+                // Unexpected error from sender — enqueue
+                let reason = format!("the sender failed unexpectedly ({error})");
+                let enqueued = self
+                    .queue
+                    .enqueue(EnqueueInput {
+                        envelope: envelope.clone(),
+                        failure_reason: reason.clone(),
                         retry_count: 0,
                         max_retries: self.max_retries,
                     })
                     .await;
+                degraded = Some(degraded_or_queue_fact(
+                    degraded,
+                    self.queue.as_ref(),
+                    &reason,
+                    enqueued,
+                ));
             }
         }
 
@@ -304,6 +381,7 @@ impl AuditService for AuditServiceImpl {
             envelope,
             signed,
             event_count,
+            degraded,
         })
     }
 
@@ -395,6 +473,228 @@ mod tests {
         }
     }
 
+    // -----------------------------------------------------------------------
+    // #1480: the evidence path states facts instead of dropping them
+    // -----------------------------------------------------------------------
+
+    /// A sender whose backend is unreachable for every attempt.
+    struct UnreachableSender;
+
+    #[async_trait]
+    impl super::AuditSender for UnreachableSender {
+        async fn send(
+            &self,
+            _: crate::audit::application::SendEnvelopeInput,
+        ) -> Result<crate::audit::application::SendEnvelopeOutput, AuditError> {
+            Err(AuditError::SendFailed {
+                detail: "backend unreachable".to_string(),
+                attempt: 1,
+                max_retries: 3,
+                http_status: None,
+            })
+        }
+
+        async fn deliver_with_retry(
+            &self,
+            _: crate::audit::application::DeliverEnvelopeInput,
+        ) -> Result<crate::audit::application::DeliverEnvelopeOutput, AuditError> {
+            Ok(crate::audit::application::DeliverEnvelopeOutput {
+                success: false,
+                attempts: 3,
+                total_duration_ms: 5,
+                last_http_status: None,
+                last_error: Some("backend unreachable after 3 attempts".to_string()),
+            })
+        }
+    }
+
+    /// A local trail that rejects every save (a full disk, an unwritable dir).
+    struct RejectingRepository;
+
+    #[async_trait]
+    impl crate::audit::infrastructure::repository::AuditEnvelopeRepository for RejectingRepository {
+        async fn save(&self, _: &crate::audit::domain::AuditEnvelope) -> Result<(), AuditError> {
+            Err(AuditError::Internal {
+                detail: "read-only file system".to_string(),
+            })
+        }
+
+        async fn find_by_execution_id(
+            &self,
+            _: &uuid::Uuid,
+        ) -> Result<Option<crate::audit::domain::AuditEnvelope>, AuditError> {
+            Ok(None)
+        }
+
+        async fn list(
+            &self,
+            _: Option<chrono::DateTime<chrono::Utc>>,
+            _: Option<chrono::DateTime<chrono::Utc>>,
+            _: Option<u32>,
+        ) -> Result<Vec<crate::audit::domain::AuditEnvelope>, AuditError> {
+            Ok(vec![])
+        }
+
+        async fn delete(&self, _: &uuid::Uuid) -> Result<(), AuditError> {
+            Ok(())
+        }
+
+        async fn record_delivery(
+            &self,
+            _: &crate::audit::application::RecordDeliveryInput,
+        ) -> Result<(), AuditError> {
+            Ok(())
+        }
+
+        async fn count(
+            &self,
+            _: Option<chrono::DateTime<chrono::Utc>>,
+            _: Option<chrono::DateTime<chrono::Utc>>,
+        ) -> Result<u64, AuditError> {
+            Ok(0)
+        }
+
+        async fn prune(&self, _: chrono::DateTime<chrono::Utc>) -> Result<u64, AuditError> {
+            Ok(0)
+        }
+    }
+
+    fn failing_delivery_service(queue: Box<dyn super::AuditQueue>) -> AuditServiceImpl {
+        let mut service = AuditServiceImpl::new(
+            Box::new(crate::audit::application::AuditEnvelopeFactoryImpl::new(
+                None,
+            )),
+            std::sync::Arc::new(UnreachableSender),
+            queue,
+            true,
+        );
+        service.max_retries = 3;
+        service
+    }
+
+    /// A failed delivery is a stated fact: the envelope is undelivered, and the
+    /// reason says which queue it went to and what that queue costs.
+    #[tokio::test]
+    async fn a_failed_delivery_reports_degraded_with_the_memory_loss_window() {
+        let service =
+            failing_delivery_service(Box::new(crate::audit::application::AuditQueueImpl::new(10)));
+
+        let output = service
+            .build_and_send(sample_input())
+            .await
+            .expect("build succeeds even when delivery does not");
+
+        let degraded = output.degraded.expect("a failed delivery is not Complete");
+        assert_eq!(
+            degraded.undelivered, 1,
+            "the envelope did not reach the backend"
+        );
+        assert!(
+            degraded.reason.contains("in memory") && degraded.reason.contains("lost on restart"),
+            "the in-memory loss window must be named: {}",
+            degraded.reason
+        );
+    }
+
+    /// The same failure with a durable queue is recoverable — and says so,
+    /// instead of claiming a durability the configuration does not have.
+    #[tokio::test]
+    async fn a_failed_delivery_into_a_durable_queue_is_recoverable_and_says_so() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let queue = crate::audit::application::AuditQueueImpl::durable(dir.path(), 10)
+            .expect("durable queue");
+        let service = failing_delivery_service(Box::new(queue));
+
+        let output = service
+            .build_and_send(sample_input())
+            .await
+            .expect("build succeeds");
+
+        let degraded = output.degraded.expect("delivery did not happen");
+        assert_eq!(
+            degraded.undelivered, 0,
+            "a durably queued envelope is not lost"
+        );
+        assert!(
+            degraded.reason.contains("durably"),
+            "the reason must state the durability: {}",
+            degraded.reason
+        );
+
+        // And it really is recoverable: a fresh queue over the same directory
+        // finds it pending.
+        let restarted =
+            crate::audit::application::AuditQueueImpl::durable(dir.path(), 10).expect("reopen");
+        assert_eq!(
+            super::AuditQueue::len(&restarted).await.unwrap(),
+            1,
+            "the queued envelope survives the process"
+        );
+    }
+
+    /// #1480 acceptance 4: the local save is not best-effort. An unwritable
+    /// evidence store makes the run report `Degraded`, not success.
+    #[tokio::test]
+    async fn a_rejected_local_save_is_degraded_not_success() {
+        let mut service = AuditServiceImpl {
+            enabled: false,
+            ..AuditServiceImpl::default_test()
+        };
+        service.local_repository = Some(std::sync::Arc::new(RejectingRepository));
+
+        let output = service
+            .build_and_send(sample_input())
+            .await
+            .expect("the envelope is still built");
+
+        let degraded = output
+            .degraded
+            .expect("a lost evidence-of-record is not Complete");
+        assert!(
+            degraded.reason.contains("local signed trail"),
+            "the reason must name the store that rejected it: {}",
+            degraded.reason
+        );
+    }
+
+    /// #1480 acceptance 2 at the queue's own level: enqueue, drop the process
+    /// (drop the queue), re-read.
+    #[tokio::test]
+    async fn a_durable_queue_survives_a_restart() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let execution_id = {
+            let queue = crate::audit::application::AuditQueueImpl::durable(dir.path(), 10)
+                .expect("durable queue");
+            let envelope = crate::audit::application::AuditEnvelopeFactoryImpl::new(None)
+                .build_envelope(sample_input())
+                .await
+                .expect("build the envelope");
+            let id = envelope.execution_id;
+            let input = crate::audit::application::EnqueueInput {
+                envelope,
+                failure_reason: "connection timeout".to_string(),
+                retry_count: 1,
+                max_retries: 3,
+            };
+            super::AuditQueue::enqueue(&queue, input)
+                .await
+                .expect("enqueue");
+            id
+        };
+
+        let restarted = crate::audit::application::AuditQueueImpl::durable(dir.path(), 10)
+            .expect("reopen the queue");
+        assert!(super::AuditQueue::durable(&restarted));
+        let pending = super::AuditQueue::dequeue(&restarted)
+            .await
+            .expect("dequeue")
+            .expect("the envelope is still pending after the restart");
+        assert_eq!(
+            pending.envelope.expect("envelope").execution_id,
+            execution_id
+        );
+    }
+
     #[tokio::test]
     async fn test_build_and_send_disabled() {
         let service = AuditServiceImpl {
@@ -432,10 +732,11 @@ mod tests {
         service.enabled = false; // no remote backend configured
         service.local_repository = Some(repo);
         let input = sample_input(); // signed (default sample signs)
-        service
+        let output = service
             .build_and_send(input.clone())
             .await
             .expect("build_and_send succeeds");
+        assert!(output.degraded.is_none(), "{:?}", output.degraded);
         let files: Vec<_> = std::fs::read_dir(dir.path())
             .expect("read audit dir")
             .filter_map(|e| e.ok())

@@ -36,6 +36,14 @@
 //! - Implementation PRs MUST reference these interfaces
 //! - DTO schemas serve as the canonical data contract
 
+// #1481 rule 2 (no dropped evidence): `let _ = <must_use>` is how five results
+// on the evidence path were discarded. Denied here, where the rule is about
+// evidence, rather than workspace-wide where ~50 unrelated best-effort sites
+// would each need an exception. A site that genuinely discards must write
+// `#[allow(clippy::let_underscore_must_use)]` with a `// sink: <id>` line naming
+// the register row whose `does_not` column states the loss.
+#![deny(clippy::let_underscore_must_use)]
+
 pub mod application;
 pub mod domain;
 pub mod infrastructure;

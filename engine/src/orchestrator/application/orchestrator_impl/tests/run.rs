@@ -131,3 +131,60 @@ async fn test_run_from_template_refused_when_budget_exhausted() {
         e => panic!("expected Internal budget error, got {e:?}"),
     }
 }
+
+/// #1480 acceptance 3: a run whose audit backend did not accept the envelope
+/// reports `Degraded` — the state the orchestrator used to discard, leaving a
+/// completed run indistinguishable from a fully evidenced one.
+#[tokio::test]
+async fn test_run_reports_degraded_evidence_instead_of_inferring_success() {
+    let orch = OrchestratorServiceImpl::default_test().with_audit_service(Arc::new(
+        DegradedAuditService {
+            inner: CapturingAuditService {
+                captured: Arc::new(std::sync::Mutex::new(None)),
+            },
+            reason: "the audit backend was unreachable; the envelope is queued in memory"
+                .to_string(),
+            undelivered: 1,
+        },
+    ));
+
+    let step = crate::orchestrator::dto::TemplateStepDef {
+        name: "payout".to_string(),
+        tool: "run_command".to_string(),
+        description: "pay the vendor".to_string(),
+        parameters: serde_json::json!({ "command": "true" }),
+        require_identity: false,
+        requires_approval: false,
+        timeout_secs: None,
+        evaluate_score: false,
+    };
+    let output = orch
+        .run_from_template(RunFromTemplateInput {
+            steps: vec![step],
+            repo_root: "/tmp/t".into(),
+            execution_id: Some(uuid::Uuid::new_v4()),
+            template_name: "payout".into(),
+            repository: None,
+            identity: None,
+            identity_verification_failure: None,
+            author: None,
+            enforcement_preset: None,
+        })
+        .await
+        .expect("the run itself succeeds; only its evidence is degraded");
+
+    assert_eq!(
+        output.record.status,
+        crate::orchestrator::domain::record::ExecutionStatus::Completed,
+        "the run completed"
+    );
+    assert_eq!(
+        output.evidence,
+        EvidenceStatus::Degraded {
+            reason: "the audit backend was unreachable; the envelope is queued in memory"
+                .to_string(),
+            undelivered: 1,
+        },
+        "the evidence state is on the output, not in a log line"
+    );
+}

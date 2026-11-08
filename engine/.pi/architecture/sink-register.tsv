@@ -1,0 +1,81 @@
+# Boundary sink register — one row per crossing out of the engine's type system.
+#
+# @canonical .pi/architecture/modules/tool-system.md#process-spawning-sinks
+# Implements: SINK-3 (#1481) — the class, not the three instances
+# Checked by: engine/.pi/scripts/validate-sink-register.sh (gating, CI audit job)
+#
+# Three external findings, three different bugs, one shape: a control is present
+# and is not the control the sentence claims.
+#
+#   SINK-1  run-command filtered, and the isolation it needs lived in a comment
+#   SINK-2  file-write validated a path, then re-resolved it before mutating
+#   EVID-1  the evidence path computed a result and dropped it
+#
+# Each was findable by reading and only by reading. This file exists so that a
+# reviewer can answer, per sink, the three questions those findings asked:
+#
+#   what enforces it      -> `mitigation`
+#   what does it rely on  -> `requires`
+#   what does it NOT do   -> `does_not`   <- the column nobody was forced to write
+#
+# `does_not` is mandatory. A row whose mitigation is `filtering` must name the
+# deployment fact it depends on; `isolation` is not a mitigation value (it is a
+# deployment property, and recording it as one is exactly how SINK-1 happened).
+#
+# Columns (tab-separated):
+#   sink        stable id, `<domain>:<name>`; referenced by `// sink: <id>` in code
+#   module      file or directory under engine/src that holds the crossing
+#   kind        process | fs-write | network | env-read
+#   mitigation  filtering | type | handle | atomic | retry+queue | env-clear |
+#               trust-boundary | operator-declared | none
+#   requires    the fact the mitigation depends on, and who supplies it
+#   does_not    what the control does not do — mandatory, write it as a sentence
+# sink	module	kind	mitigation	requires	does_not
+# ── process: what starts, and what it can do once started ─────────────────────
+tools:run-command-spawn	tools/application/run_command_tool.rs	process	filtering	deployment isolation (RIGORIX_SANDBOX=container|vm), declared at construction	does not constrain what the executable does with its arguments — an allowlisted cargo or npm still runs its own code (#1478)
+tools:shell-policy	tools/application/shell_policy.rs	env-read	operator-declared	RIGORIX_SANDBOX read by SandboxDeclaration::from_env	does not prove the boundary exists — it records that the deployment claimed one
+tools:git-read-fixed-argv	tools/application/git_read_tool.rs	process	trust-boundary	a fixed `git` argv with no caller string and a write/exec flag refusal (#1082)	does not stop git from reading anything the engine's uid can read
+tools:git-stage-fixed-argv	tools/application/git_stage_tool.rs	process	type	a fixed `git add` argv built from validated paths	does not prevent staging a path that changed after validation
+tools:git-commit-fixed-argv	tools/application/git_commit_tool.rs	process	type	a fixed `git` argv; the message is a single argument, never a shell string	does not stop git from running repository-configured hooks
+engine:exec-run-command	execution_engine/application/service_impl/tools.rs	process	filtering	the host's declared isolation (RIGORIX_SANDBOX) — NOT yet enforced at this site; #1478 covered the tool, not this dispatch path	does not execute argv: the string still reaches `sh -c` after the control-operator refusal, and no startup check requires a sandbox here
+hooks:hook-shell	hooks/application/hook_runner_impl.rs	process	filtering	operator-configured hook command plus a cleared environment (#1082 C3)	does not sandbox the hook — an operator-configured hook runs with the engine's filesystem access
+precondition:operator-argv	precondition/infrastructure/runner.rs	process	trust-boundary	operator-owned argv (no shell), an immutable-check trust boundary (ADR-017), an explicit environment	does not constrain what the operator's check binary does once it runs
+scored-evaluation:scorer-script	scored_evaluation/infrastructure/backends/local_backend.rs	process	operator-declared	an operator-configured scorer script executed as fixed argv	does not verify the scorer's own behaviour or its output
+approval:effect-scope-git	approval/infrastructure/effect_scope.rs	process	trust-boundary	a fixed `git` argv behind the approval/effect-scope gate	does not stop git from reading repository configuration
+orchestrator:git-helpers	orchestrator/application/orchestrator_impl/helpers.rs	process	type	a fixed `git` argv with no caller-supplied arguments	does not prevent git from running hooks configured in the repository
+# ── network ──────────────────────────────────────────────────────────────────
+effect-commitment:probe-tcp	effect_commitment/application/setup.rs	network	operator-declared	a bounded probe timeout against an operator-configured host and port	does not prove the peer is the service it names — a socket that accepts says nothing about who accepted
+# ── fs-write: the mutation half of SINK-2 ─────────────────────────────────────
+tools:file-write-path	tools/application/file_write_tool.rs	fs-write	type	handle-relative mutation through tools/infrastructure/fs_at.rs (#1479)	does not survive a full disk; and it refuses rather than follows a symlinked component
+tools:fs-at-handle	tools/infrastructure/fs_at.rs	fs-write	handle	an opened parent directory (openat O_DIRECTORY|O_NOFOLLOW) for every component	does not stop a process with write access to the parent directory from replacing the entry after the rename
+tools:file-edit-revalidate	tools/application/file_edit_tool.rs	fs-write	none	—	does not couple the check to the mutation: it resolves and validates a path, then re-resolves it for the write — the same shape #1479 removed from file-write
+tools:file-patch-revalidate	tools/application/file_patch_tool.rs	fs-write	none	—	does not couple the check to the mutation: the patched path is resolved once for validation and re-opened for the write
+audit:local-chain	audit/infrastructure/local_audit_repository.rs	fs-write	atomic	a same-directory temp file plus rename into the chain store	does not survive a full disk; a failed chain write is returned, not retried
+audit:retry-queue	audit/application/audit_queue_impl.rs	fs-write	atomic	a temp file, fsync, and rename inside the queue directory before enqueue returns	does not survive a full disk; a rejected write means the envelope was never queued
+approval:consumption-ledger	approval/infrastructure/repository/approval_repository_impl.rs	fs-write	atomic	a temp file plus rename in the ledger directory	does not survive a full disk; a create_dir_all failure is discarded, so the write that follows is the only evidence
+code-graph:symbol-cache	code_graph/infrastructure/repository/filesystem_repository.rs	fs-write	atomic	a temp file plus rename for the index blob	does not survive a full disk; a failed cleanup of the temp file is ignored
+engine:approval-store-dir	execution_engine/application/factory.rs	fs-write	none	—	does not make the directory creation authoritative: a create_dir_all failure is discarded and the following write reports the real error
+engine:exec-file-writes	execution_engine/application/service_impl/tools.rs	fs-write	none	—	does not write atomically: a partial file is visible to a concurrent reader, and the path is re-resolved before the write
+hooks:config-store	hooks/infrastructure/filesystem_repository.rs	fs-write	none	—	does not write atomically and does not survive a full disk; the config path is written directly
+identity:identity-store	identity/infrastructure/repository/identity_repository_impl.rs	fs-write	atomic	a temp file plus rename into the identity store	does not survive a full disk; deletion failures are logged, not retried
+policy-engine:policy-store	policy_engine/infrastructure/default_policy_repository.rs	fs-write	none	—	does not write atomically: a reader can observe a partially written policy file
+repo-engine:symbol-cache	repo_engine/infrastructure/fs_symbol_repository.rs	fs-write	none	—	does not write atomically and discards the create_dir_all failure, so a missing parent surfaces as a write error
+scored-evaluation:score-store	scored_evaluation/infrastructure/repository_impl.rs	fs-write	atomic	a temp file plus rename per execution directory	does not survive a full disk
+state-persistence:execution-records	state_persistence/infrastructure/filesystem_execution_record_repository.rs	fs-write	atomic	a temp file plus rename, with the temp file removed on failure	does not survive a full disk; a failed temp-file cleanup is ignored
+state-persistence:graph-store	state_persistence/infrastructure/filesystem_graph_repository.rs	fs-write	atomic	a temp file plus rename per graph blob	does not survive a full disk
+state-persistence:state-store	state_persistence/infrastructure/filesystem_state_repository.rs	fs-write	atomic	a temp file plus rename per execution state	does not survive a full disk; a failed temp-file cleanup is ignored
+# ── env-read: configuration read from outside the process ─────────────────────
+tools:shell-policy-env	tools/application/shell_policy.rs	env-read	operator-declared	the engine's own environment for the inherited allowlist	does not prove a value came from the operator rather than a parent process
+audit:producer-and-history	audit/application/audit_service_impl.rs	env-read	operator-declared	RIGORIX_AUDIT_PRODUCER_ID and RIGORIX_HISTORY_POLICY	does not validate the producer id beyond non-emptiness; any parent process can set it
+audit:anchor-credentials	audit/infrastructure/anchor.rs	env-read	operator-declared	the anchor URL, public key, scope and token from the environment	does not prove the token belongs to this deployment
+capacity-ledger:auth-token-env	capacity_ledger/application/config.rs	env-read	operator-declared	the config-named environment variable holding a backend token	does not prove the token is unexpired or scoped to this ledger
+configuration:secret-availability	configuration/application/secret_service_impl.rs	env-read	operator-declared	the environment variable a secret is expected to live in	does not distinguish a set-but-empty secret from an absent one beyond its own rule
+configuration:config-overrides	configuration/infrastructure/filesystem_config_repository.rs	env-read	operator-declared	a named environment variable overriding a config value	does not validate the override against the config schema
+configuration:secret-resolution	configuration/infrastructure/secret_factory_impl.rs	env-read	operator-declared	the environment variable each secret is resolved from	does not prove the secret came from a secret manager rather than a shell
+effect-commitment:header-token	effect_commitment/application/config.rs	env-read	operator-declared	the config-named environment variable for the commitment header token	does not verify the token before it is attached to a request
+engine:approval-binding	execution_engine/application/factory.rs	env-read	operator-declared	RIGORIX_APPROVAL_BINDING, RIGORIX_APPROVAL_TTL_SECONDS, RIGORIX_APPROVAL_STORE, RIGORIX_APPROVAL_CONSUMPTION_LEDGER, RIGORIX_HMAC_KEY	does not prove the signing key is the same one the audit trail was signed with
+precondition:provider-auth	precondition/infrastructure/provider_client.rs	env-read	operator-declared	the config-named environment variable for the provider bearer token	does not prove the token is scoped to the precondition it authorizes
+sequence-policy:bundle-source	sequence_policy/infrastructure/repository/bundle_repository.rs	env-read	operator-declared	the inline-bundle and bundle-path environment variables	does not verify the bundle's provenance beyond parsing it
+sequence-policy:precedence	sequence_policy/infrastructure/repository/precedence_repository.rs	env-read	operator-declared	the precedence environment variable, falling back to the safe default	does not distinguish a typo from a deliberate override
+sequence-policy:retention	sequence_policy/infrastructure/repository/retention_repository.rs	env-read	operator-declared	the audit-retention environment variable	does not prove the retention window is the one the operator meant
+template-generation:api-key	template_generation/application/factory_impl.rs	env-read	operator-declared	CLAUDE_API_KEY	does not fail closed — an absent key becomes a placeholder and the generator is still constructed

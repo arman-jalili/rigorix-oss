@@ -436,6 +436,9 @@ inherit standing as **protocol validation (L2)** or **independent evidence (L3)*
 - [Validation Protocol v1](docs/spec/validation-protocol-v1.md) — falsifiable
   claims with stated failure conditions
 - [Terminology](docs/spec/terminology.md) — the normative vocabulary
+- [Deployment](docs/deployment.md) — what the engine relies on the deployment to
+  provide: the declared sandbox boundary for spawned processes, and which
+  executables are safe to allowlist (no build tool or interpreter is)
 - [Execution Governance specification v0.2 (review draft)](docs/spec/execution-governance/README.md)
   — the 13-document working draft: terminology, model, requirements, evidence,
   threat model, conformance and non-claims

@@ -1705,7 +1705,25 @@ pub async fn build_real_engine(
                     .with_anchor(rigorix_engine::audit::infrastructure::anchor::runtime()),
             ),
             audit_sender,
-            Box::new(AuditQueueImpl::default()),
+            // #1480: file-backed retry queue beside the local trail, so an
+            // undelivered envelope survives a restart. The in-memory default's
+            // loss window only applies when the directory cannot be created.
+            match AuditQueueImpl::durable(
+                std::path::PathBuf::from(repo_root)
+                    .join(".rigorix")
+                    .join("audit")
+                    .join("queue"),
+                100,
+            ) {
+                Ok(durable) => Box::new(durable),
+                Err(error) => {
+                    tracing::warn!(
+                        "audit: durable retry queue unavailable ({error}); undelivered envelopes \
+                         will be lost on restart"
+                    );
+                    Box::new(AuditQueueImpl::default())
+                }
+            },
             audit_url.is_some(),
         );
         // R7: persist every built envelope to `<repo_root>/.rigorix/audit` —

@@ -54,11 +54,11 @@ fn sources() -> Vec<(String, String)> {
 #[test]
 fn c2_shell_interpreters_are_confined_to_validated_sites() {
     // (file, why the string handed to the shell is the string that was checked)
+    //
+    // #1478 removed the fourth entry: `run_command_tool` no longer names a shell
+    // at all — a proven-single command is executed as argv, and anything a shell
+    // would expand is refused. The inventory shrinks; the class does not.
     const APPROVED: &[(&str, &str)] = &[
-        (
-            "tools/application/run_command_tool.rs",
-            "allowlist + control-operator refusal run on the same intent string",
-        ),
         (
             "execution_engine/application/service_impl/tools.rs",
             "exec_run_command: allowlist + control-operator refusal, then the same string",

@@ -37,7 +37,9 @@ echo "Processing $COUNT issues..."
 # ---------------------------------------------------------------------------
 # Generate Groups
 # ---------------------------------------------------------------------------
-cat > "$OUTPUT_FILE" << 'EOF'
+# Emitted with expansion: a quoted heredoc left the literal `$(date)` and
+# `$COUNT` in the report, so every generated file claimed the same date.
+cat > "$OUTPUT_FILE" << EOF
 # Issue Implementation Groups
 
 **Generated:** $(date)
@@ -51,6 +53,8 @@ Issues are grouped by:
 1. **Component** — Same module/files affected
 2. **Priority** — Critical > High > Medium > Low
 3. **Dependency** — Blocking relationships
+4. **Declared priority** — the `guardian_issue.priority` field in the issue body's
+   YAML block, used when the issue carries no labels (this repo's issue convention)
 
 ---
 
@@ -152,7 +156,9 @@ if [ "$SINGLE_COUNT" -gt 0 ]; then
 Each requires separate branch: \`issue/{number}\`
 
 EOF
-    echo "$SINGLE_ISSUES" | jq -r '.[] | "- #\(.number): \(.title) → branch: \`issue/\(.number)\`"' >> "$OUTPUT_FILE"
+    # Backticks are literal inside a jq string; escaping them is a jq syntax error
+    # (`Invalid escape`) and took the whole individual-issues section down with it.
+    echo "$SINGLE_ISSUES" | jq -r '.[] | "- #\(.number): \(.title) → branch: `issue/\(.number)`"' >> "$OUTPUT_FILE"
 fi
 
 # ---------------------------------------------------------------------------

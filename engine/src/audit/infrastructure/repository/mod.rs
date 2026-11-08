@@ -36,6 +36,11 @@ pub trait AuditEnvelopeRepository: Send + Sync {
     ///
     /// Saves the envelope for later retrieval or replay.
     /// Returns `Internal` error on storage failure.
+    ///
+    /// `#[must_use]`: the local signed trail is the evidence of record for
+    /// cross-run policy history, so a dropped save result is the artifact the
+    /// design relies on going missing while the run reports success (#1480).
+    #[must_use = "a dropped save result is the evidence of record going missing (#1480)"]
     async fn save(&self, envelope: &AuditEnvelope) -> Result<(), AuditError>;
 
     /// Retrieve an audit envelope by execution ID.

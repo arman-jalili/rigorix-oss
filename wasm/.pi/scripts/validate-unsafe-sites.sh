@@ -69,6 +69,12 @@ RULES = [
      "libc::flock on a file descriptor owned by the enclosing File; the call takes "
      "no pointer, its return is checked, and EINTR is retried. Used for shared "
      "read and exclusive write locks on the approval store and ledger (#1254, #1261)"),
+    (r"^engine/src/tools/infrastructure/fs_at\.rs$", "libc", "medium",
+     "libc::openat/mkdirat/renameat/unlinkat are the handle-coupled write path "
+     "(#1479): each directory descriptor is opened O_DIRECTORY|O_NOFOLLOW and "
+     "owned by an enclosing File, each name is a NUL-terminated CString built in "
+     "this module from an already-validated component, every return value is "
+     "checked immediately, and no pointer outlives its call"),
 ]
 
 

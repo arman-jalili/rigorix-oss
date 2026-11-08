@@ -167,12 +167,21 @@ impl AuditSenderImpl {
     /// Publish an envelope lifecycle event on the attached bus (best-effort:
     /// publish failures are logged by the bus and never fail delivery).
     async fn emit(&self, event: crate::audit::domain::event::AuditEvent) {
-        if let Some(ref bus) = self.event_bus {
-            let _ = bus
+        if let Some(ref bus) = self.event_bus
+            && let Err(error) = bus
                 .publish(PublishEventInput {
                     event: event.into(),
                 })
-                .await;
+                .await
+        {
+            // #1481 rule 2: the publish is genuinely best-effort (a delivery
+            // event cannot fail the delivery it reports), but the failure is
+            // consumed rather than discarded — the lifecycle event is then
+            // missing, and that is a fact worth a line.
+            tracing::warn!(
+                "audit: envelope lifecycle event was not published ({error}); the event stream \
+                 is missing it"
+            );
         }
     }
 

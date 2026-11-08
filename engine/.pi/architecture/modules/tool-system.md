@@ -160,7 +160,7 @@ same `tools::application::shell_policy` helpers:
 
 | Concern | Mitigation | Validator |
 |---------|------------|-----------|
-| Writing outside workspace | FileWriteTool validates all paths against repo_root | security-validator |
+| Writing outside workspace | FileWriteTool resolves through `tools/infrastructure/fs_at.rs`, which walks each component with `openat(…, O_DIRECTORY\|O_NOFOLLOW)` and mutates relative to the opened parent handle — a component swapped after validation cannot redirect the write (#1479) | `fs_at` tests, sink register |
 | Arbitrary command execution | RunCommandTool constrained by allowlist; High risk = dry-run default | security-validator |
 | Compound shell string bypassing a prefix allowlist | A command containing `;` `&&` `||` `|` `&` backticks `$(` `<` `>` or a newline is refused before the prefix check; the classifier and the executor share one intent→command extraction | `shell_policy` tests |
 | Child command reading engine secrets | `apply_child_env` clears the inherited environment; only `PATH HOME LANG LC_ALL TMPDIR SHELL TERM` plus explicit per-call overrides reach the child, so `RIGORIX_HMAC_KEY` is not handed to executed commands | `test_child_does_not_inherit_the_engine_environment` |
@@ -203,6 +203,44 @@ former gaps (`git_read_tool` interpolating a caller path into `sh -c`, and the
 hook child inheriting the engine environment) were closed in #1082, and
 `engine/tests/guard_suite.rs` fails if a new `sh -c` site appears without the
 policy that validates its string.
+
+### The register (SINK-3, #1481) {#sink-register}
+
+The table above is the *inventory*; the enforceable artifact is
+`engine/.pi/architecture/sink-register.tsv`, checked by
+`engine/.pi/scripts/validate-sink-register.sh` (gating, CI audit job). Each row
+answers three questions a reviewer otherwise answers by reading:
+
+| Column | The question it answers |
+|---|---|
+| `mitigation` | what enforces this |
+| `requires` | what it relies on, and who supplies it |
+| `does_not` | **what it does not do** (mandatory) |
+
+Three class rules, each with a seeded violation in the guard's `--self-test`:
+
+1. **Filtering may not be recorded as isolation.** `mitigation=filtering` must
+   name a `requires` (a deployment fact). The value `isolation` is refused by
+   name: isolation is a property of the deployment, not of code. `run-command`
+   now *cannot be constructed* without `SandboxDeclaration`
+   (`RIGORIX_SANDBOX=container|vm`), and `none` is refused at construction
+   (#1478).
+2. **No evidence result may be dropped.** `#[must_use]` on the evidence-returning
+   trait methods, `#![deny(clippy::let_underscore_must_use)]` at the `audit/`,
+   `orchestrator/` and `precondition/` module roots, and a guard scan: a bare
+   `let _ =` on those paths must carry `// sink: <id>` naming a registered row
+   (#1480).
+3. **Validation and mutation share a handle.** A `fs-write` row mitigated by a
+   `type` must name the handle it depends on. `file-write` mutates through
+   `tools/infrastructure/fs_at.rs`, which walks components with
+   `openat(…, O_NOFOLLOW)`, keeps the opened parent directory, and renames within
+   it — so a component swapped after validation cannot redirect the write
+   (#1479). A new fs-mutating module with no row fails the build.
+
+Spawning is still declared by the lint (a new `Command::new` does not compile
+without an `#![allow]` reason); the register additionally requires the *module*
+to be a row, so the two mechanisms cover "may this compile" and "what does it
+actually promise".
 
 ---
 

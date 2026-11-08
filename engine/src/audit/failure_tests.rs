@@ -49,7 +49,11 @@ mod tests {
         .await;
 
         // Either the operation completed (unlikely with a 1ms timeout) or it
-        // timed out as expected — both outcomes are acceptable here.
-        let _ = result;
+        // timed out as expected — both outcomes are acceptable here, and both
+        // are asserted rather than discarded (#1481 rule 2).
+        assert!(
+            result.is_err() || result.as_deref() == Ok("done"),
+            "the timeout must either fire or return the value: {result:?}"
+        );
     }
 }

@@ -293,6 +293,9 @@ mod tests {
             "run-command" => Box::new(RunCommandTool::new(
                 dir.path().to_str().unwrap(),
                 vec!["echo"],
+                // #1478: the sink is not constructible without a declared
+                // isolation fact; a test declares one rather than skipping it.
+                crate::tools::application::shell_policy::SandboxDeclaration::container(),
             )),
             _ => panic!("Unknown test tool: {}", name),
         };
