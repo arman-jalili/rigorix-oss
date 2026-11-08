@@ -242,7 +242,19 @@ impl PreconditionServiceImpl {
         execution_id: uuid::Uuid,
         step: &DispatchStep,
     ) -> Result<(Option<PreconditionVerdict>, Option<PreconditionFinding>), PreconditionError> {
-        let checked_at = Utc::now();
+        // The instant is read **when a finding needs one**, not when a check starts (#1477).
+        //
+        // It used to be `let checked_at = Utc::now();` here, evaluated once per matched
+        // precondition whether or not any finding would be built with it. On the passing path
+        // the value was discarded — the passing finding takes `observation.observed_at` from
+        // the declaration — so the artifact read the host clock once per allowed decision and
+        // used nothing. A read that reaches no byte is still a read: it is where a determinism
+        // bug hides when someone later replaces the discarded value with a duration.
+        //
+        // A closure rather than a value, so the read happens exactly in the branches below that
+        // serialise it, and the paths that record bytes keep taking their instant from the
+        // facts (`observation.observed_at`, line 177).
+        let checked_at = || Utc::now();
         let input = PreconditionCheckInput {
             precondition_id: precondition.id.clone(),
             execution_id,
@@ -261,7 +273,7 @@ impl PreconditionServiceImpl {
                     outcome: PreconditionOutcome::Failed,
                     exit_code: None,
                     inputs_hash: hash,
-                    checked_at,
+                    checked_at: checked_at(),
                     summary: Some(format!(
                         "precondition '{}' refused step '{}': required parameter '{}' absent",
                         precondition.id, step.name, pointer
@@ -311,7 +323,7 @@ impl PreconditionServiceImpl {
                     outcome: run.outcome,
                     exit_code: run.exit_code,
                     inputs_hash: hash,
-                    checked_at,
+                    checked_at: checked_at(),
                     summary: None,
                     check_digest: run.check_digest.clone(),
                     authority_digest: run.authority_digest.clone(),
@@ -344,7 +356,7 @@ impl PreconditionServiceImpl {
                     outcome: PreconditionOutcome::Error,
                     exit_code: None,
                     inputs_hash: hash,
-                    checked_at,
+                    checked_at: checked_at(),
                     summary: Some(format!(
                         "precondition '{}' indeterminate for step '{}' ({})",
                         precondition.id, step.name, error

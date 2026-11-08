@@ -29,7 +29,7 @@
     {
       "name": "wasi_snapshot_preview1::clock_time_get",
       "answer": "count-and-zero",
-      "why": "the instant comes from the facts (observed_at, clock), never from the host clock; the answer is 0 and the embedder counts the call, so a decision that started reading it would move the count rather than the digest"
+      "why": "the instant comes from the facts (observed_at, clock), never from the host clock: the answer is 0, the embedder counts the call, and the count must be **zero** \u2014 until #1477 the allow path read the clock once per decision and discarded the value; the counter is what found it and what keeps it gone"
     },
     {
       "name": "wasi_snapshot_preview1::random_get",
@@ -58,6 +58,6 @@
       "random_get_calls",
       "fd_write_bytes"
     ],
-    "why": "randomness, the clock and stdout are the three answers that could silently become real; counting them makes 'no decision read it' observable instead of inferred from unchanged digests \u2014 and the count is what fails when a decision starts reading one"
+    "why": "randomness, the clock and stdout are the three answers that could silently become real; counting them makes 'no decision read it' observable, and the floor for the clock is zero because #1477 removed the one inert read the counter found"
   }
 }

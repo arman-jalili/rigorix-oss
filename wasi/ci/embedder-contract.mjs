@@ -119,15 +119,18 @@ export function checkCounters(counters) {
       `field, not a log`,
     );
   }
-  // The clock and the RNG are **measured, not asserted to be zero**, and the measurement is
-  // #1471's own finding: the allow path consults the host clock (three calls across the five
-  // vectors, none on the two refusals), because `std` reaches `__clock_gettime` there. The
-  // value reaches no decision byte — `--self-test` supplies a *moving* clock and all five
-  // digests still reproduce — so the claim the artifact can make is "the clock does not reach a
-  // decision", not "the clock is never read". Saying zero here would have failed on the first
-  // run and been deleted; saying "measure it" is the claim that is true and checkable.
-  if (!Number.isInteger(counters.clock_time_get_calls) || counters.clock_time_get_calls < 0) {
-    throw new EmbedderTrap("the clock counter was not maintained — the contract requires it");
+  // The clock's floor is **zero** since #1477. It was not when this guard was written: the
+  // allow path read the host clock once per allowed decision (`Utc::now()` at the top of
+  // `evaluate_match`, discarded on the passing path), three reads across the three allow
+  // vectors. The counter found that, the read was made lazy, and the guard was tightened —
+  // which is the order this file argued for: measure first, then require. A non-zero count now
+  // means a decision path consulted the clock, and that is the class of change that turns a
+  // deterministic gate into a flaky one.
+  if (counters.clock_time_get_calls !== 0) {
+    throw new EmbedderTrap(
+      `a decision read the host clock (${counters.clock_time_get_calls} clock_time_get call(s)) — ` +
+      `the instant comes from the facts; see #1477 for what the last one was`,
+    );
   }
   // One seed of `std`'s hasher is expected (the registry's map). More than one would mean a
   // decision drawing randomness, which a digest that reproduces could not survive.
@@ -306,12 +309,7 @@ async function conformance(modulePath, overrides = {}) {
     `  measured: clock reads ${counters.clock_time_get_calls}, random_get ${counters.random_get_calls}, ` +
     `fd_write bytes ${counters.fd_write_bytes}`,
   );
-  if (counters.clock_time_get_calls === 0) {
-    console.log(
-      "  note: this run consulted no clock. The embedder still answers 0, and the digests are " +
-      "the same either way — see --self-test, which supplies a moving clock.",
-    );
-  }
+
 }
 
 /**
@@ -349,11 +347,13 @@ async function seeds(modulePath) {
   } catch (error) {
     failures.push(`S1: supplying a real clock changed a digest: ${error.message.split("\n")[0]}`);
   }
+  // S4 (#1477): a non-zero clock count is now a failure, not a note. This is the guard that
+  // would have caught the read the first time, and the reason the counter exists at all.
   try {
-    checkCounters({ clock_time_get_calls: -1, random_get_calls: 0, fd_write_bytes: 0 });
-    failures.push("S1: a clock counter that was not maintained passed — the counter is not read");
+    checkCounters({ clock_time_get_calls: 1, random_get_calls: 0, fd_write_bytes: 0 });
+    failures.push("S4: a non-zero clock count passed — the guard is a monitor again");
   } catch (error) {
-    console.log(`  ✓ S1 an unmaintained clock counter is caught: ${error.message}`);
+    console.log(`  ✓ S4 a clock read is rejected: ${error.message}`);
   }
 
   // S2: the counter rule, tested at the guard rather than through the module — a well-formed
