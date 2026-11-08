@@ -84,6 +84,14 @@ jobs:
           echo "── the map says:"
           cat "$GITHUB_OUTPUT" | tail -3
 
+      - name: 🕸 The map's edges match the workspace's edges
+        # #1468: `check_affected_map.sh` asks whether the table is total; this asks whether it
+        # is *consistent with what the crates depend on*. The gap it exists for: an engine
+        # change reached only `portable`, which proves the slice compiles — so a decision that
+        # moved left both artifacts untested and surfaced on the next PR that touched them.
+        # Zero marginal minutes: `cargo metadata` is already warm here.
+        run: bash .github/scripts/validate-affected-graph.sh
+
   # ── Stage 0: Workspace Overview ───────────────────────────────
   workspace:
     name: 📋 Workspace
@@ -504,6 +512,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: 🔐 errexit arithmetic (no script may end on `(( x++ ))`)
         run: bash .pi/scripts/validate-shell-exit-status.sh
+      - name: 🕸 The affected-graph guard has a subject
+        # Five seeds, each removing one thing the guard claims to check: a member's row, a
+        # dependency edge, a comment naming a stage the row does not run, and an empty map.
+        run: bash .github/scripts/validate-affected-graph.sh --self-test
       - name: 🧮 CI stage table (a hyphenated job id must still resolve)
         # `wasm-gates` -> RESULT_WASM_GATES. When this was wrong, a green job read as
         # `missing` and the merge gate failed on a stage that had passed.
