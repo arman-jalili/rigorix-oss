@@ -548,13 +548,55 @@ jobs:
         # eleventh (#1421). A separate step here would declare the same gate twice.
         run: bash wasm/ci/run-wasm-gates.sh --with-npm
 
+
+  # ── Stage 6: the WASI artifact (#1465, ADR-022) ────────────────────
+  #
+  # Its own stage because its subject is a *binary*: the gate crate's eleven checks are about
+  # the JS artifact, and this one is about an import section, a size ceiling and five goldens
+  # replayed in a real runtime. A stage that inherited the wasm job would inherit its budget
+  # and report one subject for two claims.
+  wasi:
+    name: 🧩 wasi artifact
+    if: contains(needs.affected.outputs.subjects, ' wasi ')
+    needs: [affected]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # The same key as `.github/actions/setup` (#1439): this job links the same
+          # workspace, so it shares the compilation instead of paying for its own.
+          shared-key: workspace-v1
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: 🧱 Install the target the artifact is built for
+        run: rustup target add wasm32-wasip1
+
+      # `run-wasi-gates.sh` is the one owner of the artifact's claims: build, import section,
+      # size ceiling, five goldens through node, and the trap-is-not-a-refusal probe. The
+      # workflow names the script rather than the five commands, so CI and a developer run
+      # the same thing (and the script's `--self-test` proves each gate bites).
+      - name: 🧩 The artifact's gates
+        run: bash wasi/ci/run-wasi-gates.sh
+
+      - name: 🪤 Every gate has a subject
+        run: bash wasi/ci/run-wasi-gates.sh --self-test
+
+      # The boundary is Rust, so it is also a test target: the pointer protocol has no other
+      # checker, and an ABI whose protocol is untested is a protocol described in a comment.
+      - name: 🧪 The boundary's own tests
+        run: cargo test -p rigorix-gate-wasi --locked
+
   # The required check is the aggregate (#1422), not a subset: `ci-report` depends on every
   # mandatory stage, so a merge cannot pass on the stages that happened to finish. Which
   # check branch protection *requires* is a repository setting, not code — require
   # `ci-report` there (`📋 Stage report`).
   ci-report:
     name: 📋 Stage report
-    needs: [affected, lint, test, coverage, portable, audit, docs, integration, conformance, shell, wasm-gates]
+    needs: [affected, lint, test, coverage, portable, audit, docs, integration, conformance, shell, wasm-gates, wasi]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -581,7 +623,7 @@ jobs:
   # ── Stage 8: Final Gate ───────────────────────────────────────
   gate:
     name: 🚪 Final Gate
-    needs: [affected, lint, test, coverage, portable, audit, docs, integration, conformance, shell, wasm-gates]
+    needs: [affected, lint, test, coverage, portable, audit, docs, integration, conformance, shell, wasm-gates, wasi]
     # A superseded run gets no verdict (#1289). `cancelled` is the scheduler's
     # fact, not the change's: with `cancel-in-progress` every push to the same
     # ref cancels the previous run, so the old `!= 'success'` test accused the

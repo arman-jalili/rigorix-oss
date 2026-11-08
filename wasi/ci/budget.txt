@@ -1,0 +1,22 @@
+# The artifact's size ceiling.
+#
+#   state: <awaiting-packaging | packaged | ready-to-publish | shipped>
+#   ceiling_bytes: <n>
+#   set_from: <what was measured, where>
+#
+# `set_from` is the measurement the number came from. A ceiling without one is a wish, so
+# `check-size.sh` fails on a missing `set_from` rather than on the artifact.
+#
+# A ceiling is set from the **worst** measurement, rounded up: a number set to the best run
+# fires on a dependency bump and is deleted within a week, and a deleted ceiling is worse
+# than none because the gate still reports success.
+#
+# Measured 2026-11-08 on wasm32-wasip1, rustc 1.9x, `-C panic=abort`, from a clean
+# `cargo build --release`: 2 158 771 bytes. The ceiling is that run rounded up to the next
+# 100 KiB, which is room for one dependency's debug strings and nothing structural.
+#
+# It is deliberately not "the smallest we have seen": this artifact is a cdylib over the whole
+# portable slice, so a size that only holds at the best measurement is not a ceiling.
+state: packaged
+ceiling_bytes: 2359296
+set_from: "2026-11-08, wasm32-wasip1 release build: 2158771 bytes"

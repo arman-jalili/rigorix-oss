@@ -45,5 +45,6 @@ integration	affected,test	tested binaries	end-to-end over the binaries `test` al
 portable	affected,workspace	-	its own subject: the slice builds for wasm32 and its tests run natively
 shell	affected	-	its own subject: exit statuses in scripts
 wasm-gates	affected	-	its own subject: the crate's eleven gates
-ci-report	affected,lint,test,coverage,portable,audit,docs,integration,conformance,shell,wasm-gates	-	reports every stage; a leaf
-gate	affected,lint,test,coverage,portable,audit,docs,integration,conformance,shell,wasm-gates	-	the verdict; requires every mandatory stage
+wasi	affected	-	its own subject: a second artifact — zero imports is a claim about a binary
+ci-report	affected,lint,test,coverage,portable,audit,docs,integration,conformance,shell,wasm-gates,wasi	-	reports every stage; a leaf
+gate	affected,lint,test,coverage,portable,audit,docs,integration,conformance,shell,wasm-gates,wasi	-	the verdict; requires every mandatory stage

@@ -2937,6 +2937,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rigorix-gate-wasi"
+version = "1.14.2"
+dependencies = [
+ "rigorix-gate-wasm",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rigorix-gate-wasm"
 version = "1.14.2"
 dependencies = [

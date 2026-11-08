@@ -1,0 +1,38 @@
+[package]
+name = "rigorix-gate-wasi"
+version = "1.14.2"
+edition = "2024"
+description = "The Rigorix gate as a WASI artifact: one JSON entry, zero imports, no host glue"
+license = "MIT OR Apache-2.0"
+authors = ["Arman Wolkensteiner-Jalili and Rigorix contributors"]
+repository = "https://github.com/arman-jalili/rigorix-oss"
+rust-version = "1.85"
+
+# An artifact, not a crate on the train: this ships as `rigorix_gate_wasi.wasm` attached to
+# the GitHub release beside the six published crates (ADR-011, ADR-022). `publish = false`
+# is what `validate-release-train.sh` reads to keep it off the crates.io loop — and it is a
+# statement, so the artifact's own wiring is checked by `wasi/ci/check-release-wiring.sh`
+# rather than assumed from the absence of a publish step.
+publish = false
+
+[lib]
+# `cdylib` is the artifact; `rlib` is what the native test binary links.
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+# The four operations are the browser crate's, not a second copy of them (#1465). It builds
+# for `wasm32-wasip1` because its `wasm-bindgen` layer is gated on `target_os = "unknown"`;
+# what crosses into this crate is plain Rust, so the module has nothing to import.
+# `bindgen` off: this artifact links the operations, not the JS binding. The attribute layer
+# is `no_mangle` exports, so linking it would drag `__wbindgen_*` imports into a module whose
+# whole claim is an empty import section.
+rigorix-gate-wasm = { path = "../wasm", version = "1.14.2", default-features = false, features = ["engine"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints]
+workspace = true
+# A release profile cannot be set here — Cargo ignores one in a non-root package, and a
+# setting that is silently ignored is worse than a setting that is absent. `panic = "abort"`
+# comes from the build script's flags (`-C panic=abort`), which is also what makes the trap
+# story in ADR-012 true for *this* artifact rather than for the workspace's profile.

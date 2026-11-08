@@ -113,7 +113,7 @@ if everything:
 # The job ids the pipeline runs. A subject that is a crate directory narrows the `lint`/`test`
 # matrices; every other subject is a job.
 JOBS = ["lint", "test", "portable", "coverage", "audit", "docs", "integration", "conformance",
-        "shell", "wasm-gates"]
+        "shell", "wasm-gates", "wasi"]
 CRATES = sorted(name for name in os.listdir(root)
                 if os.path.isdir(os.path.join(root, name, ".pi", "scripts")))
 

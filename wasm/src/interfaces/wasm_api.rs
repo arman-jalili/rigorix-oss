@@ -536,7 +536,7 @@ const _: fn(&BusinessWording, crate::domain::outcome::RefusalKind) -> &'static s
 //
 // Compiled only for wasm32: the crate's native API and its tests are unchanged,
 // and the native dependency graph stays empty of wasm-bindgen.
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(feature = "bindgen", target_arch = "wasm32", target_os = "unknown"))]
 pub mod exported {
     use wasm_bindgen::prelude::*;
 

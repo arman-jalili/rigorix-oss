@@ -200,6 +200,51 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: bash .github/scripts/publish-npm-package.sh rigorix-gate wasm/Cargo.toml wasm/pkg
 
+  package-wasi:
+    name: 🧩 Package gate (WASI artifact)
+    # A second artifact for hosts that are not JS (#1465, ADR-022). It is not a crate on the
+    # train — `wasi/Cargo.toml` says `publish = false` — so the crates.io loop does not and
+    # must not name it; what this job exists for is the release *page*, which has to carry
+    # the artifact and its digest beside the six crates. `wasi/ci/check-release-wiring.sh`
+    # is the gate that reads this job, so the wiring cannot drift silently.
+    #
+    # The steps call the same scripts the gate calls. A release job that re-implemented the
+    # build would be a second identity for the same artifact, and the sha256 on the page
+    # would be for a build nobody measured.
+    needs: [verify]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: 🧱 Install wasm32-wasip1
+        run: rustup target add wasm32-wasip1
+
+      - name: Build the artifact
+        run: bash wasi/ci/build.sh
+
+      - name: Gate the artifact it just built
+        run: |
+          bash wasi/ci/check-imports.sh target/wasm32-wasip1/release/rigorix_gate_wasi.wasm
+          bash wasi/ci/check-size.sh
+          node wasi/ci/run-conformance.mjs target/wasm32-wasip1/release/rigorix_gate_wasi.wasm
+          node wasi/ci/run-conformance.mjs target/wasm32-wasip1/release/rigorix_gate_wasi.wasm --truncate-request
+
+      - name: Digest and stage the asset
+        run: |
+          cd target/wasm32-wasip1/release
+          sha256sum rigorix_gate_wasi.wasm > rigorix_gate_wasi.wasm.sha256
+          # Verify what was just written: a digest file that was not checked is a comment.
+          sha256sum -c rigorix_gate_wasi.wasm.sha256
+          cat rigorix_gate_wasi.wasm.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rigorix_gate_wasi
+          path: |
+            target/wasm32-wasip1/release/rigorix_gate_wasi.wasm
+            target/wasm32-wasip1/release/rigorix_gate_wasi.wasm.sha256
+
   verify-published:
     name: ✅ Verify the published module
     # The tree being green is not the artifact being right: 1.14.0 shipped
@@ -229,7 +274,7 @@ jobs:
     # `publish-wasm` is on the train (crates.io), and `publish-wasm-npm` gates this page now
     # that the bundle state is `shipped` — the two are wired together because a release page
     # that promises npm without it is the half-published release ADR-011 names.
-    needs: [publish-engine, publish-cli, publish-mcp, publish-actions, publish-wasm, publish-server, publish-wasm-npm, verify-published]
+    needs: [publish-engine, publish-cli, publish-mcp, publish-actions, publish-wasm, publish-server, publish-wasm-npm, verify-published, package-wasi]
     # Announce the release only once every train crate is actually on crates.io.
     # Previously `if: always()`, which meant a failed publish still produced a
     # release page advertising crates that did not exist in the registry — the
@@ -270,6 +315,11 @@ jobs:
             echo "- [rigorix-actions $VERSION](https://crates.io/crates/rigorix-actions/$VERSION)"
             echo "- [rigorix-gate-wasm $VERSION](https://crates.io/crates/rigorix-gate-wasm/$VERSION)"
             echo "- [rigorix-server $VERSION](https://crates.io/crates/rigorix-server/$VERSION)"
+            echo ""
+            echo "## Artifacts"
+            echo "- \`rigorix_gate_wasi.wasm\` — the gate as a WASI artifact, with its sha256"
+            echo "  beside it. Not a crate on the train: \`wasi/Cargo.toml\` declares"
+            echo "  \`publish = false\`, and \`wasi/ci/budget.txt\` records which imports it carries."
             # The npm package is announced only when it actually shipped. Reading the
             # readiness state here is what stops the page claiming a package that
             # `publish-wasm-npm` is deliberately holding back.
@@ -282,8 +332,22 @@ jobs:
             fi
           } > release-notes.md
 
+      - name: Fetch the WASI asset the gate measured
+        uses: actions/download-artifact@v4
+        with:
+          name: rigorix_gate_wasi
+          path: wasi-asset
+
+      - name: Verify the asset's digest before it is attached
+        run: |
+          cd wasi-asset
+          sha256sum -c rigorix_gate_wasi.wasm.sha256
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           body_path: release-notes.md
           generate_release_notes: true
+          files: |
+            wasi-asset/rigorix_gate_wasi.wasm
+            wasi-asset/rigorix_gate_wasi.wasm.sha256
