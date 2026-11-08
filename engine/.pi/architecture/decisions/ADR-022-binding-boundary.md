@@ -122,7 +122,49 @@ crates.io train from `cargo metadata`) correctly ignores it. That silence is why
 built, verifies the digest it writes, and attaches both the module and the digest to the page.
 Each of those six checks is self-tested by removing one string from a copy of the workflow.
 
-### 6. Single-threaded, and that is the design
+### 6. The embedder contract: what a host may grant a loaded artifact
+
+The artifact's import section says what it *can* reach. It does not say what it *is given*: a
+WASI runtime will happily supply the caller's environment, the wall clock, OS entropy and
+stdout, and then "the gate cannot read your environment" is false **because of the embedder**,
+not because of the module.
+
+So the host policy is a fixture, not a paragraph: `wasi/ci/embedder-contract.json`, with
+`wasi/ci/embedder-contract.mjs` as the reference implementation. Every embedding language
+implements the same six rows.
+
+| import | what a default runtime gives | what an embedder must answer | why |
+|---|---|---|---|
+| `environ_sizes_get` / `environ_get` | the caller's environment | `0`, `0` | an env var is the cheapest exfiltration channel there is |
+| `clock_time_get` | the wall clock | `0`, and count the call | the instant comes from the facts; the count is what catches a decision that starts reading it |
+| `random_get` | OS entropy | leave the (already zero) buffer alone, and count | determinism: a digest that changes per run is unusable |
+| `fd_write` | stdout | discard, and count the bytes | a refusal goes to a `detail` field, never to a log |
+| `proc_exit` | exits the host process | **raise**, never return | a trap is not a refusal (ADR-012), and it must not take the caller down |
+
+Two rules, and the second is what makes the first enforceable:
+
+1. **No decision may read any of them.** Proven per-embedder by reproducing the five recorded
+   digests with every answer in force.
+2. **Load-time refusal.** Before instantiating, the embedder reads the module's import section
+   and refuses anything that is not exactly the six in `wasi/ci/imports.txt`, naming what is
+   missing and what is unexpected. An unused capability is still a capability.
+
+#### What rule 1 can and cannot say — measured, not assumed
+
+The clock row was originally written as "the instant comes from the facts, never from the host
+clock". The measurement says something narrower and better: **the allow path does consult the
+host clock** — three `clock_time_get` calls across the five vectors, none on the two refusals —
+because `std` reaches `__clock_gettime` there. What is true is that the value **reaches no
+decision byte**: an embedder that answers with a *moving* clock (`Date.now()`) still reproduces
+all five digests.
+
+So the claim this artifact makes is "the clock does not reach a decision", not "the clock is
+never read", and the embedder counts both the clock and the RNG so that a decision which
+*starts* depending on one moves a number rather than quietly changing a digest. Asserting zero
+clock reads would have failed on the first run and been deleted within a week; measuring them is
+the claim that stays true and stays checkable.
+
+### 7. Single-threaded, and that is the design
 
 `wasm32-wasip1` has no threads in this build. A decision is one pure call; state is one
 `thread_local` map per instance; concurrency is N instances with nothing shared. The registry of

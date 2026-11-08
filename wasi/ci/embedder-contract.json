@@ -1,0 +1,63 @@
+{
+  "$comment": [
+    "The embedder contract (#1471, ADR-022 \u00a76). A language-neutral fixture, not a description:",
+    "an embedder implements every entry below and refuses to load a module whose import section",
+    "is not exactly `imports`. A default WASI runtime grants real capabilities \u2014 the caller's",
+    "environment, the wall clock, OS entropy, stdout \u2014 and then 'the gate cannot read your",
+    "environment' is false because of the *embedder*, not because of the module.",
+    "",
+    "Two rules, and the second is what makes the first enforceable:",
+    "  1. no decision may read any of these; proven per-embedder by reproducing the five",
+    "     recorded digests with every answer below in force;",
+    "  2. a module whose import section is not exactly `imports` is refused at load, by name.",
+    "     An unused capability is still a capability."
+  ],
+  "version": 1,
+  "artifact": "rigorix_gate_wasi.wasm",
+  "record": "wasi/ci/imports.txt",
+  "imports": [
+    {
+      "name": "wasi_snapshot_preview1::environ_get",
+      "answer": "zero",
+      "why": "an environment variable is the cheapest exfiltration channel there is; the answer is 0 and nothing is written"
+    },
+    {
+      "name": "wasi_snapshot_preview1::environ_sizes_get",
+      "answer": "write-zeros",
+      "why": "count 0, size 0 \u2014 an embedder must not report the caller's environment size"
+    },
+    {
+      "name": "wasi_snapshot_preview1::clock_time_get",
+      "answer": "count-and-zero",
+      "why": "the instant comes from the facts (observed_at, clock), never from the host clock; the answer is 0 and the embedder counts the call, so a decision that started reading it would move the count rather than the digest"
+    },
+    {
+      "name": "wasi_snapshot_preview1::random_get",
+      "answer": "leave-buffer-zeroed",
+      "why": "determinism: a digest that changes per run is unusable; the buffer is already zero, so an embedder writes nothing and counts the call"
+    },
+    {
+      "name": "wasi_snapshot_preview1::fd_write",
+      "answer": "discard-and-count",
+      "why": "a refusal goes to a `detail` field, never to a log; an embedder that wrote to stdout would leak host data, so bytes are counted and must be zero"
+    },
+    {
+      "name": "wasi_snapshot_preview1::proc_exit",
+      "answer": "raise",
+      "why": "a trap is not a refusal (ADR-012), and it must not take the caller's process down: every embedder maps it to a typed error"
+    }
+  ],
+  "load_time_rule": {
+    "accept_exactly": "imports",
+    "refuse": "any other import, named",
+    "why": "an unused capability is still a capability; a seventh import must be a load error in every embedding language, in the same commit that adds it to the record"
+  },
+  "counters": {
+    "required": [
+      "clock_time_get_calls",
+      "random_get_calls",
+      "fd_write_bytes"
+    ],
+    "why": "randomness, the clock and stdout are the three answers that could silently become real; counting them makes 'no decision read it' observable instead of inferred from unchanged digests \u2014 and the count is what fails when a decision starts reading one"
+  }
+}
