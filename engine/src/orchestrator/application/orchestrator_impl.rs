@@ -135,8 +135,8 @@ impl OrchestratorServiceImpl {
     ///
     /// This is the replacement for the pattern that produced the finding:
     ///
-    /// ```ignore
-    /// // Optional audit (best-effort)
+    /// ```text
+    /// // Optional audit (best-effort)          <- the shape this replaces
     /// let _ = audit.build_and_send(..).await;
     /// ```
     ///
