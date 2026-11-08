@@ -1,5 +1,13 @@
 # Runbook — Rigorix Operations
 
+## Deployment prerequisites
+
+What the engine relies on the deployment to supply — the sandbox boundary that makes
+process spawning safe to enable at all, and the executable-by-executable allowlist
+answer — is in [deployment.md](deployment.md). A deployment that has not declared
+`RIGORIX_SANDBOX=container` (or `vm`) cannot construct `run-command`; the refusal names
+what the child can reach.
+
 ## Incident Response
 
 | Severity | Response Time | Escalation Path |
