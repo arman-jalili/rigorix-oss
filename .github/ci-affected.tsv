@@ -23,12 +23,12 @@ deny.toml	ALL	the audit's subject is the whole dependency graph
 .github/**	ALL	the pipeline is the thing being narrowed
 .pi/**	ALL	the guards and mirrors gate every crate
 .rigorix/**	ALL	product configuration the engine reads at run time
-engine/src/**	engine,test,portable,conformance,coverage	the engine and everything that builds against it
-engine/tests/**	engine,test,portable,conformance,coverage	the engine's test binaries
-engine/.pi/**	engine,test,portable,conformance,coverage	the engine's own guards
+engine/src/**	engine,test,portable,conformance,coverage,wasm-gates,wasi,actions,cli,mcp,server,integration	the engine and everything that builds against it — the comment was true of the intent and false of the row until #1468: `portable` proves the slice compiles, it does not replay a decision, and every other member's tests link it
+engine/tests/**	engine,test,portable,conformance,coverage,wasm-gates,wasi,actions,cli,mcp,server,integration	the engine's test binaries — and, like its sources, every member that links the crate
+engine/.pi/**	engine,test,portable,conformance,coverage	the engine's own guards — documents and guard scripts, which no artifact replays
 cli/src/**	cli,test,coverage	the CLI surface
 cli/tests/**	cli,test,integration,coverage	the CLI test binaries, incl. the pinned-inputs surface
-mcp/src/**	mcp,test,coverage	the MCP server
+mcp/src/**	mcp,test,coverage,server,integration	the MCP server, and the server that links it
 mcp/tests/**	mcp,test,integration,coverage	the MCP test binaries, incl. the stdio e2e
 actions/src/**	actions,test,coverage	the actions adapter
 actions/tests/**	actions,test,integration,coverage	the actions test binaries, incl. process isolation
