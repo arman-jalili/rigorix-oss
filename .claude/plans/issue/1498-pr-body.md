@@ -83,6 +83,19 @@ its correction:
 | 4 | a git step declares its boundary | `a_git_step_without_a_declaration_is_refused_before_any_spawn` (three kinds, each naming itself and `RIGORIX_SANDBOX`) + `every_spawning_step_kind_is_gated` |
 | 5 | the record is accurate | ADR-023 §6.4 carries the measured command; `grep -n pager` finds no residual claim |
 
+## Found while validating this PR: the Audit job was skipping
+
+`engine/.pi/**` mapped to `engine,test,portable,conformance,coverage` — and none of those jobs
+runs the guards. The **Audit** job does (`validate-guards.sh` executes every `run_here=yes`
+guard, and `engine/.pi/scripts/validate-sink-register.sh` is one). So a change to the register,
+or to the guard that reads it, narrowed the pipeline *away* from the only job that enforces it,
+and CI stayed green because the job was skipped rather than passing. Reported by `gh pr checks`
+on the first run of this PR (`🔒 Audit  skipping`).
+
+Fixed in the same PR: `audit` added to the `engine/.pi/**` row, with the reason in the comment.
+Same class as the defect this PR fixes — a control whose record says it runs, and a pipeline
+that decided not to ask.
+
 ## What this does not do
 
 - **It does not remove the workspace path.** An alias in the repository's `.git/config` or a hook
@@ -108,6 +121,10 @@ cargo audit                                                no advisories against
 .pi/scripts/validate-docs.sh                                PASS
 engine/.pi/scripts/validate-sink-register.sh (+ self-test)   PASS (46 rows, 87 hits, 11 seeds)
 engine/.pi/scripts/validate-{ci,tests,security,operations,integration,canonical,architecture}.sh   PASS
+.github/scripts/check_affected_map.sh                       PASS (43 rows, all 15 jobs)
+.github/scripts/validate-affected-graph.sh                  PASS
 ```
+
+CI: **27/27 passing**, including `🔒 Audit` (which was skipping before the map fix).
 
 Closes #1498.
