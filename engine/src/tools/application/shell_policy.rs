@@ -257,7 +257,13 @@ pub fn resolve_program(program: &str) -> Result<std::path::PathBuf, String> {
     ))
 }
 
-/// Options and forms a `git_read` step may never use, with the reason (#1498).
+/// **Global** options a `git_read` step may never use, with the reason (#1498).
+///
+/// A git global option comes **before** the subcommand: `git -c k=v status` sets a config
+/// value, and `git status -c k=v` is not that option at all (git answers `unknown switch 'c'`).
+/// Verified on 2.50.1, which is why this table is consulted in the leading position only
+/// (#1502): scanning every word refused `git grep -c` and `git log -c`, where the same word is
+/// the subcommand's own read flag.
 ///
 /// Each of these makes git run a **program**, or point it at one:
 ///
@@ -309,20 +315,101 @@ pub const REFUSED_GIT_FORMS: &[(&str, &str)] = &[
         "--work-tree",
         "retargets the invocation at another working tree",
     ),
+    (
+        "--namespace",
+        "retargets the invocation at another namespace",
+    ),
+    (
+        "-C",
+        "runs git as if it had been started in another directory",
+    ),
     ("ext::", "a transport that names a program"),
 ];
 
-/// Subcommands a `git_read` step may run: reads, and nothing that executes.
+/// Flags that make a `git_read` subcommand **write**, not read (#1501).
 ///
-/// The dispatcher's `git_read` is a read step, so the list is what the name
-/// promises. A subcommand that is not here is refused, which is the point: the
-/// dangerous forms are not a list someone has to keep complete, they are anything
-/// not enumerated. `git_stage` and `git_commit` build their own argv and do not
-/// come through here.
+/// The allowlist used to answer one question — "can this execute?" — and `#1501` is the other:
+/// "can this write?". Measured on 2.50.1 against the list below, all four succeeded:
+///
+/// ```text
+/// git symbolic-ref HEAD refs/heads/extra       → HEAD moved
+/// git tag -d v1                                → the tag was deleted
+/// git log --output=/tmp/x                      → the file was written
+/// git branch newb                              → the branch was created
+/// ```
+///
+/// A write is a consequence, and a step kind is part of the consequence gate's input
+/// (ADR-017): a step called `git_read` that moves HEAD presents as a read to every policy
+/// that looks at the name. `--output` is the sharpest of these — it writes **anywhere the
+/// engine's uid can write**, and no register row described it, because the write happened
+/// inside git.
+///
+/// Where a form is refused rather than the subcommand removed, the reason is that the read is
+/// real and common (`branch --list`, `tag --list`, `git log`) — but the flag table is a list
+/// someone must keep complete, so anything a read needs *more* than one word to express is a
+/// form this refuses, never a form it silently allows.
+pub const REFUSED_GIT_READ_FLAGS: &[(&str, &str)] = &[
+    (
+        "--output",
+        "writes the result to a file, anywhere the engine's user can write",
+    ),
+    (
+        "--ext-diff",
+        "runs the external diff program the repository configures",
+    ),
+    ("--delete", "deletes (a ref, a tag, a branch)"),
+    ("--move", "moves or renames a branch"),
+    ("--copy", "copies a branch"),
+    ("--force", "forces a write (a ref, a tag, a branch)"),
+    (
+        "--set-upstream-to",
+        "sets a branch's upstream, which writes `.git/config`",
+    ),
+    ("--unset-upstream", "writes `.git/config`"),
+    ("--edit-description", "opens an editor and writes `.git/`"),
+    ("--create-reflog", "creates a ref"),
+    ("--sign", "signs, and runs gpg"),
+    ("--local-user", "names the signing key and runs gpg"),
+    ("--cleanup", "rewrites a message"),
+];
+
+/// Short flags that write, refused **only** for the subcommands that write refs (#1501).
+///
+/// These letters are not globally safe to refuse: git reuses them across families, and `-c`,
+/// `-C` and `-m` are *read* flags for `log`, `show` and `diff` (`git grep -c` counts matches,
+/// `git log -c` shows combined diffs, `git log -m` shows merge diffs). Refusing them for every
+/// subcommand is what #1502 found; refusing them where they write is the distinction git's own
+/// grammar draws, and it is why this table is consulted only for `branch`, `tag` and
+/// `symbolic-ref`.
+pub const REFUSED_REF_WRITE_FLAGS: &[(&str, &str)] = &[
+    ("-d", "deletes (a ref, a tag, a branch)"),
+    ("-D", "deletes a branch even when it is not merged"),
+    ("-m", "writes a message, or moves a branch"),
+    ("-M", "moves a branch, overwriting"),
+    ("-c", "copies a branch"),
+    ("-C", "copies a branch, overwriting"),
+    ("-f", "forces a write"),
+    ("-u", "sets a branch's upstream, which writes `.git/config`"),
+    ("-s", "signs, and runs gpg"),
+    ("-F", "reads a message file and writes a tag"),
+    ("-e", "opens an editor and writes `.git/`"),
+];
+
+/// Subcommands a `git_read` step may run: reads, and nothing that writes or executes.
+///
+/// The dispatcher's `git_read` is a read step, so the list is what the name promises, and
+/// #1501 is the reason the promise now has two clauses. The previous version answered only
+/// "can this execute?" and carried `symbolic-ref` — which moves HEAD — plus `branch` and `tag`,
+/// which delete refs. A subcommand that is not here is refused, which is the point: the
+/// dangerous forms are not a list someone has to keep complete, they are anything not
+/// enumerated. `git_stage` and `git_commit` build their own argv and do not come through here.
+///
+/// `branch`, `tag` and `symbolic-ref` stay because their **read** forms are ordinary and
+/// common; each is listed in `GIT_READ_FORM_SPECS` with the words that name its read form.
 pub const GIT_READ_SUBCOMMANDS: &[&str] = &[
     "blame",
-    "branch",
     "cat-file",
+    "branch",
     "describe",
     "diff",
     "for-each-ref",
@@ -343,46 +430,123 @@ pub const GIT_READ_SUBCOMMANDS: &[&str] = &[
     "whatchanged",
 ];
 
-/// Refuse a `git_read` argument list that could run a program (#1498).
+/// The subcommands that have a write form one word away from their read form, and how a read
+/// states which one it means (#1501).
 ///
-/// Two rules, in the order that produces the better message: a refused form is
-/// named with its reason (it is what an author is most likely to have typed), then
-/// the subcommand must be on the read allowlist (it is what catches everything
-/// nobody enumerated).
+/// Each entry is `(subcommand, read selector, positional words the read form takes)`. A
+/// selector is required rather than inferred, and the positionals are counted, because
+/// `branch --contains main` takes a word that is a *value* and `branch main` takes a word that
+/// is a *target*; a counter cannot tell them apart without the flag list, so the flag list is
+/// what the selector replaces.
+pub const GIT_READ_FORM_SPECS: &[(&str, &str, usize)] = &[
+    (
+        "branch",
+        "branch --list (or --contains/--merged/--no-merged/--points-at)",
+        0,
+    ),
+    ("tag", "tag --list (or --contains/--merged/--points-at)", 0),
+    (
+        "symbolic-ref",
+        "symbolic-ref <ref> (the query form; one word)",
+        1,
+    ),
+];
+
+/// Selectors that make `branch`/`tag` a read, and the words they consume beyond themselves.
+///
+/// A selector is an **allow** marker: a read flag that nobody listed here causes a refusal,
+/// not a write. That is the direction a fail-closed default has to fail in.
+const READ_SELECTORS: &[&str] = &[
+    "--list",
+    "-l",
+    "--contains",
+    "--merged",
+    "--no-merged",
+    "--points-at",
+    "--format",
+    "--sort",
+    "-n",
+    "--show-current",
+    "-a",
+    "-r",
+    "-v",
+    "-vv",
+    "-i",
+    "--ignore-case",
+    "--column",
+];
+
+/// Refuse a `git_read` argument list that could run a program or write (#1498, #1501, #1502).
+///
+/// Four rules, in the order that produces the better message:
+///
+/// 1. **Leading global options** are consulted against `REFUSED_GIT_FORMS`. This is the only
+///    position where `-c` is a config value: git's own grammar puts global options before the
+///    subcommand, and `git status -c k=v` is `unknown switch 'c'`, not a config. Scanning every
+///    word refused `git grep -c` and `git log -c`, where the word is the subcommand's own read
+///    flag (#1502).
+/// 2. **The subcommand** must be on the allowlist — deny by default, so the forms nobody
+///    enumerated are refused rather than the dangerous ones being a list to keep complete.
+/// 3. **The subcommand's read form** must be named, where the write form is one word away
+///    (`branch --list` vs `branch newb`).
+/// 4. **The subcommand's arguments** may not name a write (`--output`, `-d`, `--set-upstream-to`,
+///    `--ext-diff`, …).
 pub fn validate_git_read_args(args: &[&str]) -> Result<(), String> {
-    let mut words = args.iter().copied().filter(|word| !word.is_empty());
-    let first = words.next().ok_or_else(|| {
+    let words: Vec<&str> = args
+        .iter()
+        .copied()
+        .filter(|word| !word.is_empty())
+        .collect();
+    let first = *words.first().ok_or_else(|| {
         "the git step has no subcommand; it needs one of: ".to_string()
             + &GIT_READ_SUBCOMMANDS.join(", ")
+            + ", branch --list, tag --list"
     })?;
 
-    for word in std::iter::once(first).chain(words.clone()) {
-        // `-ckey=value` is the attached form of `-c`; git accepts it, so a
-        // prefix check is what covers both.
-        if word.starts_with("-c") && word.len() > 2 && !word.starts_with("--") {
+    // 1. A leading word that starts with `-` is a global option, and a read needs none.
+    if first.starts_with('-') {
+        // `-c` and its attached form are the ones worth a paragraph: the same word after a
+        // subcommand is a read flag, so the refusal has to say which position it is in.
+        if first == "-c" || (first.starts_with("-c") && !first.starts_with("--")) {
             return Err(format!(
-                "git argument '{word}' is refused: it is the attached form of `-c` (a config \
-                 value for this invocation), and `alias.x=!cmd` in a config value runs a shell \
-                 command. A `git_read` step reads the repository; it never names a program \
-                 (#1498)"
+                "git argument '{first}' is refused **in this position**: before the subcommand \
+                 `-c` means `-c <key>=<value>` for this invocation, and `-c alias.x=!cmd` runs a \
+                 shell command. After the subcommand the same word is that subcommand's own \
+                 flag (`git grep -c`, `git log -c`), which is why it is accepted there. Put the \
+                 subcommand first — and use `--count` if you meant `grep -c` (#1498, #1502)"
             ));
         }
         for (form, why) in REFUSED_GIT_FORMS {
-            if word == *form || word.starts_with(&format!("{form}=")) {
+            if first == *form || first.starts_with(&format!("{form}=")) {
                 return Err(format!(
-                    "git argument '{word}' is refused: {form} {why}. A `git_read` step reads the \
-                     repository; it never names a program (#1498)"
-                ));
-            }
-            if word.contains(form) && form.ends_with("::") {
-                return Err(format!(
-                    "git argument '{word}' is refused: {form} {why} (#1498)"
+                    "git argument '{first}' is refused: as a leading option {form} {why}. A \
+                     `git_read` step reads the repository as it was given; it never retargets the \
+                     invocation or names a program (#1498)"
                 ));
             }
         }
+        return Err(format!(
+            "'{first}' is refused: a git option before the subcommand is a global option, and a \
+             read needs none of them (they set config, retarget the repository, or run a \
+             program). Start the step with one of: {} (#1498)",
+            GIT_READ_SUBCOMMANDS.join(", ")
+        ));
     }
 
-    if !GIT_READ_SUBCOMMANDS.contains(&first) {
+    // `ext::` is a transport, so it is a value rather than a leading option.
+    if words.iter().any(|word| word.contains("ext::")) {
+        return Err(
+            "git argument containing 'ext::' is refused: a transport that names a program \
+             (#1498)"
+                .to_string(),
+        );
+    }
+
+    // 2. Deny by default.
+    let spec = GIT_READ_FORM_SPECS
+        .iter()
+        .find(|(name, _, _)| *name == first);
+    if !GIT_READ_SUBCOMMANDS.contains(&first) && spec.is_none() {
         return Err(format!(
             "'{first}' is not a read subcommand. A `git_read` step may run: {}. \
              Anything else can write, fetch or execute, which is what `git_stage`, `git_commit` \
@@ -390,6 +554,48 @@ pub fn validate_git_read_args(args: &[&str]) -> Result<(), String> {
             GIT_READ_SUBCOMMANDS.join(", ")
         ));
     }
+
+    let rest = &words[1..];
+
+    // 4. before 3, so `branch -D main` is refused for the reason it deserves rather than for
+    // the missing selector.
+    for word in rest {
+        let refused = REFUSED_GIT_READ_FLAGS.iter().chain(if spec.is_some() {
+            REFUSED_REF_WRITE_FLAGS.iter()
+        } else {
+            [].iter()
+        });
+        for (form, why) in refused {
+            if *word == *form || word.starts_with(&format!("{form}=")) {
+                return Err(format!(
+                    "git argument '{word}' is refused: for a `git_read` step {form} {why}. A \
+                     read does not change a ref, the index or a file; a write is `git_stage`, \
+                     `git_commit` or `run_command`, and each requires a declared isolation \
+                     (#1501)"
+                ));
+            }
+        }
+    }
+
+    // 3. The read form has to be named.
+    if let Some((_, selector, max_positionals)) = spec {
+        let named = rest.iter().any(|word| {
+            READ_SELECTORS
+                .iter()
+                .any(|s| word == s || word.starts_with(&format!("{s}=")))
+        });
+        let positionals = rest.iter().filter(|word| !word.starts_with('-')).count();
+        let fits_query_form = positionals <= *max_positionals && (*max_positionals > 0);
+        if !named && !fits_query_form {
+            return Err(format!(
+                "'{first}' has a write form one word away from its read form (`{first} <name>` \
+                 creates; `{first} -d/-D <name>` deletes), so a `git_read` step must name the \
+                 read form: {selector}. Measured on 2.50.1: `git branch newb` created a branch \
+                 and `git symbolic-ref HEAD refs/heads/x` moved HEAD (#1501)"
+            ));
+        }
+    }
+
     Ok(())
 }
 
@@ -993,5 +1199,93 @@ mod tests {
                 "{command:?} must be refused, not passed through"
             );
         }
+    }
+
+    // ── #1501: a read may not write ──────────────────────────────────────────
+
+    /// Every form below was measured to succeed against real git before it was refused here
+    /// (2.50.1): `symbolic-ref HEAD refs/heads/extra` moved HEAD, `tag -d v1` deleted the tag,
+    /// `log --output=<path>` wrote the file. A refusal that only asserts `is_err` would pass
+    /// against a validator that refused everything, which is what #1501 is about.
+    #[test]
+    fn a_read_step_cannot_write() {
+        for args in [
+            vec!["symbolic-ref", "HEAD", "refs/heads/extra"],
+            vec!["branch", "-D", "main"],
+            vec!["branch", "--delete", "main"],
+            vec!["branch", "newb"],
+            vec!["branch", "--set-upstream-to=origin/main"],
+            vec!["branch", "-m", "a", "b"],
+            vec!["tag", "-d", "v1"],
+            vec!["tag", "v1"],
+            vec!["tag", "--delete", "v1"],
+            vec!["log", "--output=/tmp/x"],
+            vec!["log", "--output", "/tmp/x"],
+            vec!["diff", "--ext-diff"],
+            vec!["show", "--output=/tmp/x"],
+            vec!["symbolic-ref", "-d", "refs/heads/x"],
+        ] {
+            let err = crate::tools::application::shell_policy::validate_git_read_args(&args)
+                .expect_err(&format!("{args:?} writes and must be refused"));
+            assert!(
+                err.contains(args[0]) || err.contains("git argument"),
+                "the refusal must name the form: {err}"
+            );
+        }
+    }
+
+    /// The mirror: the reads that the flag table would have refused if it had been applied to
+    /// every subcommand (`-c`, `-C`, `-m` are read flags for these), plus the ref subcommands'
+    /// read forms. Each was run against git 2.50.1 and exited 0.
+    #[test]
+    fn an_ordinary_read_still_reads() {
+        for args in [
+            vec!["log", "--oneline", "-5"],
+            vec!["status", "--porcelain"],
+            vec!["show", "HEAD"],
+            vec!["diff"],
+            vec!["diff", "-c"],
+            vec!["grep", "-c", "TODO"],
+            vec!["grep", "--count", "TODO"],
+            vec!["log", "-c", "--oneline", "-1"],
+            vec!["log", "--name-only"],
+            vec!["rev-parse", "HEAD"],
+            vec!["rev-parse", "--abbrev-ref", "HEAD"],
+            vec!["branch", "--list"],
+            vec!["branch", "--list", "ma*"],
+            vec!["branch", "-a"],
+            vec!["branch", "--contains", "HEAD"],
+            vec!["tag", "--list"],
+            vec!["tag", "-l", "v*"],
+            vec!["symbolic-ref", "HEAD"],
+            vec!["for-each-ref", "refs/tags"],
+            vec!["ls-files"],
+            vec!["cat-file", "-p", "HEAD"],
+        ] {
+            crate::tools::application::shell_policy::validate_git_read_args(&args)
+                .unwrap_or_else(|err| panic!("{args:?} is a read and must be accepted: {err}"));
+        }
+    }
+
+    /// `-c` is a config value before the subcommand and a read flag after it, and the refusal
+    /// has to say which position it is in — otherwise an author who typed `git grep -c` is told
+    /// they tried to set a config value (#1502).
+    #[test]
+    fn the_config_form_is_refused_in_the_leading_position_only() {
+        for args in [
+            vec!["-c", "alias.pwn=!touch", "pwn"],
+            vec!["-calias.pwn=!touch", "pwn"],
+            vec!["--config", "core.fsmonitor=/x", "status"],
+        ] {
+            let err = crate::tools::application::shell_policy::validate_git_read_args(&args)
+                .expect_err("a leading config form must be refused");
+            assert!(
+                err.contains("position") || err.contains("config"),
+                "the refusal must explain the position: {err}"
+            );
+        }
+        // The same word after the subcommand is the subcommand's own flag.
+        crate::tools::application::shell_policy::validate_git_read_args(&["grep", "-c", "TODO"])
+            .expect("`git grep -c` counts matches; it is not the config form");
     }
 }
