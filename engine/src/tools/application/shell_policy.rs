@@ -220,9 +220,14 @@ pub fn validate_env_overrides(
 ///
 /// #1489: `Command::new("echo")` resolves through the child's environment, which
 /// is where a caller-supplied `PATH` used to take over. Resolving here — before
-/// any override is applied — makes the executed file the one the policy saw, and
-/// returns it so the caller can record it: the evidence then names the binary, not
-/// the word that was approved.
+/// any override is applied — makes the **path** the one the policy saw, and returns
+/// it so the caller can record it: the evidence then names the binary, not the word
+/// that was approved.
+///
+/// It does **not** pin the file (#1495). `execve` opens the returned path again, so
+/// a process with write access to that directory can replace the file in between and
+/// the executed bytes are not the resolved ones. The row's `does_not` says so; the
+/// fix, if it is ever worth its cost, is `execveat` on a descriptor opened here.
 ///
 /// A name containing a path separator is taken literally (and must exist); a bare
 /// name is searched in the engine's `PATH` in order.
@@ -678,6 +683,31 @@ pub fn apply_child_env(cmd: &mut tokio::process::Command, overrides: &[(String, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #1495 acceptance 2: the comment does not claim more than the mechanism does.
+    ///
+    /// `resolve_program` returns a `PathBuf` and the caller passes it to
+    /// `Command::new`, which re-opens that path in the child. A writer in the
+    /// directory can replace the file in between. It pinned the *path*, not the
+    /// inode, and the doc comment said otherwise — which is the defect class these
+    /// batches are about: the sentence promising the control is the sentence that
+    /// prevents anyone from looking.
+    #[test]
+    fn the_resolver_does_not_claim_to_pin_the_file() {
+        let source = include_str!("shell_policy.rs");
+        let docs = source
+            .split("pub fn resolve_program")
+            .next()
+            .expect("the function exists");
+        assert!(
+            !docs.contains("makes the executed file the one the policy saw"),
+            "the doc comment must not claim the executed file is the resolved one (#1495)"
+        );
+        assert!(
+            docs.contains("does **not** pin the file"),
+            "the doc comment must state the gap the register records (#1495)"
+        );
+    }
 
     #[test]
     fn control_operators_are_detected() {

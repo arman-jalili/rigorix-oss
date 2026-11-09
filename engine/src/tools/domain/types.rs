@@ -116,12 +116,18 @@ pub struct ToolResult {
     /// Whether the tool was executed in dry-run mode (preview, no side effects).
     pub dry_run: bool,
 
-    /// The file that actually ran, when the tool spawns a process (#1489).
+    /// The path the tool executed, when the tool spawns a process (#1489).
     ///
     /// The allowlist compares a word; the kernel executes a path. Recording the
-    /// resolved path is what lets a reader check that the two are the same file —
-    /// a binary located through the engine's `PATH`, before any caller-supplied
-    /// environment was applied. `None` for tools that spawn nothing.
+    /// resolved path is what lets a reader check that the approval and the launch
+    /// named the same *path* — a binary located through the engine's `PATH`, before
+    /// any caller-supplied environment was applied. `None` for tools that spawn
+    /// nothing.
+    ///
+    /// It is not a fingerprint of the file (#1495): `execve` opens the path again in
+    /// the child, so the bytes that ran are the bytes at that path at that moment. A
+    /// reader who needs to know the bytes should compare a digest of the file out of
+    /// band, not this string.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved_executable: Option<String>,
 }
