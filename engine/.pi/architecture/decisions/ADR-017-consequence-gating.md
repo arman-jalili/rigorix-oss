@@ -264,6 +264,35 @@ The default row is the permanent caveat: **the default install is a policy +
 path + hook boundary, not a sandbox.** #985–#987 raise the boundary in modes the
 operator opts into; they do not change the default.
 
+> **Amendment (2026-11-09) — SINK-4/SINK-9 (#1487, #1493). The caveat stands; two
+> of its three parts need a qualifier.**
+>
+> *Policy* is unchanged. **Path** is unchanged for the workspace boundary, and
+> stronger for the one directory it names: `.rigorix/**` is now refused on the
+> **resolved** path, so an alias of it is the protected directory (#1493). **Hook**
+> is conditional: `hooks:hook-shell` is a `filtering` row whose `requires` is an
+> operator-configured file, and that file's protection is the resolved-path refusal
+> above. A deployment that makes `.rigorix` writable by the agent has a hook
+> boundary in name only, and the row's `does_not` says so.
+>
+> **What changed in the default, and why it is not a weakening:** a `run_command`
+> step with no declared isolation is now **refused before any spawn**
+> (`sandbox_undeclared`, #1487), and an unrecognized `RIGORIX_PERMISSION_MODE` is a
+> startup error rather than a silent `WorkspaceWrite`. So the default is no longer
+> "an agent that can run code unless you configure otherwise"; it is "an agent that
+> cannot run a `run_command` step until the deployment states its boundary".
+>
+> **What the caveat still means, verbatim:** declaring `RIGORIX_SANDBOX=container`
+> is a **declaration, not a proof**. The engine does not inspect the namespace it
+> runs in. A reader must not conclude that a default install contains an agent that
+> cannot execute code: it contains one that cannot execute *a `run_command` step*,
+> and an operator who declares a boundary it does not actually have still has no
+> sandbox.
+>
+> The other two halves of the caveat's maintenance note ("never delete or weaken the
+> default caveat") are unchanged: this amendment adds qualifiers, and the caveat
+> sentence itself is preserved above word for word.
+
 > **Maintenance:** when #985 / #986 / #987 merge, flip that row's state from
 > *planned* to *available*. #992 folds the interpreted-script shape (and any
 > file argument) of the check into the same boundary/digest/writability claim.

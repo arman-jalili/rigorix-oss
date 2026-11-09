@@ -1,7 +1,13 @@
 # Boundary sink register — one row per crossing out of the engine's type system.
 #
 # @canonical .pi/architecture/modules/tool-system.md#process-spawning-sinks
+# @canonical .pi/architecture/decisions/ADR-023-sink-boundary.md
 # Implements: SINK-3 (#1481) — the class, not the three instances
+#
+# The taxonomy — the mitigation kinds, what each guarantees, why filtering is never
+# isolation, and the residuals this design accepts — is ADR-023. This file is the
+# enumeration; the ADR is the rationale. A new mitigation kind is an ADR change; a
+# new sink of a known kind is a row.
 # Checked by: engine/.pi/scripts/validate-sink-register.sh (gating, CI audit job)
 #
 # Three external findings, three different bugs, one shape: a control is present

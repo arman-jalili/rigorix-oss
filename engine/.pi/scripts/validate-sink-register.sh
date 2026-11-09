@@ -144,7 +144,9 @@ def check_row(row, path, src_dir=None):
                           f"it relies on in `requires` (rule 1: filtering is never recorded as isolation)")
         else:
             errors.append(f"{where} ({row['sink']}): mitigation {row['mitigation']!r} is not in the "
-                          f"vocabulary {sorted(MITIGATIONS)}")
+                          f"vocabulary {sorted(MITIGATIONS)} — a new kind of mitigation is an ADR "
+                          f"change (.pi/architecture/decisions/ADR-023-sink-boundary.md §2), a new "
+                          f"sink of a known kind is a row")
     if row["mitigation"] == "filtering" and not row["requires"]:
         errors.append(f"{where} ({row['sink']}): a filtering row must name a `requires` — the "
                       f"deployment fact it depends on")
@@ -436,6 +438,23 @@ RS
 tools:run-command-spawn	tools/application/run_command_tool.rs	process	isolation		does not constrain what the executable does once started
 TSV
 	seed "a row claiming isolation is refused" "is not a mitigation"
+
+	# --- seed C2: an invented mitigation kind is a decision, not a row -----
+	#
+	# #1496: the vocabulary is ADR-023's. A row that invents a kind would become the
+	# only place the taxonomy is written, which is how the register came to be the
+	# only place it existed.
+	reset_fixture
+	cat >"$WORK/src/tools/application/run_command_tool.rs" <<'RS'
+pub fn f() {
+    // sink: tools:run-command-spawn
+    let _child = std::process::Command::new("git");
+}
+RS
+	cat >"$WORK/reg.tsv" <<'TSV'
+tools:run-command-spawn	tools/application/run_command_tool.rs	process	seccomp	deployment isolation (RIGORIX_SANDBOX)	does not constrain what the executable does once started
+TSV
+	seed "an invented mitigation kind is refused, and the ADR is named" "ADR-023-sink-boundary.md"
 
 	# --- seed D: a dropped evidence result ---------------------------------
 	reset_fixture

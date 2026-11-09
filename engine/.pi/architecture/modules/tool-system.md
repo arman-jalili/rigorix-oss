@@ -238,9 +238,26 @@ Three class rules, each with a seeded violation in the guard's `--self-test`:
    (#1479). A new fs-mutating module with no row fails the build.
 
 Spawning is still declared by the lint (a new `Command::new` does not compile
-without an `#![allow]` reason); the register additionally requires the *module*
-to be a row, so the two mechanisms cover "may this compile" and "what does it
-actually promise".
+without an `#![allow]` reason); the register additionally requires the *call
+site* to be a row, so the two mechanisms cover "may this compile" and "what does
+it actually promise".
+
+### A row is written about a call site (SINK-8, #1494) {#sink-row-per-call-site}
+
+The first version of the register matched a hit to a row by **module**, and one
+row covered every sink in a file. `tools.rs` had five write sites and one
+`atomic` row; one of the five was atomic. So rule 5: every production sink
+carries `// sink: <id>` on or above the line, naming the row that governs it, and
+an anchor naming a row for another module or kind is refused. It is required
+everywhere rather than only where a module already has two sinks, because that is
+what makes a *new* sink in a registered file fail — the row it would inherit was
+written about the site that was there.
+
+The taxonomy behind the `mitigation` values — what each kind guarantees, why
+filtering is never isolation, and the residuals this design accepts — is
+**[ADR-023](../decisions/ADR-023-sink-boundary.md)**. The register enumerates; the
+ADR gives the reason. A new *kind* of mitigation is an ADR change; a new *sink* of
+a known kind is a row.
 
 ---
 
