@@ -17,6 +17,11 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.14.3] - 2026-11-09
+
+
 ### Security
 
 - **`.rigorix/` protection is decided on the resolved path (#1493).** The write path was
@@ -84,6 +89,36 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   `danger_full_access` (`dangerous_full_access` also accepted).
 - **A host that cannot build its permission enforcer fails to start** instead of warning
   and continuing with mode gating skipped.
+
+### Added
+
+- **The WASI artifact is published as a release asset (#1503).** `package-wasi` has existed in
+  `release.yml` since #1465 and had never executed: `v1.14.2` carries no assets at all, so
+  every consumer of `rigorix_gate_wasi.wasm` had to build it from a commit. The tag carrying
+  this section is the first to execute the job. Every step of it was verified locally before
+  that tag was cut — build through `wasi/ci/build.sh`, import record, size ceiling,
+  builder-path scan, both conformance modes (5/5 vectors through `node:wasi`), and the digest
+  — and `verify-release-asset` reads the page back afterwards, so the claim is checked rather
+  than announced.
+- **`wasi/ci/check-release-asset.sh` — the release page, read back (#1503).** Claim 12 in
+  `wasi/ci/run-wasi-gates.sh`: download the two assets the page advertises, check the digest
+  file against the module, and compare the published digest with the artifact the release run
+  built. It exists because `check-release-wiring.sh` reads *YAML* and was green for two
+  releases while the page carried nothing — a job read from a workflow is not a job that runs.
+  `run-wasi-gates.sh --release <tag>` asks it; without the flag the claim is named as not
+  applicable rather than counted as a pass.
+- **`verify-release-asset`** in `release.yml` runs it on every tag with `if: always()`, so
+  "crates published, page missing" is a red run that names the state instead of a silence.
+- **The release page states the digest** in its notes, not only in a sibling `.sha256` file.
+
+### Changed
+
+- **The WASI artifact's digest changes with this release.** `a314672c` builds `7414f8df…`
+  (1,896,910 bytes); `main` at this tag builds `b0ed0ee6…` (1,897,095 bytes), because four
+  batches of engine code landed in between. Verified by rebuilding `a314672c` in a worktree
+  with the pinned toolchain: byte-identical to the recorded digest, so the build is
+  reproducible and the difference is code, not compiler. A downstream vendor pinned to
+  `7414f8df…` must re-vendor against this release.
 
 ## [1.14.2] - 2026-11-07
 

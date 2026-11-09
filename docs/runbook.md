@@ -64,6 +64,32 @@ Four things this repository learned the expensive way, each now with a check beh
   existing tag: the workflow file comes from the tagged commit, so the sequence is fix → commit → move the
   tag → push (`git tag -f -a vX.Y.Z -F <msg> <commit>`). Every publish script skips an existing version, so
   the re-run publishes only what is missing.
+- **A job in the workflow is not a file on the release page.** `package-wasi` existed for two
+  releases and had never executed; `v1.14.2` carried no assets at all, so every consumer of
+  `rigorix_gate_wasi.wasm` had to build it from a commit. `wasi/ci/check-release-wiring.sh` was green
+  throughout because it reads *YAML*, and a string in a workflow is not an address. Claim 12 in
+  `wasi/ci/run-wasi-gates.sh` (`wasi/ci/check-release-asset.sh`) asks the release instead: it
+  downloads the two assets the page advertises, verifies the digest file against the module, and with
+  `--expect <sha256>` compares the published digest with the artifact the release run built. The
+  `verify-release-asset` job runs it on every tag with `if: always()`, so "crates published, page
+  missing" is a red run that names the state.
+
+  After a release, the checks are:
+
+  ```bash
+  gh release view v<version> --json assets          # the .wasm and the .sha256, by name
+  bash wasi/ci/check-release-asset.sh v<version>    # the digest file describes that module
+  git worktree add -q /tmp/rel v<version>           # and the page's digest is this tag's build
+  ( cd /tmp/rel && bash wasi/ci/build.sh >/dev/null \
+      && sha256sum target/wasm32-wasip1/release/rigorix_gate_wasi.wasm | cut -d' ' -f1 )
+  bash wasi/ci/check-release-asset.sh v<version> --expect <that digest>
+  ```
+
+  The `--expect` line is the one that decides whether a downstream vendor must re-vendor: the digest
+  on the page is the fact, and it is a function of the commit and the pinned toolchain. `a314672c`
+  builds `7414f8df…`; `main` at `v1.14.3` builds `b0ed0ee6…`, so a vendor pinned to the former has to
+  re-vendor — measured by rebuilding the old commit in a worktree, byte-identical to its recorded
+  digest.
 - **A claim about a registry comes from the coordinate's metadata.** `.../crates/<name>/<version>` for
   crates.io, `maven-metadata.xml` plus the artifact itself for Central — never a URL composed from what
   one expects the layout to be. A directory listing that 404s proves nothing; Central serves no listings.

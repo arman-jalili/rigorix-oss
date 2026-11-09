@@ -16,6 +16,8 @@
 #   5. a truncated request is a refusal       truncation   (and the instance keeps answering)
 #   8. the ABI under a hostile host           hostile      (eleven named inputs, none traps)
 #   6. the release page carries the artifact  release-wiring
+#  12. the release *did* carry it            release-asset  (only answerable from a release;
+#       `--release <tag>` asks it, and without the flag the claim is named as not applicable)
 #
 # A gate that is not applicable is *named* and not counted as a pass: a skipped claim that
 # reads as green is how an artifact ships with a claim nobody checked.
@@ -25,11 +27,13 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 MODULE="$ROOT/target/wasm32-wasip1/release/rigorix_gate_wasi.wasm"
 MODE="gate"
+RELEASE=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --self-test) MODE="self-test"; shift ;;
-    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --release) [ $# -ge 2 ] || { echo "run-wasi-gates: --release needs a tag" >&2; exit 2; }; RELEASE="$2"; shift 2 ;;
+    -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "run-wasi-gates: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
@@ -42,6 +46,7 @@ if [ "$MODE" = "self-test" ]; then
   bash "$HERE/check-claim-matches-record.sh" --self-test
   bash "$HERE/run-hostile.sh" --self-test
   bash "$HERE/check-no-builder-paths.sh" --self-test
+  bash "$HERE/check-release-asset.sh" --self-test
   bash "$HERE/check-responsibility-matrix.sh" --self-test
   # The contract's seeds: a moving clock, a leaking stdout, and a `proc_exit` that returns.
   if node "$HERE/embedder-contract.mjs" --self-test "$MODULE" >/dev/null 2>&1; then
@@ -106,10 +111,25 @@ node "$HERE/embedder-contract.mjs" --conformance "$MODULE"
 step "the responsibility page's claims"
 bash "$HERE/check-responsibility-matrix.sh"
 
-step "release wiring"
+step "release wiring (the workflow attaches it)"
 bash "$HERE/check-release-wiring.sh"
+
+step "release asset (the release carried it)"
+# Claim 6 is a string in YAML and claim 12 is a file on a release page. The first was green for
+# the whole life of `package-wasi` while `v1.14.2` carried no assets (#1503), so the second is
+# asked separately — and when there is no tag to ask about, the claim is *named as not
+# applicable* rather than counted as a pass. That is the rule this file states for itself.
+if [ -n "$RELEASE" ]; then
+  bash "$HERE/check-release-asset.sh" "$RELEASE"
+else
+  printf '   ⏭  claim 12 not applicable: no --release <tag> given, so no release page was read.\n'
+  printf '      Ask it with: bash wasi/ci/run-wasi-gates.sh --release v<version>\n'
+fi
 
 printf '\n✓ WASI gates: the artifact builds, imports what is recorded, fits its ceiling, carries\n'
 printf '  no path from the machine that built it,\n'
 printf '  reproduces all five goldens through node, refuses without trapping, and the\n'
 printf '  words in the tree name the same count as the record.\n'
+if [ -z "$RELEASE" ]; then
+  printf '  Claim 12 (a published address) was not asked: pass --release <tag>.\n'
+fi

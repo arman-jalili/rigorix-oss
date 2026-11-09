@@ -346,6 +346,23 @@ jobs:
           cd wasi-asset
           sha256sum -c rigorix_gate_wasi.wasm.sha256
 
+      - name: Write the digest into the page
+        # #1503: the page said "with its sha256 beside it", which is a pointer. A consumer
+        # that pins the artifact (rigorix-sdk vendors it and pins the sha256) has to be able
+        # to read the digest from the page it downloaded from, without trusting a sibling
+        # file it also had to choose. The value is the one just verified above.
+        run: |
+          DIGEST=$(cut -d' ' -f1 wasi-asset/rigorix_gate_wasi.wasm.sha256)
+          BYTES=$(wc -c < wasi-asset/rigorix_gate_wasi.wasm | tr -d ' ')
+          {
+            echo ""
+            echo "\`\`\`"
+            echo "$DIGEST  rigorix_gate_wasi.wasm   ($BYTES bytes)"
+            echo "\`\`\`"
+            echo ""
+            echo "Verify a download with \`sha256sum -c rigorix_gate_wasi.wasm.sha256\`."
+          } >> release-notes.md
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -354,3 +371,50 @@ jobs:
           files: |
             wasi-asset/rigorix_gate_wasi.wasm
             wasi-asset/rigorix_gate_wasi.wasm.sha256
+
+  verify-release-asset:
+    name: 🔖 Verify the release carries the artifact
+    # #1503: `package-wasi` existed for two releases without ever executing, and `v1.14.2`
+    # carried no assets at all while `check-release-wiring.sh` was green — because that guard
+    # reads the workflow, and a job read from YAML is not a job that runs. This job asks the
+    # release page instead: download the two assets the page advertises, check the digest file
+    # against the module, and compare it with the artifact `package-wasi` built in *this* run.
+    #
+    # `if: always()` is the point, not a detail: when `github-release` is skipped (a failed
+    # publish, a rerun that skipped a dependency) the failure mode is "crates published, page
+    # missing" — and a job that only runs on success would report nothing about it.
+    needs: [package-wasi, github-release]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Name the failure when the page was never created
+        run: |
+          if [ "${{ needs.github-release.result }}" != "success" ]; then
+            echo "❌ the release page was not created (github-release: ${{ needs.github-release.result }})."
+            echo "   The tag published crates, but the artifact has no address: every consumer"
+            echo "   still has to build it from the commit. That is the state #1503 exists to end."
+            exit 1
+          fi
+
+      - name: Read the release page and check the asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # The expectation is the artifact this run built, not a number copied into the
+          # workflow: "the digest on the page equals a rebuild of that tag" is only a claim
+          # if something compares the two.
+          if [ "${{ needs.package-wasi.result }}" = "success" ]; then
+            EXPECT=$(gh run download "$GITHUB_RUN_ID" --name rigorix_gate_wasi --dir built >/dev/null 2>&1 \
+              && cut -d' ' -f1 built/rigorix_gate_wasi.wasm.sha256) || EXPECT=""
+            if [ -n "$EXPECT" ]; then
+              bash wasi/ci/check-release-asset.sh "$GITHUB_REF_NAME" --expect "$EXPECT"
+              exit 0
+            fi
+            echo "⚠ the built artifact could not be fetched from this run; checking the page alone"
+          fi
+          bash wasi/ci/check-release-asset.sh "$GITHUB_REF_NAME"
